@@ -7,11 +7,9 @@ struct TranscriptHistoryView: View {
     var body: some View {
         @Bindable var state = appState
 
-        List(appState.filteredTranscripts) { transcript in
+        List(appState.filteredTranscripts, selection: $state.selectedTranscriptID) { transcript in
             TranscriptRowView(transcript: transcript)
-                .onTapGesture {
-                    appState.activeTranscript = transcript
-                }
+                .tag(transcript.id)
         }
         .searchable(text: $state.searchQuery, prompt: "Search transcripts")
         .overlay {

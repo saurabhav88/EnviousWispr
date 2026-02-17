@@ -19,6 +19,14 @@ struct MenuBarView: View {
 
             Divider()
 
+            // Record / Stop
+            Button(appState.pipelineState == .recording ? "Stop Recording" : "Start Recording") {
+                Task { await appState.toggleRecording() }
+            }
+            .disabled(appState.pipelineState.isActive && appState.pipelineState != .recording)
+
+            Divider()
+
             // Actions
             Button("Open VibeWhisper") {
                 openMainWindow()

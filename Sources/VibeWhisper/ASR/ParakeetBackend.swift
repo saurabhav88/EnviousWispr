@@ -1,5 +1,5 @@
 import AVFoundation
-import FluidAudio
+@preconcurrency import FluidAudio
 
 /// Parakeet v3 ASR backend using FluidAudio/CoreML.
 ///
@@ -10,6 +10,9 @@ import FluidAudio
 actor ParakeetBackend: ASRBackend {
     private(set) var isReady = false
     let supportsStreamingPartials = false // TODO: Add EOU streaming in M2
+
+    private var fluidAsrManager: AsrManager?
+    private var fluidModels: AsrModels?
 
     func modelInfo() -> ASRModelInfo {
         ASRModelInfo(
@@ -25,37 +28,66 @@ actor ParakeetBackend: ASRBackend {
     }
 
     func prepare() async throws {
-        // TODO: M1 — Download and load CoreML model via FluidAudio
-        // let models = try await AsrModels.downloadAndLoad(version: .v3)
-        // asrManager = AsrManager(config: .default)
-        // try await asrManager?.initialize(models: models)
+        let loadedModels = try await AsrModels.downloadAndLoad(version: .v3)
+        self.fluidModels = loadedModels
+
+        let manager = AsrManager(config: .default)
+        try await manager.initialize(models: loadedModels)
+        self.fluidAsrManager = manager
+
         isReady = true
     }
 
     func transcribe(audioURL: URL, options: TranscriptionOptions) async throws -> ASRResult {
-        guard isReady else { throw ASRError.notReady }
-        // TODO: M1 — Implement via FluidAudio asrManager.transcribe()
+        guard isReady, let manager = fluidAsrManager else { throw ASRError.notReady }
+
+        let startTime = CFAbsoluteTimeGetCurrent()
+        // fluidResult type is inferred from AsrManager.transcribe() return type
+        let fluidResult = try await manager.transcribe(audioURL, source: .system)
+        let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+
+        let segments: [TranscriptSegment] = fluidResult.tokenTimings?.compactMap { timing in
+            TranscriptSegment(
+                text: timing.token,
+                startTime: Float(timing.startTime),
+                endTime: Float(timing.endTime)
+            )
+        } ?? []
+
+        // Unqualified ASRResult resolves to our module's type (has backendType parameter)
         return ASRResult(
-            text: "[Parakeet transcription placeholder]",
-            segments: [],
+            text: fluidResult.text,
+            segments: segments,
             language: "en",
-            duration: 0,
-            processingTime: 0,
-            confidence: nil,
+            duration: fluidResult.duration,
+            processingTime: elapsed,
+            confidence: fluidResult.confidence,
             backendType: .parakeet
         )
     }
 
     func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult {
-        guard isReady else { throw ASRError.notReady }
-        // TODO: M1 — Implement via FluidAudio asrManager.transcribe(samples)
+        guard isReady, let manager = fluidAsrManager else { throw ASRError.notReady }
+
+        let startTime = CFAbsoluteTimeGetCurrent()
+        let fluidResult = try await manager.transcribe(audioSamples, source: .microphone)
+        let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+
+        let segments: [TranscriptSegment] = fluidResult.tokenTimings?.compactMap { timing in
+            TranscriptSegment(
+                text: timing.token,
+                startTime: Float(timing.startTime),
+                endTime: Float(timing.endTime)
+            )
+        } ?? []
+
         return ASRResult(
-            text: "[Parakeet transcription placeholder]",
-            segments: [],
+            text: fluidResult.text,
+            segments: segments,
             language: "en",
-            duration: 0,
-            processingTime: 0,
-            confidence: nil,
+            duration: fluidResult.duration,
+            processingTime: elapsed,
+            confidence: fluidResult.confidence,
             backendType: .parakeet
         )
     }
@@ -71,6 +103,9 @@ actor ParakeetBackend: ASRBackend {
     }
 
     func unload() async {
+        fluidAsrManager?.cleanup()
+        fluidAsrManager = nil
+        fluidModels = nil
         isReady = false
     }
 }

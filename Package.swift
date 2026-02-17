@@ -22,9 +22,7 @@ let package = Package(
                 // "KeyboardShortcuts", // M2: add back when full Xcode available
             ],
             path: "Sources/VibeWhisper",
-            resources: [
-                .process("Resources"),
-            ]
+            exclude: ["Resources"]
         ),
         .testTarget(
             name: "VibeWhisperTests",
