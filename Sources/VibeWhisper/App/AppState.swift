@@ -9,6 +9,7 @@ final class AppState {
     let audioCapture = AudioCaptureManager()
     let asrManager = ASRManager()
     let transcriptStore = TranscriptStore()
+    let keychainManager = KeychainManager()
 
     // Pipeline — initialized after sub-systems
     private(set) var pipeline: TranscriptionPipeline!
@@ -25,19 +26,57 @@ final class AppState {
         }
     }
 
-    // Settings
-    var selectedBackend: ASRBackendType = .parakeet
-    var recordingMode: RecordingMode = .pushToTalk
-    var llmProvider: LLMProvider = .none
-    var autoCopyToClipboard: Bool = true
+    // Settings (persisted via UserDefaults)
+    var selectedBackend: ASRBackendType {
+        didSet {
+            UserDefaults.standard.set(selectedBackend.rawValue, forKey: "selectedBackend")
+            Task { await asrManager.switchBackend(to: selectedBackend) }
+        }
+    }
+
+    var recordingMode: RecordingMode {
+        didSet { UserDefaults.standard.set(recordingMode.rawValue, forKey: "recordingMode") }
+    }
+
+    var llmProvider: LLMProvider {
+        didSet {
+            UserDefaults.standard.set(llmProvider.rawValue, forKey: "llmProvider")
+            pipeline.llmProvider = llmProvider
+        }
+    }
+
+    var llmModel: String {
+        didSet {
+            UserDefaults.standard.set(llmModel, forKey: "llmModel")
+            pipeline.llmModel = llmModel
+        }
+    }
+
+    var autoCopyToClipboard: Bool {
+        didSet {
+            UserDefaults.standard.set(autoCopyToClipboard, forKey: "autoCopyToClipboard")
+            pipeline.autoCopyToClipboard = autoCopyToClipboard
+        }
+    }
 
     init() {
+        // Load persisted settings
+        let defaults = UserDefaults.standard
+        selectedBackend = ASRBackendType(rawValue: defaults.string(forKey: "selectedBackend") ?? "") ?? .parakeet
+        recordingMode = RecordingMode(rawValue: defaults.string(forKey: "recordingMode") ?? "") ?? .pushToTalk
+        llmProvider = LLMProvider(rawValue: defaults.string(forKey: "llmProvider") ?? "") ?? .none
+        llmModel = defaults.string(forKey: "llmModel") ?? "gpt-4o-mini"
+        autoCopyToClipboard = defaults.object(forKey: "autoCopyToClipboard") as? Bool ?? true
+
         pipeline = TranscriptionPipeline(
             audioCapture: audioCapture,
             asrManager: asrManager,
-            transcriptStore: transcriptStore
+            transcriptStore: transcriptStore,
+            keychainManager: keychainManager
         )
         pipeline.autoCopyToClipboard = autoCopyToClipboard
+        pipeline.llmProvider = llmProvider
+        pipeline.llmModel = llmModel
     }
 
     /// Convenience: current pipeline state.
@@ -61,9 +100,27 @@ final class AppState {
     /// Toggle recording on/off.
     func toggleRecording() async {
         await pipeline.toggleRecording()
-        // Refresh transcript list after transcription completes
         if pipeline.state == .complete {
             loadTranscripts()
+        }
+    }
+
+    /// Polish an existing transcript with LLM.
+    func polishTranscript(_ transcript: Transcript) async {
+        if let updated = await pipeline.polishExistingTranscript(transcript) {
+            // Update the transcript in the list
+            if let idx = transcripts.firstIndex(where: { $0.id == updated.id }) {
+                transcripts[idx] = updated
+            }
+        }
+    }
+
+    /// Delete a transcript.
+    func deleteTranscript(_ transcript: Transcript) {
+        try? transcriptStore.delete(id: transcript.id)
+        transcripts.removeAll { $0.id == transcript.id }
+        if selectedTranscriptID == transcript.id {
+            selectedTranscriptID = nil
         }
     }
 

@@ -7,15 +7,24 @@ final class TranscriptionPipeline {
     private let audioCapture: AudioCaptureManager
     private let asrManager: ASRManager
     private let transcriptStore: TranscriptStore
+    private let keychainManager: KeychainManager
 
     private(set) var state: PipelineState = .idle
     private(set) var currentTranscript: Transcript?
     var autoCopyToClipboard: Bool = true
+    var llmProvider: LLMProvider = .none
+    var llmModel: String = "gpt-4o-mini"
 
-    init(audioCapture: AudioCaptureManager, asrManager: ASRManager, transcriptStore: TranscriptStore) {
+    init(
+        audioCapture: AudioCaptureManager,
+        asrManager: ASRManager,
+        transcriptStore: TranscriptStore,
+        keychainManager: KeychainManager = KeychainManager()
+    ) {
         self.audioCapture = audioCapture
         self.asrManager = asrManager
         self.transcriptStore = transcriptStore
+        self.keychainManager = keychainManager
     }
 
     /// Toggle recording: start if idle, stop if recording.
@@ -74,8 +83,16 @@ final class TranscriptionPipeline {
                 return
             }
 
+            // Optionally polish with LLM
+            var polishedText: String?
+            if llmProvider != .none {
+                state = .polishing
+                polishedText = try? await polishTranscript(result.text)
+            }
+
             let transcript = Transcript(
                 text: result.text,
+                polishedText: polishedText,
                 language: result.language,
                 duration: result.duration,
                 processingTime: result.processingTime,
@@ -97,6 +114,34 @@ final class TranscriptionPipeline {
         }
     }
 
+    /// Polish a single transcript on demand (from detail view).
+    func polishExistingTranscript(_ transcript: Transcript) async -> Transcript? {
+        guard llmProvider != .none else { return nil }
+
+        state = .polishing
+        guard let polishedText = try? await polishTranscript(transcript.text) else {
+            state = .complete
+            return nil
+        }
+
+        let updated = Transcript(
+            id: transcript.id,
+            text: transcript.text,
+            polishedText: polishedText,
+            language: transcript.language,
+            duration: transcript.duration,
+            processingTime: transcript.processingTime,
+            backendType: transcript.backendType,
+            createdAt: transcript.createdAt,
+            isFavorite: transcript.isFavorite
+        )
+
+        try? transcriptStore.save(updated)
+        currentTranscript = updated
+        state = .complete
+        return updated
+    }
+
     /// Reset pipeline to idle state.
     func reset() {
         if audioCapture.isCapturing {
@@ -104,5 +149,31 @@ final class TranscriptionPipeline {
         }
         state = .idle
         currentTranscript = nil
+    }
+
+    // MARK: - Private
+
+    private func polishTranscript(_ text: String) async throws -> String {
+        let polisher: any TranscriptPolisher = switch llmProvider {
+        case .openAI: OpenAIConnector(keychainManager: keychainManager)
+        case .gemini: GeminiConnector(keychainManager: keychainManager)
+        case .none: throw LLMError.providerUnavailable
+        }
+
+        let config = LLMProviderConfig(
+            provider: llmProvider,
+            model: llmModel,
+            apiKeyKeychainId: llmProvider == .openAI ? "openai-api-key" : "gemini-api-key",
+            maxTokens: 2048,
+            temperature: 0.3
+        )
+
+        let result = try await polisher.polish(
+            text: text,
+            instructions: .default,
+            config: config
+        )
+
+        return result.polishedText
     }
 }
