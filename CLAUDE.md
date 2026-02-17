@@ -1,48 +1,80 @@
-# Survey Magic
+# VibeWhisper
 
-## Purpose
+## Project Overview
 
-This project is a workflow assistant for navigating our internal survey solution and submitting support/change tickets. The user brings a need (new survey, survey modification, bug, access request, etc.) and Claude helps translate that into the correct ticket format for the internal system.
+Local-first macOS dictation app for Apple Silicon. Records speech, transcribes locally using pluggable ASR backends, with optional LLM post-processing for grammar cleanup.
 
-## How This Works
+**Primary ASR backend:** Parakeet v3 via FluidAudio (CoreML, ~110x RTF, built-in punctuation)
+**Fallback ASR backend:** WhisperKit (broader language support, 99+ languages)
+**Deployment target:** macOS 14.0+ (Sonoma)
 
-1. **User describes a need** - plain language, no jargon required
-2. **Claude asks clarifying questions** - to gather all required fields
-3. **Claude drafts the ticket** - using the appropriate template
-4. **User reviews and approves** - before anything is submitted
-5. **Claude assists with submission** - navigating the internal tool via browser or generating copy-paste content
+## Project Structure
 
-## Workflow
+```text
+EnviousWispr/
+├── Package.swift                  # SPM manifest (WhisperKit, FluidAudio, KeyboardShortcuts)
+├── Sources/VibeWhisper/
+│   ├── App/                       # SwiftUI app entry, AppState, DI
+│   ├── Views/                     # All SwiftUI views (MenuBar, Main, Settings, Components)
+│   ├── ViewModels/                # View models
+│   ├── Audio/                     # AVAudioEngine capture, buffer processing, VAD
+│   ├── ASR/                       # ASRBackend protocol + WhisperKit/Parakeet backends
+│   ├── LLM/                       # TranscriptPolisher protocol + OpenAI/Gemini connectors
+│   ├── Models/                    # Shared data types (Transcript, ASRResult, etc.)
+│   ├── Storage/                   # TranscriptStore (JSON persistence)
+│   ├── Pipeline/                  # TranscriptionPipeline orchestrator
+│   ├── Services/                  # HotkeyService, PasteService, PermissionsService
+│   ├── Utilities/                 # Constants, extensions
+│   └── Resources/                 # Assets, Info.plist, entitlements
+├── Tests/VibeWhisperTests/
+├── docs/                          # Architecture docs, benchmarks
+├── fixtures/                      # Test audio files
+└── CLAUDE.md
+```
 
-When the user comes with a survey-related request:
+## Key Protocols
 
-1. Identify the request type (see `templates/` for known types)
-2. Ask targeted questions to fill in required fields
-3. Draft the ticket using the matching template
-4. Present the draft for review
-5. Assist with submission once approved
+- `ASRBackend` (actor protocol) — `ASR/ASRProtocol.swift`
+- `TranscriptPolisher` — `LLM/LLMProtocol.swift`
 
-## Key Principles
+## Conventions
 
-- Never assume details - always confirm with the user
-- Use plain language - translate jargon when needed
-- Save completed tickets to `logs/` for future reference
-- If a request doesn't fit an existing template, help the user define a new one and save it
+- All outputs go in their designated folders
+- Audio format: 16kHz mono Float32 throughout
+- State management: `@Observable` (Observation framework)
+- API keys: macOS Keychain via `KeychainManager`
+- Transcript storage: JSON files in `~/Library/Application Support/VibeWhisper/transcripts/`
+- Only load the active ASR backend (unload before switching)
+- Use clear, descriptive filenames
 
-## Internal Survey System Details
+## Build & Run
 
-> **Fill this in as you learn more about your internal tool.**
-> Add details here like:
-> - System name / URL
-> - Ticket categories and fields
-> - Required approvals or routing rules
-> - Common gotchas or workarounds
-> - Contact info for survey team
+```bash
+swift build
+swift run VibeWhisper
+swift test
+```
 
-## Templates
+## Commit Guidance
 
-Templates live in `templates/`. Each template is a markdown file with the required and optional fields for a specific ticket type. As new ticket types are encountered, new templates should be created.
+Conventional commits:
+- `feat(asr): implement Parakeet v3 backend`
+- `feat(ui): add transcript history view`
+- `fix(audio): correct sample rate conversion`
+- `docs(arch): add architecture decision record`
 
-## Logs
+## Current Status
 
-Completed ticket drafts are saved to `logs/` with the format `YYYY-MM-DD-short-description.md` for reference and reuse.
+**Milestone 0: Repo + Running Skeleton** — In progress
+
+- [x] Project scaffolded with SPM
+- [x] Models, protocols, and stubs created
+- [x] SwiftUI app shell with MenuBarExtra
+- [ ] Verify build compiles
+- [ ] First commit
+
+## When Stuck
+
+- Check `docs/` for architecture decisions
+- Check the plan at `.claude/plans/snug-dancing-wall.md`
+- Ambiguous requirements → escalate to human

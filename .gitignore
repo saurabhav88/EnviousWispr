@@ -1,0 +1,57 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Xcode
+DerivedData/
+*.xcworkspace
+xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Claude Code
+.claude/settings.local.json
+
+# Logs
+logs/*.log
+
+# Playwright
+playwright-report/
+test-results/
+.playwright-mcp/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Python (for model experimentation)
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node (if applicable later)
+node_modules/
+dist/
+build/
+
+# Models (large files, download at runtime)
+Models/
+*.mlmodel
+*.mlpackage
+*.gguf
+*.bin
