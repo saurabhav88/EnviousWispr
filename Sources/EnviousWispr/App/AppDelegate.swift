@@ -1,4 +1,5 @@
 import AppKit
+@preconcurrency import Sparkle
 import SwiftUI
 
 /// AppDelegate that manages the menu bar status item using NSStatusItem.
@@ -9,6 +10,7 @@ import SwiftUI
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
+    private(set) var updaterController: SPUStandardUpdaterController!
 
     /// Shared app state — created here so it's available before any SwiftUI scene loads.
     let appState = AppState()
@@ -35,6 +37,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+
+        updaterController = SPUStandardUpdaterController(
+            startingUpdater: true,
+            updaterDelegate: nil,
+            userDriverDelegate: nil
+        )
 
         setupStatusItem()
     }
@@ -81,6 +89,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
+
+        // Check for Updates
+        let updateItem = NSMenuItem(title: "Check for Updates…", action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)), keyEquivalent: "")
+        updateItem.target = updaterController
+        menu.addItem(updateItem)
 
         menu.addItem(.separator())
 

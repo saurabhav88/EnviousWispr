@@ -50,5 +50,13 @@
     <!-- Required for AppKit-based apps launched without a XIB/storyboard -->
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+
+    <!-- Sparkle auto-updater -->
+    <key>SUFeedURL</key>
+    <string>https://raw.githubusercontent.com/OWNER/EnviousWispr/main/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>PLACEHOLDER_EDDSA_PUBLIC_KEY</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
 </dict>
 </plist>
