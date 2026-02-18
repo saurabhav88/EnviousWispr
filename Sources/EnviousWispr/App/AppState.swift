@@ -245,10 +245,14 @@ final class AppState {
 
     /// Delete a transcript.
     func deleteTranscript(_ transcript: Transcript) {
-        try? transcriptStore.delete(id: transcript.id)
-        transcripts.removeAll { $0.id == transcript.id }
-        if selectedTranscriptID == transcript.id {
-            selectedTranscriptID = nil
+        do {
+            try transcriptStore.delete(id: transcript.id)
+            transcripts.removeAll { $0.id == transcript.id }
+            if selectedTranscriptID == transcript.id {
+                selectedTranscriptID = nil
+            }
+        } catch {
+            print("Failed to delete transcript: \(error)")
         }
     }
 

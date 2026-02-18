@@ -16,7 +16,9 @@ struct GeminiConnector: TranscriptPolisher {
     ) async throws -> LLMResult {
         let apiKey = try getAPIKey(config: config)
 
-        let url = URL(string: "\(baseURL)/\(config.model):generateContent?key=\(apiKey)")!
+        guard let url = URL(string: "\(baseURL)/\(config.model):generateContent?key=\(apiKey)") else {
+            throw LLMError.requestFailed("Invalid URL for model: \(config.model)")
+        }
 
         let body: [String: Any] = [
             "contents": [
@@ -85,7 +87,9 @@ struct GeminiConnector: TranscriptPolisher {
         let apiKey = try getAPIKey(config: config)
 
         // List models as a lightweight health check
-        let url = URL(string: "\(baseURL)?key=\(apiKey)")!
+        guard let url = URL(string: "\(baseURL)?key=\(apiKey)") else {
+            throw LLMError.requestFailed("Invalid URL")
+        }
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
 

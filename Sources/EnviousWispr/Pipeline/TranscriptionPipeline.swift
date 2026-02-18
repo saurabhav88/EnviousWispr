@@ -116,7 +116,11 @@ final class TranscriptionPipeline {
             var polishedText: String?
             if llmProvider != .none {
                 state = .polishing
-                polishedText = try? await polishTranscript(result.text)
+                do {
+                    polishedText = try await polishTranscript(result.text)
+                } catch {
+                    print("LLM polish failed: \(error.localizedDescription)")
+                }
             }
 
             let transcript = Transcript(
@@ -155,9 +159,14 @@ final class TranscriptionPipeline {
     /// Polish a single transcript on demand (from detail view).
     func polishExistingTranscript(_ transcript: Transcript) async -> Transcript? {
         guard llmProvider != .none else { return nil }
+        guard !state.isActive || state == .complete else { return nil }
 
         state = .polishing
-        guard let polishedText = try? await polishTranscript(transcript.text) else {
+        let polishedText: String
+        do {
+            polishedText = try await polishTranscript(transcript.text)
+        } catch {
+            print("LLM polish failed: \(error.localizedDescription)")
             state = .complete
             return nil
         }
@@ -174,7 +183,13 @@ final class TranscriptionPipeline {
             isFavorite: transcript.isFavorite
         )
 
-        try? transcriptStore.save(updated)
+        do {
+            try transcriptStore.save(updated)
+        } catch {
+            print("Failed to save polished transcript: \(error)")
+            state = .error("Failed to save: \(error.localizedDescription)")
+            return nil
+        }
         currentTranscript = updated
         state = .complete
         return updated

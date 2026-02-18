@@ -31,13 +31,18 @@ final class TranscriptStore {
             includingPropertiesForKeys: nil
         )
 
-        return try files
+        let transcripts = files
             .filter { $0.pathExtension == "json" }
-            .map { url in
-                let data = try Data(contentsOf: url)
-                return try JSONDecoder().decode(Transcript.self, from: data)
+            .compactMap { url -> Transcript? in
+                do {
+                    let data = try Data(contentsOf: url)
+                    return try JSONDecoder().decode(Transcript.self, from: data)
+                } catch {
+                    print("Skipping corrupt transcript \(url.lastPathComponent): \(error)")
+                    return nil
+                }
             }
-            .sorted { $0.createdAt > $1.createdAt }
+        return transcripts.sorted { $0.createdAt > $1.createdAt }
     }
 
     /// Delete a transcript by ID.

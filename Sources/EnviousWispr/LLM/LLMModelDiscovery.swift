@@ -63,7 +63,9 @@ struct LLMModelDiscovery: Sendable {
     // MARK: - Gemini
 
     private func fetchGeminiModels(apiKey: String) async throws -> [(id: String, displayName: String)] {
-        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models?key=\(apiKey)")!
+        guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models?key=\(apiKey)") else {
+            throw LLMError.requestFailed("Invalid URL")
+        }
         var request = URLRequest(url: url)
         request.timeoutInterval = 15
 
@@ -125,7 +127,10 @@ struct LLMModelDiscovery: Sendable {
     // MARK: - OpenAI
 
     private func fetchOpenAIModels(apiKey: String) async throws -> [(id: String, displayName: String)] {
-        var request = URLRequest(url: URL(string: "https://api.openai.com/v1/models")!)
+        guard let url = URL(string: "https://api.openai.com/v1/models") else {
+            throw LLMError.requestFailed("Invalid URL")
+        }
+        var request = URLRequest(url: url)
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = 15
 
@@ -162,7 +167,10 @@ struct LLMModelDiscovery: Sendable {
             "max_tokens": 5,
         ]
 
-        var request = URLRequest(url: URL(string: "https://api.openai.com/v1/chat/completions")!)
+        guard let url = URL(string: "https://api.openai.com/v1/chat/completions") else {
+            return false
+        }
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
