@@ -40,42 +40,32 @@ echo "    Output DMG   : ${DMG_OUT}"
 # ---------------------------------------------------------------------------
 # 1. Build arm64 release binary
 # ---------------------------------------------------------------------------
+# NOTE: arm64-only because FluidAudio uses Float16 which is unavailable on x86_64.
+# Apple Silicon is required for the Neural Engine models anyway.
 echo ""
-echo "==> [1/7] Building arm64 release binary ..."
+echo "==> [1/5] Building arm64 release binary ..."
 cd "${PROJECT_ROOT}"
 swift build -c release --arch arm64
 
-# ---------------------------------------------------------------------------
-# 2. Build x86_64 release binary
-# ---------------------------------------------------------------------------
-echo ""
-echo "==> [2/7] Building x86_64 release binary ..."
-swift build -c release --arch x86_64
+BUILT_BINARY="${PROJECT_ROOT}/.build/arm64-apple-macosx/release/${BINARY_NAME}"
+if [[ ! -f "${BUILT_BINARY}" ]]; then
+    echo "ERROR: Expected binary not found at ${BUILT_BINARY}" >&2
+    exit 1
+fi
+echo "    Binary : ${BUILT_BINARY}"
 
 # ---------------------------------------------------------------------------
-# 3. Create universal binary with lipo
+# 2. Assemble .app bundle
 # ---------------------------------------------------------------------------
 echo ""
-echo "==> [3/7] Creating universal binary with lipo ..."
-BINARY_ARM64="${PROJECT_ROOT}/.build/arm64-apple-macosx/release/${BINARY_NAME}"
-BINARY_X86="${PROJECT_ROOT}/.build/x86_64-apple-macosx/release/${BINARY_NAME}"
-mkdir -p "${BUILD_DIR}"
-BINARY_UNIVERSAL="${BUILD_DIR}/${BINARY_NAME}-universal"
-lipo -create "${BINARY_ARM64}" "${BINARY_X86}" -output "${BINARY_UNIVERSAL}"
-echo "    Universal binary : ${BINARY_UNIVERSAL}"
-
-# ---------------------------------------------------------------------------
-# 4. Assemble .app bundle
-# ---------------------------------------------------------------------------
-echo ""
-echo "==> [4/7] Assembling .app bundle ..."
+echo "==> [2/5] Assembling .app bundle ..."
 
 # Wipe any previous bundle so we start clean.
 rm -rf "${APP_BUNDLE}"
 mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
 
-# Copy the universal binary.
-cp "${BINARY_UNIVERSAL}" "${MACOS_DIR}/${BINARY_NAME}"
+# Copy the binary.
+cp "${BUILT_BINARY}" "${MACOS_DIR}/${BINARY_NAME}"
 chmod +x "${MACOS_DIR}/${BINARY_NAME}"
 
 # Write Info.plist
@@ -175,7 +165,7 @@ echo "    Bundle assembled at ${APP_BUNDLE}"
 # ---------------------------------------------------------------------------
 if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
     echo ""
-    echo "==> [5/7] Signing .app bundle ..."
+    echo "==> [3/5] Signing .app bundle ..."
     codesign --force --options runtime \
         --sign "${CODESIGN_IDENTITY}" \
         --entitlements "${ENTITLEMENTS_DEST}" \
@@ -184,14 +174,14 @@ if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
     echo "    Signature verified."
 else
     echo ""
-    echo "==> [5/7] Skipping code signing (CODESIGN_IDENTITY not set)."
+    echo "==> [3/5] Skipping code signing (CODESIGN_IDENTITY not set)."
 fi
 
 # ---------------------------------------------------------------------------
 # 6. Build DMG with hdiutil (native, no third-party tools)
 # ---------------------------------------------------------------------------
 echo ""
-echo "==> [6/7] Creating DMG staging area ..."
+echo "==> [4/5] Creating DMG staging area ..."
 
 rm -rf "${DMG_STAGING}"
 mkdir -p "${DMG_STAGING}"
@@ -234,7 +224,7 @@ rm -rf "${DMG_STAGING}"
 # ---------------------------------------------------------------------------
 if [[ -n "${APPLE_ID:-}" && -n "${APPLE_ID_PASSWORD:-}" && -n "${APPLE_TEAM_ID:-}" ]]; then
     echo ""
-    echo "==> [7/7] Notarizing DMG ..."
+    echo "==> [5/5] Notarizing DMG ..."
     xcrun notarytool submit "${DMG_OUT}" \
         --apple-id "${APPLE_ID}" \
         --password "${APPLE_ID_PASSWORD}" \
@@ -245,7 +235,7 @@ if [[ -n "${APPLE_ID:-}" && -n "${APPLE_ID_PASSWORD:-}" && -n "${APPLE_TEAM_ID:-
     echo "    Notarization complete."
 else
     echo ""
-    echo "==> [7/7] Skipping notarization (APPLE_ID / APPLE_ID_PASSWORD / APPLE_TEAM_ID not set)."
+    echo "==> [5/5] Skipping notarization (APPLE_ID / APPLE_ID_PASSWORD / APPLE_TEAM_ID not set)."
 fi
 
 # ---------------------------------------------------------------------------

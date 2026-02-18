@@ -26,11 +26,10 @@
     <!-- Platform -->
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
-    <!-- Prefer Apple Silicon; fall back to Intel Rosetta 2 -->
+    <!-- Apple Silicon only (FluidAudio requires arm64 for Float16) -->
     <key>LSArchitecturePriority</key>
     <array>
         <string>arm64</string>
-        <string>x86_64</string>
     </array>
 
     <!-- Menu bar app — suppress Dock icon and app switcher entry -->
