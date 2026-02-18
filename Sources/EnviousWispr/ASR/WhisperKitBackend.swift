@@ -4,30 +4,14 @@ import AVFoundation
 /// WhisperKit ASR backend — fallback for non-European languages.
 ///
 /// Uses Argmax WhisperKit SPM for Whisper-based speech recognition.
-/// Supports streaming via transcription callbacks.
 actor WhisperKitBackend: ASRBackend {
     private(set) var isReady = false
-    let supportsStreamingPartials = true
 
     private let modelVariant: String
     private var whisperKit: WhisperKit?
 
     init(modelVariant: String = "large-v3") {
         self.modelVariant = modelVariant
-    }
-
-    func modelInfo() -> ASRModelInfo {
-        ASRModelInfo(
-            name: "WhisperKit (\(modelVariant))",
-            backendType: .whisperKit,
-            modelSize: modelVariant == "large-v3" ? "~3.1GB" : modelVariant == "base" ? "~150MB" : "~1.5GB",
-            supportedLanguages: ["en", "zh", "de", "es", "ru", "ko", "fr", "ja", "pt", "tr",
-                                  "pl", "ca", "nl", "ar", "sv", "it", "id", "hi", "fi", "vi",
-                                  "he", "uk", "el", "ms", "cs", "ro", "da", "hu", "ta", "no",
-                                  "th", "ur", "hr", "bg", "lt", "la", "mi", "ml", "cy", "sk"],
-            supportsStreaming: true,
-            hasBuiltInPunctuation: false
-        )
     }
 
     func prepare() async throws {
@@ -57,51 +41,6 @@ actor WhisperKitBackend: ASRBackend {
         let elapsed = CFAbsoluteTimeGetCurrent() - startTime
 
         return mapResults(results, processingTime: elapsed)
-    }
-
-    func transcribeStream(
-        audioBufferStream: AsyncStream<AVAudioPCMBuffer>,
-        options: TranscriptionOptions
-    ) -> AsyncStream<PartialTranscript> {
-        AsyncStream { continuation in
-            Task {
-                var accumulatedSamples: [Float] = []
-                for await buffer in audioBufferStream {
-                    guard let channelData = buffer.floatChannelData else { continue }
-                    let frameCount = Int(buffer.frameLength)
-                    let samples = Array(UnsafeBufferPointer(start: channelData[0], count: frameCount))
-                    accumulatedSamples.append(contentsOf: samples)
-
-                    // Transcribe accumulated audio periodically (every ~2 seconds)
-                    let samplesPerChunk = Int(AudioCaptureManager.targetSampleRate) * 2
-                    if accumulatedSamples.count >= samplesPerChunk {
-                        if let kit = self.whisperKit {
-                            let decodeOptions = self.makeDecodeOptions(from: options)
-                            if let results = try? await kit.transcribe(
-                                audioArray: accumulatedSamples,
-                                decodeOptions: decodeOptions
-                            ) {
-                                let text = results.map(\.text).joined(separator: " ")
-                                continuation.yield(PartialTranscript(text: text, isFinal: false))
-                            }
-                        }
-                    }
-                }
-
-                // Final transcription
-                if !accumulatedSamples.isEmpty, let kit = self.whisperKit {
-                    let decodeOptions = self.makeDecodeOptions(from: options)
-                    if let results = try? await kit.transcribe(
-                        audioArray: accumulatedSamples,
-                        decodeOptions: decodeOptions
-                    ) {
-                        let text = results.map(\.text).joined(separator: " ")
-                        continuation.yield(PartialTranscript(text: text, isFinal: true))
-                    }
-                }
-                continuation.finish()
-            }
-        }
     }
 
     func unload() async {

@@ -9,23 +9,9 @@ import AVFoundation
 /// - 25 European language support
 actor ParakeetBackend: ASRBackend {
     private(set) var isReady = false
-    let supportsStreamingPartials = false // TODO: Add EOU streaming in M2
 
     private var fluidAsrManager: AsrManager?
     private var fluidModels: AsrModels?
-
-    func modelInfo() -> ASRModelInfo {
-        ASRModelInfo(
-            name: "Parakeet TDT v3",
-            backendType: .parakeet,
-            modelSize: "~600MB",
-            supportedLanguages: ["en", "de", "fr", "es", "it", "pt", "nl", "pl", "sv", "da",
-                                  "no", "fi", "cs", "sk", "ro", "hu", "bg", "hr", "sl", "uk",
-                                  "el", "lt", "lv", "et", "ca"],
-            supportsStreaming: false,
-            hasBuiltInPunctuation: true
-        )
-    }
 
     func prepare() async throws {
         let loadedModels = try await AsrModels.downloadAndLoad(version: .v3)
@@ -90,16 +76,6 @@ actor ParakeetBackend: ASRBackend {
             confidence: fluidResult.confidence,
             backendType: .parakeet
         )
-    }
-
-    func transcribeStream(
-        audioBufferStream: AsyncStream<AVAudioPCMBuffer>,
-        options: TranscriptionOptions
-    ) -> AsyncStream<PartialTranscript> {
-        // TODO: M2 — Implement via BatchEouAsrManager
-        AsyncStream { continuation in
-            continuation.finish()
-        }
     }
 
     func unload() async {

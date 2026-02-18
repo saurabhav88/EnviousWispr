@@ -17,7 +17,7 @@ Sources/EnviousWispr/
 ├── Utilities/    # Constants, BenchmarkSuite
 └── Views/
     ├── Main/         # History list, detail, controls
-    ├── MenuBar/      # Menu bar extra
+    ├── MenuBar/      # (reserved — menu bar uses NSStatusItem in AppDelegate)
     ├── Onboarding/   # First-launch flow
     └── Settings/     # 4 tabs: General, Shortcuts, AI Polish, Permissions
 ```
@@ -58,5 +58,5 @@ Hotkey → AudioCaptureManager.startCapture() → AVAudioEngine tap (4096 frames
 
 ## Protocols
 
-- `ASRBackend` (actor protocol) — `prepare()`, `transcribe(audioURL:)`, `transcribe(audioSamples:)`, `transcribeStream()`, `unload()`
+- `ASRBackend` (actor protocol) — `prepare()`, `transcribe(audioURL:)`, `transcribe(audioSamples:)`, `unload()`
 - `TranscriptPolisher` — `polish(text:instructions:config:)`, `validateCredentials(config:)`

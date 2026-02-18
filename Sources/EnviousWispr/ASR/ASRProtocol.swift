@@ -1,15 +1,5 @@
 import AVFoundation
 
-/// Information about an ASR model and its capabilities.
-struct ASRModelInfo: Sendable {
-    let name: String
-    let backendType: ASRBackendType
-    let modelSize: String
-    let supportedLanguages: [String]
-    let supportsStreaming: Bool
-    let hasBuiltInPunctuation: Bool
-}
-
 /// Unified protocol for all ASR backends.
 ///
 /// Both WhisperKit and Parakeet/FluidAudio conform to this protocol,
@@ -17,9 +7,6 @@ struct ASRModelInfo: Sendable {
 protocol ASRBackend: Actor {
     /// Whether the backend is initialized and ready to transcribe.
     var isReady: Bool { get }
-
-    /// Metadata about the loaded model.
-    func modelInfo() -> ASRModelInfo
 
     /// Load/initialize the model. Call once before transcription.
     func prepare() async throws
@@ -29,15 +16,6 @@ protocol ASRBackend: Actor {
 
     /// Batch transcription from raw Float32 samples (16kHz mono).
     func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult
-
-    /// Whether this backend supports streaming partial results.
-    var supportsStreamingPartials: Bool { get }
-
-    /// Stream partial transcripts from a continuous audio feed.
-    func transcribeStream(
-        audioBufferStream: AsyncStream<AVAudioPCMBuffer>,
-        options: TranscriptionOptions
-    ) -> AsyncStream<PartialTranscript>
 
     /// Release model resources.
     func unload() async
