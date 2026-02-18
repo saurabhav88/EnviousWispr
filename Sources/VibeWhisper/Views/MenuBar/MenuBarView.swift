@@ -1,59 +1,46 @@
 import SwiftUI
 
-/// Menu bar dropdown content.
+/// Menu bar dropdown content using native menu style for reliable click handling.
 struct MenuBarView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        VStack(spacing: 8) {
-            // Status
-            Label(appState.pipelineState.statusText, systemImage: appState.pipelineState.menuBarIconName)
-                .font(.headline)
+        // Status (read-only label rendered as disabled button for menu compatibility)
+        let statusText = "\(appState.pipelineState.statusText) — \(appState.selectedBackend == .parakeet ? "Parakeet v3" : "WhisperKit")"
+        Text(statusText)
 
-            Divider()
+        Divider()
 
-            // Backend indicator
-            Text("Backend: \(appState.selectedBackend == .parakeet ? "Parakeet v3" : "WhisperKit")")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Divider()
-
-            // Record / Stop
-            Button(appState.pipelineState == .recording ? "Stop Recording" : "Start Recording") {
-                Task { await appState.toggleRecording() }
-            }
-            .disabled(appState.pipelineState.isActive && appState.pipelineState != .recording)
-
-            Divider()
-
-            // Actions
-            Button("Open VibeWhisper") {
-                openMainWindow()
-            }
-            .keyboardShortcut("o")
-
-            Button("Settings...") {
-                openSettings()
-            }
-            .keyboardShortcut(",")
-
-            Divider()
-
-            Button("Quit VibeWhisper") {
-                NSApplication.shared.terminate(nil)
-            }
-            .keyboardShortcut("q")
+        // Record / Stop
+        Button(appState.pipelineState == .recording ? "Stop Recording" : "Start Recording") {
+            Task { await appState.toggleRecording() }
         }
-        .padding(8)
+        .disabled(appState.pipelineState.isActive && appState.pipelineState != .recording)
+
+        Divider()
+
+        // Actions
+        Button("Open VibeWhisper") {
+            openMainWindow()
+        }
+        .keyboardShortcut("o")
+
+        Button("Settings...") {
+            openSettings()
+        }
+        .keyboardShortcut(",")
+
+        Divider()
+
+        Button("Quit VibeWhisper") {
+            NSApplication.shared.terminate(nil)
+        }
+        .keyboardShortcut("q")
     }
 
     private func openMainWindow() {
-        if let window = NSApplication.shared.windows.first(where: {
-            $0.identifier?.rawValue == "main"
-        }) {
-            window.makeKeyAndOrderFront(nil)
-        }
+        openWindow(id: "main")
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
 

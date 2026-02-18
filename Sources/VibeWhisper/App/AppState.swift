@@ -10,6 +10,8 @@ final class AppState {
     let asrManager = ASRManager()
     let transcriptStore = TranscriptStore()
     let keychainManager = KeychainManager()
+    let hotkeyService = HotkeyService()
+    let benchmark = BenchmarkSuite()
 
     // Pipeline — initialized after sub-systems
     private(set) var pipeline: TranscriptionPipeline!
@@ -35,7 +37,10 @@ final class AppState {
     }
 
     var recordingMode: RecordingMode {
-        didSet { UserDefaults.standard.set(recordingMode.rawValue, forKey: "recordingMode") }
+        didSet {
+            UserDefaults.standard.set(recordingMode.rawValue, forKey: "recordingMode")
+            hotkeyService.recordingMode = recordingMode
+        }
     }
 
     var llmProvider: LLMProvider {
@@ -59,6 +64,33 @@ final class AppState {
         }
     }
 
+    var hotkeyEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(hotkeyEnabled, forKey: "hotkeyEnabled")
+            if hotkeyEnabled { hotkeyService.start() } else { hotkeyService.stop() }
+        }
+    }
+
+    var vadAutoStop: Bool {
+        didSet {
+            UserDefaults.standard.set(vadAutoStop, forKey: "vadAutoStop")
+            pipeline.vadAutoStop = vadAutoStop
+        }
+    }
+
+    var vadSilenceTimeout: Double {
+        didSet {
+            UserDefaults.standard.set(vadSilenceTimeout, forKey: "vadSilenceTimeout")
+            pipeline.vadSilenceTimeout = vadSilenceTimeout
+        }
+    }
+
+    var hasCompletedOnboarding: Bool {
+        didSet {
+            UserDefaults.standard.set(hasCompletedOnboarding, forKey: "hasCompletedOnboarding")
+        }
+    }
+
     init() {
         // Load persisted settings
         let defaults = UserDefaults.standard
@@ -67,6 +99,10 @@ final class AppState {
         llmProvider = LLMProvider(rawValue: defaults.string(forKey: "llmProvider") ?? "") ?? .none
         llmModel = defaults.string(forKey: "llmModel") ?? "gpt-4o-mini"
         autoCopyToClipboard = defaults.object(forKey: "autoCopyToClipboard") as? Bool ?? true
+        hotkeyEnabled = defaults.object(forKey: "hotkeyEnabled") as? Bool ?? true
+        vadAutoStop = defaults.object(forKey: "vadAutoStop") as? Bool ?? false
+        vadSilenceTimeout = defaults.object(forKey: "vadSilenceTimeout") as? Double ?? 1.5
+        hasCompletedOnboarding = defaults.object(forKey: "hasCompletedOnboarding") as? Bool ?? false
 
         pipeline = TranscriptionPipeline(
             audioCapture: audioCapture,
@@ -77,6 +113,30 @@ final class AppState {
         pipeline.autoCopyToClipboard = autoCopyToClipboard
         pipeline.llmProvider = llmProvider
         pipeline.llmModel = llmModel
+        pipeline.vadAutoStop = vadAutoStop
+        pipeline.vadSilenceTimeout = vadSilenceTimeout
+
+        // Wire hotkey callbacks
+        hotkeyService.recordingMode = recordingMode
+        hotkeyService.onToggleRecording = { [weak self] in
+            await self?.toggleRecording()
+        }
+        hotkeyService.onStartRecording = { [weak self] in
+            guard let self, !self.pipelineState.isActive else { return }
+            // Push-to-talk: paste directly into the active app after transcription
+            self.pipeline.autoPasteToActiveApp = true
+            await self.pipeline.startRecording()
+        }
+        hotkeyService.onStopRecording = { [weak self] in
+            guard let self, self.pipelineState == .recording else { return }
+            await self.pipeline.stopAndTranscribe()
+            self.pipeline.autoPasteToActiveApp = false
+            self.loadTranscripts()
+        }
+
+        if hotkeyEnabled {
+            hotkeyService.start()
+        }
     }
 
     /// Convenience: current pipeline state.
@@ -108,7 +168,6 @@ final class AppState {
     /// Polish an existing transcript with LLM.
     func polishTranscript(_ transcript: Transcript) async {
         if let updated = await pipeline.polishExistingTranscript(transcript) {
-            // Update the transcript in the list
             if let idx = transcripts.firstIndex(where: { $0.id == updated.id }) {
                 transcripts[idx] = updated
             }

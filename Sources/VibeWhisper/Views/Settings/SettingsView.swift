@@ -11,6 +11,11 @@ struct SettingsView: View {
                     Label("General", systemImage: "gear")
                 }
 
+            ShortcutsSettingsView()
+                .tabItem {
+                    Label("Shortcuts", systemImage: "keyboard")
+                }
+
             LLMSettingsView()
                 .tabItem {
                     Label("AI Polish", systemImage: "sparkles")
@@ -21,7 +26,7 @@ struct SettingsView: View {
                     Label("Permissions", systemImage: "lock.shield")
                 }
         }
-        .frame(width: 500, height: 400)
+        .frame(width: 520, height: 480)
     }
 }
 
@@ -57,8 +62,147 @@ struct GeneralSettingsView: View {
                 }
             }
 
+            Section("Voice Activity Detection") {
+                Toggle("Auto-stop on silence", isOn: $state.vadAutoStop)
+
+                if appState.vadAutoStop {
+                    HStack {
+                        Text("Silence timeout")
+                        Slider(value: $state.vadSilenceTimeout, in: 0.5...3.0, step: 0.25)
+                        Text(String(format: "%.1fs", appState.vadSilenceTimeout))
+                            .font(.caption)
+                            .monospacedDigit()
+                            .frame(width: 30)
+                    }
+
+                    Text("Recording stops automatically after this duration of silence following speech.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section("Behavior") {
                 Toggle("Auto-copy to clipboard", isOn: $state.autoCopyToClipboard)
+            }
+
+            Section("Performance") {
+                if appState.benchmark.isRunning {
+                    HStack {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text(appState.benchmark.progress)
+                            .font(.caption)
+                    }
+                } else {
+                    Button("Run Benchmark") {
+                        Task { await appState.benchmark.run(using: appState.asrManager) }
+                    }
+                }
+
+                if !appState.benchmark.results.isEmpty {
+                    ForEach(appState.benchmark.results) { result in
+                        HStack {
+                            Text(result.label)
+                                .font(.caption)
+                            Spacer()
+                            Text(String(format: "%.2fs", result.processingTime))
+                                .font(.caption)
+                                .monospacedDigit()
+                            Text(String(format: "%.0fx RT", result.rtf))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                    }
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .padding()
+    }
+}
+
+struct ShortcutsSettingsView: View {
+    @Environment(AppState.self) private var appState
+
+    var body: some View {
+        @Bindable var state = appState
+
+        Form {
+            Section("Global Hotkey") {
+                Toggle("Enable global hotkey", isOn: $state.hotkeyEnabled)
+
+                if appState.hotkeyEnabled {
+                    HStack {
+                        Text("Current hotkey:")
+                        Spacer()
+                        Text(appState.hotkeyService.hotkeyDescription)
+                            .font(.system(.body, design: .rounded))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 6))
+                    }
+
+                    if appState.recordingMode == .toggle {
+                        Text("Press ⌃Space to toggle recording on/off.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("Hold ⌥Option to record, release to stop.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if !appState.permissions.hasAccessibilityPermission {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Text("Accessibility permission required for global hotkey.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Spacer()
+
+                        Button("Enable") {
+                            appState.permissions.promptAccessibilityPermission()
+                        }
+                        .controlSize(.small)
+                    }
+                }
+            }
+
+            Section("Hotkey Reference") {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Toggle mode:")
+                            .font(.caption)
+                        Spacer()
+                        Text("⌃Space")
+                            .font(.caption.monospaced())
+                    }
+                    HStack {
+                        Text("Push-to-talk:")
+                            .font(.caption)
+                        Spacer()
+                        Text("Hold ⌥Option")
+                            .font(.caption.monospaced())
+                    }
+                    HStack {
+                        Text("Open window:")
+                            .font(.caption)
+                        Spacer()
+                        Text("⌘O (from menu bar)")
+                            .font(.caption.monospaced())
+                    }
+                    HStack {
+                        Text("Settings:")
+                            .font(.caption)
+                        Spacer()
+                        Text("⌘, (from menu bar)")
+                            .font(.caption.monospaced())
+                    }
+                }
             }
         }
         .formStyle(.grouped)
@@ -241,7 +385,7 @@ struct PermissionsSettingsView: View {
                     }
                 }
 
-                Text("Accessibility permission allows VibeWhisper to paste transcripts directly into the active app using Cmd+V simulation.")
+                Text("Accessibility permission allows VibeWhisper to paste transcripts directly into the active app and enables global hotkey support.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

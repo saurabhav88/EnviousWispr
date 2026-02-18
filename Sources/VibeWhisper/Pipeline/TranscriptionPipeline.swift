@@ -12,8 +12,14 @@ final class TranscriptionPipeline {
     private(set) var state: PipelineState = .idle
     private(set) var currentTranscript: Transcript?
     var autoCopyToClipboard: Bool = true
+    var autoPasteToActiveApp: Bool = false
     var llmProvider: LLMProvider = .none
     var llmModel: String = "gpt-4o-mini"
+    var vadAutoStop: Bool = false
+    var vadSilenceTimeout: Double = 1.5
+
+    private var silenceDetector: SilenceDetector?
+    private var vadMonitorTask: Task<Void, Never>?
 
     init(
         audioCapture: AudioCaptureManager,
@@ -58,6 +64,11 @@ final class TranscriptionPipeline {
             _ = try audioCapture.startCapture()
             state = .recording
             currentTranscript = nil
+
+            // Start VAD monitoring if enabled
+            if vadAutoStop {
+                startVADMonitoring()
+            }
         } catch {
             state = .error("Recording failed: \(error.localizedDescription)")
         }
@@ -66,6 +77,10 @@ final class TranscriptionPipeline {
     /// Stop recording and transcribe the captured audio.
     func stopAndTranscribe() async {
         guard state == .recording else { return }
+
+        // Cancel VAD monitoring
+        vadMonitorTask?.cancel()
+        vadMonitorTask = nil
 
         let samples = audioCapture.stopCapture()
         guard !samples.isEmpty else {
@@ -102,8 +117,10 @@ final class TranscriptionPipeline {
             // Save to store
             try transcriptStore.save(transcript)
 
-            // Auto-copy to clipboard
-            if autoCopyToClipboard {
+            // Auto-copy/paste
+            if autoPasteToActiveApp {
+                PasteService.pasteToActiveApp(transcript.displayText)
+            } else if autoCopyToClipboard {
                 PasteService.copyToClipboard(transcript.displayText)
             }
 
@@ -144,11 +161,63 @@ final class TranscriptionPipeline {
 
     /// Reset pipeline to idle state.
     func reset() {
+        vadMonitorTask?.cancel()
+        vadMonitorTask = nil
         if audioCapture.isCapturing {
             _ = audioCapture.stopCapture()
         }
         state = .idle
         currentTranscript = nil
+    }
+
+    // MARK: - VAD Monitoring
+
+    private func startVADMonitoring() {
+        vadMonitorTask = Task { [weak self] in
+            await self?.monitorVAD()
+        }
+    }
+
+    private func monitorVAD() async {
+        // Lazily create detector
+        if silenceDetector == nil {
+            silenceDetector = SilenceDetector(silenceTimeout: vadSilenceTimeout)
+        }
+        guard let detector = silenceDetector else { return }
+
+        await detector.reset()
+
+        // Prepare VAD model if needed
+        if !(await detector.isReady) {
+            do {
+                try await detector.prepare()
+            } catch {
+                print("VAD preparation failed: \(error)")
+                return
+            }
+        }
+
+        var processedSampleCount = 0
+        let chunkSize = SilenceDetector.chunkSize
+
+        while state == .recording && !Task.isCancelled {
+            let currentCount = audioCapture.capturedSamples.count
+
+            while processedSampleCount + chunkSize <= currentCount && !Task.isCancelled {
+                let endIdx = processedSampleCount + chunkSize
+                let chunk = Array(audioCapture.capturedSamples[processedSampleCount..<endIdx])
+                let shouldStop = await detector.processChunk(chunk)
+
+                if shouldStop && state == .recording {
+                    await stopAndTranscribe()
+                    return
+                }
+
+                processedSampleCount += chunkSize
+            }
+
+            try? await Task.sleep(for: .milliseconds(100))
+        }
     }
 
     // MARK: - Private

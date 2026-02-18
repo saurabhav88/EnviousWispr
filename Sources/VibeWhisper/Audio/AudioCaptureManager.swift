@@ -55,12 +55,61 @@ final class AudioCaptureManager {
             self.bufferContinuation = continuation
         }
 
-        // Install tap on input node — runs on audio thread
-        let bufferSize: AVAudioFrameCount = 4096
-        inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) {
-            [weak self] buffer, _ in
-            guard let self else { return }
+        // Create a @Sendable callback for dispatching audio data to the main actor.
+        // This captures [weak self] safely — the weak reference is only dereferenced
+        // inside Task { @MainActor }, never on the audio thread.
+        let onSamples: @Sendable (Float, [Float]) -> Void = { [weak self] level, samples in
+            Task { @MainActor in
+                self?.audioLevel = level
+                self?.capturedSamples.append(contentsOf: samples)
+            }
+        }
 
+        let tapContinuation = self.bufferContinuation
+
+        // Install tap on input node — the handler is built in a nonisolated static
+        // context so closures inside it do NOT inherit @MainActor isolation.
+        let bufferSize: AVAudioFrameCount = 4096
+        let tapHandler = Self.makeTapHandler(
+            audioConverter: audioConverter,
+            targetFormat: targetFormat,
+            inputFormat: inputFormat,
+            continuation: tapContinuation,
+            onSamples: onSamples
+        )
+        inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat, block: tapHandler)
+
+        try engine.start()
+        isCapturing = true
+        return stream
+    }
+
+    /// Stop capturing and return the accumulated samples.
+    func stopCapture() -> [Float] {
+        engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
+        isCapturing = false
+        bufferContinuation?.finish()
+        bufferContinuation = nil
+        converter = nil
+        audioLevel = 0.0
+        return capturedSamples
+    }
+
+    /// Build the audio tap handler in a nonisolated context.
+    ///
+    /// This is critical: closures defined inside a @MainActor method inherit that
+    /// isolation, causing runtime crashes when the audio tap runs on the real-time
+    /// audio thread. By constructing the handler here (nonisolated static), all
+    /// closures within it are free of @MainActor isolation.
+    nonisolated private static func makeTapHandler(
+        audioConverter: AVAudioConverter,
+        targetFormat: AVAudioFormat,
+        inputFormat: AVAudioFormat,
+        continuation: AsyncStream<AVAudioPCMBuffer>.Continuation?,
+        onSamples: @escaping @Sendable (Float, [Float]) -> Void
+    ) -> (AVAudioPCMBuffer, AVAudioTime) -> Void {
+        return { buffer, _ in
             // Convert to target format (16kHz mono)
             let ratio = targetFormat.sampleRate / inputFormat.sampleRate
             let outputFrameCount = AVAudioFrameCount(Double(buffer.frameLength) * ratio)
@@ -86,39 +135,18 @@ final class AudioCaptureManager {
             // Calculate audio level for UI
             let level = AudioBufferProcessor.calculateRMS(convertedBuffer)
 
-            // Extract float samples
+            // Extract float samples and dispatch to main actor
             if let channelData = convertedBuffer.floatChannelData {
                 let frameCount = Int(convertedBuffer.frameLength)
                 let samples = Array(UnsafeBufferPointer(
                     start: channelData[0],
                     count: frameCount
                 ))
-
-                // Dispatch back to main actor for state updates
-                Task { @MainActor [weak self] in
-                    self?.audioLevel = level
-                    self?.capturedSamples.append(contentsOf: samples)
-                }
+                onSamples(level, samples)
             }
 
             // Send buffer to stream consumers
-            self.bufferContinuation?.yield(convertedBuffer)
+            continuation?.yield(convertedBuffer)
         }
-
-        try engine.start()
-        isCapturing = true
-        return stream
-    }
-
-    /// Stop capturing and return the accumulated samples.
-    func stopCapture() -> [Float] {
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
-        isCapturing = false
-        bufferContinuation?.finish()
-        bufferContinuation = nil
-        converter = nil
-        audioLevel = 0.0
-        return capturedSamples
     }
 }
