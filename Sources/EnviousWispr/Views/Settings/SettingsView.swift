@@ -246,14 +246,45 @@ struct LLMSettingsView: View {
                 }
 
                 if appState.llmProvider != .none {
-                    TextField("Model", text: $state.llmModel)
-                        .textFieldStyle(.roundedBorder)
+                    HStack {
+                        Picker("Model", selection: $state.llmModel) {
+                            if appState.discoveredModels.isEmpty && !appState.isDiscoveringModels {
+                                Text(appState.llmModel.isEmpty ? "Save API key to discover models" : appState.llmModel)
+                                    .tag(appState.llmModel)
+                            }
 
-                    Text(appState.llmProvider == .openAI
-                         ? "e.g., gpt-4o-mini, gpt-4o, gpt-4.1-nano"
-                         : "e.g., gemini-2.0-flash, gemini-2.5-pro")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                            ForEach(appState.discoveredModels) { model in
+                                HStack {
+                                    Text(model.displayName)
+                                    if !model.isAvailable {
+                                        Image(systemName: "lock.fill")
+                                            .font(.caption2)
+                                    }
+                                }
+                                .tag(model.id)
+                            }
+                        }
+
+                        if appState.isDiscoveringModels {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else if appState.llmProvider != .none {
+                            Button {
+                                Task { await appState.validateKeyAndDiscoverModels(provider: appState.llmProvider) }
+                            } label: {
+                                Image(systemName: "arrow.clockwise")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Refresh available models")
+                        }
+                    }
+
+                    if let selectedModel = appState.discoveredModels.first(where: { $0.id == appState.llmModel }),
+                       !selectedModel.isAvailable {
+                        Text("This model requires a paid API plan.")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                 }
             }
 
@@ -279,19 +310,22 @@ struct LLMSettingsView: View {
                     HStack {
                         Button("Save Key") {
                             saveKey(key: openAIKey, keychainId: "openai-api-key")
+                            if appState.llmProvider == .openAI {
+                                Task { await appState.validateKeyAndDiscoverModels(provider: .openAI) }
+                            }
                         }
                         .disabled(openAIKey.isEmpty)
 
                         Button("Clear Key") {
                             clearKey(keychainId: "openai-api-key")
                             openAIKey = ""
+                            if appState.llmProvider == .openAI {
+                                appState.discoveredModels = []
+                                appState.keyValidationState = .idle
+                            }
                         }
 
-                        if !validationStatus.isEmpty {
-                            Text(validationStatus)
-                                .font(.caption)
-                                .foregroundStyle(validationStatus.contains("Saved") ? .green : .red)
-                        }
+                        validationBadge
                     }
                 }
             }
@@ -318,13 +352,22 @@ struct LLMSettingsView: View {
                     HStack {
                         Button("Save Key") {
                             saveKey(key: geminiKey, keychainId: "gemini-api-key")
+                            if appState.llmProvider == .gemini {
+                                Task { await appState.validateKeyAndDiscoverModels(provider: .gemini) }
+                            }
                         }
                         .disabled(geminiKey.isEmpty)
 
                         Button("Clear Key") {
                             clearKey(keychainId: "gemini-api-key")
                             geminiKey = ""
+                            if appState.llmProvider == .gemini {
+                                appState.discoveredModels = []
+                                appState.keyValidationState = .idle
+                            }
                         }
+
+                        validationBadge
                     }
                 }
             }
@@ -332,9 +375,20 @@ struct LLMSettingsView: View {
         .formStyle(.grouped)
         .padding()
         .onAppear {
-            // Load existing keys (masked)
             openAIKey = (try? appState.keychainManager.retrieve(key: "openai-api-key")) ?? ""
             geminiKey = (try? appState.keychainManager.retrieve(key: "gemini-api-key")) ?? ""
+            if appState.llmProvider != .none {
+                appState.loadCachedModels(for: appState.llmProvider)
+            }
+        }
+        .onChange(of: appState.llmProvider) { _, newProvider in
+            if newProvider != .none {
+                appState.loadCachedModels(for: newProvider)
+                appState.keyValidationState = .idle
+            } else {
+                appState.discoveredModels = []
+                appState.keyValidationState = .idle
+            }
         }
     }
 
@@ -353,6 +407,42 @@ struct LLMSettingsView: View {
     private func clearKey(keychainId: String) {
         try? appState.keychainManager.delete(key: keychainId)
         validationStatus = ""
+    }
+
+    @ViewBuilder
+    private var validationBadge: some View {
+        switch appState.keyValidationState {
+        case .idle:
+            if !validationStatus.isEmpty {
+                Text(validationStatus)
+                    .font(.caption)
+                    .foregroundStyle(validationStatus.contains("Saved") ? .green : .red)
+            }
+        case .validating:
+            HStack(spacing: 4) {
+                ProgressView()
+                    .controlSize(.mini)
+                Text("Validating...")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        case .valid:
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                Text("Valid")
+                    .font(.caption)
+                    .foregroundStyle(.green)
+            }
+        case .invalid(let message):
+            HStack(spacing: 4) {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.red)
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        }
     }
 }
 
