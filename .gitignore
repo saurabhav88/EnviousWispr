@@ -44,6 +44,9 @@ __pycache__/
 .venv/
 venv/
 
+# UI test screenshots (captured at runtime)
+Tests/UITests/screenshots/
+
 # Node (if applicable later)
 node_modules/
 dist/
