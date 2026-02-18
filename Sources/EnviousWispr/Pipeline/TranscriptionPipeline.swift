@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// Orchestrates the full dictation pipeline: record → transcribe → (polish) → store → copy/paste.
@@ -25,6 +26,8 @@ final class TranscriptionPipeline {
     var vadAutoStop: Bool = false
     var vadSilenceTimeout: Double = 1.5
 
+    /// The app that was frontmost when recording started — re-activated before pasting.
+    private var targetApp: NSRunningApplication?
     private var silenceDetector: SilenceDetector?
     private var vadMonitorTask: Task<Void, Never>?
 
@@ -66,6 +69,10 @@ final class TranscriptionPipeline {
                 return
             }
         }
+
+        // Remember the frontmost app so we can re-activate it before pasting
+        // (LLM polishing can take seconds, during which focus may shift)
+        targetApp = NSWorkspace.shared.frontmostApplication
 
         do {
             _ = try audioCapture.startCapture()
@@ -126,10 +133,17 @@ final class TranscriptionPipeline {
 
             // Auto-copy/paste
             if autoPasteToActiveApp {
+                // Re-activate the app that was frontmost when recording started,
+                // since focus may have shifted during transcription/polishing.
+                if let app = targetApp, !app.isTerminated {
+                    app.activate()
+                    try? await Task.sleep(for: .milliseconds(150))
+                }
                 PasteService.pasteToActiveApp(transcript.displayText)
             } else if autoCopyToClipboard {
                 PasteService.copyToClipboard(transcript.displayText)
             }
+            targetApp = nil
 
             currentTranscript = transcript
             state = .complete

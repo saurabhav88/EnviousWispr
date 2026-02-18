@@ -214,9 +214,23 @@ final class AppState {
 
     /// Toggle recording on/off.
     func toggleRecording() async {
+        // Enable paste-to-active-app when starting a new recording
+        // (push-to-talk sets this in its own callbacks, but toggle/UI buttons need it too)
+        switch pipeline.state {
+        case .idle, .complete, .error:
+            pipeline.autoPasteToActiveApp = true
+        default:
+            break
+        }
+
         await pipeline.toggleRecording()
+
+        // Reset paste flag and reload transcripts when pipeline finishes
         if pipeline.state == .complete {
+            pipeline.autoPasteToActiveApp = false
             loadTranscripts()
+        } else if case .error = pipeline.state {
+            pipeline.autoPasteToActiveApp = false
         }
     }
 
