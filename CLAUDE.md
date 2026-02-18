@@ -1,110 +1,37 @@
 # VibeWhisper
 
-## Project Overview
+Local-first macOS dictation app — record → transcribe → polish → clipboard.
 
-Local-first macOS dictation app for Apple Silicon. Records speech, transcribes locally using pluggable ASR backends, with optional LLM post-processing for grammar cleanup.
+## Rules
 
-**Primary ASR backend:** Parakeet v3 via FluidAudio (CoreML, ~110x RTF, built-in punctuation)
-**Fallback ASR backend:** WhisperKit (broader language support, 99+ languages)
-**LLM polish:** OpenAI (Chat Completions) + Google Gemini (generateContent)
-**Deployment target:** macOS 14.0+ (Sonoma)
+1. **Always delegate to an Agent first.** You are a coordinator, not a laborer. Find the right agent and dispatch.
+2. **Never do an agent's job.** If a task falls in an agent's domain, that agent handles it.
+3. **If no agent or skill exists, create one.** Scaffold it in `.claude/agents/` or `.claude/skills/` before doing the work yourself.
+4. **Compose, don't improvise.** Chain agents: Audio Pipeline diagnoses → Build fixes → Testing validates.
+5. **Read knowledge files before acting.** Consult `.claude/knowledge/` first.
 
-## Project Structure
+## Agents
 
-```text
-EnviousWispr/
-├── Package.swift                  # SPM manifest (WhisperKit, FluidAudio)
-├── Sources/VibeWhisper/
-│   ├── App/                       # SwiftUI app entry, AppState, DI
-│   ├── Views/                     # All SwiftUI views (MenuBar, Main, Settings)
-│   ├── Audio/                     # AVAudioEngine capture, buffer processing
-│   ├── ASR/                       # ASRBackend protocol + WhisperKit/Parakeet backends
-│   ├── LLM/                       # TranscriptPolisher protocol + OpenAI/Gemini connectors
-│   ├── Models/                    # Shared data types (Transcript, ASRResult, etc.)
-│   ├── Storage/                   # TranscriptStore (JSON persistence)
-│   ├── Pipeline/                  # TranscriptionPipeline orchestrator
-│   ├── Services/                  # PasteService, PermissionsService
-│   ├── Utilities/                 # Constants
-│   └── Resources/                 # (excluded from build, placeholder)
-├── Tests/VibeWhisperTests/
-├── docs/                          # Architecture docs
-├── fixtures/                      # Test audio files
-└── CLAUDE.md
-```
+Each agent owns skills listed in its file.
 
-## Key Architecture
+ Agent | When to use
+------- | ------------
+ [audio-pipeline](.claude/agents/audio-pipeline.md) | Audio bugs, pipeline failures, VAD, ASR backends
+ [build-compile](.claude/agents/build-compile.md) | Build failures, compiler errors, dependency updates
+ [macos-platform](.claude/agents/macos-platform.md) | Permissions, hotkeys, menu bar, SwiftUI
+ [quality-security](.claude/agents/quality-security.md) | Data races, actor isolation, secrets safety
+ [feature-scaffolding](.claude/agents/feature-scaffolding.md) | New backends, connectors, views, tabs
+ [testing](.claude/agents/testing.md) | Smoke tests, benchmarks, API contract checks
+ [release-maintenance](.claude/agents/release-maintenance.md) | Packaging, changelog, dead code, Swift migration
 
-### Protocols
+## Knowledge
 
-- `ASRBackend` (actor protocol) — `ASR/ASRProtocol.swift`
-- `TranscriptPolisher` — `LLM/LLMProtocol.swift`
+ File | Contents
+------ | ----------
+ [architecture](.claude/knowledge/architecture.md) | Structure, key types, pipeline state machine, data flow
+ [gotchas](.claude/knowledge/gotchas.md) | FluidAudio collision, Swift 6, audio format, Keychain
+ [conventions](.claude/knowledge/conventions.md) | Commit style, DI patterns, view patterns, imports
 
-### Data Flow
+## Commits
 
-```text
-Record button → AudioCaptureManager (AVAudioEngine, 16kHz mono)
-  → ASRManager → ParakeetBackend / WhisperKitBackend
-  → [optional] LLM Polish (OpenAI / Gemini)
-  → TranscriptStore → UI + Clipboard
-```
-
-### State Management
-
-- `@Observable AppState` as root (Observation framework, macOS 14+)
-- `TranscriptionPipeline` orchestrates the full flow
-- `PipelineState` enum: `.idle` → `.recording` → `.transcribing` → `.polishing` → `.complete`
-- Settings: `UserDefaults` (non-sensitive) + `KeychainManager` (API keys)
-
-## Conventions
-
-- Audio format: 16kHz mono Float32 throughout
-- API keys: macOS Keychain via `KeychainManager`
-- Transcript storage: JSON files in `~/Library/Application Support/VibeWhisper/transcripts/`
-- Only load the active ASR backend (unload before switching)
-- Use `@preconcurrency import` for FluidAudio/WhisperKit (Swift 6 concurrency)
-- FluidAudio module has a struct named `FluidAudio` — never use `FluidAudio.X` prefix for FluidAudio types; use unqualified names and let type inference resolve conflicts
-
-## Build & Run
-
-```bash
-swift build           # Build the app
-swift run VibeWhisper # Run the app
-swift build --build-tests  # Verify tests compile (XCTest unavailable without Xcode)
-```
-
-**Note:** Only macOS Command Line Tools are installed (not full Xcode). This means:
-
-- No `xcodebuild`, no `.xcodeproj`
-- No `XCTest` or `Testing` frameworks
-- No `#Preview` macros (KeyboardShortcuts deferred)
-
-## Commit Guidance
-
-Conventional commits:
-
-- `feat(asr): implement Parakeet v3 backend`
-- `feat(ui): add transcript history view`
-- `fix(audio): correct sample rate conversion`
-
-## Current Status
-
-**Milestones 0-3 complete.** Core dictation pipeline working end-to-end:
-
-- Record → Transcribe (Parakeet v3 / WhisperKit) → Display → Copy/Paste
-- LLM polish (OpenAI / Gemini) with API key management
-- Full settings with persistence
-- Transcript history with search and delete
-
-**Remaining (M4 — Polish + Performance):**
-
-- Global hotkey (needs full Xcode for KeyboardShortcuts)
-- VAD auto-stop (silence detection)
-- UI animations, dark mode polish
-- Onboarding flow
-- Benchmark suite
-
-## When Stuck
-
-- Check `docs/` for architecture decisions
-- Check the plan at `.claude/plans/snug-dancing-wall.md`
-- Ambiguous requirements → escalate to human
+Conventional: `feat(scope):`, `fix(scope):`, `refactor(scope):`
