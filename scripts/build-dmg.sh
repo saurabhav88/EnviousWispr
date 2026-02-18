@@ -2,6 +2,14 @@
 # build-dmg.sh — Assemble a DMG installer for EnviousWispr
 # Usage: ./scripts/build-dmg.sh [version]
 # Requires: Command Line Tools only (no full Xcode). Does NOT codesign.
+#
+# Environment variables (optional):
+#   CODESIGN_IDENTITY      — If set, sign the .app bundle (e.g. "Developer ID Application: ...")
+#   APPLE_ID               — Apple ID for notarization
+#   APPLE_ID_PASSWORD      — App-specific password for notarization
+#   APPLE_TEAM_ID          — Apple Developer Team ID for notarization
+#   SPARKLE_FEED_URL       — Sparkle appcast URL (default: GitHub raw URL)
+#   SPARKLE_EDDSA_PUBLIC_KEY — Sparkle EdDSA public key (default: PLACEHOLDER)
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
@@ -30,40 +38,48 @@ echo "    Project root : ${PROJECT_ROOT}"
 echo "    Output DMG   : ${DMG_OUT}"
 
 # ---------------------------------------------------------------------------
-# 1. Release build
+# 1. Build arm64 release binary
 # ---------------------------------------------------------------------------
 echo ""
-echo "==> [1/5] Building release binary ..."
+echo "==> [1/7] Building arm64 release binary ..."
 cd "${PROJECT_ROOT}"
-swift build -c release
-
-# Locate the built binary (SPM puts it under .build/release/).
-BUILT_BINARY="${PROJECT_ROOT}/.build/release/${BINARY_NAME}"
-if [[ ! -f "${BUILT_BINARY}" ]]; then
-    echo "ERROR: Expected binary not found at ${BUILT_BINARY}" >&2
-    exit 1
-fi
-echo "    Binary : ${BUILT_BINARY}"
+swift build -c release --arch arm64
 
 # ---------------------------------------------------------------------------
-# 2. Assemble .app bundle
+# 2. Build x86_64 release binary
 # ---------------------------------------------------------------------------
 echo ""
-echo "==> [2/5] Assembling .app bundle ..."
+echo "==> [2/7] Building x86_64 release binary ..."
+swift build -c release --arch x86_64
+
+# ---------------------------------------------------------------------------
+# 3. Create universal binary with lipo
+# ---------------------------------------------------------------------------
+echo ""
+echo "==> [3/7] Creating universal binary with lipo ..."
+BINARY_ARM64="${PROJECT_ROOT}/.build/arm64-apple-macosx/release/${BINARY_NAME}"
+BINARY_X86="${PROJECT_ROOT}/.build/x86_64-apple-macosx/release/${BINARY_NAME}"
+mkdir -p "${BUILD_DIR}"
+BINARY_UNIVERSAL="${BUILD_DIR}/${BINARY_NAME}-universal"
+lipo -create "${BINARY_ARM64}" "${BINARY_X86}" -output "${BINARY_UNIVERSAL}"
+echo "    Universal binary : ${BINARY_UNIVERSAL}"
+
+# ---------------------------------------------------------------------------
+# 4. Assemble .app bundle
+# ---------------------------------------------------------------------------
+echo ""
+echo "==> [4/7] Assembling .app bundle ..."
 
 # Wipe any previous bundle so we start clean.
 rm -rf "${APP_BUNDLE}"
 mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
 
-# Copy the binary.
-cp "${BUILT_BINARY}" "${MACOS_DIR}/${BINARY_NAME}"
+# Copy the universal binary.
+cp "${BINARY_UNIVERSAL}" "${MACOS_DIR}/${BINARY_NAME}"
 chmod +x "${MACOS_DIR}/${BINARY_NAME}"
 
-# ---------------------------------------------------------------------------
-# 3. Write Info.plist
-# ---------------------------------------------------------------------------
-echo ""
-echo "==> [3/5] Writing Info.plist ..."
+# Write Info.plist
+echo "    Writing Info.plist ..."
 cat > "${CONTENTS}/Info.plist" << PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -117,13 +133,21 @@ cat > "${CONTENTS}/Info.plist" << PLIST
     <!-- Principal class for AppKit launch without a XIB -->
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+
+    <!-- Sparkle auto-updater -->
+    <key>SUFeedURL</key>
+    <string>${SPARKLE_FEED_URL:-https://raw.githubusercontent.com/OWNER/EnviousWispr/main/appcast.xml}</string>
+    <key>SUPublicEDKey</key>
+    <string>${SPARKLE_EDDSA_PUBLIC_KEY:-PLACEHOLDER}</string>
+
+    <!-- App icon -->
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
 </dict>
 </plist>
 PLIST
 
-# ---------------------------------------------------------------------------
-# 4. AppIcon placeholder (skip if a real .icns already exists in Resources/)
-# ---------------------------------------------------------------------------
+# AppIcon — copy real .icns or write placeholder
 SOURCE_ICNS="${PROJECT_ROOT}/Sources/EnviousWispr/Resources/AppIcon.icns"
 DEST_ICNS="${RESOURCES_DIR}/AppIcon.icns"
 
@@ -131,19 +155,43 @@ if [[ -f "${SOURCE_ICNS}" ]]; then
     echo "    Copying AppIcon.icns from Sources/EnviousWispr/Resources/"
     cp "${SOURCE_ICNS}" "${DEST_ICNS}"
 else
-    echo "    No AppIcon.icns found — writing placeholder (1×1 ICNS header)."
+    echo "    No AppIcon.icns found — writing placeholder (1x1 ICNS header)."
     # Minimal valid ICNS file so macOS does not reject the bundle outright.
     # Real releases should replace this with a proper icon set.
     printf '\x69\x63\x6e\x73\x00\x00\x00\x08' > "${DEST_ICNS}"
 fi
 
+# Copy entitlements for signing
+ENTITLEMENTS_SRC="${PROJECT_ROOT}/Sources/EnviousWispr/Resources/EnviousWispr.entitlements"
+ENTITLEMENTS_DEST="${BUILD_DIR}/EnviousWispr.entitlements"
+if [[ -f "${ENTITLEMENTS_SRC}" ]]; then
+    cp "${ENTITLEMENTS_SRC}" "${ENTITLEMENTS_DEST}"
+fi
+
 echo "    Bundle assembled at ${APP_BUNDLE}"
 
 # ---------------------------------------------------------------------------
-# 5. Build DMG with hdiutil (native, no third-party tools)
+# 5. Optional code signing
+# ---------------------------------------------------------------------------
+if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
+    echo ""
+    echo "==> [5/7] Signing .app bundle ..."
+    codesign --force --options runtime \
+        --sign "${CODESIGN_IDENTITY}" \
+        --entitlements "${ENTITLEMENTS_DEST}" \
+        "${APP_BUNDLE}"
+    codesign --verify --deep --strict "${APP_BUNDLE}"
+    echo "    Signature verified."
+else
+    echo ""
+    echo "==> [5/7] Skipping code signing (CODESIGN_IDENTITY not set)."
+fi
+
+# ---------------------------------------------------------------------------
+# 6. Build DMG with hdiutil (native, no third-party tools)
 # ---------------------------------------------------------------------------
 echo ""
-echo "==> [4/5] Creating DMG staging area ..."
+echo "==> [6/7] Creating DMG staging area ..."
 
 rm -rf "${DMG_STAGING}"
 mkdir -p "${DMG_STAGING}"
@@ -152,8 +200,7 @@ mkdir -p "${DMG_STAGING}"
 cp -R "${APP_BUNDLE}" "${DMG_STAGING}/"
 ln -s /Applications "${DMG_STAGING}/Applications"
 
-echo ""
-echo "==> [5/5] Building DMG with hdiutil ..."
+echo "    Building DMG with hdiutil ..."
 
 # Remove any leftover DMG from a prior run.
 rm -f "${DMG_OUT}"
@@ -183,6 +230,25 @@ rm -f "${TEMP_DMG}"
 rm -rf "${DMG_STAGING}"
 
 # ---------------------------------------------------------------------------
+# 7. Optional notarization
+# ---------------------------------------------------------------------------
+if [[ -n "${APPLE_ID:-}" && -n "${APPLE_ID_PASSWORD:-}" && -n "${APPLE_TEAM_ID:-}" ]]; then
+    echo ""
+    echo "==> [7/7] Notarizing DMG ..."
+    xcrun notarytool submit "${DMG_OUT}" \
+        --apple-id "${APPLE_ID}" \
+        --password "${APPLE_ID_PASSWORD}" \
+        --team-id "${APPLE_TEAM_ID}" \
+        --wait
+    echo "==> Stapling notarization ticket ..."
+    xcrun stapler staple "${DMG_OUT}"
+    echo "    Notarization complete."
+else
+    echo ""
+    echo "==> [7/7] Skipping notarization (APPLE_ID / APPLE_ID_PASSWORD / APPLE_TEAM_ID not set)."
+fi
+
+# ---------------------------------------------------------------------------
 # Done
 # ---------------------------------------------------------------------------
 echo ""
@@ -191,6 +257,10 @@ echo "    DMG  : ${DMG_OUT}"
 echo "    Size : $(du -sh "${DMG_OUT}" | cut -f1)"
 echo ""
 echo "    Next steps:"
-echo "      - Code-sign : codesign --force --deep --sign 'Developer ID Application: ...' ${APP_BUNDLE}"
-echo "      - Notarize  : requires full Xcode (xcrun notarytool)"
+if [[ -z "${CODESIGN_IDENTITY:-}" ]]; then
+    echo "      - Code-sign : CODESIGN_IDENTITY='Developer ID Application: ...' ./scripts/build-dmg.sh ${VERSION}"
+fi
+if [[ -z "${APPLE_ID:-}" ]]; then
+    echo "      - Notarize  : APPLE_ID=... APPLE_ID_PASSWORD=... APPLE_TEAM_ID=... ./scripts/build-dmg.sh ${VERSION}"
+fi
 echo "      - Distribute: share ${DMG_NAME}"
