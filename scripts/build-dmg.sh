@@ -136,7 +136,7 @@ cat > "${CONTENTS}/Info.plist" << PLIST
 
     <!-- Sparkle auto-updater -->
     <key>SUFeedURL</key>
-    <string>${SPARKLE_FEED_URL:-https://raw.githubusercontent.com/OWNER/EnviousWispr/main/appcast.xml}</string>
+    <string>${SPARKLE_FEED_URL:-https://raw.githubusercontent.com/saurabhav88/EnviousWispr/main/appcast.xml}</string>
     <key>SUPublicEDKey</key>
     <string>${SPARKLE_EDDSA_PUBLIC_KEY:-PLACEHOLDER}</string>
 

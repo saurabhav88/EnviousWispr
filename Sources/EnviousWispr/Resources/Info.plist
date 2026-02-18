@@ -53,7 +53,7 @@
 
     <!-- Sparkle auto-updater -->
     <key>SUFeedURL</key>
-    <string>https://raw.githubusercontent.com/OWNER/EnviousWispr/main/appcast.xml</string>
+    <string>https://raw.githubusercontent.com/saurabhav88/EnviousWispr/main/appcast.xml</string>
     <key>SUPublicEDKey</key>
     <string>jHq1RIQKDmtO64qtCdZ6jNdHNFrfyScE16yuu+ufvDw=</string>
     <key>CFBundleIconFile</key>
