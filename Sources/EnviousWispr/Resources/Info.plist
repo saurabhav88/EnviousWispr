@@ -55,7 +55,7 @@
     <key>SUFeedURL</key>
     <string>https://raw.githubusercontent.com/OWNER/EnviousWispr/main/appcast.xml</string>
     <key>SUPublicEDKey</key>
-    <string>PLACEHOLDER_EDDSA_PUBLIC_KEY</string>
+    <string>jHq1RIQKDmtO64qtCdZ6jNdHNFrfyScE16yuu+ufvDw=</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
 </dict>
