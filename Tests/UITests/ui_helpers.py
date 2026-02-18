@@ -10,7 +10,10 @@ from ApplicationServices import (
     AXUIElementCopyAttributeNames,
     AXUIElementCopyActionNames,
     AXUIElementPerformAction,
+    AXValueGetValue,
     kAXErrorSuccess,
+    kAXValueTypeCGPoint,
+    kAXValueTypeCGSize,
 )
 from CoreFoundation import CFRange
 
@@ -87,22 +90,24 @@ def element_info(element):
     info["enabled"] = get_attr(element, "AXEnabled")
     info["focused"] = get_attr(element, "AXFocused")
 
-    # Position — AXValue with .x / .y
-    pos = get_attr(element, "AXPosition")
-    if pos is not None:
-        try:
-            info["position"] = {"x": pos.x, "y": pos.y}
-        except AttributeError:
+    # Position — AXValueRef wrapping CGPoint, extract via AXValueGetValue
+    pos_ref = get_attr(element, "AXPosition")
+    if pos_ref is not None:
+        success, point = AXValueGetValue(pos_ref, kAXValueTypeCGPoint, None)
+        if success and point is not None:
+            info["position"] = {"x": point.x, "y": point.y}
+        else:
             info["position"] = None
     else:
         info["position"] = None
 
-    # Size — AXValue with .width / .height
-    size = get_attr(element, "AXSize")
-    if size is not None:
-        try:
-            info["size"] = {"w": size.width, "h": size.height}
-        except AttributeError:
+    # Size — AXValueRef wrapping CGSize, extract via AXValueGetValue
+    size_ref = get_attr(element, "AXSize")
+    if size_ref is not None:
+        success, sz = AXValueGetValue(size_ref, kAXValueTypeCGSize, None)
+        if success and sz is not None:
+            info["size"] = {"w": sz.width, "h": sz.height}
+        else:
             info["size"] = None
     else:
         info["size"] = None
@@ -114,16 +119,15 @@ def element_info(element):
 
 def element_center(element):
     """Return (x, y) center of the element, or None."""
-    pos = get_attr(element, "AXPosition")
-    size = get_attr(element, "AXSize")
-    if pos is None or size is None:
+    pos_ref = get_attr(element, "AXPosition")
+    size_ref = get_attr(element, "AXSize")
+    if pos_ref is None or size_ref is None:
         return None
-    try:
-        cx = pos.x + size.width / 2.0
-        cy = pos.y + size.height / 2.0
-        return (cx, cy)
-    except AttributeError:
+    success_p, point = AXValueGetValue(pos_ref, kAXValueTypeCGPoint, None)
+    success_s, sz = AXValueGetValue(size_ref, kAXValueTypeCGSize, None)
+    if not success_p or not success_s or point is None or sz is None:
         return None
+    return (point.x + sz.width / 2.0, point.y + sz.height / 2.0)
 
 
 # ---------------------------------------------------------------------------
