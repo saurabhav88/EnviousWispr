@@ -14,7 +14,7 @@ protocol TranscriptPolisher: Sendable {
 }
 
 /// Errors that can occur during LLM operations.
-enum LLMError: LocalizedError, Sendable {
+enum LLMError: LocalizedError, Sendable, Equatable {
     case invalidAPIKey
     case requestFailed(String)
     case rateLimited

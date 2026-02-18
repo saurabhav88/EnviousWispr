@@ -107,6 +107,18 @@ final class AppState {
         }
     }
 
+    // Model discovery
+    var discoveredModels: [LLMModelInfo] = []
+    var isDiscoveringModels = false
+    var keyValidationState: KeyValidationState = .idle
+
+    enum KeyValidationState: Equatable {
+        case idle
+        case validating
+        case valid
+        case invalid(String)
+    }
+
     init() {
         // Load persisted settings
         let defaults = UserDefaults.standard
@@ -232,6 +244,60 @@ final class AppState {
             transcripts = try transcriptStore.loadAll()
         } catch {
             print("Failed to load transcripts: \(error)")
+        }
+    }
+
+    /// Validate an API key and discover available models for the given provider.
+    func validateKeyAndDiscoverModels(provider: LLMProvider) async {
+        keyValidationState = .validating
+        isDiscoveringModels = true
+
+        let keychainId = provider == .openAI ? "openai-api-key" : "gemini-api-key"
+        guard let apiKey = try? keychainManager.retrieve(key: keychainId), !apiKey.isEmpty else {
+            keyValidationState = .invalid("No API key found")
+            isDiscoveringModels = false
+            return
+        }
+
+        let discovery = LLMModelDiscovery()
+        do {
+            let models = try await discovery.discoverModels(provider: provider, apiKey: apiKey)
+            discoveredModels = models
+            cacheModels(models, for: provider)
+            keyValidationState = .valid
+
+            // Auto-select first available model if current selection is invalid
+            if !models.contains(where: { $0.id == llmModel && $0.isAvailable }) {
+                if let firstAvailable = models.first(where: { $0.isAvailable }) {
+                    llmModel = firstAvailable.id
+                }
+            }
+        } catch let error as LLMError where error == .invalidAPIKey {
+            keyValidationState = .invalid("Invalid API key")
+            discoveredModels = []
+        } catch {
+            keyValidationState = .invalid(error.localizedDescription)
+            discoveredModels = []
+        }
+
+        isDiscoveringModels = false
+    }
+
+    /// Load cached models from UserDefaults for the given provider.
+    func loadCachedModels(for provider: LLMProvider) {
+        let key = "cachedModels_\(provider.rawValue)"
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let models = try? JSONDecoder().decode([LLMModelInfo].self, from: data) else {
+            discoveredModels = []
+            return
+        }
+        discoveredModels = models
+    }
+
+    private func cacheModels(_ models: [LLMModelInfo], for provider: LLMProvider) {
+        let key = "cachedModels_\(provider.rawValue)"
+        if let data = try? JSONEncoder().encode(models) {
+            UserDefaults.standard.set(data, forKey: key)
         }
     }
 }
