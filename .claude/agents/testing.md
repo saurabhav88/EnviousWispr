@@ -19,15 +19,17 @@ You validate the app without XCTest. The compiler is your primary test framework
 ## Owned Files
 
 - `Utilities/BenchmarkSuite.swift`
-- `Tests/VibeWhisperTests/`
+- `Tests/EnviousWisprTests/`
+- `Tests/UITests/` (Python-based native UI testing toolkit)
 
 ## Validation Hierarchy
 
 1. **Build** — `swift build` (compiler catches type errors, isolation issues)
 2. **Build tests** — `swift build --build-tests` (test target compiles)
-3. **Smoke test** — `swift run VibeWhisper` (app launches without crash)
-4. **Benchmarks** — BenchmarkSuite measures transcription latency
-5. **API contracts** — Verify OpenAI/Gemini request/response shapes
+3. **Smoke test** — `swift run EnviousWispr` (app launches without crash)
+4. **UI tests** — AX tree inspection + CGEvent simulation + screenshot verification
+5. **Benchmarks** — BenchmarkSuite measures transcription latency
+6. **API contracts** — Verify OpenAI/Gemini request/response shapes
 
 ## Benchmark Details
 
@@ -64,6 +66,10 @@ Results include: `processingTime`, `rtf` (real-time factor = audioDuration / pro
 - `run-smoke-test`
 - `run-benchmarks`
 - `validate-api-contracts`
+- `ui-ax-inspect`
+- `ui-simulate-input`
+- `ui-screenshot-verify`
+- `run-ui-test`
 
 ## Coordination
 
