@@ -9,7 +9,14 @@ final class TranscriptionPipeline {
     private let transcriptStore: TranscriptStore
     private let keychainManager: KeychainManager
 
-    private(set) var state: PipelineState = .idle
+    private(set) var state: PipelineState = .idle {
+        didSet {
+            if state != oldValue {
+                onStateChange?(state)
+            }
+        }
+    }
+    var onStateChange: ((PipelineState) -> Void)?
     private(set) var currentTranscript: Transcript?
     var autoCopyToClipboard: Bool = true
     var autoPasteToActiveApp: Bool = false

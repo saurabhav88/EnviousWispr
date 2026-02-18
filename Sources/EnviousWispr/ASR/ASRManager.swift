@@ -26,6 +26,15 @@ final class ASRManager {
         isModelLoaded = false
     }
 
+    /// Update the WhisperKit model variant. Requires reloading the model.
+    func updateWhisperKitModel(_ variant: String) async {
+        await whisperKitBackend.unload()
+        whisperKitBackend = WhisperKitBackend(modelVariant: variant)
+        if activeBackendType == .whisperKit {
+            isModelLoaded = false
+        }
+    }
+
     /// Load the active backend's model.
     func loadModel() async throws {
         try await activeBackend.prepare()

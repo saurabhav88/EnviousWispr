@@ -12,6 +12,8 @@ final class AppState {
     let keychainManager = KeychainManager()
     let hotkeyService = HotkeyService()
     let benchmark = BenchmarkSuite()
+    let soundManager = SoundManager()
+    let recordingOverlay = RecordingOverlayPanel()
 
     // Pipeline — initialized after sub-systems
     private(set) var pipeline: TranscriptionPipeline!
@@ -33,6 +35,13 @@ final class AppState {
         didSet {
             UserDefaults.standard.set(selectedBackend.rawValue, forKey: "selectedBackend")
             Task { await asrManager.switchBackend(to: selectedBackend) }
+        }
+    }
+
+    var whisperKitModel: String {
+        didSet {
+            UserDefaults.standard.set(whisperKitModel, forKey: "whisperKitModel")
+            Task { await asrManager.updateWhisperKitModel(whisperKitModel) }
         }
     }
 
@@ -91,10 +100,18 @@ final class AppState {
         }
     }
 
+    var audioCuesEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(audioCuesEnabled, forKey: "audioCuesEnabled")
+            soundManager.isEnabled = audioCuesEnabled
+        }
+    }
+
     init() {
         // Load persisted settings
         let defaults = UserDefaults.standard
         selectedBackend = ASRBackendType(rawValue: defaults.string(forKey: "selectedBackend") ?? "") ?? .parakeet
+        whisperKitModel = defaults.string(forKey: "whisperKitModel") ?? "large-v3"
         recordingMode = RecordingMode(rawValue: defaults.string(forKey: "recordingMode") ?? "") ?? .pushToTalk
         llmProvider = LLMProvider(rawValue: defaults.string(forKey: "llmProvider") ?? "") ?? .none
         llmModel = defaults.string(forKey: "llmModel") ?? "gpt-4o-mini"
@@ -103,6 +120,8 @@ final class AppState {
         vadAutoStop = defaults.object(forKey: "vadAutoStop") as? Bool ?? false
         vadSilenceTimeout = defaults.object(forKey: "vadSilenceTimeout") as? Double ?? 1.5
         hasCompletedOnboarding = defaults.object(forKey: "hasCompletedOnboarding") as? Bool ?? false
+        audioCuesEnabled = defaults.object(forKey: "audioCuesEnabled") as? Bool ?? true
+        soundManager.isEnabled = audioCuesEnabled
 
         pipeline = TranscriptionPipeline(
             audioCapture: audioCapture,
@@ -115,6 +134,30 @@ final class AppState {
         pipeline.llmModel = llmModel
         pipeline.vadAutoStop = vadAutoStop
         pipeline.vadSilenceTimeout = vadSilenceTimeout
+
+        // Wire pipeline state changes to overlay + sounds
+        pipeline.onStateChange = { [weak self] newState in
+            guard let self else { return }
+            switch newState {
+            case .recording:
+                self.soundManager.playStartSound()
+                self.recordingOverlay.show(audioLevelProvider: { [weak self] in
+                    self?.audioCapture.audioLevel ?? 0
+                })
+            case .transcribing:
+                self.soundManager.playStopSound()
+                self.recordingOverlay.hide()
+            case .complete:
+                self.soundManager.playCompleteSound()
+            case .error:
+                self.soundManager.playErrorSound()
+                self.recordingOverlay.hide()
+            case .idle:
+                self.recordingOverlay.hide()
+            case .polishing:
+                break
+            }
+        }
 
         // Wire hotkey callbacks
         hotkeyService.recordingMode = recordingMode

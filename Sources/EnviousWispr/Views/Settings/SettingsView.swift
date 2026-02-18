@@ -53,6 +53,17 @@ struct GeneralSettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+
+                if appState.selectedBackend == .whisperKit {
+                    Picker("Model Quality", selection: $state.whisperKitModel) {
+                        Text("Base (Fast, Lower Quality)").tag("base")
+                        Text("Small (Balanced)").tag("small")
+                        Text("Large v3 (Best Quality)").tag("large-v3")
+                    }
+                    Text("Larger models produce better transcription but require more download time and memory.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section("Recording") {
@@ -83,6 +94,10 @@ struct GeneralSettingsView: View {
 
             Section("Behavior") {
                 Toggle("Auto-copy to clipboard", isOn: $state.autoCopyToClipboard)
+                Toggle("Audio cues", isOn: $state.audioCuesEnabled)
+                Text("Play sounds when recording starts and stops.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Performance") {

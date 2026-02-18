@@ -12,7 +12,7 @@ actor WhisperKitBackend: ASRBackend {
     private let modelVariant: String
     private var whisperKit: WhisperKit?
 
-    init(modelVariant: String = "base") {
+    init(modelVariant: String = "large-v3") {
         self.modelVariant = modelVariant
     }
 
@@ -20,7 +20,7 @@ actor WhisperKitBackend: ASRBackend {
         ASRModelInfo(
             name: "WhisperKit (\(modelVariant))",
             backendType: .whisperKit,
-            modelSize: modelVariant == "base" ? "~150MB" : "~1.5GB",
+            modelSize: modelVariant == "large-v3" ? "~3.1GB" : modelVariant == "base" ? "~150MB" : "~1.5GB",
             supportedLanguages: ["en", "zh", "de", "es", "ru", "ko", "fr", "ja", "pt", "tr",
                                   "pl", "ca", "nl", "ar", "sv", "it", "id", "hi", "fi", "vi",
                                   "he", "uk", "el", "ms", "cs", "ro", "da", "hu", "ta", "no",

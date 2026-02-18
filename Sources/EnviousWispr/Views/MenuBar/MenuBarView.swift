@@ -41,6 +41,7 @@ struct MenuBarView: View {
 
     private func openMainWindow() {
         openWindow(id: "main")
+        NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
 
@@ -50,5 +51,7 @@ struct MenuBarView: View {
             to: nil,
             from: nil
         )
+        NSApplication.shared.setActivationPolicy(.regular)
+        NSApplication.shared.activate(ignoringOtherApps: true)
     }
 }

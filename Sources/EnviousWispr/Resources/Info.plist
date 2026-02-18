@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Identity -->
+    <key>CFBundleIdentifier</key>
+    <string>com.enviouswispr.app</string>
+    <key>CFBundleName</key>
+    <string>EnviousWispr</string>
+    <key>CFBundleDisplayName</key>
+    <string>EnviousWispr</string>
+    <key>CFBundleExecutable</key>
+    <string>EnviousWispr</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleSignature</key>
+    <string>????</string>
+
+    <!-- Versioning — build-dmg.sh substitutes these at packaging time -->
+    <key>CFBundleVersion</key>
+    <string>1.0.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+
+    <!-- Platform -->
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <!-- Prefer Apple Silicon; fall back to Intel Rosetta 2 -->
+    <key>LSArchitecturePriority</key>
+    <array>
+        <string>arm64</string>
+        <string>x86_64</string>
+    </array>
+
+    <!-- Menu bar app — suppress Dock icon and app switcher entry -->
+    <key>LSUIElement</key>
+    <true/>
+
+    <!-- Privacy usage descriptions -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>EnviousWispr needs microphone access for speech-to-text dictation.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>EnviousWispr uses Accessibility APIs to paste transcribed text into the active application.</string>
+
+    <!-- High-resolution / Retina display -->
+    <key>NSHighResolutionCapable</key>
+    <true/>
+
+    <!-- Required for AppKit-based apps launched without a XIB/storyboard -->
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+</dict>
+</plist>

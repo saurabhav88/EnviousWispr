@@ -18,8 +18,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var openSettingsAction: (() -> Void)?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // LSUIElement=true in Info.plist hides the dock icon.
-        // Do NOT call setActivationPolicy(.accessory) — it breaks SwiftUI window management.
+        // Hide dock icon on launch — we're a menu bar utility
+        NSApp.setActivationPolicy(.accessory)
+
+        // When all visible windows close, revert to accessory to hide dock icon
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            // Delay check so the window has time to close
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                let hasVisibleWindows = NSApp.windows.contains { $0.isVisible && !($0.className.contains("StatusBar")) }
+                if !hasVisibleWindows {
+                    NSApp.setActivationPolicy(.accessory)
+                }
+            }
+        }
+
         setupStatusItem()
     }
 
@@ -88,25 +104,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openMainWindow() {
-        NSApp.activate(ignoringOtherApps: true)
         if let action = openMainWindowAction {
             action()
         } else {
             // Fallback: find and show an existing window
             for window in NSApp.windows where window.title == "EnviousWispr" {
                 window.makeKeyAndOrderFront(nil)
-                return
+                break
             }
         }
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc private func openSettings() {
-        NSApp.activate(ignoringOtherApps: true)
         if let action = openSettingsAction {
             action()
         } else {
             NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
         }
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        // Menu bar app — keep running when windows close.
+        // User quits via "Quit EnviousWispr" in the status bar menu.
+        return false
     }
 
     @objc private func quitApp() {
