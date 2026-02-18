@@ -1,7 +1,7 @@
 ---
 name: scaffold-asr-backend
 description: >
-  Use when adding a new speech recognition backend to VibeWhisper — e.g., adding
+  Use when adding a new speech recognition backend to EnviousWispr — e.g., adding
   a new CoreML model, a cloud ASR provider, or any type that must conform to
   ASRBackend and be selectable from Settings.
 ---
@@ -10,7 +10,7 @@ description: >
 
 ## Step 1 — Create the actor file
 
-Create `Sources/VibeWhisper/ASR/<Name>Backend.swift`.
+Create `Sources/EnviousWispr/ASR/<Name>Backend.swift`.
 Use `@preconcurrency import` only if the new SDK is not fully Sendable-annotated.
 
 ```swift
@@ -68,7 +68,7 @@ actor <Name>Backend: ASRBackend {
 
 ## Step 2 — Add case to ASRBackendType enum
 
-File: `Sources/VibeWhisper/Models/ASRResult.swift`
+File: `Sources/EnviousWispr/Models/ASRResult.swift`
 
 ```swift
 enum ASRBackendType: String, Codable, CaseIterable, Sendable {
@@ -80,7 +80,7 @@ enum ASRBackendType: String, Codable, CaseIterable, Sendable {
 
 ## Step 3 — Wire into ASRManager
 
-File: `Sources/VibeWhisper/ASR/ASRManager.swift`
+File: `Sources/EnviousWispr/ASR/ASRManager.swift`
 
 1. Add a private property alongside the existing backends:
    ```swift
@@ -94,7 +94,7 @@ File: `Sources/VibeWhisper/ASR/ASRManager.swift`
 
 ## Step 4 — Add to GeneralSettingsView picker
 
-File: `Sources/VibeWhisper/Views/Settings/SettingsView.swift`
+File: `Sources/EnviousWispr/Views/Settings/SettingsView.swift`
 
 Inside the `Picker("Backend", ...)` block, add:
 ```swift

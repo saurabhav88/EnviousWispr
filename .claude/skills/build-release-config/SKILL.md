@@ -1,6 +1,6 @@
 ---
 name: build-release-config
-description: Use when the user asks to create a release build, build for distribution, build with optimizations, or verify the production binary for VibeWhisper.
+description: Use when the user asks to create a release build, build for distribution, build with optimizations, or verify the production binary for EnviousWispr.
 ---
 
 # Build Release Configuration
@@ -16,7 +16,7 @@ Swift PM applies `-O` (whole-module optimization) and `-Onone` is absent. No ext
 ## Verify the binary exists and check size
 
 ```bash
-ls -lh /Users/m4pro_sv/Desktop/EnviousWispr/.build/release/VibeWhisper
+ls -lh /Users/m4pro_sv/Desktop/EnviousWispr/.build/release/EnviousWispr
 ```
 
 Expected: single Mach-O universal or arm64 binary, typically 5–25 MB before stripping.
@@ -24,14 +24,14 @@ Expected: single Mach-O universal or arm64 binary, typically 5–25 MB before st
 ## Strip debug symbols (optional, reduces size)
 
 ```bash
-strip -rSTx /Users/m4pro_sv/Desktop/EnviousWispr/.build/release/VibeWhisper
+strip -rSTx /Users/m4pro_sv/Desktop/EnviousWispr/.build/release/EnviousWispr
 ```
 
 ## Verify the binary runs
 
 ```bash
-/Users/m4pro_sv/Desktop/EnviousWispr/.build/release/VibeWhisper --help 2>&1 || true
-file /Users/m4pro_sv/Desktop/EnviousWispr/.build/release/VibeWhisper
+/Users/m4pro_sv/Desktop/EnviousWispr/.build/release/EnviousWispr --help 2>&1 || true
+file /Users/m4pro_sv/Desktop/EnviousWispr/.build/release/EnviousWispr
 ```
 
 Confirm output shows `Mach-O 64-bit executable arm64`.
@@ -49,7 +49,7 @@ Confirm output shows `Mach-O 64-bit executable arm64`.
 ## Check for dSYM (crash symbolication)
 
 ```bash
-ls /Users/m4pro_sv/Desktop/EnviousWispr/.build/release/VibeWhisper.dSYM 2>/dev/null && echo "dSYM present"
+ls /Users/m4pro_sv/Desktop/EnviousWispr/.build/release/EnviousWispr.dSYM 2>/dev/null && echo "dSYM present"
 ```
 
 Keep the `.dSYM` alongside any distributed binary for symbolication of crash reports.

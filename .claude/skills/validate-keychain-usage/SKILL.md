@@ -1,19 +1,19 @@
 ---
 name: validate-keychain-usage
-description: "Use when implementing or reviewing KeychainManager, adding new secret storage requirements, or auditing that no raw SecItem APIs are called outside of KeychainManager in VibeWhisper."
+description: "Use when implementing or reviewing KeychainManager, adding new secret storage requirements, or auditing that no raw SecItem APIs are called outside of KeychainManager in EnviousWispr."
 ---
 
 # Validate Keychain Usage
 
 ## KeychainManager Implementation Checklist
 
-File: `Sources/VibeWhisper/LLM/KeychainManager.swift`
+File: `Sources/EnviousWispr/LLM/KeychainManager.swift`
 
 ### Required attributes for every SecItemAdd call
 ```swift
 var query: [CFString: Any] = [
     kSecClass:            kSecClassGenericPassword,
-    kSecAttrService:      "com.vibewhisper.api-keys",
+    kSecAttrService:      "com.enviouswispr.api-keys",
     kSecAttrAccount:      key,                               // e.g. "openai-api-key"
     kSecAttrAccessible:   kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
     kSecValueData:        value.data(using: .utf8)!
@@ -38,7 +38,7 @@ func store(key: String, value: String) {
 func retrieve(key: String) -> String? {
     var query: [CFString: Any] = [
         kSecClass:            kSecClassGenericPassword,
-        kSecAttrService:      "com.vibewhisper.api-keys",
+        kSecAttrService:      "com.enviouswispr.api-keys",
         kSecAttrAccount:      key,
         kSecReturnData:       true,
         kSecMatchLimit:       kSecMatchLimitOne
@@ -61,7 +61,7 @@ func retrieve(key: String) -> String? {
 ```bash
 # All SecItem calls must be inside KeychainManager — zero results expected elsewhere
 grep -rn "SecItemAdd\|SecItemCopyMatching\|SecItemUpdate\|SecItemDelete" \
-  Sources/VibeWhisper/ | grep -v "KeychainManager"
+  Sources/EnviousWispr/ | grep -v "KeychainManager"
 ```
 
 ## Accessibility Attribute

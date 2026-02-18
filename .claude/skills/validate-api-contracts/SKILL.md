@@ -5,7 +5,7 @@ description: Use when the OpenAI or Gemini API may have changed, after updating 
 
 # Validate API Contracts Skill
 
-Files: `Sources/VibeWhisper/LLM/OpenAIConnector.swift`, `GeminiConnector.swift`
+Files: `Sources/EnviousWispr/LLM/OpenAIConnector.swift`, `GeminiConnector.swift`
 
 ## OpenAI Chat Completions
 

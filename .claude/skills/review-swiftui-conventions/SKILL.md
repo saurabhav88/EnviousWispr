@@ -1,6 +1,6 @@
 ---
 name: review-swiftui-conventions
-description: "Use when writing new SwiftUI views, reviewing existing views for correctness, or debugging state/binding issues in VibeWhisper — covers @Observable, environment injection, settings scenes, MenuBarExtra, and macOS-specific layout patterns."
+description: "Use when writing new SwiftUI views, reviewing existing views for correctness, or debugging state/binding issues in EnviousWispr — covers @Observable, environment injection, settings scenes, MenuBarExtra, and macOS-specific layout patterns."
 ---
 
 # Review SwiftUI Conventions

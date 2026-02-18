@@ -10,7 +10,7 @@ description: >
 
 ## Step 1 — Create the connector file
 
-Create `Sources/VibeWhisper/LLM/<Name>Connector.swift`.
+Create `Sources/EnviousWispr/LLM/<Name>Connector.swift`.
 The struct must be `Sendable` (store no mutable state; use `KeychainManager` for keys).
 
 ```swift
@@ -94,7 +94,7 @@ struct <Name>Connector: TranscriptPolisher {
 
 ## Step 2 — Add case to LLMProvider enum
 
-File: `Sources/VibeWhisper/Models/LLMResult.swift`
+File: `Sources/EnviousWispr/Models/LLMResult.swift`
 
 ```swift
 enum LLMProvider: String, Codable, CaseIterable, Sendable {
@@ -107,7 +107,7 @@ enum LLMProvider: String, Codable, CaseIterable, Sendable {
 
 ## Step 3 — Wire into TranscriptionPipeline
 
-File: `Sources/VibeWhisper/Pipeline/TranscriptionPipeline.swift`
+File: `Sources/EnviousWispr/Pipeline/TranscriptionPipeline.swift`
 
 In `polishTranscript(_:)`, extend the switch:
 ```swift
@@ -129,13 +129,13 @@ apiKeyKeychainId: llmProvider == .openAI ? "openai-api-key"
 ## Step 4 — Register Keychain slot
 
 The Keychain key string (e.g. `"<provider>-api-key"`) is the only slot needed —
-`KeychainManager` uses service `"com.vibewhisper.api-keys"` automatically. No
+`KeychainManager` uses service `"com.enviouswispr.api-keys"` automatically. No
 additional registration is required; just keep the string consistent across the
 connector, pipeline, and settings view.
 
 ## Step 5 — Add settings section in LLMSettingsView
 
-File: `Sources/VibeWhisper/Views/Settings/SettingsView.swift`
+File: `Sources/EnviousWispr/Views/Settings/SettingsView.swift`
 
 1. Add `.tag(LLMProvider.<caseName>)` to the `Picker("Provider", ...)`.
 2. Add a `Section("<Name> API Key") { ... }` block following the Gemini pattern:

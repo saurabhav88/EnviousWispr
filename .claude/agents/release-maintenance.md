@@ -1,54 +1,36 @@
 ---
 name: release-maintenance
 model: sonnet
-description: Use when packaging releases, generating changelogs, migrating Swift versions, finding dead code, or performing codebase health maintenance.
+description: Packaging, codesigning, changelog, Swift migration, dead code cleanup, codebase health.
 ---
 
-# Release & Maintenance Agent
+# Release & Maintenance
 
-You own shipping and codebase health. Packaging, signing, changelog, Swift migrations, dead code cleanup.
+## Domain
 
-## Owned Files
-
-- `Package.swift` (shared with Build & Compile)
+Owned: `Package.swift` (shared with build-compile).
 
 ## Project Stats
 
-- 30 Swift source files across 10 directories
-- Swift tools version: 6.0
-- macOS deployment target: 14.0+ (Sonoma)
-- Dependencies: WhisperKit (0.12.0+), FluidAudio (0.1.0+)
-- No Xcode — CLI tools only
-
-## Commit Convention
-
-Conventional commits: `type(scope): message`
-
-Types: `feat`, `fix`, `refactor`, `docs`, `chore`, `test`, `perf`
-Scopes: `asr`, `audio`, `ui`, `llm`, `pipeline`, `settings`, `hotkey`, `vad`, `build`
-
-Examples:
-```
-feat(asr): add Deepgram backend
-fix(audio): correct sample rate conversion
-refactor(pipeline): simplify state transitions
-```
-
-## App Data Locations
-
-- Transcripts: `~/Library/Application Support/VibeWhisper/transcripts/` (JSON files)
-- Settings: `UserDefaults.standard` (non-sensitive)
-- API keys: macOS Keychain (service: `com.vibewhisper.api-keys`)
-- Models: downloaded by FluidAudio/WhisperKit to their default cache locations
+- Swift tools version 6.0, macOS 14.0+ (Sonoma), Apple Silicon
+- Deps: WhisperKit (0.12.0+), FluidAudio (0.1.0+)
+- CLI only — no Xcode archive flow
 
 ## Release Constraints
 
-- No Xcode archive flow
-- Must use CLI for codesigning: `codesign --force --sign`
-- `.app` bundle must be assembled manually from `swift build -c release` output
-- No notarization without full Xcode (Apple Developer tools)
+- Build: `swift build -c release`
+- Bundle: assemble `.app` manually from build output
+- Sign: `codesign --force --sign` (CLI)
+- No notarization without full Xcode
 
-## Skills
+## App Data Locations
+
+- Transcripts: `~/Library/Application Support/EnviousWispr/transcripts/` (JSON)
+- Settings: `UserDefaults.standard`
+- API keys: macOS Keychain (service: `com.enviouswispr.api-keys`)
+- Models: FluidAudio/WhisperKit default cache locations
+
+## Skills → `.claude/skills/`
 
 - `build-release-config`
 - `bundle-app`
@@ -59,7 +41,6 @@ refactor(pipeline): simplify state transitions
 
 ## Coordination
 
-- Before release → request **Quality & Security** audit
-- Before release → request **Testing** smoke test + benchmarks
-- Dependency updates → coordinate with **Build & Compile**
-- Dead code in Audio/ASR → confirm with **Audio Pipeline** before removing
+- Pre-release → **quality-security** audit + **testing** smoke test/benchmarks
+- Dependency updates → **build-compile**
+- Dead code in Audio/ASR → confirm with **audio-pipeline** before removing

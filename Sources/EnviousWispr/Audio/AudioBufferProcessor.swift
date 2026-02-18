@@ -52,7 +52,7 @@ enum AudioBufferProcessor {
     /// Write Float32 samples to a temporary WAV file (16kHz mono).
     static func writeToTempWAV(samples: [Float]) throws -> URL {
         let tempDir = FileManager.default.temporaryDirectory
-        let fileURL = tempDir.appendingPathComponent("vibewhisper-\(UUID().uuidString).wav")
+        let fileURL = tempDir.appendingPathComponent("enviouswispr-\(UUID().uuidString).wav")
 
         guard let format = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,

@@ -30,7 +30,7 @@ curl -s https://api.github.com/repos/<owner>/<repo>/releases \
 ```
 
 Read release notes between the old pinned version and the new version.
-Map every breaking note to a call site in the VibeWhisper source tree.
+Map every breaking note to a call site in the EnviousWispr source tree.
 
 ## Step 4 — Locate All Call Sites
 
@@ -53,8 +53,8 @@ FluidAudio exports a struct also named `FluidAudio`, which shadows the module na
 - NEVER write `FluidAudio.AsrManager`, `FluidAudio.VadManager`, etc.
 - ALWAYS use bare unqualified names: `AsrManager`, `VadManager`, `AsrModels`, `VadConfig`.
 - If a new FluidAudio release renames a type, update the bare name only.
-- If a new type conflicts with a VibeWhisper type (e.g. `ASRResult`), resolve via
-  explicit VibeWhisper type aliases or protocol return-type inference — not module prefix.
+- If a new type conflicts with a EnviousWispr type (e.g. `ASRResult`), resolve via
+  explicit EnviousWispr type aliases or protocol return-type inference — not module prefix.
 
 ### WhisperKit-Specific Rules
 
@@ -64,7 +64,7 @@ FluidAudio exports a struct also named `FluidAudio`, which shadows the module na
 ## Step 6 — Handle Removed APIs
 
 If an API was removed with no replacement:
-1. Check whether VibeWhisper has its own implementation to fall back to.
+1. Check whether EnviousWispr has its own implementation to fall back to.
 2. If not, implement the missing behaviour locally in the appropriate layer
    (`ASR/`, `Audio/`, etc.) and remove the dependency on the removed symbol.
 

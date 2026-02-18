@@ -1,6 +1,6 @@
 ---
 name: infer-asr-types
-description: "Use when writing FluidAudio code that produces type ambiguity between FluidAudio's types and VibeWhisper's own parallel types (ASRManager vs AsrManager, ASRResult vs FluidAudio result), or when the compiler cannot infer the correct type from context."
+description: "Use when writing FluidAudio code that produces type ambiguity between FluidAudio's types and EnviousWispr's own parallel types (ASRManager vs AsrManager, ASRResult vs FluidAudio result), or when the compiler cannot infer the correct type from context."
 ---
 
 # Infer ASR Types Correctly

@@ -1,6 +1,6 @@
 ---
 name: flag-sensitive-logging
-description: "Use when reviewing LLM connectors, KeychainManager, or SettingsView for log statements that could leak API keys, auth tokens, or full API response bodies in VibeWhisper."
+description: "Use when reviewing LLM connectors, KeychainManager, or SettingsView for log statements that could leak API keys, auth tokens, or full API response bodies in EnviousWispr."
 ---
 
 # Flag Sensitive Logging
@@ -8,19 +8,19 @@ description: "Use when reviewing LLM connectors, KeychainManager, or SettingsVie
 ## Files to Scan
 
 Priority targets (highest risk of sensitive data in logs):
-- `Sources/VibeWhisper/LLM/OpenAIConnector.swift`
-- `Sources/VibeWhisper/LLM/GeminiConnector.swift`
-- `Sources/VibeWhisper/LLM/KeychainManager.swift`
-- `Sources/VibeWhisper/Views/Settings/SettingsView.swift`
-- `Sources/VibeWhisper/App/AppState.swift`
+- `Sources/EnviousWispr/LLM/OpenAIConnector.swift`
+- `Sources/EnviousWispr/LLM/GeminiConnector.swift`
+- `Sources/EnviousWispr/LLM/KeychainManager.swift`
+- `Sources/EnviousWispr/Views/Settings/SettingsView.swift`
+- `Sources/EnviousWispr/App/AppState.swift`
 
 ## Grep Commands
 
 ```bash
 # Find all print / NSLog / os_log / Logger statements
 grep -rn "print(\|NSLog(\|os_log(\|\.debug(\|\.info(\|\.error(\|\.warning(" \
-  Sources/VibeWhisper/LLM/ \
-  Sources/VibeWhisper/Views/Settings/
+  Sources/EnviousWispr/LLM/ \
+  Sources/EnviousWispr/Views/Settings/
 ```
 
 Review every match manually for the patterns below.

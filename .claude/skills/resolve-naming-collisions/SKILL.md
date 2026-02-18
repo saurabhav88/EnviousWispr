@@ -1,6 +1,6 @@
 ---
 name: resolve-naming-collisions
-description: "Use when writing or fixing code that imports FluidAudio, encounters 'FluidAudio.X' qualifier errors, or hits ambiguous type errors between FluidAudio-exported types and VibeWhisper's own types (e.g. ASRResult, ASRManager)."
+description: "Use when writing or fixing code that imports FluidAudio, encounters 'FluidAudio.X' qualifier errors, or hits ambiguous type errors between FluidAudio-exported types and EnviousWispr's own types (e.g. ASRResult, ASRManager)."
 ---
 
 # Resolve FluidAudio Naming Collisions

@@ -1,6 +1,6 @@
 ---
 name: detect-hardcoded-secrets
-description: "Use when reviewing any commit, pull request, or new file for accidentally hardcoded API keys, tokens, or credentials in VibeWhisper source code."
+description: "Use when reviewing any commit, pull request, or new file for accidentally hardcoded API keys, tokens, or credentials in EnviousWispr source code."
 ---
 
 # Detect Hardcoded Secrets
@@ -45,14 +45,14 @@ Review each match — many will be model identifiers or safe constants.
 - Model name strings: `"openai/whisper-large-v3"`, `"mlx-community/parakeet-..."` — not secrets
 - URL base strings without embedded keys: `"https://api.openai.com/v1/chat/completions"` — safe
 - SHA hashes in comments or test fixtures — document and ignore
-- `kSecAttrService: "com.vibewhisper.api-keys"` — this is a keychain service label, not a key
+- `kSecAttrService: "com.enviouswispr.api-keys"` — this is a keychain service label, not a key
 
 ## Files with Elevated Risk
 
-- `Sources/VibeWhisper/LLM/OpenAIConnector.swift`
-- `Sources/VibeWhisper/LLM/GeminiConnector.swift`
-- `Sources/VibeWhisper/Views/Settings/SettingsView.swift`
-- `Sources/VibeWhisper/LLM/KeychainManager.swift`
+- `Sources/EnviousWispr/LLM/OpenAIConnector.swift`
+- `Sources/EnviousWispr/LLM/GeminiConnector.swift`
+- `Sources/EnviousWispr/Views/Settings/SettingsView.swift`
+- `Sources/EnviousWispr/LLM/KeychainManager.swift`
 - Any file in `fixtures/` (test audio should not have embedded metadata with tokens)
 
 ## On a Finding

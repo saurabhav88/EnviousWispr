@@ -39,7 +39,7 @@ description: "Use when diagnosing end-to-end failures in the dictation pipeline 
       Input: raw text; Output: polished text
       ↓
 [8] TranscriptStore.save(transcript:)
-      JSON written to ~/Library/Application Support/VibeWhisper/transcripts/
+      JSON written to ~/Library/Application Support/EnviousWispr/transcripts/
       ↓
 [9] PasteService.paste(text:)
       NSPasteboard write + CGEvent Cmd+V injection
@@ -71,8 +71,8 @@ If `.complete` but no paste: `PasteService` requires Accessibility permission.
 
 ## Key File Locations
 
-- Audio capture: `Sources/VibeWhisper/Audio/AudioCaptureManager.swift`
-- VAD: `Sources/VibeWhisper/Audio/SilenceDetector.swift`
-- Pipeline orchestrator: `Sources/VibeWhisper/Pipeline/TranscriptionPipeline.swift`
-- ASR routing: `Sources/VibeWhisper/ASR/ASRManager.swift` (or similar)
-- Paste: `Sources/VibeWhisper/Services/PasteService.swift`
+- Audio capture: `Sources/EnviousWispr/Audio/AudioCaptureManager.swift`
+- VAD: `Sources/EnviousWispr/Audio/SilenceDetector.swift`
+- Pipeline orchestrator: `Sources/EnviousWispr/Pipeline/TranscriptionPipeline.swift`
+- ASR routing: `Sources/EnviousWispr/ASR/ASRManager.swift` (or similar)
+- Paste: `Sources/EnviousWispr/Services/PasteService.swift`

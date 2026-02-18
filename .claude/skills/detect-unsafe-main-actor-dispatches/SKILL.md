@@ -1,15 +1,15 @@
 ---
 name: detect-unsafe-main-actor-dispatches
-description: "Use when modifying NSEvent monitors, audio tap callbacks, or any code that dispatches from a background thread to @MainActor state in VibeWhisper."
+description: "Use when modifying NSEvent monitors, audio tap callbacks, or any code that dispatches from a background thread to @MainActor state in EnviousWispr."
 ---
 
 # Detect Unsafe Main-Actor Dispatches
 
 ## High-Risk Call Sites
 
-- `Sources/VibeWhisper/Services/HotkeyService.swift` — NSEvent global monitors
-- `Sources/VibeWhisper/Audio/AudioCaptureManager.swift` — AVAudioEngine tap callback
-- `Sources/VibeWhisper/Audio/SilenceDetector.swift` — VAD result handling
+- `Sources/EnviousWispr/Services/HotkeyService.swift` — NSEvent global monitors
+- `Sources/EnviousWispr/Audio/AudioCaptureManager.swift` — AVAudioEngine tap callback
+- `Sources/EnviousWispr/Audio/SilenceDetector.swift` — VAD result handling
 
 ## Pattern: NSEvent Monitors
 
@@ -77,6 +77,6 @@ await MainActor.run { appState.transcription = result }
 ## Verification
 
 ```bash
-grep -rn "addGlobalMonitor\|installTap\|DispatchQueue.main.sync" Sources/VibeWhisper/
+grep -rn "addGlobalMonitor\|installTap\|DispatchQueue.main.sync" Sources/EnviousWispr/
 ```
 Every hit must be checked against the correct patterns above.

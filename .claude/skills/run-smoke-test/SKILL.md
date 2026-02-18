@@ -24,7 +24,7 @@ swift build --build-tests 2>&1
 
 ### 3. Launch and watch for immediate crash
 ```bash
-timeout 5 swift run VibeWhisper 2>&1 || true
+timeout 5 swift run EnviousWispr 2>&1 || true
 ```
 - PASS: process ran for at least 5 seconds before timeout killed it (exit code 124 from `timeout`)
 - FAIL: process exited on its own before 5 seconds with a non-zero code, OR stderr contains any of:
@@ -42,11 +42,11 @@ If any match, report the matching line(s) as the failure reason.
 ## Pass Criteria (all must hold)
 1. `swift build` exits 0 with zero `error:` lines
 2. `swift build --build-tests` exits 0 with zero `error:` lines
-3. `swift run VibeWhisper` survives at least 5 seconds without a fatal crash
+3. `swift run EnviousWispr` survives at least 5 seconds without a fatal crash
 
 ## Fail Criteria (any one triggers failure)
 - Non-zero exit from `swift build` or `swift build --build-tests`
-- `swift run VibeWhisper` exits before the 5-second timeout with code != 0
+- `swift run EnviousWispr` exits before the 5-second timeout with code != 0
 - Fatal error pattern found in stderr
 
 ## Notes

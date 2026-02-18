@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "VibeWhisper",
+    name: "EnviousWispr",
     platforms: [
         .macOS(.v14)
     ],
@@ -15,19 +15,19 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "VibeWhisper",
+            name: "EnviousWispr",
             dependencies: [
                 "WhisperKit",
                 "FluidAudio",
                 // "KeyboardShortcuts", // M2: add back when full Xcode available
             ],
-            path: "Sources/VibeWhisper",
+            path: "Sources/EnviousWispr",
             exclude: ["Resources"]
         ),
         .testTarget(
-            name: "VibeWhisperTests",
-            dependencies: ["VibeWhisper"],
-            path: "Tests/VibeWhisperTests"
+            name: "EnviousWisprTests",
+            dependencies: ["EnviousWispr"],
+            path: "Tests/EnviousWisprTests"
         ),
     ]
 )

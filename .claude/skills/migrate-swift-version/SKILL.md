@@ -1,6 +1,6 @@
 ---
 name: migrate-swift-version
-description: Use when the user asks to upgrade the Swift tools version, migrate to a new Swift language version, address new deprecation warnings after a Swift update, or update Package.swift for a newer toolchain in VibeWhisper.
+description: Use when the user asks to upgrade the Swift tools version, migrate to a new Swift language version, address new deprecation warnings after a Swift update, or update Package.swift for a newer toolchain in EnviousWispr.
 ---
 
 # Migrate Swift Version

@@ -1,7 +1,7 @@
 ---
 name: scaffold-swiftui-view
 description: >
-  Use when creating any new SwiftUI view in VibeWhisper — a detail panel,
+  Use when creating any new SwiftUI view in EnviousWispr — a detail panel,
   onboarding screen, transcript row, modal sheet, or any standalone visual
   component that needs AppState injection and macOS-correct patterns.
 ---
@@ -12,15 +12,15 @@ description: >
 
 | View type             | Directory                              |
 |-----------------------|----------------------------------------|
-| Main window panel     | `Sources/VibeWhisper/Views/Main/`      |
+| Main window panel     | `Sources/EnviousWispr/Views/Main/`      |
 | Settings tab          | use `scaffold-settings-tab` skill      |
-| Menu bar popover      | `Sources/VibeWhisper/Views/MenuBar/`   |
-| Onboarding screen     | `Sources/VibeWhisper/Views/Onboarding/`|
-| Reusable component    | `Sources/VibeWhisper/Views/` (root)    |
+| Menu bar popover      | `Sources/EnviousWispr/Views/MenuBar/`   |
+| Onboarding screen     | `Sources/EnviousWispr/Views/Onboarding/`|
+| Reusable component    | `Sources/EnviousWispr/Views/` (root)    |
 
 ## Step 2 — Create the view file
 
-Create `Sources/VibeWhisper/Views/<Subdirectory>/<Name>View.swift`.
+Create `Sources/EnviousWispr/Views/<Subdirectory>/<Name>View.swift`.
 
 ```swift
 import SwiftUI

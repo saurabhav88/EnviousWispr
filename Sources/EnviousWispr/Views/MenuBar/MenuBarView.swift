@@ -21,7 +21,7 @@ struct MenuBarView: View {
         Divider()
 
         // Actions
-        Button("Open VibeWhisper") {
+        Button("Open EnviousWispr") {
             openMainWindow()
         }
         .keyboardShortcut("o")
@@ -33,7 +33,7 @@ struct MenuBarView: View {
 
         Divider()
 
-        Button("Quit VibeWhisper") {
+        Button("Quit EnviousWispr") {
             NSApplication.shared.terminate(nil)
         }
         .keyboardShortcut("q")

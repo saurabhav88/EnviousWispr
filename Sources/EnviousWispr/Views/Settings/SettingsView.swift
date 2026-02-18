@@ -385,7 +385,7 @@ struct PermissionsSettingsView: View {
                     }
                 }
 
-                Text("Accessibility permission allows VibeWhisper to paste transcripts directly into the active app and enables global hotkey support.")
+                Text("Accessibility permission allows EnviousWispr to paste transcripts directly into the active app and enables global hotkey support.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

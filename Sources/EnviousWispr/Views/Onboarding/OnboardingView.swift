@@ -73,7 +73,7 @@ struct OnboardingView: View {
                 .font(.system(size: 64))
                 .foregroundStyle(.blue)
 
-            Text("Welcome to VibeWhisper")
+            Text("Welcome to EnviousWispr")
                 .font(.title)
                 .bold()
 
@@ -95,7 +95,7 @@ struct OnboardingView: View {
                 .font(.title2)
                 .bold()
 
-            Text("VibeWhisper needs microphone access to capture your speech for transcription.")
+            Text("EnviousWispr needs microphone access to capture your speech for transcription.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
 

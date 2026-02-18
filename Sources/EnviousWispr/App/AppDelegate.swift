@@ -26,7 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         guard let button = statusItem?.button else { return }
-        button.image = NSImage(systemSymbolName: "mic", accessibilityDescription: "VibeWhisper")
+        button.image = NSImage(systemSymbolName: "mic", accessibilityDescription: "EnviousWispr")
 
         let menu = NSMenu()
         menu.delegate = self
@@ -57,7 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
 
         // Open main window
-        let openItem = NSMenuItem(title: "Open VibeWhisper", action: #selector(openMainWindow), keyEquivalent: "o")
+        let openItem = NSMenuItem(title: "Open EnviousWispr", action: #selector(openMainWindow), keyEquivalent: "o")
         openItem.target = self
         menu.addItem(openItem)
 
@@ -69,7 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
 
         // Quit
-        let quitItem = NSMenuItem(title: "Quit VibeWhisper", action: #selector(quitApp), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "Quit EnviousWispr", action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
     }
@@ -77,7 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Update the status item icon based on pipeline state.
     func updateIcon() {
         let iconName = appState.pipelineState.menuBarIconName
-        statusItem?.button?.image = NSImage(systemSymbolName: iconName, accessibilityDescription: "VibeWhisper")
+        statusItem?.button?.image = NSImage(systemSymbolName: iconName, accessibilityDescription: "EnviousWispr")
     }
 
     @objc private func toggleRecording() {
@@ -93,7 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             action()
         } else {
             // Fallback: find and show an existing window
-            for window in NSApp.windows where window.title == "VibeWhisper" {
+            for window in NSApp.windows where window.title == "EnviousWispr" {
                 window.makeKeyAndOrderFront(nil)
                 return
             }

@@ -1,6 +1,6 @@
 ---
 name: handle-macos-permissions
-description: "Use when adding, modifying, or debugging microphone or accessibility permission checks in VibeWhisper — including PermissionsService, permission-gated feature guards, or any call to AVCaptureDevice or AXIsProcessTrusted."
+description: "Use when adding, modifying, or debugging microphone or accessibility permission checks in EnviousWispr — including PermissionsService, permission-gated feature guards, or any call to AVCaptureDevice or AXIsProcessTrusted."
 ---
 
 # Handle macOS Permissions

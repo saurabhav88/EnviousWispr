@@ -24,7 +24,7 @@ If no identity is listed, you have no Developer certificate installed. Signing i
 ## Ad-hoc sign (no Apple account required)
 
 ```bash
-codesign --force --deep --sign - /tmp/VibeWhisper.app
+codesign --force --deep --sign - /tmp/EnviousWispr.app
 ```
 
 Ad-hoc signing satisfies local Gatekeeper (with SIP disabled or when quarantine is cleared) but will not pass Gatekeeper on other machines.
@@ -35,7 +35,7 @@ Ad-hoc signing satisfies local Gatekeeper (with SIP disabled or when quarantine 
 IDENTITY="Developer ID Application: Your Name (TEAMID)"
 codesign --force --deep --options runtime \
   --sign "$IDENTITY" \
-  /tmp/VibeWhisper.app
+  /tmp/EnviousWispr.app
 ```
 
 `--options runtime` enables the Hardened Runtime, required for notarization.
@@ -58,14 +58,14 @@ Then sign with entitlements:
 codesign --force --deep --options runtime \
   --entitlements entitlements.plist \
   --sign "$IDENTITY" \
-  /tmp/VibeWhisper.app
+  /tmp/EnviousWispr.app
 ```
 
 ## Verify the signature
 
 ```bash
-codesign --verify --deep --strict --verbose=2 /tmp/VibeWhisper.app
-spctl --assess --type exec --verbose /tmp/VibeWhisper.app
+codesign --verify --deep --strict --verbose=2 /tmp/EnviousWispr.app
+spctl --assess --type exec --verbose /tmp/EnviousWispr.app
 ```
 
 `codesign` should return exit 0 with "valid on disk". `spctl` should show "accepted".

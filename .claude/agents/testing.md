@@ -1,67 +1,35 @@
 ---
 name: testing
 model: sonnet
-description: Use when validating the build, running smoke tests, executing benchmarks, or checking API contract compatibility. Handles all testing without XCTest.
+description: Build validation, smoke tests, UI tests, benchmarks, API contract checks — all without XCTest.
 ---
 
-# Testing Agent
+# Testing
 
-You validate the app without XCTest. The compiler is your primary test framework.
+## Domain
 
-## Environment Constraint
+Source dirs: `Utilities/BenchmarkSuite.swift`, `Tests/EnviousWisprTests/`, `Tests/UITests/` (Python-based).
 
-**No XCTest available.** macOS Command Line Tools only — no full Xcode. This means:
-- No `XCTest` or `Testing` framework imports
-- No `swift test` execution
-- `swift build --build-tests` only verifies the test target **compiles**
-- Actual validation relies on: build success, smoke tests, benchmarks, and API contract checks
+## Constraint
 
-## Owned Files
-
-- `Utilities/BenchmarkSuite.swift`
-- `Tests/EnviousWisprTests/`
-- `Tests/UITests/` (Python-based native UI testing toolkit)
+No XCTest — macOS CLI tools only. `swift build --build-tests` verifies test target compiles but cannot execute tests.
 
 ## Validation Hierarchy
 
-1. **Build** — `swift build` (compiler catches type errors, isolation issues)
-2. **Build tests** — `swift build --build-tests` (test target compiles)
-3. **Smoke test** — `swift run EnviousWispr` (app launches without crash)
-4. **UI tests** — AX tree inspection + CGEvent simulation + screenshot verification
-5. **Benchmarks** — BenchmarkSuite measures transcription latency
-6. **API contracts** — Verify OpenAI/Gemini request/response shapes
-
-## Benchmark Details
-
-BenchmarkSuite generates test audio (440Hz sine wave at 16kHz mono) and measures:
-- 5-second transcription
-- 15-second transcription
-- 30-second transcription
-
-Results include: `processingTime`, `rtf` (real-time factor = audioDuration / processingTime)
+1. `swift build` — compiler catches type errors, isolation issues
+2. `swift build --build-tests` — test target compiles
+3. `swift run EnviousWispr` — app launches without crash
+4. UI tests — AX inspection + CGEvent simulation + screenshot verification
+5. Benchmarks — BenchmarkSuite: 5s/15s/30s transcription, measures RTF
+6. API contracts — verify OpenAI/Gemini request/response shapes
 
 ## API Endpoints
 
-### OpenAI
-- **Polish:** `POST https://api.openai.com/v1/chat/completions`
-  - Auth: `Authorization: Bearer {key}` header
-  - Body: `{ model, messages: [{role, content}], max_tokens, temperature }`
-  - Response: `{ choices: [{ message: { content } }], usage: { total_tokens } }`
-- **Validate:** `GET https://api.openai.com/v1/models` (health check)
+**OpenAI**: `POST /v1/chat/completions` (Bearer header). Validate: `GET /v1/models`.
+**Gemini**: `POST /v1beta/models/{model}:generateContent?key=` (query param). Validate: `GET /v1beta/models?key=`.
+Error codes: `401` → invalid key, `429` → rate limited.
 
-### Gemini
-- **Polish:** `POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}`
-  - Auth: API key as query parameter
-  - Body: `{ contents: [{ parts: [{ text }] }], generationConfig: { maxOutputTokens, temperature } }`
-  - Response: `{ candidates: [{ content: { parts: [{ text }] } }], usageMetadata: { totalTokenCount } }`
-- **Validate:** `GET https://generativelanguage.googleapis.com/v1beta/models?key={key}`
-
-### Error Status Codes
-- `401` → invalid API key (`LLMError.invalidAPIKey`)
-- `429` → rate limited (`LLMError.rateLimited`)
-- `200` → success
-
-## Skills
+## Skills → `.claude/skills/`
 
 - `run-smoke-test`
 - `run-benchmarks`
@@ -73,6 +41,6 @@ Results include: `processingTime`, `rtf` (real-time factor = audioDuration / pro
 
 ## Coordination
 
-- Build failures → **Build & Compile** agent (not your job to fix compiler errors)
-- API contract changes detected → notify Lead + **Feature Scaffolding** if connectors need updating
-- After scaffolding new features → **Feature Scaffolding** requests smoke test from you
+- Build failures → **build-compile** (not this agent's job)
+- API contract changes → notify coordinator + **feature-scaffolding** if connectors need updating
+- Post-scaffold validation → **feature-scaffolding** requests smoke test

@@ -22,15 +22,8 @@ Module exports a struct `FluidAudio` that shadows the module name. **Never quali
 
 ## API Keys
 
-macOS Keychain via `KeychainManager` (service: `"com.vibewhisper.api-keys"`). **Never UserDefaults.** Never log keys.
+macOS Keychain via `KeychainManager` (service: `"com.enviouswispr.api-keys"`). **Never UserDefaults.** Never log keys.
 
 ## ASR Backend Lifecycle
 
 Only one backend active at a time. Always unload before switching: `await activeBackend.unload()` → swap → `await newBackend.prepare()`.
-
-## Swift Tooling
-
-- Swift tools version: 6.0 (Package.swift), runtime 6.2.x
-- CLI tools only — no Xcode, no XCTest, no `#Preview`, no `xcodebuild`
-- Build with `swift build`, run with `swift run VibeWhisper`
-- KeyboardShortcuts package deferred (needs full Xcode for `#Preview` macros)

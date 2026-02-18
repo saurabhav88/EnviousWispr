@@ -3,7 +3,7 @@ import Security
 
 /// Manages API key storage and retrieval via macOS Keychain.
 struct KeychainManager: Sendable {
-    private let service = "com.vibewhisper.api-keys"
+    private let service = "com.enviouswispr.api-keys"
 
     /// Store a value in the Keychain.
     func store(key: String, value: String) throws {

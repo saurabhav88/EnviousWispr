@@ -4,7 +4,7 @@
 
 ```bash
 swift build                # Build
-swift run VibeWhisper      # Run
+swift run EnviousWispr      # Run
 swift build --build-tests  # Verify tests compile
 ```
 
@@ -36,7 +36,7 @@ Scopes: `asr`, `audio`, `ui`, `llm`, `pipeline`, `settings`, `hotkey`, `vad`, `b
 ## Settings Persistence
 
 - **Non-sensitive:** `UserDefaults.standard` with `didSet` pattern
-- **Sensitive (API keys):** `KeychainManager` (service: `"com.vibewhisper.api-keys"`)
+- **Sensitive (API keys):** `KeychainManager` (service: `"com.enviouswispr.api-keys"`)
 
 ## View Patterns
 

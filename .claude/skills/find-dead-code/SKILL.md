@@ -1,6 +1,6 @@
 ---
 name: find-dead-code
-description: Use when the user asks to find unused code, remove dead code, audit unreferenced types or functions, or reduce codebase size in VibeWhisper.
+description: Use when the user asks to find unused code, remove dead code, audit unreferenced types or functions, or reduce codebase size in EnviousWispr.
 ---
 
 # Find Dead Code

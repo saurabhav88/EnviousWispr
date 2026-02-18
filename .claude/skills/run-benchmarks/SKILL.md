@@ -7,7 +7,7 @@ description: Use when measuring or verifying ASR transcription performance, chec
 
 ## Context
 
-`BenchmarkSuite` lives in `Sources/VibeWhisper/Utilities/BenchmarkSuite.swift`.
+`BenchmarkSuite` lives in `Sources/EnviousWispr/Utilities/BenchmarkSuite.swift`.
 It generates a 440Hz sine wave at 16kHz mono and transcribes it at three durations.
 
 `BenchmarkSuite.Result` fields:

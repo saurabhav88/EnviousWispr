@@ -1,6 +1,6 @@
 ---
 name: generate-changelog
-description: Use when the user asks to generate a changelog, create release notes, summarize commits since a tag, or format git history into a CHANGELOG entry for VibeWhisper.
+description: Use when the user asks to generate a changelog, create release notes, summarize commits since a tag, or format git history into a CHANGELOG entry for EnviousWispr.
 ---
 
 # Generate Changelog from Conventional Commits

@@ -1,6 +1,6 @@
-# VibeWhisper
+# EnviousWispr
 
-Local-first macOS dictation app — record → transcribe → polish → clipboard.
+Local-first macOS dictation app — record → transcribe → polish → clipboard/paste.
 
 ## Rules
 
@@ -12,25 +12,23 @@ Local-first macOS dictation app — record → transcribe → polish → clipboa
 
 ## Agents
 
-Each agent owns skills listed in its file.
-
- Agent | When to use
-------- | ------------
- [audio-pipeline](.claude/agents/audio-pipeline.md) | Audio bugs, pipeline failures, VAD, ASR backends
- [build-compile](.claude/agents/build-compile.md) | Build failures, compiler errors, dependency updates
- [macos-platform](.claude/agents/macos-platform.md) | Permissions, hotkeys, menu bar, SwiftUI
- [quality-security](.claude/agents/quality-security.md) | Data races, actor isolation, secrets safety
- [feature-scaffolding](.claude/agents/feature-scaffolding.md) | New backends, connectors, views, tabs
- [testing](.claude/agents/testing.md) | Smoke tests, benchmarks, API contract checks
- [release-maintenance](.claude/agents/release-maintenance.md) | Packaging, changelog, dead code, Swift migration
+| Agent | Domain | Skills (`.claude/skills/`) |
+| ----- | ------ | ------------------------- |
+| [audio-pipeline](.claude/agents/audio-pipeline.md) | Audio capture, VAD, ASR, pipeline orchestration | `resolve-naming-collisions`, `apply-vad-manager-patterns`, `infer-asr-types`, `manage-model-loading`, `configure-language-settings`, `optimize-memory-management`, `switch-asr-backends`, `trace-audio-pipeline` |
+| [build-compile](.claude/agents/build-compile.md) | Build failures, compiler errors, dependency updates | `auto-fix-compiler-errors`, `check-dependency-versions`, `handle-breaking-changes`, `validate-build-post-update` |
+| [macos-platform](.claude/agents/macos-platform.md) | Permissions, hotkeys, menu bar, paste, SwiftUI | `handle-macos-permissions`, `review-swiftui-conventions`, `check-accessibility-labels`, `validate-menu-bar-patterns` |
+| [quality-security](.claude/agents/quality-security.md) | Concurrency, actor isolation, Sendable, secrets | `audit-actor-isolation`, `flag-missing-sendable`, `detect-unsafe-main-actor-dispatches`, `check-api-key-storage`, `detect-hardcoded-secrets`, `validate-keychain-usage`, `flag-sensitive-logging` |
+| [feature-scaffolding](.claude/agents/feature-scaffolding.md) | New backends, connectors, views, tabs | `scaffold-asr-backend`, `scaffold-llm-connector`, `scaffold-settings-tab`, `scaffold-swiftui-view` |
+| [testing](.claude/agents/testing.md) | Smoke tests, UI tests, benchmarks, API contracts | `run-smoke-test`, `run-benchmarks`, `validate-api-contracts`, `ui-ax-inspect`, `ui-simulate-input`, `ui-screenshot-verify`, `run-ui-test` |
+| [release-maintenance](.claude/agents/release-maintenance.md) | Packaging, signing, changelog, migration, dead code | `build-release-config`, `bundle-app`, `codesign-without-xcode`, `generate-changelog`, `migrate-swift-version`, `find-dead-code` |
 
 ## Knowledge
 
- File | Contents
------- | ----------
- [architecture](.claude/knowledge/architecture.md) | Structure, key types, pipeline state machine, data flow
- [gotchas](.claude/knowledge/gotchas.md) | FluidAudio collision, Swift 6, audio format, Keychain
- [conventions](.claude/knowledge/conventions.md) | Commit style, DI patterns, view patterns, imports
+| File | Contents |
+| ---- | -------- |
+| [architecture](.claude/knowledge/architecture.md) | Structure, key types, pipeline state machine, data flow |
+| [gotchas](.claude/knowledge/gotchas.md) | FluidAudio collision, Swift 6, audio format, Keychain |
+| [conventions](.claude/knowledge/conventions.md) | Commit style, DI patterns, view patterns, imports |
 
 ## Commits
 

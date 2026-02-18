@@ -1,12 +1,12 @@
 import SwiftUI
 
 @main
-struct VibeWhisperApp: App {
+struct EnviousWisprApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
         // Main transcript window
-        Window("VibeWhisper", id: "main") {
+        Window("EnviousWispr", id: "main") {
             MainWindowView()
                 .environment(appDelegate.appState)
                 .background(ActionWirer(appDelegate: appDelegate))

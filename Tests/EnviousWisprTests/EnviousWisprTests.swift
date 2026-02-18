@@ -4,13 +4,13 @@
 // To run tests: install Xcode, then `swift test`
 //
 // Test cases (to be enabled when Xcode is available):
-// - testAppConstantsExist: AppConstants.appName == "VibeWhisper"
+// - testAppConstantsExist: AppConstants.appName == "EnviousWispr"
 // - testASRBackendTypes: 2 backends (parakeet, whisperKit)
 // - testPipelineStateStatusText: state machine text/isActive
 // - testTranscriptDisplayText: raw vs polished text
 // - testRecordingModes: pushToTalk, toggle
 
-@testable import VibeWhisper
+@testable import EnviousWispr
 
 // Smoke test: just verify types resolve correctly
 func verifyTypesCompile() {

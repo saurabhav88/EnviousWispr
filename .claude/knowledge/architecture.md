@@ -5,7 +5,7 @@ Local-first macOS dictation app. Record → Transcribe (Parakeet v3 / WhisperKit
 ## Directory Structure
 
 ```text
-Sources/VibeWhisper/
+Sources/EnviousWispr/
 ├── App/          # SwiftUI entry, AppState (@Observable)
 ├── ASR/          # ASRBackend protocol, Parakeet + WhisperKit backends
 ├── Audio/        # AVAudioEngine capture, SilenceDetector (Silero VAD)

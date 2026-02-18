@@ -1,6 +1,6 @@
 ---
 name: audit-actor-isolation
-description: "Use when reviewing Swift concurrency correctness, adding new actors or @MainActor types, or investigating data race warnings in VibeWhisper."
+description: "Use when reviewing Swift concurrency correctness, adding new actors or @MainActor types, or investigating data race warnings in EnviousWispr."
 ---
 
 # Audit Actor Isolation
@@ -8,18 +8,18 @@ description: "Use when reviewing Swift concurrency correctness, adding new actor
 ## Files to Check
 
 ### Actor types (verify isolation boundaries)
-- `Sources/VibeWhisper/ASR/ParakeetBackend.swift` — actor; all methods must be `async`; no stored mutable state accessible without `await`
-- `Sources/VibeWhisper/ASR/WhisperKitBackend.swift` — actor; same rules
-- `Sources/VibeWhisper/Audio/SilenceDetector.swift` — actor; check `VadManager` usage is fully awaited
+- `Sources/EnviousWispr/ASR/ParakeetBackend.swift` — actor; all methods must be `async`; no stored mutable state accessible without `await`
+- `Sources/EnviousWispr/ASR/WhisperKitBackend.swift` — actor; same rules
+- `Sources/EnviousWispr/Audio/SilenceDetector.swift` — actor; check `VadManager` usage is fully awaited
 
 ### @MainActor classes (verify UI-connected annotations)
-- `Sources/VibeWhisper/App/AppState.swift` — must be `@MainActor`; all `@Observable` mutations on main
-- `Sources/VibeWhisper/Audio/AudioCaptureManager.swift` — `@MainActor`; audio tap callbacks are NOT on main (see unsafe-dispatch skill)
-- `Sources/VibeWhisper/ASR/ASRManager.swift` — `@MainActor`; verify backend calls are awaited
-- `Sources/VibeWhisper/Services/HotkeyService.swift` — `@MainActor`; NSEvent extractions must happen before `Task { @MainActor in }`
-- `Sources/VibeWhisper/Pipeline/TranscriptionPipeline.swift` — `@MainActor`; state mutations synchronous, backend calls awaited
-- `Sources/VibeWhisper/Services/PermissionsService.swift` — `@MainActor`
-- `Sources/VibeWhisper/Utilities/BenchmarkSuite.swift` — `@MainActor`
+- `Sources/EnviousWispr/App/AppState.swift` — must be `@MainActor`; all `@Observable` mutations on main
+- `Sources/EnviousWispr/Audio/AudioCaptureManager.swift` — `@MainActor`; audio tap callbacks are NOT on main (see unsafe-dispatch skill)
+- `Sources/EnviousWispr/ASR/ASRManager.swift` — `@MainActor`; verify backend calls are awaited
+- `Sources/EnviousWispr/Services/HotkeyService.swift` — `@MainActor`; NSEvent extractions must happen before `Task { @MainActor in }`
+- `Sources/EnviousWispr/Pipeline/TranscriptionPipeline.swift` — `@MainActor`; state mutations synchronous, backend calls awaited
+- `Sources/EnviousWispr/Services/PermissionsService.swift` — `@MainActor`
+- `Sources/EnviousWispr/Utilities/BenchmarkSuite.swift` — `@MainActor`
 
 ## What to Look For
 

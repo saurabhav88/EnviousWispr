@@ -1,6 +1,6 @@
 ---
 name: check-accessibility-labels
-description: "Use when auditing VibeWhisper views for VoiceOver support, adding accessibility labels to new views, or verifying that custom controls, icon buttons, and status indicators are correctly described for assistive technology."
+description: "Use when auditing EnviousWispr views for VoiceOver support, adding accessibility labels to new views, or verifying that custom controls, icon buttons, and status indicators are correctly described for assistive technology."
 ---
 
 # Check Accessibility Labels

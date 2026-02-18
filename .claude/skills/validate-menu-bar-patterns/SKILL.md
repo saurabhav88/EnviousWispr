@@ -1,6 +1,6 @@
 ---
 name: validate-menu-bar-patterns
-description: "Use when implementing or reviewing MenuBarExtra logic, window targeting, settings activation, or app termination in VibeWhisper — covers dynamic icon updates, NSApplication window focus, and the Selector string workaround for settings."
+description: "Use when implementing or reviewing MenuBarExtra logic, window targeting, settings activation, or app termination in EnviousWispr — covers dynamic icon updates, NSApplication window focus, and the Selector string workaround for settings."
 ---
 
 # Validate Menu Bar Patterns
@@ -40,7 +40,7 @@ func showMainWindow() {
 var cachedWindow: NSWindow?     // WRONG: can become stale
 ```
 
-Window ID "main" must match the `.id("main")` modifier on the `Window` scene in `VibeWhisperApp`.
+Window ID "main" must match the `.id("main")` modifier on the `Window` scene in `EnviousWisprApp`.
 
 ## Activating the App and Window
 
@@ -64,7 +64,7 @@ NSApp.showSettingsWindow()      // WRONG: does not compile on CLI toolchain
 ## App Termination
 
 ```swift
-Button("Quit VibeWhisper") {
+Button("Quit EnviousWispr") {
     NSApplication.shared.terminate(nil)
 }
 ```

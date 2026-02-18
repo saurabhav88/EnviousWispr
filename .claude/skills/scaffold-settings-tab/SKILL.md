@@ -1,7 +1,7 @@
 ---
 name: scaffold-settings-tab
 description: >
-  Use when adding a new top-level tab to the VibeWhisper Settings window —
+  Use when adding a new top-level tab to the EnviousWispr Settings window —
   e.g., a new feature category requiring its own Form-based settings UI,
   UserDefaults persistence, and a tab item in SettingsView's TabView.
 ---
@@ -10,7 +10,7 @@ description: >
 
 ## Step 1 — Create the view file
 
-Create `Sources/VibeWhisper/Views/Settings/<Name>SettingsView.swift`.
+Create `Sources/EnviousWispr/Views/Settings/<Name>SettingsView.swift`.
 
 ```swift
 import SwiftUI
@@ -57,7 +57,7 @@ Key rules:
 
 ## Step 2 — Add persisted properties to AppState
 
-File: `Sources/VibeWhisper/App/AppState.swift`
+File: `Sources/EnviousWispr/App/AppState.swift`
 
 For each new setting, add a stored property with `didSet` persistence:
 
@@ -85,7 +85,7 @@ In `AppState.init()`, load the persisted value and assign before any other use:
 
 ## Step 3 — Register the tab in SettingsView
 
-File: `Sources/VibeWhisper/Views/Settings/SettingsView.swift`
+File: `Sources/EnviousWispr/Views/Settings/SettingsView.swift`
 
 Inside `TabView { }`, add after the last existing tab:
 
