@@ -1,0 +1,121 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Import Developer ID certificate
+        env:
+          DEVELOPER_ID_CERT_BASE64: ${{ secrets.DEVELOPER_ID_CERT_BASE64 }}
+          DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+        run: |
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          echo -n "$DEVELOPER_ID_CERT_BASE64" | base64 --decode -o "$CERT_PATH"
+          security create-keychain -p "temppassword" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "temppassword" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$DEVELOPER_ID_CERT_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: \
+            -k "temppassword" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+
+      - name: Build, sign, notarize, and package DMG
+        env:
+          CODESIGN_IDENTITY: "Developer ID Application: ${{ secrets.APPLE_TEAM_NAME }} (${{ secrets.APPLE_TEAM_ID }})"
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          SPARKLE_FEED_URL: "https://raw.githubusercontent.com/${{ github.repository }}/main/appcast.xml"
+          SPARKLE_EDDSA_PUBLIC_KEY: ${{ secrets.SPARKLE_EDDSA_PUBLIC_KEY }}
+        run: ./scripts/build-dmg.sh "${{ steps.version.outputs.version }}"
+
+      - name: Generate Sparkle appcast entry
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          DMG_PATH="build/EnviousWispr-${VERSION}.dmg"
+          DMG_SIZE=$(stat -f%z "$DMG_PATH")
+          DATE=$(date -R)
+
+          # Sign the DMG with Sparkle's EdDSA key
+          if [[ -n "${SPARKLE_PRIVATE_KEY}" ]]; then
+            EDDSA_SIG=$(echo "${SPARKLE_PRIVATE_KEY}" | .build/artifacts/sparkle/Sparkle/bin/sign_update "${DMG_PATH}" --ed-key-file /dev/stdin 2>/dev/null || echo "")
+          fi
+
+          mkdir -p build
+          cat > build/appcast-entry.xml << ENTRY
+              <item>
+                <title>Version ${VERSION}</title>
+                <pubDate>${DATE}</pubDate>
+                <sparkle:version>${VERSION}</sparkle:version>
+                <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
+                <enclosure
+                  url="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/EnviousWispr-${VERSION}.dmg"
+                  length="${DMG_SIZE}"
+                  type="application/octet-stream"
+                  sparkle:edSignature="${EDDSA_SIG:-}"
+                />
+              </item>
+          ENTRY
+
+      - name: Update appcast.xml
+        run: |
+          if [ ! -f appcast.xml ]; then
+            cat > appcast.xml << 'FEED'
+          <?xml version="1.0" encoding="utf-8"?>
+          <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+            <channel>
+              <title>EnviousWispr Updates</title>
+            </channel>
+          </rss>
+          FEED
+          fi
+          # Insert new entry before closing </channel>
+          python3 -c "
+          content = open('appcast.xml').read()
+          entry = open('build/appcast-entry.xml').read()
+          content = content.replace('</channel>', entry + '\n    </channel>')
+          open('appcast.xml', 'w').write(content)
+          "
+
+      - name: Commit updated appcast
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout main
+          git add appcast.xml
+          git diff --cached --quiet || git commit -m "chore(release): update appcast for v${{ steps.version.outputs.version }}"
+          git push origin main
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          gh release create "v${VERSION}" \
+            --title "EnviousWispr v${VERSION}" \
+            --generate-notes \
+            "build/EnviousWispr-${VERSION}.dmg"
+
+      - name: Cleanup keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/build.keychain-db" 2>/dev/null || true
