@@ -1,0 +1,2214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EnviousWispr UI Explorer — 3 Design Options</title>
+<style>
+/* ===== RESET & FOUNDATIONS ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+@font-face {
+  font-family: 'SF Pro Display';
+  src: local('-apple-system'), local('BlinkMacSystemFont'), local('SF Pro Display');
+}
+@font-face {
+  font-family: 'SF Pro Text';
+  src: local('-apple-system'), local('BlinkMacSystemFont'), local('SF Pro Text');
+}
+@font-face {
+  font-family: 'SF Mono';
+  src: local('SFMono-Regular'), local('SF Mono'), local('Menlo');
+}
+
+:root {
+  /* Light mode */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f5f7;
+  --bg-tertiary: #e8e8ed;
+  --bg-sidebar: #f0f0f2;
+  --bg-hover: rgba(0,0,0,0.04);
+  --bg-active: rgba(0,122,255,0.12);
+  --text-primary: #1d1d1f;
+  --text-secondary: #86868b;
+  --text-tertiary: #aeaeb2;
+  --border: rgba(0,0,0,0.08);
+  --border-strong: rgba(0,0,0,0.15);
+  --accent: #007AFF;
+  --accent-hover: #0066d6;
+  --red: #FF3B30;
+  --green: #34C759;
+  --orange: #FF9500;
+  --purple: #AF52DE;
+  --yellow: #FFCC00;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
+  --shadow-xl: 0 16px 48px rgba(0,0,0,0.16);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --window-bg: rgba(246,246,248,0.92);
+  --titlebar-bg: rgba(246,246,248,0.8);
+  --vibrancy: blur(20px) saturate(180%);
+}
+
+[data-theme="dark"] {
+  --bg-primary: #1c1c1e;
+  --bg-secondary: #2c2c2e;
+  --bg-tertiary: #3a3a3c;
+  --bg-sidebar: #252527;
+  --bg-hover: rgba(255,255,255,0.06);
+  --bg-active: rgba(0,122,255,0.2);
+  --text-primary: #f5f5f7;
+  --text-secondary: #98989d;
+  --text-tertiary: #636366;
+  --border: rgba(255,255,255,0.08);
+  --border-strong: rgba(255,255,255,0.15);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.5);
+  --shadow-xl: 0 16px 48px rgba(0,0,0,0.6);
+  --window-bg: rgba(40,40,42,0.92);
+  --titlebar-bg: rgba(40,40,42,0.8);
+}
+
+html { font-size: 13px; }
+body {
+  font-family: -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ===== EXPLORER SHELL ===== */
+.explorer-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.explorer-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: var(--vibrancy);
+}
+
+.explorer-topbar h1 {
+  font-family: -apple-system, 'SF Pro Display', sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+.explorer-topbar h1 span { color: var(--accent); }
+
+.explorer-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* Design option tabs */
+.design-tabs {
+  display: flex;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  padding: 3px;
+  gap: 2px;
+}
+.design-tab {
+  padding: 6px 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.design-tab:hover { color: var(--text-primary); background: var(--bg-hover); }
+.design-tab.active {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+.design-tab.tab-a.active { color: var(--accent); }
+.design-tab.tab-b.active { color: #FF6B35; }
+.design-tab.tab-c.active { color: var(--green); }
+
+/* Page selector */
+.page-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 24px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+.page-tab {
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: all 0.15s;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.page-tab:hover { background: var(--bg-hover); color: var(--text-primary); }
+.page-tab.active { background: var(--bg-active); color: var(--accent); }
+.page-tab .icon { font-size: 14px; }
+
+/* Theme toggle */
+.theme-toggle {
+  width: 44px;
+  height: 24px;
+  border-radius: 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  position: relative;
+  transition: background 0.3s;
+}
+.theme-toggle::after {
+  content: '';
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  top: 2px;
+  left: 2px;
+  transition: transform 0.3s;
+}
+[data-theme="dark"] .theme-toggle::after {
+  transform: translateX(20px);
+}
+.theme-label { font-size: 11px; color: var(--text-secondary); }
+
+/* ===== MAIN CANVAS ===== */
+.canvas {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  overflow: auto;
+}
+
+/* Window chrome */
+.macos-window {
+  background: var(--window-bg);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  border: 1px solid var(--border-strong);
+  overflow: hidden;
+  backdrop-filter: var(--vibrancy);
+  position: relative;
+}
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--titlebar-bg);
+  border-bottom: 1px solid var(--border);
+  -webkit-app-region: drag;
+}
+.traffic-lights {
+  display: flex;
+  gap: 8px;
+  margin-right: 12px;
+}
+.traffic-light {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+.tl-close { background: #FF5F57; }
+.tl-minimize { background: #FEBC2E; }
+.tl-maximize { background: #28C840; }
+.titlebar-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* ===== REUSABLE COMPONENTS ===== */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10.5px;
+  font-weight: 500;
+}
+.badge-green { background: rgba(52,199,89,0.15); color: var(--green); }
+.badge-red { background: rgba(255,59,48,0.15); color: var(--red); }
+.badge-orange { background: rgba(255,149,0,0.15); color: var(--orange); }
+.badge-purple { background: rgba(175,82,222,0.15); color: var(--purple); }
+.badge-blue { background: rgba(0,122,255,0.15); color: var(--accent); }
+
+.btn {
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.btn:hover { background: var(--bg-hover); }
+.btn-primary {
+  background: var(--accent);
+  color: white;
+  border-color: transparent;
+}
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-danger { color: var(--red); }
+
+.form-section {
+  margin-bottom: 20px;
+}
+.form-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+.form-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+}
+.form-row + .form-row { border-top: 1px solid var(--border); }
+.form-label { font-size: 12.5px; }
+.form-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.toggle-track {
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+  background: var(--bg-tertiary);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.toggle-track.on { background: var(--accent); }
+.toggle-track::after {
+  content: '';
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: white;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.toggle-track.on::after { transform: translateX(16px); }
+
+.segmented {
+  display: inline-flex;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  gap: 1px;
+}
+.segmented-btn {
+  padding: 4px 12px;
+  border-radius: 5px;
+  font-size: 11.5px;
+  font-weight: 500;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.segmented-btn.active {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.slider-track {
+  width: 120px;
+  height: 4px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  position: relative;
+}
+.slider-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  width: 50%;
+}
+.slider-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: white;
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-sm);
+  position: absolute;
+  top: -5px;
+  left: calc(50% - 7px);
+}
+
+/* ===== ANIMATIONS ===== */
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(2); opacity: 0; }
+}
+@keyframes pulse-dot {
+  0%, 100% { transform: scale(0.85); }
+  50% { transform: scale(1.15); }
+}
+@keyframes waveform {
+  0%, 100% { height: 4px; }
+  50% { height: var(--max-h, 16px); }
+}
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes shimmer {
+  0% { background-position: -200px 0; }
+  100% { background-position: 200px 0; }
+}
+@keyframes breathe {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.animate-in { animation: fade-in 0.35s ease-out both; }
+.animate-slide { animation: slide-in-right 0.3s ease-out both; }
+
+/* Recording waveform bars */
+.waveform-bars {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 24px;
+}
+.waveform-bar {
+  width: 3px;
+  border-radius: 1.5px;
+  background: var(--red);
+  animation: waveform 0.4s ease-in-out infinite alternate;
+}
+.waveform-bar:nth-child(1) { --max-h: 8px; animation-delay: 0s; }
+.waveform-bar:nth-child(2) { --max-h: 14px; animation-delay: 0.08s; }
+.waveform-bar:nth-child(3) { --max-h: 20px; animation-delay: 0.16s; }
+.waveform-bar:nth-child(4) { --max-h: 16px; animation-delay: 0.24s; }
+.waveform-bar:nth-child(5) { --max-h: 22px; animation-delay: 0.1s; }
+.waveform-bar:nth-child(6) { --max-h: 12px; animation-delay: 0.2s; }
+.waveform-bar:nth-child(7) { --max-h: 18px; animation-delay: 0.05s; }
+.waveform-bar:nth-child(8) { --max-h: 10px; animation-delay: 0.15s; }
+
+.waveform-bars-white .waveform-bar { background: white; }
+.waveform-bars-green .waveform-bar { background: var(--green); }
+.waveform-bars-accent .waveform-bar { background: var(--accent); }
+
+/* Pulse ring */
+.pulse-ring-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pulse-ring {
+  position: absolute;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 2px solid var(--red);
+  opacity: 0;
+  animation: pulse-ring 1.5s ease-out infinite;
+}
+.pulse-ring:nth-child(2) { animation-delay: 0.5s; }
+.pulse-ring:nth-child(3) { animation-delay: 1s; }
+
+/* ===== DESIGN OPTION PANELS ===== */
+.design-panel { display: none; }
+.design-panel.active { display: block; }
+
+.page-content { display: none; }
+.page-content.active { display: block; }
+
+/* ===== OPTION A: REFINED NATIVE ===== */
+.opt-a .macos-window { width: 720px; }
+.opt-a .main-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 480px;
+}
+.opt-a .sidebar {
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.opt-a .sidebar-search {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.opt-a .sidebar-search input {
+  width: 100%;
+  padding: 6px 10px 6px 28px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  font-size: 12px;
+  color: var(--text-primary);
+  outline: none;
+}
+.opt-a .sidebar-search input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,122,255,0.15); }
+.opt-a .sidebar-search { position: relative; }
+.opt-a .sidebar-search::before {
+  content: '🔍';
+  position: absolute;
+  left: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.opt-a .transcript-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px;
+}
+.opt-a .transcript-item {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s;
+  margin-bottom: 2px;
+}
+.opt-a .transcript-item:hover { background: var(--bg-hover); }
+.opt-a .transcript-item.active { background: var(--bg-active); }
+.opt-a .transcript-item-text {
+  font-size: 12.5px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.opt-a .transcript-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: var(--text-secondary);
+}
+
+.opt-a .detail-pane {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+}
+.opt-a .detail-content {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text-primary);
+}
+.opt-a .detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  margin-top: 16px;
+}
+.opt-a .detail-meta {
+  margin-left: auto;
+  text-align: right;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* Option A: Empty/Idle state */
+.opt-a .status-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  color: var(--text-secondary);
+}
+.opt-a .status-icon {
+  font-size: 48px;
+  opacity: 0.5;
+}
+.opt-a .status-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.opt-a .status-subtitle {
+  font-size: 13px;
+  text-align: center;
+  max-width: 280px;
+  line-height: 1.5;
+}
+
+/* Option A: Recording state */
+.opt-a .recording-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 16px;
+}
+.opt-a .recording-icon-wrap {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.opt-a .recording-mic {
+  font-size: 40px;
+  z-index: 1;
+}
+
+/* Option A: Settings */
+.opt-a .settings-window { width: 560px; }
+.opt-a .settings-tabs {
+  display: flex;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--titlebar-bg);
+  gap: 0;
+}
+.opt-a .settings-tab {
+  padding: 10px 16px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border: none;
+  background: none;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.opt-a .settings-tab:hover { color: var(--text-primary); }
+.opt-a .settings-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.opt-a .settings-body {
+  padding: 20px;
+  min-height: 380px;
+  overflow-y: auto;
+  max-height: 420px;
+}
+
+.opt-a .grouped-section {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+.opt-a .grouped-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+/* ===== OPTION B: COMMAND CENTER ===== */
+.opt-b .macos-window { width: 820px; }
+.opt-b .main-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 520px;
+}
+.opt-b .sidebar {
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+.opt-b .sidebar-header {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.opt-b .stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.opt-b .stat-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+.opt-b .stat-value {
+  font-size: 16px;
+  font-weight: 700;
+  font-family: -apple-system, 'SF Mono', monospace;
+}
+.opt-b .stat-label {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.opt-b .model-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+}
+.opt-b .status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.opt-b .status-dot.green { background: var(--green); }
+.opt-b .status-dot.orange { background: var(--orange); }
+.opt-b .status-dot.red { background: var(--red); }
+
+.opt-b .transcript-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+}
+.opt-b .transcript-item {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.12s;
+  margin-bottom: 1px;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.opt-b .transcript-item:hover { background: var(--bg-hover); }
+.opt-b .transcript-item.active { background: var(--bg-active); }
+.opt-b .transcript-item-time {
+  font-size: 10px;
+  font-family: 'SF Mono', monospace;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  padding-top: 2px;
+}
+.opt-b .transcript-item-text {
+  font-size: 12px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  flex: 1;
+}
+
+.opt-b .detail-pane {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+.opt-b .detail-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+
+/* Option B: Dashboard idle */
+.opt-b .dashboard-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px;
+}
+.opt-b .dashboard-hero {
+  background: linear-gradient(135deg, var(--accent), #5856d6);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.opt-b .dashboard-hero-icon { font-size: 44px; }
+.opt-b .dashboard-hero h2 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+.opt-b .dashboard-hero p { font-size: 13px; opacity: 0.85; }
+.opt-b .dashboard-hero .btn { background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); }
+.opt-b .dashboard-hero .btn:hover { background: rgba(255,255,255,0.3); }
+
+.opt-b .dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.opt-b .dash-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+}
+.opt-b .dash-card-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+/* Option B: Settings with sidebar nav */
+.opt-b .settings-window { width: 680px; }
+.opt-b .settings-layout {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  min-height: 440px;
+}
+.opt-b .settings-nav {
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  padding: 8px;
+}
+.opt-b .settings-nav-item {
+  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.12s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 1px;
+}
+.opt-b .settings-nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+.opt-b .settings-nav-item.active { background: var(--bg-active); color: var(--accent); }
+.opt-b .settings-nav-group {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-tertiary);
+  padding: 12px 12px 4px;
+}
+.opt-b .settings-detail {
+  padding: 20px;
+  overflow-y: auto;
+  max-height: 440px;
+}
+
+/* ===== OPTION C: ZEN MODE ===== */
+.opt-c .macos-window { width: 480px; }
+.opt-c .zen-layout {
+  min-height: 520px;
+  display: flex;
+  flex-direction: column;
+}
+
+.opt-c .zen-header {
+  padding: 20px 24px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.opt-c .zen-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+.opt-c .zen-subtitle {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+.opt-c .zen-content {
+  flex: 1;
+  padding: 0 24px 24px;
+  overflow-y: auto;
+}
+
+.opt-c .zen-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+  margin-bottom: 12px;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+.opt-c .zen-card:hover { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,122,255,0.08); }
+.opt-c .zen-card.active { border-color: var(--accent); background: var(--bg-active); }
+
+.opt-c .zen-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.opt-c .zen-card-text {
+  font-size: 13px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.opt-c .zen-card-time {
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+}
+
+/* Zen empty state */
+.opt-c .zen-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+}
+.opt-c .zen-empty-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  margin-bottom: 16px;
+}
+.opt-c .zen-empty h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.opt-c .zen-empty p {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  max-width: 240px;
+  line-height: 1.5;
+}
+
+/* Zen recording */
+.opt-c .zen-recording {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48px 24px;
+  gap: 20px;
+}
+.opt-c .zen-rec-circle {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: rgba(255,59,48,0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.opt-c .zen-rec-inner {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--red);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: pulse-dot 1.5s ease-in-out infinite;
+  color: white;
+  font-size: 28px;
+}
+.opt-c .zen-rec-timer {
+  font-size: 32px;
+  font-weight: 200;
+  font-family: -apple-system, 'SF Pro Display', sans-serif;
+  letter-spacing: 2px;
+}
+
+/* Zen settings */
+.opt-c .settings-window { width: 440px; }
+.opt-c .settings-flow {
+  min-height: 420px;
+  padding: 20px;
+}
+.opt-c .settings-category {
+  margin-bottom: 24px;
+}
+.opt-c .settings-category-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.opt-c .settings-category-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+.opt-c .settings-group {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.opt-c .settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+}
+.opt-c .settings-row + .settings-row { border-top: 1px solid var(--border); }
+.opt-c .settings-row-label {
+  font-size: 12.5px;
+}
+.opt-c .settings-row-icon {
+  margin-right: 8px;
+  font-size: 14px;
+  opacity: 0.6;
+}
+
+/* ===== MENU BAR MOCKUP ===== */
+.menu-bar-mock {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  padding-right: 20px;
+}
+.menu-bar-strip {
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border);
+  height: 24px;
+  width: 360px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 12px;
+  gap: 14px;
+  font-size: 12px;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+.menu-bar-icon {
+  font-size: 14px;
+  cursor: pointer;
+}
+.menu-dropdown {
+  width: 240px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 6px;
+  margin-top: -1px;
+}
+.menu-item {
+  padding: 6px 10px;
+  border-radius: 5px;
+  font-size: 12.5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.1s;
+}
+.menu-item:hover { background: var(--accent); color: white; }
+.menu-item .shortcut {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.menu-item:hover .shortcut { color: rgba(255,255,255,0.7); }
+.menu-separator {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 10px;
+}
+.menu-item.disabled { opacity: 0.5; cursor: default; }
+.menu-item.disabled:hover { background: transparent; color: var(--text-primary); }
+
+/* ===== ONBOARDING ===== */
+.onboarding-window { width: 480px; }
+.onboarding-body {
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+}
+.onboarding-progress {
+  display: flex;
+  gap: 6px;
+  padding: 16px 40px;
+}
+.onboarding-dot {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--bg-tertiary);
+  transition: background 0.3s;
+}
+.onboarding-dot.filled { background: var(--accent); }
+.onboarding-dot.current { background: var(--accent); }
+
+.onboarding-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 40px;
+  text-align: center;
+  gap: 14px;
+}
+.onboarding-icon { font-size: 52px; }
+.onboarding-title { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
+.onboarding-desc { font-size: 13px; color: var(--text-secondary); line-height: 1.5; max-width: 320px; }
+
+.onboarding-nav {
+  display: flex;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+}
+
+/* ===== OVERLAY MOCKUP ===== */
+.overlay-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+}
+.overlay-context {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+.overlay-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 22px;
+  background: rgba(0,0,0,0.78);
+  color: white;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3), 0 0 0 0.5px rgba(255,255,255,0.1) inset;
+  backdrop-filter: blur(20px);
+}
+.overlay-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--red);
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}
+.overlay-timer {
+  font-size: 14px;
+  font-weight: 500;
+  font-family: -apple-system, 'SF Mono', monospace;
+  letter-spacing: 0.5px;
+}
+
+/* Option B overlay — wider with more info */
+.opt-b .overlay-pill {
+  padding: 8px 20px;
+  gap: 12px;
+}
+.opt-b .overlay-meta {
+  font-size: 10px;
+  opacity: 0.6;
+  border-left: 1px solid rgba(255,255,255,0.15);
+  padding-left: 10px;
+}
+
+/* Option C overlay — ultra minimal */
+.opt-c .overlay-pill {
+  padding: 8px 14px;
+  border-radius: 16px;
+  gap: 6px;
+  background: rgba(0,0,0,0.65);
+}
+.opt-c .overlay-timer {
+  font-size: 12px;
+  font-weight: 400;
+}
+
+/* ===== STATE INDICATOR PILLS ===== */
+.state-switcher {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  margin-bottom: 12px;
+}
+.state-btn {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: all 0.15s;
+}
+.state-btn:hover { color: var(--text-primary); }
+.state-btn.active {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Description banner */
+.option-description {
+  padding: 16px 24px;
+  margin-bottom: 16px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  max-width: 820px;
+  width: 100%;
+}
+.option-description h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.option-description p {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.option-description .comparison-tags {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.comparison-tag {
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 10.5px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+/* Misc */
+.section-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 0;
+}
+.spacer { flex: 1; }
+.text-muted { color: var(--text-secondary); }
+.text-xs { font-size: 10.5px; }
+.text-sm { font-size: 12px; }
+.fw-600 { font-weight: 600; }
+.gap-4 { gap: 4px; }
+.gap-8 { gap: 8px; }
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-center { justify-content: center; }
+.w-full { width: 100%; }
+.mt-8 { margin-top: 8px; }
+
+/* Canvas wrapper for centering */
+.canvas-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+</style>
+</head>
+<body data-theme="light">
+<div class="explorer-shell">
+
+<!-- ===== TOP BAR ===== -->
+<div class="explorer-topbar">
+  <h1>EnviousWispr <span>UI Explorer</span></h1>
+  <div class="explorer-controls">
+    <div class="design-tabs">
+      <button class="design-tab tab-a active" onclick="switchDesign('a')">A: Refined Native</button>
+      <button class="design-tab tab-b" onclick="switchDesign('b')">B: Command Center</button>
+      <button class="design-tab tab-c" onclick="switchDesign('c')">C: Zen Mode</button>
+    </div>
+    <div class="flex items-center gap-8">
+      <span class="theme-label">Theme</span>
+      <div class="theme-toggle" onclick="toggleTheme()"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== PAGE TABS ===== -->
+<div class="page-tabs">
+  <button class="page-tab active" onclick="switchPage('main')"><span class="icon">📋</span> Main Window</button>
+  <button class="page-tab" onclick="switchPage('recording')"><span class="icon">🎙️</span> Recording State</button>
+  <button class="page-tab" onclick="switchPage('settings')"><span class="icon">⚙️</span> Settings</button>
+  <button class="page-tab" onclick="switchPage('menubar')"><span class="icon">📍</span> Menu Bar</button>
+  <button class="page-tab" onclick="switchPage('onboarding')"><span class="icon">👋</span> Onboarding</button>
+  <button class="page-tab" onclick="switchPage('overlay')"><span class="icon">💊</span> Recording Overlay</button>
+</div>
+
+<!-- ===== CANVAS ===== -->
+<div class="canvas" id="canvas">
+
+<!-- ========================================== -->
+<!-- OPTION A: REFINED NATIVE                   -->
+<!-- ========================================== -->
+<div class="design-panel opt-a active" id="panel-a">
+  <div class="canvas-inner">
+    <div class="option-description">
+      <h3>Option A: Refined Native</h3>
+      <p>Apple's design language refined to its best. Spacious layouts, progressive disclosure, warm empty states. Settings reorganized into coherent groupings that reduce cognitive load. The app feels like it was designed by Apple's HIG team.</p>
+      <div class="comparison-tags">
+        <span class="comparison-tag">Raycast-inspired</span>
+        <span class="comparison-tag">Apple Notes feel</span>
+        <span class="comparison-tag">Progressive disclosure</span>
+        <span class="comparison-tag">3 settings tabs (from 6)</span>
+      </div>
+    </div>
+
+    <!-- A: Main Window -->
+    <div class="page-content active" data-page="main">
+      <div class="macos-window">
+        <div class="titlebar">
+          <div class="traffic-lights"><div class="traffic-light tl-close"></div><div class="traffic-light tl-minimize"></div><div class="traffic-light tl-maximize"></div></div>
+          <span class="titlebar-text">EnviousWispr</span>
+          <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+            <span class="badge badge-green" style="font-size:10px;">● Idle</span>
+            <span style="font-size:11px; color:var(--text-secondary);">Parakeet v3</span>
+          </div>
+        </div>
+        <div class="main-layout">
+          <div class="sidebar">
+            <div class="sidebar-search">
+              <input type="text" placeholder="Search transcripts..." />
+            </div>
+            <div class="transcript-list">
+              <div class="transcript-item active animate-in" style="animation-delay:0.05s">
+                <div class="transcript-item-text">Meeting notes from the design review with the engineering team about the new dashboard layout</div>
+                <div class="transcript-item-meta">
+                  <span>2:45 PM</span>
+                  <span class="badge badge-purple" style="font-size:9px;">✨ Enhanced</span>
+                  <span style="font-size:10px; padding:1px 6px; background:var(--bg-tertiary); border-radius:8px;">Parakeet</span>
+                </div>
+              </div>
+              <div class="transcript-item animate-in" style="animation-delay:0.1s">
+                <div class="transcript-item-text">Quick reminder to follow up with Sarah about the API documentation changes</div>
+                <div class="transcript-item-meta"><span>1:12 PM</span></div>
+              </div>
+              <div class="transcript-item animate-in" style="animation-delay:0.15s">
+                <div class="transcript-item-text">Draft email to the client about project timeline adjustments for Q2</div>
+                <div class="transcript-item-meta">
+                  <span>11:30 AM</span>
+                  <span class="badge badge-purple" style="font-size:9px;">✨ Enhanced</span>
+                </div>
+              </div>
+              <div class="transcript-item animate-in" style="animation-delay:0.2s">
+                <div class="transcript-item-text">Shopping list: eggs, milk, bread, avocados, and that specific brand of oat milk</div>
+                <div class="transcript-item-meta"><span>Yesterday</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="detail-pane">
+            <div class="detail-content animate-slide">
+              <p style="font-size:14px; line-height:1.7; margin-bottom:16px;">Meeting notes from the design review with the engineering team about the new dashboard layout. Key takeaways include the need to simplify the navigation structure and add more visual hierarchy to the data tables.</p>
+              <details style="margin-top:12px; font-size:12px; color:var(--text-secondary);">
+                <summary style="cursor:pointer; margin-bottom:6px;">Original transcript</summary>
+                <p style="font-size:11.5px; line-height:1.5;">meeting notes from design review with engineering team about the new dashboard layout key takeaways include need to simplify navigation structure and add more visual hierarchy to data tables</p>
+              </details>
+            </div>
+            <div class="detail-actions">
+              <button class="btn"><span>📋</span> Copy</button>
+              <button class="btn"><span>📎</span> Paste to App</button>
+              <button class="btn btn-danger"><span>🗑️</span> Delete</button>
+              <div class="detail-meta">
+                <div>Parakeet v3 &middot; 0.8s</div>
+                <div class="badge badge-purple" style="margin-top:2px;">✨ Enhanced</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- A: Recording -->
+    <div class="page-content" data-page="recording">
+      <div class="macos-window" style="width:720px;">
+        <div class="titlebar">
+          <div class="traffic-lights"><div class="traffic-light tl-close"></div><div class="traffic-light tl-minimize"></div><div class="traffic-light tl-maximize"></div></div>
+          <span class="titlebar-text">EnviousWispr</span>
+          <div style="margin-left:auto;">
+            <span class="badge badge-red">● Recording</span>
+          </div>
+        </div>
+        <div class="main-layout">
+          <div class="sidebar" style="opacity:0.5;">
+            <div class="sidebar-search"><input type="text" placeholder="Search..." disabled /></div>
+            <div class="transcript-list">
+              <div class="transcript-item" style="opacity:0.5"><div class="transcript-item-text">Previous transcript...</div></div>
+            </div>
+          </div>
+          <div class="detail-pane">
+            <div class="recording-view">
+              <div class="pulse-ring-container" style="width:100px; height:100px;">
+                <div class="pulse-ring"></div>
+                <div class="pulse-ring"></div>
+                <div class="pulse-ring"></div>
+                <div style="font-size:42px; z-index:1;">🎙️</div>
+              </div>
+              <div style="font-size:20px; font-weight:600;">Recording...</div>
+              <div class="waveform-bars" style="height:32px;">
+                <div class="waveform-bar"></div><div class="waveform-bar"></div><div class="waveform-bar"></div>
+                <div class="waveform-bar"></div><div class="waveform-bar"></div><div class="waveform-bar"></div>
+                <div class="waveform-bar"></div><div class="waveform-bar"></div>
+                <div class="waveform-bar"></div><div class="waveform-bar"></div><div class="waveform-bar"></div>
+                <div class="waveform-bar"></div><div class="waveform-bar"></div><div class="waveform-bar"></div>
+                <div class="waveform-bar"></div><div class="waveform-bar"></div>
+              </div>
+              <div style="width:200px; height:6px; background:var(--bg-tertiary); border-radius:3px; overflow:hidden;">
+                <div style="width:65%; height:100%; background:var(--green); border-radius:3px; transition:width 0.1s;"></div>
+              </div>
+              <div style="font-size:12px; color:var(--text-secondary);">Auto-stop on silence enabled</div>
+              <div style="font-size:11px; color:var(--text-tertiary);">Press Escape to cancel</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- A: Settings -->
+    <div class="page-content" data-page="settings">
+      <div class="macos-window settings-window">
+        <div class="titlebar">
+          <div class="traffic-lights"><div class="traffic-light tl-close"></div><div class="traffic-light tl-minimize"></div><div class="traffic-light tl-maximize"></div></div>
+          <span class="titlebar-text">Settings</span>
+        </div>
+        <div class="settings-tabs">
+          <button class="settings-tab active" onclick="switchSettingsTab(this, 'a')">🎤 Transcription</button>
+          <button class="settings-tab" onclick="switchSettingsTab(this, 'a')">✨ AI & Processing</button>
+          <button class="settings-tab" onclick="switchSettingsTab(this, 'a')">⌨️ Controls & System</button>
+        </div>
+        <div class="settings-body">
+          <!-- Transcription tab -->
+          <div class="grouped-section animate-in" style="animation-delay:0.05s">
+            <div class="grouped-section-title">Speech Engine</div>
+            <div class="form-row">
+              <span class="form-label">Backend</span>
+              <div class="segmented">
+                <button class="segmented-btn active">Parakeet v3</button>
+                <button class="segmented-btn">WhisperKit</button>
+              </div>
+            </div>
+            <div class="form-hint">Fast English transcription with built-in punctuation.</div>
+          </div>
+
+          <div class="grouped-section animate-in" style="animation-delay:0.1s">
+            <div class="grouped-section-title">Recording</div>
+            <div class="form-row">
+              <span class="form-label">Mode</span>
+              <div class="segmented">
+                <button class="segmented-btn active">Push to Talk</button>
+                <button class="segmented-btn">Toggle</button>
+              </div>
+            </div>
+            <div class="form-row">
+              <span class="form-label">Auto-stop on silence</span>
+              <div class="toggle-track on"></div>
+            </div>
+            <div class="form-row" style="padding-left:16px;">
+              <span class="form-label text-muted text-sm">Silence timeout</span>
+              <div class="flex items-center gap-8">
+                <div class="slider-track"><div class="slider-fill"></div><div class="slider-thumb"></div></div>
+                <span class="text-xs" style="font-family:'SF Mono',monospace; width:28px;">1.5s</span>
+              </div>
+            </div>
+            <div class="form-row" style="padding-left:16px;">
+              <span class="form-label text-muted text-sm">VAD Sensitivity</span>
+              <div class="flex items-center gap-8">
+                <div class="slider-track"><div class="slider-fill"></div><div class="slider-thumb"></div></div>
+                <span class="text-xs" style="width:50px;">Medium</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="grouped-section animate-in" style="animation-delay:0.15s">
+            <div class="grouped-section-title">Memory</div>
+            <div class="form-row">
+              <span class="form-label">Unload model after</span>
+              <div class="segmented">
+                <button class="segmented-btn active">Never</button>
+                <button class="segmented-btn">5 min</button>
+                <button class="segmented-btn">15 min</button>
+                <button class="segmented-btn">Now</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- A: Menu Bar -->
+    <div class="page-content" data-page="menubar">
+      <div class="menu-bar-mock">
+        <div class="menu-bar-strip">
+          <span style="font-size:11px; color:var(--text-secondary);">Wi-Fi</span>
+          <span style="font-size:11px; color:var(--text-secondary);">3:42 PM</span>
+          <span class="menu-bar-icon">🎙️</span>
+        </div>
+        <div class="menu-dropdown animate-in">
+          <div class="menu-item disabled">
+            <span style="color:var(--text-secondary);">● Idle — Parakeet v3</span>
+          </div>
+          <div class="menu-separator"></div>
+          <div class="menu-item"><span>🎙️</span> Start Recording <span class="shortcut">⌃Space</span></div>
+          <div class="menu-separator"></div>
+          <div class="menu-item"><span>📋</span> Open EnviousWispr <span class="shortcut">⌘O</span></div>
+          <div class="menu-item"><span>⚙️</span> Settings... <span class="shortcut">⌘,</span></div>
+          <div class="menu-item"><span>🔄</span> Check for Updates...</div>
+          <div class="menu-separator"></div>
+          <div class="menu-item"><span>⏻</span> Quit EnviousWispr <span class="shortcut">⌘Q</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- A: Onboarding -->
+    <div class="page-content" data-page="onboarding">
+      <div class="macos-window onboarding-window">
+        <div class="titlebar">
+          <div class="traffic-lights"><div class="traffic-light tl-close"></div><div class="traffic-light tl-minimize"></div><div class="traffic-light tl-maximize"></div></div>
+        </div>
+        <div class="onboarding-body">
+          <div class="onboarding-progress">
+            <div class="onboarding-dot filled"></div>
+            <div class="onboarding-dot current"></div>
+            <div class="onboarding-dot"></div>
+            <div class="onboarding-dot"></div>
+          </div>
+          <div class="onboarding-content animate-slide">
+            <div class="onboarding-icon">🎤</div>
+            <div class="onboarding-title">Microphone Access</div>
+            <div class="onboarding-desc">EnviousWispr needs microphone access to capture your speech for transcription. Your voice never leaves your Mac.</div>
+            <button class="btn btn-primary" style="margin-top:8px;">Grant Microphone Access</button>
+          </div>
+          <div class="onboarding-nav">
+            <button class="btn">Back</button>
+            <button class="btn btn-primary">Continue</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- A: Overlay -->
+    <div class="page-content" data-page="overlay">
+      <div class="overlay-preview">
+        <div class="overlay-context">Floats at top-center of screen during recording</div>
+        <div class="overlay-pill">
+          <div class="overlay-dot"></div>
+          <div class="waveform-bars waveform-bars-white" style="height:18px;">
+            <div class="waveform-bar" style="opacity:0.9"></div>
+            <div class="waveform-bar" style="opacity:0.9"></div>
+            <div class="waveform-bar" style="opacity:0.9"></div>
+            <div class="waveform-bar" style="opacity:0.9"></div>
+            <div class="waveform-bar" style="opacity:0.9"></div>
+          </div>
+          <div class="overlay-timer">1:23</div>
+        </div>
+        <div style="font-size:11px; color:var(--text-tertiary);">Draggable &middot; Non-activating panel</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================== -->
+<!-- OPTION B: COMMAND CENTER                   -->
+<!-- ========================================== -->
+<div class="design-panel opt-b" id="panel-b">
+  <div class="canvas-inner">
+    <div class="option-description">
+      <h3>Option B: Command Center</h3>
+      <p>Power-user focused dashboard. Dense but organized information hierarchy. Live system stats in the sidebar, model status always visible. Settings use sidebar navigation instead of tabs for deeper structure. Everything at a glance.</p>
+      <div class="comparison-tags">
+        <span class="comparison-tag">Arc Browser-inspired</span>
+        <span class="comparison-tag">Linear feel</span>
+        <span class="comparison-tag">Dashboard stats</span>
+        <span class="comparison-tag">Sidebar settings nav</span>
+      </div>
+    </div>
+
+    <!-- B: Main Window -->
+    <div class="page-content active" data-page="main">
+      <div class="macos-window">
+        <div class="titlebar">
+          <div class="traffic-lights"><div class="traffic-light tl-close"></div><div class="traffic-light tl-minimize"></div><div class="traffic-light tl-maximize"></div></div>
+          <span class="titlebar-text">EnviousWispr</span>
+        </div>
+        <div class="main-layout">
+          <div class="sidebar">
+            <div class="sidebar-header">
+              <div class="stat-grid">
+                <div class="stat-card">
+                  <div class="stat-value" style="color:var(--green);">47</div>
+                  <div class="stat-label">Transcripts</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-value">0.8s</div>
+                  <div class="stat-label">Avg Speed</div>
+                </div>
+              </div>
+              <div class="model-status">
+                <div class="status-dot green"></div>
+                <span>Parakeet v3</span>
+                <span style="margin-left:auto; font-size:10px; color:var(--text-tertiary);">Ready</span>
+              </div>
+            </div>
+            <div style="padding:8px 10px;">
+              <input type="text" placeholder="⌘F Search..." style="width:100%; padding:5px 8px; border-radius:5px; border:1px solid var(--border); background:var(--bg-primary); font-size:11px; color:var(--text-primary); outline:none;" />
+            </div>
+            <div class="transcript-list">
+              <div class="transcript-item active">
+                <div class="transcript-item-time">2:45p</div>
+                <div>
+                  <div class="transcript-item-text">Meeting notes from the design review</div>
+                  <div style="display:flex; gap:4px; margin-top:3px;">
+                    <span class="badge badge-purple" style="font-size:8.5px;">AI</span>
+                    <span class="badge badge-blue" style="font-size:8.5px;">0.8s</span>
+                  </div>
+                </div>
+              </div>
+              <div class="transcript-item">
+                <div class="transcript-item-time">1:12p</div>
+                <div><div class="transcript-item-text">Quick reminder to follow up with Sarah</div></div>
+              </div>
+              <div class="transcript-item">
+                <div class="transcript-item-time">11:30</div>
+                <div>
+                  <div class="transcript-item-text">Draft email to client about timeline</div>
+                  <div style="display:flex; gap:4px; margin-top:3px;"><span class="badge badge-purple" style="font-size:8.5px;">AI</span></div>
+                </div>
+              </div>
+              <div class="transcript-item">
+                <div class="transcript-item-time">10:05</div>
+                <div><div class="transcript-item-text">Shopping list eggs milk bread avocados</div></div>
+              </div>
+            </div>
+          </div>
+          <div class="detail-pane">
+            <div class="detail-toolbar">
+              <button class="btn" style="font-size:11px;">📋 Copy</button>
+              <button class="btn" style="font-size:11px;">📎 Paste</button>
+              <button class="btn" style="font-size:11px;">✨ Enhance</button>
+              <div class="spacer"></div>
+              <span class="text-xs text-muted">Parakeet v3 &middot; 0.8s &middot; 2:45 PM</span>
+              <button class="btn btn-danger" style="font-size:11px;">🗑️</button>
+            </div>
+            <div style="font-size:14px; line-height:1.7; flex:1;">
+              <p>Meeting notes from the design review with the engineering team about the new dashboard layout. Key takeaways include the need to simplify the navigation structure and add more visual hierarchy to the data tables.</p>
+              <details style="margin-top:16px; font-size:12px; color:var(--text-secondary);">
+                <summary style="cursor:pointer;">Show original</summary>
+                <p style="margin-top:6px; font-size:11.5px; padding:8px; background:var(--bg-tertiary); border-radius:var(--radius-sm);">meeting notes from design review with engineering team about the new dashboard layout...</p>
+              </details>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- B: Recording -->
+    <div class="page-content" data-page="recording">
+      <div class="macos-window" style="width:820px;">
+        <div class="titlebar">
+          <div class="traffic-lights"><div class="traffic-light tl-close"></div><div class="traffic-light tl-minimize"></div><div class="traffic-light tl-maximize"></div></div>
+          <span class="titlebar-text">EnviousWispr — Recording</span>
+        </div>
+        <div class="main-layout">
+          <div class="sidebar">
+            <div class="sidebar-header">
+              <div class="model-status" style="border-color:var(--red);">
+                <div class="status-dot red" style="animation:pulse-dot 1s infinite;"></div>
+                <span style="color:var(--red); font-weight:600;">Recording</span>
+                <span style="margin-left:auto; font-family:'SF Mono',monospace; font-size:11px;">1:23</span>
+              </div>
+            </div>
+            <div class="transcript-list" style="opacity:0.4;">
+              <div class="transcript-item"><div class="transcript-item-time">2:45p</div><div><div class="transcript-item-text">Previous transcript...</div></div></div>
+            </div>
+          </div>
+          <div class="detail-pane" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:20px;">
+            <div style="display:flex; align-items:center; gap:24px;">
+              <div class="pulse-ring-container" style="width:80px; height:80px;">
+                <div class="pulse-ring" style="width:60px; height:60px;"></div>
+                <div class="pulse-ring" style="width:60px; height:60px;"></div>
+                <div style="font-size:36px; z-index:1;">🎙️</div>
+              </div>
+              <div>
+                <div style="font-size:24px; font-weight:700;">1:23</div>
+                <div style="font-size:11px; color:var(--text-secondary);">Recording &middot; Parakeet v3</div>
+              </div>
+            </div>
+            <div class="waveform-bars" style="height:40px; gap:3px;">
+              <div class="waveform-bar" style="width:4px;"></div><div class="waveform-bar" style="width:4px;"></div>
+              <div class="waveform-bar" style="width:4px;"></div><div class="waveform-bar" style="width:4px;"></div>
+              <div class="waveform-bar" style="width:4px;"></div><div class="waveform-bar" style="width:4px;"></div>
+              <div class="waveform-bar" style="width:4px;"></div><div class="waveform-bar" style="width:4px;"></div>
+              <div class="waveform-bar" style="width:4px;"></div><div class="waveform-bar" style="width:4px;"></div>
+              <div class="waveform-bar" style="width:4px;"></div><div class="waveform-bar" style="width:4px;"></div>
+              <div class="waveform-bar" style="width:4px;"></div><div class="waveform-bar" style="width:4px;"></div>
+              <div class="waveform-bar" style="width:4px;"></div><div class="waveform-bar" style="width:4px;"></div>
+            </div>
+            <div style="display:flex; gap:12px; align-items:center;">
+              <div style="width:240px; height:6px; background:var(--bg-tertiary); border-radius:3px; overflow:hidden;">
+                <div style="width:65%; height:100%; background:var(--green); border-radius:3px;"></div>
+              </div>
+              <span class="text-xs text-muted">VAD: Active</span>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button class="btn" style="border-color:var(--red); color:var(--red);">⏹ Stop</button>
+              <button class="btn" style="font-size:11px;">Esc Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- B: Settings -->
+    <div class="page-content" data-page="settings">
+      <div class="macos-window settings-window">
+        <div class="titlebar">
+          <div class="traffic-lights"><div class="traffic-light tl-close"></div><div class="traffic-light tl-minimize"></div><div class="traffic-light tl-maximize"></div></div>
+          <span class="titlebar-text">Settings</span>
+        </div>
+        <div class="settings-layout">
+          <div class="settings-nav">
+            <div class="settings-nav-group">Engine</div>
+            <div class="settings-nav-item active">🎤 ASR Backend</div>
+            <div class="settings-nav-item">🎛️ Voice Detection</div>
+            <div class="settings-nav-item">🧠 Memory</div>
+
+            <div class="settings-nav-group">Processing</div>
+            <div class="settings-nav-item">✨ AI Polish</div>
+            <div class="settings-nav-item">📝 Word Correction</div>
+            <div class="settings-nav-item">🔧 LLM Prompts</div>
+
+            <div class="settings-nav-group">Input / Output</div>
+            <div class="settings-nav-item">⌨️ Shortcuts</div>
+            <div class="settings-nav-item">📋 Clipboard</div>
+
+            <div class="settings-nav-group">System</div>
+            <div class="settings-nav-item">🔐 Permissions</div>
+            <div class="settings-nav-item">🐞 Diagnostics</div>
+          </div>
+          <div class="settings-detail">
+            <h3 style="font-size:15px; font-weight:600; margin-bottom:16px;">ASR Backend</h3>
+
+            <div class="grouped-section">
+              <div class="form-row">
+                <span class="form-label">Engine</span>
+                <div class="segmented">
+                  <button class="segmented-btn active">Parakeet v3</button>
+                  <button class="segmented-btn">WhisperKit</button>
+                </div>
+              </div>
+              <div class="form-hint">Fast English transcription with built-in punctuation. ~110x real-time on Apple Silicon.</div>
+            </div>
+
+            <div class="grouped-section">
+              <div class="grouped-section-title">Performance</div>
+              <div class="form-row">
+                <span class="form-label">Last benchmark</span>
+                <span class="text-sm" style="font-family:'SF Mono',monospace;">0.82s (110x RT)</span>
+              </div>
+              <div class="form-row">
+                <span class="form-label">Model status</span>
+                <span class="badge badge-green">● Loaded</span>
+              </div>
+              <div class="form-row">
+                <button class="btn" style="font-size:11px;">Run Benchmark</button>
+              </div>
+            </div>
+
+            <div class="grouped-section">
+              <div class="grouped-section-title">Recording Mode</div>
+              <div class="form-row">
+                <span class="form-label">Input mode</span>
+                <div class="segmented">
+                  <button class="segmented-btn active">Push to Talk</button>
+                  <button class="segmented-btn">Toggle</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- B: Menu Bar -->
+    <div class="page-content" data-page="menubar">
+      <div class="menu-bar-mock">
+        <div class="menu-bar-strip">
+          <span style="font-size:11px; color:var(--text-secondary);">3:42 PM</span>
+          <span class="menu-bar-icon">🎙️</span>
+        </div>
+        <div class="menu-dropdown animate-in" style="width:280px;">
+          <div style="padding:8px 10px; display:flex; gap:12px; align-items:center;">
+            <div class="status-dot green" style="width:8px; height:8px;"></div>
+            <div>
+              <div style="font-size:12px; font-weight:600;">Idle</div>
+              <div style="font-size:10px; color:var(--text-secondary);">Parakeet v3 &middot; Model loaded &middot; 47 transcripts</div>
+            </div>
+          </div>
+          <div class="menu-separator"></div>
+          <div class="menu-item"><span>🎙️</span> Start Recording <span class="shortcut">⌃Space</span></div>
+          <div class="menu-item"><span>✨</span> Record + AI Polish <span class="shortcut">⌃⌥Space</span></div>
+          <div class="menu-separator"></div>
+          <div class="menu-item"><span>📋</span> Open Window <span class="shortcut">⌘O</span></div>
+          <div class="menu-item"><span>⚙️</span> Settings <span class="shortcut">⌘,</span></div>
+          <div class="menu-item"><span>🔄</span> Check for Updates</div>
+          <div class="menu-separator"></div>
+          <div class="menu-item" style="font-size:10.5px; color:var(--text-tertiary);">
+            v1.0.0 &middot; <span class="shortcut">⌘Q Quit</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- B: Onboarding -->
+    <div class="page-content" data-page="onboarding">
+      <div class="macos-window onboarding-window" style="width:520px;">
+        <div class="titlebar">
+          <div class="traffic-lights"><div class="traffic-light tl-close"></div><div class="traffic-light tl-minimize"></div><div class="traffic-light tl-maximize"></div></div>
+          <span class="titlebar-text">Setup</span>
+        </div>
+        <div class="onboarding-body">
+          <div style="display:flex; padding:16px 24px; gap:24px; align-items:center; border-bottom:1px solid var(--border);">
+            <div style="display:flex; gap:12px; font-size:11px;">
+              <span class="badge badge-green">✓ Welcome</span>
+              <span class="badge badge-blue" style="font-weight:600;">2. Microphone</span>
+              <span style="color:var(--text-tertiary);">3. Accessibility</span>
+              <span style="color:var(--text-tertiary);">4. Ready</span>
+            </div>
+          </div>
+          <div class="onboarding-content">
+            <div class="onboarding-icon">🎤</div>
+            <div class="onboarding-title">Microphone Access</div>
+            <div class="onboarding-desc">EnviousWispr captures your speech locally for transcription. Audio never leaves your Mac.</div>
+            <button class="btn btn-primary" style="margin-top:8px;">Grant Access</button>
+          </div>
+          <div class="onboarding-nav">
+            <button class="btn">← Back</button>
+            <button class="btn btn-primary">Continue →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- B: Overlay -->
+    <div class="page-content" data-page="overlay">
+      <div class="overlay-preview">
+        <div class="overlay-context">Wide overlay with extra metadata — model & mode visible</div>
+        <div class="overlay-pill">
+          <div class="overlay-dot"></div>
+          <div class="waveform-bars waveform-bars-white" style="height:18px;">
+            <div class="waveform-bar" style="opacity:0.9"></div>
+            <div class="waveform-bar" style="opacity:0.9"></div>
+            <div class="waveform-bar" style="opacity:0.9"></div>
+            <div class="waveform-bar" style="opacity:0.9"></div>
+            <div class="waveform-bar" style="opacity:0.9"></div>
+          </div>
+          <div class="overlay-timer">1:23</div>
+          <div class="overlay-meta">Parakeet &middot; PTT</div>
+        </div>
+        <div style="font-size:11px; color:var(--text-tertiary);">Shows engine + input mode &middot; Wider pill</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================================== -->
+<!-- OPTION C: ZEN MODE                         -->
+<!-- ========================================== -->
+<div class="design-panel opt-c" id="panel-c">
+  <div class="canvas-inner">
+    <div class="option-description">
+      <h3>Option C: Zen Mode</h3>
+      <p>Minimal, distraction-free. Single-column card-based layout. The app stays invisible until needed. Settings organized by workflow phases: Record → Process → Output. Beautiful micro-interactions and generous whitespace. Calm, focused.</p>
+      <div class="comparison-tags">
+        <span class="comparison-tag">Things 3-inspired</span>
+        <span class="comparison-tag">Notion feel</span>
+        <span class="comparison-tag">Card-based</span>
+        <span class="comparison-tag">Workflow-oriented settings</span>
+      </div>
+    </div>
+
+    <!-- C: Main Window -->
+    <div class="page-content active" data-page="main">
+      <div class="macos-window">
+        <div class="titlebar">
+          <div class="traffic-lights"><div class="traffic-light tl-close"></div><div class="traffic-light tl-minimize"></div><div class="traffic-light tl-maximize"></div></div>
+        </div>
+        <div class="zen-layout">
+          <div class="zen-header">
+            <div>
+              <div class="zen-title">Transcripts</div>
+              <div class="zen-subtitle">4 items today</div>
+            </div>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <span class="badge badge-green">Ready</span>
+              <button class="btn btn-primary" style="border-radius:20px; padding:5px 14px;">
+                🎙️ Record
+              </button>
+            </div>
+          </div>
+
+          <div style="padding:0 24px 8px;">
+            <input type="text" placeholder="Search..." style="width:100%; padding:8px 14px; border-radius:var(--radius-md); border:1px solid var(--border); background:var(--bg-primary); font-size:12px; color:var(--text-primary); outline:none;" />
+          </div>
+
+          <div class="zen-content">
+            <div class="zen-card active animate-in" style="animation-delay:0.05s">
+              <div class="zen-card-header">
+                <span class="zen-card-time">2:45 PM</span>
+                <div class="flex gap-4">
+                  <span class="badge badge-purple" style="font-size:9px;">✨ Enhanced</span>
+                  <span style="font-size:10px; color:var(--text-tertiary);">0.8s</span>
+                </div>
+              </div>
+              <div class="zen-card-text">Meeting notes from the design review with the engineering team about the new dashboard layout</div>
+            </div>
+
+            <div class="zen-card animate-in" style="animation-delay:0.1s">
+              <div class="zen-card-header">
+                <span class="zen-card-time">1:12 PM</span>
+                <span style="font-size:10px; color:var(--text-tertiary);">0.5s</span>
+              </div>
+              <div class="zen-card-text">Quick reminder to follow up with Sarah about the API documentation changes</div>
+            </div>
+
+            <div class="zen-card animate-in" style="animation-delay:0.15s">
+              <div class="zen-card-header">
+                <span class="zen-card-time">11:30 AM</span>
+                <div class="flex gap-4">
+                  <span class="badge badge-purple" style="font-size:9px;">✨ Enhanced</span>
+                </div>
+              </div>
+              <div class="zen-card-text">Draft email to the client about project timeline adjustments for Q2</div>
+            </div>
+
+            <div class="zen-card animate-in" style="animation-delay:0.2s">
+              <div class="zen-card-header">
+                <span class="zen-card-time">Yesterday</span>
+              </div>
+              <div class="zen-card-text">Shopping list: eggs, milk, bread, avocados, and that specific brand of oat milk</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- C: Recording -->
+    <div class="page-content" data-page="recording">
+      <div class="macos-window">
+        <div class="titlebar">
+          <div class="traffic-lights"><div class="traffic-light tl-close"></div><div class="traffic-light tl-minimize"></div><div class="traffic-light tl-maximize"></div></div>
+        </div>
+        <div class="zen-layout">
+          <div class="zen-recording">
+            <div class="zen-rec-circle">
+              <div class="pulse-ring" style="width:100px; height:100px;"></div>
+              <div class="pulse-ring" style="width:100px; height:100px;"></div>
+              <div class="zen-rec-inner">🎙️</div>
+            </div>
+            <div class="zen-rec-timer">1:23</div>
+            <div class="waveform-bars waveform-bars-accent" style="height:28px;">
+              <div class="waveform-bar"></div><div class="waveform-bar"></div><div class="waveform-bar"></div>
+              <div class="waveform-bar"></div><div class="waveform-bar"></div><div class="waveform-bar"></div>
+              <div class="waveform-bar"></div><div class="waveform-bar"></div>
+              <div class="waveform-bar"></div><div class="waveform-bar"></div><div class="waveform-bar"></div>
+              <div class="waveform-bar"></div>
+            </div>
+            <div style="font-size:12px; color:var(--text-secondary);">Listening...</div>
+            <div style="display:flex; gap:8px; margin-top:8px;">
+              <button class="btn" style="border-radius:20px; padding:6px 20px; border-color:var(--red); color:var(--red);">Stop</button>
+              <button class="btn" style="border-radius:20px; padding:6px 16px; font-size:11px;">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- C: Settings -->
+    <div class="page-content" data-page="settings">
+      <div class="macos-window settings-window">
+        <div class="titlebar">
+          <div class="traffic-lights"><div class="traffic-light tl-close"></div><div class="traffic-light tl-minimize"></div><div class="traffic-light tl-maximize"></div></div>
+          <span class="titlebar-text">Settings</span>
+        </div>
+        <div class="settings-flow">
+          <!-- Record phase -->
+          <div class="settings-category animate-in" style="animation-delay:0.05s">
+            <div class="settings-category-title">🎤 Record</div>
+            <div class="settings-category-desc">How your voice is captured</div>
+            <div class="settings-group">
+              <div class="settings-row">
+                <span class="settings-row-label"><span class="settings-row-icon">🧠</span>Engine</span>
+                <div class="segmented">
+                  <button class="segmented-btn active">Parakeet</button>
+                  <button class="segmented-btn">Whisper</button>
+                </div>
+              </div>
+              <div class="settings-row">
+                <span class="settings-row-label"><span class="settings-row-icon">👆</span>Input mode</span>
+                <div class="segmented">
+                  <button class="segmented-btn active">Hold</button>
+                  <button class="segmented-btn">Toggle</button>
+                </div>
+              </div>
+              <div class="settings-row">
+                <span class="settings-row-label"><span class="settings-row-icon">🔇</span>Auto-stop on silence</span>
+                <div class="toggle-track on"></div>
+              </div>
+              <div class="settings-row">
+                <span class="settings-row-label"><span class="settings-row-icon">⚡</span>Energy pre-gate</span>
+                <div class="toggle-track"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Process phase -->
+          <div class="settings-category animate-in" style="animation-delay:0.1s">
+            <div class="settings-category-title">✨ Process</div>
+            <div class="settings-category-desc">How your transcript gets polished</div>
+            <div class="settings-group">
+              <div class="settings-row">
+                <span class="settings-row-label"><span class="settings-row-icon">🤖</span>AI Provider</span>
+                <div class="segmented" style="font-size:10px;">
+                  <button class="segmented-btn">Off</button>
+                  <button class="segmented-btn active">OpenAI</button>
+                  <button class="segmented-btn">Gemini</button>
+                  <button class="segmented-btn">Ollama</button>
+                </div>
+              </div>
+              <div class="settings-row">
+                <span class="settings-row-label"><span class="settings-row-icon">📝</span>Word correction</span>
+                <div class="toggle-track on"></div>
+              </div>
+              <div class="settings-row">
+                <span class="settings-row-label"><span class="settings-row-icon">💬</span>Custom prompt</span>
+                <button class="btn" style="font-size:11px;">Edit</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Output phase -->
+          <div class="settings-category animate-in" style="animation-delay:0.15s">
+            <div class="settings-category-title">📋 Output</div>
+            <div class="settings-category-desc">Where your text goes</div>
+            <div class="settings-group">
+              <div class="settings-row">
+                <span class="settings-row-label"><span class="settings-row-icon">📋</span>Auto-copy to clipboard</span>
+                <div class="toggle-track on"></div>
+              </div>
+              <div class="settings-row">
+                <span class="settings-row-label"><span class="settings-row-icon">♻️</span>Restore clipboard</span>
+                <div class="toggle-track"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Expand for more -->
+          <div style="text-align:center; padding:12px;">
+            <button class="btn" style="font-size:11px; border-radius:20px; padding:5px 16px;">
+              ⚙️ Advanced Settings...
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- C: Menu Bar -->
+    <div class="page-content" data-page="menubar">
+      <div class="menu-bar-mock">
+        <div class="menu-bar-strip">
+          <span style="font-size:11px; color:var(--text-secondary);">3:42 PM</span>
+          <span class="menu-bar-icon">🎙️</span>
+        </div>
+        <div class="menu-dropdown animate-in" style="width:200px; padding:8px;">
+          <div style="text-align:center; padding:12px 0;">
+            <div style="font-size:11px; color:var(--text-secondary); margin-bottom:8px;">Ready to record</div>
+            <button class="btn btn-primary" style="border-radius:20px; padding:6px 20px; width:100%;">🎙️ Record</button>
+          </div>
+          <div class="menu-separator"></div>
+          <div class="menu-item" style="justify-content:center;">Open Window</div>
+          <div class="menu-item" style="justify-content:center;">Settings</div>
+          <div class="menu-separator"></div>
+          <div class="menu-item" style="justify-content:center; font-size:11px; color:var(--text-tertiary);">Quit</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- C: Onboarding -->
+    <div class="page-content" data-page="onboarding">
+      <div class="macos-window onboarding-window" style="width:420px;">
+        <div class="titlebar">
+          <div class="traffic-lights"><div class="traffic-light tl-close"></div><div class="traffic-light tl-minimize"></div><div class="traffic-light tl-maximize"></div></div>
+        </div>
+        <div class="onboarding-body" style="min-height:340px;">
+          <div class="onboarding-progress" style="padding:16px 60px;">
+            <div class="onboarding-dot filled"></div>
+            <div class="onboarding-dot current"></div>
+            <div class="onboarding-dot"></div>
+            <div class="onboarding-dot"></div>
+          </div>
+          <div class="onboarding-content">
+            <div style="width:80px; height:80px; border-radius:50%; background:rgba(255,149,0,0.1); display:flex; align-items:center; justify-content:center;">
+              <div style="font-size:36px;">🎤</div>
+            </div>
+            <div class="onboarding-title" style="font-size:18px;">Microphone</div>
+            <div class="onboarding-desc" style="font-size:12.5px;">Your voice stays on this Mac. Always.</div>
+            <button class="btn btn-primary" style="border-radius:20px; padding:6px 20px; margin-top:4px;">Allow Access</button>
+          </div>
+          <div class="onboarding-nav" style="justify-content:center; gap:8px;">
+            <button class="btn" style="border-radius:20px;">Back</button>
+            <button class="btn btn-primary" style="border-radius:20px;">Next</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- C: Overlay -->
+    <div class="page-content" data-page="overlay">
+      <div class="overlay-preview">
+        <div class="overlay-context">Ultra-compact — just the essentials</div>
+        <div class="overlay-pill">
+          <div class="overlay-dot" style="width:8px; height:8px;"></div>
+          <div class="overlay-timer">1:23</div>
+        </div>
+        <div style="font-size:11px; color:var(--text-tertiary);">Smallest footprint &middot; Timer only</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /canvas -->
+</div><!-- /explorer-shell -->
+
+<script>
+// State
+let currentDesign = 'a';
+let currentPage = 'main';
+
+function switchDesign(id) {
+  currentDesign = id;
+  // Update tabs
+  document.querySelectorAll('.design-tab').forEach(t => t.classList.remove('active'));
+  document.querySelector('.tab-' + id).classList.add('active');
+
+  // Update panels
+  document.querySelectorAll('.design-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-' + id).classList.add('active');
+
+  // Restore current page within new design
+  switchPage(currentPage);
+}
+
+function switchPage(page) {
+  currentPage = page;
+  // Update page tabs
+  document.querySelectorAll('.page-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.page-tab').forEach(t => {
+    if (t.onclick.toString().includes("'" + page + "'")) t.classList.add('active');
+  });
+
+  // Show correct page content within active design panel
+  const activePanel = document.querySelector('.design-panel.active');
+  if (activePanel) {
+    activePanel.querySelectorAll('.page-content').forEach(p => p.classList.remove('active'));
+    const target = activePanel.querySelector('[data-page="' + page + '"]');
+    if (target) target.classList.add('active');
+  }
+}
+
+function switchSettingsTab(btn, design) {
+  const panel = document.getElementById('panel-' + design);
+  panel.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function toggleTheme() {
+  const current = document.body.getAttribute('data-theme');
+  document.body.setAttribute('data-theme', current === 'dark' ? 'light' : 'dark');
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (e.key === '1') switchDesign('a');
+  if (e.key === '2') switchDesign('b');
+  if (e.key === '3') switchDesign('c');
+  if (e.key === 'd' && !e.metaKey && !e.ctrlKey) toggleTheme();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,1258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EnviousWispr — Hybrid UI Proposal</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-canvas: #f0f0f2;
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f5f7;
+  --bg-tertiary: #e8e8ed;
+  --bg-sidebar: #f0f0f2;
+  --bg-hover: rgba(0,0,0,0.04);
+  --bg-active: rgba(0,122,255,0.12);
+  --text-primary: #1d1d1f;
+  --text-secondary: #86868b;
+  --text-tertiary: #aeaeb2;
+  --border: rgba(0,0,0,0.08);
+  --border-strong: rgba(0,0,0,0.15);
+  --accent: #007AFF;
+  --accent-hover: #0066d6;
+  --red: #FF3B30;
+  --green: #34C759;
+  --orange: #FF9500;
+  --purple: #AF52DE;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
+  --shadow-xl: 0 16px 48px rgba(0,0,0,0.16);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --window-bg: rgba(246,246,248,0.95);
+  --titlebar-bg: rgba(246,246,248,0.85);
+  --vibrancy: blur(20px) saturate(180%);
+}
+
+[data-theme="dark"] {
+  --bg-canvas: #161618;
+  --bg-primary: #1c1c1e;
+  --bg-secondary: #2c2c2e;
+  --bg-tertiary: #3a3a3c;
+  --bg-sidebar: #1c1c1e;
+  --bg-hover: rgba(255,255,255,0.06);
+  --bg-active: rgba(0,122,255,0.2);
+  --text-primary: #f5f5f7;
+  --text-secondary: #98989d;
+  --text-tertiary: #636366;
+  --border: rgba(255,255,255,0.08);
+  --border-strong: rgba(255,255,255,0.15);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.5);
+  --shadow-xl: 0 16px 48px rgba(0,0,0,0.6);
+  --window-bg: rgba(40,40,42,0.95);
+  --titlebar-bg: rgba(40,40,42,0.85);
+}
+
+html { font-size: 13px; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ===== SHELL ===== */
+.shell { display: flex; flex-direction: column; height: 100vh; }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 24px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.topbar h1 { font-size: 15px; font-weight: 600; letter-spacing: -0.2px; }
+.topbar h1 span { color: var(--accent); font-weight: 700; }
+.topbar-right { display: flex; align-items: center; gap: 16px; }
+.topbar-badge {
+  font-size: 10.5px;
+  padding: 3px 10px;
+  border-radius: 10px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.page-nav {
+  display: flex;
+  gap: 2px;
+  padding: 6px 24px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border);
+}
+.page-btn {
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.page-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.page-btn.active { background: var(--bg-active); color: var(--accent); }
+
+.theme-toggle {
+  width: 40px; height: 22px;
+  border-radius: 11px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  position: relative;
+  transition: background 0.3s;
+}
+.theme-toggle::after {
+  content: '';
+  position: absolute;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  top: 2px; left: 2px;
+  transition: transform 0.3s;
+}
+[data-theme="dark"] .theme-toggle::after { transform: translateX(18px); }
+
+/* ===== CANVAS ===== */
+.canvas {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  overflow: auto;
+}
+.canvas-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  max-width: 100%;
+}
+
+/* Source tags */
+.source-strip {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.source-tag {
+  font-size: 10px;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.from-a { background: rgba(0,122,255,0.1); color: var(--accent); }
+.from-b { background: rgba(255,107,53,0.1); color: #FF6B35; }
+.from-c { background: rgba(52,199,89,0.1); color: var(--green); }
+
+.page-note {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  text-align: center;
+  max-width: 600px;
+  line-height: 1.5;
+  padding: 10px 20px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+/* ===== WINDOW CHROME ===== */
+.win {
+  background: var(--window-bg);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  border: 1px solid var(--border-strong);
+  overflow: hidden;
+  backdrop-filter: var(--vibrancy);
+}
+.titlebar {
+  display: flex;
+  align-items: center;
+  padding: 11px 16px;
+  background: var(--titlebar-bg);
+  border-bottom: 1px solid var(--border);
+}
+.dots { display: flex; gap: 8px; margin-right: 14px; }
+.dot { width: 12px; height: 12px; border-radius: 50%; }
+.dot-r { background: #FF5F57; }
+.dot-y { background: #FEBC2E; }
+.dot-g { background: #28C840; }
+.titlebar-title {
+  font-size: 12px;
+  font-weight: 600;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.titlebar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ===== REUSABLE ===== */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10.5px;
+  font-weight: 500;
+}
+.badge-green { background: rgba(52,199,89,0.15); color: var(--green); }
+.badge-red { background: rgba(255,59,48,0.15); color: var(--red); }
+.badge-purple { background: rgba(175,82,222,0.15); color: var(--purple); }
+.badge-blue { background: rgba(0,122,255,0.15); color: var(--accent); }
+.badge-orange { background: rgba(255,149,0,0.15); color: var(--orange); }
+
+.btn {
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.btn:hover { background: var(--bg-hover); }
+.btn-primary { background: var(--accent); color: white; border-color: transparent; }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-danger { color: var(--red); }
+.btn-sm { padding: 3px 9px; font-size: 11px; }
+.btn-pill { border-radius: 20px; }
+
+.segmented {
+  display: inline-flex;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  gap: 1px;
+}
+.seg {
+  padding: 4px 12px;
+  border-radius: 5px;
+  font-size: 11.5px;
+  font-weight: 500;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.seg.on { background: var(--bg-primary); color: var(--text-primary); box-shadow: var(--shadow-sm); }
+
+.toggle {
+  width: 36px; height: 20px;
+  border-radius: 10px;
+  background: var(--bg-tertiary);
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+.toggle.on { background: var(--accent); }
+.toggle::after {
+  content: '';
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: white;
+  position: absolute;
+  top: 2px; left: 2px;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.toggle.on::after { transform: translateX(16px); }
+
+.slider-wrap { display: flex; align-items: center; gap: 8px; }
+.slider-track {
+  width: 100px; height: 4px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  position: relative;
+}
+.slider-fill { height: 100%; background: var(--accent); border-radius: 2px; }
+.slider-thumb {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: white;
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-sm);
+  position: absolute;
+  top: -5px;
+}
+.slider-val {
+  font-size: 10.5px;
+  font-family: -apple-system, 'SF Mono', Menlo, monospace;
+  color: var(--text-secondary);
+  width: 44px;
+}
+
+/* ===== ANIMATIONS ===== */
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 0.5; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+@keyframes pulse-dot {
+  0%, 100% { transform: scale(0.85); }
+  50% { transform: scale(1.15); }
+}
+@keyframes wave {
+  0%, 100% { height: 4px; }
+  50% { height: var(--h, 16px); }
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.anim { animation: fade-up 0.3s ease-out both; }
+
+.wave-bars { display: flex; align-items: center; gap: 2px; }
+.wave-bar {
+  width: 3px;
+  border-radius: 1.5px;
+  animation: wave 0.4s ease-in-out infinite alternate;
+}
+.wave-bar:nth-child(1) { --h: 8px; animation-delay: 0s; }
+.wave-bar:nth-child(2) { --h: 14px; animation-delay: 0.08s; }
+.wave-bar:nth-child(3) { --h: 20px; animation-delay: 0.16s; }
+.wave-bar:nth-child(4) { --h: 16px; animation-delay: 0.24s; }
+.wave-bar:nth-child(5) { --h: 22px; animation-delay: 0.1s; }
+.wave-bar:nth-child(6) { --h: 12px; animation-delay: 0.2s; }
+.wave-bar:nth-child(7) { --h: 18px; animation-delay: 0.05s; }
+.wave-bar:nth-child(8) { --h: 10px; animation-delay: 0.15s; }
+.wave-bar:nth-child(9) { --h: 17px; animation-delay: 0.12s; }
+.wave-bar:nth-child(10) { --h: 9px; animation-delay: 0.22s; }
+.wave-bar:nth-child(11) { --h: 15px; animation-delay: 0.02s; }
+.wave-bar:nth-child(12) { --h: 7px; animation-delay: 0.18s; }
+.wave-red .wave-bar { background: var(--red); }
+.wave-white .wave-bar { background: rgba(255,255,255,0.9); }
+.wave-accent .wave-bar { background: var(--accent); }
+
+.pulse-container { position: relative; display: flex; align-items: center; justify-content: center; }
+.pulse-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 2px solid var(--red);
+  opacity: 0;
+  animation: pulse-ring 1.5s ease-out infinite;
+}
+.pulse-ring:nth-child(2) { animation-delay: 0.5s; }
+.pulse-ring:nth-child(3) { animation-delay: 1s; }
+
+/* ===== PAGE SECTIONS ===== */
+.page { display: none; }
+.page.active { display: block; }
+
+/* =========================================== */
+/* MAIN WINDOW — from A (split) + B (stats)   */
+/* =========================================== */
+.main-win { width: 760px; position: relative; }
+.main-grid {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 500px;
+}
+
+/* Sidebar — A's layout + B's stats header */
+.sidebar {
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+.sidebar-stats {
+  padding: 10px 12px;
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.stat-pill {
+  flex: 1;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  text-align: center;
+}
+.stat-pill-val {
+  font-size: 15px;
+  font-weight: 700;
+  font-family: -apple-system, 'SF Mono', Menlo, monospace;
+}
+.stat-pill-val.green { color: var(--green); }
+.stat-pill-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-tertiary);
+  margin-top: 1px;
+}
+.sidebar-model {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+.model-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+}
+.sidebar-search {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+}
+.sidebar-search input {
+  width: 100%;
+  padding: 6px 10px 6px 28px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  font-size: 12px;
+  color: var(--text-primary);
+  outline: none;
+}
+.sidebar-search input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,122,255,0.12); }
+.sidebar-search::before {
+  content: '🔍';
+  position: absolute;
+  left: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  pointer-events: none;
+}
+
+.transcript-list { flex: 1; overflow-y: auto; padding: 4px; }
+
+/* C-inspired card-like rows */
+.t-item {
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-bottom: 3px;
+}
+.t-item:hover { background: var(--bg-hover); border-color: var(--border); }
+.t-item.active { background: var(--bg-active); border-color: rgba(0,122,255,0.2); }
+.t-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.t-item-time {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  font-family: -apple-system, 'SF Mono', Menlo, monospace;
+}
+.t-item-badges { display: flex; gap: 4px; }
+.t-item-text {
+  font-size: 12.5px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Detail pane — A's clean layout */
+.detail {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+}
+.detail-text {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.detail-original {
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.detail-original summary { cursor: pointer; margin-bottom: 6px; }
+.detail-original p {
+  font-size: 11.5px;
+  line-height: 1.5;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+}
+.detail-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  margin-top: 16px;
+}
+.detail-meta {
+  margin-left: auto;
+  text-align: right;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* Status view — A base + C's calmer vibe */
+.status-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+}
+.status-icon-wrap {
+  width: 72px; height: 72px;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+}
+.status-h { font-size: 17px; font-weight: 600; }
+.status-p { font-size: 12.5px; color: var(--text-secondary); text-align: center; max-width: 260px; line-height: 1.5; }
+.status-hint { font-size: 11px; color: var(--text-tertiary); }
+
+/* =========================================== */
+/* RECORDING — A base + C's large timer        */
+/* =========================================== */
+.rec-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 18px;
+}
+.rec-orb {
+  width: 100px; height: 100px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.rec-orb .pulse-ring { width: 80px; height: 80px; }
+.rec-mic { font-size: 38px; z-index: 1; }
+.rec-timer {
+  font-size: 28px;
+  font-weight: 200;
+  font-family: -apple-system, 'SF Pro Display', sans-serif;
+  letter-spacing: 1.5px;
+}
+.rec-status { font-size: 12px; color: var(--text-secondary); }
+.rec-hint { font-size: 11px; color: var(--text-tertiary); }
+
+/* Audio level bar */
+.level-bar-wrap { width: 200px; height: 5px; background: var(--bg-tertiary); border-radius: 3px; overflow: hidden; }
+.level-bar-fill { height: 100%; border-radius: 3px; background: var(--green); width: 62%; transition: width 0.1s; }
+
+/* =========================================== */
+/* SETTINGS — B's sidebar nav + C's workflow   */
+/* =========================================== */
+.settings-win { width: 680px; }
+.settings-grid {
+  display: grid;
+  grid-template-columns: 175px 1fr;
+  min-height: 480px;
+}
+
+/* Sidebar nav — B structure + C workflow labels */
+.snav {
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  padding: 8px;
+  overflow-y: auto;
+}
+.snav-group {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-tertiary);
+  padding: 14px 10px 5px;
+}
+.snav-group:first-child { padding-top: 4px; }
+.snav-item {
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.12s;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 1px;
+}
+.snav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+.snav-item.on { background: var(--bg-active); color: var(--accent); font-weight: 500; }
+.snav-icon { font-size: 14px; width: 18px; text-align: center; }
+
+/* Settings detail — C's grouped sections */
+.sdetail {
+  padding: 20px 24px;
+  overflow-y: auto;
+  max-height: 480px;
+}
+.sdetail h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.sdetail .sdesc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 14px;
+}
+
+.sgroup {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+.srow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  gap: 12px;
+}
+.srow + .srow { border-top: 1px solid var(--border); }
+.srow-label {
+  font-size: 12.5px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.srow-icon { font-size: 14px; opacity: 0.6; width: 18px; text-align: center; }
+.srow-hint {
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  padding: 2px 14px 10px;
+  border-top: none;
+}
+.srow-sub {
+  padding-left: 40px;
+  opacity: 0.85;
+}
+
+/* Collapsible advanced section */
+.advanced-toggle {
+  text-align: center;
+  padding: 8px;
+}
+.advanced-toggle button {
+  background: none;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  padding: 8px 18px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+  width: 100%;
+}
+.advanced-toggle button:hover { background: var(--bg-hover); border-color: var(--accent); color: var(--accent); }
+
+/* =========================================== */
+/* MENU BAR                                    */
+/* =========================================== */
+.menubar-mock { display: flex; flex-direction: column; align-items: flex-end; }
+.menubar-strip {
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border);
+  height: 24px;
+  width: 380px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 12px;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+.menubar-strip .mic-icon { font-size: 14px; cursor: pointer; }
+.menu-dd {
+  width: 260px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 6px;
+  margin-top: -1px;
+}
+.menu-item {
+  padding: 6px 10px;
+  border-radius: 5px;
+  font-size: 12.5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.1s;
+}
+.menu-item:hover { background: var(--accent); color: white; }
+.menu-item .sc {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.menu-item:hover .sc { color: rgba(255,255,255,0.7); }
+.menu-sep { height: 1px; background: var(--border); margin: 4px 10px; }
+.menu-status {
+  padding: 8px 10px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* =========================================== */
+/* ONBOARDING                                  */
+/* =========================================== */
+.onboard-win { width: 480px; }
+.onboard-body {
+  min-height: 330px;
+  display: flex;
+  flex-direction: column;
+}
+.onboard-dots {
+  display: flex;
+  gap: 6px;
+  padding: 16px 50px;
+}
+.onboard-dot {
+  flex: 1; height: 3px;
+  border-radius: 2px;
+  background: var(--bg-tertiary);
+  transition: background 0.3s;
+}
+.onboard-dot.done { background: var(--accent); }
+.onboard-dot.now { background: var(--accent); }
+
+.onboard-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 40px;
+  text-align: center;
+  gap: 14px;
+}
+.onboard-icon-wrap {
+  width: 80px; height: 80px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36px;
+}
+.onboard-h { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
+.onboard-p { font-size: 13px; color: var(--text-secondary); line-height: 1.5; max-width: 320px; }
+
+.onboard-nav {
+  display: flex;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+}
+
+/* =========================================== */
+/* OVERLAY                                     */
+/* =========================================== */
+.overlay-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+.overlay-label { font-size: 12px; color: var(--text-secondary); text-align: center; }
+.overlay-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 22px;
+  background: rgba(0,0,0,0.78);
+  color: white;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3), 0 0 0 0.5px rgba(255,255,255,0.1) inset;
+  backdrop-filter: blur(20px);
+}
+.overlay-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--red);
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}
+.overlay-time {
+  font-size: 14px;
+  font-weight: 500;
+  font-family: -apple-system, 'SF Mono', Menlo, monospace;
+  letter-spacing: 0.5px;
+}
+.overlay-note { font-size: 11px; color: var(--text-tertiary); }
+</style>
+</head>
+<body data-theme="light">
+<div class="shell">
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <h1>EnviousWispr <span>Hybrid Proposal</span></h1>
+  <div class="topbar-right">
+    <span class="topbar-badge">Best of A + B + C</span>
+    <div style="display:flex; align-items:center; gap:6px;">
+      <span style="font-size:11px; color:var(--text-secondary);">Theme</span>
+      <div class="theme-toggle" onclick="document.body.dataset.theme = document.body.dataset.theme === 'dark' ? 'light' : 'dark'"></div>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE NAV -->
+<div class="page-nav">
+  <button class="page-btn active" onclick="go('main')">📋 Main Window</button>
+  <button class="page-btn" onclick="go('rec')">🎙️ Recording</button>
+  <button class="page-btn" onclick="go('settings')">⚙️ Settings</button>
+  <button class="page-btn" onclick="go('menu')">📍 Menu Bar</button>
+  <button class="page-btn" onclick="go('onboard')">👋 Onboarding</button>
+  <button class="page-btn" onclick="go('overlay')">💊 Overlay</button>
+</div>
+
+<!-- CANVAS -->
+<div class="canvas"><div class="canvas-inner">
+
+<!-- ======== MAIN WINDOW ======== -->
+<div class="page active" id="p-main">
+  <div class="source-strip" style="margin-bottom:10px;">
+    <span class="source-tag from-a">Split view from A</span>
+    <span class="source-tag from-b">Stats sidebar from B</span>
+    <span class="source-tag from-c">Card-style rows from C</span>
+  </div>
+
+  <div class="win main-win">
+    <div class="titlebar" style="position:relative;">
+      <div class="dots"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div></div>
+      <span class="titlebar-title">EnviousWispr</span>
+      <div class="titlebar-right">
+        <span class="badge badge-green">● Ready</span>
+        <span style="font-size:11px; color:var(--text-secondary);">Parakeet v3</span>
+      </div>
+    </div>
+    <div class="main-grid">
+      <!-- SIDEBAR -->
+      <div class="sidebar">
+        <!-- B: Stats -->
+        <div class="sidebar-stats">
+          <div class="stat-pill">
+            <div class="stat-pill-val green">47</div>
+            <div class="stat-pill-label">Transcripts</div>
+          </div>
+          <div class="stat-pill">
+            <div class="stat-pill-val">0.8s</div>
+            <div class="stat-pill-label">Avg Speed</div>
+          </div>
+        </div>
+        <!-- B: Model status -->
+        <div class="sidebar-model">
+          <div class="model-dot"></div>
+          <span>Parakeet v3</span>
+          <span style="margin-left:auto; font-size:10px; color:var(--text-tertiary);">Loaded</span>
+        </div>
+        <!-- A: Search -->
+        <div class="sidebar-search">
+          <input type="text" placeholder="Search transcripts..." />
+        </div>
+        <!-- C-style card rows -->
+        <div class="transcript-list">
+          <div class="t-item active anim" style="animation-delay:.05s">
+            <div class="t-item-header">
+              <span class="t-item-time">2:45 PM</span>
+              <div class="t-item-badges">
+                <span class="badge badge-purple" style="font-size:9px;">✨ Enhanced</span>
+                <span style="font-size:9.5px; color:var(--text-tertiary);">0.8s</span>
+              </div>
+            </div>
+            <div class="t-item-text">Meeting notes from the design review with the engineering team about the new dashboard layout</div>
+          </div>
+          <div class="t-item anim" style="animation-delay:.1s">
+            <div class="t-item-header">
+              <span class="t-item-time">1:12 PM</span>
+              <span style="font-size:9.5px; color:var(--text-tertiary);">0.5s</span>
+            </div>
+            <div class="t-item-text">Quick reminder to follow up with Sarah about the API documentation changes</div>
+          </div>
+          <div class="t-item anim" style="animation-delay:.15s">
+            <div class="t-item-header">
+              <span class="t-item-time">11:30 AM</span>
+              <span class="badge badge-purple" style="font-size:9px;">✨</span>
+            </div>
+            <div class="t-item-text">Draft email to the client about project timeline adjustments for Q2</div>
+          </div>
+          <div class="t-item anim" style="animation-delay:.2s">
+            <div class="t-item-header">
+              <span class="t-item-time">Yesterday</span>
+            </div>
+            <div class="t-item-text">Shopping list: eggs, milk, bread, avocados, and that specific brand of oat milk</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DETAIL PANE -->
+      <div class="detail">
+        <div class="detail-text">
+          <p>Meeting notes from the design review with the engineering team about the new dashboard layout. Key takeaways include the need to simplify the navigation structure and add more visual hierarchy to the data tables.</p>
+          <details class="detail-original">
+            <summary>Original transcript</summary>
+            <p>meeting notes from design review with engineering team about the new dashboard layout key takeaways include need to simplify navigation structure and add more visual hierarchy to data tables</p>
+          </details>
+        </div>
+        <div class="detail-bar">
+          <button class="btn btn-sm">📋 Copy</button>
+          <button class="btn btn-sm">📎 Paste to App</button>
+          <button class="btn btn-sm btn-danger">🗑️ Delete</button>
+          <div class="detail-meta">
+            <div>Parakeet v3 · 0.8s</div>
+            <div class="badge badge-purple" style="margin-top:3px;">✨ Enhanced</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="page-note">
+    <strong>Hybrid rationale:</strong> A's clean split view is the right foundation — it's native macOS idiom. B's live stats and model status in the sidebar give at-a-glance system health. C's card-like transcript rows with top-aligned metadata feel more scannable than flat rows.
+  </div>
+</div>
+
+<!-- ======== RECORDING ======== -->
+<div class="page" id="p-rec">
+  <div class="source-strip" style="margin-bottom:10px;">
+    <span class="source-tag from-a">Pulsing rings from A</span>
+    <span class="source-tag from-c">Large timer from C</span>
+    <span class="source-tag from-b">Explicit controls from B</span>
+  </div>
+
+  <div class="win main-win">
+    <div class="titlebar" style="position:relative;">
+      <div class="dots"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div></div>
+      <span class="titlebar-title">EnviousWispr</span>
+      <div class="titlebar-right">
+        <span class="badge badge-red">● Recording</span>
+      </div>
+    </div>
+    <div class="main-grid">
+      <div class="sidebar" style="opacity:0.35; pointer-events:none;">
+        <div class="sidebar-stats">
+          <div class="stat-pill"><div class="stat-pill-val green">47</div><div class="stat-pill-label">Transcripts</div></div>
+          <div class="stat-pill"><div class="stat-pill-val">0.8s</div><div class="stat-pill-label">Avg Speed</div></div>
+        </div>
+        <div class="sidebar-model"><div class="model-dot" style="background:var(--red);"></div><span>Recording...</span></div>
+        <div class="sidebar-search"><input disabled placeholder="Search..." /></div>
+      </div>
+      <div class="detail">
+        <div class="rec-center">
+          <!-- A: Pulsing rings -->
+          <div class="rec-orb">
+            <div class="pulse-container" style="width:80px;height:80px;">
+              <div class="pulse-ring" style="width:70px;height:70px;"></div>
+              <div class="pulse-ring" style="width:70px;height:70px;"></div>
+              <div class="pulse-ring" style="width:70px;height:70px;"></div>
+              <div class="rec-mic">🎙️</div>
+            </div>
+          </div>
+          <!-- C: Large timer -->
+          <div class="rec-timer">1:23</div>
+          <!-- A: Waveform -->
+          <div class="wave-bars wave-red" style="height:28px;">
+            <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+            <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+            <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+            <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+          </div>
+          <!-- Audio level -->
+          <div class="level-bar-wrap"><div class="level-bar-fill"></div></div>
+          <!-- B: Explicit status + controls -->
+          <div class="rec-status">Auto-stop on silence enabled · VAD active</div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-pill" style="border-color:var(--red); color:var(--red);">⏹ Stop</button>
+            <button class="btn btn-pill btn-sm">Esc Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="page-note">
+    <strong>Hybrid rationale:</strong> A's pulsing rings give emotional feedback. C's large, thin-weight timer is the hero element you look at. B's explicit Stop/Cancel buttons and VAD status remove ambiguity — the user always knows what's happening and how to stop.
+  </div>
+</div>
+
+<!-- ======== SETTINGS ======== -->
+<div class="page" id="p-settings">
+  <div class="source-strip" style="margin-bottom:10px;">
+    <span class="source-tag from-b">Sidebar navigation from B</span>
+    <span class="source-tag from-c">Workflow grouping from C</span>
+    <span class="source-tag from-c">Progressive disclosure from C</span>
+    <span class="source-tag from-a">Grouped sections from A</span>
+  </div>
+
+  <div class="win settings-win">
+    <div class="titlebar" style="position:relative;">
+      <div class="dots"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div></div>
+      <span class="titlebar-title">Settings</span>
+    </div>
+    <div class="settings-grid">
+      <!-- B: Sidebar nav with C: workflow grouping -->
+      <div class="snav">
+        <div class="snav-group">Record</div>
+        <div class="snav-item on"><span class="snav-icon">🎤</span> Speech Engine</div>
+        <div class="snav-item"><span class="snav-icon">🎛️</span> Voice Detection</div>
+        <div class="snav-item"><span class="snav-icon">⌨️</span> Shortcuts</div>
+
+        <div class="snav-group">Process</div>
+        <div class="snav-item"><span class="snav-icon">✨</span> AI Polish</div>
+        <div class="snav-item"><span class="snav-icon">📝</span> Word Correction</div>
+
+        <div class="snav-group">Output</div>
+        <div class="snav-item"><span class="snav-icon">📋</span> Clipboard</div>
+
+        <div class="snav-group">System</div>
+        <div class="snav-item"><span class="snav-icon">🧠</span> Memory</div>
+        <div class="snav-item"><span class="snav-icon">🔐</span> Permissions</div>
+        <div class="snav-item"><span class="snav-icon">🐞</span> Diagnostics</div>
+      </div>
+
+      <!-- A+C: Grouped content with progressive disclosure -->
+      <div class="sdetail">
+        <h3>Speech Engine</h3>
+        <div class="sdesc">Choose your transcription backend and recording mode.</div>
+
+        <div class="sgroup">
+          <div class="srow">
+            <span class="srow-label"><span class="srow-icon">🧠</span> Backend</span>
+            <div class="segmented">
+              <button class="seg on">Parakeet v3</button>
+              <button class="seg">WhisperKit</button>
+            </div>
+          </div>
+          <div class="srow-hint">Fast English transcription with built-in punctuation. ~110x real-time on Apple Silicon.</div>
+          <div class="srow">
+            <span class="srow-label"><span class="srow-icon">👆</span> Recording mode</span>
+            <div class="segmented">
+              <button class="seg on">Push to Talk</button>
+              <button class="seg">Toggle</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="sgroup" style="margin-top:16px;">
+          <div class="srow">
+            <span class="srow-label"><span class="srow-icon">📊</span> Model status</span>
+            <span class="badge badge-green">● Loaded</span>
+          </div>
+          <div class="srow">
+            <span class="srow-label"><span class="srow-icon">⚡</span> Last benchmark</span>
+            <span style="font-family:-apple-system,'SF Mono',monospace; font-size:12px;">0.82s (110x RT)</span>
+          </div>
+          <div class="srow">
+            <span class="srow-label"></span>
+            <button class="btn btn-sm">Run Benchmark</button>
+          </div>
+        </div>
+
+        <!-- C: Progressive disclosure -->
+        <div class="advanced-toggle">
+          <button onclick="this.parentElement.nextElementSibling.style.display = this.parentElement.nextElementSibling.style.display === 'none' ? 'block' : 'none'; this.textContent = this.textContent.includes('Show') ? '▾ Hide WhisperKit Options' : '▸ Show WhisperKit Options'">▸ Show WhisperKit Options</button>
+        </div>
+        <div style="display:none;">
+          <div class="sgroup">
+            <div class="srow">
+              <span class="srow-label"><span class="srow-icon">🎯</span> Model quality</span>
+              <div class="segmented">
+                <button class="seg">Base</button>
+                <button class="seg on">Small</button>
+                <button class="seg">Large v3</button>
+              </div>
+            </div>
+            <div class="srow-hint">Larger models produce better transcription but need more memory and download time.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="page-note">
+    <strong>Hybrid rationale:</strong> B's sidebar scales to any number of settings pages — no more cramped tab bar. C's workflow grouping (Record → Process → Output → System) maps to the user's mental model of the pipeline. A's grouped sections with hints keep each page scannable. C's progressive disclosure ("Show WhisperKit Options") hides niche controls from casual users.
+  </div>
+</div>
+
+<!-- ======== MENU BAR ======== -->
+<div class="page" id="p-menu">
+  <div class="source-strip" style="margin-bottom:10px;">
+    <span class="source-tag from-a">Clean layout from A</span>
+    <span class="source-tag from-b">Rich status + AI shortcut from B</span>
+  </div>
+
+  <div class="menubar-mock">
+    <div class="menubar-strip">
+      <span>Wi-Fi</span>
+      <span>3:42 PM</span>
+      <span class="mic-icon">🎙️</span>
+    </div>
+    <div class="menu-dd anim">
+      <!-- B: Rich status line -->
+      <div class="menu-status">
+        <div class="model-dot"></div>
+        <span>Idle — Parakeet v3</span>
+        <span style="margin-left:auto; font-size:10px; color:var(--text-tertiary);">47 transcripts</span>
+      </div>
+      <div class="menu-sep"></div>
+      <!-- A: Clean items + B: AI Polish shortcut -->
+      <div class="menu-item"><span>🎙️</span> Start Recording <span class="sc">⌃Space</span></div>
+      <div class="menu-item"><span>✨</span> Record + AI Polish <span class="sc">⌃⌥Space</span></div>
+      <div class="menu-sep"></div>
+      <div class="menu-item"><span>📋</span> Open Window <span class="sc">⌘O</span></div>
+      <div class="menu-item"><span>⚙️</span> Settings... <span class="sc">⌘,</span></div>
+      <div class="menu-item"><span>🔄</span> Check for Updates...</div>
+      <div class="menu-sep"></div>
+      <div class="menu-item"><span>⏻</span> Quit EnviousWispr <span class="sc">⌘Q</span></div>
+    </div>
+  </div>
+
+  <div class="page-note" style="margin-top:16px;">
+    <strong>Hybrid rationale:</strong> A's clean item layout keeps it native-feeling. B's rich status line (model + transcript count) adds glanceable info. The "Record + AI Polish" shortcut from B is the most impactful addition — it maps to feature request #2 (separate hotkey for transcribe-with-LLM) and differentiates from plain "Start Recording".
+  </div>
+</div>
+
+<!-- ======== ONBOARDING ======== -->
+<div class="page" id="p-onboard">
+  <div class="source-strip" style="margin-bottom:10px;">
+    <span class="source-tag from-a">4-step flow from A</span>
+    <span class="source-tag from-c">Softer icon style from C</span>
+  </div>
+
+  <div class="win onboard-win">
+    <div class="titlebar" style="position:relative;">
+      <div class="dots"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div></div>
+    </div>
+    <div class="onboard-body">
+      <div class="onboard-dots">
+        <div class="onboard-dot done"></div>
+        <div class="onboard-dot now"></div>
+        <div class="onboard-dot"></div>
+        <div class="onboard-dot"></div>
+      </div>
+      <div class="onboard-content anim">
+        <!-- C: Softer circular icon -->
+        <div class="onboard-icon-wrap" style="background:rgba(255,149,0,0.1);">🎤</div>
+        <div class="onboard-h">Microphone Access</div>
+        <div class="onboard-p">EnviousWispr needs microphone access to capture your speech for transcription. Your voice never leaves your Mac.</div>
+        <button class="btn btn-primary btn-pill" style="padding:7px 22px; margin-top:4px;">Grant Microphone Access</button>
+      </div>
+      <div class="onboard-nav">
+        <button class="btn">Back</button>
+        <button class="btn btn-primary">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="page-note" style="margin-top:16px;">
+    <strong>Hybrid rationale:</strong> A's proven 4-step flow works well — no need to reinvent. C's softer, tinted icon circles feel warmer than bare SF Symbols. A's button hierarchy (secondary Back, primary Continue) is correct macOS idiom.
+  </div>
+</div>
+
+<!-- ======== OVERLAY ======== -->
+<div class="page" id="p-overlay">
+  <div class="source-strip" style="margin-bottom:10px;">
+    <span class="source-tag from-a">Waveform + timer from A</span>
+    <span class="source-tag from-b">Metadata hint from B</span>
+  </div>
+
+  <div class="overlay-area">
+    <div class="overlay-label">Floats at top-center of screen during recording — non-activating, draggable</div>
+    <div class="overlay-pill">
+      <div class="overlay-dot"></div>
+      <div class="wave-bars wave-white" style="height:16px;">
+        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+        <div class="wave-bar"></div><div class="wave-bar"></div>
+      </div>
+      <div class="overlay-time">1:23</div>
+      <div style="font-size:10px; opacity:0.5; border-left:1px solid rgba(255,255,255,0.15); padding-left:8px;">PTT</div>
+    </div>
+    <div class="overlay-note">Dot + waveform + timer from A · Input mode hint from B · Compact size from C</div>
+  </div>
+
+  <div class="page-note" style="margin-top:16px;">
+    <strong>Hybrid rationale:</strong> A's overlay is already well-designed. Adding just the input mode label from B ("PTT" or "Toggle") provides useful context in the most compact way. C's ultra-minimal approach drops too much info.
+  </div>
+</div>
+
+</div></div><!-- /canvas -->
+</div><!-- /shell -->
+
+<script>
+function go(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('p-' + id).classList.add('active');
+  document.querySelectorAll('.page-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.page-btn').forEach(b => {
+    if (b.onclick && b.onclick.toString().includes("'" + id + "'")) b.classList.add('active');
+  });
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'd' && !e.metaKey && !e.ctrlKey) {
+    document.body.dataset.theme = document.body.dataset.theme === 'dark' ? 'light' : 'dark';
+  }
+});
+</script>
+</body>
+</html>
