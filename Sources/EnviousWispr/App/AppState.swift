@@ -12,11 +12,13 @@ final class AppState {
     let keychainManager = KeychainManager()
     let hotkeyService = HotkeyService()
     let benchmark = BenchmarkSuite()
-    let soundManager = SoundManager()
     let recordingOverlay = RecordingOverlayPanel()
 
     // Pipeline — initialized after sub-systems
     let pipeline: TranscriptionPipeline
+
+    /// Called when pipeline state changes — set by AppDelegate for icon updates.
+    var onPipelineStateChange: ((PipelineState) -> Void)?
 
     // Transcript history
     var transcripts: [Transcript] = []
@@ -100,13 +102,6 @@ final class AppState {
         }
     }
 
-    var audioCuesEnabled: Bool {
-        didSet {
-            UserDefaults.standard.set(audioCuesEnabled, forKey: "audioCuesEnabled")
-            soundManager.isEnabled = audioCuesEnabled
-        }
-    }
-
     // Model discovery
     var discoveredModels: [LLMModelInfo] = []
     var isDiscoveringModels = false
@@ -132,8 +127,6 @@ final class AppState {
         vadAutoStop = defaults.object(forKey: "vadAutoStop") as? Bool ?? false
         vadSilenceTimeout = defaults.object(forKey: "vadSilenceTimeout") as? Double ?? 1.5
         hasCompletedOnboarding = defaults.object(forKey: "hasCompletedOnboarding") as? Bool ?? false
-        audioCuesEnabled = defaults.object(forKey: "audioCuesEnabled") as? Bool ?? true
-
         pipeline = TranscriptionPipeline(
             audioCapture: audioCapture,
             asrManager: asrManager,
@@ -145,28 +138,18 @@ final class AppState {
         pipeline.llmModel = llmModel
         pipeline.vadAutoStop = vadAutoStop
         pipeline.vadSilenceTimeout = vadSilenceTimeout
-        soundManager.isEnabled = audioCuesEnabled
-
-        // Wire pipeline state changes to overlay + sounds
+        // Wire pipeline state changes to overlay and icon
         pipeline.onStateChange = { [weak self] newState in
             guard let self else { return }
+            self.onPipelineStateChange?(newState)
             switch newState {
             case .recording:
-                self.soundManager.playStartSound()
                 self.recordingOverlay.show(audioLevelProvider: { [weak self] in
                     self?.audioCapture.audioLevel ?? 0
                 })
-            case .transcribing:
-                self.soundManager.playStopSound()
+            case .transcribing, .error, .idle:
                 self.recordingOverlay.hide()
-            case .complete:
-                self.soundManager.playCompleteSound()
-            case .error:
-                self.soundManager.playErrorSound()
-                self.recordingOverlay.hide()
-            case .idle:
-                self.recordingOverlay.hide()
-            case .polishing:
+            case .complete, .polishing:
                 break
             }
         }

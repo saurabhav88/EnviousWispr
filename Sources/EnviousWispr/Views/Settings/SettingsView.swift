@@ -94,10 +94,6 @@ struct GeneralSettingsView: View {
 
             Section("Behavior") {
                 Toggle("Auto-copy to clipboard", isOn: $state.autoCopyToClipboard)
-                Toggle("Audio cues", isOn: $state.audioCuesEnabled)
-                Text("Play sounds when recording starts and stops.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             Section("Performance") {

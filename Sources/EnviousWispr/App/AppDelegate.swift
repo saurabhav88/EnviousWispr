@@ -11,6 +11,8 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private(set) var updaterController: SPUStandardUpdaterController!
+    private var pulseTimer: Timer?
+    private var pulsePhase: Bool = false
 
     /// Shared app state — created here so it's available before any SwiftUI scene loads.
     let appState = AppState()
@@ -46,6 +48,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         setupStatusItem()
+
+        // Update menu bar icon whenever pipeline state changes
+        appState.onPipelineStateChange = { [weak self] _ in
+            self?.updateIcon()
+        }
     }
 
     private func setupStatusItem() {
@@ -106,8 +113,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Update the status item icon based on pipeline state.
     func updateIcon() {
-        let iconName = appState.pipelineState.menuBarIconName
+        let state = appState.pipelineState
+        let iconName = state.menuBarIconName
         statusItem?.button?.image = NSImage(systemSymbolName: iconName, accessibilityDescription: "EnviousWispr")
+        statusItem?.button?.alphaValue = 1.0
+
+        if state.shouldPulseIcon {
+            startPulse()
+        } else {
+            stopPulse()
+        }
+    }
+
+    private func startPulse() {
+        guard pulseTimer == nil else { return }
+        pulsePhase = false
+        pulseTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, let button = self.statusItem?.button else { return }
+                self.pulsePhase.toggle()
+                NSAnimationContext.runAnimationGroup { ctx in
+                    ctx.duration = 0.5
+                    button.animator().alphaValue = self.pulsePhase ? 0.3 : 1.0
+                }
+            }
+        }
+    }
+
+    private func stopPulse() {
+        pulseTimer?.invalidate()
+        pulseTimer = nil
+        pulsePhase = false
+        statusItem?.button?.alphaValue = 1.0
     }
 
     @objc private func toggleRecording() {

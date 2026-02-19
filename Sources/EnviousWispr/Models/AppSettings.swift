@@ -37,12 +37,20 @@ enum PipelineState: Equatable, Sendable {
 
     var menuBarIconName: String {
         switch self {
-        case .idle: return "mic"
-        case .recording: return "mic.fill"
-        case .transcribing: return "text.bubble"
-        case .polishing: return "sparkles"
-        case .complete: return "checkmark.circle"
-        case .error: return "exclamationmark.triangle"
+        case .idle, .complete, .error:
+            return "mic"
+        case .recording, .transcribing, .polishing:
+            return "mic.fill"
+        }
+    }
+
+    /// Whether the menu bar icon should pulse (processing states).
+    var shouldPulseIcon: Bool {
+        switch self {
+        case .transcribing, .polishing:
+            return true
+        default:
+            return false
         }
     }
 }
