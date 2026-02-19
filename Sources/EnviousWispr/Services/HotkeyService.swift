@@ -12,6 +12,19 @@ final class HotkeyService {
     private var localKeyMonitor: Any?
     private var localFlagsMonitor: Any?
 
+    // Cancel hotkey — dynamically registered only during recording
+    private var globalCancelMonitor: Any?
+    private var localCancelMonitor: Any?
+
+    /// Key code for the cancel hotkey. Default: Escape (53).
+    var cancelKeyCode: UInt16 = 53
+
+    /// Required modifiers for cancel hotkey. Default: none (bare Escape).
+    var cancelModifiers: NSEvent.ModifierFlags = []
+
+    /// Fired when the cancel hotkey is pressed while recording is active.
+    var onCancelRecording: (@MainActor () async -> Void)?
+
     private(set) var isEnabled = false
     private(set) var isModifierHeld = false
 
@@ -64,6 +77,7 @@ final class HotkeyService {
     }
 
     func stop() {
+        unregisterCancelHotkey()  // Clean up cancel monitors first
         for monitor in [globalKeyMonitor, globalFlagsMonitor, localKeyMonitor, localFlagsMonitor].compactMap({ $0 }) {
             NSEvent.removeMonitor(monitor)
         }
@@ -73,6 +87,36 @@ final class HotkeyService {
         localFlagsMonitor = nil
         isEnabled = false
         isModifierHeld = false
+    }
+
+    /// Register global + local cancel monitors. Call on `.recording` entry.
+    func registerCancelHotkey() {
+        guard globalCancelMonitor == nil else { return }
+
+        globalCancelMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            let code = event.keyCode
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            Task { @MainActor in self?.handleCancelKeyDown(code: code, flags: flags) }
+        }
+
+        localCancelMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            let code = event.keyCode
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            Task { @MainActor in self?.handleCancelKeyDown(code: code, flags: flags) }
+            return event  // Pass event through — do not consume Escape globally
+        }
+    }
+
+    /// Remove cancel monitors. Call whenever recording ends for any reason.
+    func unregisterCancelHotkey() {
+        if let monitor = globalCancelMonitor {
+            NSEvent.removeMonitor(monitor)
+            globalCancelMonitor = nil
+        }
+        if let monitor = localCancelMonitor {
+            NSEvent.removeMonitor(monitor)
+            localCancelMonitor = nil
+        }
     }
 
     private func handleKeyDown(code: UInt16, flags: NSEvent.ModifierFlags) {
@@ -102,6 +146,19 @@ final class HotkeyService {
         } else {
             return "\(modifierName(toggleModifiers))\(keyCodeName(toggleKeyCode))"
         }
+    }
+
+    var cancelHotkeyDescription: String {
+        let mods = modifierName(cancelModifiers)
+        let key = keyCodeName(cancelKeyCode)
+        return mods.isEmpty ? key : "\(mods)\(key)"
+    }
+
+    private func handleCancelKeyDown(code: UInt16, flags: NSEvent.ModifierFlags) {
+        guard code == cancelKeyCode else { return }
+        let required = cancelModifiers.intersection(.deviceIndependentFlagsMask)
+        guard required.isEmpty || flags.contains(required) else { return }
+        Task { await onCancelRecording?() }
     }
 
     private func modifierName(_ flags: NSEvent.ModifierFlags) -> String {

@@ -100,6 +100,10 @@ struct GeneralSettingsView: View {
 
             Section("Behavior") {
                 Toggle("Auto-copy to clipboard", isOn: $state.autoCopyToClipboard)
+                Toggle("Restore clipboard after paste", isOn: $state.restoreClipboardAfterPaste)
+                Text("Saves and restores whatever was on your clipboard before pasting the transcript.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Performance") {
@@ -131,6 +135,25 @@ struct GeneralSettingsView: View {
                                 .monospacedDigit()
                         }
                     }
+                }
+            }
+
+            Section("Memory") {
+                Picker("Unload model after", selection: $state.modelUnloadPolicy) {
+                    ForEach(ModelUnloadPolicy.allCases, id: \.self) { policy in
+                        Text(policy.displayName).tag(policy)
+                    }
+                }
+
+                if appState.modelUnloadPolicy != .never {
+                    Text("The ASR model will be unloaded from RAM after the selected idle period. The next recording will reload it (~2-5 s).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if appState.modelUnloadPolicy == .immediately {
+                    Text("Model is freed after every transcription. Expect a reload delay on each recording.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
                 }
             }
         }
@@ -219,7 +242,29 @@ struct ShortcutsSettingsView: View {
                         Text("⌘, (from menu bar)")
                             .font(.caption.monospaced())
                     }
+                    HStack {
+                        Text("Cancel recording:")
+                            .font(.caption)
+                        Spacer()
+                        Text("Escape")
+                            .font(.caption.monospaced())
+                    }
                 }
+            }
+
+            Section("Cancel Hotkey") {
+                HStack {
+                    Text("Cancel recording:")
+                    Spacer()
+                    Text(appState.hotkeyService.cancelHotkeyDescription)
+                        .font(.system(.body, design: .rounded))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 6))
+                }
+                Text("Press this key while recording to immediately discard audio and return to idle.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -235,6 +280,7 @@ struct LLMSettingsView: View {
     @State private var showOpenAIKey = false
     @State private var showGeminiKey = false
     @State private var validationStatus: String = ""
+    @State private var showPromptEditor = false
 
     var body: some View {
         @Bindable var state = appState
@@ -245,6 +291,8 @@ struct LLMSettingsView: View {
                     Text("None").tag(LLMProvider.none)
                     Text("OpenAI").tag(LLMProvider.openAI)
                     Text("Google Gemini").tag(LLMProvider.gemini)
+                    Text("Ollama (Local)").tag(LLMProvider.ollama)
+                    Text("Apple Intelligence").tag(LLMProvider.appleIntelligence)
                 }
 
                 if appState.llmProvider != .none {
@@ -286,6 +334,26 @@ struct LLMSettingsView: View {
                         Text("This model requires a paid API plan.")
                             .font(.caption)
                             .foregroundStyle(.orange)
+                    }
+                }
+
+                if appState.llmProvider != .none {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("System Prompt")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(appState.customSystemPrompt.isEmpty
+                                 ? "Using built-in default"
+                                 : "Custom prompt active")
+                                .font(.caption2)
+                                .foregroundStyle(appState.customSystemPrompt.isEmpty ? Color.secondary : Color.accentColor)
+                        }
+                        Spacer()
+                        Button("Edit Prompt") {
+                            showPromptEditor = true
+                        }
+                        .controlSize(.small)
                     }
                 }
             }
@@ -373,22 +441,85 @@ struct LLMSettingsView: View {
                     }
                 }
             }
+
+            if appState.llmProvider == .ollama {
+                Section("Ollama") {
+                    HStack {
+                        Text("Status:")
+                        Spacer()
+                        switch appState.keyValidationState {
+                        case .valid:
+                            Label("Running", systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                        case .invalid(let msg):
+                            Label(msg, systemImage: "xmark.circle.fill")
+                                .foregroundStyle(.red)
+                                .font(.caption)
+                        case .validating:
+                            ProgressView().controlSize(.small)
+                        case .idle:
+                            Text("Not checked").foregroundStyle(.secondary)
+                        }
+
+                        Button {
+                            Task { await appState.validateKeyAndDiscoverModels(provider: .ollama) }
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Check Ollama status and refresh models")
+                    }
+
+                    Text("Ollama must be installed and running. Recommended model: llama3.2")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if appState.llmProvider == .appleIntelligence {
+                Section("Apple Intelligence") {
+                    HStack {
+                        Text("On-device model — no internet or API key required.")
+                    }
+
+                    if #available(macOS 26.0, *) {
+                        Button("Check Availability") {
+                            Task { await appState.validateKeyAndDiscoverModels(provider: .appleIntelligence) }
+                        }
+                    } else {
+                        Label("Requires macOS 26 or later.", systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                            .font(.caption)
+                    }
+                }
+            }
         }
         .formStyle(.grouped)
         .padding()
+        .sheet(isPresented: $showPromptEditor) {
+            PromptEditorView()
+                .environment(appState)
+        }
         .onAppear {
             openAIKey = (try? appState.keychainManager.retrieve(key: "openai-api-key")) ?? ""
             geminiKey = (try? appState.keychainManager.retrieve(key: "gemini-api-key")) ?? ""
-            if appState.llmProvider != .none {
+            if appState.llmProvider == .ollama || appState.llmProvider == .appleIntelligence {
+                Task { await appState.validateKeyAndDiscoverModels(provider: appState.llmProvider) }
+            } else if appState.llmProvider != .none {
                 appState.loadCachedModels(for: appState.llmProvider)
             }
         }
         .onChange(of: appState.llmProvider) { _, newProvider in
-            if newProvider != .none {
-                appState.loadCachedModels(for: newProvider)
-                appState.keyValidationState = .idle
-            } else {
+            switch newProvider {
+            case .none:
                 appState.discoveredModels = []
+                appState.keyValidationState = .idle
+            case .ollama, .appleIntelligence:
+                appState.discoveredModels = []
+                appState.keyValidationState = .idle
+                Task { await appState.validateKeyAndDiscoverModels(provider: newProvider) }
+            default:
+                appState.loadCachedModels(for: newProvider)
                 appState.keyValidationState = .idle
             }
         }

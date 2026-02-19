@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(FoundationModels)
+import FoundationModels
+#endif
+
 /// Discovers available LLM models from provider APIs and probes their availability.
 struct LLMModelDiscovery: Sendable {
 
@@ -27,6 +31,10 @@ struct LLMModelDiscovery: Sendable {
             modelIDs = try await fetchGeminiModels(apiKey: apiKey)
         case .openAI:
             modelIDs = try await fetchOpenAIModels(apiKey: apiKey)
+        case .ollama:
+            modelIDs = try await fetchOllamaModels()
+        case .appleIntelligence:
+            return appleIntelligenceModelInfo()
         case .none:
             return []
         }
@@ -183,12 +191,71 @@ struct LLMModelDiscovery: Sendable {
         return httpResponse.statusCode == 200
     }
 
+    // MARK: - Ollama
+
+    private func fetchOllamaModels() async throws -> [(id: String, displayName: String)] {
+        guard let url = URL(string: "http://localhost:11434/api/tags") else {
+            throw LLMError.requestFailed("Invalid Ollama URL")
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 5
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200 else {
+                throw LLMError.providerUnavailable
+            }
+
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            guard let models = json?["models"] as? [[String: Any]] else { return [] }
+
+            return models.compactMap { model -> (id: String, displayName: String)? in
+                guard let name = model["name"] as? String else { return nil }
+                let base = name.components(separatedBy: ":").first ?? name
+                let display = base.replacingOccurrences(of: "-", with: " ")
+                                 .replacingOccurrences(of: ".", with: " ")
+                                 .split(separator: " ")
+                                 .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+                                 .joined(separator: " ")
+                return (id: name, displayName: display)
+            }
+        } catch let urlError as URLError
+                  where urlError.code == .cannotConnectToHost || urlError.code == .timedOut {
+            throw LLMError.providerUnavailable
+        }
+    }
+
+    // MARK: - Apple Intelligence
+
+    private func appleIntelligenceModelInfo() -> [LLMModelInfo] {
+#if canImport(FoundationModels)
+        if #available(macOS 26.0, *) {
+            let available = SystemLanguageModel.default.isAvailable
+            return [LLMModelInfo(
+                id: "apple-intelligence",
+                displayName: "Apple Intelligence (On-Device)",
+                provider: .appleIntelligence,
+                isAvailable: available
+            )]
+        }
+#endif
+        return [LLMModelInfo(
+            id: "apple-intelligence",
+            displayName: "Apple Intelligence (Requires macOS 26+)",
+            provider: .appleIntelligence,
+            isAvailable: false
+        )]
+    }
+
     // MARK: - Shared Helpers
 
     private func probeModel(id: String, provider: LLMProvider, apiKey: String) async -> Bool {
         switch provider {
         case .gemini: return await probeGemini(modelID: id, apiKey: apiKey)
         case .openAI: return await probeOpenAI(modelID: id, apiKey: apiKey)
+        case .ollama: return true  // If model appears in tags list, it's available
+        case .appleIntelligence: return true
         case .none: return false
         }
     }

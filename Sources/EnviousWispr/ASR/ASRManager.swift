@@ -6,6 +6,8 @@ import Foundation
 final class ASRManager {
     private(set) var activeBackendType: ASRBackendType = .parakeet
     private(set) var isModelLoaded = false
+    private var idleTimer: Timer?
+    private var lastTranscriptionTime: Date?
 
     private var parakeetBackend = ParakeetBackend()
     private var whisperKitBackend = WhisperKitBackend()
@@ -49,5 +51,41 @@ final class ASRManager {
     /// Transcribe raw audio samples (16kHz mono Float32).
     func transcribe(audioSamples: [Float], options: TranscriptionOptions = .default) async throws -> ASRResult {
         try await activeBackend.transcribe(audioSamples: audioSamples, options: options)
+    }
+
+    /// Unload the active backend, freeing model RAM.
+    func unloadModel() async {
+        guard isModelLoaded else { return }
+        await activeBackend.unload()
+        isModelLoaded = false
+    }
+
+    /// Called by pipeline after a transcript is saved.
+    /// Records the timestamp and schedules/resets the idle timer.
+    func noteTranscriptionComplete(policy: ModelUnloadPolicy) {
+        lastTranscriptionTime = Date()
+        if policy == .immediately {
+            Task { await unloadModel() }
+            return
+        }
+        scheduleIdleTimer(policy: policy)
+    }
+
+    /// Cancel any pending idle timer (called when recording starts).
+    func cancelIdleTimer() {
+        idleTimer?.invalidate()
+        idleTimer = nil
+    }
+
+    /// Schedule (or reset) the idle timer for timed policies.
+    private func scheduleIdleTimer(policy: ModelUnloadPolicy) {
+        guard let interval = policy.interval else { return }
+        cancelIdleTimer()
+        // Timer fires on the main run loop — safe for @MainActor ASRManager.
+        idleTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                _ = Task<Void, Never> { await self?.unloadModel() }
+            }
+        }
     }
 }

@@ -68,6 +68,15 @@ final class AppState {
         }
     }
 
+    var ollamaModel: String {
+        didSet {
+            UserDefaults.standard.set(ollamaModel, forKey: "ollamaModel")
+            if llmProvider == .ollama {
+                pipeline.llmModel = ollamaModel
+            }
+        }
+    }
+
     var autoCopyToClipboard: Bool {
         didSet {
             UserDefaults.standard.set(autoCopyToClipboard, forKey: "autoCopyToClipboard")
@@ -109,6 +118,52 @@ final class AppState {
         }
     }
 
+    var cancelKeyCode: UInt16 {
+        didSet {
+            UserDefaults.standard.set(Int(cancelKeyCode), forKey: "cancelKeyCode")
+            hotkeyService.cancelKeyCode = cancelKeyCode
+        }
+    }
+
+    var cancelModifiers: NSEvent.ModifierFlags {
+        didSet {
+            UserDefaults.standard.set(cancelModifiers.rawValue, forKey: "cancelModifiersRaw")
+            hotkeyService.cancelModifiers = cancelModifiers
+        }
+    }
+
+    var modelUnloadPolicy: ModelUnloadPolicy {
+        didSet {
+            UserDefaults.standard.set(modelUnloadPolicy.rawValue, forKey: "modelUnloadPolicy")
+            pipeline.modelUnloadPolicy = modelUnloadPolicy
+            // If policy changed to Never, cancel any pending timer.
+            if modelUnloadPolicy == .never {
+                asrManager.cancelIdleTimer()
+            }
+        }
+    }
+
+    var restoreClipboardAfterPaste: Bool {
+        didSet {
+            UserDefaults.standard.set(restoreClipboardAfterPaste, forKey: "restoreClipboardAfterPaste")
+            pipeline.restoreClipboardAfterPaste = restoreClipboardAfterPaste
+        }
+    }
+
+    var customSystemPrompt: String {
+        didSet {
+            UserDefaults.standard.set(customSystemPrompt, forKey: "customSystemPrompt")
+            pipeline.polishInstructions = activePolishInstructions
+        }
+    }
+
+    /// Returns the custom instructions if a prompt is set, otherwise `.default`.
+    var activePolishInstructions: PolishInstructions {
+        customSystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? .default
+            : .custom(systemPrompt: customSystemPrompt)
+    }
+
     // Model discovery
     var discoveredModels: [LLMModelInfo] = []
     var isDiscoveringModels = false
@@ -129,12 +184,26 @@ final class AppState {
         recordingMode = RecordingMode(rawValue: defaults.string(forKey: "recordingMode") ?? "") ?? .pushToTalk
         llmProvider = LLMProvider(rawValue: defaults.string(forKey: "llmProvider") ?? "") ?? .none
         llmModel = defaults.string(forKey: "llmModel") ?? "gpt-4o-mini"
+        ollamaModel = defaults.string(forKey: "ollamaModel") ?? "llama3.2"
         autoCopyToClipboard = defaults.object(forKey: "autoCopyToClipboard") as? Bool ?? true
         hotkeyEnabled = defaults.object(forKey: "hotkeyEnabled") as? Bool ?? true
         vadAutoStop = defaults.object(forKey: "vadAutoStop") as? Bool ?? false
         vadSilenceTimeout = defaults.object(forKey: "vadSilenceTimeout") as? Double ?? 1.5
         vadDualBuffer = defaults.object(forKey: "vadDualBuffer") as? Bool ?? false
         hasCompletedOnboarding = defaults.object(forKey: "hasCompletedOnboarding") as? Bool ?? false
+
+        let savedCancelKeyCode = defaults.object(forKey: "cancelKeyCode") as? Int
+        cancelKeyCode = UInt16(savedCancelKeyCode ?? 53)  // Default: Escape
+
+        let savedCancelModRaw = defaults.object(forKey: "cancelModifiersRaw") as? UInt
+        cancelModifiers = NSEvent.ModifierFlags(rawValue: savedCancelModRaw ?? 0)
+
+        modelUnloadPolicy = ModelUnloadPolicy(
+            rawValue: defaults.string(forKey: "modelUnloadPolicy") ?? ""
+        ) ?? .never
+        restoreClipboardAfterPaste = defaults.object(forKey: "restoreClipboardAfterPaste") as? Bool ?? false
+        customSystemPrompt = defaults.string(forKey: "customSystemPrompt") ?? ""
+
         pipeline = TranscriptionPipeline(
             audioCapture: audioCapture,
             asrManager: asrManager,
@@ -144,22 +213,30 @@ final class AppState {
         pipeline.autoCopyToClipboard = autoCopyToClipboard
         pipeline.llmProvider = llmProvider
         pipeline.llmModel = llmModel
+        if llmProvider == .ollama {
+            pipeline.llmModel = ollamaModel
+        }
         pipeline.vadAutoStop = vadAutoStop
         pipeline.vadSilenceTimeout = vadSilenceTimeout
         pipeline.vadDualBuffer = vadDualBuffer
+        pipeline.modelUnloadPolicy = modelUnloadPolicy
+        pipeline.restoreClipboardAfterPaste = restoreClipboardAfterPaste
+        pipeline.polishInstructions = activePolishInstructions
         // Wire pipeline state changes to overlay and icon
         pipeline.onStateChange = { [weak self] newState in
             guard let self else { return }
             self.onPipelineStateChange?(newState)
             switch newState {
             case .recording:
+                self.hotkeyService.registerCancelHotkey()
                 self.recordingOverlay.show(audioLevelProvider: { [weak self] in
                     self?.audioCapture.audioLevel ?? 0
                 })
             case .transcribing, .error, .idle:
+                self.hotkeyService.unregisterCancelHotkey()
                 self.recordingOverlay.hide()
             case .complete, .polishing:
-                break
+                self.hotkeyService.unregisterCancelHotkey()
             }
         }
 
@@ -179,6 +256,10 @@ final class AppState {
             await self.pipeline.stopAndTranscribe()
             self.pipeline.autoPasteToActiveApp = false
             self.loadTranscripts()
+        }
+
+        hotkeyService.onCancelRecording = { [weak self] in
+            await self?.cancelRecording()
         }
 
         if hotkeyEnabled {
@@ -226,6 +307,13 @@ final class AppState {
         }
     }
 
+    /// Cancel an active recording, discarding all captured audio.
+    func cancelRecording() async {
+        guard pipelineState == .recording else { return }
+        pipeline.autoPasteToActiveApp = false
+        pipeline.cancelRecording()
+    }
+
     /// Polish an existing transcript with LLM.
     func polishTranscript(_ transcript: Transcript) async {
         if let updated = await pipeline.polishExistingTranscript(transcript) {
@@ -262,26 +350,41 @@ final class AppState {
         keyValidationState = .validating
         isDiscoveringModels = true
 
-        let keychainId = provider == .openAI ? "openai-api-key" : "gemini-api-key"
-        guard let apiKey = try? keychainManager.retrieve(key: keychainId), !apiKey.isEmpty else {
-            keyValidationState = .invalid("No API key found")
-            isDiscoveringModels = false
-            return
+        let apiKey: String
+        if provider == .ollama || provider == .appleIntelligence {
+            apiKey = ""
+        } else {
+            let keychainId = provider == .openAI ? "openai-api-key" : "gemini-api-key"
+            guard let key = try? keychainManager.retrieve(key: keychainId), !key.isEmpty else {
+                keyValidationState = .invalid("No API key found")
+                isDiscoveringModels = false
+                return
+            }
+            apiKey = key
         }
 
         let discovery = LLMModelDiscovery()
         do {
             let models = try await discovery.discoverModels(provider: provider, apiKey: apiKey)
             discoveredModels = models
-            cacheModels(models, for: provider)
+            if provider != .appleIntelligence {
+                cacheModels(models, for: provider)
+            }
             keyValidationState = .valid
 
-            // Auto-select first available model if current selection is invalid
             if !models.contains(where: { $0.id == llmModel && $0.isAvailable }) {
                 if let firstAvailable = models.first(where: { $0.isAvailable }) {
                     llmModel = firstAvailable.id
+                    if provider == .ollama { ollamaModel = firstAvailable.id }
                 }
             }
+        } catch LLMError.providerUnavailable {
+            keyValidationState = .invalid(
+                provider == .ollama
+                    ? "Ollama is not running. Start it with: ollama serve"
+                    : "Apple Intelligence not available on this system."
+            )
+            discoveredModels = []
         } catch let error as LLMError where error == .invalidAPIKey {
             keyValidationState = .invalid("Invalid API key")
             discoveredModels = []

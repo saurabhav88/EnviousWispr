@@ -72,8 +72,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Status line
         let state = appState.pipelineState
-        let backend = appState.selectedBackend == .parakeet ? "Parakeet v3" : "WhisperKit"
-        let statusMenuItem = NSMenuItem(title: "\(state.statusText) — \(backend)", action: nil, keyEquivalent: "")
+        let modelState: String
+        if !appState.asrManager.isModelLoaded && state != .recording && state != .transcribing {
+            modelState = "Model unloaded"
+        } else {
+            modelState = appState.selectedBackend == .parakeet ? "Parakeet v3" : "WhisperKit"
+        }
+        let statusMenuItem = NSMenuItem(title: "\(state.statusText) — \(modelState)", action: nil, keyEquivalent: "")
         statusMenuItem.isEnabled = false
         menu.addItem(statusMenuItem)
 

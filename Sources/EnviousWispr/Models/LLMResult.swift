@@ -4,6 +4,8 @@ import Foundation
 enum LLMProvider: String, Codable, CaseIterable, Sendable {
     case openAI
     case gemini
+    case ollama
+    case appleIntelligence
     case none
 }
 
@@ -66,4 +68,50 @@ struct PolishInstructions: Codable, Sendable {
         fixGrammar: true,
         fixPunctuation: true
     )
+}
+
+extension PolishInstructions {
+    /// Build a PolishInstructions using a user-supplied system prompt.
+    static func custom(systemPrompt: String) -> PolishInstructions {
+        PolishInstructions(
+            systemPrompt: systemPrompt,
+            removeFillerWords: PolishInstructions.default.removeFillerWords,
+            fixGrammar: PolishInstructions.default.fixGrammar,
+            fixPunctuation: PolishInstructions.default.fixPunctuation
+        )
+    }
+}
+
+/// Built-in prompt presets the user can apply with one click.
+enum PromptPreset: String, CaseIterable, Identifiable {
+    case cleanUp = "Clean Up"
+    case formal  = "Formal"
+    case casual  = "Casual"
+
+    var id: String { rawValue }
+
+    var systemPrompt: String {
+        switch self {
+        case .cleanUp:
+            return PolishInstructions.default.systemPrompt
+        case .formal:
+            return """
+                You are a professional editor. Rewrite the following speech-to-text transcript \
+                in a formal, polished tone suitable for business correspondence. \
+                Fix all grammar, punctuation, and spelling errors. \
+                Remove filler words and false starts. \
+                Preserve the speaker's original meaning exactly — do not add, remove, or \
+                summarize content. \
+                Return only the rewritten text with no commentary.
+                """
+        case .casual:
+            return """
+                You are a friendly editor. Clean up the following speech-to-text transcript \
+                while keeping a natural, conversational tone. \
+                Fix obvious errors but keep contractions, informal phrasing, and the speaker's \
+                personality. Remove only the most distracting filler words (um, uh, like). \
+                Return only the cleaned text with no commentary.
+                """
+        }
+    }
 }

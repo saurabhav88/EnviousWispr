@@ -26,6 +26,9 @@ final class TranscriptionPipeline {
     var vadAutoStop: Bool = false
     var vadSilenceTimeout: Double = 1.5
     var vadDualBuffer: Bool = false
+    var modelUnloadPolicy: ModelUnloadPolicy = .never
+    var restoreClipboardAfterPaste: Bool = false
+    var polishInstructions: PolishInstructions = .default
 
     /// The app that was frontmost when recording started — re-activated before pasting.
     private var targetApp: NSRunningApplication?
@@ -59,6 +62,9 @@ final class TranscriptionPipeline {
     /// Start recording audio from the microphone.
     func startRecording() async {
         guard !state.isActive || state == .complete else { return }
+
+        // Cancel idle timer so model stays loaded during recording.
+        asrManager.cancelIdleTimer()
 
         // Ensure model is loaded
         if !asrManager.isModelLoaded {
@@ -148,6 +154,9 @@ final class TranscriptionPipeline {
             // Save to store
             try transcriptStore.save(transcript)
 
+            // Notify ASR manager that transcription is done; schedules unload timer if configured.
+            asrManager.noteTranscriptionComplete(policy: modelUnloadPolicy)
+
             // Auto-copy/paste
             if autoPasteToActiveApp {
                 // Re-activate the app that was frontmost when recording started,
@@ -156,7 +165,20 @@ final class TranscriptionPipeline {
                     app.activate()
                     try? await Task.sleep(for: .milliseconds(150))
                 }
-                PasteService.pasteToActiveApp(transcript.displayText)
+
+                // Optionally snapshot the clipboard before writing the transcript.
+                let snapshot: ClipboardSnapshot? = restoreClipboardAfterPaste
+                    ? PasteService.saveClipboard()
+                    : nil
+
+                let changeCountAfterPaste = PasteService.pasteToActiveApp(transcript.displayText)
+
+                // Restore after a 300 ms delay — long enough for the target app to
+                // consume the pasteboard contents but short enough to feel instant.
+                if let snapshot {
+                    try? await Task.sleep(for: .milliseconds(300))
+                    PasteService.restoreClipboard(snapshot, changeCountAfterPaste: changeCountAfterPaste)
+                }
             } else if autoCopyToClipboard {
                 PasteService.copyToClipboard(transcript.displayText)
             }
@@ -219,6 +241,26 @@ final class TranscriptionPipeline {
         currentTranscript = nil
     }
 
+    /// Cancel an active recording immediately without transcribing.
+    /// Guards on `.recording` state — safe to call from any other state.
+    func cancelRecording() {
+        guard state == .recording else { return }
+
+        // Stop VAD monitoring task immediately
+        vadMonitorTask?.cancel()
+        vadMonitorTask = nil
+        silenceDetector = nil
+
+        // Stop audio engine and explicitly discard all captured samples
+        _ = audioCapture.stopCapture()
+
+        // Clear target app reference — nothing will be pasted
+        targetApp = nil
+
+        // Transition to idle without saving any transcript
+        state = .idle
+    }
+
     // MARK: - VAD Monitoring
 
     private func startVADMonitoring() {
@@ -276,20 +318,46 @@ final class TranscriptionPipeline {
         let polisher: any TranscriptPolisher = switch llmProvider {
         case .openAI: OpenAIConnector(keychainManager: keychainManager)
         case .gemini: GeminiConnector(keychainManager: keychainManager)
+        case .ollama: OllamaConnector()
+        case .appleIntelligence: AppleIntelligenceConnector()
         case .none: throw LLMError.providerUnavailable
         }
+
+        let keychainId: String = switch llmProvider {
+        case .openAI:  "openai-api-key"
+        case .gemini:  "gemini-api-key"
+        default:       ""
+        }
+
+        let maxTokens = llmProvider == .ollama ? 4096 : 2048
 
         let config = LLMProviderConfig(
             provider: llmProvider,
             model: llmModel,
-            apiKeyKeychainId: llmProvider == .openAI ? "openai-api-key" : "gemini-api-key",
-            maxTokens: 2048,
+            apiKeyKeychainId: keychainId,
+            maxTokens: maxTokens,
             temperature: 0.3
         )
 
+        // Resolve ${transcript} placeholder if present in the system prompt
+        var resolvedInstructions = polishInstructions
+        var userText = text
+        if polishInstructions.systemPrompt.contains("${transcript}") {
+            let resolved = polishInstructions.systemPrompt.replacingOccurrences(
+                of: "${transcript}", with: text
+            )
+            resolvedInstructions = PolishInstructions(
+                systemPrompt: resolved,
+                removeFillerWords: polishInstructions.removeFillerWords,
+                fixGrammar: polishInstructions.fixGrammar,
+                fixPunctuation: polishInstructions.fixPunctuation
+            )
+            userText = ""
+        }
+
         let result = try await polisher.polish(
-            text: text,
-            instructions: .default,
+            text: userText,
+            instructions: resolvedInstructions,
             config: config
         )
 
