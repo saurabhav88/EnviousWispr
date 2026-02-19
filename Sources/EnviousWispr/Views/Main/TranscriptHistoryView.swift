@@ -35,7 +35,7 @@ struct TranscriptRowView: View {
                 .font(.body)
 
             HStack {
-                Text(transcript.createdAt, style: .relative)
+                Text(transcript.createdAt, format: .dateTime.hour().minute())
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
