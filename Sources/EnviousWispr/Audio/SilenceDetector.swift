@@ -70,6 +70,7 @@ actor SilenceDetector {
 
         streamState = result.state
 
+        let wasInSpeech = currentSpeechStart != nil
         var shouldAutoStop = false
 
         if let event = result.event {
@@ -90,7 +91,7 @@ actor SilenceDetector {
         }
 
         // Dual-buffer: accumulate voiced chunks when speech is active
-        if dualBufferMode && (currentSpeechStart != nil || speechDetected && !shouldAutoStop) {
+        if dualBufferMode && wasInSpeech {
             voicedSamples.append(contentsOf: samples)
         }
 
@@ -119,12 +120,22 @@ actor SilenceDetector {
         let totalVoiced = speechSegments.reduce(0) { $0 + ($1.endSample - $1.startSample) }
         guard totalVoiced >= 4800 else { return allSamples }
 
-        var result: [Float] = []
+        // Build padded ranges and merge overlaps
+        var merged: [(start: Int, end: Int)] = []
         for segment in speechSegments {
             let start = max(0, segment.startSample - padding)
             let end = min(allSamples.count, segment.endSample + padding)
-            guard start < end else { continue }
-            result.append(contentsOf: allSamples[start..<end])
+            if let last = merged.last, start <= last.end {
+                merged[merged.count - 1].end = max(last.end, end)
+            } else {
+                merged.append((start, end))
+            }
+        }
+
+        var result: [Float] = []
+        for range in merged {
+            guard range.start < range.end else { continue }
+            result.append(contentsOf: allSamples[range.start..<range.end])
         }
         return result.isEmpty ? allSamples : result
     }
