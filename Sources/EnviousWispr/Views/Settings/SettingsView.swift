@@ -478,13 +478,35 @@ struct LLMSettingsView: View {
 
             if appState.llmProvider == .appleIntelligence {
                 Section("Apple Intelligence") {
-                    HStack {
-                        Text("On-device model — no internet or API key required.")
-                    }
+                    Text("On-device model — no internet or API key required.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
                     if #available(macOS 26.0, *) {
-                        Button("Check Availability") {
-                            Task { await appState.validateKeyAndDiscoverModels(provider: .appleIntelligence) }
+                        HStack {
+                            Text("Status:")
+                            Spacer()
+                            switch appState.keyValidationState {
+                            case .valid:
+                                Label("Available", systemImage: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
+                            case .invalid(let msg):
+                                Label(msg, systemImage: "xmark.circle.fill")
+                                    .foregroundStyle(.red)
+                                    .font(.caption)
+                            case .validating:
+                                ProgressView().controlSize(.small)
+                            case .idle:
+                                Text("Not checked").foregroundStyle(.secondary)
+                            }
+
+                            Button {
+                                Task { await appState.validateKeyAndDiscoverModels(provider: .appleIntelligence) }
+                            } label: {
+                                Image(systemName: "arrow.clockwise")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Check Apple Intelligence availability")
                         }
                     } else {
                         Label("Requires macOS 26 or later.", systemImage: "exclamationmark.triangle.fill")
