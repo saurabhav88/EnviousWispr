@@ -25,6 +25,7 @@ final class TranscriptionPipeline {
     var llmModel: String = "gpt-4o-mini"
     var vadAutoStop: Bool = false
     var vadSilenceTimeout: Double = 1.5
+    var vadDualBuffer: Bool = false
 
     /// The app that was frontmost when recording started — re-activated before pasting.
     private var targetApp: NSRunningApplication?
@@ -79,10 +80,8 @@ final class TranscriptionPipeline {
             state = .recording
             currentTranscript = nil
 
-            // Start VAD monitoring if enabled
-            if vadAutoStop {
-                startVADMonitoring()
-            }
+            // Always start VAD monitoring for silence removal
+            startVADMonitoring()
         } catch {
             state = .error("Recording failed: \(error.localizedDescription)")
         }
@@ -96,10 +95,24 @@ final class TranscriptionPipeline {
         vadMonitorTask?.cancel()
         vadMonitorTask = nil
 
-        let samples = audioCapture.stopCapture()
-        guard !samples.isEmpty else {
+        let rawSamples = audioCapture.stopCapture()
+        guard !rawSamples.isEmpty else {
             state = .error("No audio captured")
             return
+        }
+
+        // Filter silence using VAD speech segments
+        let samples: [Float]
+        if let detector = silenceDetector {
+            await detector.finalizeSegments(totalSampleCount: rawSamples.count)
+            if vadDualBuffer {
+                let voiced = await detector.voicedSamples
+                samples = voiced.isEmpty ? rawSamples : voiced
+            } else {
+                samples = await detector.filterSamples(from: rawSamples)
+            }
+        } else {
+            samples = rawSamples
         }
 
         state = .transcribing
@@ -222,6 +235,7 @@ final class TranscriptionPipeline {
         guard let detector = silenceDetector else { return }
 
         await detector.reset()
+        await detector.setDualBufferMode(vadDualBuffer)
 
         // Prepare VAD model if needed
         if !(await detector.isReady) {
@@ -244,7 +258,7 @@ final class TranscriptionPipeline {
                 let chunk = Array(audioCapture.capturedSamples[processedSampleCount..<endIdx])
                 let shouldStop = await detector.processChunk(chunk)
 
-                if shouldStop && state == .recording {
+                if shouldStop && vadAutoStop && state == .recording {
                     await stopAndTranscribe()
                     return
                 }
