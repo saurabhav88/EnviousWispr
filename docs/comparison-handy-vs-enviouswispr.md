@@ -53,16 +53,18 @@
 
 | | EnviousWispr | Handy |
 |---|---|---|
-| **Model** | Silero VAD via FluidAudio VadManager | Silero VAD via vad-rs (ONNX) |
+| **Model** | Silero VAD v6 via FluidAudio VadManager (CoreML) | Silero VAD via vad-rs (ONNX) |
 | **Frame size** | 4096 samples (256ms) | 480 samples (30ms) |
-| **Threshold** | 0.5 (hardcoded) | Configurable |
-| **Smoothing** | None (raw Silero output) | Onset confirmation + prefill buffer + hangover |
+| **Threshold** | Configurable via sensitivity slider (maps to onset/offset) | Configurable |
+| **Smoothing** | SmoothedVAD: EMA probability smoothing + onset confirmation + 512ms prebuffer + 768ms hangover | SmoothedVad: onset confirmation + ~200ms prefill + hangover |
 | **Auto-stop** | Yes (configurable 0.5-3.0s silence timeout) | Yes |
-| **Silence filtering** | Post-recording filter with 100ms padding + segment merging | Real-time — only speech frames appended to buffer |
-| **Dual-buffer mode** | Experimental toggle | N/A (default behavior is real-time filtering) |
+| **Silence filtering** | Real-time speech-only accumulation (voicedSamples) with post-hoc fallback | Real-time — only speech frames appended to buffer |
+| **Energy pre-gate** | RMS check before neural VAD (skips Silero for silence, saves CPU) | None |
+| **Prebuffer** | 512ms circular ring buffer (captures word onsets before VAD fires) | ~200ms prefill buffer |
+| **Hysteresis** | Asymmetric thresholds (onset=0.5, offset=0.35 default, EMA-smoothed) | Onset/hangover parameters |
 | **VAD resolution** | Polling every 100ms | Every 30ms frame |
 
-**Takeaway:** Both use Silero VAD, but Handy's implementation is significantly more sophisticated. The 30ms frame size gives 8.5x finer resolution. The SmoothedVad wrapper (onset/prefill/hangover) prevents false triggers and clipped word starts — EnviousWispr processes raw Silero output without smoothing. Handy filters in real-time (speech-only frames go to buffer); EnviousWispr accumulates everything then filters post-recording.
+**Takeaway:** Both use Silero VAD with smoothing wrappers. Handy has finer frame resolution (30ms vs 256ms). EnviousWispr compensates with a more sophisticated smoothing layer: EMA probability smoothing (vs binary frame counting), a larger 512ms circular prebuffer (vs ~200ms prefill) for better word onset capture, 768ms hangover bridging natural pauses, an energy pre-gate that saves CPU during silence, and a dual-fallback system (real-time voicedSamples + post-hoc filterSamples safety net). EnviousWispr exposes a single sensitivity slider that maps to a coherent set of parameters (onset, offset, hangover, confirmation) — better UX than raw threshold configuration.
 
 ---
 
@@ -216,3 +218,43 @@
 3. **Model unload timeout** — reclaim memory after configurable idle period
 4. **User-editable LLM prompts** — let users customize the polish system prompt
 5. **Separate hotkey for transcribe-with-LLM** — choose per-transcription whether to polish
+
+---
+
+## Update — 2026-02-19
+
+### Gaps closed since original analysis
+
+The following items from Section 10 have been implemented in EnviousWispr:
+
+| #  | Feature                    | Status  | Notes                                                             |
+|----|----------------------------|---------|-------------------------------------------------------------------|
+| 1  | Cancel hotkey              | Done    | Escape key cancels active recording                               |
+| 5  | Clipboard save/restore     | Done    | Prior clipboard saved before paste, restored after                |
+| 6  | ~~Direct typing mode~~     | Skipped | macOS-only, CGEvent paste is reliable enough                      |
+| 10 | Offline LLM                | Done    | Ollama (local) + Apple Intelligence (macOS 26+, FoundationModels) |
+| 11 | User-editable LLM prompts  | Done    | Custom prompt editor + 3 presets (Clean Up, Formal, Casual)       |
+| 12 | Model unload timeout       | Done    | Configurable idle timeout to reclaim memory                       |
+
+### Apple Intelligence connector fixes
+
+- **Prompt separation**: System prompt now passed via `LanguageModelSession(instructions:)` instead of being combined with transcript in a single `Prompt`
+- **On-device prompt**: Simplified default prompt optimized for Apple's small model (numbered rules, concise). Falls back to user's custom prompt when non-default
+- **Settings UI**: Added status indicator with refresh button (Available / Error / Checking) matching the Ollama section pattern
+- **Limitation**: Cannot use `@Generable` structured output (requires Xcode macro plugin; we build with command line tools only). Handy uses this to constrain the model's output schema
+
+### Remaining gaps (not yet implemented)
+
+3. Separate hotkey for transcribe-with-LLM
+4. CLI remote control
+5. Unix signal integration
+7. Auto-submit after paste
+8. Custom word correction
+9. Audio start/stop feedback sounds
+13. Custom GGML model support
+14. 17-language UI
+15. Chinese Traditional/Simplified conversion
+16. Always-on microphone mode
+17. Homebrew cask distribution
+18. Debug mode toggle
+19. WAV recording history with playback

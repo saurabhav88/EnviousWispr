@@ -25,7 +25,8 @@ final class TranscriptionPipeline {
     var llmModel: String = "gpt-4o-mini"
     var vadAutoStop: Bool = false
     var vadSilenceTimeout: Double = 1.5
-    var vadDualBuffer: Bool = false
+    var vadSensitivity: Float = 0.5
+    var vadEnergyGate: Bool = false
     var modelUnloadPolicy: ModelUnloadPolicy = .never
     var restoreClipboardAfterPaste: Bool = false
     var polishInstructions: PolishInstructions = .default
@@ -114,9 +115,9 @@ final class TranscriptionPipeline {
         var samples: [Float]
         if let detector = silenceDetector {
             await detector.finalizeSegments(totalSampleCount: rawSamples.count)
-            if vadDualBuffer {
-                let voiced = await detector.voicedSamples
-                samples = voiced.isEmpty ? rawSamples : voiced
+            let voiced = await detector.voicedSamples
+            if !voiced.isEmpty {
+                samples = voiced
             } else {
                 samples = await detector.filterSamples(from: rawSamples)
             }
@@ -287,14 +288,20 @@ final class TranscriptionPipeline {
     }
 
     private func monitorVAD() async {
+        // Build SmoothedVAD config from sensitivity setting
+        var config = SmoothedVADConfig.fromSensitivity(vadSensitivity)
+        if vadEnergyGate {
+            config.energyGateThreshold = 0.005
+        }
+
         // Lazily create detector
         if silenceDetector == nil {
-            silenceDetector = SilenceDetector(silenceTimeout: vadSilenceTimeout)
+            silenceDetector = SilenceDetector(silenceTimeout: vadSilenceTimeout, vadConfig: config)
         }
         guard let detector = silenceDetector else { return }
 
         await detector.reset()
-        await detector.setDualBufferMode(vadDualBuffer)
+        await detector.updateConfig(config)
 
         // Prepare VAD model if needed
         if !(await detector.isReady) {

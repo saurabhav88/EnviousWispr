@@ -111,7 +111,20 @@ final class AppState {
     var vadDualBuffer: Bool {
         didSet {
             UserDefaults.standard.set(vadDualBuffer, forKey: "vadDualBuffer")
-            pipeline.vadDualBuffer = vadDualBuffer
+        }
+    }
+
+    var vadSensitivity: Float {
+        didSet {
+            UserDefaults.standard.set(vadSensitivity, forKey: "vadSensitivity")
+            pipeline.vadSensitivity = vadSensitivity
+        }
+    }
+
+    var vadEnergyGate: Bool {
+        didSet {
+            UserDefaults.standard.set(vadEnergyGate, forKey: "vadEnergyGate")
+            pipeline.vadEnergyGate = vadEnergyGate
         }
     }
 
@@ -193,6 +206,8 @@ final class AppState {
         vadAutoStop = defaults.object(forKey: "vadAutoStop") as? Bool ?? false
         vadSilenceTimeout = defaults.object(forKey: "vadSilenceTimeout") as? Double ?? 1.5
         vadDualBuffer = defaults.object(forKey: "vadDualBuffer") as? Bool ?? false
+        vadSensitivity = defaults.object(forKey: "vadSensitivity") as? Float ?? 0.5
+        vadEnergyGate = defaults.object(forKey: "vadEnergyGate") as? Bool ?? false
         hasCompletedOnboarding = defaults.object(forKey: "hasCompletedOnboarding") as? Bool ?? false
 
         let savedCancelKeyCode = defaults.object(forKey: "cancelKeyCode") as? Int
@@ -221,7 +236,8 @@ final class AppState {
         }
         pipeline.vadAutoStop = vadAutoStop
         pipeline.vadSilenceTimeout = vadSilenceTimeout
-        pipeline.vadDualBuffer = vadDualBuffer
+        pipeline.vadSensitivity = vadSensitivity
+        pipeline.vadEnergyGate = vadEnergyGate
         pipeline.modelUnloadPolicy = modelUnloadPolicy
         pipeline.restoreClipboardAfterPaste = restoreClipboardAfterPaste
         pipeline.polishInstructions = activePolishInstructions

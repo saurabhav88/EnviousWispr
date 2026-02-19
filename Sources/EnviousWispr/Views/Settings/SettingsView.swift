@@ -90,11 +90,24 @@ struct GeneralSettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Toggle("Real-time silence filter", isOn: $state.vadDualBuffer)
-                if appState.vadDualBuffer {
-                    Text("Experimental: Filters silence in real-time during recording. Uses more memory. Disable if you notice audio artifacts.")
+
+                HStack {
+                    Text("VAD Sensitivity")
+                    Slider(value: $state.vadSensitivity, in: 0.0...1.0, step: 0.1)
+                    Text(vadSensitivityLabel(appState.vadSensitivity))
                         .font(.caption)
-                        .foregroundStyle(.orange)
+                        .monospacedDigit()
+                        .frame(width: 55)
+                }
+                Text("Higher sensitivity detects quieter speech but may pick up background noise.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Toggle("Energy pre-gate", isOn: $state.vadEnergyGate)
+                if appState.vadEnergyGate {
+                    Text("Skips neural VAD for very quiet audio. Saves CPU during silence-heavy recordings.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -159,6 +172,14 @@ struct GeneralSettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
+    }
+
+    private func vadSensitivityLabel(_ value: Float) -> String {
+        switch value {
+        case 0.0..<0.3: return "Low"
+        case 0.3..<0.7: return "Medium"
+        default:         return "High"
+        }
     }
 }
 
