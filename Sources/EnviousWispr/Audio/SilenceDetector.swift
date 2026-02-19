@@ -1,6 +1,11 @@
 import Foundation
 @preconcurrency import FluidAudio
 
+struct SpeechSegment: Sendable {
+    let startSample: Int
+    let endSample: Int
+}
+
 /// Monitors audio for speech activity and detects silence after speech for auto-stop.
 ///
 /// Uses FluidAudio's Silero VAD model for real-time voice activity detection.
@@ -10,6 +15,9 @@ actor SilenceDetector {
     private var streamState: VadStreamState = .initial()
     private(set) var speechDetected = false
     private(set) var isReady = false
+    private(set) var speechSegments: [SpeechSegment] = []
+    private var currentSpeechStart: Int? = nil
+    private var processedSampleCount: Int = 0
 
     let silenceTimeout: TimeInterval
 
@@ -32,6 +40,9 @@ actor SilenceDetector {
     func reset() {
         streamState = .initial()
         speechDetected = false
+        speechSegments = []
+        currentSpeechStart = nil
+        processedSampleCount = 0
     }
 
     /// Process a chunk of 4096 audio samples (16kHz mono).
@@ -49,16 +60,61 @@ actor SilenceDetector {
             samples,
             state: streamState,
             config: segConfig
-        ) else { return false }
+        ) else {
+            processedSampleCount += samples.count
+            return false
+        }
 
         streamState = result.state
 
+        var shouldAutoStop = false
+
         if let event = result.event {
-            if event.isStart { speechDetected = true }
-            if event.isEnd && speechDetected { return true }
+            if event.isStart {
+                speechDetected = true
+                currentSpeechStart = processedSampleCount
+            }
+            if event.isEnd && speechDetected {
+                if let start = currentSpeechStart {
+                    speechSegments.append(SpeechSegment(
+                        startSample: start,
+                        endSample: processedSampleCount + samples.count
+                    ))
+                    currentSpeechStart = nil
+                }
+                shouldAutoStop = true
+            }
         }
 
-        return false
+        processedSampleCount += samples.count
+
+        return shouldAutoStop
+    }
+
+    func finalizeSegments(totalSampleCount: Int) {
+        if let start = currentSpeechStart {
+            speechSegments.append(SpeechSegment(
+                startSample: start,
+                endSample: totalSampleCount
+            ))
+            currentSpeechStart = nil
+        }
+    }
+
+    func filterSamples(from allSamples: [Float], padding: Int = 1600) -> [Float] {
+        guard !speechSegments.isEmpty else { return allSamples }
+
+        let totalVoiced = speechSegments.reduce(0) { $0 + ($1.endSample - $1.startSample) }
+        guard totalVoiced >= 4800 else { return allSamples }
+
+        var result: [Float] = []
+        for segment in speechSegments {
+            let start = max(0, segment.startSample - padding)
+            let end = min(allSamples.count, segment.endSample + padding)
+            guard start < end else { continue }
+            result.append(contentsOf: allSamples[start..<end])
+        }
+        return result.isEmpty ? allSamples : result
     }
 
     /// Release the VAD model from memory.
