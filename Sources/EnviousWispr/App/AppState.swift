@@ -231,7 +231,11 @@ final class AppState {
             self.onPipelineStateChange?(newState)
             switch newState {
             case .recording:
-                self.hotkeyService.registerCancelHotkey()
+                // Cancel hotkey only makes sense in toggle mode — in push-to-talk
+                // the user simply releases the modifier key to stop.
+                if self.recordingMode == .toggle {
+                    self.hotkeyService.registerCancelHotkey()
+                }
                 self.recordingOverlay.show(audioLevelProvider: { [weak self] in
                     self?.audioCapture.audioLevel ?? 0
                 })

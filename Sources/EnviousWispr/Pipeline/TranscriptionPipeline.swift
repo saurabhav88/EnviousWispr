@@ -111,7 +111,7 @@ final class TranscriptionPipeline {
         }
 
         // Filter silence using VAD speech segments
-        let samples: [Float]
+        var samples: [Float]
         if let detector = silenceDetector {
             await detector.finalizeSegments(totalSampleCount: rawSamples.count)
             if vadDualBuffer {
@@ -122,6 +122,18 @@ final class TranscriptionPipeline {
             }
         } else {
             samples = rawSamples
+        }
+
+        // ASR backends require >= 1 second of audio (16,000 samples at 16kHz).
+        // If VAD filtering was too aggressive, fall back to raw samples.
+        let minimumSamples = 16000
+        if samples.count < minimumSamples && rawSamples.count >= minimumSamples {
+            samples = rawSamples
+        }
+
+        // Pad short recordings with silence so single-word inputs ("hey", "hi") work.
+        if samples.count > 0 && samples.count < minimumSamples {
+            samples.append(contentsOf: [Float](repeating: 0, count: minimumSamples - samples.count))
         }
 
         state = .transcribing
@@ -306,7 +318,9 @@ final class TranscriptionPipeline {
                 let shouldStop = await detector.processChunk(chunk)
 
                 if shouldStop && vadAutoStop && state == .recording {
-                    await stopAndTranscribe()
+                    // Run in a new Task so cancelling vadMonitorTask
+                    // doesn't propagate CancellationError into transcription.
+                    Task { [weak self] in await self?.stopAndTranscribe() }
                     return
                 }
 
