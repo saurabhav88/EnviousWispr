@@ -14,5 +14,33 @@
       "Skill(*)"
     ],
     "deny": []
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "input=$(cat); file_path=$(echo $input | jq -r '.tool_input.file_path // empty'); if [ -n \"$file_path\" ] && echo $file_path | grep -q '.swift$'; then /Users/m4pro_sv/bin/swift-format format --in-place $file_path 2>/dev/null; fi; exit 0",
+            "timeout": 10,
+            "statusMessage": "Formatting Swift..."
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "input=$(cat); fp=$(echo $input | jq -r '.tool_input.file_path // empty'); if [ -n \"$fp\" ] && echo $fp | grep -qE '(Package[.]resolved|[.]env|sparkle_eddsa|SPARKLE.*PRIVATE)'; then echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Protected file: edits to lock files and secret files are blocked by hook\"}}'; fi; exit 0",
+            "timeout": 5,
+            "statusMessage": "Checking protected files..."
+          }
+        ]
+      }
+    ]
   }
 }
