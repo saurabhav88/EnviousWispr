@@ -22,7 +22,13 @@ swift build --build-tests 2>&1
 - FAIL: any `error:` line, non-zero exit code
 - Note: XCTest is unavailable without full Xcode; this only confirms the test target compiles
 
-### 3. Launch and watch for immediate crash
+### 3. Kill previous instance and reset Accessibility
+```bash
+pkill -x EnviousWispr 2>/dev/null; tccutil reset Accessibility com.enviouswispr.app
+```
+- Always run before launching — removes stale TCC entry so the user doesn't have to manually clean up System Settings
+
+### 4. Launch and watch for immediate crash
 ```bash
 timeout 5 swift run EnviousWispr 2>&1 || true
 ```
@@ -35,8 +41,8 @@ timeout 5 swift run EnviousWispr 2>&1 || true
   - `preconditionFailure`
   - `Thread 1: signal`
 
-### 4. Check stderr for fatal errors
-Scan the combined output from step 3 for the patterns above.
+### 5. Check stderr for fatal errors
+Scan the combined output from step 4 for the patterns above.
 If any match, report the matching line(s) as the failure reason.
 
 ## Pass Criteria (all must hold)

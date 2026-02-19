@@ -27,32 +27,20 @@ cp "$BINARY" "$BUNDLE/Contents/MacOS/EnviousWispr"
 chmod +x "$BUNDLE/Contents/MacOS/EnviousWispr"
 ```
 
-## Create Info.plist
+## Copy Info.plist
+
+Copy the committed Info.plist, which includes CFBundleIconFile, Sparkle keys, and all other required entries.
 
 ```bash
-cat > "$BUNDLE/Contents/Info.plist" << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleIdentifier</key>      <string>com.enviouswispr.app</string>
-  <key>CFBundleName</key>            <string>EnviousWispr</string>
-  <key>CFBundleExecutable</key>      <string>EnviousWispr</string>
-  <key>CFBundleShortVersionString</key> <string>1.0.0</string>
-  <key>CFBundleVersion</key>         <string>1</string>
-  <key>LSMinimumSystemVersion</key>  <string>14.0</string>
-  <key>LSUIElement</key>             <true/>
-  <key>NSMicrophoneUsageDescription</key>
-    <string>EnviousWispr needs microphone access for speech transcription.</string>
-  <key>NSPrincipalClass</key>        <string>NSApplication</string>
-  <key>CFBundlePackageType</key>     <string>APPL</string>
-</dict>
-</plist>
-EOF
+RESOURCES_SRC=/Users/m4pro_sv/Desktop/EnviousWispr/Sources/EnviousWispr/Resources
+cp "$RESOURCES_SRC/Info.plist" "$BUNDLE/Contents/Info.plist"
 ```
 
-`LSUIElement = true` makes the app menu-bar-only (no Dock icon), matching the current UI architecture.
+## Copy AppIcon.icns
+
+```bash
+cp "$RESOURCES_SRC/AppIcon.icns" "$BUNDLE/Contents/Resources/AppIcon.icns"
+```
 
 ## Create PkgInfo
 
@@ -71,6 +59,7 @@ Expected output:
 /tmp/EnviousWispr.app/Contents/Info.plist
 /tmp/EnviousWispr.app/Contents/PkgInfo
 /tmp/EnviousWispr.app/Contents/MacOS/EnviousWispr
+/tmp/EnviousWispr.app/Contents/Resources/AppIcon.icns
 ```
 
 ## Move to Applications (optional)

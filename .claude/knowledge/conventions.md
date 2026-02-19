@@ -10,6 +10,16 @@ swift build --build-tests  # Verify tests compile
 
 **CLI tools only** — no Xcode, no XCTest, no `#Preview`, no `xcodebuild`.
 
+## App Lifecycle: Always Reset Accessibility
+
+Whenever the app is killed, deleted, or rebuilt before relaunch, **always** reset the Accessibility TCC entry:
+
+```bash
+pkill -x EnviousWispr 2>/dev/null; tccutil reset Accessibility com.enviouswispr.app
+```
+
+This removes the stale Accessibility permission so the user doesn't have to manually remove it from System Settings. The app will re-prompt on next launch.
+
 ## Commit Style
 
 Conventional commits: `type(scope): message`
