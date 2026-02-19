@@ -13,6 +13,7 @@ final class AppState {
     let hotkeyService = HotkeyService()
     let benchmark = BenchmarkSuite()
     let recordingOverlay = RecordingOverlayPanel()
+    let customWordStore = CustomWordStore()
 
     // Pipeline — initialized after sub-systems
     let pipeline: TranscriptionPipeline
@@ -180,6 +181,29 @@ final class AppState {
             : .custom(systemPrompt: customSystemPrompt)
     }
 
+    // Feature #8: custom word correction
+    var wordCorrectionEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(wordCorrectionEnabled, forKey: "wordCorrectionEnabled")
+            pipeline.wordCorrectionEnabled = wordCorrectionEnabled
+        }
+    }
+    var customWords: [String] = []
+
+    // Feature #19: debug mode (not persisted — resets to off on launch)
+    var isDebugModeEnabled: Bool = false {
+        didSet {
+            Task { await AppLogger.shared.setDebugMode(isDebugModeEnabled) }
+        }
+    }
+
+    var debugLogLevel: DebugLogLevel {
+        didSet {
+            UserDefaults.standard.set(debugLogLevel.rawValue, forKey: "debugLogLevel")
+            Task { await AppLogger.shared.setLogLevel(debugLogLevel) }
+        }
+    }
+
     // Model discovery
     var discoveredModels: [LLMModelInfo] = []
     var isDiscoveringModels = false
@@ -222,6 +246,15 @@ final class AppState {
         restoreClipboardAfterPaste = defaults.object(forKey: "restoreClipboardAfterPaste") as? Bool ?? false
         customSystemPrompt = defaults.string(forKey: "customSystemPrompt") ?? ""
 
+        // Feature #8
+        wordCorrectionEnabled = defaults.object(forKey: "wordCorrectionEnabled") as? Bool ?? true
+        customWords = (try? customWordStore.load()) ?? []
+
+        // Feature #19
+        debugLogLevel = DebugLogLevel(
+            rawValue: defaults.string(forKey: "debugLogLevel") ?? ""
+        ) ?? .info
+
         pipeline = TranscriptionPipeline(
             audioCapture: audioCapture,
             asrManager: asrManager,
@@ -241,6 +274,12 @@ final class AppState {
         pipeline.modelUnloadPolicy = modelUnloadPolicy
         pipeline.restoreClipboardAfterPaste = restoreClipboardAfterPaste
         pipeline.polishInstructions = activePolishInstructions
+        pipeline.wordCorrectionEnabled = wordCorrectionEnabled
+        pipeline.customWords = customWords
+
+        // Initialize logger level (must be after all stored properties are set)
+        Task { await AppLogger.shared.setLogLevel(debugLogLevel) }
+
         // Wire pipeline state changes to overlay and icon
         pipeline.onStateChange = { [weak self] newState in
             guard let self else { return }
@@ -266,7 +305,8 @@ final class AppState {
         // Wire hotkey callbacks
         hotkeyService.recordingMode = recordingMode
         hotkeyService.onToggleRecording = { [weak self] in
-            await self?.toggleRecording()
+            guard let self else { return }
+            await self.toggleRecording()
         }
         hotkeyService.onStartRecording = { [weak self] in
             guard let self, !self.pipelineState.isActive else { return }
@@ -308,7 +348,7 @@ final class AppState {
         audioCapture.audioLevel
     }
 
-    /// Toggle recording on/off.
+    /// Toggle recording on/off (plain, no forced LLM).
     func toggleRecording() async {
         // Enable paste-to-active-app when starting a new recording
         // (push-to-talk sets this in its own callbacks, but toggle/UI buttons need it too)
@@ -366,6 +406,17 @@ final class AppState {
         } catch {
             print("Failed to load transcripts: \(error)")
         }
+    }
+
+    // Feature #8: custom word management
+    func addCustomWord(_ word: String) {
+        try? customWordStore.add(word, to: &customWords)
+        pipeline.customWords = customWords
+    }
+
+    func removeCustomWord(_ word: String) {
+        try? customWordStore.remove(word, from: &customWords)
+        pipeline.customWords = customWords
     }
 
     /// Validate an API key and discover available models for the given provider.

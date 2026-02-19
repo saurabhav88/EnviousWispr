@@ -21,12 +21,22 @@ struct SettingsView: View {
                     Label("AI Polish", systemImage: "sparkles")
                 }
 
+            WordFixSettingsView()
+                .tabItem {
+                    Label("Word Fix", systemImage: "textformat.abc")
+                }
+
             PermissionsSettingsView()
                 .tabItem {
                     Label("Permissions", systemImage: "lock.shield")
                 }
+
+            DiagnosticsSettingsView()
+                .tabItem {
+                    Label("Diagnostics", systemImage: "ladybug")
+                }
         }
-        .frame(width: 520, height: 480)
+        .frame(width: 520, height: 520)
     }
 }
 

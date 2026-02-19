@@ -39,7 +39,7 @@ Features identified from [Handy vs EnviousWispr comparison](../comparison-handy-
 
 | # | Feature | File | Plan | Code | Priority |
 | - | ------- | ---- | ---- | ---- | -------- |
-| 8 | Custom word correction | [008-custom-word-correction.md](008-custom-word-correction.md) | [x] | [ ] | Medium |
+| 8 | Custom word correction | [008-custom-word-correction.md](008-custom-word-correction.md) | [x] | [x] | Medium |
 | 9 | Offline LLM (Ollama + Apple Intelligence) | [009-offline-llm.md](009-offline-llm.md) | [x] | [x] | High |
 | 10 | User-editable LLM prompts | [010-user-editable-llm-prompts.md](010-user-editable-llm-prompts.md) | [x] | [x] | High |
 
@@ -70,14 +70,14 @@ Features identified from [Handy vs EnviousWispr comparison](../comparison-handy-
 
 | # | Feature | File | Plan | Code | Priority |
 | - | ------- | ---- | ---- | ---- | -------- |
-| 19 | Debug mode toggle | [019-debug-mode.md](019-debug-mode.md) | [x] | [ ] | Medium |
+| 19 | Debug mode toggle | [019-debug-mode.md](019-debug-mode.md) | [x] | [x] | Medium |
 | 20 | WAV recording history | [020-wav-recording-history.md](020-wav-recording-history.md) | [x] | [ ] | Medium |
 
 ## Summary
 
 | Status | Plans | Code |
 | ------ | ----- | ---- |
-| Not started | 0 | 15 |
+| Not started | 0 | 13 |
 | In progress | 0 | 0 |
-| Complete | 20 | 5 |
+| Complete | 20 | 7 |
 | **Total** | **20** | **20** |

@@ -120,10 +120,24 @@ struct StatusView: View {
                 }
 
             case .complete:
-                ContentUnavailableView {
-                    Label("Transcription Complete", systemImage: "checkmark.circle")
-                } description: {
-                    Text("Select a transcript from the sidebar to view it.")
+                VStack(spacing: 12) {
+                    ContentUnavailableView {
+                        Label("Transcription Complete", systemImage: "checkmark.circle")
+                    } description: {
+                        Text("Select a transcript from the sidebar to view it.")
+                    }
+
+                    if let polishError = appState.pipeline.lastPolishError {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                            Text("AI polish failed: \(polishError)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(8)
+                        .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                    }
                 }
 
             case .error(let msg):

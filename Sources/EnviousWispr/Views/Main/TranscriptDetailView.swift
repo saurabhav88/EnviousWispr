@@ -88,6 +88,14 @@ struct TranscriptDetailView: View {
                         }
                         .font(.caption2)
                         .foregroundStyle(.purple)
+                    } else if let polishError = appState.pipeline.lastPolishError {
+                        HStack(spacing: 2) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                            Text(polishError)
+                        }
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .help("AI polishing failed — check Settings > AI Polish")
                     }
                 }
             }

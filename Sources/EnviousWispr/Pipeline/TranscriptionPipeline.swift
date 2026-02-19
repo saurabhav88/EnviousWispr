@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
 
-/// Orchestrates the full dictation pipeline: record → transcribe → (polish) → store → copy/paste.
+/// Orchestrates the full dictation pipeline: record → transcribe → (correct) → (polish) → store → copy/paste.
 @MainActor
 @Observable
 final class TranscriptionPipeline {
@@ -31,6 +31,10 @@ final class TranscriptionPipeline {
     var restoreClipboardAfterPaste: Bool = false
     var polishInstructions: PolishInstructions = .default
     var lastPolishError: String?
+
+    // Feature #8: custom word correction
+    var wordCorrectionEnabled: Bool = false
+    var customWords: [String] = []
 
     /// The app that was frontmost when recording started — re-activated before pasting.
     private var targetApp: NSRunningApplication?
@@ -90,6 +94,11 @@ final class TranscriptionPipeline {
             state = .recording
             currentTranscript = nil
 
+            Task { await AppLogger.shared.log(
+                "Recording started. Backend: \(asrManager.activeBackendType.rawValue)",
+                level: .info, category: "Pipeline"
+            ) }
+
             // Always start VAD monitoring for silence removal
             startVADMonitoring()
         } catch {
@@ -106,10 +115,16 @@ final class TranscriptionPipeline {
         vadMonitorTask = nil
 
         let rawSamples = audioCapture.stopCapture()
+
         guard !rawSamples.isEmpty else {
             state = .error("No audio captured")
             return
         }
+
+        Task { await AppLogger.shared.log(
+            "Captured \(rawSamples.count) samples (\(String(format: "%.2f", Double(rawSamples.count)/16000))s)",
+            level: .verbose, category: "Pipeline"
+        ) }
 
         // Filter silence using VAD speech segments
         var samples: [Float]
@@ -124,6 +139,11 @@ final class TranscriptionPipeline {
         } else {
             samples = rawSamples
         }
+
+        Task { await AppLogger.shared.log(
+            "VAD filtered to \(samples.count) samples (\(String(format: "%.1f", Double(samples.count)/Double(max(rawSamples.count, 1))*100))% voiced)",
+            level: .verbose, category: "Pipeline"
+        ) }
 
         // ASR backends require >= 1 second of audio (16,000 samples at 16kHz).
         // If VAD filtering was too aggressive, fall back to raw samples.
@@ -142,17 +162,48 @@ final class TranscriptionPipeline {
         do {
             let result = try await asrManager.transcribe(audioSamples: samples)
 
-            guard !result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            let asrText = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !asrText.isEmpty else {
                 state = .error("No speech detected")
                 return
             }
 
-            // Optionally polish with LLM
+            Task { await AppLogger.shared.log(
+                "ASR complete: \(asrText.count) chars, lang=\(result.language ?? "?"), " +
+                "duration=\(String(format: "%.2f", result.duration))s, " +
+                "processingTime=\(String(format: "%.2f", result.processingTime))s",
+                level: .info, category: "Pipeline"
+            ) }
+
+            // Feature #8: word correction pass (after ASR, before LLM)
+            let correctedText: String
+            if wordCorrectionEnabled && !customWords.isEmpty {
+                let corrector = WordCorrector()
+                let (fixed, count) = corrector.correct(asrText, against: customWords)
+                if count > 0 {
+                    Task { await AppLogger.shared.log(
+                        "WordCorrector applied \(count) correction(s)",
+                        level: .verbose, category: "Pipeline"
+                    ) }
+                }
+                correctedText = fixed
+            } else {
+                correctedText = asrText
+            }
+
             var polishedText: String?
             if llmProvider != .none {
                 state = .polishing
+                Task { await AppLogger.shared.log(
+                    "LLM polish requested: provider=\(llmProvider.rawValue), model=\(llmModel)",
+                    level: .verbose, category: "LLM"
+                ) }
                 do {
-                    polishedText = try await polishTranscript(result.text)
+                    polishedText = try await polishTranscript(correctedText)
+                    Task { await AppLogger.shared.log(
+                        "LLM polish complete: \(polishedText?.count ?? 0) chars",
+                        level: .verbose, category: "LLM"
+                    ) }
                 } catch {
                     print("LLM polish failed: \(error.localizedDescription)")
                     lastPolishError = error.localizedDescription
@@ -160,7 +211,7 @@ final class TranscriptionPipeline {
             }
 
             let transcript = Transcript(
-                text: result.text,
+                text: correctedText,
                 polishedText: polishedText,
                 language: result.language,
                 duration: result.duration,
@@ -174,7 +225,7 @@ final class TranscriptionPipeline {
             // Notify ASR manager that transcription is done; schedules unload timer if configured.
             asrManager.noteTranscriptionComplete(policy: modelUnloadPolicy)
 
-            // Auto-copy/paste
+            // Auto-copy/paste + auto-submit
             if autoPasteToActiveApp {
                 // Re-activate the app that was frontmost when recording started,
                 // since focus may have shifted during transcription/polishing.
@@ -196,6 +247,7 @@ final class TranscriptionPipeline {
                     try? await Task.sleep(for: .milliseconds(300))
                     PasteService.restoreClipboard(snapshot, changeCountAfterPaste: changeCountAfterPaste)
                 }
+
             } else if autoCopyToClipboard {
                 PasteService.copyToClipboard(transcript.displayText)
             }
