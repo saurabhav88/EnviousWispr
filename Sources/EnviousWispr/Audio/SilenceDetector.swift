@@ -18,6 +18,8 @@ actor SilenceDetector {
     private(set) var speechSegments: [SpeechSegment] = []
     private var currentSpeechStart: Int? = nil
     private var processedSampleCount: Int = 0
+    private(set) var voicedSamples: [Float] = []
+    var dualBufferMode: Bool = false
 
     let silenceTimeout: TimeInterval
 
@@ -43,6 +45,7 @@ actor SilenceDetector {
         speechSegments = []
         currentSpeechStart = nil
         processedSampleCount = 0
+        voicedSamples = []
     }
 
     /// Process a chunk of 4096 audio samples (16kHz mono).
@@ -86,9 +89,18 @@ actor SilenceDetector {
             }
         }
 
+        // Dual-buffer: accumulate voiced chunks when speech is active
+        if dualBufferMode && (currentSpeechStart != nil || speechDetected && !shouldAutoStop) {
+            voicedSamples.append(contentsOf: samples)
+        }
+
         processedSampleCount += samples.count
 
         return shouldAutoStop
+    }
+
+    func setDualBufferMode(_ enabled: Bool) {
+        dualBufferMode = enabled
     }
 
     func finalizeSegments(totalSampleCount: Int) {
