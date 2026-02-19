@@ -68,6 +68,19 @@ mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
 cp "${BUILT_BINARY}" "${MACOS_DIR}/${BINARY_NAME}"
 chmod +x "${MACOS_DIR}/${BINARY_NAME}"
 
+# Copy Sparkle.framework into the bundle so the dyld can find it at runtime.
+FRAMEWORKS_DIR="${CONTENTS}/Frameworks"
+mkdir -p "${FRAMEWORKS_DIR}"
+SPARKLE_FW="${PROJECT_ROOT}/.build/arm64-apple-macosx/release/Sparkle.framework"
+if [[ -d "${SPARKLE_FW}" ]]; then
+    echo "    Copying Sparkle.framework into bundle ..."
+    cp -R "${SPARKLE_FW}" "${FRAMEWORKS_DIR}/"
+    # Add the standard Frameworks rpath so the binary finds the framework.
+    install_name_tool -add_rpath "@executable_path/../Frameworks" "${MACOS_DIR}/${BINARY_NAME}" 2>/dev/null || true
+else
+    echo "WARNING: Sparkle.framework not found at ${SPARKLE_FW} — app may fail to launch." >&2
+fi
+
 # Copy and patch Info.plist from committed source
 SOURCE_PLIST="${PROJECT_ROOT}/Sources/EnviousWispr/Resources/Info.plist"
 echo "    Copying Info.plist from ${SOURCE_PLIST} ..."
