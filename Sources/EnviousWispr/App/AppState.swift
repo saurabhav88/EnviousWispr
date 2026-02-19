@@ -96,6 +96,13 @@ final class AppState {
         }
     }
 
+    var vadDualBuffer: Bool {
+        didSet {
+            UserDefaults.standard.set(vadDualBuffer, forKey: "vadDualBuffer")
+            pipeline.vadDualBuffer = vadDualBuffer
+        }
+    }
+
     var hasCompletedOnboarding: Bool {
         didSet {
             UserDefaults.standard.set(hasCompletedOnboarding, forKey: "hasCompletedOnboarding")
@@ -126,6 +133,7 @@ final class AppState {
         hotkeyEnabled = defaults.object(forKey: "hotkeyEnabled") as? Bool ?? true
         vadAutoStop = defaults.object(forKey: "vadAutoStop") as? Bool ?? false
         vadSilenceTimeout = defaults.object(forKey: "vadSilenceTimeout") as? Double ?? 1.5
+        vadDualBuffer = defaults.object(forKey: "vadDualBuffer") as? Bool ?? false
         hasCompletedOnboarding = defaults.object(forKey: "hasCompletedOnboarding") as? Bool ?? false
         pipeline = TranscriptionPipeline(
             audioCapture: audioCapture,
@@ -138,6 +146,7 @@ final class AppState {
         pipeline.llmModel = llmModel
         pipeline.vadAutoStop = vadAutoStop
         pipeline.vadSilenceTimeout = vadSilenceTimeout
+        pipeline.vadDualBuffer = vadDualBuffer
         // Wire pipeline state changes to overlay and icon
         pipeline.onStateChange = { [weak self] newState in
             guard let self else { return }
