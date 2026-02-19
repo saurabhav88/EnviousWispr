@@ -20,6 +20,13 @@ Sources/EnviousWispr/
     ├── MenuBar/      # (reserved — menu bar uses NSStatusItem in AppDelegate)
     ├── Onboarding/   # First-launch flow
     └── Settings/     # 4 tabs: General, Shortcuts, AI Polish, Permissions
+
+docs/
+├── comparison-handy-vs-enviouswispr.md   # Technical comparison with Handy
+├── feature-requests/                      # Future feature specs + tracker
+│   ├── TRACKER.md                         # Master status checklist
+│   └── NNN-feature-name.md               # One file per feature (001-020)
+└── plans/                                 # Design docs + implementation plans
 ```
 
 ## Key Types

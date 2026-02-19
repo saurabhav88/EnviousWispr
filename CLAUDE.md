@@ -21,6 +21,7 @@ Local-first macOS dictation app — record → transcribe → polish → clipboa
 | [feature-scaffolding](.claude/agents/feature-scaffolding.md) | New backends, connectors, views, tabs | `scaffold-asr-backend`, `scaffold-llm-connector`, `scaffold-settings-tab`, `scaffold-swiftui-view` |
 | [testing](.claude/agents/testing.md) | Smoke tests, UI tests, benchmarks, API contracts | `run-smoke-test`, `run-benchmarks`, `validate-api-contracts`, `ui-ax-inspect`, `ui-simulate-input`, `ui-screenshot-verify`, `run-ui-test` |
 | [release-maintenance](.claude/agents/release-maintenance.md) | Packaging, signing, changelog, migration, dead code | `build-release-config`, `bundle-app`, `codesign-without-xcode`, `generate-changelog`, `migrate-swift-version`, `find-dead-code` |
+| [feature-planning](.claude/agents/feature-planning.md) | Feature request planning, implementation coordination | `check-feature-tracker`, `implement-feature-request` |
 
 ## Knowledge
 
@@ -30,6 +31,7 @@ Local-first macOS dictation app — record → transcribe → polish → clipboa
 | [gotchas](.claude/knowledge/gotchas.md) | FluidAudio collision, Swift 6, audio format, Keychain |
 | [conventions](.claude/knowledge/conventions.md) | Commit style, DI patterns, view patterns, imports |
 | [distribution](.claude/knowledge/distribution.md) | Release pipeline, Sparkle, DMG build, CI/CD, codesigning |
+| [roadmap](.claude/knowledge/roadmap.md) | Feature requests, tracker, priority system, implementation workflow |
 
 ## Commits
 

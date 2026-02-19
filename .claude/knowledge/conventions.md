@@ -69,3 +69,13 @@ Scopes: `asr`, `audio`, `ui`, `llm`, `pipeline`, `settings`, `hotkey`, `vad`, `b
 @preconcurrency import WhisperKit     // WhisperKit backend
 @preconcurrency import AVFoundation   // Audio capture
 ```
+
+## Feature Request Docs
+
+Feature request specs live in `docs/feature-requests/`. See `.claude/knowledge/roadmap.md` for the full format template.
+
+Key conventions:
+- One file per feature, zero-padded ID: `NNN-feature-name.md`
+- Status tracked in `TRACKER.md` (source of truth)
+- Implementation plans written before any code
+- Commit scope matches primary code area: `feat(hotkey):`, `feat(clipboard):`, etc.
