@@ -27,3 +27,12 @@ macOS Keychain via `KeychainManager` (service: `"com.enviouswispr.api-keys"`). *
 ## ASR Backend Lifecycle
 
 Only one backend active at a time. Always unload before switching: `await activeBackend.unload()` → swap → `await newBackend.prepare()`.
+
+## Distribution
+
+- **arm64 only** — FluidAudio uses Float16, unavailable on x86_64. Build with `--arch arm64`.
+- **Sparkle needs `@preconcurrency import`** — not fully Sendable-annotated, same as FluidAudio/WhisperKit.
+- **Sparkle.framework must be in bundle** — `build-dmg.sh` copies it; without it the app crashes on launch.
+- **Codesigning without Xcode** — use `codesign` CLI directly with `--options runtime` and entitlements file.
+- **Notarization requires app-specific password** — not the Apple ID password itself.
+- **Sparkle EdDSA key pair** — private key in macOS Keychain + `/tmp/sparkle_eddsa_private_key.txt`; public key in Info.plist.

@@ -36,6 +36,7 @@ Sources/EnviousWispr/
 | `HotkeyService` | NSEvent global/local monitors | `@MainActor` |
 | `OpenAIConnector` | GPT polish | `TranscriptPolisher` |
 | `GeminiConnector` | Gemini polish | `TranscriptPolisher` |
+| `SPUStandardUpdaterController` | Sparkle auto-update (in AppDelegate) | `@MainActor` |
 
 ## Pipeline State Machine
 

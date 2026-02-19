@@ -29,6 +29,7 @@ Local-first macOS dictation app — record → transcribe → polish → clipboa
 | [architecture](.claude/knowledge/architecture.md) | Structure, key types, pipeline state machine, data flow |
 | [gotchas](.claude/knowledge/gotchas.md) | FluidAudio collision, Swift 6, audio format, Keychain |
 | [conventions](.claude/knowledge/conventions.md) | Commit style, DI patterns, view patterns, imports |
+| [distribution](.claude/knowledge/distribution.md) | Release pipeline, Sparkle, DMG build, CI/CD, codesigning |
 
 ## Commits
 

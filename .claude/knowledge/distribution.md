@@ -1,0 +1,43 @@
+# Distribution & Release Pipeline
+
+## Release Flow
+
+`git tag v1.0.0` → GitHub Actions → build → sign → notarize → DMG → GitHub Release + appcast.xml update
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `.github/workflows/release.yml` | CI: triggered on `v*` tags, runs on `macos-14` |
+| `scripts/build-dmg.sh` | Builds arm64 release, assembles .app, creates DMG |
+| `Sources/EnviousWispr/Resources/Info.plist` | Source of truth for bundle metadata |
+| `Sources/EnviousWispr/Resources/EnviousWispr.entitlements` | Entitlements for codesigning |
+| `appcast.xml` | Sparkle update feed (committed to main, auto-updated by CI) |
+
+## Sparkle Auto-Update
+
+- Dependency: `sparkle-project/Sparkle` 2.6+
+- `@preconcurrency import Sparkle` in AppDelegate
+- `SPUStandardUpdaterController` initialized on launch (`startingUpdater: true`)
+- "Check for Updates..." menu item wired to `updaterController.checkForUpdates(_:)`
+- EdDSA signing (not DSA) — public key in Info.plist (`SUPublicEDKey`)
+- Feed URL in Info.plist (`SUFeedURL`) — overridden by env var in CI
+
+## DMG Build (`scripts/build-dmg.sh`)
+
+- `swift build -c release --arch arm64` (arm64-only: FluidAudio uses Float16)
+- Assembles .app bundle manually (no Xcode)
+- Copies Sparkle.framework into bundle, adds @rpath
+- Optional codesigning via `CODESIGN_IDENTITY` env var
+- Optional notarization via `APPLE_ID` + `APPLE_ID_PASSWORD` + `APPLE_TEAM_ID`
+- Usage: `./scripts/build-dmg.sh 1.0.0`
+
+## CI Secrets Required
+
+DEVELOPER_ID_CERT_BASE64, DEVELOPER_ID_CERT_PASSWORD, APPLE_ID, APPLE_ID_PASSWORD, APPLE_TEAM_ID, APPLE_TEAM_NAME, SPARKLE_EDDSA_PUBLIC_KEY, SPARKLE_PRIVATE_KEY
+
+## GitHub
+
+- Repo: `saurabhav88/EnviousWispr` (public)
+- `gh` CLI at `~/bin/gh`, authenticated as `saurabhav88`
+- Sparkle sign_update tool: `.build/artifacts/sparkle/Sparkle/bin/sign_update`
