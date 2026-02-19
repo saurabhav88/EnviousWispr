@@ -6,9 +6,23 @@ import ApplicationServices
 @Observable
 final class PermissionsService {
     private(set) var microphoneStatus: AVAuthorizationStatus = .notDetermined
+    private(set) var accessibilityGranted: Bool = false
+    private var pollTimer: Timer?
 
     init() {
         microphoneStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+        accessibilityGranted = AXIsProcessTrusted()
+        startAccessibilityPolling()
+    }
+
+    /// Poll AXIsProcessTrusted() periodically so the UI updates after the user
+    /// toggles the setting in System Settings.
+    private func startAccessibilityPolling() {
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.accessibilityGranted = AXIsProcessTrusted()
+            }
+        }
     }
 
     /// Request microphone access. Returns true if granted.
@@ -25,7 +39,7 @@ final class PermissionsService {
 
     /// Whether accessibility permission is granted (for paste-to-active-app).
     var hasAccessibilityPermission: Bool {
-        AXIsProcessTrusted()
+        accessibilityGranted
     }
 
     /// Prompt the user for accessibility permission.
