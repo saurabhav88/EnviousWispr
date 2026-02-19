@@ -14,6 +14,7 @@ final class AppState {
     let benchmark = BenchmarkSuite()
     let recordingOverlay = RecordingOverlayPanel()
     let customWordStore = CustomWordStore()
+    let ollamaSetup = OllamaSetupService()
 
     // Pipeline — initialized after sub-systems
     let pipeline: TranscriptionPipeline
@@ -291,9 +292,10 @@ final class AppState {
                 if self.recordingMode == .toggle {
                     self.hotkeyService.registerCancelHotkey()
                 }
-                self.recordingOverlay.show(audioLevelProvider: { [weak self] in
-                    self?.audioCapture.audioLevel ?? 0
-                })
+                self.recordingOverlay.show(
+                    audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 },
+                    modeLabel: self.recordingMode.shortLabel
+                )
             case .transcribing, .error, .idle:
                 self.hotkeyService.unregisterCancelHotkey()
                 self.recordingOverlay.hide()
@@ -346,6 +348,29 @@ final class AppState {
     /// Convenience: audio level for UI visualization.
     var audioLevel: Float {
         audioCapture.audioLevel
+    }
+
+    /// Total transcript count for sidebar stats.
+    var transcriptCount: Int { transcripts.count }
+
+    /// Average processing speed across all transcripts (seconds).
+    var averageProcessingSpeed: Double {
+        let withTimes = transcripts.filter { $0.processingTime > 0 }
+        guard !withTimes.isEmpty else { return 0 }
+        return withTimes.map(\.processingTime).reduce(0, +) / Double(withTimes.count)
+    }
+
+    /// Human-readable model name for display.
+    var activeModelName: String {
+        selectedBackend == .parakeet ? "Parakeet v3" : "WhisperKit"
+    }
+
+    /// Model status text for sidebar display.
+    var modelStatusText: String {
+        if pipelineState == .recording { return "Recording" }
+        if pipelineState == .transcribing { return "Transcribing" }
+        if pipelineState == .polishing { return "Polishing" }
+        return asrManager.isModelLoaded ? "Loaded" : "Unloaded"
     }
 
     /// Toggle recording on/off (plain, no forced LLM).

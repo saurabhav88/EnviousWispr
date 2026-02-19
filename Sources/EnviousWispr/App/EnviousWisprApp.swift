@@ -11,7 +11,7 @@ struct EnviousWisprApp: App {
                 .environment(appDelegate.appState)
                 .background(ActionWirer(appDelegate: appDelegate))
         }
-        .defaultSize(width: 500, height: 600)
+        .defaultSize(width: 820, height: 600)
 
         // Settings
         Settings {

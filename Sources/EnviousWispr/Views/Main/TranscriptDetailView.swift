@@ -1,13 +1,79 @@
 import SwiftUI
 
-/// Detail view for a single transcript with copy/paste/polish actions.
+/// Detail view for a single transcript with toolbar actions.
 struct TranscriptDetailView: View {
     let transcript: Transcript
     @Environment(AppState.self) private var appState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Transcript text
+        VStack(alignment: .leading, spacing: 0) {
+            // Toolbar row
+            HStack(spacing: 8) {
+                Button {
+                    PasteService.copyToClipboard(transcript.displayText)
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
+                .controlSize(.small)
+                .keyboardShortcut("c", modifiers: [.command, .shift])
+
+                Button {
+                    PasteService.pasteToActiveApp(transcript.displayText)
+                } label: {
+                    Label("Paste", systemImage: "arrow.right.doc.on.clipboard")
+                }
+                .controlSize(.small)
+
+                if transcript.polishedText == nil && appState.llmProvider != .none {
+                    Button {
+                        Task { await appState.polishTranscript(transcript) }
+                    } label: {
+                        Label("Enhance", systemImage: "sparkles")
+                    }
+                    .controlSize(.small)
+                    .disabled(appState.pipelineState == .polishing)
+                }
+
+                Spacer()
+
+                // Metadata
+                HStack(spacing: 8) {
+                    Text(transcript.backendType == .parakeet ? "Parakeet v3" : "WhisperKit")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    if transcript.processingTime > 0 {
+                        Text(String(format: "%.1fs", transcript.processingTime))
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .monospacedDigit()
+                    }
+
+                    if transcript.polishedText != nil {
+                        HStack(spacing: 2) {
+                            Image(systemName: "sparkles")
+                            Text("Enhanced")
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.purple)
+                    }
+                }
+
+                Button(role: .destructive) {
+                    appState.deleteTranscript(transcript)
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .controlSize(.small)
+                .buttonStyle(.borderless)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(.bar)
+
+            Divider()
+
+            // Content
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     if let polished = transcript.polishedText {
@@ -18,7 +84,7 @@ struct TranscriptDetailView: View {
 
                         Divider()
 
-                        DisclosureGroup("Original transcript") {
+                        DisclosureGroup("Show original") {
                             Text(transcript.text)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -31,76 +97,21 @@ struct TranscriptDetailView: View {
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
+
+                    if let polishError = appState.pipeline.lastPolishError {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                            Text("AI polish failed: \(polishError)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(8)
+                        .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                    }
                 }
                 .padding()
             }
-
-            Divider()
-
-            // Action buttons
-            HStack(spacing: 12) {
-                Button {
-                    PasteService.copyToClipboard(transcript.displayText)
-                } label: {
-                    Label("Copy", systemImage: "doc.on.doc")
-                }
-                .keyboardShortcut("c", modifiers: [.command, .shift])
-
-                Button {
-                    PasteService.pasteToActiveApp(transcript.displayText)
-                } label: {
-                    Label("Paste to App", systemImage: "arrow.right.doc.on.clipboard")
-                }
-
-                if transcript.polishedText == nil && appState.llmProvider != .none {
-                    Button {
-                        Task { await appState.polishTranscript(transcript) }
-                    } label: {
-                        Label("Enhance", systemImage: "sparkles")
-                    }
-                    .disabled(appState.pipelineState == .polishing)
-                }
-
-                Button(role: .destructive) {
-                    appState.deleteTranscript(transcript)
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
-
-                Spacer()
-
-                // Metadata
-                VStack(alignment: .trailing) {
-                    Text(transcript.backendType == .parakeet ? "Parakeet v3" : "WhisperKit")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    if transcript.processingTime > 0 {
-                        Text(String(format: "%.1fs", transcript.processingTime))
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-
-                    if transcript.polishedText != nil {
-                        HStack(spacing: 2) {
-                            Image(systemName: "sparkles")
-                            Text("Enhanced")
-                        }
-                        .font(.caption2)
-                        .foregroundStyle(.purple)
-                    } else if let polishError = appState.pipeline.lastPolishError {
-                        HStack(spacing: 2) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                            Text(polishError)
-                        }
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
-                        .help("AI polishing failed — check Settings > AI Polish")
-                    }
-                }
-            }
-            .padding(.horizontal)
-            .padding(.bottom, 12)
         }
     }
 }

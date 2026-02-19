@@ -1,16 +1,15 @@
 import SwiftUI
+import Combine
 
-/// Primary transcript window.
+/// Primary transcript window with Command Center layout.
 struct MainWindowView: View {
     @Environment(AppState.self) private var appState
     @State private var showOnboarding = false
 
     var body: some View {
         NavigationSplitView {
-            // Sidebar: transcript history
             TranscriptHistoryView()
         } detail: {
-            // Detail: active transcript or status view
             if let transcript = appState.activeTranscript {
                 TranscriptDetailView(transcript: transcript)
             } else {
@@ -27,14 +26,11 @@ struct MainWindowView: View {
             }
         }
         .task {
-            // Request mic permission on first launch
             if !appState.permissions.hasMicrophonePermission {
                 _ = await appState.permissions.requestMicrophoneAccess()
             }
-            // Load transcript history
             appState.loadTranscripts()
 
-            // Show onboarding if needed
             if !appState.hasCompletedOnboarding {
                 showOnboarding = true
             }
@@ -46,9 +42,12 @@ struct MainWindowView: View {
     }
 }
 
-/// Placeholder view when no transcript is active.
+/// Status view when no transcript is active — handles all pipeline states.
 struct StatusView: View {
     @Environment(AppState.self) private var appState
+    @State private var elapsed: TimeInterval = 0
+    @State private var timerCancellable: AnyCancellable?
+    @State private var recordingStart: Date?
 
     var body: some View {
         VStack(spacing: 16) {
@@ -68,35 +67,75 @@ struct StatusView: View {
                 }
 
             case .recording:
-                VStack(spacing: 16) {
-                    // Pulsing rings behind mic icon
-                    ZStack {
-                        PulsingRingsView()
-                            .frame(width: 120, height: 120)
+                VStack(spacing: 20) {
+                    // Pulsing rings + mic icon + timer
+                    HStack(spacing: 16) {
+                        ZStack {
+                            PulsingRingsView()
+                                .frame(width: 80, height: 80)
 
-                        Image(systemName: "mic.fill")
-                            .font(.system(size: 48))
-                            .foregroundStyle(.red)
+                            Image(systemName: "mic.fill")
+                                .font(.system(size: 32))
+                                .foregroundStyle(.red)
+                        }
+
+                        Text(formatDuration(elapsed))
+                            .font(.system(size: 40, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.primary)
                     }
 
-                    Text("Recording...")
-                        .font(.title2)
-                        .bold()
+                    Text("Recording · \(appState.activeModelName)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
 
                     // Waveform visualizer
                     WaveformView(level: appState.audioLevel)
-                        .frame(height: 32)
-                        .padding(.horizontal, 60)
+                        .frame(height: 36)
+                        .padding(.horizontal, 40)
 
-                    // Audio level bar
-                    AudioLevelBar(level: appState.audioLevel)
-                        .frame(height: 6)
-                        .padding(.horizontal, 80)
+                    // VAD status bar
+                    VStack(spacing: 4) {
+                        AudioLevelBar(level: appState.audioLevel)
+                            .frame(width: 240, height: 6)
 
-                    if appState.vadAutoStop {
-                        Text("Auto-stop on silence enabled")
-                            .font(.caption)
+                        if appState.vadAutoStop {
+                            Text("VAD: Active")
+                                .font(.caption2)
+                                .foregroundStyle(.green)
+                        }
+                    }
+
+                    // Action buttons
+                    HStack(spacing: 16) {
+                        Button {
+                            Task { await appState.toggleRecording() }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "stop.fill")
+                                Text("Stop")
+                            }
+                            .font(.body.weight(.medium))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(.red, lineWidth: 1.5)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.red)
+
+                        Button {
+                            Task { await appState.cancelRecording() }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text("Esc")
+                                    .font(.caption.monospaced())
+                                Text("Cancel")
+                            }
                             .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
 
@@ -153,6 +192,37 @@ struct StatusView: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: appState.pipelineState)
+        .onChange(of: appState.pipelineState) { _, newState in
+            if case .recording = newState {
+                startTimer()
+            } else {
+                stopTimer()
+            }
+        }
+    }
+
+    private func startTimer() {
+        elapsed = 0
+        recordingStart = Date()
+        timerCancellable = Timer.publish(every: 0.1, on: .main, in: .common)
+            .autoconnect()
+            .sink { _ in
+                if let start = recordingStart {
+                    elapsed = Date().timeIntervalSince(start)
+                }
+            }
+    }
+
+    private func stopTimer() {
+        timerCancellable?.cancel()
+        timerCancellable = nil
+        recordingStart = nil
+    }
+
+    private func formatDuration(_ seconds: TimeInterval) -> String {
+        let mins = Int(seconds) / 60
+        let secs = Int(seconds) % 60
+        return String(format: "%d:%02d", mins, secs)
     }
 }
 
@@ -186,11 +256,11 @@ struct WaveformView: View {
     private let barCount = 16
 
     var body: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 3) {
             ForEach(0..<barCount, id: \.self) { i in
-                RoundedRectangle(cornerRadius: 1.5)
+                RoundedRectangle(cornerRadius: 2)
                     .fill(barColor)
-                    .frame(width: 3, height: barHeight(for: i))
+                    .frame(width: 4, height: barHeight(for: i))
                     .animation(.easeOut(duration: 0.08), value: level)
             }
         }
@@ -207,7 +277,7 @@ struct WaveformView: View {
         let center = CGFloat(barCount) / 2.0
         let distance = abs(CGFloat(index) - center) / center
         let base: CGFloat = 3
-        let maxHeight: CGFloat = 28
+        let maxHeight: CGFloat = 32
         return base + (maxHeight - base) * normalized * (1.0 - distance * 0.6)
     }
 }
@@ -241,18 +311,31 @@ struct StatusBadge: View {
                 .fill(statusColor)
                 .frame(width: 8, height: 8)
 
-            Image(systemName: appState.pipelineState.menuBarIconName)
-                .foregroundStyle(appState.pipelineState == .recording ? .red : .secondary)
-            Text(appState.pipelineState.statusText)
+            Text(statusLabel)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            Text(appState.activeModelName)
+                .font(.caption)
+                .foregroundStyle(.tertiary)
         }
         .animation(.easeInOut(duration: 0.2), value: appState.pipelineState)
     }
 
+    private var statusLabel: String {
+        switch appState.pipelineState {
+        case .idle: return "Ready"
+        case .recording: return "Recording"
+        case .transcribing: return "Transcribing"
+        case .polishing: return "Polishing"
+        case .complete: return "Done"
+        case .error: return "Error"
+        }
+    }
+
     private var statusColor: Color {
         switch appState.pipelineState {
-        case .idle: return .secondary
+        case .idle: return .green
         case .recording: return .red
         case .transcribing, .polishing: return .orange
         case .complete: return .green

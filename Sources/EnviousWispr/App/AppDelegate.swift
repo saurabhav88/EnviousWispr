@@ -70,36 +70,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func populateMenu(_ menu: NSMenu) {
         menu.removeAllItems()
 
-        // Status line
         let state = appState.pipelineState
+
+        // Rich status line
         let modelState: String
         if !appState.asrManager.isModelLoaded && state != .recording && state != .transcribing {
             modelState = "Model unloaded"
         } else {
-            modelState = appState.selectedBackend == .parakeet ? "Parakeet v3" : "WhisperKit"
+            modelState = appState.activeModelName
         }
-        let statusMenuItem = NSMenuItem(title: "\(state.statusText) — \(modelState)", action: nil, keyEquivalent: "")
-        statusMenuItem.isEnabled = false
-        menu.addItem(statusMenuItem)
+        let statusTitle = "\(state.statusText) — \(modelState)"
+        let statusItem = NSMenuItem(title: statusTitle, action: nil, keyEquivalent: "")
+        statusItem.isEnabled = false
+        menu.addItem(statusItem)
+
+        // Transcript count
+        let countTitle = "\(appState.transcriptCount) transcript\(appState.transcriptCount == 1 ? "" : "s")"
+        let countItem = NSMenuItem(title: countTitle, action: nil, keyEquivalent: "")
+        countItem.isEnabled = false
+        menu.addItem(countItem)
 
         menu.addItem(.separator())
 
         // Record / Stop
-        let recordTitle = state == .recording ? "Stop Recording" : "Start Recording"
+        let recordTitle = state == .recording ? "⏹ Stop Recording" : "🎙 Start Recording"
         let recordItem = NSMenuItem(title: recordTitle, action: #selector(toggleRecording), keyEquivalent: "")
         recordItem.target = self
         recordItem.isEnabled = !(state.isActive && state != .recording)
         menu.addItem(recordItem)
 
+        // Record + AI Polish (only when an LLM provider is configured)
+        if appState.llmProvider != .none {
+            let polishItem = NSMenuItem(title: "✨ Record + AI Polish", action: #selector(toggleRecording), keyEquivalent: "")
+            polishItem.target = self
+            polishItem.isEnabled = !(state.isActive && state != .recording)
+            menu.addItem(polishItem)
+        }
+
         menu.addItem(.separator())
 
         // Open main window
-        let openItem = NSMenuItem(title: "Open EnviousWispr", action: #selector(openMainWindow), keyEquivalent: "o")
+        let openItem = NSMenuItem(title: "📋 Open EnviousWispr", action: #selector(openMainWindow), keyEquivalent: "o")
         openItem.target = self
         menu.addItem(openItem)
 
         // Settings
-        let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
+        let settingsItem = NSMenuItem(title: "⚙️ Settings...", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
 

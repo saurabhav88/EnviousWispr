@@ -10,7 +10,7 @@ import SwiftUI
 final class RecordingOverlayPanel {
     private var panel: NSPanel?
 
-    func show(audioLevelProvider: @escaping () -> Float) {
+    func show(audioLevelProvider: @escaping () -> Float, modeLabel: String) {
         guard panel == nil else { return }
 
         // Delay creation to the next run loop cycle.
@@ -18,14 +18,14 @@ final class RecordingOverlayPanel {
         // animation is still in progress. Creating an NSHostingView during
         // that animation causes a re-entrant NSWindow layout cycle (SIGABRT).
         DispatchQueue.main.async { [weak self] in
-            self?.createPanel(audioLevelProvider: audioLevelProvider)
+            self?.createPanel(audioLevelProvider: audioLevelProvider, modeLabel: modeLabel)
         }
     }
 
-    private func createPanel(audioLevelProvider: @escaping () -> Float) {
+    private func createPanel(audioLevelProvider: @escaping () -> Float, modeLabel: String) {
         guard panel == nil else { return }
 
-        let size = NSRect(x: 0, y: 0, width: 180, height: 44)
+        let size = NSRect(x: 0, y: 0, width: 220, height: 44)
 
         let p = NSPanel(
             contentRect: size,
@@ -42,8 +42,8 @@ final class RecordingOverlayPanel {
 
         // Fix content size to prevent NSHostingView from triggering
         // animated window resizes that cause layout cycle exceptions.
-        let overlayView = RecordingOverlayView(audioLevelProvider: audioLevelProvider)
-            .frame(width: 180, height: 44)
+        let overlayView = RecordingOverlayView(audioLevelProvider: audioLevelProvider, modeLabel: modeLabel)
+            .frame(width: 220, height: 44)
         let hostingView = NSHostingView(rootView: overlayView)
         hostingView.frame = size
         p.contentView = hostingView
@@ -51,7 +51,7 @@ final class RecordingOverlayPanel {
         // Position at top-center of main screen
         if let screen = NSScreen.main {
             let screenFrame = screen.visibleFrame
-            let x = screenFrame.midX - 90
+            let x = screenFrame.midX - 110
             let y = screenFrame.maxY - 60
             p.setFrameOrigin(NSPoint(x: x, y: y))
         }
@@ -71,6 +71,7 @@ final class RecordingOverlayPanel {
 /// Compact recording indicator overlay.
 struct RecordingOverlayView: View {
     let audioLevelProvider: () -> Float
+    let modeLabel: String
     @State private var audioLevel: Float = 0
     @State private var elapsed: TimeInterval = 0
     @State private var pulseAnimation = false
@@ -101,6 +102,15 @@ struct RecordingOverlayView: View {
             Text(formatDuration(elapsed))
                 .font(.system(size: 13, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white)
+
+            // Mode separator + label
+            Rectangle()
+                .fill(.white.opacity(0.3))
+                .frame(width: 1, height: 16)
+
+            Text(modeLabel)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.white.opacity(0.7))
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)

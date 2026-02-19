@@ -4,6 +4,13 @@ import Foundation
 enum RecordingMode: String, Codable, CaseIterable, Sendable {
     case pushToTalk
     case toggle
+
+    var shortLabel: String {
+        switch self {
+        case .pushToTalk: return "PTT"
+        case .toggle: return "Toggle"
+        }
+    }
 }
 
 /// Pipeline processing state.

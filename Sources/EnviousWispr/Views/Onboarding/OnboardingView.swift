@@ -1,25 +1,34 @@
 import SwiftUI
 
-/// First-launch onboarding flow.
+/// First-launch onboarding flow with step badges.
 struct OnboardingView: View {
     @Environment(AppState.self) private var appState
     @Binding var isPresented: Bool
     @State private var currentStep = 0
 
-    private let totalSteps = 4
+    private let steps = ["Welcome", "Microphone", "Accessibility", "Ready"]
 
     var body: some View {
         VStack(spacing: 0) {
-            // Progress dots
-            HStack(spacing: 8) {
-                ForEach(0..<totalSteps, id: \.self) { step in
-                    Capsule()
-                        .fill(step <= currentStep ? Color.accentColor : Color.secondary.opacity(0.3))
-                        .frame(height: 4)
+            // Title
+            Text("Setup")
+                .font(.headline)
+                .padding(.top, 16)
+
+            // Step badges
+            HStack(spacing: 12) {
+                ForEach(Array(steps.enumerated()), id: \.offset) { index, label in
+                    StepBadge(
+                        label: label,
+                        step: index + 1,
+                        state: index < currentStep ? .completed
+                             : index == currentStep ? .current
+                             : .upcoming
+                    )
                 }
             }
-            .padding(.horizontal, 40)
-            .padding(.top, 20)
+            .padding(.horizontal, 24)
+            .padding(.top, 12)
 
             Spacer()
 
@@ -44,14 +53,30 @@ struct OnboardingView: View {
             // Navigation
             HStack {
                 if currentStep > 0 {
-                    Button("Back") { currentStep -= 1 }
+                    Button {
+                        currentStep -= 1
+                    } label: {
+                        HStack(spacing: 2) {
+                            Image(systemName: "chevron.left")
+                                .font(.caption)
+                            Text("Back")
+                        }
+                    }
                 }
 
                 Spacer()
 
-                if currentStep < totalSteps - 1 {
-                    Button("Continue") { currentStep += 1 }
-                        .keyboardShortcut(.defaultAction)
+                if currentStep < steps.count - 1 {
+                    Button {
+                        currentStep += 1
+                    } label: {
+                        HStack(spacing: 2) {
+                            Text("Continue")
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                        }
+                    }
+                    .keyboardShortcut(.defaultAction)
                 } else {
                     Button("Get Started") {
                         appState.hasCompletedOnboarding = true
@@ -62,16 +87,14 @@ struct OnboardingView: View {
             }
             .padding(24)
         }
-        .frame(width: 480, height: 360)
+        .frame(width: 480, height: 380)
     }
 
     // MARK: - Steps
 
     private var welcomeStep: some View {
         VStack(spacing: 16) {
-            Image(systemName: "mic.circle.fill")
-                .font(.system(size: 64))
-                .foregroundStyle(.blue)
+            IconCircle(systemName: "mic.circle.fill", tint: .blue)
 
             Text("Welcome to EnviousWispr")
                 .font(.title)
@@ -86,10 +109,11 @@ struct OnboardingView: View {
 
     private var microphoneStep: some View {
         VStack(spacing: 16) {
-            Image(systemName: appState.permissions.hasMicrophonePermission
-                  ? "checkmark.circle.fill" : "mic.badge.plus")
-                .font(.system(size: 48))
-                .foregroundStyle(appState.permissions.hasMicrophonePermission ? .green : .orange)
+            IconCircle(
+                systemName: appState.permissions.hasMicrophonePermission
+                    ? "checkmark.circle.fill" : "mic.badge.plus",
+                tint: appState.permissions.hasMicrophonePermission ? .green : .orange
+            )
 
             Text("Microphone Access")
                 .font(.title2)
@@ -114,10 +138,11 @@ struct OnboardingView: View {
 
     private var accessibilityStep: some View {
         VStack(spacing: 16) {
-            Image(systemName: appState.permissions.hasAccessibilityPermission
-                  ? "checkmark.circle.fill" : "lock.shield")
-                .font(.system(size: 48))
-                .foregroundStyle(appState.permissions.hasAccessibilityPermission ? .green : .orange)
+            IconCircle(
+                systemName: appState.permissions.hasAccessibilityPermission
+                    ? "checkmark.circle.fill" : "lock.shield",
+                tint: appState.permissions.hasAccessibilityPermission ? .green : .orange
+            )
 
             Text("Accessibility Permission")
                 .font(.title2)
@@ -142,9 +167,7 @@ struct OnboardingView: View {
 
     private var readyStep: some View {
         VStack(spacing: 16) {
-            Image(systemName: "checkmark.seal.fill")
-                .font(.system(size: 64))
-                .foregroundStyle(.green)
+            IconCircle(systemName: "checkmark.seal.fill", tint: .green)
 
             Text("You're All Set!")
                 .font(.title)
@@ -158,5 +181,59 @@ struct OnboardingView: View {
             .foregroundStyle(.secondary)
         }
         .padding()
+    }
+}
+
+// MARK: - Step Badge
+
+enum StepState {
+    case completed, current, upcoming
+}
+
+struct StepBadge: View {
+    let label: String
+    let step: Int
+    let state: StepState
+
+    var body: some View {
+        HStack(spacing: 4) {
+            switch state {
+            case .completed:
+                Image(systemName: "checkmark")
+                    .font(.caption2.bold())
+                    .foregroundStyle(.green)
+            case .current:
+                Text("\(step).")
+                    .font(.caption2.bold())
+                    .foregroundStyle(Color.accentColor)
+            case .upcoming:
+                Text("\(step).")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+
+            Text(label)
+                .font(.caption)
+                .fontWeight(state == .current ? .bold : .regular)
+                .foregroundStyle(state == .upcoming ? Color.secondary.opacity(0.5) : state == .completed ? Color.green : Color.accentColor)
+        }
+    }
+}
+
+// MARK: - Icon Circle
+
+struct IconCircle: View {
+    let systemName: String
+    let tint: Color
+
+    var body: some View {
+        Image(systemName: systemName)
+            .font(.system(size: 48))
+            .foregroundStyle(tint)
+            .frame(width: 80, height: 80)
+            .background(
+                Circle()
+                    .fill(tint.opacity(0.12))
+            )
     }
 }
