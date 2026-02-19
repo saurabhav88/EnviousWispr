@@ -90,6 +90,12 @@ struct GeneralSettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                Toggle("Real-time silence filter", isOn: $state.vadDualBuffer)
+                if appState.vadDualBuffer {
+                    Text("Experimental: Filters silence in real-time during recording. Uses more memory. Disable if you notice audio artifacts.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
             }
 
             Section("Behavior") {
