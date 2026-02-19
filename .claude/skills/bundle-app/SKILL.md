@@ -42,6 +42,17 @@ cp "$RESOURCES_SRC/Info.plist" "$BUNDLE/Contents/Info.plist"
 cp "$RESOURCES_SRC/AppIcon.icns" "$BUNDLE/Contents/Resources/AppIcon.icns"
 ```
 
+## Embed Sparkle.framework
+
+The binary links Sparkle dynamically — it must be embedded in the bundle and the rpath patched.
+
+```bash
+SPARKLE_FW=/Users/m4pro_sv/Desktop/EnviousWispr/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework
+mkdir -p "$BUNDLE/Contents/Frameworks"
+cp -R "$SPARKLE_FW" "$BUNDLE/Contents/Frameworks/Sparkle.framework"
+install_name_tool -add_rpath @executable_path/../Frameworks "$BUNDLE/Contents/MacOS/EnviousWispr"
+```
+
 ## Create PkgInfo
 
 ```bash
@@ -54,12 +65,13 @@ printf 'APPL????' > "$BUNDLE/Contents/PkgInfo"
 find "$BUNDLE" -type f
 ```
 
-Expected output:
+Expected output (must include Sparkle.framework):
 ```
 /tmp/EnviousWispr.app/Contents/Info.plist
 /tmp/EnviousWispr.app/Contents/PkgInfo
 /tmp/EnviousWispr.app/Contents/MacOS/EnviousWispr
 /tmp/EnviousWispr.app/Contents/Resources/AppIcon.icns
+/tmp/EnviousWispr.app/Contents/Frameworks/Sparkle.framework/...
 ```
 
 ## Move to Applications (optional)
