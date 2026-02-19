@@ -9,7 +9,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/argmaxinc/WhisperKit.git", from: "0.12.0"),
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.1.0"),
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.12.0"),
         .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.6.0"),
         // KeyboardShortcuts deferred to M2 — requires full Xcode for #Preview macros
         // .package(url: "https://github.com/sindresorhus/KeyboardShortcuts.git", from: "2.4.0"),

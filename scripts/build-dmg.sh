@@ -8,8 +8,8 @@
 #   APPLE_ID               — Apple ID for notarization
 #   APPLE_ID_PASSWORD      — App-specific password for notarization
 #   APPLE_TEAM_ID          — Apple Developer Team ID for notarization
-#   SPARKLE_FEED_URL       — Sparkle appcast URL (default: GitHub raw URL)
-#   SPARKLE_EDDSA_PUBLIC_KEY — Sparkle EdDSA public key (default: PLACEHOLDER)
+#   SPARKLE_FEED_URL       — Sparkle appcast URL (overrides Info.plist if set)
+#   SPARKLE_EDDSA_PUBLIC_KEY — Sparkle EdDSA public key (overrides Info.plist if set)
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
@@ -68,74 +68,28 @@ mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
 cp "${BUILT_BINARY}" "${MACOS_DIR}/${BINARY_NAME}"
 chmod +x "${MACOS_DIR}/${BINARY_NAME}"
 
-# Write Info.plist
-echo "    Writing Info.plist ..."
-cat > "${CONTENTS}/Info.plist" << PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <!-- Identity -->
-    <key>CFBundleIdentifier</key>
-    <string>${BUNDLE_ID}</string>
-    <key>CFBundleName</key>
-    <string>${APP_NAME}</string>
-    <key>CFBundleDisplayName</key>
-    <string>${APP_NAME}</string>
-    <key>CFBundleExecutable</key>
-    <string>${BINARY_NAME}</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleSignature</key>
-    <string>????</string>
+# Copy and patch Info.plist from committed source
+SOURCE_PLIST="${PROJECT_ROOT}/Sources/EnviousWispr/Resources/Info.plist"
+echo "    Copying Info.plist from ${SOURCE_PLIST} ..."
+if [[ ! -f "${SOURCE_PLIST}" ]]; then
+    echo "ERROR: Committed Info.plist not found at ${SOURCE_PLIST}" >&2
+    exit 1
+fi
+cp "${SOURCE_PLIST}" "${CONTENTS}/Info.plist"
 
-    <!-- Versioning -->
-    <key>CFBundleVersion</key>
-    <string>${VERSION}</string>
-    <key>CFBundleShortVersionString</key>
-    <string>${VERSION}</string>
+# Substitute version strings
+sed -i '' "s|<string>1.0.0</string><!-- CFBundleVersion -->|<string>${VERSION}</string><!-- CFBundleVersion -->|g" "${CONTENTS}/Info.plist" 2>/dev/null || true
+# Use plutil for reliable version substitution
+plutil -replace CFBundleVersion -string "${VERSION}" "${CONTENTS}/Info.plist"
+plutil -replace CFBundleShortVersionString -string "${VERSION}" "${CONTENTS}/Info.plist"
 
-    <!-- Platform -->
-    <key>LSMinimumSystemVersion</key>
-    <string>${MIN_MACOS}</string>
-    <!-- Apple Silicon + Intel -->
-    <key>LSArchitecturePriority</key>
-    <array>
-        <string>arm64</string>
-        <string>x86_64</string>
-    </array>
-
-    <!-- Menu bar app — no Dock icon -->
-    <key>LSUIElement</key>
-    <true/>
-
-    <!-- Privacy usage descriptions (required for Sandbox/App Store; good practice otherwise) -->
-    <key>NSMicrophoneUsageDescription</key>
-    <string>EnviousWispr needs microphone access for speech-to-text dictation.</string>
-    <key>NSAppleEventsUsageDescription</key>
-    <string>EnviousWispr uses Accessibility APIs to paste transcribed text into the active application.</string>
-
-    <!-- High-res display support -->
-    <key>NSHighResolutionCapable</key>
-    <true/>
-
-    <!-- Principal class for AppKit launch without a XIB -->
-    <key>NSPrincipalClass</key>
-    <string>NSApplication</string>
-
-    <!-- Sparkle auto-updater -->
-    <key>SUFeedURL</key>
-    <string>${SPARKLE_FEED_URL:-https://raw.githubusercontent.com/saurabhav88/EnviousWispr/main/appcast.xml}</string>
-    <key>SUPublicEDKey</key>
-    <string>${SPARKLE_EDDSA_PUBLIC_KEY:-PLACEHOLDER}</string>
-
-    <!-- App icon -->
-    <key>CFBundleIconFile</key>
-    <string>AppIcon</string>
-</dict>
-</plist>
-PLIST
+# Override Sparkle keys from env vars if provided
+if [[ -n "${SPARKLE_FEED_URL:-}" ]]; then
+    plutil -replace SUFeedURL -string "${SPARKLE_FEED_URL}" "${CONTENTS}/Info.plist"
+fi
+if [[ -n "${SPARKLE_EDDSA_PUBLIC_KEY:-}" ]]; then
+    plutil -replace SUPublicEDKey -string "${SPARKLE_EDDSA_PUBLIC_KEY}" "${CONTENTS}/Info.plist"
+fi
 
 # AppIcon — copy real .icns or write placeholder
 SOURCE_ICNS="${PROJECT_ROOT}/Sources/EnviousWispr/Resources/AppIcon.icns"

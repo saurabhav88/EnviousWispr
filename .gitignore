@@ -13,7 +13,6 @@ xcuserdata/
 # Swift Package Manager
 .build/
 .swiftpm/
-Package.resolved
 
 # Editor/IDE
 .vscode/
