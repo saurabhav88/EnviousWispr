@@ -30,7 +30,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             queue: .main
         ) { _ in
             // Delay check so the window has time to close
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(500))
                 let hasVisibleWindows = NSApp.windows.contains { $0.isVisible && !($0.className.contains("StatusBar")) }
                 if !hasVisibleWindows {
                     NSApp.setActivationPolicy(.accessory)

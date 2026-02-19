@@ -396,7 +396,8 @@ struct LLMSettingsView: View {
         do {
             try appState.keychainManager.store(key: keychainId, value: key)
             validationStatus = "Saved!"
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            Task {
+                try? await Task.sleep(for: .seconds(2))
                 validationStatus = ""
             }
         } catch {

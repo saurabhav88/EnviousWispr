@@ -1,4 +1,4 @@
-import AVFoundation
+import Foundation
 
 /// Unified protocol for all ASR backends.
 ///

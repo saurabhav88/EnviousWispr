@@ -64,8 +64,6 @@ final class RecordingOverlayPanel {
         panel?.close()
         panel = nil
     }
-
-    var isVisible: Bool { panel != nil }
 }
 
 // MARK: - RecordingOverlayView

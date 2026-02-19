@@ -1,4 +1,4 @@
-import AVFoundation
+import Foundation
 
 /// Manages ASR backend selection and delegates transcription calls.
 @MainActor
