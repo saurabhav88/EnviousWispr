@@ -5,7 +5,7 @@ import FoundationModels
 #endif
 
 /// Apple Intelligence connector using the on-device FoundationModels framework.
-/// Requires macOS 26+ on Apple Silicon. No API key, no internet connection.
+/// Requires macOS 26+ with Apple Intelligence support. No API key, no internet connection.
 struct AppleIntelligenceConnector: TranscriptPolisher {
 
     func polish(

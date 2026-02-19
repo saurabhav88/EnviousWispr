@@ -2,7 +2,7 @@ import AppKit
 import Carbon.HIToolbox
 
 /// Immutable snapshot of all pasteboard contents at a point in time.
-struct ClipboardSnapshot {
+struct ClipboardSnapshot: Sendable {
     /// Raw data keyed by pasteboard type, preserving every representation.
     let items: [[NSPasteboard.PasteboardType: Data]]
     /// `NSPasteboard.changeCount` at the moment the snapshot was taken.
@@ -50,19 +50,23 @@ enum PasteService {
 
         // If the change count has advanced beyond what we set, a third-party
         // tool wrote to the clipboard — don't clobber their change.
-        guard pasteboard.changeCount == changeCountAfterPaste else { return }
+        guard pasteboard.changeCount == changeCountAfterPaste else {
+            print("[PasteService] Clipboard restore skipped: changeCount advanced (expected \(changeCountAfterPaste), got \(pasteboard.changeCount))")
+            return
+        }
 
         // Nothing to restore (clipboard was already empty).
         guard !snapshot.items.isEmpty else { return }
 
         pasteboard.clearContents()
-        for itemDict in snapshot.items {
+        let pbItems: [NSPasteboardItem] = snapshot.items.map { itemDict in
             let pbItem = NSPasteboardItem()
             for (type, data) in itemDict {
                 pbItem.setData(data, forType: type)
             }
-            pasteboard.writeObjects([pbItem])
+            return pbItem
         }
+        pasteboard.writeObjects(pbItems)
     }
 
     /// Copy text to clipboard and simulate Cmd+V to paste into the frontmost app.
@@ -76,23 +80,19 @@ enum PasteService {
         pasteboard.setString(text, forType: .string)
         let changeCountAfterWrite = pasteboard.changeCount
 
-        let source = CGEventSource(stateID: .hidSystemState)
-
-        let keyDown = CGEvent(
-            keyboardEventSource: source,
-            virtualKey: UInt16(kVK_ANSI_V),
-            keyDown: true
-        )
-        keyDown?.flags = .maskCommand
-        keyDown?.post(tap: .cghidEventTap)
-
-        let keyUp = CGEvent(
-            keyboardEventSource: source,
-            virtualKey: UInt16(kVK_ANSI_V),
-            keyDown: false
-        )
-        keyUp?.flags = .maskCommand
-        keyUp?.post(tap: .cghidEventTap)
+        guard let source = CGEventSource(stateID: .hidSystemState) else {
+            print("[PasteService] Failed to create CGEventSource — check Accessibility permissions")
+            return changeCountAfterWrite
+        }
+        guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: UInt16(kVK_ANSI_V), keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: UInt16(kVK_ANSI_V), keyDown: false) else {
+            print("[PasteService] Failed to create CGEvent for Cmd+V")
+            return changeCountAfterWrite
+        }
+        keyDown.flags = .maskCommand
+        keyDown.post(tap: .cghidEventTap)
+        keyUp.flags = .maskCommand
+        keyUp.post(tap: .cghidEventTap)
 
         return changeCountAfterWrite
     }

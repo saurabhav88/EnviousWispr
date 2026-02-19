@@ -34,6 +34,7 @@ Owned: `Package.swift` (shared with build-compile).
 
 - `build-release-config`
 - `bundle-app`
+- `rebuild-and-relaunch` — chains release build → bundle → kill → TCC reset → relaunch
 - `codesign-without-xcode`
 - `generate-changelog`
 - `migrate-swift-version`

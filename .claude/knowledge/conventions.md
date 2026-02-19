@@ -3,12 +3,21 @@
 ## Build Commands
 
 ```bash
-swift build                # Build
-swift run EnviousWispr      # Run
+swift build                # Debug build
+swift build -c release     # Release build (for .app bundle)
 swift build --build-tests  # Verify tests compile
 ```
 
 **CLI tools only** — no Xcode, no XCTest, no `#Preview`, no `xcodebuild`.
+
+## Bundle Workflow: Avoid Stale Binaries
+
+`swift build` compiles to `.build/debug/` (or `.build/release/`), but the **running app** is at `build/EnviousWispr.app`. These are separate binaries. After any code change:
+
+1. Use `rebuild-and-relaunch` skill — chains release build → bundle → kill → TCC reset → relaunch
+2. Or use `run-smoke-test` — automatically rebuilds the bundle before launching
+
+**Never test code changes via `swift run` alone** — always rebuild the .app bundle so runtime behavior matches what the user sees.
 
 ## App Lifecycle: Always Reset Accessibility
 

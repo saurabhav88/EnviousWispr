@@ -40,3 +40,4 @@ Required: `@preconcurrency import FluidAudio / WhisperKit / AVFoundation`
 - Failure in Audio/ASR/Pipeline → provide context to **audio-pipeline**
 - Failure in Services/Views → provide context to **macos-platform**
 - After fix → always `swift build` to confirm
+- If live-testing the app → `validate-build-post-update` now warns about stale bundles; use `rebuild-and-relaunch` to sync

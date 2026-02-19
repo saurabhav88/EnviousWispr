@@ -20,7 +20,7 @@ struct LLMResult: Sendable {
 struct LLMProviderConfig: Codable, Sendable {
     let provider: LLMProvider
     let model: String
-    let apiKeyKeychainId: String
+    let apiKeyKeychainId: String?
     let maxTokens: Int
     let temperature: Double
 }
@@ -83,7 +83,7 @@ extension PolishInstructions {
 }
 
 /// Built-in prompt presets the user can apply with one click.
-enum PromptPreset: String, CaseIterable, Identifiable {
+enum PromptPreset: String, CaseIterable, Identifiable, Sendable {
     case cleanUp = "Clean Up"
     case formal  = "Formal"
     case casual  = "Casual"

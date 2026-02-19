@@ -65,6 +65,9 @@ final class AppState {
         didSet {
             UserDefaults.standard.set(llmModel, forKey: "llmModel")
             pipeline.llmModel = llmModel
+            if llmProvider == .ollama {
+                ollamaModel = llmModel
+            }
         }
     }
 

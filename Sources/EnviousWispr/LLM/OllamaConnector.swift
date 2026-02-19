@@ -19,10 +19,12 @@ struct OllamaConnector: TranscriptPolisher {
             throw LLMError.requestFailed("Invalid Ollama URL: \(endpointURL)")
         }
 
-        let messages: [[String: String]] = [
+        var messages: [[String: String]] = [
             ["role": "system", "content": instructions.systemPrompt],
-            ["role": "user",   "content": text],
         ]
+        if !text.isEmpty {
+            messages.append(["role": "user", "content": text])
+        }
 
         let body: [String: Any] = [
             "model":       config.model,
@@ -41,9 +43,14 @@ struct OllamaConnector: TranscriptPolisher {
         let (data, response): (Data, URLResponse)
         do {
             (data, response) = try await URLSession.shared.data(for: request)
-        } catch let urlError as URLError where urlError.code == .cannotConnectToHost
-                                              || urlError.code == .timedOut {
-            throw LLMError.providerUnavailable
+        } catch let urlError as URLError {
+            switch urlError.code {
+            case .cannotConnectToHost, .timedOut, .cannotFindHost,
+                 .networkConnectionLost, .notConnectedToInternet:
+                throw LLMError.providerUnavailable
+            default:
+                throw LLMError.requestFailed("Network error: \(urlError.localizedDescription)")
+            }
         }
 
         guard let httpResponse = response as? HTTPURLResponse else {

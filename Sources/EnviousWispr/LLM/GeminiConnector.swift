@@ -75,8 +75,11 @@ struct GeminiConnector: TranscriptPolisher {
     }
 
     private func getAPIKey(config: LLMProviderConfig) throws -> String {
+        guard let keychainId = config.apiKeyKeychainId else {
+            throw LLMError.invalidAPIKey
+        }
         do {
-            return try keychainManager.retrieve(key: config.apiKeyKeychainId)
+            return try keychainManager.retrieve(key: keychainId)
         } catch {
             throw LLMError.invalidAPIKey
         }

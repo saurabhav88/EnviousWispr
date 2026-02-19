@@ -29,6 +29,7 @@ final class TranscriptionPipeline {
     var modelUnloadPolicy: ModelUnloadPolicy = .never
     var restoreClipboardAfterPaste: Bool = false
     var polishInstructions: PolishInstructions = .default
+    var lastPolishError: String?
 
     /// The app that was frontmost when recording started — re-activated before pasting.
     private var targetApp: NSRunningApplication?
@@ -62,6 +63,8 @@ final class TranscriptionPipeline {
     /// Start recording audio from the microphone.
     func startRecording() async {
         guard !state.isActive || state == .complete else { return }
+
+        lastPolishError = nil
 
         // Cancel idle timer so model stays loaded during recording.
         asrManager.cancelIdleTimer()
@@ -139,6 +142,7 @@ final class TranscriptionPipeline {
                     polishedText = try await polishTranscript(result.text)
                 } catch {
                     print("LLM polish failed: \(error.localizedDescription)")
+                    lastPolishError = error.localizedDescription
                 }
             }
 
@@ -202,6 +206,7 @@ final class TranscriptionPipeline {
             polishedText = try await polishTranscript(transcript.text)
         } catch {
             print("LLM polish failed: \(error.localizedDescription)")
+            lastPolishError = error.localizedDescription
             state = .complete
             return nil
         }
@@ -323,10 +328,10 @@ final class TranscriptionPipeline {
         case .none: throw LLMError.providerUnavailable
         }
 
-        let keychainId: String = switch llmProvider {
+        let keychainId: String? = switch llmProvider {
         case .openAI:  "openai-api-key"
         case .gemini:  "gemini-api-key"
-        default:       ""
+        default:       nil
         }
 
         let maxTokens = llmProvider == .ollama ? 4096 : 2048

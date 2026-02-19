@@ -16,12 +16,14 @@ No XCTest — macOS CLI tools only. `swift build --build-tests` verifies test ta
 
 ## Validation Hierarchy
 
-1. `swift build` — compiler catches type errors, isolation issues
+1. `swift build -c release` — compiler catches type errors, isolation issues
 2. `swift build --build-tests` — test target compiles
-3. `swift run EnviousWispr` — app launches without crash
+3. Rebuild .app bundle + relaunch — `run-smoke-test` now rebuilds the bundle from release binary, ensuring the running app always reflects the latest code
 4. UI tests — AX inspection + CGEvent simulation + screenshot verification
 5. Benchmarks — BenchmarkSuite: 5s/15s/30s transcription, measures RTF
 6. API contracts — verify OpenAI/Gemini request/response shapes
+
+**Important**: Never test via `swift run` alone — always use the .app bundle to match real user conditions.
 
 ## API Endpoints
 

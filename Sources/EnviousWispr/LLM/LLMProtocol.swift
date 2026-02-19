@@ -30,7 +30,7 @@ enum LLMError: LocalizedError, Sendable, Equatable {
         case .modelNotFound(let model):
             return "Ollama model '\(model)' is not pulled. Run: ollama pull \(model)"
         case .frameworkUnavailable:
-            return "Apple Intelligence requires macOS 26+ on Apple Silicon."
+            return "Apple Intelligence requires macOS 26+ with Apple Intelligence support."
         }
     }
 

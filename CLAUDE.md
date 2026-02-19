@@ -20,7 +20,7 @@ Local-first macOS dictation app — record → transcribe → polish → clipboa
 | [quality-security](.claude/agents/quality-security.md) | Concurrency, actor isolation, Sendable, secrets | `audit-actor-isolation`, `flag-missing-sendable`, `detect-unsafe-main-actor-dispatches`, `check-api-key-storage`, `detect-hardcoded-secrets`, `validate-keychain-usage`, `flag-sensitive-logging` |
 | [feature-scaffolding](.claude/agents/feature-scaffolding.md) | New backends, connectors, views, tabs | `scaffold-asr-backend`, `scaffold-llm-connector`, `scaffold-settings-tab`, `scaffold-swiftui-view` |
 | [testing](.claude/agents/testing.md) | Smoke tests, UI tests, benchmarks, API contracts | `run-smoke-test`, `run-benchmarks`, `validate-api-contracts`, `ui-ax-inspect`, `ui-simulate-input`, `ui-screenshot-verify`, `run-ui-test` |
-| [release-maintenance](.claude/agents/release-maintenance.md) | Packaging, signing, changelog, migration, dead code | `build-release-config`, `bundle-app`, `codesign-without-xcode`, `generate-changelog`, `migrate-swift-version`, `find-dead-code` |
+| [release-maintenance](.claude/agents/release-maintenance.md) | Packaging, signing, changelog, migration, dead code | `build-release-config`, `bundle-app`, `rebuild-and-relaunch`, `codesign-without-xcode`, `generate-changelog`, `migrate-swift-version`, `find-dead-code` |
 | [feature-planning](.claude/agents/feature-planning.md) | Feature request planning, implementation coordination | `check-feature-tracker`, `implement-feature-request` |
 
 ## Knowledge

@@ -39,7 +39,7 @@ struct LLMModelDiscovery: Sendable {
             return []
         }
 
-        let filtered = filterModels(modelIDs)
+        let filtered = provider == .ollama ? modelIDs : filterModels(modelIDs)
 
         // Probe all filtered models in parallel
         return await withTaskGroup(of: LLMModelInfo.self, returning: [LLMModelInfo].self) { group in
@@ -220,9 +220,14 @@ struct LLMModelDiscovery: Sendable {
                                  .joined(separator: " ")
                 return (id: name, displayName: display)
             }
-        } catch let urlError as URLError
-                  where urlError.code == .cannotConnectToHost || urlError.code == .timedOut {
-            throw LLMError.providerUnavailable
+        } catch let urlError as URLError {
+            switch urlError.code {
+            case .cannotConnectToHost, .timedOut, .cannotFindHost,
+                 .networkConnectionLost, .notConnectedToInternet:
+                throw LLMError.providerUnavailable
+            default:
+                throw LLMError.requestFailed("Network error: \(urlError.localizedDescription)")
+            }
         }
     }
 
