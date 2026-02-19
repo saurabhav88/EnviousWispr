@@ -68,7 +68,8 @@ struct GeminiConnector: TranscriptPolisher {
         }
 
         return LLMResult(
-            polishedText: responseText.trimmingCharacters(in: .whitespacesAndNewlines),
+            polishedText: responseText.trimmingCharacters(in: .whitespacesAndNewlines)
+                .strippingLLMPreamble(),
             provider: .gemini,
             model: config.model
         )

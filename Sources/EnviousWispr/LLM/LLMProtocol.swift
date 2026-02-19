@@ -10,6 +10,41 @@ protocol TranscriptPolisher: Sendable {
     ) async throws -> LLMResult
 }
 
+// MARK: - Preamble Stripping
+
+extension String {
+    /// Strip common LLM preamble/acknowledgment patterns from polished transcript output.
+    func strippingLLMPreamble() -> String {
+        var result = self.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Common acknowledgment prefixes LLMs prepend
+        let preamblePatterns = [
+            "Certainly! Here's the cleaned transcript:",
+            "Certainly! Here is the cleaned transcript:",
+            "Certainly!",
+            "Sure! Here's the cleaned transcript:",
+            "Sure! Here is the cleaned transcript:",
+            "Sure,",
+            "Sure!",
+            "Here's the cleaned transcript:",
+            "Here is the cleaned transcript:",
+            "Here's the cleaned-up transcript:",
+            "Here is the cleaned-up transcript:",
+            "Here's the proofread transcript:",
+            "Here is the proofread transcript:",
+            "Here you go:",
+            "Of course!",
+        ]
+        for pattern in preamblePatterns {
+            if result.hasPrefix(pattern) {
+                result = String(result.dropFirst(pattern.count))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                break
+            }
+        }
+        return result
+    }
+}
+
 /// Errors that can occur during LLM operations.
 enum LLMError: LocalizedError, Sendable, Equatable {
     case invalidAPIKey
