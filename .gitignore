@@ -51,8 +51,8 @@ node_modules/
 dist/
 build/
 
-# Models (large files, download at runtime)
-Models/
+# Models (large files, download at runtime — root-level only)
+/Models/
 *.mlmodel
 *.mlpackage
 *.gguf

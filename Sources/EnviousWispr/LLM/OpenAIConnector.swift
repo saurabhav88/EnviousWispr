@@ -35,9 +35,7 @@ struct OpenAIConnector: TranscriptPolisher {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         request.timeoutInterval = 30
 
-        let startTime = CFAbsoluteTimeGetCurrent()
         let (data, response) = try await URLSession.shared.data(for: request)
-        let elapsed = CFAbsoluteTimeGetCurrent() - startTime
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw LLMError.requestFailed("Invalid response")
@@ -60,30 +58,11 @@ struct OpenAIConnector: TranscriptPolisher {
             throw LLMError.emptyResponse
         }
 
-        let usage = json?["usage"] as? [String: Any]
-        let totalTokens = usage?["total_tokens"] as? Int
-
         return LLMResult(
-            originalText: text,
             polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines),
             provider: .openAI,
-            model: config.model,
-            tokensUsed: totalTokens,
-            latency: elapsed
+            model: config.model
         )
-    }
-
-    func validateCredentials(config: LLMProviderConfig) async throws -> Bool {
-        let apiKey = try getAPIKey(config: config)
-
-        // Use the models endpoint as a lightweight health check
-        var request = URLRequest(url: URL(string: "https://api.openai.com/v1/models")!)
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.timeoutInterval = 10
-
-        let (_, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else { return false }
-        return httpResponse.statusCode == 200
     }
 
     private func getAPIKey(config: LLMProviderConfig) throws -> String {

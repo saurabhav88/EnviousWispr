@@ -16,7 +16,7 @@ final class AppState {
     let recordingOverlay = RecordingOverlayPanel()
 
     // Pipeline — initialized after sub-systems
-    private(set) var pipeline: TranscriptionPipeline!
+    let pipeline: TranscriptionPipeline
 
     // Transcript history
     var transcripts: [Transcript] = []
@@ -133,7 +133,6 @@ final class AppState {
         vadSilenceTimeout = defaults.object(forKey: "vadSilenceTimeout") as? Double ?? 1.5
         hasCompletedOnboarding = defaults.object(forKey: "hasCompletedOnboarding") as? Bool ?? false
         audioCuesEnabled = defaults.object(forKey: "audioCuesEnabled") as? Bool ?? true
-        soundManager.isEnabled = audioCuesEnabled
 
         pipeline = TranscriptionPipeline(
             audioCapture: audioCapture,
@@ -146,6 +145,7 @@ final class AppState {
         pipeline.llmModel = llmModel
         pipeline.vadAutoStop = vadAutoStop
         pipeline.vadSilenceTimeout = vadSilenceTimeout
+        soundManager.isEnabled = audioCuesEnabled
 
         // Wire pipeline state changes to overlay + sounds
         pipeline.onStateChange = { [weak self] newState in

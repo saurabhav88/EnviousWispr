@@ -24,16 +24,10 @@ enum AudioBufferProcessor {
 /// Errors that can occur during audio operations.
 enum AudioError: LocalizedError, Sendable {
     case formatCreationFailed
-    case bufferCreationFailed
-    case captureFailed(String)
-    case noMicrophonePermission
 
     var errorDescription: String? {
         switch self {
         case .formatCreationFailed: return "Failed to create audio format."
-        case .bufferCreationFailed: return "Failed to create audio buffer."
-        case .captureFailed(let msg): return "Audio capture failed: \(msg)"
-        case .noMicrophonePermission: return "Microphone permission not granted."
         }
     }
 }

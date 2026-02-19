@@ -1,6 +1,7 @@
 import Foundation
 
 /// Persists transcripts as JSON files in Application Support.
+@MainActor
 final class TranscriptStore {
     private let directory: URL
 

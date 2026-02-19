@@ -26,16 +26,12 @@ enum ASRError: LocalizedError, Sendable {
     case notReady
     case modelLoadFailed(String)
     case transcriptionFailed(String)
-    case emptyResult
-    case unsupportedFormat
 
     var errorDescription: String? {
         switch self {
         case .notReady: return "ASR backend is not ready. Call prepare() first."
         case .modelLoadFailed(let msg): return "Model loading failed: \(msg)"
         case .transcriptionFailed(let msg): return "Transcription failed: \(msg)"
-        case .emptyResult: return "Transcription returned an empty result."
-        case .unsupportedFormat: return "Unsupported audio format."
         }
     }
 }

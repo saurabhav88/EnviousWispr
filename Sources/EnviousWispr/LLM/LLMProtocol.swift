@@ -8,9 +8,6 @@ protocol TranscriptPolisher: Sendable {
         instructions: PolishInstructions,
         config: LLMProviderConfig
     ) async throws -> LLMResult
-
-    /// Check if the provider is reachable and the API key is valid.
-    func validateCredentials(config: LLMProviderConfig) async throws -> Bool
 }
 
 /// Errors that can occur during LLM operations.

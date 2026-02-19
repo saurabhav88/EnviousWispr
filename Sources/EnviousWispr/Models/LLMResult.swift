@@ -9,12 +9,9 @@ enum LLMProvider: String, Codable, CaseIterable, Sendable {
 
 /// Result from LLM transcript polishing.
 struct LLMResult: Sendable {
-    let originalText: String
     let polishedText: String
     let provider: LLMProvider
     let model: String
-    let tokensUsed: Int?
-    let latency: TimeInterval
 }
 
 /// Configuration for an LLM provider.
