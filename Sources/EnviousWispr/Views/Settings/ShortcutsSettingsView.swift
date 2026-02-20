@@ -11,28 +11,6 @@ struct ShortcutsSettingsView: View {
             Section("Global Hotkey") {
                 Toggle("Enable global hotkey", isOn: $state.hotkeyEnabled)
 
-                if appState.hotkeyEnabled {
-                    HStack {
-                        Text("Current hotkey:")
-                        Spacer()
-                        Text(appState.hotkeyService.hotkeyDescription)
-                            .font(.system(.body, design: .rounded))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 6))
-                    }
-
-                    if appState.recordingMode == .toggle {
-                        Text("Press ⌃Space to toggle recording on/off.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("Hold ⌥Option to record, release to stop.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
                 if !appState.permissions.hasAccessibilityPermission {
                     HStack {
                         Image(systemName: "exclamationmark.triangle.fill")
@@ -51,22 +29,76 @@ struct ShortcutsSettingsView: View {
                 }
             }
 
+            if appState.hotkeyEnabled {
+                Section("Recording Shortcuts") {
+                    // Toggle mode hotkey
+                    HotkeyRecorderView(
+                        keyCode: $state.toggleKeyCode,
+                        modifiers: $state.toggleModifiers,
+                        defaultKeyCode: 49,  // Space
+                        defaultModifiers: .control,
+                        label: "Toggle recording"
+                    )
+
+                    Text("Press this shortcut to start/stop recording in toggle mode.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Divider()
+
+                    // Push-to-talk modifier
+                    ModifierRecorderView(
+                        modifier: $state.pushToTalkModifier,
+                        defaultModifier: .option,
+                        label: "Push-to-talk"
+                    )
+
+                    Text("Hold this key to record in push-to-talk mode, release to stop.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Divider()
+
+                    // Cancel hotkey
+                    HotkeyRecorderView(
+                        keyCode: $state.cancelKeyCode,
+                        modifiers: $state.cancelModifiers,
+                        defaultKeyCode: 53,  // Escape
+                        defaultModifiers: [],
+                        label: "Cancel recording"
+                    )
+
+                    Text("Press this to discard the current recording and return to idle.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Section("Current Mode") {
+                    HStack {
+                        Text("Active mode:")
+                        Spacer()
+                        Text(appState.recordingMode == .toggle ? "Toggle" : "Push-to-Talk")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    HStack {
+                        Text("Active hotkey:")
+                        Spacer()
+                        Text(appState.hotkeyService.hotkeyDescription)
+                            .font(.system(.body, design: .rounded))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 6))
+                    }
+
+                    Text("Change recording mode in Speech Engine settings.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section("Hotkey Reference") {
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Toggle mode:")
-                            .font(.caption)
-                        Spacer()
-                        Text("⌃Space")
-                            .font(.caption.monospaced())
-                    }
-                    HStack {
-                        Text("Push-to-talk:")
-                            .font(.caption)
-                        Spacer()
-                        Text("Hold ⌥Option")
-                            .font(.caption.monospaced())
-                    }
                     HStack {
                         Text("Open window:")
                             .font(.caption)
@@ -82,28 +114,13 @@ struct ShortcutsSettingsView: View {
                             .font(.caption.monospaced())
                     }
                     HStack {
-                        Text("Cancel recording:")
+                        Text("Quit:")
                             .font(.caption)
                         Spacer()
-                        Text("Escape")
+                        Text("⌘Q")
                             .font(.caption.monospaced())
                     }
                 }
-            }
-
-            Section("Cancel Hotkey") {
-                HStack {
-                    Text("Cancel recording:")
-                    Spacer()
-                    Text(appState.hotkeyService.cancelHotkeyDescription)
-                        .font(.system(.body, design: .rounded))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 6))
-                }
-                Text("Press this key while recording to immediately discard audio and return to idle.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

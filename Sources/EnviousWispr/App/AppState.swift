@@ -150,6 +150,29 @@ final class AppState {
         }
     }
 
+    // Configurable toggle hotkey (default: Option+Space)
+    var toggleKeyCode: UInt16 {
+        didSet {
+            UserDefaults.standard.set(Int(toggleKeyCode), forKey: "toggleKeyCode")
+            hotkeyService.toggleKeyCode = toggleKeyCode
+        }
+    }
+
+    var toggleModifiers: NSEvent.ModifierFlags {
+        didSet {
+            UserDefaults.standard.set(toggleModifiers.rawValue, forKey: "toggleModifiersRaw")
+            hotkeyService.toggleModifiers = toggleModifiers
+        }
+    }
+
+    // Configurable push-to-talk modifier (default: Option)
+    var pushToTalkModifier: NSEvent.ModifierFlags {
+        didSet {
+            UserDefaults.standard.set(pushToTalkModifier.rawValue, forKey: "pushToTalkModifierRaw")
+            hotkeyService.pushToTalkModifier = pushToTalkModifier
+        }
+    }
+
     var modelUnloadPolicy: ModelUnloadPolicy {
         didSet {
             UserDefaults.standard.set(modelUnloadPolicy.rawValue, forKey: "modelUnloadPolicy")
@@ -241,6 +264,17 @@ final class AppState {
         let savedCancelModRaw = defaults.object(forKey: "cancelModifiersRaw") as? UInt
         cancelModifiers = NSEvent.ModifierFlags(rawValue: savedCancelModRaw ?? 0)
 
+        // Toggle hotkey (default: Control+Space)
+        let savedToggleKeyCode = defaults.object(forKey: "toggleKeyCode") as? Int
+        toggleKeyCode = UInt16(savedToggleKeyCode ?? 49)  // Default: Space
+
+        let savedToggleModRaw = defaults.object(forKey: "toggleModifiersRaw") as? UInt
+        toggleModifiers = NSEvent.ModifierFlags(rawValue: savedToggleModRaw ?? NSEvent.ModifierFlags.control.rawValue)
+
+        // Push-to-talk modifier (default: Option)
+        let savedPTTModRaw = defaults.object(forKey: "pushToTalkModifierRaw") as? UInt
+        pushToTalkModifier = NSEvent.ModifierFlags(rawValue: savedPTTModRaw ?? NSEvent.ModifierFlags.option.rawValue)
+
         modelUnloadPolicy = ModelUnloadPolicy(
             rawValue: defaults.string(forKey: "modelUnloadPolicy") ?? ""
         ) ?? .never
@@ -306,6 +340,11 @@ final class AppState {
 
         // Wire hotkey callbacks
         hotkeyService.recordingMode = recordingMode
+        hotkeyService.cancelKeyCode = cancelKeyCode
+        hotkeyService.cancelModifiers = cancelModifiers
+        hotkeyService.toggleKeyCode = toggleKeyCode
+        hotkeyService.toggleModifiers = toggleModifiers
+        hotkeyService.pushToTalkModifier = pushToTalkModifier
         hotkeyService.onToggleRecording = { [weak self] in
             guard let self else { return }
             await self.toggleRecording()
