@@ -145,9 +145,9 @@ final class TranscriptionPipeline {
             level: .verbose, category: "Pipeline"
         ) }
 
-        // ASR backends require >= 1 second of audio (16,000 samples at 16kHz).
+        // ASR backends require >= 1 second of audio.
         // If VAD filtering was too aggressive, fall back to raw samples.
-        let minimumSamples = 16000
+        let minimumSamples = AudioConstants.minimumTranscriptionSamples
         if samples.count < minimumSamples && rawSamples.count >= minimumSamples {
             samples = rawSamples
         }
@@ -191,6 +191,13 @@ final class TranscriptionPipeline {
                 correctedText = asrText
             }
 
+            // Early exit if word correction resulted in empty text
+            let trimmedCorrected = correctedText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedCorrected.isEmpty else {
+                state = .error("No text after processing")
+                return
+            }
+
             var polishedText: String?
             if llmProvider != .none {
                 state = .polishing
@@ -205,7 +212,10 @@ final class TranscriptionPipeline {
                         level: .verbose, category: "LLM"
                     ) }
                 } catch {
-                    print("LLM polish failed: \(error.localizedDescription)")
+                    Task { await AppLogger.shared.log(
+                        "LLM polish failed: \(error.localizedDescription)",
+                        level: .info, category: "Pipeline"
+                    ) }
                     lastPolishError = error.localizedDescription
                 }
             }
@@ -270,7 +280,10 @@ final class TranscriptionPipeline {
         do {
             polishedText = try await polishTranscript(transcript.text)
         } catch {
-            print("LLM polish failed: \(error.localizedDescription)")
+            Task { await AppLogger.shared.log(
+                "LLM polish failed: \(error.localizedDescription)",
+                level: .info, category: "Pipeline"
+            ) }
             lastPolishError = error.localizedDescription
             state = .complete
             return nil
@@ -291,7 +304,10 @@ final class TranscriptionPipeline {
         do {
             try transcriptStore.save(updated)
         } catch {
-            print("Failed to save polished transcript: \(error)")
+            Task { await AppLogger.shared.log(
+                "Failed to save polished transcript: \(error)",
+                level: .info, category: "Pipeline"
+            ) }
             state = .error("Failed to save: \(error.localizedDescription)")
             return nil
         }
@@ -360,7 +376,10 @@ final class TranscriptionPipeline {
             do {
                 try await detector.prepare()
             } catch {
-                print("VAD preparation failed: \(error)")
+                Task { await AppLogger.shared.log(
+                    "VAD preparation failed: \(error)",
+                    level: .info, category: "VAD"
+                ) }
                 return
             }
         }

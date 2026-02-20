@@ -15,23 +15,30 @@ struct WordCorrector: Sendable {
     func correct(_ text: String, against wordList: [String]) -> (corrected: String, replacements: Int) {
         guard !wordList.isEmpty else { return (text, 0) }
 
+        // Pre-compute lowercased versions to avoid repeated conversions
+        let lowercasedWordList = wordList.map { $0.lowercased() }
+
         var replacements = 0
         let words = text.components(separatedBy: .whitespaces)
         let corrected = words.map { token -> String in
             let (prefix, core, suffix) = splitPunctuation(token)
             guard !core.isEmpty, core.count >= 3 else { return token }
 
+            let coreLower = core.lowercased()
             var bestScore = 0.0
             var bestMatch = ""
-            for target in wordList {
-                let s = score(core.lowercased(), against: target.lowercased())
+
+            for (idx, targetLower) in lowercasedWordList.enumerated() {
+                let s = score(coreLower, against: targetLower)
                 if s > bestScore {
                     bestScore = s
-                    bestMatch = target
+                    bestMatch = wordList[idx]  // Use original case
+                    // Early exit on perfect match
+                    if bestScore >= 1.0 { break }
                 }
             }
 
-            if bestScore >= Self.threshold, core.lowercased() != bestMatch.lowercased() {
+            if bestScore >= Self.threshold, coreLower != bestMatch.lowercased() {
                 replacements += 1
                 return prefix + bestMatch + suffix
             }
@@ -87,28 +94,33 @@ struct WordCorrector: Sendable {
         soundex(a) == soundex(b) ? 1.0 : 0.0
     }
 
+    /// Soundex map for lowercase letters.
+    private static let soundexMap: [Character: Character] = [
+        "b":"1","f":"1","p":"1","v":"1",
+        "c":"2","g":"2","j":"2","k":"2","q":"2","s":"2","x":"2","z":"2",
+        "d":"3","t":"3","e":"0","i":"0","o":"0","u":"0","y":"0","h":"0","w":"0",
+        "l":"4","m":"5","n":"5","r":"6",
+    ]
+
     private func soundex(_ s: String) -> String {
-        let map: [Character: Character] = [
-            "b":"1","f":"1","p":"1","v":"1",
-            "c":"2","g":"2","j":"2","k":"2","q":"2","s":"2","x":"2","z":"2",
-            "d":"3","t":"3","e":"0","i":"0","o":"0","u":"0","y":"0","h":"0","w":"0",
-            "l":"4","m":"5","n":"5","r":"6",
-        ]
-        let upper = s.uppercased()
-        guard let first = upper.first else { return "0000" }
-        var code = String(first)
-        var last = map[Character(String(first).lowercased())] ?? "0"
-        for ch in upper.dropFirst() {
-            let lch = Character(String(ch).lowercased())
-            guard let digit = map[lch] else { continue }
+        let lower = s.lowercased()
+        guard let first = lower.first else { return "0000" }
+
+        var code = String(first.uppercased())
+        var last = Self.soundexMap[first] ?? "0"
+
+        for ch in lower.dropFirst() {
+            guard let digit = Self.soundexMap[ch] else { continue }
             if digit != "0" && digit != last {
                 code.append(digit)
                 if code.count == 4 { break }
             }
             last = digit
         }
+
+        // Pad to 4 characters
         while code.count < 4 { code.append("0") }
-        return String(code.prefix(4))
+        return code
     }
 
     // MARK: - Helpers

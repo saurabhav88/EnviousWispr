@@ -86,11 +86,13 @@ actor SilenceDetector {
         speechSegments = []
         currentSpeechStart = nil
         processedSampleCount = 0
+        // Pre-allocate for ~30 seconds of voiced audio to reduce reallocations
         voicedSamples = []
+        voicedSamples.reserveCapacity(16000 * 30)
         phase = .idle
         emaSmoothedProbability = 0.0
         consecutiveAboveOnset = 0
-        prebuffer = []
+        prebuffer.removeAll(keepingCapacity: true)
         prebufferWriteIndex = 0
         prebufferFilled = false
     }
@@ -268,8 +270,11 @@ actor SilenceDetector {
     private func drainPrebuffer() -> [Float] {
         guard !prebuffer.isEmpty else { return [] }
 
-        var result: [Float] = []
         let count = prebuffer.count
+        // Pre-allocate capacity to avoid repeated reallocations during append
+        let estimatedSize = count * Self.chunkSize
+        var result: [Float] = []
+        result.reserveCapacity(estimatedSize)
 
         if prebufferFilled {
             // Read from writeIndex (oldest) through the buffer
@@ -284,8 +289,8 @@ actor SilenceDetector {
             }
         }
 
-        // Clear the prebuffer after draining
-        prebuffer = []
+        // Clear the prebuffer after draining (use removeAll to reuse capacity)
+        prebuffer.removeAll(keepingCapacity: true)
         prebufferWriteIndex = 0
         prebufferFilled = false
 

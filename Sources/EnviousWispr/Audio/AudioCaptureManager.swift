@@ -30,7 +30,9 @@ final class AudioCaptureManager {
             return AsyncStream { $0.finish() }
         }
 
+        // Pre-allocate for ~30 seconds of audio at 16kHz to reduce reallocations
         capturedSamples = []
+        capturedSamples.reserveCapacity(16000 * 30)
         audioLevel = 0.0
 
         let inputNode = engine.inputNode

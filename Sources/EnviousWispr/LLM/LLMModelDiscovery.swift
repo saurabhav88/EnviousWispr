@@ -7,6 +7,9 @@ import FoundationModels
 /// Discovers available LLM models from provider APIs and probes their availability.
 struct LLMModelDiscovery: Sendable {
 
+    /// Maximum concurrent model probes to avoid rate limiting (429 errors).
+    private static let maxConcurrentProbes = 5
+
     /// Exclusion patterns for model IDs that aren't useful for transcript polishing.
     private static let excludePatterns = [
         "tts", "image", "robotics", "computer-use", "deep-research",
@@ -41,30 +44,37 @@ struct LLMModelDiscovery: Sendable {
 
         let filtered = provider == .ollama ? modelIDs : filterModels(modelIDs)
 
-        // Probe all filtered models in parallel
-        return await withTaskGroup(of: LLMModelInfo.self, returning: [LLMModelInfo].self) { group in
-            for model in filtered {
-                group.addTask {
-                    let available = await probeModel(id: model.id, provider: provider, apiKey: apiKey)
-                    return LLMModelInfo(
-                        id: model.id,
-                        displayName: model.displayName,
-                        provider: provider,
-                        isAvailable: available
-                    )
+        // Probe models with concurrency limit to avoid rate limiting
+        var results: [LLMModelInfo] = []
+
+        // Process in batches to limit concurrent requests
+        for batch in filtered.chunked(into: Self.maxConcurrentProbes) {
+            let batchResults = await withTaskGroup(of: LLMModelInfo.self, returning: [LLMModelInfo].self) { group in
+                for model in batch {
+                    group.addTask {
+                        let available = await probeModel(id: model.id, provider: provider, apiKey: apiKey)
+                        return LLMModelInfo(
+                            id: model.id,
+                            displayName: model.displayName,
+                            provider: provider,
+                            isAvailable: available
+                        )
+                    }
                 }
-            }
 
-            var results: [LLMModelInfo] = []
-            for await result in group {
-                results.append(result)
+                var batchItems: [LLMModelInfo] = []
+                for await result in group {
+                    batchItems.append(result)
+                }
+                return batchItems
             }
+            results.append(contentsOf: batchResults)
+        }
 
-            // Sort: available first, then by display name
-            return results.sorted { lhs, rhs in
-                if lhs.isAvailable != rhs.isAvailable { return lhs.isAvailable }
-                return lhs.displayName < rhs.displayName
-            }
+        // Sort: available first, then by display name
+        return results.sorted { lhs, rhs in
+            if lhs.isAvailable != rhs.isAvailable { return lhs.isAvailable }
+            return lhs.displayName < rhs.displayName
         }
     }
 
@@ -285,6 +295,18 @@ struct LLMModelDiscovery: Sendable {
             }
 
             return true
+        }
+    }
+}
+
+// MARK: - Array Helper Extension
+
+private extension Array {
+    /// Split array into chunks of specified size.
+    func chunked(into size: Int) -> [[Element]] {
+        guard size > 0 else { return [self] }
+        return stride(from: 0, to: count, by: size).map {
+            Array(self[$0..<Swift.min($0 + size, count)])
         }
     }
 }

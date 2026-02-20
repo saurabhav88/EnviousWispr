@@ -51,7 +51,10 @@ enum PasteService {
         // If the change count has advanced beyond what we set, a third-party
         // tool wrote to the clipboard — don't clobber their change.
         guard pasteboard.changeCount == changeCountAfterPaste else {
-            print("[PasteService] Clipboard restore skipped: changeCount advanced (expected \(changeCountAfterPaste), got \(pasteboard.changeCount))")
+            Task { await AppLogger.shared.log(
+                "Clipboard restore skipped: changeCount advanced (expected \(changeCountAfterPaste), got \(pasteboard.changeCount))",
+                level: .verbose, category: "PasteService"
+            ) }
             return
         }
 
@@ -81,12 +84,18 @@ enum PasteService {
         let changeCountAfterWrite = pasteboard.changeCount
 
         guard let source = CGEventSource(stateID: .hidSystemState) else {
-            print("[PasteService] Failed to create CGEventSource — check Accessibility permissions")
+            Task { await AppLogger.shared.log(
+                "Failed to create CGEventSource — check Accessibility permissions",
+                level: .info, category: "PasteService"
+            ) }
             return changeCountAfterWrite
         }
         guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: UInt16(kVK_ANSI_V), keyDown: true),
               let keyUp = CGEvent(keyboardEventSource: source, virtualKey: UInt16(kVK_ANSI_V), keyDown: false) else {
-            print("[PasteService] Failed to create CGEvent for Cmd+V")
+            Task { await AppLogger.shared.log(
+                "Failed to create CGEvent for Cmd+V",
+                level: .info, category: "PasteService"
+            ) }
             return changeCountAfterWrite
         }
         keyDown.flags = .maskCommand

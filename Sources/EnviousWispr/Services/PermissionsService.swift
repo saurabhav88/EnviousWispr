@@ -17,12 +17,24 @@ final class PermissionsService {
 
     /// Poll AXIsProcessTrusted() periodically so the UI updates after the user
     /// toggles the setting in System Settings.
+    /// Uses 5-second interval to reduce system overhead while remaining responsive.
     private func startAccessibilityPolling() {
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.accessibilityGranted = AXIsProcessTrusted()
             }
         }
+    }
+
+    /// Manually refresh accessibility status (call when settings window opens).
+    func refreshAccessibilityStatus() {
+        accessibilityGranted = AXIsProcessTrusted()
+    }
+
+    /// Stop polling (call during cleanup if needed).
+    func stopPolling() {
+        pollTimer?.invalidate()
+        pollTimer = nil
     }
 
     /// Request microphone access. Returns true if granted.

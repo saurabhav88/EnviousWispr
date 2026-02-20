@@ -24,7 +24,43 @@ final class TranscriptStore {
     }
 
     /// Load all transcripts, sorted by creation date (newest first).
-    func loadAll() throws -> [Transcript] {
+    /// Heavy file IO is performed on a background thread to keep UI responsive.
+    func loadAll() async throws -> [Transcript] {
+        let dir = directory
+        guard FileManager.default.fileExists(atPath: dir.path) else { return [] }
+
+        // Move heavy IO to background thread
+        let transcripts: [Transcript] = try await Task.detached(priority: .userInitiated) {
+            let files = try FileManager.default.contentsOfDirectory(
+                at: dir,
+                includingPropertiesForKeys: nil
+            )
+
+            let decoder = JSONDecoder()
+            return files
+                .filter { $0.pathExtension == "json" }
+                .compactMap { url -> Transcript? in
+                    do {
+                        let data = try Data(contentsOf: url)
+                        return try decoder.decode(Transcript.self, from: data)
+                    } catch {
+                        // Log errors but don't block — corrupt files are skipped
+                        Task { await AppLogger.shared.log(
+                            "Skipping corrupt transcript \(url.lastPathComponent): \(error)",
+                            level: .info, category: "TranscriptStore"
+                        ) }
+                        return nil
+                    }
+                }
+                .sorted { $0.createdAt > $1.createdAt }
+        }.value
+
+        return transcripts
+    }
+
+    /// Synchronous load for cases where async isn't suitable.
+    /// Prefer loadAll() async when possible to keep UI responsive.
+    func loadAllSync() throws -> [Transcript] {
         guard FileManager.default.fileExists(atPath: directory.path) else { return [] }
 
         let files = try FileManager.default.contentsOfDirectory(
@@ -32,14 +68,14 @@ final class TranscriptStore {
             includingPropertiesForKeys: nil
         )
 
+        let decoder = JSONDecoder()
         let transcripts = files
             .filter { $0.pathExtension == "json" }
             .compactMap { url -> Transcript? in
                 do {
                     let data = try Data(contentsOf: url)
-                    return try JSONDecoder().decode(Transcript.self, from: data)
+                    return try decoder.decode(Transcript.self, from: data)
                 } catch {
-                    print("Skipping corrupt transcript \(url.lastPathComponent): \(error)")
                     return nil
                 }
             }

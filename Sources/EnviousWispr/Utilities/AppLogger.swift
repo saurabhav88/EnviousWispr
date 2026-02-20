@@ -16,6 +16,10 @@ actor AppLogger {
 
     private let oslog = Logger(subsystem: "com.enviouswispr.app", category: "pipeline")
 
+    /// Cached date formatter to avoid allocation per log line.
+    /// Instance property is safe since AppLogger is an actor with serialized access.
+    private let timestampFormatter: ISO8601DateFormatter = ISO8601DateFormatter()
+
     private let maxFileSize: Int = 10 * 1024 * 1024
     private let maxFileCount: Int = 5
 
@@ -53,7 +57,7 @@ actor AppLogger {
 
         guard isDebugModeEnabled, level <= logLevel else { return }
 
-        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let timestamp = timestampFormatter.string(from: Date())
         let line = "[\(timestamp)] [\(level.rawValue.uppercased())] [\(category)] \(message)\n"
 
         guard let data = line.data(using: .utf8) else { return }

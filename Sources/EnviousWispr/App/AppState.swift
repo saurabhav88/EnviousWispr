@@ -459,16 +459,25 @@ final class AppState {
                 selectedTranscriptID = nil
             }
         } catch {
-            print("Failed to delete transcript: \(error)")
+            Task { await AppLogger.shared.log(
+                "Failed to delete transcript: \(error)",
+                level: .info, category: "AppState"
+            ) }
         }
     }
 
-    /// Load transcript history from disk.
+    /// Load transcript history from disk asynchronously.
+    /// Heavy IO runs on a background thread to keep UI responsive.
     func loadTranscripts() {
-        do {
-            transcripts = try transcriptStore.loadAll()
-        } catch {
-            print("Failed to load transcripts: \(error)")
+        Task {
+            do {
+                transcripts = try await transcriptStore.loadAll()
+            } catch {
+                await AppLogger.shared.log(
+                    "Failed to load transcripts: \(error)",
+                    level: .info, category: "AppState"
+                )
+            }
         }
     }
 

@@ -204,7 +204,9 @@ struct StatusView: View {
     private func startTimer() {
         elapsed = 0
         recordingStart = Date()
-        timerCancellable = Timer.publish(every: 0.1, on: .main, in: .common)
+        // Update every 1 second — display only shows mm:ss, not tenths.
+        // Audio level updates happen independently via AudioCaptureManager.
+        timerCancellable = Timer.publish(every: 1.0, on: .main, in: .common)
             .autoconnect()
             .sink { _ in
                 if let start = recordingStart {
