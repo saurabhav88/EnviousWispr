@@ -66,6 +66,13 @@ actor SilenceDetector {
     /// Chunk size expected by the Silero VAD model (256ms at 16kHz).
     nonisolated static let chunkSize = 4096
 
+    /// Hangover chunks derived from silenceTimeout so the detector waits
+    /// the full user-configured duration before auto-stopping.
+    private var effectiveHangoverChunks: Int {
+        let chunkDurationSeconds = Double(Self.chunkSize) / 16000.0  // 0.256s
+        return max(3, Int(ceil(silenceTimeout / chunkDurationSeconds)))
+    }
+
     init(silenceTimeout: TimeInterval = 1.5, vadConfig: SmoothedVADConfig = SmoothedVADConfig()) {
         self.silenceTimeout = silenceTimeout
         self.vadConfig = vadConfig
@@ -168,7 +175,7 @@ actor SilenceDetector {
         case .speech:
             voicedSamples.append(contentsOf: samples)
             if smoothed < vadConfig.offsetThreshold {
-                phase = .hangover(chunksRemaining: vadConfig.hangoverChunks)
+                phase = .hangover(chunksRemaining: effectiveHangoverChunks)
             }
 
         case .hangover(let remaining):

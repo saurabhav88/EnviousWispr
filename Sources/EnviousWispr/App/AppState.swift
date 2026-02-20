@@ -4,6 +4,13 @@ import SwiftUI
 @MainActor
 @Observable
 final class AppState {
+    // Settings
+    var settings = SettingsManager()
+
+    // Session & networking (scaffolded for future user accounts)
+    let session: any UserSessionProtocol = AnonymousSession()
+    let networkClient: any NetworkClientProtocol = StubNetworkClient()
+
     // Sub-systems
     let permissions = PermissionsService()
     let audioCapture = AudioCaptureManager()
@@ -34,199 +41,8 @@ final class AppState {
         }
     }
 
-    // Settings (persisted via UserDefaults)
-    var selectedBackend: ASRBackendType {
-        didSet {
-            UserDefaults.standard.set(selectedBackend.rawValue, forKey: "selectedBackend")
-            Task { await asrManager.switchBackend(to: selectedBackend) }
-        }
-    }
-
-    var whisperKitModel: String {
-        didSet {
-            UserDefaults.standard.set(whisperKitModel, forKey: "whisperKitModel")
-            Task { await asrManager.updateWhisperKitModel(whisperKitModel) }
-        }
-    }
-
-    var recordingMode: RecordingMode {
-        didSet {
-            UserDefaults.standard.set(recordingMode.rawValue, forKey: "recordingMode")
-            hotkeyService.recordingMode = recordingMode
-        }
-    }
-
-    var llmProvider: LLMProvider {
-        didSet {
-            UserDefaults.standard.set(llmProvider.rawValue, forKey: "llmProvider")
-            pipeline.llmProvider = llmProvider
-        }
-    }
-
-    var llmModel: String {
-        didSet {
-            UserDefaults.standard.set(llmModel, forKey: "llmModel")
-            pipeline.llmModel = llmModel
-            if llmProvider == .ollama {
-                ollamaModel = llmModel
-            }
-        }
-    }
-
-    var ollamaModel: String {
-        didSet {
-            UserDefaults.standard.set(ollamaModel, forKey: "ollamaModel")
-            if llmProvider == .ollama {
-                pipeline.llmModel = ollamaModel
-            }
-        }
-    }
-
-    var autoCopyToClipboard: Bool {
-        didSet {
-            UserDefaults.standard.set(autoCopyToClipboard, forKey: "autoCopyToClipboard")
-            pipeline.autoCopyToClipboard = autoCopyToClipboard
-        }
-    }
-
-    var hotkeyEnabled: Bool {
-        didSet {
-            UserDefaults.standard.set(hotkeyEnabled, forKey: "hotkeyEnabled")
-            if hotkeyEnabled { hotkeyService.start() } else { hotkeyService.stop() }
-        }
-    }
-
-    var vadAutoStop: Bool {
-        didSet {
-            UserDefaults.standard.set(vadAutoStop, forKey: "vadAutoStop")
-            pipeline.vadAutoStop = vadAutoStop
-        }
-    }
-
-    var vadSilenceTimeout: Double {
-        didSet {
-            UserDefaults.standard.set(vadSilenceTimeout, forKey: "vadSilenceTimeout")
-            pipeline.vadSilenceTimeout = vadSilenceTimeout
-        }
-    }
-
-    var vadDualBuffer: Bool {
-        didSet {
-            UserDefaults.standard.set(vadDualBuffer, forKey: "vadDualBuffer")
-        }
-    }
-
-    var vadSensitivity: Float {
-        didSet {
-            UserDefaults.standard.set(vadSensitivity, forKey: "vadSensitivity")
-            pipeline.vadSensitivity = vadSensitivity
-        }
-    }
-
-    var vadEnergyGate: Bool {
-        didSet {
-            UserDefaults.standard.set(vadEnergyGate, forKey: "vadEnergyGate")
-            pipeline.vadEnergyGate = vadEnergyGate
-        }
-    }
-
-    var hasCompletedOnboarding: Bool {
-        didSet {
-            UserDefaults.standard.set(hasCompletedOnboarding, forKey: "hasCompletedOnboarding")
-        }
-    }
-
-    var cancelKeyCode: UInt16 {
-        didSet {
-            UserDefaults.standard.set(Int(cancelKeyCode), forKey: "cancelKeyCode")
-            hotkeyService.cancelKeyCode = cancelKeyCode
-        }
-    }
-
-    var cancelModifiers: NSEvent.ModifierFlags {
-        didSet {
-            UserDefaults.standard.set(cancelModifiers.rawValue, forKey: "cancelModifiersRaw")
-            hotkeyService.cancelModifiers = cancelModifiers
-        }
-    }
-
-    // Configurable toggle hotkey (default: Option+Space)
-    var toggleKeyCode: UInt16 {
-        didSet {
-            UserDefaults.standard.set(Int(toggleKeyCode), forKey: "toggleKeyCode")
-            hotkeyService.toggleKeyCode = toggleKeyCode
-        }
-    }
-
-    var toggleModifiers: NSEvent.ModifierFlags {
-        didSet {
-            UserDefaults.standard.set(toggleModifiers.rawValue, forKey: "toggleModifiersRaw")
-            hotkeyService.toggleModifiers = toggleModifiers
-        }
-    }
-
-    // Configurable push-to-talk modifier (default: Option)
-    var pushToTalkModifier: NSEvent.ModifierFlags {
-        didSet {
-            UserDefaults.standard.set(pushToTalkModifier.rawValue, forKey: "pushToTalkModifierRaw")
-            hotkeyService.pushToTalkModifier = pushToTalkModifier
-        }
-    }
-
-    var modelUnloadPolicy: ModelUnloadPolicy {
-        didSet {
-            UserDefaults.standard.set(modelUnloadPolicy.rawValue, forKey: "modelUnloadPolicy")
-            pipeline.modelUnloadPolicy = modelUnloadPolicy
-            // If policy changed to Never, cancel any pending timer.
-            if modelUnloadPolicy == .never {
-                asrManager.cancelIdleTimer()
-            }
-        }
-    }
-
-    var restoreClipboardAfterPaste: Bool {
-        didSet {
-            UserDefaults.standard.set(restoreClipboardAfterPaste, forKey: "restoreClipboardAfterPaste")
-            pipeline.restoreClipboardAfterPaste = restoreClipboardAfterPaste
-        }
-    }
-
-    var customSystemPrompt: String {
-        didSet {
-            UserDefaults.standard.set(customSystemPrompt, forKey: "customSystemPrompt")
-            pipeline.polishInstructions = activePolishInstructions
-        }
-    }
-
-    /// Returns the custom instructions if a prompt is set, otherwise `.default`.
-    var activePolishInstructions: PolishInstructions {
-        customSystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? .default
-            : .custom(systemPrompt: customSystemPrompt)
-    }
-
     // Feature #8: custom word correction
-    var wordCorrectionEnabled: Bool {
-        didSet {
-            UserDefaults.standard.set(wordCorrectionEnabled, forKey: "wordCorrectionEnabled")
-            pipeline.wordCorrectionEnabled = wordCorrectionEnabled
-        }
-    }
     var customWords: [String] = []
-
-    // Feature #19: debug mode (not persisted — resets to off on launch)
-    var isDebugModeEnabled: Bool = false {
-        didSet {
-            Task { await AppLogger.shared.setDebugMode(isDebugModeEnabled) }
-        }
-    }
-
-    var debugLogLevel: DebugLogLevel {
-        didSet {
-            UserDefaults.standard.set(debugLogLevel.rawValue, forKey: "debugLogLevel")
-            Task { await AppLogger.shared.setLogLevel(debugLogLevel) }
-        }
-    }
 
     // Model discovery
     var discoveredModels: [LLMModelInfo] = []
@@ -241,54 +57,8 @@ final class AppState {
     }
 
     init() {
-        // Load persisted settings
-        let defaults = UserDefaults.standard
-        selectedBackend = ASRBackendType(rawValue: defaults.string(forKey: "selectedBackend") ?? "") ?? .parakeet
-        whisperKitModel = defaults.string(forKey: "whisperKitModel") ?? "large-v3"
-        recordingMode = RecordingMode(rawValue: defaults.string(forKey: "recordingMode") ?? "") ?? .pushToTalk
-        llmProvider = LLMProvider(rawValue: defaults.string(forKey: "llmProvider") ?? "") ?? .none
-        llmModel = defaults.string(forKey: "llmModel") ?? "gpt-4o-mini"
-        ollamaModel = defaults.string(forKey: "ollamaModel") ?? "llama3.2"
-        autoCopyToClipboard = defaults.object(forKey: "autoCopyToClipboard") as? Bool ?? true
-        hotkeyEnabled = defaults.object(forKey: "hotkeyEnabled") as? Bool ?? true
-        vadAutoStop = defaults.object(forKey: "vadAutoStop") as? Bool ?? false
-        vadSilenceTimeout = defaults.object(forKey: "vadSilenceTimeout") as? Double ?? 1.5
-        vadDualBuffer = defaults.object(forKey: "vadDualBuffer") as? Bool ?? false
-        vadSensitivity = defaults.object(forKey: "vadSensitivity") as? Float ?? 0.5
-        vadEnergyGate = defaults.object(forKey: "vadEnergyGate") as? Bool ?? false
-        hasCompletedOnboarding = defaults.object(forKey: "hasCompletedOnboarding") as? Bool ?? false
-
-        let savedCancelKeyCode = defaults.object(forKey: "cancelKeyCode") as? Int
-        cancelKeyCode = UInt16(savedCancelKeyCode ?? 53)  // Default: Escape
-
-        let savedCancelModRaw = defaults.object(forKey: "cancelModifiersRaw") as? UInt
-        cancelModifiers = NSEvent.ModifierFlags(rawValue: savedCancelModRaw ?? 0)
-
-        // Toggle hotkey (default: Control+Space)
-        let savedToggleKeyCode = defaults.object(forKey: "toggleKeyCode") as? Int
-        toggleKeyCode = UInt16(savedToggleKeyCode ?? 49)  // Default: Space
-
-        let savedToggleModRaw = defaults.object(forKey: "toggleModifiersRaw") as? UInt
-        toggleModifiers = NSEvent.ModifierFlags(rawValue: savedToggleModRaw ?? NSEvent.ModifierFlags.control.rawValue)
-
-        // Push-to-talk modifier (default: Option)
-        let savedPTTModRaw = defaults.object(forKey: "pushToTalkModifierRaw") as? UInt
-        pushToTalkModifier = NSEvent.ModifierFlags(rawValue: savedPTTModRaw ?? NSEvent.ModifierFlags.option.rawValue)
-
-        modelUnloadPolicy = ModelUnloadPolicy(
-            rawValue: defaults.string(forKey: "modelUnloadPolicy") ?? ""
-        ) ?? .never
-        restoreClipboardAfterPaste = defaults.object(forKey: "restoreClipboardAfterPaste") as? Bool ?? false
-        customSystemPrompt = defaults.string(forKey: "customSystemPrompt") ?? ""
-
-        // Feature #8
-        wordCorrectionEnabled = defaults.object(forKey: "wordCorrectionEnabled") as? Bool ?? true
+        // Load custom words
         customWords = (try? customWordStore.load()) ?? []
-
-        // Feature #19
-        debugLogLevel = DebugLogLevel(
-            rawValue: defaults.string(forKey: "debugLogLevel") ?? ""
-        ) ?? .info
 
         pipeline = TranscriptionPipeline(
             audioCapture: audioCapture,
@@ -296,24 +66,27 @@ final class AppState {
             transcriptStore: transcriptStore,
             keychainManager: keychainManager
         )
-        pipeline.autoCopyToClipboard = autoCopyToClipboard
-        pipeline.llmProvider = llmProvider
-        pipeline.llmModel = llmModel
-        if llmProvider == .ollama {
-            pipeline.llmModel = ollamaModel
+        pipeline.autoCopyToClipboard = settings.autoCopyToClipboard
+        pipeline.llmPolish.llmProvider = settings.llmProvider
+        pipeline.llmPolish.llmModel = settings.llmModel
+        if settings.llmProvider == .ollama {
+            pipeline.llmPolish.llmModel = settings.ollamaModel
         }
-        pipeline.vadAutoStop = vadAutoStop
-        pipeline.vadSilenceTimeout = vadSilenceTimeout
-        pipeline.vadSensitivity = vadSensitivity
-        pipeline.vadEnergyGate = vadEnergyGate
-        pipeline.modelUnloadPolicy = modelUnloadPolicy
-        pipeline.restoreClipboardAfterPaste = restoreClipboardAfterPaste
-        pipeline.polishInstructions = activePolishInstructions
-        pipeline.wordCorrectionEnabled = wordCorrectionEnabled
-        pipeline.customWords = customWords
+        pipeline.vadAutoStop = settings.vadAutoStop
+        pipeline.vadSilenceTimeout = settings.vadSilenceTimeout
+        pipeline.vadSensitivity = settings.vadSensitivity
+        pipeline.vadEnergyGate = settings.vadEnergyGate
+        pipeline.modelUnloadPolicy = settings.modelUnloadPolicy
+        pipeline.restoreClipboardAfterPaste = settings.restoreClipboardAfterPaste
+        pipeline.llmPolish.polishInstructions = settings.activePolishInstructions
+        pipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
+        pipeline.wordCorrection.customWords = customWords
 
-        // Initialize logger level (must be after all stored properties are set)
-        Task { await AppLogger.shared.setLogLevel(debugLogLevel) }
+        // Initialize logger level
+        Task { await AppLogger.shared.setLogLevel(settings.debugLogLevel) }
+
+        // Wire settings change handler
+        settings.onChange = { [weak self] key in self?.handleSettingChanged(key) }
 
         // Wire pipeline state changes to overlay and icon
         pipeline.onStateChange = { [weak self] newState in
@@ -321,14 +94,12 @@ final class AppState {
             self.onPipelineStateChange?(newState)
             switch newState {
             case .recording:
-                // Cancel hotkey only makes sense in toggle mode — in push-to-talk
-                // the user simply releases the modifier key to stop.
-                if self.recordingMode == .toggle {
+                if self.settings.recordingMode == .toggle {
                     self.hotkeyService.registerCancelHotkey()
                 }
                 self.recordingOverlay.show(
                     audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 },
-                    modeLabel: self.recordingMode.shortLabel
+                    modeLabel: self.settings.recordingMode.shortLabel
                 )
             case .transcribing, .error, .idle:
                 self.hotkeyService.unregisterCancelHotkey()
@@ -339,19 +110,19 @@ final class AppState {
         }
 
         // Wire hotkey callbacks
-        hotkeyService.recordingMode = recordingMode
-        hotkeyService.cancelKeyCode = cancelKeyCode
-        hotkeyService.cancelModifiers = cancelModifiers
-        hotkeyService.toggleKeyCode = toggleKeyCode
-        hotkeyService.toggleModifiers = toggleModifiers
-        hotkeyService.pushToTalkModifier = pushToTalkModifier
+        hotkeyService.recordingMode = settings.recordingMode
+        hotkeyService.cancelKeyCode = settings.cancelKeyCode
+        hotkeyService.cancelModifiers = settings.cancelModifiers
+        hotkeyService.toggleKeyCode = settings.toggleKeyCode
+        hotkeyService.toggleModifiers = settings.toggleModifiers
+        hotkeyService.pushToTalkModifier = settings.pushToTalkModifier
+        hotkeyService.pushToTalkModifierKeyCode = settings.pushToTalkModifierKeyCode
         hotkeyService.onToggleRecording = { [weak self] in
             guard let self else { return }
             await self.toggleRecording()
         }
         hotkeyService.onStartRecording = { [weak self] in
             guard let self, !self.pipelineState.isActive else { return }
-            // Push-to-talk: paste directly into the active app after transcription
             self.pipeline.autoPasteToActiveApp = true
             await self.pipeline.startRecording()
         }
@@ -366,8 +137,71 @@ final class AppState {
             await self?.cancelRecording()
         }
 
-        if hotkeyEnabled {
+        if settings.hotkeyEnabled {
             hotkeyService.start()
+        }
+    }
+
+    private func handleSettingChanged(_ key: SettingsManager.SettingKey) {
+        switch key {
+        case .selectedBackend:
+            Task { await asrManager.switchBackend(to: settings.selectedBackend) }
+        case .whisperKitModel:
+            Task { await asrManager.updateWhisperKitModel(settings.whisperKitModel) }
+        case .recordingMode:
+            hotkeyService.recordingMode = settings.recordingMode
+        case .llmProvider:
+            pipeline.llmPolish.llmProvider = settings.llmProvider
+        case .llmModel:
+            pipeline.llmPolish.llmModel = settings.llmModel
+            if settings.llmProvider == .ollama {
+                settings.ollamaModel = settings.llmModel
+            }
+        case .ollamaModel:
+            if settings.llmProvider == .ollama {
+                pipeline.llmPolish.llmModel = settings.ollamaModel
+            }
+        case .autoCopyToClipboard:
+            pipeline.autoCopyToClipboard = settings.autoCopyToClipboard
+        case .hotkeyEnabled:
+            if settings.hotkeyEnabled { hotkeyService.start() } else { hotkeyService.stop() }
+        case .vadAutoStop:
+            pipeline.vadAutoStop = settings.vadAutoStop
+        case .vadSilenceTimeout:
+            pipeline.vadSilenceTimeout = settings.vadSilenceTimeout
+        case .vadSensitivity:
+            pipeline.vadSensitivity = settings.vadSensitivity
+        case .vadEnergyGate:
+            pipeline.vadEnergyGate = settings.vadEnergyGate
+        case .cancelKeyCode:
+            hotkeyService.cancelKeyCode = settings.cancelKeyCode
+        case .cancelModifiers:
+            hotkeyService.cancelModifiers = settings.cancelModifiers
+        case .toggleKeyCode:
+            hotkeyService.toggleKeyCode = settings.toggleKeyCode
+        case .toggleModifiers:
+            hotkeyService.toggleModifiers = settings.toggleModifiers
+        case .pushToTalkModifier:
+            hotkeyService.pushToTalkModifier = settings.pushToTalkModifier
+        case .pushToTalkModifierKeyCode:
+            hotkeyService.pushToTalkModifierKeyCode = settings.pushToTalkModifierKeyCode
+        case .modelUnloadPolicy:
+            pipeline.modelUnloadPolicy = settings.modelUnloadPolicy
+            if settings.modelUnloadPolicy == .never {
+                asrManager.cancelIdleTimer()
+            }
+        case .restoreClipboardAfterPaste:
+            pipeline.restoreClipboardAfterPaste = settings.restoreClipboardAfterPaste
+        case .customSystemPrompt:
+            pipeline.llmPolish.polishInstructions = settings.activePolishInstructions
+        case .wordCorrectionEnabled:
+            pipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
+        case .isDebugModeEnabled:
+            Task { await AppLogger.shared.setDebugMode(settings.isDebugModeEnabled) }
+        case .debugLogLevel:
+            Task { await AppLogger.shared.setLogLevel(settings.debugLogLevel) }
+        case .vadDualBuffer, .hasCompletedOnboarding:
+            break
         }
     }
 
@@ -401,7 +235,7 @@ final class AppState {
 
     /// Human-readable model name for display.
     var activeModelName: String {
-        selectedBackend == .parakeet ? "Parakeet v3" : "WhisperKit"
+        settings.selectedBackend == .parakeet ? "Parakeet v3" : "WhisperKit"
     }
 
     /// Model status text for sidebar display.
@@ -414,8 +248,6 @@ final class AppState {
 
     /// Toggle recording on/off (plain, no forced LLM).
     func toggleRecording() async {
-        // Enable paste-to-active-app when starting a new recording
-        // (push-to-talk sets this in its own callbacks, but toggle/UI buttons need it too)
         switch pipeline.state {
         case .idle, .complete, .error:
             pipeline.autoPasteToActiveApp = true
@@ -425,7 +257,6 @@ final class AppState {
 
         await pipeline.toggleRecording()
 
-        // Reset paste flag and reload transcripts when pipeline finishes
         if pipeline.state == .complete {
             pipeline.autoPasteToActiveApp = false
             loadTranscripts()
@@ -467,7 +298,6 @@ final class AppState {
     }
 
     /// Load transcript history from disk asynchronously.
-    /// Heavy IO runs on a background thread to keep UI responsive.
     func loadTranscripts() {
         Task {
             do {
@@ -484,12 +314,12 @@ final class AppState {
     // Feature #8: custom word management
     func addCustomWord(_ word: String) {
         try? customWordStore.add(word, to: &customWords)
-        pipeline.customWords = customWords
+        pipeline.wordCorrection.customWords = customWords
     }
 
     func removeCustomWord(_ word: String) {
         try? customWordStore.remove(word, from: &customWords)
-        pipeline.customWords = customWords
+        pipeline.wordCorrection.customWords = customWords
     }
 
     /// Validate an API key and discover available models for the given provider.
@@ -519,10 +349,10 @@ final class AppState {
             }
             keyValidationState = .valid
 
-            if !models.contains(where: { $0.id == llmModel && $0.isAvailable }) {
+            if !models.contains(where: { $0.id == settings.llmModel && $0.isAvailable }) {
                 if let firstAvailable = models.first(where: { $0.isAvailable }) {
-                    llmModel = firstAvailable.id
-                    if provider == .ollama { ollamaModel = firstAvailable.id }
+                    settings.llmModel = firstAvailable.id
+                    if provider == .ollama { settings.ollamaModel = firstAvailable.id }
                 }
             }
         } catch LLMError.providerUnavailable {

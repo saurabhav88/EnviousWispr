@@ -9,8 +9,8 @@ struct ClipboardSettingsView: View {
 
         Form {
             Section("Clipboard") {
-                Toggle("Auto-copy to clipboard", isOn: $state.autoCopyToClipboard)
-                Toggle("Restore clipboard after paste", isOn: $state.restoreClipboardAfterPaste)
+                Toggle("Auto-copy to clipboard", isOn: $state.settings.autoCopyToClipboard)
+                Toggle("Restore clipboard after paste", isOn: $state.settings.restoreClipboardAfterPaste)
                 Text("Saves and restores whatever was on your clipboard before pasting the transcript.")
                     .font(.caption)
                     .foregroundStyle(.secondary)

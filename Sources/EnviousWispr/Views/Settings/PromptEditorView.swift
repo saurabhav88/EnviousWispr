@@ -29,7 +29,7 @@ struct PromptEditorView: View {
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Button("Save") {
-                    appState.customSystemPrompt = draftPrompt
+                    appState.settings.customSystemPrompt = draftPrompt
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
@@ -115,10 +115,10 @@ struct PromptEditorView: View {
         }
         .frame(width: 600, height: 480)
         .onAppear {
-            draftPrompt = appState.customSystemPrompt
+            draftPrompt = appState.settings.customSystemPrompt
             // Detect which preset matches current prompt (if any)
             selectedPreset = PromptPreset.allCases.first {
-                $0.systemPrompt == appState.customSystemPrompt
+                $0.systemPrompt == appState.settings.customSystemPrompt
             }
         }
         .confirmationDialog(

@@ -17,7 +17,7 @@ struct AIPolishSettingsView: View {
 
         Form {
             Section("LLM Provider") {
-                Picker("Provider", selection: $state.llmProvider) {
+                Picker("Provider", selection: $state.settings.llmProvider) {
                     Text("None").tag(LLMProvider.none)
                     Text("OpenAI").tag(LLMProvider.openAI)
                     Text("Google Gemini").tag(LLMProvider.gemini)
@@ -25,12 +25,12 @@ struct AIPolishSettingsView: View {
                     Text("Apple Intelligence").tag(LLMProvider.appleIntelligence)
                 }
 
-                if appState.llmProvider != .none {
+                if appState.settings.llmProvider != .none {
                     HStack {
-                        Picker("Model", selection: $state.llmModel) {
+                        Picker("Model", selection: $state.settings.llmModel) {
                             if appState.discoveredModels.isEmpty && !appState.isDiscoveringModels {
-                                Text(appState.llmModel.isEmpty ? "Save API key to discover models" : appState.llmModel)
-                                    .tag(appState.llmModel)
+                                Text(appState.settings.llmModel.isEmpty ? "Save API key to discover models" : appState.settings.llmModel)
+                                    .tag(appState.settings.llmModel)
                             }
 
                             ForEach(appState.discoveredModels) { model in
@@ -48,9 +48,9 @@ struct AIPolishSettingsView: View {
                         if appState.isDiscoveringModels {
                             ProgressView()
                                 .controlSize(.small)
-                        } else if appState.llmProvider != .none {
+                        } else if appState.settings.llmProvider != .none {
                             Button {
-                                Task { await appState.validateKeyAndDiscoverModels(provider: appState.llmProvider) }
+                                Task { await appState.validateKeyAndDiscoverModels(provider: appState.settings.llmProvider) }
                             } label: {
                                 Image(systemName: "arrow.clockwise")
                             }
@@ -59,7 +59,7 @@ struct AIPolishSettingsView: View {
                         }
                     }
 
-                    if let selectedModel = appState.discoveredModels.first(where: { $0.id == appState.llmModel }),
+                    if let selectedModel = appState.discoveredModels.first(where: { $0.id == appState.settings.llmModel }),
                        !selectedModel.isAvailable {
                         Text("This model requires a paid API plan.")
                             .font(.caption)
@@ -67,17 +67,17 @@ struct AIPolishSettingsView: View {
                     }
                 }
 
-                if appState.llmProvider != .none {
+                if appState.settings.llmProvider != .none {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("System Prompt")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                            Text(appState.customSystemPrompt.isEmpty
+                            Text(appState.settings.customSystemPrompt.isEmpty
                                  ? "Using built-in default"
                                  : "Custom prompt active")
                                 .font(.caption2)
-                                .foregroundStyle(appState.customSystemPrompt.isEmpty ? Color.secondary : Color.accentColor)
+                                .foregroundStyle(appState.settings.customSystemPrompt.isEmpty ? Color.secondary : Color.accentColor)
                         }
                         Spacer()
                         Button("Edit Prompt") {
@@ -88,7 +88,7 @@ struct AIPolishSettingsView: View {
                 }
             }
 
-            if appState.llmProvider == .openAI || appState.llmProvider == .none {
+            if appState.settings.llmProvider == .openAI || appState.settings.llmProvider == .none {
                 Section("OpenAI API Key") {
                     HStack {
                         if showOpenAIKey {
@@ -110,7 +110,7 @@ struct AIPolishSettingsView: View {
                     HStack {
                         Button("Save Key") {
                             saveKey(key: openAIKey, keychainId: "openai-api-key")
-                            if appState.llmProvider == .openAI {
+                            if appState.settings.llmProvider == .openAI {
                                 Task { await appState.validateKeyAndDiscoverModels(provider: .openAI) }
                             }
                         }
@@ -119,7 +119,7 @@ struct AIPolishSettingsView: View {
                         Button("Clear Key") {
                             clearKey(keychainId: "openai-api-key")
                             openAIKey = ""
-                            if appState.llmProvider == .openAI {
+                            if appState.settings.llmProvider == .openAI {
                                 appState.discoveredModels = []
                                 appState.keyValidationState = .idle
                             }
@@ -130,7 +130,7 @@ struct AIPolishSettingsView: View {
                 }
             }
 
-            if appState.llmProvider == .gemini || appState.llmProvider == .none {
+            if appState.settings.llmProvider == .gemini || appState.settings.llmProvider == .none {
                 Section("Gemini API Key") {
                     HStack {
                         if showGeminiKey {
@@ -152,7 +152,7 @@ struct AIPolishSettingsView: View {
                     HStack {
                         Button("Save Key") {
                             saveKey(key: geminiKey, keychainId: "gemini-api-key")
-                            if appState.llmProvider == .gemini {
+                            if appState.settings.llmProvider == .gemini {
                                 Task { await appState.validateKeyAndDiscoverModels(provider: .gemini) }
                             }
                         }
@@ -161,7 +161,7 @@ struct AIPolishSettingsView: View {
                         Button("Clear Key") {
                             clearKey(keychainId: "gemini-api-key")
                             geminiKey = ""
-                            if appState.llmProvider == .gemini {
+                            if appState.settings.llmProvider == .gemini {
                                 appState.discoveredModels = []
                                 appState.keyValidationState = .idle
                             }
@@ -172,7 +172,7 @@ struct AIPolishSettingsView: View {
                 }
             }
 
-            if appState.llmProvider == .ollama {
+            if appState.settings.llmProvider == .ollama {
                 Section("Ollama") {
                     switch appState.ollamaSetup.setupState {
                     case .detecting:
@@ -240,8 +240,8 @@ struct AIPolishSettingsView: View {
                                 .foregroundStyle(.secondary)
 
                             HStack {
-                                Button("Download \(appState.ollamaModel)") {
-                                    appState.ollamaSetup.pullModel(appState.ollamaModel)
+                                Button("Download \(appState.settings.ollamaModel)") {
+                                    appState.ollamaSetup.pullModel(appState.settings.ollamaModel)
                                 }
                                 .buttonStyle(.borderedProminent)
                                 .controlSize(.small)
@@ -314,7 +314,7 @@ struct AIPolishSettingsView: View {
                 }
             }
 
-            if appState.llmProvider == .appleIntelligence {
+            if appState.settings.llmProvider == .appleIntelligence {
                 Section("Apple Intelligence") {
                     Text("On-device model — no internet or API key required.")
                         .font(.caption)
@@ -362,15 +362,15 @@ struct AIPolishSettingsView: View {
         .onAppear {
             openAIKey = (try? appState.keychainManager.retrieve(key: "openai-api-key")) ?? ""
             geminiKey = (try? appState.keychainManager.retrieve(key: "gemini-api-key")) ?? ""
-            if appState.llmProvider == .ollama {
+            if appState.settings.llmProvider == .ollama {
                 Task { await appState.ollamaSetup.detectState() }
-            } else if appState.llmProvider == .appleIntelligence {
-                Task { await appState.validateKeyAndDiscoverModels(provider: appState.llmProvider) }
-            } else if appState.llmProvider != .none {
-                appState.loadCachedModels(for: appState.llmProvider)
+            } else if appState.settings.llmProvider == .appleIntelligence {
+                Task { await appState.validateKeyAndDiscoverModels(provider: appState.settings.llmProvider) }
+            } else if appState.settings.llmProvider != .none {
+                appState.loadCachedModels(for: appState.settings.llmProvider)
             }
         }
-        .onChange(of: appState.llmProvider) { _, newProvider in
+        .onChange(of: appState.settings.llmProvider) { _, newProvider in
             switch newProvider {
             case .none:
                 appState.discoveredModels = []
@@ -392,7 +392,7 @@ struct AIPolishSettingsView: View {
             }
         }
         .onChange(of: appState.ollamaSetup.setupState) { _, newState in
-            if case .ready = newState, appState.llmProvider == .ollama {
+            if case .ready = newState, appState.settings.llmProvider == .ollama {
                 Task { await appState.validateKeyAndDiscoverModels(provider: .ollama) }
             }
         }

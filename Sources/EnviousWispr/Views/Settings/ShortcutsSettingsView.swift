@@ -9,7 +9,7 @@ struct ShortcutsSettingsView: View {
 
         Form {
             Section("Global Hotkey") {
-                Toggle("Enable global hotkey", isOn: $state.hotkeyEnabled)
+                Toggle("Enable global hotkey", isOn: $state.settings.hotkeyEnabled)
 
                 if !appState.permissions.hasAccessibilityPermission {
                     HStack {
@@ -29,12 +29,12 @@ struct ShortcutsSettingsView: View {
                 }
             }
 
-            if appState.hotkeyEnabled {
+            if appState.settings.hotkeyEnabled {
                 Section("Recording Shortcuts") {
                     // Toggle mode hotkey
                     HotkeyRecorderView(
-                        keyCode: $state.toggleKeyCode,
-                        modifiers: $state.toggleModifiers,
+                        keyCode: $state.settings.toggleKeyCode,
+                        modifiers: $state.settings.toggleModifiers,
                         defaultKeyCode: 49,  // Space
                         defaultModifiers: .control,
                         label: "Toggle recording"
@@ -48,7 +48,8 @@ struct ShortcutsSettingsView: View {
 
                     // Push-to-talk modifier
                     ModifierRecorderView(
-                        modifier: $state.pushToTalkModifier,
+                        modifier: $state.settings.pushToTalkModifier,
+                        modifierKeyCode: $state.settings.pushToTalkModifierKeyCode,
                         defaultModifier: .option,
                         label: "Push-to-talk"
                     )
@@ -61,8 +62,8 @@ struct ShortcutsSettingsView: View {
 
                     // Cancel hotkey
                     HotkeyRecorderView(
-                        keyCode: $state.cancelKeyCode,
-                        modifiers: $state.cancelModifiers,
+                        keyCode: $state.settings.cancelKeyCode,
+                        modifiers: $state.settings.cancelModifiers,
                         defaultKeyCode: 53,  // Escape
                         defaultModifiers: [],
                         label: "Cancel recording"
@@ -77,7 +78,7 @@ struct ShortcutsSettingsView: View {
                     HStack {
                         Text("Active mode:")
                         Spacer()
-                        Text(appState.recordingMode == .toggle ? "Toggle" : "Push-to-Talk")
+                        Text(appState.settings.recordingMode == .toggle ? "Toggle" : "Push-to-Talk")
                             .foregroundStyle(.secondary)
                     }
 

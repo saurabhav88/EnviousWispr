@@ -44,6 +44,10 @@ final class HotkeyService {
     /// Push-to-talk modifier (default: Option).
     var pushToTalkModifier: NSEvent.ModifierFlags = [.option]
 
+    /// Physical key code used to distinguish left vs. right modifier keys.
+    /// nil means side-agnostic — any physical key of the chosen modifier type activates PTT.
+    var pushToTalkModifierKeyCode: UInt16? = nil
+
     func start() {
         guard !isEnabled else { return }
 
@@ -56,7 +60,8 @@ final class HotkeyService {
 
         globalFlagsMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            Task { @MainActor in self?.handleFlagsChanged(flags: flags) }
+            let keyCode = event.keyCode
+            Task { @MainActor in self?.handleFlagsChanged(flags: flags, keyCode: keyCode) }
         }
 
         // Local monitors (when app is focused)
@@ -69,7 +74,8 @@ final class HotkeyService {
 
         localFlagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            Task { @MainActor in self?.handleFlagsChanged(flags: flags) }
+            let keyCode = event.keyCode
+            Task { @MainActor in self?.handleFlagsChanged(flags: flags, keyCode: keyCode) }
             return event
         }
 
@@ -127,9 +133,20 @@ final class HotkeyService {
         }
     }
 
-    private func handleFlagsChanged(flags: NSEvent.ModifierFlags) {
+    private func handleFlagsChanged(flags: NSEvent.ModifierFlags, keyCode: UInt16) {
         guard recordingMode == .pushToTalk else { return }
-        let held = flags.contains(pushToTalkModifier)
+
+        let held: Bool
+        if let requiredKeyCode = pushToTalkModifierKeyCode {
+            // Side-specific: the modifier flag must be present AND it must be the
+            // exact physical key that was recorded. keyCode 0 is valid (A key) so
+            // we check the flag first, then match the physical key.
+            held = flags.contains(pushToTalkModifier) && keyCode == requiredKeyCode
+        } else {
+            // Side-agnostic: any physical key of this modifier type activates PTT.
+            held = flags.contains(pushToTalkModifier)
+        }
+
         if held && !isModifierHeld {
             isModifierHeld = true
             Task { await onStartRecording?() }
@@ -142,7 +159,8 @@ final class HotkeyService {
     /// Human-readable description of the current hotkey.
     var hotkeyDescription: String {
         if recordingMode == .pushToTalk {
-            return "Hold \(modifierName(pushToTalkModifier))"
+            let label = KeySymbols.formatModifierOnly(pushToTalkModifier, keyCode: pushToTalkModifierKeyCode)
+            return "Hold \(label)"
         } else {
             return "\(modifierName(toggleModifiers))\(keyCodeName(toggleKeyCode))"
         }

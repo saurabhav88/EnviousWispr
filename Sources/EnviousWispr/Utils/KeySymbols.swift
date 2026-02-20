@@ -102,8 +102,23 @@ enum KeySymbols {
         return "\(modSymbols) \(keyName)"
     }
 
-    /// Format just modifiers for push-to-talk display
-    static func formatModifierOnly(_ flags: NSEvent.ModifierFlags) -> String {
+    /// Format just modifiers for push-to-talk display.
+    /// When a keyCode is provided the label distinguishes left vs. right physical keys.
+    static func formatModifierOnly(_ flags: NSEvent.ModifierFlags, keyCode: UInt16? = nil) -> String {
+        if let kc = keyCode {
+            switch kc {
+            case 55: return "Left ⌘"
+            case 54: return "Right ⌘"
+            case 58: return "Left ⌥"
+            case 61: return "Right ⌥"
+            case 56: return "Left ⇧"
+            case 60: return "Right ⇧"
+            case 59: return "Left ⌃"
+            case 62: return "Right ⌃"
+            default: break
+            }
+        }
+        // Fall through to side-blind display
         if flags.contains(.option) && flags.rawValue == NSEvent.ModifierFlags.option.rawValue {
             return "⌥ Option"
         }

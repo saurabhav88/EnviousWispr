@@ -10,7 +10,7 @@ struct WordFixSettingsView: View {
 
         Form {
             Section {
-                Toggle("Enable word correction", isOn: $state.wordCorrectionEnabled)
+                Toggle("Enable word correction", isOn: $state.settings.wordCorrectionEnabled)
                 Text("After transcription, each word is scored against your custom list using edit distance, n-gram similarity, and phonetic matching. Words scoring above 0.82 are replaced.")
                     .font(.caption)
                     .foregroundStyle(.secondary)

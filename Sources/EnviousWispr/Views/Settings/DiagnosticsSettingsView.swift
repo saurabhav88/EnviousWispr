@@ -8,13 +8,13 @@ struct DiagnosticsSettingsView: View {
 
         Form {
             Section("Debug Mode") {
-                Toggle("Enable debug mode", isOn: $state.isDebugModeEnabled)
+                Toggle("Enable debug mode", isOn: $state.settings.isDebugModeEnabled)
                 Text("Resets to off on next launch. Toggle with Cmd+Shift+D from anywhere.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                if appState.isDebugModeEnabled {
-                    Picker("Log Level", selection: $state.debugLogLevel) {
+                if appState.settings.isDebugModeEnabled {
+                    Picker("Log Level", selection: $state.settings.debugLogLevel) {
                         ForEach(DebugLogLevel.allCases, id: \.self) { level in
                             Text(level.displayName).tag(level)
                         }

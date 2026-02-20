@@ -31,7 +31,7 @@ struct MainWindowView: View {
             }
             appState.loadTranscripts()
 
-            if !appState.hasCompletedOnboarding {
+            if !appState.settings.hasCompletedOnboarding {
                 showOnboarding = true
             }
         }
@@ -58,7 +58,7 @@ struct StatusView: View {
                 } description: {
                     VStack(spacing: 4) {
                         Text("Press the record button to start dictating.")
-                        if appState.hotkeyEnabled {
+                        if appState.settings.hotkeyEnabled {
                             Text("Hotkey: \(appState.hotkeyService.hotkeyDescription)")
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
@@ -98,7 +98,7 @@ struct StatusView: View {
                         AudioLevelBar(level: appState.audioLevel)
                             .frame(width: 240, height: 6)
 
-                        if appState.vadAutoStop {
+                        if appState.settings.vadAutoStop {
                             Text("VAD: Active")
                                 .font(.caption2)
                                 .foregroundStyle(.green)

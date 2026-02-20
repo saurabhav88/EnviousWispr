@@ -100,7 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(recordItem)
 
         // Record + AI Polish (only when an LLM provider is configured)
-        if appState.llmProvider != .none {
+        if appState.settings.llmProvider != .none {
             let polishItem = NSMenuItem(title: "✨ Record + AI Polish", action: #selector(toggleRecording), keyEquivalent: "")
             polishItem.target = self
             polishItem.isEnabled = !(state.isActive && state != .recording)

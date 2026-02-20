@@ -9,13 +9,13 @@ struct SpeechEngineSettingsView: View {
 
         Form {
             Section("ASR Backend") {
-                Picker("Backend", selection: $state.selectedBackend) {
+                Picker("Backend", selection: $state.settings.selectedBackend) {
                     Text("Parakeet v3 (Primary)").tag(ASRBackendType.parakeet)
                     Text("WhisperKit (Fallback)").tag(ASRBackendType.whisperKit)
                 }
                 .pickerStyle(.segmented)
 
-                if appState.selectedBackend == .parakeet {
+                if appState.settings.selectedBackend == .parakeet {
                     Text("Fast English transcription with built-in punctuation.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -25,8 +25,8 @@ struct SpeechEngineSettingsView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                if appState.selectedBackend == .whisperKit {
-                    Picker("Model Quality", selection: $state.whisperKitModel) {
+                if appState.settings.selectedBackend == .whisperKit {
+                    Picker("Model Quality", selection: $state.settings.whisperKitModel) {
                         Text("Base (Fast, Lower Quality)").tag("base")
                         Text("Small (Balanced)").tag("small")
                         Text("Large v3 (Best Quality)").tag("large-v3")
@@ -38,7 +38,7 @@ struct SpeechEngineSettingsView: View {
             }
 
             Section("Recording") {
-                Picker("Mode", selection: $state.recordingMode) {
+                Picker("Mode", selection: $state.settings.recordingMode) {
                     Text("Push to Talk").tag(RecordingMode.pushToTalk)
                     Text("Toggle").tag(RecordingMode.toggle)
                 }

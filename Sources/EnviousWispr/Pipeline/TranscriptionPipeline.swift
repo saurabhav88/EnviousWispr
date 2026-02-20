@@ -21,20 +21,23 @@ final class TranscriptionPipeline {
     private(set) var currentTranscript: Transcript?
     var autoCopyToClipboard: Bool = true
     var autoPasteToActiveApp: Bool = false
-    var llmProvider: LLMProvider = .none
-    var llmModel: String = "gpt-4o-mini"
     var vadAutoStop: Bool = false
     var vadSilenceTimeout: Double = 1.5
     var vadSensitivity: Float = 0.5
     var vadEnergyGate: Bool = false
     var modelUnloadPolicy: ModelUnloadPolicy = .never
     var restoreClipboardAfterPaste: Bool = false
-    var polishInstructions: PolishInstructions = .default
     var lastPolishError: String?
 
-    // Feature #8: custom word correction
-    var wordCorrectionEnabled: Bool = false
-    var customWords: [String] = []
+    // Text processing steps
+    private let wordCorrectionStep = WordCorrectionStep()
+    private let llmPolishStep: LLMPolishStep
+    private var textProcessingSteps: [any TextProcessingStep] = []
+
+    /// Access word correction step for configuration.
+    var wordCorrection: WordCorrectionStep { wordCorrectionStep }
+    /// Access LLM polish step for configuration.
+    var llmPolish: LLMPolishStep { llmPolishStep }
 
     /// The app that was frontmost when recording started — re-activated before pasting.
     private var targetApp: NSRunningApplication?
@@ -51,6 +54,11 @@ final class TranscriptionPipeline {
         self.asrManager = asrManager
         self.transcriptStore = transcriptStore
         self.keychainManager = keychainManager
+        self.llmPolishStep = LLMPolishStep(keychainManager: keychainManager)
+        llmPolishStep.onWillProcess = { [weak self] in
+            self?.state = .polishing
+        }
+        textProcessingSteps = [wordCorrectionStep, llmPolishStep]
     }
 
     /// Toggle recording: start if idle, stop if recording.
@@ -126,16 +134,13 @@ final class TranscriptionPipeline {
             level: .verbose, category: "Pipeline"
         ) }
 
-        // Filter silence using VAD speech segments
+        // Filter silence using VAD speech segments.
+        // Always use filterSamples which correctly handles multi-segment speech
+        // (voicedSamples only captured the first segment's audio).
         var samples: [Float]
         if let detector = silenceDetector {
             await detector.finalizeSegments(totalSampleCount: rawSamples.count)
-            let voiced = await detector.voicedSamples
-            if !voiced.isEmpty {
-                samples = voiced
-            } else {
-                samples = await detector.filterSamples(from: rawSamples)
-            }
+            samples = await detector.filterSamples(from: rawSamples)
         } else {
             samples = rawSamples
         }
@@ -175,54 +180,28 @@ final class TranscriptionPipeline {
                 level: .info, category: "Pipeline"
             ) }
 
-            // Feature #8: word correction pass (after ASR, before LLM)
-            let correctedText: String
-            if wordCorrectionEnabled && !customWords.isEmpty {
-                let corrector = WordCorrector()
-                let (fixed, count) = corrector.correct(asrText, against: customWords)
-                if count > 0 {
-                    Task { await AppLogger.shared.log(
-                        "WordCorrector applied \(count) correction(s)",
-                        level: .verbose, category: "Pipeline"
-                    ) }
-                }
-                correctedText = fixed
-            } else {
-                correctedText = asrText
+            // Run pluggable text processing steps (word correction, LLM polish, etc.)
+            var context: TextProcessingContext
+            do {
+                context = try await runTextProcessing(asrText: asrText, language: result.language)
+            } catch {
+                Task { await AppLogger.shared.log(
+                    "Text processing failed: \(error.localizedDescription)",
+                    level: .info, category: "Pipeline"
+                ) }
+                lastPolishError = error.localizedDescription
+                context = TextProcessingContext(text: asrText, originalASRText: asrText, language: result.language)
             }
 
-            // Early exit if word correction resulted in empty text
-            let trimmedCorrected = correctedText.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmedCorrected.isEmpty else {
+            let finalText = context.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !finalText.isEmpty else {
                 state = .error("No text after processing")
                 return
             }
 
-            var polishedText: String?
-            if llmProvider != .none {
-                state = .polishing
-                Task { await AppLogger.shared.log(
-                    "LLM polish requested: provider=\(llmProvider.rawValue), model=\(llmModel)",
-                    level: .verbose, category: "LLM"
-                ) }
-                do {
-                    polishedText = try await polishTranscript(correctedText)
-                    Task { await AppLogger.shared.log(
-                        "LLM polish complete: \(polishedText?.count ?? 0) chars",
-                        level: .verbose, category: "LLM"
-                    ) }
-                } catch {
-                    Task { await AppLogger.shared.log(
-                        "LLM polish failed: \(error.localizedDescription)",
-                        level: .info, category: "Pipeline"
-                    ) }
-                    lastPolishError = error.localizedDescription
-                }
-            }
-
             let transcript = Transcript(
-                text: correctedText,
-                polishedText: polishedText,
+                text: context.text,
+                polishedText: context.polishedText,
                 language: result.language,
                 duration: result.duration,
                 processingTime: result.processingTime,
@@ -272,13 +251,19 @@ final class TranscriptionPipeline {
 
     /// Polish a single transcript on demand (from detail view).
     func polishExistingTranscript(_ transcript: Transcript) async -> Transcript? {
-        guard llmProvider != .none else { return nil }
+        guard llmPolishStep.isEnabled else { return nil }
         guard !state.isActive || state == .complete else { return nil }
 
         state = .polishing
         let polishedText: String
         do {
-            polishedText = try await polishTranscript(transcript.text)
+            var context = TextProcessingContext(
+                text: transcript.text,
+                originalASRText: transcript.text,
+                language: transcript.language
+            )
+            context = try await llmPolishStep.process(context)
+            polishedText = context.polishedText ?? context.text
         } catch {
             Task { await AppLogger.shared.log(
                 "LLM polish failed: \(error.localizedDescription)",
@@ -409,55 +394,17 @@ final class TranscriptionPipeline {
         }
     }
 
-    // MARK: - Private
+    // MARK: - Text Processing
 
-    private func polishTranscript(_ text: String) async throws -> String {
-        let polisher: any TranscriptPolisher = switch llmProvider {
-        case .openAI: OpenAIConnector(keychainManager: keychainManager)
-        case .gemini: GeminiConnector(keychainManager: keychainManager)
-        case .ollama: OllamaConnector()
-        case .appleIntelligence: AppleIntelligenceConnector()
-        case .none: throw LLMError.providerUnavailable
-        }
-
-        let keychainId: String? = switch llmProvider {
-        case .openAI:  "openai-api-key"
-        case .gemini:  "gemini-api-key"
-        default:       nil
-        }
-
-        let maxTokens = llmProvider == .ollama ? 4096 : 2048
-
-        let config = LLMProviderConfig(
-            provider: llmProvider,
-            model: llmModel,
-            apiKeyKeychainId: keychainId,
-            maxTokens: maxTokens,
-            temperature: 0.3
+    private func runTextProcessing(asrText: String, language: String?) async throws -> TextProcessingContext {
+        var context = TextProcessingContext(
+            text: asrText,
+            originalASRText: asrText,
+            language: language
         )
-
-        // Resolve ${transcript} placeholder if present in the system prompt
-        var resolvedInstructions = polishInstructions
-        var userText = text
-        if polishInstructions.systemPrompt.contains("${transcript}") {
-            let resolved = polishInstructions.systemPrompt.replacingOccurrences(
-                of: "${transcript}", with: text
-            )
-            resolvedInstructions = PolishInstructions(
-                systemPrompt: resolved,
-                removeFillerWords: polishInstructions.removeFillerWords,
-                fixGrammar: polishInstructions.fixGrammar,
-                fixPunctuation: polishInstructions.fixPunctuation
-            )
-            userText = ""
+        for step in textProcessingSteps where step.isEnabled {
+            context = try await step.process(context)
         }
-
-        let result = try await polisher.polish(
-            text: userText,
-            instructions: resolvedInstructions,
-            config: config
-        )
-
-        return result.polishedText
+        return context
     }
 }

@@ -120,6 +120,7 @@ struct HotkeyRecorderView: View {
 /// A simplified view for recording modifier-only shortcuts (like push-to-talk).
 struct ModifierRecorderView: View {
     @Binding var modifier: NSEvent.ModifierFlags
+    @Binding var modifierKeyCode: UInt16?
 
     let defaultModifier: NSEvent.ModifierFlags
     let label: String
@@ -139,7 +140,7 @@ struct ModifierRecorderView: View {
                         Text("Press modifier...")
                             .foregroundStyle(.secondary)
                     } else {
-                        Text(KeySymbols.formatModifierOnly(modifier))
+                        Text(KeySymbols.formatModifierOnly(modifier, keyCode: modifierKeyCode))
                     }
                 }
                 .frame(minWidth: 100)
@@ -206,6 +207,7 @@ struct ModifierRecorderView: View {
 
     private func handleFlagsEvent(_ event: NSEvent) {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let keyCode = event.keyCode
 
         // Only capture single modifiers
         let validModifiers: [NSEvent.ModifierFlags] = [.option, .command, .control, .shift]
@@ -214,6 +216,7 @@ struct ModifierRecorderView: View {
             if flags == mod {
                 Task { @MainActor in
                     modifier = mod
+                    modifierKeyCode = keyCode
                     stopRecording()
                 }
                 return
@@ -223,5 +226,6 @@ struct ModifierRecorderView: View {
 
     private func resetToDefault() {
         modifier = defaultModifier
+        modifierKeyCode = nil
     }
 }

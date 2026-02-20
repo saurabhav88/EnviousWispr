@@ -24,7 +24,7 @@ struct TranscriptDetailView: View {
                 }
                 .controlSize(.small)
 
-                if transcript.polishedText == nil && appState.llmProvider != .none {
+                if transcript.polishedText == nil && appState.settings.llmProvider != .none {
                     Button {
                         Task { await appState.polishTranscript(transcript) }
                     } label: {

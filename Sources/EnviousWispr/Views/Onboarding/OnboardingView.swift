@@ -79,7 +79,7 @@ struct OnboardingView: View {
                     .keyboardShortcut(.defaultAction)
                 } else {
                     Button("Get Started") {
-                        appState.hasCompletedOnboarding = true
+                        appState.settings.hasCompletedOnboarding = true
                         isPresented = false
                     }
                     .keyboardShortcut(.defaultAction)

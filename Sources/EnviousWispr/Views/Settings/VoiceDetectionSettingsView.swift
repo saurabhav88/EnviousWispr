@@ -9,13 +9,13 @@ struct VoiceDetectionSettingsView: View {
 
         Form {
             Section("Voice Activity Detection") {
-                Toggle("Auto-stop on silence", isOn: $state.vadAutoStop)
+                Toggle("Auto-stop on silence", isOn: $state.settings.vadAutoStop)
 
-                if appState.vadAutoStop {
+                if appState.settings.vadAutoStop {
                     HStack {
                         Text("Silence timeout")
-                        Slider(value: $state.vadSilenceTimeout, in: 0.5...3.0, step: 0.25)
-                        Text(String(format: "%.1fs", appState.vadSilenceTimeout))
+                        Slider(value: $state.settings.vadSilenceTimeout, in: 0.5...3.0, step: 0.25)
+                        Text(String(format: "%.1fs", appState.settings.vadSilenceTimeout))
                             .font(.caption)
                             .monospacedDigit()
                             .frame(width: 30)
@@ -28,8 +28,8 @@ struct VoiceDetectionSettingsView: View {
 
                 HStack {
                     Text("VAD Sensitivity")
-                    Slider(value: $state.vadSensitivity, in: 0.0...1.0, step: 0.1)
-                    Text(vadSensitivityLabel(appState.vadSensitivity))
+                    Slider(value: $state.settings.vadSensitivity, in: 0.0...1.0, step: 0.1)
+                    Text(vadSensitivityLabel(appState.settings.vadSensitivity))
                         .font(.caption)
                         .monospacedDigit()
                         .frame(width: 55)
@@ -38,8 +38,8 @@ struct VoiceDetectionSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Toggle("Energy pre-gate", isOn: $state.vadEnergyGate)
-                if appState.vadEnergyGate {
+                Toggle("Energy pre-gate", isOn: $state.settings.vadEnergyGate)
+                if appState.settings.vadEnergyGate {
                     Text("Skips neural VAD for very quiet audio. Saves CPU during silence-heavy recordings.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
