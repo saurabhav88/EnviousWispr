@@ -53,7 +53,7 @@ Review each match — many will be model identifiers or safe constants.
 - `Sources/EnviousWispr/LLM/GeminiConnector.swift`
 - `Sources/EnviousWispr/Views/Settings/SettingsView.swift`
 - `Sources/EnviousWispr/LLM/KeychainManager.swift`
-- Any file in `fixtures/` (test audio should not have embedded metadata with tokens)
+- Test audio files (should not have embedded metadata with tokens)
 
 ## On a Finding
 

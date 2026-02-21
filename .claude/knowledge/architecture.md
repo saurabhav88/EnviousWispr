@@ -16,8 +16,7 @@ Sources/EnviousWispr/
 ├── Resources/        # Info.plist, entitlements, AppIcon.icns
 ├── Services/         # PasteService, PermissionsService, HotkeyService
 ├── Storage/          # TranscriptStore (JSON persistence)
-├── Utilities/        # Constants, BenchmarkSuite
-├── Utils/            # KeySymbols
+├── Utilities/        # Constants, BenchmarkSuite, KeySymbols
 └── Views/
     ├── Components/   # HotkeyRecorderView
     ├── Main/         # History list, detail, controls

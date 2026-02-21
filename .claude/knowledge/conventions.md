@@ -68,7 +68,7 @@ Scopes: `asr`, `audio`, `ui`, `llm`, `pipeline`, `settings`, `hotkey`, `vad`, `b
 
 - Semver tags: `v1.0.0`, `v1.1.0`, etc. — `v` prefix required (triggers CI)
 - `scripts/build-dmg.sh <version>` for local builds
-- CI auto-updates `appcast.xml` on main after each release
+- CI generates `appcast.xml` on each release (gitignored locally)
 - Changelog: `generate-changelog` skill or `git log --oneline v1.0.0..HEAD`
 
 ## Required Imports

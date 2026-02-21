@@ -61,7 +61,7 @@ Convert from read-only display to editable:
 - Re-register monitors when hotkeys change
 
 ### Step 5: Add Key Symbol Formatting
-**File**: `Sources/EnviousWispr/Utils/KeySymbols.swift`
+**File**: `Sources/EnviousWispr/Utilities/KeySymbols.swift`
 
 Helper to convert key codes to readable symbols:
 - 49 → "Space"
