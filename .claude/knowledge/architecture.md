@@ -6,21 +6,23 @@ macOS dictation app heading toward consumer publication and commercialization. R
 
 ```text
 Sources/EnviousWispr/
-├── App/          # SwiftUI entry, AppState (@Observable)
-├── ASR/          # ASRBackend protocol, Parakeet + WhisperKit backends
-├── Audio/        # AVAudioEngine capture, SilenceDetector (Silero VAD)
-├── LLM/          # TranscriptPolisher protocol, OpenAI + Gemini, KeychainManager
-├── Models/       # Transcript, ASRResult, AppSettings, LLMResult
-├── Pipeline/     # TranscriptionPipeline orchestrator
-├── Services/     # PasteService, PermissionsService, HotkeyService
+├── App/              # SwiftUI entry, AppState (@Observable)
+├── ASR/              # ASRBackend protocol, Parakeet + WhisperKit backends
+├── Audio/            # AVAudioEngine capture, SilenceDetector (Silero VAD)
+├── LLM/              # TranscriptPolisher protocol, OpenAI + Gemini, KeychainManager
+├── Models/           # Transcript, ASRResult, AppSettings, LLMResult
+├── Pipeline/         # TranscriptionPipeline orchestrator
+├── PostProcessing/   # CustomWordStore, WordCorrector
+├── Services/         # PasteService, PermissionsService, HotkeyService
 ├── Storage/          # TranscriptStore (JSON persistence)
-├── UserManagement/   # Accounts, licensing, entitlements, trials, payments
 ├── Utilities/        # Constants, BenchmarkSuite
+├── Utils/            # KeySymbols
 └── Views/
+    ├── Components/   # HotkeyRecorderView
     ├── Main/         # History list, detail, controls
-    ├── MenuBar/      # (reserved — menu bar uses NSStatusItem in AppDelegate)
     ├── Onboarding/   # First-launch flow
-    └── Settings/     # 4 tabs: General, Shortcuts, AI Polish, Permissions
+    ├── Overlay/      # RecordingOverlayPanel
+    └── Settings/     # Speech Engine, Shortcuts, AI Polish, Voice Detection, etc.
 
 docs/
 ├── comparison-handy-vs-enviouswispr.md   # Technical comparison with Handy

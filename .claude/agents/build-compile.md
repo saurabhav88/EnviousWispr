@@ -14,7 +14,7 @@ Owned: `Package.swift` (shared with release-maintenance).
 
 - Swift tools version 6.0 (Package.swift), runtime 6.2.x
 - CLI only — `swift build`, `swift build --build-tests`. No Xcode, no XCTest, no xcodebuild
-- Deps: WhisperKit (0.12.0+), FluidAudio (0.1.0+). KeyboardShortcuts deferred (needs Xcode)
+- Deps: WhisperKit (0.12.0+), FluidAudio (0.12.0+), Sparkle (2.6.0+). KeyboardShortcuts deferred (needs Xcode)
 
 ## Swift 6 Concurrency Fixes
 

@@ -5,9 +5,10 @@ macOS dictation app — record → transcribe → polish → clipboard/paste. Co
 ## Quick Start
 
 ```bash
-swift build                        # Command Line Tools only, no Xcode
-/wispr-rebuild-and-relaunch        # Build + bundle + launch with fresh permissions
-/wispr-run-smoke-test              # Verify build + launch + basic UI
+swift package resolve               # Fetch dependencies (first time / after Package.swift change)
+swift build                         # Command Line Tools only, no Xcode
+/wispr-rebuild-and-relaunch         # Build + bundle + launch with fresh permissions
+/wispr-run-smoke-test               # Verify build + launch + basic UI
 ```
 
 ## Environment
