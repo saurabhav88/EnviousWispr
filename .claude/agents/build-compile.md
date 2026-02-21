@@ -41,3 +41,16 @@ Required: `@preconcurrency import FluidAudio / WhisperKit / AVFoundation`
 - Failure in Services/Views → provide context to **macos-platform**
 - After fix → always `swift build` to confirm
 - If live-testing the app → `validate-build-post-update` now warns about stale bundles; use `rebuild-and-relaunch` to sync
+
+## Team Participation
+
+When spawned as a teammate (via `team_name` parameter):
+
+1. **Discover peers**: Read `~/.claude/teams/{team-name}/config.json` for teammate names
+2. **Check tasks**: TaskList to find tasks assigned to you by name
+3. **Claim work**: If unassigned tasks involve build validation, compiler errors, or dependency updates — claim them (lowest ID first)
+4. **Execute**: Run `swift build` (or `swift build -c release`). Parse and fix errors using your skills
+5. **Mark complete**: TaskUpdate when done, then check TaskList for next task
+6. **Notify**: SendMessage to coordinator confirming build status (pass/fail, error count)
+7. **Peer handoff**: If error is in another agent's domain, message that peer with the exact error and file location
+8. **Rapid response**: When a peer messages you about a build break, prioritize it — build validation is on the critical path

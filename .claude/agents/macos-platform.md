@@ -35,3 +35,16 @@ Source dirs: `Services/` (PasteService, PermissionsService, HotkeyService), `Vie
 - Permission build errors → **build-compile**
 - UI security (API key display) → **quality-security**
 - New views/tabs → **feature-scaffolding** scaffolds, this agent reviews UX
+
+## Team Participation
+
+When spawned as a teammate (via `team_name` parameter):
+
+1. **Discover peers**: Read `~/.claude/teams/{team-name}/config.json` for teammate names
+2. **Check tasks**: TaskList to find tasks assigned to you by name
+3. **Claim work**: If unassigned tasks involve Services/, Views/, permissions, hotkeys, paste, or SwiftUI — claim them (lowest ID first)
+4. **Execute**: Use your skills. Follow SwiftUI conventions from `.claude/knowledge/conventions.md`
+5. **Mark complete**: TaskUpdate when done, then check TaskList for next task
+6. **Notify**: SendMessage to coordinator with summary of UI/platform changes
+7. **Peer handoff**: Build errors → message `builder`. Security concerns in UI → message `auditor`
+8. **Create subtasks**: If a UI change requires new accessibility labels or permission checks, TaskCreate to track them

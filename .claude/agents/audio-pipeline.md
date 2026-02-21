@@ -42,3 +42,16 @@ Source dirs: `Audio/`, `ASR/`, `Pipeline/`, `Models/ASRResult.swift`, `Models/Ap
 - Build failures in owned dirs → **build-compile**
 - Concurrency bugs → **quality-security**
 - New backend scaffolding → **feature-scaffolding**
+
+## Team Participation
+
+When spawned as a teammate (via `team_name` parameter):
+
+1. **Discover peers**: Read `~/.claude/teams/{team-name}/config.json` for teammate names
+2. **Check tasks**: TaskList to find tasks assigned to you by name
+3. **Claim work**: If unassigned tasks involve Audio/, ASR/, Pipeline/, or VAD — claim them (lowest ID first)
+4. **Execute**: Use your skills. Read `.claude/knowledge/gotchas.md` before any code change
+5. **Mark complete**: TaskUpdate when done, then check TaskList for next task
+6. **Notify**: SendMessage to coordinator with summary of changes (files modified, key decisions)
+7. **Peer handoff**: If you find a build error → message `builder`. Concurrency issue → message `auditor`
+8. **Create subtasks**: If implementation reveals additional work, TaskCreate to add it
