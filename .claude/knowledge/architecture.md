@@ -1,6 +1,6 @@
 # Architecture
 
-Local-first macOS dictation app. Record → Transcribe (Parakeet v3 / WhisperKit) → optional LLM polish → clipboard. macOS 14+, Apple Silicon.
+macOS dictation app heading toward consumer publication and commercialization. Record → Transcribe (Parakeet v3 / WhisperKit) → optional LLM polish → clipboard. macOS 14+, Apple Silicon.
 
 ## Directory Structure
 
@@ -13,8 +13,9 @@ Sources/EnviousWispr/
 ├── Models/       # Transcript, ASRResult, AppSettings, LLMResult
 ├── Pipeline/     # TranscriptionPipeline orchestrator
 ├── Services/     # PasteService, PermissionsService, HotkeyService
-├── Storage/      # TranscriptStore (JSON persistence)
-├── Utilities/    # Constants, BenchmarkSuite
+├── Storage/          # TranscriptStore (JSON persistence)
+├── UserManagement/   # Accounts, licensing, entitlements, trials, payments
+├── Utilities/        # Constants, BenchmarkSuite
 └── Views/
     ├── Main/         # History list, detail, controls
     ├── MenuBar/      # (reserved — menu bar uses NSStatusItem in AppDelegate)

@@ -43,7 +43,7 @@ Conventional commits: `type(scope): message`
 | `test` | Testing |
 | `perf` | Performance |
 
-Scopes: `asr`, `audio`, `ui`, `llm`, `pipeline`, `settings`, `hotkey`, `vad`, `build`
+Scopes: `asr`, `audio`, `ui`, `llm`, `pipeline`, `settings`, `hotkey`, `vad`, `build`, `user`, `release`
 
 ## DI & State
 

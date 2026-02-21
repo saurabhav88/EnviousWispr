@@ -51,6 +51,9 @@ node_modules/
 dist/
 build/
 
+# App bundle (build artifact)
+EnviousWispr.app/
+
 # Models (large files, download at runtime — root-level only)
 /Models/
 *.mlmodel
