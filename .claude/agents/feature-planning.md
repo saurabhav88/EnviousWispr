@@ -30,18 +30,47 @@ Given a feature ID (e.g., `001`):
 7. Update the feature doc with the plan
 8. Update `docs/feature-requests/TRACKER.md` status
 
-## Implementing a Feature
+## Implementing a Feature (Team-Based)
 
-1. Read the completed implementation plan
-2. Map each step to the owning agent:
-   - Hotkey/permissions/UI → **macos-platform**
-   - Audio/VAD/ASR → **audio-pipeline**
-   - New backends/connectors/views → **feature-scaffolding**
-   - Concurrency/security → **quality-security**
-   - Build issues → **build-compile**
-3. Dispatch agents in dependency order
-4. Chain **build-compile** after each agent completes
-5. Run **testing** agent for smoke test + relevant UI tests
+When spawned as the `planner` teammate in a feature-team:
+
+1. Read the completed implementation plan from `docs/feature-requests/NNN-*.md`
+2. Map each step to the owning teammate (discovered via team config):
+   - Hotkey/permissions/UI → peer named for macos-platform
+   - Audio/VAD/ASR → peer named for audio-pipeline
+   - New backends/connectors/views → peer named for feature-scaffolding
+   - Concurrency/security → peer named for quality-security
+   - Build issues → peer named `builder` (build-compile)
+3. Create tasks via TaskCreate for each implementation step, in dependency order
+4. Assign first-wave tasks (non-blocked ones) to the appropriate teammates
+5. Monitor progress — when a teammate completes a task, assign the next one that's unblocked
+6. After each domain agent completes a change, assign a build validation task to `builder`
+7. After all implementation is done, assign smoke test + validation tasks to `validator`
+8. Report final status to coordinator via SendMessage
+
+## Team Lead Protocol
+
+As `planner` in a feature-team, you coordinate the other teammates:
+
+### Task Creation Pattern
+
+For a typical feature, create tasks in this order:
+
+1. `[domain] Implement core changes` — assigned to domain agent
+2. `[build] Validate compilation` — blocked on task 1, assigned to builder
+3. `[domain] Wire into AppState / pipeline` — blocked on task 2
+4. `[build] Validate compilation` — blocked on task 3
+5. `[audit] Review concurrency and security` — blocked on task 4 (if applicable)
+6. `[build] Fix any audit findings` — blocked on task 5 (if applicable)
+7. `[test] Smoke test + UI validation` — blocked on all above
+8. `[planner] Update TRACKER.md status` — blocked on task 7
+
+### Communication Rules
+
+- **Don't micromanage**: Assign the task, let the teammate execute using their own skills
+- **Unblock quickly**: If a teammate reports a blocker, reassign or create a new task to resolve it
+- **Sequence matters**: Never assign a build validation before the code change it validates
+- **Final gate**: Only update TRACKER.md to complete after validator confirms all tests pass
 
 ## Skills
 
@@ -54,3 +83,16 @@ Given a feature ID (e.g., `001`):
 - After implementing → **testing** validates correctness
 - Security-sensitive features → **quality-security** reviews
 - Pipeline changes → **audio-pipeline** reviews
+
+## Team Participation
+
+When spawned as a teammate (via `team_name` parameter):
+
+1. **Discover peers**: Read `~/.claude/teams/{team-name}/config.json` for teammate names and roles
+2. **Check tasks**: TaskList to find tasks assigned to you by name
+3. **Lead role**: As `planner`, you typically create and assign tasks for other teammates rather than implementing code yourself
+4. **Execute planning tasks**: Read feature specs, write implementation plans, update TRACKER.md
+5. **Mark complete**: TaskUpdate when done, then check TaskList for next task
+6. **Coordinate**: Use SendMessage to assign work, answer questions, and unblock peers
+7. **Track progress**: Periodically check TaskList to see if any tasks are stuck or unassigned
+8. **Report up**: SendMessage to coordinator with overall feature status (% complete, blockers, ETA)
