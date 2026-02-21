@@ -1,27 +1,44 @@
 # EnviousWispr
 
-Local-first macOS dictation app — record → transcribe → polish → clipboard/paste.
+macOS dictation app — record → transcribe → polish → clipboard/paste. Consumer product heading toward publication and commercialization.
+
+## Quick Start
+
+```bash
+swift build                        # Command Line Tools only, no Xcode
+/wispr-rebuild-and-relaunch        # Build + bundle + launch with fresh permissions
+/wispr-run-smoke-test              # Verify build + launch + basic UI
+```
+
+## Environment
+
+- macOS 14+, Swift 6.0+ (CLT only — no Xcode, no XCTest, no xcodebuild)
+- `swift build`, never `xcodebuild`
 
 ## Rules
 
-1. **Always delegate to an Agent first.** You are a coordinator, not a laborer. Find the right agent and dispatch.
-2. **Never do an agent's job.** If a task falls in an agent's domain, that agent handles it.
-3. **If no agent or skill exists, create one.** Scaffold it in `.claude/agents/` or `.claude/skills/` before doing the work yourself.
-4. **Compose, don't improvise.** Chain agents: Audio Pipeline diagnoses → Build fixes → Testing validates.
-5. **Read knowledge files before acting.** Consult `.claude/knowledge/` first.
+1. **Read [gotchas](.claude/knowledge/gotchas.md) before any code change.** FluidAudio naming collision and Sparkle rpath will bite you.
+2. **Always delegate to an Agent first.** You are a coordinator, not a laborer.
+3. **Never do an agent's job.** If a task falls in an agent's domain, that agent handles it.
+4. **If no agent or skill exists, create one.** Scaffold in `.claude/agents/` or `.claude/skills/` before doing the work yourself.
+5. **Compose, don't improvise.** Chain agents: Audio Pipeline diagnoses → Build fixes → Testing validates.
+6. **Read knowledge files before acting.** Consult `.claude/knowledge/` first.
+7. **Teams first for multi-agent work.** If 2+ agents are needed and their outputs depend on each other → `TeamCreate`. See [teamwork](.claude/knowledge/teamwork.md) for compositions, lifecycle, and decision matrix. Only use parallel `Task` for independent single-agent lookups.
+8. **You are the team lead.** Create teams, spawn teammates, assign tasks via shared task list, monitor progress via auto-delivered messages, shut down when complete. Never implement code yourself — if no teammate can handle it, spawn one.
 
 ## Agents
 
 | Agent | Domain | Skills (`.claude/skills/`) |
 | ----- | ------ | ------------------------- |
-| [audio-pipeline](.claude/agents/audio-pipeline.md) | Audio capture, VAD, ASR, pipeline orchestration | `resolve-naming-collisions`, `apply-vad-manager-patterns`, `infer-asr-types`, `manage-model-loading`, `configure-language-settings`, `optimize-memory-management`, `switch-asr-backends`, `trace-audio-pipeline` |
-| [build-compile](.claude/agents/build-compile.md) | Build failures, compiler errors, dependency updates | `auto-fix-compiler-errors`, `check-dependency-versions`, `handle-breaking-changes`, `validate-build-post-update` |
-| [macos-platform](.claude/agents/macos-platform.md) | Permissions, hotkeys, menu bar, paste, SwiftUI | `handle-macos-permissions`, `review-swiftui-conventions`, `check-accessibility-labels`, `validate-menu-bar-patterns` |
-| [quality-security](.claude/agents/quality-security.md) | Concurrency, actor isolation, Sendable, secrets | `audit-actor-isolation`, `flag-missing-sendable`, `detect-unsafe-main-actor-dispatches`, `check-api-key-storage`, `detect-hardcoded-secrets`, `validate-keychain-usage`, `flag-sensitive-logging`, `swift-format-check` |
-| [feature-scaffolding](.claude/agents/feature-scaffolding.md) | New backends, connectors, views, tabs | `scaffold-asr-backend`, `scaffold-llm-connector`, `scaffold-settings-tab`, `scaffold-swiftui-view` |
-| [testing](.claude/agents/testing.md) | Smoke tests, UI tests, benchmarks, API contracts | `run-smoke-test`, `run-benchmarks`, `validate-api-contracts`, `ui-ax-inspect`, `ui-simulate-input`, `ui-screenshot-verify`, `run-ui-test` |
-| [release-maintenance](.claude/agents/release-maintenance.md) | Packaging, signing, changelog, migration, dead code | `build-release-config`, `bundle-app`, `rebuild-and-relaunch`, `codesign-without-xcode`, `generate-changelog`, `migrate-swift-version`, `find-dead-code` |
-| [feature-planning](.claude/agents/feature-planning.md) | Feature request planning, implementation coordination | `check-feature-tracker`, `implement-feature-request` |
+| [audio-pipeline](.claude/agents/audio-pipeline.md) | Audio capture, VAD, ASR, pipeline orchestration | `wispr-resolve-naming-collisions`, `wispr-apply-vad-manager-patterns`, `wispr-infer-asr-types`, `wispr-manage-model-loading`, `wispr-configure-language-settings`, `wispr-optimize-memory-management`, `wispr-switch-asr-backends`, `wispr-trace-audio-pipeline` |
+| [build-compile](.claude/agents/build-compile.md) | Build failures, compiler errors, dependency updates | `wispr-auto-fix-compiler-errors`, `wispr-check-dependency-versions`, `wispr-handle-breaking-changes`, `wispr-validate-build-post-update` |
+| [macos-platform](.claude/agents/macos-platform.md) | Permissions, hotkeys, menu bar, paste, SwiftUI | `wispr-handle-macos-permissions`, `wispr-review-swiftui-conventions`, `wispr-check-accessibility-labels`, `wispr-validate-menu-bar-patterns` |
+| [quality-security](.claude/agents/quality-security.md) | Concurrency, actor isolation, Sendable, secrets | `wispr-audit-actor-isolation`, `wispr-flag-missing-sendable`, `wispr-detect-unsafe-main-actor-dispatches`, `wispr-check-api-key-storage`, `wispr-detect-hardcoded-secrets`, `wispr-validate-keychain-usage`, `wispr-flag-sensitive-logging`, `wispr-swift-format-check` |
+| [feature-scaffolding](.claude/agents/feature-scaffolding.md) | New backends, connectors, views, tabs | `wispr-scaffold-asr-backend`, `wispr-scaffold-llm-connector`, `wispr-scaffold-settings-tab`, `wispr-scaffold-swiftui-view` |
+| [testing](.claude/agents/testing.md) | Smoke tests, UI tests, benchmarks, API contracts | `wispr-run-smoke-test`, `wispr-run-benchmarks`, `wispr-validate-api-contracts`, `wispr-ui-ax-inspect`, `wispr-ui-simulate-input`, `wispr-ui-screenshot-verify`, `wispr-run-ui-test` |
+| [release-maintenance](.claude/agents/release-maintenance.md) | Packaging, signing, changelog, migration, dead code | `wispr-build-release-config`, `wispr-bundle-app`, `wispr-rebuild-and-relaunch`, `wispr-codesign-without-xcode`, `wispr-generate-changelog`, `wispr-migrate-swift-version`, `wispr-find-dead-code`, `wispr-release-checklist` |
+| [feature-planning](.claude/agents/feature-planning.md) | Feature request planning, implementation coordination | `wispr-check-feature-tracker`, `wispr-implement-feature-request` |
+| [user-management](.claude/agents/user-management.md) | Accounts, licensing, entitlements, trials, payments, analytics | — |
 
 ## Knowledge
 
@@ -32,6 +49,25 @@ Local-first macOS dictation app — record → transcribe → polish → clipboa
 | [conventions](.claude/knowledge/conventions.md) | Commit style, DI patterns, view patterns, imports |
 | [distribution](.claude/knowledge/distribution.md) | Release pipeline, Sparkle, DMG build, CI/CD, codesigning |
 | [roadmap](.claude/knowledge/roadmap.md) | Feature requests, tracker, priority system, implementation workflow |
+| [teamwork](.claude/knowledge/teamwork.md) | Team compositions, lifecycle, decision matrix, communication patterns |
+
+## Plugins (global)
+
+| Plugin | Key commands |
+| ------ | ------------ |
+| superpowers | `/brainstorming`, `/writing-plans`, `/systematic-debugging`, `/test-driven-development` |
+| commit-commands | `/commit`, `/commit-push-pr` |
+| pr-review-toolkit | `/review-pr` |
+| coderabbit | `/review` |
+| frontend-design | `/frontend-design` |
+| playground | `/playground` |
+| hookify | `/hookify` |
+| claude-md-management | `/revise-claude-md`, `/claude-md-improver` |
+| skill-creator | `/skill-creator` |
+| playwright | MCP tools (no slash command) |
+| github | MCP tools (no slash command) |
+| context7 | MCP tools (no slash command) |
+| whatsapp | MCP tools (no slash command) |
 
 ## Commits
 
