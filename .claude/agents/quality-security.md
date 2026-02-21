@@ -43,13 +43,14 @@ All source files — read access to entire codebase for auditing.
 
 ## Skills → `.claude/skills/`
 
-- `audit-actor-isolation`
-- `flag-missing-sendable`
-- `detect-unsafe-main-actor-dispatches`
-- `check-api-key-storage`
-- `detect-hardcoded-secrets`
-- `validate-keychain-usage`
-- `flag-sensitive-logging`
+- `wispr-audit-actor-isolation`
+- `wispr-flag-missing-sendable`
+- `wispr-detect-unsafe-main-actor-dispatches`
+- `wispr-check-api-key-storage`
+- `wispr-detect-hardcoded-secrets`
+- `wispr-validate-keychain-usage`
+- `wispr-flag-sensitive-logging`
+- `wispr-swift-format-check`
 
 ## Coordination
 

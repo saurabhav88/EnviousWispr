@@ -25,10 +25,10 @@ Source dirs: `Services/` (PasteService, PermissionsService, HotkeyService), `Vie
 
 ## Skills → `.claude/skills/`
 
-- `handle-macos-permissions`
-- `review-swiftui-conventions`
-- `check-accessibility-labels`
-- `validate-menu-bar-patterns`
+- `wispr-handle-macos-permissions`
+- `wispr-review-swiftui-conventions`
+- `wispr-check-accessibility-labels`
+- `wispr-validate-menu-bar-patterns`
 
 ## Coordination
 

@@ -28,14 +28,14 @@ Source dirs: `Audio/`, `ASR/`, `Pipeline/`, `Models/ASRResult.swift`, `Models/Ap
 
 ## Skills → `.claude/skills/`
 
-- `resolve-naming-collisions`
-- `apply-vad-manager-patterns`
-- `infer-asr-types`
-- `manage-model-loading`
-- `configure-language-settings`
-- `optimize-memory-management`
-- `switch-asr-backends`
-- `trace-audio-pipeline`
+- `wispr-resolve-naming-collisions`
+- `wispr-apply-vad-manager-patterns`
+- `wispr-infer-asr-types`
+- `wispr-manage-model-loading`
+- `wispr-configure-language-settings`
+- `wispr-optimize-memory-management`
+- `wispr-switch-asr-backends`
+- `wispr-trace-audio-pipeline`
 
 ## Coordination
 

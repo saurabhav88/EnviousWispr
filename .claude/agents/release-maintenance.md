@@ -32,13 +32,14 @@ Owned: `Package.swift` (shared with build-compile).
 
 ## Skills → `.claude/skills/`
 
-- `build-release-config`
-- `bundle-app`
-- `rebuild-and-relaunch` — chains release build → bundle → kill → TCC reset → relaunch
-- `codesign-without-xcode`
-- `generate-changelog`
-- `migrate-swift-version`
-- `find-dead-code`
+- `wispr-build-release-config`
+- `wispr-bundle-app`
+- `wispr-rebuild-and-relaunch` — chains release build → bundle → kill → TCC reset → relaunch
+- `wispr-codesign-without-xcode`
+- `wispr-generate-changelog`
+- `wispr-migrate-swift-version`
+- `wispr-find-dead-code`
+- `wispr-release-checklist`
 
 ## Coordination
 

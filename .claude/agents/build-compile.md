@@ -30,10 +30,10 @@ Required: `@preconcurrency import FluidAudio / WhisperKit / AVFoundation`
 
 ## Skills → `.claude/skills/`
 
-- `auto-fix-compiler-errors`
-- `check-dependency-versions`
-- `handle-breaking-changes`
-- `validate-build-post-update`
+- `wispr-auto-fix-compiler-errors`
+- `wispr-check-dependency-versions`
+- `wispr-handle-breaking-changes`
+- `wispr-validate-build-post-update`
 
 ## Coordination
 

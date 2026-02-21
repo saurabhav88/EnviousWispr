@@ -74,8 +74,8 @@ For a typical feature, create tasks in this order:
 
 ## Skills
 
-- `check-feature-tracker` — quick status report
-- `implement-feature-request` — full implementation workflow
+- `wispr-check-feature-tracker` — quick status report
+- `wispr-implement-feature-request` — full implementation workflow
 
 ## Coordination
 

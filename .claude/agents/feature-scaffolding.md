@@ -26,10 +26,10 @@ No exclusive files — scaffolds across the codebase following established patte
 
 ## Skills → `.claude/skills/`
 
-- `scaffold-asr-backend`
-- `scaffold-llm-connector`
-- `scaffold-settings-tab`
-- `scaffold-swiftui-view`
+- `wispr-scaffold-asr-backend`
+- `wispr-scaffold-llm-connector`
+- `wispr-scaffold-settings-tab`
+- `wispr-scaffold-swiftui-view`
 
 ## Coordination
 

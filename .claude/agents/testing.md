@@ -33,13 +33,13 @@ Error codes: `401` → invalid key, `429` → rate limited.
 
 ## Skills → `.claude/skills/`
 
-- `run-smoke-test`
-- `run-benchmarks`
-- `validate-api-contracts`
-- `ui-ax-inspect`
-- `ui-simulate-input`
-- `ui-screenshot-verify`
-- `run-ui-test`
+- `wispr-run-smoke-test`
+- `wispr-run-benchmarks`
+- `wispr-validate-api-contracts`
+- `wispr-ui-ax-inspect`
+- `wispr-ui-simulate-input`
+- `wispr-ui-screenshot-verify`
+- `wispr-run-ui-test`
 
 ## Coordination
 

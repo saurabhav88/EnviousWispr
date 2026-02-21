@@ -64,6 +64,15 @@ swift build                        # Command Line Tools only, no Xcode
 | hookify | `/hookify` |
 | claude-md-management | `/revise-claude-md`, `/claude-md-improver` |
 | skill-creator | `/skill-creator` |
+| feature-dev | `/feature-dev` |
+| code-review | `/code-review` |
+| agent-sdk-dev | `/new-sdk-app` |
+| code-simplifier | subagents (no slash command) |
+| claude-code-setup | `/claude-automation-recommender` |
+| circleback | subagents (no slash command) |
+| security-guidance | subagents (no slash command) |
+| typescript-lsp | LSP tools (no slash command) |
+| swift-lsp | LSP tools (no slash command) |
 | playwright | MCP tools (no slash command) |
 | github | MCP tools (no slash command) |
 | context7 | MCP tools (no slash command) |
