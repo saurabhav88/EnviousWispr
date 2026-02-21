@@ -13,7 +13,7 @@ swift build                         # Command Line Tools only, no Xcode
 
 ## Environment
 
-- macOS 14+, Swift 6.0+ (CLT only — no Xcode, no XCTest, no xcodebuild)
+- macOS 14+, Swift 6.2+ (CLT only — no Xcode, no XCTest, no xcodebuild)
 - `swift build`, never `xcodebuild`
 
 ## Rules

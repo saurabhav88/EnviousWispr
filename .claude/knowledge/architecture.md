@@ -13,6 +13,7 @@ Sources/EnviousWispr/
 ├── Models/           # Transcript, ASRResult, AppSettings, LLMResult
 ├── Pipeline/         # TranscriptionPipeline orchestrator
 ├── PostProcessing/   # CustomWordStore, WordCorrector
+├── Resources/        # Info.plist, entitlements, AppIcon.icns
 ├── Services/         # PasteService, PermissionsService, HotkeyService
 ├── Storage/          # TranscriptStore (JSON persistence)
 ├── Utilities/        # Constants, BenchmarkSuite
