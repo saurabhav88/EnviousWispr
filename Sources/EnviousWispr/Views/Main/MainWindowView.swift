@@ -79,7 +79,7 @@ struct StatusView: View {
                                 .foregroundStyle(.red)
                         }
 
-                        Text(formatDuration(elapsed))
+                        Text(FormattingConstants.formatDuration(elapsed))
                             .font(.system(size: 40, weight: .bold, design: .monospaced))
                             .foregroundStyle(.primary)
                     }
@@ -221,11 +221,6 @@ struct StatusView: View {
         recordingStart = nil
     }
 
-    private func formatDuration(_ seconds: TimeInterval) -> String {
-        let mins = Int(seconds) / 60
-        let secs = Int(seconds) % 60
-        return String(format: "%d:%02d", mins, secs)
-    }
 }
 
 /// Animated pulsing rings for recording indicator.

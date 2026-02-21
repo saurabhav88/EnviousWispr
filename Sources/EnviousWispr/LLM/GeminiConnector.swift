@@ -16,7 +16,7 @@ struct GeminiConnector: TranscriptPolisher {
     ) async throws -> LLMResult {
         let apiKey = try getAPIKey(config: config)
 
-        guard let url = URL(string: "\(baseURL)/\(config.model):generateContent?key=\(apiKey)") else {
+        guard let url = URL(string: "\(baseURL)/\(config.model):generateContent") else {
             throw LLMError.requestFailed("Invalid URL for model: \(config.model)")
         }
 
@@ -37,6 +37,7 @@ struct GeminiConnector: TranscriptPolisher {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         request.timeoutInterval = 30
 
@@ -49,9 +50,10 @@ struct GeminiConnector: TranscriptPolisher {
         switch httpResponse.statusCode {
         case 200: break
         case 400:
-            let body = String(data: data, encoding: .utf8) ?? ""
-            if body.contains("API_KEY_INVALID") { throw LLMError.invalidAPIKey }
-            throw LLMError.requestFailed("Bad request: \(body)")
+            let responseBody = String(data: data, encoding: .utf8) ?? ""
+            if responseBody.contains("API_KEY_INVALID") { throw LLMError.invalidAPIKey }
+            throw LLMError.requestFailed("Bad request: \(responseBody)")
+        case 403: throw LLMError.invalidAPIKey
         case 429: throw LLMError.rateLimited
         default:
             let body = String(data: data, encoding: .utf8) ?? "Unknown error"

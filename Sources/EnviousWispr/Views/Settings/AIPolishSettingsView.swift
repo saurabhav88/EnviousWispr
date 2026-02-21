@@ -109,7 +109,7 @@ struct AIPolishSettingsView: View {
 
                     HStack {
                         Button("Save Key") {
-                            saveKey(key: openAIKey, keychainId: "openai-api-key")
+                            saveKey(key: openAIKey, keychainId: KeychainManager.openAIKeyID)
                             if appState.settings.llmProvider == .openAI {
                                 Task { await appState.validateKeyAndDiscoverModels(provider: .openAI) }
                             }
@@ -117,7 +117,7 @@ struct AIPolishSettingsView: View {
                         .disabled(openAIKey.isEmpty)
 
                         Button("Clear Key") {
-                            clearKey(keychainId: "openai-api-key")
+                            clearKey(keychainId: KeychainManager.openAIKeyID)
                             openAIKey = ""
                             if appState.settings.llmProvider == .openAI {
                                 appState.discoveredModels = []
@@ -151,7 +151,7 @@ struct AIPolishSettingsView: View {
 
                     HStack {
                         Button("Save Key") {
-                            saveKey(key: geminiKey, keychainId: "gemini-api-key")
+                            saveKey(key: geminiKey, keychainId: KeychainManager.geminiKeyID)
                             if appState.settings.llmProvider == .gemini {
                                 Task { await appState.validateKeyAndDiscoverModels(provider: .gemini) }
                             }
@@ -159,7 +159,7 @@ struct AIPolishSettingsView: View {
                         .disabled(geminiKey.isEmpty)
 
                         Button("Clear Key") {
-                            clearKey(keychainId: "gemini-api-key")
+                            clearKey(keychainId: KeychainManager.geminiKeyID)
                             geminiKey = ""
                             if appState.settings.llmProvider == .gemini {
                                 appState.discoveredModels = []
@@ -360,8 +360,8 @@ struct AIPolishSettingsView: View {
                 .environment(appState)
         }
         .onAppear {
-            openAIKey = (try? appState.keychainManager.retrieve(key: "openai-api-key")) ?? ""
-            geminiKey = (try? appState.keychainManager.retrieve(key: "gemini-api-key")) ?? ""
+            openAIKey = (try? appState.keychainManager.retrieve(key: KeychainManager.openAIKeyID)) ?? ""
+            geminiKey = (try? appState.keychainManager.retrieve(key: KeychainManager.geminiKeyID)) ?? ""
             if appState.settings.llmProvider == .ollama {
                 Task { await appState.ollamaSetup.detectState() }
             } else if appState.settings.llmProvider == .appleIntelligence {

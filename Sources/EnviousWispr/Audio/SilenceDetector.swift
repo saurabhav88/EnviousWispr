@@ -48,7 +48,6 @@ actor SilenceDetector {
     private(set) var speechSegments: [SpeechSegment] = []
     private var currentSpeechStart: Int? = nil
     private var processedSampleCount: Int = 0
-    private(set) var voicedSamples: [Float] = []
 
     // SmoothedVAD state
     private var phase: SmoothedVADPhase = .idle
@@ -93,9 +92,6 @@ actor SilenceDetector {
         speechSegments = []
         currentSpeechStart = nil
         processedSampleCount = 0
-        // Pre-allocate for ~30 seconds of voiced audio to reduce reallocations
-        voicedSamples = []
-        voicedSamples.reserveCapacity(16000 * 30)
         phase = .idle
         emaSmoothedProbability = 0.0
         consecutiveAboveOnset = 0
@@ -160,26 +156,19 @@ actor SilenceDetector {
                     speechDetected = true
                     currentSpeechStart = processedSampleCount
 
-                    // Drain prebuffer into voicedSamples for context
-                    let prebuffered = drainPrebuffer()
-                    if !prebuffered.isEmpty {
-                        voicedSamples.append(contentsOf: prebuffered)
-                    }
-                    // Append current chunk
-                    voicedSamples.append(contentsOf: samples)
+                    // Drain prebuffer so it resets for the next segment
+                    _ = drainPrebuffer()
                 }
             } else {
                 consecutiveAboveOnset = 0
             }
 
         case .speech:
-            voicedSamples.append(contentsOf: samples)
             if smoothed < vadConfig.offsetThreshold {
                 phase = .hangover(chunksRemaining: effectiveHangoverChunks)
             }
 
         case .hangover(let remaining):
-            voicedSamples.append(contentsOf: samples)
             if smoothed >= vadConfig.onsetThreshold {
                 // Speech resumed, go back to speech phase
                 phase = .speech

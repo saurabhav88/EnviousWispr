@@ -3,6 +3,9 @@ import Security
 
 /// Manages API key storage and retrieval via macOS Keychain.
 struct KeychainManager: Sendable {
+    static let openAIKeyID = "openai-api-key"
+    static let geminiKeyID = "gemini-api-key"
+
     private let service = "com.enviouswispr.api-keys"
 
     /// Store a value in the Keychain.

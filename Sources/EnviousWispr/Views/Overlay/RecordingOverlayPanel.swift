@@ -99,7 +99,7 @@ struct RecordingOverlayView: View {
             .frame(height: 20)
 
             // Duration timer
-            Text(formatDuration(elapsed))
+            Text(FormattingConstants.formatDuration(elapsed))
                 .font(.system(size: 13, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white)
 
@@ -138,9 +138,4 @@ struct RecordingOverlayView: View {
         return base + (maxH - base) * normalized * (1.0 - distance * 0.5)
     }
 
-    private func formatDuration(_ seconds: TimeInterval) -> String {
-        let mins = Int(seconds) / 60
-        let secs = Int(seconds) % 60
-        return String(format: "%d:%02d", mins, secs)
-    }
 }

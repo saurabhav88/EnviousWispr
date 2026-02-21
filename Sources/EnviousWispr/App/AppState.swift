@@ -7,10 +7,6 @@ final class AppState {
     // Settings
     var settings = SettingsManager()
 
-    // Session & networking (scaffolded for future user accounts)
-    let session: any UserSessionProtocol = AnonymousSession()
-    let networkClient: any NetworkClientProtocol = StubNetworkClient()
-
     // Sub-systems
     let permissions = PermissionsService()
     let audioCapture = AudioCaptureManager()
@@ -82,8 +78,11 @@ final class AppState {
         pipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
         pipeline.wordCorrection.customWords = customWords
 
-        // Initialize logger level
-        Task { await AppLogger.shared.setLogLevel(settings.debugLogLevel) }
+        // Initialize logger
+        Task {
+            await AppLogger.shared.setLogLevel(settings.debugLogLevel)
+            await AppLogger.shared.setDebugMode(settings.isDebugModeEnabled)
+        }
 
         // Wire settings change handler
         settings.onChange = { [weak self] key in self?.handleSettingChanged(key) }
@@ -200,7 +199,7 @@ final class AppState {
             Task { await AppLogger.shared.setDebugMode(settings.isDebugModeEnabled) }
         case .debugLogLevel:
             Task { await AppLogger.shared.setLogLevel(settings.debugLogLevel) }
-        case .vadDualBuffer, .hasCompletedOnboarding:
+        case .hasCompletedOnboarding:
             break
         }
     }
@@ -331,7 +330,7 @@ final class AppState {
         if provider == .ollama || provider == .appleIntelligence {
             apiKey = ""
         } else {
-            let keychainId = provider == .openAI ? "openai-api-key" : "gemini-api-key"
+            let keychainId = provider == .openAI ? KeychainManager.openAIKeyID : KeychainManager.geminiKeyID
             guard let key = try? keychainManager.retrieve(key: keychainId), !key.isEmpty else {
                 keyValidationState = .invalid("No API key found")
                 isDiscoveringModels = false

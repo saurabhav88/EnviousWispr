@@ -135,8 +135,6 @@ final class TranscriptionPipeline {
         ) }
 
         // Filter silence using VAD speech segments.
-        // Always use filterSamples which correctly handles multi-segment speech
-        // (voicedSamples only captured the first segment's audio).
         var samples: [Float]
         if let detector = silenceDetector {
             await detector.finalizeSegments(totalSampleCount: rawSamples.count)
@@ -373,14 +371,18 @@ final class TranscriptionPipeline {
         let chunkSize = SilenceDetector.chunkSize
 
         while state == .recording && !Task.isCancelled {
+            // Snapshot @MainActor-isolated data before any await suspension.
             let currentCount = audioCapture.capturedSamples.count
 
             while processedSampleCount + chunkSize <= currentCount && !Task.isCancelled {
                 let endIdx = processedSampleCount + chunkSize
+                // Snapshot the chunk on @MainActor before crossing into the detector actor.
                 let chunk = Array(audioCapture.capturedSamples[processedSampleCount..<endIdx])
+                let autoStop = vadAutoStop
+
                 let shouldStop = await detector.processChunk(chunk)
 
-                if shouldStop && vadAutoStop && state == .recording {
+                if shouldStop && autoStop && state == .recording {
                     // Run in a new Task so cancelling vadMonitorTask
                     // doesn't propagate CancellationError into transcription.
                     Task { [weak self] in await self?.stopAndTranscribe() }

@@ -100,7 +100,7 @@ struct OnboardingView: View {
                 .font(.title)
                 .bold()
 
-            Text("Local-first dictation powered by on-device AI.\nYour voice never leaves your Mac.")
+            Text("Smart dictation powered by on-device AI.\nRecord, transcribe, and polish your words.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
         }

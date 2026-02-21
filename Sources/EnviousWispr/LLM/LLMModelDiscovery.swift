@@ -7,9 +7,6 @@ import FoundationModels
 /// Discovers available LLM models from provider APIs and probes their availability.
 struct LLMModelDiscovery: Sendable {
 
-    /// Maximum concurrent model probes to avoid rate limiting (429 errors).
-    private static let maxConcurrentProbes = 5
-
     /// Exclusion patterns for model IDs that aren't useful for transcript polishing.
     private static let excludePatterns = [
         "tts", "image", "robotics", "computer-use", "deep-research",
@@ -48,7 +45,7 @@ struct LLMModelDiscovery: Sendable {
         var results: [LLMModelInfo] = []
 
         // Process in batches to limit concurrent requests
-        for batch in filtered.chunked(into: Self.maxConcurrentProbes) {
+        for batch in filtered.chunked(into: LLMConstants.maxConcurrentProbes) {
             let batchResults = await withTaskGroup(of: LLMModelInfo.self, returning: [LLMModelInfo].self) { group in
                 for model in batch {
                     group.addTask {
@@ -81,10 +78,11 @@ struct LLMModelDiscovery: Sendable {
     // MARK: - Gemini
 
     private func fetchGeminiModels(apiKey: String) async throws -> [(id: String, displayName: String)] {
-        guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models?key=\(apiKey)") else {
+        guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models") else {
             throw LLMError.requestFailed("Invalid URL")
         }
         var request = URLRequest(url: url)
+        request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
         request.timeoutInterval = 15
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -92,6 +90,9 @@ struct LLMModelDiscovery: Sendable {
             throw LLMError.requestFailed("Invalid response")
         }
 
+        if httpResponse.statusCode == 403 {
+            throw LLMError.invalidAPIKey
+        }
         if httpResponse.statusCode == 400 {
             let body = String(data: data, encoding: .utf8) ?? ""
             if body.contains("API_KEY_INVALID") { throw LLMError.invalidAPIKey }
@@ -114,7 +115,7 @@ struct LLMModelDiscovery: Sendable {
     }
 
     private func probeGemini(modelID: String, apiKey: String) async -> Bool {
-        let urlString = "https://generativelanguage.googleapis.com/v1beta/models/\(modelID):generateContent?key=\(apiKey)"
+        let urlString = "https://generativelanguage.googleapis.com/v1beta/models/\(modelID):generateContent"
         guard let url = URL(string: urlString) else { return false }
 
         let body: [String: Any] = [
@@ -125,6 +126,7 @@ struct LLMModelDiscovery: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         request.timeoutInterval = 10
 

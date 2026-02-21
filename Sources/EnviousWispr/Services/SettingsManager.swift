@@ -14,7 +14,6 @@ final class SettingsManager {
         case hotkeyEnabled
         case vadAutoStop
         case vadSilenceTimeout
-        case vadDualBuffer
         case vadSensitivity
         case vadEnergyGate
         case hasCompletedOnboarding
@@ -101,13 +100,6 @@ final class SettingsManager {
         didSet {
             UserDefaults.standard.set(vadSilenceTimeout, forKey: "vadSilenceTimeout")
             onChange?(.vadSilenceTimeout)
-        }
-    }
-
-    var vadDualBuffer: Bool {
-        didSet {
-            UserDefaults.standard.set(vadDualBuffer, forKey: "vadDualBuffer")
-            onChange?(.vadDualBuffer)
         }
     }
 
@@ -206,8 +198,9 @@ final class SettingsManager {
         }
     }
 
-    var isDebugModeEnabled: Bool = false {
+    var isDebugModeEnabled: Bool {
         didSet {
+            UserDefaults.standard.set(isDebugModeEnabled, forKey: "isDebugModeEnabled")
             onChange?(.isDebugModeEnabled)
         }
     }
@@ -237,7 +230,6 @@ final class SettingsManager {
         hotkeyEnabled = defaults.object(forKey: "hotkeyEnabled") as? Bool ?? true
         vadAutoStop = defaults.object(forKey: "vadAutoStop") as? Bool ?? false
         vadSilenceTimeout = defaults.object(forKey: "vadSilenceTimeout") as? Double ?? 1.5
-        vadDualBuffer = defaults.object(forKey: "vadDualBuffer") as? Bool ?? false
         vadSensitivity = defaults.object(forKey: "vadSensitivity") as? Float ?? 0.5
         vadEnergyGate = defaults.object(forKey: "vadEnergyGate") as? Bool ?? false
         hasCompletedOnboarding = defaults.object(forKey: "hasCompletedOnboarding") as? Bool ?? false
@@ -266,6 +258,7 @@ final class SettingsManager {
         restoreClipboardAfterPaste = defaults.object(forKey: "restoreClipboardAfterPaste") as? Bool ?? false
         customSystemPrompt = defaults.string(forKey: "customSystemPrompt") ?? ""
         wordCorrectionEnabled = defaults.object(forKey: "wordCorrectionEnabled") as? Bool ?? true
+        isDebugModeEnabled = defaults.object(forKey: "isDebugModeEnabled") as? Bool ?? false
         debugLogLevel = DebugLogLevel(
             rawValue: defaults.string(forKey: "debugLogLevel") ?? ""
         ) ?? .info

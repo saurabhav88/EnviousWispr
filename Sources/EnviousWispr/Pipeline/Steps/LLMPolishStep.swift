@@ -39,12 +39,12 @@ final class LLMPolishStep: TextProcessingStep {
         }
 
         let keychainId: String? = switch llmProvider {
-        case .openAI:  "openai-api-key"
-        case .gemini:  "gemini-api-key"
+        case .openAI:  KeychainManager.openAIKeyID
+        case .gemini:  KeychainManager.geminiKeyID
         default:       nil
         }
 
-        let maxTokens = llmProvider == .ollama ? 4096 : 2048
+        let maxTokens = llmProvider == .ollama ? LLMConstants.ollamaMaxTokens : LLMConstants.defaultMaxTokens
 
         let config = LLMProviderConfig(
             provider: llmProvider,

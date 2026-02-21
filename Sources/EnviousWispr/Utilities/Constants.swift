@@ -6,14 +6,17 @@ enum AppConstants {
     static let transcriptsDir = "transcripts"
 
     /// Application Support directory for EnviousWispr.
+    /// Falls back to a temporary directory if Application Support is unavailable.
     static var appSupportURL: URL {
-        guard let appSupport = FileManager.default.urls(
+        if let appSupport = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
-        ).first else {
-            fatalError("Application Support directory unavailable")
+        ).first {
+            return appSupport.appendingPathComponent(appSupportDir, isDirectory: true)
         }
-        return appSupport.appendingPathComponent(appSupportDir, isDirectory: true)
+        let fallback = FileManager.default.temporaryDirectory.appendingPathComponent(appSupportDir, isDirectory: true)
+        NSLog("[EnviousWispr] WARNING: Application Support directory unavailable, using fallback: \(fallback.path)")
+        return fallback
     }
 }
 
@@ -70,4 +73,13 @@ enum LLMConstants {
 
     /// Max tokens for Ollama (local models can handle more).
     static let ollamaMaxTokens: Int = 4096
+}
+
+enum FormattingConstants {
+    /// Format a duration in seconds as "m:ss".
+    static func formatDuration(_ seconds: TimeInterval) -> String {
+        let mins = Int(seconds) / 60
+        let secs = Int(seconds) % 60
+        return String(format: "%d:%02d", mins, secs)
+    }
 }
