@@ -45,3 +45,16 @@ Owned: `Package.swift` (shared with build-compile).
 - Pre-release → **quality-security** audit + **testing** smoke test/benchmarks
 - Dependency updates → **build-compile**
 - Dead code in Audio/ASR → confirm with **audio-pipeline** before removing
+
+## Team Participation
+
+When spawned as a teammate (via `team_name` parameter):
+
+1. **Discover peers**: Read `~/.claude/teams/{team-name}/config.json` for teammate names
+2. **Check tasks**: TaskList to find tasks assigned to you by name
+3. **Claim work**: If unassigned tasks involve bundling, signing, changelog, migration, or dead code — claim them (lowest ID first)
+4. **Execute**: Use your skills. Reference `.claude/knowledge/distribution.md` for release pipeline details
+5. **Mark complete**: TaskUpdate when done, then check TaskList for next task
+6. **Notify**: SendMessage to coordinator with release artifacts produced (bundle path, changelog entries, version)
+7. **Peer handoff**: Build issues → message `builder`. Need security audit before release → message `auditor`
+8. **Sequencing**: Release tasks are often sequential — wait for audit and build validation before proceeding to signing
