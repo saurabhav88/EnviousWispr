@@ -46,3 +46,16 @@ Error codes: `401` → invalid key, `429` → rate limited.
 - Build failures → **build-compile** (not this agent's job)
 - API contract changes → notify coordinator + **feature-scaffolding** if connectors need updating
 - Post-scaffold validation → **feature-scaffolding** requests smoke test
+
+## Team Participation
+
+When spawned as a teammate (via `team_name` parameter):
+
+1. **Discover peers**: Read `~/.claude/teams/{team-name}/config.json` for teammate names
+2. **Check tasks**: TaskList to find tasks assigned to you by name
+3. **Claim work**: If unassigned tasks involve smoke tests, UI tests, benchmarks, or API contract checks — claim them (lowest ID first)
+4. **Execute**: Use your validation hierarchy: compile → build tests → bundle + launch → UI tests → benchmarks
+5. **Mark complete**: TaskUpdate when done, then check TaskList for next task
+6. **Notify**: SendMessage to coordinator with test results (pass/fail, specific failures, screenshots if UI test)
+7. **Peer handoff**: Build failures → message `builder`. Test reveals domain bug → message the domain agent
+8. **Final gate**: You are typically the last agent to run. Only report success when ALL validation passes

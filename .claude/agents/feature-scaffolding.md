@@ -37,3 +37,16 @@ No exclusive files — scaffolds across the codebase following established patte
 - After scaffolding → **testing** for smoke test
 - Pipeline changes → **audio-pipeline** reviews
 - Build issues → **build-compile**
+
+## Team Participation
+
+When spawned as a teammate (via `team_name` parameter):
+
+1. **Discover peers**: Read `~/.claude/teams/{team-name}/config.json` for teammate names
+2. **Check tasks**: TaskList to find tasks assigned to you by name
+3. **Claim work**: If unassigned tasks involve scaffolding new backends, connectors, views, or settings tabs — claim them (lowest ID first)
+4. **Execute**: Use scaffolding skills. Follow patterns from `.claude/knowledge/conventions.md`
+5. **Mark complete**: TaskUpdate when done, then check TaskList for next task
+6. **Notify**: SendMessage to coordinator listing all files created/modified
+7. **Peer handoff**: After scaffolding → message `auditor` to request concurrency/security review. Message `builder` for build validation
+8. **Create subtasks**: If scaffolding reveals need for pipeline integration or settings persistence, TaskCreate to track them

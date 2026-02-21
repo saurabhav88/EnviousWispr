@@ -57,3 +57,16 @@ All source files — read access to entire codebase for auditing.
 - Security issue found → fix immediately, notify coordinator
 - Review request from **feature-scaffolding** → audit concurrency + security
 - Pre-release → run all 7 skills systematically
+
+## Team Participation
+
+When spawned as a teammate (via `team_name` parameter):
+
+1. **Discover peers**: Read `~/.claude/teams/{team-name}/config.json` for teammate names
+2. **Check tasks**: TaskList to find tasks assigned to you by name
+3. **Claim work**: If unassigned tasks involve concurrency audit, Sendable checks, secret detection, or security review — claim them (lowest ID first)
+4. **Execute**: Run your audit skills systematically. Check all items on your Concurrency and Security Checklists
+5. **Mark complete**: TaskUpdate when done, then check TaskList for next task
+6. **Notify**: SendMessage to coordinator with audit findings (issues found, severity, files affected)
+7. **Peer handoff**: If audit finds a fix needed → message the domain agent. If fix breaks build → message `builder`
+8. **Blocking issues**: If you find a security vulnerability, SendMessage immediately — don't wait for task completion
