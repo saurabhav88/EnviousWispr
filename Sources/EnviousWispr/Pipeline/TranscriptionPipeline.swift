@@ -203,7 +203,9 @@ final class TranscriptionPipeline {
                 language: result.language,
                 duration: result.duration,
                 processingTime: result.processingTime,
-                backendType: result.backendType
+                backendType: result.backendType,
+                llmProvider: context.llmProvider,
+                llmModel: context.llmModel
             )
 
             // Save to store
@@ -281,7 +283,9 @@ final class TranscriptionPipeline {
             processingTime: transcript.processingTime,
             backendType: transcript.backendType,
             createdAt: transcript.createdAt,
-            isFavorite: transcript.isFavorite
+            isFavorite: transcript.isFavorite,
+            llmProvider: llmPolishStep.llmProvider.rawValue,
+            llmModel: llmPolishStep.llmModel
         )
 
         do {
@@ -291,6 +295,7 @@ final class TranscriptionPipeline {
                 "Failed to save polished transcript: \(error)",
                 level: .info, category: "Pipeline"
             ) }
+            lastPolishError = error.localizedDescription
             state = .error("Failed to save: \(error.localizedDescription)")
             return nil
         }

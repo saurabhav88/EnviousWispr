@@ -10,23 +10,6 @@ struct ShortcutsSettingsView: View {
         Form {
             Section("Global Hotkey") {
                 Toggle("Enable global hotkey", isOn: $state.settings.hotkeyEnabled)
-
-                if !appState.permissions.hasAccessibilityPermission {
-                    HStack {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
-                        Text("Accessibility permission required for global hotkey.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        Spacer()
-
-                        Button("Enable") {
-                            appState.permissions.promptAccessibilityPermission()
-                        }
-                        .controlSize(.small)
-                    }
-                }
             }
 
             if appState.settings.hotkeyEnabled {
@@ -46,15 +29,16 @@ struct ShortcutsSettingsView: View {
 
                     Divider()
 
-                    // Push-to-talk modifier
-                    ModifierRecorderView(
-                        modifier: $state.settings.pushToTalkModifier,
-                        modifierKeyCode: $state.settings.pushToTalkModifierKeyCode,
-                        defaultModifier: .option,
+                    // Push-to-talk key combo
+                    HotkeyRecorderView(
+                        keyCode: $state.settings.pushToTalkKeyCode,
+                        modifiers: $state.settings.pushToTalkModifiers,
+                        defaultKeyCode: 49,  // Space
+                        defaultModifiers: .option,
                         label: "Push-to-talk"
                     )
 
-                    Text("Hold this key to record in push-to-talk mode, release to stop.")
+                    Text("Hold this key combo to record, release to stop.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 

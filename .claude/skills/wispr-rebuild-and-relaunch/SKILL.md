@@ -53,15 +53,13 @@ rm -rf "$DEST"
 cp -r /tmp/EnviousWispr.app "$DEST"
 ```
 
-## Step 4 — Kill, Reset TCC, Relaunch
+## Step 4 — Kill and Relaunch
 
 ```bash
 pkill -x EnviousWispr 2>/dev/null; sleep 1
-tccutil reset Accessibility com.enviouswispr.app
 open /Users/m4pro_sv/Desktop/EnviousWispr/build/EnviousWispr.app
 ```
 
-- Always reset Accessibility TCC before relaunch (prevents stale permission entries)
 - The `sleep 1` ensures the old process is fully terminated
 
 ## Step 5 — Verify Launch

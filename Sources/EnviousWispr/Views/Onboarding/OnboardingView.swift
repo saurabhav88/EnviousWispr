@@ -6,7 +6,7 @@ struct OnboardingView: View {
     @Binding var isPresented: Bool
     @State private var currentStep = 0
 
-    private let steps = ["Welcome", "Microphone", "Accessibility", "Ready"]
+    private let steps = ["Welcome", "Microphone", "Ready"]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -37,8 +37,7 @@ struct OnboardingView: View {
                 switch currentStep {
                 case 0: welcomeStep
                 case 1: microphoneStep
-                case 2: accessibilityStep
-                case 3: readyStep
+                case 2: readyStep
                 default: EmptyView()
                 }
             }
@@ -130,35 +129,6 @@ struct OnboardingView: View {
                 .buttonStyle(.borderedProminent)
             } else {
                 Label("Microphone access granted", systemImage: "checkmark")
-                    .foregroundStyle(.green)
-            }
-        }
-        .padding()
-    }
-
-    private var accessibilityStep: some View {
-        VStack(spacing: 16) {
-            IconCircle(
-                systemName: appState.permissions.hasAccessibilityPermission
-                    ? "checkmark.circle.fill" : "lock.shield",
-                tint: appState.permissions.hasAccessibilityPermission ? .green : .orange
-            )
-
-            Text("Accessibility Permission")
-                .font(.title2)
-                .bold()
-
-            Text("Enables paste-to-app and global hotkey support.\nYou can skip this and enable later in Settings.")
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
-
-            if !appState.permissions.hasAccessibilityPermission {
-                Button("Open Accessibility Settings") {
-                    appState.permissions.promptAccessibilityPermission()
-                }
-                .buttonStyle(.borderedProminent)
-            } else {
-                Label("Accessibility access granted", systemImage: "checkmark")
                     .foregroundStyle(.green)
             }
         }

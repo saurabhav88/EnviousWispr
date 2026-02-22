@@ -9,8 +9,8 @@ Module exports a struct `FluidAudio` that shadows the module name. **Never quali
 ## Swift 6 Concurrency
 
 - Use `@preconcurrency import` for FluidAudio, WhisperKit, and AVFoundation
-- C globals like `kAXTrustedCheckOptionPrompt` need string literal workaround: `"AXTrustedCheckOptionPrompt" as CFString`
 - Extract Sendable values from NSEvent before `@MainActor` dispatch — NSEvent isn't Sendable
+- Accessibility permission is NOT required. Hotkeys use Carbon `RegisterEventHotKey`; paste uses session-level `CGEvent.post(tap: .cgSessionEventTap)`.
 
 ## Audio Format
 
@@ -23,6 +23,10 @@ Module exports a struct `FluidAudio` that shadows the module name. **Never quali
 ## API Keys
 
 macOS Keychain via `KeychainManager` (service: `"com.enviouswispr.api-keys"`). **Never UserDefaults.** Never log keys.
+
+## Ollama Local LLM
+
+Requires Ollama server running locally (`ollama serve`). `OllamaSetupService` checks availability. If server is down, polish silently fails — check connectivity first.
 
 ## ASR Backend Lifecycle
 

@@ -7,8 +7,10 @@ macOS dictation app — record → transcribe → polish → clipboard/paste. Co
 ```bash
 swift package resolve               # Fetch dependencies (first time / after Package.swift change)
 swift build                         # Command Line Tools only, no Xcode
+swift build --build-tests           # Verify test target compiles
 /wispr-rebuild-and-relaunch         # Build + bundle + launch with fresh permissions
 /wispr-run-smoke-test               # Verify build + launch + basic UI
+python3 Tests/UITests/uat_runner.py run --verbose   # Behavioral UAT tests (app must be running)
 ```
 
 ## Environment
@@ -26,6 +28,7 @@ swift build                         # Command Line Tools only, no Xcode
 6. **Read knowledge files before acting.** Consult `.claude/knowledge/` first.
 7. **Teams first for multi-agent work.** If 2+ agents are needed and their outputs depend on each other → `TeamCreate`. See [teamwork](.claude/knowledge/teamwork.md) for compositions, lifecycle, and decision matrix. Only use parallel `Task` for independent single-agent lookups.
 8. **You are the team lead.** Create teams, spawn teammates, assign tasks via shared task list, monitor progress via auto-delivered messages, shut down when complete. Never implement code yourself — if no teammate can handle it, spawn one.
+9. **UAT before done.** Every feature must pass behavioral UAT tests before being marked complete. Smoke tests verify "does it crash?" — UAT tests verify "does it work?" See [conventions](.claude/knowledge/conventions.md) Definition of Done.
 
 ## Agents
 
@@ -36,7 +39,7 @@ swift build                         # Command Line Tools only, no Xcode
 | [macos-platform](.claude/agents/macos-platform.md) | Permissions, hotkeys, menu bar, paste, SwiftUI | `wispr-handle-macos-permissions`, `wispr-review-swiftui-conventions`, `wispr-check-accessibility-labels`, `wispr-validate-menu-bar-patterns` |
 | [quality-security](.claude/agents/quality-security.md) | Concurrency, actor isolation, Sendable, secrets | `wispr-audit-actor-isolation`, `wispr-flag-missing-sendable`, `wispr-detect-unsafe-main-actor-dispatches`, `wispr-check-api-key-storage`, `wispr-detect-hardcoded-secrets`, `wispr-validate-keychain-usage`, `wispr-flag-sensitive-logging`, `wispr-swift-format-check` |
 | [feature-scaffolding](.claude/agents/feature-scaffolding.md) | New backends, connectors, views, tabs | `wispr-scaffold-asr-backend`, `wispr-scaffold-llm-connector`, `wispr-scaffold-settings-tab`, `wispr-scaffold-swiftui-view` |
-| [testing](.claude/agents/testing.md) | Smoke tests, UI tests, benchmarks, API contracts | `wispr-run-smoke-test`, `wispr-run-benchmarks`, `wispr-validate-api-contracts`, `wispr-ui-ax-inspect`, `wispr-ui-simulate-input`, `wispr-ui-screenshot-verify`, `wispr-run-ui-test` |
+| [testing](.claude/agents/testing.md) | Smoke tests, UAT behavioral tests, UI tests, benchmarks, API contracts | `wispr-run-smoke-test`, `wispr-run-uat`, `wispr-generate-uat-tests`, `wispr-run-benchmarks`, `wispr-validate-api-contracts`, `wispr-ui-ax-inspect`, `wispr-ui-simulate-input`, `wispr-ui-screenshot-verify`, `wispr-run-ui-test` |
 | [release-maintenance](.claude/agents/release-maintenance.md) | Packaging, signing, changelog, migration, dead code | `wispr-build-release-config`, `wispr-bundle-app`, `wispr-rebuild-and-relaunch`, `wispr-codesign-without-xcode`, `wispr-generate-changelog`, `wispr-migrate-swift-version`, `wispr-find-dead-code`, `wispr-release-checklist` |
 | [feature-planning](.claude/agents/feature-planning.md) | Feature request planning, implementation coordination | `wispr-check-feature-tracker`, `wispr-implement-feature-request` |
 | [user-management](.claude/agents/user-management.md) | Accounts, licensing, entitlements, trials, payments, analytics | — |
@@ -47,38 +50,7 @@ swift build                         # Command Line Tools only, no Xcode
 | ---- | -------- |
 | [architecture](.claude/knowledge/architecture.md) | Structure, key types, pipeline state machine, data flow |
 | [gotchas](.claude/knowledge/gotchas.md) | FluidAudio collision, Swift 6, audio format, Keychain |
-| [conventions](.claude/knowledge/conventions.md) | Commit style, DI patterns, view patterns, imports |
+| [conventions](.claude/knowledge/conventions.md) | Commit style, DI patterns, view patterns, imports, Definition of Done (UAT) |
 | [distribution](.claude/knowledge/distribution.md) | Release pipeline, Sparkle, DMG build, CI/CD, codesigning |
 | [roadmap](.claude/knowledge/roadmap.md) | Feature requests, tracker, priority system, implementation workflow |
 | [teamwork](.claude/knowledge/teamwork.md) | Team compositions, lifecycle, decision matrix, communication patterns |
-
-## Plugins (global)
-
-| Plugin | Key commands |
-| ------ | ------------ |
-| superpowers | `/brainstorming`, `/writing-plans`, `/systematic-debugging`, `/test-driven-development` |
-| commit-commands | `/commit`, `/commit-push-pr` |
-| pr-review-toolkit | `/review-pr` |
-| coderabbit | `/review` |
-| frontend-design | `/frontend-design` |
-| playground | `/playground` |
-| hookify | `/hookify` |
-| claude-md-management | `/revise-claude-md`, `/claude-md-improver` |
-| skill-creator | `/skill-creator` |
-| feature-dev | `/feature-dev` |
-| code-review | `/code-review` |
-| agent-sdk-dev | `/new-sdk-app` |
-| code-simplifier | subagents (no slash command) |
-| claude-code-setup | `/claude-automation-recommender` |
-| circleback | subagents (no slash command) |
-| security-guidance | subagents (no slash command) |
-| typescript-lsp | LSP tools (no slash command) |
-| swift-lsp | LSP tools (no slash command) |
-| playwright | MCP tools (no slash command) |
-| github | MCP tools (no slash command) |
-| context7 | MCP tools (no slash command) |
-| whatsapp | MCP tools (no slash command) |
-
-## Commits
-
-Conventional: `feat(scope):`, `fix(scope):`, `refactor(scope):`

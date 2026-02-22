@@ -59,7 +59,7 @@ description: "Use when diagnosing end-to-end failures in the dictation pipeline 
 | [5] WAV file | Temp file written to disk, non-zero size | Disk full; temp dir permission |
 | [6] Backend | `isReady == true` before transcribe | `prepare()` not called; model download failed |
 | [7] LLM polish | API key non-nil; HTTP 200 | Key not in Keychain; network offline |
-| [9] Paste | Accessibility permission granted | `AXIsProcessTrusted()` returns false |
+| [9] Paste | CGEvent source created, Cmd+V posted | CGEvent creation failed (rare) |
 
 ## PipelineState Progression
 

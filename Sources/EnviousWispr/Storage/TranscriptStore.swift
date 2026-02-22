@@ -37,22 +37,21 @@ final class TranscriptStore {
             )
 
             let decoder = JSONDecoder()
-            return files
-                .filter { $0.pathExtension == "json" }
-                .compactMap { url -> Transcript? in
-                    do {
-                        let data = try Data(contentsOf: url)
-                        return try decoder.decode(Transcript.self, from: data)
-                    } catch {
-                        // Log errors but don't block — corrupt files are skipped
-                        Task { await AppLogger.shared.log(
-                            "Skipping corrupt transcript \(url.lastPathComponent): \(error)",
-                            level: .info, category: "TranscriptStore"
-                        ) }
-                        return nil
-                    }
+            var result: [Transcript] = []
+            for url in files where url.pathExtension == "json" {
+                do {
+                    let data = try Data(contentsOf: url)
+                    let transcript = try decoder.decode(Transcript.self, from: data)
+                    result.append(transcript)
+                } catch {
+                    // Log errors but don't block — corrupt files are skipped
+                    await AppLogger.shared.log(
+                        "Skipping corrupt transcript \(url.lastPathComponent): \(error)",
+                        level: .info, category: "TranscriptStore"
+                    )
                 }
-                .sorted { $0.createdAt > $1.createdAt }
+            }
+            return result.sorted { $0.createdAt > $1.createdAt }
         }.value
 
         return transcripts
@@ -86,5 +85,17 @@ final class TranscriptStore {
     func delete(id: UUID) throws {
         let url = directory.appendingPathComponent("\(id.uuidString).json")
         try FileManager.default.removeItem(at: url)
+    }
+
+    /// Delete all transcripts from disk.
+    func deleteAll() throws {
+        guard FileManager.default.fileExists(atPath: directory.path) else { return }
+        let files = try FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil
+        )
+        for file in files where file.pathExtension == "json" {
+            try FileManager.default.removeItem(at: file)
+        }
     }
 }

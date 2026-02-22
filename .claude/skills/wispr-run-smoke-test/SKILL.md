@@ -49,11 +49,11 @@ rm -rf "$DEST"
 cp -r "$BUNDLE" "$DEST"
 ```
 
-### 4. Kill previous instance and reset Accessibility
+### 4. Kill previous instance
 ```bash
-pkill -x EnviousWispr 2>/dev/null; sleep 1; tccutil reset Accessibility com.enviouswispr.app
+pkill -x EnviousWispr 2>/dev/null; sleep 1
 ```
-- Always run before launching — removes stale TCC entry so the user doesn't have to manually clean up System Settings
+- Ensures old process is fully terminated before relaunch
 
 ### 5. Launch and watch for immediate crash
 ```bash

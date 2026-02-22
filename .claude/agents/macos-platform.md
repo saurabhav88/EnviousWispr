@@ -14,12 +14,12 @@ Source dirs: `Services/` (PasteService, PermissionsService, HotkeyService), `Vie
 
 **Microphone**: `AVCaptureDevice.requestAccess(for: .audio)`. Check: `.authorizationStatus(for: .audio) == .authorized`. Import: `@preconcurrency import AVFoundation`.
 
-**Accessibility**: `AXIsProcessTrusted()` / `AXIsProcessTrustedWithOptions(options)`. C global workaround: `"AXTrustedCheckOptionPrompt" as CFString`. Import: `ApplicationServices`. Required for global hotkeys + paste.
+**Accessibility**: NOT required. Hotkeys use Carbon `RegisterEventHotKey`; paste uses session-level `CGEvent.post(tap: .cgSessionEventTap)`.
 
 ## Key Patterns
 
-- **NSEvent monitors**: HotkeyService registers 4 monitors (global+local × keyDown+flagsChanged). Extract Sendable values (keyCode, modifierFlags) before `Task { @MainActor in }` dispatch
-- **Paste**: CGEvent Cmd+V via `kVK_ANSI_V` posted to `.cghidEventTap`. Requires Accessibility
+- **Carbon hotkeys**: HotkeyService uses `RegisterEventHotKey`/`UnregisterEventHotKey` with `InstallEventHandler(GetApplicationEventTarget(), ...)`. Supports press+release for PTT hold-to-record. No Accessibility needed.
+- **Paste**: CGEvent Cmd+V via `kVK_ANSI_V` posted to `.cgSessionEventTap`. No Accessibility needed.
 - **Menu bar**: `MenuBarExtra` with dynamic icon. Window targeting by ID. Settings: `Selector(("showSettingsWindow:"))`. Activation: `NSApplication.shared.activate(ignoringOtherApps: true)`
 - **SwiftUI (macOS 14+)**: `@Observable`, `@Environment(AppState.self)`, `@Bindable var state`, `Form.formStyle(.grouped)`, native `Settings { }` scene, `NavigationSplitView`
 

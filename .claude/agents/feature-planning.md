@@ -60,10 +60,12 @@ For a typical feature, create tasks in this order:
 2. `[build] Validate compilation` — blocked on task 1, assigned to builder
 3. `[domain] Wire into AppState / pipeline` — blocked on task 2
 4. `[build] Validate compilation` — blocked on task 3
-5. `[audit] Review concurrency and security` — blocked on task 4 (if applicable)
-6. `[build] Fix any audit findings` — blocked on task 5 (if applicable)
-7. `[test] Smoke test + UI validation` — blocked on all above
-8. `[planner] Update TRACKER.md status` — blocked on task 7
+5. `[audit] Review concurrency and security` — blocked on task 4 (if feature touches AppState, async code, API keys, or new external services)
+6. `[build] Fix any audit findings` — blocked on task 5 (if audit was performed)
+7. `[test] Smoke test + rebuild bundle` — blocked on all above
+8. `[test] Generate UAT scenarios` — blocked on task 7 (use `wispr-generate-uat-tests`)
+9. `[test] Run UAT behavioral tests` — blocked on task 8 (`python3 Tests/UITests/uat_runner.py run --verbose`)
+10. `[planner] Update TRACKER.md status` — blocked on task 9 (ONLY after UAT passes)
 
 ### Communication Rules
 
@@ -80,7 +82,8 @@ For a typical feature, create tasks in this order:
 ## Coordination
 
 - After planning → **build-compile** validates feasibility
-- After implementing → **testing** validates correctness
+- After implementing → **testing** runs smoke test + UAT behavioral tests
+- UAT is **mandatory** — a feature is not complete until behavioral tests pass
 - Security-sensitive features → **quality-security** reviews
 - Pipeline changes → **audio-pipeline** reviews
 

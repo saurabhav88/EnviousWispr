@@ -11,6 +11,10 @@ struct TextProcessingContext {
     let originalASRText: String
     /// Detected language from ASR.
     let language: String?
+    /// LLM provider used for polishing (e.g. "openai", "ollama").
+    var llmProvider: String?
+    /// LLM model used for polishing (e.g. "gpt-4o-mini").
+    var llmModel: String?
 }
 
 /// A single step in the post-ASR text processing chain.

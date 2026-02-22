@@ -21,8 +21,8 @@ final class SettingsManager {
         case cancelModifiers
         case toggleKeyCode
         case toggleModifiers
-        case pushToTalkModifier
-        case pushToTalkModifierKeyCode
+        case pushToTalkKeyCode
+        case pushToTalkModifiers
         case modelUnloadPolicy
         case restoreClipboardAfterPaste
         case customSystemPrompt
@@ -152,21 +152,17 @@ final class SettingsManager {
         }
     }
 
-    var pushToTalkModifier: NSEvent.ModifierFlags {
+    var pushToTalkKeyCode: UInt16 {
         didSet {
-            UserDefaults.standard.set(pushToTalkModifier.rawValue, forKey: "pushToTalkModifierRaw")
-            onChange?(.pushToTalkModifier)
+            UserDefaults.standard.set(Int(pushToTalkKeyCode), forKey: "pushToTalkKeyCode")
+            onChange?(.pushToTalkKeyCode)
         }
     }
 
-    var pushToTalkModifierKeyCode: UInt16? {
+    var pushToTalkModifiers: NSEvent.ModifierFlags {
         didSet {
-            if let kc = pushToTalkModifierKeyCode {
-                UserDefaults.standard.set(Int(kc), forKey: "pushToTalkModifierKeyCode")
-            } else {
-                UserDefaults.standard.removeObject(forKey: "pushToTalkModifierKeyCode")
-            }
-            onChange?(.pushToTalkModifierKeyCode)
+            UserDefaults.standard.set(pushToTalkModifiers.rawValue, forKey: "pushToTalkModifiersRaw")
+            onChange?(.pushToTalkModifiers)
         }
     }
 
@@ -246,11 +242,22 @@ final class SettingsManager {
         let savedToggleModRaw = defaults.object(forKey: "toggleModifiersRaw") as? UInt
         toggleModifiers = NSEvent.ModifierFlags(rawValue: savedToggleModRaw ?? NSEvent.ModifierFlags.control.rawValue)
 
-        let savedPTTModRaw = defaults.object(forKey: "pushToTalkModifierRaw") as? UInt
-        pushToTalkModifier = NSEvent.ModifierFlags(rawValue: savedPTTModRaw ?? NSEvent.ModifierFlags.option.rawValue)
-
-        let savedPTTKeyCode = defaults.object(forKey: "pushToTalkModifierKeyCode") as? Int
-        pushToTalkModifierKeyCode = savedPTTKeyCode.map { UInt16($0) }
+        // PTT migration: old modifier-only → new key+modifier format
+        let legacyPTTModRaw = defaults.object(forKey: "pushToTalkModifierRaw") as? UInt
+        if let legacyMod = legacyPTTModRaw, defaults.object(forKey: "pushToTalkKeyCode") == nil {
+            // Migrate old-style modifier-only PTT to modifier+Space
+            pushToTalkKeyCode = 49  // Space
+            pushToTalkModifiers = NSEvent.ModifierFlags(rawValue: legacyMod)
+            defaults.set(49, forKey: "pushToTalkKeyCode")
+            defaults.set(legacyMod, forKey: "pushToTalkModifiersRaw")
+            defaults.removeObject(forKey: "pushToTalkModifierRaw")
+            defaults.removeObject(forKey: "pushToTalkModifierKeyCode")
+        } else {
+            let savedPTTKeyCode = defaults.object(forKey: "pushToTalkKeyCode") as? Int
+            pushToTalkKeyCode = UInt16(savedPTTKeyCode ?? 49)
+            let savedPTTModRaw = defaults.object(forKey: "pushToTalkModifiersRaw") as? UInt
+            pushToTalkModifiers = NSEvent.ModifierFlags(rawValue: savedPTTModRaw ?? NSEvent.ModifierFlags.option.rawValue)
+        }
 
         modelUnloadPolicy = ModelUnloadPolicy(
             rawValue: defaults.string(forKey: "modelUnloadPolicy") ?? ""

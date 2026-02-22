@@ -83,6 +83,8 @@ final class LLMPolishStep: TextProcessingStep {
 
         var ctx = context
         ctx.polishedText = result.polishedText
+        ctx.llmProvider = llmProvider.rawValue
+        ctx.llmModel = llmModel
         return ctx
     }
 }

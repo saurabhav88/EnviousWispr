@@ -1,6 +1,6 @@
 ---
 name: wispr-handle-macos-permissions
-description: "Use when adding, modifying, or debugging microphone or accessibility permission checks in EnviousWispr — including PermissionsService, permission-gated feature guards, or any call to AVCaptureDevice or AXIsProcessTrusted."
+description: "Use when adding, modifying, or debugging microphone permission checks in EnviousWispr — including PermissionsService or any call to AVCaptureDevice."
 ---
 
 # Handle macOS Permissions
@@ -10,9 +10,8 @@ description: "Use when adding, modifying, or debugging microphone or accessibili
 | Feature | Permission Required |
 |---|---|
 | Audio recording (AVAudioEngine) | Microphone |
-| Global hotkey observation (NSEvent global monitors) | Accessibility |
-| PasteService (CGEvent Cmd+V simulation) | Accessibility |
-| Local NSEvent monitors only | None |
+| Global hotkeys (Carbon RegisterEventHotKey) | None |
+| PasteService (CGEvent session-level posting) | None |
 
 ## Microphone Permission
 
@@ -25,44 +24,28 @@ let status = AVCaptureDevice.authorizationStatus(for: .audio)
 // .authorized | .denied | .restricted | .notDetermined
 ```
 
-## Accessibility Permission
-
-```swift
-// Check without prompting
-let trusted = AXIsProcessTrusted()
-
-// Check AND prompt (Swift 6: kAXTrustedCheckOptionPrompt unavailable as C global)
-// Use string literal workaround:
-let key = "AXTrustedCheckOptionPrompt" as CFString
-let options = [key: true] as CFDictionary
-let trusted = AXIsProcessTrustedWithOptions(options)
-```
-
-Never write `kAXTrustedCheckOptionPrompt` — it is not bridged in Swift 6 CLI builds.
-
 ## PermissionsService Pattern
 
 ```swift
+@preconcurrency import AVFoundation
+
 @MainActor
 @Observable
 final class PermissionsService {
-    var microphoneAuthorized: Bool = false
-    var accessibilityAuthorized: Bool = false
+    private(set) var microphoneStatus: AVAuthorizationStatus = .notDetermined
 
-    func checkAll() {
-        microphoneAuthorized =
-            AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
-        accessibilityAuthorized = AXIsProcessTrusted()
+    init() {
+        microphoneStatus = AVCaptureDevice.authorizationStatus(for: .audio)
     }
 
-    func requestMicrophone() async {
-        microphoneAuthorized =
-            await AVCaptureDevice.requestAccess(for: .audio)
+    func requestMicrophoneAccess() async -> Bool {
+        let granted = await AVCaptureDevice.requestAccess(for: .audio)
+        microphoneStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+        return granted
     }
 
-    func openAccessibilityPrefs() {
-        NSWorkspace.shared.open(
-            URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+    var hasMicrophonePermission: Bool {
+        microphoneStatus == .authorized
     }
 }
 ```
@@ -70,8 +53,5 @@ final class PermissionsService {
 ## Checklist
 
 - [ ] Microphone request uses `await AVCaptureDevice.requestAccess(for: .audio)`
-- [ ] Accessibility check uses `AXIsProcessTrusted()` or `AXIsProcessTrustedWithOptions(_:)` with string literal key
-- [ ] No use of `kAXTrustedCheckOptionPrompt` (Swift 6 build breakage)
 - [ ] `PermissionsService` methods called from `@MainActor` context
-- [ ] `checkAll()` called on app launch and on `NSWorkspace.didActivateApplicationNotification`
-- [ ] UI guards gated on `permissionsService.accessibilityAuthorized` before activating hotkeys or paste
+- [ ] Accessibility permission is NOT required — hotkeys use Carbon, paste uses session-level CGEvent

@@ -11,6 +11,8 @@ struct Transcript: Codable, Identifiable, Sendable {
     let backendType: ASRBackendType
     let createdAt: Date
     var isFavorite: Bool
+    let llmProvider: String?
+    let llmModel: String?
 
     init(
         id: UUID = UUID(),
@@ -21,7 +23,9 @@ struct Transcript: Codable, Identifiable, Sendable {
         processingTime: TimeInterval = 0,
         backendType: ASRBackendType = .parakeet,
         createdAt: Date = Date(),
-        isFavorite: Bool = false
+        isFavorite: Bool = false,
+        llmProvider: String? = nil,
+        llmModel: String? = nil
     ) {
         self.id = id
         self.text = text
@@ -32,6 +36,8 @@ struct Transcript: Codable, Identifiable, Sendable {
         self.backendType = backendType
         self.createdAt = createdAt
         self.isFavorite = isFavorite
+        self.llmProvider = llmProvider
+        self.llmModel = llmModel
     }
 
     /// The text to display — polished if available, otherwise raw.

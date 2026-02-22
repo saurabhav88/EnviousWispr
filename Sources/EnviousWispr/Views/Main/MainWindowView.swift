@@ -357,6 +357,7 @@ struct RecordButton: View {
             )
             .foregroundStyle(appState.pipelineState == .recording ? .red : .accentColor)
         }
+        .labelStyle(.titleAndIcon)
         .disabled(appState.pipelineState.isActive && appState.pipelineState != .recording)
         .help(appState.pipelineState == .recording ? "Stop recording" : "Start recording")
     }

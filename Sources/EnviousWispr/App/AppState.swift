@@ -27,6 +27,7 @@ final class AppState {
 
     // Transcript history
     var transcripts: [Transcript] = []
+    private var loadTask: Task<Void, Never>?
     var searchQuery: String = ""
     var selectedTranscriptID: UUID?
 
@@ -93,9 +94,7 @@ final class AppState {
             self.onPipelineStateChange?(newState)
             switch newState {
             case .recording:
-                if self.settings.recordingMode == .toggle {
-                    self.hotkeyService.registerCancelHotkey()
-                }
+                self.hotkeyService.registerCancelHotkey()
                 self.recordingOverlay.show(
                     audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 },
                     modeLabel: self.settings.recordingMode.shortLabel
@@ -103,7 +102,10 @@ final class AppState {
             case .transcribing, .error, .idle:
                 self.hotkeyService.unregisterCancelHotkey()
                 self.recordingOverlay.hide()
-            case .complete, .polishing:
+            case .complete:
+                self.hotkeyService.unregisterCancelHotkey()
+                self.loadTranscripts()
+            case .polishing:
                 self.hotkeyService.unregisterCancelHotkey()
             }
         }
@@ -114,8 +116,8 @@ final class AppState {
         hotkeyService.cancelModifiers = settings.cancelModifiers
         hotkeyService.toggleKeyCode = settings.toggleKeyCode
         hotkeyService.toggleModifiers = settings.toggleModifiers
-        hotkeyService.pushToTalkModifier = settings.pushToTalkModifier
-        hotkeyService.pushToTalkModifierKeyCode = settings.pushToTalkModifierKeyCode
+        hotkeyService.pushToTalkKeyCode = settings.pushToTalkKeyCode
+        hotkeyService.pushToTalkModifiers = settings.pushToTalkModifiers
         hotkeyService.onToggleRecording = { [weak self] in
             guard let self else { return }
             await self.toggleRecording()
@@ -129,7 +131,6 @@ final class AppState {
             guard let self, self.pipelineState == .recording else { return }
             await self.pipeline.stopAndTranscribe()
             self.pipeline.autoPasteToActiveApp = false
-            self.loadTranscripts()
         }
 
         hotkeyService.onCancelRecording = { [weak self] in
@@ -178,12 +179,16 @@ final class AppState {
             hotkeyService.cancelModifiers = settings.cancelModifiers
         case .toggleKeyCode:
             hotkeyService.toggleKeyCode = settings.toggleKeyCode
+            reregisterHotkeys()
         case .toggleModifiers:
             hotkeyService.toggleModifiers = settings.toggleModifiers
-        case .pushToTalkModifier:
-            hotkeyService.pushToTalkModifier = settings.pushToTalkModifier
-        case .pushToTalkModifierKeyCode:
-            hotkeyService.pushToTalkModifierKeyCode = settings.pushToTalkModifierKeyCode
+            reregisterHotkeys()
+        case .pushToTalkKeyCode:
+            hotkeyService.pushToTalkKeyCode = settings.pushToTalkKeyCode
+            reregisterHotkeys()
+        case .pushToTalkModifiers:
+            hotkeyService.pushToTalkModifiers = settings.pushToTalkModifiers
+            reregisterHotkeys()
         case .modelUnloadPolicy:
             pipeline.modelUnloadPolicy = settings.modelUnloadPolicy
             if settings.modelUnloadPolicy == .never {
@@ -202,6 +207,13 @@ final class AppState {
         case .hasCompletedOnboarding:
             break
         }
+    }
+
+    /// Re-register Carbon hotkeys after a config change.
+    private func reregisterHotkeys() {
+        guard hotkeyService.isEnabled else { return }
+        hotkeyService.stop()
+        hotkeyService.start()
     }
 
     /// Convenience: current pipeline state.
@@ -242,6 +254,7 @@ final class AppState {
         if pipelineState == .recording { return "Recording" }
         if pipelineState == .transcribing { return "Transcribing" }
         if pipelineState == .polishing { return "Polishing" }
+        if case .error = pipelineState { return "Error" }
         return asrManager.isModelLoaded ? "Loaded" : "Unloaded"
     }
 
@@ -258,7 +271,6 @@ final class AppState {
 
         if pipeline.state == .complete {
             pipeline.autoPasteToActiveApp = false
-            loadTranscripts()
         } else if case .error = pipeline.state {
             pipeline.autoPasteToActiveApp = false
         }
@@ -296,9 +308,23 @@ final class AppState {
         }
     }
 
+    func deleteAllTranscripts() {
+        do {
+            try transcriptStore.deleteAll()
+            transcripts.removeAll()
+            selectedTranscriptID = nil
+        } catch {
+            Task { await AppLogger.shared.log(
+                "Failed to delete all transcripts: \(error)",
+                level: .info, category: "AppState"
+            ) }
+        }
+    }
+
     /// Load transcript history from disk asynchronously.
     func loadTranscripts() {
-        Task {
+        loadTask?.cancel()
+        loadTask = Task {
             do {
                 transcripts = try await transcriptStore.loadAll()
             } catch {

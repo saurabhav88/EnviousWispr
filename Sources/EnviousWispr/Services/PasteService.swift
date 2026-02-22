@@ -73,8 +73,6 @@ enum PasteService {
     }
 
     /// Copy text to clipboard and simulate Cmd+V to paste into the frontmost app.
-    ///
-    /// Requires Accessibility permission.
     /// - Returns: The pasteboard `changeCount` after our write, needed by `restoreClipboard`.
     @discardableResult
     static func pasteToActiveApp(_ text: String) -> Int {
@@ -83,9 +81,9 @@ enum PasteService {
         pasteboard.setString(text, forType: .string)
         let changeCountAfterWrite = pasteboard.changeCount
 
-        guard let source = CGEventSource(stateID: .hidSystemState) else {
+        guard let source = CGEventSource(stateID: .combinedSessionState) else {
             Task { await AppLogger.shared.log(
-                "Failed to create CGEventSource — check Accessibility permissions",
+                "Failed to create CGEventSource",
                 level: .info, category: "PasteService"
             ) }
             return changeCountAfterWrite
@@ -99,10 +97,21 @@ enum PasteService {
             return changeCountAfterWrite
         }
         keyDown.flags = .maskCommand
-        keyDown.post(tap: .cghidEventTap)
+        keyDown.post(tap: .cgSessionEventTap)
         keyUp.flags = .maskCommand
-        keyUp.post(tap: .cghidEventTap)
+        keyUp.post(tap: .cgSessionEventTap)
 
         return changeCountAfterWrite
+    }
+
+    /// Simulate Cmd+V keystroke to paste from clipboard into the active app.
+    static func simulatePaste() {
+        guard let source = CGEventSource(stateID: .combinedSessionState) else { return }
+        guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: UInt16(kVK_ANSI_V), keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: UInt16(kVK_ANSI_V), keyDown: false) else { return }
+        keyDown.flags = .maskCommand
+        keyDown.post(tap: .cgSessionEventTap)
+        keyUp.flags = .maskCommand
+        keyUp.post(tap: .cgSessionEventTap)
     }
 }

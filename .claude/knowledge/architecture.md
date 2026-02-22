@@ -9,14 +9,14 @@ Sources/EnviousWispr/
 ├── App/              # SwiftUI entry, AppState (@Observable)
 ├── ASR/              # ASRBackend protocol, Parakeet + WhisperKit backends
 ├── Audio/            # AVAudioEngine capture, SilenceDetector (Silero VAD)
-├── LLM/              # TranscriptPolisher protocol, OpenAI + Gemini, KeychainManager
+├── LLM/              # TranscriptPolisher protocol, OpenAI + Gemini + Ollama + Apple Intelligence, KeychainManager, LLMModelDiscovery
 ├── Models/           # Transcript, ASRResult, AppSettings, LLMResult
 ├── Pipeline/         # TranscriptionPipeline orchestrator
 ├── PostProcessing/   # CustomWordStore, WordCorrector
 ├── Resources/        # Info.plist, entitlements, AppIcon.icns
-├── Services/         # PasteService, PermissionsService, HotkeyService
+├── Services/         # PasteService, PermissionsService, HotkeyService, SettingsManager
 ├── Storage/          # TranscriptStore (JSON persistence)
-├── Utilities/        # Constants, BenchmarkSuite, KeySymbols
+├── Utilities/        # Constants, BenchmarkSuite, KeySymbols, AppLogger, DebugLogLevel
 └── Views/
     ├── Components/   # HotkeyRecorderView
     ├── Main/         # History list, detail, controls
@@ -43,9 +43,14 @@ docs/
 | `ParakeetBackend` | FluidAudio Parakeet v3 | `actor` → `ASRBackend` |
 | `WhisperKitBackend` | WhisperKit transcription | `actor` → `ASRBackend` |
 | `SilenceDetector` | Silero VAD streaming | `actor` |
-| `HotkeyService` | NSEvent global/local monitors | `@MainActor` |
+| `HotkeyService` | Carbon RegisterEventHotKey global hotkeys | `@MainActor` |
 | `OpenAIConnector` | GPT polish | `TranscriptPolisher` |
 | `GeminiConnector` | Gemini polish | `TranscriptPolisher` |
+| `OllamaConnector` | Ollama local LLM polish | `TranscriptPolisher` |
+| `AppleIntelligenceConnector` | Apple Intelligence polish | `TranscriptPolisher` |
+| `OllamaSetupService` | Ollama server detection + model mgmt | `@MainActor` |
+| `LLMModelDiscovery` | Runtime discovery of available LLM models | — |
+| `SettingsManager` | Centralized settings persistence | `@MainActor` |
 | `SPUStandardUpdaterController` | Sparkle auto-update (in AppDelegate) | `@MainActor` |
 
 ## Pipeline State Machine

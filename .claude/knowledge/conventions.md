@@ -19,15 +19,15 @@ swift build --build-tests  # Verify tests compile
 
 **Never test code changes via `swift run` alone** — always rebuild the .app bundle so runtime behavior matches what the user sees.
 
-## App Lifecycle: Always Reset Accessibility
+## App Lifecycle
 
-Whenever the app is killed, deleted, or rebuilt before relaunch, **always** reset the Accessibility TCC entry:
+When killing/rebuilding the app, kill the old process before relaunching:
 
 ```bash
-pkill -x EnviousWispr 2>/dev/null; tccutil reset Accessibility com.enviouswispr.app
+pkill -x EnviousWispr 2>/dev/null; sleep 1
 ```
 
-This removes the stale Accessibility permission so the user doesn't have to manually remove it from System Settings. The app will re-prompt on next launch.
+No Accessibility TCC reset is needed — the app does not use Accessibility permission.
 
 ## Commit Style
 
@@ -78,6 +78,26 @@ Scopes: `asr`, `audio`, `ui`, `llm`, `pipeline`, `settings`, `hotkey`, `vad`, `b
 @preconcurrency import WhisperKit     // WhisperKit backend
 @preconcurrency import AVFoundation   // Audio capture
 ```
+
+## Definition of Done — Features
+
+A feature is NOT done until ALL of these pass:
+
+1. `swift build -c release` exits 0
+2. `swift build --build-tests` exits 0
+3. .app bundle rebuilt + relaunched (`wispr-rebuild-and-relaunch`)
+4. **UAT behavioral tests pass** (`python3 Tests/UITests/uat_runner.py run --verbose`)
+5. Feature-specific UAT suite passes (if one exists)
+
+**UAT is mandatory, not optional.** Smoke tests verify "does it crash?" UAT tests verify "does it work?"
+
+### UAT Workflow for Every Feature
+
+1. After implementing code → run `wispr-generate-uat-tests` to create test scenarios
+2. Add tests to `Tests/UITests/uat_runner.py` with `@uat_test` decorator
+3. Run `python3 Tests/UITests/uat_runner.py run --verbose`
+4. Only commit when ALL tests pass
+5. UAT scenario file saved at `Tests/UITests/scenarios/NNN-feature-name.md`
 
 ## Feature Request Docs
 

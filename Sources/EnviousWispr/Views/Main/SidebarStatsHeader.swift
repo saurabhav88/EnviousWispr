@@ -9,22 +9,26 @@ struct SidebarStatsHeader: View {
     }
 
     var body: some View {
-        VStack(spacing: 10) {
-            // Stat cards
-            HStack(spacing: 10) {
-                StatCard(
-                    value: "\(appState.transcriptCount)",
-                    label: "Transcripts",
-                    color: .green
-                )
+        @Bindable var state = appState
 
-                StatCard(
-                    value: appState.averageProcessingSpeed > 0
-                        ? String(format: "%.1fs", appState.averageProcessingSpeed)
-                        : "—",
-                    label: "Avg Speed",
-                    color: .blue
-                )
+        VStack(spacing: 10) {
+            // Search bar + transcript count row
+            HStack(spacing: 8) {
+                HStack(spacing: 4) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    TextField("Search transcripts", text: $state.searchQuery)
+                        .textFieldStyle(.plain)
+                        .font(.caption)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(.fill.quinary, in: RoundedRectangle(cornerRadius: 6))
+
+                Text("\(appState.transcriptCount)")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
             .opacity(isRecording ? 0.4 : 1.0)
 
@@ -33,35 +37,16 @@ struct SidebarStatsHeader: View {
                 modelName: appState.activeModelName,
                 statusText: appState.modelStatusText,
                 isRecording: isRecording,
-                isLoaded: appState.asrManager.isModelLoaded
+                isLoaded: appState.asrManager.isModelLoaded,
+                hasError: {
+                    if case .error = appState.pipelineState { return true }
+                    return false
+                }()
             )
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 8)
         .animation(.easeInOut(duration: 0.3), value: isRecording)
-    }
-}
-
-/// Rounded stat card for the sidebar header.
-struct StatCard: View {
-    let value: String
-    let label: String
-    let color: Color
-
-    var body: some View {
-        VStack(spacing: 2) {
-            Text(value)
-                .font(.system(.title3, design: .rounded).bold())
-                .foregroundStyle(color)
-                .monospacedDigit()
-
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
-        .background(.fill.quinary, in: RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -71,6 +56,7 @@ struct ModelStatusBar: View {
     let statusText: String
     let isRecording: Bool
     let isLoaded: Bool
+    let hasError: Bool
 
     var body: some View {
         HStack(spacing: 6) {
@@ -101,6 +87,7 @@ struct ModelStatusBar: View {
 
     private var dotColor: Color {
         if isRecording { return .red }
+        if hasError { return .red }
         return isLoaded ? .green : .secondary
     }
 }

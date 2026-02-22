@@ -18,7 +18,12 @@ struct TranscriptDetailView: View {
                 .keyboardShortcut("c", modifiers: [.command, .shift])
 
                 Button {
-                    PasteService.pasteToActiveApp(transcript.displayText)
+                    PasteService.copyToClipboard(transcript.displayText)
+                    NSApp.hide(nil)
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(300))
+                        PasteService.simulatePaste()
+                    }
                 } label: {
                     Label("Paste", systemImage: "arrow.right.doc.on.clipboard")
                 }
@@ -52,7 +57,7 @@ struct TranscriptDetailView: View {
                     if transcript.polishedText != nil {
                         HStack(spacing: 2) {
                             Image(systemName: "sparkles")
-                            Text("Enhanced")
+                            Text(transcript.llmModel.map { "\($0) Enhanced" } ?? "Enhanced")
                         }
                         .font(.caption)
                         .foregroundStyle(.purple)
@@ -84,13 +89,18 @@ struct TranscriptDetailView: View {
 
                         Divider()
 
-                        DisclosureGroup("Show original") {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Original Transcript")
+                                .font(.caption.bold())
+                                .foregroundStyle(.secondary)
                             Text(transcript.text)
-                                .font(.caption)
+                                .font(.callout)
                                 .foregroundStyle(.secondary)
                                 .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .font(.caption)
+                        .padding(10)
+                        .background(.fill.quinary, in: RoundedRectangle(cornerRadius: 8))
                     } else {
                         Text(transcript.text)
                             .font(.body)
