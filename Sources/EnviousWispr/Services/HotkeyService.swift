@@ -1,10 +1,40 @@
 import Cocoa
 import Carbon.HIToolbox
 
+/// Modifier key codes that can act as standalone hotkeys.
+/// These are the physical key codes reported by NSEvent / Carbon for each modifier key.
+enum ModifierKeyCodes {
+    static let leftCommand: UInt16  = 55
+    static let rightCommand: UInt16 = 54
+    static let leftOption: UInt16   = 58
+    static let rightOption: UInt16  = 61
+    static let leftShift: UInt16    = 56
+    static let rightShift: UInt16   = 60
+    static let leftControl: UInt16  = 59
+    static let rightControl: UInt16 = 62
+
+    static let all: Set<UInt16> = [
+        leftCommand, rightCommand,
+        leftOption, rightOption,
+        leftShift, rightShift,
+        leftControl, rightControl
+    ]
+
+    /// Returns true if the given key code is a standalone modifier key.
+    static func isModifierOnly(_ keyCode: UInt16) -> Bool {
+        all.contains(keyCode)
+    }
+
+}
+
 /// Manages global hotkey registration for dictation recording control.
 ///
 /// Uses Carbon RegisterEventHotKey for system-wide hotkeys without
 /// requiring Accessibility permission.
+///
+/// For modifier-only hotkeys (e.g., bare Option key), NSEvent global and local
+/// monitors for .flagsChanged are used so events fire even when the app is in
+/// the background.
 @MainActor
 @Observable
 final class HotkeyService {
@@ -22,6 +52,11 @@ final class HotkeyService {
     private var toggleHotkeyRef: EventHotKeyRef?
     private var pttHotkeyRef: EventHotKeyRef?
     private var cancelHotkeyRef: EventHotKeyRef?
+
+    // MARK: - NSEvent Modifier Monitors
+
+    private var globalModifierMonitor: Any?
+    private var localModifierMonitor: Any?
 
     private(set) var isEnabled = false
     private(set) var isModifierHeld = false
@@ -57,11 +92,14 @@ final class HotkeyService {
 
     // MARK: - Lifecycle
 
+    private(set) var isSuspended = false
+
     func start() {
         guard !isEnabled else { return }
         installCarbonEventHandler()
         registerToggleHotkey()
         registerPTTHotkey()
+        installModifierMonitors()
         // Cancel hotkey is NOT registered here — only during recording
         isEnabled = true
     }
@@ -71,8 +109,28 @@ final class HotkeyService {
         unregisterToggleHotkey()
         unregisterPTTHotkey()
         removeCarbonEventHandler()
+        removeModifierMonitors()
         isEnabled = false
         isModifierHeld = false
+    }
+
+    /// Temporarily unregister all hotkeys so the recorder can capture key combos.
+    func suspend() {
+        guard isEnabled, !isSuspended else { return }
+        unregisterCancelHotkey()
+        unregisterToggleHotkey()
+        unregisterPTTHotkey()
+        removeModifierMonitors()
+        isSuspended = true
+    }
+
+    /// Re-register hotkeys after the recorder is done.
+    func resume() {
+        guard isEnabled, isSuspended else { return }
+        registerToggleHotkey()
+        registerPTTHotkey()
+        installModifierMonitors()
+        isSuspended = false
     }
 
     /// Register the cancel hotkey. Call on `.recording` entry.
@@ -115,6 +173,42 @@ final class HotkeyService {
         )
     }
 
+    // MARK: - NSEvent Modifier Monitors
+
+    private func installModifierMonitors() {
+        removeModifierMonitors()
+
+        // Only install if at least one hotkey is modifier-only
+        let needsMonitor = ModifierKeyCodes.isModifierOnly(toggleKeyCode) ||
+                           ModifierKeyCodes.isModifierOnly(pushToTalkKeyCode)
+        guard needsMonitor else { return }
+
+        globalModifierMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            // NSEvent global monitor callbacks arrive on the main thread
+            MainActor.assumeIsolated {
+                self?.handleFlagsChanged(event)
+            }
+        }
+
+        localModifierMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            MainActor.assumeIsolated {
+                self?.handleFlagsChanged(event)
+            }
+            return event  // pass the event through
+        }
+    }
+
+    private func removeModifierMonitors() {
+        if let monitor = globalModifierMonitor {
+            NSEvent.removeMonitor(monitor)
+            globalModifierMonitor = nil
+        }
+        if let monitor = localModifierMonitor {
+            NSEvent.removeMonitor(monitor)
+            localModifierMonitor = nil
+        }
+    }
+
     private func removeCarbonEventHandler() {
         if let ref = eventHandlerRef {
             RemoveEventHandler(ref)
@@ -126,6 +220,9 @@ final class HotkeyService {
 
     private func registerToggleHotkey() {
         unregisterToggleHotkey()
+        // Modifier-only hotkeys are handled via NSEvent flagsChanged monitors —
+        // Carbon RegisterEventHotKey cannot register a bare modifier key.
+        guard !ModifierKeyCodes.isModifierOnly(toggleKeyCode) else { return }
         toggleHotkeyRef = registerHotkey(
             id: HotkeyID.toggle.rawValue,
             keyCode: toggleKeyCode,
@@ -142,6 +239,9 @@ final class HotkeyService {
 
     private func registerPTTHotkey() {
         unregisterPTTHotkey()
+        // Modifier-only hotkeys are handled via NSEvent flagsChanged monitors —
+        // Carbon RegisterEventHotKey cannot register a bare modifier key.
+        guard !ModifierKeyCodes.isModifierOnly(pushToTalkKeyCode) else { return }
         pttHotkeyRef = registerHotkey(
             id: HotkeyID.ptt.rawValue,
             keyCode: pushToTalkKeyCode,
@@ -172,8 +272,12 @@ final class HotkeyService {
 
     // MARK: - Event Dispatch
 
-    /// Called from the Carbon event handler on the main thread.
+    /// Called from the Carbon event handler on the main thread for RegisterEventHotKey events.
     func handleCarbonHotkey(id: UInt32, isRelease: Bool) {
+        Task { await AppLogger.shared.log(
+            "Carbon hotkey event: id=\(id), isRelease=\(isRelease), mode=\(recordingMode)",
+            level: .info, category: "HotkeyService"
+        ) }
         switch id {
         case HotkeyID.toggle.rawValue:
             guard !isRelease, recordingMode == .toggle else { return }
@@ -198,6 +302,62 @@ final class HotkeyService {
         }
     }
 
+    /// Called from the NSEvent flagsChanged monitors for modifier-only hotkeys.
+    ///
+    /// NSEvent gives us the exact keyCode that changed, so we know precisely which
+    /// modifier was pressed or released without needing to diff against a previous state.
+    private func handleFlagsChanged(_ event: NSEvent) {
+        guard !isSuspended else { return }
+
+        let currentFlags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let keyCode = event.keyCode
+
+        // Only process known modifier key codes
+        guard ModifierKeyCodes.isModifierOnly(keyCode) else { return }
+
+        // Determine press vs. release by checking whether the flag is present
+        let flag = flagForKeyCode(keyCode)
+        let isPress = currentFlags.contains(flag)
+
+        // Extract values before async dispatch (NSEvent is not Sendable)
+        let capturedKeyCode = keyCode
+
+        // Check toggle hotkey (modifier-only)
+        if recordingMode == .toggle, capturedKeyCode == toggleKeyCode, isPress {
+            Task { await AppLogger.shared.log(
+                "Modifier-only toggle: keyCode=\(capturedKeyCode)", level: .info, category: "HotkeyService"
+            ) }
+            Task { await onToggleRecording?() }
+        }
+
+        // Check PTT hotkey (modifier-only)
+        if recordingMode == .pushToTalk, capturedKeyCode == pushToTalkKeyCode {
+            if isPress && !isModifierHeld {
+                Task { await AppLogger.shared.log(
+                    "Modifier-only PTT press: keyCode=\(capturedKeyCode)", level: .info, category: "HotkeyService"
+                ) }
+                isModifierHeld = true
+                Task { await onStartRecording?() }
+            } else if !isPress && isModifierHeld {
+                Task { await AppLogger.shared.log(
+                    "Modifier-only PTT release: keyCode=\(capturedKeyCode)", level: .info, category: "HotkeyService"
+                ) }
+                isModifierHeld = false
+                Task { await onStopRecording?() }
+            }
+        }
+    }
+
+    private func flagForKeyCode(_ keyCode: UInt16) -> NSEvent.ModifierFlags {
+        switch keyCode {
+        case 55, 54: return .command
+        case 58, 61: return .option
+        case 59, 62: return .control
+        case 56, 60: return .shift
+        default:     return []
+        }
+    }
+
     // MARK: - Modifier Conversion
 
     private func carbonModifiers(from flags: NSEvent.ModifierFlags) -> UInt32 {
@@ -214,14 +374,14 @@ final class HotkeyService {
     /// Human-readable description of the current hotkey.
     var hotkeyDescription: String {
         if recordingMode == .pushToTalk {
-            return "Hold \(KeySymbols.format(keyCode: pushToTalkKeyCode, modifiers: pushToTalkModifiers))"
+            return "Hold \(KeySymbols.formatHotkey(keyCode: pushToTalkKeyCode, modifiers: pushToTalkModifiers))"
         } else {
-            return KeySymbols.format(keyCode: toggleKeyCode, modifiers: toggleModifiers)
+            return KeySymbols.formatHotkey(keyCode: toggleKeyCode, modifiers: toggleModifiers)
         }
     }
 
     var cancelHotkeyDescription: String {
-        KeySymbols.format(keyCode: cancelKeyCode, modifiers: cancelModifiers)
+        KeySymbols.formatHotkey(keyCode: cancelKeyCode, modifiers: cancelModifiers)
     }
 }
 
@@ -237,6 +397,10 @@ private let hotkeySignature: OSType = {
 }()
 
 /// C-function callback for Carbon event handler.
+///
+/// Handles kEventHotKeyPressed/Released for key+modifier combos registered
+/// via RegisterEventHotKey. Modifier-only hotkeys are handled separately via
+/// NSEvent flagsChanged monitors, which work globally regardless of app focus.
 private func carbonHotkeyHandler(
     _ nextHandler: EventHandlerCallRef?,
     _ event: EventRef?,
@@ -246,6 +410,10 @@ private func carbonHotkeyHandler(
         return OSStatus(eventNotHandledErr)
     }
 
+    let service = Unmanaged<HotkeyService>.fromOpaque(userData).takeUnretainedValue()
+    let eventKind = GetEventKind(event)
+
+    // --- kEventHotKeyPressed / kEventHotKeyReleased ---
     var hotkeyID = EventHotKeyID()
     let status = GetEventParameter(
         event,
@@ -260,12 +428,9 @@ private func carbonHotkeyHandler(
         return OSStatus(eventNotHandledErr)
     }
 
-    let eventKind = GetEventKind(event)
     let isRelease = eventKind == UInt32(kEventHotKeyReleased)
-
     let hotkeyIDValue = hotkeyID.id
-    let service = Unmanaged<HotkeyService>.fromOpaque(userData).takeUnretainedValue()
-    // Carbon events arrive on the main thread (application event loop)
+
     MainActor.assumeIsolated {
         service.handleCarbonHotkey(id: hotkeyIDValue, isRelease: isRelease)
     }

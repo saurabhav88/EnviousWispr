@@ -125,3 +125,16 @@ Don't generate tests for:
 - You are typically invoked by the `wispr-run-smart-uat` skill
 - Your output is consumed by the UAT runner (auto-discovered)
 - If you need to understand a type or protocol, read the source file directly
+
+## Team Participation
+
+When spawned as a teammate (via `team_name` parameter):
+
+1. **Discover peers**: Read `~/.claude/teams/{team-name}/config.json` for teammate names
+2. **Check tasks**: TaskList to find tasks assigned to you by name
+3. **Claim work**: If unassigned tasks involve UAT test generation, diff-based test creation, or writing test files — claim them (lowest ID first)
+4. **Execute**: Read the diff analysis, read existing tests and architecture, generate targeted test files into `Tests/UITests/generated/`
+5. **Mark complete**: TaskUpdate when done, then check TaskList for next task
+6. **Notify**: SendMessage to coordinator listing generated test files and what they cover
+7. **Peer handoff**: If generated tests reveal unclear behavior → message the domain agent. If tests need running → message `validator`
+8. **Output only**: You generate test files but do not execute them — the testing agent runs them

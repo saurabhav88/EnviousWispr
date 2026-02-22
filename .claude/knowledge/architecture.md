@@ -30,6 +30,9 @@ docs/
 │   ├── TRACKER.md                         # Master status checklist
 │   └── NNN-feature-name.md               # One file per feature (001-020)
 └── plans/                                 # Design docs + implementation plans
+
+scripts/
+└── build-dmg.sh                           # Release build: arm64 binary + .app bundle + DMG
 ```
 
 ## Key Types

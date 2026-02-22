@@ -97,9 +97,9 @@ enum PasteService {
             return changeCountAfterWrite
         }
         keyDown.flags = .maskCommand
-        keyDown.post(tap: .cgSessionEventTap)
+        keyDown.post(tap: .cghidEventTap)
         keyUp.flags = .maskCommand
-        keyUp.post(tap: .cgSessionEventTap)
+        keyUp.post(tap: .cghidEventTap)
 
         return changeCountAfterWrite
     }
@@ -110,8 +110,8 @@ enum PasteService {
         guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: UInt16(kVK_ANSI_V), keyDown: true),
               let keyUp = CGEvent(keyboardEventSource: source, virtualKey: UInt16(kVK_ANSI_V), keyDown: false) else { return }
         keyDown.flags = .maskCommand
-        keyDown.post(tap: .cgSessionEventTap)
+        keyDown.post(tap: .cghidEventTap)
         keyUp.flags = .maskCommand
-        keyUp.post(tap: .cgSessionEventTap)
+        keyUp.post(tap: .cghidEventTap)
     }
 }

@@ -137,6 +137,15 @@ final class AppState {
             await self?.cancelRecording()
         }
 
+        // NOTE: hotkey registration is deferred to startHotkeyServiceIfEnabled(),
+        // called from applicationDidFinishLaunching. Carbon RegisterEventHotKey
+        // requires the NSApplication event loop to be running for event delivery.
+    }
+
+    /// Start the hotkey service. Must be called after the NSApplication event loop
+    /// is running (e.g., from applicationDidFinishLaunching), because Carbon
+    /// RegisterEventHotKey events are only delivered once the run loop is active.
+    func startHotkeyServiceIfEnabled() {
         if settings.hotkeyEnabled {
             hotkeyService.start()
         }

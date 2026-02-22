@@ -8,18 +8,18 @@ description: macOS permissions, accessibility, menu bar, global hotkeys, paste s
 
 ## Domain
 
-Source dirs: `Services/` (PasteService, PermissionsService, HotkeyService), `Views/MenuBar/`, `Views/Onboarding/`.
+Source dirs: `Services/` (PasteService, PermissionsService, HotkeyService), `Views/MenuBar/`, `Views/Onboarding/`, `Views/Settings/`, `Views/Components/`.
 
 ## Permissions (TCC)
 
 **Microphone**: `AVCaptureDevice.requestAccess(for: .audio)`. Check: `.authorizationStatus(for: .audio) == .authorized`. Import: `@preconcurrency import AVFoundation`.
 
-**Accessibility**: NOT required. Hotkeys use Carbon `RegisterEventHotKey`; paste uses session-level `CGEvent.post(tap: .cgSessionEventTap)`.
+**Accessibility**: Required for paste. `CGEvent.post()` needs Accessibility on modern macOS (14+) regardless of tap level. Check: `AXIsProcessTrusted()`. Hotkeys use Carbon `RegisterEventHotKey` which does NOT need Accessibility.
 
 ## Key Patterns
 
-- **Carbon hotkeys**: HotkeyService uses `RegisterEventHotKey`/`UnregisterEventHotKey` with `InstallEventHandler(GetApplicationEventTarget(), ...)`. Supports press+release for PTT hold-to-record. No Accessibility needed.
-- **Paste**: CGEvent Cmd+V via `kVK_ANSI_V` posted to `.cgSessionEventTap`. No Accessibility needed.
+- **Carbon hotkeys**: HotkeyService uses `RegisterEventHotKey`/`UnregisterEventHotKey` with `InstallEventHandler(GetApplicationEventTarget(), ...)`. Supports press+release for PTT hold-to-record. No Accessibility needed. **CRITICAL**: Must register AFTER `NSApplication.run()` starts (from `applicationDidFinishLaunching` or later) — registration before the event loop returns `noErr` but events are silently never delivered.
+- **Paste**: CGEvent Cmd+V via `kVK_ANSI_V` posted to `.cghidEventTap` with `.combinedSessionState`. **Requires Accessibility permission** — without it, events post silently but are never delivered.
 - **Menu bar**: `MenuBarExtra` with dynamic icon. Window targeting by ID. Settings: `Selector(("showSettingsWindow:"))`. Activation: `NSApplication.shared.activate(ignoringOtherApps: true)`
 - **SwiftUI (macOS 14+)**: `@Observable`, `@Environment(AppState.self)`, `@Bindable var state`, `Form.formStyle(.grouped)`, native `Settings { }` scene, `NavigationSplitView`
 

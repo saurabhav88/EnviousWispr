@@ -92,14 +92,26 @@ enum KeySymbols {
         }
     }
 
-    /// Format a complete hotkey as readable string (e.g., "⌥ Space")
+    /// Format a complete hotkey as readable string (e.g., "⌥ Space").
+    ///
+    /// When the keyCode is a modifier key and modifiers is empty the hotkey is
+    /// treated as modifier-only and formatted via `formatModifierOnly`.
     static func format(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> String {
+        // Modifier-only hotkey: keyCode is itself a modifier key, no additional modifiers.
+        if ModifierKeyCodes.isModifierOnly(keyCode) && modifiers.isEmpty {
+            return formatModifierOnly(modifiers, keyCode: keyCode)
+        }
         let modSymbols = symbolsForModifiers(modifiers)
         let keyName = nameForKeyCode(keyCode)
         if modSymbols.isEmpty {
             return keyName
         }
         return "\(modSymbols) \(keyName)"
+    }
+
+    /// Alias for `format` — used by HotkeyService for display strings.
+    static func formatHotkey(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> String {
+        format(keyCode: keyCode, modifiers: modifiers)
     }
 
     /// Format just modifiers for push-to-talk display.

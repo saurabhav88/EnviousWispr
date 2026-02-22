@@ -50,7 +50,6 @@ All source files — read access to entire codebase for auditing.
 - `wispr-detect-hardcoded-secrets`
 - `wispr-validate-keychain-usage`
 - `wispr-flag-sensitive-logging`
-- `wispr-swift-format-check`
 
 ## Coordination
 

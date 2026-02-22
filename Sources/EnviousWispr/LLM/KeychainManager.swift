@@ -1,67 +1,99 @@
-import Foundation
-import Security
+// TEMPORARY: File-based storage for dev convenience. Revert to Keychain before release.
 
-/// Manages API key storage and retrieval via macOS Keychain.
+import Foundation
+
+/// Manages API key storage and retrieval via files in ~/.enviouswispr-keys/.
+/// Original implementation used macOS Keychain (SecItem* APIs). This file-based
+/// version avoids passcode prompts during development.
 struct KeychainManager: Sendable {
     static let openAIKeyID = "openai-api-key"
     static let geminiKeyID = "gemini-api-key"
 
     private let service = "com.enviouswispr.api-keys"
 
-    /// Store a value in the Keychain.
+    /// Directory where key files are stored.
+    private var storageDirectory: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".enviouswispr-keys", isDirectory: true)
+    }
+
+    /// URL for a specific key file.
+    private func fileURL(for key: String) -> URL {
+        storageDirectory.appendingPathComponent(key)
+    }
+
+    /// Ensure the storage directory exists, creating it if necessary.
+    private func ensureDirectoryExists() throws {
+        let fm = FileManager.default
+        let dir = storageDirectory
+        if !fm.fileExists(atPath: dir.path) {
+            do {
+                try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+                // Restrict permissions to owner only (0700)
+                try fm.setAttributes(
+                    [.posixPermissions: 0o700],
+                    ofItemAtPath: dir.path
+                )
+            } catch {
+                throw KeychainError.storeFailed(-1)
+            }
+        }
+    }
+
+    /// Store a value to a file.
     func store(key: String, value: String) throws {
         guard let data = value.data(using: .utf8) else { return }
 
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-            kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-        ]
+        try ensureDirectoryExists()
 
-        // Delete existing entry first
-        SecItemDelete(query as CFDictionary)
-
-        let status = SecItemAdd(query as CFDictionary, nil)
-        guard status == errSecSuccess else {
-            throw KeychainError.storeFailed(status)
+        let url = fileURL(for: key)
+        do {
+            try data.write(to: url, options: [.atomic])
+            // Restrict file permissions to owner read/write only (0600)
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o600],
+                ofItemAtPath: url.path
+            )
+        } catch {
+            throw KeychainError.storeFailed(-1)
         }
     }
 
-    /// Retrieve a value from the Keychain.
+    /// Retrieve a value from a file.
     func retrieve(key: String) throws -> String {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
+        let url = fileURL(for: key)
 
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-
-        guard status == errSecSuccess,
-              let data = result as? Data,
-              let value = String(data: data, encoding: .utf8) else {
-            throw KeychainError.retrieveFailed(status)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw KeychainError.retrieveFailed(-1)
         }
 
-        return value
+        do {
+            let data = try Data(contentsOf: url)
+            guard let value = String(data: data, encoding: .utf8) else {
+                throw KeychainError.retrieveFailed(-1)
+            }
+            return value
+        } catch is KeychainError {
+            throw KeychainError.retrieveFailed(-1)
+        } catch {
+            throw KeychainError.retrieveFailed(-1)
+        }
     }
 
-    /// Delete a value from the Keychain.
+    /// Delete a key file.
     func delete(key: String) throws {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-        ]
+        let url = fileURL(for: key)
+        let fm = FileManager.default
 
-        let status = SecItemDelete(query as CFDictionary)
-        guard status == errSecSuccess || status == errSecItemNotFound else {
-            throw KeychainError.deleteFailed(status)
+        guard fm.fileExists(atPath: url.path) else {
+            // Match Keychain behavior: not-found is not an error
+            return
+        }
+
+        do {
+            try fm.removeItem(at: url)
+        } catch {
+            throw KeychainError.deleteFailed(-1)
         }
     }
 }

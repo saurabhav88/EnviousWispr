@@ -14,7 +14,7 @@ swift build --build-tests  # Verify tests compile
 
 `swift build` compiles to `.build/debug/` (or `.build/release/`), but the **running app** is at `build/EnviousWispr.app`. These are separate binaries. After any code change:
 
-1. Use `rebuild-and-relaunch` skill — chains release build → bundle → kill → TCC reset → relaunch
+1. Use `rebuild-and-relaunch` skill — chains release build → bundle → kill → relaunch
 2. Or use `run-smoke-test` — automatically rebuilds the bundle before launching
 
 **Never test code changes via `swift run` alone** — always rebuild the .app bundle so runtime behavior matches what the user sees.
@@ -27,7 +27,7 @@ When killing/rebuilding the app, kill the old process before relaunching:
 pkill -x EnviousWispr 2>/dev/null; sleep 1
 ```
 
-No Accessibility TCC reset is needed — the app does not use Accessibility permission.
+Accessibility permission is required for paste (`CGEvent.post`). When testing paste after a fresh bundle, ensure Accessibility is granted via System Settings > Privacy & Security > Accessibility.
 
 ## Commit Style
 

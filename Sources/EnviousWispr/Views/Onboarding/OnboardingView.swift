@@ -6,7 +6,7 @@ struct OnboardingView: View {
     @Binding var isPresented: Bool
     @State private var currentStep = 0
 
-    private let steps = ["Welcome", "Microphone", "Ready"]
+    private let steps = ["Welcome", "Microphone", "Accessibility", "Ready"]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -37,7 +37,8 @@ struct OnboardingView: View {
                 switch currentStep {
                 case 0: welcomeStep
                 case 1: microphoneStep
-                case 2: readyStep
+                case 2: accessibilityStep
+                case 3: readyStep
                 default: EmptyView()
                 }
             }
@@ -133,6 +134,46 @@ struct OnboardingView: View {
             }
         }
         .padding()
+    }
+
+    private var accessibilityStep: some View {
+        VStack(spacing: 16) {
+            IconCircle(
+                systemName: appState.permissions.hasAccessibilityPermission
+                    ? "checkmark.circle.fill" : "lock.shield",
+                tint: appState.permissions.hasAccessibilityPermission ? .green : .orange
+            )
+
+            Text("Accessibility Access")
+                .font(.title2)
+                .bold()
+
+            Text("Required to paste transcribed text into your applications.")
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+
+            if !appState.permissions.hasAccessibilityPermission {
+                Button("Open System Settings") {
+                    _ = appState.permissions.requestAccessibilityAccess()
+                }
+                .buttonStyle(.borderedProminent)
+
+                Text("Toggle the switch in System Settings, then return here.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            } else {
+                Label("Accessibility access granted", systemImage: "checkmark")
+                    .foregroundStyle(.green)
+            }
+        }
+        .padding()
+        .task {
+            // Poll for Accessibility grant while this step is visible
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                appState.permissions.refreshAccessibilityStatus()
+            }
+        }
     }
 
     private var readyStep: some View {

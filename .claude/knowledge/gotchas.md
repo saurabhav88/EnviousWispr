@@ -10,7 +10,15 @@ Module exports a struct `FluidAudio` that shadows the module name. **Never quali
 
 - Use `@preconcurrency import` for FluidAudio, WhisperKit, and AVFoundation
 - Extract Sendable values from NSEvent before `@MainActor` dispatch — NSEvent isn't Sendable
-- Accessibility permission is NOT required. Hotkeys use Carbon `RegisterEventHotKey`; paste uses session-level `CGEvent.post(tap: .cgSessionEventTap)`.
+- Hotkeys use Carbon `RegisterEventHotKey` (no Accessibility needed). Paste uses `CGEvent.post` which **requires Accessibility permission** on modern macOS — both `.cghidEventTap` and `.cgSessionEventTap` require it for posting events.
+
+## Carbon Hotkey Timing (CRITICAL)
+
+**Carbon `RegisterEventHotKey` must be called AFTER `NSApplication.run()` starts.** Registration during `AppState.init()` or before `applicationDidFinishLaunching` returns `noErr` (success) but events are silently never delivered. Always register hotkeys from `applicationDidFinishLaunching` or later. See `AppState.startHotkeyServiceIfEnabled()`.
+
+## CGEvent Paste Requires Accessibility
+
+**`CGEvent.post()` requires Accessibility permission on modern macOS (14+) regardless of tap level.** Both `.cghidEventTap` and `.cgSessionEventTap` need the app to be trusted via `AXIsProcessTrusted()`. Use `.cghidEventTap` + `.combinedSessionState` (matching enigo/Handy's proven approach). Without Accessibility, events post silently but are never delivered to the target app.
 
 ## Audio Format
 
@@ -27,6 +35,19 @@ macOS Keychain via `KeychainManager` (service: `"com.enviouswispr.api-keys"`). *
 ## Ollama Local LLM
 
 Requires Ollama server running locally (`ollama serve`). `OllamaSetupService` checks availability. If server is down, polish silently fails — check connectivity first.
+
+## NEVER Use Blanket TCC Resets
+
+**`tccutil reset Accessibility` wipes permissions for ALL apps on the system, not just EnviousWispr.** This breaks other apps that rely on Accessibility (window managers, automation tools, screen readers, etc.).
+
+- **NEVER run** `tccutil reset Accessibility` or `tccutil reset Microphone` (no bundle-ID argument)
+- **To reset only EnviousWispr**: `tccutil reset Accessibility com.enviouswispr.app`
+- **Even better**: just re-grant manually in System Settings > Privacy > Accessibility after a rebuild
+- After a rebuild, the binary hash changes so macOS invalidates the old TCC grant — this is expected behavior, not a bug to "fix" with a blanket reset
+
+## UAT Runner Must Run in Background
+
+`python3 Tests/UITests/uat_runner.py run` **must** be executed with `run_in_background: true` in the Bash tool. Foreground execution silently fails. Always use background mode and retrieve results via `TaskOutput`. Listing tests (`uat_runner.py list`) works fine in the foreground.
 
 ## ASR Backend Lifecycle
 

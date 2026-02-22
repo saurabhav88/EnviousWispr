@@ -13,7 +13,7 @@ Owned: `Package.swift` (shared with build-compile).
 ## Project Stats
 
 - Swift tools version 6.0, macOS 14.0+ (Sonoma), Apple Silicon
-- Deps: WhisperKit (0.12.0+), FluidAudio (0.1.0+)
+- Deps: WhisperKit (0.12.0+), FluidAudio (0.12.0+), Sparkle (2.6.0+)
 - CLI only — no Xcode archive flow
 
 ## Release Constraints
@@ -21,7 +21,8 @@ Owned: `Package.swift` (shared with build-compile).
 - Build: `swift build -c release`
 - Bundle: assemble `.app` manually from build output
 - Sign: `codesign --force --sign` (CLI)
-- No notarization without full Xcode
+- Notarize: `xcrun notarytool submit` (works with CLT, no full Xcode needed)
+- Sparkle rpath: Bundle MUST copy `Sparkle.framework` into `Contents/Frameworks/` and run `install_name_tool -add_rpath @executable_path/../Frameworks` — without this the app crashes on launch
 
 ## App Data Locations
 
@@ -34,7 +35,7 @@ Owned: `Package.swift` (shared with build-compile).
 
 - `wispr-build-release-config`
 - `wispr-bundle-app`
-- `wispr-rebuild-and-relaunch` — chains release build → bundle → kill → TCC reset → relaunch
+- `wispr-rebuild-and-relaunch` — chains release build → bundle → kill → relaunch
 - `wispr-codesign-without-xcode`
 - `wispr-generate-changelog`
 - `wispr-migrate-swift-version`

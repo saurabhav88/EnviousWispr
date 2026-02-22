@@ -53,6 +53,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appState.onPipelineStateChange = { [weak self] _ in
             self?.updateIcon()
         }
+
+        // Start hotkeys now that the event loop is running.
+        // Carbon RegisterEventHotKey requires an active run loop for event delivery.
+        appState.startHotkeyServiceIfEnabled()
     }
 
     private func setupStatusItem() {

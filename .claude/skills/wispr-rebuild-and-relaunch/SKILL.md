@@ -1,6 +1,6 @@
 ---
 name: wispr-rebuild-and-relaunch
-description: Use after any code change to rebuild the .app bundle and relaunch with fresh permissions. Chains release build → bundle → kill → TCC reset → relaunch so the running app always reflects the latest code.
+description: Use after any code change to rebuild the .app bundle and relaunch. Chains release build → bundle → kill → relaunch → smart UAT so the running app always reflects the latest code AND is verified working.
 ---
 
 # Rebuild and Relaunch
@@ -53,14 +53,17 @@ rm -rf "$DEST"
 cp -r /tmp/EnviousWispr.app "$DEST"
 ```
 
-## Step 4 — Kill and Relaunch
+## Step 4 — Kill, Reset TCC, and Relaunch
 
 ```bash
 pkill -x EnviousWispr 2>/dev/null; sleep 1
+tccutil reset Accessibility com.enviouswispr.app 2>/dev/null
 open /Users/m4pro_sv/Desktop/EnviousWispr/build/EnviousWispr.app
 ```
 
 - The `sleep 1` ensures the old process is fully terminated
+- `tccutil reset` clears the stale Accessibility grant (binary hash changed after rebuild)
+- The app's PermissionsService will re-prompt on launch — no manual System Settings needed
 
 ## Step 5 — Verify Launch
 
@@ -71,18 +74,25 @@ sleep 3 && ps aux | grep -c '[E]nviousWispr'
 - PASS: process count >= 1
 - FAIL: 0 (app crashed on launch — check Console.app or `log show --predicate 'process == "EnviousWispr"' --last 30s`)
 
-## Final Report
+## Step 6 — Smart UAT (MANDATORY — do NOT skip)
+
+**This step is NOT optional. The skill is incomplete without it. Do NOT print a final report until UAT finishes.**
+
+After Step 5 confirms the app is running, immediately invoke the `wispr-run-smart-uat` skill.
+It analyzes what changed in git and generates targeted tests automatically.
+
+All UAT execution MUST use `run_in_background: true` (CGEvent collides with VSCode).
+
+- PASS: UAT tests pass — proceed to Final Report
+- FAIL: Fix the issue and restart from Step 1
+
+## Final Report (only after UAT)
 
 ```
 Release build: PASS / FAIL
 Bundle:        created at build/EnviousWispr.app
-TCC reset:     done
 App running:   yes / no
+Smart UAT:     PASS / FAIL (N tests run)
 ```
 
-## Step 6 — Run Smart UAT (Auto-Gate)
-
-After successful relaunch, invoke `wispr-run-smart-uat` to verify the changes work correctly.
-This is automatic — the skill analyzes what changed and generates targeted tests.
-
-All UAT execution MUST use `run_in_background: true`.
+**If Smart UAT is not shown above, this skill was not completed.**
