@@ -776,6 +776,26 @@ def test_main_window(ctx):
 
 
 # ---------------------------------------------------------------------------
+# Auto-discover generated tests
+# ---------------------------------------------------------------------------
+
+_generated_dir = os.path.join(os.path.dirname(__file__), "generated")
+if os.path.isdir(_generated_dir):
+    import importlib.util
+    for _f in sorted(os.listdir(_generated_dir)):
+        if _f.startswith("test_") and _f.endswith(".py"):
+            _spec = importlib.util.spec_from_file_location(
+                _f[:-3], os.path.join(_generated_dir, _f)
+            )
+            _mod = importlib.util.module_from_spec(_spec)
+            try:
+                _spec.loader.exec_module(_mod)
+            except Exception as _e:
+                print(f"Warning: failed to load generated test {_f}: {_e}",
+                      file=sys.stderr)
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -799,6 +819,15 @@ def cmd_run(args):
             print(f"Available suites: {', '.join(sorted(_SUITES.keys()))}", file=sys.stderr)
             sys.exit(1)
         test_names = _SUITES[args.suite]
+    elif args.generated_only:
+        # Only run suites ending in _generated
+        test_names = []
+        for suite_name, suite_tests in _SUITES.items():
+            if suite_name.endswith("_generated"):
+                test_names.extend(suite_tests)
+        if not test_names:
+            print("No generated test suites found.", file=sys.stderr)
+            sys.exit(0)
     else:
         # Run all tests
         test_names = list(_TESTS.keys())
@@ -818,6 +847,8 @@ def main():
     run_p.add_argument("--suite", type=str, help="Run tests from a specific suite")
     run_p.add_argument("--test", type=str, help="Run a single test by name")
     run_p.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
+    run_p.add_argument("--generated-only", action="store_true",
+                       help="Only run generated test suites (ending in _generated)")
 
     args = parser.parse_args()
     if args.command is None:

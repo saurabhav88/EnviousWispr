@@ -86,18 +86,18 @@ A feature is NOT done until ALL of these pass:
 1. `swift build -c release` exits 0
 2. `swift build --build-tests` exits 0
 3. .app bundle rebuilt + relaunched (`wispr-rebuild-and-relaunch`)
-4. **UAT behavioral tests pass** (`python3 Tests/UITests/uat_runner.py run --verbose`)
-5. Feature-specific UAT suite passes (if one exists)
+4. **Smart UAT tests pass** (`wispr-run-smart-uat` — generates targeted tests from diff, then runs all)
+5. All UAT execution MUST use `run_in_background: true` — foreground fails due to CGEvent/VSCode collision
 
-**UAT is mandatory, not optional.** Smoke tests verify "does it crash?" UAT tests verify "does it work?"
+**Smart UAT is mandatory, not optional.** It replaces generic `wispr-run-uat` as the primary testing gate.
 
 ### UAT Workflow for Every Feature
 
-1. After implementing code → run `wispr-generate-uat-tests` to create test scenarios
-2. Add tests to `Tests/UITests/uat_runner.py` with `@uat_test` decorator
-3. Run `python3 Tests/UITests/uat_runner.py run --verbose`
+1. After implementing code → invoke `wispr-run-smart-uat` (or `wispr-run-smart-uat "description of change"`)
+2. Smart UAT analyzes diff → generates targeted tests into `Tests/UITests/generated/` → runs all tests in background
+3. Review results — generated test failures may indicate real bugs or test generation issues
 4. Only commit when ALL tests pass
-5. UAT scenario file saved at `Tests/UITests/scenarios/NNN-feature-name.md`
+5. To promote generated tests to permanent suite: move from `generated/` to `Tests/UITests/` and commit
 
 ## Feature Request Docs
 

@@ -63,9 +63,8 @@ For a typical feature, create tasks in this order:
 5. `[audit] Review concurrency and security` — blocked on task 4 (if feature touches AppState, async code, API keys, or new external services)
 6. `[build] Fix any audit findings` — blocked on task 5 (if audit was performed)
 7. `[test] Smoke test + rebuild bundle` — blocked on all above
-8. `[test] Generate UAT scenarios` — blocked on task 7 (use `wispr-generate-uat-tests`)
-9. `[test] Run UAT behavioral tests` — blocked on task 8 (`python3 Tests/UITests/uat_runner.py run --verbose`)
-10. `[planner] Update TRACKER.md status` — blocked on task 9 (ONLY after UAT passes)
+8. `[test] Run smart UAT` — blocked on task 7 (invoke `wispr-run-smart-uat` — auto-generates targeted tests from diff + runs all in background)
+9. `[planner] Update TRACKER.md status` — blocked on task 8 (ONLY after smart UAT passes)
 
 ### Communication Rules
 

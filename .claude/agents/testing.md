@@ -42,10 +42,18 @@ A test that only checks element existence is **not a test** — it's a type chec
 ## UAT Testing Framework
 
 ### Test Runner
+
+**CRITICAL: Always run UAT commands with `run_in_background: true` in the Bash tool.** Foreground execution silently fails. Use `TaskOutput` to retrieve results. For context-aware testing, use `wispr-run-smart-uat` which generates targeted tests from git diffs.
+
 ```bash
-python3 Tests/UITests/uat_runner.py run --verbose          # All tests
-python3 Tests/UITests/uat_runner.py run --suite [name] -v  # Specific suite
-python3 Tests/UITests/uat_runner.py list                   # List available tests
+# All tests (MUST use run_in_background: true)
+python3 Tests/UITests/uat_runner.py run --verbose 2>&1
+
+# Specific suite (MUST use run_in_background: true)
+python3 Tests/UITests/uat_runner.py run --suite [name] -v 2>&1
+
+# List available tests (foreground OK)
+python3 Tests/UITests/uat_runner.py list
 ```
 
 ### Five Verification Layers
@@ -119,6 +127,7 @@ Error codes: `401` → invalid key, `429` → rate limited.
 - `wispr-ui-simulate-input` — CGEvent HID simulation
 - `wispr-ui-screenshot-verify` — visual regression
 - `wispr-run-ui-test` — combined UI test flows
+- `wispr-run-smart-uat` — context-aware UAT: analyzes diff, generates targeted tests, runs all
 
 ## Coordination
 
@@ -126,6 +135,7 @@ Error codes: `401` → invalid key, `429` → rate limited.
 - API contract changes → notify coordinator + **feature-scaffolding** if connectors need updating
 - Post-scaffold validation → **feature-scaffolding** requests smoke test
 - Feature acceptance → generate UAT scenarios → run → report pass/fail to coordinator
+- Test generation → **uat-generator** agent writes targeted test files based on diff analysis
 
 ## Team Participation
 

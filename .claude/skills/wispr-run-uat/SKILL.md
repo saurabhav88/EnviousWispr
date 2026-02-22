@@ -1,6 +1,6 @@
 ---
 name: wispr-run-uat
-description: "Use when running behavioral UAT tests against the running EnviousWispr app. Executes Given/When/Then acceptance tests that verify actual app behavior through five verification layers: AX state, CGEvent input, screenshots, logs, and process metrics."
+description: "Use when running behavioral UAT tests against the running EnviousWispr app. For context-aware testing that generates targeted tests from git diffs, use wispr-run-smart-uat instead. All execution MUST use run_in_background: true."
 ---
 
 # Run UAT Tests
@@ -11,20 +11,34 @@ description: "Use when running behavioral UAT tests against the running EnviousW
 - Accessibility permission granted to terminal/IDE
 - Python deps: pyobjc, Pillow, numpy
 
+## CRITICAL: Run in Background
+
+**The UAT runner MUST be executed with `run_in_background: true` in the Bash tool.** Foreground execution silently fails. Always use background mode and check results via `TaskOutput`.
+
+```python
+# In Bash tool: ALWAYS set run_in_background=true
+Bash(command="python3 Tests/UITests/uat_runner.py run --verbose 2>&1", run_in_background=true)
+# Then check results:
+TaskOutput(task_id=..., block=true, timeout=120000)
+```
+
 ## Quick Start
 
 ```bash
-# List all available tests and suites
+# List all available tests and suites (foreground OK for listing)
 python3 Tests/UITests/uat_runner.py list
 
-# Run ALL tests
-python3 Tests/UITests/uat_runner.py run --verbose
+# Run ALL tests — MUST run in background
+python3 Tests/UITests/uat_runner.py run --verbose 2>&1
+# ^^^ Use run_in_background: true in Bash tool
 
-# Run a specific suite
-python3 Tests/UITests/uat_runner.py run --suite cancel_recording --verbose
+# Run a specific suite — MUST run in background
+python3 Tests/UITests/uat_runner.py run --suite cancel_recording --verbose 2>&1
+# ^^^ Use run_in_background: true in Bash tool
 
-# Run a single test
-python3 Tests/UITests/uat_runner.py run --test esc_cancels_recording_via_menu --verbose
+# Run a single test — MUST run in background
+python3 Tests/UITests/uat_runner.py run --test esc_cancels_recording_via_menu --verbose 2>&1
+# ^^^ Use run_in_background: true in Bash tool
 ```
 
 ## Built-in Test Suites
@@ -130,11 +144,13 @@ After implementing any feature, run:
 # 1. Rebuild and relaunch
 # (use wispr-rebuild-and-relaunch skill)
 
-# 2. Run full UAT suite
-python3 Tests/UITests/uat_runner.py run --verbose
+# 2. Run full UAT suite (MUST use run_in_background: true)
+python3 Tests/UITests/uat_runner.py run --verbose 2>&1
 
-# 3. Run feature-specific suite if one exists
-python3 Tests/UITests/uat_runner.py run --suite [feature_suite] --verbose
+# 3. Run feature-specific suite if one exists (MUST use run_in_background: true)
+python3 Tests/UITests/uat_runner.py run --suite [feature_suite] --verbose 2>&1
 ```
+
+**Remember**: Always run UAT commands with `run_in_background: true` in the Bash tool. Foreground execution fails silently.
 
 Only declare the feature complete if ALL tests pass.

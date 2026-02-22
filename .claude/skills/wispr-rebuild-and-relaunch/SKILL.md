@@ -79,3 +79,10 @@ Bundle:        created at build/EnviousWispr.app
 TCC reset:     done
 App running:   yes / no
 ```
+
+## Step 6 — Run Smart UAT (Auto-Gate)
+
+After successful relaunch, invoke `wispr-run-smart-uat` to verify the changes work correctly.
+This is automatic — the skill analyzes what changed and generates targeted tests.
+
+All UAT execution MUST use `run_in_background: true`.

@@ -76,3 +76,20 @@ Hotkey → AudioCaptureManager.startCapture() → AVAudioEngine tap (4096 frames
 
 - `ASRBackend` (actor protocol) — `prepare()`, `transcribe(audioURL:)`, `transcribe(audioSamples:)`, `unload()`
 - `TranscriptPolisher` — `polish(text:instructions:config:)`, `validateCredentials(config:)`
+
+## UAT Testing Architecture
+
+```text
+Tests/UITests/
+├── uat_runner.py          # Static tests + auto-discovery of generated/
+├── ui_helpers.py          # AX tree primitives (find, wait, assert)
+├── simulate_input.py      # CGEvent HID simulation (click, key, type)
+├── screenshot_verify.py   # Visual regression
+├── ax_inspect.py          # AX tree inspector
+├── diff_analyzer.py       # Git diff → structured summary with domain inference
+└── generated/             # LLM-generated test files (gitignored, promote to parent to persist)
+```
+
+**Smart UAT flow:** `diff_analyzer.py` → `uat-generator` agent → test files in `generated/` → `uat_runner.py` auto-discovers and runs all.
+
+**FIRM RULE:** All UAT execution MUST use `run_in_background: true`. CGEvent simulation collides with VSCode foreground dialogs.

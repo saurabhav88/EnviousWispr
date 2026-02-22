@@ -56,22 +56,13 @@ Invoke `run-smoke-test` skill to verify:
 - `swift build --build-tests` passes
 - App launches without crashing (5-second timeout)
 
-### 6. Generate UAT test scenarios (MANDATORY)
+### 6. Generate targeted UAT tests (AUTOMATIC)
 
-Invoke `wispr-generate-uat-tests` skill to systematically enumerate test scenarios:
+Smart UAT (`wispr-run-smart-uat`) automatically generates targeted tests based on the diff.
+Manual scenario enumeration via `wispr-generate-uat-tests` is still available for complex features
+that need hand-crafted scenarios beyond what the LLM generates.
 
-1. Read the feature spec's Testing Strategy section
-2. Apply the 6 enumeration techniques:
-   - Happy paths (golden path)
-   - Equivalence partitioning (different trigger methods, states, settings)
-   - Boundary value analysis (timing edges, min/max values)
-   - State transition coverage (every pipeline state x feature action)
-   - Negative tests (wrong state, missing permissions, invalid input)
-   - Sequence tests (rapid actions, cancel-restart, feature interactions)
-3. Write scenarios to `Tests/UITests/scenarios/NNN-feature-name.md`
-4. Add test functions to `Tests/UITests/uat_runner.py` with `@uat_test` decorator
-
-### 7. Run UAT behavioral tests (MANDATORY)
+### 7. Run smart UAT behavioral tests (MANDATORY)
 
 A feature is NOT complete until behavioral tests pass:
 
@@ -79,11 +70,8 @@ A feature is NOT complete until behavioral tests pass:
 # Rebuild bundle and relaunch with fresh permissions
 # (use wispr-rebuild-and-relaunch skill)
 
-# Run ALL UAT tests (ensures no regressions)
-python3 Tests/UITests/uat_runner.py run --verbose
-
-# Run feature-specific suite
-python3 Tests/UITests/uat_runner.py run --suite [feature_suite] --verbose
+# Run smart UAT (analyzes diff, generates targeted tests, runs all)
+# Invoke wispr-run-smart-uat skill — it handles background execution
 ```
 
 **If any test FAILS**: the feature has a bug. Fix the code, NOT the test. Then re-run.
