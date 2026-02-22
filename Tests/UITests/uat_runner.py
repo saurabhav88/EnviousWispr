@@ -782,6 +782,11 @@ def test_main_window(ctx):
 _generated_dir = os.path.join(os.path.dirname(__file__), "generated")
 if os.path.isdir(_generated_dir):
     import importlib.util
+    # When run as __main__, generated tests that `from uat_runner import ...`
+    # would get a separate module instance with its own _TESTS/_SUITES.
+    # Alias __main__ as "uat_runner" so decorators register into the right dicts.
+    if __name__ == "__main__" and "uat_runner" not in sys.modules:
+        sys.modules["uat_runner"] = sys.modules[__name__]
     for _f in sorted(os.listdir(_generated_dir)):
         if _f.startswith("test_") and _f.endswith(".py"):
             _spec = importlib.util.spec_from_file_location(
