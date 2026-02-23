@@ -93,7 +93,7 @@ from ui_helpers import (
 from simulate_input import click, press_key
 
 
-@uat_test("<test_name>", suite="<domain>_generated")
+@uat_test("<test_name>", suite="<domain>")
 def test_<name>(ctx):
     """GIVEN <precondition>,
     WHEN <action>,
@@ -101,16 +101,6 @@ def test_<name>(ctx):
     # Test body using existing primitives only
     ...
 ```
-
-### Suite naming convention
-
-All generated suites MUST end with `_generated`:
-- `hotkeys_generated`
-- `settings_generated`
-- `clipboard_generated`
-- `audio_generated`
-
-This allows `--generated-only` flag to filter for them.
 
 ## Constraints
 
@@ -189,6 +179,24 @@ Don't generate tests for:
 - You are typically invoked by the `wispr-run-smart-uat` skill
 - Your output is consumed by the UAT runner (auto-discovered)
 - If you need to understand a type or protocol, read the source file directly
+
+## Output Format
+
+Every response MUST end with a `GENERATED_FILES:` block listing every file created:
+
+```text
+GENERATED_FILES:
+- Tests/UITests/generated/test_foo.py
+- Tests/UITests/generated/test_bar.py
+```
+
+Or when no tests are generated:
+
+```text
+GENERATED_FILES: []
+```
+
+This is the ONLY format — no comma-separated, no `none` string. The calling skill parses this block to determine which files to pass to `--files`.
 
 ## Team Participation
 

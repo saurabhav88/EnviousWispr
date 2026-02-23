@@ -51,18 +51,36 @@ Task(
     Read the changed Swift source files to understand what specifically changed.
     Follow the exact file template and constraints from your agent definition.
 
-    After writing test files, list what you created and note which static tests you skipped due to overlap."""
+    After writing test files, list what you created and note which static tests you skipped due to overlap.
+
+    End your response with the following block listing every file you created:
+
+    GENERATED_FILES:
+    - Tests/UITests/generated/test_foo.py
+    - Tests/UITests/generated/test_bar.py
+
+    Or if no tests were generated:
+
+    GENERATED_FILES: []
+
+    This format is mandatory — it is parsed by the calling skill."""
 )
 ```
 
-### 3. Run generated tests in background
+### 3. Parse generator output and run file-targeted tests
 
 **CRITICAL: MUST use `run_in_background: true`**
 
+1. Read the agent's response. Find the `GENERATED_FILES:` block.
+2. If the list is `[]` or the block is missing entirely: report "No tests needed — change has no testable UI impact." Skip execution.
+3. If the list has file paths: verify each exists with `ls` before passing to `--files`.
+4. Run only verified paths:
+
 ```bash
-# Run generated tests only (targeted to changes) — MUST be background
-python3 Tests/UITests/uat_runner.py run --generated-only --verbose 2>&1
+python3 Tests/UITests/uat_runner.py run --files <verified paths> --verbose 2>&1
 ```
+
+**Fallback** (if `GENERATED_FILES:` block is unparseable): Fail closed with message "Could not determine generated files — run `/wispr-run-uat` manually if needed." Do NOT fall back to running all generated files (that recreates the original noise problem).
 
 Use `TaskOutput` to retrieve results when complete.
 
@@ -79,16 +97,6 @@ Parse the JSON output from the runner. Report:
 - **Generated test FAIL**: The test may have found a real bug, OR the generated test may be wrong. Report both possibilities to the user.
 - **Static test FAIL**: This is a regression. The code change broke existing behavior.
 - **Generated test ERROR**: The generated test has a bug (Python exception). Delete the file and report the error.
-
-### Running All Tests
-
-If the user explicitly asks to run all tests (static + generated), use:
-
-```bash
-python3 Tests/UITests/uat_runner.py run --verbose 2>&1
-```
-
-This is NOT the default — only use when explicitly requested.
 
 ## FIRM RULE: Background Execution
 

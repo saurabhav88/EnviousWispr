@@ -10,7 +10,7 @@ swift build                         # Command Line Tools only, no Xcode
 swift build --build-tests           # Verify test target compiles
 /wispr-rebuild-and-relaunch         # Build + bundle + launch with fresh permissions
 /wispr-run-smoke-test               # Fast compile gate (no launch/UAT)
-python3 Tests/UITests/uat_runner.py run --generated-only --verbose   # UAT tests (app running, MUST use run_in_background:true)
+python3 Tests/UITests/uat_runner.py run --files Tests/UITests/generated/test_foo.py --verbose   # UAT tests (app running, MUST use run_in_background:true)
 ```
 
 ## Environment

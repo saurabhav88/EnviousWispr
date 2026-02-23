@@ -90,9 +90,9 @@ Tests/UITests/
 ├── screenshot_verify.py   # Visual regression
 ├── ax_inspect.py          # AX tree inspector
 ├── diff_analyzer.py       # Git diff → structured summary with domain inference
-└── generated/             # LLM-generated test files (persists in git as reusable test library)
+└── generated/             # LLM-generated test files (ephemeral, per-diff, run via --files)
 ```
 
-**Smart UAT flow:** `diff_analyzer.py` → `uat-generator` agent → test files in `generated/` → `uat_runner.py` auto-discovers and runs all.
+**Smart UAT flow:** `diff_analyzer.py` → `uat-generator` agent → test files in `generated/` → `uat_runner.py run --files <generated paths>`.
 
 **FIRM RULE:** All UAT execution MUST use `run_in_background: true`. CGEvent simulation collides with VSCode foreground dialogs.

@@ -148,7 +148,7 @@ Error codes: `401` → invalid key, `429` → rate limited.
 - `wispr-ui-simulate-input` — CGEvent HID simulation
 - `wispr-ui-screenshot-verify` — visual regression
 - `wispr-run-ui-test` — **DEPRECATED** (use `wispr-run-uat` or `wispr-run-smart-uat` instead)
-- `wispr-run-smart-uat` — context-aware UAT: analyzes diff, generates targeted tests, runs generated only
+- `wispr-run-smart-uat` — context-aware UAT: analyzes diff, generates targeted tests, runs file-targeted via `--files`
 
 ## Coordination
 

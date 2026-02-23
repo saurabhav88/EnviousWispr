@@ -15,6 +15,7 @@ Usage:
     python3 Tests/UITests/uat_runner.py run [--suite SUITE] [--verbose]
     python3 Tests/UITests/uat_runner.py list
     python3 Tests/UITests/uat_runner.py run --test TEST_NAME [--verbose]
+    python3 Tests/UITests/uat_runner.py run --files FILE [FILE ...] [--verbose]
 """
 
 import argparse
@@ -931,28 +932,83 @@ def test_main_window(ctx):
 
 
 # ---------------------------------------------------------------------------
-# Auto-discover generated tests
+# Auto-discover / file-targeted generated tests
 # ---------------------------------------------------------------------------
 
-_generated_dir = os.path.join(os.path.dirname(__file__), "generated")
-if os.path.isdir(_generated_dir):
+_loaded_generated = set()  # tracks normalized absolute paths of loaded files
+_GENERATED_ROOT = os.path.realpath(os.path.join(os.path.dirname(__file__), "generated"))
+
+
+def _load_single_file(full_path):
+    """Load a single test file via importlib. Registers tests via @uat_test decorator."""
     import importlib.util
-    # When run as __main__, generated tests that `from uat_runner import ...`
-    # would get a separate module instance with its own _TESTS/_SUITES.
-    # Alias __main__ as "uat_runner" so decorators register into the right dicts.
+    normalized = os.path.realpath(full_path)
+    if normalized in _loaded_generated:
+        return  # idempotent — skip if already loaded
+    filename = os.path.basename(normalized)
+    spec = importlib.util.spec_from_file_location(filename[:-3], normalized)
+    if spec is None or spec.loader is None:
+        print(f"WARN: could not create loader for {filename}", file=sys.stderr)
+        return
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+        _loaded_generated.add(normalized)
+    except Exception as e:
+        print(f"WARN: failed to load generated test {filename}: {e}", file=sys.stderr)
+
+
+def _discover_generated_tests():
+    """Auto-discover and load all test_*.py files from generated/ directory."""
+    gen_dir = os.path.join(os.path.dirname(__file__), "generated")
+    if not os.path.isdir(gen_dir):
+        return
     if __name__ == "__main__" and "uat_runner" not in sys.modules:
         sys.modules["uat_runner"] = sys.modules[__name__]
-    for _f in sorted(os.listdir(_generated_dir)):
-        if _f.startswith("test_") and _f.endswith(".py"):
-            _spec = importlib.util.spec_from_file_location(
-                _f[:-3], os.path.join(_generated_dir, _f)
-            )
-            _mod = importlib.util.module_from_spec(_spec)
-            try:
-                _spec.loader.exec_module(_mod)
-            except Exception as _e:
-                print(f"Warning: failed to load generated test {_f}: {_e}",
-                      file=sys.stderr)
+    for f in sorted(os.listdir(gen_dir)):
+        if f.startswith("test_") and f.endswith(".py"):
+            _load_single_file(os.path.join(gen_dir, f))
+
+
+def _is_inside_generated(path):
+    """Check if path is inside the generated/ directory. Resolves symlinks."""
+    try:
+        return os.path.commonpath([os.path.realpath(path), _GENERATED_ROOT]) == _GENERATED_ROOT
+    except ValueError:
+        return False  # different drives on Windows, or empty path
+
+
+def _load_test_files(file_paths):
+    """Load specific test files. Returns (registered_names_list, skipped_paths)."""
+    if __name__ == "__main__" and "uat_runner" not in sys.modules:
+        sys.modules["uat_runner"] = sys.modules[__name__]
+
+    before = set(_TESTS.keys())
+    skipped = []
+
+    for path in file_paths:
+        resolved = os.path.realpath(path)
+        filename = os.path.basename(resolved)
+
+        # Validation: must exist, be .py, match test_*.py, be inside generated/
+        if not os.path.isfile(resolved):
+            print(f"WARN: missing test file: {path}", file=sys.stderr)
+            skipped.append(path)
+            continue
+        if not filename.startswith("test_") or not filename.endswith(".py"):
+            print(f"WARN: invalid generated test path: {path}", file=sys.stderr)
+            skipped.append(path)
+            continue
+        if not _is_inside_generated(resolved):
+            print(f"WARN: path outside generated/ directory: {path}", file=sys.stderr)
+            skipped.append(path)
+            continue
+
+        _load_single_file(resolved)
+
+    # Preserve ordering: return as list in load order, not a set
+    registered = [t for t in _TESTS if t not in before]
+    return registered, skipped
 
 
 # ---------------------------------------------------------------------------
@@ -961,6 +1017,7 @@ if os.path.isdir(_generated_dir):
 
 def cmd_signatures(args):
     """Output JSON listing all static (non-generated) test signatures."""
+    _discover_generated_tests()
     static_tests = []
     for name, info in _TESTS.items():
         if info["suite"].endswith("_generated"):
@@ -976,6 +1033,7 @@ def cmd_signatures(args):
 
 
 def cmd_list(args):
+    _discover_generated_tests()
     print("Available UAT test suites and tests:\n")
     for suite, tests in sorted(_SUITES.items()):
         print(f"  Suite: {suite}")
@@ -987,15 +1045,31 @@ def cmd_list(args):
 
 
 def cmd_run(args):
-    if args.test:
+    # Selector conflict detection
+    selectors = sum(bool(x) for x in [args.files, args.test, args.suite, args.generated_only])
+    if selectors > 1:
+        print("Error: --files, --test, --suite, and --generated-only are mutually exclusive.",
+              file=sys.stderr)
+        sys.exit(1)
+
+    if args.files:
+        registered, skipped = _load_test_files(args.files)
+        test_names = registered  # already an ordered list
+        if not test_names:
+            print("No tests loaded from specified files.", file=sys.stderr)
+            sys.exit(0)
+    elif args.test:
+        _discover_generated_tests()
         test_names = [args.test]
     elif args.suite:
+        _discover_generated_tests()
         if args.suite not in _SUITES:
             print(f"Unknown suite: {args.suite}", file=sys.stderr)
             print(f"Available suites: {', '.join(sorted(_SUITES.keys()))}", file=sys.stderr)
             sys.exit(1)
         test_names = _SUITES[args.suite]
     elif args.generated_only:
+        _discover_generated_tests()
         # Only run suites ending in _generated
         test_names = []
         for suite_name, suite_tests in _SUITES.items():
@@ -1005,6 +1079,7 @@ def cmd_run(args):
             print("No generated test suites found.", file=sys.stderr)
             sys.exit(0)
     else:
+        _discover_generated_tests()
         # Run all tests
         test_names = list(_TESTS.keys())
 
@@ -1039,6 +1114,8 @@ def main():
     run_p.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     run_p.add_argument("--generated-only", action="store_true",
                        help="Only run generated test suites (ending in _generated)")
+    run_p.add_argument("--files", nargs="+", type=str,
+                       help="Run only tests from these specific generated file paths")
 
     args = parser.parse_args()
     if args.command is None:

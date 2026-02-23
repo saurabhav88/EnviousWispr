@@ -97,7 +97,7 @@ A feature is NOT done until ALL of these pass:
 2. Smart UAT analyzes diff → generates targeted tests into `Tests/UITests/generated/` → runs generated tests only in background
 3. Review results — generated test failures may indicate real bugs or test generation issues
 4. Only commit when ALL generated tests pass
-5. Generated tests persist in git as a reusable test library — no promotion step needed
+5. Generated tests are ephemeral — created per diff, run via `--files`, not a persistent library
 
 ## Feature Request Docs
 
