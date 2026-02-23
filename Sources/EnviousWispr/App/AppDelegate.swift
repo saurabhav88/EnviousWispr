@@ -99,13 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
 
-        // Open main window
-        let openItem = NSMenuItem(title: "Open EnviousWispr", action: #selector(openMainWindow), keyEquivalent: "o")
-        openItem.image = NSImage(systemSymbolName: "macwindow", accessibilityDescription: "Open")
-        openItem.target = self
-        menu.addItem(openItem)
-
-        // Settings
+        // Settings (opens unified window to Speech Engine tab)
         let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Settings")
         settingsItem.target = self
@@ -182,11 +176,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
-    }
-
-    @objc private func openMainWindow() {
-        appState.pendingNavigationSection = .history
-        showWindow()
     }
 
     @objc private func openSettings() {
