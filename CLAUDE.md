@@ -28,7 +28,7 @@ python3 Tests/UITests/uat_runner.py run --files Tests/UITests/generated/test_foo
 6. **Read knowledge files before acting.** Consult `.claude/knowledge/` first.
 7. **Teams first for multi-agent work.** If 2+ agents are needed and their outputs depend on each other → `TeamCreate`. See [teamwork](.claude/knowledge/teamwork.md) for compositions, lifecycle, and decision matrix. Only use parallel `Task` for independent single-agent lookups.
 8. **You are the team lead.** Create teams, spawn teammates, assign tasks via shared task list, monitor progress via auto-delivered messages, shut down when complete. Never implement code yourself — if no teammate can handle it, spawn one.
-9. **Smart UAT before done.** Every feature must pass behavioral UAT tests before being marked complete. Use `wispr-run-smart-uat` for context-aware testing that generates targeted tests from your changes. All UAT execution MUST use `run_in_background: true`. See [conventions](.claude/knowledge/conventions.md) Definition of Done.
+9. **Smart UAT before done.** Every feature must pass behavioral UAT tests before being marked complete. Use `wispr-run-smart-uat` for scope-driven testing (from completed todos or explicit task). All UAT execution MUST use `run_in_background: true`. See [conventions](.claude/knowledge/conventions.md) Definition of Done.
 
 ## Agents
 
@@ -39,8 +39,8 @@ python3 Tests/UITests/uat_runner.py run --files Tests/UITests/generated/test_foo
 | [macos-platform](.claude/agents/macos-platform.md) | Permissions, hotkeys, menu bar, paste, SwiftUI | `wispr-handle-macos-permissions`, `wispr-review-swiftui-conventions`, `wispr-check-accessibility-labels`, `wispr-validate-menu-bar-patterns` |
 | [quality-security](.claude/agents/quality-security.md) | Concurrency, actor isolation, Sendable, secrets | `wispr-audit-actor-isolation`, `wispr-flag-missing-sendable`, `wispr-detect-unsafe-main-actor-dispatches`, `wispr-check-api-key-storage`, `wispr-detect-hardcoded-secrets`, `wispr-validate-keychain-usage`, `wispr-flag-sensitive-logging`, `wispr-swift-format-check` |
 | [feature-scaffolding](.claude/agents/feature-scaffolding.md) | New backends, connectors, views, tabs | `wispr-scaffold-asr-backend`, `wispr-scaffold-llm-connector`, `wispr-scaffold-settings-tab`, `wispr-scaffold-swiftui-view` |
-| [testing](.claude/agents/testing.md) | Smoke tests, UAT behavioral tests, UI tests, benchmarks, API contracts | `wispr-run-smoke-test`, `wispr-run-uat`, `wispr-generate-uat-tests`, `wispr-run-benchmarks`, `wispr-validate-api-contracts`, `wispr-ui-ax-inspect`, `wispr-ui-simulate-input`, `wispr-ui-screenshot-verify`, `wispr-run-ui-test`, `wispr-run-smart-uat` |
-| [uat-generator](.claude/agents/uat-generator.md) | LLM-driven UAT test generation from git diffs | — (invoked by `wispr-run-smart-uat`) |
+| [testing](.claude/agents/testing.md) | Smoke tests, UAT behavioral tests, benchmarks, API contracts | `wispr-run-smoke-test`, `wispr-run-smart-uat`, `wispr-generate-uat-tests`, `wispr-run-benchmarks`, `wispr-validate-api-contracts`, `wispr-ui-ax-inspect`, `wispr-ui-simulate-input`, `wispr-ui-screenshot-verify` |
+| [uat-generator](.claude/agents/uat-generator.md) | LLM-driven UAT test generation from project scope | — (invoked by `wispr-run-smart-uat`) |
 | [release-maintenance](.claude/agents/release-maintenance.md) | Packaging, signing, changelog, migration, dead code | `wispr-build-release-config`, `wispr-bundle-app`, `wispr-rebuild-and-relaunch`, `wispr-codesign-without-xcode`, `wispr-generate-changelog`, `wispr-migrate-swift-version`, `wispr-find-dead-code`, `wispr-release-checklist` |
 | [feature-planning](.claude/agents/feature-planning.md) | Feature request planning, implementation coordination | `wispr-check-feature-tracker`, `wispr-implement-feature-request` |
 | [user-management](.claude/agents/user-management.md) | Accounts, licensing, entitlements, trials, payments, analytics | — |

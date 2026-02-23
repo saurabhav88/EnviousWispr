@@ -110,7 +110,7 @@ def test_<name>(ctx):
 4. **Register cleanup actions** via `ctx.on_cleanup()` for any state-changing operations (e.g., if you start recording, register ESC cleanup).
 5. **Use `ctx.wait()`** between actions to let the UI settle. Minimum 0.3s after clicks, 1.0s after state transitions.
 6. **Assert no crash** at the end of every test: `assert_process_running(ctx.app_name)`.
-7. **Keep tests independent** — each test should work regardless of what other tests ran before it.
+7. **Keep tests independent** — each test should work regardless of what other tests ran before it. Independence means each test can run standalone. It does NOT mean each test must navigate from scratch — use session-aware helpers (`ensure_settings_open`, `ensure_tab_selected`) which handle both first-run and cached cases. See also **Test Consolidation** below: same-context assertions belong in one test.
 
 ## Session-Aware Patterns (Menu Bar Optimization)
 
@@ -138,6 +138,19 @@ settings_win = ctx.ensure_settings_open()
 ```
 
 Do NOT define a local `_open_settings()` helper. Always use `ctx.ensure_settings_open()`.
+
+### Navigating to a Settings tab
+
+```python
+settings_win = ctx.ensure_tab_selected("AI Polish")
+# Opens Settings if needed, then selects the tab — reuses if already selected
+# No redundant sidebar click if AI Polish was already the active tab
+```
+
+Prefer `ctx.ensure_tab_selected(tab_name)` over manually finding and clicking sidebar
+rows. It handles both the first-run case (Settings closed) and the cached case (Settings
+open, tab already active) automatically. Do NOT define a local `_navigate_to_tab()` or
+`_select_tab()` helper — always use `ctx.ensure_tab_selected()`.
 
 ### Clicking menu items that change state (start recording, etc.)
 
@@ -173,6 +186,79 @@ Don't generate tests for:
 - Test infrastructure changes (Tests/ directory)
 - Documentation or config changes
 - Scenarios already covered by static tests (check signatures output first)
+
+## Test Consolidation
+
+When generating multiple test scenarios for the same UI context, **consolidate them into
+a single test function** rather than creating separate tests that each navigate independently.
+This avoids redundant UI navigation (opening the same menu, clicking the same sidebar tab)
+and produces faster, less flicker-prone test runs.
+
+### 1. Consolidate by UI context
+
+When multiple test scenarios share the same UI state (same Settings tab, same menu bar
+state, same window), combine them into **one test function with multiple assertions**.
+Name the consolidated test descriptively to reflect the full scope.
+
+**Bad** (3 tests, 3 tab navigations):
+```python
+@uat_test("provider_picker_lists_all", suite="settings")
+def test1(ctx):
+    """GIVEN Settings AI Polish tab, WHEN inspecting provider picker, THEN all providers present."""
+    settings_win = ctx.ensure_tab_selected("AI Polish")
+    # check all present ...
+
+@uat_test("provider_picker_no_extras", suite="settings")
+def test2(ctx):
+    """GIVEN Settings AI Polish tab, WHEN inspecting provider picker, THEN no extra providers."""
+    settings_win = ctx.ensure_tab_selected("AI Polish")
+    # check no extras ...
+
+@uat_test("provider_picker_selectable", suite="settings")
+def test3(ctx):
+    """GIVEN Settings AI Polish tab, WHEN clicking provider picker, THEN it is selectable."""
+    settings_win = ctx.ensure_tab_selected("AI Polish")
+    # check selectable ...
+```
+
+**Good** (1 test, 1 tab navigation):
+```python
+@uat_test("ai_polish_provider_picker_validation", suite="settings")
+def test_providers(ctx):
+    """GIVEN Settings AI Polish tab open,
+    WHEN inspecting provider picker,
+    THEN all expected providers are present, no extras appear, and picker is selectable."""
+    settings_win = ctx.ensure_tab_selected("AI Polish")
+    # Assert all providers present
+    # Assert no extras
+    # Assert picker is selectable
+    assert_process_running(ctx.app_name)
+```
+
+### 2. When to keep tests separate
+
+Tests should remain separate ONLY when they have **different preconditions** or
+**different state mutations** — for example:
+
+- One test needs recording active, another needs idle state
+- One test changes a setting value, another reads the default
+- Tests operate on different tabs or different windows
+
+Same-screen, same-state assertions that only read UI elements MUST be consolidated
+into a single test. The rule: **if two tests would navigate to the exact same place
+and neither mutates state, they belong in one test function.**
+
+### 3. Consolidation checklist
+
+Before writing generated test files, group your planned tests:
+
+1. **Bucket by UI context** — which tab, window, or menu state does each test need?
+2. **Separate readers from mutators** — read-only assertions consolidate; state-changing
+   tests stay separate
+3. **Name the consolidated test** to describe the full validation scope (e.g.,
+   `ai_polish_provider_picker_validation`, `general_tab_all_controls_present`)
+4. **Order assertions** logically within the consolidated test — existence checks first,
+   then property checks, then interaction checks
 
 ## Coordination
 

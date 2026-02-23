@@ -59,11 +59,12 @@ sleep 3 && ps aux | grep -c '[E]nviousWispr'
 **This step is NOT optional. The skill is incomplete without it. Do NOT print a final report until UAT finishes.**
 
 After Step 5 confirms the app is running, immediately invoke the `wispr-run-smart-uat` skill.
-It analyzes what changed in git and generates targeted tests automatically.
+It builds scope from completed todos (or conversation context), generates targeted tests, and runs them.
 
 All UAT execution MUST use `run_in_background: true` (CGEvent collides with VSCode).
 
 - PASS: UAT tests pass — proceed to Final Report
+- SKIPPED: No UI-observable changes in scope — proceed to Final Report
 - FAIL: Fix the issue and restart from Step 1
 
 ## Final Report (only after UAT)

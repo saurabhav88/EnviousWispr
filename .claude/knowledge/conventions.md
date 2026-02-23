@@ -86,18 +86,34 @@ A feature is NOT done until ALL of these pass:
 1. `swift build -c release` exits 0
 2. `swift build --build-tests` exits 0
 3. .app bundle rebuilt + relaunched (`wispr-rebuild-and-relaunch`)
-4. **Smart UAT tests pass** (`wispr-run-smart-uat` — generates targeted tests from diff, runs generated tests only)
+4. **Smart UAT tests pass** (`wispr-run-smart-uat` — scope-driven, generates targeted tests for the current project)
 5. All UAT execution MUST use `run_in_background: true` — foreground fails due to CGEvent/VSCode collision
 
-**Smart UAT is mandatory, not optional.** It replaces generic `wispr-run-uat` as the primary testing gate.
+### UAT: Two Modes Only
+
+| Mode       | Invocation                     | Scope source                                          |
+| ---------- | ------------------------------ | ----------------------------------------------------- |
+| **Smart**  | `/wispr-run-smart-uat`         | Completed todos → conversation context → diff fallback |
+| **Custom** | `/wispr-run-smart-uat "test X"` | Your explicit instruction                             |
+
+There is no separate "static UAT" or "full UAT" mode. Static test functions exist in `uat_runner.py` but are not a distinct workflow tier.
 
 ### UAT Workflow for Every Feature
 
-1. After implementing code → invoke `wispr-run-smart-uat` (or `wispr-run-smart-uat "description of change"`)
-2. Smart UAT analyzes diff → generates targeted tests into `Tests/UITests/generated/` → runs generated tests only in background
+1. After implementing code → invoke `wispr-run-smart-uat`
+2. Smart UAT wipes `Tests/UITests/generated/`, builds scope from completed todos (or conversation context), generates targeted tests, runs them in background
 3. Review results — generated test failures may indicate real bugs or test generation issues
-4. Only commit when ALL generated tests pass
-5. Generated tests are ephemeral — created per diff, run via `--files`, not a persistent library
+4. If scope has no UI-observable changes, Smart UAT reports SKIPPED — this is valid
+5. Only commit when generated tests pass (or are validly skipped)
+6. Generated tests are ephemeral — wiped at the start of every run, never accumulate
+
+### Todo Quality for UAT
+
+When creating todos for code work, include what changed, where, and user-visible result:
+
+Format: `Fix X in Y (user-visible result Z)`
+
+Start a fresh todo list for each project. Smart UAT uses completed todos from the active project only.
 
 ## Feature Request Docs
 

@@ -30,10 +30,9 @@ A test that only checks element existence is **not a test** — it's a type chec
 ## Validation Hierarchy
 
 1. **Compile gate** — `wispr-run-smoke-test` (fast: `swift build -c release` + `swift build --build-tests`)
-2. **Bundle + launch + UAT** — `wispr-rebuild-and-relaunch` (build → bundle → kill → relaunch → smart UAT)
-3. **Full regression** — `wispr-run-uat` (all static suites, only when explicitly requested)
-4. **Benchmarks** — `wispr-run-benchmarks` (ASR performance: 5s/15s/30s transcription, RTF measurement)
-5. **API contracts** — `wispr-validate-api-contracts` (OpenAI/Gemini request/response shape verification)
+2. **Bundle + launch + Smart UAT** — `wispr-rebuild-and-relaunch` (build → bundle → kill → relaunch → scoped UAT)
+3. **Benchmarks** — `wispr-run-benchmarks` (ASR performance: 5s/15s/30s transcription, RTF measurement)
+4. **API contracts** — `wispr-validate-api-contracts` (OpenAI/Gemini request/response shape verification)
 
 **Important**: Never test via `swift run` alone — always use the .app bundle to match real user conditions.
 
@@ -43,7 +42,7 @@ A test that only checks element existence is **not a test** — it's a type chec
 
 ### Test Runner
 
-**CRITICAL: Always run UAT commands with `run_in_background: true` in the Bash tool.** Foreground execution silently fails. Use `TaskOutput` to retrieve results. For context-aware testing, use `wispr-run-smart-uat` which generates targeted tests from git diffs.
+**CRITICAL: Always run UAT commands with `run_in_background: true` in the Bash tool.** Foreground execution silently fails. Use `TaskOutput` to retrieve results. Use `wispr-run-smart-uat` for scope-driven testing (from todos or explicit task).
 
 ```bash
 # All tests (MUST use run_in_background: true)
@@ -127,7 +126,7 @@ When testing a newly implemented feature:
 1. **Read the feature spec** from `docs/feature-requests/`
 2. **Generate scenarios** via `wispr-generate-uat-tests`
 3. **Write scenario file** to `Tests/UITests/scenarios/NNN-feature-name.md`, then **add test functions** to `uat_runner.py` with `@uat_test` decorator
-4. **Run UAT suite** via `wispr-run-uat`
+4. **Run Smart UAT** via `wispr-run-smart-uat`
 5. **Fix failures** — if a test fails, the feature has a bug, not the test
 6. **Only declare done** when all scenarios pass
 
@@ -140,15 +139,14 @@ Error codes: `401` → invalid key, `429` → rate limited.
 ## Skills → `.claude/skills/`
 
 - `wispr-run-smoke-test` — compile gate (`swift build -c release` + `swift build --build-tests`)
-- `wispr-run-uat` — behavioral Given/When/Then acceptance tests
+- `wispr-run-smart-uat` — scope-driven UAT: Smart (from todos/context) or Custom (explicit instruction)
 - `wispr-generate-uat-tests` — systematic scenario generation from feature specs
 - `wispr-run-benchmarks` — ASR performance measurement
 - `wispr-validate-api-contracts` — LLM API shape verification
 - `wispr-ui-ax-inspect` — AX tree inspection
 - `wispr-ui-simulate-input` — CGEvent HID simulation
 - `wispr-ui-screenshot-verify` — visual regression
-- `wispr-run-ui-test` — **DEPRECATED** (use `wispr-run-uat` or `wispr-run-smart-uat` instead)
-- `wispr-run-smart-uat` — context-aware UAT: analyzes diff, generates targeted tests, runs file-targeted via `--files`
+- `wispr-run-ui-test` — **DEPRECATED** (use `wispr-run-smart-uat` instead)
 
 ## Coordination
 

@@ -162,6 +162,7 @@ class TestSession:
         self.verbose = verbose
         self._menu_snapshot = None
         self._snapshot_valid = False
+        self._current_tab = None  # name of the currently selected Settings tab
 
     def get_menu_snapshot(self, force_refresh=False):
         """Return cached MenuBarSnapshot, taking one if needed."""
@@ -218,10 +219,57 @@ class TestSession:
         if self.verbose:
             print("  [SESSION] Menu snapshot invalidated", file=sys.stderr)
 
+    def ensure_tab_selected(self, tab_name):
+        """Select a Settings tab by name, skipping navigation if already selected.
+
+        Returns the Settings AXWindow element. Uses the same row-click logic as
+        test_settings_tab_switch so the two stay in sync.
+        """
+        if self._current_tab == tab_name:
+            if self.verbose:
+                print(f"  [SESSION] Tab already selected: {tab_name!r}", file=sys.stderr)
+            # Settings must still be open; return it
+            return self.ensure_settings_open()
+
+        settings_win = self.ensure_settings_open()
+
+        outline = find_element(settings_win, role="AXOutline")
+        if outline is None:
+            raise RuntimeError("Settings sidebar outline not found")
+
+        rows = get_attr(outline, "AXChildren") or []
+        clicked = False
+        for row in rows:
+            if get_attr(row, "AXRole") != "AXRow":
+                continue
+            row_texts = find_all_elements(row, role="AXStaticText")
+            for txt in row_texts:
+                val = get_attr(txt, "AXValue") or ""
+                if val == tab_name:
+                    center = element_center(row)
+                    if center:
+                        click(center[0], center[1])
+                        time.sleep(0.5)
+                        if self.verbose:
+                            print(f"  [SESSION] Switched to tab: {tab_name!r}", file=sys.stderr)
+                        clicked = True
+                    break
+            if clicked:
+                break
+
+        if not clicked:
+            raise RuntimeError(f"Settings tab not found in sidebar: {tab_name!r}")
+
+        self._current_tab = tab_name
+        return settings_win
+
     def teardown(self):
         """Close all app windows after test run — leaves desktop clean."""
         if self.verbose:
             print("  [SESSION] Tearing down — closing all app windows...", file=sys.stderr)
+
+        # Reset tab cache — windows will close so state is gone
+        self._current_tab = None
 
         # Dismiss any open menu first
         try:
@@ -256,7 +304,7 @@ class TestSession:
     def ensure_settings_open(self, verbose=False):
         """Open Settings window if not already open, return AXWindow element."""
         settings_win = wait_for_element(
-            self.pid, role="AXWindow", title="EnviousWispr Settings", timeout=0.5
+            self.pid, role="AXWindow", title="EnviousWispr", timeout=0.5
         )
         if settings_win is not None:
             if self.verbose:
@@ -272,7 +320,7 @@ class TestSession:
         time.sleep(1.0)
 
         settings_win = wait_for_element(
-            self.pid, role="AXWindow", title="EnviousWispr Settings", timeout=3.0
+            self.pid, role="AXWindow", title="EnviousWispr", timeout=3.0
         )
         if settings_win is None:
             raise RuntimeError("Settings window did not appear")
@@ -545,7 +593,41 @@ class TestContext:
         else:
             press_key("comma", cmd=True)
         time.sleep(1.0)
-        return wait_for_element(self.pid, role="AXWindow", title="EnviousWispr Settings", timeout=3.0)
+        return wait_for_element(self.pid, role="AXWindow", title="EnviousWispr", timeout=3.0)
+
+    def ensure_tab_selected(self, tab_name):
+        """Open Settings (if needed) and select the named sidebar tab.
+
+        If the tab is already selected (tracked by the session), navigation is
+        skipped entirely — no redundant clicks. Falls back to manual navigation
+        when no session is available.
+
+        Returns the Settings AXWindow element.
+        """
+        if self.session:
+            return self.session.ensure_tab_selected(tab_name)
+        # Fallback: open settings and click the tab manually (no cache available)
+        settings_win = self.ensure_settings_open()
+        if settings_win is None:
+            raise RuntimeError("Settings window did not appear")
+        outline = find_element(settings_win, role="AXOutline")
+        if outline is None:
+            raise RuntimeError("Settings sidebar outline not found")
+        rows = get_attr(outline, "AXChildren") or []
+        for row in rows:
+            if get_attr(row, "AXRole") != "AXRow":
+                continue
+            row_texts = find_all_elements(row, role="AXStaticText")
+            for txt in row_texts:
+                val = get_attr(txt, "AXValue") or ""
+                if val == tab_name:
+                    center = element_center(row)
+                    if center:
+                        click(center[0], center[1])
+                        time.sleep(0.5)
+                        self.log(f"Switched to tab: {tab_name!r} (no-session fallback)")
+                    return settings_win
+        raise RuntimeError(f"Settings tab not found in sidebar: {tab_name!r}")
 
 
 # ---------------------------------------------------------------------------
