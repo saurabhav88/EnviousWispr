@@ -30,6 +30,7 @@ final class AppState {
     private var loadTask: Task<Void, Never>?
     var searchQuery: String = ""
     var selectedTranscriptID: UUID?
+    var pendingNavigationSection: SettingsSection?
 
     var filteredTranscripts: [Transcript] {
         guard !searchQuery.isEmpty else { return transcripts }

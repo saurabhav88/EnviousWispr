@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// Sidebar navigation sections for the Command Center settings.
+/// Sidebar navigation sections for the unified window.
 enum SettingsSection: String, CaseIterable, Identifiable {
+    case history
     case speechEngine
     case shortcuts
     case aiPolish
@@ -15,6 +16,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
+        case .history:        return "History"
         case .speechEngine:   return "Speech Engine"
         case .shortcuts:      return "Shortcuts"
         case .aiPolish:       return "AI Polish"
@@ -28,6 +30,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
+        case .history:        return "clock.arrow.circlepath"
         case .speechEngine:   return "waveform"
         case .shortcuts:      return "keyboard"
         case .aiPolish:       return "sparkles"
@@ -41,15 +44,17 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 
     var group: SettingsGroup {
         switch self {
-        case .speechEngine, .shortcuts: return .record
-        case .aiPolish, .wordCorrection:                 return .process
-        case .clipboard:                                 return .output
-        case .memory, .permissions, .diagnostics:        return .system
+        case .history:                              return .app
+        case .speechEngine, .shortcuts:            return .record
+        case .aiPolish, .wordCorrection:            return .process
+        case .clipboard:                            return .output
+        case .memory, .permissions, .diagnostics:  return .system
         }
     }
 }
 
 enum SettingsGroup: String, CaseIterable {
+    case app     = "APP"
     case record  = "RECORD"
     case process = "PROCESS"
     case output  = "OUTPUT"

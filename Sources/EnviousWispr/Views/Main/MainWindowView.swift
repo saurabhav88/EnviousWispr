@@ -1,47 +1,6 @@
 import SwiftUI
 import Combine
 
-/// Primary transcript window with Command Center layout.
-struct MainWindowView: View {
-    @Environment(AppState.self) private var appState
-    @State private var showOnboarding = false
-
-    var body: some View {
-        NavigationSplitView {
-            TranscriptHistoryView()
-        } detail: {
-            if let transcript = appState.activeTranscript {
-                TranscriptDetailView(transcript: transcript)
-            } else {
-                StatusView()
-            }
-        }
-        .navigationTitle(AppConstants.appName)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                RecordButton()
-            }
-            ToolbarItem(placement: .status) {
-                StatusBadge()
-            }
-        }
-        .task {
-            if !appState.permissions.hasMicrophonePermission {
-                _ = await appState.permissions.requestMicrophoneAccess()
-            }
-            appState.loadTranscripts()
-
-            if !appState.settings.hasCompletedOnboarding {
-                showOnboarding = true
-            }
-        }
-        .sheet(isPresented: $showOnboarding) {
-            OnboardingView(isPresented: $showOnboarding)
-                .environment(appState)
-        }
-    }
-}
-
 /// Status view when no transcript is active — handles all pipeline states.
 struct StatusView: View {
     @Environment(AppState.self) private var appState

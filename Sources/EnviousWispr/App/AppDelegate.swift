@@ -17,27 +17,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Shared app state — created here so it's available before any SwiftUI scene loads.
     let appState = AppState()
 
-    /// Callbacks set by SwiftUI to open windows (since openWindow env is only available in views).
+    /// Callback set by SwiftUI to open the main window (since openWindow env is only available in views).
     var openMainWindowAction: (() -> Void)?
-    var openSettingsAction: (() -> Void)?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Hide dock icon on launch — we're a menu bar utility
         NSApp.setActivationPolicy(.accessory)
 
-        // When all visible windows close, revert to accessory to hide dock icon
+        // When the unified window closes, revert to .accessory immediately.
+        // There's only one window now, so no need for the 200ms re-check delay.
         NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification,
             object: nil,
             queue: .main
-        ) { _ in
-            // Delay check so the window has time to close
-            Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(500))
-                let hasVisibleWindows = NSApp.windows.contains { $0.isVisible && !($0.className.contains("StatusBar")) }
-                if !hasVisibleWindows {
-                    NSApp.setActivationPolicy(.accessory)
-                }
+        ) { notification in
+            guard let window = notification.object as? NSWindow else { return }
+            // Access title on main queue (observer queue is .main above).
+            // Match by title (set from Window scene declaration) and styled mask
+            // so status-bar/panel windows never trigger the policy reset.
+            MainActor.assumeIsolated {
+                guard window.styleMask.contains(.titled),
+                      window.title == AppConstants.appName else { return }
+                NSApp.setActivationPolicy(.accessory)
             }
         }
 
@@ -168,7 +169,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc private func openMainWindow() {
+    /// Show the unified window: bring it to front, set .regular, activate.
+    private func showWindow() {
         if let action = openMainWindowAction {
             action()
         } else {
@@ -182,14 +184,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    @objc private func openMainWindow() {
+        appState.pendingNavigationSection = .history
+        showWindow()
+    }
+
     @objc private func openSettings() {
-        if let action = openSettingsAction {
-            action()
-        } else {
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        }
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
+        appState.pendingNavigationSection = .speechEngine
+        showWindow()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

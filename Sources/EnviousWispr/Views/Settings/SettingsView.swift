@@ -1,9 +1,10 @@
 import SwiftUI
 
-/// Command Center settings with sidebar navigation.
-struct SettingsView: View {
+/// Unified single-window view: History + all settings tabs in one sidebar.
+struct UnifiedWindowView: View {
     @Environment(AppState.self) private var appState
-    @State private var selectedSection: SettingsSection = .speechEngine
+    @State private var selectedSection: SettingsSection = .history
+    @State private var showOnboarding = false
 
     var body: some View {
         NavigationSplitView {
@@ -20,15 +21,45 @@ struct SettingsView: View {
             .listStyle(.sidebar)
             .navigationSplitViewColumnWidth(min: 160, ideal: 180, max: 200)
         } detail: {
-            settingsDetail
+            detailContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 680, height: 520)
+        .navigationTitle(AppConstants.appName)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                RecordButton()
+            }
+            ToolbarItem(placement: .status) {
+                StatusBadge()
+            }
+        }
+        .task {
+            if !appState.permissions.hasMicrophonePermission {
+                _ = await appState.permissions.requestMicrophoneAccess()
+            }
+            appState.loadTranscripts()
+
+            if !appState.settings.hasCompletedOnboarding {
+                showOnboarding = true
+            }
+        }
+        .sheet(isPresented: $showOnboarding) {
+            OnboardingView(isPresented: $showOnboarding)
+                .environment(appState)
+        }
+        .onChange(of: appState.pendingNavigationSection) { _, newSection in
+            if let section = newSection {
+                selectedSection = section
+                appState.pendingNavigationSection = nil
+            }
+        }
     }
 
     @ViewBuilder
-    private var settingsDetail: some View {
+    private var detailContent: some View {
         switch selectedSection {
+        case .history:
+            HistoryContentView()
         case .speechEngine:
             SpeechEngineSettingsView()
         case .shortcuts:
