@@ -43,6 +43,7 @@ final class TranscriptionPipeline {
     private var targetApp: NSRunningApplication?
     private var silenceDetector: SilenceDetector?
     private var vadMonitorTask: Task<Void, Never>?
+    private var recordingStartTime: Date?
 
     init(
         audioCapture: AudioCaptureManager,
@@ -100,6 +101,7 @@ final class TranscriptionPipeline {
         do {
             _ = try audioCapture.startCapture()
             state = .recording
+            recordingStartTime = Date()
             currentTranscript = nil
 
             Task { await AppLogger.shared.log(
@@ -117,6 +119,24 @@ final class TranscriptionPipeline {
     /// Stop recording and transcribe the captured audio.
     func stopAndTranscribe() async {
         guard state == .recording else { return }
+
+        // Silently discard recordings shorter than minimum duration (accidental taps)
+        if let startTime = recordingStartTime {
+            let elapsed = Date().timeIntervalSince(startTime)
+            if elapsed < TimingConstants.minimumRecordingDuration {
+                vadMonitorTask?.cancel()
+                vadMonitorTask = nil
+                _ = audioCapture.stopCapture()
+                recordingStartTime = nil
+                state = .idle
+                Task { await AppLogger.shared.log(
+                    "Recording too short (\(String(format: "%.2f", elapsed))s), discarded silently",
+                    level: .info, category: "Pipeline"
+                ) }
+                return
+            }
+        }
+        recordingStartTime = nil
 
         // Cancel VAD monitoring
         vadMonitorTask?.cancel()
@@ -167,7 +187,11 @@ final class TranscriptionPipeline {
 
             let asrText = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !asrText.isEmpty else {
-                state = .error("No speech detected")
+                state = .idle
+                Task { await AppLogger.shared.log(
+                    "ASR returned empty text, returning to idle silently",
+                    level: .info, category: "Pipeline"
+                ) }
                 return
             }
 
@@ -311,6 +335,7 @@ final class TranscriptionPipeline {
         if audioCapture.isCapturing {
             _ = audioCapture.stopCapture()
         }
+        recordingStartTime = nil
         state = .idle
         currentTranscript = nil
     }
@@ -330,6 +355,7 @@ final class TranscriptionPipeline {
 
         // Clear target app reference — nothing will be pasted
         targetApp = nil
+        recordingStartTime = nil
 
         // Transition to idle without saving any transcript
         state = .idle

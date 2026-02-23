@@ -9,6 +9,18 @@ enum LLMProvider: String, Codable, CaseIterable, Sendable {
     case none
 }
 
+extension LLMProvider {
+    var displayName: String {
+        switch self {
+        case .openAI:            return "OpenAI"
+        case .gemini:            return "Gemini"
+        case .ollama:            return "Ollama"
+        case .appleIntelligence: return "Apple Intelligence"
+        case .none:              return "None"
+        }
+    }
+}
+
 /// Result from LLM transcript polishing.
 struct LLMResult: Sendable {
     let polishedText: String

@@ -94,16 +94,25 @@ def find_menu_item_via_menu(pid, title, verbose=False):
     Menu items may have emoji prefixes (e.g. "🎙 Start Recording"), so this
     performs a substring match against AXTitle. Caller is responsible for
     closing the menu afterward if needed.
+
+    Scoped to AXExtrasMenuBar children only — avoids matching system menu items
+    from AXMenuBar (Apple menu, Edit, Window, etc.) which can number 330+.
     """
     open_menu_bar_menu(pid, verbose=verbose)
     app = get_ax_app(pid)
 
-    # First try exact match
-    el = find_element(app, role="AXMenuItem", title=title)
-    if el is not None:
-        return el
+    # Scope to AXExtrasMenuBar children only (our MenuBarExtra items)
+    extras_bar = get_attr(app, "AXExtrasMenuBar")
+    if extras_bar is not None:
+        children = get_attr(extras_bar, "AXChildren") or []
+        for child in children:
+            all_items = find_all_elements(child, role="AXMenuItem")
+            for item in all_items:
+                item_title = get_attr(item, "AXTitle") or ""
+                if title == item_title or title in item_title:
+                    return item
 
-    # Fallback: substring match across all menu items (handles emoji prefixes)
+    # Fallback: search the whole app tree (handles edge cases / unusual AX layouts)
     all_items = find_all_elements(app, role="AXMenuItem")
     for item in all_items:
         item_title = get_attr(item, "AXTitle") or ""
@@ -111,6 +120,162 @@ def find_menu_item_via_menu(pid, title, verbose=False):
             return item
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# Cached menu bar snapshot — avoids redundant menu opens
+# ---------------------------------------------------------------------------
+
+class MenuBarSnapshot:
+    """Cached menu bar state — titles and enabled flags. No AX refs (they go stale)."""
+    def __init__(self, items, timestamp):
+        self.items = items          # [{"title": str, "enabled": bool|None}, ...]
+        self.timestamp = timestamp  # time.time()
+
+    @property
+    def titles(self):
+        return [i["title"] for i in self.items]
+
+    def has_item(self, substring):
+        return any(substring in t for t in self.titles)
+
+    def find(self, substring):
+        for i in self.items:
+            if substring in i["title"]:
+                return i
+        return None
+
+    def is_enabled(self, substring):
+        item = self.find(substring)
+        return item["enabled"] if item else None
+
+
+MAX_SNAPSHOT_AGE = 30.0  # seconds before auto-refresh
+
+
+class TestSession:
+    """Shared state across an entire test run — avoids redundant menu opens."""
+
+    def __init__(self, pid, verbose=False):
+        self.pid = pid
+        self.verbose = verbose
+        self._menu_snapshot = None
+        self._snapshot_valid = False
+
+    def get_menu_snapshot(self, force_refresh=False):
+        """Return cached MenuBarSnapshot, taking one if needed."""
+        if (self._menu_snapshot and self._snapshot_valid and not force_refresh
+                and (time.time() - self._menu_snapshot.timestamp) < MAX_SNAPSHOT_AGE):
+            if self.verbose:
+                print(f"  [SESSION] Reusing menu snapshot", file=sys.stderr)
+            return self._menu_snapshot
+
+        if self.verbose:
+            print("  [SESSION] Taking fresh menu bar snapshot...", file=sys.stderr)
+
+        opened = open_menu_bar_menu(self.pid, verbose=self.verbose)
+        if not opened:
+            raise RuntimeError("Could not open menu bar for snapshot")
+
+        app = get_ax_app(self.pid)
+        items_data = []
+
+        # Scope to AXExtrasMenuBar children only — avoids capturing 330+ system
+        # menu items from AXMenuBar (Apple menu, Edit, Window, Help, etc.).
+        extras_bar = get_attr(app, "AXExtrasMenuBar")
+        if extras_bar is not None:
+            children = get_attr(extras_bar, "AXChildren") or []
+            for child in children:
+                menu_items = find_all_elements(child, role="AXMenuItem")
+                for item in menu_items:
+                    title = get_attr(item, "AXTitle") or ""
+                    enabled = get_attr(item, "AXEnabled")
+                    items_data.append({"title": title, "enabled": enabled})
+
+        # Fallback: if extras bar yielded nothing, search the whole app tree
+        if not items_data:
+            all_items = find_all_elements(app, role="AXMenuItem")
+            for item in all_items:
+                title = get_attr(item, "AXTitle") or ""
+                enabled = get_attr(item, "AXEnabled")
+                items_data.append({"title": title, "enabled": enabled})
+
+        close_menu_bar_menu(self.pid)
+
+        self._menu_snapshot = MenuBarSnapshot(items=items_data, timestamp=time.time())
+        self._snapshot_valid = True
+
+        if self.verbose:
+            preview = self._menu_snapshot.titles[:10]
+            print(f"  [SESSION] Snapshot: {len(items_data)} items (first 10): {preview}", file=sys.stderr)
+
+        return self._menu_snapshot
+
+    def invalidate_snapshot(self):
+        """Mark the snapshot as stale after a state-changing action."""
+        self._snapshot_valid = False
+        if self.verbose:
+            print("  [SESSION] Menu snapshot invalidated", file=sys.stderr)
+
+    def teardown(self):
+        """Close all app windows after test run — leaves desktop clean."""
+        if self.verbose:
+            print("  [SESSION] Tearing down — closing all app windows...", file=sys.stderr)
+
+        # Dismiss any open menu first
+        try:
+            close_menu_bar_menu(self.pid)
+        except Exception:
+            pass
+
+        try:
+            app = get_ax_app(self.pid)
+            windows = get_attr(app, "AXWindows") or []
+            for win in windows:
+                title = get_attr(win, "AXTitle") or "(untitled)"
+                # Try AXPress on close button, fallback to Cmd+W
+                close_btn = find_element(win, role="AXButton", description="close button")
+                if close_btn is not None:
+                    perform_action(close_btn, "AXPress")
+                    if self.verbose:
+                        print(f"  [SESSION] Closed window: {title}", file=sys.stderr)
+                    time.sleep(0.3)
+                else:
+                    # Fallback: raise the window and Cmd+W
+                    perform_action(win, "AXRaise")
+                    time.sleep(0.2)
+                    press_key("w", cmd=True)
+                    if self.verbose:
+                        print(f"  [SESSION] Closed window via Cmd+W: {title}", file=sys.stderr)
+                    time.sleep(0.3)
+        except Exception as e:
+            if self.verbose:
+                print(f"  [SESSION] Teardown error (non-fatal): {e}", file=sys.stderr)
+
+    def ensure_settings_open(self, verbose=False):
+        """Open Settings window if not already open, return AXWindow element."""
+        settings_win = wait_for_element(
+            self.pid, role="AXWindow", title="EnviousWispr Settings", timeout=0.5
+        )
+        if settings_win is not None:
+            if self.verbose:
+                print("  [SESSION] Settings already open", file=sys.stderr)
+            return settings_win
+
+        # Not open — open via menu
+        settings_item = find_menu_item_via_menu(self.pid, "Settings...", verbose=self.verbose)
+        if settings_item is not None:
+            perform_action(settings_item, "AXPress")
+        else:
+            press_key("comma", cmd=True)
+        time.sleep(1.0)
+
+        settings_win = wait_for_element(
+            self.pid, role="AXWindow", title="EnviousWispr Settings", timeout=3.0
+        )
+        if settings_win is None:
+            raise RuntimeError("Settings window did not appear")
+        return settings_win
 
 
 # ---------------------------------------------------------------------------
@@ -280,10 +445,11 @@ def _criteria_str(role=None, title=None, description=None):
 class TestContext:
     """Provides test functions with app info, helpers, and state tracking."""
 
-    def __init__(self, pid, app_name="EnviousWispr", verbose=False):
+    def __init__(self, pid, app_name="EnviousWispr", verbose=False, session=None):
         self.pid = pid
         self.app_name = app_name
         self.verbose = verbose
+        self.session = session
         self._cleanup_actions = []
 
     def log(self, msg):
@@ -346,6 +512,40 @@ class TestContext:
     def get_memory_mb(self):
         return get_process_memory_mb(self.pid)
 
+    @property
+    def menu_snapshot(self):
+        """Get the cached menu bar snapshot (takes one if needed)."""
+        if self.session is None:
+            raise RuntimeError("No TestSession available")
+        return self.session.get_menu_snapshot()
+
+    def invalidate_menu_snapshot(self):
+        """Call after state-changing actions (start/stop recording)."""
+        if self.session:
+            self.session.invalidate_snapshot()
+
+    def click_menu_item(self, title_substring):
+        """Open menu, find item by title, AXPress it. Invalidates snapshot."""
+        item = find_menu_item_via_menu(self.pid, title_substring, verbose=self.verbose)
+        if item is None:
+            raise AssertionError(f"Menu item not found: {title_substring!r}")
+        if not perform_action(item, "AXPress"):
+            raise AssertionError(f"AXPress failed on: {title_substring!r}")
+        self.invalidate_menu_snapshot()
+
+    def ensure_settings_open(self):
+        """Open Settings if not already open, return AXWindow."""
+        if self.session:
+            return self.session.ensure_settings_open(verbose=self.verbose)
+        # Fallback without session
+        settings_item = find_menu_item_via_menu(self.pid, "Settings...", verbose=self.verbose)
+        if settings_item is not None:
+            perform_action(settings_item, "AXPress")
+        else:
+            press_key("comma", cmd=True)
+        time.sleep(1.0)
+        return wait_for_element(self.pid, role="AXWindow", title="EnviousWispr Settings", timeout=3.0)
+
 
 # ---------------------------------------------------------------------------
 # Test registry
@@ -355,13 +555,26 @@ _TESTS = {}
 _SUITES = {}
 
 
-def uat_test(name, suite="default"):
-    """Decorator to register a UAT test function."""
+def uat_test(name, suite="default", context="none"):
+    """Decorator to register a UAT test function.
+
+    context: UI context required by this test.
+      - "none": No UI interaction (process checks, clipboard)
+      - "menu_bar": Needs menu bar opened
+      - "settings": Needs Settings window open
+    """
     def decorator(fn):
-        _TESTS[name] = {"fn": fn, "suite": suite, "name": name}
+        _TESTS[name] = {"fn": fn, "suite": suite, "name": name, "context": context}
         _SUITES.setdefault(suite, []).append(name)
         return fn
     return decorator
+
+
+# ---------------------------------------------------------------------------
+# Context ordering — groups tests by UI state to minimize menu open/close cycles
+# ---------------------------------------------------------------------------
+
+CONTEXT_ORDER = {"none": 0, "menu_bar": 1, "settings": 2}
 
 
 # ---------------------------------------------------------------------------
@@ -375,40 +588,55 @@ def run_tests(test_names, verbose=False):
         print("ERROR: EnviousWispr is not running. Launch it first.", file=sys.stderr)
         return [TestResult("setup", "ERROR", "EnviousWispr not running")]
 
+    session = TestSession(pid, verbose=verbose)
+
+    # Sort known tests by context to batch UI operations, keep unknowns at end
+    known = [n for n in test_names if n in _TESTS]
+    unknown = [n for n in test_names if n not in _TESTS]
+    sorted_known = sorted(
+        known,
+        key=lambda n: CONTEXT_ORDER.get(_TESTS[n].get("context", "none"), 99)
+    )
+    test_names = sorted_known + unknown
+
     results = []
-    for name in test_names:
-        if name not in _TESTS:
-            results.append(TestResult(name, "SKIP", f"Unknown test: {name}"))
-            continue
+    try:
+        for name in test_names:
+            if name not in _TESTS:
+                results.append(TestResult(name, "SKIP", f"Unknown test: {name}"))
+                continue
 
-        test_info = _TESTS[name]
-        ctx = TestContext(pid, verbose=verbose)
+            test_info = _TESTS[name]
+            ctx = TestContext(pid, verbose=verbose, session=session)
 
-        if verbose:
-            print(f"\n{'='*60}", file=sys.stderr)
-            print(f"  Running: {name}", file=sys.stderr)
-            print(f"{'='*60}", file=sys.stderr)
+            if verbose:
+                print(f"\n{'='*60}", file=sys.stderr)
+                print(f"  Running: {name}", file=sys.stderr)
+                print(f"{'='*60}", file=sys.stderr)
 
-        start = time.time()
-        try:
-            test_info["fn"](ctx)
-            elapsed = time.time() - start
-            results.append(TestResult(name, "PASS", duration=elapsed))
-            if verbose:
-                print(f"  PASS ({elapsed:.1f}s)", file=sys.stderr)
-        except AssertionError as e:
-            elapsed = time.time() - start
-            results.append(TestResult(name, "FAIL", str(e), elapsed))
-            if verbose:
-                print(f"  FAIL ({elapsed:.1f}s): {e}", file=sys.stderr)
-        except Exception as e:
-            elapsed = time.time() - start
-            results.append(TestResult(name, "ERROR", str(e), elapsed,
-                                      {"traceback": traceback.format_exc()}))
-            if verbose:
-                print(f"  ERROR ({elapsed:.1f}s): {e}", file=sys.stderr)
-        finally:
-            ctx.run_cleanup()
+            start = time.time()
+            try:
+                test_info["fn"](ctx)
+                elapsed = time.time() - start
+                results.append(TestResult(name, "PASS", duration=elapsed))
+                if verbose:
+                    print(f"  PASS ({elapsed:.1f}s)", file=sys.stderr)
+            except AssertionError as e:
+                elapsed = time.time() - start
+                results.append(TestResult(name, "FAIL", str(e), elapsed))
+                if verbose:
+                    print(f"  FAIL ({elapsed:.1f}s): {e}", file=sys.stderr)
+            except Exception as e:
+                elapsed = time.time() - start
+                results.append(TestResult(name, "ERROR", str(e), elapsed,
+                                          {"traceback": traceback.format_exc()}))
+                if verbose:
+                    print(f"  ERROR ({elapsed:.1f}s): {e}", file=sys.stderr)
+            finally:
+                ctx.run_cleanup()
+    finally:
+        # Clean up: close all app windows regardless of pass/fail
+        session.teardown()
 
     return results
 
@@ -455,14 +683,14 @@ def print_results(results):
 
 # --- Suite: app_basics ---
 
-@uat_test("app_is_running", suite="app_basics")
+@uat_test("app_is_running", suite="app_basics", context="none")
 def test_app_running(ctx):
     """GIVEN the app should be running, THEN it has a live process."""
     assert_process_running(ctx.app_name)
     ctx.log(f"PID: {ctx.pid}")
 
 
-@uat_test("menu_bar_status_item_exists", suite="app_basics")
+@uat_test("menu_bar_status_item_exists", suite="app_basics", context="none")
 def test_status_item(ctx):
     """GIVEN the app is running, THEN a status item appears in the menu bar."""
     # MenuBarExtra creates a status item — verify via AX
@@ -473,38 +701,25 @@ def test_status_item(ctx):
     assert info["role"] == "AXApplication", f"Expected AXApplication, got {info['role']}"
 
 
-@uat_test("menu_bar_has_menu_items", suite="app_basics")
+@uat_test("menu_bar_has_menu_items", suite="app_basics", context="menu_bar")
 def test_menu_items(ctx):
-    """GIVEN the app is running, WHEN the menu bar menu is opened,
+    """GIVEN the app is running, WHEN the menu bar state is checked,
     THEN expected menu items are discoverable."""
-    # MenuBarExtra items are hidden until the menu is opened
-    opened = open_menu_bar_menu(ctx.pid, verbose=ctx.verbose)
-    if not opened:
-        raise AssertionError("Could not open the menu bar menu via AX")
-    ctx.on_cleanup(lambda: close_menu_bar_menu(ctx.pid))
-
-    # Menu items may have emoji prefixes, so use substring matching
-    app = get_ax_app(ctx.pid)
-    all_items = find_all_elements(app, role="AXMenuItem")
-    all_titles = [get_attr(item, "AXTitle") or "" for item in all_items]
-    ctx.log(f"All menu item titles: {all_titles}")
+    snapshot = ctx.menu_snapshot
+    ctx.log(f"All menu item titles: {snapshot.titles}")
 
     items_to_check = ["Start Recording", "Record + AI Polish", "Settings", "Quit"]
-    found = []
-    for needle in items_to_check:
-        for ax_title in all_titles:
-            if needle in ax_title:
-                found.append(needle)
-                break
+    found = [needle for needle in items_to_check if snapshot.has_item(needle)]
     ctx.log(f"Found menu items: {found}")
 
-    close_menu_bar_menu(ctx.pid)
-
     if len(found) == 0:
-        raise AssertionError(f"No expected menu items found. Checked: {items_to_check}. Actual: {all_titles}")
+        raise AssertionError(
+            f"No expected menu items found. Checked: {items_to_check}. "
+            f"Actual: {snapshot.titles}"
+        )
 
 
-@uat_test("memory_within_bounds", suite="app_basics")
+@uat_test("memory_within_bounds", suite="app_basics", context="none")
 def test_memory_bounds(ctx):
     """GIVEN the app is running idle, THEN memory usage is below 500MB."""
     assert_memory_below(ctx.pid, 500,
@@ -513,51 +728,36 @@ def test_memory_bounds(ctx):
 
 # --- Suite: cancel_recording ---
 
-@uat_test("esc_cancels_recording_via_menu", suite="cancel_recording")
+@uat_test("esc_cancels_recording_via_menu", suite="cancel_recording", context="menu_bar")
 def test_esc_cancel_menu(ctx):
     """GIVEN recording was started from menu bar,
     WHEN ESC is pressed,
-    THEN recording stops and pipeline returns to idle.
+    THEN recording stops and pipeline returns to idle."""
+    # Verify Start Recording exists via snapshot (no menu open)
+    if not ctx.menu_snapshot.has_item("Start Recording"):
+        raise AssertionError("'Start Recording' not found in menu")
 
-    This is the exact bug from feedback-2026-02-21 Bug 1.
-    """
-    # Step 1: Open menu and find "Start Recording"
-    start_btn = find_menu_item_via_menu(ctx.pid, "Start Recording", verbose=ctx.verbose)
-    if start_btn is None:
-        raise AssertionError("Could not find 'Start Recording' menu item")
-
-    # Step 2: Click to start recording via AXPress (more reliable than CGEvent click)
-    ctx.log("Pressing 'Start Recording' via AXPress")
-    if not perform_action(start_btn, "AXPress"):
-        raise AssertionError("AXPress on 'Start Recording' failed")
+    # Click Start Recording (1 menu open)
+    ctx.click_menu_item("Start Recording")
     ctx.wait(1.5)
-
-    # Step 3: Verify recording started — the app should now be in recording state
-    ctx.log("Verifying recording state...")
-    # Register cleanup to cancel recording if test fails partway through
     ctx.on_cleanup(lambda: press_key("escape"))
 
-    # Step 4: Press ESC to cancel
     ctx.log("Pressing ESC to cancel")
     ctx.press("escape")
     ctx.wait(1.5)
 
-    # Step 5: Verify recording stopped — app should still be running
     assert_process_running(ctx.app_name, msg="App crashed after ESC cancel")
 
-    # Re-open menu to check that "Start Recording" is available again (not "Stop Recording")
-    start_again = find_menu_item_via_menu(ctx.pid, "Start Recording", verbose=ctx.verbose)
-    close_menu_bar_menu(ctx.pid)
-
-    if start_again is None:
+    # Verify back to idle — snapshot was invalidated by click_menu_item, so this takes a fresh one (1 menu open)
+    snapshot = ctx.menu_snapshot
+    if not snapshot.has_item("Start Recording"):
         raise AssertionError(
             "After ESC cancel, 'Start Recording' not available — recording may still be active"
         )
-
     ctx.log("Recording cancelled successfully via ESC")
 
 
-@uat_test("esc_noop_when_idle", suite="cancel_recording")
+@uat_test("esc_noop_when_idle", suite="cancel_recording", context="none")
 def test_esc_noop_idle(ctx):
     """GIVEN the app is idle (not recording),
     WHEN ESC is pressed,
@@ -578,7 +778,7 @@ def test_esc_noop_idle(ctx):
         ctx.log(f"Memory delta: {delta:.1f}MB")
 
 
-@uat_test("esc_no_clipboard_write_on_cancel", suite="cancel_recording")
+@uat_test("esc_no_clipboard_write_on_cancel", suite="cancel_recording", context="menu_bar")
 def test_esc_no_clipboard(ctx):
     """GIVEN recording is active,
     WHEN ESC cancels recording,
@@ -586,20 +786,17 @@ def test_esc_no_clipboard(ctx):
     sentinel = "UAT_SENTINEL_DO_NOT_OVERWRITE"
     ctx.set_clipboard(sentinel)
 
-    # Start recording via menu
-    start_btn = find_menu_item_via_menu(ctx.pid, "Start Recording", verbose=ctx.verbose)
-    if start_btn is not None:
-        perform_action(start_btn, "AXPress")
+    # Try to start recording via menu
+    if ctx.menu_snapshot.has_item("Start Recording"):
+        ctx.click_menu_item("Start Recording")
         ctx.wait(1.0)
         ctx.on_cleanup(lambda: press_key("escape"))
     else:
-        ctx.log("Could not find Start Recording — testing ESC on idle state instead")
+        ctx.log("Start Recording not found — testing ESC on idle state instead")
 
-    # Cancel immediately
     ctx.press("escape")
     ctx.wait(1.0)
 
-    # Clipboard should still have our sentinel
     clipboard = ctx.get_clipboard()
     if clipboard != sentinel:
         raise AssertionError(
@@ -610,56 +807,31 @@ def test_esc_no_clipboard(ctx):
 
 # --- Suite: settings ---
 
-@uat_test("settings_window_opens", suite="settings")
+@uat_test("settings_window_opens", suite="settings", context="settings")
 def test_settings_opens(ctx):
     """GIVEN the app is running,
     WHEN Settings... is activated via menu,
     THEN the Settings window appears."""
-    # CGEvent Cmd+, doesn't reliably reach menu bar apps — use AX menu action
-    settings_item = find_menu_item_via_menu(ctx.pid, "Settings...", verbose=ctx.verbose)
-    if settings_item is not None:
-        perform_action(settings_item, "AXPress")
-    else:
-        # Fallback to keyboard shortcut
-        ctx.log("Settings menu item not found, falling back to Cmd+,")
-        ctx.press("comma", cmd=True)
-    ctx.wait(1.0)
-
-    # SwiftUI Settings window title is "EnviousWispr Settings"
-    assert_element_appears(
-        ctx.pid, role="AXWindow", title="EnviousWispr Settings", timeout=3.0,
-        msg="Settings window did not appear"
-    )
+    settings_win = ctx.ensure_settings_open()
+    if settings_win is None:
+        raise AssertionError("Settings window did not appear")
     ctx.log("Settings window opened")
 
 
-@uat_test("settings_has_all_tabs", suite="settings")
+@uat_test("settings_has_all_tabs", suite="settings", context="settings")
 def test_settings_tabs(ctx):
     """GIVEN the Settings window is open,
     THEN all expected tabs are present in the sidebar."""
-    # Open settings via menu
-    settings_item = find_menu_item_via_menu(ctx.pid, "Settings...", verbose=ctx.verbose)
-    if settings_item is not None:
-        perform_action(settings_item, "AXPress")
-    else:
-        ctx.press("comma", cmd=True)
-    ctx.wait(1.0)
-
-    # Wait for Settings window (title is "EnviousWispr Settings")
-    settings_win = wait_for_element(ctx.pid, role="AXWindow", title="EnviousWispr Settings", timeout=3.0)
+    settings_win = ctx.ensure_settings_open()
     if settings_win is None:
         raise AssertionError("Settings window did not appear")
 
-    # Settings uses NavigationSplitView — tabs are AXStaticText values in sidebar AXOutline rows
     expected_tabs = ["Shortcuts", "AI Polish", "Permissions", "Speech Engine"]
     sidebar_texts = find_all_elements(settings_win, role="AXStaticText")
     sidebar_values = [get_attr(el, "AXValue") or "" for el in sidebar_texts]
     ctx.log(f"Sidebar text values: {sidebar_values[:20]}")
 
-    found = []
-    for tab_name in expected_tabs:
-        if tab_name in sidebar_values:
-            found.append(tab_name)
+    found = [tab_name for tab_name in expected_tabs if tab_name in sidebar_values]
 
     missing = set(expected_tabs) - set(found)
     if missing:
@@ -668,27 +840,15 @@ def test_settings_tabs(ctx):
     ctx.log(f"All tabs present: {found}")
 
 
-@uat_test("settings_tab_switching_works", suite="settings")
+@uat_test("settings_tab_switching_works", suite="settings", context="settings")
 def test_settings_tab_switch(ctx):
     """GIVEN the Settings window is open,
     WHEN each sidebar tab is clicked,
-    THEN the tab content changes (verified by heading change)."""
-    # Ensure settings is open
-    settings_win = wait_for_element(ctx.pid, role="AXWindow", title="EnviousWispr Settings", timeout=1.0)
-    if settings_win is None:
-        settings_item = find_menu_item_via_menu(ctx.pid, "Settings...", verbose=ctx.verbose)
-        if settings_item is not None:
-            perform_action(settings_item, "AXPress")
-        else:
-            ctx.press("comma", cmd=True)
-        ctx.wait(1.0)
-        settings_win = wait_for_element(ctx.pid, role="AXWindow", title="EnviousWispr Settings", timeout=3.0)
-
+    THEN the tab content changes."""
+    settings_win = ctx.ensure_settings_open()
     if settings_win is None:
         raise AssertionError("Settings window did not appear")
 
-    # Settings uses NavigationSplitView — tabs are AXRows in an AXOutline sidebar.
-    # Each row contains an AXCell with an AXStaticText whose AXValue is the tab name.
     outline = find_element(settings_win, role="AXOutline")
     if outline is None:
         raise AssertionError("Settings sidebar outline not found")
@@ -701,7 +861,6 @@ def test_settings_tab_switch(ctx):
         for row in rows:
             if get_attr(row, "AXRole") != "AXRow":
                 continue
-            # Check if this row contains a static text with the tab name
             row_texts = find_all_elements(row, role="AXStaticText")
             for txt in row_texts:
                 val = get_attr(txt, "AXValue") or ""
@@ -725,7 +884,7 @@ def test_settings_tab_switch(ctx):
 
 # --- Suite: clipboard ---
 
-@uat_test("clipboard_save_restore", suite="clipboard")
+@uat_test("clipboard_save_restore", suite="clipboard", context="none")
 def test_clipboard_save_restore(ctx):
     """GIVEN the user has content on the clipboard,
     WHEN a transcription completes,
@@ -748,25 +907,21 @@ def test_clipboard_save_restore(ctx):
 
 # --- Suite: main_window ---
 
-@uat_test("main_window_opens", suite="main_window")
+@uat_test("main_window_opens", suite="main_window", context="menu_bar")
 def test_main_window(ctx):
     """GIVEN the app is running,
     WHEN 'Open' is triggered via menu,
     THEN the main window appears."""
     app = get_ax_app(ctx.pid)
-    # Try to find any existing main window
     main_win = find_element(app, role="AXWindow", title="EnviousWispr")
     if main_win is None:
-        # Open via menu bar
-        open_item = find_menu_item_via_menu(ctx.pid, "Open EnviousWispr", verbose=ctx.verbose)
-        if open_item is not None:
-            perform_action(open_item, "AXPress")
+        # Try via menu
+        if ctx.menu_snapshot.has_item("Open EnviousWispr"):
+            ctx.click_menu_item("Open EnviousWispr")
             ctx.wait(1.0)
         else:
-            close_menu_bar_menu(ctx.pid)
             ctx.log("No 'Open' menu item found, checking for any window")
 
-    # Check for any non-settings window
     app = get_ax_app(ctx.pid)
     windows = get_attr(app, "AXWindows")
     if windows and len(windows) > 0:
@@ -804,6 +959,22 @@ if os.path.isdir(_generated_dir):
 # CLI
 # ---------------------------------------------------------------------------
 
+def cmd_signatures(args):
+    """Output JSON listing all static (non-generated) test signatures."""
+    static_tests = []
+    for name, info in _TESTS.items():
+        if info["suite"].endswith("_generated"):
+            continue
+        doc = info["fn"].__doc__ or ""
+        static_tests.append({
+            "name": name,
+            "suite": info["suite"],
+            "context": info.get("context", "none"),
+            "docstring": doc.strip(),
+        })
+    print(json.dumps({"static_tests": static_tests}, indent=2))
+
+
 def cmd_list(args):
     print("Available UAT test suites and tests:\n")
     for suite, tests in sorted(_SUITES.items()):
@@ -839,6 +1010,19 @@ def cmd_run(args):
 
     results = run_tests(test_names, verbose=args.verbose)
     all_passed = print_results(results)
+
+    # Clear the .needs-uat marker ONLY when every test passes (exit 0).
+    # This marker gates TodoWrite completion via a PreToolUse hook.
+    if all_passed:
+        _project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        _marker = os.path.join(_project_root, ".needs-uat")
+        try:
+            os.remove(_marker)
+            if args.verbose:
+                print("  [UAT] Cleared .needs-uat marker (all tests passed)", file=sys.stderr)
+        except FileNotFoundError:
+            pass
+
     sys.exit(0 if all_passed else 1)
 
 
@@ -847,6 +1031,7 @@ def main():
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("list", help="List available tests and suites")
+    sub.add_parser("signatures", help="Output JSON of all static (non-generated) test signatures")
 
     run_p = sub.add_parser("run", help="Run UAT tests")
     run_p.add_argument("--suite", type=str, help="Run tests from a specific suite")
@@ -862,6 +1047,8 @@ def main():
 
     if args.command == "list":
         cmd_list(args)
+    elif args.command == "signatures":
+        cmd_signatures(args)
     elif args.command == "run":
         cmd_run(args)
 

@@ -37,52 +37,52 @@ struct SpeechEngineSettingsView: View {
                 }
             }
 
-            Section("Recording") {
-                Picker("Mode", selection: $state.settings.recordingMode) {
-                    Text("Push to Talk").tag(RecordingMode.pushToTalk)
-                    Text("Toggle").tag(RecordingMode.toggle)
-                }
-            }
+            Section("Voice Activity Detection") {
+                Toggle("Auto-stop on silence", isOn: $state.settings.vadAutoStop)
 
-            Section("Performance") {
-                if appState.benchmark.isRunning {
+                if appState.settings.vadAutoStop {
                     HStack {
-                        ProgressView()
-                            .controlSize(.small)
-                        Text(appState.benchmark.progress)
+                        Text("Silence timeout")
+                        Slider(value: $state.settings.vadSilenceTimeout, in: 0.5...3.0, step: 0.25)
+                        Text(String(format: "%.1fs", appState.settings.vadSilenceTimeout))
                             .font(.caption)
+                            .monospacedDigit()
+                            .frame(width: 30)
                     }
-                } else {
-                    Button("Run Benchmark") {
-                        Task { await appState.benchmark.run(using: appState.asrManager) }
-                    }
-                }
 
-                if !appState.benchmark.results.isEmpty {
-                    ForEach(appState.benchmark.results) { result in
-                        HStack {
-                            Text(result.label)
-                                .font(.caption)
-                            Spacer()
-                            Text(String(format: "%.2fs", result.processingTime))
-                                .font(.caption)
-                                .monospacedDigit()
-                            Text(String(format: "%.0fx RT", result.rtf))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-                        }
-                    }
+                    Text("Recording stops automatically after this duration of silence following speech.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 HStack {
-                    Text("Model status:")
-                    Spacer()
-                    Text(appState.asrManager.isModelLoaded ? "Loaded" : "Unloaded")
-                        .foregroundStyle(appState.asrManager.isModelLoaded ? .green : .secondary)
+                    Text("VAD Sensitivity")
+                    Slider(value: $state.settings.vadSensitivity, in: 0.0...1.0, step: 0.1)
+                    Text(vadSensitivityLabel(appState.settings.vadSensitivity))
+                        .font(.caption)
+                        .monospacedDigit()
+                        .frame(width: 55)
+                }
+                Text("Higher sensitivity detects quieter speech but may pick up background noise.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Toggle("Energy pre-gate", isOn: $state.settings.vadEnergyGate)
+                if appState.settings.vadEnergyGate {
+                    Text("Skips neural VAD for very quiet audio. Saves CPU during silence-heavy recordings.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
         .formStyle(.grouped)
+    }
+
+    private func vadSensitivityLabel(_ value: Float) -> String {
+        switch value {
+        case 0.0..<0.3: return "Low"
+        case 0.3..<0.7: return "Medium"
+        default:         return "High"
+        }
     }
 }

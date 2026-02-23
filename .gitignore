@@ -23,6 +23,7 @@ xcuserdata/
 
 # Claude Code
 .claude/settings.local.json
+.needs-uat
 
 # Logs
 logs/*.log

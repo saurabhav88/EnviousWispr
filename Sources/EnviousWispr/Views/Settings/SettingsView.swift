@@ -31,8 +31,6 @@ struct SettingsView: View {
         switch selectedSection {
         case .speechEngine:
             SpeechEngineSettingsView()
-        case .voiceDetection:
-            VoiceDetectionSettingsView()
         case .shortcuts:
             ShortcutsSettingsView()
         case .aiPolish:

@@ -3,7 +3,6 @@ import SwiftUI
 /// Sidebar navigation sections for the Command Center settings.
 enum SettingsSection: String, CaseIterable, Identifiable {
     case speechEngine
-    case voiceDetection
     case shortcuts
     case aiPolish
     case wordCorrection
@@ -17,7 +16,6 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     var label: String {
         switch self {
         case .speechEngine:   return "Speech Engine"
-        case .voiceDetection: return "Voice Detection"
         case .shortcuts:      return "Shortcuts"
         case .aiPolish:       return "AI Polish"
         case .wordCorrection: return "Word Correction"
@@ -31,7 +29,6 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .speechEngine:   return "waveform"
-        case .voiceDetection: return "ear"
         case .shortcuts:      return "keyboard"
         case .aiPolish:       return "sparkles"
         case .wordCorrection: return "textformat.abc"
@@ -44,7 +41,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 
     var group: SettingsGroup {
         switch self {
-        case .speechEngine, .voiceDetection, .shortcuts: return .record
+        case .speechEngine, .shortcuts: return .record
         case .aiPolish, .wordCorrection:                 return .process
         case .clipboard:                                 return .output
         case .memory, .permissions, .diagnostics:        return .system

@@ -61,6 +61,45 @@ struct DiagnosticsSettingsView: View {
                     NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Utilities/Console.app"))
                 }
             }
+
+            Section("Performance") {
+                if appState.benchmark.isRunning {
+                    HStack {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text(appState.benchmark.progress)
+                            .font(.caption)
+                    }
+                } else {
+                    Button("Run Benchmark") {
+                        Task { await appState.benchmark.run(using: appState.asrManager) }
+                    }
+                }
+
+                if !appState.benchmark.results.isEmpty {
+                    ForEach(appState.benchmark.results) { result in
+                        HStack {
+                            Text(result.label)
+                                .font(.caption)
+                            Spacer()
+                            Text(String(format: "%.2fs", result.processingTime))
+                                .font(.caption)
+                                .monospacedDigit()
+                            Text(String(format: "%.0fx RT", result.rtf))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                    }
+                }
+
+                HStack {
+                    Text("Model status:")
+                    Spacer()
+                    Text(appState.asrManager.isModelLoaded ? "Loaded" : "Unloaded")
+                        .foregroundStyle(appState.asrManager.isModelLoaded ? .green : .secondary)
+                }
+            }
         }
         .formStyle(.grouped)
         .padding()

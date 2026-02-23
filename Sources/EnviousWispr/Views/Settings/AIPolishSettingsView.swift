@@ -127,6 +127,14 @@ struct AIPolishSettingsView: View {
 
                         validationBadge
                     }
+
+                    HStack(spacing: 4) {
+                        Text("Get your API key at")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Link("platform.openai.com", destination: URL(string: "https://platform.openai.com/api-keys")!)
+                            .font(.caption)
+                    }
                 }
             }
 
@@ -168,6 +176,14 @@ struct AIPolishSettingsView: View {
                         }
 
                         validationBadge
+                    }
+
+                    HStack(spacing: 4) {
+                        Text("Get your API key at")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Link("aistudio.google.com", destination: URL(string: "https://aistudio.google.com/apikey")!)
+                            .font(.caption)
                     }
                 }
             }

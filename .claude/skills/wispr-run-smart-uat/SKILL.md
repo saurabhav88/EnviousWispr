@@ -28,9 +28,11 @@ python3 Tests/UITests/diff_analyzer.py [optional context from args]
 
 Read the JSON output. If `source_file_count` is 0, skip test generation and just run existing tests.
 
-### 2. Dispatch test generator agent
+### 2. Get static test signatures and dispatch test generator agent
 
-Use the Task tool to dispatch the `uat-generator` agent:
+First, run `python3 Tests/UITests/uat_runner.py signatures` to get existing static test coverage.
+
+Then use the Task tool to dispatch the `uat-generator` agent, passing both the diff analysis AND the signatures:
 
 ```
 Task(
@@ -40,12 +42,16 @@ Task(
     DIFF ANALYSIS:
     <paste diff analyzer JSON output here>
 
+    EXISTING STATIC TEST SIGNATURES:
+    <paste signatures JSON output here>
+
     TASK: Generate targeted UAT test files into Tests/UITests/generated/ based on the above changes.
+    IMPORTANT: Do NOT generate tests that duplicate scenarios already covered by the static tests listed above.
     Read Tests/UITests/uat_runner.py for the API reference and examples.
     Read the changed Swift source files to understand what specifically changed.
     Follow the exact file template and constraints from your agent definition.
 
-    After writing test files, list what you created."""
+    After writing test files, list what you created and note which static tests you skipped due to overlap."""
 )
 ```
 

@@ -214,6 +214,11 @@ final class SettingsManager {
             : .custom(systemPrompt: customSystemPrompt)
     }
 
+    var isPushToTalk: Bool {
+        get { recordingMode == .pushToTalk }
+        set { recordingMode = newValue ? .pushToTalk : .toggle }
+    }
+
     init() {
         let defaults = UserDefaults.standard
         selectedBackend = ASRBackendType(rawValue: defaults.string(forKey: "selectedBackend") ?? "") ?? .parakeet

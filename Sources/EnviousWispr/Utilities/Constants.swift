@@ -60,6 +60,10 @@ enum TimingConstants {
 
     /// Recording timer update interval (seconds).
     static let recordingTimerIntervalSec: Double = 1.0
+
+    /// Minimum recording duration before transcription (seconds).
+    /// Recordings shorter than this are silently discarded (accidental taps).
+    static let minimumRecordingDuration: TimeInterval = 0.5
 }
 
 // MARK: - LLM Constants

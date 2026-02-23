@@ -96,6 +96,9 @@ final class HotkeyService {
 
     func start() {
         guard !isEnabled else { return }
+        // Sync PTT keybind to match toggle keybind (unified shortcut)
+        pushToTalkKeyCode = toggleKeyCode
+        pushToTalkModifiers = toggleModifiers
         installCarbonEventHandler()
         registerToggleHotkey()
         registerPTTHotkey()
@@ -279,18 +282,20 @@ final class HotkeyService {
             level: .info, category: "HotkeyService"
         ) }
         switch id {
-        case HotkeyID.toggle.rawValue:
-            guard !isRelease, recordingMode == .toggle else { return }
-            Task { await onToggleRecording?() }
-
-        case HotkeyID.ptt.rawValue:
-            guard recordingMode == .pushToTalk else { return }
-            if !isRelease && !isModifierHeld {
-                isModifierHeld = true
-                Task { await onStartRecording?() }
-            } else if isRelease && isModifierHeld {
-                isModifierHeld = false
-                Task { await onStopRecording?() }
+        case HotkeyID.toggle.rawValue, HotkeyID.ptt.rawValue:
+            // Unified shortcut — behavior depends on recording mode
+            if recordingMode == .toggle {
+                guard !isRelease else { return }
+                Task { await onToggleRecording?() }
+            } else {
+                // Push-to-talk mode
+                if !isRelease && !isModifierHeld {
+                    isModifierHeld = true
+                    Task { await onStartRecording?() }
+                } else if isRelease && isModifierHeld {
+                    isModifierHeld = false
+                    Task { await onStopRecording?() }
+                }
             }
 
         case HotkeyID.cancel.rawValue:
@@ -322,16 +327,17 @@ final class HotkeyService {
         // Extract values before async dispatch (NSEvent is not Sendable)
         let capturedKeyCode = keyCode
 
-        // Check toggle hotkey (modifier-only)
-        if recordingMode == .toggle, capturedKeyCode == toggleKeyCode, isPress {
+        // Unified shortcut — both modes use toggleKeyCode
+        guard capturedKeyCode == toggleKeyCode else { return }
+
+        if recordingMode == .toggle {
+            guard isPress else { return }
             Task { await AppLogger.shared.log(
                 "Modifier-only toggle: keyCode=\(capturedKeyCode)", level: .info, category: "HotkeyService"
             ) }
             Task { await onToggleRecording?() }
-        }
-
-        // Check PTT hotkey (modifier-only)
-        if recordingMode == .pushToTalk, capturedKeyCode == pushToTalkKeyCode {
+        } else {
+            // Push-to-talk mode
             if isPress && !isModifierHeld {
                 Task { await AppLogger.shared.log(
                     "Modifier-only PTT press: keyCode=\(capturedKeyCode)", level: .info, category: "HotkeyService"
@@ -373,11 +379,8 @@ final class HotkeyService {
 
     /// Human-readable description of the current hotkey.
     var hotkeyDescription: String {
-        if recordingMode == .pushToTalk {
-            return "Hold \(KeySymbols.formatHotkey(keyCode: pushToTalkKeyCode, modifiers: pushToTalkModifiers))"
-        } else {
-            return KeySymbols.formatHotkey(keyCode: toggleKeyCode, modifiers: toggleModifiers)
-        }
+        let formatted = KeySymbols.formatHotkey(keyCode: toggleKeyCode, modifiers: toggleModifiers)
+        return recordingMode == .pushToTalk ? "Hold \(formatted)" : formatted
     }
 
     var cancelHotkeyDescription: String {

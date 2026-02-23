@@ -116,8 +116,8 @@ final class AppState {
         hotkeyService.cancelModifiers = settings.cancelModifiers
         hotkeyService.toggleKeyCode = settings.toggleKeyCode
         hotkeyService.toggleModifiers = settings.toggleModifiers
-        hotkeyService.pushToTalkKeyCode = settings.pushToTalkKeyCode
-        hotkeyService.pushToTalkModifiers = settings.pushToTalkModifiers
+        hotkeyService.pushToTalkKeyCode = settings.toggleKeyCode
+        hotkeyService.pushToTalkModifiers = settings.toggleModifiers
         hotkeyService.onToggleRecording = { [weak self] in
             guard let self else { return }
             await self.toggleRecording()
@@ -188,15 +188,17 @@ final class AppState {
             hotkeyService.cancelModifiers = settings.cancelModifiers
         case .toggleKeyCode:
             hotkeyService.toggleKeyCode = settings.toggleKeyCode
+            hotkeyService.pushToTalkKeyCode = settings.toggleKeyCode
             reregisterHotkeys()
         case .toggleModifiers:
             hotkeyService.toggleModifiers = settings.toggleModifiers
+            hotkeyService.pushToTalkModifiers = settings.toggleModifiers
             reregisterHotkeys()
         case .pushToTalkKeyCode:
-            hotkeyService.pushToTalkKeyCode = settings.pushToTalkKeyCode
+            hotkeyService.pushToTalkKeyCode = settings.toggleKeyCode
             reregisterHotkeys()
         case .pushToTalkModifiers:
-            hotkeyService.pushToTalkModifiers = settings.pushToTalkModifiers
+            hotkeyService.pushToTalkModifiers = settings.toggleModifiers
             reregisterHotkeys()
         case .modelUnloadPolicy:
             pipeline.modelUnloadPolicy = settings.modelUnloadPolicy
@@ -256,6 +258,17 @@ final class AppState {
     /// Human-readable model name for display.
     var activeModelName: String {
         settings.selectedBackend == .parakeet ? "Parakeet v3" : "WhisperKit"
+    }
+
+    var activeLLMDisplayName: String {
+        guard settings.llmProvider != .none else { return "LLM Deactivated" }
+        let model = settings.llmProvider == .ollama ? settings.ollamaModel : settings.llmModel
+        if model.isEmpty { return settings.llmProvider.displayName }
+        // Use discoveredModels displayName if available, otherwise raw model ID
+        if let info = discoveredModels.first(where: { $0.id == model }) {
+            return info.displayName
+        }
+        return model
     }
 
     /// Model status text for sidebar display.
