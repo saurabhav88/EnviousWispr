@@ -35,6 +35,8 @@ Before writing any test file, check the static test signatures to avoid generati
 
 One Python file per logical test group into `Tests/UITests/generated/`.
 
+Before writing a file, check if a file with the same name already exists in `Tests/UITests/generated/`. If it does, read it first — the existing test may already cover the scenario. Only overwrite if the existing test is outdated (tests code that has since changed significantly).
+
 ### File naming
 
 `test_<domain>_<short_description>.py`

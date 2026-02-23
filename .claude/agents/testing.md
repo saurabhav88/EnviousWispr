@@ -29,15 +29,15 @@ A test that only checks element existence is **not a test** — it's a type chec
 
 ## Validation Hierarchy
 
-1. `swift build -c release` — compiler catches type errors, isolation issues
-2. `swift build --build-tests` — test target compiles
-3. Rebuild .app bundle + relaunch — `run-smoke-test` now rebuilds the bundle from release binary
-4. **UAT behavioral tests** — Given/When/Then acceptance tests via `uat_runner.py`
-5. UI tests — AX inspection + CGEvent simulation + screenshot verification
-6. Benchmarks — BenchmarkSuite: 5s/15s/30s transcription, measures RTF
-7. API contracts — verify OpenAI/Gemini request/response shapes
+1. **Compile gate** — `wispr-run-smoke-test` (fast: `swift build -c release` + `swift build --build-tests`)
+2. **Bundle + launch + UAT** — `wispr-rebuild-and-relaunch` (build → bundle → kill → relaunch → smart UAT)
+3. **Full regression** — `wispr-run-uat` (all static suites, only when explicitly requested)
+4. **Benchmarks** — `wispr-run-benchmarks` (ASR performance: 5s/15s/30s transcription, RTF measurement)
+5. **API contracts** — `wispr-validate-api-contracts` (OpenAI/Gemini request/response shape verification)
 
 **Important**: Never test via `swift run` alone — always use the .app bundle to match real user conditions.
+
+**Skill separation**: `wispr-run-smoke-test` is compile-only (no bundle/launch). `wispr-rebuild-and-relaunch` handles the full bundle+launch+UAT cycle. Do not confuse the two.
 
 ## UAT Testing Framework
 
@@ -99,6 +99,27 @@ Before writing tests, use `wispr-generate-uat-tests` to systematically enumerate
 - Negative tests (invalid inputs, wrong state, missing permissions)
 - Sequence tests (rapid actions, cancel-restart, feature interactions)
 
+## Ad-Hoc Test Flow (legacy reference)
+
+When writing one-off tests outside the UAT runner, follow this 6-step sequence:
+
+1. **Verify precondition** — check current state via AX value inspection
+2. **AX inspect** — verify the target element exists AND is enabled
+3. **CGEvent action** — simulate real human input (click/keypress) via `wispr-ui-simulate-input`
+4. **Wait** — allow UI to settle (0.3–1s)
+5. **Verify postcondition** — check state CHANGED via AX value inspection
+6. **Verify side effects** — clipboard, overlay gone, no crash, memory stable
+
+### Interpreting Results
+
+| Precondition | CGEvent | State Changed | Side Effects | Verdict |
+|---|---|---|---|---|
+| Yes | Yes | Yes | Yes | **PASS** |
+| Yes | Yes | No | N/A | **UI BUG** — interaction broken |
+| Yes | Yes | Yes | No | **LOGIC BUG** — state OK, side effects wrong |
+| Yes | No | N/A | N/A | **INTERACTION BUG** — element exists but unclickable |
+| No | N/A | N/A | N/A | **STRUCTURAL BUG** — element missing |
+
 ## Feature Testing Workflow
 
 When testing a newly implemented feature:
@@ -118,7 +139,7 @@ Error codes: `401` → invalid key, `429` → rate limited.
 
 ## Skills → `.claude/skills/`
 
-- `wispr-run-smoke-test` — build + launch + crash check
+- `wispr-run-smoke-test` — compile gate (`swift build -c release` + `swift build --build-tests`)
 - `wispr-run-uat` — behavioral Given/When/Then acceptance tests
 - `wispr-generate-uat-tests` — systematic scenario generation from feature specs
 - `wispr-run-benchmarks` — ASR performance measurement
@@ -126,8 +147,8 @@ Error codes: `401` → invalid key, `429` → rate limited.
 - `wispr-ui-ax-inspect` — AX tree inspection
 - `wispr-ui-simulate-input` — CGEvent HID simulation
 - `wispr-ui-screenshot-verify` — visual regression
-- `wispr-run-ui-test` — combined UI test flows
-- `wispr-run-smart-uat` — context-aware UAT: analyzes diff, generates targeted tests, runs all
+- `wispr-run-ui-test` — **DEPRECATED** (use `wispr-run-uat` or `wispr-run-smart-uat` instead)
+- `wispr-run-smart-uat` — context-aware UAT: analyzes diff, generates targeted tests, runs generated only
 
 ## Coordination
 

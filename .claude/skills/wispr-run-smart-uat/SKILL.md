@@ -55,13 +55,13 @@ Task(
 )
 ```
 
-### 3. Run all UAT tests in background
+### 3. Run generated tests in background
 
 **CRITICAL: MUST use `run_in_background: true`**
 
 ```bash
-# Run ALL tests (static + generated) — MUST be background
-python3 Tests/UITests/uat_runner.py run --verbose 2>&1
+# Run generated tests only (targeted to changes) — MUST be background
+python3 Tests/UITests/uat_runner.py run --generated-only --verbose 2>&1
 ```
 
 Use `TaskOutput` to retrieve results when complete.
@@ -79,6 +79,16 @@ Parse the JSON output from the runner. Report:
 - **Generated test FAIL**: The test may have found a real bug, OR the generated test may be wrong. Report both possibilities to the user.
 - **Static test FAIL**: This is a regression. The code change broke existing behavior.
 - **Generated test ERROR**: The generated test has a bug (Python exception). Delete the file and report the error.
+
+### Running All Tests
+
+If the user explicitly asks to run all tests (static + generated), use:
+
+```bash
+python3 Tests/UITests/uat_runner.py run --verbose 2>&1
+```
+
+This is NOT the default — only use when explicitly requested.
 
 ## FIRM RULE: Background Execution
 

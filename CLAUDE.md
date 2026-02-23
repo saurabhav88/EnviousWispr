@@ -9,8 +9,8 @@ swift package resolve               # Fetch dependencies (first time / after Pac
 swift build                         # Command Line Tools only, no Xcode
 swift build --build-tests           # Verify test target compiles
 /wispr-rebuild-and-relaunch         # Build + bundle + launch with fresh permissions
-/wispr-run-smoke-test               # Verify build + launch + basic UI
-python3 Tests/UITests/uat_runner.py run --verbose   # UAT tests (app running, MUST use run_in_background:true)
+/wispr-run-smoke-test               # Fast compile gate (no launch/UAT)
+python3 Tests/UITests/uat_runner.py run --generated-only --verbose   # UAT tests (app running, MUST use run_in_background:true)
 ```
 
 ## Environment

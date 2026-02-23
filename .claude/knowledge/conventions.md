@@ -86,7 +86,7 @@ A feature is NOT done until ALL of these pass:
 1. `swift build -c release` exits 0
 2. `swift build --build-tests` exits 0
 3. .app bundle rebuilt + relaunched (`wispr-rebuild-and-relaunch`)
-4. **Smart UAT tests pass** (`wispr-run-smart-uat` — generates targeted tests from diff, then runs all)
+4. **Smart UAT tests pass** (`wispr-run-smart-uat` — generates targeted tests from diff, runs generated tests only)
 5. All UAT execution MUST use `run_in_background: true` — foreground fails due to CGEvent/VSCode collision
 
 **Smart UAT is mandatory, not optional.** It replaces generic `wispr-run-uat` as the primary testing gate.
@@ -94,10 +94,10 @@ A feature is NOT done until ALL of these pass:
 ### UAT Workflow for Every Feature
 
 1. After implementing code → invoke `wispr-run-smart-uat` (or `wispr-run-smart-uat "description of change"`)
-2. Smart UAT analyzes diff → generates targeted tests into `Tests/UITests/generated/` → runs all tests in background
+2. Smart UAT analyzes diff → generates targeted tests into `Tests/UITests/generated/` → runs generated tests only in background
 3. Review results — generated test failures may indicate real bugs or test generation issues
-4. Only commit when ALL tests pass
-5. To promote generated tests to permanent suite: move from `generated/` to `Tests/UITests/` and commit
+4. Only commit when ALL generated tests pass
+5. Generated tests persist in git as a reusable test library — no promotion step needed
 
 ## Feature Request Docs
 

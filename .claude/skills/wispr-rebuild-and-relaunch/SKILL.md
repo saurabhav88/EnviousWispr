@@ -19,31 +19,11 @@ swift build -c release 2>&1 | tail -5
 
 ## Step 2 — Create .app Bundle
 
-```bash
-APP=EnviousWispr.app
-BUNDLE=/tmp/$APP
-BINARY=/Users/m4pro_sv/Desktop/EnviousWispr/.build/release/EnviousWispr
-RESOURCES_SRC=/Users/m4pro_sv/Desktop/EnviousWispr/Sources/EnviousWispr/Resources
+Invoke `/wispr-bundle-app` — this is the single source of truth for bundle assembly.
 
-SPARKLE_FW=/Users/m4pro_sv/Desktop/EnviousWispr/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework
+It creates `/tmp/EnviousWispr.app` with the release binary, Info.plist, AppIcon.icns, Sparkle.framework (with rpath patch), and PkgInfo.
 
-rm -rf "$BUNDLE"
-mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources" "$BUNDLE/Contents/Frameworks"
-cp "$BINARY" "$BUNDLE/Contents/MacOS/EnviousWispr"
-chmod +x "$BUNDLE/Contents/MacOS/EnviousWispr"
-cp "$RESOURCES_SRC/Info.plist" "$BUNDLE/Contents/Info.plist"
-cp "$RESOURCES_SRC/AppIcon.icns" "$BUNDLE/Contents/Resources/AppIcon.icns"
-printf 'APPL????' > "$BUNDLE/Contents/PkgInfo"
-cp -R "$SPARKLE_FW" "$BUNDLE/Contents/Frameworks/Sparkle.framework"
-install_name_tool -add_rpath @executable_path/../Frameworks "$BUNDLE/Contents/MacOS/EnviousWispr"
-```
-
-Verify:
-```bash
-find "$BUNDLE" -type f
-```
-
-Expected: Info.plist, PkgInfo, EnviousWispr binary, AppIcon.icns, plus Sparkle.framework tree.
+**Do NOT inline bundle logic here.** If bundle steps need to change (new resource, new framework), update `wispr-bundle-app` only.
 
 ## Step 3 — Replace Running Bundle
 
