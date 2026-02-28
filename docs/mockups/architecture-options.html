@@ -1,0 +1,1010 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EnviousWispr Architecture Visualization</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #08080c;
+    --surface: #111116;
+    --surface2: #1a1a22;
+    --surface3: #222230;
+    --border: #2a2a3a;
+    --text: #e8e8f0;
+    --text-dim: #888899;
+    --accent: #8b7cf6;
+    --cyan: #22d3ee;
+    --green: #34d399;
+    --amber: #fbbf24;
+    --pink: #f472b6;
+    --orange: #fb923c;
+    --red: #f87171;
+    --blue: #60a5fa;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Tab Bar */
+  .tab-bar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 24px;
+    background: rgba(8, 8, 12, 0.92);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .tab-bar-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-right: 16px;
+    white-space: nowrap;
+  }
+
+  .tab-btn {
+    padding: 8px 20px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-dim);
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    white-space: nowrap;
+  }
+
+  .tab-btn:hover {
+    background: var(--surface2);
+    color: var(--text);
+    border-color: var(--accent);
+  }
+
+  .tab-btn.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+    box-shadow: 0 0 20px rgba(139, 124, 246, 0.3);
+  }
+
+  /* Slide Container */
+  .slide-container {
+    width: 100%;
+    max-width: 1240px;
+    margin: 24px auto;
+    padding: 0 20px;
+  }
+
+  .slide {
+    display: none;
+    width: 100%;
+    min-height: 650px;
+    position: relative;
+  }
+
+  .slide.active { display: block; }
+
+  .approach-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 16px;
+    padding-left: 4px;
+  }
+
+  .approach-label span {
+    color: var(--accent);
+  }
+
+  /* ==============================
+     APPROACH 1: Nested Glow Cards
+  ============================== */
+
+  .nested-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-rows: auto auto auto;
+    gap: 14px;
+    width: 100%;
+  }
+
+  .glow-card {
+    background: var(--surface);
+    border-radius: 14px;
+    padding: 16px;
+    position: relative;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    overflow: hidden;
+  }
+
+  .glow-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 14px;
+    padding: 1.5px;
+    background: linear-gradient(135deg, var(--card-color), transparent 60%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  .glow-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 40px var(--card-glow);
+  }
+
+  .glow-card .card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .glow-card .card-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .glow-card .card-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--card-color);
+  }
+
+  .glow-card .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+
+  .glow-card .chip {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    font-weight: 500;
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    color: var(--text);
+    transition: all 0.2s ease;
+    cursor: default;
+  }
+
+  .glow-card .chip:hover {
+    background: var(--card-glow);
+    border-color: var(--card-color);
+    color: #fff;
+  }
+
+  .glow-card .chip.primary {
+    background: var(--card-glow);
+    border-color: color-mix(in srgb, var(--card-color) 40%, transparent);
+    color: var(--card-color);
+    font-weight: 600;
+  }
+
+  .gc-span-2 { grid-column: span 2; }
+  .gc-span-3 { grid-column: span 3; }
+
+  .flow-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 4px 0;
+    grid-column: span 3;
+  }
+
+  .flow-arrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    opacity: 0.5;
+  }
+
+  .flow-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--accent);
+    padding: 2px 10px;
+    border-radius: 4px;
+    background: rgba(139, 124, 246, 0.08);
+    border: 1px solid rgba(139, 124, 246, 0.15);
+  }
+
+  /* ==============================
+     APPROACH 2: Orbital Layout
+  ============================== */
+
+  .orbital-container {
+    width: 100%;
+    height: 720px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .orbital-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  .orbit-ring {
+    fill: none;
+    stroke: var(--border);
+    stroke-width: 1;
+    stroke-dasharray: 4 6;
+    opacity: 0.4;
+  }
+
+  .orbital-center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 130px;
+    height: 130px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(139, 124, 246, 0.15), transparent 70%);
+    border: 2px solid var(--accent);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    box-shadow: 0 0 60px rgba(139, 124, 246, 0.2), inset 0 0 30px rgba(139, 124, 246, 0.05);
+    animation: pulse-glow 3s ease-in-out infinite;
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 60px rgba(139, 124, 246, 0.2), inset 0 0 30px rgba(139, 124, 246, 0.05); }
+    50% { box-shadow: 0 0 80px rgba(139, 124, 246, 0.35), inset 0 0 40px rgba(139, 124, 246, 0.1); }
+  }
+
+  .orbital-center .center-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    text-align: center;
+    line-height: 1.4;
+  }
+
+  .orbital-center .center-sub {
+    font-size: 9px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+
+  .orbital-node {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    z-index: 5;
+    transition: transform 0.3s ease, z-index 0s;
+  }
+
+  .orbital-node:hover {
+    z-index: 20;
+    transform: translate(-50%, -50%) scale(1.08);
+  }
+
+  .orbital-node-inner {
+    background: var(--surface);
+    border-radius: 12px;
+    padding: 10px 14px;
+    min-width: 120px;
+    text-align: center;
+    transition: box-shadow 0.3s ease;
+  }
+
+  .orbital-node:hover .orbital-node-inner {
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+  }
+
+  .orbital-node .node-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 6px;
+  }
+
+  .orbital-node .node-items {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .orbital-node .node-item {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9.5px;
+    color: var(--text-dim);
+    transition: color 0.2s;
+  }
+
+  .orbital-node:hover .node-item { color: var(--text); }
+
+  /* ==============================
+     APPROACH 3: Circuit Board
+  ============================== */
+
+  .pcb-container {
+    width: 100%;
+    min-height: 660px;
+    position: relative;
+    background:
+      radial-gradient(circle at 50% 50%, rgba(139, 124, 246, 0.03), transparent 60%),
+      var(--bg);
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+
+  .pcb-container::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+    background-size: 20px 20px;
+    pointer-events: none;
+  }
+
+  .pcb-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .pcb-trace {
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: 0.5;
+  }
+
+  .pcb-trace.animated {
+    stroke-dasharray: 8 12;
+    animation: trace-flow 2s linear infinite;
+  }
+
+  @keyframes trace-flow {
+    to { stroke-dashoffset: -40; }
+  }
+
+  .pcb-chip {
+    position: absolute;
+    background: var(--surface);
+    border-radius: 10px;
+    z-index: 5;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    overflow: hidden;
+  }
+
+  .pcb-chip::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    opacity: 0.6;
+  }
+
+  .pcb-chip:hover {
+    transform: scale(1.04);
+    z-index: 20;
+  }
+
+  .pcb-chip .chip-header {
+    padding: 10px 12px 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .pcb-chip .chip-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+
+  .pcb-chip .chip-name {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+
+  .pcb-chip .chip-pins {
+    padding: 4px 12px 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+  }
+
+  .pcb-chip .pin {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9.5px;
+    color: var(--text-dim);
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    transition: all 0.2s;
+  }
+
+  .pcb-chip:hover .pin {
+    color: var(--text);
+  }
+
+  .pcb-junction {
+    filter: drop-shadow(0 0 4px currentColor);
+  }
+
+  .pcb-legend {
+    position: absolute;
+    bottom: 80px;
+    right: 14px;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background: rgba(8, 8, 12, 0.85);
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+
+  .pcb-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--text-dim);
+  }
+
+  .pcb-legend-line {
+    width: 20px;
+    height: 2px;
+    border-radius: 1px;
+  }
+
+  .pcb-flow-label {
+    position: absolute;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    opacity: 0.6;
+    z-index: 10;
+    text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+
+<!-- Tab Bar -->
+<div class="tab-bar">
+  <div class="tab-bar-title">Architecture</div>
+  <button class="tab-btn active" data-tab="nested" onclick="switchTab('nested')">Nested Glow Cards</button>
+  <button class="tab-btn" data-tab="orbital" onclick="switchTab('orbital')">Orbital Layout</button>
+  <button class="tab-btn" data-tab="pcb" onclick="switchTab('pcb')">Circuit Board</button>
+</div>
+
+<div class="slide-container">
+
+<!-- APPROACH 1: Nested Containers with Glow (pure HTML) -->
+<div class="slide active" id="slide-nested">
+  <div class="approach-label"><span>01</span> &mdash; Nested Glow Cards &mdash; hierarchy through containment &amp; proximity</div>
+
+  <div class="nested-grid">
+    <!-- Row 1 -->
+    <div class="glow-card" style="--card-color: var(--cyan); --card-glow: rgba(34, 211, 238, 0.06);">
+      <div class="card-header">
+        <div class="card-icon" style="background: rgba(34, 211, 238, 0.12); color: var(--cyan);">&#9673;</div>
+        <div class="card-title">Presentation Layer</div>
+      </div>
+      <div class="chips">
+        <div class="chip primary">EnviousWisprApp</div>
+        <div class="chip">MainWindowView</div>
+        <div class="chip">SettingsView</div>
+        <div class="chip">OnboardingView</div>
+        <div class="chip">RecordingOverlay</div>
+      </div>
+    </div>
+
+    <div class="glow-card" style="--card-color: var(--accent); --card-glow: rgba(139, 124, 246, 0.06);">
+      <div class="card-header">
+        <div class="card-icon" style="background: rgba(139, 124, 246, 0.12); color: var(--accent);">&#9670;</div>
+        <div class="card-title">Core Application</div>
+      </div>
+      <div class="chips">
+        <div class="chip primary">AppState</div>
+        <div class="chip primary">TranscriptionPipeline</div>
+        <div class="chip">AppDelegate</div>
+        <div class="chip">Sparkle</div>
+      </div>
+    </div>
+
+    <div class="glow-card" style="--card-color: var(--green); --card-glow: rgba(52, 211, 153, 0.06);">
+      <div class="card-header">
+        <div class="card-icon" style="background: rgba(52, 211, 153, 0.12); color: var(--green);">&#9883;</div>
+        <div class="card-title">Services &amp; Hotkey</div>
+      </div>
+      <div class="chips">
+        <div class="chip primary">HotkeyService</div>
+        <div class="chip">PermissionsService</div>
+      </div>
+    </div>
+
+    <!-- Flow row 1 -->
+    <div class="flow-row">
+      <span class="flow-arrow">&#9660;</span>
+      <span class="flow-label">hotkey triggers recording</span>
+      <span class="flow-arrow">&#9660;</span>
+      <span class="flow-label">audio capture begins</span>
+      <span class="flow-arrow">&#9660;</span>
+    </div>
+
+    <!-- Row 2 -->
+    <div class="glow-card" style="--card-color: var(--amber); --card-glow: rgba(251, 191, 36, 0.06);">
+      <div class="card-header">
+        <div class="card-icon" style="background: rgba(251, 191, 36, 0.12); color: var(--amber);">&#9836;</div>
+        <div class="card-title">Audio Core</div>
+      </div>
+      <div class="chips">
+        <div class="chip primary">AudioCaptureManager</div>
+        <div class="chip">AudioBufferProcessor</div>
+        <div class="chip">SilenceDetector</div>
+      </div>
+    </div>
+
+    <div class="glow-card gc-span-2" style="--card-color: var(--pink); --card-glow: rgba(244, 114, 182, 0.06);">
+      <div class="card-header">
+        <div class="card-icon" style="background: rgba(244, 114, 182, 0.12); color: var(--pink);">&#10070;</div>
+        <div class="card-title">ASR &mdash; Speech Recognition &amp; Processing</div>
+      </div>
+      <div class="chips">
+        <div class="chip primary">ASRManager</div>
+        <div class="chip">ASRBackend <em style="opacity:0.5">(protocol)</em></div>
+        <div class="chip">ParakeetBackend</div>
+        <div class="chip">WhisperKitBackend</div>
+        <div class="chip">FluidAudio</div>
+        <div class="chip">WhisperKit</div>
+      </div>
+    </div>
+
+    <!-- Flow row 2 -->
+    <div class="flow-row">
+      <span class="flow-arrow">&#9660;</span>
+      <span class="flow-label">raw audio &rarr; transcribed text</span>
+      <span class="flow-arrow">&#9660;</span>
+      <span class="flow-label">text &rarr; LLM polish &rarr; output</span>
+      <span class="flow-arrow">&#9660;</span>
+    </div>
+
+    <!-- Row 3 -->
+    <div class="glow-card gc-span-2" style="--card-color: var(--orange); --card-glow: rgba(251, 146, 60, 0.06);">
+      <div class="card-header">
+        <div class="card-icon" style="background: rgba(251, 146, 60, 0.12); color: var(--orange);">&#10024;</div>
+        <div class="card-title">LLM Polish &mdash; Model Integrations</div>
+      </div>
+      <div class="chips">
+        <div class="chip primary">OpenAIConnector</div>
+        <div class="chip primary">GeminiConnector</div>
+        <div class="chip">OllamaConnector</div>
+        <div class="chip">AppleIntelligenceConnector</div>
+      </div>
+    </div>
+
+    <div class="glow-card" style="--card-color: var(--blue); --card-glow: rgba(96, 165, 250, 0.06);">
+      <div class="card-header">
+        <div class="card-icon" style="background: rgba(96, 165, 250, 0.12); color: var(--blue);">&#9783;</div>
+        <div class="card-title">Data &amp; Action</div>
+      </div>
+      <div class="chips">
+        <div class="chip primary">PasteService</div>
+        <div class="chip">TranscriptStore</div>
+        <div class="chip">KeychainManager</div>
+        <div class="chip">LLMModelDiscovery</div>
+        <div class="chip">CustomWordStore</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- APPROACH 2: Orbital Layout -->
+<div class="slide" id="slide-orbital">
+  <div class="approach-label"><span>02</span> &mdash; Orbital Layout &mdash; proximity encodes relationship depth</div>
+  <div class="orbital-container" id="orbital-container">
+    <svg class="orbital-svg" id="orbital-svg"></svg>
+    <div class="orbital-center">
+      <div class="center-label">AppState<br>&amp;<br>Pipeline</div>
+      <div class="center-sub">central hub</div>
+    </div>
+  </div>
+</div>
+
+<!-- APPROACH 3: Circuit Board -->
+<div class="slide" id="slide-pcb">
+  <div class="approach-label"><span>03</span> &mdash; Circuit Board &mdash; traces &amp; chips on a PCB aesthetic</div>
+  <div class="pcb-container" id="pcb-container">
+    <svg class="pcb-svg" id="pcb-svg"></svg>
+    <div class="pcb-legend">
+      <div class="pcb-legend-item">
+        <div class="pcb-legend-line" style="background: var(--amber);"></div>
+        Audio Flow
+      </div>
+      <div class="pcb-legend-item">
+        <div class="pcb-legend-line" style="background: var(--pink);"></div>
+        ASR / Text Flow
+      </div>
+      <div class="pcb-legend-item">
+        <div class="pcb-legend-line" style="background: var(--orange);"></div>
+        LLM Polish Flow
+      </div>
+      <div class="pcb-legend-item">
+        <div class="pcb-legend-line" style="background: var(--green);"></div>
+        Control / Trigger
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<script>
+// ---- Tab switching ----
+function switchTab(tabId) {
+  document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+  document.querySelector('.tab-btn[data-tab="' + tabId + '"]').classList.add('active');
+  document.querySelectorAll('.slide').forEach(function(s) { s.classList.remove('active'); });
+  document.getElementById('slide-' + tabId).classList.add('active');
+  if (tabId === 'orbital') buildOrbital();
+  if (tabId === 'pcb') buildPCB();
+}
+
+// ---- Safe DOM helpers ----
+function createEl(tag, attrs, parent) {
+  var el = document.createElement(tag);
+  if (attrs) {
+    Object.keys(attrs).forEach(function(k) {
+      if (k === 'text') el.textContent = attrs[k];
+      else if (k === 'className') el.className = attrs[k];
+      else if (k === 'cssText') el.style.cssText = attrs[k];
+      else el.setAttribute(k, attrs[k]);
+    });
+  }
+  if (parent) parent.appendChild(el);
+  return el;
+}
+
+function createSvgEl(tag, attrs, parent) {
+  var el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  if (attrs) {
+    Object.keys(attrs).forEach(function(k) {
+      el.setAttribute(k, attrs[k]);
+    });
+  }
+  if (parent) parent.appendChild(el);
+  return el;
+}
+
+// ================================
+// APPROACH 2: Orbital Layout
+// ================================
+
+var orbitalGroups = [
+  { name: 'Presentation', color: '#22d3ee',
+    items: ['MainWindowView', 'SettingsView', 'OnboardingView', 'RecordingOverlay', 'EnviousWisprApp'],
+    angle: -90, ring: 1 },
+  { name: 'Services & Hotkey', color: '#34d399',
+    items: ['PermissionsService', 'HotkeyService'],
+    angle: -20, ring: 1 },
+  { name: 'Audio Core', color: '#fbbf24',
+    items: ['AudioCaptureManager', 'AudioBufferProcessor', 'SilenceDetector'],
+    angle: 200, ring: 1 },
+  { name: 'ASR & Processing', color: '#f472b6',
+    items: ['ASRManager', 'ASRBackend', 'ParakeetBackend', 'WhisperKitBackend', 'FluidAudio', 'WhisperKit'],
+    angle: 40, ring: 2 },
+  { name: 'LLM Polish', color: '#fb923c',
+    items: ['OpenAIConnector', 'GeminiConnector', 'OllamaConnector', 'AppleIntelligence'],
+    angle: 140, ring: 2 },
+  { name: 'Data & Action', color: '#60a5fa',
+    items: ['PasteService', 'KeychainManager', 'TranscriptStore', 'LLMModelDiscovery', 'CustomWordStore'],
+    angle: 220, ring: 2 }
+];
+
+var orbitalBuilt = false;
+
+function buildOrbital() {
+  if (orbitalBuilt) return;
+  orbitalBuilt = true;
+
+  var container = document.getElementById('orbital-container');
+  var svg = document.getElementById('orbital-svg');
+  var cx = container.offsetWidth / 2;
+  var cy = container.offsetHeight / 2;
+  var minDim = Math.min(cx, cy);
+  var ring1 = minDim * 0.42;
+  var ring2 = minDim * 0.78;
+
+  // Draw orbit rings
+  [ring1, ring2].forEach(function(r) {
+    createSvgEl('circle', { cx: cx, cy: cy, r: r, class: 'orbit-ring' }, svg);
+  });
+
+  // Draw connecting lines and nodes
+  orbitalGroups.forEach(function(g) {
+    var r = g.ring === 1 ? ring1 : ring2;
+    var rad = g.angle * Math.PI / 180;
+    var nx = cx + r * Math.cos(rad);
+    var ny = cy + r * Math.sin(rad);
+
+    // Line from center
+    createSvgEl('line', {
+      x1: cx, y1: cy, x2: nx, y2: ny,
+      stroke: g.color, 'stroke-width': '1', opacity: '0.15'
+    }, svg);
+
+    // Node container
+    var node = createEl('div', {
+      className: 'orbital-node',
+      cssText: '--node-color:' + g.color + ';--node-glow:' + g.color + '22;left:' + nx + 'px;top:' + ny + 'px;'
+    }, container);
+
+    var inner = createEl('div', { className: 'orbital-node-inner' }, node);
+    inner.style.border = '1.5px solid ' + g.color;
+    inner.style.boxShadow = '0 4px 20px rgba(0,0,0,0.4), 0 0 20px ' + g.color + '22';
+
+    var title = createEl('div', { className: 'node-title', text: g.name }, inner);
+    title.style.color = g.color;
+
+    var itemsDiv = createEl('div', { className: 'node-items' }, inner);
+    g.items.forEach(function(item) {
+      createEl('div', { className: 'node-item', text: item }, itemsDiv);
+    });
+  });
+}
+
+// ================================
+// APPROACH 3: Circuit Board
+// ================================
+
+var pcbBuilt = false;
+
+function buildPCB() {
+  if (pcbBuilt) return;
+  pcbBuilt = true;
+
+  var container = document.getElementById('pcb-container');
+  var svg = document.getElementById('pcb-svg');
+  var W = container.offsetWidth;
+  var H = 680;
+  container.style.height = H + 'px';
+
+  // Layout: 4 columns — Input | Core+Audio | ASR+LLM | Output
+  // Staggered vertically within each column for visual interest
+  var chipDefs = [
+    { name: 'Services & Hotkey', color: '#34d399', glow: 'rgba(52,211,153,0.08)',
+      x: 20, y: 30, w: 200, items: ['HotkeyService', 'PermissionsService'] },
+    { name: 'Presentation', color: '#22d3ee', glow: 'rgba(34,211,238,0.08)',
+      x: 20, y: 190, w: 200, items: ['EnviousWisprApp', 'MainWindowView', 'SettingsView', 'OnboardingView', 'RecordingOverlay'] },
+    { name: 'Core Application', color: '#8b7cf6', glow: 'rgba(139,124,246,0.08)',
+      x: 260, y: 30, w: 220, items: ['AppState', 'TranscriptionPipeline', 'AppDelegate', 'Sparkle'] },
+    { name: 'Audio Core', color: '#fbbf24', glow: 'rgba(251,191,36,0.08)',
+      x: 260, y: 220, w: 220, items: ['AudioCaptureManager', 'AudioBufferProcessor', 'SilenceDetector'] },
+    { name: 'ASR & Processing', color: '#f472b6', glow: 'rgba(244,114,182,0.08)',
+      x: 520, y: 30, w: 240, items: ['ASRManager', 'ASRBackend (protocol)', 'ParakeetBackend', 'WhisperKitBackend', 'FluidAudio', 'WhisperKit'] },
+    { name: 'LLM Polish', color: '#fb923c', glow: 'rgba(251,146,60,0.08)',
+      x: 520, y: 290, w: 240, items: ['OpenAIConnector', 'GeminiConnector', 'OllamaConnector', 'AppleIntelligence'] },
+    { name: 'Data & Action', color: '#60a5fa', glow: 'rgba(96,165,250,0.08)',
+      x: 800, y: 100, w: 220, items: ['PasteService', 'TranscriptStore', 'KeychainManager', 'LLMModelDiscovery', 'CustomWordStore'] }
+  ];
+
+  // Scale to fit container
+  var maxRight = 0;
+  chipDefs.forEach(function(c) { maxRight = Math.max(maxRight, c.x + c.w); });
+  var scale = (W - 40) / maxRight;
+
+  chipDefs.forEach(function(c) {
+    c.x = 20 + (c.x - 20) * scale;
+    c.w = c.w * scale;
+    c.y = 20 + (c.y - 20) * Math.min(scale, 1.1);
+  });
+
+  // Render chips
+  chipDefs.forEach(function(c) {
+    var chip = createEl('div', {
+      className: 'pcb-chip',
+      cssText: 'left:' + c.x + 'px;top:' + c.y + 'px;width:' + c.w + 'px;border:1.5px solid ' + c.color + ';'
+    }, container);
+
+    // Top bar
+    var bar = createEl('div', {
+      cssText: 'position:absolute;top:0;left:0;right:0;height:3px;background:' + c.color + ';opacity:0.6;'
+    }, chip);
+
+    // Header
+    var header = createEl('div', { className: 'chip-header' }, chip);
+    var dot = createEl('div', {
+      className: 'chip-dot',
+      cssText: 'background:' + c.color + ';box-shadow:0 0 6px ' + c.color + ';'
+    }, header);
+    var name = createEl('div', { className: 'chip-name', text: c.name }, header);
+    name.style.color = c.color;
+
+    // Pins
+    var pins = createEl('div', { className: 'chip-pins' }, chip);
+    c.items.forEach(function(item) {
+      createEl('div', { className: 'pin', text: item }, pins);
+    });
+
+    // Hover effects
+    chip.addEventListener('mouseenter', function() {
+      chip.style.boxShadow = '0 0 30px ' + c.glow + ', 0 8px 24px rgba(0,0,0,0.5)';
+    });
+    chip.addEventListener('mouseleave', function() {
+      chip.style.boxShadow = '';
+    });
+  });
+
+  // Helper: walk SVG path commands to find the endpoint
+  function getPathEndpoint(d) {
+    var x = 0, y = 0;
+    var tokens = d.replace(/([MHLVHZ])/gi, ' $1 ').trim().split(/\s+/);
+    var cmd = '';
+    for (var i = 0; i < tokens.length; i++) {
+      var tok = tokens[i];
+      if (/^[A-Za-z]$/.test(tok)) {
+        cmd = tok;
+      } else {
+        var val = parseFloat(tok);
+        if (cmd === 'M' || cmd === 'L') { x = val; cmd = '_mx'; }
+        else if (cmd === '_mx') { y = val; cmd = ''; }
+        else if (cmd === 'H') { x = val; }
+        else if (cmd === 'V') { y = val; }
+      }
+    }
+    return { x: x, y: y };
+  }
+
+  // Draw traces
+  var traceDefs = [
+    { from: 0, to: 2, color: '#34d399' },
+    { from: 1, to: 2, color: '#22d3ee' },
+    { from: 2, to: 3, color: '#8b7cf6', vertical: true },
+    { from: 3, to: 4, color: '#fbbf24' },
+    { from: 4, to: 5, color: '#f472b6', vertical: true },
+    { from: 5, to: 6, color: '#fb923c' },
+    { from: 2, to: 6, color: '#8b7cf6', longHop: true }
+  ];
+
+  traceDefs.forEach(function(t) {
+    var fromC = chipDefs[t.from];
+    var toC = chipDefs[t.to];
+    var pathD;
+
+    if (t.vertical) {
+      // Estimate chip height: header(36px) + items * 24px + padding(10px)
+      var fromChipH = 36 + fromC.items.length * 24 + 10;
+      var fbx = fromC.x + fromC.w / 2;
+      var fby = fromC.y + fromChipH;
+      var tbx = toC.x + toC.w / 2;
+      var tby = toC.y;
+      var midY = (fby + tby) / 2;
+      pathD = 'M ' + fbx + ' ' + fby + ' V ' + midY + ' H ' + tbx + ' V ' + tby;
+    } else if (t.longHop) {
+      var frx = fromC.x + fromC.w;
+      var fry = fromC.y + 30;
+      var trx = toC.x;
+      var try2 = toC.y + 50;
+      var highY = Math.min(fromC.y, toC.y) - 20;
+      pathD = 'M ' + frx + ' ' + fry + ' H ' + (frx + 15) + ' V ' + highY + ' H ' + (trx - 15) + ' V ' + try2 + ' H ' + trx;
+    } else {
+      var fcx = fromC.x + fromC.w;
+      var fcy = fromC.y + 40;
+      var tcx = toC.x;
+      var tcy = toC.y + 40;
+      var midX = (fcx + tcx) / 2;
+      pathD = 'M ' + fcx + ' ' + fcy + ' H ' + midX + ' V ' + tcy + ' H ' + tcx;
+    }
+
+    var path = createSvgEl('path', {
+      d: pathD, stroke: t.color, class: 'pcb-trace animated'
+    }, svg);
+    path.style.filter = 'drop-shadow(0 0 3px ' + t.color + ')';
+
+    // Compute actual start and end coordinates by walking the path commands
+    var endPt = getPathEndpoint(pathD);
+    var parts = pathD.split(' ');
+    var startX = parseFloat(parts[1]);
+    var startY = parseFloat(parts[2]);
+    createSvgEl('circle', {
+      cx: startX, cy: startY, r: 3, fill: t.color, class: 'pcb-junction'
+    }, svg);
+    createSvgEl('circle', {
+      cx: endPt.x, cy: endPt.y, r: 3, fill: t.color, class: 'pcb-junction'
+    }, svg);
+  });
+
+  // Column header labels at the bottom to show the data flow
+  var colLabels = [
+    { text: 'INPUT / TRIGGER', x: chipDefs[0].x + chipDefs[0].w / 2, y: H - 50, color: '#34d399' },
+    { text: 'ORCHESTRATION', x: chipDefs[2].x + chipDefs[2].w / 2, y: H - 50, color: '#8b7cf6' },
+    { text: 'RECOGNITION', x: chipDefs[4].x + chipDefs[4].w / 2, y: H - 50, color: '#f472b6' },
+    { text: 'OUTPUT', x: chipDefs[6].x + chipDefs[6].w / 2, y: H - 50, color: '#60a5fa' }
+  ];
+
+  // Flow direction arrows between columns
+  var flowLabels = colLabels;
+
+  flowLabels.forEach(function(fl) {
+    var lbl = createEl('div', {
+      className: 'pcb-flow-label',
+      text: fl.text,
+      cssText: 'left:' + fl.x + 'px;top:' + fl.y + 'px;color:' + fl.color + ';transform:translateX(-50%);text-align:center;'
+    }, container);
+  });
+
+  // Draw flow direction arrows between columns
+  var arrowY = H - 46;
+  for (var ai = 0; ai < colLabels.length - 1; ai++) {
+    var ax1 = colLabels[ai].x + 50;
+    var ax2 = colLabels[ai + 1].x - 50;
+    var amid = (ax1 + ax2) / 2;
+    // Arrow line
+    createSvgEl('line', {
+      x1: ax1, y1: arrowY, x2: ax2 - 6, y2: arrowY,
+      stroke: '#444', 'stroke-width': '1', opacity: '0.5'
+    }, svg);
+    // Arrowhead
+    createSvgEl('polygon', {
+      points: (ax2 - 6) + ',' + (arrowY - 3) + ' ' + ax2 + ',' + arrowY + ' ' + (ax2 - 6) + ',' + (arrowY + 3),
+      fill: '#444', opacity: '0.5'
+    }, svg);
+  }
+}
+</script>
+
+</body>
+</html>
