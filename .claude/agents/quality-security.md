@@ -37,7 +37,6 @@ All source files — read access to entire codebase for auditing.
 
 ## Known Patterns (Not Bugs)
 
-- `DispatchQueue.main.asyncAfter` in LLMSettingsView — intentional UI timing
 - Force-unwrapped `pipeline: TranscriptionPipeline!` in AppState — initialized in init
 - `nonisolated static let` on AudioCaptureManager/SilenceDetector — compile-time constants
 
@@ -50,6 +49,7 @@ All source files — read access to entire codebase for auditing.
 - `wispr-detect-hardcoded-secrets`
 - `wispr-validate-keychain-usage`
 - `wispr-flag-sensitive-logging`
+- `wispr-swift-format-check`
 
 ## Coordination
 

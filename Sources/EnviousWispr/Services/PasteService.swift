@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import Carbon.HIToolbox
 
 /// Immutable snapshot of all pasteboard contents at a point in time.
@@ -76,14 +77,18 @@ enum PasteService {
     /// - Returns: The pasteboard `changeCount` after our write, needed by `restoreClipboard`.
     @discardableResult
     static func pasteToActiveApp(_ text: String) -> Int {
+        let accessibilityTrusted = AXIsProcessTrusted()
+
         let pasteboard = NSPasteboard.general
+        let previousChangeCount = pasteboard.changeCount
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
         let changeCountAfterWrite = pasteboard.changeCount
+        let clipboardWriteSuccess = pasteboard.changeCount != previousChangeCount
 
         guard let source = CGEventSource(stateID: .combinedSessionState) else {
             Task { await AppLogger.shared.log(
-                "Failed to create CGEventSource",
+                "Paste attempt: accessibility=\(accessibilityTrusted), cgEventAttempted=false, clipboardWrite=\(clipboardWriteSuccess) — Failed to create CGEventSource",
                 level: .info, category: "PasteService"
             ) }
             return changeCountAfterWrite
@@ -91,7 +96,7 @@ enum PasteService {
         guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: UInt16(kVK_ANSI_V), keyDown: true),
               let keyUp = CGEvent(keyboardEventSource: source, virtualKey: UInt16(kVK_ANSI_V), keyDown: false) else {
             Task { await AppLogger.shared.log(
-                "Failed to create CGEvent for Cmd+V",
+                "Paste attempt: accessibility=\(accessibilityTrusted), cgEventAttempted=false, clipboardWrite=\(clipboardWriteSuccess) — Failed to create CGEvent for Cmd+V",
                 level: .info, category: "PasteService"
             ) }
             return changeCountAfterWrite
@@ -100,6 +105,11 @@ enum PasteService {
         keyDown.post(tap: .cghidEventTap)
         keyUp.flags = .maskCommand
         keyUp.post(tap: .cghidEventTap)
+
+        Task { await AppLogger.shared.log(
+            "Paste attempt: accessibility=\(accessibilityTrusted), cgEventAttempted=true, clipboardWrite=\(clipboardWriteSuccess)",
+            level: .info, category: "PasteService"
+        ) }
 
         return changeCountAfterWrite
     }

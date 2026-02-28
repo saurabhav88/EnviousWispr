@@ -150,6 +150,7 @@ struct StatusView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(.easeInOut(duration: 0.3), value: appState.pipelineState)
         .onChange(of: appState.pipelineState) { _, newState in
             if case .recording = newState {

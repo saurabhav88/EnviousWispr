@@ -58,6 +58,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Start hotkeys now that the event loop is running.
         // Carbon RegisterEventHotKey requires an active run loop for event delivery.
         appState.startHotkeyServiceIfEnabled()
+
+        // Check Accessibility permission on launch (query only — never auto-prompt).
+        appState.refreshAccessibilityOnLaunch()
+
+        // Begin smart polling if Accessibility is not yet granted.
+        appState.startAccessibilityMonitoring()
     }
 
     private func setupStatusItem() {
@@ -97,6 +103,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         recordItem.isEnabled = !(state.isActive && state != .recording)
         menu.addItem(recordItem)
 
+        // Accessibility warning — shown only when paste is unavailable and not dismissed.
+        if appState.permissions.shouldShowAccessibilityWarning {
+            let warningItem = NSMenuItem(
+                title: "Paste disabled — Accessibility required",
+                action: #selector(openPermissionsSettings),
+                keyEquivalent: ""
+            )
+            warningItem.image = NSImage(systemSymbolName: "lock.open.fill", accessibilityDescription: "Accessibility required")
+            warningItem.target = self
+            menu.addItem(warningItem)
+        }
+
         menu.addItem(.separator())
 
         // Settings (opens unified window to Speech Engine tab)
@@ -123,7 +141,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Update the status item icon based on pipeline state.
     func updateIcon() {
         let state = appState.pipelineState
-        let iconName = state.menuBarIconName
+        // Show mic.slash when accessibility is missing and the app is idle,
+        // to signal that paste will not work until the user grants permission.
+        let iconName: String
+        if state == .idle && appState.permissions.shouldShowAccessibilityWarning {
+            iconName = "mic.slash"
+        } else {
+            iconName = state.menuBarIconName
+        }
         statusItem?.button?.image = NSImage(systemSymbolName: iconName, accessibilityDescription: "EnviousWispr")
         statusItem?.button?.alphaValue = 1.0
 
@@ -180,6 +205,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openSettings() {
         appState.pendingNavigationSection = .speechEngine
+        showWindow()
+    }
+
+    @objc private func openPermissionsSettings() {
+        appState.pendingNavigationSection = .permissions
         showWindow()
     }
 

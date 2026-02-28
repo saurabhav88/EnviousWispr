@@ -35,7 +35,9 @@ from ui_helpers import (
     element_center,
     element_info,
     get_attr,
+    set_attr,
     perform_action,
+    activate_app,
     wait_for_element,
     wait_for_element_gone,
     wait_for_value,
@@ -84,7 +86,13 @@ def open_menu_bar_menu(pid, verbose=False):
 
 
 def close_menu_bar_menu(pid):
-    """Dismiss an open menu by pressing Escape."""
+    """Dismiss an open menu by pressing Escape.
+
+    Activates the app first so the Escape keystroke lands on EnviousWispr,
+    not on whichever app happens to be frontmost.
+    """
+    activate_app(pid)
+    time.sleep(0.1)
     press_key("escape")
     time.sleep(0.3)
 
@@ -246,13 +254,13 @@ class TestSession:
             for txt in row_texts:
                 val = get_attr(txt, "AXValue") or ""
                 if val == tab_name:
-                    center = element_center(row)
-                    if center:
-                        click(center[0], center[1])
-                        time.sleep(0.5)
-                        if self.verbose:
-                            print(f"  [SESSION] Switched to tab: {tab_name!r}", file=sys.stderr)
-                        clicked = True
+                    # Use AXSelected (works without Accessibility permission)
+                    # instead of CGEvent click which requires Accessibility.
+                    set_attr(row, "AXSelected", True)
+                    time.sleep(0.5)
+                    if self.verbose:
+                        print(f"  [SESSION] Switched to tab: {tab_name!r}", file=sys.stderr)
+                    clicked = True
                     break
             if clicked:
                 break
@@ -290,9 +298,13 @@ class TestSession:
                         print(f"  [SESSION] Closed window: {title}", file=sys.stderr)
                     time.sleep(0.3)
                 else:
-                    # Fallback: raise the window and Cmd+W
-                    perform_action(win, "AXRaise")
-                    time.sleep(0.2)
+                    # Fallback: activate the app first, THEN Cmd+W.
+                    # SAFETY: activate_app targets only EnviousWispr by PID.
+                    # Never use AXRaise + press_key without activation — the
+                    # keystroke can land on whichever app is frontmost (e.g.
+                    # the terminal running Claude Code).
+                    activate_app(self.pid)
+                    time.sleep(0.3)
                     press_key("w", cmd=True)
                     if self.verbose:
                         print(f"  [SESSION] Closed window via Cmd+W: {title}", file=sys.stderr)
@@ -353,39 +365,39 @@ class TestResult:
 # Assertion helpers — raise AssertionError with descriptive messages
 # ---------------------------------------------------------------------------
 
-def assert_element_exists(pid, role=None, title=None, description=None, msg=None):
+def assert_element_exists(pid, role=None, title=None, description=None, value=None, msg=None):
     """Assert that an AX element matching the criteria exists RIGHT NOW."""
     app = get_ax_app(pid)
-    el = find_element(app, role=role, title=title, description=description)
+    el = find_element(app, role=role, title=title, description=description, value=value)
     if el is None:
-        criteria = _criteria_str(role, title, description)
+        criteria = _criteria_str(role, title, description, value)
         raise AssertionError(msg or f"Element not found: {criteria}")
     return el
 
 
-def assert_element_not_exists(pid, role=None, title=None, description=None, msg=None):
+def assert_element_not_exists(pid, role=None, title=None, description=None, value=None, msg=None):
     """Assert that no AX element matching the criteria exists RIGHT NOW."""
     app = get_ax_app(pid)
-    el = find_element(app, role=role, title=title, description=description)
+    el = find_element(app, role=role, title=title, description=description, value=value)
     if el is not None:
-        criteria = _criteria_str(role, title, description)
+        criteria = _criteria_str(role, title, description, value)
         raise AssertionError(msg or f"Element unexpectedly found: {criteria}")
 
 
-def assert_element_appears(pid, role=None, title=None, timeout=5.0, msg=None):
+def assert_element_appears(pid, role=None, title=None, value=None, timeout=5.0, msg=None):
     """Assert that an element appears within timeout (polling)."""
-    el = wait_for_element(pid, role=role, title=title, timeout=timeout)
+    el = wait_for_element(pid, role=role, title=title, value=value, timeout=timeout)
     if el is None:
-        criteria = _criteria_str(role, title)
+        criteria = _criteria_str(role, title, value=value)
         raise AssertionError(msg or f"Element did not appear within {timeout}s: {criteria}")
     return el
 
 
-def assert_element_disappears(pid, role=None, title=None, timeout=5.0, msg=None):
+def assert_element_disappears(pid, role=None, title=None, value=None, timeout=5.0, msg=None):
     """Assert that an element disappears within timeout (polling)."""
-    gone = wait_for_element_gone(pid, role=role, title=title, timeout=timeout)
+    gone = wait_for_element_gone(pid, role=role, title=title, value=value, timeout=timeout)
     if not gone:
-        criteria = _criteria_str(role, title)
+        criteria = _criteria_str(role, title, value=value)
         raise AssertionError(msg or f"Element did not disappear within {timeout}s: {criteria}")
 
 
@@ -476,7 +488,7 @@ def assert_element_disabled(pid, role=None, title=None, msg=None):
     return el
 
 
-def _criteria_str(role=None, title=None, description=None):
+def _criteria_str(role=None, title=None, description=None, value=None):
     parts = []
     if role:
         parts.append(f"role={role!r}")
@@ -484,6 +496,8 @@ def _criteria_str(role=None, title=None, description=None):
         parts.append(f"title={title!r}")
     if description:
         parts.append(f"description={description!r}")
+    if value:
+        parts.append(f"value={value!r}")
     return ", ".join(parts) or "(no criteria)"
 
 
@@ -621,11 +635,9 @@ class TestContext:
             for txt in row_texts:
                 val = get_attr(txt, "AXValue") or ""
                 if val == tab_name:
-                    center = element_center(row)
-                    if center:
-                        click(center[0], center[1])
-                        time.sleep(0.5)
-                        self.log(f"Switched to tab: {tab_name!r} (no-session fallback)")
+                    set_attr(row, "AXSelected", True)
+                    time.sleep(0.5)
+                    self.log(f"Switched to tab: {tab_name!r} (no-session fallback)")
                     return settings_win
         raise RuntimeError(f"Settings tab not found in sidebar: {tab_name!r}")
 

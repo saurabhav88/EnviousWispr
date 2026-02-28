@@ -8,6 +8,18 @@ final class PermissionsService {
     private(set) var microphoneStatus: AVAuthorizationStatus = .notDetermined
     private(set) var accessibilityGranted: Bool = false
 
+    /// Whether the user has explicitly dismissed the accessibility warning banner.
+    /// Stored property so @Observable tracks changes and SwiftUI re-renders.
+    /// Synced to UserDefaults in didSet so it survives restarts.
+    private(set) var accessibilityWarningDismissed: Bool = UserDefaults.standard.bool(forKey: "accessibilityWarningDismissed") {
+        didSet { UserDefaults.standard.set(accessibilityWarningDismissed, forKey: "accessibilityWarningDismissed") }
+    }
+
+    /// True when the accessibility warning should be shown in the UI.
+    var shouldShowAccessibilityWarning: Bool {
+        !accessibilityGranted && !accessibilityWarningDismissed
+    }
+
     init() {
         microphoneStatus = AVCaptureDevice.authorizationStatus(for: .audio)
         accessibilityGranted = AXIsProcessTrusted()
@@ -26,6 +38,7 @@ final class PermissionsService {
     }
 
     /// Prompt the user to grant Accessibility permission in System Settings.
+    /// Only called from explicit user action (e.g., Settings button). Never called automatically.
     /// Returns true if already granted; otherwise opens the System Settings prompt.
     func requestAccessibilityAccess() -> Bool {
         let options = [
@@ -36,9 +49,27 @@ final class PermissionsService {
         return trusted
     }
 
-    /// Re-check Accessibility permission (e.g., after user returns from System Settings).
+    /// Re-check Accessibility permission using `AXIsProcessTrusted()` (no prompt).
+    /// Detects revocation transitions (granted → revoked) and re-arms the warning.
     func refreshAccessibilityStatus() {
-        accessibilityGranted = AXIsProcessTrusted()
+        let wasGranted = accessibilityGranted
+        let nowGranted = AXIsProcessTrusted()
+        accessibilityGranted = nowGranted
+
+        // Revocation detected: re-arm the warning so it shows again.
+        if wasGranted && !nowGranted {
+            resetAccessibilityWarningDismissal()
+        }
+    }
+
+    /// Mark the accessibility warning as dismissed by the user.
+    func dismissAccessibilityWarning() {
+        accessibilityWarningDismissed = true
+    }
+
+    /// Re-arm the accessibility warning (e.g., after permission is revoked).
+    func resetAccessibilityWarningDismissal() {
+        accessibilityWarningDismissed = false
     }
 
     /// Whether Accessibility permission has been granted.

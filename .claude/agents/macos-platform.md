@@ -8,7 +8,7 @@ description: macOS permissions, accessibility, menu bar, global hotkeys, paste s
 
 ## Domain
 
-Source dirs: `Services/` (PasteService, PermissionsService, HotkeyService), `Views/MenuBar/`, `Views/Onboarding/`, `Views/Settings/`, `Views/Components/`.
+Source dirs: `App/` (EnviousWisprApp — MenuBarExtra), `Services/` (PasteService, PermissionsService, HotkeyService), `Views/Onboarding/`, `Views/Settings/`, `Views/Components/`.
 
 ## Permissions (TCC)
 

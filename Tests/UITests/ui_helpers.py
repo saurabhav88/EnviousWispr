@@ -10,6 +10,7 @@ from ApplicationServices import (
     AXUIElementCopyAttributeNames,
     AXUIElementCopyActionNames,
     AXUIElementPerformAction,
+    AXUIElementSetAttributeValue,
     AXValueGetValue,
     kAXErrorSuccess,
     kAXValueTypeCGPoint,
@@ -50,6 +51,12 @@ def get_attr(element, attr):
     return None
 
 
+def set_attr(element, attr, value):
+    """Set an AX attribute on *element*. Returns True on success."""
+    err = AXUIElementSetAttributeValue(element, attr, value)
+    return err == kAXErrorSuccess
+
+
 def get_attr_names(element):
     """Return a list of attribute names supported by *element*."""
     err, names = AXUIElementCopyAttributeNames(element, None)
@@ -70,6 +77,21 @@ def perform_action(element, action):
     """Perform *action* on *element*. Returns True on success."""
     err = AXUIElementPerformAction(element, action)
     return err == kAXErrorSuccess
+
+
+def activate_app(pid):
+    """Bring the app with *pid* to the foreground safely.
+
+    Uses NSRunningApplication.activate — targets only the specified PID.
+    Never touches other apps. Safe to call before any CGEvent keystroke
+    that must land on the target app.
+    """
+    from AppKit import NSRunningApplication, NSApplicationActivateIgnoringOtherApps
+    nsa = NSRunningApplication.runningApplicationWithProcessIdentifier_(pid)
+    if nsa is not None:
+        nsa.activateWithOptions_(NSApplicationActivateIgnoringOtherApps)
+        return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +172,7 @@ def walk_tree(element, max_depth=10, _depth=0):
     return node
 
 
-def find_element(element, role=None, title=None, description=None,
+def find_element(element, role=None, title=None, description=None, value=None,
                  max_depth=10, _depth=0):
     """DFS search returning the first AX element matching the criteria.
 
@@ -167,6 +189,8 @@ def find_element(element, role=None, title=None, description=None,
         match = False
     if description is not None and get_attr(element, "AXDescription") != description:
         match = False
+    if value is not None and get_attr(element, "AXValue") != value:
+        match = False
 
     if match:
         return element
@@ -178,7 +202,7 @@ def find_element(element, role=None, title=None, description=None,
             if bar is not None:
                 result = find_element(
                     bar, role=role, title=title, description=description,
-                    max_depth=max_depth, _depth=_depth + 1,
+                    value=value, max_depth=max_depth, _depth=_depth + 1,
                 )
                 if result is not None:
                     return result
@@ -188,14 +212,14 @@ def find_element(element, role=None, title=None, description=None,
         for child in children_ref:
             result = find_element(
                 child, role=role, title=title, description=description,
-                max_depth=max_depth, _depth=_depth + 1,
+                value=value, max_depth=max_depth, _depth=_depth + 1,
             )
             if result is not None:
                 return result
     return None
 
 
-def find_all_elements(element, role=None, title=None, max_depth=10, _depth=0):
+def find_all_elements(element, role=None, title=None, value=None, max_depth=10, _depth=0):
     """Return a list of all AX elements matching the criteria.
 
     At the application level, also traverses AXMenuBar and AXExtrasMenuBar
@@ -211,6 +235,8 @@ def find_all_elements(element, role=None, title=None, max_depth=10, _depth=0):
         match = False
     if title is not None and get_attr(element, "AXTitle") != title:
         match = False
+    if value is not None and get_attr(element, "AXValue") != value:
+        match = False
 
     if match:
         results.append(element)
@@ -222,7 +248,7 @@ def find_all_elements(element, role=None, title=None, max_depth=10, _depth=0):
             if bar is not None:
                 results.extend(
                     find_all_elements(
-                        bar, role=role, title=title,
+                        bar, role=role, title=title, value=value,
                         max_depth=max_depth, _depth=_depth + 1,
                     )
                 )
@@ -232,19 +258,19 @@ def find_all_elements(element, role=None, title=None, max_depth=10, _depth=0):
         for child in children_ref:
             results.extend(
                 find_all_elements(
-                    child, role=role, title=title,
+                    child, role=role, title=title, value=value,
                     max_depth=max_depth, _depth=_depth + 1,
                 )
             )
     return results
 
 
-def wait_for_element(pid, role=None, title=None, timeout=5.0, poll_interval=0.3):
+def wait_for_element(pid, role=None, title=None, value=None, timeout=5.0, poll_interval=0.3):
     """Poll until an element matching the criteria appears, or timeout."""
     app = get_ax_app(pid)
     deadline = time.time() + timeout
     while time.time() < deadline:
-        result = find_element(app, role=role, title=title)
+        result = find_element(app, role=role, title=title, value=value)
         if result is not None:
             return result
         time.sleep(poll_interval)
@@ -286,7 +312,7 @@ def wait_for_value(pid, role=None, title=None, description=None,
     return (False, final_value, time.time() - start)
 
 
-def wait_for_element_gone(pid, role=None, title=None, timeout=5.0, poll_interval=0.3):
+def wait_for_element_gone(pid, role=None, title=None, value=None, timeout=5.0, poll_interval=0.3):
     """Poll until an element matching the criteria disappears, or timeout.
 
     Returns True if the element disappeared, False if still present at timeout.
@@ -294,7 +320,7 @@ def wait_for_element_gone(pid, role=None, title=None, timeout=5.0, poll_interval
     app = get_ax_app(pid)
     deadline = time.time() + timeout
     while time.time() < deadline:
-        result = find_element(app, role=role, title=title)
+        result = find_element(app, role=role, title=title, value=value)
         if result is None:
             return True
         time.sleep(poll_interval)

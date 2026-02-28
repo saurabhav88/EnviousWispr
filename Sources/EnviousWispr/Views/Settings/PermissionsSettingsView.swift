@@ -32,9 +32,16 @@ struct PermissionsSettingsView: View {
                     Image(systemName: appState.permissions.hasAccessibilityPermission
                           ? "checkmark.circle.fill" : "xmark.circle.fill")
                         .foregroundStyle(appState.permissions.hasAccessibilityPermission ? .green : .red)
-                    Text(appState.permissions.hasAccessibilityPermission
-                         ? "Accessibility access granted"
-                         : "Accessibility access required for paste")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(appState.permissions.hasAccessibilityPermission
+                             ? "Accessibility access granted"
+                             : "Accessibility access required for paste")
+                        if !appState.permissions.hasAccessibilityPermission {
+                            Text("After rebuilding the app you may need to re-grant this permission.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
 
                     Spacer()
 
@@ -47,7 +54,7 @@ struct PermissionsSettingsView: View {
             }
             .task {
                 while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(2))
+                    try? await Task.sleep(for: .seconds(TimingConstants.accessibilityPollIntervalSec))
                     appState.permissions.refreshAccessibilityStatus()
                 }
             }

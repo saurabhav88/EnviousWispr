@@ -121,14 +121,7 @@ When writing one-off tests outside the UAT runner, follow this 6-step sequence:
 
 ## Feature Testing Workflow
 
-When testing a newly implemented feature:
-
-1. **Read the feature spec** from `docs/feature-requests/`
-2. **Generate scenarios** via `wispr-generate-uat-tests`
-3. **Write scenario file** to `Tests/UITests/scenarios/NNN-feature-name.md`, then **add test functions** to `uat_runner.py` with `@uat_test` decorator
-4. **Run Smart UAT** via `wispr-run-smart-uat`
-5. **Fix failures** — if a test fails, the feature has a bug, not the test
-6. **Only declare done** when all scenarios pass
+Use Smart UAT (`wispr-run-smart-uat`) for all feature testing. It automatically generates targeted tests from scope (completed todos → conversation context → diff fallback), runs them in background, and reports results.
 
 ## API Endpoints
 
@@ -146,7 +139,6 @@ Error codes: `401` → invalid key, `429` → rate limited.
 - `wispr-ui-ax-inspect` — AX tree inspection
 - `wispr-ui-simulate-input` — CGEvent HID simulation
 - `wispr-ui-screenshot-verify` — visual regression
-- `wispr-run-ui-test` — **DEPRECATED** (use `wispr-run-smart-uat` instead)
 
 ## Coordination
 

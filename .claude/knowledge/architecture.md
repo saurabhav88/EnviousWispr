@@ -93,6 +93,6 @@ Tests/UITests/
 └── generated/             # LLM-generated test files (ephemeral, per-diff, run via --files)
 ```
 
-**Smart UAT flow:** `diff_analyzer.py` → `uat-generator` agent → test files in `generated/` → `uat_runner.py run --files <generated paths>`.
+**Smart UAT flow:** scope (completed todos → conversation context → `diff_analyzer.py` fallback) → `uat-generator` agent → test files in `generated/` → `uat_runner.py run --files <generated paths>`.
 
 **FIRM RULE:** All UAT execution MUST use `run_in_background: true`. CGEvent simulation collides with VSCode foreground dialogs.
