@@ -12,7 +12,8 @@ struct OpenAIConnector: TranscriptPolisher {
     func polish(
         text: String,
         instructions: PolishInstructions,
-        config: LLMProviderConfig
+        config: LLMProviderConfig,
+        onToken: (@Sendable (String) -> Void)?
     ) async throws -> LLMResult {
         let apiKey = try getAPIKey(config: config)
 
@@ -35,7 +36,7 @@ struct OpenAIConnector: TranscriptPolisher {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         request.timeoutInterval = 60
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await LLMNetworkSession.shared.session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw LLMError.requestFailed("Invalid response")

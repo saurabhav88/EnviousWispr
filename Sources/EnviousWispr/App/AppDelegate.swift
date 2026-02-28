@@ -64,6 +64,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Begin smart polling if Accessibility is not yet granted.
         appState.startAccessibilityMonitoring()
+
+        // Pre-warm LLM network connection (TLS + HTTP/2 setup).
+        LLMNetworkSession.shared.preWarmIfConfigured(
+            provider: appState.settings.llmProvider,
+            keychainManager: appState.keychainManager
+        )
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        // Re-warm LLM connection when app comes to foreground.
+        LLMNetworkSession.shared.preWarmIfConfigured(
+            provider: appState.settings.llmProvider,
+            keychainManager: appState.keychainManager
+        )
     }
 
     private func setupStatusItem() {
@@ -211,6 +225,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func openPermissionsSettings() {
         appState.pendingNavigationSection = .permissions
         showWindow()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        LLMNetworkSession.shared.invalidate()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

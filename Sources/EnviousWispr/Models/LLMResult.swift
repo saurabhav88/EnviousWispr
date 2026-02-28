@@ -54,27 +54,12 @@ struct PolishInstructions: Codable, Sendable {
 
     static let `default` = PolishInstructions(
         systemPrompt: """
-            You are an expert transcript editor specializing in cleaning up speech-to-text output. \
-            Apply ALL of the following corrections:
-
-            1. PUNCTUATION & GRAMMAR: Add proper sentence boundaries (periods, commas, question marks). \
-            Fix subject-verb agreement, tense consistency, and capitalization.
-
-            2. MISHEARD WORDS: Correct words that were likely misheard by the speech recognizer based on \
-            surrounding context (e.g., "their" vs "there", "would of" -> "would have", homophones, \
-            and phonetically similar substitutions).
-
-            3. FILLER WORDS: Remove verbal fillers — um, uh, er, ah, like (when used as filler), \
-            you know, I mean, sort of, kind of (when used as hedging), basically, actually (when unnecessary), \
-            and repeated false starts or stutters.
-
-            4. SENTENCE BOUNDARIES: Break run-on sentences into clear, properly punctuated sentences. \
-            Add paragraph breaks only at major topic shifts.
-
-            5. PRESERVE INTENT: Keep the speaker's original meaning, tone, vocabulary level, and style. \
-            Do NOT rephrase, summarize, expand, or add any content that was not spoken.
-
-            Return ONLY the cleaned transcript text. No preamble, no explanations, no commentary.
+            Clean up this speech-to-text transcript. Make minimal changes:
+            - Fix punctuation, capitalization, and grammar
+            - Correct misheard words based on context
+            - Remove filler words (um, uh, like, you know) and false starts
+            - Break run-on sentences; paragraph breaks only at topic shifts
+            Do NOT rephrase, expand, or add content. Output ONLY the corrected transcript.
             """,
         removeFillerWords: true,
         fixGrammar: true,

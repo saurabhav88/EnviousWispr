@@ -22,7 +22,8 @@ struct AppleIntelligenceConnector: TranscriptPolisher {
     func polish(
         text: String,
         instructions: PolishInstructions,
-        config: LLMProviderConfig
+        config: LLMProviderConfig,
+        onToken: (@Sendable (String) -> Void)?
     ) async throws -> LLMResult {
 #if canImport(FoundationModels)
         guard #available(macOS 26.0, *) else {

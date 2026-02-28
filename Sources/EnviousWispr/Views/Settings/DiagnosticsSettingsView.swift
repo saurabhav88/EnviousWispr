@@ -71,8 +71,13 @@ struct DiagnosticsSettingsView: View {
                             .font(.caption)
                     }
                 } else {
-                    Button("Run Benchmark") {
-                        Task { await appState.benchmark.run(using: appState.asrManager) }
+                    HStack {
+                        Button("Run ASR Benchmark") {
+                            Task { await appState.benchmark.run(using: appState.asrManager) }
+                        }
+                        Button("Run Pipeline Benchmark") {
+                            Task { await appState.benchmark.runPipelineBenchmark(using: appState.asrManager) }
+                        }
                     }
                 }
 
@@ -90,6 +95,45 @@ struct DiagnosticsSettingsView: View {
                                 .foregroundStyle(.secondary)
                                 .monospacedDigit()
                         }
+                    }
+                }
+
+                if let pipeline = appState.benchmark.pipelineResult {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Pipeline Benchmark Results")
+                            .font(.caption).bold()
+                        HStack {
+                            Text("Batch ASR:")
+                            Spacer()
+                            Text(String(format: "%.3fs", pipeline.batchASRTime))
+                                .monospacedDigit()
+                        }.font(.caption)
+
+                        if let streamTime = pipeline.streamingFinalizeTime {
+                            HStack {
+                                Text("Streaming finalize:")
+                                Spacer()
+                                Text(String(format: "%.3fs", streamTime))
+                                    .monospacedDigit()
+                            }.font(.caption)
+                        }
+
+                        if let wer = pipeline.werDelta {
+                            HStack {
+                                Text("Streaming vs Batch WER:")
+                                Spacer()
+                                Text(String(format: "%.1f%%", wer * 100))
+                                    .monospacedDigit()
+                                    .foregroundStyle(wer <= 0.02 ? .green : .orange)
+                            }.font(.caption)
+                        }
+
+                        HStack {
+                            Text("Audio duration:")
+                            Spacer()
+                            Text(String(format: "%.1fs", pipeline.audioDuration))
+                                .monospacedDigit()
+                        }.font(.caption)
                     }
                 }
 

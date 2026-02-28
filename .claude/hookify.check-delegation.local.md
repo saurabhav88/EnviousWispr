@@ -1,6 +1,6 @@
 ---
 name: check-delegation
-enabled: true
+enabled: false
 event: stop
 pattern: .*
 ---

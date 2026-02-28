@@ -47,6 +47,9 @@ venv/
 # UI test screenshots (captured at runtime)
 Tests/UITests/screenshots/
 
+# Third-party test audio (binary, sourced from WhisperKit checkout at setup time)
+Tests/Resources/jfk.wav
+
 # Node (if applicable later)
 node_modules/
 dist/

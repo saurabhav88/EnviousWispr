@@ -44,6 +44,8 @@ final class TranscriptionPipeline {
     private var silenceDetector: SilenceDetector?
     private var vadMonitorTask: Task<Void, Never>?
     private var recordingStartTime: Date?
+    /// Whether streaming ASR was successfully started for the current recording.
+    private var streamingASRActive = false
 
     init(
         audioCapture: AudioCaptureManager,
@@ -59,6 +61,10 @@ final class TranscriptionPipeline {
         llmPolishStep.onWillProcess = { [weak self] in
             self?.state = .polishing
         }
+        // Activate SSE streaming for Gemini — a non-nil onToken causes GeminiConnector
+        // to use streamGenerateContent instead of batch generateContent.
+        // No-op callback is correct; live token display in overlay is a future follow-up.
+        llmPolishStep.onToken = { _ in }
         textProcessingSteps = [wordCorrectionStep, llmPolishStep]
     }
 
@@ -79,6 +85,7 @@ final class TranscriptionPipeline {
         guard !state.isActive || state == .complete else { return }
 
         lastPolishError = nil
+        deactivateStreamingForwarding()
 
         // Cancel idle timer so model stays loaded during recording.
         asrManager.cancelIdleTimer()
@@ -98,6 +105,40 @@ final class TranscriptionPipeline {
         // (LLM polishing can take seconds, during which focus may shift)
         targetApp = NSWorkspace.shared.frontmostApplication
 
+        // Start streaming ASR if the backend supports it — feed audio buffers
+        // to the ASR model during recording so transcription overlaps with capture.
+        let supportsStreaming = await asrManager.activeBackendSupportsStreaming
+        if supportsStreaming {
+            do {
+                try await asrManager.startStreaming()
+                streamingASRActive = true
+
+                // Wire audio buffer forwarding: each converted buffer goes to streaming ASR
+                audioCapture.onBufferCaptured = { [weak self] buffer in
+                    guard let self else { return }
+                    // AVAudioPCMBuffer isn't Sendable but is consumed immediately
+                    // on the main actor — safe to suppress the data race diagnostic.
+                    nonisolated(unsafe) let safeBuffer = buffer
+                    Task { @MainActor in
+                        guard self.streamingASRActive else { return }
+                        try? await self.asrManager.feedAudio(safeBuffer)
+                    }
+                }
+
+                Task { await AppLogger.shared.log(
+                    "Streaming ASR started during recording",
+                    level: .info, category: "Pipeline"
+                ) }
+            } catch {
+                // Streaming init failed — fall back to batch after recording
+                deactivateStreamingForwarding()
+                Task { await AppLogger.shared.log(
+                    "Streaming ASR failed to start, will use batch: \(error.localizedDescription)",
+                    level: .info, category: "Pipeline"
+                ) }
+            }
+        }
+
         do {
             _ = try audioCapture.startCapture()
             state = .recording
@@ -105,13 +146,14 @@ final class TranscriptionPipeline {
             currentTranscript = nil
 
             Task { await AppLogger.shared.log(
-                "Recording started. Backend: \(asrManager.activeBackendType.rawValue)",
+                "Recording started. Backend: \(asrManager.activeBackendType.rawValue), streaming=\(streamingASRActive)",
                 level: .info, category: "Pipeline"
             ) }
 
             // Always start VAD monitoring for silence removal
             startVADMonitoring()
         } catch {
+            deactivateStreamingForwarding()
             state = .error("Recording failed: \(error.localizedDescription)")
         }
     }
@@ -120,12 +162,18 @@ final class TranscriptionPipeline {
     func stopAndTranscribe() async {
         guard state == .recording else { return }
 
+        let pipelineStart = CFAbsoluteTimeGetCurrent()
+
         // Silently discard recordings shorter than minimum duration (accidental taps)
         if let startTime = recordingStartTime {
             let elapsed = Date().timeIntervalSince(startTime)
             if elapsed < TimingConstants.minimumRecordingDuration {
                 vadMonitorTask?.cancel()
                 vadMonitorTask = nil
+                if streamingASRActive {
+                    await asrManager.cancelStreaming()
+                }
+                deactivateStreamingForwarding()
                 _ = audioCapture.stopCapture()
                 recordingStartTime = nil
                 state = .idle
@@ -142,7 +190,18 @@ final class TranscriptionPipeline {
         vadMonitorTask?.cancel()
         vadMonitorTask = nil
 
+        // Stop buffer forwarding to streaming ASR
+        let wasStreaming = streamingASRActive
+        deactivateStreamingForwarding()
+
         let rawSamples = audioCapture.stopCapture()
+
+        // Pre-warm the LLM connection while ASR is still running (fire-and-forget).
+        // Establishes TLS + HTTP/2 so the polish request skips the handshake.
+        LLMNetworkSession.shared.preWarmIfConfigured(
+            provider: llmPolishStep.llmProvider,
+            keychainManager: keychainManager
+        )
 
         guard !rawSamples.isEmpty else {
             state = .error("No audio captured")
@@ -154,7 +213,7 @@ final class TranscriptionPipeline {
             level: .verbose, category: "Pipeline"
         ) }
 
-        // Filter silence using VAD speech segments.
+        // Filter silence using VAD speech segments (used for batch fallback and logging).
         var samples: [Float]
         if let detector = silenceDetector {
             await detector.finalizeSegments(totalSampleCount: rawSamples.count)
@@ -183,7 +242,31 @@ final class TranscriptionPipeline {
         state = .transcribing
 
         do {
-            let result = try await asrManager.transcribe(audioSamples: samples)
+            let asrStart = CFAbsoluteTimeGetCurrent()
+
+            // If streaming ASR was active, finalize it (fast — just the last chunk).
+            // Otherwise fall back to batch transcription on the VAD-filtered audio.
+            let result: ASRResult
+            if wasStreaming {
+                do {
+                    result = try await asrManager.finalizeStreaming()
+                    Task { await AppLogger.shared.log(
+                        "Pipeline timing: streaming ASR finalized in \(String(format: "%.3f", CFAbsoluteTimeGetCurrent() - asrStart))s",
+                        level: .info, category: "PipelineTiming"
+                    ) }
+                } catch {
+                    // Streaming finalization failed — fall back to batch
+                    Task { await AppLogger.shared.log(
+                        "Streaming ASR finalize failed, falling back to batch: \(error.localizedDescription)",
+                        level: .info, category: "Pipeline"
+                    ) }
+                    result = try await asrManager.transcribe(audioSamples: samples)
+                }
+            } else {
+                result = try await asrManager.transcribe(audioSamples: samples)
+            }
+
+            let asrEnd = CFAbsoluteTimeGetCurrent()
 
             let asrText = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !asrText.isEmpty else {
@@ -196,13 +279,13 @@ final class TranscriptionPipeline {
             }
 
             Task { await AppLogger.shared.log(
-                "ASR complete: \(asrText.count) chars, lang=\(result.language ?? "?"), " +
-                "duration=\(String(format: "%.2f", result.duration))s, " +
-                "processingTime=\(String(format: "%.2f", result.processingTime))s",
-                level: .info, category: "Pipeline"
+                "Pipeline timing: ASR completed in \(String(format: "%.3f", asrEnd - asrStart))s " +
+                "(mode=\(wasStreaming ? "streaming" : "batch"), \(asrText.count) chars, lang=\(result.language ?? "?"))",
+                level: .info, category: "PipelineTiming"
             ) }
 
             // Run pluggable text processing steps (word correction, LLM polish, etc.)
+            let polishStart = CFAbsoluteTimeGetCurrent()
             var context: TextProcessingContext
             do {
                 context = try await runTextProcessing(asrText: asrText, language: result.language)
@@ -214,6 +297,12 @@ final class TranscriptionPipeline {
                 lastPolishError = error.localizedDescription
                 context = TextProcessingContext(text: asrText, originalASRText: asrText, language: result.language)
             }
+            let polishEnd = CFAbsoluteTimeGetCurrent()
+
+            Task { await AppLogger.shared.log(
+                "Pipeline timing: text processing completed in \(String(format: "%.3f", polishEnd - polishStart))s",
+                level: .info, category: "PipelineTiming"
+            ) }
 
             let finalText = context.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !finalText.isEmpty else {
@@ -239,6 +328,7 @@ final class TranscriptionPipeline {
             asrManager.noteTranscriptionComplete(policy: modelUnloadPolicy)
 
             // Auto-copy/paste + auto-submit
+            let pasteStart = CFAbsoluteTimeGetCurrent()
             if autoPasteToActiveApp {
                 // Re-activate the app that was frontmost when recording started,
                 // since focus may have shifted during transcription/polishing.
@@ -254,17 +344,34 @@ final class TranscriptionPipeline {
 
                 let changeCountAfterPaste = PasteService.pasteToActiveApp(transcript.displayText)
 
-                // Restore after a 300 ms delay — long enough for the target app to
+                // Restore after a delay — long enough for the target app to
                 // consume the pasteboard contents but short enough to feel instant.
                 if let snapshot {
-                    try? await Task.sleep(for: .milliseconds(300))
+                    try? await Task.sleep(for: .milliseconds(TimingConstants.clipboardRestoreDelayMs))
+                    let changeCountBeforeRestore = NSPasteboard.general.changeCount
+                    if changeCountBeforeRestore != changeCountAfterPaste {
+                        Task { await AppLogger.shared.log(
+                            "Pipeline timing: clipboard race detected — changeCount moved from \(changeCountAfterPaste) to \(changeCountBeforeRestore) before restore",
+                            level: .info, category: "PipelineTiming"
+                        ) }
+                    }
                     PasteService.restoreClipboard(snapshot, changeCountAfterPaste: changeCountAfterPaste)
                 }
 
             } else if autoCopyToClipboard {
                 PasteService.copyToClipboard(transcript.displayText)
             }
+            let pasteEnd = CFAbsoluteTimeGetCurrent()
             targetApp = nil
+
+            let pipelineEnd = CFAbsoluteTimeGetCurrent()
+            Task { await AppLogger.shared.log(
+                "Pipeline timing TOTAL: \(String(format: "%.3f", pipelineEnd - pipelineStart))s " +
+                "(ASR=\(String(format: "%.3f", asrEnd - asrStart))s, " +
+                "polish=\(String(format: "%.3f", polishEnd - polishStart))s, " +
+                "paste=\(String(format: "%.3f", pasteEnd - pasteStart))s)",
+                level: .info, category: "PipelineTiming"
+            ) }
 
             currentTranscript = transcript
             state = .complete
@@ -332,6 +439,7 @@ final class TranscriptionPipeline {
     func reset() {
         vadMonitorTask?.cancel()
         vadMonitorTask = nil
+        deactivateStreamingForwarding()
         if audioCapture.isCapturing {
             _ = audioCapture.stopCapture()
         }
@@ -342,13 +450,19 @@ final class TranscriptionPipeline {
 
     /// Cancel an active recording immediately without transcribing.
     /// Guards on `.recording` state — safe to call from any other state.
-    func cancelRecording() {
+    func cancelRecording() async {
         guard state == .recording else { return }
 
         // Stop VAD monitoring task immediately
         vadMonitorTask?.cancel()
         vadMonitorTask = nil
         silenceDetector = nil
+
+        // Cancel streaming ASR session on the backend (discards partial results)
+        if streamingASRActive {
+            await asrManager.cancelStreaming()
+        }
+        deactivateStreamingForwarding()
 
         // Stop audio engine and explicitly discard all captured samples
         _ = audioCapture.stopCapture()
@@ -359,6 +473,12 @@ final class TranscriptionPipeline {
 
         // Transition to idle without saving any transcript
         state = .idle
+    }
+
+    /// Deactivate streaming ASR buffer forwarding. Does not cancel the backend session.
+    private func deactivateStreamingForwarding() {
+        streamingASRActive = false
+        audioCapture.onBufferCaptured = nil
     }
 
     // MARK: - VAD Monitoring

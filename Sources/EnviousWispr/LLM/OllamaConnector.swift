@@ -12,7 +12,8 @@ struct OllamaConnector: TranscriptPolisher {
     func polish(
         text: String,
         instructions: PolishInstructions,
-        config: LLMProviderConfig
+        config: LLMProviderConfig,
+        onToken: (@Sendable (String) -> Void)?
     ) async throws -> LLMResult {
         let endpointURL = "\(baseURL)/v1/chat/completions"
         guard let url = URL(string: endpointURL) else {
@@ -42,7 +43,7 @@ struct OllamaConnector: TranscriptPolisher {
 
         let (data, response): (Data, URLResponse)
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await LLMNetworkSession.shared.session.data(for: request)
         } catch let urlError as URLError {
             switch urlError.code {
             case .cannotConnectToHost, .timedOut, .cannotFindHost,

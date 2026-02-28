@@ -47,7 +47,7 @@ enum TimingConstants {
     static let appActivationDelayMs: Int = 150
 
     /// Delay before clipboard restoration after paste.
-    static let clipboardRestoreDelayMs: Int = 300
+    static let clipboardRestoreDelayMs: Int = 200
 
     /// VAD monitoring poll interval.
     static let vadPollIntervalMs: Int = 100
@@ -72,11 +72,11 @@ enum LLMConstants {
     /// Maximum concurrent model probes to avoid rate limiting.
     static let maxConcurrentProbes: Int = 5
 
-    /// Default max tokens for cloud LLM providers (supports ~5 min dictations).
-    static let defaultMaxTokens: Int = 8192
+    /// Default max tokens for cloud LLM providers (supports ~5 min dictations with safe headroom).
+    static let defaultMaxTokens: Int = 2048
 
-    /// Max tokens for Ollama (local models can handle more).
-    static let ollamaMaxTokens: Int = 8192
+    /// Max tokens for Ollama (local models).
+    static let ollamaMaxTokens: Int = 2048
 }
 
 enum FormattingConstants {

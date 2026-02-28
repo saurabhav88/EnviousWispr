@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 @preconcurrency import FluidAudio
 
 /// Parakeet v3 ASR backend using FluidAudio/CoreML.
@@ -12,6 +12,12 @@ actor ParakeetBackend: ASRBackend {
 
     private var fluidAsrManager: AsrManager?
     private var fluidModels: AsrModels?
+
+    // Streaming ASR state
+    private var streamingManager: StreamingAsrManager?
+    private var streamingStartTime: CFAbsoluteTime = 0
+
+    var supportsStreaming: Bool { true }
 
     func prepare() async throws {
         let loadedModels = try await AsrModels.downloadAndLoad(version: .v3)
@@ -78,7 +84,58 @@ actor ParakeetBackend: ASRBackend {
         )
     }
 
+    // MARK: - Streaming ASR
+
+    func startStreaming(options: TranscriptionOptions) async throws {
+        guard isReady, let models = fluidModels else { throw ASRError.notReady }
+
+        let config = StreamingAsrConfig.streaming
+        let manager = StreamingAsrManager(config: config)
+        try await manager.start(models: models, source: .microphone)
+        self.streamingManager = manager
+        self.streamingStartTime = CFAbsoluteTimeGetCurrent()
+    }
+
+    func feedAudio(_ buffer: AVAudioPCMBuffer) async throws {
+        guard let manager = streamingManager else { throw ASRError.streamingNotSupported }
+        await manager.streamAudio(buffer)
+    }
+
+    func finalizeStreaming() async throws -> ASRResult {
+        guard let manager = streamingManager else { throw ASRError.streamingNotSupported }
+
+        let finalizeStart = CFAbsoluteTimeGetCurrent()
+        let text = try await manager.finish()
+        let finalizeEnd = CFAbsoluteTimeGetCurrent()
+
+        let totalElapsed = finalizeEnd - streamingStartTime
+        let finalizeElapsed = finalizeEnd - finalizeStart
+
+        self.streamingManager = nil
+
+        return ASRResult(
+            text: text,
+            segments: [],
+            language: "en",
+            duration: totalElapsed,
+            processingTime: finalizeElapsed,
+            confidence: nil,
+            backendType: .parakeet
+        )
+    }
+
+    func cancelStreaming() async {
+        if let manager = streamingManager {
+            await manager.cancel()
+            streamingManager = nil
+        }
+    }
+
     func unload() async {
+        if let streaming = streamingManager {
+            await streaming.cancel()
+            streamingManager = nil
+        }
         fluidAsrManager?.cleanup()
         fluidAsrManager = nil
         fluidModels = nil

@@ -3,11 +3,26 @@ import Foundation
 /// Protocol for LLM-based transcript polishing.
 protocol TranscriptPolisher: Sendable {
     /// Polish a transcript using the configured LLM provider.
+    /// - Parameters:
+    ///   - onToken: Optional streaming callback invoked with each text fragment as it arrives.
+    ///              Pass `nil` for batch (non-streaming) behavior.
+    func polish(
+        text: String,
+        instructions: PolishInstructions,
+        config: LLMProviderConfig,
+        onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult
+}
+
+extension TranscriptPolisher {
+    /// Convenience overload without streaming callback — preserves backward compatibility.
     func polish(
         text: String,
         instructions: PolishInstructions,
         config: LLMProviderConfig
-    ) async throws -> LLMResult
+    ) async throws -> LLMResult {
+        try await polish(text: text, instructions: instructions, config: config, onToken: nil)
+    }
 }
 
 // MARK: - Preamble Stripping

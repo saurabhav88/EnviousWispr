@@ -77,6 +77,7 @@ enum PasteService {
     /// - Returns: The pasteboard `changeCount` after our write, needed by `restoreClipboard`.
     @discardableResult
     static func pasteToActiveApp(_ text: String) -> Int {
+        let pasteStart = CFAbsoluteTimeGetCurrent()
         let accessibilityTrusted = AXIsProcessTrusted()
 
         let pasteboard = NSPasteboard.general
@@ -106,8 +107,10 @@ enum PasteService {
         keyUp.flags = .maskCommand
         keyUp.post(tap: .cghidEventTap)
 
+        let pasteEnd = CFAbsoluteTimeGetCurrent()
         Task { await AppLogger.shared.log(
-            "Paste attempt: accessibility=\(accessibilityTrusted), cgEventAttempted=true, clipboardWrite=\(clipboardWriteSuccess)",
+            "Paste attempt: accessibility=\(accessibilityTrusted), cgEventAttempted=true, " +
+            "clipboardWrite=\(clipboardWriteSuccess), elapsed=\(String(format: "%.3f", pasteEnd - pasteStart))s",
             level: .info, category: "PasteService"
         ) }
 

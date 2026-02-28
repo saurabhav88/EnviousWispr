@@ -103,14 +103,19 @@ final class AppState {
                     audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 },
                     modeLabel: self.settings.recordingMode.shortLabel
                 )
-            case .transcribing, .error, .idle:
+            case .transcribing:
+                self.hotkeyService.unregisterCancelHotkey()
+                // Recording overlay stays visible — will transition to polishing
+            case .polishing:
+                self.hotkeyService.unregisterCancelHotkey()
+                self.recordingOverlay.showPolishing()
+            case .error, .idle:
                 self.hotkeyService.unregisterCancelHotkey()
                 self.recordingOverlay.hide()
             case .complete:
                 self.hotkeyService.unregisterCancelHotkey()
+                self.recordingOverlay.hide()
                 self.loadTranscripts()
-            case .polishing:
-                self.hotkeyService.unregisterCancelHotkey()
             }
         }
 
@@ -339,7 +344,9 @@ final class AppState {
                 guard let self, !Task.isCancelled else { return }
                 self.permissions.refreshAccessibilityStatus()
                 if self.permissions.accessibilityGranted {
-                    // Permission granted — stop polling.
+                    // Permission granted — nil out so restartAccessibilityMonitoringIfNeeded
+                    // can detect the task is done and restart if permission is later revoked.
+                    self.accessibilityMonitorTask = nil
                     return
                 }
             }
@@ -360,7 +367,7 @@ final class AppState {
     func cancelRecording() async {
         guard pipelineState == .recording else { return }
         pipeline.autoPasteToActiveApp = false
-        pipeline.cancelRecording()
+        await pipeline.cancelRecording()
     }
 
     /// Polish an existing transcript with LLM.

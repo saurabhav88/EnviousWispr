@@ -1,3 +1,4 @@
+@preconcurrency import AVFoundation
 import Foundation
 
 /// Manages ASR backend selection and delegates transcription calls.
@@ -6,6 +7,7 @@ import Foundation
 final class ASRManager {
     private(set) var activeBackendType: ASRBackendType = .parakeet
     private(set) var isModelLoaded = false
+    private(set) var isStreaming = false
     private var idleTimer: Timer?
     private var lastTranscriptionTime: Date?
 
@@ -20,12 +22,20 @@ final class ASRManager {
         }
     }
 
+    /// Whether the active backend supports streaming ASR.
+    var activeBackendSupportsStreaming: Bool {
+        get async {
+            await activeBackend.supportsStreaming
+        }
+    }
+
     /// Switch to a different backend. Unloads the previous one.
     func switchBackend(to type: ASRBackendType) async {
         guard type != activeBackendType else { return }
         await activeBackend.unload()
         activeBackendType = type
         isModelLoaded = false
+        isStreaming = false
     }
 
     /// Update the WhisperKit model variant. Requires reloading the model.
@@ -53,9 +63,42 @@ final class ASRManager {
         try await activeBackend.transcribe(audioSamples: audioSamples, options: options)
     }
 
+    // MARK: - Streaming ASR
+
+    /// Start streaming ASR on the active backend. Falls back silently if unsupported.
+    func startStreaming(options: TranscriptionOptions = .default) async throws {
+        guard await activeBackend.supportsStreaming else { return }
+        try await activeBackend.startStreaming(options: options)
+        isStreaming = true
+    }
+
+    /// Feed an audio buffer to the streaming ASR session.
+    func feedAudio(_ buffer: AVAudioPCMBuffer) async throws {
+        guard isStreaming else { return }
+        try await activeBackend.feedAudio(buffer)
+    }
+
+    /// Finalize streaming and return the transcript. Falls back to batch if streaming was not active.
+    func finalizeStreaming() async throws -> ASRResult {
+        guard isStreaming else {
+            throw ASRError.streamingNotSupported
+        }
+        let result = try await activeBackend.finalizeStreaming()
+        isStreaming = false
+        return result
+    }
+
+    /// Cancel an active streaming session, discarding partial results.
+    func cancelStreaming() async {
+        guard isStreaming else { return }
+        await activeBackend.cancelStreaming()
+        isStreaming = false
+    }
+
     /// Unload the active backend, freeing model RAM.
     func unloadModel() async {
         guard isModelLoaded else { return }
+        isStreaming = false
         await activeBackend.unload()
         isModelLoaded = false
     }

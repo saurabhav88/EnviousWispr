@@ -1,6 +1,7 @@
 import Foundation
 
 /// Google Gemini API connector for transcript polishing.
+/// Uses Server-Sent Events (SSE) streaming for lower perceived latency.
 struct GeminiConnector: TranscriptPolisher {
     private let keychainManager: KeychainManager
     private let baseURL = "https://generativelanguage.googleapis.com/v1beta/models"
@@ -12,11 +13,14 @@ struct GeminiConnector: TranscriptPolisher {
     func polish(
         text: String,
         instructions: PolishInstructions,
-        config: LLMProviderConfig
+        config: LLMProviderConfig,
+        onToken: (@Sendable (String) -> Void)?
     ) async throws -> LLMResult {
         let apiKey = try getAPIKey(config: config)
 
-        guard let url = URL(string: "\(baseURL)/\(config.model):generateContent") else {
+        // Use streaming endpoint when onToken callback is provided, batch otherwise
+        let endpoint = onToken != nil ? "streamGenerateContent?alt=sse" : "generateContent"
+        guard let url = URL(string: "\(baseURL)/\(config.model):\(endpoint)") else {
             throw LLMError.requestFailed("Invalid URL for model: \(config.model)")
         }
 
@@ -49,23 +53,96 @@ struct GeminiConnector: TranscriptPolisher {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         request.timeoutInterval = 60
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        if let onToken {
+            return try await polishStreaming(request: request, config: config, onToken: onToken)
+        } else {
+            return try await polishBatch(request: request, config: config)
+        }
+    }
+
+    // MARK: - SSE Streaming
+
+    private func polishStreaming(
+        request: URLRequest,
+        config: LLMProviderConfig,
+        onToken: @Sendable (String) -> Void
+    ) async throws -> LLMResult {
+        let session = LLMNetworkSession.shared.session
+        let (stream, response) = try await session.bytes(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw LLMError.requestFailed("Invalid response")
         }
 
-        switch httpResponse.statusCode {
-        case 200: break
-        case 400:
-            let responseBody = String(data: data, encoding: .utf8) ?? ""
-            if responseBody.contains("API_KEY_INVALID") { throw LLMError.invalidAPIKey }
-            throw LLMError.requestFailed("Bad request: \(responseBody)")
-        case 403: throw LLMError.invalidAPIKey
-        case 429: throw LLMError.rateLimited
-        default:
-            let body = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw LLMError.requestFailed("HTTP \(httpResponse.statusCode): \(body)")
+        // For streaming, non-200 means the entire response is an error body
+        if httpResponse.statusCode != 200 {
+            var errorBody = ""
+            for try await line in stream.lines {
+                errorBody += line
+            }
+            try handleHTTPError(statusCode: httpResponse.statusCode, body: errorBody)
+        }
+
+        var fullText = ""
+        var lastFinishReason: String?
+
+        for try await line in stream.lines {
+            // SSE format: lines prefixed with "data: " contain JSON
+            // Empty lines delimit events, lines starting with ":" are comments
+            guard line.hasPrefix("data: ") else { continue }
+            let jsonString = String(line.dropFirst(6))
+
+            guard let jsonData = jsonString.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+                  let candidates = json["candidates"] as? [[String: Any]],
+                  let firstCandidate = candidates.first else {
+                continue
+            }
+
+            // Extract text fragment from this chunk
+            if let content = firstCandidate["content"] as? [String: Any],
+               let parts = content["parts"] as? [[String: Any]],
+               let textFragment = parts.first?["text"] as? String {
+                fullText += textFragment
+                onToken(textFragment)
+            }
+
+            // Check finishReason — present only in the final chunk
+            if let finishReason = firstCandidate["finishReason"] as? String {
+                lastFinishReason = finishReason
+            }
+        }
+
+        guard !fullText.isEmpty else {
+            throw LLMError.emptyResponse
+        }
+
+        logTruncationIfNeeded(finishReason: lastFinishReason, config: config)
+
+        return LLMResult(
+            polishedText: fullText.trimmingCharacters(in: .whitespacesAndNewlines)
+                .strippingLLMPreamble(),
+            provider: .gemini,
+            model: config.model
+        )
+    }
+
+    // MARK: - Batch (non-streaming)
+
+    private func polishBatch(
+        request: URLRequest,
+        config: LLMProviderConfig
+    ) async throws -> LLMResult {
+        let session = LLMNetworkSession.shared.session
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw LLMError.requestFailed("Invalid response")
+        }
+
+        if httpResponse.statusCode != 200 {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            try handleHTTPError(statusCode: httpResponse.statusCode, body: body)
         }
 
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -78,14 +155,10 @@ struct GeminiConnector: TranscriptPolisher {
             throw LLMError.emptyResponse
         }
 
-        // Detect output truncation so we can diagnose incomplete polishing
-        if let finishReason = firstCandidate["finishReason"] as? String,
-           finishReason == "MAX_TOKENS" {
-            Task { await AppLogger.shared.log(
-                "WARNING: Gemini response truncated (finishReason=MAX_TOKENS, model=\(config.model), maxOutputTokens=\(config.maxTokens))",
-                level: .info, category: "LLM"
-            ) }
-        }
+        logTruncationIfNeeded(
+            finishReason: firstCandidate["finishReason"] as? String,
+            config: config
+        )
 
         return LLMResult(
             polishedText: responseText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -93,6 +166,28 @@ struct GeminiConnector: TranscriptPolisher {
             provider: .gemini,
             model: config.model
         )
+    }
+
+    // MARK: - Shared
+
+    private func logTruncationIfNeeded(finishReason: String?, config: LLMProviderConfig) {
+        guard finishReason == "MAX_TOKENS" else { return }
+        Task { await AppLogger.shared.log(
+            "WARNING: Gemini response truncated (finishReason=MAX_TOKENS, model=\(config.model), maxOutputTokens=\(config.maxTokens))",
+            level: .info, category: "LLM"
+        ) }
+    }
+
+    private func handleHTTPError(statusCode: Int, body: String) throws -> Never {
+        switch statusCode {
+        case 400:
+            if body.contains("API_KEY_INVALID") { throw LLMError.invalidAPIKey }
+            throw LLMError.requestFailed("Bad request: \(body)")
+        case 403: throw LLMError.invalidAPIKey
+        case 429: throw LLMError.rateLimited
+        default:
+            throw LLMError.requestFailed("HTTP \(statusCode): \(body)")
+        }
     }
 
     private func getAPIKey(config: LLMProviderConfig) throws -> String {

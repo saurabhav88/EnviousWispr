@@ -12,6 +12,9 @@ final class LLMPolishStep: TextProcessingStep {
     /// Called before LLM processing starts (pipeline uses this to set .polishing state).
     var onWillProcess: (() -> Void)?
 
+    /// Streaming token callback — invoked with each text fragment as it arrives from the LLM.
+    var onToken: (@Sendable (String) -> Void)?
+
     private let keychainManager: KeychainManager
 
     var isEnabled: Bool {
@@ -70,15 +73,19 @@ final class LLMPolishStep: TextProcessingStep {
             userText = ""
         }
 
+        let llmStart = CFAbsoluteTimeGetCurrent()
         let result = try await polisher.polish(
             text: userText,
             instructions: resolvedInstructions,
-            config: config
+            config: config,
+            onToken: onToken
         )
+        let llmEnd = CFAbsoluteTimeGetCurrent()
 
         Task { await AppLogger.shared.log(
-            "LLM polish complete: \(result.polishedText.count) chars",
-            level: .verbose, category: "LLM"
+            "LLM polish complete: \(result.polishedText.count) chars in \(String(format: "%.3f", llmEnd - llmStart))s " +
+            "(provider=\(llmProvider.rawValue), model=\(llmModel))",
+            level: .info, category: "PipelineTiming"
         ) }
 
         var ctx = context

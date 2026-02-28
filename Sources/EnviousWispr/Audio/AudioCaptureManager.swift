@@ -16,6 +16,10 @@ final class AudioCaptureManager {
     /// Accumulated audio samples from the current recording.
     private(set) var capturedSamples: [Float] = []
 
+    /// Optional callback to forward converted audio buffers (e.g., to streaming ASR).
+    /// Called on the audio thread — must be @Sendable.
+    var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?
+
     private let engine = AVAudioEngine()
     private var converter: AVAudioConverter?
     private var bufferContinuation: AsyncStream<AVAudioPCMBuffer>.Continuation?
@@ -68,6 +72,7 @@ final class AudioCaptureManager {
         }
 
         let tapContinuation = self.bufferContinuation
+        let bufferCallback = self.onBufferCaptured
 
         // Install tap on input node — the handler is built in a nonisolated static
         // context so closures inside it do NOT inherit @MainActor isolation.
@@ -77,13 +82,20 @@ final class AudioCaptureManager {
             targetFormat: targetFormat,
             inputFormat: inputFormat,
             continuation: tapContinuation,
-            onSamples: onSamples
+            onSamples: onSamples,
+            onBuffer: bufferCallback
         )
         inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat, block: tapHandler)
 
         try engine.start()
         isCapturing = true
         return stream
+    }
+
+    /// Inject pre-recorded samples directly into the capture buffer for benchmark/testing.
+    /// Sets `capturedSamples` without starting the audio engine.
+    func injectSamples(_ samples: [Float]) {
+        capturedSamples = samples
     }
 
     /// Stop capturing and return the accumulated samples.
@@ -109,7 +121,8 @@ final class AudioCaptureManager {
         targetFormat: AVAudioFormat,
         inputFormat: AVAudioFormat,
         continuation: AsyncStream<AVAudioPCMBuffer>.Continuation?,
-        onSamples: @escaping @Sendable (Float, [Float]) -> Void
+        onSamples: @escaping @Sendable (Float, [Float]) -> Void,
+        onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)?
     ) -> (AVAudioPCMBuffer, AVAudioTime) -> Void {
         return { buffer, _ in
             // Convert to target format (16kHz mono)
@@ -146,6 +159,9 @@ final class AudioCaptureManager {
                 ))
                 onSamples(level, samples)
             }
+
+            // Forward converted buffer to streaming ASR (if active)
+            onBuffer?(convertedBuffer)
 
             // Send buffer to stream consumers
             continuation?.yield(convertedBuffer)

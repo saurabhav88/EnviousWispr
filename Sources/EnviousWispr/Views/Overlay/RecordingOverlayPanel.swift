@@ -3,7 +3,7 @@ import SwiftUI
 
 // MARK: - RecordingOverlayPanel
 
-/// Floating overlay panel that shows recording status.
+/// Floating overlay panel that shows recording and polishing status.
 /// Uses NSPanel with .nonactivatingPanel behavior so it floats above all apps
 /// without stealing focus.
 @MainActor
@@ -22,10 +22,47 @@ final class RecordingOverlayPanel {
         }
     }
 
+    /// Show a "Polishing..." overlay during LLM processing.
+    func showPolishing() {
+        guard panel == nil else {
+            // If recording overlay is showing, transition to polishing
+            transitionToPolishing()
+            return
+        }
+
+        DispatchQueue.main.async { [weak self] in
+            self?.createPolishingPanel()
+        }
+    }
+
     private func createPanel(audioLevelProvider: @escaping () -> Float, modeLabel: String) {
         guard panel == nil else { return }
 
-        let size = NSRect(x: 0, y: 0, width: 220, height: 44)
+        let overlayView = RecordingOverlayView(audioLevelProvider: audioLevelProvider, modeLabel: modeLabel)
+            .frame(width: 220, height: 44)
+        showPanel(content: overlayView, width: 220)
+    }
+
+    private func createPolishingPanel() {
+        guard panel == nil else { return }
+
+        showPanel(content: PolishingOverlayView().frame(width: 160, height: 44), width: 160)
+    }
+
+    /// Transition an existing panel from recording to polishing mode.
+    private func transitionToPolishing() {
+        guard let existingPanel = panel else { return }
+        let y = existingPanel.frame.origin.y
+
+        existingPanel.close()
+        panel = nil
+
+        showPanel(content: PolishingOverlayView().frame(width: 160, height: 44), width: 160, y: y)
+    }
+
+    /// Create and show a floating overlay panel with the given SwiftUI content.
+    private func showPanel<V: View>(content: V, width: CGFloat, y: CGFloat? = nil) {
+        let size = NSRect(x: 0, y: 0, width: width, height: 44)
 
         let p = NSPanel(
             contentRect: size,
@@ -40,20 +77,14 @@ final class RecordingOverlayPanel {
         p.isMovableByWindowBackground = true
         p.hasShadow = true
 
-        // Fix content size to prevent NSHostingView from triggering
-        // animated window resizes that cause layout cycle exceptions.
-        let overlayView = RecordingOverlayView(audioLevelProvider: audioLevelProvider, modeLabel: modeLabel)
-            .frame(width: 220, height: 44)
-        let hostingView = NSHostingView(rootView: overlayView)
+        let hostingView = NSHostingView(rootView: content)
         hostingView.frame = size
         p.contentView = hostingView
 
-        // Position at top-center of main screen
         if let screen = NSScreen.main {
-            let screenFrame = screen.visibleFrame
-            let x = screenFrame.midX - 110
-            let y = screenFrame.maxY - 60
-            p.setFrameOrigin(NSPoint(x: x, y: y))
+            let x = screen.visibleFrame.midX - width / 2
+            let panelY = y ?? (screen.visibleFrame.maxY - 60)
+            p.setFrameOrigin(NSPoint(x: x, y: panelY))
         }
 
         p.orderFrontRegardless()
@@ -138,4 +169,37 @@ struct RecordingOverlayView: View {
         return base + (maxH - base) * normalized * (1.0 - distance * 0.5)
     }
 
+}
+
+// MARK: - PolishingOverlayView
+
+/// Compact polishing indicator overlay shown during LLM processing.
+struct PolishingOverlayView: View {
+    @State private var pulseAnimation = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            // Pulsing blue dot
+            Circle()
+                .fill(.blue)
+                .frame(width: 10, height: 10)
+                .scaleEffect(pulseAnimation ? 1.2 : 0.8)
+                .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: pulseAnimation)
+
+            Text("Polishing...")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.white)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            Capsule()
+                .fill(.black.opacity(0.75))
+                .overlay(
+                    Capsule()
+                        .strokeBorder(.white.opacity(0.15), lineWidth: 0.5)
+                )
+        )
+        .onAppear { pulseAnimation = true }
+    }
 }
