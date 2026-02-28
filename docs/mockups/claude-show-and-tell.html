@@ -161,7 +161,7 @@
     font-size: 16px; color: var(--text-3); opacity: 0.5; padding: 0 10px; flex-shrink: 0;
   }
 
-  /* ─── Slide 3: Comparison ─── */
+  /* ─── Slide 4: Comparison ─── */
   .comparison {
     display: grid; grid-template-columns: 1fr 40px 1fr;
     max-width: 1100px; width: 100%; align-items: start;
@@ -191,7 +191,7 @@
   .stat-number.green { color: var(--green); }
   .stat-label { font-size: 13px; color: var(--text-2); margin-top: 4px; }
 
-  /* ─── Slide 4: Building Blocks Checklist ─── */
+  /* ─── Slide 5: Building Blocks Checklist ─── */
   .blocks-list {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -225,7 +225,7 @@
     padding: 4px 12px; border-radius: 6px; flex-shrink: 0;
   }
 
-  /* ─── Slide 5: Brain Architecture ─── */
+  /* ─── Slide 6: Brain Architecture ─── */
   .brain-container { position: relative; width: 1000px; height: 500px; }
   .brain-center {
     position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
@@ -259,7 +259,7 @@
     stroke-width: 1;
   }
 
-  /* ═══ S6: Circuit Board Architecture ═══ */
+  /* ═══ S7: Circuit Board Architecture ═══ */
   .pcb-container {
     width: 100%;
     max-width: 1140px;
@@ -419,7 +419,7 @@
     text-transform: uppercase;
   }
 
-  /* ─── Slide 7: Terminal ─── */
+  /* ─── Slide 8: Terminal ─── */
   .terminal {
     max-width: 900px; width: 100%; background: #0d0d14;
     border: 1px solid var(--border); border-radius: 16px;
@@ -467,7 +467,7 @@
   .terminal-body.animated .term-line:nth-child(13) { animation-delay: 3.7s; }
   @keyframes term-appear { to { opacity: 1; transform: translateY(0); } }
 
-  /* ─── Slide 8: Closing ─── */
+  /* ─── Slide 9: Closing ─── */
   .stats-row { display: flex; gap: 24px; margin-bottom: 56px; }
   .final-stat {
     text-align: center; padding: 28px 40px;
@@ -485,26 +485,650 @@
   }
   .final-tagline strong { color: var(--text); font-weight: 700; }
 
-  /* ─── Slide 4: Brain layout overrides ─── */
-  #slide-4 {
+  /* ─── Slide 5: Brain layout overrides ─── */
+  #slide-5 {
     justify-content: flex-start;
     padding-top: 40px;
     padding-bottom: 64px;
   }
 
-  #slide-4 .section-title {
+  #slide-5 .section-title {
     margin-bottom: 16px;
   }
 
-  /* ─── Slide 5: Architecture (PCB) layout overrides ─── */
-  #slide-5 {
+  /* ─── Slide 6: Architecture (PCB) layout overrides ─── */
+  #slide-6 {
     justify-content: flex-start;
     padding: 28px 40px 64px;
   }
 
-  #slide-5 .section-title {
+  #slide-6 .section-title {
     font-size: 36px;
     margin-bottom: 12px;
+  }
+
+  /* ─── Slide 3: Streaming Pipeline Demo ─── */
+  #slide-2 {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Suppress the default slide entrance stagger animation — demo manages its own */
+  #slide-2.active > * {
+    animation: none;
+  }
+
+  #slide-2 .demo-header {
+    text-align: center;
+    margin-bottom: 28px;
+    opacity: 0;
+    transform: translateY(-10px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+  #slide-2 .demo-header.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .demo-tag-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 14px;
+    border-radius: 100px;
+    background: rgba(139,124,246,0.12);
+    border: 1px solid rgba(139,124,246,0.25);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  .demo-tag-pill::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse-dot 1.5s ease-in-out infinite;
+  }
+
+  .demo-section-title {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, var(--text) 0%, var(--text-2) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* ── Demo Main Stage ── */
+  .demo-stage {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    width: 90vw;
+    max-width: 1280px;
+    height: 380px;
+  }
+
+  /* ── Demo Panels ── */
+  .demo-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.7s ease, transform 0.7s ease, border-color 0.5s ease, box-shadow 0.5s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  .demo-panel.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .demo-panel-left {
+    flex: 0 0 38%;
+  }
+  .demo-panel-right {
+    flex: 0 0 38%;
+  }
+  .demo-panel-right.glow-green {
+    border-color: rgba(52,211,153,0.35);
+    box-shadow: 0 0 30px rgba(52,211,153,0.08), inset 0 0 30px rgba(52,211,153,0.03);
+  }
+
+  .demo-panel-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .demo-panel-label.tertiary { color: var(--text-3); }
+  .demo-panel-label.green { color: var(--green); }
+
+  .demo-live-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 100px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  .demo-live-badge.active {
+    opacity: 1;
+  }
+  .demo-live-badge.asr {
+    background: rgba(251,191,36,0.15);
+    color: var(--amber);
+    border: 1px solid rgba(251,191,36,0.3);
+  }
+  .demo-live-badge.asr::before {
+    content: '';
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--amber);
+    animation: pulse-dot 0.8s ease-in-out infinite;
+  }
+  .demo-live-badge.sse {
+    background: rgba(34,211,238,0.15);
+    color: var(--cyan);
+    border: 1px solid rgba(34,211,238,0.3);
+  }
+  .demo-live-badge.sse::before {
+    content: '';
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--cyan);
+    animation: pulse-dot 0.6s ease-in-out infinite;
+  }
+
+  /* ── Demo Waveform ── */
+  .demo-waveform {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2.5px;
+    height: 56px;
+    margin-bottom: 14px;
+    padding: 0 4px;
+  }
+  .demo-waveform .bar {
+    width: 3px;
+    border-radius: 2px;
+    height: 8px;
+    transition: height 0.12s ease;
+    will-change: height;
+  }
+
+  /* ── Demo Text Areas ── */
+  .demo-text-content {
+    flex: 1;
+    font-size: 14.5px;
+    line-height: 1.7;
+    color: var(--text);
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .demo-text-content::-webkit-scrollbar { width: 3px; }
+  .demo-text-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+  .demo-filler {
+    color: var(--red);
+    background: rgba(248,113,113,0.1);
+    padding: 1px 4px;
+    border-radius: 3px;
+    transition: all 0.4s ease;
+    display: inline;
+    text-decoration: none;
+    position: relative;
+  }
+  .demo-filler.struck {
+    text-decoration: line-through;
+    opacity: 0.35;
+    background: rgba(248,113,113,0.04);
+  }
+
+  .demo-right-text {
+    font-size: 14.5px;
+    line-height: 1.75;
+    color: var(--text);
+  }
+
+  .demo-sse-word {
+    display: inline;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+  .demo-sse-word.visible {
+    opacity: 1;
+  }
+
+  .demo-cursor-blink {
+    display: inline-block;
+    width: 2px;
+    height: 1.1em;
+    background: var(--green);
+    vertical-align: text-bottom;
+    animation: demo-blink-cursor 0.6s step-end infinite;
+    margin-left: 1px;
+  }
+  @keyframes demo-blink-cursor {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  /* ── Demo Center Pipeline (Gantt-style parallel lanes) ── */
+  .demo-pipeline {
+    flex: 0 0 24%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 16px 12px;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+    position: relative;
+  }
+  .demo-pipeline.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .demo-pipeline-title {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-3);
+    margin-bottom: 14px;
+  }
+
+  .demo-gantt {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .demo-gantt-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+  }
+
+  .demo-gantt-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 500;
+    color: var(--text-3);
+    width: 72px;
+    text-align: right;
+    flex-shrink: 0;
+    white-space: nowrap;
+    transition: color 0.3s ease;
+  }
+  .demo-gantt-label.active { color: var(--text-2); }
+
+  .demo-gantt-track {
+    flex: 1;
+    height: 100%;
+    background: rgba(255,255,255,0.02);
+    border-radius: 4px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .demo-gantt-bar {
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    left: 0;
+    width: 0%;
+    border-radius: 3px;
+    transition: width 0.3s linear;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .demo-gantt-bar .demo-bar-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.7);
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  .demo-gantt-bar.active .demo-bar-text {
+    opacity: 1;
+  }
+
+  .demo-gantt-bar.recording {
+    background: rgba(248,113,113,0.25);
+    border: 1px solid rgba(248,113,113,0.4);
+  }
+  .demo-gantt-bar.recording.active {
+    background: rgba(248,113,113,0.3);
+    box-shadow: 0 0 12px rgba(248,113,113,0.2);
+  }
+
+  .demo-gantt-bar.streaming-asr {
+    background: rgba(251,191,36,0.25);
+    border: 1px solid rgba(251,191,36,0.4);
+  }
+  .demo-gantt-bar.streaming-asr.active {
+    background: rgba(251,191,36,0.3);
+    box-shadow: 0 0 12px rgba(251,191,36,0.2);
+  }
+
+  .demo-gantt-bar.finalize {
+    background: rgba(251,191,36,0.35);
+    border: 1px solid rgba(251,191,36,0.5);
+  }
+  .demo-gantt-bar.finalize.active {
+    box-shadow: 0 0 12px rgba(251,191,36,0.3);
+  }
+
+  .demo-gantt-bar.prewarm {
+    background: rgba(139,124,246,0.25);
+    border: 1px solid rgba(139,124,246,0.4);
+  }
+  .demo-gantt-bar.prewarm.active {
+    box-shadow: 0 0 12px rgba(139,124,246,0.3);
+  }
+
+  .demo-gantt-bar.sse-polish {
+    background: rgba(34,211,238,0.25);
+    border: 1px solid rgba(34,211,238,0.4);
+  }
+  .demo-gantt-bar.sse-polish.active {
+    background: rgba(34,211,238,0.3);
+    box-shadow: 0 0 12px rgba(34,211,238,0.2);
+  }
+
+  .demo-gantt-bar.paste {
+    background: rgba(52,211,153,0.35);
+    border: 1px solid rgba(52,211,153,0.5);
+  }
+  .demo-gantt-bar.paste.active {
+    box-shadow: 0 0 12px rgba(52,211,153,0.3);
+  }
+
+  .demo-gantt-bar.done {
+    opacity: 0.4;
+    box-shadow: none;
+  }
+
+  /* demo overlap indicator */
+  .demo-overlap-bracket {
+    position: absolute;
+    right: -16px;
+    top: 0;
+    height: calc(200% + 6px);
+    width: 12px;
+    border: 2px solid rgba(139,124,246,0.4);
+    border-left: none;
+    border-radius: 0 6px 6px 0;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  .demo-overlap-bracket.visible {
+    opacity: 1;
+  }
+  .demo-overlap-label {
+    position: absolute;
+    right: -80px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    color: var(--accent);
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  .demo-overlap-label.visible {
+    opacity: 1;
+  }
+
+  /* demo concurrency flash indicators */
+  .demo-concurrent-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 10px;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  .demo-concurrent-badge.visible {
+    opacity: 1;
+  }
+  .demo-concurrent-badge .demo-cb-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+  .demo-concurrent-badge .demo-cb-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+  }
+
+  /* ── Demo Timeline Bar (overlapped) ── */
+  .demo-timeline-container {
+    margin-top: 24px;
+    width: 90vw;
+    max-width: 1280px;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+  .demo-timeline-container.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .demo-timeline-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .demo-timeline-header .demo-tl-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-3);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+  .demo-timeline-header .demo-tl-total {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--green);
+    opacity: 0;
+    transition: opacity 0.5s ease;
+  }
+  .demo-timeline-header .demo-tl-total.visible {
+    opacity: 1;
+  }
+
+  .demo-timeline-tracks {
+    position: relative;
+    height: 80px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    padding: 6px 12px;
+  }
+
+  .demo-tl-lane {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    height: 14px;
+    display: flex;
+    align-items: center;
+  }
+  .demo-tl-lane:nth-child(1) { top: 8px; }
+  .demo-tl-lane:nth-child(2) { top: 26px; }
+  .demo-tl-lane:nth-child(3) { top: 44px; }
+  .demo-tl-lane:nth-child(4) { top: 62px; }
+
+  .demo-tl-lane-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    color: var(--text-3);
+    width: 90px;
+    text-align: right;
+    margin-right: 8px;
+    flex-shrink: 0;
+  }
+
+  .demo-tl-lane-bar {
+    height: 100%;
+    border-radius: 3px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 6px;
+    min-width: 0;
+    transition: width 0.4s linear;
+  }
+  .demo-tl-lane-bar .demo-tl-dur {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    color: rgba(255,255,255,0.6);
+    white-space: nowrap;
+  }
+
+  .demo-tl-lane-bar.demo-rec-bar {
+    background: rgba(248,113,113,0.2);
+    border: 1px solid rgba(248,113,113,0.35);
+    width: 0%;
+  }
+  .demo-tl-lane-bar.demo-asr-bar {
+    background: rgba(251,191,36,0.2);
+    border: 1px solid rgba(251,191,36,0.35);
+    width: 0%;
+  }
+  .demo-tl-lane-bar.demo-polish-bar {
+    background: rgba(34,211,238,0.2);
+    border: 1px solid rgba(34,211,238,0.35);
+    width: 0%;
+  }
+  .demo-tl-lane-bar.demo-paste-bar {
+    background: rgba(52,211,153,0.3);
+    border: 1px solid rgba(52,211,153,0.45);
+    width: 0%;
+  }
+
+  /* demo time markers */
+  .demo-tl-markers {
+    position: absolute;
+    left: 110px;
+    right: 12px;
+    bottom: 2px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .demo-tl-mark {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 7px;
+    color: var(--text-3);
+    opacity: 0.5;
+  }
+
+  /* demo release marker */
+  .demo-release-marker {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: rgba(139,124,246,0.5);
+    z-index: 5;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  .demo-release-marker.visible {
+    opacity: 1;
+  }
+  .demo-release-marker::after {
+    content: 'RELEASE';
+    position: absolute;
+    top: -1px;
+    left: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 7px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 0.5px;
+  }
+
+  /* ── Demo Stats ── */
+  .demo-stats {
+    margin-top: 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text-3);
+    text-align: center;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+    letter-spacing: 0.3px;
+  }
+  .demo-stats.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .demo-stats .demo-stat-divider {
+    display: inline-block;
+    margin: 0 12px;
+    color: var(--border-strong);
+  }
+  .demo-stats .demo-stat-highlight {
+    color: var(--green);
+    font-weight: 600;
+  }
+
+  /* ── Demo Paste Particle ── */
+  .demo-paste-particle {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 12px var(--green), 0 0 24px rgba(52,211,153,0.4);
+    opacity: 0;
+    z-index: 10;
+    pointer-events: none;
   }
 
   /* ─── Ambient ─── */
@@ -570,8 +1194,172 @@
   </div>
 </div>
 
-<!-- ═══════ SLIDE 3: Before / After ═══════ -->
+<!-- ═══════ SLIDE 3: Streaming Pipeline Demo ═══════ -->
 <div class="slide" id="slide-2">
+  <!-- Header -->
+  <div class="demo-header" id="demoHeader">
+    <div class="demo-tag-pill">Live Demo</div>
+    <div class="demo-section-title">Streaming Pipeline In Action</div>
+  </div>
+
+  <!-- Main Stage -->
+  <div class="demo-stage">
+    <!-- Left Panel: What You Said (live streaming ASR) -->
+    <div class="demo-panel demo-panel-left" id="demoPanelLeft">
+      <div class="demo-panel-label tertiary">
+        What you said
+        <span class="demo-live-badge asr" id="demoAsrBadge">Streaming ASR</span>
+      </div>
+      <div class="demo-waveform" id="demoWaveform"></div>
+      <div class="demo-text-content" id="demoRawText"></div>
+    </div>
+
+    <!-- Center Pipeline (Gantt-style parallel visualization) -->
+    <div class="demo-pipeline" id="demoPipeline">
+      <div class="demo-pipeline-title">Pipeline</div>
+      <div class="demo-gantt">
+        <!-- Row 1: Recording -->
+        <div class="demo-gantt-row" id="demoGanttRecRow">
+          <div class="demo-gantt-label" id="demoGanttRecLabel">Record</div>
+          <div class="demo-gantt-track">
+            <div class="demo-gantt-bar recording" id="demoGanttRecBar">
+              <span class="demo-bar-text">5.0s</span>
+            </div>
+          </div>
+        </div>
+        <!-- Row 2: Streaming ASR (overlaps with recording) -->
+        <div class="demo-gantt-row" id="demoGanttAsrRow">
+          <div class="demo-gantt-label" id="demoGanttAsrLabel">Stream ASR</div>
+          <div class="demo-gantt-track" style="position:relative;">
+            <div class="demo-gantt-bar streaming-asr" id="demoGanttAsrBar">
+              <span class="demo-bar-text">real-time</span>
+            </div>
+            <!-- overlap bracket connecting Record + ASR -->
+            <div class="demo-overlap-bracket" id="demoOverlapBracket"></div>
+            <div class="demo-overlap-label" id="demoOverlapLabel">parallel</div>
+          </div>
+        </div>
+        <!-- Row 3: ASR Finalize + LLM Pre-warm (parallel, brief) -->
+        <div class="demo-gantt-row" id="demoGanttFinalRow">
+          <div class="demo-gantt-label" id="demoGanttFinalLabel">Finalize</div>
+          <div class="demo-gantt-track">
+            <div class="demo-gantt-bar finalize" id="demoGanttFinalBar" style="left: 0;">
+              <span class="demo-bar-text">~80ms</span>
+            </div>
+          </div>
+        </div>
+        <!-- Row 3b: Pre-warm -->
+        <div class="demo-gantt-row" id="demoGanttPrewarmRow">
+          <div class="demo-gantt-label" id="demoGanttPrewarmLabel">Pre-warm</div>
+          <div class="demo-gantt-track">
+            <div class="demo-gantt-bar prewarm" id="demoGanttPrewarmBar" style="left: 0;">
+              <span class="demo-bar-text">TLS</span>
+            </div>
+          </div>
+        </div>
+        <!-- Row 4: SSE Polish -->
+        <div class="demo-gantt-row" id="demoGanttPolishRow">
+          <div class="demo-gantt-label" id="demoGanttPolishLabel">SSE Polish</div>
+          <div class="demo-gantt-track">
+            <div class="demo-gantt-bar sse-polish" id="demoGanttPolishBar">
+              <span class="demo-bar-text">~1.5s</span>
+            </div>
+          </div>
+        </div>
+        <!-- Row 5: Paste -->
+        <div class="demo-gantt-row" id="demoGanttPasteRow">
+          <div class="demo-gantt-label" id="demoGanttPasteLabel">Paste</div>
+          <div class="demo-gantt-track">
+            <div class="demo-gantt-bar paste" id="demoGanttPasteBar">
+              <span class="demo-bar-text">&lt;5ms</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Concurrency status -->
+      <div class="demo-concurrent-badge" id="demoConcBadge">
+        <div class="demo-cb-dot" style="background: var(--accent);"></div>
+        <div class="demo-cb-text" id="demoConcText" style="color: var(--accent);"></div>
+      </div>
+    </div>
+
+    <!-- Right Panel: What Got Pasted (SSE streaming) -->
+    <div class="demo-panel demo-panel-right" id="demoPanelRight">
+      <div class="demo-panel-label green">
+        What got pasted
+        <span class="demo-live-badge sse" id="demoSseBadge">SSE Streaming</span>
+      </div>
+      <div class="demo-text-content demo-right-text" id="demoPolishedText"></div>
+    </div>
+  </div>
+
+  <!-- Paste particle (animated independently) -->
+  <div class="demo-paste-particle" id="demoPasteParticle"></div>
+
+  <!-- Timeline (overlapped lanes) -->
+  <div class="demo-timeline-container" id="demoTimelineContainer">
+    <div class="demo-timeline-header">
+      <div class="demo-tl-title">Overlapped Timeline</div>
+      <div class="demo-tl-total" id="demoTlTotal">1.6s from release to paste</div>
+    </div>
+    <div class="demo-timeline-tracks" id="demoTimelineTracks">
+      <!-- Lane 1: Recording + ASR overlapped -->
+      <div class="demo-tl-lane">
+        <div class="demo-tl-lane-label">Record + ASR</div>
+        <div class="demo-tl-lane-bar demo-rec-bar" id="demoTlRecBar" style="width:0%;">
+          <span class="demo-tl-dur">5.0s (overlapped)</span>
+        </div>
+      </div>
+      <!-- Lane 2: ASR underneath (shows overlap) -->
+      <div class="demo-tl-lane">
+        <div class="demo-tl-lane-label">ASR Finalize</div>
+        <div class="demo-tl-lane-bar demo-asr-bar" id="demoTlAsrBar" style="width:0%;">
+          <span class="demo-tl-dur">~80ms</span>
+        </div>
+      </div>
+      <!-- Lane 3: SSE Polish -->
+      <div class="demo-tl-lane">
+        <div class="demo-tl-lane-label">SSE Polish</div>
+        <div class="demo-tl-lane-bar demo-polish-bar" id="demoTlPolishBar" style="width:0%;">
+          <span class="demo-tl-dur">~1.5s</span>
+        </div>
+      </div>
+      <!-- Lane 4: Paste -->
+      <div class="demo-tl-lane">
+        <div class="demo-tl-lane-label">Paste</div>
+        <div class="demo-tl-lane-bar demo-paste-bar" id="demoTlPasteBar" style="width:0%;">
+          <span class="demo-tl-dur">&lt;5ms</span>
+        </div>
+      </div>
+      <!-- Release marker -->
+      <div class="demo-release-marker" id="demoReleaseMarker" style="left: calc(110px + 75.7%);"></div>
+      <!-- Time markers -->
+      <div class="demo-tl-markers">
+        <span class="demo-tl-mark">0s</span>
+        <span class="demo-tl-mark">1s</span>
+        <span class="demo-tl-mark">2s</span>
+        <span class="demo-tl-mark">3s</span>
+        <span class="demo-tl-mark">4s</span>
+        <span class="demo-tl-mark">5s</span>
+        <span class="demo-tl-mark">6.6s</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="demo-stats" id="demoStats">
+    38 words spoken &#x2192; 34 words pasted
+    <span class="demo-stat-divider">|</span>
+    4 filler words removed
+    <span class="demo-stat-divider">|</span>
+    <span class="demo-stat-highlight">1.6s from release to paste</span>
+    <span class="demo-stat-divider">|</span>
+    <span class="demo-stat-highlight">3x faster than sequential</span>
+  </div>
+</div>
+
+<!-- ═══════ SLIDE 4: Before / After ═══════ -->
+<div class="slide" id="slide-3">
   <span class="tag tag-amber">The Leverage</span>
   <div class="section-title">Solo Dev vs. Super Brain</div>
   <div class="section-sub">Same project. Same person. Fundamentally different approach.</div>
@@ -610,8 +1398,8 @@
   </div>
 </div>
 
-<!-- ═══════ SLIDE 4: Building Blocks ═══════ -->
-<div class="slide" id="slide-3">
+<!-- ═══════ SLIDE 5: Building Blocks ═══════ -->
+<div class="slide" id="slide-4">
   <span class="tag tag-green">The Building Blocks</span>
   <div class="section-title">What Makes This Possible</div>
   <div class="section-sub" style="margin-bottom: 28px;">Eight layers of Claude Code customization, each building on the last</div>
@@ -688,8 +1476,8 @@
   </div>
 </div>
 
-<!-- ═══════ SLIDE 5: The Super Brain ═══════ -->
-<div class="slide" id="slide-4">
+<!-- ═══════ SLIDE 6: The Super Brain ═══════ -->
+<div class="slide" id="slide-5">
   <span class="tag tag-accent">The Super Brain</span>
   <div class="section-title">Agent Team Coordination</div>
   <div class="brain-container">
@@ -762,8 +1550,8 @@
   </div>
 </div>
 
-<!-- ═══════ SLIDE 6: Program Architecture (Circuit Board) ═══════ -->
-<div class="slide" id="slide-5">
+<!-- ═══════ SLIDE 7: Program Architecture (Circuit Board) ═══════ -->
+<div class="slide" id="slide-6">
   <span class="tag tag-cyan">Under The Hood</span>
   <div class="section-title">System Architecture</div>
 
@@ -790,8 +1578,8 @@
   </div>
 </div>
 
-<!-- ═══════ SLIDE 7: What This Looks Like ═══════ -->
-<div class="slide" id="slide-6">
+<!-- ═══════ SLIDE 8: What This Looks Like ═══════ -->
+<div class="slide" id="slide-7">
   <span class="tag tag-accent">In Action</span>
   <div class="section-title">What This Looks Like</div>
   <div class="section-sub">A real debugging session — I describe the bug, the brain handles the rest</div>
@@ -822,8 +1610,8 @@
   </div>
 </div>
 
-<!-- ═══════ SLIDE 8: Closing ═══════ -->
-<div class="slide" id="slide-7">
+<!-- ═══════ SLIDE 9: Closing ═══════ -->
+<div class="slide" id="slide-8">
   <span class="tag tag-green">The Numbers</span>
   <div class="section-title" style="margin-bottom: 40px;">What This System Built</div>
 
@@ -869,8 +1657,9 @@
   let current = 0;
   let transitioning = false;
 
-  const TERMINAL_SLIDE = 6; // slide index for terminal animation
-  const PCB_SLIDE = 5;      // slide index for PCB architecture
+  const TERMINAL_SLIDE = 7; // slide index for terminal animation
+  const PCB_SLIDE = 6;      // slide index for PCB architecture
+  const DEMO_SLIDE = 2;     // slide index for streaming pipeline demo
 
   slides.forEach((_, i) => {
     const dot = document.createElement('div');
@@ -895,6 +1684,11 @@
       slides[current].style.opacity = '0';
     }
 
+    // Reset demo when navigating away from it
+    if (prev === DEMO_SLIDE) {
+      resetDemo();
+    }
+
     setTimeout(() => {
       slides[prev].classList.remove(exitClass);
       slides[current].style.transform = '';
@@ -909,6 +1703,10 @@
 
       if (current === PCB_SLIDE) {
         buildPCB();
+      }
+
+      if (current === DEMO_SLIDE) {
+        setTimeout(() => { startDemo(); }, 400);
       }
 
       document.querySelectorAll('.nav-dot').forEach((d, i) => {
@@ -932,6 +1730,465 @@
   });
 
   counter.textContent = `1 / ${slides.length}`;
+
+  // ================================
+  // Streaming Pipeline Demo
+  // ================================
+
+  var DEMO_BAR_COUNT = 48;
+
+  var demoRawSegments = [
+    { text: 'um ', filler: true },
+    { text: 'so ' },
+    { text: 'I I ', filler: true },
+    { text: 'wanted to ' },
+    { text: 'uh ', filler: true },
+    { text: 'circle back on, on our Q3 planning, ' },
+    { text: 'uh, ', filler: true },
+    { text: 'discussion from ' },
+    { text: 'like, ', filler: true },
+    { text: 'last Tuesday... I think ' },
+    { text: 'um ', filler: true },
+    { text: 'the timeline is ' },
+    { text: 'like ', filler: true },
+    { text: 'realistic but we should ' },
+    { text: 'uh ', filler: true },
+    { text: 'probably add a buffer week for the ' },
+    { text: 'um ', filler: true },
+    { text: 'integration phase' }
+  ];
+
+  var demoPolishedStr = 'I wanted to circle back on our Q3 planning discussion from last Tuesday. I think the timeline is realistic, but we should probably add a buffer week for the integration phase.';
+  var demoPolishedWords = demoPolishedStr.split(' ');
+
+  // Timer management for demo
+  var demoTimers = [];
+  var demoIntervals = [];
+  var demoRafId = null;
+
+  function demoLater(fn, ms) { var t = setTimeout(fn, ms); demoTimers.push(t); return t; }
+  function demoRepeat(fn, ms) { var iv = setInterval(fn, ms); demoIntervals.push(iv); return iv; }
+  function demoClearAll() {
+    demoTimers.forEach(clearTimeout);
+    demoIntervals.forEach(clearInterval);
+    demoTimers = [];
+    demoIntervals = [];
+    if (demoRafId) cancelAnimationFrame(demoRafId);
+    demoRafId = null;
+  }
+
+  // Waveform
+  function demoCreateBars() {
+    var waveformEl = document.getElementById('demoWaveform');
+    if (!waveformEl) return;
+    while (waveformEl.firstChild) waveformEl.removeChild(waveformEl.firstChild);
+    for (var i = 0; i < DEMO_BAR_COUNT; i++) {
+      var bar = document.createElement('div');
+      bar.className = 'bar';
+      var t = i / (DEMO_BAR_COUNT - 1);
+      var r = Math.round(248 + (251 - 248) * t);
+      var g = Math.round(113 + (191 - 113) * t);
+      var b = Math.round(113 + (36 - 113) * t);
+      bar.style.background = 'rgb(' + r + ',' + g + ',' + b + ')';
+      bar.style.height = '8px';
+      waveformEl.appendChild(bar);
+    }
+  }
+
+  var demoWaveActive = false;
+  function demoTickWave() {
+    if (!demoWaveActive) return;
+    var waveformEl = document.getElementById('demoWaveform');
+    if (!waveformEl) return;
+    var bars = waveformEl.children;
+    var now = performance.now();
+    for (var i = 0; i < bars.length; i++) {
+      var phase = i * 0.35 + now * 0.004;
+      var h = 8 + Math.abs(Math.sin(phase)) * 38 + Math.abs(Math.sin(phase * 0.7 + i)) * 12;
+      bars[i].style.height = h + 'px';
+    }
+    demoRafId = requestAnimationFrame(demoTickWave);
+  }
+  function demoStartWave() { demoWaveActive = true; demoTickWave(); }
+  function demoStopWave() {
+    demoWaveActive = false;
+    if (demoRafId) { cancelAnimationFrame(demoRafId); demoRafId = null; }
+    var waveformEl = document.getElementById('demoWaveform');
+    if (!waveformEl) return;
+    var bars = waveformEl.children;
+    for (var i = 0; i < bars.length; i++) {
+      bars[i].style.height = '8px';
+    }
+  }
+
+  // Gantt bar animation helper
+  function demoAnimateGantt(bar, targetWidth, durationMs, cb) {
+    bar.classList.add('active');
+    bar.style.transition = 'width ' + durationMs + 'ms linear';
+    requestAnimationFrame(function() {
+      bar.style.width = targetWidth;
+    });
+    if (cb) demoLater(cb, durationMs);
+  }
+
+  function demoDoneGantt(bar) {
+    bar.classList.remove('active');
+    bar.classList.add('done');
+  }
+
+  // Type raw text into left panel (streams DURING recording)
+  function demoTypeRawText(cb) {
+    var rawTextEl = document.getElementById('demoRawText');
+    if (!rawTextEl) return;
+    while (rawTextEl.firstChild) rawTextEl.removeChild(rawTextEl.firstChild);
+
+    var spans = [];
+    demoRawSegments.forEach(function(seg, idx) {
+      var sp = document.createElement('span');
+      if (seg.filler) sp.className = 'demo-filler';
+      sp.setAttribute('data-idx', idx);
+      rawTextEl.appendChild(sp);
+      spans.push({ el: sp, text: seg.text, pos: 0 });
+    });
+
+    var segIdx = 0;
+    var totalChars = demoRawSegments.reduce(function(a, s) { return a + s.text.length; }, 0);
+    var avgDelay = 4800 / (totalChars / 3);
+
+    function tick() {
+      if (segIdx >= spans.length) { if (cb) cb(); return; }
+      var cur = spans[segIdx];
+      var chunk = 2 + Math.floor(Math.random() * 3);
+      var end = Math.min(cur.pos + chunk, cur.text.length);
+      cur.el.textContent = cur.text.slice(0, end);
+      cur.pos = end;
+      if (cur.pos >= cur.text.length) segIdx++;
+      if (segIdx < spans.length) {
+        demoLater(tick, avgDelay * (0.6 + Math.random() * 0.8));
+      } else {
+        if (cb) cb();
+      }
+    }
+    tick();
+  }
+
+  // Strikethrough filler words
+  function demoStrikeFillers(cb) {
+    var rawTextEl = document.getElementById('demoRawText');
+    if (!rawTextEl) return;
+    var fillers = rawTextEl.querySelectorAll('.demo-filler');
+    fillers.forEach(function(f, i) {
+      demoLater(function() { f.classList.add('struck'); }, i * 200);
+    });
+    demoLater(cb, fillers.length * 200 + 200);
+  }
+
+  // SSE-style streaming for polished text
+  function demoStreamPolished(cb) {
+    var polishedEl = document.getElementById('demoPolishedText');
+    if (!polishedEl) return;
+    polishedEl.textContent = '';
+    var cursor = document.createElement('span');
+    cursor.className = 'demo-cursor-blink';
+    polishedEl.appendChild(cursor);
+
+    var wordIdx = 0;
+
+    function emitBurst() {
+      if (wordIdx >= demoPolishedWords.length) {
+        if (cursor.parentNode) cursor.parentNode.removeChild(cursor);
+        if (cb) cb();
+        return;
+      }
+
+      if (cursor.parentNode) cursor.parentNode.removeChild(cursor);
+
+      var burstSize = 1 + Math.floor(Math.random() * 3);
+      burstSize = Math.min(burstSize, demoPolishedWords.length - wordIdx);
+
+      for (var i = 0; i < burstSize; i++) {
+        var wordSpan = document.createElement('span');
+        wordSpan.className = 'demo-sse-word';
+        wordSpan.textContent = (wordIdx > 0 ? ' ' : '') + demoPolishedWords[wordIdx];
+        polishedEl.appendChild(wordSpan);
+
+        (function(span, delay) {
+          demoLater(function() { span.classList.add('visible'); }, delay);
+        })(wordSpan, i * 30);
+
+        wordIdx++;
+      }
+
+      polishedEl.appendChild(cursor);
+      polishedEl.scrollTop = polishedEl.scrollHeight;
+
+      var nextDelay = 40 + Math.random() * 60;
+      if (Math.random() < 0.1) nextDelay += 60;
+      demoLater(emitBurst, nextDelay);
+    }
+    emitBurst();
+  }
+
+  // Paste particle
+  function demoFirePasteParticle(cb) {
+    var pipeline = document.getElementById('demoPipeline');
+    var panelRight = document.getElementById('demoPanelRight');
+    var pastePart = document.getElementById('demoPasteParticle');
+    if (!pipeline || !panelRight || !pastePart) return;
+
+    var pRect = pipeline.getBoundingClientRect();
+    var rRect = panelRight.getBoundingClientRect();
+    var sx = pRect.left + pRect.width / 2;
+    var sy = pRect.bottom - 30;
+    var ex = rRect.left + 40;
+    var ey = rRect.top + 50;
+
+    pastePart.style.transition = 'none';
+    pastePart.style.left = sx + 'px';
+    pastePart.style.top = sy + 'px';
+    pastePart.style.opacity = '1';
+
+    requestAnimationFrame(function() {
+      pastePart.style.transition = 'left 0.5s cubic-bezier(0.22,1,0.36,1), top 0.5s cubic-bezier(0.22,1,0.36,1), opacity 0.2s ease 0.4s';
+      pastePart.style.left = ex + 'px';
+      pastePart.style.top = ey + 'px';
+    });
+
+    demoLater(function() {
+      pastePart.style.opacity = '0';
+      if (cb) cb();
+    }, 550);
+  }
+
+  // Timeline lane fill
+  function demoFillTLLane(barEl, targetWidth, durationMs, cb) {
+    barEl.style.transition = 'width ' + durationMs + 'ms linear';
+    requestAnimationFrame(function() { barEl.style.width = targetWidth; });
+    if (cb) demoLater(cb, durationMs);
+  }
+
+  // Set concurrency badge
+  function demoSetConcBadge(text) {
+    var concText = document.getElementById('demoConcText');
+    var concBadge = document.getElementById('demoConcBadge');
+    if (concText) concText.textContent = text;
+    if (concBadge) concBadge.classList.add('visible');
+  }
+  function demoHideConcBadge() {
+    var concBadge = document.getElementById('demoConcBadge');
+    if (concBadge) concBadge.classList.remove('visible');
+  }
+
+  // Full reset
+  function resetDemo() {
+    demoClearAll();
+    demoStopWave();
+
+    var header = document.getElementById('demoHeader');
+    var panelLeft = document.getElementById('demoPanelLeft');
+    var pipeline = document.getElementById('demoPipeline');
+    var panelRight = document.getElementById('demoPanelRight');
+    var timelineContainer = document.getElementById('demoTimelineContainer');
+    var statsEl = document.getElementById('demoStats');
+    var asrBadge = document.getElementById('demoAsrBadge');
+    var sseBadge = document.getElementById('demoSseBadge');
+    var rawTextEl = document.getElementById('demoRawText');
+    var polishedEl = document.getElementById('demoPolishedText');
+    var pastePart = document.getElementById('demoPasteParticle');
+    var overlapBracket = document.getElementById('demoOverlapBracket');
+    var overlapLabel = document.getElementById('demoOverlapLabel');
+    var tlTotal = document.getElementById('demoTlTotal');
+    var releaseMarker = document.getElementById('demoReleaseMarker');
+
+    [header, panelLeft, pipeline, panelRight, timelineContainer, statsEl].forEach(function(e) {
+      if (e) e.classList.remove('visible');
+    });
+    if (panelRight) panelRight.classList.remove('glow-green');
+
+    if (asrBadge) asrBadge.classList.remove('active');
+    if (sseBadge) sseBadge.classList.remove('active');
+    demoHideConcBadge();
+
+    // Reset gantt bars
+    var ganttBarIds = ['demoGanttRecBar', 'demoGanttAsrBar', 'demoGanttFinalBar', 'demoGanttPrewarmBar', 'demoGanttPolishBar', 'demoGanttPasteBar'];
+    ganttBarIds.forEach(function(id) {
+      var b = document.getElementById(id);
+      if (b) {
+        b.style.transition = 'none';
+        b.style.width = '0%';
+        b.className = b.className.replace(/\s*(active|done)\b/g, '');
+      }
+    });
+
+    // Reset gantt labels
+    var ganttLabelIds = ['demoGanttRecLabel', 'demoGanttAsrLabel', 'demoGanttFinalLabel', 'demoGanttPrewarmLabel', 'demoGanttPolishLabel', 'demoGanttPasteLabel'];
+    ganttLabelIds.forEach(function(id) {
+      var l = document.getElementById(id);
+      if (l) l.classList.remove('active');
+    });
+
+    if (overlapBracket) overlapBracket.classList.remove('visible');
+    if (overlapLabel) overlapLabel.classList.remove('visible');
+
+    if (rawTextEl) rawTextEl.textContent = '';
+    if (polishedEl) polishedEl.textContent = '';
+
+    // Reset timeline
+    ['demoTlRecBar', 'demoTlAsrBar', 'demoTlPolishBar', 'demoTlPasteBar'].forEach(function(id) {
+      var b = document.getElementById(id);
+      if (b) {
+        b.style.transition = 'none';
+        b.style.width = '0%';
+      }
+    });
+    if (tlTotal) tlTotal.classList.remove('visible');
+    if (releaseMarker) releaseMarker.classList.remove('visible');
+
+    if (pastePart) {
+      pastePart.style.transition = 'none';
+      pastePart.style.opacity = '0';
+    }
+
+    demoCreateBars();
+  }
+
+  // Main demo sequence (~13s total)
+  function startDemo() {
+    resetDemo();
+
+    var header = document.getElementById('demoHeader');
+    var panelLeft = document.getElementById('demoPanelLeft');
+    var pipeline = document.getElementById('demoPipeline');
+    var panelRight = document.getElementById('demoPanelRight');
+    var timelineContainer = document.getElementById('demoTimelineContainer');
+    var statsEl = document.getElementById('demoStats');
+    var asrBadge = document.getElementById('demoAsrBadge');
+    var sseBadge = document.getElementById('demoSseBadge');
+    var overlapBracket = document.getElementById('demoOverlapBracket');
+    var overlapLabel = document.getElementById('demoOverlapLabel');
+    var releaseMarker = document.getElementById('demoReleaseMarker');
+    var tlTotal = document.getElementById('demoTlTotal');
+
+    var ganttRecBar = document.getElementById('demoGanttRecBar');
+    var ganttAsrBar = document.getElementById('demoGanttAsrBar');
+    var ganttFinalBar = document.getElementById('demoGanttFinalBar');
+    var ganttPrewarmBar = document.getElementById('demoGanttPrewarmBar');
+    var ganttPolishBar = document.getElementById('demoGanttPolishBar');
+    var ganttPasteBar = document.getElementById('demoGanttPasteBar');
+    var ganttRecLabel = document.getElementById('demoGanttRecLabel');
+    var ganttAsrLabel = document.getElementById('demoGanttAsrLabel');
+    var ganttFinalLabel = document.getElementById('demoGanttFinalLabel');
+    var ganttPrewarmLabel = document.getElementById('demoGanttPrewarmLabel');
+    var ganttPolishLabel = document.getElementById('demoGanttPolishLabel');
+    var ganttPasteLabel = document.getElementById('demoGanttPasteLabel');
+
+    var tlRecBar = document.getElementById('demoTlRecBar');
+    var tlAsrBar = document.getElementById('demoTlAsrBar');
+    var tlPolishBar = document.getElementById('demoTlPolishBar');
+    var tlPasteBar = document.getElementById('demoTlPasteBar');
+
+    /* Phase 1: Entrance (0-1.5s) */
+    demoLater(function() { header.classList.add('visible'); }, 100);
+    demoLater(function() { panelLeft.classList.add('visible'); timelineContainer.classList.add('visible'); }, 400);
+    demoLater(function() { pipeline.classList.add('visible'); }, 700);
+    demoLater(function() { panelRight.classList.add('visible'); }, 1000);
+
+    /* Phase 2: Recording + Live Streaming ASR (1.5-6.5s) */
+    demoLater(function() {
+      demoStartWave();
+      asrBadge.classList.add('active');
+
+      ganttRecLabel.classList.add('active');
+      demoAnimateGantt(ganttRecBar, '100%', 5000);
+
+      ganttAsrLabel.classList.add('active');
+      demoAnimateGantt(ganttAsrBar, '100%', 5000);
+
+      demoLater(function() {
+        overlapBracket.classList.add('visible');
+        overlapLabel.classList.add('visible');
+      }, 800);
+
+      demoSetConcBadge('Recording + ASR running in parallel');
+      demoFillTLLane(tlRecBar, '75.7%', 5000);
+      demoTypeRawText(function() {});
+    }, 1500);
+
+    /* Phase 3: Release + Parallel Processing (6.5-8s) */
+    demoLater(function() {
+      demoStopWave();
+      asrBadge.classList.remove('active');
+
+      demoDoneGantt(ganttRecBar);
+      demoDoneGantt(ganttAsrBar);
+      ganttRecLabel.classList.remove('active');
+      ganttAsrLabel.classList.remove('active');
+      overlapBracket.classList.remove('visible');
+      overlapLabel.classList.remove('visible');
+
+      releaseMarker.classList.add('visible');
+
+      ganttFinalLabel.classList.add('active');
+      demoAnimateGantt(ganttFinalBar, '15%', 500, function() {
+        demoDoneGantt(ganttFinalBar);
+        ganttFinalLabel.classList.remove('active');
+      });
+
+      ganttPrewarmLabel.classList.add('active');
+      demoAnimateGantt(ganttPrewarmBar, '15%', 500, function() {
+        demoDoneGantt(ganttPrewarmBar);
+        ganttPrewarmLabel.classList.remove('active');
+      });
+
+      demoFillTLLane(tlAsrBar, '3%', 500);
+      demoSetConcBadge('ASR finalize + LLM pre-warm (concurrent)');
+      demoStrikeFillers(function() {});
+    }, 6500);
+
+    /* Phase 4: SSE Streaming Polish (8-14s) */
+    demoLater(function() {
+      ganttPolishLabel.classList.add('active');
+      demoAnimateGantt(ganttPolishBar, '100%', 1500, function() {
+        demoDoneGantt(ganttPolishBar);
+        ganttPolishLabel.classList.remove('active');
+      });
+
+      sseBadge.classList.add('active');
+      demoSetConcBadge('SSE tokens streaming from Gemini');
+      demoFillTLLane(tlPolishBar, '22.7%', 1500);
+      panelRight.classList.add('glow-green');
+      demoFirePasteParticle(function() {});
+
+      demoLater(function() {
+        demoStreamPolished(function() {
+          sseBadge.classList.remove('active');
+        });
+      }, 100);
+    }, 8000);
+
+    /* Phase 5: Paste + Done (9.5-11.5s) */
+    demoLater(function() {
+      ganttPasteLabel.classList.add('active');
+      demoAnimateGantt(ganttPasteBar, '100%', 200, function() {
+        demoDoneGantt(ganttPasteBar);
+        ganttPasteLabel.classList.remove('active');
+      });
+
+      demoFillTLLane(tlPasteBar, '1%', 200);
+
+      demoLater(function() {
+        tlTotal.classList.add('visible');
+      }, 300);
+
+      demoSetConcBadge('Done \u2014 1.6s from release to paste');
+    }, 9700);
+
+    /* Phase 6: Stats (11-13s) */
+    demoLater(function() {
+      demoHideConcBadge();
+      statsEl.classList.add('visible');
+    }, 11200);
+  }
 
   // ================================
   // Circuit Board (PCB) Architecture
