@@ -72,11 +72,11 @@ enum LLMConstants {
     /// Maximum concurrent model probes to avoid rate limiting.
     static let maxConcurrentProbes: Int = 5
 
-    /// Default max tokens for cloud LLM providers.
-    static let defaultMaxTokens: Int = 2048
+    /// Default max tokens for cloud LLM providers (supports ~5 min dictations).
+    static let defaultMaxTokens: Int = 8192
 
     /// Max tokens for Ollama (local models can handle more).
-    static let ollamaMaxTokens: Int = 4096
+    static let ollamaMaxTokens: Int = 8192
 }
 
 enum FormattingConstants {

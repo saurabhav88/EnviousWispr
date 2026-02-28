@@ -33,7 +33,7 @@ struct OpenAIConnector: TranscriptPolisher {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        request.timeoutInterval = 30
+        request.timeoutInterval = 60
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
@@ -56,6 +56,14 @@ struct OpenAIConnector: TranscriptPolisher {
               let content = message["content"] as? String,
               !content.isEmpty else {
             throw LLMError.emptyResponse
+        }
+
+        if let finishReason = choices.first?["finish_reason"] as? String,
+           finishReason == "length" {
+            Task { await AppLogger.shared.log(
+                "WARNING: OpenAI response truncated (finish_reason=length, model=\(config.model), max_tokens=\(config.maxTokens))",
+                level: .info, category: "LLM"
+            ) }
         }
 
         return LLMResult(

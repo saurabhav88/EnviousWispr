@@ -74,6 +74,14 @@ struct OllamaConnector: TranscriptPolisher {
             throw LLMError.emptyResponse
         }
 
+        if let finishReason = choices.first?["finish_reason"] as? String,
+           finishReason == "length" {
+            Task { await AppLogger.shared.log(
+                "WARNING: Ollama response truncated (finish_reason=length, model=\(config.model), max_tokens=\(config.maxTokens))",
+                level: .info, category: "LLM"
+            ) }
+        }
+
         return LLMResult(
             polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines)
                 .strippingLLMPreamble(),

@@ -20,13 +20,12 @@ struct GeminiConnector: TranscriptPolisher {
             throw LLMError.requestFailed("Invalid URL for model: \(config.model)")
         }
 
-        let body: [String: Any] = [
-            "contents": [
-                [
-                    "parts": [
-                        ["text": "\(instructions.systemPrompt)\n\n---\n\n\(text)"]
-                    ]
-                ]
+        // Use systemInstruction for the system prompt so Flash models follow
+        // instructions precisely rather than treating the combined message as a
+        // summarization task.
+        var body: [String: Any] = [
+            "systemInstruction": [
+                "parts": [["text": instructions.systemPrompt]]
             ],
             "generationConfig": [
                 "temperature": config.temperature,
@@ -34,12 +33,21 @@ struct GeminiConnector: TranscriptPolisher {
             ],
         ]
 
+        // When ${transcript} placeholder is used, LLMPolishStep resolves the full
+        // prompt into systemPrompt and passes text as "". In that case we send a
+        // minimal contents array; otherwise the transcript goes in contents.
+        if text.isEmpty {
+            body["contents"] = [["parts": [["text": " "]]]]
+        } else {
+            body["contents"] = [["parts": [["text": text]]]]
+        }
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        request.timeoutInterval = 30
+        request.timeoutInterval = 60
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
@@ -62,11 +70,21 @@ struct GeminiConnector: TranscriptPolisher {
 
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         guard let candidates = json?["candidates"] as? [[String: Any]],
-              let content = candidates.first?["content"] as? [String: Any],
+              let firstCandidate = candidates.first,
+              let content = firstCandidate["content"] as? [String: Any],
               let parts = content["parts"] as? [[String: Any]],
               let responseText = parts.first?["text"] as? String,
               !responseText.isEmpty else {
             throw LLMError.emptyResponse
+        }
+
+        // Detect output truncation so we can diagnose incomplete polishing
+        if let finishReason = firstCandidate["finishReason"] as? String,
+           finishReason == "MAX_TOKENS" {
+            Task { await AppLogger.shared.log(
+                "WARNING: Gemini response truncated (finishReason=MAX_TOKENS, model=\(config.model), maxOutputTokens=\(config.maxTokens))",
+                level: .info, category: "LLM"
+            ) }
         }
 
         return LLMResult(
