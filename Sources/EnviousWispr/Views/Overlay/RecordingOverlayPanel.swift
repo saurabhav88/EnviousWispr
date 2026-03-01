@@ -150,24 +150,27 @@ struct RainbowLipsIcon: View {
     let size: CGFloat
 
     private let upperBars: [(x: CGFloat, y: CGFloat, h: CGFloat, color: Color)] = [
-        (4,  14, 14, Color(red: 1.0, green: 0.176, blue: 0.333)),
-        (11, 11, 13, Color(red: 1.0, green: 0.624, blue: 0.039)),
-        (18, 8,  14, Color(red: 1.0, green: 0.839, blue: 0.039)),
-        (25, 12, 10, Color(red: 0.188, green: 0.82, blue: 0.345)),
-        (32, 14, 9,  Color(red: 0.204, green: 0.78, blue: 0.349)),
-        (39, 11, 11, Color(red: 0.196, green: 0.847, blue: 0.745)),
-        (46, 7,  15, Color(red: 0.392, green: 0.824, blue: 1.0)),
-        (53, 10, 14, Color(red: 0.039, green: 0.518, blue: 1.0))
+        (4,  22.25,   5,  Color(red: 1.0,   green: 0.165, blue: 0.251)),
+        (10, 17.6375, 8,  Color(red: 1.0,   green: 0.549, blue: 0.0)),
+        (16, 12.04,   12, Color(red: 1.0,   green: 0.843, blue: 0.0)),
+        (22, 16.96,   9,  Color(red: 0.678, green: 1.0,   blue: 0.184)),
+        (28, 21.5575, 6,  Color(red: 0.0,   green: 0.98,  blue: 0.604)),
+        (34, 16.96,   9,  Color(red: 0.0,   green: 1.0,   blue: 1.0)),
+        (40, 12.04,   12, Color(red: 0.118, green: 0.565, blue: 1.0)),
+        (46, 17.6375, 8,  Color(red: 0.255, green: 0.412, blue: 0.882)),
+        (52, 22.25,   5,  Color(red: 0.541, green: 0.169, blue: 0.886))
     ]
 
     private let lowerBars: [(x: CGFloat, y: CGFloat, h: CGFloat, color: Color)] = [
-        (8,  32, 10, Color(red: 0.369, green: 0.361, blue: 0.902)),
-        (15, 30, 14, Color(red: 0.749, green: 0.353, blue: 0.949)),
-        (22, 29, 16, Color(red: 1.0, green: 0.176, blue: 0.333)),
-        (29, 28, 18, Color(red: 1.0, green: 0.624, blue: 0.039)),
-        (36, 29, 16, Color(red: 1.0, green: 0.839, blue: 0.039)),
-        (43, 30, 14, Color(red: 0.188, green: 0.82, blue: 0.345)),
-        (50, 32, 10, Color(red: 0.204, green: 0.78, blue: 0.349))
+        (4,  30.25,   5,  Color(red: 0.255, green: 0.412, blue: 0.882)),
+        (10, 28.6375, 9,  Color(red: 0.118, green: 0.565, blue: 1.0)),
+        (16, 27.04,   12, Color(red: 0.0,   green: 1.0,   blue: 1.0)),
+        (22, 28.96,   15, Color(red: 0.0,   green: 0.98,  blue: 0.604)),
+        (28, 30.5575, 17, Color(red: 0.678, green: 1.0,   blue: 0.184)),
+        (34, 28.96,   15, Color(red: 1.0,   green: 0.843, blue: 0.0)),
+        (40, 27.04,   12, Color(red: 1.0,   green: 0.549, blue: 0.0)),
+        (46, 28.6375, 9,  Color(red: 1.0,   green: 0.165, blue: 0.251)),
+        (52, 30.25,   5,  Color(red: 0.541, green: 0.169, blue: 0.886))
     ]
 
     var body: some View {
@@ -216,15 +219,15 @@ private struct OverlayCapsuleBackground: View {
                 LinearGradient(
                     colors: [
                         .clear,
-                        Color(red: 1.0, green: 0.176, blue: 0.333),
-                        Color(red: 1.0, green: 0.624, blue: 0.039),
-                        Color(red: 1.0, green: 0.839, blue: 0.039),
-                        Color(red: 0.188, green: 0.82, blue: 0.345),
-                        Color(red: 0.196, green: 0.847, blue: 0.745),
-                        Color(red: 0.392, green: 0.824, blue: 1.0),
-                        Color(red: 0.039, green: 0.518, blue: 1.0),
-                        Color(red: 0.369, green: 0.361, blue: 0.902),
-                        Color(red: 0.749, green: 0.353, blue: 0.949),
+                        Color(red: 1.0,   green: 0.165, blue: 0.251), // #ff2a40 red
+                        Color(red: 1.0,   green: 0.549, blue: 0.0),   // #ff8c00 orange
+                        Color(red: 1.0,   green: 0.843, blue: 0.0),   // #ffd700 yellow
+                        Color(red: 0.678, green: 1.0,   blue: 0.184), // #adff2f yellow-green
+                        Color(red: 0.0,   green: 0.98,  blue: 0.604), // #00fa9a mint
+                        Color(red: 0.0,   green: 1.0,   blue: 1.0),   // #00ffff cyan
+                        Color(red: 0.118, green: 0.565, blue: 1.0),   // #1e90ff dodger blue
+                        Color(red: 0.255, green: 0.412, blue: 0.882), // #4169e1 royal blue
+                        Color(red: 0.541, green: 0.169, blue: 0.886), // #8a2be2 purple
                         .clear
                     ],
                     startPoint: .leading,
@@ -257,8 +260,8 @@ struct RecordingOverlayView: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            // Spinning spectrum wheel icon
-            SpectrumWheelIcon(size: 24)
+            // Rainbow lips icon — audio-reactive during recording
+            RainbowLipsIcon(size: 24)
 
             // Mini waveform (5 bars)
             HStack(spacing: 2) {
@@ -300,8 +303,8 @@ struct RecordingOverlayView: View {
 struct PolishingOverlayView: View {
     var body: some View {
         HStack(spacing: 10) {
-            // Breathing rainbow lips icon
-            RainbowLipsIcon(size: 24)
+            // Spinning spectrum wheel icon — polishing/processing state
+            SpectrumWheelIcon(size: 24)
 
             Text("Polishing...")
                 .font(.system(size: 13, weight: .medium))

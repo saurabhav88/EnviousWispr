@@ -1,0 +1,44 @@
+{
+  "name": "EnviousWispr v2 — Feminine Lips",
+  "date": "2026-02-28",
+  "source": "Gemini Pro Banana 2 reference + interactive mockup tuning",
+
+  "settings": {
+    "shape": "feminine",
+    "variant": "A",
+    "vOffset": 13,
+    "hOffset": 8,
+    "gap": 18,
+    "barWidth": 14,
+    "glow": 4,
+    "particles": 0,
+    "bowDepth": 75
+  },
+
+  "barData": {
+    "count": 9,
+    "viewBox": "0 0 64 64",
+    "x": [4, 10, 16, 22, 28, 34, 40, 46, 52],
+    "upperHeights": [5, 8, 12, 9, 6, 9, 12, 8, 5],
+    "lowerHeights": [5, 9, 12, 15, 17, 15, 12, 9, 5],
+    "bowOffsets": [3.0, 0.85, -1.28, 1.28, 3.41, 1.28, -1.28, 0.85, 3.0],
+    "upperBaselineY": 25,
+    "lowerBaselineY": 28
+  },
+
+  "colors": {
+    "upper": ["#ff2a40", "#ff8c00", "#ffd700", "#adff2f", "#00fa9a", "#00ffff", "#1e90ff", "#4169e1", "#8a2be2"],
+    "lower": ["#4169e1", "#1e90ff", "#00ffff", "#00fa9a", "#adff2f", "#ffd700", "#ff8c00", "#ff2a40", "#8a2be2"],
+    "grey": "rgba(255,255,255,0.65)",
+    "error": "#ff2a40",
+    "background": "#0d0d14",
+    "backgroundGradient": "#1a0a2e"
+  },
+
+  "notes": {
+    "bowDepth": "75% of full Gemini offsets — softens the cupid's bow peaks",
+    "lowerLip": "Proportionally much fuller than upper (17-unit center vs 6-unit) — feminine read",
+    "symmetry": "Perfectly symmetric (col 1 mirrors col 9, etc.)",
+    "offsets": "Shared between upper and lower lips — keeps gap uniform across the wave"
+  }
+}

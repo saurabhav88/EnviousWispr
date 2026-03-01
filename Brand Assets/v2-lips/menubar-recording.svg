@@ -1,0 +1,27 @@
+<!-- EnviousWispr v2 Menu Bar Icon — RECORDING state -->
+<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 64 64" fill="none">
+  <!-- Upper lip bars (rainbow) -->
+  <rect x="4"  y="22.25"   width="4.5" height="5"  rx="1.5" fill="#ff2a40"/>
+  <rect x="10" y="17.6375" width="4.5" height="8"  rx="1.5" fill="#ff8c00"/>
+  <rect x="16" y="12.04"   width="4.5" height="12" rx="1.5" fill="#ffd700"/>
+  <rect x="22" y="16.96"   width="4.5" height="9"  rx="1.5" fill="#adff2f"/>
+  <rect x="28" y="21.5575" width="4.5" height="6"  rx="1.5" fill="#00fa9a"/>
+  <rect x="34" y="16.96"   width="4.5" height="9"  rx="1.5" fill="#00ffff"/>
+  <rect x="40" y="12.04"   width="4.5" height="12" rx="1.5" fill="#1e90ff"/>
+  <rect x="46" y="17.6375" width="4.5" height="8"  rx="1.5" fill="#4169e1"/>
+  <rect x="52" y="22.25"   width="4.5" height="5"  rx="1.5" fill="#8a2be2"/>
+
+  <!-- Lower lip bars (rainbow, reversed) -->
+  <rect x="4"  y="30.25"   width="4.5" height="5"  rx="1.5" fill="#4169e1"/>
+  <rect x="10" y="28.6375" width="4.5" height="9"  rx="1.5" fill="#1e90ff"/>
+  <rect x="16" y="27.04"   width="4.5" height="12" rx="1.5" fill="#00ffff"/>
+  <rect x="22" y="28.96"   width="4.5" height="15" rx="1.5" fill="#00fa9a"/>
+  <rect x="28" y="30.5575" width="4.5" height="17" rx="1.5" fill="#adff2f"/>
+  <rect x="34" y="28.96"   width="4.5" height="15" rx="1.5" fill="#ffd700"/>
+  <rect x="40" y="27.04"   width="4.5" height="12" rx="1.5" fill="#ff8c00"/>
+  <rect x="46" y="28.6375" width="4.5" height="9"  rx="1.5" fill="#ff2a40"/>
+  <rect x="52" y="30.25"   width="4.5" height="5"  rx="1.5" fill="#8a2be2"/>
+
+  <!-- Recording indicator (red dot, top-right) -->
+  <circle cx="58" cy="6" r="4" fill="#ff2a40"/>
+</svg>

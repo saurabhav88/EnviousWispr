@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 64 64" fill="none">
+  <g transform="rotate(0,32,32)"><rect x="30" y="4" width="4" height="14" rx="2" fill="#ff2d55"/></g>
+  <g transform="rotate(30,32,32)"><rect x="30" y="7" width="4" height="10" rx="2" fill="#ff9f0a"/></g>
+  <g transform="rotate(60,32,32)"><rect x="30" y="5" width="4" height="12" rx="2" fill="#ffd60a"/></g>
+  <g transform="rotate(90,32,32)"><rect x="30" y="8" width="4" height="9" rx="2" fill="#30d158"/></g>
+  <g transform="rotate(120,32,32)"><rect x="30" y="4" width="4" height="14" rx="2" fill="#34c759"/></g>
+  <g transform="rotate(150,32,32)"><rect x="30" y="6" width="4" height="11" rx="2" fill="#32d8be"/></g>
+  <g transform="rotate(180,32,32)"><rect x="30" y="5" width="4" height="13" rx="2" fill="#64d2ff"/></g>
+  <g transform="rotate(210,32,32)"><rect x="30" y="8" width="4" height="9" rx="2" fill="#0a84ff"/></g>
+  <g transform="rotate(240,32,32)"><rect x="30" y="4" width="4" height="14" rx="2" fill="#5e5ce6"/></g>
+  <g transform="rotate(270,32,32)"><rect x="30" y="6" width="4" height="12" rx="2" fill="#bf5af2"/></g>
+  <g transform="rotate(300,32,32)"><rect x="30" y="7" width="4" height="10" rx="2" fill="#ff2d55"/></g>
+  <g transform="rotate(330,32,32)"><rect x="30" y="5" width="4" height="13" rx="2" fill="#ff9f0a"/></g>
+</svg>

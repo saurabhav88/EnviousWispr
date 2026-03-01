@@ -107,34 +107,35 @@ final class MenuBarIconAnimator {
             let cornerRadius: CGFloat = 1.5 * scale
             let level = CGFloat(min(max(audioLevel, 0), 1))
 
-            // Upper bars — from RainbowLipsIcon.upperBars
+            // Upper bars — v2 9-bar lip geometry (viewBox 0 0 64 64)
             let upperBars: [(x: CGFloat, y: CGFloat, h: CGFloat, r: CGFloat, g: CGFloat, b: CGFloat)] = [
-                (4,  14, 14, 1.0,   0.176, 0.333),
-                (11, 11, 13, 1.0,   0.624, 0.039),
-                (18, 8,  14, 1.0,   0.839, 0.039),
-                (25, 12, 10, 0.188, 0.82,  0.345),
-                (32, 14, 9,  0.204, 0.78,  0.349),
-                (39, 11, 11, 0.196, 0.847, 0.745),
-                (46, 7,  15, 0.392, 0.824, 1.0),
-                (53, 10, 14, 0.039, 0.518, 1.0),
+                (4,  22.25,   5,  1.0,   0.165, 0.251),
+                (10, 17.6375, 8,  1.0,   0.549, 0.0),
+                (16, 12.04,   12, 1.0,   0.843, 0.0),
+                (22, 16.96,   9,  0.678, 1.0,   0.184),
+                (28, 21.5575, 6,  0.0,   0.98,  0.604),
+                (34, 16.96,   9,  0.0,   1.0,   1.0),
+                (40, 12.04,   12, 0.118, 0.565, 1.0),
+                (46, 17.6375, 8,  0.255, 0.412, 0.882),
+                (52, 22.25,   5,  0.541, 0.169, 0.886),
             ]
 
-            // Lower bars — from RainbowLipsIcon.lowerBars
+            // Lower bars — v2 9-bar lip geometry (viewBox 0 0 64 64)
             let lowerBars: [(x: CGFloat, y: CGFloat, h: CGFloat, r: CGFloat, g: CGFloat, b: CGFloat)] = [
-                (8,  32, 10, 0.369, 0.361, 0.902),
-                (15, 30, 14, 0.749, 0.353, 0.949),
-                (22, 29, 16, 1.0,   0.176, 0.333),
-                (29, 28, 18, 1.0,   0.624, 0.039),
-                (36, 29, 16, 1.0,   0.839, 0.039),
-                (43, 30, 14, 0.188, 0.82,  0.345),
-                (50, 32, 10, 0.204, 0.78,  0.349),
+                (4,  30.25,   5,  0.255, 0.412, 0.882),
+                (10, 28.6375, 9,  0.118, 0.565, 1.0),
+                (16, 27.04,   12, 0.0,   1.0,   1.0),
+                (22, 28.96,   15, 0.0,   0.98,  0.604),
+                (28, 30.5575, 17, 0.678, 1.0,   0.184),
+                (34, 28.96,   15, 1.0,   0.843, 0.0),
+                (40, 27.04,   12, 1.0,   0.549, 0.0),
+                (46, 28.6375, 9,  1.0,   0.165, 0.251),
+                (52, 30.25,   5,  0.541, 0.169, 0.886),
             ]
-
-            let totalBars = upperBars.count + lowerBars.count
-            let center = CGFloat(totalBars) / 2.0
 
             for (i, bar) in upperBars.enumerated() {
-                let centerDistance = abs(CGFloat(i) - center) / center
+                let groupCenter = CGFloat(upperBars.count - 1) / 2.0  // 4.0
+                let centerDistance = abs(CGFloat(i) - groupCenter) / groupCenter
                 let baseH = bar.h * scale
                 let h = baseH * (0.6 + 0.4 * level * (1.0 - centerDistance * 0.5))
                 let x = bar.x * scale
@@ -147,7 +148,8 @@ final class MenuBarIconAnimator {
             }
 
             for (i, bar) in lowerBars.enumerated() {
-                let centerDistance = abs(CGFloat(i + upperBars.count) - center) / center
+                let groupCenter = CGFloat(lowerBars.count - 1) / 2.0  // 4.0
+                let centerDistance = abs(CGFloat(i) - groupCenter) / groupCenter
                 let baseH = bar.h * scale
                 let h = baseH * (0.6 + 0.4 * level * (1.0 - centerDistance * 0.5))
                 let x = bar.x * scale
@@ -172,16 +174,18 @@ final class MenuBarIconAnimator {
             let scale = rect.width / 64.0
             let barWidth: CGFloat = 4.5 * scale
             let cornerRadius: CGFloat = 1.5 * scale
-            let red = CGColor(red: 1.0, green: 0.23, blue: 0.19, alpha: 1) // systemRed
+            let red = CGColor(red: 1.0, green: 0.165, blue: 0.251, alpha: 0.9) // #ff2a40 at 0.9 opacity
 
             let upperBars: [(x: CGFloat, y: CGFloat, h: CGFloat)] = [
-                (4,  14, 14), (11, 11, 13), (18, 8, 14), (25, 12, 10),
-                (32, 14, 9),  (39, 11, 11), (46, 7, 15), (53, 10, 14),
+                (4,  22.25,   5),  (10, 17.6375, 8),  (16, 12.04,   12),
+                (22, 16.96,   9),  (28, 21.5575, 6),  (34, 16.96,   9),
+                (40, 12.04,   12), (46, 17.6375, 8),  (52, 22.25,   5),
             ]
 
             let lowerBars: [(x: CGFloat, y: CGFloat, h: CGFloat)] = [
-                (8,  32, 10), (15, 30, 14), (22, 29, 16), (29, 28, 18),
-                (36, 29, 16), (43, 30, 14), (50, 32, 10),
+                (4,  30.25,   5),  (10, 28.6375, 9),  (16, 27.04,   12),
+                (22, 28.96,   15), (28, 30.5575, 17), (34, 28.96,   15),
+                (40, 27.04,   12), (46, 28.6375, 9),  (52, 30.25,   5),
             ]
 
             ctx.setFillColor(red)

@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EnviousWispr — Menu Bar Icon States v2</title>
+<style>
+  /* ===== RESET & BASE ===== */
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a1a1a;
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui, sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  body::before {
+    content: '';
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background:
+      radial-gradient(ellipse 80% 50% at 20% 30%, rgba(138,43,226,0.06) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 80% 70%, rgba(255,42,64,0.04) 0%, transparent 50%),
+      radial-gradient(ellipse 70% 60% at 50% 50%, rgba(30,144,255,0.03) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .page-content { position: relative; z-index: 1; padding: 48px 40px 80px; max-width: 1280px; margin: 0 auto; }
+
+  /* ===== HEADER ===== */
+  .page-header { text-align: center; margin-bottom: 56px; }
+  .page-header h1 {
+    font-size: 32px; font-weight: 300; letter-spacing: -0.5px; color: #fff;
+    background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.7) 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .page-header .tagline {
+    font-size: 14px; color: rgba(255,255,255,0.35); margin-top: 8px; font-weight: 400; letter-spacing: 0.3px;
+  }
+  .page-header .divider {
+    width: 60px; height: 1px; margin: 20px auto 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+  }
+
+  /* ===== STATE CARDS GRID ===== */
+  .states-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 24px;
+    margin-bottom: 64px;
+  }
+  .state-card {
+    background: rgba(255,255,255,0.025);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 16px;
+    padding: 28px;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  .state-card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent 10%, var(--accent, rgba(255,255,255,0.1)) 50%, transparent 90%);
+    opacity: 0.4;
+  }
+  .state-card:hover { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.12); transform: translateY(-2px); }
+
+  .state-label {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 11px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .state-label .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+  }
+  .state-desc {
+    font-size: 13px; color: rgba(255,255,255,0.4); line-height: 1.5; margin-bottom: 24px;
+  }
+
+  /* Large icon preview */
+  .icon-preview {
+    display: flex; justify-content: center; align-items: center;
+    margin: 0 auto 20px;
+    width: 160px; height: 160px;
+    background: rgba(0,0,0,0.4);
+    border-radius: 20px;
+    border: 1px solid rgba(255,255,255,0.06);
+    position: relative;
+  }
+
+  /* Menu bar context strip */
+  .menubar-context {
+    display: flex; align-items: center; justify-content: flex-end;
+    gap: 14px;
+    background: rgba(38,38,38,0.92);
+    backdrop-filter: blur(30px);
+    -webkit-backdrop-filter: blur(30px);
+    border-radius: 6px;
+    padding: 4px 14px;
+    height: 25px;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .menubar-context .sys-icon {
+    color: rgba(255,255,255,0.55);
+    font-size: 11px;
+    font-weight: 500;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .menubar-context .wispr-icon-slot {
+    display: flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px;
+  }
+
+  /* ===== INTERACTIVE DEMO ===== */
+  .demo-section {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 20px;
+    padding: 40px;
+  }
+  .demo-header {
+    text-align: center; margin-bottom: 32px;
+  }
+  .demo-header h2 {
+    font-size: 20px; font-weight: 400; color: #fff; letter-spacing: -0.3px;
+  }
+  .demo-header p {
+    font-size: 13px; color: rgba(255,255,255,0.35); margin-top: 6px;
+  }
+
+  /* Full-width realistic menu bar */
+  .demo-menubar {
+    display: flex; align-items: center; justify-content: space-between;
+    background: rgba(38,38,38,0.92);
+    backdrop-filter: blur(30px);
+    -webkit-backdrop-filter: blur(30px);
+    border-radius: 8px;
+    padding: 0 16px;
+    height: 28px;
+    margin-bottom: 32px;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .demo-menubar .left {
+    display: flex; align-items: center; gap: 16px;
+    font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.85);
+  }
+  .demo-menubar .left .apple-logo { font-size: 15px; }
+  .demo-menubar .left span { font-weight: 400; color: rgba(255,255,255,0.55); font-size: 13px; }
+  .demo-menubar .right {
+    display: flex; align-items: center; gap: 16px;
+  }
+  .demo-menubar .right .sys-icon {
+    color: rgba(255,255,255,0.55); font-size: 12px; font-weight: 500;
+    display: flex; align-items: center; gap: 3px;
+  }
+  .demo-menubar .right .wispr-slot {
+    display: flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background 0.2s;
+  }
+  .demo-menubar .right .wispr-slot:hover { background: rgba(255,255,255,0.08); }
+
+  /* Demo controls */
+  .demo-controls {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    margin-bottom: 28px; flex-wrap: wrap;
+  }
+  .state-btn {
+    padding: 8px 20px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.04);
+    color: rgba(255,255,255,0.6);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    text-transform: uppercase;
+  }
+  .state-btn:hover { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.85); border-color: rgba(255,255,255,0.18); }
+  .state-btn.active {
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+    border-color: var(--btn-color, rgba(255,255,255,0.3));
+    box-shadow: 0 0 12px var(--btn-glow, transparent);
+  }
+  .state-btn[data-state="idle"].active { --btn-color: rgba(255,255,255,0.3); --btn-glow: transparent; }
+  .state-btn[data-state="error"].active { --btn-color: rgba(255,42,64,0.5); --btn-glow: rgba(255,42,64,0.15); }
+  .state-btn[data-state="recording"].active { --btn-color: rgba(255,42,64,0.5); --btn-glow: rgba(255,42,64,0.15); }
+  .state-btn[data-state="polishing"].active { --btn-color: rgba(138,43,226,0.5); --btn-glow: rgba(138,43,226,0.15); }
+
+  .auto-cycle-btn {
+    padding: 8px 20px;
+    border-radius: 8px;
+    border: 1px solid rgba(138,43,226,0.3);
+    background: rgba(138,43,226,0.08);
+    color: rgba(200,160,255,0.8);
+    font-family: inherit; font-size: 12px; font-weight: 500;
+    cursor: pointer; transition: all 0.25s ease;
+    letter-spacing: 0.5px;
+  }
+  .auto-cycle-btn:hover { background: rgba(138,43,226,0.15); color: #d4aaff; }
+  .auto-cycle-btn.cycling { border-color: rgba(138,43,226,0.6); background: rgba(138,43,226,0.2); color: #e0c0ff; }
+
+  /* Large preview + state pill */
+  .demo-preview-area {
+    display: flex; flex-direction: column; align-items: center; gap: 16px;
+  }
+  .demo-large-preview {
+    width: 200px; height: 200px;
+    background: rgba(0,0,0,0.5);
+    border-radius: 24px;
+    border: 1px solid rgba(255,255,255,0.06);
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+    transition: box-shadow 0.45s cubic-bezier(0.4,0,0.2,1);
+  }
+  .demo-large-preview[data-state="recording"] { box-shadow: 0 0 40px rgba(255,42,64,0.08); }
+  .demo-large-preview[data-state="polishing"] { box-shadow: 0 0 40px rgba(138,43,226,0.08); }
+  .demo-large-preview[data-state="error"] { box-shadow: 0 0 40px rgba(255,42,64,0.06); }
+
+  .state-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 14px;
+    border-radius: 20px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase;
+    transition: all 0.35s ease;
+  }
+  .state-pill .pill-dot { width: 6px; height: 6px; border-radius: 50%; }
+
+  .state-pill[data-state="idle"] { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.5); }
+  .state-pill[data-state="idle"] .pill-dot { background: rgba(255,255,255,0.4); }
+
+  .state-pill[data-state="error"] { background: rgba(255,42,64,0.1); color: rgba(255,42,64,0.9); }
+  .state-pill[data-state="error"] .pill-dot { background: #ff2a40; }
+
+  .state-pill[data-state="recording"] { background: rgba(255,42,64,0.1); color: rgba(255,140,0,0.9); }
+  .state-pill[data-state="recording"] .pill-dot { background: #ff2a40; animation: pill-pulse 1s ease-in-out infinite; }
+
+  .state-pill[data-state="polishing"] { background: rgba(138,43,226,0.1); color: rgba(200,160,255,0.9); }
+  .state-pill[data-state="polishing"] .pill-dot { background: #8a2be2; animation: pill-pulse 1.5s ease-in-out infinite; }
+
+  @keyframes pill-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* ===== SVG ANIMATIONS ===== */
+
+  /* Error pulse */
+  @keyframes error-pulse {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+  }
+  .icon-state-error .bar-upper, .icon-state-error .bar-lower {
+    animation: error-pulse 2s ease-in-out infinite;
+  }
+
+  /* Recording bounce — each bar gets unique animation */
+  @keyframes rec-bounce-0 { 0%,100%{transform:scaleY(1)} 30%{transform:scaleY(1.5)} 60%{transform:scaleY(0.7)} }
+  @keyframes rec-bounce-1 { 0%,100%{transform:scaleY(1)} 25%{transform:scaleY(1.6)} 55%{transform:scaleY(0.6)} }
+  @keyframes rec-bounce-2 { 0%,100%{transform:scaleY(1)} 35%{transform:scaleY(1.4)} 65%{transform:scaleY(0.75)} }
+  @keyframes rec-bounce-3 { 0%,100%{transform:scaleY(1)} 20%{transform:scaleY(1.55)} 50%{transform:scaleY(0.65)} }
+  @keyframes rec-bounce-4 { 0%,100%{transform:scaleY(1)} 40%{transform:scaleY(1.45)} 70%{transform:scaleY(0.7)} }
+  @keyframes rec-bounce-5 { 0%,100%{transform:scaleY(1)} 28%{transform:scaleY(1.5)} 58%{transform:scaleY(0.68)} }
+  @keyframes rec-bounce-6 { 0%,100%{transform:scaleY(1)} 33%{transform:scaleY(1.55)} 63%{transform:scaleY(0.72)} }
+  @keyframes rec-bounce-7 { 0%,100%{transform:scaleY(1)} 22%{transform:scaleY(1.45)} 52%{transform:scaleY(0.65)} }
+  @keyframes rec-bounce-8 { 0%,100%{transform:scaleY(1)} 38%{transform:scaleY(1.5)} 68%{transform:scaleY(0.7)} }
+
+  /* Recording dot pulse */
+  @keyframes rec-dot-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  /* Polishing spectrum wheel spin */
+  @keyframes spectrum-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  /* ===== FOOTER ===== */
+  .page-footer {
+    text-align: center;
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    font-size: 12px;
+    color: rgba(255,255,255,0.2);
+  }
+</style>
+</head>
+<body>
+<div class="page-content">
+
+  <!-- Page Header -->
+  <header class="page-header">
+    <h1 id="pageTitle"></h1>
+    <p class="tagline" id="pageTagline"></p>
+    <div class="divider"></div>
+  </header>
+
+  <!-- 4 State Cards -->
+  <section class="states-grid" id="statesGrid"></section>
+
+  <!-- Interactive Demo -->
+  <section class="demo-section">
+    <div class="demo-header">
+      <h2 id="demoTitle"></h2>
+      <p id="demoSubtitle"></p>
+    </div>
+
+    <!-- Full-width menu bar -->
+    <div class="demo-menubar" id="demoMenubar">
+      <div class="left" id="menubarLeft"></div>
+      <div class="right" id="menubarRight"></div>
+    </div>
+
+    <!-- Controls -->
+    <div class="demo-controls" id="demoControls"></div>
+
+    <!-- Large preview + state pill -->
+    <div class="demo-preview-area">
+      <div class="demo-large-preview" id="demoLargePreview" data-state="idle"></div>
+      <div class="state-pill" id="statePill" data-state="idle">
+        <span class="pill-dot"></span>
+        <span class="pill-text" id="pillText"></span>
+      </div>
+    </div>
+  </section>
+
+  <footer class="page-footer" id="pageFooter"></footer>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ===== SVG NAMESPACE =====
+  var NS = 'http://www.w3.org/2000/svg';
+
+  // ===== ICON DATA =====
+  var BAR_WIDTH = 4.5;
+  var BAR_RX = 1.5;
+
+  var UPPER_DATA = [
+    { x: 4,  y: 22.25,   h: 5 },
+    { x: 10, y: 17.6375, h: 8 },
+    { x: 16, y: 12.04,   h: 12 },
+    { x: 22, y: 16.96,   h: 9 },
+    { x: 28, y: 21.5575, h: 6 },
+    { x: 34, y: 16.96,   h: 9 },
+    { x: 40, y: 12.04,   h: 12 },
+    { x: 46, y: 17.6375, h: 8 },
+    { x: 52, y: 22.25,   h: 5 }
+  ];
+
+  var LOWER_DATA = [
+    { x: 4,  y: 30.25,   h: 5 },
+    { x: 10, y: 28.6375, h: 9 },
+    { x: 16, y: 27.04,   h: 12 },
+    { x: 22, y: 28.96,   h: 15 },
+    { x: 28, y: 30.5575, h: 17 },
+    { x: 34, y: 28.96,   h: 15 },
+    { x: 40, y: 27.04,   h: 12 },
+    { x: 46, y: 28.6375, h: 9 },
+    { x: 52, y: 30.25,   h: 5 }
+  ];
+
+  var UPPER_COLORS = ['#ff2a40','#ff8c00','#ffd700','#adff2f','#00fa9a','#00ffff','#1e90ff','#4169e1','#8a2be2'];
+  var LOWER_COLORS = ['#4169e1','#1e90ff','#00ffff','#00fa9a','#adff2f','#ffd700','#ff8c00','#ff2a40','#8a2be2'];
+  var GREY = 'rgba(255,255,255,0.65)';
+  var ERROR_RED = '#ff2a40';
+
+  // ===== STATE DEFINITIONS =====
+  var STATES = {
+    idle: {
+      name: 'Idle',
+      desc: 'Standby mode. All bars in neutral grey, blending naturally into the macOS menu bar.',
+      color: 'rgba(255,255,255,0.5)',
+      accent: 'rgba(255,255,255,0.1)'
+    },
+    error: {
+      name: 'Error',
+      desc: 'Something went wrong. All bars pulse red to draw attention without being intrusive.',
+      color: '#ff2a40',
+      accent: 'rgba(255,42,64,0.2)'
+    },
+    recording: {
+      name: 'Recording',
+      desc: 'Actively capturing audio. Rainbow bars bounce with staggered timing, plus a red recording dot.',
+      color: '#ff8c00',
+      accent: 'rgba(255,140,0,0.15)'
+    },
+    polishing: {
+      name: 'Polishing',
+      desc: 'Spinning spectrum wheel. 12 rainbow bars rotating smoothly. Instantly distinct from lip shape.',
+      color: '#8a2be2',
+      accent: 'rgba(138,43,226,0.15)'
+    }
+  };
+
+  var STATE_ORDER = ['idle', 'error', 'recording', 'polishing'];
+
+  // ===== SVG ELEMENT HELPERS =====
+  function makeSVG(size, viewBox) {
+    var svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('width', String(size));
+    svg.setAttribute('height', String(size));
+    svg.setAttribute('viewBox', viewBox || '0 0 64 64');
+    svg.setAttribute('fill', 'none');
+    return svg;
+  }
+
+  function makeRect(x, y, w, h, rx, fill, opacity, cls) {
+    var r = document.createElementNS(NS, 'rect');
+    r.setAttribute('x', String(x));
+    r.setAttribute('y', String(y));
+    r.setAttribute('width', String(w));
+    r.setAttribute('height', String(h));
+    r.setAttribute('rx', String(rx));
+    r.setAttribute('fill', fill);
+    if (opacity != null) r.setAttribute('opacity', String(opacity));
+    if (cls) r.setAttribute('class', cls);
+    return r;
+  }
+
+  function makeCircle(cx, cy, r, fill, opacity, cls) {
+    var c = document.createElementNS(NS, 'circle');
+    c.setAttribute('cx', String(cx));
+    c.setAttribute('cy', String(cy));
+    c.setAttribute('r', String(r));
+    c.setAttribute('fill', fill);
+    if (opacity != null) c.setAttribute('opacity', String(opacity));
+    if (cls) c.setAttribute('class', cls);
+    return c;
+  }
+
+  function makeSVGIcon(tagName, attrs) {
+    var el = document.createElementNS(NS, tagName);
+    Object.keys(attrs).forEach(function(k) { el.setAttribute(k, attrs[k]); });
+    return el;
+  }
+
+  // ===== WIFI SVG ICON =====
+  function buildWifiSVG(w, h) {
+    var svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('width', String(w));
+    svg.setAttribute('height', String(h));
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '2');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+
+    var p1 = document.createElementNS(NS, 'path');
+    p1.setAttribute('d', 'M5 12.55a11 11 0 0 1 14.08 0');
+    svg.appendChild(p1);
+
+    var p2 = document.createElementNS(NS, 'path');
+    p2.setAttribute('d', 'M1.42 9a16 16 0 0 1 21.16 0');
+    svg.appendChild(p2);
+
+    var p3 = document.createElementNS(NS, 'path');
+    p3.setAttribute('d', 'M8.53 16.11a6 6 0 0 1 6.95 0');
+    svg.appendChild(p3);
+
+    var circ = document.createElementNS(NS, 'circle');
+    circ.setAttribute('cx', '12');
+    circ.setAttribute('cy', '20');
+    circ.setAttribute('r', '1');
+    svg.appendChild(circ);
+
+    return svg;
+  }
+
+  // ===== BATTERY SVG ICON =====
+  function buildBatterySVG(w, h) {
+    var svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('width', String(w));
+    svg.setAttribute('height', String(h));
+    svg.setAttribute('viewBox', '0 0 24 14');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '1.5');
+
+    var r1 = document.createElementNS(NS, 'rect');
+    r1.setAttribute('x', '1'); r1.setAttribute('y', '1');
+    r1.setAttribute('width', '18'); r1.setAttribute('height', '11');
+    r1.setAttribute('rx', '2');
+    svg.appendChild(r1);
+
+    var r2 = document.createElementNS(NS, 'rect');
+    r2.setAttribute('x', '20'); r2.setAttribute('y', '4');
+    r2.setAttribute('width', '2'); r2.setAttribute('height', '5');
+    r2.setAttribute('rx', '0.5'); r2.setAttribute('fill', 'currentColor');
+    svg.appendChild(r2);
+
+    return svg;
+  }
+
+  // ===== SPECTRUM WHEEL DATA (from MenuBarIconAnimator.swift) =====
+  var SPECTRUM_BARS = [
+    { angle: 0,   yOffset: 4,  height: 14, color: '#ff2d55' },
+    { angle: 30,  yOffset: 7,  height: 10, color: '#ff9f0a' },
+    { angle: 60,  yOffset: 5,  height: 12, color: '#ffd60a' },
+    { angle: 90,  yOffset: 8,  height: 9,  color: '#30d158' },
+    { angle: 120, yOffset: 4,  height: 14, color: '#34c759' },
+    { angle: 150, yOffset: 6,  height: 11, color: '#32d8be' },
+    { angle: 180, yOffset: 5,  height: 13, color: '#64d2ff' },
+    { angle: 210, yOffset: 8,  height: 9,  color: '#0a84ff' },
+    { angle: 240, yOffset: 4,  height: 14, color: '#5e5ce6' },
+    { angle: 270, yOffset: 6,  height: 12, color: '#bf5af2' },
+    { angle: 300, yOffset: 7,  height: 10, color: '#ff2d55' },
+    { angle: 330, yOffset: 5,  height: 13, color: '#ff9f0a' }
+  ];
+
+  function buildSpectrumWheel(size) {
+    var svg = makeSVG(size, '0 0 64 64');
+    svg.setAttribute('class', 'icon-state-polishing');
+
+    // Spinning group — all 12 bars rotate together
+    var g = document.createElementNS(NS, 'g');
+    g.style.transformOrigin = '32px 32px';
+    g.style.animation = 'spectrum-spin 8s linear infinite';
+
+    for (var i = 0; i < SPECTRUM_BARS.length; i++) {
+      var bar = SPECTRUM_BARS[i];
+
+      // Each bar is a rotated group containing a rounded rect
+      var barGroup = document.createElementNS(NS, 'g');
+      barGroup.setAttribute('transform', 'rotate(' + bar.angle + ', 32, 32)');
+
+      var rect = document.createElementNS(NS, 'rect');
+      rect.setAttribute('x', '30');
+      rect.setAttribute('y', String(bar.yOffset));
+      rect.setAttribute('width', '4');
+      rect.setAttribute('height', String(bar.height));
+      rect.setAttribute('rx', '2');
+      rect.setAttribute('fill', bar.color);
+
+      barGroup.appendChild(rect);
+      g.appendChild(barGroup);
+    }
+
+    svg.appendChild(g);
+    return svg;
+  }
+
+  // ===== BUILD ICON FOR A STATE =====
+  function buildIcon(state, size) {
+    // Polishing uses the spectrum wheel — 12 radial rainbow bars spinning smoothly
+    if (state === 'polishing') {
+      return buildSpectrumWheel(size);
+    }
+
+    var svg = makeSVG(size, '0 0 64 64');
+    svg.setAttribute('class', 'icon-state-' + state);
+
+    var upperFills, lowerFills, barOpUpper, barOpLower;
+
+    if (state === 'idle') {
+      upperFills = []; lowerFills = [];
+      for (var g = 0; g < 9; g++) { upperFills.push(GREY); lowerFills.push(GREY); }
+      barOpUpper = null; barOpLower = null;
+    } else if (state === 'error') {
+      upperFills = []; lowerFills = [];
+      for (var e = 0; e < 9; e++) { upperFills.push(ERROR_RED); lowerFills.push(ERROR_RED); }
+      barOpUpper = 0.9; barOpLower = 0.9;
+    } else {
+      upperFills = UPPER_COLORS;
+      lowerFills = LOWER_COLORS;
+      barOpUpper = null; barOpLower = null;
+    }
+
+    // Upper lip bars
+    for (var i = 0; i < 9; i++) {
+      var d = UPPER_DATA[i];
+      var bar = makeRect(d.x, d.y, BAR_WIDTH, d.h, BAR_RX, upperFills[i], barOpUpper, 'bar-upper bar-' + i);
+
+      if (state === 'recording') {
+        bar.style.transformOrigin = (d.x + BAR_WIDTH / 2) + 'px ' + (d.y + d.h) + 'px';
+        bar.style.animation = 'rec-bounce-' + i + ' ' + (0.5 + i * 0.07).toFixed(2) + 's ease-in-out ' + (i * 0.06).toFixed(2) + 's infinite';
+      }
+
+      svg.appendChild(bar);
+    }
+
+    // Lower lip bars
+    for (var j = 0; j < 9; j++) {
+      var dl = LOWER_DATA[j];
+      var barL = makeRect(dl.x, dl.y, BAR_WIDTH, dl.h, BAR_RX, lowerFills[j], barOpLower, 'bar-lower bar-' + j);
+
+      if (state === 'recording') {
+        barL.style.transformOrigin = (dl.x + BAR_WIDTH / 2) + 'px ' + dl.y + 'px';
+        barL.style.animation = 'rec-bounce-' + j + ' ' + (0.55 + j * 0.065).toFixed(3) + 's ease-in-out ' + (j * 0.07 + 0.05).toFixed(2) + 's infinite';
+      }
+
+      svg.appendChild(barL);
+    }
+
+    // Recording red dot
+    if (state === 'recording') {
+      var dot = makeCircle(58, 6, 4, ERROR_RED, null, 'rec-dot');
+      dot.style.animation = 'rec-dot-pulse 1s ease-in-out infinite';
+      svg.appendChild(dot);
+    }
+
+    return svg;
+  }
+
+  // ===== POPULATE PAGE HEADER =====
+  document.getElementById('pageTitle').textContent = 'EnviousWispr \u2014 Menu Bar Icon States v2';
+  document.getElementById('pageTagline').textContent = '9-bar equalizer lips \u00B7 4 animated states \u00B7 Designed for macOS menu bar';
+  document.getElementById('demoTitle').textContent = 'Interactive Demo';
+  document.getElementById('demoSubtitle').textContent = 'Switch between states to see the icon animate in real-time';
+  document.getElementById('pageFooter').textContent = 'EnviousWispr \u00B7 v2 Lip Icon Design System \u00B7 2026';
+  document.getElementById('pillText').textContent = 'IDLE';
+
+  // ===== BUILD STATE CARDS =====
+  var grid = document.getElementById('statesGrid');
+
+  STATE_ORDER.forEach(function(state) {
+    var info = STATES[state];
+
+    // Card container
+    var card = document.createElement('div');
+    card.className = 'state-card';
+    card.style.setProperty('--accent', info.accent);
+
+    // Label
+    var label = document.createElement('div');
+    label.className = 'state-label';
+    label.style.color = info.color;
+
+    var dotSpan = document.createElement('span');
+    dotSpan.className = 'dot';
+    dotSpan.style.background = info.color;
+    label.appendChild(dotSpan);
+    label.appendChild(document.createTextNode(info.name));
+    card.appendChild(label);
+
+    // Description
+    var desc = document.createElement('div');
+    desc.className = 'state-desc';
+    desc.textContent = info.desc;
+    card.appendChild(desc);
+
+    // Large preview (128px)
+    var preview = document.createElement('div');
+    preview.className = 'icon-preview';
+    preview.appendChild(buildIcon(state, 128));
+    card.appendChild(preview);
+
+    // Menu bar context strip
+    var menubar = document.createElement('div');
+    menubar.className = 'menubar-context';
+
+    // Wifi icon
+    var wifiSpan = document.createElement('span');
+    wifiSpan.className = 'sys-icon';
+    wifiSpan.appendChild(buildWifiSVG(12, 12));
+    menubar.appendChild(wifiSpan);
+
+    // Wispr icon slot
+    var wisprSlot = document.createElement('span');
+    wisprSlot.className = 'wispr-icon-slot';
+    wisprSlot.appendChild(buildIcon(state, 18));
+    menubar.appendChild(wisprSlot);
+
+    // Battery icon
+    var battSpan = document.createElement('span');
+    battSpan.className = 'sys-icon';
+    battSpan.appendChild(buildBatterySVG(14, 10));
+    menubar.appendChild(battSpan);
+
+    // Clock
+    var clockSpan = document.createElement('span');
+    clockSpan.className = 'sys-icon';
+    clockSpan.style.fontVariantNumeric = 'tabular-nums';
+    clockSpan.textContent = '10:42';
+    menubar.appendChild(clockSpan);
+
+    card.appendChild(menubar);
+    grid.appendChild(card);
+  });
+
+  // ===== BUILD DEMO MENUBAR =====
+  var menubarLeft = document.getElementById('menubarLeft');
+  var menuLabels = ['\uF8FF', 'Finder', 'File', 'Edit', 'View'];
+  menuLabels.forEach(function(label, idx) {
+    var span = document.createElement('span');
+    if (idx === 0) { span.className = 'apple-logo'; }
+    span.textContent = label;
+    menubarLeft.appendChild(span);
+  });
+
+  var menubarRight = document.getElementById('menubarRight');
+
+  // Wifi
+  var rWifi = document.createElement('span');
+  rWifi.className = 'sys-icon';
+  rWifi.appendChild(buildWifiSVG(14, 14));
+  menubarRight.appendChild(rWifi);
+
+  // Wispr slot
+  var rWisprSlot = document.createElement('span');
+  rWisprSlot.className = 'wispr-slot';
+  rWisprSlot.id = 'menubarSlot';
+  menubarRight.appendChild(rWisprSlot);
+
+  // Battery
+  var rBatt = document.createElement('span');
+  rBatt.className = 'sys-icon';
+  rBatt.appendChild(buildBatterySVG(16, 14));
+  menubarRight.appendChild(rBatt);
+
+  // Clock
+  var rClock = document.createElement('span');
+  rClock.className = 'sys-icon';
+  rClock.id = 'clockDisplay';
+  rClock.style.fontVariantNumeric = 'tabular-nums';
+  menubarRight.appendChild(rClock);
+
+  // ===== BUILD DEMO CONTROLS =====
+  var controls = document.getElementById('demoControls');
+
+  STATE_ORDER.forEach(function(state) {
+    var btn = document.createElement('button');
+    btn.className = 'state-btn' + (state === 'idle' ? ' active' : '');
+    btn.setAttribute('data-state', state);
+    btn.textContent = STATES[state].name;
+    btn.addEventListener('click', function() { setDemoState(state); });
+    controls.appendChild(btn);
+  });
+
+  var cycleBtn = document.createElement('button');
+  cycleBtn.className = 'auto-cycle-btn';
+  cycleBtn.id = 'autoCycleBtn';
+  cycleBtn.textContent = 'Auto Cycle';
+  cycleBtn.addEventListener('click', toggleAutoCycle);
+  controls.appendChild(cycleBtn);
+
+  // ===== INTERACTIVE DEMO LOGIC =====
+  var currentDemoState = 'idle';
+  var autoCycleInterval = null;
+
+  function setDemoState(state) {
+    currentDemoState = state;
+
+    // Update menubar slot
+    var menubarSlot = document.getElementById('menubarSlot');
+    while (menubarSlot.firstChild) menubarSlot.removeChild(menubarSlot.firstChild);
+    menubarSlot.appendChild(buildIcon(state, 18));
+
+    // Update large preview
+    var largePreview = document.getElementById('demoLargePreview');
+    while (largePreview.firstChild) largePreview.removeChild(largePreview.firstChild);
+    largePreview.setAttribute('data-state', state);
+    largePreview.appendChild(buildIcon(state, 180));
+
+    // Update state pill
+    var pill = document.getElementById('statePill');
+    pill.setAttribute('data-state', state);
+    document.getElementById('pillText').textContent = STATES[state].name.toUpperCase();
+
+    // Update buttons
+    var allBtns = controls.querySelectorAll('.state-btn');
+    for (var b = 0; b < allBtns.length; b++) {
+      var isActive = allBtns[b].getAttribute('data-state') === state;
+      if (isActive) {
+        allBtns[b].classList.add('active');
+      } else {
+        allBtns[b].classList.remove('active');
+      }
+    }
+  }
+
+  function toggleAutoCycle() {
+    var btn = document.getElementById('autoCycleBtn');
+    if (autoCycleInterval) {
+      clearInterval(autoCycleInterval);
+      autoCycleInterval = null;
+      btn.classList.remove('cycling');
+      btn.textContent = 'Auto Cycle';
+    } else {
+      btn.classList.add('cycling');
+      btn.textContent = 'Stop Cycle';
+      var idx = STATE_ORDER.indexOf(currentDemoState);
+      autoCycleInterval = setInterval(function() {
+        idx = (idx + 1) % STATE_ORDER.length;
+        setDemoState(STATE_ORDER[idx]);
+      }, 2500);
+    }
+  }
+
+  // Clock display
+  function updateClock() {
+    var now = new Date();
+    var h = now.getHours();
+    var m = now.getMinutes().toString();
+    if (m.length < 2) m = '0' + m;
+    var period = h >= 12 ? 'PM' : 'AM';
+    var h12 = h % 12;
+    if (h12 === 0) h12 = 12;
+    var el = document.getElementById('clockDisplay');
+    if (el) el.textContent = h12 + ':' + m + ' ' + period;
+  }
+
+  // ===== INIT =====
+  setDemoState('idle');
+  updateClock();
+  setInterval(updateClock, 10000);
+
+})();
+</script>
+</body>
+</html>
