@@ -11,7 +11,7 @@ permissions:
 jobs:
   build-and-release:
     runs-on: macos-15
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -28,6 +28,20 @@ jobs:
       - name: Extract version from tag
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache SPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      - name: Build release binary
+        run: |
+          echo "==> Building arm64 release binary ..."
+          swift build -c release --arch arm64
+          echo "==> Build complete."
 
       - name: Import Developer ID certificate
         env:
@@ -46,15 +60,72 @@ jobs:
             -k "temppassword" "$KEYCHAIN_PATH"
           security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
 
-      - name: Build, sign, notarize, and package DMG
+      - name: Package and sign DMG
         env:
           CODESIGN_IDENTITY: "Developer ID Application: ${{ secrets.APPLE_TEAM_NAME }} (${{ secrets.APPLE_TEAM_ID }})"
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           SPARKLE_FEED_URL: "https://raw.githubusercontent.com/${{ github.repository }}/main/appcast.xml"
           SPARKLE_EDDSA_PUBLIC_KEY: ${{ secrets.SPARKLE_EDDSA_PUBLIC_KEY }}
         run: ./scripts/build-dmg.sh "${{ steps.version.outputs.version }}"
+
+      - name: Notarize DMG
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          DMG_PATH="build/EnviousWispr-${VERSION}.dmg"
+
+          echo "==> Submitting ${DMG_PATH} for notarization ..."
+          SUBMIT_OUTPUT=$(xcrun notarytool submit "${DMG_PATH}" \
+            --apple-id "${APPLE_ID}" \
+            --password "${APPLE_ID_PASSWORD}" \
+            --team-id "${APPLE_TEAM_ID}" 2>&1)
+
+          echo "${SUBMIT_OUTPUT}"
+          SUBMISSION_ID=$(echo "${SUBMIT_OUTPUT}" | grep "id:" | head -1 | awk '{print $2}')
+
+          if [ -z "${SUBMISSION_ID}" ]; then
+            echo "::error::Failed to get submission ID from notarytool"
+            exit 1
+          fi
+          echo "==> Submission ID: ${SUBMISSION_ID}"
+
+          # Poll for status instead of --wait (avoids indefinite hangs)
+          MAX_ATTEMPTS=40
+          ATTEMPT=0
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            ATTEMPT=$((ATTEMPT + 1))
+            sleep 30
+
+            echo "==> Checking notarization status (attempt ${ATTEMPT}/${MAX_ATTEMPTS}) ..."
+            STATUS_OUTPUT=$(xcrun notarytool info "${SUBMISSION_ID}" \
+              --apple-id "${APPLE_ID}" \
+              --password "${APPLE_ID_PASSWORD}" \
+              --team-id "${APPLE_TEAM_ID}" 2>&1) || true
+
+            echo "${STATUS_OUTPUT}"
+
+            if echo "${STATUS_OUTPUT}" | grep -q "status: Accepted"; then
+              echo "==> Notarization accepted!"
+              xcrun stapler staple "${DMG_PATH}"
+              echo "==> Stapled. Done."
+              exit 0
+            fi
+
+            if echo "${STATUS_OUTPUT}" | grep -q "status: Invalid"; then
+              echo "::error::Notarization REJECTED"
+              xcrun notarytool log "${SUBMISSION_ID}" \
+                --apple-id "${APPLE_ID}" \
+                --password "${APPLE_ID_PASSWORD}" \
+                --team-id "${APPLE_TEAM_ID}" 2>&1 || true
+              exit 1
+            fi
+          done
+
+          echo "::error::Notarization timed out after $((MAX_ATTEMPTS * 30)) seconds"
+          exit 1
 
       - name: Generate Sparkle appcast entry
         env:

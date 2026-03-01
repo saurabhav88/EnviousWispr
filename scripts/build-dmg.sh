@@ -147,17 +147,17 @@ if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
             # Skip directories and non-Mach-O files
             file_type=$(file -b "$binary" 2>/dev/null || true)
             if echo "$file_type" | grep -q "Mach-O"; then
-                codesign --force --options runtime --sign "${CODESIGN_IDENTITY}" "$binary" 2>/dev/null || true
+                codesign --force --options runtime --timestamp --sign "${CODESIGN_IDENTITY}" "$binary" 2>/dev/null || true
             fi
         done
         # Sign the Sparkle framework bundle itself
-        codesign --force --options runtime \
+        codesign --force --options runtime --timestamp \
             --sign "${CODESIGN_IDENTITY}" \
             "${FRAMEWORKS_DIR}/Sparkle.framework"
     fi
 
     # Sign the main app bundle
-    codesign --force --options runtime \
+    codesign --force --options runtime --timestamp \
         --sign "${CODESIGN_IDENTITY}" \
         --entitlements "${ENTITLEMENTS_DEST}" \
         "${APP_BUNDLE}"
