@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>EnviousWispr — AI Dictation for macOS</title>
+<title>EnviousWispr — AI Dictation for macOS (Cool Lavender)</title>
 <meta name="description" content="On-device AI dictation for macOS. Record your voice, get polished text — grammar-fixed, filler-free, pasted into any app in under 2 seconds.">
 <meta property="og:title" content="EnviousWispr — Talk naturally. Paste perfectly.">
 <meta property="og:description" content="On-device AI dictation for macOS. Open source. Streaming ASR at 110x real-time. Polished text auto-pasted in under 2 seconds.">
@@ -14,32 +14,87 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200;300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 /* ═══════════════════════════════════════════════════════
-   EnviousWispr Homepage — Design System
+   EnviousWispr Homepage — V2 Design System
    ═══════════════════════════════════════════════════════ */
 :root {
-  --bg: #08080c;
-  --surface: #111116;
-  --border: rgba(255,255,255,0.06);
-  --border-hover: rgba(255,255,255,0.12);
-  --text: #ededf0;
-  --text-2: #8e8ea0;
-  --text-3: #5a5a6e;
-  --accent: #8b7cf6;
-  --accent-soft: rgba(139,124,246,0.1);
-  --accent-glow: rgba(139,124,246,0.25);
-  --cyan: #22d3ee;
-  --green: #34d399;
-  --amber: #fbbf24;
-  --red: #f87171;
-  --pink: #f472b6;
-  --orange: #fb923c;
+  --v2-red: #ff2a40;
+  --v2-orange: #ff8c00;
+  --v2-gold: #ffd700;
+  --v2-lime: #adff2f;
+  --v2-spring: #00fa9a;
+  --v2-cyan: #00ffff;
+  --v2-blue: #1e90ff;
+  --v2-royal: #4169e1;
+  --v2-violet: #8a2be2;
+  --v2-red-soft: rgba(255, 42, 64, 0.10);
+  --v2-orange-soft: rgba(255, 140, 0, 0.10);
+  --v2-gold-soft: rgba(255, 215, 0, 0.10);
+  --v2-lime-soft: rgba(173, 255, 47, 0.10);
+  --v2-spring-soft: rgba(0, 250, 154, 0.10);
+  --v2-cyan-soft: rgba(0, 255, 255, 0.10);
+  --v2-blue-soft: rgba(30, 144, 255, 0.10);
+  --v2-royal-soft: rgba(65, 105, 225, 0.10);
+  --v2-violet-soft: rgba(138, 43, 226, 0.10);
+  --v2-red-glow: rgba(255, 42, 64, 0.25);
+  --v2-orange-glow: rgba(255, 140, 0, 0.25);
+  --v2-gold-glow: rgba(255, 215, 0, 0.25);
+  --v2-cyan-glow: rgba(0, 255, 255, 0.25);
+  --v2-violet-glow: rgba(138, 43, 226, 0.25);
+  --v2-violet-border: rgba(138, 43, 226, 0.20);
+  --v2-spring-border: rgba(0, 250, 154, 0.20);
+  --v2-cyan-border: rgba(0, 255, 255, 0.20);
+  --v2-gold-border: rgba(255, 215, 0, 0.20);
+  --rainbow-full: linear-gradient(90deg, #ff2a40, #ff8c00, #ffd700, #adff2f, #00fa9a, #00ffff, #1e90ff, #4169e1, #8a2be2);
+  --rainbow-135: linear-gradient(135deg, #ff2a40, #ff8c00, #ffd700, #adff2f, #00fa9a, #00ffff, #1e90ff, #4169e1, #8a2be2);
+  --rainbow-hero: linear-gradient(135deg, #8a2be2 0%, #00ffff 100%);
+  --rainbow-warm: linear-gradient(90deg, #ff2a40, #ff8c00, #ffd700);
+  --rainbow-cool: linear-gradient(90deg, #00ffff, #1e90ff, #4169e1, #8a2be2);
+  --bg: #f8f5ff;
+  --surface: #f0ecf9;
+  --border: rgba(138, 43, 226, 0.06);
+  --border-hover: rgba(138, 43, 226, 0.12);
+  --text: #0f0a1a;
+  --text-2: #4a3d60;
+  --text-3: #7d6f96;
+  --idle: rgba(50, 30, 80, 0.40);
+  --accent: #7c3aed;
+  --accent-soft: rgba(124, 58, 237, 0.08);
+  --accent-glow: rgba(124, 58, 237, 0.20);
+  --accent-hover: #6d28d9;
+  --cyan: #00ccdd;
+  --green: #00c880;
+  --amber: #e6c200;
+  --red: #e6253a;
+  --orange: #e67e00;
+  --pink: #d45a90;
+  --gradient-center: #e8d5ff;
   --font-body: 'Plus Jakarta Sans', -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
   --radius-card: 16px;
   --radius-btn: 12px;
   --radius-pill: 100px;
   --max-width: 1200px;
-  --section-pad: 120px;
+  --section-pad: 80px;
+}
+
+/* V2 Utility Classes */
+.rainbow-text {
+  background: var(--rainbow-full);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.rainbow-border {
+  border: 1px solid transparent;
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  background-image: linear-gradient(var(--surface), var(--surface)), var(--rainbow-full);
+}
+.rainbow-glow {
+  box-shadow: 0 0 15px rgba(124,58,237,0.15), 0 0 30px rgba(0,255,255,0.08), 0 0 45px rgba(255,42,64,0.05);
+}
+.rainbow-glow-hover:hover {
+  box-shadow: 0 0 20px rgba(124,58,237,0.25), 0 0 40px rgba(0,255,255,0.12), 0 0 60px rgba(255,42,64,0.08);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -66,7 +121,7 @@ body::before {
   right: -200px;
   width: 600px;
   height: 600px;
-  background: radial-gradient(circle, rgba(139,124,246,0.04), transparent 70%);
+  background: radial-gradient(circle, rgba(124,58,237,0.06), transparent 70%);
   pointer-events: none;
   z-index: 0;
 }
@@ -77,7 +132,7 @@ body::after {
   left: -200px;
   width: 600px;
   height: 600px;
-  background: radial-gradient(circle, rgba(34,211,238,0.04), transparent 70%);
+  background: radial-gradient(circle, rgba(109,40,217,0.05), transparent 70%);
   pointer-events: none;
   z-index: 0;
 }
@@ -86,7 +141,7 @@ body::after {
 .dot-grid {
   position: fixed;
   inset: 0;
-  background-image: radial-gradient(circle, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-image: radial-gradient(circle, rgba(124,58,237,0.03) 1px, transparent 1px);
   background-size: 24px 24px;
   pointer-events: none;
   z-index: 0;
@@ -125,7 +180,7 @@ body::after {
   left: 0;
   right: 0;
   z-index: 1000;
-  background: rgba(8,8,12,0.8);
+  background: rgba(248,245,255,0.85);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--border);
@@ -151,8 +206,8 @@ body::after {
   gap: 10px;
 }
 .nav-logo svg {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
 }
 .nav-links {
   display: flex;
@@ -175,7 +230,7 @@ body::after {
   align-items: center;
   gap: 8px;
   padding: 8px 20px;
-  background: var(--accent);
+  background: var(--text);
   color: #fff;
   font-size: 14px;
   font-weight: 600;
@@ -184,12 +239,17 @@ body::after {
   transition: background 0.2s, transform 0.2s;
 }
 .nav-cta:hover {
-  background: #7c6ae6;
+  background: #2a2035;
   transform: translateY(-1px);
 }
 .nav-cta svg {
   width: 16px;
   height: 16px;
+}
+.nav-cta-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 /* Mobile nav toggle */
@@ -206,7 +266,7 @@ body::after {
    Hero Section
    ═══════════════════════════════════════════════════════ */
 .hero {
-  padding: 160px 0 var(--section-pad);
+  padding: 80px 0 var(--section-pad);
   text-align: center;
   position: relative;
   z-index: 1;
@@ -217,7 +277,7 @@ body::after {
   gap: 8px;
   padding: 6px 18px;
   background: var(--accent-soft);
-  border: 1px solid rgba(139,124,246,0.2);
+  border: 1px solid rgba(124,58,237,0.2);
   border-radius: var(--radius-pill);
   font-size: 13px;
   font-weight: 600;
@@ -241,10 +301,7 @@ body::after {
   font-weight: 800;
   letter-spacing: -3px;
   line-height: 1.05;
-  background: linear-gradient(135deg, #fff 0%, var(--accent) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--text);
   margin-bottom: 24px;
   max-width: 800px;
   margin-left: auto;
@@ -253,7 +310,7 @@ body::after {
 
 .hero-sub {
   font-size: 20px;
-  font-weight: 300;
+  font-weight: 400;
   color: var(--text-2);
   line-height: 1.6;
   max-width: 620px;
@@ -273,7 +330,7 @@ body::after {
   align-items: center;
   gap: 10px;
   padding: 14px 32px;
-  background: var(--accent);
+  background: var(--text);
   color: #fff;
   font-size: 16px;
   font-weight: 600;
@@ -284,9 +341,9 @@ body::after {
   transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
 }
 .btn-primary:hover {
-  background: #7c6ae6;
+  background: #2a2035;
   transform: translateY(-2px);
-  box-shadow: 0 8px 32px rgba(139,124,246,0.3);
+  box-shadow: 0 8px 32px rgba(15,10,26,0.25);
 }
 .btn-primary svg {
   width: 18px;
@@ -335,6 +392,50 @@ body::after {
   color: var(--green);
 }
 
+/* ── Hero Lips Animation ── */
+.hero-lips {
+  display: block;
+  margin: 0 auto 32px;
+  width: 400px;
+  height: 300px;
+  filter: drop-shadow(0 0 40px rgba(124,58,237,0.15));
+}
+.hero-lips .upper-bar { transform-box: fill-box; transform-origin: center bottom; }
+.hero-lips .lower-bar { transform-box: fill-box; transform-origin: center top; }
+@keyframes rec-bounce-0 { 0%,100%{transform:scaleY(1)} 30%{transform:scaleY(1.5)} 60%{transform:scaleY(0.7)} }
+@keyframes rec-bounce-1 { 0%,100%{transform:scaleY(1)} 25%{transform:scaleY(1.6)} 55%{transform:scaleY(0.6)} }
+@keyframes rec-bounce-2 { 0%,100%{transform:scaleY(1)} 35%{transform:scaleY(1.4)} 65%{transform:scaleY(0.75)} }
+@keyframes rec-bounce-3 { 0%,100%{transform:scaleY(1)} 20%{transform:scaleY(1.55)} 50%{transform:scaleY(0.65)} }
+@keyframes rec-bounce-4 { 0%,100%{transform:scaleY(1)} 40%{transform:scaleY(1.45)} 70%{transform:scaleY(0.7)} }
+@keyframes rec-bounce-5 { 0%,100%{transform:scaleY(1)} 28%{transform:scaleY(1.5)} 58%{transform:scaleY(0.68)} }
+@keyframes rec-bounce-6 { 0%,100%{transform:scaleY(1)} 33%{transform:scaleY(1.55)} 63%{transform:scaleY(0.72)} }
+@keyframes rec-bounce-7 { 0%,100%{transform:scaleY(1)} 22%{transform:scaleY(1.45)} 52%{transform:scaleY(0.65)} }
+@keyframes rec-bounce-8 { 0%,100%{transform:scaleY(1)} 38%{transform:scaleY(1.5)} 68%{transform:scaleY(0.7)} }
+@keyframes rec-dot-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+@keyframes glow-pulse { 0%, 100% { opacity: 0.88; } 50% { opacity: 1; } }
+.hero-lips .u0 { animation: rec-bounce-0 0.50s ease-in-out 0.00s infinite; }
+.hero-lips .u1 { animation: rec-bounce-1 0.57s ease-in-out 0.06s infinite; }
+.hero-lips .u2 { animation: rec-bounce-2 0.64s ease-in-out 0.12s infinite; }
+.hero-lips .u3 { animation: rec-bounce-3 0.71s ease-in-out 0.18s infinite; }
+.hero-lips .u4 { animation: rec-bounce-4 0.78s ease-in-out 0.24s infinite; }
+.hero-lips .u5 { animation: rec-bounce-5 0.85s ease-in-out 0.30s infinite; }
+.hero-lips .u6 { animation: rec-bounce-6 0.92s ease-in-out 0.36s infinite; }
+.hero-lips .u7 { animation: rec-bounce-7 0.99s ease-in-out 0.42s infinite; }
+.hero-lips .u8 { animation: rec-bounce-8 1.06s ease-in-out 0.48s infinite; }
+.hero-lips .l0 { animation: rec-bounce-0 0.550s ease-in-out 0.05s infinite; }
+.hero-lips .l1 { animation: rec-bounce-1 0.615s ease-in-out 0.12s infinite; }
+.hero-lips .l2 { animation: rec-bounce-2 0.680s ease-in-out 0.19s infinite; }
+.hero-lips .l3 { animation: rec-bounce-3 0.745s ease-in-out 0.26s infinite; }
+.hero-lips .l4 { animation: rec-bounce-4 0.810s ease-in-out 0.33s infinite; }
+.hero-lips .l5 { animation: rec-bounce-5 0.875s ease-in-out 0.40s infinite; }
+.hero-lips .l6 { animation: rec-bounce-6 0.940s ease-in-out 0.47s infinite; }
+.hero-lips .l7 { animation: rec-bounce-7 1.005s ease-in-out 0.54s infinite; }
+.hero-lips .l8 { animation: rec-bounce-8 1.070s ease-in-out 0.61s infinite; }
+.hero-lips .lip-glow-group { animation: glow-pulse 4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .hero-lips .upper-bar, .hero-lips .lower-bar, .hero-lips .lip-glow-group { animation: none !important; }
+}
+
 /* ═══════════════════════════════════════════════════════
    Section Shared Styles
    ═══════════════════════════════════════════════════════ */
@@ -357,27 +458,27 @@ body::after {
 .section-label.accent {
   background: var(--accent-soft);
   color: var(--accent);
-  border: 1px solid rgba(139,124,246,0.2);
+  border: 1px solid rgba(124,58,237,0.2);
 }
 .section-label.green {
-  background: rgba(52,211,153,0.1);
+  background: rgba(0,250,154,0.1);
   color: var(--green);
-  border: 1px solid rgba(52,211,153,0.2);
+  border: 1px solid rgba(0,250,154,0.2);
 }
 .section-label.cyan {
-  background: rgba(34,211,238,0.1);
+  background: rgba(0,255,255,0.1);
   color: var(--cyan);
-  border: 1px solid rgba(34,211,238,0.2);
+  border: 1px solid rgba(0,255,255,0.2);
 }
 .section-label.amber {
-  background: rgba(251,191,36,0.1);
+  background: rgba(255,215,0,0.1);
   color: var(--amber);
-  border: 1px solid rgba(251,191,36,0.2);
+  border: 1px solid rgba(255,215,0,0.2);
 }
 
 .section-head {
   text-align: center;
-  margin-bottom: 64px;
+  margin-bottom: 40px;
 }
 .section-title {
   font-size: 48px;
@@ -391,6 +492,48 @@ body::after {
   color: var(--text-2);
   max-width: 640px;
   margin: 0 auto;
+  line-height: 1.6;
+}
+
+/* ── Left-Flush Vertical Bar Headers (Proposal C) ── */
+.section-head-c {
+  text-align: left;
+  margin-bottom: 40px;
+}
+.section-label-c {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.section-label-c::before {
+  content: '';
+  display: block;
+  width: 3px;
+  height: 1.2em;
+  background: var(--rainbow-135);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.section-label-c span {
+  font-size: 24px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--accent);
+}
+.section-title-c {
+  font-size: 52px;
+  font-weight: 800;
+  letter-spacing: -2px;
+  line-height: 1.05;
+  margin-bottom: 16px;
+  max-width: 720px;
+}
+.section-sub-c {
+  font-size: 18px;
+  color: var(--text-2);
+  max-width: 560px;
   line-height: 1.6;
 }
 
@@ -408,11 +551,11 @@ body::after {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 16px;
-  margin-bottom: 56px;
+  margin-bottom: 40px;
 }
 .pipe-step {
   text-align: center;
-  padding: 28px 16px;
+  padding: 20px 16px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
@@ -432,10 +575,10 @@ body::after {
   margin: 0 auto 14px;
   font-size: 22px;
 }
-.pipe-step-icon.red { background: rgba(248,113,113,0.1); color: var(--red); }
-.pipe-step-icon.amber { background: rgba(251,191,36,0.1); color: var(--amber); }
-.pipe-step-icon.cyan { background: rgba(34,211,238,0.1); color: var(--cyan); }
-.pipe-step-icon.green { background: rgba(52,211,153,0.1); color: var(--green); }
+.pipe-step-icon.red { background: rgba(255,42,64,0.1); color: var(--red); }
+.pipe-step-icon.amber { background: rgba(255,215,0,0.1); color: var(--amber); }
+.pipe-step-icon.cyan { background: rgba(0,255,255,0.1); color: var(--cyan); }
+.pipe-step-icon.green { background: rgba(0,250,154,0.1); color: var(--green); }
 
 .pipe-step h3 {
   font-size: 16px;
@@ -489,8 +632,8 @@ body::after {
   gap: 6px;
   padding: 5px 14px;
   border-radius: var(--radius-pill);
-  background: rgba(139,124,246,0.12);
-  border: 1px solid rgba(139,124,246,0.25);
+  background: rgba(124,58,237,0.12);
+  border: 1px solid rgba(124,58,237,0.25);
   font-size: 12px;
   font-weight: 600;
   color: var(--accent);
@@ -525,7 +668,7 @@ body::after {
 
 /* ── Demo Panels ── */
 .demo-panel {
-  background: rgba(8,8,12,0.6);
+  background: rgba(248,245,255,0.7);
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 20px;
@@ -544,8 +687,8 @@ body::after {
 .demo-panel-left { flex: 0 0 38%; }
 .demo-panel-right { flex: 0 0 38%; }
 .demo-panel-right.glow-green {
-  border-color: rgba(52,211,153,0.35);
-  box-shadow: 0 0 30px rgba(52,211,153,0.08), inset 0 0 30px rgba(52,211,153,0.03);
+  border-color: rgba(0,250,154,0.35);
+  box-shadow: 0 0 30px rgba(0,250,154,0.08), inset 0 0 30px rgba(0,250,154,0.03);
 }
 
 .panel-label {
@@ -558,8 +701,8 @@ body::after {
   align-items: center;
   gap: 8px;
 }
-.panel-label.tertiary { color: var(--text-3); }
-.panel-label.green-label { color: var(--green); }
+.panel-label.tertiary { color: var(--text-2); }
+.panel-label.green-label { color: #008855; }
 
 .live-badge {
   display: inline-flex;
@@ -576,9 +719,9 @@ body::after {
 }
 .live-badge.active { opacity: 1; }
 .live-badge.asr {
-  background: rgba(251,191,36,0.15);
+  background: rgba(255,215,0,0.15);
   color: var(--amber);
-  border: 1px solid rgba(251,191,36,0.3);
+  border: 1px solid rgba(255,215,0,0.3);
 }
 .live-badge.asr::before {
   content: '';
@@ -588,9 +731,9 @@ body::after {
   animation: pulse-dot 0.8s ease-in-out infinite;
 }
 .live-badge.sse {
-  background: rgba(34,211,238,0.15);
+  background: rgba(0,255,255,0.15);
   color: var(--cyan);
-  border: 1px solid rgba(34,211,238,0.3);
+  border: 1px solid rgba(0,255,255,0.3);
 }
 .live-badge.sse::before {
   content: '';
@@ -632,7 +775,7 @@ body::after {
 
 .filler {
   color: var(--red);
-  background: rgba(248,113,113,0.1);
+  background: rgba(255,42,64,0.1);
   padding: 1px 4px;
   border-radius: 3px;
   transition: all 0.4s ease;
@@ -642,7 +785,7 @@ body::after {
 .filler.struck {
   text-decoration: line-through;
   opacity: 0.35;
-  background: rgba(248,113,113,0.04);
+  background: rgba(255,42,64,0.04);
 }
 
 .sse-word {
@@ -673,7 +816,7 @@ body::after {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 16px 12px;
+  padding: 16px 24px 16px 12px;
   opacity: 0;
   transform: translateY(20px);
   transition: opacity 0.7s ease, transform 0.7s ease;
@@ -684,11 +827,11 @@ body::after {
   transform: translateY(0);
 }
 .pipeline-title {
-  font-size: 10px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1px;
-  color: var(--text-3);
+  color: var(--text-2);
   margin-bottom: 14px;
 }
 
@@ -706,16 +849,16 @@ body::after {
 }
 .gantt-label {
   font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 500;
-  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
   width: 68px;
   text-align: right;
   flex-shrink: 0;
   white-space: nowrap;
   transition: color 0.3s ease;
 }
-.gantt-label.active { color: var(--text-2); }
+.gantt-label.active { color: var(--text); }
 .gantt-track {
   flex: 1;
   height: 100%;
@@ -736,9 +879,9 @@ body::after {
 }
 .gantt-bar .bar-text {
   font-family: var(--font-mono);
-  font-size: 8px;
-  font-weight: 500;
-  color: rgba(255,255,255,0.7);
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(0,0,0,0.7);
   white-space: nowrap;
   opacity: 0;
   transition: opacity 0.3s ease;
@@ -746,49 +889,49 @@ body::after {
 .gantt-bar.active .bar-text { opacity: 1; }
 
 .gantt-bar.recording {
-  background: rgba(248,113,113,0.25);
-  border: 1px solid rgba(248,113,113,0.4);
+  background: rgba(220,30,50,0.5);
+  border: 1px solid rgba(200,25,45,0.7);
 }
 .gantt-bar.recording.active {
-  background: rgba(248,113,113,0.3);
-  box-shadow: 0 0 12px rgba(248,113,113,0.2);
+  background: rgba(220,30,50,0.6);
+  box-shadow: 0 0 12px rgba(220,30,50,0.25);
 }
 .gantt-bar.streaming-asr {
-  background: rgba(251,191,36,0.25);
-  border: 1px solid rgba(251,191,36,0.4);
+  background: rgba(200,170,0,0.5);
+  border: 1px solid rgba(180,150,0,0.7);
 }
 .gantt-bar.streaming-asr.active {
-  background: rgba(251,191,36,0.3);
-  box-shadow: 0 0 12px rgba(251,191,36,0.2);
+  background: rgba(200,170,0,0.6);
+  box-shadow: 0 0 12px rgba(200,170,0,0.25);
 }
 .gantt-bar.finalize {
-  background: rgba(251,191,36,0.35);
-  border: 1px solid rgba(251,191,36,0.5);
+  background: rgba(210,120,0,0.55);
+  border: 1px solid rgba(190,100,0,0.7);
 }
 .gantt-bar.finalize.active {
-  box-shadow: 0 0 12px rgba(251,191,36,0.3);
+  box-shadow: 0 0 12px rgba(210,120,0,0.3);
 }
 .gantt-bar.prewarm {
-  background: rgba(139,124,246,0.25);
-  border: 1px solid rgba(139,124,246,0.4);
+  background: rgba(100,40,200,0.5);
+  border: 1px solid rgba(90,35,180,0.7);
 }
 .gantt-bar.prewarm.active {
-  box-shadow: 0 0 12px rgba(139,124,246,0.3);
+  box-shadow: 0 0 12px rgba(100,40,200,0.3);
 }
 .gantt-bar.sse-polish {
-  background: rgba(34,211,238,0.25);
-  border: 1px solid rgba(34,211,238,0.4);
+  background: rgba(0,160,180,0.5);
+  border: 1px solid rgba(0,140,160,0.7);
 }
 .gantt-bar.sse-polish.active {
-  background: rgba(34,211,238,0.3);
-  box-shadow: 0 0 12px rgba(34,211,238,0.2);
+  background: rgba(0,160,180,0.6);
+  box-shadow: 0 0 12px rgba(0,160,180,0.25);
 }
 .gantt-bar.paste-bar {
-  background: rgba(52,211,153,0.35);
-  border: 1px solid rgba(52,211,153,0.5);
+  background: rgba(0,170,100,0.55);
+  border: 1px solid rgba(0,150,90,0.7);
 }
 .gantt-bar.paste-bar.active {
-  box-shadow: 0 0 12px rgba(52,211,153,0.3);
+  box-shadow: 0 0 12px rgba(0,170,100,0.3);
 }
 .gantt-bar.done {
   opacity: 0.4;
@@ -800,7 +943,7 @@ body::after {
   right: -14px; top: 0;
   height: calc(200% + 6px);
   width: 10px;
-  border: 2px solid rgba(139,124,246,0.4);
+  border: 2px solid rgba(124,58,237,0.4);
   border-left: none;
   border-radius: 0 6px 6px 0;
   opacity: 0;
@@ -852,8 +995,8 @@ body::after {
 .replay-btn {
   padding: 8px 18px;
   border-radius: 10px;
-  border: 1px solid rgba(139,124,246,0.3);
-  background: rgba(139,124,246,0.08);
+  border: 1px solid rgba(124,58,237,0.3);
+  background: rgba(124,58,237,0.08);
   color: var(--accent);
   font-family: var(--font-body);
   font-size: 13px;
@@ -867,7 +1010,7 @@ body::after {
   gap: 6px;
 }
 .replay-btn:hover {
-  background: rgba(139,124,246,0.15);
+  background: rgba(124,58,237,0.15);
   transform: translateY(-1px);
 }
 .replay-btn.visible {
@@ -881,7 +1024,7 @@ body::after {
   width: 8px; height: 8px;
   border-radius: 50%;
   background: var(--green);
-  box-shadow: 0 0 12px var(--green), 0 0 24px rgba(52,211,153,0.4);
+  box-shadow: 0 0 12px var(--green), 0 0 24px rgba(0,250,154,0.4);
   opacity: 0;
   z-index: 10;
   pointer-events: none;
@@ -899,7 +1042,7 @@ body::after {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
-  padding: 32px 28px;
+  padding: 24px 22px;
   transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
               border-color 0.3s,
               box-shadow 0.3s;
@@ -907,7 +1050,7 @@ body::after {
 .feature-card:hover {
   transform: translateY(-4px);
   border-color: var(--border-hover);
-  box-shadow: 0 16px 48px rgba(0,0,0,0.3);
+  box-shadow: 0 16px 48px rgba(0,0,0,0.08);
 }
 .feature-icon {
   width: 48px;
@@ -920,12 +1063,13 @@ body::after {
   font-size: 22px;
 }
 .feature-icon.accent { background: var(--accent-soft); }
-.feature-icon.cyan { background: rgba(34,211,238,0.1); }
-.feature-icon.green { background: rgba(52,211,153,0.1); }
-.feature-icon.amber { background: rgba(251,191,36,0.1); }
-.feature-icon.red { background: rgba(248,113,113,0.1); }
+.feature-icon.cyan { background: rgba(0,255,255,0.1); }
+.feature-icon.green { background: rgba(0,250,154,0.1); }
+.feature-icon.amber { background: rgba(255,215,0,0.1); }
+.feature-icon.red { background: rgba(255,42,64,0.1); }
 .feature-icon.pink { background: rgba(244,114,182,0.1); }
-.feature-icon.orange { background: rgba(251,146,60,0.1); }
+.feature-icon.orange { background: rgba(255,140,0,0.1); }
+.feature-icon.royal { background: rgba(65,105,225,0.1); }
 
 .feature-card h3 {
   font-size: 17px;
@@ -961,21 +1105,18 @@ body::after {
   font-size: 56px;
   font-weight: 900;
   letter-spacing: -2px;
-  background: linear-gradient(135deg, var(--accent), var(--cyan));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--accent);
   line-height: 1;
   margin-bottom: 8px;
 }
 .stat-label {
-  font-size: 14px;
-  color: var(--text-2);
+  font-size: 16px;
+  color: var(--text);
 }
 .stat-sublabel {
   font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--text-3);
+  font-size: 13px;
+  color: var(--text-2);
   margin-top: 4px;
 }
 
@@ -1001,8 +1142,8 @@ body::after {
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  background: rgba(52,211,153,0.1);
-  border: 1px solid rgba(52,211,153,0.2);
+  background: rgba(0,250,154,0.1);
+  border: 1px solid rgba(0,250,154,0.2);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1038,7 +1179,7 @@ body::after {
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 24px 80px rgba(0,0,0,0.4);
+  box-shadow: 0 24px 80px rgba(0,0,0,0.10);
 }
 .mac-titlebar {
   display: flex;
@@ -1075,8 +1216,8 @@ body::after {
   width: 40px;
   height: 40px;
   border-radius: 10px;
-  background: rgba(52,211,153,0.1);
-  border: 1px solid rgba(52,211,153,0.2);
+  background: rgba(0,250,154,0.1);
+  border: 1px solid rgba(0,250,154,0.2);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1132,7 +1273,7 @@ body::after {
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   overflow: hidden;
-  box-shadow: 0 24px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.03);
+  box-shadow: 0 24px 80px rgba(0,0,0,0.12), 0 0 0 1px rgba(255,255,255,0.03);
   margin: 40px auto;
   text-align: left;
 }
@@ -1212,7 +1353,7 @@ body::after {
   height: 36px;
   border-radius: 10px;
   background: var(--accent-soft);
-  border: 1px solid rgba(139,124,246,0.2);
+  border: 1px solid rgba(124,58,237,0.2);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1298,15 +1439,20 @@ body::after {
    ═══════════════════════════════════════════════════════ */
 @media (max-width: 1024px) {
   :root {
-    --section-pad: 80px;
+    --section-pad: 60px;
   }
   .hero h1 {
     font-size: 56px;
     letter-spacing: -2px;
   }
+  .hero-lips {
+    width: 280px;
+    height: 210px;
+  }
   .section-title {
     font-size: 40px;
   }
+  .section-title-c { font-size: 40px; }
   .features-grid {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -1332,7 +1478,7 @@ body::after {
     top: 64px;
     left: 0;
     right: 0;
-    background: rgba(8,8,12,0.95);
+    background: rgba(248,245,255,0.95);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     padding: 16px 32px;
@@ -1341,12 +1487,32 @@ body::after {
   }
   .nav-toggle {
     display: block;
+    padding: 10px;
+  }
+  .nav-cta-group {
+    display: none;
+  }
+  .nav-links.nav-open a {
+    display: flex;
+    align-items: center;
+    padding: 10px 0;
+    min-height: 44px;
+  }
+  .hero {
+    padding-top: 96px;
+  }
+  .section-label-c span {
+    font-size: 18px;
+    letter-spacing: 1.5px;
+  }
+  .privacy-grid {
+    gap: 32px;
   }
 }
 
 @media (max-width: 768px) {
   :root {
-    --section-pad: 64px;
+    --section-pad: 40px;
   }
   .container {
     padding: 0 20px;
@@ -1355,8 +1521,13 @@ body::after {
     padding: 120px 0 80px;
   }
   .hero h1 {
-    font-size: 40px;
-    letter-spacing: -1.5px;
+    font-size: 36px;
+    letter-spacing: -1px;
+    max-width: 100%;
+  }
+  .hero-lips {
+    width: 220px;
+    height: 165px;
   }
   .hero-sub {
     font-size: 17px;
@@ -1367,6 +1538,8 @@ body::after {
   .hero-stats {
     flex-wrap: wrap;
     justify-content: center;
+    gap: 6px 8px;
+    font-size: 12px;
   }
   .section-title {
     font-size: 32px;
@@ -1375,6 +1548,10 @@ body::after {
   .section-sub {
     font-size: 16px;
   }
+  .section-title-c { font-size: 32px; letter-spacing: -0.5px; }
+  .section-sub-c { font-size: 16px; }
+  .section-head-c { margin-bottom: 28px; }
+  .section-label-c span { font-size: 15px; letter-spacing: 1px; }
   .features-grid {
     grid-template-columns: 1fr;
   }
@@ -1412,13 +1589,70 @@ body::after {
   .demo-panel-left,
   .demo-panel-right {
     flex: none;
+    min-height: 180px;
   }
   .demo-pipeline {
     flex: none;
     padding: 20px 12px;
+    min-height: 240px;
   }
   .demo-wrapper {
     padding: 20px;
+  }
+  .overlap-label,
+  .overlap-bracket {
+    display: none;
+  }
+  .terminal {
+    margin: 24px auto;
+  }
+  .terminal-body {
+    font-size: 11px;
+    line-height: 1.8;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .footer {
+    padding: 40px 0 24px;
+  }
+  .footer-grid {
+    margin-bottom: 32px;
+  }
+  .replay-btn {
+    padding: 12px 22px;
+    font-size: 14px;
+  }
+  .nav-cta {
+    padding: 11px 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero h1 {
+    font-size: 32px;
+  }
+  .section-title-c {
+    font-size: 28px;
+  }
+  .section-label-c span {
+    font-size: 13px;
+    letter-spacing: 0.5px;
+  }
+  .btn-primary,
+  .btn-secondary {
+    width: 100%;
+    justify-content: center;
+    padding: 14px 20px;
+    box-sizing: border-box;
+  }
+  .hero-ctas {
+    gap: 12px;
+  }
+  .step-card {
+    padding: 24px 20px;
+  }
+  .stat-card {
+    padding: 20px 16px;
   }
 }
 
@@ -1449,24 +1683,45 @@ body::after {
 <nav class="nav" role="navigation" aria-label="Main navigation">
   <div class="nav-inner">
     <a href="#" class="nav-logo" aria-label="EnviousWispr home">
-      <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <rect width="28" height="28" rx="8" fill="#8b7cf6"/>
-        <path d="M8 14c0-3.3 2.7-6 6-6s6 2.7 6 6" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
-        <path d="M10 14c0-2.2 1.8-4 4-4s4 1.8 4 4" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
-        <circle cx="14" cy="14" r="1.5" fill="#fff"/>
-        <path d="M14 15.5v4" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+      <svg width="22" height="22" viewBox="0 0 64 64" fill="none">
+        <rect x="4" y="22.25" width="4.5" height="5" rx="1.5" fill="#ff2a40"/>
+        <rect x="10" y="17.64" width="4.5" height="8" rx="1.5" fill="#ff8c00"/>
+        <rect x="16" y="12.04" width="4.5" height="12" rx="1.5" fill="#ffd700"/>
+        <rect x="22" y="16.96" width="4.5" height="9" rx="1.5" fill="#adff2f"/>
+        <rect x="28" y="21.56" width="4.5" height="6" rx="1.5" fill="#00fa9a"/>
+        <rect x="34" y="16.96" width="4.5" height="9" rx="1.5" fill="#00ffff"/>
+        <rect x="40" y="12.04" width="4.5" height="12" rx="1.5" fill="#1e90ff"/>
+        <rect x="46" y="17.64" width="4.5" height="8" rx="1.5" fill="#4169e1"/>
+        <rect x="52" y="22.25" width="4.5" height="5" rx="1.5" fill="#8a2be2"/>
+        <rect x="4" y="30.25" width="4.5" height="5" rx="1.5" fill="#4169e1"/>
+        <rect x="10" y="28.64" width="4.5" height="9" rx="1.5" fill="#1e90ff"/>
+        <rect x="16" y="27.04" width="4.5" height="12" rx="1.5" fill="#00ffff"/>
+        <rect x="22" y="28.96" width="4.5" height="15" rx="1.5" fill="#00fa9a"/>
+        <rect x="28" y="30.56" width="4.5" height="17" rx="1.5" fill="#adff2f"/>
+        <rect x="34" y="28.96" width="4.5" height="15" rx="1.5" fill="#ffd700"/>
+        <rect x="40" y="27.04" width="4.5" height="12" rx="1.5" fill="#ff8c00"/>
+        <rect x="46" y="28.64" width="4.5" height="9" rx="1.5" fill="#ff2a40"/>
+        <rect x="52" y="30.25" width="4.5" height="5" rx="1.5" fill="#8a2be2"/>
       </svg>
       EnviousWispr
     </a>
     <ul class="nav-links">
-      <li><a href="#features">Features</a></li>
       <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#stats">Stats</a></li>
+      <li><a href="#features">Features</a></li>
+      <li><a href="#privacy">Privacy</a></li>
       <li><a href="#open-source">Open Source</a></li>
     </ul>
-    <a href="https://github.com/saurabhav88/EnviousWispr/releases" class="nav-cta">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      Download
-    </a>
+    <div class="nav-cta-group">
+      <a href="https://github.com/saurabhav88/EnviousWispr" class="nav-cta" style="background:transparent;border:1px solid var(--border-hover);color:var(--text);" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" style="margin-right:4px;"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+        GitHub
+      </a>
+      <a href="https://github.com/saurabhav88/EnviousWispr/releases" class="nav-cta">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download
+      </a>
+    </div>
     <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
     </button>
@@ -1479,12 +1734,44 @@ body::after {
      ═══════════════════════════════════════════════════════ -->
 <section class="hero" id="hero">
   <div class="container">
-    <div class="hero-badge reveal" style="--i:0">
-      <span class="dot"></span>
-      Open Source macOS App
-    </div>
-    <h1 class="reveal" style="--i:1">Talk naturally.<br>Paste perfectly.</h1>
+    <h1 class="reveal" style="--i:0">Talk naturally.<br>Paste perfectly.</h1>
     <p class="hero-sub reveal" style="--i:2">On-device AI dictation for macOS. Record your voice, get polished text &mdash; grammar-fixed, filler-free, pasted into any app in under 2 seconds.</p>
+    <!-- Brand lip animation -->
+    <div class="reveal" style="--i:2;text-align:center;margin-bottom:32px;">
+      <svg class="hero-lips" style="width:120px;height:90px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" aria-label="EnviousWispr animated lip icon" role="img">
+        <defs>
+          <radialGradient id="hero-bg-glow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#dcc8ff" stop-opacity="0.25"/>
+            <stop offset="100%" stop-color="transparent"/>
+          </radialGradient>
+          <filter id="hero-glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <g transform="translate(8,13)" filter="url(#hero-glow)" class="lip-glow-group">
+          <rect class="upper-bar u0" x="16" y="84.2" width="14" height="20" rx="5" fill="#ff2a40" opacity="0.92"/>
+          <rect class="upper-bar u1" x="40" y="65.75" width="14" height="32" rx="5" fill="#ff8c00" opacity="0.92"/>
+          <rect class="upper-bar u2" x="64" y="43.36" width="14" height="48" rx="5" fill="#ffd700" opacity="0.92"/>
+          <rect class="upper-bar u3" x="88" y="63.04" width="14" height="36" rx="5" fill="#adff2f" opacity="0.92"/>
+          <rect class="upper-bar u4" x="112" y="81.43" width="14" height="24" rx="5" fill="#00fa9a" opacity="0.92"/>
+          <rect class="upper-bar u5" x="136" y="63.04" width="14" height="36" rx="5" fill="#00ffff" opacity="0.92"/>
+          <rect class="upper-bar u6" x="160" y="43.36" width="14" height="48" rx="5" fill="#1e90ff" opacity="0.92"/>
+          <rect class="upper-bar u7" x="184" y="65.75" width="14" height="32" rx="5" fill="#4169e1" opacity="0.92"/>
+          <rect class="upper-bar u8" x="208" y="84.2" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.92"/>
+          <rect class="lower-bar l0" x="16" y="125.8" width="14" height="20" rx="5" fill="#4169e1" opacity="0.88"/>
+          <rect class="lower-bar l1" x="40" y="119.35" width="14" height="36" rx="5" fill="#1e90ff" opacity="0.88"/>
+          <rect class="lower-bar l2" x="64" y="112.96" width="14" height="48" rx="5" fill="#00ffff" opacity="0.88"/>
+          <rect class="lower-bar l3" x="88" y="120.64" width="14" height="60" rx="5" fill="#00fa9a" opacity="0.88"/>
+          <rect class="lower-bar l4" x="112" y="127.03" width="14" height="68" rx="5" fill="#adff2f" opacity="0.88"/>
+          <rect class="lower-bar l5" x="136" y="120.64" width="14" height="60" rx="5" fill="#ffd700" opacity="0.88"/>
+          <rect class="lower-bar l6" x="160" y="112.96" width="14" height="48" rx="5" fill="#ff8c00" opacity="0.88"/>
+          <rect class="lower-bar l7" x="184" y="119.35" width="14" height="36" rx="5" fill="#ff2a40" opacity="0.88"/>
+          <rect class="lower-bar l8" x="208" y="125.8" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.88"/>
+        </g>
+      </svg>
+    </div>
+
     <div class="hero-ctas reveal" style="--i:3">
       <a href="https://github.com/saurabhav88/EnviousWispr/releases" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -1495,13 +1782,6 @@ body::after {
         View on GitHub
       </a>
     </div>
-    <div class="hero-stats reveal" style="--i:4">
-      <span class="hl">110x</span> real-time ASR
-      <span class="sep">|</span>
-      <span class="hl">&lt;2s</span> to paste
-      <span class="sep">|</span>
-      <span class="hl">0</span> audio bytes uploaded
-    </div>
   </div>
 </section>
 
@@ -1510,10 +1790,10 @@ body::after {
      ═══════════════════════════════════════════════════════ -->
 <section class="pipeline-section section" id="how-it-works">
   <div class="container">
-    <div class="section-head reveal">
-      <div class="section-label accent">How It Works</div>
-      <h2 class="section-title">Four steps. Under two seconds.</h2>
-      <p class="section-sub">A streaming pipeline that starts transcribing while you're still talking.</p>
+    <div class="section-head-c reveal">
+      <div class="section-label-c"><span>How It Works</span></div>
+      <h2 class="section-title-c">Four steps.<br>Under two seconds.</h2>
+      <p class="section-sub-c">A streaming pipeline that starts transcribing while you're still talking.</p>
     </div>
 
     <!-- Step cards -->
@@ -1523,7 +1803,7 @@ body::after {
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
         </div>
         <h3>Record</h3>
-        <p>Press your hotkey. Talk naturally. Push-to-talk or toggle &mdash; your choice.</p>
+        <p>Choose between push-to-talk or toggle. Talk naturally. Release. Done.</p>
       </div>
       <div class="pipe-step reveal" style="--i:1">
         <div class="pipe-step-icon amber">
@@ -1549,12 +1829,12 @@ body::after {
     </div>
 
     <!-- Interactive Demo -->
-    <div class="demo-wrapper reveal" id="demoWrapper">
-      <div class="demo-header" id="demoHeader">
-        <div class="demo-tag">Live Demo</div>
-        <div class="demo-title">Streaming Pipeline In Action</div>
-      </div>
+    <div class="section-head-c reveal" id="demoHeader">
+      <div class="section-label-c"><span>Live Demo</span></div>
+      <h2 class="section-title-c">Streaming pipeline<br>in action.</h2>
+    </div>
 
+    <div class="demo-wrapper reveal" id="demoWrapper">
       <div class="demo-stage">
         <!-- Left: What You Said -->
         <div class="demo-panel demo-panel-left" id="demoPanelLeft">
@@ -1638,85 +1918,13 @@ body::after {
 </section>
 
 <!-- ═══════════════════════════════════════════════════════
-     Features Grid
-     ═══════════════════════════════════════════════════════ -->
-<section class="section" id="features">
-  <div class="container">
-    <div class="section-head reveal">
-      <div class="section-label cyan">Features</div>
-      <h2 class="section-title">Everything you need. Nothing you don't.</h2>
-      <p class="section-sub">Built for people who think faster than they type.</p>
-    </div>
-
-    <div class="features-grid reveal-stagger">
-      <div class="feature-card reveal" style="--i:0">
-        <div class="feature-icon accent">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8b7cf6" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 15h3M1 9h3M1 15h3"/></svg>
-        </div>
-        <h3>On-device transcription</h3>
-        <p>Parakeet v3 and WhisperKit run entirely on your Mac. No internet required. No audio uploaded. Ever.</p>
-      </div>
-      <div class="feature-card reveal" style="--i:1">
-        <div class="feature-icon cyan">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2z"/></svg>
-        </div>
-        <h3>Smart polish</h3>
-        <p>LLM-powered cleanup removes filler words, fixes grammar, and formats your text. Editable prompts with presets for Clean Up, Formal, and Casual styles.</p>
-      </div>
-      <div class="feature-card reveal" style="--i:2">
-        <div class="feature-icon amber">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M2 12h2l3-9 4 18 4-18 3 9h2"/></svg>
-        </div>
-        <h3>Voice activity detection</h3>
-        <p>Silero VAD with smoothed probability tracking, 512ms prebuffer for word onset capture, and configurable silence timeout.</p>
-      </div>
-      <div class="feature-card reveal" style="--i:3">
-        <div class="feature-icon green">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-        </div>
-        <h3>Works in any app</h3>
-        <p>Auto-pastes into whatever app you were using &mdash; Slack, VS Code, Gmail, Notes, Terminal. Previous clipboard contents preserved.</p>
-      </div>
-      <div class="feature-card reveal" style="--i:4">
-        <div class="feature-icon red">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M6 16h8"/></svg>
-        </div>
-        <h3>Push-to-talk &amp; toggle</h3>
-        <p>Hold a key to record, or press once to start and again to stop. Customizable hotkeys. Cancel anytime with Escape.</p>
-      </div>
-      <div class="feature-card reveal" style="--i:5">
-        <div class="feature-icon pink">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f472b6" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-        </div>
-        <h3>Four LLM providers</h3>
-        <p>OpenAI, Google Gemini, Ollama (local), and Apple Intelligence. API keys stored in macOS Keychain. Switch without losing credentials.</p>
-      </div>
-      <div class="feature-card reveal" style="--i:6">
-        <div class="feature-icon orange">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fb923c" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M8 7h8M8 11h6"/></svg>
-        </div>
-        <h3>Custom word correction</h3>
-        <p>Teach it your jargon. Add names, acronyms, and technical terms. Phonetic and edit-distance matching handles misheard words.</p>
-      </div>
-      <div class="feature-card reveal" style="--i:7">
-        <div class="feature-icon accent">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8b7cf6" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
-        </div>
-        <h3>Native macOS app</h3>
-        <p>Built in Swift 6 with SwiftUI. Lives in your menu bar. No Electron. No WebView. Feels like it belongs on your Mac because it does.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ═══════════════════════════════════════════════════════
-     Stats Section
+     Stats Section (moved above features)
      ═══════════════════════════════════════════════════════ -->
 <section class="section" id="stats">
   <div class="container">
-    <div class="section-head reveal">
-      <div class="section-label amber">By the Numbers</div>
-      <h2 class="section-title">Built different.</h2>
+    <div class="section-head-c reveal">
+      <div class="section-label-c"><span>By the Numbers</span></div>
+      <h2 class="section-title-c">Built different.</h2>
     </div>
 
     <div class="stats-grid reveal-stagger">
@@ -1740,14 +1948,93 @@ body::after {
 </section>
 
 <!-- ═══════════════════════════════════════════════════════
+     Features Grid
+     ═══════════════════════════════════════════════════════ -->
+<section class="section" id="features">
+  <div class="container">
+    <div class="section-head-c reveal">
+      <div class="section-label-c"><span>Features</span></div>
+      <h2 class="section-title-c">Everything you need.<br>Nothing you don't.</h2>
+      <p class="section-sub-c">Built for people who think faster than they type.</p>
+    </div>
+
+    <div class="features-grid reveal-stagger">
+      <div class="feature-card reveal" style="--i:0">
+        <div class="feature-icon accent">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8a2be2" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 15h3M1 9h3M1 15h3"/></svg>
+        </div>
+        <h3>On-device transcription</h3>
+        <p>Parakeet v3 and WhisperKit run entirely on your Mac. No internet required. No audio uploaded. Ever.</p>
+      </div>
+      <div class="feature-card reveal" style="--i:1">
+        <div class="feature-icon cyan">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0099aa" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2z"/></svg>
+        </div>
+        <h3>Smart polish</h3>
+        <p>LLM-powered cleanup removes filler words, fixes grammar, and formats your text. Editable prompts with presets for Clean Up, Formal, and Casual styles.</p>
+      </div>
+      <div class="feature-card reveal" style="--i:2">
+        <div class="feature-icon amber">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#c8a600" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M2 12h2l3-9 4 18 4-18 3 9h2"/></svg>
+        </div>
+        <h3>Voice activity detection</h3>
+        <p>Silero VAD with smoothed probability tracking, 512ms prebuffer for word onset capture, and configurable silence timeout.</p>
+      </div>
+      <div class="feature-card reveal" style="--i:3">
+        <div class="feature-icon green">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00a868" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </div>
+        <h3>Works in any app</h3>
+        <p>Auto-pastes into whatever app you were using &mdash; Slack, VS Code, Gmail, Notes, Terminal. Previous clipboard contents preserved.</p>
+      </div>
+      <div class="feature-card reveal" style="--i:4">
+        <div class="feature-icon red">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ff2a40" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M6 16h8"/></svg>
+        </div>
+        <h3>Push-to-talk &amp; toggle</h3>
+        <p>Hold a key to record, or press once to start and again to stop. Customizable hotkeys. Cancel anytime with Escape.</p>
+      </div>
+      <div class="feature-card reveal" style="--i:5">
+        <div class="feature-icon pink">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#c45a92" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+        </div>
+        <h3>Four LLM providers</h3>
+        <p>OpenAI, Google Gemini, Ollama (local), and Apple Intelligence. API keys stored in macOS Keychain. Switch without losing credentials.</p>
+      </div>
+      <div class="feature-card reveal" style="--i:6">
+        <div class="feature-icon orange">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ff8c00" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M8 7h8M8 11h6"/></svg>
+        </div>
+        <h3>Custom word correction</h3>
+        <p>Teach it your jargon. Add names, acronyms, and technical terms. Phonetic and edit-distance matching handles misheard words.</p>
+      </div>
+      <div class="feature-card reveal" style="--i:7">
+        <div class="feature-icon accent">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8a2be2" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+        </div>
+        <h3>Native macOS app</h3>
+        <p>Built in Swift 6 with SwiftUI. Lives in your menu bar. No Electron. No WebView. Feels like it belongs on your Mac because it does.</p>
+      </div>
+      <div class="feature-card reveal" style="--i:8">
+        <div class="feature-icon royal">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4169e1" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        </div>
+        <h3>Streaming pipeline</h3>
+        <p>Transcription starts while you're still talking. ASR, polish, and paste overlap in parallel &mdash; no waiting for each step to finish.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
      Privacy Section
      ═══════════════════════════════════════════════════════ -->
 <section class="section" id="privacy">
   <div class="container">
-    <div class="section-head reveal">
-      <div class="section-label green">Privacy</div>
-      <h2 class="section-title">Your voice never leaves your Mac.</h2>
-      <p class="section-sub">On-device transcription means your audio stays on your hardware. No cloud ASR. No recordings stored on remote servers. No telemetry.</p>
+    <div class="section-head-c reveal">
+      <div class="section-label-c"><span>Privacy</span></div>
+      <h2 class="section-title-c">Your voice never<br>leaves your Mac.</h2>
+      <p class="section-sub-c">On-device transcription means your audio stays on your hardware. No cloud ASR. No recordings stored on remote servers. No telemetry.</p>
     </div>
 
     <div class="privacy-grid">
@@ -1837,10 +2124,10 @@ body::after {
      ═══════════════════════════════════════════════════════ -->
 <section class="section oss-section" id="open-source">
   <div class="container">
-    <div class="section-head reveal">
-      <div class="section-label accent">Open Source</div>
-      <h2 class="section-title">Open source. Open roadmap.</h2>
-      <p class="section-sub">EnviousWispr is built in the open. Read the code, file issues, suggest features, or contribute directly.</p>
+    <div class="section-head-c reveal">
+      <div class="section-label-c"><span>Open Source</span></div>
+      <h2 class="section-title-c">Open source.<br>Open roadmap.</h2>
+      <p class="section-sub-c">EnviousWispr is built in the open. Read the code, file issues, suggest features, or contribute directly.</p>
     </div>
 
     <div class="terminal reveal" id="ossTerminal">
@@ -1872,8 +2159,9 @@ body::after {
      ═══════════════════════════════════════════════════════ -->
 <section class="section" id="download">
   <div class="container">
-    <div class="section-head reveal">
-      <h2 class="section-title">Start dictating in 30 seconds.</h2>
+    <div class="section-head-c reveal">
+      <div class="section-label-c"><span>Get Started</span></div>
+      <h2 class="section-title-c">Start dictating<br>in 30 seconds.</h2>
     </div>
 
     <div class="steps-row reveal-stagger">
@@ -1934,7 +2222,7 @@ body::after {
       </div>
     </div>
     <div class="footer-bottom">
-      Built with Swift and SwiftUI on macOS. Open source on GitHub.
+      Powered by Envious
     </div>
   </div>
 </footer>
@@ -2008,9 +2296,12 @@ body::after {
   if (ossBody) termObserver.observe(ossBody);
 
   /* ═══════════════════════════════════════════════════════
-     Pipeline Demo (adapted from demo-concept-2-transformation.html)
+     Pipeline Demo
      ═══════════════════════════════════════════════════════ */
   var BAR_COUNT = 40;
+
+  // V2 rainbow spectrum colors for waveform bars
+  var V2_COLORS = ['#ff2a40','#ff8c00','#ffd700','#adff2f','#00fa9a','#00ffff','#1e90ff','#4169e1','#8a2be2'];
 
   var rawSegments = [
     { text: 'um ', filler: true },
@@ -2083,17 +2374,14 @@ body::after {
     dRafId = null;
   }
 
-  // Waveform
+  // Waveform — V2 rainbow spectrum
   function createDemoBars() {
     while (demoWaveform.firstChild) demoWaveform.removeChild(demoWaveform.firstChild);
     for (var i = 0; i < BAR_COUNT; i++) {
       var bar = document.createElement('div');
       bar.className = 'bar';
-      var t = i / (BAR_COUNT - 1);
-      var r = Math.round(248 + (251 - 248) * t);
-      var g = Math.round(113 + (191 - 113) * t);
-      var b = Math.round(113 + (36 - 113) * t);
-      bar.style.background = 'rgb(' + r + ',' + g + ',' + b + ')';
+      // Cycle through the 9 V2 rainbow colors
+      bar.style.background = V2_COLORS[i % V2_COLORS.length];
       bar.style.height = '8px';
       demoWaveform.appendChild(bar);
     }
@@ -2359,9 +2647,9 @@ body::after {
   window.addEventListener('scroll', function() {
     var st = window.pageYOffset;
     if (st > 100) {
-      nav.style.background = 'rgba(8,8,12,0.95)';
+      nav.style.background = 'rgba(248,245,255,0.95)';
     } else {
-      nav.style.background = 'rgba(8,8,12,0.8)';
+      nav.style.background = 'rgba(248,245,255,0.85)';
     }
   }, { passive: true });
 
