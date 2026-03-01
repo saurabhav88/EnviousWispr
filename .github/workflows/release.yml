@@ -93,7 +93,8 @@ jobs:
           echo "==> Submission ID: ${SUBMISSION_ID}"
 
           # Poll for status instead of --wait (avoids indefinite hangs)
-          MAX_ATTEMPTS=40
+          # First-time notarization with CoreML models can take 30-45 min
+          MAX_ATTEMPTS=90
           ATTEMPT=0
           while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
             ATTEMPT=$((ATTEMPT + 1))
@@ -124,7 +125,7 @@ jobs:
             fi
           done
 
-          echo "::error::Notarization timed out after $((MAX_ATTEMPTS * 30)) seconds"
+          echo "::error::Notarization timed out after $((MAX_ATTEMPTS * 30 / 60)) minutes"
           exit 1
 
       - name: Generate Sparkle appcast entry
