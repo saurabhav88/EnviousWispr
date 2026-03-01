@@ -24,13 +24,10 @@ extension LLMProvider {
 /// Result from LLM transcript polishing.
 struct LLMResult: Sendable {
     let polishedText: String
-    let provider: LLMProvider
-    let model: String
 }
 
 /// Configuration for an LLM provider.
 struct LLMProviderConfig: Codable, Sendable {
-    let provider: LLMProvider
     let model: String
     let apiKeyKeychainId: String?
     let maxTokens: Int
@@ -50,9 +47,6 @@ struct LLMModelInfo: Codable, Identifiable, Sendable {
 /// Instructions for how the LLM should polish the transcript.
 struct PolishInstructions: Codable, Sendable {
     let systemPrompt: String
-    let removeFillerWords: Bool
-    let fixGrammar: Bool
-    let fixPunctuation: Bool
 
     static let `default` = PolishInstructions(
         systemPrompt: """
@@ -62,22 +56,14 @@ struct PolishInstructions: Codable, Sendable {
             - Remove filler words (um, uh, like, you know) and false starts
             - Break run-on sentences; paragraph breaks only at topic shifts
             Do NOT rephrase, expand, or add content. Output ONLY the corrected transcript.
-            """,
-        removeFillerWords: true,
-        fixGrammar: true,
-        fixPunctuation: true
+            """
     )
 }
 
 extension PolishInstructions {
     /// Build a PolishInstructions using a user-supplied system prompt.
     static func custom(systemPrompt: String) -> PolishInstructions {
-        PolishInstructions(
-            systemPrompt: systemPrompt,
-            removeFillerWords: PolishInstructions.default.removeFillerWords,
-            fixGrammar: PolishInstructions.default.fixGrammar,
-            fixPunctuation: PolishInstructions.default.fixPunctuation
-        )
+        PolishInstructions(systemPrompt: systemPrompt)
     }
 }
 

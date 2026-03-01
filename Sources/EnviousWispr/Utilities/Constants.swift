@@ -25,7 +25,6 @@ enum AppConstants {
 enum AudioConstants {
     /// Target sample rate for ASR processing (16kHz mono).
     static let sampleRate: Double = 16000.0
-    static let sampleRateInt: Int = 16000
 
     /// Audio channels for recording (mono).
     static let channels: Int = 1
@@ -36,30 +35,19 @@ enum AudioConstants {
     /// Minimum samples required for valid transcription (1 second).
     static let minimumTranscriptionSamples: Int = 16000
 
-    /// Pre-allocation capacity for ~30 seconds of audio.
-    static let preAllocatedCapacity: Int = 16000 * 30
 }
 
 // MARK: - Timing Constants
 
 enum TimingConstants {
-    /// Delay before app window activation to ensure focus.
-    static let appActivationDelayMs: Int = 150
-
     /// Delay before clipboard restoration after paste.
     static let clipboardRestoreDelayMs: Int = 200
 
-    /// VAD monitoring poll interval.
-    static let vadPollIntervalMs: Int = 100
-
-    /// Model loading UI delay for smooth transitions.
-    static let modelLoadDelayMs: Int = 500
+    /// Delay after hiding the app before simulating paste (ms).
+    static let appHideBeforePasteDelayMs: Int = 300
 
     /// Accessibility permission polling interval (seconds).
     static let accessibilityPollIntervalSec: Double = 5.0
-
-    /// Recording timer update interval (seconds).
-    static let recordingTimerIntervalSec: Double = 1.0
 
     /// Minimum recording duration before transcription (seconds).
     /// Recordings shorter than this are silently discarded (accidental taps).

@@ -74,7 +74,7 @@ private struct KeyCaptureView: NSViewRepresentable {
         nsView.onKeyEvent = onKeyEvent
         if isRecording {
             // Defer making first responder so the window is ready
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 nsView.window?.makeFirstResponder(nsView)
             }
         }

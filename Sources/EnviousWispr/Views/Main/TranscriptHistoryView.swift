@@ -64,7 +64,7 @@ struct TranscriptRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(transcript.createdAt, format: .dateTime.hour().minute())
+            Text(transcript.createdAt, format: .dateTime.month().day().hour().minute())
                 .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
 
@@ -95,7 +95,7 @@ struct TranscriptRowView: View {
                         .monospacedDigit()
                 }
 
-                Text(transcript.backendType == .parakeet ? "Parakeet" : "Whisper")
+                Text(transcript.backendType.displayName)
                     .font(.caption2)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 2)

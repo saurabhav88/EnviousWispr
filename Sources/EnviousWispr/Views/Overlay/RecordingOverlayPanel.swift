@@ -10,15 +10,15 @@ import SwiftUI
 final class RecordingOverlayPanel {
     private var panel: NSPanel?
 
-    func show(audioLevelProvider: @escaping () -> Float, modeLabel: String) {
+    func show(audioLevelProvider: @escaping () -> Float) {
         guard panel == nil else { return }
 
         // Delay creation to the next run loop cycle.
         // When triggered from an NSStatusItem menu action, the menu dismiss
         // animation is still in progress. Creating an NSHostingView during
         // that animation causes a re-entrant NSWindow layout cycle (SIGABRT).
-        DispatchQueue.main.async { [weak self] in
-            self?.createPanel(audioLevelProvider: audioLevelProvider, modeLabel: modeLabel)
+        Task { @MainActor [weak self] in
+            self?.createPanel(audioLevelProvider: audioLevelProvider)
         }
     }
 
@@ -30,15 +30,15 @@ final class RecordingOverlayPanel {
             return
         }
 
-        DispatchQueue.main.async { [weak self] in
+        Task { @MainActor [weak self] in
             self?.createPolishingPanel()
         }
     }
 
-    private func createPanel(audioLevelProvider: @escaping () -> Float, modeLabel: String) {
+    private func createPanel(audioLevelProvider: @escaping () -> Float) {
         guard panel == nil else { return }
 
-        let overlayView = RecordingOverlayView(audioLevelProvider: audioLevelProvider, modeLabel: modeLabel)
+        let overlayView = RecordingOverlayView(audioLevelProvider: audioLevelProvider)
             .frame(width: 185, height: 44)
         showPanel(content: overlayView, width: 185)
     }
@@ -57,7 +57,11 @@ final class RecordingOverlayPanel {
         existingPanel.close()
         panel = nil
 
-        showPanel(content: PolishingOverlayView().frame(width: 152, height: 44), width: 152, y: y)
+        // Defer to the next run loop cycle so the close animation completes
+        // before the new panel appears, preventing a visual flash.
+        Task { @MainActor [weak self] in
+            self?.showPanel(content: PolishingOverlayView().frame(width: 152, height: 44), width: 152, y: y)
+        }
     }
 
     /// Create and show a floating overlay panel with the given SwiftUI content.
@@ -81,11 +85,10 @@ final class RecordingOverlayPanel {
         hostingView.frame = size
         p.contentView = hostingView
 
-        if let screen = NSScreen.main {
-            let x = screen.visibleFrame.midX - width / 2
-            let panelY = y ?? (screen.visibleFrame.maxY - 60)
-            p.setFrameOrigin(NSPoint(x: x, y: panelY))
-        }
+        let targetScreen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main ?? NSScreen.screens[0]
+        let x = targetScreen.visibleFrame.midX - width / 2
+        let panelY = y ?? (targetScreen.visibleFrame.maxY - 60)
+        p.setFrameOrigin(NSPoint(x: x, y: panelY))
 
         p.orderFrontRegardless()
         self.panel = p
@@ -139,6 +142,7 @@ struct SpectrumWheelIcon: View {
                 rotation = 360
             }
         }
+        .accessibilityHidden(true)
     }
 }
 
@@ -228,6 +232,7 @@ struct RainbowLipsIcon: View {
         .onAppear {
             animate = true
         }
+        .accessibilityHidden(true)
     }
 }
 
@@ -273,6 +278,7 @@ private struct OverlayCapsuleBackground: View {
                     glowOpacity = 0.65
                 }
             }
+            .accessibilityHidden(true)
     }
 }
 
@@ -281,11 +287,9 @@ private struct OverlayCapsuleBackground: View {
 /// Compact recording indicator overlay.
 struct RecordingOverlayView: View {
     let audioLevelProvider: () -> Float
-    let modeLabel: String
     @State private var audioLevel: Float = 0
     @State private var elapsed: TimeInterval = 0
 
-    private let timer = Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()
     private let startTime = Date()
 
     var body: some View {
@@ -311,9 +315,12 @@ struct RecordingOverlayView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(OverlayCapsuleBackground())
-        .onReceive(timer) { _ in
-            audioLevel = audioLevelProvider()
-            elapsed = Date().timeIntervalSince(startTime)
+        .task {
+            while !Task.isCancelled {
+                audioLevel = audioLevelProvider()
+                elapsed = Date().timeIntervalSince(startTime)
+                try? await Task.sleep(for: .milliseconds(50))
+            }
         }
     }
 

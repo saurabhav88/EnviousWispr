@@ -104,8 +104,7 @@ final class AppState {
             case .recording:
                 self.hotkeyService.registerCancelHotkey()
                 self.recordingOverlay.show(
-                    audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 },
-                    modeLabel: self.settings.recordingMode.shortLabel
+                    audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 }
                 )
             case .transcribing:
                 self.hotkeyService.unregisterCancelHotkey()
@@ -144,9 +143,16 @@ final class AppState {
                 self.restartAccessibilityMonitoringIfNeeded()
             }
             await self.pipeline.startRecording()
+            if case .error = self.pipeline.state {
+                self.pipeline.autoPasteToActiveApp = false
+            }
         }
         hotkeyService.onStopRecording = { [weak self] in
-            guard let self, self.pipelineState == .recording else { return }
+            guard let self else { return }
+            guard self.pipelineState == .recording else {
+                self.pipeline.autoPasteToActiveApp = false
+                return
+            }
             await self.pipeline.stopAndTranscribe()
             self.pipeline.autoPasteToActiveApp = false
         }
@@ -213,9 +219,11 @@ final class AppState {
             hotkeyService.pushToTalkModifiers = settings.toggleModifiers
             reregisterHotkeys()
         case .pushToTalkKeyCode:
+            // PTT intentionally mirrors toggle — single hotkey, mode determines behavior.
             hotkeyService.pushToTalkKeyCode = settings.toggleKeyCode
             reregisterHotkeys()
         case .pushToTalkModifiers:
+            // PTT intentionally mirrors toggle — single hotkey, mode determines behavior.
             hotkeyService.pushToTalkModifiers = settings.toggleModifiers
             reregisterHotkeys()
         case .modelUnloadPolicy:

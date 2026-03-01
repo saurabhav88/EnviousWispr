@@ -29,7 +29,7 @@ All source files — read access to entire codebase for auditing.
 
 ## Security Checklist
 
-1. API keys in Keychain only (service: `"com.enviouswispr.api-keys"`, `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`)
+1. API keys in Keychain only (service: `"com.enviouswispr.api-keys"`). Uses `#if DEBUG` pattern: file-based storage (`~/.enviouswispr-keys/`, 0600 perms) in debug, real macOS Keychain (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`) in release
 2. No hardcoded secrets — grep `sk-`, `AIza`, bearer tokens
 3. No logging of API keys or response bodies containing keys
 4. `SecureField` for key input in UI

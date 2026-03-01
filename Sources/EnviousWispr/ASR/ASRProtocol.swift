@@ -61,15 +61,11 @@ extension ASRBackend {
 /// Errors that can occur during ASR operations.
 enum ASRError: LocalizedError, Sendable {
     case notReady
-    case modelLoadFailed(String)
-    case transcriptionFailed(String)
     case streamingNotSupported
 
     var errorDescription: String? {
         switch self {
         case .notReady: return "ASR backend is not ready. Call prepare() first."
-        case .modelLoadFailed(let msg): return "Model loading failed: \(msg)"
-        case .transcriptionFailed(let msg): return "Transcription failed: \(msg)"
         case .streamingNotSupported: return "This ASR backend does not support streaming transcription."
         }
     }

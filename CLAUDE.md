@@ -55,3 +55,6 @@ python3 Tests/UITests/uat_runner.py run --files Tests/UITests/generated/test_foo
 | [distribution](.claude/knowledge/distribution.md) | Release pipeline, Sparkle, DMG build, CI/CD, codesigning |
 | [roadmap](.claude/knowledge/roadmap.md) | Feature requests, tracker, priority system, implementation workflow |
 | [teamwork](.claude/knowledge/teamwork.md) | Team compositions, lifecycle, decision matrix, communication patterns |
+| [file-index](.claude/knowledge/file-index.md) | Every Swift source file — path, lines, types, purpose |
+| [type-index](.claude/knowledge/type-index.md) | Reverse lookup — type name to file, isolation, conformers |
+| [task-router](.claude/knowledge/task-router.md) | Common tasks → files to change, agent to dispatch, skill to invoke |

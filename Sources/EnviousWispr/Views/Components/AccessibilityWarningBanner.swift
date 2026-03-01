@@ -9,7 +9,7 @@ struct AccessibilityWarningBanner: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
+            Image(systemName: "exclamationmark.shield.fill")
                 .foregroundStyle(.orange)
                 .imageScale(.medium)
 

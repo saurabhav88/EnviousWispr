@@ -63,6 +63,7 @@ struct ModelStatusBar: View {
             Circle()
                 .fill(dotColor)
                 .frame(width: 8, height: 8)
+                .accessibilityHidden(true)
 
             Text(modelName)
                 .font(.caption)

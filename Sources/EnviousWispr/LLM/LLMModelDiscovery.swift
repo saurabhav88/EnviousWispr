@@ -85,7 +85,7 @@ struct LLMModelDiscovery: Sendable {
         request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
         request.timeoutInterval = 15
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await LLMNetworkSession.shared.session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw LLMError.requestFailed("Invalid response")
         }
@@ -130,7 +130,7 @@ struct LLMModelDiscovery: Sendable {
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         request.timeoutInterval = 10
 
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
+        guard let (data, response) = try? await LLMNetworkSession.shared.session.data(for: request),
               let httpResponse = response as? HTTPURLResponse else { return false }
 
         if httpResponse.statusCode == 200 { return true }
@@ -154,7 +154,7 @@ struct LLMModelDiscovery: Sendable {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = 15
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await LLMNetworkSession.shared.session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw LLMError.requestFailed("Invalid response")
         }
@@ -197,7 +197,7 @@ struct LLMModelDiscovery: Sendable {
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         request.timeoutInterval = 10
 
-        guard let (_, response) = try? await URLSession.shared.data(for: request),
+        guard let (_, response) = try? await LLMNetworkSession.shared.session.data(for: request),
               let httpResponse = response as? HTTPURLResponse else { return false }
 
         return httpResponse.statusCode == 200

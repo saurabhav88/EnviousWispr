@@ -84,6 +84,7 @@ final class TranscriptStore {
     /// Delete a transcript by ID.
     func delete(id: UUID) throws {
         let url = directory.appendingPathComponent("\(id.uuidString).json")
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
         try FileManager.default.removeItem(at: url)
     }
 
@@ -94,8 +95,14 @@ final class TranscriptStore {
             at: directory,
             includingPropertiesForKeys: nil
         )
+        var firstError: Error?
         for file in files where file.pathExtension == "json" {
-            try FileManager.default.removeItem(at: file)
+            do {
+                try FileManager.default.removeItem(at: file)
+            } catch {
+                if firstError == nil { firstError = error }
+            }
         }
+        if let firstError { throw firstError }
     }
 }

@@ -130,6 +130,7 @@ final class HotkeyService {
     /// Re-register hotkeys after the recorder is done.
     func resume() {
         guard isEnabled, isSuspended else { return }
+        isModifierHeld = false
         registerToggleHotkey()
         registerPTTHotkey()
         installModifierMonitors()

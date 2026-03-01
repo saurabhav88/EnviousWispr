@@ -100,7 +100,7 @@ actor AppLogger {
         try? FileManager.default.moveItem(at: currentLogURL,
                                           to: dir.appendingPathComponent("app.1.log"))
 
-        let oldest = dir.appendingPathComponent("app.\(maxFileCount + 1).log")
+        let oldest = dir.appendingPathComponent("app.\(maxFileCount).log")
         try? FileManager.default.removeItem(at: oldest)
 
         openFileHandleIfNeeded()

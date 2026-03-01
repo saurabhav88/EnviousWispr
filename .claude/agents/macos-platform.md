@@ -8,7 +8,7 @@ description: macOS permissions, accessibility, menu bar, global hotkeys, paste s
 
 ## Domain
 
-Source dirs: `App/` (EnviousWisprApp — MenuBarExtra), `Services/` (PasteService, PermissionsService, HotkeyService), `Views/Onboarding/`, `Views/Settings/`, `Views/Components/`.
+Source dirs: `App/` (EnviousWisprApp — NSStatusItem via AppDelegate), `Services/` (PasteService, PermissionsService, HotkeyService), `Views/Onboarding/`, `Views/Settings/`, `Views/Components/`.
 
 ## Permissions (TCC)
 
@@ -20,7 +20,7 @@ Source dirs: `App/` (EnviousWisprApp — MenuBarExtra), `Services/` (PasteServic
 
 - **Carbon hotkeys**: HotkeyService uses `RegisterEventHotKey`/`UnregisterEventHotKey` with `InstallEventHandler(GetApplicationEventTarget(), ...)`. Supports press+release for PTT hold-to-record. No Accessibility needed. **CRITICAL**: Must register AFTER `NSApplication.run()` starts (from `applicationDidFinishLaunching` or later) — registration before the event loop returns `noErr` but events are silently never delivered.
 - **Paste**: CGEvent Cmd+V via `kVK_ANSI_V` posted to `.cghidEventTap` with `.combinedSessionState`. **Requires Accessibility permission** — without it, events post silently but are never delivered.
-- **Menu bar**: `MenuBarExtra` with dynamic icon. Window targeting by ID. Settings: `Selector(("showSettingsWindow:"))`. Activation: `NSApplication.shared.activate(ignoringOtherApps: true)`
+- **Menu bar**: `NSStatusItem` via `AppDelegate` with `NSMenu` + `NSMenuDelegate`. Dynamic icon via `MenuBarIconAnimator` (CG-rendered 4 states). Settings: `Selector(("showSettingsWindow:"))`. Activation: `NSApplication.shared.activate(ignoringOtherApps: true)`
 - **SwiftUI (macOS 14+)**: `@Observable`, `@Environment(AppState.self)`, `@Bindable var state`, `Form.formStyle(.grouped)`, native `Settings { }` scene, `NavigationSplitView`
 
 ## Skills → `.claude/skills/`

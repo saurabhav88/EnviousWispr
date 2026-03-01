@@ -134,7 +134,7 @@ final class AudioCaptureManager {
             ) else { return }
 
             var error: NSError?
-            var inputConsumed = false
+            nonisolated(unsafe) var inputConsumed = false
             audioConverter.convert(to: convertedBuffer, error: &error) { _, outStatus in
                 if inputConsumed {
                     outStatus.pointee = .noDataNow

@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private(set) var updaterController: SPUStandardUpdaterController!
     private let iconAnimator = MenuBarIconAnimator()
+    private weak var mainWindow: NSWindow?
 
     /// Shared app state — created here so it's available before any SwiftUI scene loads.
     let appState = AppState()
@@ -29,14 +30,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             forName: NSWindow.willCloseNotification,
             object: nil,
             queue: .main
-        ) { notification in
+        ) { [weak self] notification in
             guard let window = notification.object as? NSWindow else { return }
-            // Access title on main queue (observer queue is .main above).
-            // Match by title (set from Window scene declaration) and styled mask
-            // so status-bar/panel windows never trigger the policy reset.
             MainActor.assumeIsolated {
-                guard window.styleMask.contains(.titled),
-                      window.title == AppConstants.appName else { return }
+                guard let self else { return }
+                // Capture the main window reference on first titled window appearance.
+                if self.mainWindow == nil, window.styleMask.contains(.titled),
+                   window.title == AppConstants.appName {
+                    self.mainWindow = window
+                }
+                // Match by identity so status-bar/panel windows never trigger the reset.
+                guard window === self.mainWindow else { return }
                 NSApp.setActivationPolicy(.accessory)
             }
         }
@@ -203,7 +207,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 action: #selector(openPermissionsSettings),
                 keyEquivalent: ""
             )
-            warningItem.image = NSImage(systemSymbolName: "lock.open.fill", accessibilityDescription: "Accessibility required")
+            warningItem.image = NSImage(systemSymbolName: "exclamationmark.shield.fill", accessibilityDescription: "Accessibility required")
             warningItem.target = self
             menu.addItem(warningItem)
         }
@@ -272,7 +276,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openSettings() {
-        appState.pendingNavigationSection = .history
+        appState.pendingNavigationSection = .speechEngine
         showWindow()
     }
 
@@ -282,6 +286,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        appState.ollamaSetup.cleanup()
+        appState.hotkeyService.stop()
         LLMNetworkSession.shared.invalidate()
     }
 

@@ -8,15 +8,20 @@ description: Audio capture, VAD, ASR transcription, pipeline orchestration — m
 
 ## Domain
 
-Source dirs: `Audio/`, `ASR/`, `Pipeline/`, `Models/ASRResult.swift`, `Models/AppSettings.swift` (PipelineState, RecordingMode).
+Source dirs: `Audio/`, `ASR/`, `Pipeline/`, `Pipeline/Steps/`, `Models/ASRResult.swift`, `Models/AppSettings.swift` (PipelineState, RecordingMode), `Utilities/WERCalculator.swift`.
 
 ## Critical Patterns
 
-- **Audio format**: 16kHz mono Float32 — no exceptions (`AppConstants.sampleRate`, `AppConstants.audioChannels`)
+- **Audio format**: 16kHz mono Float32 — no exceptions (`AudioConstants.sampleRate`, `AudioConstants.channels`)
 - **FluidAudio collision**: Never qualify `FluidAudio.X` — use unqualified names (`AsrManager`, `VadManager`, `VadConfig`). Our `ASRResult` resolves via protocol return type
 - **VAD streaming**: 4096 samples (256ms). `VadStreamState` persists across chunks — `reset()` before new session
 - **Backend lifecycle**: One active at a time. Always `unload()` → swap → `prepare()`
 - **Imports**: `@preconcurrency import FluidAudio`, `@preconcurrency import WhisperKit`, `@preconcurrency import AVFoundation`
+- **TextProcessingStep protocol** (`Pipeline/TextProcessingStep.swift`): Chainable post-ASR processing. Implementations: `WordCorrectionStep`, `LLMPolishStep` in `Pipeline/Steps/`
+- **Streaming ASR**: `ParakeetBackend.supportsStreaming = true`, uses FluidAudio `StreamingAsrManager`. WhisperKit is batch-only
+- **SmoothedVADConfig**: Internal VAD in `SilenceDetector` with EMA smoothing, 3-phase state machine (idle/speech/hangover), confirmation chunks, prebuffering
+- **LLMNetworkSession**: Singleton `URLSession` for HTTP/2 connection reuse. `preWarmIfConfigured()` called on app lifecycle events
+- **WERCalculator** (`Utilities/WERCalculator.swift`): Word error rate calculation for streaming vs batch quality comparison
 
 ## Actor Map
 

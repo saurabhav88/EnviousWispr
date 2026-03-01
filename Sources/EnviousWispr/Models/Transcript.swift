@@ -10,7 +10,6 @@ struct Transcript: Codable, Identifiable, Sendable {
     let processingTime: TimeInterval
     let backendType: ASRBackendType
     let createdAt: Date
-    var isFavorite: Bool
     let llmProvider: String?
     let llmModel: String?
 
@@ -23,7 +22,6 @@ struct Transcript: Codable, Identifiable, Sendable {
         processingTime: TimeInterval = 0,
         backendType: ASRBackendType = .parakeet,
         createdAt: Date = Date(),
-        isFavorite: Bool = false,
         llmProvider: String? = nil,
         llmModel: String? = nil
     ) {
@@ -35,7 +33,6 @@ struct Transcript: Codable, Identifiable, Sendable {
         self.processingTime = processingTime
         self.backendType = backendType
         self.createdAt = createdAt
-        self.isFavorite = isFavorite
         self.llmProvider = llmProvider
         self.llmModel = llmModel
     }

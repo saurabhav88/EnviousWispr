@@ -85,9 +85,7 @@ struct OllamaConnector: TranscriptPolisher {
 
         return LLMResult(
             polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines)
-                .strippingLLMPreamble(),
-            provider: .ollama,
-            model: config.model
+                .strippingLLMPreamble()
         )
     }
 }

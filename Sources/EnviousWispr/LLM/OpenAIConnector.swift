@@ -25,7 +25,7 @@ struct OpenAIConnector: TranscriptPolisher {
         var body: [String: Any] = [
             "model": config.model,
             "messages": messages,
-            "max_tokens": config.maxTokens,
+            "max_completion_tokens": config.maxTokens,
             "temperature": config.temperature,
         ]
         if let reasoningEffort = config.reasoningEffort {
@@ -72,9 +72,7 @@ struct OpenAIConnector: TranscriptPolisher {
 
         return LLMResult(
             polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines)
-                .strippingLLMPreamble(),
-            provider: .openAI,
-            model: config.model
+                .strippingLLMPreamble()
         )
     }
 

@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 @preconcurrency import WhisperKit
 
 /// WhisperKit ASR backend — fallback for non-European languages.
@@ -61,16 +61,6 @@ actor WhisperKitBackend: ASRBackend {
         let text = results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespaces)
         let language = results.first?.language
 
-        let segments: [TranscriptSegment] = results.flatMap { result in
-            result.segments.map { seg in
-                TranscriptSegment(
-                    text: seg.text,
-                    startTime: seg.start,
-                    endTime: seg.end
-                )
-            }
-        }
-
         let duration: TimeInterval = if let lastSeg = results.last?.segments.last {
             TimeInterval(lastSeg.end)
         } else {
@@ -79,11 +69,9 @@ actor WhisperKitBackend: ASRBackend {
 
         return ASRResult(
             text: text,
-            segments: segments,
             language: language,
             duration: duration,
             processingTime: processingTime,
-            confidence: nil,
             backendType: .whisperKit
         )
     }

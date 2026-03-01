@@ -175,6 +175,11 @@ final class OllamaSetupService {
             process.arguments = ["serve"]
             process.standardOutput = FileHandle.nullDevice
             process.standardError = FileHandle.nullDevice
+            process.terminationHandler = { [weak self] _ in
+                Task { @MainActor in
+                    self?.ollamaProcess = nil
+                }
+            }
             do {
                 try process.run()
                 ollamaProcess = process
@@ -192,26 +197,33 @@ final class OllamaSetupService {
         }
 
         // Poll until the server is up (up to 10 seconds)
-        Task {
+        Task { [weak self] in
             let maxAttempts = 20
             for _ in 0..<maxAttempts {
                 try? await Task.sleep(nanoseconds: 500_000_000) // 500ms
+                guard let self else { return }
 
-                if await isServerRunning() {
-                    if await hasAnyModels() {
-                        setupState = .ready
+                if await self.isServerRunning() {
+                    if await self.hasAnyModels() {
+                        self.setupState = .ready
                         UserDefaults.standard.set(true, forKey: Self.lastKnownStateKey)
                     } else {
-                        setupState = .runningNoModels
+                        self.setupState = .runningNoModels
                     }
                     return
                 }
             }
 
-            setupState = .error(
+            self?.setupState = .error(
                 "Couldn't start Ollama automatically. Try running `ollama serve` in Terminal."
             )
         }
+    }
+
+    /// Terminate the managed Ollama server process on app quit.
+    func cleanup() {
+        ollamaProcess?.terminate()
+        ollamaProcess = nil
     }
 
     // MARK: - Model Pulling
@@ -287,6 +299,11 @@ final class OllamaSetupService {
             guard let lineData = line.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any]
             else { continue }
+
+            // Check for error response from Ollama
+            if let errorMessage = json["error"] as? String {
+                throw LLMError.requestFailed("Ollama pull error: \(errorMessage)")
+            }
 
             let status = json["status"] as? String ?? ""
 

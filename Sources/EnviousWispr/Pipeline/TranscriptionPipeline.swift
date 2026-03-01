@@ -270,9 +270,9 @@ final class TranscriptionPipeline {
 
             let asrText = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !asrText.isEmpty else {
-                state = .idle
+                state = .error("No speech detected — try speaking closer to the microphone")
                 Task { await AppLogger.shared.log(
-                    "ASR returned empty text, returning to idle silently",
+                    "ASR returned empty text, showing error to user",
                     level: .info, category: "Pipeline"
                 ) }
                 return
@@ -414,7 +414,6 @@ final class TranscriptionPipeline {
             processingTime: transcript.processingTime,
             backendType: transcript.backendType,
             createdAt: transcript.createdAt,
-            isFavorite: transcript.isFavorite,
             llmProvider: llmPolishStep.llmProvider.rawValue,
             llmModel: llmPolishStep.llmModel
         )

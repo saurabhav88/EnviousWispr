@@ -52,7 +52,6 @@ final class LLMPolishStep: TextProcessingStep {
         let (thinkingBudget, reasoningEffort) = resolveThinkingConfig()
 
         let config = LLMProviderConfig(
-            provider: llmProvider,
             model: llmModel,
             apiKeyKeychainId: keychainId,
             maxTokens: maxTokens,
@@ -69,10 +68,7 @@ final class LLMPolishStep: TextProcessingStep {
                 of: "${transcript}", with: context.text
             )
             resolvedInstructions = PolishInstructions(
-                systemPrompt: resolved,
-                removeFillerWords: polishInstructions.removeFillerWords,
-                fixGrammar: polishInstructions.fixGrammar,
-                fixPunctuation: polishInstructions.fixPunctuation
+                systemPrompt: resolved
             )
             userText = ""
         }

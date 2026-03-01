@@ -12,8 +12,9 @@ No exclusive files — scaffolds across the codebase following established patte
 
 ## Protocols
 
-- **`ASRBackend`** (`ASR/ASRProtocol.swift`): actor protocol. `prepare()`, `transcribe(audioURL:)`, `transcribe(audioSamples:)`, `transcribeStream()`, `unload()`. Properties: `isReady`, `supportsStreamingPartials`. Returns `ASRResult`, `AsyncStream<PartialTranscript>`
-- **`TranscriptPolisher`** (`LLM/LLMProtocol.swift`): `polish(text:instructions:config:)`, `validateCredentials(config:)`. Returns `LLMResult`
+- **`ASRBackend`** (`ASR/ASRProtocol.swift`): actor protocol. `prepare()`, `transcribe(audioURL:options:)`, `transcribe(audioSamples:options:)`, `unload()`. Properties: `isReady: Bool`, `supportsStreaming: Bool`. Streaming: `startStreaming(options: TranscriptionOptions)`, `feedAudio(_ buffer: AVAudioPCMBuffer)`, `finalizeStreaming() -> ASRResult`, `cancelStreaming()`. Returns `ASRResult`. Full signatures: `transcribe(audioURL: URL, options: TranscriptionOptions) async throws -> ASRResult`, `transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult`
+- **`TranscriptPolisher`** (`LLM/LLMProtocol.swift`): `polish(text:instructions:config:onToken:)`. Returns `LLMResult`. `onToken: (@Sendable (String) -> Void)?` callback enables SSE streaming; pass `nil` for batch mode
+- **`TextProcessingStep`** (`Pipeline/TextProcessingStep.swift`): `@MainActor` protocol. Chainable post-ASR text processing. Properties: `name: String`, `isEnabled: Bool`. Method: `func process(_ context: TextProcessingContext) async throws -> TextProcessingContext`. Implementations: `WordCorrectionStep`, `LLMPolishStep` in `Pipeline/Steps/`
 
 ## Scaffolding Checklist
 

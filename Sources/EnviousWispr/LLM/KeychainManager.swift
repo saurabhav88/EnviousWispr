@@ -1,15 +1,15 @@
-// TEMPORARY: File-based storage for dev convenience. Revert to Keychain before release.
-
 import Foundation
+@preconcurrency import Security
 
-/// Manages API key storage and retrieval via files in ~/.enviouswispr-keys/.
-/// Original implementation used macOS Keychain (SecItem* APIs). This file-based
-/// version avoids passcode prompts during development.
+/// Manages API key storage and retrieval.
+/// - DEBUG: File-based storage in ~/.enviouswispr-keys/ (avoids passcode prompts during development).
+/// - RELEASE: macOS Keychain via SecItem* APIs with kSecAttrAccessibleWhenUnlockedThisDeviceOnly.
 struct KeychainManager: Sendable {
     static let openAIKeyID = "openai-api-key"
     static let geminiKeyID = "gemini-api-key"
 
-    private let service = "com.enviouswispr.api-keys"
+#if DEBUG
+    // MARK: - File-based storage (DEBUG only)
 
     /// Directory where key files are stored.
     private var storageDirectory: URL {
@@ -29,7 +29,6 @@ struct KeychainManager: Sendable {
         if !fm.fileExists(atPath: dir.path) {
             do {
                 try fm.createDirectory(at: dir, withIntermediateDirectories: true)
-                // Restrict permissions to owner only (0700)
                 try fm.setAttributes(
                     [.posixPermissions: 0o700],
                     ofItemAtPath: dir.path
@@ -49,7 +48,6 @@ struct KeychainManager: Sendable {
         let url = fileURL(for: key)
         do {
             try data.write(to: url, options: [.atomic])
-            // Restrict file permissions to owner read/write only (0600)
             try FileManager.default.setAttributes(
                 [.posixPermissions: 0o600],
                 ofItemAtPath: url.path
@@ -86,7 +84,6 @@ struct KeychainManager: Sendable {
         let fm = FileManager.default
 
         guard fm.fileExists(atPath: url.path) else {
-            // Match Keychain behavior: not-found is not an error
             return
         }
 
@@ -96,6 +93,74 @@ struct KeychainManager: Sendable {
             throw KeychainError.deleteFailed(-1)
         }
     }
+
+#else
+    // MARK: - macOS Keychain (RELEASE)
+
+    private let service = "com.enviouswispr.api-keys"
+
+    /// Build the base query dictionary for a given key.
+    private func baseQuery(for key: String) -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+        ]
+    }
+
+    /// Store a value in the Keychain. Updates if the key already exists.
+    func store(key: String, value: String) throws {
+        guard let data = value.data(using: .utf8) else { return }
+
+        var query = baseQuery(for: key)
+        query[kSecValueData as String] = data
+        query[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+
+        let addStatus = SecItemAdd(query as CFDictionary, nil)
+
+        if addStatus == errSecDuplicateItem {
+            let updateAttributes: [String: Any] = [
+                kSecValueData as String: data,
+                kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            ]
+            let updateStatus = SecItemUpdate(
+                baseQuery(for: key) as CFDictionary,
+                updateAttributes as CFDictionary
+            )
+            guard updateStatus == errSecSuccess else {
+                throw KeychainError.storeFailed(updateStatus)
+            }
+        } else if addStatus != errSecSuccess {
+            throw KeychainError.storeFailed(addStatus)
+        }
+    }
+
+    /// Retrieve a value from the Keychain.
+    func retrieve(key: String) throws -> String {
+        var query = baseQuery(for: key)
+        query[kSecReturnData as String] = kCFBooleanTrue
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+        guard status == errSecSuccess,
+              let data = result as? Data,
+              let value = String(data: data, encoding: .utf8) else {
+            throw KeychainError.retrieveFailed(status)
+        }
+        return value
+    }
+
+    /// Delete a value from the Keychain.
+    func delete(key: String) throws {
+        let status = SecItemDelete(baseQuery(for: key) as CFDictionary)
+
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw KeychainError.deleteFailed(status)
+        }
+    }
+#endif
 }
 
 enum KeychainError: LocalizedError, Sendable {

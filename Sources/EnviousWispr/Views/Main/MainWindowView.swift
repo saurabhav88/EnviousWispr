@@ -1,11 +1,9 @@
 import SwiftUI
-import Combine
 
 /// Status view when no transcript is active — handles all pipeline states.
 struct StatusView: View {
     @Environment(AppState.self) private var appState
     @State private var elapsed: TimeInterval = 0
-    @State private var timerCancellable: AnyCancellable?
     @State private var recordingStart: Date?
 
     var body: some View {
@@ -56,6 +54,7 @@ struct StatusView: View {
                     VStack(spacing: 4) {
                         AudioLevelBar(level: appState.audioLevel)
                             .frame(width: 240, height: 6)
+                            .accessibilityHidden(true)
 
                         if appState.settings.vadAutoStop {
                             Text("VAD: Active")
@@ -104,9 +103,11 @@ struct StatusView: View {
                         .controlSize(.large)
                     Text("Transcribing...")
                         .font(.title2)
-                    Text("This may take a moment on first run while the model loads.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    if !appState.asrManager.isModelLoaded {
+                        Text("This may take a moment on first run while the model loads.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
             case .polishing:
@@ -152,33 +153,20 @@ struct StatusView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(.easeInOut(duration: 0.3), value: appState.pipelineState)
-        .onChange(of: appState.pipelineState) { _, newState in
-            if case .recording = newState {
-                startTimer()
-            } else {
-                stopTimer()
+        .task(id: appState.pipelineState == .recording) {
+            guard appState.pipelineState == .recording else {
+                recordingStart = nil
+                return
             }
-        }
-    }
-
-    private func startTimer() {
-        elapsed = 0
-        recordingStart = Date()
-        // Update every 1 second — display only shows mm:ss, not tenths.
-        // Audio level updates happen independently via AudioCaptureManager.
-        timerCancellable = Timer.publish(every: 1.0, on: .main, in: .common)
-            .autoconnect()
-            .sink { _ in
+            elapsed = 0
+            recordingStart = Date()
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
                 if let start = recordingStart {
                     elapsed = Date().timeIntervalSince(start)
                 }
             }
-    }
-
-    private func stopTimer() {
-        timerCancellable?.cancel()
-        timerCancellable = nil
-        recordingStart = nil
+        }
     }
 
 }
@@ -202,6 +190,7 @@ struct PulsingRingsView: View {
                     )
             }
         }
+        .accessibilityHidden(true)
         .onAppear { animate = true }
         .onDisappear { animate = false }
     }
@@ -221,6 +210,7 @@ struct WaveformView: View {
                     .animation(.easeOut(duration: 0.08), value: level)
             }
         }
+        .accessibilityHidden(true)
     }
 
     private var barColor: Color {

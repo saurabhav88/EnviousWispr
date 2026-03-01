@@ -68,7 +68,7 @@ actor SilenceDetector {
     /// Hangover chunks derived from silenceTimeout so the detector waits
     /// the full user-configured duration before auto-stopping.
     private var effectiveHangoverChunks: Int {
-        let chunkDurationSeconds = Double(Self.chunkSize) / 16000.0  // 0.256s
+        let chunkDurationSeconds = Double(Self.chunkSize) / AudioConstants.sampleRate  // 0.256s
         return max(3, Int(ceil(silenceTimeout / chunkDurationSeconds)))
     }
 

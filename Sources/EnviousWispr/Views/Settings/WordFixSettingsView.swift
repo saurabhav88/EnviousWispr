@@ -71,7 +71,6 @@ struct WordFixSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .padding()
     }
 
     private func addWord() {

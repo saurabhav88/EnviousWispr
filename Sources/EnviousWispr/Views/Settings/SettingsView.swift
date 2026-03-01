@@ -34,9 +34,6 @@ struct UnifiedWindowView: View {
             }
         }
         .task {
-            if !appState.permissions.hasMicrophonePermission {
-                _ = await appState.permissions.requestMicrophoneAccess()
-            }
             appState.loadTranscripts()
 
             if !appState.settings.hasCompletedOnboarding {

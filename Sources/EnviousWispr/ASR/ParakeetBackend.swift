@@ -38,22 +38,12 @@ actor ParakeetBackend: ASRBackend {
         let fluidResult = try await manager.transcribe(audioURL, source: .system)
         let elapsed = CFAbsoluteTimeGetCurrent() - startTime
 
-        let segments: [TranscriptSegment] = fluidResult.tokenTimings?.compactMap { timing in
-            TranscriptSegment(
-                text: timing.token,
-                startTime: Float(timing.startTime),
-                endTime: Float(timing.endTime)
-            )
-        } ?? []
-
         // Unqualified ASRResult resolves to our module's type (has backendType parameter)
         return ASRResult(
             text: fluidResult.text,
-            segments: segments,
             language: "en",
             duration: fluidResult.duration,
             processingTime: elapsed,
-            confidence: fluidResult.confidence,
             backendType: .parakeet
         )
     }
@@ -65,21 +55,11 @@ actor ParakeetBackend: ASRBackend {
         let fluidResult = try await manager.transcribe(audioSamples, source: .microphone)
         let elapsed = CFAbsoluteTimeGetCurrent() - startTime
 
-        let segments: [TranscriptSegment] = fluidResult.tokenTimings?.compactMap { timing in
-            TranscriptSegment(
-                text: timing.token,
-                startTime: Float(timing.startTime),
-                endTime: Float(timing.endTime)
-            )
-        } ?? []
-
         return ASRResult(
             text: fluidResult.text,
-            segments: segments,
             language: "en",
             duration: fluidResult.duration,
             processingTime: elapsed,
-            confidence: fluidResult.confidence,
             backendType: .parakeet
         )
     }
@@ -115,11 +95,9 @@ actor ParakeetBackend: ASRBackend {
 
         return ASRResult(
             text: text,
-            segments: [],
             language: "en",
             duration: totalElapsed,
             processingTime: finalizeElapsed,
-            confidence: nil,
             backendType: .parakeet
         )
     }

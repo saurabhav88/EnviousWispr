@@ -52,12 +52,6 @@ struct PermissionsSettingsView: View {
                     }
                 }
             }
-            .task {
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(TimingConstants.accessibilityPollIntervalSec))
-                    appState.permissions.refreshAccessibilityStatus()
-                }
-            }
         }
         .formStyle(.grouped)
     }

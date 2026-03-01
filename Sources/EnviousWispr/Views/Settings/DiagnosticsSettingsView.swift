@@ -9,7 +9,7 @@ struct DiagnosticsSettingsView: View {
         Form {
             Section("Debug Mode") {
                 Toggle("Enable debug mode", isOn: $state.settings.isDebugModeEnabled)
-                Text("Resets to off on next launch. Toggle with Cmd+Shift+D from anywhere.")
+                Text("Persists across relaunches. Toggle with Cmd+Shift+D from anywhere.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -146,6 +146,5 @@ struct DiagnosticsSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .padding()
     }
 }

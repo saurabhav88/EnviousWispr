@@ -7,6 +7,7 @@ struct EnviousWisprApp: App {
     var body: some Scene {
         Window("EnviousWispr", id: "main") {
             UnifiedWindowView()
+                .frame(minWidth: 560, minHeight: 400)
                 .environment(appDelegate.appState)
                 .background(ActionWirer(appDelegate: appDelegate))
         }

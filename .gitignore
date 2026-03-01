@@ -33,6 +33,9 @@ playwright-report/
 test-results/
 .playwright-mcp/
 
+# API keys (dev file-based storage)
+.enviouswispr-keys/
+
 # Environment
 .env
 .env.*

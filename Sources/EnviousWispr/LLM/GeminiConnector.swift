@@ -46,7 +46,7 @@ struct GeminiConnector: TranscriptPolisher {
         // prompt into systemPrompt and passes text as "". In that case we send a
         // minimal contents array; otherwise the transcript goes in contents.
         if text.isEmpty {
-            body["contents"] = [["parts": [["text": " "]]]]
+            body["contents"] = [["parts": [["text": "Polish the transcript per the system instructions."]]]]
         } else {
             body["contents"] = [["parts": [["text": text]]]]
         }
@@ -130,9 +130,7 @@ struct GeminiConnector: TranscriptPolisher {
 
         return LLMResult(
             polishedText: fullText.trimmingCharacters(in: .whitespacesAndNewlines)
-                .strippingLLMPreamble(),
-            provider: .gemini,
-            model: config.model
+                .strippingLLMPreamble()
         )
     }
 
@@ -178,9 +176,7 @@ struct GeminiConnector: TranscriptPolisher {
 
         return LLMResult(
             polishedText: responseText.trimmingCharacters(in: .whitespacesAndNewlines)
-                .strippingLLMPreamble(),
-            provider: .gemini,
-            model: config.model
+                .strippingLLMPreamble()
         )
     }
 

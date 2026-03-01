@@ -63,9 +63,7 @@ struct AppleIntelligenceConnector: TranscriptPolisher {
 
         return LLMResult(
             polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines)
-                .strippingLLMPreamble(),
-            provider: .appleIntelligence,
-            model: "apple-intelligence"
+                .strippingLLMPreamble()
         )
     }
 
@@ -88,9 +86,7 @@ struct AppleIntelligenceConnector: TranscriptPolisher {
 
         return LLMResult(
             polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines)
-                .strippingLLMPreamble(),
-            provider: .appleIntelligence,
-            model: "apple-intelligence"
+                .strippingLLMPreamble()
         )
     }
 #endif

@@ -15,19 +15,27 @@ struct TranscriptDetailView: View {
                     Label("Copy", systemImage: "doc.on.doc")
                 }
                 .controlSize(.small)
-                .keyboardShortcut("c", modifiers: [.command, .shift])
+                .help("Copy to clipboard")
 
                 Button {
-                    PasteService.copyToClipboard(transcript.displayText)
-                    NSApp.hide(nil)
-                    Task {
-                        try? await Task.sleep(for: .milliseconds(300))
-                        PasteService.simulatePaste()
+                    if appState.permissions.accessibilityGranted {
+                        PasteService.copyToClipboard(transcript.displayText)
+                        NSApp.hide(nil)
+                        Task {
+                            try? await Task.sleep(for: .milliseconds(TimingConstants.appHideBeforePasteDelayMs))
+                            PasteService.simulatePaste()
+                        }
+                    } else {
+                        appState.pendingNavigationSection = .permissions
                     }
                 } label: {
                     Label("Paste", systemImage: "arrow.right.doc.on.clipboard")
                 }
                 .controlSize(.small)
+                .disabled(!appState.permissions.accessibilityGranted)
+                .help(appState.permissions.accessibilityGranted
+                    ? "Paste into active app"
+                    : "Accessibility permission required for paste")
 
                 if transcript.polishedText == nil && appState.settings.llmProvider != .none {
                     Button {
@@ -37,13 +45,14 @@ struct TranscriptDetailView: View {
                     }
                     .controlSize(.small)
                     .disabled(appState.pipelineState == .polishing)
+                    .help("Polish with AI")
                 }
 
                 Spacer()
 
                 // Metadata
                 HStack(spacing: 8) {
-                    Text(transcript.backendType == .parakeet ? "Parakeet v3" : "WhisperKit")
+                    Text(transcript.backendType.displayName)
                         .font(.caption)
                         .foregroundStyle(.secondary)
 

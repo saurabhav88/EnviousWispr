@@ -7,11 +7,6 @@ import Foundation
 enum WERCalculator {
     struct Result: Sendable {
         let wer: Double
-        let substitutions: Int
-        let insertions: Int
-        let deletions: Int
-        let referenceWordCount: Int
-        let hypothesisWordCount: Int
     }
 
     /// Compute WER between reference and hypothesis text.
@@ -21,14 +16,7 @@ enum WERCalculator {
         let hypWords = hypothesis.lowercased().split(separator: " ").map(String.init)
 
         guard !refWords.isEmpty else {
-            return Result(
-                wer: hypWords.isEmpty ? 0.0 : Double(hypWords.count),
-                substitutions: 0,
-                insertions: hypWords.count,
-                deletions: 0,
-                referenceWordCount: 0,
-                hypothesisWordCount: hypWords.count
-            )
+            return Result(wer: hypWords.isEmpty ? 0.0 : Double(hypWords.count))
         }
 
         let n = refWords.count
@@ -54,31 +42,7 @@ enum WERCalculator {
             }
         }
 
-        // Backtrace to count S, I, D
-        var i = n, j = m
-        var subs = 0, ins = 0, dels = 0
-
-        while i > 0 || j > 0 {
-            if i > 0 && j > 0 && refWords[i - 1] == hypWords[j - 1] {
-                i -= 1; j -= 1
-            } else if i > 0 && j > 0 && dp[i][j] == dp[i - 1][j - 1] + 1 {
-                subs += 1; i -= 1; j -= 1
-            } else if j > 0 && dp[i][j] == dp[i][j - 1] + 1 {
-                ins += 1; j -= 1
-            } else {
-                dels += 1; i -= 1
-            }
-        }
-
-        let wer = Double(subs + ins + dels) / Double(n)
-
-        return Result(
-            wer: wer,
-            substitutions: subs,
-            insertions: ins,
-            deletions: dels,
-            referenceWordCount: n,
-            hypothesisWordCount: m
-        )
+        let wer = Double(dp[n][m]) / Double(n)
+        return Result(wer: wer)
     }
 }

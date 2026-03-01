@@ -113,7 +113,7 @@ struct PromptEditorView: View {
             .padding(.horizontal)
             .padding(.vertical, 8)
         }
-        .frame(width: 600, height: 480)
+        .frame(minWidth: 500, idealWidth: 600, maxWidth: 800, minHeight: 400, idealHeight: 480, maxHeight: 700)
         .onAppear {
             draftPrompt = appState.settings.customSystemPrompt
             // Detect which preset matches current prompt (if any)

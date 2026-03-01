@@ -55,7 +55,7 @@ Scopes: `asr`, `audio`, `ui`, `llm`, `pipeline`, `settings`, `hotkey`, `vad`, `b
 ## Settings Persistence
 
 - **Non-sensitive:** `UserDefaults.standard` with `didSet` pattern
-- **Sensitive (API keys):** `KeychainManager` (service: `"com.enviouswispr.api-keys"`)
+- **Sensitive (API keys):** `KeychainManager` (service: `"com.enviouswispr.api-keys"`). Uses `#if DEBUG` pattern: file-based storage in debug, real macOS Keychain in release
 
 ## View Patterns
 
@@ -124,3 +124,57 @@ Key conventions:
 - Status tracked in `TRACKER.md` (source of truth)
 - Implementation plans written before any code
 - Commit scope matches primary code area: `feat(hotkey):`, `feat(clipboard):`, etc.
+
+## LLM Connector Architecture
+
+- Each connector is a `struct` conforming to `TranscriptPolisher: Sendable`
+- Takes `KeychainManager` in init only if needing API keys
+- Supports batch and streaming via optional `onToken: (@Sendable (String) -> Void)?` callback
+- All handle HTTP errors with `LLMError` enum (`invalidAPIKey`, `requestFailed`, `rateLimited`, etc.)
+- Truncation detection: check `finish_reason == "length"` and log warnings
+- Extended thinking: `LLMProviderConfig` carries `thinkingBudget: Int?` (Gemini 2.5) and `reasoningEffort: String?` (OpenAI o-series). `LLMPolishStep.resolveThinkingConfig()` maps `useExtendedThinking` toggle to provider-specific params.
+
+## Text Processing Pipeline Steps
+
+- `@MainActor protocol TextProcessingStep` — chainable post-ASR processing
+- Properties: `name: String`, `isEnabled: Bool`
+- Method: `process(_ context: TextProcessingContext) async throws -> TextProcessingContext`
+- Implementations: `WordCorrectionStep` (fuzzy matching), `LLMPolishStep` (LLM polish)
+- Steps executed in order via `textProcessingSteps` array in `TranscriptionPipeline`
+- `isEnabled` gate prevents unnecessary processing
+
+## Logging Convention
+
+- Use `AppLogger.shared` actor — always `await` at call site
+- `log(_ message:, level:, category:)` — levels: `.verbose`, `.debug`, `.info`
+- Categories: `"Pipeline"`, `"LLM"`, `"Audio"`, `"PipelineTiming"`, etc.
+- Dual-sink: OSLog always emitted, file logging only when debug mode enabled
+- Never log API keys or secrets
+
+## Pipeline State Management
+
+- `PipelineState` enum: `idle`, `recording`, `transcribing`, `polishing`, `complete`, `error(String)`
+- State changes trigger `onStateChange` callback (drives `MenuBarIconAnimator.IconState`)
+- Helper computed properties: `isActive`, `statusText`
+- `isActive` gate prevents concurrent operations
+- `MenuBarIconAnimator` renders 4 icon states (idle/recording/processing/error) via Core Graphics
+
+## Streaming Patterns
+
+- Streaming ASR: `startStreaming()` → `feedAudio(_ buffer:)` → `finalizeStreaming()` (Parakeet only)
+- Streaming LLM: `onToken` callback enables SSE for Gemini; `nil` = batch mode
+- `LLMNetworkSession.shared` singleton for HTTP/2 connection reuse and TLS pre-warming
+- Audio buffer forwarding: `AudioCaptureManager.onBufferCaptured` callback → `ASRManager`
+
+## Model & Configuration Structs
+
+- Model structs conform to `Sendable`; most also conform to `Codable` (`TranscriptionOptions` is Sendable-only)
+- Static factory methods for common configs (e.g., `PolishInstructions.default`)
+- Key types: `LLMProviderConfig`, `PolishInstructions`, `LLMModelInfo`, `TranscriptionOptions`
+
+## Unified Window Architecture
+
+- Single `NavigationSplitView` with sidebar groups via `SettingsSection` enum
+- Detail pane switches via `@ViewBuilder detailContent`
+- `@Bindable var state = appState` for two-way bindings in views
+- Toolbar actions in primary/status placements

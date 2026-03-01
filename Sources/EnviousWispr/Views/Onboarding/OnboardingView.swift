@@ -87,7 +87,7 @@ struct OnboardingView: View {
             }
             .padding(24)
         }
-        .frame(width: 480, height: 380)
+        .frame(minWidth: 420, idealWidth: 480, maxWidth: 600, minHeight: 360, idealHeight: 400)
     }
 
     // MARK: - Steps
@@ -167,13 +167,6 @@ struct OnboardingView: View {
             }
         }
         .padding()
-        .task {
-            // Poll for Accessibility grant while this step is visible
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
-                appState.permissions.refreshAccessibilityStatus()
-            }
-        }
     }
 
     private var readyStep: some View {
@@ -246,5 +239,6 @@ struct IconCircle: View {
                 Circle()
                     .fill(tint.opacity(0.12))
             )
+            .accessibilityHidden(true)
     }
 }
