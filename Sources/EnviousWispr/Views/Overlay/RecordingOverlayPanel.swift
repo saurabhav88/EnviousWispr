@@ -144,10 +144,12 @@ struct SpectrumWheelIcon: View {
 
 // MARK: - RainbowLipsIcon
 
-/// Lip/spectrum bar brand icon with a gentle breathe animation.
+/// Lip/spectrum bar brand icon with per-bar bounce animation during recording.
+/// Each of the 18 bars (9 upper + 9 lower) independently stretches and compresses
+/// vertically at a staggered speed, creating an organic "speaking" motion.
 struct RainbowLipsIcon: View {
-    @State private var breathe: CGFloat = 1.0
     let size: CGFloat
+    @State private var animate = false
 
     private let upperBars: [(x: CGFloat, y: CGFloat, h: CGFloat, color: Color)] = [
         (4,  22.25,   5,  Color(red: 1.0,   green: 0.165, blue: 0.251)),
@@ -173,6 +175,15 @@ struct RainbowLipsIcon: View {
         (52, 30.25,   5,  Color(red: 0.541, green: 0.169, blue: 0.886))
     ]
 
+    // Minimum scaleY for each bar index 0-8 (edge bars move less, center more).
+    private let minScales: [CGFloat] = [0.65, 0.70, 0.62, 0.75, 0.60, 0.75, 0.62, 0.70, 0.65]
+
+    // Maximum scaleY for each bar index 0-8 (center bars have larger amplitude).
+    private let maxScales: [CGFloat] = [1.25, 1.35, 1.42, 1.38, 1.50, 1.38, 1.42, 1.35, 1.25]
+
+    // Animation duration (seconds) per bar — staggered so no two bars move in sync.
+    private let durations: [Double] = [0.50, 0.62, 0.45, 0.70, 0.55, 0.68, 0.47, 0.60, 0.52]
+
     var body: some View {
         let scale = size / 64.0
         ZStack {
@@ -181,22 +192,41 @@ struct RainbowLipsIcon: View {
                 RoundedRectangle(cornerRadius: 1.5 * scale)
                     .fill(bar.color)
                     .frame(width: 4.5 * scale, height: bar.h * scale)
+                    .scaleEffect(
+                        y: animate ? maxScales[i] : minScales[i],
+                        anchor: .center
+                    )
                     .position(x: (bar.x + 2.25) * scale, y: (bar.y + bar.h / 2) * scale)
+                    .animation(
+                        .easeInOut(duration: durations[i])
+                            .repeatForever(autoreverses: true),
+                        value: animate
+                    )
             }
             ForEach(0..<lowerBars.count, id: \.self) { i in
                 let bar = lowerBars[i]
                 RoundedRectangle(cornerRadius: 1.5 * scale)
                     .fill(bar.color)
                     .frame(width: 4.5 * scale, height: bar.h * scale)
+                    .scaleEffect(
+                        // Lower bars use the mirror index so they bounce in
+                        // counterpoint to the upper bars — outer bars move less.
+                        y: animate ? maxScales[8 - i] : minScales[8 - i],
+                        anchor: .center
+                    )
                     .position(x: (bar.x + 2.25) * scale, y: (bar.y + bar.h / 2) * scale)
+                    .animation(
+                        // Offset the duration slightly from the upper bar above it
+                        // so they don't perfectly cancel each other out.
+                        .easeInOut(duration: durations[8 - i] * 1.15)
+                            .repeatForever(autoreverses: true),
+                        value: animate
+                    )
             }
         }
         .frame(width: size, height: size)
-        .scaleEffect(breathe)
         .onAppear {
-            withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
-                breathe = 1.06
-            }
+            animate = true
         }
     }
 }
