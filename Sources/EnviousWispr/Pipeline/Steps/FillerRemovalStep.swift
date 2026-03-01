@@ -11,7 +11,7 @@ final class FillerRemovalStep: TextProcessingStep {
 
     // Compiled once at class load — pattern is a hardcoded literal, no runtime failure possible.
     static let fillerPattern = try! NSRegularExpression(
-        pattern: #"(?:^|\s*)\b(um|umm|uh|uhh|hmm|mm|mhm|mmm|ah|er)\b[.,!?…:;\u{2014}-]*(?=\s|$)"#,
+        pattern: #"(?:^|\s*)\b(um|umm|uh|uhh|hmm|mm|mhm|mmm|ah|er)\b[-.,!?…:;—]*(?=\s|$)"#,
         options: .caseInsensitive
     )
 

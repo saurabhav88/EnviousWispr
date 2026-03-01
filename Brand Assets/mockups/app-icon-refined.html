@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>EnviousWispr — Refined App Icon Mockup</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a1a2e;
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', system-ui, sans-serif;
+    min-height: 100vh;
+    padding: 40px;
+  }
+  h1 { text-align: center; font-size: 28px; font-weight: 300; margin-bottom: 8px; color: #fff; }
+  .subtitle { text-align: center; font-size: 14px; color: #888; margin-bottom: 40px; }
+  .comparison { display: flex; justify-content: center; gap: 60px; flex-wrap: wrap; margin-bottom: 60px; }
+  .icon-card { text-align: center; }
+  .icon-card h3 { font-size: 13px; font-weight: 500; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; }
+  .icon-card .label { font-size: 12px; color: #666; margin-top: 12px; }
+  .options-grid { display: flex; justify-content: center; gap: 50px; flex-wrap: wrap; margin-bottom: 40px; }
+  .option-card {
+    text-align: center; cursor: pointer; padding: 20px; border-radius: 16px;
+    border: 2px solid transparent; transition: all 0.3s ease;
+  }
+  .option-card:hover { border-color: rgba(255,255,255,0.15); background: rgba(255,255,255,0.03); }
+  .option-card.selected { border-color: #7c4dff; background: rgba(124,77,255,0.08); }
+  .option-card h3 { font-size: 15px; font-weight: 600; color: #fff; margin-bottom: 6px; }
+  .option-card p { font-size: 12px; color: #888; max-width: 200px; line-height: 1.4; }
+  .size-strip { display: flex; justify-content: center; align-items: flex-end; gap: 32px; margin: 40px 0; flex-wrap: wrap; }
+  .size-item { text-align: center; }
+  .size-item .label { font-size: 11px; color: #666; margin-top: 8px; }
+  .controls { display: flex; justify-content: center; gap: 24px; margin: 30px 0; flex-wrap: wrap; }
+  .control-group { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .control-group label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+  .control-group input[type="range"] { width: 140px; accent-color: #7c4dff; }
+  .control-group .value { font-size: 12px; color: #bbb; font-variant-numeric: tabular-nums; }
+  .reset-btn {
+    align-self: center; margin-top: 18px; padding: 6px 16px; border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.06);
+    color: #aaa; font-size: 12px; cursor: pointer; transition: all 0.2s ease;
+    font-family: inherit; letter-spacing: 0.3px;
+  }
+  .reset-btn:hover { border-color: #7c4dff; color: #ccc; background: rgba(124,77,255,0.1); }
+  .section-title { text-align: center; font-size: 18px; font-weight: 400; color: #ccc; margin: 50px 0 24px; }
+  .section-subtitle { text-align: center; font-size: 13px; color: #666; margin: -16px 0 24px; }
+  .dock-sim { display: flex; justify-content: center; margin: 40px 0; }
+  .dock-bar {
+    display: flex; align-items: flex-end; gap: 6px;
+    background: rgba(255,255,255,0.08); backdrop-filter: blur(20px);
+    padding: 6px 12px 4px; border-radius: 18px; border: 1px solid rgba(255,255,255,0.1);
+  }
+  .dock-icon {
+    width: 56px; height: 56px; border-radius: 12px; background: #333;
+    display: flex; align-items: center; justify-content: center; font-size: 28px; transition: transform 0.2s;
+  }
+  .dock-icon:hover { transform: scale(1.15) translateY(-6px); }
+  .dock-icon.safari { background: linear-gradient(135deg, #5ac8fa, #007aff); }
+  .dock-icon.music { background: linear-gradient(135deg, #fc5c7d, #e44d26); }
+  .dock-icon.finder { background: linear-gradient(135deg, #43a3f4, #4fc3f7); }
+  .dock-icon.terminal { background: #1d1d1f; border: 1px solid #333; }
+  .menu-bar-sim { display: flex; justify-content: center; margin: 30px 0; }
+  .menu-top {
+    display: flex; align-items: center; gap: 16px;
+    background: rgba(255,255,255,0.06); backdrop-filter: blur(20px);
+    padding: 4px 20px; border-radius: 6px; height: 28px; border: 1px solid rgba(255,255,255,0.08);
+  }
+  .menu-top .time { font-size: 13px; color: rgba(255,255,255,0.8); }
+  .menu-top .sys { font-size: 14px; color: rgba(255,255,255,0.5); }
+  .shape-toggle {
+    display: flex; justify-content: center; gap: 12px; margin: 0 0 32px;
+  }
+  .shape-btn {
+    padding: 8px 20px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.04); color: #aaa; font-size: 13px; cursor: pointer;
+    transition: all 0.25s ease; font-family: inherit;
+  }
+  .shape-btn:hover { border-color: rgba(255,255,255,0.25); color: #ccc; }
+  .shape-btn.active { border-color: #7c4dff; color: #fff; background: rgba(124,77,255,0.15); }
+</style>
+</head>
+<body>
+
+<h1>EnviousWispr — Refined App Icon</h1>
+<p class="subtitle">Using the menu bar greyscale lip shape as the canonical form</p>
+
+<div class="section-title">Current vs. Reference</div>
+<div class="comparison" id="comparisonRow"></div>
+
+<div class="section-title">Lip Shape</div>
+<div class="shape-toggle" id="shapeToggle">
+  <button class="shape-btn active" data-shape="menubar">Menu Bar Original</button>
+  <button class="shape-btn" data-shape="feminine">Feminine (Gemini-inspired)</button>
+</div>
+
+<div class="section-title">Color Treatment</div>
+<p class="section-subtitle">Pick a color treatment for the selected lip shape</p>
+<div class="options-grid" id="optionsGrid"></div>
+
+<div class="controls">
+  <div class="control-group">
+    <label>Vertical Position</label>
+    <input type="range" id="vOffsetSlider" min="-30" max="30" value="14" step="1">
+    <span class="value" id="vOffsetVal">14</span>
+  </div>
+  <div class="control-group">
+    <label>Horizontal Position</label>
+    <input type="range" id="hOffsetSlider" min="-30" max="30" value="0" step="1">
+    <span class="value" id="hOffsetVal">0</span>
+  </div>
+  <div class="control-group" id="bowDepthGroup" style="display:none;">
+    <label>Bow Depth</label>
+    <input type="range" id="bowDepthSlider" min="0" max="100" value="75" step="5">
+    <span class="value" id="bowDepthVal">75%</span>
+  </div>
+  <div class="control-group">
+    <label>Lip Gap</label>
+    <input type="range" id="gapSlider" min="4" max="20" value="10" step="1">
+    <span class="value" id="gapVal">10</span>
+  </div>
+  <div class="control-group">
+    <label>Bar Width</label>
+    <input type="range" id="barWidthSlider" min="8" max="20" value="14" step="1">
+    <span class="value" id="barWidthVal">14</span>
+  </div>
+  <div class="control-group">
+    <label>Glow Intensity</label>
+    <input type="range" id="glowSlider" min="0" max="12" value="4" step="1">
+    <span class="value" id="glowVal">4</span>
+  </div>
+  <div class="control-group">
+    <label>Particles</label>
+    <input type="range" id="particleSlider" min="0" max="1" value="0.6" step="0.1">
+    <span class="value" id="particleVal">0.6</span>
+  </div>
+  <button class="reset-btn" id="resetBtn">Reset to Defaults</button>
+  <button class="reset-btn" id="copyBtn">Copy Settings</button>
+  <button class="reset-btn" id="pasteBtn">Paste Settings</button>
+</div>
+
+<div class="section-title">Size Preview</div>
+<div class="size-strip" id="sizeStrip"></div>
+
+<div class="section-title">In the Dock</div>
+<div class="dock-sim">
+  <div class="dock-bar">
+    <div class="dock-icon finder">&#128269;</div>
+    <div class="dock-icon safari">&#129517;</div>
+    <div class="dock-icon" id="dockIcon"></div>
+    <div class="dock-icon music">&#127925;</div>
+    <div class="dock-icon terminal">&#9000;</div>
+  </div>
+</div>
+
+<div class="section-title">In the Menu Bar</div>
+<div class="menu-bar-sim">
+  <div class="menu-top">
+    <span class="sys">&#9168;</span>
+    <span id="menuBarIconSlot"></span>
+    <span class="sys">&#128267;</span>
+    <span class="sys">&#128246;</span>
+    <span class="time">Fri 2:34 PM</span>
+  </div>
+</div>
+
+<script>
+// Menu bar lip shape (canonical source of truth)
+const upperBarsRef = [
+  { x: 4, y: 14, h: 14 }, { x: 11, y: 11, h: 13 }, { x: 18, y: 8, h: 14 }, { x: 25, y: 12, h: 10 },
+  { x: 32, y: 14, h: 9 }, { x: 39, y: 11, h: 11 }, { x: 46, y: 7, h: 15 }, { x: 53, y: 10, h: 14 },
+];
+const lowerBarsRef = [
+  { x: 8, y: 32, h: 10 }, { x: 15, y: 30, h: 14 }, { x: 22, y: 29, h: 16 }, { x: 29, y: 28, h: 18 },
+  { x: 36, y: 29, h: 16 }, { x: 43, y: 30, h: 14 }, { x: 50, y: 32, h: 10 },
+];
+
+// Feminine lip shape — exact Gemini data: 9 bars each, shared wave offsets
+// x positions for 9 evenly-spaced bars in 64-unit space
+var femX = [4, 10, 16, 22, 28, 34, 40, 46, 52];
+// Heights scaled from Gemini (300px → 64-unit)
+var femUpperH = [5, 8, 12, 9, 6, 9, 12, 8, 5];
+var femLowerH = [5, 9, 12, 15, 17, 15, 12, 9, 5];
+// Shared cupid's bow offsets (positive = down, negative = up) in 64-unit
+var femOffsets = [3.0, 0.85, -1.28, 1.28, 3.41, 1.28, -1.28, 0.85, 3.0];
+var femUpperBaseY = 25; // bottom baseline for upper lip (bar bottom = baseY)
+var femLowerBaseY = 28; // top baseline for lower lip (bar top = baseY)
+
+function getFemBars(bowDepth) {
+  var upper = [], lower = [];
+  for (var i = 0; i < 9; i++) {
+    var off = femOffsets[i] * bowDepth;
+    upper.push({ x: femX[i], y: femUpperBaseY - femUpperH[i] + off, h: femUpperH[i] });
+    lower.push({ x: femX[i], y: femLowerBaseY + off, h: femLowerH[i] });
+  }
+  return { upper: upper, lower: lower };
+}
+
+// Exact Gemini neon colors
+var femRainbowUpper = ['#ff2a40','#ff8c00','#ffd700','#adff2f','#00fa9a','#00ffff','#1e90ff','#4169e1','#8a2be2'];
+var femRainbowLower = ['#4169e1','#1e90ff','#00ffff','#00fa9a','#adff2f','#ffd700','#ff8c00','#ff2a40','#8a2be2'];
+
+var activeShape = 'menubar';
+
+const rainbowUpper = ['#ff2d55','#ff9f0a','#ffd60a','#30d158','#34c759','#32d8be','#64d2ff','#0a84ff'];
+const rainbowLower = ['#5e5ce6','#bf5af2','#ff2d55','#ff9f0a','#ffd60a','#30d158','#34c759'];
+const rainbowAll = [
+  '#ff1744','#ff5722','#ff9100','#ffab00','#ffd600',
+  '#c6ff00','#76ff03','#00e676','#1de9b6','#00e5ff',
+  '#00b0ff','#2979ff','#651fff','#7c4dff','#d500f9',
+];
+
+function squirclePath(s) {
+  return 'M'+s/2+','+s*0.008+' C'+s*0.727+','+s*0.008+' '+s*0.82+','+s*0.008+' '+s*0.898+','+s*0.086+' C'+s*0.992+','+s*0.164+' '+s*0.992+','+s*0.273+' '+s*0.992+','+s/2+' C'+s*0.992+','+s*0.727+' '+s*0.992+','+s*0.82+' '+s*0.914+','+s*0.898+' C'+s*0.836+','+s*0.992+' '+s*0.727+','+s*0.992+' '+s/2+','+s*0.992+' C'+s*0.273+','+s*0.992+' '+s*0.18+','+s*0.992+' '+s*0.102+','+s*0.914+' C'+s*0.008+','+s*0.836+' '+s*0.008+','+s*0.727+' '+s*0.008+','+s/2+' C'+s*0.008+','+s*0.273+' '+s*0.008+','+s*0.18+' '+s*0.086+','+s*0.102+' C'+s*0.164+','+s*0.008+' '+s*0.273+','+s*0.008+' '+s/2+','+s*0.008+'Z';
+}
+
+function buildIconSVG(id, size, variant, opts) {
+  var gap = opts.gap || 10;
+  var barW = opts.barWidth || 14;
+  var glow = opts.glow || 0;
+  var particleOpacity = opts.particles || 0;
+  var vOffset = opts.vOffset || 0;
+  var hOffset = opts.hOffset || 0;
+  var ws = 256;
+  var scale = ws / 64;
+  var gapDelta = (gap - 10) * scale * 0.15;
+
+  var s = '<svg width="'+size+'" height="'+size+'" viewBox="0 0 '+ws+' '+ws+'" xmlns="http://www.w3.org/2000/svg">';
+  s += '<defs>';
+  s += '<clipPath id="sq-'+id+'"><path d="'+squirclePath(ws)+'"/></clipPath>';
+  if (glow > 0) s += '<filter id="glow-'+id+'"><feGaussianBlur stdDeviation="'+glow+'" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>';
+  s += '<filter id="pglow-'+id+'"><feGaussianBlur stdDeviation="2.5"/></filter>';
+  s += '<radialGradient id="bg-'+id+'" cx="50%" cy="50%"><stop offset="0%" stop-color="#1a0a2e"/><stop offset="100%" stop-color="#0d0d14"/></radialGradient>';
+  if (variant === 'C') {
+    s += '<radialGradient id="amb-'+id+'" cx="50%" cy="50%" r="60%"><stop offset="0%" stop-color="#7c4dff" stop-opacity="0.12"/><stop offset="100%" stop-color="#7c4dff" stop-opacity="0"/></radialGradient>';
+  }
+  s += '</defs>';
+  s += '<g clip-path="url(#sq-'+id+'">';
+  s += '<rect width="'+ws+'" height="'+ws+'" fill="#0d0d14"/>';
+  s += '<rect width="'+ws+'" height="'+ws+'" fill="url(#bg-'+id+')" opacity="0.3"/>';
+  if (variant === 'C') s += '<rect width="'+ws+'" height="'+ws+'" fill="url(#amb-'+id+')"/>';
+
+  s += '<g transform="translate('+hOffset+','+vOffset+')">';
+  var fa = glow > 0 ? ' filter="url(#glow-'+id+')"' : '';
+
+  // Select bar arrays based on active shape
+  var upBars, loBars, upColors, loColors;
+  if (activeShape === 'feminine') {
+    var bowDepth = (opts.bowDepth != null ? opts.bowDepth : 75) / 100;
+    var fem = getFemBars(bowDepth);
+    upBars = fem.upper; loBars = fem.lower;
+    upColors = femRainbowUpper; loColors = femRainbowLower;
+  } else {
+    upBars = upperBarsRef; loBars = lowerBarsRef;
+    upColors = rainbowUpper; loColors = rainbowLower;
+  }
+
+  // Upper lip
+  s += '<g'+fa+'>';
+  for (var i = 0; i < upBars.length; i++) {
+    var b = upBars[i];
+    var x = b.x * scale, y = b.y * scale - gapDelta, h = b.h * scale;
+    var rx = barW * 0.35;
+    var fill = 'rgba(255,255,255,0.65)';
+    var op = 0.65;
+    if (variant !== 'grey') {
+      op = 0.92;
+      if (variant === 'B') { fill = rainbowAll[Math.floor(i/(upBars.length-1)*(rainbowAll.length-1))]; }
+      else { fill = upColors[i]; }
+    }
+    s += '<rect x="'+x+'" y="'+y+'" width="'+barW+'" height="'+h+'" rx="'+rx+'" fill="'+fill+'" opacity="'+op+'"/>';
+  }
+  s += '</g>';
+
+  // Lower lip
+  s += '<g'+fa+'>';
+  for (var j = 0; j < loBars.length; j++) {
+    var b2 = loBars[j];
+    var x2 = b2.x * scale, y2 = b2.y * scale + gapDelta, h2 = b2.h * scale;
+    var rx2 = barW * 0.35;
+    var fill2 = 'rgba(255,255,255,0.65)';
+    var op2 = 0.65;
+    if (variant !== 'grey') {
+      op2 = 0.88;
+      if (variant === 'B') { fill2 = rainbowAll[Math.min(Math.floor(j/(loBars.length-1)*(rainbowAll.length-1))+8, rainbowAll.length-1)]; }
+      else { fill2 = loColors[j]; }
+    }
+    s += '<rect x="'+x2+'" y="'+y2+'" width="'+barW+'" height="'+h2+'" rx="'+rx2+'" fill="'+fill2+'" opacity="'+op2+'"/>';
+  }
+  s += '</g>';
+
+  // Particles
+  if (variant !== 'grey' && variant !== 'D' && particleOpacity > 0) {
+    var pts = [
+      [215,100,3.2,'#ff6b6b'],[225,90,2.5,'#ffd93d'],[230,110,2.2,'#6bcb77'],
+      [238,100,1.8,'#4d96ff'],[235,120,2.5,'#9b59b6'],[242,95,1.5,'#ff9100'],
+      [245,108,2.2,'#00e5ff'],[220,130,1.8,'#f50057'],[228,135,1.5,'#76ff03'],
+      [248,115,1.2,'#ffd600'],[218,85,1.6,'#d500f9'],[240,130,1.7,'#1de9b6'],
+    ];
+    s += '<g opacity="'+particleOpacity+'">';
+    for (var k = 0; k < pts.length; k++) {
+      s += '<circle cx="'+pts[k][0]+'" cy="'+pts[k][1]+'" r="'+pts[k][2]+'" fill="'+pts[k][3]+'" filter="url(#pglow-'+id+')"/>';
+    }
+    s += '</g>';
+  }
+
+  s += '</g>'; // close translate group
+  s += '</g></svg>';
+  return s;
+}
+
+function currentIconSVG(size) {
+  return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">'
+  +'<defs><clipPath id="sq-curr"><path d="'+squirclePath(256)+'"/></clipPath>'
+  +'<filter id="glow-curr"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>'
+  +'<filter id="pglow-curr"><feGaussianBlur stdDeviation="2"/></filter>'
+  +'<radialGradient id="bg-curr" cx="50%" cy="50%"><stop offset="0%" stop-color="#1a0a2e"/><stop offset="100%" stop-color="#0d0d14"/></radialGradient></defs>'
+  +'<g clip-path="url(#sq-curr)"><rect width="256" height="256" fill="#0d0d14"/><rect width="256" height="256" fill="url(#bg-curr)" opacity="0.3"/>'
+  +'<g filter="url(#glow-curr)">'
+  +'<rect x="48" y="88" width="5" height="30" rx="2" fill="#ff1744" opacity="0.9"/>'
+  +'<rect x="56" y="82" width="5" height="36" rx="2" fill="#ff5722" opacity="0.9"/>'
+  +'<rect x="64" y="76" width="5" height="42" rx="2" fill="#ff9100" opacity="0.9"/>'
+  +'<rect x="72" y="72" width="5" height="46" rx="2" fill="#ffab00" opacity="0.9"/>'
+  +'<rect x="80" y="68" width="5" height="50" rx="2" fill="#ffd600" opacity="0.9"/>'
+  +'<rect x="88" y="72" width="5" height="46" rx="2" fill="#c6ff00" opacity="0.9"/>'
+  +'<rect x="96" y="78" width="5" height="40" rx="2" fill="#76ff03" opacity="0.9"/>'
+  +'<rect x="104" y="84" width="5" height="34" rx="2" fill="#00e676" opacity="0.9"/>'
+  +'<rect x="112" y="90" width="5" height="28" rx="2" fill="#1de9b6" opacity="0.9"/>'
+  +'<rect x="120" y="93" width="5" height="25" rx="2" fill="#00e5ff" opacity="0.9"/>'
+  +'<rect x="128" y="93" width="5" height="25" rx="2" fill="#00b0ff" opacity="0.9"/>'
+  +'<rect x="136" y="90" width="5" height="28" rx="2" fill="#2979ff" opacity="0.9"/>'
+  +'<rect x="144" y="84" width="5" height="34" rx="2" fill="#651fff" opacity="0.9"/>'
+  +'<rect x="152" y="78" width="5" height="40" rx="2" fill="#7c4dff" opacity="0.9"/>'
+  +'<rect x="160" y="72" width="5" height="46" rx="2" fill="#d500f9" opacity="0.9"/>'
+  +'<rect x="168" y="68" width="5" height="50" rx="2" fill="#f50057" opacity="0.9"/>'
+  +'<rect x="176" y="72" width="5" height="46" rx="2" fill="#ff1744" opacity="0.9"/>'
+  +'<rect x="184" y="78" width="5" height="40" rx="2" fill="#ff5722" opacity="0.9"/>'
+  +'<rect x="192" y="86" width="5" height="32" rx="2" fill="#ff9100" opacity="0.9"/>'
+  +'<rect x="200" y="92" width="5" height="26" rx="2" fill="#ffab00" opacity="0.9"/></g>'
+  +'<g filter="url(#glow-curr)">'
+  +'<rect x="56" y="138" width="5" height="24" rx="2" fill="#ff5722" opacity="0.85"/>'
+  +'<rect x="64" y="138" width="5" height="30" rx="2" fill="#ff9100" opacity="0.85"/>'
+  +'<rect x="72" y="138" width="5" height="38" rx="2" fill="#ffab00" opacity="0.85"/>'
+  +'<rect x="80" y="138" width="5" height="44" rx="2" fill="#ffd600" opacity="0.85"/>'
+  +'<rect x="88" y="138" width="5" height="50" rx="2" fill="#c6ff00" opacity="0.85"/>'
+  +'<rect x="96" y="138" width="5" height="54" rx="2" fill="#76ff03" opacity="0.85"/>'
+  +'<rect x="104" y="138" width="5" height="56" rx="2" fill="#00e676" opacity="0.85"/>'
+  +'<rect x="112" y="138" width="5" height="56" rx="2" fill="#1de9b6" opacity="0.85"/>'
+  +'<rect x="120" y="138" width="5" height="54" rx="2" fill="#00e5ff" opacity="0.85"/>'
+  +'<rect x="128" y="138" width="5" height="54" rx="2" fill="#00b0ff" opacity="0.85"/>'
+  +'<rect x="136" y="138" width="5" height="56" rx="2" fill="#2979ff" opacity="0.85"/>'
+  +'<rect x="144" y="138" width="5" height="56" rx="2" fill="#651fff" opacity="0.85"/>'
+  +'<rect x="152" y="138" width="5" height="54" rx="2" fill="#7c4dff" opacity="0.85"/>'
+  +'<rect x="160" y="138" width="5" height="50" rx="2" fill="#d500f9" opacity="0.85"/>'
+  +'<rect x="168" y="138" width="5" height="44" rx="2" fill="#f50057" opacity="0.85"/>'
+  +'<rect x="176" y="138" width="5" height="38" rx="2" fill="#ff1744" opacity="0.85"/>'
+  +'<rect x="184" y="138" width="5" height="30" rx="2" fill="#ff5722" opacity="0.85"/>'
+  +'<rect x="192" y="138" width="5" height="22" rx="2" fill="#ff9100" opacity="0.85"/></g>'
+  +'<g opacity="0.8">'
+  +'<circle cx="210" cy="115" r="2.5" fill="#ff6b6b" filter="url(#pglow-curr)"/>'
+  +'<circle cx="220" cy="108" r="2" fill="#ffd93d" filter="url(#pglow-curr)"/>'
+  +'<circle cx="218" cy="125" r="1.8" fill="#6bcb77" filter="url(#pglow-curr)"/>'
+  +'<circle cx="228" cy="118" r="1.5" fill="#4d96ff" filter="url(#pglow-curr)"/>'
+  +'<circle cx="225" cy="130" r="2" fill="#9b59b6" filter="url(#pglow-curr)"/></g>'
+  +'</g></svg>';
+}
+
+function menubarRefSVG(size) {
+  return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" fill="none" style="background:#2d2d2d;border-radius:8px;">'
+  +'<g><rect x="4" y="14" width="4.5" height="14" rx="1.5" fill="rgba(255,255,255,0.65)"/>'
+  +'<rect x="11" y="11" width="4.5" height="13" rx="1.5" fill="rgba(255,255,255,0.65)"/>'
+  +'<rect x="18" y="8" width="4.5" height="14" rx="1.5" fill="rgba(255,255,255,0.65)"/>'
+  +'<rect x="25" y="12" width="4.5" height="10" rx="1.5" fill="rgba(255,255,255,0.65)"/>'
+  +'<rect x="32" y="14" width="4.5" height="9" rx="1.5" fill="rgba(255,255,255,0.65)"/>'
+  +'<rect x="39" y="11" width="4.5" height="11" rx="1.5" fill="rgba(255,255,255,0.65)"/>'
+  +'<rect x="46" y="7" width="4.5" height="15" rx="1.5" fill="rgba(255,255,255,0.65)"/>'
+  +'<rect x="53" y="10" width="4.5" height="14" rx="1.5" fill="rgba(255,255,255,0.65)"/></g>'
+  +'<g><rect x="8" y="32" width="4.5" height="10" rx="1.5" fill="rgba(255,255,255,0.65)"/>'
+  +'<rect x="15" y="30" width="4.5" height="14" rx="1.5" fill="rgba(255,255,255,0.65)"/>'
+  +'<rect x="22" y="29" width="4.5" height="16" rx="1.5" fill="rgba(255,255,255,0.65)"/>'
+  +'<rect x="29" y="28" width="4.5" height="18" rx="1.5" fill="rgba(255,255,255,0.65)"/>'
+  +'<rect x="36" y="29" width="4.5" height="16" rx="1.5" fill="rgba(255,255,255,0.65)"/>'
+  +'<rect x="43" y="30" width="4.5" height="14" rx="1.5" fill="rgba(255,255,255,0.65)"/>'
+  +'<rect x="50" y="32" width="4.5" height="10" rx="1.5" fill="rgba(255,255,255,0.65)"/></g></svg>';
+}
+
+function menubarSmallSVG() {
+  return '<svg width="18" height="18" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" fill="none">'
+  +'<g><rect x="4" y="14" width="4.5" height="14" rx="1.5" fill="rgba(255,255,255,0.65)"/>'
+  +'<rect x="11" y="11" width="4.5" height="13" rx="1.5" fill="rgba(255,255,255,0.65)"/>'
+  +'<rect x="18" y="8" width="4.5" height="14" rx="1.5" fill="rgba(255,255,255,0.65)"/>'
+  +'<rect x="25" y="12" width="4.5" height="10" rx="1.5" fill="rgba(255,255,255,0.65)"/>'
+  +'<rect x="32" y="14" width="4.5" height="9" rx="1.5" fill="rgba(255,255,255,0.65)"/>'
+  +'<rect x="39" y="11" width="4.5" height="11" rx="1.5" fill="rgba(255,255,255,0.65)"/>'
+  +'<rect x="46" y="7" width="4.5" height="15" rx="1.5" fill="rgba(255,255,255,0.65)"/>'
+  +'<rect x="53" y="10" width="4.5" height="14" rx="1.5" fill="rgba(255,255,255,0.65)"/></g>'
+  +'<g><rect x="8" y="32" width="4.5" height="10" rx="1.5" fill="rgba(255,255,255,0.65)"/>'
+  +'<rect x="15" y="30" width="4.5" height="14" rx="1.5" fill="rgba(255,255,255,0.65)"/>'
+  +'<rect x="22" y="29" width="4.5" height="16" rx="1.5" fill="rgba(255,255,255,0.65)"/>'
+  +'<rect x="29" y="28" width="4.5" height="18" rx="1.5" fill="rgba(255,255,255,0.65)"/>'
+  +'<rect x="36" y="29" width="4.5" height="16" rx="1.5" fill="rgba(255,255,255,0.65)"/>'
+  +'<rect x="43" y="30" width="4.5" height="14" rx="1.5" fill="rgba(255,255,255,0.65)"/>'
+  +'<rect x="50" y="32" width="4.5" height="10" rx="1.5" fill="rgba(255,255,255,0.65)"/></g></svg>';
+}
+
+var opts = { gap: 10, barWidth: 14, glow: 4, particles: 0.6, vOffset: 14, hOffset: 0, bowDepth: 75 };
+var selectedVariant = 'A';
+var idCounter = 0;
+
+function uid() { return 'i' + (idCounter++); }
+
+function renderAll() {
+  idCounter = 0;
+  var comp = document.getElementById('comparisonRow');
+  while (comp.firstChild) comp.removeChild(comp.firstChild);
+
+  // Current icon
+  var c1 = document.createElement('div'); c1.className = 'icon-card';
+  var h1 = document.createElement('h3'); h1.textContent = 'Current App Icon'; c1.appendChild(h1);
+  var d1 = document.createElement('div'); d1.insertAdjacentHTML('afterbegin', currentIconSVG(180)); c1.appendChild(d1);
+  var l1 = document.createElement('div'); l1.className = 'label'; l1.textContent = '20 upper / 18 lower bars \u2014 uniform arch'; c1.appendChild(l1);
+  comp.appendChild(c1);
+
+  // Menu bar ref
+  var c2 = document.createElement('div'); c2.className = 'icon-card';
+  var h2 = document.createElement('h3'); h2.textContent = 'Menu Bar (Greyscale)'; c2.appendChild(h2);
+  var d2 = document.createElement('div'); d2.insertAdjacentHTML('afterbegin', menubarRefSVG(180)); c2.appendChild(d2);
+  var l2 = document.createElement('div'); l2.className = 'label'; l2.textContent = "8 upper / 7 lower bars \u2014 asymmetric cupid's bow"; c2.appendChild(l2);
+  comp.appendChild(c2);
+
+  // Scaled grey
+  var c3 = document.createElement('div'); c3.className = 'icon-card';
+  var h3e = document.createElement('h3'); h3e.textContent = 'Menu Bar Shape @ Icon Size'; c3.appendChild(h3e);
+  var d3 = document.createElement('div'); var gid = uid(); d3.insertAdjacentHTML('afterbegin', buildIconSVG(gid, 180, 'grey', opts)); c3.appendChild(d3);
+  var l3 = document.createElement('div'); l3.className = 'label'; l3.textContent = 'Same shape, scaled to 256\u00d7256'; c3.appendChild(l3);
+  comp.appendChild(c3);
+
+  // Options
+  var grid = document.getElementById('optionsGrid');
+  while (grid.firstChild) grid.removeChild(grid.firstChild);
+
+  var variants = [
+    { id: 'A', name: 'Option A \u2014 Apple HIG Rainbow', desc: 'Menu bar lip shape with the same Apple HIG rainbow palette. Particles for energy.' },
+    { id: 'B', name: 'Option B \u2014 Full Spectrum', desc: 'Continuous spectrum gradient across all 15 bars. Smoother color flow.' },
+    { id: 'C', name: 'Option C \u2014 Ambient Glow', desc: 'Apple HIG rainbow + subtle purple ambient light behind lips. Premium feel.' },
+    { id: 'D', name: 'Option D \u2014 Clean, No Particles', desc: 'Rainbow lips on pure dark background. No particles. Maximum clarity at small sizes.' },
+  ];
+  variants.forEach(function(v) {
+    var card = document.createElement('div');
+    card.className = 'option-card' + (selectedVariant === v.id ? ' selected' : '');
+    card.addEventListener('click', function() { selectedVariant = v.id; renderAll(); });
+    var vid = uid();
+    var svgDiv = document.createElement('div');
+    svgDiv.insertAdjacentHTML('afterbegin', buildIconSVG(vid, 180, v.id, opts));
+    card.appendChild(svgDiv);
+    var nh = document.createElement('h3'); nh.textContent = v.name; card.appendChild(nh);
+    var np = document.createElement('p'); np.textContent = v.desc; card.appendChild(np);
+    grid.appendChild(card);
+  });
+
+  // Size strip
+  var strip = document.getElementById('sizeStrip');
+  while (strip.firstChild) strip.removeChild(strip.firstChild);
+  [256, 128, 64, 32, 16].forEach(function(sz) {
+    var item = document.createElement('div'); item.className = 'size-item';
+    var sid = uid();
+    var sd = document.createElement('div');
+    sd.insertAdjacentHTML('afterbegin', buildIconSVG(sid, sz, selectedVariant, opts));
+    item.appendChild(sd);
+    var sl = document.createElement('div'); sl.className = 'label'; sl.textContent = sz + 'px'; item.appendChild(sl);
+    strip.appendChild(item);
+  });
+
+  // Dock
+  var dockEl = document.getElementById('dockIcon');
+  while (dockEl.firstChild) dockEl.removeChild(dockEl.firstChild);
+  var did = uid();
+  dockEl.insertAdjacentHTML('afterbegin', buildIconSVG(did, 56, selectedVariant, opts));
+  dockEl.style.borderRadius = '12px';
+  dockEl.style.overflow = 'hidden';
+  dockEl.style.background = 'none';
+
+  // Menu bar
+  var mbSlot = document.getElementById('menuBarIconSlot');
+  while (mbSlot.firstChild) mbSlot.removeChild(mbSlot.firstChild);
+  mbSlot.insertAdjacentHTML('afterbegin', menubarSmallSVG());
+}
+
+var defaults = { gap: 10, barWidth: 14, glow: 4, particles: 0.6, vOffset: 14, hOffset: 0, bowDepth: 75 };
+
+document.getElementById('vOffsetSlider').addEventListener('input', function(e) { opts.vOffset = +e.target.value; document.getElementById('vOffsetVal').textContent = opts.vOffset; renderAll(); });
+document.getElementById('bowDepthSlider').addEventListener('input', function(e) { opts.bowDepth = +e.target.value; document.getElementById('bowDepthVal').textContent = opts.bowDepth + '%'; renderAll(); });
+document.getElementById('gapSlider').addEventListener('input', function(e) { opts.gap = +e.target.value; document.getElementById('gapVal').textContent = opts.gap; renderAll(); });
+document.getElementById('barWidthSlider').addEventListener('input', function(e) { opts.barWidth = +e.target.value; document.getElementById('barWidthVal').textContent = opts.barWidth; renderAll(); });
+document.getElementById('glowSlider').addEventListener('input', function(e) { opts.glow = +e.target.value; document.getElementById('glowVal').textContent = opts.glow; renderAll(); });
+document.getElementById('particleSlider').addEventListener('input', function(e) { opts.particles = +e.target.value; document.getElementById('particleVal').textContent = opts.particles; renderAll(); });
+document.getElementById('hOffsetSlider').addEventListener('input', function(e) { opts.hOffset = +e.target.value; document.getElementById('hOffsetVal').textContent = opts.hOffset; renderAll(); });
+
+// Copy Settings
+document.getElementById('copyBtn').addEventListener('click', function() {
+  var settings = {
+    shape: activeShape,
+    variant: selectedVariant,
+    vOffset: opts.vOffset,
+    gap: opts.gap,
+    barWidth: opts.barWidth,
+    glow: opts.glow,
+    particles: opts.particles,
+    hOffset: opts.hOffset
+  };
+  if (activeShape === 'feminine') {
+    settings.bowDepth = opts.bowDepth;
+  }
+  var json = JSON.stringify(settings);
+  navigator.clipboard.writeText(json).then(function() {
+    var btn = document.getElementById('copyBtn');
+    var orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(function() { btn.textContent = orig; }, 1200);
+  });
+});
+
+// Paste Settings
+document.getElementById('pasteBtn').addEventListener('click', function() {
+  navigator.clipboard.readText().then(function(text) {
+    try {
+      var s = JSON.parse(text);
+      if (s.shape) {
+        activeShape = s.shape;
+        var all = document.getElementById('shapeToggle').querySelectorAll('.shape-btn');
+        for (var i = 0; i < all.length; i++) {
+          all[i].className = all[i].getAttribute('data-shape') === activeShape ? 'shape-btn active' : 'shape-btn';
+        }
+        document.getElementById('bowDepthGroup').style.display = activeShape === 'feminine' ? '' : 'none';
+      }
+      if (s.variant) selectedVariant = s.variant;
+      if (s.vOffset != null) { opts.vOffset = s.vOffset; document.getElementById('vOffsetSlider').value = s.vOffset; document.getElementById('vOffsetVal').textContent = s.vOffset; }
+      if (s.hOffset != null) { opts.hOffset = s.hOffset; document.getElementById('hOffsetSlider').value = s.hOffset; document.getElementById('hOffsetVal').textContent = s.hOffset; }
+      if (s.bowDepth != null) { opts.bowDepth = s.bowDepth; document.getElementById('bowDepthSlider').value = s.bowDepth; document.getElementById('bowDepthVal').textContent = s.bowDepth + '%'; }
+      if (s.gap != null) { opts.gap = s.gap; document.getElementById('gapSlider').value = s.gap; document.getElementById('gapVal').textContent = s.gap; }
+      if (s.barWidth != null) { opts.barWidth = s.barWidth; document.getElementById('barWidthSlider').value = s.barWidth; document.getElementById('barWidthVal').textContent = s.barWidth; }
+      if (s.glow != null) { opts.glow = s.glow; document.getElementById('glowSlider').value = s.glow; document.getElementById('glowVal').textContent = s.glow; }
+      if (s.particles != null) { opts.particles = s.particles; document.getElementById('particleSlider').value = s.particles; document.getElementById('particleVal').textContent = s.particles; }
+      renderAll();
+    } catch(e) { /* ignore invalid JSON */ }
+  });
+});
+
+// Shape toggle
+var shapeBtns = document.getElementById('shapeToggle').querySelectorAll('.shape-btn');
+for (var si = 0; si < shapeBtns.length; si++) {
+  shapeBtns[si].addEventListener('click', function() {
+    activeShape = this.getAttribute('data-shape');
+    var all = document.getElementById('shapeToggle').querySelectorAll('.shape-btn');
+    for (var sj = 0; sj < all.length; sj++) all[sj].className = 'shape-btn';
+    this.className = 'shape-btn active';
+    document.getElementById('bowDepthGroup').style.display = activeShape === 'feminine' ? '' : 'none';
+    renderAll();
+  });
+}
+
+document.getElementById('resetBtn').addEventListener('click', function() {
+  opts.gap = defaults.gap;
+  opts.barWidth = defaults.barWidth;
+  opts.glow = defaults.glow;
+  opts.particles = defaults.particles;
+  opts.vOffset = defaults.vOffset;
+  opts.hOffset = defaults.hOffset;
+  opts.bowDepth = defaults.bowDepth;
+  document.getElementById('vOffsetSlider').value = defaults.vOffset;
+  document.getElementById('hOffsetSlider').value = defaults.hOffset;
+  document.getElementById('bowDepthSlider').value = defaults.bowDepth;
+  document.getElementById('bowDepthVal').textContent = defaults.bowDepth + '%';
+  document.getElementById('gapSlider').value = defaults.gap;
+  document.getElementById('barWidthSlider').value = defaults.barWidth;
+  document.getElementById('glowSlider').value = defaults.glow;
+  document.getElementById('particleSlider').value = defaults.particles;
+  document.getElementById('vOffsetVal').textContent = defaults.vOffset;
+  document.getElementById('hOffsetVal').textContent = defaults.hOffset;
+  document.getElementById('gapVal').textContent = defaults.gap;
+  document.getElementById('barWidthVal').textContent = defaults.barWidth;
+  document.getElementById('glowVal').textContent = defaults.glow;
+  document.getElementById('particleVal').textContent = defaults.particles;
+  renderAll();
+});
+
+renderAll();
+</script>
+</body>
+</html>
