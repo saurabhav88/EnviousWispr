@@ -19,6 +19,10 @@ final class AppState {
     let customWordStore = CustomWordStore()
     let ollamaSetup = OllamaSetupService()
 
+    // Audio device management
+    var availableInputDevices: [AudioInputDevice] = []
+    private var deviceMonitor: AudioDeviceMonitor?
+
     // Pipeline — initialized after sub-systems
     let pipeline: TranscriptionPipeline
 
@@ -87,6 +91,17 @@ final class AppState {
         pipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
         pipeline.wordCorrection.customWords = customWords
         pipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
+        audioCapture.noiseSuppressionEnabled = settings.noiseSuppression
+        audioCapture.selectedInputDeviceUID = settings.selectedInputDeviceUID
+        syncTranscriptionOptions()
+
+        // Enumerate input devices and monitor for changes
+        refreshInputDevices()
+        deviceMonitor = AudioDeviceMonitor { [weak self] in
+            Task { @MainActor in
+                self?.refreshInputDevices()
+            }
+        }
 
         // Initialize logger
         Task {
@@ -246,9 +261,28 @@ final class AppState {
             Task { await AppLogger.shared.setLogLevel(settings.debugLogLevel) }
         case .useExtendedThinking:
             pipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
+        case .whisperKitTemperature, .whisperKitCompressionThreshold,
+             .whisperKitLogProbThreshold, .whisperKitNoSpeechThreshold,
+             .whisperKitLanguageAutoDetect:
+            syncTranscriptionOptions()
+        case .selectedInputDeviceUID:
+            audioCapture.selectedInputDeviceUID = settings.selectedInputDeviceUID
+        case .noiseSuppression:
+            audioCapture.noiseSuppressionEnabled = settings.noiseSuppression
         case .hasCompletedOnboarding:
             break
         }
+    }
+
+    /// Build TranscriptionOptions from current settings.
+    private func syncTranscriptionOptions() {
+        var opts = TranscriptionOptions()
+        opts.language = settings.whisperKitLanguageAutoDetect ? nil : "en"
+        opts.temperature = settings.whisperKitTemperature
+        opts.compressionRatioThreshold = settings.whisperKitCompressionThreshold
+        opts.logProbThreshold = settings.whisperKitLogProbThreshold
+        opts.noSpeechThreshold = settings.whisperKitNoSpeechThreshold
+        pipeline.transcriptionOptions = opts
     }
 
     /// Re-register Carbon hotkeys after a config change.
@@ -519,5 +553,10 @@ final class AppState {
         if let data = try? JSONEncoder().encode(models) {
             UserDefaults.standard.set(data, forKey: key)
         }
+    }
+
+    /// Refresh the list of available audio input devices.
+    func refreshInputDevices() {
+        availableInputDevices = AudioDeviceEnumerator.allInputDevices()
     }
 }

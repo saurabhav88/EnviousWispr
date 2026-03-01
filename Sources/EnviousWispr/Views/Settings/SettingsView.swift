@@ -59,6 +59,8 @@ struct UnifiedWindowView: View {
             HistoryContentView()
         case .speechEngine:
             SpeechEngineSettingsView()
+        case .audio:
+            AudioSettingsView()
         case .shortcuts:
             ShortcutsSettingsView()
         case .aiPolish:

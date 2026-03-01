@@ -11,6 +11,7 @@ struct AIPolishSettingsView: View {
     @State private var showGeminiKey = false
     @State private var validationStatus: String = ""
     @State private var showPromptEditor = false
+    @State private var showManageModels = false
 
     var body: some View {
         @Bindable var state = appState
@@ -25,7 +26,12 @@ struct AIPolishSettingsView: View {
                     Text("Apple Intelligence").tag(LLMProvider.appleIntelligence)
                 }
 
-                if appState.settings.llmProvider != .none {
+                if appState.settings.llmProvider == .none {
+                    Text("Enable an AI provider to automatically clean up grammar, punctuation, and formatting in your transcriptions.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
                     HStack {
                         Picker("Model", selection: $state.settings.llmModel) {
                             if appState.discoveredModels.isEmpty && !appState.isDiscoveringModels {
@@ -52,7 +58,7 @@ struct AIPolishSettingsView: View {
                         if appState.isDiscoveringModels {
                             ProgressView()
                                 .controlSize(.small)
-                        } else if appState.settings.llmProvider != .none {
+                        } else {
                             Button {
                                 Task { await appState.validateKeyAndDiscoverModels(provider: appState.settings.llmProvider) }
                             } label: {
@@ -69,32 +75,35 @@ struct AIPolishSettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.orange)
                     }
-                }
 
-                if appState.settings.llmProvider != .none && appState.settings.llmProvider != .appleIntelligence {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("System Prompt")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text(appState.settings.customSystemPrompt.isEmpty
-                                 ? "Using built-in default"
-                                 : "Custom prompt active")
-                                .font(.caption2)
-                                .foregroundStyle(appState.settings.customSystemPrompt.isEmpty ? Color.secondary : Color.accentColor)
+                    if appState.settings.llmProvider == .appleIntelligence {
+                        Text("Apple Intelligence uses an optimized built-in prompt.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else if appState.settings.llmProvider == .ollama &&
+                              OllamaSetupService.isWeakModel(appState.settings.llmModel) {
+                        Text("This model uses an optimized built-in prompt for best results.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else if appState.settings.llmProvider != .appleIntelligence {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("System Prompt")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text(appState.settings.customSystemPrompt.isEmpty
+                                     ? "Using built-in default"
+                                     : "Custom prompt active")
+                                    .font(.caption2)
+                                    .foregroundStyle(appState.settings.customSystemPrompt.isEmpty ? Color.secondary : Color.accentColor)
+                            }
+                            Spacer()
+                            Button("Edit Prompt") {
+                                showPromptEditor = true
+                            }
+                            .controlSize(.small)
                         }
-                        Spacer()
-                        Button("Edit Prompt") {
-                            showPromptEditor = true
-                        }
-                        .controlSize(.small)
                     }
-                }
-
-                if appState.settings.llmProvider == .appleIntelligence {
-                    Text("Apple Intelligence uses an optimized built-in prompt.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -107,7 +116,7 @@ struct AIPolishSettingsView: View {
                 }
             }
 
-            if appState.settings.llmProvider == .openAI || appState.settings.llmProvider == .none {
+            if appState.settings.llmProvider == .openAI {
                 Section("OpenAI API Key") {
                     HStack {
                         if showOpenAIKey {
@@ -157,7 +166,7 @@ struct AIPolishSettingsView: View {
                 }
             }
 
-            if appState.settings.llmProvider == .gemini || appState.settings.llmProvider == .none {
+            if appState.settings.llmProvider == .gemini {
                 Section("Gemini API Key") {
                     HStack {
                         if showGeminiKey {
@@ -331,6 +340,10 @@ struct AIPolishSettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
+                        DisclosureGroup("Manage Models", isExpanded: $showManageModels) {
+                            ollamaModelCatalogView
+                        }
+
                     case .error(let message):
                         VStack(alignment: .leading, spacing: 8) {
                             Label("Something went wrong", systemImage: "exclamationmark.triangle.fill")
@@ -417,14 +430,15 @@ struct AIPolishSettingsView: View {
             }
         }
         .onChange(of: appState.settings.llmProvider) { _, newProvider in
+            // Always clear models and reset model selection to avoid stale state from previous provider
+            appState.discoveredModels = []
+            appState.keyValidationState = .idle
+            appState.settings.llmModel = ""
+
             switch newProvider {
             case .none:
-                appState.discoveredModels = []
-                appState.keyValidationState = .idle
                 appState.ollamaSetup.cancelPull()
             case .ollama:
-                appState.discoveredModels = []
-                appState.keyValidationState = .idle
                 Task {
                     await appState.ollamaSetup.detectState()
                     if case .ready = appState.ollamaSetup.setupState {
@@ -432,13 +446,9 @@ struct AIPolishSettingsView: View {
                     }
                 }
             case .appleIntelligence:
-                appState.discoveredModels = []
-                appState.keyValidationState = .idle
                 appState.ollamaSetup.cancelPull()
                 Task { await appState.validateKeyAndDiscoverModels(provider: newProvider) }
             default:
-                appState.discoveredModels = []
-                appState.keyValidationState = .idle
                 appState.ollamaSetup.cancelPull()
                 appState.loadCachedModels(for: newProvider)
                 Task { await appState.validateKeyAndDiscoverModels(provider: newProvider) }
@@ -447,6 +457,11 @@ struct AIPolishSettingsView: View {
         .onChange(of: appState.ollamaSetup.setupState) { _, newState in
             if case .ready = newState, appState.settings.llmProvider == .ollama {
                 Task { await appState.validateKeyAndDiscoverModels(provider: .ollama) }
+            }
+        }
+        .onChange(of: showManageModels) { _, isOpen in
+            if isOpen {
+                Task { await appState.ollamaSetup.refreshDownloadedModels() }
             }
         }
     }
@@ -506,6 +521,55 @@ struct AIPolishSettingsView: View {
                     .foregroundStyle(.red)
             }
         }
+    }
+
+    @ViewBuilder
+    private var ollamaModelCatalogView: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(OllamaSetupService.modelCatalog) { entry in
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: 4) {
+                            Text(entry.displayName)
+                                .font(.caption)
+                            Text("(\(entry.qualityTier.label))")
+                                .font(.caption)
+                                .foregroundStyle(entry.qualityTier == .best ? Color.accentColor : (entry.qualityTier == .medium ? Color.secondary : Color.orange))
+                        }
+                        Text("\(entry.parameterCount) · \(entry.downloadSize)")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+
+                    Spacer()
+
+                    if appState.ollamaSetup.downloadedModelNames.contains(entry.name) {
+                        Button {
+                            appState.ollamaSetup.deleteModel(name: entry.name)
+                        } label: {
+                            Text("Delete")
+                                .foregroundStyle(.red)
+                        }
+                        .controlSize(.small)
+                        .buttonStyle(.borderless)
+                    } else {
+                        Button {
+                            appState.ollamaSetup.pullModel(entry.name)
+                        } label: {
+                            Text("Download")
+                        }
+                        .controlSize(.small)
+                        .buttonStyle(.borderless)
+                    }
+                }
+                .padding(.vertical, 2)
+
+                if entry.id != OllamaSetupService.modelCatalog.last?.id {
+                    Divider()
+                }
+            }
+        }
+        .padding(.top, 4)
     }
 
     @ViewBuilder

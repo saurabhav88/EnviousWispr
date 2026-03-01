@@ -27,5 +27,13 @@ struct TranscriptionOptions: Sendable {
     var language: String?
     var enableTimestamps: Bool = true
 
+    // WhisperKit quality parameters
+    var temperature: Float = 0.0
+    var compressionRatioThreshold: Float = 2.4
+    var logProbThreshold: Float = -1.0
+    var noSpeechThreshold: Float = 0.6
+    var skipSpecialTokens: Bool = true
+    var usePrefixLanguageToken: Bool = true
+
     static let `default` = TranscriptionOptions()
 }

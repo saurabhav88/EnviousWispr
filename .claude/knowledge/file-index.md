@@ -101,13 +101,13 @@ Quick-reference for every source file. Use this to find files by domain or purpo
 |------|-------|-----------|---------|
 | `Views/Settings/SettingsView.swift` | 81 | `UnifiedWindowView` | Root NavigationSplitView, sidebar sections, onboarding sheet |
 | `Views/Settings/SettingsSection.swift` | 66 | `SettingsSection` (enum), `SettingsGroup` (enum) | 9 sections in 5 groups (APP/RECORD/PROCESS/OUTPUT/SYSTEM) |
-| `Views/Settings/SpeechEngineSettingsView.swift` | 88 | `SpeechEngineSettingsView` | Backend picker, VAD controls (auto-stop, sensitivity, energy gate) |
+| `Views/Settings/SpeechEngineSettingsView.swift` | 88 | `SpeechEngineSettingsView` | Backend picker, VAD controls (auto-stop, sensitivity, energy gate), post-processing (filler removal) |
 | `Views/Settings/AIPolishSettingsView.swift` | 512 | `AIPolishSettingsView` | LLM provider/model picker, API key entry, Ollama wizard, Apple Intelligence, extended thinking toggle |
 | `Views/Settings/ShortcutsSettingsView.swift` | 51 | `ShortcutsSettingsView` | Hotkey enable, transcribe/cancel shortcut recorders, PTT toggle |
 | `Views/Settings/PermissionsSettingsView.swift` | 64 | `PermissionsSettingsView` | Mic + Accessibility status, request buttons, 5s polling |
 | `Views/Settings/ClipboardSettingsView.swift` | 21 | `ClipboardSettingsView` | Auto-copy + restore-clipboard toggles |
 | `Views/Settings/MemorySettingsView.swift` | 32 | `MemorySettingsView` | ModelUnloadPolicy picker |
-| `Views/Settings/WordFixSettingsView.swift` | 88 | `WordFixSettingsView` | Word correction toggle, custom word list CRUD |
+| `Views/Settings/WordFixSettingsView.swift` | 88 | `WordFixSettingsView` | Custom words toggle, custom word list CRUD |
 | `Views/Settings/PromptEditorView.swift` | 138 | `PromptEditorView` | Modal prompt editor, presets, ${transcript} validation |
 | `Views/Settings/DiagnosticsSettingsView.swift` | 151 | `DiagnosticsSettingsView` | Debug mode, log management, ASR/pipeline benchmarks |
 

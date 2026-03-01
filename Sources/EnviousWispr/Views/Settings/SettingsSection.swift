@@ -4,6 +4,7 @@ import SwiftUI
 enum SettingsSection: String, CaseIterable, Identifiable {
     case history
     case speechEngine
+    case audio
     case shortcuts
     case aiPolish
     case wordCorrection
@@ -18,9 +19,10 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .history:        return "History"
         case .speechEngine:   return "Speech Engine"
+        case .audio:          return "Audio"
         case .shortcuts:      return "Shortcuts"
         case .aiPolish:       return "AI Polish"
-        case .wordCorrection: return "Word Correction"
+        case .wordCorrection: return "Custom Words"
         case .clipboard:      return "Clipboard"
         case .memory:         return "Memory"
         case .permissions:    return "Permissions"
@@ -32,6 +34,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .history:        return "clock.arrow.circlepath"
         case .speechEngine:   return "waveform"
+        case .audio:          return "speaker.wave.2"
         case .shortcuts:      return "keyboard"
         case .aiPolish:       return "sparkles"
         case .wordCorrection: return "textformat.abc"
@@ -45,7 +48,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     var group: SettingsGroup {
         switch self {
         case .history:                              return .app
-        case .speechEngine, .shortcuts:            return .record
+        case .speechEngine, .audio, .shortcuts:     return .record
         case .aiPolish, .wordCorrection:            return .process
         case .clipboard:                            return .output
         case .memory, .permissions, .diagnostics:  return .system

@@ -20,7 +20,7 @@ struct SpeechEngineSettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
-                    Text("Broader language support. No built-in punctuation.")
+                    Text("Broader language support with configurable quality controls.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -32,6 +32,39 @@ struct SpeechEngineSettingsView: View {
                         Text("Large v3 (Best Quality)").tag("large-v3")
                     }
                     Text("Larger models produce better transcription but require more download time and memory.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if appState.settings.selectedBackend == .whisperKit {
+                Section("WhisperKit Quality") {
+                    Toggle("Auto-detect language", isOn: $state.settings.whisperKitLanguageAutoDetect)
+                    Text("When enabled, WhisperKit detects the spoken language automatically instead of assuming English.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    HStack {
+                        Text("Temperature")
+                        Slider(value: $state.settings.whisperKitTemperature, in: 0.0...1.0, step: 0.1)
+                        Text(String(format: "%.1f", appState.settings.whisperKitTemperature))
+                            .font(.caption)
+                            .monospacedDigit()
+                            .frame(width: 30)
+                    }
+                    Text("Lower values (0.0 = greedy) are more deterministic. Higher values add variety but may reduce accuracy. Automatic retry at higher temperatures if quality filters reject the output.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    HStack {
+                        Text("No-speech threshold")
+                        Slider(value: $state.settings.whisperKitNoSpeechThreshold, in: 0.0...1.0, step: 0.05)
+                        Text(String(format: "%.2f", appState.settings.whisperKitNoSpeechThreshold))
+                            .font(.caption)
+                            .monospacedDigit()
+                            .frame(width: 35)
+                    }
+                    Text("Segments below this speech probability are suppressed. Lower values keep more audio; higher values filter silence more aggressively.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -72,6 +105,14 @@ struct SpeechEngineSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            Section("Post-Processing") {
+                Toggle("Remove filler words (um, uh, hmm...)", isOn: $state.settings.fillerRemovalEnabled)
+                Text("Strips common filler words from transcriptions. LLM polish handles this more thoroughly when enabled.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
         }
         .formStyle(.grouped)
     }

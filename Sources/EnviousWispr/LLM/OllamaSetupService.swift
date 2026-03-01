@@ -12,6 +12,32 @@ enum OllamaSetupState: Equatable {
     case error(String)
 }
 
+/// Quality tier for Ollama catalog models.
+enum OllamaQualityTier: String {
+    case best = "best"
+    case medium = "medium"
+    case worst = "worst"
+
+    var label: String {
+        switch self {
+        case .best: return "Best"
+        case .medium: return "Medium"
+        case .worst: return "Fast"
+        }
+    }
+}
+
+/// A model entry in the curated Ollama catalog.
+struct OllamaModelCatalogEntry: Identifiable, Sendable {
+    let name: String
+    let displayName: String
+    let parameterCount: String
+    let qualityTier: OllamaQualityTier
+    let downloadSize: String
+
+    var id: String { name }
+}
+
 /// Guides users through Ollama installation, server startup, and model pulling.
 @MainActor
 @Observable
@@ -22,6 +48,30 @@ final class OllamaSetupService {
     private(set) var setupState: OllamaSetupState = .detecting
     private(set) var pullProgress: Double = 0
     private(set) var pullStatusText: String = ""
+    private(set) var downloadedModelNames: Set<String> = []
+
+    // MARK: - Model Catalog
+
+    static let modelCatalog: [OllamaModelCatalogEntry] = [
+        OllamaModelCatalogEntry(name: "llama3.2", displayName: "Llama 3.2", parameterCount: "3B", qualityTier: .best, downloadSize: "~2 GB"),
+        OllamaModelCatalogEntry(name: "llama3.2:1b", displayName: "Llama 3.2 (1B)", parameterCount: "1B", qualityTier: .medium, downloadSize: "~800 MB"),
+        OllamaModelCatalogEntry(name: "mistral", displayName: "Mistral", parameterCount: "7B", qualityTier: .best, downloadSize: "~4 GB"),
+        OllamaModelCatalogEntry(name: "phi3", displayName: "Phi-3 Mini", parameterCount: "3.8B", qualityTier: .medium, downloadSize: "~2.3 GB"),
+        OllamaModelCatalogEntry(name: "gemma2:2b", displayName: "Gemma 2 (2B)", parameterCount: "2B", qualityTier: .medium, downloadSize: "~1.6 GB"),
+        OllamaModelCatalogEntry(name: "gemma2", displayName: "Gemma 2", parameterCount: "9B", qualityTier: .best, downloadSize: "~5.5 GB"),
+        OllamaModelCatalogEntry(name: "qwen2.5:3b", displayName: "Qwen 2.5 (3B)", parameterCount: "3B", qualityTier: .medium, downloadSize: "~1.9 GB"),
+        OllamaModelCatalogEntry(name: "qwen2.5:7b", displayName: "Qwen 2.5 (7B)", parameterCount: "7B", qualityTier: .best, downloadSize: "~4.4 GB"),
+        OllamaModelCatalogEntry(name: "tinyllama", displayName: "TinyLlama", parameterCount: "1.1B", qualityTier: .worst, downloadSize: "~638 MB"),
+        OllamaModelCatalogEntry(name: "phi-2", displayName: "Phi-2", parameterCount: "2.7B", qualityTier: .worst, downloadSize: "~1.7 GB"),
+    ]
+
+    // MARK: - Weak Model Detection
+
+    nonisolated static func isWeakModel(_ name: String) -> Bool {
+        let prefixes: [String] = ["tinyllama", "phi-2", "gemma2:2b"]
+        let lower = name.lowercased()
+        return prefixes.contains(where: { lower.hasPrefix($0) })
+    }
 
     // MARK: - Private
 
@@ -42,6 +92,7 @@ final class OllamaSetupService {
         if UserDefaults.standard.bool(forKey: Self.lastKnownStateKey) {
             if await isServerRunning() {
                 if await hasAnyModels() {
+                    await refreshDownloadedModels()
                     setupState = .ready
                     return
                 }
@@ -65,6 +116,7 @@ final class OllamaSetupService {
         }
 
         if await hasAnyModels() {
+            await refreshDownloadedModels()
             setupState = .ready
             UserDefaults.standard.set(true, forKey: Self.lastKnownStateKey)
         } else {
@@ -161,6 +213,53 @@ final class OllamaSetupService {
         }
     }
 
+    // MARK: - Model Management
+
+    /// Refresh the set of downloaded model names from GET /api/tags.
+    func refreshDownloadedModels() async {
+        guard let url = URL(string: "\(Self.baseURL)/api/tags") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 5
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            guard let models = json?["models"] as? [[String: Any]] else { return }
+            downloadedModelNames = Set(models.compactMap { $0["name"] as? String })
+        } catch {
+            // Silently ignore — server may not be running
+        }
+    }
+
+    /// Delete a model by name via DELETE /api/delete.
+    func deleteModel(name: String) {
+        Task {
+            guard let url = URL(string: "\(Self.baseURL)/api/delete") else { return }
+            let body: [String: Any] = ["model": name]
+            var request = URLRequest(url: url)
+            request.httpMethod = "DELETE"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+            request.timeoutInterval = 30
+
+            do {
+                let (_, response) = try await URLSession.shared.data(for: request)
+                if let http = response as? HTTPURLResponse, http.statusCode == 200 {
+                    downloadedModelNames.remove(name)
+                    // If current model was deleted, update setup state
+                    if downloadedModelNames.isEmpty {
+                        setupState = .runningNoModels
+                        UserDefaults.standard.set(false, forKey: Self.lastKnownStateKey)
+                    }
+                }
+            } catch {
+                // Silently ignore delete errors — user can try again
+            }
+        }
+    }
+
     // MARK: - Server Lifecycle
 
     /// Start the Ollama server, preferring the .app bundle, falling back to the CLI binary.
@@ -205,6 +304,7 @@ final class OllamaSetupService {
 
                 if await self.isServerRunning() {
                     if await self.hasAnyModels() {
+                        await self.refreshDownloadedModels()
                         self.setupState = .ready
                         UserDefaults.standard.set(true, forKey: Self.lastKnownStateKey)
                     } else {
@@ -242,6 +342,7 @@ final class OllamaSetupService {
         pullTask = Task {
             do {
                 try await performStreamingPull(modelName: modelName)
+                await refreshDownloadedModels()
                 setupState = .ready
                 UserDefaults.standard.set(true, forKey: Self.lastKnownStateKey)
             } catch is CancellationError {

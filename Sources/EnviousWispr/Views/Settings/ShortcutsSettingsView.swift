@@ -8,42 +8,39 @@ struct ShortcutsSettingsView: View {
         @Bindable var state = appState
 
         Form {
-            Section("Global Hotkey") {
-                Toggle("Enable global hotkey", isOn: $state.settings.hotkeyEnabled)
-            }
+            Section("Transcribe Shortcut") {
+                HotkeyRecorderView(
+                    keyCode: $state.settings.toggleKeyCode,
+                    modifiers: $state.settings.toggleModifiers,
+                    defaultKeyCode: 49,  // Space
+                    defaultModifiers: .control,
+                    label: "Shortcut"
+                )
 
-            if appState.settings.hotkeyEnabled {
-                Section("Transcribe Shortcut") {
-                    HotkeyRecorderView(
-                        keyCode: $state.settings.toggleKeyCode,
-                        modifiers: $state.settings.toggleModifiers,
-                        defaultKeyCode: 49,  // Space
-                        defaultModifiers: .control,
-                        label: "Shortcut"
-                    )
+                Toggle(
+                    appState.settings.isPushToTalk ? "Push to Talk" : "Toggle",
+                    isOn: $state.settings.isPushToTalk
+                )
 
-                    Toggle("Push to Talk", isOn: $state.settings.isPushToTalk)
+                Text(appState.settings.isPushToTalk
+                     ? "Hold the hotkey to record, release to stop."
+                     : "Press the hotkey to start recording, press again to stop.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
-                    Text(appState.settings.isPushToTalk
-                         ? "Hold the shortcut to record, release to stop and transcribe."
-                         : "Press the shortcut to start recording, press again to stop and transcribe.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                Divider()
 
-                    Divider()
+                HotkeyRecorderView(
+                    keyCode: $state.settings.cancelKeyCode,
+                    modifiers: $state.settings.cancelModifiers,
+                    defaultKeyCode: 53,  // Escape
+                    defaultModifiers: [],
+                    label: "Cancel recording"
+                )
 
-                    HotkeyRecorderView(
-                        keyCode: $state.settings.cancelKeyCode,
-                        modifiers: $state.settings.cancelModifiers,
-                        defaultKeyCode: 53,  // Escape
-                        defaultModifiers: [],
-                        label: "Cancel recording"
-                    )
-
-                    Text("Press this to discard the current recording and return to idle.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text("Press this to discard the current recording and return to idle.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

@@ -27,6 +27,7 @@ final class TranscriptionPipeline {
     var vadEnergyGate: Bool = false
     var modelUnloadPolicy: ModelUnloadPolicy = .never
     var restoreClipboardAfterPaste: Bool = false
+    var transcriptionOptions: TranscriptionOptions = .default
     var lastPolishError: String?
 
     // Text processing steps
@@ -113,7 +114,7 @@ final class TranscriptionPipeline {
         let supportsStreaming = await asrManager.activeBackendSupportsStreaming
         if supportsStreaming {
             do {
-                try await asrManager.startStreaming()
+                try await asrManager.startStreaming(options: transcriptionOptions)
                 streamingASRActive = true
 
                 // Wire audio buffer forwarding: each converted buffer goes to streaming ASR
@@ -263,10 +264,10 @@ final class TranscriptionPipeline {
                         "Streaming ASR finalize failed, falling back to batch: \(error.localizedDescription)",
                         level: .info, category: "Pipeline"
                     ) }
-                    result = try await asrManager.transcribe(audioSamples: samples)
+                    result = try await asrManager.transcribe(audioSamples: samples, options: transcriptionOptions)
                 }
             } else {
-                result = try await asrManager.transcribe(audioSamples: samples)
+                result = try await asrManager.transcribe(audioSamples: samples, options: transcriptionOptions)
             }
 
             let asrEnd = CFAbsoluteTimeGetCurrent()

@@ -5,6 +5,9 @@ import Foundation
 struct OllamaConnector: TranscriptPolisher {
     private let baseURL: String
 
+    /// Simplified prompt for weak/small models that struggle with complex instructions.
+    private static let weakModelSystemPrompt = "Fix grammar and punctuation. Return only the corrected text."
+
     init(baseURL: String = "http://localhost:11434") {
         self.baseURL = baseURL
     }
@@ -20,8 +23,13 @@ struct OllamaConnector: TranscriptPolisher {
             throw LLMError.requestFailed("Invalid Ollama URL: \(endpointURL)")
         }
 
+        // Use a simplified prompt for weak/small models; full prompt for capable models.
+        let systemPrompt = OllamaSetupService.isWeakModel(config.model)
+            ? Self.weakModelSystemPrompt
+            : instructions.systemPrompt
+
         var messages: [[String: String]] = [
-            ["role": "system", "content": instructions.systemPrompt],
+            ["role": "system", "content": systemPrompt],
         ]
         if !text.isEmpty {
             messages.append(["role": "user", "content": text])
