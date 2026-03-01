@@ -42,38 +42,6 @@ enum PipelineState: Equatable, Sendable {
         }
     }
 
-    var menuBarIconName: String {
-        switch self {
-        case .idle, .complete, .error:
-            return "mic"
-        case .recording, .transcribing, .polishing:
-            return "mic.fill"
-        }
-    }
-
-    /// Returns the custom menu bar image name and whether it should be a template.
-    /// Template images adapt to the menu bar appearance (dark/light mode).
-    /// Non-template images show their original colors.
-    var menuBarImageInfo: (name: String, isTemplate: Bool) {
-        switch self {
-        case .idle, .complete, .error:
-            return ("menubar-idle", true)
-        case .recording:
-            return ("menubar-recording", false)
-        case .transcribing, .polishing:
-            return ("menubar-processing", false)
-        }
-    }
-
-    /// Whether the menu bar icon should pulse (processing states).
-    var shouldPulseIcon: Bool {
-        switch self {
-        case .transcribing, .polishing:
-            return true
-        default:
-            return false
-        }
-    }
 }
 
 /// Policy controlling when idle ASR models are unloaded from memory.

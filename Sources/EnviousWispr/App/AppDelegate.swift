@@ -11,8 +11,7 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private(set) var updaterController: SPUStandardUpdaterController!
-    private var pulseTimer: Timer?
-    private var pulsePhase: Bool = false
+    private let iconAnimator = MenuBarIconAnimator()
 
     /// Shared app state — created here so it's available before any SwiftUI scene loads.
     let appState = AppState()
@@ -50,8 +49,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         setupStatusItem()
 
-        // Update menu bar icon whenever pipeline state changes
+        // Update menu bar icon whenever pipeline state or accessibility changes
         appState.onPipelineStateChange = { [weak self] _ in
+            self?.updateIcon()
+        }
+        appState.onAccessibilityChange = { [weak self] in
             self?.updateIcon()
         }
 
@@ -61,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Check Accessibility permission on launch (query only — never auto-prompt).
         appState.refreshAccessibilityOnLaunch()
+        updateIcon() // Reflect accessibility warning state in menu bar icon
 
         // Begin smart polling if Accessibility is not yet granted.
         appState.startAccessibilityMonitoring()
@@ -83,7 +86,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         guard let button = statusItem?.button else { return }
-        button.image = loadMenuBarImage(named: "menubar-idle", isTemplate: true)
+
+        let idleImage = loadMenuBarImage(named: "menubar-idle", isTemplate: true)
+        button.image = idleImage
+        iconAnimator.configure(button: button, idleImage: idleImage)
+        iconAnimator.audioLevelProvider = { [weak self] in self?.appState.audioCapture.audioLevel ?? 0 }
 
         let menu = NSMenu()
         menu.delegate = self
@@ -227,44 +234,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Update the status item icon based on pipeline state.
     func updateIcon() {
         let state = appState.pipelineState
-        // Show SF Symbol mic.slash when accessibility is missing and the app is idle,
-        // to signal that paste will not work until the user grants permission.
-        if state == .idle && appState.permissions.shouldShowAccessibilityWarning {
-            let sfImage = NSImage(systemSymbolName: "mic.slash", accessibilityDescription: "EnviousWispr — Accessibility required")
-            statusItem?.button?.image = sfImage
+        let needsAccessWarning = state == .idle && appState.permissions.shouldShowAccessibilityWarning
+
+        if needsAccessWarning {
+            iconAnimator.transition(to: .error)
+        } else if case .error = state {
+            iconAnimator.transition(to: .error)
+        } else if state == .recording {
+            iconAnimator.transition(to: .recording)
+        } else if state == .transcribing || state == .polishing {
+            iconAnimator.transition(to: .processing)
         } else {
-            let (imageName, isTemplate) = state.menuBarImageInfo
-            statusItem?.button?.image = loadMenuBarImage(named: imageName, isTemplate: isTemplate)
+            iconAnimator.transition(to: .idle)
         }
-        statusItem?.button?.alphaValue = 1.0
-
-        if state.shouldPulseIcon {
-            startPulse()
-        } else {
-            stopPulse()
-        }
-    }
-
-    private func startPulse() {
-        guard pulseTimer == nil else { return }
-        pulsePhase = false
-        pulseTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self, let button = self.statusItem?.button else { return }
-                self.pulsePhase.toggle()
-                NSAnimationContext.runAnimationGroup { ctx in
-                    ctx.duration = 0.5
-                    button.animator().alphaValue = self.pulsePhase ? 0.3 : 1.0
-                }
-            }
-        }
-    }
-
-    private func stopPulse() {
-        pulseTimer?.invalidate()
-        pulseTimer = nil
-        pulsePhase = false
-        statusItem?.button?.alphaValue = 1.0
     }
 
     @objc private func toggleRecording() {
@@ -290,7 +272,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openSettings() {
-        appState.pendingNavigationSection = .speechEngine
+        appState.pendingNavigationSection = .history
         showWindow()
     }
 

@@ -25,6 +25,9 @@ final class AppState {
     /// Called when pipeline state changes — set by AppDelegate for icon updates.
     var onPipelineStateChange: ((PipelineState) -> Void)?
 
+    /// Called when accessibility permission status changes — set by AppDelegate for icon updates.
+    var onAccessibilityChange: (() -> Void)?
+
     // Accessibility monitoring
     private var accessibilityMonitorTask: Task<Void, Never>?
 
@@ -347,6 +350,7 @@ final class AppState {
                     // Permission granted — nil out so restartAccessibilityMonitoringIfNeeded
                     // can detect the task is done and restart if permission is later revoked.
                     self.accessibilityMonitorTask = nil
+                    self.onAccessibilityChange?()
                     return
                 }
             }
