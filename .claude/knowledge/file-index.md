@@ -2,7 +2,7 @@
 
 Quick-reference for every source file. Use this to find files by domain or purpose.
 
-**61 Swift files, ~9,293 lines** in `Sources/EnviousWispr/`
+**61 Swift files, ~9,266 lines** in `Sources/EnviousWispr/`
 
 ## App (4 files, ~1,121 lines)
 

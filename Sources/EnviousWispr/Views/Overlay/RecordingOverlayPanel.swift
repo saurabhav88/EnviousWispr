@@ -148,12 +148,20 @@ struct SpectrumWheelIcon: View {
 
 // MARK: - RainbowLipsIcon
 
-/// Lip/spectrum bar brand icon with per-bar bounce animation during recording.
-/// Each of the 18 bars (9 upper + 9 lower) independently stretches and compresses
-/// vertically at a staggered speed, creating an organic "speaking" motion.
+/// Lip/spectrum bar brand icon driven by real-time audio level during recording.
+/// Each of the 18 bars (9 upper + 9 lower) scales vertically in response to
+/// `audioLevel` (0.0–1.0). Per-bar variation factors make the motion organic
+/// rather than all bars moving in lockstep.
+///
+/// Scale formula (matches MenuBarIconAnimator.renderRecordingLips):
+///   scaleY = silenceScale + (peakScale - silenceScale) * level * perBarFactor
+///
+/// At silence (level ≈ 0) bars sit at their minimum compressed state (lips closed).
+/// At peak (level = 1.0) center bars reach maximum expansion (lips open/talking).
 struct RainbowLipsIcon: View {
     let size: CGFloat
-    @State private var animate = false
+    /// Normalised audio level 0.0–1.0, updated every ~50 ms by the parent view.
+    let audioLevel: Float
 
     private let upperBars: [(x: CGFloat, y: CGFloat, h: CGFloat, color: Color)] = [
         (4,  22.25,   5,  Color(red: 1.0,   green: 0.165, blue: 0.251)),
@@ -179,59 +187,65 @@ struct RainbowLipsIcon: View {
         (52, 30.25,   5,  Color(red: 0.541, green: 0.169, blue: 0.886))
     ]
 
-    // Minimum scaleY for each bar index 0-8 (edge bars move less, center more).
-    private let minScales: [CGFloat] = [0.65, 0.70, 0.62, 0.75, 0.60, 0.75, 0.62, 0.70, 0.65]
+    // Per-bar sensitivity multipliers (index 0-8).
+    // Center bars (index 4) react most; edge bars react least — mirrors the
+    // centerDistance weighting used in MenuBarIconAnimator.renderRecordingLips.
+    private let sensitivity: [CGFloat] = [0.70, 0.80, 0.90, 0.95, 1.00, 0.95, 0.90, 0.80, 0.70]
 
-    // Maximum scaleY for each bar index 0-8 (center bars have larger amplitude).
-    private let maxScales: [CGFloat] = [1.25, 1.35, 1.42, 1.38, 1.50, 1.38, 1.42, 1.35, 1.25]
+    // Baseline scaleY when audio level is zero (lips lightly closed).
+    private let silenceScale: CGFloat = 0.55
 
-    // Animation duration (seconds) per bar — staggered so no two bars move in sync.
-    private let durations: [Double] = [0.50, 0.62, 0.45, 0.70, 0.55, 0.68, 0.47, 0.60, 0.52]
+    // Maximum additional scaleY headroom above silence (reached at level = 1.0
+    // for the most-sensitive bar). Chosen so peak scaleY ≈ 1.45 for center bars.
+    private let peakRange: CGFloat = 0.90
+
+    /// Compute the Y scale for a given bar index and the current audio level.
+    /// Upper and lower bars share the same formula; the caller may pass a
+    /// mirrored index to create counterpoint movement between the two lip halves.
+    private func yScale(for barIndex: Int, level: CGFloat) -> CGFloat {
+        silenceScale + peakRange * level * sensitivity[barIndex]
+    }
 
     var body: some View {
         let scale = size / 64.0
+        let level = CGFloat(min(max(audioLevel, 0), 1))
         ZStack {
+            // maxSeparation: maximum vertical translation (in points) applied to
+            // each lip half at peak audio level. Scaled proportionally with icon size.
+            let maxSeparation = 3.5 * (size / 64.0)
             ForEach(0..<upperBars.count, id: \.self) { i in
                 let bar = upperBars[i]
                 RoundedRectangle(cornerRadius: 1.5 * scale)
                     .fill(bar.color)
                     .frame(width: 4.5 * scale, height: bar.h * scale)
-                    .scaleEffect(
-                        y: animate ? maxScales[i] : minScales[i],
-                        anchor: .center
-                    )
+                    // Anchor at .bottom so the bar grows upward from its base,
+                    // giving the upper lip a "rising" motion.
+                    .scaleEffect(y: yScale(for: i, level: level), anchor: .bottom)
+                    // Translate upward proportional to level so the upper lip
+                    // visibly separates from the lower lip when speaking.
+                    .offset(y: -maxSeparation * level * sensitivity[i])
                     .position(x: (bar.x + 2.25) * scale, y: (bar.y + bar.h / 2) * scale)
-                    .animation(
-                        .easeInOut(duration: durations[i])
-                            .repeatForever(autoreverses: true),
-                        value: animate
-                    )
+                    .animation(.easeOut(duration: 0.05), value: audioLevel)
             }
             ForEach(0..<lowerBars.count, id: \.self) { i in
                 let bar = lowerBars[i]
                 RoundedRectangle(cornerRadius: 1.5 * scale)
                     .fill(bar.color)
                     .frame(width: 4.5 * scale, height: bar.h * scale)
-                    .scaleEffect(
-                        // Lower bars use the mirror index so they bounce in
-                        // counterpoint to the upper bars — outer bars move less.
-                        y: animate ? maxScales[8 - i] : minScales[8 - i],
-                        anchor: .center
-                    )
+                    // Lower bars mirror the sensitivity so outer edges of both
+                    // halves move less than the center, matching the menu bar CG
+                    // implementation's centerDistance weighting.
+                    // Anchor at .top so the bar grows downward from its top edge,
+                    // giving the lower lip a "dropping" motion.
+                    .scaleEffect(y: yScale(for: 8 - i, level: level), anchor: .top)
+                    // Translate downward proportional to level so the lower lip
+                    // visibly separates from the upper lip when speaking.
+                    .offset(y: maxSeparation * level * sensitivity[8 - i])
                     .position(x: (bar.x + 2.25) * scale, y: (bar.y + bar.h / 2) * scale)
-                    .animation(
-                        // Offset the duration slightly from the upper bar above it
-                        // so they don't perfectly cancel each other out.
-                        .easeInOut(duration: durations[8 - i] * 1.15)
-                            .repeatForever(autoreverses: true),
-                        value: animate
-                    )
+                    .animation(.easeOut(duration: 0.05), value: audioLevel)
             }
         }
         .frame(width: size, height: size)
-        .onAppear {
-            animate = true
-        }
         .accessibilityHidden(true)
     }
 }
@@ -295,17 +309,7 @@ struct RecordingOverlayView: View {
     var body: some View {
         HStack(spacing: 10) {
             // Rainbow lips icon — audio-reactive during recording
-            RainbowLipsIcon(size: 24)
-
-            // Mini waveform (5 bars)
-            HStack(spacing: 2) {
-                ForEach(0..<5, id: \.self) { i in
-                    RoundedRectangle(cornerRadius: 1)
-                        .fill(.white.opacity(0.9))
-                        .frame(width: 3, height: barHeight(for: i))
-                }
-            }
-            .frame(height: 20)
+            RainbowLipsIcon(size: 24, audioLevel: audioLevel)
 
             // Duration timer
             Text(FormattingConstants.formatDuration(elapsed))
@@ -324,14 +328,6 @@ struct RecordingOverlayView: View {
         }
     }
 
-    private func barHeight(for index: Int) -> CGFloat {
-        let normalized = CGFloat(audioLevel)
-        let center: CGFloat = 2.0
-        let distance = abs(CGFloat(index) - center) / center
-        let base: CGFloat = 2
-        let maxH: CGFloat = 22
-        return base + (maxH - base) * normalized * (1.0 - distance * 0.5)
-    }
 }
 
 // MARK: - PolishingOverlayView

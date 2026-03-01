@@ -30,20 +30,21 @@ It creates `/tmp/EnviousWispr.app` with the release binary, Info.plist, AppIcon.
 ```bash
 DEST=/Users/m4pro_sv/Desktop/EnviousWispr/build/EnviousWispr.app
 rm -rf "$DEST"
-cp -r /tmp/EnviousWispr.app "$DEST"
+ditto --norsrc /tmp/EnviousWispr.app "$DEST"
 ```
 
-## Step 4 — Kill, Reset TCC, and Relaunch
+Use `ditto --norsrc` (not `cp -r`) to strip extended attributes that break codesigning.
+
+## Step 4 — Kill and Relaunch
 
 ```bash
 pkill -x EnviousWispr 2>/dev/null; sleep 1
-tccutil reset Accessibility com.enviouswispr.app 2>/dev/null
 open /Users/m4pro_sv/Desktop/EnviousWispr/build/EnviousWispr.app
 ```
 
 - The `sleep 1` ensures the old process is fully terminated
-- `tccutil reset` clears the stale Accessibility grant (binary hash changed after rebuild)
-- The app's PermissionsService will re-prompt on launch — no manual System Settings needed
+- Do NOT run `tccutil reset` — it forces the user to re-approve Accessibility on every rebuild
+- If Accessibility stops working after a rebuild, the user can re-grant manually in System Settings
 
 ## Step 5 — Verify Launch
 

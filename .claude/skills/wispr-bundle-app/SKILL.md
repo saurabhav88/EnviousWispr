@@ -60,6 +60,18 @@ install_name_tool -add_rpath @executable_path/../Frameworks "$BUNDLE/Contents/Ma
 printf 'APPL????' > "$BUNDLE/Contents/PkgInfo"
 ```
 
+## Dev-sign the bundle
+
+Sign with the local self-signed "EnviousWispr Dev" certificate so Keychain ACLs persist across rebuilds (no Keychain prompts on every rebuild). Sign inside-out: Sparkle framework first, then the app.
+
+```bash
+codesign --force --sign "EnviousWispr Dev" --timestamp=none "$BUNDLE/Contents/Frameworks/Sparkle.framework/Versions/B"
+codesign --force --sign "EnviousWispr Dev" --timestamp=none "$BUNDLE"
+```
+
+- The `codesign -v` verification may warn about Sparkle's "ambiguous bundle format" — this is cosmetic. The main binary signature is valid.
+- If `security find-identity -p codesigning` shows no "EnviousWispr Dev", the cert needs to be recreated (see `codesign-without-xcode` skill).
+
 ## Verify bundle structure
 
 ```bash

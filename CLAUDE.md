@@ -49,6 +49,7 @@ python3 Tests/UITests/uat_runner.py run --files Tests/UITests/generated/test_foo
 
 | File | Contents |
 | ---- | -------- |
+| [swift-patterns](.claude/rules/swift-patterns.md) | FluidAudio type qualification, required @preconcurrency imports (auto-loaded) |
 | [architecture](.claude/knowledge/architecture.md) | Structure, key types, pipeline state machine, data flow |
 | [gotchas](.claude/knowledge/gotchas.md) | FluidAudio collision, Swift 6, audio format, Keychain |
 | [conventions](.claude/knowledge/conventions.md) | Commit style, DI patterns, view patterns, imports, Definition of Done (UAT) |
