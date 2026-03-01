@@ -114,6 +114,7 @@ final class AudioCaptureManager {
         // Pre-allocate for ~30 seconds of audio at 16kHz to reduce reallocations
         capturedSamples = []
         capturedSamples.reserveCapacity(16000 * 30)
+        activeTasks.removeAll()
         audioLevel = 0.0
 
         // Step 1: Set input device (if selected) — must be before inputNode access for format
@@ -146,14 +147,18 @@ final class AudioCaptureManager {
             object: engine,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in
+            // queue: .main guarantees we're on the main thread
+            MainActor.assumeIsolated {
                 guard let self, self.isCapturing else { return }
-                await AppLogger.shared.log(
-                    "Audio engine configuration changed (device disconnect/reconnect) — performing emergency teardown",
-                    level: .info, category: "Audio"
-                )
-                self.emergencyTeardown()
-                self.onEngineInterrupted?()
+                let task = Task { @MainActor in
+                    await AppLogger.shared.log(
+                        "Audio engine configuration changed (device disconnect/reconnect) — performing emergency teardown",
+                        level: .info, category: "Audio"
+                    )
+                    self.emergencyTeardown()
+                    self.onEngineInterrupted?()
+                }
+                self.trackTask(task)
             }
         }
 
@@ -274,7 +279,11 @@ final class AudioCaptureManager {
             NotificationCenter.default.removeObserver(observer)
             configChangeObserver = nil
         }
-        return capturedSamples
+        // Move samples out and clear to release memory between sessions.
+        // Without this, ~38MB (10min at 16kHz) lingers until the next startCapture().
+        let samples = capturedSamples
+        capturedSamples = []
+        return samples
     }
 
     /// Emergency teardown after device disconnect or engine configuration change.
@@ -314,7 +323,9 @@ final class AudioCaptureManager {
     }
 
     /// Track a spawned Task so it can be cancelled during teardown.
+    /// Prunes already-completed tasks on each call to prevent unbounded growth.
     func trackTask(_ task: Task<Void, Never>) {
+        activeTasks.removeAll { $0.isCancelled }
         activeTasks.append(task)
     }
 

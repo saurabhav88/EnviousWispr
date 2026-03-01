@@ -479,10 +479,18 @@ final class TranscriptionPipeline {
     func reset() {
         vadMonitorTask?.cancel()
         vadMonitorTask = nil
+        // Cancel any active streaming ASR session to prevent orphaned sessions.
+        let wasStreaming = streamingASRActive
         deactivateStreamingForwarding()
+        if wasStreaming {
+            Task { [weak self] in
+                await self?.asrManager.cancelStreaming()
+            }
+        }
         if audioCapture.isCapturing {
             _ = audioCapture.stopCapture()
         }
+        silenceDetector = nil
         recordingStartTime = nil
         state = .idle
         currentTranscript = nil

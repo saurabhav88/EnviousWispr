@@ -16,8 +16,19 @@ final class RecordingOverlayPanel {
     /// they run. This eliminates all "async outlives state" races (H8, H9).
     private var generation: UInt64 = 0
 
+    /// Pending deferred panel-creation work item. Stored so hide() can cancel
+    /// it before it fires — this is stronger than the generation check alone,
+    /// because it prevents the closure from running at all even when ESC is
+    /// pressed within a single run-loop cycle of show().
+    private var pendingCreateWork: DispatchWorkItem?
+
     func show(audioLevelProvider: @escaping () -> Float) {
         guard panel == nil else { return }
+        // Cancel any lingering deferred work from a prior session that wasn't
+        // cleaned up (e.g., if a VAD self-cancel left pendingCreateWork set but
+        // panel still nil). This is defensive — normally hide() clears it.
+        pendingCreateWork?.cancel()
+        pendingCreateWork = nil
         generation &+= 1
         let token = generation
 
@@ -28,10 +39,13 @@ final class RecordingOverlayPanel {
         // NOTE: Do NOT replace with Task { @MainActor } — DispatchQueue.main.async
         // guarantees next-run-loop-cycle deferral; Task may execute immediately
         // if already on the main actor.
-        DispatchQueue.main.async { [weak self] in
+        let work = DispatchWorkItem { [weak self] in
             guard let self, self.generation == token else { return }
+            self.pendingCreateWork = nil
             self.createPanel(audioLevelProvider: audioLevelProvider)
         }
+        pendingCreateWork = work
+        DispatchQueue.main.async(execute: work)
     }
 
     /// Show a "Polishing..." overlay during LLM processing.
@@ -41,13 +55,19 @@ final class RecordingOverlayPanel {
             transitionToPolishing()
             return
         }
+        // Cancel any prior deferred work defensively before queuing new work.
+        pendingCreateWork?.cancel()
+        pendingCreateWork = nil
         generation &+= 1
         let token = generation
 
-        DispatchQueue.main.async { [weak self] in
+        let work = DispatchWorkItem { [weak self] in
             guard let self, self.generation == token else { return }
+            self.pendingCreateWork = nil
             self.createPolishingPanel()
         }
+        pendingCreateWork = work
+        DispatchQueue.main.async(execute: work)
     }
 
     private func createPanel(audioLevelProvider: @escaping () -> Float) {
@@ -69,18 +89,28 @@ final class RecordingOverlayPanel {
         guard let existingPanel = panel else { return }
         let y = existingPanel.frame.origin.y
 
-        existingPanel.close()
         panel = nil
+        // Cancel any pre-existing deferred work before queuing new work. Without
+        // this, a stale DispatchWorkItem could hold a reference that the new token
+        // won't invalidate until it actually runs on the next drain cycle.
+        pendingCreateWork?.cancel()
+        pendingCreateWork = nil
+        // Flush pending CA frames before closing — same use-after-free guard as hide().
+        CATransaction.flush()
+        existingPanel.close()
 
         generation &+= 1
         let token = generation
 
         // Defer to the next run loop cycle so the close animation completes
         // before the new panel appears, preventing a visual flash.
-        DispatchQueue.main.async { [weak self] in
+        let work = DispatchWorkItem { [weak self] in
             guard let self, self.generation == token else { return }
+            self.pendingCreateWork = nil
             self.showPanel(content: PolishingOverlayView().frame(width: 152, height: 44), width: 152, y: y)
         }
+        pendingCreateWork = work
+        DispatchQueue.main.async(execute: work)
     }
 
     /// Create and show a floating overlay panel with the given SwiftUI content.
@@ -120,8 +150,29 @@ final class RecordingOverlayPanel {
 
     func hide() {
         generation &+= 1
-        panel?.close()
+        // Cancel any pending deferred panel creation so it never fires.
+        // This handles the rapid-ESC race: if hide() is called before the
+        // DispatchQueue.main.async closure from show() has had a chance to run,
+        // cancelling the work item prevents the panel from being created at all.
+        // The generation counter check inside the closure is a secondary guard.
+        pendingCreateWork?.cancel()
+        pendingCreateWork = nil
+
+        guard let panelToClose = panel else { return }
         panel = nil
+
+        // Flush pending CA transactions before releasing the panel.
+        // RecordingOverlayView has a running .task loop updating audioLevel every 50ms
+        // and OverlayCapsuleBackground has a repeatForever animation. When close() fires,
+        // CA may have a pending implicit transaction trying to render a final frame of
+        // the now-deallocating NSHostingView backing layer. Flushing here ensures that
+        // frame is committed while the view graph is still alive, preventing the
+        // _DictionaryStorage use-after-free in CA::Transaction::commit.
+        //
+        // We must flush BEFORE close() (not after), because close() begins view teardown.
+        // The local `panelToClose` retain keeps the panel alive through the flush.
+        CATransaction.flush()
+        panelToClose.close()
     }
 }
 

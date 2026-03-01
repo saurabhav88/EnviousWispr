@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 /// Removes common filler words (um, uh, hmm...) from ASR output using regex.
 @MainActor
@@ -9,14 +10,29 @@ final class FillerRemovalStep: TextProcessingStep {
 
     var isEnabled: Bool { fillerRemovalEnabled }
 
-    static let fillerPattern = try? NSRegularExpression(
-        pattern: #"(?:^|\s*)\b(um|umm|uh|uhh|hmm|mm|mhm|mmm|ah|er)\b[-.,!?…:;—]*(?=\s|$)"#,
-        options: .caseInsensitive
-    )
+    private static let logger = Logger(subsystem: "com.enviouswispr.app", category: "FillerRemoval")
+
+    static let fillerPattern: NSRegularExpression? = {
+        do {
+            return try NSRegularExpression(
+                pattern: #"(?:^|\s*)\b(um|umm|uh|uhh|hmm|mm|mhm|mmm|ah|er)\b[-.,!?…:;—]*(?=\s|$)"#,
+                options: .caseInsensitive
+            )
+        } catch {
+            logger.error("Filler regex failed to compile: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }()
 
     func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
         let text = context.text
-        guard let pattern = Self.fillerPattern else { return context }
+        guard let pattern = Self.fillerPattern else {
+            Task { await AppLogger.shared.log(
+                "FillerRemoval: skipped — regex unavailable",
+                level: .info, category: "Pipeline"
+            ) }
+            return context
+        }
         let range = NSRange(text.startIndex..., in: text)
         let cleaned = pattern.stringByReplacingMatches(
             in: text, range: range, withTemplate: ""

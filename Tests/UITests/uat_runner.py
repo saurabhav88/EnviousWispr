@@ -328,6 +328,10 @@ class TestSession:
         if settings_item is not None:
             perform_action(settings_item, "AXPress")
         else:
+            # SAFETY: activate first so Cmd+, lands on EnviousWispr, not a
+            # frontmost app (which would open that app's preferences instead).
+            activate_app(self.pid)
+            time.sleep(0.05)
             press_key("comma", cmd=True)
         time.sleep(1.0)
 
@@ -545,7 +549,12 @@ class TestContext:
         return get_clipboard_text()
 
     def press(self, key, cmd=False, shift=False, alt=False, ctrl=False):
-        """Press a key via CGEvent."""
+        """Press a key via CGEvent.
+
+        Always activates EnviousWispr first so the keystroke lands on the
+        correct app, not whichever app happens to be frontmost (e.g. Rewind,
+        VSCode).
+        """
         mods = []
         if cmd: mods.append("Cmd")
         if shift: mods.append("Shift")
@@ -553,10 +562,16 @@ class TestContext:
         if ctrl: mods.append("Ctrl")
         mod_str = "+".join(mods) + "+" if mods else ""
         self.log(f"Pressing {mod_str}{key}")
+        activate_app(self.pid)
+        time.sleep(0.05)
         press_key(key, cmd=cmd, shift=shift, alt=alt, ctrl=ctrl)
 
     def click_element(self, role=None, title=None):
-        """Find an AX element and CGEvent-click its center."""
+        """Find an AX element and CGEvent-click its center.
+
+        Activates EnviousWispr before clicking so the mouse event lands on
+        the correct window, not an overlapping window from another app.
+        """
         app = get_ax_app(self.pid)
         el = find_element(app, role=role, title=title)
         if el is None:
@@ -565,6 +580,8 @@ class TestContext:
         if center is None:
             raise AssertionError(f"Cannot click: no center coords ({_criteria_str(role, title)})")
         self.log(f"Clicking {_criteria_str(role, title)} at ({center[0]:.0f}, {center[1]:.0f})")
+        activate_app(self.pid)
+        time.sleep(0.05)
         click(center[0], center[1])
 
     def wait(self, seconds):
@@ -605,6 +622,10 @@ class TestContext:
         if settings_item is not None:
             perform_action(settings_item, "AXPress")
         else:
+            # SAFETY: activate first so Cmd+, lands on EnviousWispr, not a
+            # frontmost app (which would open that app's preferences instead).
+            activate_app(self.pid)
+            time.sleep(0.05)
             press_key("comma", cmd=True)
         time.sleep(1.0)
         return wait_for_element(self.pid, role="AXWindow", title="EnviousWispr", timeout=3.0)
@@ -962,6 +983,10 @@ def test_settings_tab_switch(ctx):
                 if val == tab_name:
                     center = element_center(row)
                     if center:
+                        # SAFETY: activate first so the click lands on the
+                        # Settings window, not an overlapping app window.
+                        activate_app(ctx.pid)
+                        time.sleep(0.05)
                         click(center[0], center[1])
                         ctx.wait(0.5)
                         ctx.log(f"Switched to tab: {tab_name}")

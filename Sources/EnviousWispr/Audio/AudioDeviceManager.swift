@@ -105,8 +105,16 @@ enum AudioDeviceEnumerator {
         let status = AudioObjectGetPropertyDataSize(deviceID, &propertyAddress, 0, nil, &dataSize)
         guard status == noErr, dataSize > 0 else { return 0 }
 
-        let bufferListPointer = UnsafeMutablePointer<AudioBufferList>.allocate(capacity: 1)
-        defer { bufferListPointer.deallocate() }
+        // AudioBufferList has a variable-length trailing array of AudioBuffer entries.
+        // Allocate the exact byte count reported by CoreAudio to avoid heap corruption
+        // on multi-stream devices where dataSize > MemoryLayout<AudioBufferList>.size.
+        let rawPointer = UnsafeMutableRawPointer.allocate(
+            byteCount: Int(dataSize),
+            alignment: MemoryLayout<AudioBufferList>.alignment
+        )
+        defer { rawPointer.deallocate() }
+
+        let bufferListPointer = rawPointer.bindMemory(to: AudioBufferList.self, capacity: 1)
 
         let getStatus = AudioObjectGetPropertyData(deviceID, &propertyAddress, 0, nil, &dataSize, bufferListPointer)
         guard getStatus == noErr else { return 0 }

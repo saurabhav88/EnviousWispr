@@ -421,6 +421,13 @@ final class AppState {
     /// Cancel an active recording, discarding all captured audio.
     func cancelRecording() async {
         guard pipelineState == .recording else { return }
+        // Immediately hide the overlay before any async suspension. If show()
+        // queued a deferred createPanel via DispatchQueue.main.async, the
+        // generation counter increment here prevents it from executing after we
+        // return. Without this, there is a window where cancelRecording() awaits
+        // pipeline.cancelRecording() and the deferred createPanel fires first,
+        // leaving a visible panel even though state transitions to .idle.
+        recordingOverlay.hide()
         pipeline.autoPasteToActiveApp = false
         await pipeline.cancelRecording()
     }
