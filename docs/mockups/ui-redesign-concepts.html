@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EnviousWispr — UI Redesign v2</title>
+<style>
+  :root {
+    --brand-red: #ff1744;
+    --brand-amber: #ffab00;
+    --brand-green: #00e676;
+    --brand-cyan: #00e5ff;
+    --brand-blue: #00b0ff;
+    --brand-indigo: #2979ff;
+    --brand-deep-purple: #651fff;
+    --brand-purple: #7c4dff;
+    --brand-magenta: #d500f9;
+    --brand-pink: #f50057;
+    --sys-red: #ff2d55;
+    --sys-orange: #ff9f0a;
+    --sys-yellow: #ffd60a;
+    --sys-green: #30d158;
+    --sys-green2: #34c759;
+    --sys-teal: #32d8be;
+    --sys-cyan: #64d2ff;
+    --sys-blue: #0a84ff;
+    --sys-indigo: #5e5ce6;
+    --sys-purple: #bf5af2;
+    --text-primary: #ffffff;
+    --text-secondary: rgba(255,255,255,0.65);
+    --text-tertiary: rgba(255,255,255,0.45);
+    --surface: #1c1c1e;
+    --border: rgba(255,255,255,0.08);
+    --border-light: rgba(255,255,255,0.15);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+    background: #0a0a0f; color: var(--text-primary); overflow-x: hidden;
+  }
+
+  /* ─── Nav ─── */
+  .nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; align-items: center; gap: 8px; padding: 12px 24px;
+    background: rgba(10,10,15,0.85); backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-logo {
+    width: 28px; height: 28px;
+    background: linear-gradient(135deg, var(--sys-red), var(--sys-purple), var(--sys-blue));
+    border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 14px;
+  }
+  .nav-title { font-weight: 600; font-size: 14px; margin-right: auto; }
+  .nav-tabs { display: flex; gap: 2px; }
+  .nav-tab {
+    padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 500;
+    cursor: pointer; transition: all 0.2s;
+    background: transparent; border: none; color: var(--text-secondary);
+  }
+  .nav-tab:hover { background: rgba(255,255,255,0.06); color: var(--text-primary); }
+  .nav-tab.active { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+
+  /* ─── Sections ─── */
+  .section { display: none; padding: 80px 32px 48px; max-width: 1100px; margin: 0 auto; }
+  .section.active { display: block; animation: fadeIn 0.3s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; } }
+  .section-title {
+    font-size: 28px; font-weight: 700; margin-bottom: 6px;
+    background: linear-gradient(90deg, var(--text-primary), var(--text-secondary));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .section-subtitle { font-size: 14px; color: var(--text-tertiary); margin-bottom: 36px; max-width: 580px; line-height: 1.5; }
+
+  /* ─── Cards ─── */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; overflow: hidden; margin-bottom: 40px;
+  }
+  .card-header {
+    padding: 18px 24px; display: flex; align-items: center; gap: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .card-badge {
+    padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .card-badge.old { background: rgba(255,255,255,0.08); color: var(--text-secondary); }
+  .card-badge.new { background: rgba(48,209,88,0.15); color: var(--sys-green); }
+  .card-name { font-size: 16px; font-weight: 600; }
+  .card-desc { font-size: 12px; color: var(--text-tertiary); margin-left: auto; }
+
+  .card-stage {
+    padding: 36px 24px; display: flex; flex-direction: column; align-items: center; gap: 24px;
+    min-height: 140px; justify-content: center;
+    background: radial-gradient(ellipse at center, rgba(255,255,255,0.015), transparent);
+  }
+  .stage-label {
+    font-size: 10px; color: var(--text-tertiary); letter-spacing: 0.5px; text-transform: uppercase;
+  }
+
+  .card-notes {
+    padding: 18px 24px; border-top: 1px solid var(--border);
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px;
+  }
+  .note { padding: 10px; border-radius: 8px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); }
+  .note h4 { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-tertiary); margin-bottom: 4px; }
+  .note p { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+
+  /* ─── State Switcher ─── */
+  .switcher { display: flex; gap: 4px; background: rgba(255,255,255,0.04); padding: 3px; border-radius: 8px; }
+  .sw-btn {
+    padding: 5px 14px; border-radius: 6px; font-size: 11px; font-weight: 500;
+    cursor: pointer; transition: all 0.2s;
+    background: transparent; border: none; color: var(--text-tertiary);
+  }
+  .sw-btn:hover { color: var(--text-secondary); }
+  .sw-btn.active { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+
+  .state-panel { display: none; align-items: center; gap: 16px; flex-direction: column; }
+  .state-panel.active { display: flex; }
+
+  /* ═══════════════════════════════════════════
+     CURRENT OVERLAY (for reference)
+     ═══════════════════════════════════════════ */
+  .ov-current-rec {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px;
+    background: rgba(0,0,0,0.75);
+    border: 0.5px solid rgba(255,255,255,0.15);
+    border-radius: 22px; width: 220px; height: 44px;
+  }
+  .ov-current-rec .dot {
+    width: 10px; height: 10px; border-radius: 50%; background: red;
+    animation: pulse 0.6s ease-in-out infinite alternate;
+  }
+  .ov-current-rec .wf { display: flex; gap: 2px; align-items: center; height: 18px; }
+  .ov-current-rec .wf .bar {
+    width: 3px; border-radius: 1px; background: rgba(255,255,255,0.9);
+    animation: wave 0.8s ease-in-out infinite alternate;
+  }
+  .ov-current-rec .timer {
+    font-size: 13px; font-weight: 500; color: white;
+    font-variant-numeric: tabular-nums; font-family: 'SF Mono', monospace;
+  }
+  .ov-current-rec .sep { width: 1px; height: 16px; background: rgba(255,255,255,0.3); }
+  .ov-current-rec .mode { font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.7); }
+
+  .ov-current-pol {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px; background: rgba(0,0,0,0.75);
+    border: 0.5px solid rgba(255,255,255,0.15);
+    border-radius: 22px; width: 160px; height: 44px;
+  }
+  .ov-current-pol .dot {
+    width: 10px; height: 10px; border-radius: 50%; background: blue;
+    animation: pulse 0.6s ease-in-out infinite alternate;
+  }
+  .ov-current-pol .label { font-size: 13px; font-weight: 500; color: white; }
+
+  /* ═══════════════════════════════════════════
+     NEW OVERLAY — Minimal Glow + Brand Icons
+     ═══════════════════════════════════════════ */
+
+  .ov-new-rec {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px 10px 10px;
+    background: rgba(20,20,28,0.82);
+    border: 0.5px solid rgba(255,255,255,0.1);
+    border-radius: 22px; height: 44px;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.03), 0 4px 20px rgba(0,0,0,0.5);
+    position: relative;
+  }
+  .ov-new-rec::after {
+    content: ''; position: absolute;
+    bottom: -1px; left: 18%; right: 18%; height: 1px;
+    background: linear-gradient(90deg, transparent,
+      #ff2d55, #ff9f0a, #ffd60a, #30d158, #32d8be,
+      #64d2ff, #0a84ff, #5e5ce6, #bf5af2, transparent);
+    opacity: 0.5; animation: glowLine 2s ease-in-out infinite;
+  }
+  .ov-new-rec .icon-wrap {
+    width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .ov-new-rec .icon-wrap svg { animation: spinSlow 8s linear infinite; }
+  .ov-new-rec .wf { display: flex; gap: 2px; align-items: center; height: 18px; }
+  .ov-new-rec .wf .bar {
+    width: 2.5px; border-radius: 1.5px; background: rgba(255,255,255,0.8);
+    animation: wave 0.8s ease-in-out infinite alternate;
+  }
+  .ov-new-rec .timer {
+    font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.95);
+    font-variant-numeric: tabular-nums; font-family: 'SF Mono', monospace;
+  }
+
+  .ov-new-pol {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px 10px 10px;
+    background: rgba(20,20,28,0.82);
+    border: 0.5px solid rgba(255,255,255,0.1);
+    border-radius: 22px; height: 44px;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.03), 0 4px 20px rgba(0,0,0,0.5);
+    position: relative;
+  }
+  .ov-new-pol::after {
+    content: ''; position: absolute;
+    bottom: -1px; left: 22%; right: 22%; height: 1px;
+    background: linear-gradient(90deg, transparent,
+      #5e5ce6, #bf5af2, #ff2d55, #ff9f0a, #ffd60a,
+      #30d158, #64d2ff, transparent);
+    opacity: 0.5; animation: glowLine 2s ease-in-out infinite;
+  }
+  .ov-new-pol .icon-wrap {
+    width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .ov-new-pol .icon-wrap svg { animation: lipsBreath 2s ease-in-out infinite; }
+  .ov-new-pol .label {
+    font-size: 13px; font-weight: 500; color: rgba(255,255,255,0.9);
+  }
+
+  /* ─── Animations ─── */
+  @keyframes pulse { from { transform: scale(0.8); } to { transform: scale(1.2); } }
+  @keyframes wave { from { height: var(--h1); } to { height: var(--h2); } }
+  @keyframes glowLine { 0%,100% { opacity: 0.3; } 50% { opacity: 0.65; } }
+  @keyframes spinSlow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  @keyframes lipsBreath {
+    0%,100% { transform: scale(1); opacity: 0.85; }
+    50% { transform: scale(1.06); opacity: 1; }
+  }
+
+  /* ═══════════════════════════════════════════
+     APP WINDOW MOCKUP
+     ═══════════════════════════════════════════ */
+  .app-window {
+    width: 100%; max-width: 820px; border-radius: 12px; overflow: hidden;
+    border: 1px solid var(--border); box-shadow: 0 8px 48px rgba(0,0,0,0.6);
+  }
+  .app-titlebar {
+    display: flex; align-items: center; gap: 8px; padding: 12px 16px;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+  }
+  .traffic-lights { display: flex; gap: 6px; }
+  .tl { width: 12px; height: 12px; border-radius: 50%; }
+  .tl-r { background: #ff5f57; } .tl-y { background: #febc2e; } .tl-g { background: #28c840; }
+  .app-titlebar .title { font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-left: 8px; }
+
+  .app-body { display: flex; min-height: 420px; background: var(--surface); }
+  .app-sidebar {
+    width: 190px; min-width: 190px; border-right: 1px solid var(--border);
+    padding: 8px; background: rgba(28,28,30,0.5);
+  }
+  .sg-label {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.8px; color: var(--text-tertiary); padding: 12px 10px 4px;
+  }
+  .s-item {
+    display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 6px;
+    font-size: 13px; color: var(--text-secondary); cursor: pointer; transition: all 0.15s;
+  }
+  .s-item:hover { background: rgba(255,255,255,0.04); }
+  .s-item.active { background: rgba(255,255,255,0.06); color: var(--text-primary); }
+
+  .app-detail { flex: 1; display: flex; flex-direction: column; }
+  .app-toolbar {
+    display: flex; align-items: center; gap: 8px; padding: 10px 16px;
+    border-bottom: 1px solid var(--border); background: rgba(44,44,46,0.3);
+  }
+  .tb-btn {
+    padding: 4px 10px; border-radius: 5px; font-size: 11px; font-weight: 500;
+    background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+    color: var(--text-secondary); cursor: pointer; transition: all 0.15s;
+  }
+  .tb-btn:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+  .tb-spacer { flex: 1; }
+  .app-content { flex: 1; padding: 20px; }
+
+  .status-center {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 340px; gap: 16px;
+  }
+  .status-ring {
+    width: 80px; height: 80px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; position: relative;
+  }
+  .status-ring.idle { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); }
+  .status-ring.rec {
+    background: rgba(255,45,85,0.06); border: 1px solid rgba(255,45,85,0.15);
+  }
+  .status-ring.rec::before {
+    content: ''; position: absolute; inset: -6px; border-radius: 50%;
+    border: 1.5px solid rgba(255,45,85,0.12); animation: ringOut 1.5s ease-out infinite;
+  }
+  .status-ring.rec::after {
+    content: ''; position: absolute; inset: -14px; border-radius: 50%;
+    border: 1px solid rgba(255,45,85,0.06); animation: ringOut 1.5s ease-out 0.3s infinite;
+  }
+  @keyframes ringOut { from { transform: scale(0.95); opacity: 1; } to { transform: scale(1.15); opacity: 0; } }
+  .status-ring .icon { font-size: 28px; }
+  .status-ring svg { animation: spinSlow 8s linear infinite; }
+
+  .st-title { font-size: 18px; font-weight: 600; }
+  .st-sub { font-size: 13px; color: var(--text-tertiary); text-align: center; max-width: 280px; }
+
+  .big-timer {
+    font-size: 40px; font-weight: 700;
+    font-variant-numeric: tabular-nums; font-family: 'SF Mono', monospace;
+  }
+  .win-wf { display: flex; gap: 3px; align-items: center; height: 48px; padding: 0 32px; }
+  .win-wf .bar { width: 4px; border-radius: 2px; animation: wave 0.8s ease-in-out infinite alternate; }
+
+  .badge { padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; }
+  .b-ai { background: rgba(191,90,242,0.15); color: var(--sys-purple); }
+  .b-time { background: rgba(10,132,255,0.15); color: var(--sys-blue); }
+
+  .app-state { display: none; }
+  .app-state.active { display: flex; flex-direction: column; }
+
+  /* ─── Comparison grid ─── */
+  .cmp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-bottom: 48px; }
+  @media (max-width: 800px) { .cmp-grid { grid-template-columns: 1fr; } }
+  .cmp-col { text-align: center; }
+  .cmp-label {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 1px; margin-bottom: 20px;
+  }
+
+  .page-footer {
+    padding: 32px; text-align: center; color: var(--text-tertiary);
+    font-size: 12px; border-top: 1px solid var(--border); margin-top: 64px;
+  }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <div class="nav-logo">W</div>
+  <div class="nav-title">UI Redesign v2</div>
+  <div class="nav-tabs">
+    <button class="nav-tab active" data-section="overlay">Overlay</button>
+    <button class="nav-tab" data-section="app">App Window</button>
+    <button class="nav-tab" data-section="compare">Before / After</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     OVERLAY SECTION
+     ═══════════════════════════════════════════ -->
+<div id="section-overlay" class="section active">
+  <div class="section-title">Recording Overlay</div>
+  <div class="section-subtitle">
+    Current design vs revised. The spectrum wheel and rainbow lips from the menu bar icons
+    replace the red/blue dots. PTT label removed. Subtle rainbow edge glow ties it to the brand.
+  </div>
+
+  <!-- CURRENT -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-badge old">Current</span>
+      <span class="card-name">Existing Design</span>
+      <span class="card-desc">Red dot, blue dot, PTT label</span>
+    </div>
+    <div class="card-stage">
+      <div class="switcher" data-group="cur">
+        <button class="sw-btn active" data-state="rec">Recording</button>
+        <button class="sw-btn" data-state="pol">Polishing</button>
+      </div>
+      <div id="cur-rec" class="state-panel active"></div>
+      <div id="cur-pol" class="state-panel"></div>
+    </div>
+    <div class="card-notes">
+      <div class="note"><h4>Indicator</h4><p>Red dot (recording), blue dot (polishing) — generic, no brand connection</p></div>
+      <div class="note"><h4>Mode Label</h4><p>"PTT" shown — meaningless to most users</p></div>
+      <div class="note"><h4>Background</h4><p>Black 75% — functional but plain</p></div>
+    </div>
+  </div>
+
+  <!-- NEW -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-badge new">Revised</span>
+      <span class="card-name">Minimal Glow + Brand Icons</span>
+      <span class="card-desc">Spectrum wheel, rainbow lips, no dots, no PTT</span>
+    </div>
+    <div class="card-stage">
+      <div class="switcher" data-group="new">
+        <button class="sw-btn active" data-state="rec">Recording</button>
+        <button class="sw-btn" data-state="pol">Polishing</button>
+      </div>
+      <div id="new-rec" class="state-panel active"></div>
+      <div id="new-pol" class="state-panel"></div>
+    </div>
+    <div class="card-notes">
+      <div class="note"><h4>Recording</h4><p>Spinning spectrum wheel from menu bar icon — instantly recognizable brand element</p></div>
+      <div class="note"><h4>Polishing</h4><p>Rainbow lips icon with gentle breathing animation — "words being shaped"</p></div>
+      <div class="note"><h4>Edge Glow</h4><p>Thin rainbow gradient line pulses along bottom — subtle brand signature</p></div>
+      <div class="note"><h4>Simplicity</h4><p>No dots, no mode label. Just icon + waveform + timer (rec) or icon + label (pol).</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     APP WINDOW SECTION
+     ═══════════════════════════════════════════ -->
+<div id="section-app" class="section">
+  <div class="section-title">App Window</div>
+  <div class="section-subtitle">
+    Standard macOS dark styling. Brand identity stays in the overlay and menu bar.
+    The settings window is native and familiar. Recording state uses the spectrum wheel in-window too.
+  </div>
+
+  <div class="app-window" style="margin: 0 auto;">
+    <div class="app-titlebar">
+      <div class="traffic-lights"><div class="tl tl-r"></div><div class="tl tl-y"></div><div class="tl tl-g"></div></div>
+      <span class="title">EnviousWispr</span>
+    </div>
+    <div class="app-body">
+      <div class="app-sidebar">
+        <div class="sg-label">App</div>
+        <div class="s-item active">History</div>
+        <div class="sg-label">Record</div>
+        <div class="s-item">Speech Engine</div>
+        <div class="s-item">Shortcuts</div>
+        <div class="sg-label">Process</div>
+        <div class="s-item">AI Polish</div>
+        <div class="s-item">Word Correction</div>
+        <div class="sg-label">Output</div>
+        <div class="s-item">Clipboard</div>
+        <div class="sg-label">System</div>
+        <div class="s-item">Memory</div>
+        <div class="s-item">Permissions</div>
+        <div class="s-item">Diagnostics</div>
+      </div>
+      <div class="app-detail">
+        <div class="app-toolbar">
+          <div class="switcher" data-group="win">
+            <button class="sw-btn active" data-state="idle">Idle</button>
+            <button class="sw-btn" data-state="rec">Recording</button>
+            <button class="sw-btn" data-state="hist">History</button>
+          </div>
+          <span class="tb-spacer"></span>
+          <span style="font-size:11px; color:var(--text-tertiary)">Ctrl+Space</span>
+        </div>
+
+        <!-- Idle -->
+        <div class="app-state active" id="win-idle">
+          <div class="app-content">
+            <div class="status-center">
+              <div class="status-ring idle"><span class="icon">&#x1F399;</span></div>
+              <div class="st-title">Ready to Transcribe</div>
+              <div class="st-sub">Press Ctrl+Space or click Record to start dictating. Your words will be transcribed and copied to clipboard.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recording -->
+        <div class="app-state" id="win-rec">
+          <div class="app-content">
+            <div class="status-center">
+              <div class="status-ring rec" id="win-rec-ring"></div>
+              <div class="big-timer">1:23</div>
+              <div style="font-size:12px; color:var(--text-tertiary);">Parakeet v3</div>
+              <div class="win-wf" id="win-waveform"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- History -->
+        <div class="app-state" id="win-hist">
+          <div class="app-toolbar" style="border-top: none;">
+            <button class="tb-btn">Copy</button>
+            <button class="tb-btn">Paste</button>
+            <button class="tb-btn">Enhance</button>
+            <span class="tb-spacer"></span>
+            <span class="badge b-ai">Gemini</span>
+            <span class="badge b-time">0.8s</span>
+          </div>
+          <div class="app-content">
+            <div style="font-size:14px; line-height:1.7; color:var(--text-primary); padding:8px 0;">
+              The new brand identity seamlessly integrates a lip and spectrum motif, creating a distinctive visual language that captures the essence of speech transformation. Each equalizer bar represents a different frequency of human expression.
+            </div>
+            <div style="margin-top:16px; padding:12px; background:rgba(255,255,255,0.02); border-radius:8px; border:1px solid var(--border);">
+              <div style="font-size:11px; font-weight:600; color:var(--text-tertiary); margin-bottom:6px;">ORIGINAL TRANSCRIPT</div>
+              <div style="font-size:13px; color:var(--text-tertiary); line-height:1.6;">the new brand identity like seamlessly integrates a lip and spectrum motif creating a distinctive visual language that captures the essence of like speech transformation each equalizer bar represents a different frequency of human expression</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     BEFORE / AFTER SECTION
+     ═══════════════════════════════════════════ -->
+<div id="section-compare" class="section">
+  <div class="section-title">Before / After</div>
+  <div class="section-subtitle">Direct side-by-side comparison of current vs revised overlays.</div>
+
+  <h3 style="font-size:16px; font-weight:600; margin-bottom:24px; color:var(--text-secondary);">Recording</h3>
+  <div class="cmp-grid">
+    <div class="cmp-col">
+      <div class="cmp-label" style="color:var(--text-tertiary);">Before</div>
+      <div id="cmp-cur-rec" style="display:flex; justify-content:center;"></div>
+    </div>
+    <div class="cmp-col">
+      <div class="cmp-label" style="color:var(--sys-green);">After</div>
+      <div id="cmp-new-rec" style="display:flex; justify-content:center;"></div>
+    </div>
+  </div>
+
+  <h3 style="font-size:16px; font-weight:600; margin-bottom:24px; color:var(--text-secondary);">Polishing</h3>
+  <div class="cmp-grid">
+    <div class="cmp-col">
+      <div class="cmp-label" style="color:var(--text-tertiary);">Before</div>
+      <div id="cmp-cur-pol" style="display:flex; justify-content:center;"></div>
+    </div>
+    <div class="cmp-col">
+      <div class="cmp-label" style="color:var(--sys-green);">After</div>
+      <div id="cmp-new-pol" style="display:flex; justify-content:center;"></div>
+    </div>
+  </div>
+
+  <!-- Changes summary -->
+  <div class="card" style="margin-top:32px;">
+    <div class="card-header">
+      <span class="card-name">What Changed</span>
+    </div>
+    <div class="card-notes">
+      <div class="note"><h4>Red dot</h4><p>Replaced with spinning spectrum wheel (same as menu bar recording icon)</p></div>
+      <div class="note"><h4>Blue dot</h4><p>Replaced with rainbow lips icon (same as menu bar processing icon)</p></div>
+      <div class="note"><h4>PTT label</h4><p>Removed entirely — no user value</p></div>
+      <div class="note"><h4>Separator</h4><p>Removed — cleaner layout with fewer elements</p></div>
+      <div class="note"><h4>Background</h4><p>Slightly warmer dark (#14141c vs pure black) at 82% opacity</p></div>
+      <div class="note"><h4>Edge glow</h4><p>Thin rainbow gradient line along bottom — brand signature</p></div>
+    </div>
+  </div>
+</div>
+
+<div class="page-footer">EnviousWispr UI Redesign v2 &mdash; February 2026</div>
+
+<script>
+  // ─── SVG builders ───
+  function spectrumWheelSVG(size) {
+    // 12 radial bars, no recording dot (per feedback)
+    var bars = [
+      {deg:0,   y:4,  h:14, c:'#ff2d55'},
+      {deg:30,  y:7,  h:10, c:'#ff9f0a'},
+      {deg:60,  y:5,  h:12, c:'#ffd60a'},
+      {deg:90,  y:8,  h:9,  c:'#30d158'},
+      {deg:120, y:4,  h:14, c:'#34c759'},
+      {deg:150, y:6,  h:11, c:'#32d8be'},
+      {deg:180, y:5,  h:13, c:'#64d2ff'},
+      {deg:210, y:8,  h:9,  c:'#0a84ff'},
+      {deg:240, y:4,  h:14, c:'#5e5ce6'},
+      {deg:270, y:6,  h:12, c:'#bf5af2'},
+      {deg:300, y:7,  h:10, c:'#ff2d55'},
+      {deg:330, y:5,  h:13, c:'#ff9f0a'}
+    ];
+    var ns = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('width', size);
+    svg.setAttribute('height', size);
+    svg.setAttribute('viewBox', '0 0 64 64');
+    svg.setAttribute('fill', 'none');
+    for (var i = 0; i < bars.length; i++) {
+      var g = document.createElementNS(ns, 'g');
+      g.setAttribute('transform', 'rotate(' + bars[i].deg + ',32,32)');
+      var r = document.createElementNS(ns, 'rect');
+      r.setAttribute('x', '30'); r.setAttribute('y', bars[i].y);
+      r.setAttribute('width', '4'); r.setAttribute('height', bars[i].h);
+      r.setAttribute('rx', '2'); r.setAttribute('fill', bars[i].c);
+      g.appendChild(r); svg.appendChild(g);
+    }
+    return svg;
+  }
+
+  function lipsIconSVG(size) {
+    var ns = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('width', size);
+    svg.setAttribute('height', size);
+    svg.setAttribute('viewBox', '0 0 64 64');
+    svg.setAttribute('fill', 'none');
+    // Upper lip
+    var upper = [
+      {x:4,  y:14, h:14, c:'#ff2d55'}, {x:11, y:11, h:13, c:'#ff9f0a'},
+      {x:18, y:8,  h:14, c:'#ffd60a'}, {x:25, y:12, h:10, c:'#30d158'},
+      {x:32, y:14, h:9,  c:'#34c759'}, {x:39, y:11, h:11, c:'#32d8be'},
+      {x:46, y:7,  h:15, c:'#64d2ff'}, {x:53, y:10, h:14, c:'#0a84ff'}
+    ];
+    for (var i = 0; i < upper.length; i++) {
+      var r = document.createElementNS(ns, 'rect');
+      r.setAttribute('x', upper[i].x); r.setAttribute('y', upper[i].y);
+      r.setAttribute('width', '4.5'); r.setAttribute('height', upper[i].h);
+      r.setAttribute('rx', '1.5'); r.setAttribute('fill', upper[i].c);
+      svg.appendChild(r);
+    }
+    // Lower lip
+    var lower = [
+      {x:8,  y:32, h:10, c:'#5e5ce6'}, {x:15, y:30, h:14, c:'#bf5af2'},
+      {x:22, y:29, h:16, c:'#ff2d55'}, {x:29, y:28, h:18, c:'#ff9f0a'},
+      {x:36, y:29, h:16, c:'#ffd60a'}, {x:43, y:30, h:14, c:'#30d158'},
+      {x:50, y:32, h:10, c:'#34c759'}
+    ];
+    for (var j = 0; j < lower.length; j++) {
+      var r2 = document.createElementNS(ns, 'rect');
+      r2.setAttribute('x', lower[j].x); r2.setAttribute('y', lower[j].y);
+      r2.setAttribute('width', '4.5'); r2.setAttribute('height', lower[j].h);
+      r2.setAttribute('rx', '1.5'); r2.setAttribute('fill', lower[j].c);
+      svg.appendChild(r2);
+    }
+    return svg;
+  }
+
+  // ─── DOM helpers ───
+  function el(tag, cls) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    return e;
+  }
+
+  function addWaveBar(parent, w) {
+    var bar = el('div', 'bar');
+    var h1 = 2 + Math.random() * 2;
+    var h2 = 10 + Math.random() * 14;
+    bar.style.setProperty('--h1', h1 + 'px');
+    bar.style.setProperty('--h2', h2 + 'px');
+    bar.style.height = h1 + 'px';
+    bar.style.width = w + 'px';
+    bar.style.animationDelay = (parent.children.length * 0.12) + 's';
+    parent.appendChild(bar);
+  }
+
+  // ─── Build overlays ───
+  function buildCurrentRec(target) {
+    var wrap = el('div', 'ov-current-rec');
+    wrap.appendChild(el('div', 'dot'));
+    var wf = el('div', 'wf'); wrap.appendChild(wf);
+    for (var i = 0; i < 5; i++) addWaveBar(wf, 3);
+    var t = el('span', 'timer'); t.textContent = '1:23'; wrap.appendChild(t);
+    wrap.appendChild(el('div', 'sep'));
+    var m = el('span', 'mode'); m.textContent = 'PTT'; wrap.appendChild(m);
+    target.appendChild(wrap);
+  }
+
+  function buildCurrentPol(target) {
+    var wrap = el('div', 'ov-current-pol');
+    wrap.appendChild(el('div', 'dot'));
+    var l = el('span', 'label'); l.textContent = 'Polishing...'; wrap.appendChild(l);
+    target.appendChild(wrap);
+  }
+
+  function buildNewRec(target) {
+    var wrap = el('div', 'ov-new-rec');
+    var iw = el('div', 'icon-wrap');
+    iw.appendChild(spectrumWheelSVG(24));
+    wrap.appendChild(iw);
+    var wf = el('div', 'wf'); wrap.appendChild(wf);
+    for (var i = 0; i < 5; i++) addWaveBar(wf, 2.5);
+    var t = el('span', 'timer'); t.textContent = '1:23'; wrap.appendChild(t);
+    target.appendChild(wrap);
+  }
+
+  function buildNewPol(target) {
+    var wrap = el('div', 'ov-new-pol');
+    var iw = el('div', 'icon-wrap');
+    iw.appendChild(lipsIconSVG(24));
+    wrap.appendChild(iw);
+    var l = el('span', 'label'); l.textContent = 'Polishing...'; wrap.appendChild(l);
+    target.appendChild(wrap);
+  }
+
+  // ─── Build window recording ring with spectrum wheel ───
+  function buildWinRecRing() {
+    var ring = document.getElementById('win-rec-ring');
+    ring.appendChild(spectrumWheelSVG(40));
+  }
+
+  // ─── Build window waveform with spectrum colors ───
+  function buildWinWaveform() {
+    var specColors = [
+      '#ff2d55','#ff9f0a','#ffd60a','#30d158','#34c759','#32d8be',
+      '#64d2ff','#0a84ff','#5e5ce6','#bf5af2','#ff2d55','#ff9f0a',
+      '#ffd60a','#30d158','#64d2ff','#0a84ff'
+    ];
+    var container = document.getElementById('win-waveform');
+    for (var i = 0; i < 16; i++) {
+      var bar = el('div', 'bar');
+      bar.style.background = specColors[i];
+      var dist = Math.abs(i - 7.5) / 7.5;
+      var h1 = 4 + Math.random() * 6;
+      var h2 = 16 + (1 - dist) * 28 + Math.random() * 8;
+      bar.style.setProperty('--h1', h1 + 'px');
+      bar.style.setProperty('--h2', h2 + 'px');
+      bar.style.height = h1 + 'px';
+      bar.style.width = '4px';
+      bar.style.borderRadius = '2px';
+      bar.style.animationDelay = (i * 0.06) + 's';
+      container.appendChild(bar);
+    }
+  }
+
+  // ─── Init ───
+  function init() {
+    buildCurrentRec(document.getElementById('cur-rec'));
+    buildCurrentPol(document.getElementById('cur-pol'));
+    buildNewRec(document.getElementById('new-rec'));
+    buildNewPol(document.getElementById('new-pol'));
+    // Comparison
+    buildCurrentRec(document.getElementById('cmp-cur-rec'));
+    buildNewRec(document.getElementById('cmp-new-rec'));
+    buildCurrentPol(document.getElementById('cmp-cur-pol'));
+    buildNewPol(document.getElementById('cmp-new-pol'));
+    // App window
+    buildWinRecRing();
+    buildWinWaveform();
+  }
+
+  // ─── Navigation ───
+  document.querySelectorAll('.nav-tab').forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      document.querySelectorAll('.section').forEach(function(s) { s.classList.remove('active'); });
+      document.getElementById('section-' + this.getAttribute('data-section')).classList.add('active');
+      document.querySelectorAll('.nav-tab').forEach(function(t) { t.classList.remove('active'); });
+      this.classList.add('active');
+    });
+  });
+
+  // ─── State switching ───
+  document.querySelectorAll('.switcher[data-group]').forEach(function(sw) {
+    sw.querySelectorAll('.sw-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var group = sw.getAttribute('data-group');
+        var state = this.getAttribute('data-state');
+        sw.querySelectorAll('.sw-btn').forEach(function(b) { b.classList.remove('active'); });
+        this.classList.add('active');
+
+        if (group === 'win') {
+          ['idle','rec','hist'].forEach(function(s) {
+            var e = document.getElementById('win-' + s);
+            if (e) e.classList.toggle('active', s === state);
+          });
+        } else {
+          ['rec','pol'].forEach(function(s) {
+            var e = document.getElementById(group + '-' + s);
+            if (e) e.classList.toggle('active', s === state);
+          });
+        }
+      });
+    });
+  });
+
+  init();
+</script>
+</body>
+</html>

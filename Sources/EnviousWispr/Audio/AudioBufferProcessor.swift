@@ -16,8 +16,10 @@ enum AudioBufferProcessor {
         }
 
         let rms = sqrt(sum / Float(frames))
-        // Clamp to 0-1 range with a reasonable scaling factor
-        return min(rms * 5.0, 1.0)
+        // Decibel-based scaling: map -60dB..0dB → 0..1 for perceptually correct levels
+        let dBFS = 20 * log10(max(rms, 1e-6))
+        let normalized = max(0, (dBFS + 60) / 60)
+        return min(normalized, 1.0)
     }
 }
 
