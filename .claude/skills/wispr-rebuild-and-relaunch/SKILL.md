@@ -85,22 +85,9 @@ disown
 - **Launch the binary directly** instead of using `open ... .app`. The `open` command goes through Launch Services, and if the app crashes immediately or the bundle is briefly malformed, `open` falls back to opening the parent `build/` directory in Finder. Launching the binary directly avoids this Finder side-effect entirely.
 - `disown` detaches the process from the shell so it survives after the shell exits
 - Do NOT run `tccutil reset` — it forces the user to re-approve Accessibility on every rebuild
-- Step 4b handles auto-granting Accessibility via `tccutil grant` — no manual re-approval needed
-
-## Step 4b — Grant TCC Accessibility Permission
-
-After relaunching, grant Accessibility permission so paste (CGEvent) works without manual System Settings approval:
-
-```bash
-sudo tccutil grant Accessibility com.enviouswispr.app 2>/dev/null
-```
-
-- PASS: exit code 0 — Accessibility granted automatically
-- FAIL (sudo not available or denied): Print a warning but do NOT abort:
-  ```
-  WARNING: Could not auto-grant Accessibility permission (sudo required).
-  → If paste does not work, open System Settings > Privacy & Security > Accessibility
-    and add EnviousWispr manually.
+- NOTE: macOS `tccutil` only supports `reset`, NOT `grant`. There is no command-line way to auto-grant Accessibility.
+- To persist Accessibility across rebuilds: sign local builds with a Developer ID cert (TCC ties to code-signing identity, not binary hash)
+- Without signing: user must re-grant manually in System Settings > Privacy & Security > Accessibility after each rebuild
   ```
 
 **Why**: Every rebuild replaces the binary, which invalidates the prior TCC grant. Without this, the user must manually re-approve Accessibility after every rebuild.

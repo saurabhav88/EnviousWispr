@@ -117,7 +117,7 @@ Toggling Apple Voice Processing I/O at runtime can break the AVAudioEngine — t
 
 ## TCC Permission Resets on Rebuild
 
-The binary hash changes on every `swift build`, which invalidates the existing Accessibility TCC grant. Fix before UAT: `sudo tccutil grant Accessibility com.enviouswispr.app`. Alternatively, re-grant manually in System Settings > Privacy > Accessibility. See also "NEVER Use Blanket TCC Resets" above.
+The binary hash changes on every `swift build`, which invalidates the existing Accessibility TCC grant. macOS `tccutil` only supports `reset`, NOT `grant` — there is no command-line way to auto-grant Accessibility. Workarounds: (1) sign local builds with a stable Developer ID cert (TCC persists across rebuilds), or (2) re-grant manually in System Settings > Privacy & Security > Accessibility after each rebuild. See also "NEVER Use Blanket TCC Resets" above.
 
 ## installTap Before engine.start() Leaves Orphaned Tap on Failure
 
