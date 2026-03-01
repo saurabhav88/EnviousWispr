@@ -29,6 +29,7 @@ final class SettingsManager {
         case wordCorrectionEnabled
         case isDebugModeEnabled
         case debugLogLevel
+        case useExtendedThinking
     }
 
     var onChange: ((SettingKey) -> Void)?
@@ -208,6 +209,13 @@ final class SettingsManager {
         }
     }
 
+    var useExtendedThinking: Bool {
+        didSet {
+            UserDefaults.standard.set(useExtendedThinking, forKey: "useExtendedThinking")
+            onChange?(.useExtendedThinking)
+        }
+    }
+
     var activePolishInstructions: PolishInstructions {
         customSystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? .default
@@ -274,5 +282,6 @@ final class SettingsManager {
         debugLogLevel = DebugLogLevel(
             rawValue: defaults.string(forKey: "debugLogLevel") ?? ""
         ) ?? .info
+        useExtendedThinking = defaults.object(forKey: "useExtendedThinking") as? Bool ?? false
     }
 }

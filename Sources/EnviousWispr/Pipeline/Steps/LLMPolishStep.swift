@@ -8,6 +8,7 @@ final class LLMPolishStep: TextProcessingStep {
     var llmProvider: LLMProvider = .none
     var llmModel: String = "gpt-4o-mini"
     var polishInstructions: PolishInstructions = .default
+    var useExtendedThinking: Bool = false
 
     /// Called before LLM processing starts (pipeline uses this to set .polishing state).
     var onWillProcess: (() -> Void)?
@@ -48,13 +49,16 @@ final class LLMPolishStep: TextProcessingStep {
         }
 
         let maxTokens = llmProvider == .ollama ? LLMConstants.ollamaMaxTokens : LLMConstants.defaultMaxTokens
+        let (thinkingBudget, reasoningEffort) = resolveThinkingConfig()
 
         let config = LLMProviderConfig(
             provider: llmProvider,
             model: llmModel,
             apiKeyKeychainId: keychainId,
             maxTokens: maxTokens,
-            temperature: 0.3
+            temperature: 0.3,
+            thinkingBudget: thinkingBudget,
+            reasoningEffort: reasoningEffort
         )
 
         // Resolve ${transcript} placeholder if present
@@ -93,5 +97,21 @@ final class LLMPolishStep: TextProcessingStep {
         ctx.llmProvider = llmProvider.rawValue
         ctx.llmModel = llmModel
         return ctx
+    }
+
+    /// Resolve thinking/reasoning config based on provider, model, and user toggle.
+    private func resolveThinkingConfig() -> (thinkingBudget: Int?, reasoningEffort: String?) {
+        switch llmProvider {
+        case .gemini:
+            let isThinkingModel = llmModel.hasPrefix("gemini-2.5") || llmModel.hasPrefix("gemini-3")
+            guard isThinkingModel else { return (nil, nil) }
+            return (useExtendedThinking ? LLMConstants.defaultThinkingBudget : 0, nil)
+        case .openAI:
+            let isReasoningModel = llmModel.hasPrefix("o1") || llmModel.hasPrefix("o3") || llmModel.hasPrefix("o4")
+            guard isReasoningModel else { return (nil, nil) }
+            return (nil, useExtendedThinking ? "medium" : "low")
+        case .ollama, .appleIntelligence, .none:
+            return (nil, nil)
+        }
     }
 }

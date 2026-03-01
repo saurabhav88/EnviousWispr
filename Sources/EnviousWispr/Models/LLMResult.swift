@@ -35,6 +35,8 @@ struct LLMProviderConfig: Codable, Sendable {
     let apiKeyKeychainId: String?
     let maxTokens: Int
     let temperature: Double
+    let thinkingBudget: Int?
+    let reasoningEffort: String?
 }
 
 /// A discoverable LLM model with availability status.

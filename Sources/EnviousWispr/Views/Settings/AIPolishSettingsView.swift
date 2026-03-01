@@ -88,6 +88,15 @@ struct AIPolishSettingsView: View {
                 }
             }
 
+            if appState.settings.llmProvider == .gemini || appState.settings.llmProvider == .openAI {
+                Section("Advanced") {
+                    Toggle("Use extended thinking", isOn: $state.settings.useExtendedThinking)
+                    Text("Lets the model reason through complex prompts before responding. Uses more tokens and increases latency. Best for custom prompts with multi-step instructions.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             if appState.settings.llmProvider == .openAI || appState.settings.llmProvider == .none {
                 Section("OpenAI API Key") {
                     HStack {

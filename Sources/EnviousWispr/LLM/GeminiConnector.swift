@@ -27,14 +27,19 @@ struct GeminiConnector: TranscriptPolisher {
         // Use systemInstruction for the system prompt so Flash models follow
         // instructions precisely rather than treating the combined message as a
         // summarization task.
+        var generationConfig: [String: Any] = [
+            "temperature": config.temperature,
+            "maxOutputTokens": config.maxTokens,
+        ]
+        if let budget = config.thinkingBudget {
+            generationConfig["thinkingConfig"] = ["thinkingBudget": budget]
+        }
+
         var body: [String: Any] = [
             "systemInstruction": [
                 "parts": [["text": instructions.systemPrompt]]
             ],
-            "generationConfig": [
-                "temperature": config.temperature,
-                "maxOutputTokens": config.maxTokens,
-            ],
+            "generationConfig": generationConfig,
         ]
 
         // When ${transcript} placeholder is used, LLMPolishStep resolves the full
@@ -99,12 +104,16 @@ struct GeminiConnector: TranscriptPolisher {
                 continue
             }
 
-            // Extract text fragment from this chunk
+            // Extract text fragments from this chunk, skipping thought parts
             if let content = firstCandidate["content"] as? [String: Any],
-               let parts = content["parts"] as? [[String: Any]],
-               let textFragment = parts.first?["text"] as? String {
-                fullText += textFragment
-                onToken(textFragment)
+               let parts = content["parts"] as? [[String: Any]] {
+                for part in parts {
+                    if part["thought"] as? Bool == true { continue }
+                    if let textFragment = part["text"] as? String {
+                        fullText += textFragment
+                        onToken(textFragment)
+                    }
+                }
             }
 
             // Check finishReason — present only in the final chunk
@@ -149,9 +158,16 @@ struct GeminiConnector: TranscriptPolisher {
         guard let candidates = json?["candidates"] as? [[String: Any]],
               let firstCandidate = candidates.first,
               let content = firstCandidate["content"] as? [String: Any],
-              let parts = content["parts"] as? [[String: Any]],
-              let responseText = parts.first?["text"] as? String,
-              !responseText.isEmpty else {
+              let parts = content["parts"] as? [[String: Any]] else {
+            throw LLMError.emptyResponse
+        }
+
+        // Filter out thought parts and join remaining text
+        let responseText = parts
+            .filter { $0["thought"] as? Bool != true }
+            .compactMap { $0["text"] as? String }
+            .joined()
+        guard !responseText.isEmpty else {
             throw LLMError.emptyResponse
         }
 

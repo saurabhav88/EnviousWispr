@@ -22,12 +22,15 @@ struct OpenAIConnector: TranscriptPolisher {
             ["role": "user", "content": text],
         ]
 
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "model": config.model,
             "messages": messages,
             "max_tokens": config.maxTokens,
             "temperature": config.temperature,
         ]
+        if let reasoningEffort = config.reasoningEffort {
+            body["reasoning_effort"] = reasoningEffort
+        }
 
         var request = URLRequest(url: URL(string: baseURL)!)
         request.httpMethod = "POST"

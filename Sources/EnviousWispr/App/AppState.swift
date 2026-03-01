@@ -85,6 +85,7 @@ final class AppState {
         pipeline.llmPolish.polishInstructions = settings.activePolishInstructions
         pipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
         pipeline.wordCorrection.customWords = customWords
+        pipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
 
         // Initialize logger
         Task {
@@ -232,6 +233,8 @@ final class AppState {
             Task { await AppLogger.shared.setDebugMode(settings.isDebugModeEnabled) }
         case .debugLogLevel:
             Task { await AppLogger.shared.setLogLevel(settings.debugLogLevel) }
+        case .useExtendedThinking:
+            pipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
         case .hasCompletedOnboarding:
             break
         }

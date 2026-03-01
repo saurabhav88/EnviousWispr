@@ -73,10 +73,14 @@ enum LLMConstants {
     static let maxConcurrentProbes: Int = 5
 
     /// Default max tokens for cloud LLM providers (supports ~5 min dictations with safe headroom).
-    static let defaultMaxTokens: Int = 2048
+    /// Thinking models (Gemini 2.5) consume output tokens for reasoning, so this must be generous.
+    static let defaultMaxTokens: Int = 8192
 
     /// Max tokens for Ollama (local models).
     static let ollamaMaxTokens: Int = 2048
+
+    /// Default thinking budget for extended thinking models (Gemini 2.5 Flash/Pro).
+    static let defaultThinkingBudget: Int = 8192
 }
 
 enum FormattingConstants {
