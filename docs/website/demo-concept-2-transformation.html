@@ -1,0 +1,1375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EnviousWispr — The Transformation (Streaming Pipeline)</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200..800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #08080c;
+    --surface: #111116;
+    --border: rgba(255,255,255,0.06);
+    --border-hover: rgba(255,255,255,0.1);
+    --accent: #8b7cf6;
+    --cyan: #22d3ee;
+    --green: #34d399;
+    --amber: #fbbf24;
+    --red: #f87171;
+    --pink: #f472b6;
+    --orange: #fb923c;
+    --text-primary: #ededf0;
+    --text-secondary: #8e8ea0;
+    --text-tertiary: #5a5a6e;
+    --font-body: 'Plus Jakarta Sans', -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--font-body);
+    background: var(--bg);
+    color: var(--text-primary);
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* ── Header ── */
+  .header {
+    text-align: center;
+    margin-bottom: 28px;
+    opacity: 0;
+    transform: translateY(-10px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+  .header.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .tag-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 14px;
+    border-radius: 100px;
+    background: rgba(139,124,246,0.12);
+    border: 1px solid rgba(139,124,246,0.25);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  .tag-pill::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse-dot 1.5s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .section-title {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* ── Main Stage ── */
+  .stage {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    width: 90vw;
+    max-width: 1280px;
+    height: 380px;
+  }
+
+  /* ── Panels ── */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.7s ease, transform 0.7s ease, border-color 0.5s ease, box-shadow 0.5s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  .panel.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .panel-left {
+    flex: 0 0 38%;
+  }
+  .panel-right {
+    flex: 0 0 38%;
+  }
+  .panel-right.glow-green {
+    border-color: rgba(52,211,153,0.35);
+    box-shadow: 0 0 30px rgba(52,211,153,0.08), inset 0 0 30px rgba(52,211,153,0.03);
+  }
+
+  .panel-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .panel-label.tertiary { color: var(--text-tertiary); }
+  .panel-label.green { color: var(--green); }
+
+  .live-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 100px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  .live-badge.active {
+    opacity: 1;
+  }
+  .live-badge.asr {
+    background: rgba(251,191,36,0.15);
+    color: var(--amber);
+    border: 1px solid rgba(251,191,36,0.3);
+  }
+  .live-badge.asr::before {
+    content: '';
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--amber);
+    animation: pulse-dot 0.8s ease-in-out infinite;
+  }
+  .live-badge.sse {
+    background: rgba(34,211,238,0.15);
+    color: var(--cyan);
+    border: 1px solid rgba(34,211,238,0.3);
+  }
+  .live-badge.sse::before {
+    content: '';
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--cyan);
+    animation: pulse-dot 0.6s ease-in-out infinite;
+  }
+
+  /* ── Waveform ── */
+  .waveform {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2.5px;
+    height: 56px;
+    margin-bottom: 14px;
+    padding: 0 4px;
+  }
+  .waveform .bar {
+    width: 3px;
+    border-radius: 2px;
+    height: 8px;
+    transition: height 0.12s ease;
+    will-change: height;
+  }
+
+  /* ── Text Areas ── */
+  .text-content {
+    flex: 1;
+    font-size: 14.5px;
+    line-height: 1.7;
+    color: var(--text-primary);
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .text-content::-webkit-scrollbar { width: 3px; }
+  .text-content::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+  .filler {
+    color: var(--red);
+    background: rgba(248,113,113,0.1);
+    padding: 1px 4px;
+    border-radius: 3px;
+    transition: all 0.4s ease;
+    display: inline;
+    text-decoration: none;
+    position: relative;
+  }
+  .filler.struck {
+    text-decoration: line-through;
+    opacity: 0.35;
+    background: rgba(248,113,113,0.04);
+  }
+
+  .right-text {
+    font-size: 14.5px;
+    line-height: 1.75;
+    color: var(--text-primary);
+  }
+
+  .sse-word {
+    display: inline;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+  .sse-word.visible {
+    opacity: 1;
+  }
+
+  .cursor-blink {
+    display: inline-block;
+    width: 2px;
+    height: 1.1em;
+    background: var(--green);
+    vertical-align: text-bottom;
+    animation: blink-cursor 0.6s step-end infinite;
+    margin-left: 1px;
+  }
+  @keyframes blink-cursor {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  /* ── Center Pipeline (Gantt-style parallel lanes) ── */
+  .pipeline {
+    flex: 0 0 24%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 16px 12px;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.7s ease, transform 0.7s ease;
+    position: relative;
+  }
+  .pipeline.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .pipeline-title {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-tertiary);
+    margin-bottom: 14px;
+  }
+
+  .gantt {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .gantt-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+  }
+
+  .gantt-label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    width: 72px;
+    text-align: right;
+    flex-shrink: 0;
+    white-space: nowrap;
+    transition: color 0.3s ease;
+  }
+  .gantt-label.active { color: var(--text-secondary); }
+
+  .gantt-track {
+    flex: 1;
+    height: 100%;
+    background: rgba(255,255,255,0.02);
+    border-radius: 4px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .gantt-bar {
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    left: 0;
+    width: 0%;
+    border-radius: 3px;
+    transition: width 0.3s linear;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .gantt-bar .bar-text {
+    font-family: var(--font-mono);
+    font-size: 8px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.7);
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  .gantt-bar.active .bar-text {
+    opacity: 1;
+  }
+
+  .gantt-bar.recording {
+    background: rgba(248,113,113,0.25);
+    border: 1px solid rgba(248,113,113,0.4);
+  }
+  .gantt-bar.recording.active {
+    background: rgba(248,113,113,0.3);
+    box-shadow: 0 0 12px rgba(248,113,113,0.2);
+  }
+
+  .gantt-bar.streaming-asr {
+    background: rgba(251,191,36,0.25);
+    border: 1px solid rgba(251,191,36,0.4);
+  }
+  .gantt-bar.streaming-asr.active {
+    background: rgba(251,191,36,0.3);
+    box-shadow: 0 0 12px rgba(251,191,36,0.2);
+  }
+
+  .gantt-bar.finalize {
+    background: rgba(251,191,36,0.35);
+    border: 1px solid rgba(251,191,36,0.5);
+  }
+  .gantt-bar.finalize.active {
+    box-shadow: 0 0 12px rgba(251,191,36,0.3);
+  }
+
+  .gantt-bar.prewarm {
+    background: rgba(139,124,246,0.25);
+    border: 1px solid rgba(139,124,246,0.4);
+  }
+  .gantt-bar.prewarm.active {
+    box-shadow: 0 0 12px rgba(139,124,246,0.3);
+  }
+
+  .gantt-bar.sse-polish {
+    background: rgba(34,211,238,0.25);
+    border: 1px solid rgba(34,211,238,0.4);
+  }
+  .gantt-bar.sse-polish.active {
+    background: rgba(34,211,238,0.3);
+    box-shadow: 0 0 12px rgba(34,211,238,0.2);
+  }
+
+  .gantt-bar.paste {
+    background: rgba(52,211,153,0.35);
+    border: 1px solid rgba(52,211,153,0.5);
+  }
+  .gantt-bar.paste.active {
+    box-shadow: 0 0 12px rgba(52,211,153,0.3);
+  }
+
+  .gantt-bar.done {
+    opacity: 0.4;
+    box-shadow: none;
+  }
+
+  /* overlap indicator */
+  .overlap-bracket {
+    position: absolute;
+    right: -16px;
+    top: 0;
+    height: calc(200% + 6px);
+    width: 12px;
+    border: 2px solid rgba(139,124,246,0.4);
+    border-left: none;
+    border-radius: 0 6px 6px 0;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  .overlap-bracket.visible {
+    opacity: 1;
+  }
+  .overlap-label {
+    position: absolute;
+    right: -80px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-family: var(--font-mono);
+    font-size: 8px;
+    color: var(--accent);
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  .overlap-label.visible {
+    opacity: 1;
+  }
+
+  /* concurrency flash indicators */
+  .concurrent-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 10px;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  .concurrent-badge.visible {
+    opacity: 1;
+  }
+  .concurrent-badge .cb-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+  .concurrent-badge .cb-text {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+  }
+
+  /* ── Timeline Bar (overlapped) ── */
+  .timeline-container {
+    margin-top: 24px;
+    width: 90vw;
+    max-width: 1280px;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+  .timeline-container.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .timeline-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .timeline-header .tl-title {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+  .timeline-header .tl-total {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--green);
+    opacity: 0;
+    transition: opacity 0.5s ease;
+  }
+  .timeline-header .tl-total.visible {
+    opacity: 1;
+  }
+
+  .timeline-tracks {
+    position: relative;
+    height: 80px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    padding: 6px 12px;
+  }
+
+  .tl-lane {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    height: 14px;
+    display: flex;
+    align-items: center;
+  }
+  .tl-lane:nth-child(1) { top: 8px; }
+  .tl-lane:nth-child(2) { top: 26px; }
+  .tl-lane:nth-child(3) { top: 44px; }
+  .tl-lane:nth-child(4) { top: 62px; }
+
+  .tl-lane-label {
+    font-family: var(--font-mono);
+    font-size: 8px;
+    color: var(--text-tertiary);
+    width: 90px;
+    text-align: right;
+    margin-right: 8px;
+    flex-shrink: 0;
+  }
+
+  .tl-lane-bar {
+    height: 100%;
+    border-radius: 3px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 6px;
+    min-width: 0;
+    transition: width 0.4s linear;
+  }
+  .tl-lane-bar .tl-dur {
+    font-family: var(--font-mono);
+    font-size: 8px;
+    color: rgba(255,255,255,0.6);
+    white-space: nowrap;
+  }
+
+  .tl-lane-bar.rec-bar {
+    background: rgba(248,113,113,0.2);
+    border: 1px solid rgba(248,113,113,0.35);
+    width: 0%;
+  }
+  .tl-lane-bar.asr-bar {
+    background: rgba(251,191,36,0.2);
+    border: 1px solid rgba(251,191,36,0.35);
+    width: 0%;
+  }
+  .tl-lane-bar.polish-bar {
+    background: rgba(34,211,238,0.2);
+    border: 1px solid rgba(34,211,238,0.35);
+    width: 0%;
+  }
+  .tl-lane-bar.paste-bar {
+    background: rgba(52,211,153,0.3);
+    border: 1px solid rgba(52,211,153,0.45);
+    width: 0%;
+  }
+
+  /* time markers */
+  .tl-markers {
+    position: absolute;
+    left: 110px;
+    right: 12px;
+    bottom: 2px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .tl-mark {
+    font-family: var(--font-mono);
+    font-size: 7px;
+    color: var(--text-tertiary);
+    opacity: 0.5;
+  }
+
+  /* release marker */
+  .release-marker {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: rgba(139,124,246,0.5);
+    z-index: 5;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  .release-marker.visible {
+    opacity: 1;
+  }
+  .release-marker::after {
+    content: 'RELEASE';
+    position: absolute;
+    top: -1px;
+    left: 4px;
+    font-family: var(--font-mono);
+    font-size: 7px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 0.5px;
+  }
+
+  /* ── Stats ── */
+  .stats {
+    margin-top: 14px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-tertiary);
+    text-align: center;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+    letter-spacing: 0.3px;
+  }
+  .stats.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .stats .stat-divider {
+    display: inline-block;
+    margin: 0 12px;
+    color: var(--border-hover);
+  }
+  .stats .stat-highlight {
+    color: var(--green);
+    font-weight: 600;
+  }
+
+  /* ── Replay Button ── */
+  .replay-btn {
+    position: fixed;
+    bottom: 24px;
+    right: 28px;
+    padding: 10px 20px;
+    border-radius: 10px;
+    border: 1px solid rgba(139,124,246,0.3);
+    background: rgba(139,124,246,0.08);
+    color: var(--accent);
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.4s ease, background 0.2s ease, transform 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    z-index: 100;
+  }
+  .replay-btn:hover {
+    background: rgba(139,124,246,0.15);
+    transform: translateY(-1px);
+  }
+  .replay-btn.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* ── Paste Particle ── */
+  .paste-particle {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 12px var(--green), 0 0 24px rgba(52,211,153,0.4);
+    opacity: 0;
+    z-index: 10;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header" id="header">
+    <div class="tag-pill">Live Demo</div>
+    <div class="section-title">Streaming Pipeline In Action</div>
+  </div>
+
+  <!-- Main Stage -->
+  <div class="stage">
+    <!-- Left Panel: What You Said (live streaming ASR) -->
+    <div class="panel panel-left" id="panelLeft">
+      <div class="panel-label tertiary">
+        What you said
+        <span class="live-badge asr" id="asrBadge">Streaming ASR</span>
+      </div>
+      <div class="waveform" id="waveform"></div>
+      <div class="text-content" id="rawText"></div>
+    </div>
+
+    <!-- Center Pipeline (Gantt-style parallel visualization) -->
+    <div class="pipeline" id="pipeline">
+      <div class="pipeline-title">Pipeline</div>
+      <div class="gantt">
+        <!-- Row 1: Recording -->
+        <div class="gantt-row" id="ganttRecRow">
+          <div class="gantt-label" id="ganttRecLabel">Record</div>
+          <div class="gantt-track">
+            <div class="gantt-bar recording" id="ganttRecBar">
+              <span class="bar-text">5.0s</span>
+            </div>
+          </div>
+        </div>
+        <!-- Row 2: Streaming ASR (overlaps with recording) -->
+        <div class="gantt-row" id="ganttAsrRow">
+          <div class="gantt-label" id="ganttAsrLabel">Stream ASR</div>
+          <div class="gantt-track" style="position:relative;">
+            <div class="gantt-bar streaming-asr" id="ganttAsrBar">
+              <span class="bar-text">real-time</span>
+            </div>
+            <!-- overlap bracket connecting Record + ASR -->
+            <div class="overlap-bracket" id="overlapBracket"></div>
+            <div class="overlap-label" id="overlapLabel">parallel</div>
+          </div>
+        </div>
+        <!-- Row 3: ASR Finalize + LLM Pre-warm (parallel, brief) -->
+        <div class="gantt-row" id="ganttFinalRow">
+          <div class="gantt-label" id="ganttFinalLabel">Finalize</div>
+          <div class="gantt-track">
+            <div class="gantt-bar finalize" id="ganttFinalBar" style="left: 0;">
+              <span class="bar-text">~80ms</span>
+            </div>
+          </div>
+        </div>
+        <!-- Row 3b: Pre-warm (same vertical position conceptually, but shown as row) -->
+        <div class="gantt-row" id="ganttPrewarmRow">
+          <div class="gantt-label" id="ganttPrewarmLabel">Pre-warm</div>
+          <div class="gantt-track">
+            <div class="gantt-bar prewarm" id="ganttPrewarmBar" style="left: 0;">
+              <span class="bar-text">TLS</span>
+            </div>
+          </div>
+        </div>
+        <!-- Row 4: SSE Polish -->
+        <div class="gantt-row" id="ganttPolishRow">
+          <div class="gantt-label" id="ganttPolishLabel">SSE Polish</div>
+          <div class="gantt-track">
+            <div class="gantt-bar sse-polish" id="ganttPolishBar">
+              <span class="bar-text">~1.5s</span>
+            </div>
+          </div>
+        </div>
+        <!-- Row 5: Paste -->
+        <div class="gantt-row" id="ganttPasteRow">
+          <div class="gantt-label" id="ganttPasteLabel">Paste</div>
+          <div class="gantt-track">
+            <div class="gantt-bar paste" id="ganttPasteBar">
+              <span class="bar-text">&lt;5ms</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Concurrency status -->
+      <div class="concurrent-badge" id="concBadge">
+        <div class="cb-dot" style="background: var(--accent);"></div>
+        <div class="cb-text" id="concText" style="color: var(--accent);"></div>
+      </div>
+    </div>
+
+    <!-- Right Panel: What Got Pasted (SSE streaming) -->
+    <div class="panel panel-right" id="panelRight">
+      <div class="panel-label green">
+        What got pasted
+        <span class="live-badge sse" id="sseBadge">SSE Streaming</span>
+      </div>
+      <div class="text-content right-text" id="polishedText"></div>
+    </div>
+  </div>
+
+  <!-- Paste particle (animated independently) -->
+  <div class="paste-particle" id="pasteParticle"></div>
+
+  <!-- Timeline (overlapped lanes) -->
+  <div class="timeline-container" id="timelineContainer">
+    <div class="timeline-header">
+      <div class="tl-title">Overlapped Timeline</div>
+      <div class="tl-total" id="tlTotal">1.6s from release to paste</div>
+    </div>
+    <div class="timeline-tracks" id="timelineTracks">
+      <!-- Lane 1: Recording + ASR overlapped -->
+      <div class="tl-lane">
+        <div class="tl-lane-label">Record + ASR</div>
+        <div class="tl-lane-bar rec-bar" id="tlRecBar" style="width:0%;">
+          <span class="tl-dur">5.0s (overlapped)</span>
+        </div>
+      </div>
+      <!-- Lane 2: ASR underneath (shows overlap) -->
+      <div class="tl-lane">
+        <div class="tl-lane-label">ASR Finalize</div>
+        <div class="tl-lane-bar asr-bar" id="tlAsrBar" style="width:0%;">
+          <span class="tl-dur">~80ms</span>
+        </div>
+      </div>
+      <!-- Lane 3: SSE Polish -->
+      <div class="tl-lane">
+        <div class="tl-lane-label">SSE Polish</div>
+        <div class="tl-lane-bar polish-bar" id="tlPolishBar" style="width:0%;">
+          <span class="tl-dur">~1.5s</span>
+        </div>
+      </div>
+      <!-- Lane 4: Paste -->
+      <div class="tl-lane">
+        <div class="tl-lane-label">Paste</div>
+        <div class="tl-lane-bar paste-bar" id="tlPasteBar" style="width:0%;">
+          <span class="tl-dur">&lt;5ms</span>
+        </div>
+      </div>
+      <!-- Release marker -->
+      <div class="release-marker" id="releaseMarker" style="left: calc(110px + 75.7%);"></div>
+      <!-- Time markers -->
+      <div class="tl-markers">
+        <span class="tl-mark">0s</span>
+        <span class="tl-mark">1s</span>
+        <span class="tl-mark">2s</span>
+        <span class="tl-mark">3s</span>
+        <span class="tl-mark">4s</span>
+        <span class="tl-mark">5s</span>
+        <span class="tl-mark">6.6s</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats" id="stats">
+    38 words spoken &#x2192; 34 words pasted
+    <span class="stat-divider">|</span>
+    4 filler words removed
+    <span class="stat-divider">|</span>
+    <span class="stat-highlight">1.6s from release to paste</span>
+    <span class="stat-divider">|</span>
+    <span class="stat-highlight">3x faster than sequential</span>
+  </div>
+
+  <!-- Replay -->
+  <button class="replay-btn" id="replayBtn">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+    Replay
+  </button>
+
+<script>
+/* --------------------------------------------------------------------------
+   EnviousWispr — "The Transformation" Demo (Streaming Pipeline Edition)
+   Visualizes the overlapped/concurrent pipeline architecture:
+     Recording ────────────────►
+       ASR (streaming) ═════════╗  runs DURING recording
+       LLM pre-warm ···········►│  fires at stop, concurrent with ASR finalize
+                        ASR fin ╠► Polish (SSE) ► Paste
+                       ~80ms        ~1.5s          <5ms
+   -------------------------------------------------------------------------- */
+(function() {
+  'use strict';
+
+  // ── Config ──
+  var BAR_COUNT = 48;
+
+  // ── Hardcoded raw-speech segments (filler-tagged) ──
+  // These stream in DURING recording to show real-time ASR
+  var rawSegments = [
+    { text: 'um ', filler: true },
+    { text: 'so ' },
+    { text: 'I I ', filler: true },
+    { text: 'wanted to ' },
+    { text: 'uh ', filler: true },
+    { text: 'circle back on, on our Q3 planning, ' },
+    { text: 'uh, ', filler: true },
+    { text: 'discussion from ' },
+    { text: 'like, ', filler: true },
+    { text: 'last Tuesday... I think ' },
+    { text: 'um ', filler: true },
+    { text: 'the timeline is ' },
+    { text: 'like ', filler: true },
+    { text: 'realistic but we should ' },
+    { text: 'uh ', filler: true },
+    { text: 'probably add a buffer week for the ' },
+    { text: 'um ', filler: true },
+    { text: 'integration phase' }
+  ];
+
+  // Polished output — will be streamed word-by-word (SSE-style)
+  var polishedStr = 'I wanted to circle back on our Q3 planning discussion from last Tuesday. I think the timeline is realistic, but we should probably add a buffer week for the integration phase.';
+  var polishedWords = polishedStr.split(' ');
+
+  // ── DOM References ──
+  var header         = document.getElementById('header');
+  var panelLeft      = document.getElementById('panelLeft');
+  var pipeline       = document.getElementById('pipeline');
+  var panelRight     = document.getElementById('panelRight');
+  var waveformEl     = document.getElementById('waveform');
+  var rawTextEl      = document.getElementById('rawText');
+  var polishedEl     = document.getElementById('polishedText');
+  var asrBadge       = document.getElementById('asrBadge');
+  var sseBadge       = document.getElementById('sseBadge');
+
+  // Gantt bars
+  var ganttRecBar     = document.getElementById('ganttRecBar');
+  var ganttAsrBar     = document.getElementById('ganttAsrBar');
+  var ganttFinalBar   = document.getElementById('ganttFinalBar');
+  var ganttPrewarmBar = document.getElementById('ganttPrewarmBar');
+  var ganttPolishBar  = document.getElementById('ganttPolishBar');
+  var ganttPasteBar   = document.getElementById('ganttPasteBar');
+  var ganttRecLabel   = document.getElementById('ganttRecLabel');
+  var ganttAsrLabel   = document.getElementById('ganttAsrLabel');
+  var ganttFinalLabel = document.getElementById('ganttFinalLabel');
+  var ganttPrewarmLabel = document.getElementById('ganttPrewarmLabel');
+  var ganttPolishLabel  = document.getElementById('ganttPolishLabel');
+  var ganttPasteLabel   = document.getElementById('ganttPasteLabel');
+  var overlapBracket  = document.getElementById('overlapBracket');
+  var overlapLabel    = document.getElementById('overlapLabel');
+  var concBadge       = document.getElementById('concBadge');
+  var concText        = document.getElementById('concText');
+
+  // Timeline
+  var timelineContainer = document.getElementById('timelineContainer');
+  var tlRecBar      = document.getElementById('tlRecBar');
+  var tlAsrBar      = document.getElementById('tlAsrBar');
+  var tlPolishBar   = document.getElementById('tlPolishBar');
+  var tlPasteBar    = document.getElementById('tlPasteBar');
+  var tlTotal       = document.getElementById('tlTotal');
+  var releaseMarker = document.getElementById('releaseMarker');
+
+  var statsEl    = document.getElementById('stats');
+  var replayBtn  = document.getElementById('replayBtn');
+  var pastePart  = document.getElementById('pasteParticle');
+
+  // ── Timer management ──
+  var timers = [];
+  var intervals = [];
+  var rafId = null;
+
+  function later(fn, ms) { var t = setTimeout(fn, ms); timers.push(t); return t; }
+  function repeat(fn, ms) { var iv = setInterval(fn, ms); intervals.push(iv); return iv; }
+  function clearAll() {
+    timers.forEach(clearTimeout);
+    intervals.forEach(clearInterval);
+    timers = [];
+    intervals = [];
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = null;
+  }
+
+  // ── Waveform ──
+  function createBars() {
+    while (waveformEl.firstChild) waveformEl.removeChild(waveformEl.firstChild);
+    for (var i = 0; i < BAR_COUNT; i++) {
+      var bar = document.createElement('div');
+      bar.className = 'bar';
+      var t = i / (BAR_COUNT - 1);
+      var r = Math.round(248 + (251 - 248) * t);
+      var g = Math.round(113 + (191 - 113) * t);
+      var b = Math.round(113 + (36 - 113) * t);
+      bar.style.background = 'rgb(' + r + ',' + g + ',' + b + ')';
+      bar.style.height = '8px';
+      waveformEl.appendChild(bar);
+    }
+  }
+
+  var waveActive = false;
+  function tickWave() {
+    if (!waveActive) return;
+    var bars = waveformEl.children;
+    var now = performance.now();
+    for (var i = 0; i < bars.length; i++) {
+      var phase = i * 0.35 + now * 0.004;
+      var h = 8 + Math.abs(Math.sin(phase)) * 38 + Math.abs(Math.sin(phase * 0.7 + i)) * 12;
+      bars[i].style.height = h + 'px';
+    }
+    rafId = requestAnimationFrame(tickWave);
+  }
+  function startWave() { waveActive = true; tickWave(); }
+  function stopWave() {
+    waveActive = false;
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    // Collapse bars to flat
+    var bars = waveformEl.children;
+    for (var i = 0; i < bars.length; i++) {
+      bars[i].style.height = '8px';
+    }
+  }
+
+  // ── Gantt bar animation helper ──
+  function animateGantt(bar, targetWidth, durationMs, cb) {
+    bar.classList.add('active');
+    bar.style.transition = 'width ' + durationMs + 'ms linear';
+    requestAnimationFrame(function() {
+      bar.style.width = targetWidth;
+    });
+    if (cb) later(cb, durationMs);
+  }
+
+  function doneGantt(bar) {
+    bar.classList.remove('active');
+    bar.classList.add('done');
+  }
+
+  // ── Type raw text into left panel (streams DURING recording) ──
+  function typeRawText(cb) {
+    while (rawTextEl.firstChild) rawTextEl.removeChild(rawTextEl.firstChild);
+
+    var spans = [];
+    rawSegments.forEach(function(seg, idx) {
+      var sp = document.createElement('span');
+      if (seg.filler) sp.className = 'filler';
+      sp.setAttribute('data-idx', idx);
+      rawTextEl.appendChild(sp);
+      spans.push({ el: sp, text: seg.text, pos: 0 });
+    });
+
+    var segIdx = 0;
+    var totalChars = rawSegments.reduce(function(a, s) { return a + s.text.length; }, 0);
+    // Spread across 4.8s of recording time
+    var avgDelay = 4800 / (totalChars / 3);
+
+    function tick() {
+      if (segIdx >= spans.length) { if (cb) cb(); return; }
+      var cur = spans[segIdx];
+      var chunk = 2 + Math.floor(Math.random() * 3);
+      var end = Math.min(cur.pos + chunk, cur.text.length);
+      cur.el.textContent = cur.text.slice(0, end);
+      cur.pos = end;
+      if (cur.pos >= cur.text.length) segIdx++;
+      if (segIdx < spans.length) {
+        later(tick, avgDelay * (0.6 + Math.random() * 0.8));
+      } else {
+        if (cb) cb();
+      }
+    }
+    tick();
+  }
+
+  // ── Strikethrough filler words (the hero moment) ──
+  function strikeFillers(cb) {
+    var fillers = rawTextEl.querySelectorAll('.filler');
+    fillers.forEach(function(f, i) {
+      later(function() { f.classList.add('struck'); }, i * 200);
+    });
+    later(cb, fillers.length * 200 + 200);
+  }
+
+  // ── SSE-style streaming for polished text ──
+  // Words appear in small bursts (1-3 words) with fade-in, simulating SSE tokens
+  function streamPolished(cb) {
+    polishedEl.textContent = '';
+    var cursor = document.createElement('span');
+    cursor.className = 'cursor-blink';
+    polishedEl.appendChild(cursor);
+
+    var wordIdx = 0;
+    // Words stream in bursts across ~1.3s to match the real ~1.5s SSE polish time
+    var wordsPerBurst = 2; // average 2 words per SSE token
+
+    function emitBurst() {
+      if (wordIdx >= polishedWords.length) {
+        if (cursor.parentNode) cursor.parentNode.removeChild(cursor);
+        if (cb) cb();
+        return;
+      }
+
+      // Remove cursor temporarily
+      if (cursor.parentNode) cursor.parentNode.removeChild(cursor);
+
+      // Emit 1-3 words
+      var burstSize = 1 + Math.floor(Math.random() * 3);
+      burstSize = Math.min(burstSize, polishedWords.length - wordIdx);
+
+      for (var i = 0; i < burstSize; i++) {
+        var wordSpan = document.createElement('span');
+        wordSpan.className = 'sse-word';
+        wordSpan.textContent = (wordIdx > 0 ? ' ' : '') + polishedWords[wordIdx];
+        polishedEl.appendChild(wordSpan);
+
+        // Stagger the fade-in slightly within a burst
+        (function(span, delay) {
+          later(function() { span.classList.add('visible'); }, delay);
+        })(wordSpan, i * 30);
+
+        wordIdx++;
+      }
+
+      // Re-add cursor
+      polishedEl.appendChild(cursor);
+
+      // Scroll to bottom if needed
+      polishedEl.scrollTop = polishedEl.scrollHeight;
+
+      // Next burst — fast enough to finish all words within ~1.3s
+      var nextDelay = 40 + Math.random() * 60;
+      // Occasionally have a slightly longer pause (simulating LLM thinking)
+      if (Math.random() < 0.1) nextDelay += 60;
+      later(emitBurst, nextDelay);
+    }
+    emitBurst();
+  }
+
+  // ── Paste particle ──
+  function firePasteParticle(cb) {
+    var pRect = pipeline.getBoundingClientRect();
+    var rRect = panelRight.getBoundingClientRect();
+    var sx = pRect.left + pRect.width / 2;
+    var sy = pRect.bottom - 30;
+    var ex = rRect.left + 40;
+    var ey = rRect.top + 50;
+
+    pastePart.style.transition = 'none';
+    pastePart.style.left = sx + 'px';
+    pastePart.style.top = sy + 'px';
+    pastePart.style.opacity = '1';
+
+    requestAnimationFrame(function() {
+      pastePart.style.transition = 'left 0.5s cubic-bezier(0.22,1,0.36,1), top 0.5s cubic-bezier(0.22,1,0.36,1), opacity 0.2s ease 0.4s';
+      pastePart.style.left = ex + 'px';
+      pastePart.style.top = ey + 'px';
+    });
+
+    later(function() {
+      pastePart.style.opacity = '0';
+      if (cb) cb();
+    }, 550);
+  }
+
+  // ── Timeline lane fill ──
+  function fillTLLane(barEl, targetWidth, durationMs, cb) {
+    barEl.style.transition = 'width ' + durationMs + 'ms linear';
+    requestAnimationFrame(function() { barEl.style.width = targetWidth; });
+    if (cb) later(cb, durationMs);
+  }
+
+  // ── Set concurrency badge ──
+  function setConcBadge(text) {
+    concText.textContent = text;
+    concBadge.classList.add('visible');
+  }
+  function hideConcBadge() {
+    concBadge.classList.remove('visible');
+  }
+
+  // ── Full reset ──
+  function resetAll() {
+    clearAll();
+    stopWave();
+
+    [header, panelLeft, pipeline, panelRight, timelineContainer, statsEl].forEach(function(e) { e.classList.remove('visible'); });
+    panelRight.classList.remove('glow-green');
+    replayBtn.classList.remove('visible');
+
+    // Reset badges
+    asrBadge.classList.remove('active');
+    sseBadge.classList.remove('active');
+    hideConcBadge();
+
+    // Reset gantt bars
+    var allBars = [ganttRecBar, ganttAsrBar, ganttFinalBar, ganttPrewarmBar, ganttPolishBar, ganttPasteBar];
+    allBars.forEach(function(b) {
+      b.style.transition = 'none';
+      b.style.width = '0%';
+      b.className = b.className.replace(/\s*(active|done)\b/g, '');
+    });
+
+    // Reset gantt labels
+    [ganttRecLabel, ganttAsrLabel, ganttFinalLabel, ganttPrewarmLabel, ganttPolishLabel, ganttPasteLabel].forEach(function(l) {
+      l.classList.remove('active');
+    });
+
+    // Reset overlap indicators
+    overlapBracket.classList.remove('visible');
+    overlapLabel.classList.remove('visible');
+
+    // Reset text
+    rawTextEl.textContent = '';
+    polishedEl.textContent = '';
+
+    // Reset timeline
+    [tlRecBar, tlAsrBar, tlPolishBar, tlPasteBar].forEach(function(b) {
+      b.style.transition = 'none';
+      b.style.width = '0%';
+    });
+    tlTotal.classList.remove('visible');
+    releaseMarker.classList.remove('visible');
+
+    pastePart.style.transition = 'none';
+    pastePart.style.opacity = '0';
+
+    createBars();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ── Main Sequence (~13s total) ──
+  // ═══════════════════════════════════════════════════════════════════════════
+  function run() {
+    resetAll();
+
+    /* ── Phase 1: Entrance (0-1.5s) ── Staggered fade-in */
+    later(function() { header.classList.add('visible'); }, 100);
+    later(function() { panelLeft.classList.add('visible'); timelineContainer.classList.add('visible'); }, 400);
+    later(function() { pipeline.classList.add('visible'); }, 700);
+    later(function() { panelRight.classList.add('visible'); }, 1000);
+
+    /* ── Phase 2: Recording + Live Streaming ASR (1.5-6.5s) ──
+       Both Recording and Streaming ASR are active SIMULTANEOUSLY.
+       Raw transcript text streams in on the left AS the waveform plays. */
+    later(function() {
+      // Start waveform animation
+      startWave();
+
+      // Activate ASR badge on left panel
+      asrBadge.classList.add('active');
+
+      // Gantt: Recording bar grows over 5s
+      ganttRecLabel.classList.add('active');
+      animateGantt(ganttRecBar, '100%', 5000);
+
+      // Gantt: Streaming ASR bar grows simultaneously (same duration = overlap!)
+      ganttAsrLabel.classList.add('active');
+      animateGantt(ganttAsrBar, '100%', 5000);
+
+      // Show overlap bracket after a moment
+      later(function() {
+        overlapBracket.classList.add('visible');
+        overlapLabel.classList.add('visible');
+      }, 800);
+
+      // Concurrency badge
+      setConcBadge('Recording + ASR running in parallel');
+
+      // Timeline: Record+ASR lane fills (they overlap completely)
+      // This lane represents 0-5s of the total ~6.6s timeline = 75.7%
+      fillTLLane(tlRecBar, '75.7%', 5000);
+
+      // Type raw text DURING recording (the key visual difference)
+      typeRawText(function() {});
+    }, 1500);
+
+    /* ── Phase 3: Release + Parallel Processing (6.5-8s) ──
+       Waveform stops. Brief ASR Finalize (~80ms) and LLM Pre-warm
+       happen IN PARALLEL. Filler words get struck through. */
+    later(function() {
+      // Stop waveform
+      stopWave();
+
+      // Remove ASR badge
+      asrBadge.classList.remove('active');
+
+      // Mark recording + streaming ASR as done
+      doneGantt(ganttRecBar);
+      doneGantt(ganttAsrBar);
+      ganttRecLabel.classList.remove('active');
+      ganttAsrLabel.classList.remove('active');
+      overlapBracket.classList.remove('visible');
+      overlapLabel.classList.remove('visible');
+
+      // Show release marker on timeline
+      releaseMarker.classList.add('visible');
+
+      // ASR Finalize — very brief bar (represents ~80ms, shown as quick flash)
+      ganttFinalLabel.classList.add('active');
+      animateGantt(ganttFinalBar, '15%', 500, function() {
+        doneGantt(ganttFinalBar);
+        ganttFinalLabel.classList.remove('active');
+      });
+
+      // LLM Pre-warm — concurrent with finalize!
+      ganttPrewarmLabel.classList.add('active');
+      animateGantt(ganttPrewarmBar, '15%', 500, function() {
+        doneGantt(ganttPrewarmBar);
+        ganttPrewarmLabel.classList.remove('active');
+      });
+
+      // Timeline: ASR finalize lane (brief)
+      // 80ms out of 6.6s total = ~1.2%, but visually show a small slice
+      fillTLLane(tlAsrBar, '3%', 500);
+
+      // Update concurrency badge
+      setConcBadge('ASR finalize + LLM pre-warm (concurrent)');
+
+      // Strikethrough filler words — THE HERO MOMENT
+      strikeFillers(function() {});
+    }, 6500);
+
+    /* ── Phase 4: SSE Streaming Polish (8-14s) ──
+       Polished text streams in word-by-word via SSE tokens.
+       Each word/chunk fades in — different feel from old typewriter. */
+    later(function() {
+      // Activate SSE polish gantt bar (~1.5s real time, shown over 1.5s)
+      ganttPolishLabel.classList.add('active');
+      animateGantt(ganttPolishBar, '100%', 1500, function() {
+        doneGantt(ganttPolishBar);
+        ganttPolishLabel.classList.remove('active');
+      });
+
+      // Activate SSE badge on right panel
+      sseBadge.classList.add('active');
+
+      // Update concurrency badge
+      setConcBadge('SSE tokens streaming from Gemini');
+
+      // Timeline: Polish lane (~1.5s)
+      fillTLLane(tlPolishBar, '22.7%', 1500);
+
+      // Right panel green glow
+      panelRight.classList.add('glow-green');
+
+      // Fire paste particle for visual flair
+      firePasteParticle(function() {});
+
+      // Stream polished text SSE-style (must finish within ~1.5s)
+      later(function() {
+        streamPolished(function() {
+          // SSE streaming complete
+          sseBadge.classList.remove('active');
+        });
+      }, 100);
+    }, 8000);
+
+    /* ── Phase 5: Paste + Done (9.5-11.5s) ── */
+    later(function() {
+      // Paste gantt bar — instant flash
+      ganttPasteLabel.classList.add('active');
+      animateGantt(ganttPasteBar, '100%', 200, function() {
+        doneGantt(ganttPasteBar);
+        ganttPasteLabel.classList.remove('active');
+      });
+
+      // Timeline: Paste lane (tiny)
+      fillTLLane(tlPasteBar, '1%', 200);
+
+      // Show total
+      later(function() {
+        tlTotal.classList.add('visible');
+      }, 300);
+
+      // Final concurrency badge
+      setConcBadge('Done — 1.6s from release to paste');
+    }, 9700);
+
+    /* ── Phase 6: Stats + Replay (11-13s) ── */
+    later(function() {
+      hideConcBadge();
+      statsEl.classList.add('visible');
+    }, 11200);
+    later(function() { replayBtn.classList.add('visible'); }, 12000);
+  }
+
+  // ── Replay ──
+  replayBtn.addEventListener('click', function() {
+    replayBtn.classList.remove('visible');
+    later(run, 300);
+  });
+
+  // ── Boot ──
+  createBars();
+  later(run, 400);
+})();
+</script>
+
+</body>
+</html>
