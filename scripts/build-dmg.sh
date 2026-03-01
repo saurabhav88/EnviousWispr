@@ -137,6 +137,26 @@ echo "    Bundle assembled at ${APP_BUNDLE}"
 if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
     echo ""
     echo "==> [3/5] Signing .app bundle ..."
+
+    # Sign nested frameworks first (Apple notarization requires all code signed
+    # with hardened runtime). Sparkle.framework contains nested binaries.
+    if [[ -d "${FRAMEWORKS_DIR}/Sparkle.framework" ]]; then
+        echo "    Signing Sparkle.framework nested binaries ..."
+        # Sign XPC services and helper tools inside Sparkle
+        find "${FRAMEWORKS_DIR}/Sparkle.framework" -type f \( -name "*.xpc" -o -perm +111 \) | while read -r binary; do
+            # Skip directories and non-Mach-O files
+            file_type=$(file -b "$binary" 2>/dev/null || true)
+            if echo "$file_type" | grep -q "Mach-O"; then
+                codesign --force --options runtime --sign "${CODESIGN_IDENTITY}" "$binary" 2>/dev/null || true
+            fi
+        done
+        # Sign the Sparkle framework bundle itself
+        codesign --force --options runtime \
+            --sign "${CODESIGN_IDENTITY}" \
+            "${FRAMEWORKS_DIR}/Sparkle.framework"
+    fi
+
+    # Sign the main app bundle
     codesign --force --options runtime \
         --sign "${CODESIGN_IDENTITY}" \
         --entitlements "${ENTITLEMENTS_DEST}" \
@@ -196,11 +216,24 @@ rm -rf "${DMG_STAGING}"
 if [[ -n "${APPLE_ID:-}" && -n "${APPLE_ID_PASSWORD:-}" && -n "${APPLE_TEAM_ID:-}" ]]; then
     echo ""
     echo "==> [5/5] Notarizing DMG ..."
-    xcrun notarytool submit "${DMG_OUT}" \
+    NOTARIZE_OUTPUT=$(xcrun notarytool submit "${DMG_OUT}" \
         --apple-id "${APPLE_ID}" \
         --password "${APPLE_ID_PASSWORD}" \
         --team-id "${APPLE_TEAM_ID}" \
-        --wait
+        --wait 2>&1) || true
+    echo "$NOTARIZE_OUTPUT"
+
+    # Extract submission ID and check status
+    SUBMISSION_ID=$(echo "$NOTARIZE_OUTPUT" | grep "id:" | head -1 | awk '{print $2}')
+    if echo "$NOTARIZE_OUTPUT" | grep -q "status: Invalid"; then
+        echo "==> Notarization REJECTED. Fetching log for details ..."
+        xcrun notarytool log "$SUBMISSION_ID" \
+            --apple-id "${APPLE_ID}" \
+            --password "${APPLE_ID_PASSWORD}" \
+            --team-id "${APPLE_TEAM_ID}" 2>&1 || true
+        exit 1
+    fi
+
     echo "==> Stapling notarization ticket ..."
     xcrun stapler staple "${DMG_OUT}"
     echo "    Notarization complete."
