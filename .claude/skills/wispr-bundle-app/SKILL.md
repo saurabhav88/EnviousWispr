@@ -36,10 +36,11 @@ RESOURCES_SRC=/Users/m4pro_sv/Desktop/EnviousWispr/Sources/EnviousWispr/Resource
 cp "$RESOURCES_SRC/Info.plist" "$BUNDLE/Contents/Info.plist"
 ```
 
-## Copy AppIcon.icns
+## Copy AppIcon.icns and menu bar icons
 
 ```bash
 cp "$RESOURCES_SRC/AppIcon.icns" "$BUNDLE/Contents/Resources/AppIcon.icns"
+cp "$RESOURCES_SRC"/menubar-*.png "$BUNDLE/Contents/Resources/"
 ```
 
 ## Embed Sparkle.framework
@@ -65,12 +66,18 @@ printf 'APPL????' > "$BUNDLE/Contents/PkgInfo"
 find "$BUNDLE" -type f
 ```
 
-Expected output (must include Sparkle.framework):
+Expected output (must include Sparkle.framework and menu bar icons):
 ```
 /tmp/EnviousWispr.app/Contents/Info.plist
 /tmp/EnviousWispr.app/Contents/PkgInfo
 /tmp/EnviousWispr.app/Contents/MacOS/EnviousWispr
 /tmp/EnviousWispr.app/Contents/Resources/AppIcon.icns
+/tmp/EnviousWispr.app/Contents/Resources/menubar-idle.png
+/tmp/EnviousWispr.app/Contents/Resources/menubar-idle@2x.png
+/tmp/EnviousWispr.app/Contents/Resources/menubar-recording.png
+/tmp/EnviousWispr.app/Contents/Resources/menubar-recording@2x.png
+/tmp/EnviousWispr.app/Contents/Resources/menubar-processing.png
+/tmp/EnviousWispr.app/Contents/Resources/menubar-processing@2x.png
 /tmp/EnviousWispr.app/Contents/Frameworks/Sparkle.framework/...
 ```
 

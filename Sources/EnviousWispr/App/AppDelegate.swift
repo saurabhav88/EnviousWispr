@@ -83,12 +83,84 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         guard let button = statusItem?.button else { return }
-        button.image = NSImage(systemSymbolName: "mic", accessibilityDescription: "EnviousWispr")
+        button.image = loadMenuBarImage(named: "menubar-idle", isTemplate: true)
 
         let menu = NSMenu()
         menu.delegate = self
         statusItem?.menu = menu
         populateMenu(menu)
+    }
+
+    /// Load a menu bar icon from the app bundle's Resources directory.
+    /// At runtime the bundle is a proper .app with Contents/Resources/;
+    /// during development we fall back to the source Resources/ directory.
+    ///
+    /// Resolution order:
+    ///   1. Bundle.main.resourceURL  (production .app bundle)
+    ///   2. Derived from executable path (fallback when Bundle.main mis-resolves)
+    ///   3. Source tree via #filePath (development / bare binary)
+    ///   4. SF Symbol "mic" (last resort)
+    private func loadMenuBarImage(named name: String, isTemplate: Bool) -> NSImage? {
+        // Build an ordered list of directories to search.
+        var searchDirs = [URL]()
+
+        // Primary: Bundle.main.resourceURL (correct for .app bundles)
+        if let bundleRes = Bundle.main.resourceURL {
+            searchDirs.append(bundleRes)
+        }
+
+        // Secondary: derive from the executable path.
+        // Contents/MacOS/Binary → up twice → Contents/Resources/
+        // Handles cases where Bundle.main doesn't point to the .app (e.g.,
+        // bare binary invocation, SPM build tree).
+        let execURL = Bundle.main.executableURL
+            ?? URL(fileURLWithPath: ProcessInfo.processInfo.arguments[0])
+        let derivedRes = execURL
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Resources")
+        if !searchDirs.contains(where: { $0.path == derivedRes.path }) {
+            searchDirs.append(derivedRes)
+        }
+
+        // Tertiary: source tree (development only; #filePath bakes in the
+        // compile-time path so this only works on the build machine).
+        let srcRes = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()        // App/
+            .deletingLastPathComponent()        // EnviousWispr/
+            .appendingPathComponent("Resources")
+        if !searchDirs.contains(where: { $0.path == srcRes.path }) {
+            searchDirs.append(srcRes)
+        }
+
+        // Try each directory in order.
+        for dir in searchDirs {
+            let url1x = dir.appendingPathComponent("\(name).png")
+            guard FileManager.default.fileExists(atPath: url1x.path),
+                  let img = NSImage(contentsOf: url1x) else { continue }
+
+            // Attach the @2x representation if available.
+            // Set its point size to match the 1x (18pt) so NSImage treats
+            // the 36px variant as a true Retina representation.
+            let url2x = dir.appendingPathComponent("\(name)@2x.png")
+            if let rep2x = NSImageRep(contentsOf: url2x) {
+                rep2x.size = NSSize(width: 18, height: 18)
+                img.addRepresentation(rep2x)
+            }
+
+            img.isTemplate = isTemplate
+            img.size = NSSize(width: 18, height: 18)
+            return img
+        }
+
+        // Final fallback: SF Symbol
+        let fallback = NSImage(
+            systemSymbolName: "mic",
+            accessibilityDescription: "EnviousWispr"
+        )
+        fallback?.isTemplate = isTemplate
+        fallback?.size = NSSize(width: 18, height: 18)
+        return fallback
     }
 
     /// Populate the given menu with items reflecting current AppState.
@@ -155,15 +227,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Update the status item icon based on pipeline state.
     func updateIcon() {
         let state = appState.pipelineState
-        // Show mic.slash when accessibility is missing and the app is idle,
+        // Show SF Symbol mic.slash when accessibility is missing and the app is idle,
         // to signal that paste will not work until the user grants permission.
-        let iconName: String
         if state == .idle && appState.permissions.shouldShowAccessibilityWarning {
-            iconName = "mic.slash"
+            let sfImage = NSImage(systemSymbolName: "mic.slash", accessibilityDescription: "EnviousWispr — Accessibility required")
+            statusItem?.button?.image = sfImage
         } else {
-            iconName = state.menuBarIconName
+            let (imageName, isTemplate) = state.menuBarImageInfo
+            statusItem?.button?.image = loadMenuBarImage(named: imageName, isTemplate: isTemplate)
         }
-        statusItem?.button?.image = NSImage(systemSymbolName: iconName, accessibilityDescription: "EnviousWispr")
         statusItem?.button?.alphaValue = 1.0
 
         if state.shouldPulseIcon {

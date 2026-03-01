@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  EnviousWispr Menu Bar Icon — IDLE state
+  Monochrome grey lips. Static bars. Blends into macOS menu bar.
+  Render at 18-22px.
+-->
+<svg width="18" height="18" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" fill="none">
+  <!-- Upper lip bars -->
+  <g>
+    <rect x="4"  y="14" width="4.5" height="14" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+    <rect x="11" y="11" width="4.5" height="13" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+    <rect x="18" y="8"  width="4.5" height="14" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+    <rect x="25" y="12" width="4.5" height="10" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+    <rect x="32" y="14" width="4.5" height="9"  rx="1.5" fill="rgba(255,255,255,0.65)"/>
+    <rect x="39" y="11" width="4.5" height="11" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+    <rect x="46" y="7"  width="4.5" height="15" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+    <rect x="53" y="10" width="4.5" height="14" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+  </g>
+  <!-- Lower lip bars -->
+  <g>
+    <rect x="8"  y="32" width="4.5" height="10" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+    <rect x="15" y="30" width="4.5" height="14" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+    <rect x="22" y="29" width="4.5" height="16" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+    <rect x="29" y="28" width="4.5" height="18" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+    <rect x="36" y="29" width="4.5" height="16" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+    <rect x="43" y="30" width="4.5" height="14" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+    <rect x="50" y="32" width="4.5" height="10" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+  </g>
+</svg>

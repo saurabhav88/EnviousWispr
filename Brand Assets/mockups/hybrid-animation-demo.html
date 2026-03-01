@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EnviousWispr — Hybrid Concept (Lips → Spectrum → Lips)</title>
+<style>
+  /* ── Reset & Page ── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #1a1a1a;
+    background-image:
+      radial-gradient(ellipse at 25% 45%, rgba(50,30,60,0.25) 0%, transparent 65%),
+      radial-gradient(ellipse at 75% 35%, rgba(30,40,70,0.2) 0%, transparent 55%);
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    padding-bottom: 80px;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  .page-header {
+    text-align: center;
+    padding: 40px 20px 10px;
+  }
+  .page-header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: -0.5px;
+    margin-bottom: 6px;
+  }
+  .page-header h1 .arrow { color: #888; font-weight: 300; }
+  .page-header .tagline {
+    font-size: 14px;
+    color: rgba(255,255,255,0.4);
+    line-height: 1.5;
+  }
+
+  /* ── Section Layout ── */
+  .section {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 48px 32px 0;
+  }
+  .section h2 {
+    font-size: 22px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 6px;
+    letter-spacing: -0.3px;
+  }
+  .section p.subtitle {
+    font-size: 14px;
+    color: rgba(255,255,255,0.45);
+    margin-bottom: 28px;
+    line-height: 1.5;
+  }
+  .state-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    margin-bottom: 36px;
+  }
+  .state-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 14px;
+    padding: 28px 20px 22px;
+    text-align: center;
+  }
+  .state-card h3 {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-bottom: 4px;
+  }
+  .state-card .desc {
+    font-size: 12px;
+    color: rgba(255,255,255,0.3);
+    margin-bottom: 24px;
+    line-height: 1.4;
+  }
+  .state-card h3.idle-label { color: rgba(255,255,255,0.5); }
+  .state-card h3.rec-label { color: #ff453a; }
+  .state-card h3.proc-label { color: #5ac8fa; }
+
+  .large-preview {
+    width: 150px;
+    height: 150px;
+    margin: 0 auto 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.2);
+    border-radius: 12px;
+  }
+  .menubar-context-label {
+    font-size: 11px;
+    color: rgba(255,255,255,0.3);
+    margin-bottom: 8px;
+  }
+
+  /* ── macOS Menu Bar ── */
+  .menubar {
+    height: 25px;
+    background: rgba(38,38,38,0.92);
+    backdrop-filter: blur(30px);
+    -webkit-backdrop-filter: blur(30px);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 12px;
+    gap: 16px;
+    position: relative;
+    overflow: hidden;
+    border-bottom: 0.5px solid rgba(255,255,255,0.08);
+  }
+  .menubar-full {
+    height: 25px;
+    background: rgba(38,38,38,0.92);
+    backdrop-filter: blur(30px);
+    -webkit-backdrop-filter: blur(30px);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    position: relative;
+    border-bottom: 0.5px solid rgba(255,255,255,0.08);
+  }
+  .menubar-left {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+  }
+  .menubar-left .apple-logo { font-size: 15px; opacity: 0.9; color: rgba(255,255,255,0.88); }
+  .menubar-left span {
+    font-size: 13px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.88);
+  }
+  .menubar-left span:first-child { font-weight: 600; }
+  .menubar-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .menubar-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .menubar-icon svg { display: block; }
+  .menubar-clock {
+    color: rgba(255,255,255,0.75);
+    font-size: 13px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.2px;
+  }
+
+  /* ── Section 3 Controls ── */
+  .controls {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-top: 24px;
+    margin-bottom: 16px;
+  }
+  .controls button {
+    padding: 10px 28px;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.75);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.25s;
+    font-family: inherit;
+    letter-spacing: 0.3px;
+  }
+  .controls button:hover { background: rgba(255,255,255,0.12); color: #fff; }
+  .controls button.active-idle { border-color: rgba(255,255,255,0.4); background: rgba(255,255,255,0.15); color: #fff; }
+  .controls button.active-rec { background: rgba(255,69,58,0.15); color: #ff5147; border-color: #ff453a; }
+  .controls button.active-proc { background: rgba(90,200,250,0.1); color: #5ac8fa; border-color: #5ac8fa; }
+
+  /* ── Divider ── */
+  .divider {
+    max-width: 920px;
+    margin: 40px auto 0;
+    border: none;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+
+  /* State pill */
+  .state-pill {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 12px;
+    border-radius: 10px;
+    margin-top: 14px;
+    letter-spacing: 0.5px;
+    transition: all 0.4s ease;
+  }
+  .state-pill.idle { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.5); }
+  .state-pill.rec { background: rgba(255,69,58,0.15); color: #ff453a; }
+  .state-pill.proc { background: rgba(90,200,250,0.1); color: #5ac8fa; }
+
+  /* ═══════════════════════════════════════════════════
+     HYBRID ICON — DUAL-LAYER ANIMATION SYSTEM
+
+     Two overlapping SVG groups inside each icon:
+     - .lips-layer: horizontal bars arranged as lips
+     - .spectrum-layer: bars arranged radially as wheel
+
+     Cross-fade via opacity transitions.
+     Each layer has its own CSS animations.
+     ═══════════════════════════════════════════════════ */
+
+  /* ── Cross-fade layers ── */
+  .hybrid-icon .lips-layer {
+    transition: opacity 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .hybrid-icon .spectrum-layer {
+    transition: opacity 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .hybrid-icon .rec-dot-el {
+    transition: opacity 0.3s ease;
+  }
+
+  /* Idle: lips visible, spectrum hidden */
+  .hybrid-icon.state-idle .lips-layer { opacity: 1; }
+  .hybrid-icon.state-idle .spectrum-layer { opacity: 0; }
+  .hybrid-icon.state-idle .rec-dot-el { opacity: 0; }
+
+  /* Recording: lips hidden, spectrum visible */
+  .hybrid-icon.state-rec .lips-layer { opacity: 0; }
+  .hybrid-icon.state-rec .spectrum-layer { opacity: 1; }
+  .hybrid-icon.state-rec .rec-dot-el { opacity: 1; animation: recDotPulse 1s ease-in-out infinite; }
+
+  /* Processing: lips visible, spectrum hidden */
+  .hybrid-icon.state-proc .lips-layer { opacity: 1; }
+  .hybrid-icon.state-proc .spectrum-layer { opacity: 0; }
+  .hybrid-icon.state-proc .rec-dot-el { opacity: 0; }
+
+  /* ─── IDLE: monochrome lips, static ─── */
+  .hybrid-icon.state-idle .lips-layer .lip-bar {
+    fill: rgba(255,255,255,0.65);
+  }
+  .hybrid-icon.state-idle .lips-layer .particle-el {
+    opacity: 0;
+  }
+
+  /* ─── RECORDING: spectrum wheel with rainbow bounce ─── */
+  .hybrid-icon.state-rec .spectrum-layer .sb0  .bar-rect { fill: #ff2d55; animation: sPulse0  0.55s ease-in-out infinite alternate; }
+  .hybrid-icon.state-rec .spectrum-layer .sb1  .bar-rect { fill: #ff9f0a; animation: sPulse1  0.50s ease-in-out infinite alternate; }
+  .hybrid-icon.state-rec .spectrum-layer .sb2  .bar-rect { fill: #ffd60a; animation: sPulse2  0.62s ease-in-out infinite alternate; }
+  .hybrid-icon.state-rec .spectrum-layer .sb3  .bar-rect { fill: #30d158; animation: sPulse3  0.45s ease-in-out infinite alternate; }
+  .hybrid-icon.state-rec .spectrum-layer .sb4  .bar-rect { fill: #34c759; animation: sPulse4  0.68s ease-in-out infinite alternate; }
+  .hybrid-icon.state-rec .spectrum-layer .sb5  .bar-rect { fill: #32d8be; animation: sPulse5  0.42s ease-in-out infinite alternate; }
+  .hybrid-icon.state-rec .spectrum-layer .sb6  .bar-rect { fill: #64d2ff; animation: sPulse6  0.58s ease-in-out infinite alternate; }
+  .hybrid-icon.state-rec .spectrum-layer .sb7  .bar-rect { fill: #0a84ff; animation: sPulse7  0.48s ease-in-out infinite alternate; }
+  .hybrid-icon.state-rec .spectrum-layer .sb8  .bar-rect { fill: #5e5ce6; animation: sPulse8  0.53s ease-in-out infinite alternate; }
+  .hybrid-icon.state-rec .spectrum-layer .sb9  .bar-rect { fill: #bf5af2; animation: sPulse9  0.65s ease-in-out infinite alternate; }
+  .hybrid-icon.state-rec .spectrum-layer .sb10 .bar-rect { fill: #ff2d55; animation: sPulse10 0.47s ease-in-out infinite alternate; }
+  .hybrid-icon.state-rec .spectrum-layer .sb11 .bar-rect { fill: #ff9f0a; animation: sPulse11 0.60s ease-in-out infinite alternate; }
+
+  /* Glow ring pulses during recording */
+  .hybrid-icon.state-rec .glow-ring {
+    animation: glowPulse 1.2s ease-in-out infinite;
+  }
+
+  /* Spectrum bounce keyframes */
+  @keyframes sPulse0  { from { transform: scaleY(0.40); } to { transform: scaleY(1.0); } }
+  @keyframes sPulse1  { from { transform: scaleY(0.55); } to { transform: scaleY(0.90); } }
+  @keyframes sPulse2  { from { transform: scaleY(0.35); } to { transform: scaleY(1.0); } }
+  @keyframes sPulse3  { from { transform: scaleY(0.60); } to { transform: scaleY(0.95); } }
+  @keyframes sPulse4  { from { transform: scaleY(0.38); } to { transform: scaleY(1.0); } }
+  @keyframes sPulse5  { from { transform: scaleY(0.50); } to { transform: scaleY(0.92); } }
+  @keyframes sPulse6  { from { transform: scaleY(0.30); } to { transform: scaleY(1.0); } }
+  @keyframes sPulse7  { from { transform: scaleY(0.55); } to { transform: scaleY(0.88); } }
+  @keyframes sPulse8  { from { transform: scaleY(0.42); } to { transform: scaleY(1.0); } }
+  @keyframes sPulse9  { from { transform: scaleY(0.48); } to { transform: scaleY(0.85); } }
+  @keyframes sPulse10 { from { transform: scaleY(0.36); } to { transform: scaleY(1.0); } }
+  @keyframes sPulse11 { from { transform: scaleY(0.52); } to { transform: scaleY(0.93); } }
+
+  @keyframes recDotPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  @keyframes glowPulse {
+    0%, 100% { opacity: 0; }
+    50% { opacity: 0.18; }
+  }
+
+  /* ─── PROCESSING: lips with exaggerated wave + rainbow colors ─── */
+
+  /* Rainbow colors on lip bars during processing */
+  .hybrid-icon.state-proc .lips-layer .lip-bar-1  { fill: #ff2d55; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-2  { fill: #ff9f0a; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-3  { fill: #ffd60a; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-4  { fill: #30d158; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-5  { fill: #34c759; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-6  { fill: #32d8be; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-7  { fill: #64d2ff; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-8  { fill: #0a84ff; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-9  { fill: #5e5ce6; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-10 { fill: #bf5af2; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-11 { fill: #ff2d55; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-12 { fill: #ff9f0a; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-13 { fill: #ffd60a; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-14 { fill: #30d158; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-15 { fill: #34c759; }
+
+  /* Exaggerated sine wave through bars */
+  .hybrid-icon.state-proc .lips-layer .lip-bar-1  { animation: lipWave 1.4s ease-in-out infinite; animation-delay: 0.00s; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-2  { animation: lipWave 1.4s ease-in-out infinite; animation-delay: 0.07s; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-3  { animation: lipWave 1.4s ease-in-out infinite; animation-delay: 0.14s; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-4  { animation: lipWave 1.4s ease-in-out infinite; animation-delay: 0.21s; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-5  { animation: lipWave 1.4s ease-in-out infinite; animation-delay: 0.28s; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-6  { animation: lipWave 1.4s ease-in-out infinite; animation-delay: 0.35s; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-7  { animation: lipWave 1.4s ease-in-out infinite; animation-delay: 0.42s; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-8  { animation: lipWave 1.4s ease-in-out infinite; animation-delay: 0.49s; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-9  { animation: lipWave 1.4s ease-in-out infinite; animation-delay: 0.56s; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-10 { animation: lipWave 1.4s ease-in-out infinite; animation-delay: 0.63s; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-11 { animation: lipWave 1.4s ease-in-out infinite; animation-delay: 0.70s; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-12 { animation: lipWave 1.4s ease-in-out infinite; animation-delay: 0.77s; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-13 { animation: lipWave 1.4s ease-in-out infinite; animation-delay: 0.84s; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-14 { animation: lipWave 1.4s ease-in-out infinite; animation-delay: 0.91s; }
+  .hybrid-icon.state-proc .lips-layer .lip-bar-15 { animation: lipWave 1.4s ease-in-out infinite; animation-delay: 0.98s; }
+
+  /* Exaggerated wave for menu bar size */
+  @keyframes lipWave {
+    0%, 100% { transform: translateY(0); }
+    25% { transform: translateY(-4px); }
+    50% { transform: translateY(0); }
+    75% { transform: translateY(2px); }
+  }
+
+  /* Large preview: amplified wave */
+  .large-preview .hybrid-icon.state-proc .lips-layer .lip-bar-1,
+  .large-preview .hybrid-icon.state-proc .lips-layer .lip-bar-2,
+  .large-preview .hybrid-icon.state-proc .lips-layer .lip-bar-3,
+  .large-preview .hybrid-icon.state-proc .lips-layer .lip-bar-4,
+  .large-preview .hybrid-icon.state-proc .lips-layer .lip-bar-5,
+  .large-preview .hybrid-icon.state-proc .lips-layer .lip-bar-6,
+  .large-preview .hybrid-icon.state-proc .lips-layer .lip-bar-7,
+  .large-preview .hybrid-icon.state-proc .lips-layer .lip-bar-8,
+  .large-preview .hybrid-icon.state-proc .lips-layer .lip-bar-9,
+  .large-preview .hybrid-icon.state-proc .lips-layer .lip-bar-10,
+  .large-preview .hybrid-icon.state-proc .lips-layer .lip-bar-11,
+  .large-preview .hybrid-icon.state-proc .lips-layer .lip-bar-12,
+  .large-preview .hybrid-icon.state-proc .lips-layer .lip-bar-13,
+  .large-preview .hybrid-icon.state-proc .lips-layer .lip-bar-14,
+  .large-preview .hybrid-icon.state-proc .lips-layer .lip-bar-15 {
+    animation-name: lipWaveLg;
+  }
+  @keyframes lipWaveLg {
+    0%, 100% { transform: translateY(0); }
+    25% { transform: translateY(-8px); }
+    50% { transform: translateY(0); }
+    75% { transform: translateY(4px); }
+  }
+
+  /* Particles during processing */
+  .hybrid-icon.state-proc .lips-layer .particle-el {
+    opacity: 0.6;
+  }
+  .hybrid-icon.state-proc .lips-layer .p1 { animation: particleDrift 3.0s ease-in-out infinite; animation-delay: 0.0s; }
+  .hybrid-icon.state-proc .lips-layer .p2 { animation: particleDrift 3.2s ease-in-out infinite; animation-delay: 0.5s; }
+  .hybrid-icon.state-proc .lips-layer .p3 { animation: particleDrift 2.8s ease-in-out infinite; animation-delay: 1.0s; }
+  .hybrid-icon.state-proc .lips-layer .p4 { animation: particleDrift 3.4s ease-in-out infinite; animation-delay: 1.5s; }
+  .hybrid-icon.state-proc .lips-layer .p5 { animation: particleDrift 3.0s ease-in-out infinite; animation-delay: 2.0s; }
+  .hybrid-icon.state-proc .lips-layer .p6 { animation: particleDrift 3.1s ease-in-out infinite; animation-delay: 2.5s; }
+
+  @keyframes particleDrift {
+    0%, 100% { opacity: 0.2; transform: translate(0, 0) scale(1); }
+    50% { opacity: 0.7; transform: translate(3px, -2px) scale(1.3); }
+  }
+  .large-preview .hybrid-icon.state-proc .lips-layer .particle-el {
+    animation-name: particleDriftLg !important;
+  }
+  @keyframes particleDriftLg {
+    0%, 100% { opacity: 0.2; transform: translate(0, 0) scale(1); }
+    50% { opacity: 0.7; transform: translate(10px, -6px) scale(1.4); }
+  }
+
+  /* ── Smooth fill transitions on lip bars ── */
+  .hybrid-icon .lips-layer .lip-bar {
+    transition: fill 0.5s ease;
+  }
+
+  /* ── Demo icon wrapper highlight ── */
+  .demo-icon-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 3px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.08);
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 700px) {
+    .state-row { grid-template-columns: 1fr; max-width: 320px; margin-left: auto; margin-right: auto; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>EnviousWispr <span class="arrow">&mdash;</span> Hybrid Concept</h1>
+  <p class="tagline">Lips <span class="arrow">&rarr;</span> Spectrum <span class="arrow">&rarr;</span> Lips &mdash; shape-shifting bars that reshape between forms</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     SECTION 1: Icon in the Menu Bar
+     ═══════════════════════════════════════════════════ -->
+<div class="section">
+  <h2>Section 1 &mdash; Icon in the Menu Bar</h2>
+  <p class="subtitle">The hybrid icon at rest: monochrome lips sitting naturally among system icons. Static, subtle, blends into macOS menu bar at 18px.</p>
+
+  <div class="menubar-full" style="border-radius:0;">
+    <div class="menubar-left">
+      <span class="apple-logo"></span>
+      <span style="font-weight:600;">Finder</span>
+      <span style="font-weight:400; opacity:0.8;">File</span>
+      <span style="font-weight:400; opacity:0.8;">Edit</span>
+      <span style="font-weight:400; opacity:0.8;">View</span>
+      <span style="font-weight:400; opacity:0.8;">Go</span>
+      <span style="font-weight:400; opacity:0.8;">Window</span>
+      <span style="font-weight:400; opacity:0.8;">Help</span>
+    </div>
+    <div class="menubar-right">
+      <div class="menubar-icon" title="EnviousWispr" id="s1-icon-container"></div>
+      <div class="menubar-icon">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.75)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 12.55a11 11 0 0114 0"/><path d="M1.42 9a16 16 0 0121.16 0"/><path d="M8.53 16.11a6 6 0 016.95 0"/><circle cx="12" cy="20" r="1" fill="rgba(255,255,255,0.75)"/>
+        </svg>
+      </div>
+      <div class="menubar-icon">
+        <svg width="22" height="12" viewBox="0 0 28 14" fill="none">
+          <rect x="0.5" y="1" width="23" height="12" rx="2.5" stroke="rgba(255,255,255,0.55)" stroke-width="1"/>
+          <rect x="24" y="4.5" width="2.5" height="5" rx="1" fill="rgba(255,255,255,0.35)"/>
+          <rect x="2" y="2.8" width="16" height="8.4" rx="1.2" fill="rgba(255,255,255,0.55)"/>
+        </svg>
+      </div>
+      <span class="menubar-clock">Fri 3:42 PM</span>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ═══════════════════════════════════════════════════
+     SECTION 2: Three States Side by Side
+     ═══════════════════════════════════════════════════ -->
+<div class="section">
+  <h2>Section 2 &mdash; Three States</h2>
+  <p class="subtitle">Large 128px preview of each state, plus how it appears in the menu bar at 18px. The shape-shift between lips and spectrum wheel is the key transition.</p>
+
+  <div class="state-row">
+
+    <!-- IDLE -->
+    <div class="state-card">
+      <h3 class="idle-label">Idle</h3>
+      <p class="desc">Monochrome lips. Static bars.<br>Blends into menu bar naturally.</p>
+      <div class="large-preview" id="s2-idle-lg"></div>
+      <div class="menubar-context-label">In menu bar:</div>
+      <div class="menubar" style="width:220px; margin:0 auto;">
+        <div class="menubar-icon" id="s2-idle-sm"></div>
+        <div class="menubar-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.75)" stroke-width="1.8" stroke-linecap="round"><path d="M5 12.55a11 11 0 0114 0"/><path d="M8.53 16.11a6 6 0 016.95 0"/><circle cx="12" cy="20" r="1" fill="rgba(255,255,255,0.75)"/></svg>
+        </div>
+        <span class="menubar-clock" style="font-size:11px;">3:42</span>
+      </div>
+    </div>
+
+    <!-- RECORDING -->
+    <div class="state-card">
+      <h3 class="rec-label">Recording</h3>
+      <p class="desc">Lips morph into rainbow spectrum wheel.<br>Bars bounce. Red dot pulses.</p>
+      <div class="large-preview" id="s2-rec-lg"></div>
+      <div class="menubar-context-label">In menu bar:</div>
+      <div class="menubar" style="width:220px; margin:0 auto;">
+        <div class="menubar-icon" id="s2-rec-sm"></div>
+        <div class="menubar-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.75)" stroke-width="1.8" stroke-linecap="round"><path d="M5 12.55a11 11 0 0114 0"/><path d="M8.53 16.11a6 6 0 016.95 0"/><circle cx="12" cy="20" r="1" fill="rgba(255,255,255,0.75)"/></svg>
+        </div>
+        <span class="menubar-clock" style="font-size:11px;">3:42</span>
+      </div>
+    </div>
+
+    <!-- PROCESSING -->
+    <div class="state-card">
+      <h3 class="proc-label">Processing</h3>
+      <p class="desc">Rainbow lips return with exaggerated<br>sine wave ripple. Particles drift.</p>
+      <div class="large-preview" id="s2-proc-lg"></div>
+      <div class="menubar-context-label">In menu bar:</div>
+      <div class="menubar" style="width:220px; margin:0 auto;">
+        <div class="menubar-icon" id="s2-proc-sm"></div>
+        <div class="menubar-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.75)" stroke-width="1.8" stroke-linecap="round"><path d="M5 12.55a11 11 0 0114 0"/><path d="M8.53 16.11a6 6 0 016.95 0"/><circle cx="12" cy="20" r="1" fill="rgba(255,255,255,0.75)"/></svg>
+        </div>
+        <span class="menubar-clock" style="font-size:11px;">3:42</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ═══════════════════════════════════════════════════
+     SECTION 3: Interactive Transition Demo
+     ═══════════════════════════════════════════════════ -->
+<div class="section">
+  <h2>Section 3 &mdash; Interactive Transition Demo</h2>
+  <p class="subtitle">Click buttons to switch states. Watch the shape-shifting crossfade between lips and spectrum wheel in real time.</p>
+
+  <div class="menubar-full" style="border-radius:8px; margin-bottom:4px;">
+    <div class="menubar-left">
+      <span class="apple-logo"></span>
+      <span style="font-weight:600;">EnviousWispr</span>
+      <span style="font-weight:400; opacity:0.8;">File</span>
+      <span style="font-weight:400; opacity:0.8;">Edit</span>
+      <span style="font-weight:400; opacity:0.8;">View</span>
+    </div>
+    <div class="menubar-right">
+      <div class="demo-icon-wrapper" id="s3-demo-sm-wrapper"></div>
+      <div class="menubar-icon">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.75)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 12.55a11 11 0 0114 0"/><path d="M1.42 9a16 16 0 0121.16 0"/><path d="M8.53 16.11a6 6 0 016.95 0"/><circle cx="12" cy="20" r="1" fill="rgba(255,255,255,0.75)"/>
+        </svg>
+      </div>
+      <div class="menubar-icon">
+        <svg width="22" height="12" viewBox="0 0 28 14" fill="none">
+          <rect x="0.5" y="1" width="23" height="12" rx="2.5" stroke="rgba(255,255,255,0.55)" stroke-width="1"/>
+          <rect x="24" y="4.5" width="2.5" height="5" rx="1" fill="rgba(255,255,255,0.35)"/>
+          <rect x="2" y="2.8" width="16" height="8.4" rx="1.2" fill="rgba(255,255,255,0.55)"/>
+        </svg>
+      </div>
+      <span class="menubar-clock">Fri 3:42 PM</span>
+    </div>
+  </div>
+
+  <div style="text-align:center;">
+    <span class="state-pill idle" id="state-pill">IDLE</span>
+  </div>
+
+  <div class="controls">
+    <button class="active-idle" id="btn-idle" onclick="setDemoState('idle')">Idle</button>
+    <button id="btn-rec" onclick="setDemoState('rec')">Recording</button>
+    <button id="btn-proc" onclick="setDemoState('proc')">Processing</button>
+    <button id="btn-cycle" onclick="toggleCycle()">Auto Cycle</button>
+  </div>
+
+  <div style="display:flex; justify-content:center; margin-top:16px;">
+    <div class="large-preview" style="background:#242424; border-radius:14px; border:1px solid rgba(255,255,255,0.07); width:190px; height:190px;" id="s3-demo-lg-wrapper">
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  /*
+   * Build SVG icon content as a string and inject via DOM methods.
+   * All content is hardcoded -- no user input is involved.
+   * Using createElementNS for proper SVG namespace handling.
+   */
+
+  // Helper: create SVG element with attributes
+  function svgEl(tag, attrs, children) {
+    var el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    if (attrs) {
+      for (var k in attrs) {
+        if (attrs.hasOwnProperty(k)) {
+          if (k === 'style') {
+            el.setAttribute('style', attrs[k]);
+          } else if (k === 'className') {
+            el.setAttribute('class', attrs[k]);
+          } else {
+            el.setAttribute(k, attrs[k]);
+          }
+        }
+      }
+    }
+    if (children) {
+      for (var i = 0; i < children.length; i++) {
+        el.appendChild(children[i]);
+      }
+    }
+    return el;
+  }
+
+  // Build the lips layer group
+  function buildLipsLayer() {
+    var upperBars = [
+      { cls: 'lip-bar lip-bar-1',  x:4,  y:14, w:4.5, h:14 },
+      { cls: 'lip-bar lip-bar-2',  x:11, y:11, w:4.5, h:13 },
+      { cls: 'lip-bar lip-bar-3',  x:18, y:8,  w:4.5, h:14 },
+      { cls: 'lip-bar lip-bar-4',  x:25, y:12, w:4.5, h:10 },
+      { cls: 'lip-bar lip-bar-5',  x:32, y:14, w:4.5, h:9  },
+      { cls: 'lip-bar lip-bar-6',  x:39, y:11, w:4.5, h:11 },
+      { cls: 'lip-bar lip-bar-7',  x:46, y:7,  w:4.5, h:15 },
+      { cls: 'lip-bar lip-bar-8',  x:53, y:10, w:4.5, h:14 }
+    ];
+    var lowerBars = [
+      { cls: 'lip-bar lip-bar-9',  x:8,  y:32, w:4.5, h:10 },
+      { cls: 'lip-bar lip-bar-10', x:15, y:30, w:4.5, h:14 },
+      { cls: 'lip-bar lip-bar-11', x:22, y:29, w:4.5, h:16 },
+      { cls: 'lip-bar lip-bar-12', x:29, y:28, w:4.5, h:18 },
+      { cls: 'lip-bar lip-bar-13', x:36, y:29, w:4.5, h:16 },
+      { cls: 'lip-bar lip-bar-14', x:43, y:30, w:4.5, h:14 },
+      { cls: 'lip-bar lip-bar-15', x:50, y:32, w:4.5, h:10 }
+    ];
+    var particles = [
+      { cls: 'particle-el p1', cx:60, cy:16, r:1.5, fill:'#ff2d55' },
+      { cls: 'particle-el p2', cx:62, cy:24, r:1.0, fill:'#ffd60a' },
+      { cls: 'particle-el p3', cx:58, cy:32, r:1.2, fill:'#34c759' },
+      { cls: 'particle-el p4', cx:63, cy:12, r:0.8, fill:'#64d2ff' },
+      { cls: 'particle-el p5', cx:61, cy:40, r:1.0, fill:'#bf5af2' },
+      { cls: 'particle-el p6', cx:2,  cy:20, r:0.9, fill:'#0a84ff' }
+    ];
+
+    var upperG = svgEl('g', { className: 'upper-lip' });
+    for (var i = 0; i < upperBars.length; i++) {
+      var b = upperBars[i];
+      upperG.appendChild(svgEl('rect', {
+        className: b.cls, x: b.x, y: b.y, width: b.w, height: b.h, rx: 1.5
+      }));
+    }
+
+    var lowerG = svgEl('g', { className: 'lower-lip' });
+    for (var j = 0; j < lowerBars.length; j++) {
+      var lb = lowerBars[j];
+      lowerG.appendChild(svgEl('rect', {
+        className: lb.cls, x: lb.x, y: lb.y, width: lb.w, height: lb.h, rx: 1.5
+      }));
+    }
+
+    var lipsG = svgEl('g', { className: 'lips-layer' }, [upperG, lowerG]);
+
+    for (var p = 0; p < particles.length; p++) {
+      var pt = particles[p];
+      lipsG.appendChild(svgEl('circle', {
+        className: pt.cls, cx: pt.cx, cy: pt.cy, r: pt.r, fill: pt.fill, opacity: 0
+      }));
+    }
+
+    return lipsG;
+  }
+
+  // Build the spectrum layer group
+  function buildSpectrumLayer() {
+    var specBars = [
+      { cls: 'sb0',  rot: 0,   y: 4,  h: 14 },
+      { cls: 'sb1',  rot: 30,  y: 7,  h: 10 },
+      { cls: 'sb2',  rot: 60,  y: 5,  h: 12 },
+      { cls: 'sb3',  rot: 90,  y: 8,  h: 9  },
+      { cls: 'sb4',  rot: 120, y: 4,  h: 14 },
+      { cls: 'sb5',  rot: 150, y: 6,  h: 11 },
+      { cls: 'sb6',  rot: 180, y: 5,  h: 13 },
+      { cls: 'sb7',  rot: 210, y: 8,  h: 9  },
+      { cls: 'sb8',  rot: 240, y: 4,  h: 14 },
+      { cls: 'sb9',  rot: 270, y: 6,  h: 12 },
+      { cls: 'sb10', rot: 300, y: 7,  h: 10 },
+      { cls: 'sb11', rot: 330, y: 5,  h: 13 }
+    ];
+
+    // Glow ring
+    var glow = svgEl('circle', {
+      className: 'glow-ring', cx: 32, cy: 32, r: 28,
+      fill: 'none', stroke: 'rgba(255,100,100,0.3)', 'stroke-width': 2.5, opacity: 0
+    });
+
+    // Bars group
+    var barsG = svgEl('g', { className: 'bars-group' });
+    for (var i = 0; i < specBars.length; i++) {
+      var sb = specBars[i];
+      var barRect = svgEl('rect', {
+        className: 'bar-rect',
+        x: 30, y: sb.y, width: 4, height: sb.h, rx: 2,
+        style: 'transform-origin:32px 16px;'
+      });
+      var barG = svgEl('g', {
+        className: sb.cls,
+        transform: 'rotate(' + sb.rot + ',32,32)'
+      }, [barRect]);
+      barsG.appendChild(barG);
+    }
+
+    return svgEl('g', { className: 'spectrum-layer', opacity: 0 }, [glow, barsG]);
+  }
+
+  // Build recording dot
+  function buildRecDot() {
+    return svgEl('circle', {
+      className: 'rec-dot-el',
+      cx: 58, cy: 6, r: 3.5, fill: '#ff453a', opacity: 0
+    });
+  }
+
+  // Create a complete icon SVG element
+  function createIcon(size, stateClass) {
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'hybrid-icon ' + stateClass);
+    svg.setAttribute('width', String(size));
+    svg.setAttribute('height', String(size));
+    svg.setAttribute('viewBox', '0 0 64 64');
+    svg.setAttribute('fill', 'none');
+
+    svg.appendChild(buildLipsLayer());
+    svg.appendChild(buildSpectrumLayer());
+    svg.appendChild(buildRecDot());
+
+    return svg;
+  }
+
+  // ═══════════════════════════════════════════════
+  // SECTION 1: Menu bar icon (idle, 18px)
+  // ═══════════════════════════════════════════════
+  document.getElementById('s1-icon-container').appendChild(createIcon(18, 'state-idle'));
+
+  // ═══════════════════════════════════════════════
+  // SECTION 2: Three static state cards
+  // ═══════════════════════════════════════════════
+  document.getElementById('s2-idle-lg').appendChild(createIcon(128, 'state-idle'));
+  document.getElementById('s2-idle-sm').appendChild(createIcon(18, 'state-idle'));
+
+  document.getElementById('s2-rec-lg').appendChild(createIcon(128, 'state-rec'));
+  document.getElementById('s2-rec-sm').appendChild(createIcon(18, 'state-rec'));
+
+  document.getElementById('s2-proc-lg').appendChild(createIcon(128, 'state-proc'));
+  document.getElementById('s2-proc-sm').appendChild(createIcon(18, 'state-proc'));
+
+  // ═══════════════════════════════════════════════
+  // SECTION 3: Interactive demo
+  // ═══════════════════════════════════════════════
+  var demoSmIcon = createIcon(18, 'state-idle');
+  demoSmIcon.id = 'demo-icon-sm';
+  document.getElementById('s3-demo-sm-wrapper').appendChild(demoSmIcon);
+
+  var demoLgIcon = createIcon(128, 'state-idle');
+  demoLgIcon.id = 'demo-icon-lg';
+  document.getElementById('s3-demo-lg-wrapper').appendChild(demoLgIcon);
+
+  // ═══════════════════════════════════════════════
+  // Demo state switcher
+  // ═══════════════════════════════════════════════
+  var cycleTimer = null;
+
+  window.setDemoState = function(state) {
+    var sm = document.getElementById('demo-icon-sm');
+    var lg = document.getElementById('demo-icon-lg');
+    var pill = document.getElementById('state-pill');
+    var btnIdle = document.getElementById('btn-idle');
+    var btnRec = document.getElementById('btn-rec');
+    var btnProc = document.getElementById('btn-proc');
+
+    sm.setAttribute('class', 'hybrid-icon state-' + state);
+    lg.setAttribute('class', 'hybrid-icon state-' + state);
+
+    btnIdle.className = '';
+    btnRec.className = '';
+    btnProc.className = '';
+    pill.className = 'state-pill';
+
+    if (state === 'idle') {
+      btnIdle.className = 'active-idle';
+      pill.textContent = 'IDLE';
+      pill.classList.add('idle');
+    } else if (state === 'rec') {
+      btnRec.className = 'active-rec';
+      pill.textContent = 'RECORDING';
+      pill.classList.add('rec');
+    } else if (state === 'proc') {
+      btnProc.className = 'active-proc';
+      pill.textContent = 'PROCESSING';
+      pill.classList.add('proc');
+    }
+  };
+
+  window.toggleCycle = function() {
+    var btn = document.getElementById('btn-cycle');
+    if (cycleTimer) {
+      clearInterval(cycleTimer);
+      cycleTimer = null;
+      btn.textContent = 'Auto Cycle';
+      btn.className = '';
+      return;
+    }
+    btn.textContent = 'Stop';
+    btn.className = 'active-idle';
+    var states = ['idle', 'rec', 'proc'];
+    var idx = 0;
+    setDemoState(states[idx]);
+    cycleTimer = setInterval(function() {
+      idx = (idx + 1) % states.length;
+      setDemoState(states[idx]);
+    }, 2800);
+  };
+})();
+</script>
+
+</body>
+</html>

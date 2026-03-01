@@ -51,6 +51,20 @@ enum PipelineState: Equatable, Sendable {
         }
     }
 
+    /// Returns the custom menu bar image name and whether it should be a template.
+    /// Template images adapt to the menu bar appearance (dark/light mode).
+    /// Non-template images show their original colors.
+    var menuBarImageInfo: (name: String, isTemplate: Bool) {
+        switch self {
+        case .idle, .complete, .error:
+            return ("menubar-idle", true)
+        case .recording:
+            return ("menubar-recording", false)
+        case .transcribing, .polishing:
+            return ("menubar-processing", false)
+        }
+    }
+
     /// Whether the menu bar icon should pulse (processing states).
     var shouldPulseIcon: Bool {
         switch self {
