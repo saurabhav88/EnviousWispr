@@ -24,12 +24,12 @@ Reverse lookup: type name → file, isolation, category. Use this to find where 
 | Class | File | Purpose |
 |-------|------|---------|
 | `AppState` | `App/AppState.swift` | Root observable, owns everything; includes availableInputDevices + audioDeviceMonitor wiring |
-| `TranscriptionPipeline` | `Pipeline/TranscriptionPipeline.swift` | Core state machine orchestrator |
+| `TranscriptionPipeline` | `Pipeline/TranscriptionPipeline.swift` | Core state machine orchestrator; `preWarmAudioInput()` pre-warm audio before recording, `isPreWarmed: Bool` pre-warm state |
 | `ASRManager` | `ASR/ASRManager.swift` | Backend router + idle timer |
-| `AudioCaptureManager` | `Audio/AudioCaptureManager.swift` | AVAudioEngine mic capture; `emergencyTeardown()` for device disconnect, `trackTask()` for cooperative task cancellation, `onEngineInterrupted` callback to pipeline |
-| `HotkeyService` | `Services/HotkeyService.swift` | Carbon hotkeys + NSEvent monitors |
+| `AudioCaptureManager` | `Audio/AudioCaptureManager.swift` | AVAudioEngine mic capture; `emergencyTeardown()` for device disconnect, `trackTask()` for cooperative task cancellation, `onEngineInterrupted` callback to pipeline, `currentInputDeviceID: AudioDeviceID?` CoreAudio device ID, `isRecovering: Bool` re-entrant guard, two-phase start (`startEnginePhase()` / `beginCapturePhase()`), `rebuildEngine()` / `buildEngine(noiseSuppression:)` engine lifecycle, `preWarm()` BT codec pre-trigger, `handleEngineConfigurationChange()` codec-switch vs disconnect, `recoverFromCodecSwitch()` graceful BT recovery, `waitForFormatStabilization()` format polling |
+| `HotkeyService` | `Services/HotkeyService.swift` | Carbon hotkeys + NSEvent monitors; `onPreWarmAudio: (@MainActor () async -> Void)?` fired on PTT key-down |
 | `PermissionsService` | `Services/PermissionsService.swift` | Mic + Accessibility checks |
-| `SettingsManager` | `Services/SettingsManager.swift` | UserDefaults persistence (26+ keys); includes whisperKitLanguageAutoDetect, whisperKitTemperature, whisperKitNoSpeechThreshold, selectedInputDeviceUID, noiseSuppression |
+| `SettingsManager` | `Services/SettingsManager.swift` | UserDefaults persistence (26+ keys); includes whisperKitLanguageAutoDetect, whisperKitTemperature, whisperKitNoSpeechThreshold, selectedInputDeviceUID, noiseSuppression, preferredInputDeviceIDOverride (empty = Auto) |
 | `OllamaSetupService` | `LLM/OllamaSetupService.swift` | Ollama install wizard; static modelCatalog, isWeakModel(), pullModel(), deleteModel() |
 | `BenchmarkSuite` | `Utilities/BenchmarkSuite.swift` | ASR/pipeline benchmarks |
 
@@ -97,7 +97,7 @@ Reverse lookup: type name → file, isolation, category. Use this to find where 
 | `LLMProvider` | `Models/LLMResult.swift` | openAI, gemini, ollama, appleIntelligence, none |
 | `PromptPreset` | `Models/LLMResult.swift` | cleanUp, formal, casual |
 | `DebugLogLevel` | `Utilities/DebugLogLevel.swift` | info, verbose, debug |
-| `SettingKey` | `Services/SettingsManager.swift` | 26 cases for all UserDefaults keys (nested in SettingsManager) |
+| `SettingKey` | `Services/SettingsManager.swift` | 27 cases for all UserDefaults keys (nested in SettingsManager); includes `preferredInputDeviceIDOverride` |
 | `ASRError` | `ASR/ASRProtocol.swift` | notReady, modelLoadFailed, transcriptionFailed, streamingNotSupported |
 | `AudioError` | `Audio/AudioBufferProcessor.swift` | formatCreationFailed |
 | `LLMError` | `LLM/LLMProtocol.swift` | invalidAPIKey, requestFailed, rateLimited, emptyResponse, providerUnavailable, modelNotFound, frameworkUnavailable |
@@ -115,7 +115,7 @@ Reverse lookup: type name → file, isolation, category. Use this to find where 
 
 | Enum | File | Purpose |
 |------|------|---------|
-| `AudioDeviceEnumerator` | `Audio/AudioDeviceManager.swift` | Static CoreAudio device enumeration: listInputDevices(), defaultInputDeviceUID() |
+| `AudioDeviceEnumerator` | `Audio/AudioDeviceManager.swift` | Static CoreAudio device enumeration: listInputDevices(), defaultInputDeviceUID(), isBluetoothDevice(_:), builtInMicrophoneDeviceID(), defaultOutputDeviceID(), isDeviceRunningSomewhere(_:), recommendedInputDevice() |
 | `AppConstants` | `Utilities/Constants.swift` | App name, paths |
 | `AudioConstants` | `Utilities/Constants.swift` | Sample rate, buffer size |
 | `TimingConstants` | `Utilities/Constants.swift` | Delays, intervals |

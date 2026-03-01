@@ -2,15 +2,15 @@
 
 Quick-reference for every source file. Use this to find files by domain or purpose.
 
-**63 Swift files, ~10,263 lines** in `Sources/EnviousWispr/`
+**63 Swift files, ~10,754 lines** in `Sources/EnviousWispr/`
 
-## App (4 files, ~1,181 lines)
+## App (4 files, ~1,218 lines)
 
 | File | Lines | Key Types | Purpose |
 |------|-------|-----------|---------|
-| `App/EnviousWisprApp.swift` | 32 | `EnviousWisprApp` (@main), `ActionWirer` | SwiftUI entry point, single Window scene, action wiring helper |
+| `App/EnviousWisprApp.swift` | 33 | `EnviousWisprApp` (@main), `ActionWirer` | SwiftUI entry point, single Window scene, action wiring helper |
 | `App/AppDelegate.swift` | 326 | `AppDelegate` (@MainActor) | Menu bar NSStatusItem, Sparkle updater, MenuBarIconAnimator lifecycle, Carbon hotkey startup; stores NotificationCenter observer token |
-| `App/AppState.swift` | 562 | `AppState` (@MainActor @Observable), `KeyValidationState` | Root observable, owns all subsystems, recording toggle, transcript CRUD, settings propagation, audio device monitor wiring |
+| `App/AppState.swift` | 594 | `AppState` (@MainActor @Observable), `KeyValidationState` | Root observable, owns all subsystems, recording toggle, transcript CRUD, settings propagation, audio device monitor wiring, buildEngine for noise suppression, BT codec-switch recovery monitoring, smart input device selection |
 | `App/MenuBarIconAnimator.swift` | 265 | `MenuBarIconAnimator` (@MainActor), `IconState` | CG-rendered menu bar icons — 4 states (idle/recording/processing/error), audio-reactive rainbow lips, rotating spectrum wheel |
 
 ## ASR (4 files, ~459 lines)
@@ -22,20 +22,20 @@ Quick-reference for every source file. Use this to find files by domain or purpo
 | `ASR/ParakeetBackend.swift` | 129 | `ParakeetBackend` (actor) | FluidAudio/CoreML backend, streaming support via StreamingAsrManager; cancels existing streamingManager before creating new one |
 | `ASR/WhisperKitBackend.swift` | 108 | `WhisperKitBackend` (actor) | ArgMax WhisperKit backend, batch-only, makeDecodeOptions(), temperature fallback retry, model pre-warming |
 
-## Audio (4 files, ~853 lines)
+## Audio (4 files, ~1,292 lines)
 
 | File | Lines | Key Types | Purpose |
 |------|-------|-----------|---------|
-| `Audio/AudioCaptureManager.swift` | 332 | `AudioCaptureManager` (@MainActor @Observable) | AVAudioEngine mic capture, resamples to 16kHz mono, setInputDevice(), voice processing enable/disable, AVAudioEngineConfigurationChange observer; emergencyTeardown(), trackTask(), onEngineInterrupted, maxRecordingDurationSeconds cap |
+| `Audio/AudioCaptureManager.swift` | 684 | `AudioCaptureManager` (@MainActor @Observable) | AVAudioEngine mic capture, resamples to 16kHz mono, two-phase start (buildEngine then startCapture), BT codec-switch recovery via kAudioDevicePropertyDeviceIsAlive, format stabilization, preWarm(), buildEngine(), setInputDevice(), voice processing enable/disable, AVAudioEngineConfigurationChange observer; emergencyTeardown(), trackTask(), onEngineInterrupted, maxRecordingDurationSeconds cap |
 | `Audio/AudioBufferProcessor.swift` | 35 | `AudioBufferProcessor` (enum), `AudioError` | Pure RMS calculation utility |
-| `Audio/AudioDeviceManager.swift` | 191 | `AudioInputDevice` (struct), `AudioDeviceEnumerator` (enum), `AudioDeviceMonitor` (class) | CoreAudio device enumeration, UID persistence, connect/disconnect monitoring |
+| `Audio/AudioDeviceManager.swift` | 278 | `AudioInputDevice` (struct), `AudioDeviceEnumerator` (enum), `AudioDeviceMonitor` (class) | CoreAudio device enumeration, UID persistence, connect/disconnect monitoring, Bluetooth device detection, smart input device selection, recommendedInputDevice(), built-in mic fallback |
 | `Audio/SilenceDetector.swift` | 295 | `SilenceDetector` (actor), `SmoothedVADConfig`, `SmoothedVADPhase`, `SpeechSegment` | Silero VAD wrapper, 3-phase state machine (idle/speech/hangover), auto-stop |
 
-## Pipeline (4 files, ~826 lines)
+## Pipeline (4 files, ~856 lines)
 
 | File | Lines | Key Types | Purpose |
 |------|-------|-----------|---------|
-| `Pipeline/TranscriptionPipeline.swift` | 649 | `TranscriptionPipeline` (@MainActor @Observable) | Core orchestrator — state machine, streaming/batch ASR, VAD monitoring, text processing, paste; wires onEngineInterrupted, finalizeStreaming timeout with defer cleanup |
+| `Pipeline/TranscriptionPipeline.swift` | 679 | `TranscriptionPipeline` (@MainActor @Observable) | Core orchestrator — state machine, streaming/batch ASR, VAD monitoring, text processing, paste; wires onEngineInterrupted, preWarmAudioInput(), two-phase engine startup, finalizeStreaming timeout with defer cleanup |
 | `Pipeline/TextProcessingStep.swift` | 32 | `TextProcessingContext` (struct), `TextProcessingStep` (protocol) | Step interface and context carrier for processing chain |
 | `Pipeline/Steps/LLMPolishStep.swift` | 117 | `LLMPolishStep` (@MainActor) | Selects LLM connector, resolves ${transcript} placeholder, streams tokens, extended thinking config |
 | `Pipeline/Steps/WordCorrectionStep.swift` | 28 | `WordCorrectionStep` (@MainActor) | Runs WordCorrector against custom word list |
@@ -63,12 +63,12 @@ Quick-reference for every source file. Use this to find files by domain or purpo
 | `Models/Transcript.swift` | 47 | `Transcript` (struct: Codable) | Full transcript record with polished/raw text, metadata |
 | `Models/LLMResult.swift` | 116 | `LLMProvider`, `LLMResult`, `LLMProviderConfig`, `LLMModelInfo`, `PolishInstructions`, `PromptPreset` | LLM types, polish instructions, prompt presets |
 
-## Services (4 files, ~1,010 lines)
+## Services (4 files, ~1,029 lines)
 
 | File | Lines | Key Types | Purpose |
 |------|-------|-----------|---------|
-| `Services/SettingsManager.swift` | 359 | `SettingsManager` (@MainActor @Observable), `SettingKey` (31 cases) | All UserDefaults persistence — added whiskerKitLanguageAutoDetect, whisperKitTemperature, whisperKitNoSpeechThreshold, selectedInputDeviceUID, noiseSuppression; hotkeyEnabled forced true |
-| `Services/HotkeyService.swift` | 442 | `HotkeyService` (@MainActor @Observable), `ModifierKeyCodes`, `HotkeyID` | Carbon RegisterEventHotKey, NSEvent monitors, suspend/resume for recorder |
+| `Services/SettingsManager.swift` | 369 | `SettingsManager` (@MainActor @Observable), `SettingKey` (31 cases) | All UserDefaults persistence — added whiskerKitLanguageAutoDetect, whisperKitTemperature, whisperKitNoSpeechThreshold, selectedInputDeviceUID, noiseSuppression, preferredInputDeviceIDOverride; hotkeyEnabled forced true |
+| `Services/HotkeyService.swift` | 451 | `HotkeyService` (@MainActor @Observable), `ModifierKeyCodes`, `HotkeyID` | Carbon RegisterEventHotKey, NSEvent monitors, suspend/resume for recorder, onPreWarmAudio callback for PTT key-down |
 | `Services/PermissionsService.swift` | 79 | `PermissionsService` (@MainActor @Observable) | Mic (AVFoundation) + Accessibility (AXIsProcessTrusted) checks |
 | `Services/PasteService.swift` | 130 | `PasteService` (enum), `ClipboardSnapshot` | Clipboard save/restore, CGEvent Cmd+V paste simulation |
 
@@ -95,13 +95,13 @@ Quick-reference for every source file. Use this to find files by domain or purpo
 | `Views/Main/TranscriptDetailView.swift` | 127 | `TranscriptDetailView` | Copy/Paste/Enhance toolbar, dual-pane polished+original |
 | `Views/Main/SidebarStatsHeader.swift` | 93 | `SidebarStatsHeader`, `ModelStatusBar` | Search field, transcript count, model status dot |
 
-## Views — Settings (11 files, ~1,538 lines)
+## Views — Settings (11 files, ~1,548 lines)
 
 | File | Lines | Key Types | Purpose |
 |------|-------|-----------|---------|
 | `Views/Settings/SettingsView.swift` | 80 | `UnifiedWindowView` | Root NavigationSplitView, sidebar sections, onboarding sheet, `.audio` case routing |
 | `Views/Settings/SettingsSection.swift` | 69 | `SettingsSection` (enum), `SettingsGroup` (enum) | 10 sections in 5 groups (APP/RECORD/PROCESS/OUTPUT/SYSTEM) — added `.audio` |
-| `Views/Settings/AudioSettingsView.swift` | 32 | `AudioSettingsView` | Audio input device picker and noise suppression toggle |
+| `Views/Settings/AudioSettingsView.swift` | 42 | `AudioSettingsView` | Audio input device picker (Auto/manual) with BT output detection, noise suppression toggle |
 | `Views/Settings/SpeechEngineSettingsView.swift` | 127 | `SpeechEngineSettingsView` | Backend picker, VAD controls (auto-stop, sensitivity, energy gate), WhisperKit quality controls (temperature, no-speech threshold, language auto-detect), filler removal |
 | `Views/Settings/AIPolishSettingsView.swift` | 612 | `AIPolishSettingsView` | LLM provider/model picker, API key entry, None-state explainer, fixed OpenAI model picker, Ollama model catalog with quality tiers + download buttons, weak model prompt restrictions, Apple Intelligence, extended thinking toggle |
 | `Views/Settings/ShortcutsSettingsView.swift` | 48 | `ShortcutsSettingsView` | Transcribe/cancel shortcut recorders, PTT/Toggle mode labels with dynamic descriptions (hotkey enable toggle removed) |
@@ -112,20 +112,20 @@ Quick-reference for every source file. Use this to find files by domain or purpo
 | `Views/Settings/PromptEditorView.swift` | 138 | `PromptEditorView` | Modal prompt editor, presets, ${transcript} validation |
 | `Views/Settings/DiagnosticsSettingsView.swift` | 151 | `DiagnosticsSettingsView` | Debug mode, log management, ASR/pipeline benchmarks |
 
-## Views — Other (4 files, ~914 lines)
+## Views — Other (4 files, ~908 lines)
 
 | File | Lines | Key Types | Purpose |
 |------|-------|-----------|---------|
-| `Views/Onboarding/OnboardingView.swift` | 250 | `OnboardingView`, `StepBadge`, `IconCircle` | 4-step first-launch wizard (Welcome/Mic/Accessibility/Ready) |
+| `Views/Onboarding/OnboardingView.swift` | 244 | `OnboardingView`, `StepBadge`, `IconCircle` | 4-step first-launch wizard (Welcome/Mic/Accessibility/Ready) |
 | `Views/Components/HotkeyRecorderView.swift` | 209 | `HotkeyRecorderView`, `KeyCaptureNSView`, `KeyCaptureView` | Click-to-record shortcut widget, suspends Carbon during capture |
 | `Views/Components/AccessibilityWarningBanner.swift` | 49 | `AccessibilityWarningBanner` | Orange banner, "Fix Now" → Permissions tab, dismissible |
 | `Views/Overlay/RecordingOverlayPanel.swift` | 406 | `RecordingOverlayPanel`, `SpectrumWheelIcon`, `RainbowLipsIcon`, `OverlayCapsuleBackground`, `RecordingOverlayView`, `PolishingOverlayView` | Floating NSPanel, brand icons (spectrum wheel + rainbow lips), recording/polishing overlays; generation-counter token gating for async show/hide |
 
-## Utilities (6 files, ~738 lines)
+## Utilities (6 files, ~726 lines)
 
 | File | Lines | Key Types | Purpose |
 |------|-------|-----------|---------|
-| `Utilities/Constants.swift` | 93 | `AppConstants`, `AudioConstants`, `TimingConstants`, `LLMConstants`, `FormattingConstants` | All magic numbers, paths, thinking budget defaults |
+| `Utilities/Constants.swift` | 81 | `AppConstants`, `AudioConstants`, `TimingConstants`, `LLMConstants`, `FormattingConstants` | All magic numbers, paths, thinking budget defaults |
 | `Utilities/AppLogger.swift` | 125 | `AppLogger` (actor) | Dual OSLog + rotating file log, singleton |
 | `Utilities/DebugLogLevel.swift` | 20 | `DebugLogLevel` (enum) | .info/.verbose/.debug with Comparable |
 | `Utilities/BenchmarkSuite.swift` | 268 | `BenchmarkSuite` (@MainActor @Observable), `Result`, `PipelineBenchmarkResult` | ASR throughput + pipeline benchmarks, WER comparison |

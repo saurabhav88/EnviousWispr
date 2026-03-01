@@ -213,6 +213,30 @@
 | 2. Measure WER | `Utilities/WERCalculator.swift` |
 | 3. View results | `Views/Settings/DiagnosticsSettingsView.swift` |
 
+### Fix Bluetooth audio / device switching issues
+**Agent:** audio-pipeline | **Skill:** `wispr-trace-audio-pipeline`
+| Step | Files |
+|------|-------|
+| 1. Config change handler | `Audio/AudioCaptureManager.swift` — `handleEngineConfigurationChange()`, `recoverFromCodecSwitch()` |
+| 2. Device liveness check | `Audio/AudioDeviceManager.swift` — `kAudioDevicePropertyDeviceIsAlive` |
+| 3. Pipeline integration | `Pipeline/TranscriptionPipeline.swift` — `onEngineInterrupted` wiring |
+
+### Fix PTT pre-warm / hotkey timing
+**Agent:** audio-pipeline
+| Step | Files |
+|------|-------|
+| 1. Pre-warm trigger | `Services/HotkeyService.swift` — `onPreWarmAudio` callback on key-down |
+| 2. Engine pre-warm | `Audio/AudioCaptureManager.swift` — `preWarm()`, `isPreWarmed` flag |
+| 3. Pipeline routing | `Pipeline/TranscriptionPipeline.swift` — skip engine phase if pre-warmed |
+
+### Fix noise suppression toggle
+**Agent:** audio-pipeline
+| Step | Files |
+|------|-------|
+| 1. Engine rebuild | `Audio/AudioCaptureManager.swift` — `buildEngine(noiseSuppression:)` |
+| 2. Setting persistence | `App/AppState.swift` — `handleSettingChanged(.noiseSuppressionEnabled)` |
+| 3. Settings UI | `Views/Settings/AudioSettingsView.swift` — toggle control |
+
 ### Configure streaming ASR
 **Agent:** audio-pipeline
 | Step | Files |

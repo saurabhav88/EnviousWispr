@@ -64,7 +64,7 @@ Edge cases, compatibility, performance.
 | Hotkeys & Input | 001-004 |
 | Clipboard & Output | 005-007 |
 | AI & Post-Processing | 008-010 |
-| Audio & Models | 011-014 |
+| Audio & Models | 011-014, 021 |
 | Localization & i18n | 015-016 |
 | Platform & Distribution | 017-018 |
 | Developer Experience | 019-020 |

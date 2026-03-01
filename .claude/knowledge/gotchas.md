@@ -105,7 +105,19 @@ This matters when creating NSHostingView during menu/overlay animations — the 
 
 ## AVAudioEngine Device Disconnect
 
-`AVAudioEngine` auto-stops when the audio device is disconnected (e.g., USB mic unplugged), but it does **not** clean up internal state. The engine is left in a degraded state where subsequent `start()` calls fail silently or crash. Handling `AVAudioEngineConfigurationChange` notification requires **full teardown**: stop the engine, remove all taps, reset the engine (`engine.reset()`), and reconstruct from scratch. `AudioCaptureManager.emergencyTeardown()` implements this pattern. `onEngineInterrupted` callback propagates the event to `TranscriptionPipeline` to cancel in-progress work and transition to error state.
+`AVAudioEngine` auto-stops when the audio device is disconnected (e.g., USB mic unplugged), but it does **not** clean up internal state. On `AVAudioEngineConfigurationChange` notification, first check `kAudioDevicePropertyDeviceIsAlive`. **Alive** = graceful recovery via `recoverFromCodecSwitch()` (reconfigure engine in-place, e.g., BT A2DP→SCO codec switch). **Dead** = full teardown via `emergencyTeardown()` (stop engine, remove all taps, `engine.reset()`, reconstruct from scratch). `onEngineInterrupted` callback propagates the event to `TranscriptionPipeline` to cancel in-progress work and transition to error state.
+
+## Noise Suppression Requires Engine Rebuild
+
+Toggling Apple Voice Processing I/O at runtime can break the AVAudioEngine — the format/graph state becomes inconsistent. Instead of toggling the flag on a live engine, use `buildEngine(noiseSuppression:)` to create a fresh `AVAudioEngine` with the desired configuration. This ensures the voice processing I/O unit is wired correctly from the start.
+
+## PTT Pre-warm Fires Alongside Recording
+
+`onPreWarmAudio` and `onStartRecording` both fire on key-down as parallel `Task`s. Pre-warm is fire-and-forget; `startRecording` checks `isPreWarmed` to skip the engine phase if the engine is already warm. This avoids double engine setup and ensures the BT codec switch (triggered by pre-warm) has settled before capture begins.
+
+## TCC Permission Resets on Rebuild
+
+The binary hash changes on every `swift build`, which invalidates the existing Accessibility TCC grant. Fix before UAT: `sudo tccutil grant Accessibility com.enviouswispr.app`. Alternatively, re-grant manually in System Settings > Privacy > Accessibility. See also "NEVER Use Blanket TCC Resets" above.
 
 ## installTap Before engine.start() Leaves Orphaned Tap on Failure
 

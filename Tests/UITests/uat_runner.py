@@ -163,6 +163,24 @@ class MenuBarSnapshot:
 MAX_SNAPSHOT_AGE = 30.0  # seconds before auto-refresh
 
 
+def _find_app_window(pid, timeout=3.0, poll_interval=0.3):
+    """Return the main AXWindow for the app, matching any title that starts with 'EnviousWispr'.
+
+    Handles both production bundle ('EnviousWispr') and local dev bundle
+    ('EnviousWispr Local') without requiring an exact title match.
+    """
+    app = get_ax_app(pid)
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        windows = get_attr(app, "AXWindows") or []
+        for win in windows:
+            title = get_attr(win, "AXTitle") or ""
+            if title.startswith("EnviousWispr"):
+                return win
+        time.sleep(poll_interval)
+    return None
+
+
 class TestSession:
     """Shared state across an entire test run — avoids redundant menu opens."""
 
@@ -326,10 +344,13 @@ class TestSession:
                 print(f"  [SESSION] Teardown error (non-fatal): {e}", file=sys.stderr)
 
     def ensure_settings_open(self, verbose=False):
-        """Open Settings window if not already open, return AXWindow element."""
-        settings_win = wait_for_element(
-            self.pid, role="AXWindow", title="EnviousWispr", timeout=0.5
-        )
+        """Open Settings window if not already open, return AXWindow element.
+
+        Matches any window whose title starts with 'EnviousWispr' to handle
+        both production ('EnviousWispr') and local dev ('EnviousWispr Local')
+        bundle names.
+        """
+        settings_win = _find_app_window(self.pid, timeout=0.5)
         if settings_win is not None:
             if self.verbose:
                 print("  [SESSION] Settings already open", file=sys.stderr)
@@ -347,9 +368,7 @@ class TestSession:
             press_key("comma", cmd=True)
         time.sleep(1.0)
 
-        settings_win = wait_for_element(
-            self.pid, role="AXWindow", title="EnviousWispr", timeout=3.0
-        )
+        settings_win = _find_app_window(self.pid, timeout=3.0)
         if settings_win is None:
             raise RuntimeError("Settings window did not appear")
         return settings_win
@@ -679,7 +698,7 @@ class TestContext:
             time.sleep(0.05)
             press_key("comma", cmd=True)
         time.sleep(1.0)
-        return wait_for_element(self.pid, role="AXWindow", title="EnviousWispr", timeout=3.0)
+        return _find_app_window(self.pid, timeout=3.0)
 
     def ensure_tab_selected(self, tab_name):
         """Open Settings (if needed) and select the named sidebar tab.
