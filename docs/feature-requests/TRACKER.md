@@ -51,6 +51,7 @@ Features identified from [Handy vs EnviousWispr comparison](../comparison-handy-
 | 12 | Audio start/stop feedback sounds | [012-audio-feedback-sounds.md](012-audio-feedback-sounds.md) | [x] | [ ] | Low |
 | 13 | Custom GGML model support | [013-custom-ggml-models.md](013-custom-ggml-models.md) | [x] | [ ] | Low |
 | 14 | Always-on microphone mode | [014-always-on-microphone.md](014-always-on-microphone.md) | [x] | [ ] | Low |
+| 21 | Bluetooth audio resilience (AirPods) | [021-bluetooth-audio-resilience.md](021-bluetooth-audio-resilience.md) | [x] | [ ] | High |
 
 ### Localization & i18n
 
@@ -77,7 +78,7 @@ Features identified from [Handy vs EnviousWispr comparison](../comparison-handy-
 
 | Status | Plans | Code |
 | ------ | ----- | ---- |
-| Not started | 0 | 13 |
+| Not started | 0 | 14 |
 | In progress | 0 | 0 |
-| Complete | 20 | 7 |
-| **Total** | **20** | **20** |
+| Complete | 21 | 7 |
+| **Total** | **21** | **21** |
