@@ -15,7 +15,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-VERSION="${1:-1.0.0}"
+VERSION="${1:-0.0.0-local}"
 APP_NAME="EnviousWispr"
 BUNDLE_ID="com.enviouswispr.app"
 MIN_MACOS="14.0"
@@ -95,6 +95,10 @@ sed -i '' "s|<string>1.0.0</string><!-- CFBundleVersion -->|<string>${VERSION}</
 # Use plutil for reliable version substitution
 plutil -replace CFBundleVersion -string "${VERSION}" "${CONTENTS}/Info.plist"
 plutil -replace CFBundleShortVersionString -string "${VERSION}" "${CONTENTS}/Info.plist"
+# Strip the "Local" suffix for production/release DMG builds.
+# The committed Info.plist uses "EnviousWispr Local" for local dev builds.
+plutil -replace CFBundleName -string "${APP_NAME}" "${CONTENTS}/Info.plist"
+plutil -replace CFBundleDisplayName -string "${APP_NAME}" "${CONTENTS}/Info.plist"
 
 # Override Sparkle keys from env vars if provided
 if [[ -n "${SPARKLE_FEED_URL:-}" ]]; then

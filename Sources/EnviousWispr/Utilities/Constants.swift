@@ -1,7 +1,7 @@
 import Foundation
 
 enum AppConstants {
-    static let appName = "EnviousWispr"
+    static let appName = "EnviousWispr Local"
     static let appSupportDir = "EnviousWispr"
     static let transcriptsDir = "transcripts"
 

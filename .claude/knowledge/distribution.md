@@ -1,5 +1,21 @@
 # Distribution & Release Pipeline
 
+## Two-Tier Build Model
+
+### Local Builds
+- **Produced by:** `swift build`, `/wispr-rebuild-and-relaunch`, or `./scripts/build-dmg.sh` (no version arg)
+- **Version string:** Tagged with `-local` suffix (e.g., `0.0.0-local`)
+- **Purpose:** Development and testing only
+- **Bundle location:** `.build/debug/EnviousWispr.app` or `build/EnviousWispr.app`
+
+### Commercial/Release Builds
+- **Produced by:** CI on `git tag v*` push, or explicitly via `./scripts/build-dmg.sh 1.0.0`
+- **Version string:** Clean semver (e.g., `1.0.0`)
+- **Purpose:** Distribution via GitHub Releases; downloaded by friends/users
+- **Bundle location:** Created by DMG build script; signed and notarized in CI
+
+Use the version string (`CFBundleShortVersionString` in Info.plist) to identify build tier at runtime.
+
 ## Release Flow
 
 `git tag v1.0.0` → GitHub Actions → build → sign → notarize → DMG → GitHub Release + appcast.xml update

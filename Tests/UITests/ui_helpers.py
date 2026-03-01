@@ -428,3 +428,48 @@ def check_logs_for_pattern(subsystem="com.enviouswispr.app", duration=3.0, patte
 def is_process_running(app_name):
     """Check if a process with the given name is currently running."""
     return find_app_pid(app_name) is not None
+
+
+def validate_app_ready(pid, timeout=10.0):
+    """Validate the app is ready for UAT testing.
+
+    Checks:
+    1. Process is alive and responding (not hung)
+    2. AX tree is accessible (Accessibility permission works)
+    3. App has at least one AX element (UI is loaded)
+
+    Returns (ready: bool, message: str).
+    """
+    # 1. Check process is alive
+    try:
+        result = subprocess.run(
+            ["kill", "-0", str(pid)],
+            capture_output=True, timeout=5,
+        )
+        if result.returncode != 0:
+            return (False, f"Process {pid} is not alive")
+    except subprocess.TimeoutExpired:
+        return (False, f"Process {pid} not responding to signal check")
+
+    # 2. Check AX tree is accessible (polls until timeout)
+    deadline = time.time() + timeout
+    last_error = None
+    while time.time() < deadline:
+        try:
+            app = AXUIElementCreateApplication(pid)
+            err, role = AXUIElementCopyAttributeValue(app, "AXRole", None)
+            if err == kAXErrorSuccess and role == "AXApplication":
+                # 3. Check we can read at least one child or menu bar
+                err2, children = AXUIElementCopyAttributeValue(app, "AXChildren", None)
+                err3, menubar = AXUIElementCopyAttributeValue(app, "AXExtrasMenuBar", None)
+                if (err2 == kAXErrorSuccess and children) or (err3 == kAXErrorSuccess and menubar):
+                    return (True, "App is ready")
+                # App exists but no children yet — UI still loading
+                last_error = "AX tree accessible but no UI elements yet"
+            else:
+                last_error = f"AXRole query returned error code {err}"
+        except Exception as e:
+            last_error = str(e)
+        time.sleep(0.5)
+
+    return (False, f"App not ready after {timeout}s: {last_error}")

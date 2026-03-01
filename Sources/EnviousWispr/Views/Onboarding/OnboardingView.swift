@@ -96,7 +96,7 @@ struct OnboardingView: View {
         VStack(spacing: 16) {
             IconCircle(systemName: "mic.circle.fill", tint: .blue)
 
-            Text("Welcome to EnviousWispr")
+            Text("Welcome to EnviousWispr Local")
                 .font(.title)
                 .bold()
 
@@ -119,7 +119,7 @@ struct OnboardingView: View {
                 .font(.title2)
                 .bold()
 
-            Text("EnviousWispr needs microphone access to capture your speech for transcription.")
+            Text("EnviousWispr Local needs microphone access to capture your speech for transcription.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
 

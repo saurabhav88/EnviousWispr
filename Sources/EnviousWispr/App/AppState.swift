@@ -91,8 +91,15 @@ final class AppState {
         pipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
         pipeline.wordCorrection.customWords = customWords
         pipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
-        audioCapture.noiseSuppressionEnabled = settings.noiseSuppression
+        // Build engine with correct noise suppression config from the start.
+        // This sets noiseSuppressionEnabled and configures anti-ducking if needed.
+        if settings.noiseSuppression {
+            audioCapture.buildEngine(noiseSuppression: true)
+        } else {
+            audioCapture.noiseSuppressionEnabled = false
+        }
         audioCapture.selectedInputDeviceUID = settings.selectedInputDeviceUID
+        audioCapture.preferredInputDeviceIDOverride = settings.preferredInputDeviceIDOverride
         syncTranscriptionOptions()
 
         // Enumerate input devices and monitor for changes
@@ -149,6 +156,10 @@ final class AppState {
         hotkeyService.onToggleRecording = { [weak self] in
             guard let self else { return }
             await self.toggleRecording()
+        }
+        hotkeyService.onPreWarmAudio = { [weak self] in
+            guard let self else { return }
+            await self.pipeline.preWarmAudioInput()
         }
         hotkeyService.onStartRecording = { [weak self] in
             guard let self, !self.pipelineState.isActive else { return }
@@ -267,8 +278,19 @@ final class AppState {
             syncTranscriptionOptions()
         case .selectedInputDeviceUID:
             audioCapture.selectedInputDeviceUID = settings.selectedInputDeviceUID
+        case .preferredInputDeviceIDOverride:
+            audioCapture.preferredInputDeviceIDOverride = settings.preferredInputDeviceIDOverride
         case .noiseSuppression:
-            audioCapture.noiseSuppressionEnabled = settings.noiseSuppression
+            // Full engine rebuild — runtime toggling of voice processing is unreliable.
+            // Cancel any active recording first to avoid corrupted state.
+            if pipeline.state == .recording {
+                Task { [weak self] in
+                    await self?.pipeline.cancelRecording()
+                    self?.audioCapture.buildEngine(noiseSuppression: self?.settings.noiseSuppression ?? false)
+                }
+            } else {
+                audioCapture.buildEngine(noiseSuppression: settings.noiseSuppression)
+            }
         case .hasCompletedOnboarding:
             break
         }

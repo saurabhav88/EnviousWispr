@@ -92,6 +92,85 @@ enum AudioDeviceEnumerator {
         return devices.first(where: { $0.uid == uid })?.id
     }
 
+    // MARK: - Bluetooth & Smart Device Selection
+
+    /// Returns true if the given device uses Bluetooth transport (Classic or LE).
+    static func isBluetoothDevice(_ deviceID: AudioDeviceID) -> Bool {
+        var transport: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyTransportType,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        AudioObjectGetPropertyData(deviceID, &addr, 0, nil, &size, &transport)
+        return transport == kAudioDeviceTransportTypeBluetooth
+            || transport == kAudioDeviceTransportTypeBluetoothLE
+    }
+
+    /// Returns the AudioDeviceID of the built-in microphone, if one exists.
+    static func builtInMicrophoneDeviceID() -> AudioDeviceID? {
+        let devices = allInputDevices()
+        return devices.first { device in
+            var transport: UInt32 = 0
+            var size = UInt32(MemoryLayout<UInt32>.size)
+            var addr = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyTransportType,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            AudioObjectGetPropertyData(device.id, &addr, 0, nil, &size, &transport)
+            return transport == kAudioDeviceTransportTypeBuiltIn
+        }?.id
+    }
+
+    /// Returns the default system output device ID, or nil if unavailable.
+    static func defaultOutputDeviceID() -> AudioDeviceID? {
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        var deviceID: AudioDeviceID = 0
+        var dataSize = UInt32(MemoryLayout<AudioDeviceID>.size)
+
+        let status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject),
+            &propertyAddress,
+            0,
+            nil,
+            &dataSize,
+            &deviceID
+        )
+
+        guard status == noErr, deviceID != kAudioObjectUnknown else { return nil }
+        return deviceID
+    }
+
+    /// Returns true if the device's I/O cycle is active (audio is flowing somewhere).
+    static func isDeviceRunningSomewhere(_ deviceID: AudioDeviceID) -> Bool {
+        var isRunning: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDeviceIsRunningSomewhere,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        AudioObjectGetPropertyData(deviceID, &addr, 0, nil, &size, &isRunning)
+        return isRunning != 0
+    }
+
+    /// Recommended input device given current output device and media-playing state.
+    /// Returns the built-in mic if Bluetooth output is active and media is playing;
+    /// nil otherwise (meaning "use whatever is currently selected").
+    static func recommendedInputDevice() -> AudioDeviceID? {
+        guard let outputDeviceID = defaultOutputDeviceID() else { return nil }
+        guard isBluetoothDevice(outputDeviceID) else { return nil }
+        guard isDeviceRunningSomewhere(outputDeviceID) else { return nil }
+        return builtInMicrophoneDeviceID()
+    }
+
     // MARK: - Private Helpers
 
     private static func inputChannelCount(for deviceID: AudioDeviceID) -> Int {

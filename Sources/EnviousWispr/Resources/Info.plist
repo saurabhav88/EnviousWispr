@@ -7,9 +7,9 @@
     <key>CFBundleIdentifier</key>
     <string>com.enviouswispr.app</string>
     <key>CFBundleName</key>
-    <string>EnviousWispr</string>
+    <string>EnviousWispr Local</string>
     <key>CFBundleDisplayName</key>
-    <string>EnviousWispr</string>
+    <string>EnviousWispr Local</string>
     <key>CFBundleExecutable</key>
     <string>EnviousWispr</string>
     <key>CFBundlePackageType</key>

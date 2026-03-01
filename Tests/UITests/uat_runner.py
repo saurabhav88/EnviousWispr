@@ -46,6 +46,7 @@ from ui_helpers import (
     get_clipboard_text,
     set_clipboard_text,
     is_process_running,
+    validate_app_ready,
 )
 from simulate_input import click, press_key
 
@@ -271,6 +272,17 @@ class TestSession:
         self._current_tab = tab_name
         return settings_win
 
+    def reset_state(self):
+        """Reset session state between tests for isolation.
+
+        Clears tab cache, invalidates menu snapshot, and ensures clean state
+        so one test's side effects don't leak into the next.
+        """
+        self._current_tab = None
+        self._snapshot_valid = False
+        if self.verbose:
+            print("  [SESSION] State reset for test isolation", file=sys.stderr)
+
     def teardown(self):
         """Close all app windows after test run — leaves desktop clean."""
         if self.verbose:
@@ -492,6 +504,45 @@ def assert_element_disabled(pid, role=None, title=None, msg=None):
     return el
 
 
+def _capture_app_state(pid):
+    """Capture a brief snapshot of app state for debugging assertion failures.
+
+    Returns a string summary of: active windows, focused element, menu state.
+    Non-throwing — returns "[unavailable]" on any error.
+    """
+    try:
+        app = get_ax_app(pid)
+        lines = []
+
+        # Windows
+        windows = get_attr(app, "AXWindows") or []
+        win_titles = [get_attr(w, "AXTitle") or "(untitled)" for w in windows]
+        lines.append(f"  Windows: {win_titles if win_titles else 'none'}")
+
+        # Focused element
+        focused = get_attr(app, "AXFocusedUIElement")
+        if focused:
+            f_role = get_attr(focused, "AXRole") or "?"
+            f_title = get_attr(focused, "AXTitle") or ""
+            f_value = get_attr(focused, "AXValue") or ""
+            desc = f"{f_role}"
+            if f_title:
+                desc += f" title={f_title!r}"
+            if f_value:
+                desc += f" value={f_value!r}"
+            lines.append(f"  Focused: {desc}")
+        else:
+            lines.append("  Focused: none")
+
+        # Frontmost
+        frontmost = get_attr(app, "AXFrontmost")
+        lines.append(f"  Frontmost: {frontmost}")
+
+        return "\n".join(lines)
+    except Exception:
+        return "  [unavailable]"
+
+
 def _criteria_str(role=None, title=None, description=None, value=None):
     parts = []
     if role:
@@ -704,6 +755,14 @@ def run_tests(test_names, verbose=False):
         print("ERROR: EnviousWispr is not running. Launch it first.", file=sys.stderr)
         return [TestResult("setup", "ERROR", "EnviousWispr not running")]
 
+    # Validate app is ready (AX tree accessible, UI loaded)
+    ready, msg = validate_app_ready(pid)
+    if not ready:
+        print(f"ERROR: App readiness check failed: {msg}", file=sys.stderr)
+        return [TestResult("setup", "ERROR", f"App not ready: {msg}")]
+    if verbose:
+        print(f"  App readiness check: {msg}", file=sys.stderr)
+
     session = TestSession(pid, verbose=verbose)
 
     # Sort known tests by context to batch UI operations, keep unknowns at end
@@ -723,6 +782,7 @@ def run_tests(test_names, verbose=False):
                 continue
 
             test_info = _TESTS[name]
+            session.reset_state()
             ctx = TestContext(pid, verbose=verbose, session=session)
 
             if verbose:
@@ -739,15 +799,21 @@ def run_tests(test_names, verbose=False):
                     print(f"  PASS ({elapsed:.1f}s)", file=sys.stderr)
             except AssertionError as e:
                 elapsed = time.time() - start
-                results.append(TestResult(name, "FAIL", str(e), elapsed))
+                state = _capture_app_state(pid)
+                fail_msg = f"{e}\n[App state at failure]\n{state}"
+                results.append(TestResult(name, "FAIL", fail_msg, elapsed))
                 if verbose:
                     print(f"  FAIL ({elapsed:.1f}s): {e}", file=sys.stderr)
+                    print(f"  [App state]\n{state}", file=sys.stderr)
             except Exception as e:
                 elapsed = time.time() - start
-                results.append(TestResult(name, "ERROR", str(e), elapsed,
+                state = _capture_app_state(pid)
+                err_msg = f"{e}\n[App state at error]\n{state}"
+                results.append(TestResult(name, "ERROR", err_msg, elapsed,
                                           {"traceback": traceback.format_exc()}))
                 if verbose:
                     print(f"  ERROR ({elapsed:.1f}s): {e}", file=sys.stderr)
+                    print(f"  [App state]\n{state}", file=sys.stderr)
             finally:
                 ctx.run_cleanup()
     finally:
@@ -764,6 +830,17 @@ def print_results(results):
     errors = sum(1 for r in results if r.status == "ERROR")
     skipped = sum(1 for r in results if r.status == "SKIP")
     total = len(results)
+    ran = passed + failed + errors  # tests that actually executed
+
+    # Zero-tests-ran warning — prevents false positives from scope mismatches
+    if ran == 0:
+        print(f"\n{'='*70}", file=sys.stderr)
+        print(f"  WARNING: Zero tests were executed!", file=sys.stderr)
+        if total == 0:
+            print(f"  No tests were discovered. Check file paths and test registration.", file=sys.stderr)
+        else:
+            print(f"  {total} tests found but all were skipped. Check test names match registered tests.", file=sys.stderr)
+        print(f"{'='*70}\n", file=sys.stderr)
 
     print(f"\n{'='*70}")
     print(f"  UAT Results: {passed} passed, {failed} failed, {errors} errors, {skipped} skipped / {total} total")
@@ -778,6 +855,9 @@ def print_results(results):
 
     print()
 
+    # all_passed is False when zero tests ran — prevents false positives
+    all_passed = failed == 0 and errors == 0 and ran > 0
+
     # JSON summary to stdout for machine parsing
     summary = {
         "total": total,
@@ -785,12 +865,13 @@ def print_results(results):
         "failed": failed,
         "errors": errors,
         "skipped": skipped,
-        "all_passed": failed == 0 and errors == 0,
+        "ran": ran,
+        "all_passed": all_passed,
         "tests": [r.to_dict() for r in results],
     }
     print(json.dumps(summary, indent=2))
 
-    return failed == 0 and errors == 0
+    return all_passed
 
 
 # ---------------------------------------------------------------------------

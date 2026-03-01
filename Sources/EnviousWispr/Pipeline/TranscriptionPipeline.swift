@@ -50,6 +50,8 @@ final class TranscriptionPipeline {
     private var recordingStartTime: Date?
     /// Whether streaming ASR was successfully started for the current recording.
     private var streamingASRActive = false
+    /// Whether audio input has been pre-warmed (engine started) by PTT key-down.
+    private var isPreWarmed = false
 
     init(
         audioCapture: AudioCaptureManager,
@@ -88,6 +90,15 @@ final class TranscriptionPipeline {
         // No-op callback is correct; live token display in overlay is a future follow-up.
         llmPolishStep.onToken = { _ in }
         textProcessingSteps = [wordCorrectionStep, fillerRemovalStep, llmPolishStep]
+    }
+
+    /// Pre-warm the audio input to trigger any Bluetooth codec switch before recording.
+    /// Called on PTT key-down to hide the 0.5–2s Bluetooth negotiation latency.
+    /// Sets `isPreWarmed` so `startRecording()` skips engine phase 1.
+    func preWarmAudioInput() async {
+        guard !state.isActive, state != .recording else { return }
+        await audioCapture.preWarm()
+        isPreWarmed = true
     }
 
     /// Toggle recording: start if idle, stop if recording.
@@ -171,7 +182,26 @@ final class TranscriptionPipeline {
         }
 
         do {
-            _ = try audioCapture.startCapture()
+            // Two-phase start: phase 1 triggers any Bluetooth codec switch
+            if !isPreWarmed {
+                try audioCapture.startEnginePhase()
+
+                // Wait for format to stabilize (Bluetooth) or pass immediately (built-in mic)
+                let stabilized = await audioCapture.waitForFormatStabilization(
+                    maxWait: 1.5,
+                    pollInterval: 0.2
+                )
+
+                // If format never settled, rebuild engine once and retry
+                if !stabilized {
+                    audioCapture.rebuildEngine()
+                    try audioCapture.startEnginePhase()
+                }
+            }
+            isPreWarmed = false
+
+            // Phase 2: install tap and start capture
+            _ = try audioCapture.beginCapturePhase()
             streamingSetupSucceeded = true
             state = .recording
             recordingStartTime = Date()

@@ -54,6 +54,18 @@ final class AudioCaptureManager {
     /// Persistent UID of the selected input device. Empty string means system default.
     var selectedInputDeviceUID: String = ""
 
+    /// User override for input device. Empty string means "Auto" (smart selection enabled).
+    var preferredInputDeviceIDOverride: String = ""
+
+    /// The CoreAudio device ID currently in use. Set at recording start, used by
+    /// the config-change handler to check `kAudioDevicePropertyDeviceIsAlive`.
+    private(set) var currentInputDeviceID: AudioDeviceID?
+
+    /// Guard against re-entrant codec switch recovery. Multiple
+    /// `AVAudioEngineConfigurationChange` notifications can fire during a single
+    /// Bluetooth negotiation — only the first should trigger recovery.
+    private var isRecovering = false
+
     /// Maximum recording duration in seconds. Prevents unbounded memory growth.
     nonisolated static let maxRecordingDurationSeconds: Double = 600 // 10 minutes
     /// Maximum sample count derived from maxRecordingDurationSeconds at 16kHz.
@@ -104,12 +116,14 @@ final class AudioCaptureManager {
         }
     }
 
-    /// Start capturing audio from the microphone.
-    /// Resolves `selectedInputDeviceUID` to a device ID if set.
-    func startCapture() throws -> AsyncStream<AVAudioPCMBuffer> {
-        guard !isCapturing else {
-            return AsyncStream { $0.finish() }
-        }
+    // MARK: - Two-Phase Recording Start
+
+    /// Phase 1: Start the engine to trigger any Bluetooth codec switch.
+    /// Sets the input device, enables voice processing, registers the config-change
+    /// observer, and starts the engine. Does NOT install a tap or begin capture.
+    /// Safe to call multiple times — no-op if the engine is already running.
+    func startEnginePhase() throws {
+        guard !engine.isRunning else { return }
 
         // Pre-allocate for ~30 seconds of audio at 16kHz to reduce reallocations
         capturedSamples = []
@@ -117,11 +131,26 @@ final class AudioCaptureManager {
         activeTasks.removeAll()
         audioLevel = 0.0
 
-        // Step 1: Set input device (if selected) — must be before inputNode access for format
-        let resolvedDeviceID: AudioDeviceID? = selectedInputDeviceUID.isEmpty
-            ? nil
-            : AudioDeviceEnumerator.deviceID(forUID: selectedInputDeviceUID)
+        // Step 1: Resolve input device — smart selection when in Auto mode
+        let resolvedDeviceID: AudioDeviceID?
+        if !preferredInputDeviceIDOverride.isEmpty {
+            // User explicitly chose a device — respect it
+            resolvedDeviceID = AudioDeviceEnumerator.deviceID(forUID: preferredInputDeviceIDOverride)
+        } else if !selectedInputDeviceUID.isEmpty {
+            // Legacy path — explicit device UID set
+            resolvedDeviceID = AudioDeviceEnumerator.deviceID(forUID: selectedInputDeviceUID)
+        } else if let recommended = AudioDeviceEnumerator.recommendedInputDevice() {
+            // Auto mode: smart selection — BT output active with media playing, use built-in mic
+            resolvedDeviceID = recommended
+            Task { await AppLogger.shared.log(
+                "Smart device selection: using built-in mic (BT output detected with active media)",
+                level: .info, category: "Audio"
+            ) }
+        } else {
+            resolvedDeviceID = nil
+        }
         try setInputDevice(resolvedDeviceID)
+        currentInputDeviceID = resolvedDeviceID ?? AudioDeviceEnumerator.defaultInputDeviceID()
 
         // Step 2: Enable voice processing (if enabled) — must be before installTap and engine.start()
         if noiseSuppressionEnabled {
@@ -139,29 +168,26 @@ final class AudioCaptureManager {
             try? engine.inputNode.setVoiceProcessingEnabled(false)
         }
 
-        // Register for engine configuration changes (e.g., device disconnect).
-        // On device disconnect AVAudioEngine posts this notification and stops itself.
-        // We must perform full teardown so the next recording starts clean.
-        configChangeObserver = NotificationCenter.default.addObserver(
-            forName: .AVAudioEngineConfigurationChange,
-            object: engine,
-            queue: .main
-        ) { [weak self] _ in
-            // queue: .main guarantees we're on the main thread
-            MainActor.assumeIsolated {
-                guard let self, self.isCapturing else { return }
-                let task = Task { @MainActor in
-                    await AppLogger.shared.log(
-                        "Audio engine configuration changed (device disconnect/reconnect) — performing emergency teardown",
-                        level: .info, category: "Audio"
-                    )
-                    self.emergencyTeardown()
-                    self.onEngineInterrupted?()
+        // Register for engine configuration changes (e.g., device disconnect, BT codec switch).
+        if configChangeObserver == nil {
+            configChangeObserver = NotificationCenter.default.addObserver(
+                forName: .AVAudioEngineConfigurationChange,
+                object: engine,
+                queue: nil
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    await self?.handleEngineConfigurationChange()
                 }
-                self.trackTask(task)
             }
         }
 
+        try engine.start()
+    }
+
+    /// Phase 2: Install the tap and begin capture.
+    /// Call only after `startEnginePhase()` and `waitForFormatStabilization()`.
+    /// Returns an `AsyncStream` of converted audio buffers.
+    func beginCapturePhase() throws -> AsyncStream<AVAudioPCMBuffer> {
         let inputNode = engine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
@@ -185,14 +211,10 @@ final class AudioCaptureManager {
         }
 
         // Create a stopped flag for this capture session.
-        // The tap handler checks this atomically before doing any work.
         let stoppedFlag = TapStoppedFlag()
         self.tapStoppedFlag = stoppedFlag
 
         // Create a @Sendable callback for dispatching audio data to the main actor.
-        // This captures [weak self] safely — the weak reference is only dereferenced
-        // inside Task { @MainActor }, never on the audio thread.
-        // Enforces the max recording duration cap to prevent unbounded memory growth.
         let maxSamples = Self.maxRecordingSamples
         let onSamples: @Sendable (Float, [Float]) -> Void = { [weak self] level, samples in
             Task { @MainActor in
@@ -213,8 +235,7 @@ final class AudioCaptureManager {
         let tapContinuation = self.bufferContinuation
         let bufferCallback = self.onBufferCaptured
 
-        // Install tap on input node — the handler is built in a nonisolated static
-        // context so closures inside it do NOT inherit @MainActor isolation.
+        // Install tap on input node
         let bufferSize: AVAudioFrameCount = 4096
         let tapHandler = Self.makeTapHandler(
             audioConverter: audioConverter,
@@ -227,25 +248,103 @@ final class AudioCaptureManager {
         )
         inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat, block: tapHandler)
 
-        do {
-            try engine.start()
-        } catch {
-            // Clean up the orphaned tap — without this, all future recordings fail
-            // because installTap on a bus that already has a tap throws.
-            stoppedFlag.set()
-            tapStoppedFlag = nil
-            inputNode.removeTap(onBus: 0)
-            bufferContinuation?.finish()
-            bufferContinuation = nil
-            converter = nil
-            if let observer = configChangeObserver {
-                NotificationCenter.default.removeObserver(observer)
-                configChangeObserver = nil
+        // If the engine isn't running (e.g., pre-warm failed), start it now
+        if !engine.isRunning {
+            do {
+                try engine.start()
+            } catch {
+                stoppedFlag.set()
+                tapStoppedFlag = nil
+                inputNode.removeTap(onBus: 0)
+                bufferContinuation?.finish()
+                bufferContinuation = nil
+                converter = nil
+                if let observer = configChangeObserver {
+                    NotificationCenter.default.removeObserver(observer)
+                    configChangeObserver = nil
+                }
+                throw error
             }
-            throw error
         }
+
         isCapturing = true
         return stream
+    }
+
+    /// Backward-compatible wrapper: runs both phases sequentially.
+    /// Resolves `selectedInputDeviceUID` to a device ID if set.
+    func startCapture() throws -> AsyncStream<AVAudioPCMBuffer> {
+        guard !isCapturing else {
+            return AsyncStream { $0.finish() }
+        }
+        try startEnginePhase()
+        return try beginCapturePhase()
+    }
+
+    /// Replace the AVAudioEngine with a fresh instance.
+    /// Call when format stabilization fails and a full rebuild is needed.
+    func rebuildEngine() {
+        if engine.isRunning { engine.stop() }
+        engine.inputNode.removeTap(onBus: 0)
+        engine.reset()
+        engine = AVAudioEngine()
+        // Re-register config change observer for the new engine
+        if let observer = configChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+            configChangeObserver = nil
+        }
+    }
+
+    /// Build (or rebuild) the AVAudioEngine with the correct voice-processing configuration.
+    /// Must be called before `startEnginePhase()`. Any existing engine is torn down first.
+    /// Configures anti-ducking when voice processing is enabled to prevent the engine
+    /// from lowering other apps' audio volume during recording.
+    func buildEngine(noiseSuppression: Bool) {
+        if engine.isRunning { engine.stop() }
+        engine.inputNode.removeTap(onBus: 0)
+        engine = AVAudioEngine()
+        if let observer = configChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+            configChangeObserver = nil
+        }
+
+        if noiseSuppression {
+            do {
+                try engine.inputNode.setVoiceProcessingEnabled(true)
+                // Disable ducking — we do NOT want the engine lowering other apps' volume
+                if #available(macOS 14.0, *) {
+                    let duckingConfig = AVAudioVoiceProcessingOtherAudioDuckingConfiguration(
+                        enableAdvancedDucking: false,
+                        duckingLevel: .min
+                    )
+                    engine.inputNode.voiceProcessingOtherAudioDuckingConfiguration = duckingConfig
+                }
+            } catch {
+                Task { await AppLogger.shared.log(
+                    "Voice processing unavailable during engine build: \(error.localizedDescription)",
+                    level: .info, category: "Audio"
+                ) }
+            }
+        }
+        noiseSuppressionEnabled = noiseSuppression
+    }
+
+    /// Open the audio input to trigger any Bluetooth codec switch, then wait for
+    /// format stabilization. Safe to call multiple times — no-op if engine is already running.
+    /// Does NOT install a tap or begin capture.
+    func preWarm() async {
+        guard !engine.isRunning else { return }
+        do {
+            try startEnginePhase()
+        } catch {
+            Task { await AppLogger.shared.log(
+                "Audio pre-warm failed: \(error.localizedDescription)",
+                level: .info, category: "Audio"
+            ) }
+            return
+        }
+        // Allow the codec switch and format stabilization to complete
+        _ = await waitForFormatStabilization(maxWait: 1.5, pollInterval: 0.2)
     }
 
     /// Inject pre-recorded samples directly into the capture buffer for benchmark/testing.
@@ -271,6 +370,8 @@ final class AudioCaptureManager {
         // Disable voice processing after stopping to leave engine in clean state
         try? engine.inputNode.setVoiceProcessingEnabled(false)
         isCapturing = false
+        currentInputDeviceID = nil
+        isRecovering = false
         bufferContinuation?.finish()
         bufferContinuation = nil
         converter = nil
@@ -284,6 +385,179 @@ final class AudioCaptureManager {
         let samples = capturedSamples
         capturedSamples = []
         return samples
+    }
+
+    // MARK: - Bluetooth Codec Switch Recovery
+
+    /// Determine whether an engine configuration change is a Bluetooth codec switch
+    /// (device still alive) or a true disconnect (device dead), and react accordingly.
+    private func handleEngineConfigurationChange() async {
+        guard isCapturing, !isRecovering else { return }
+
+        guard let deviceID = currentInputDeviceID else {
+            await AppLogger.shared.log(
+                "Audio engine config changed — no device ID, performing emergency teardown",
+                level: .info, category: "Audio"
+            )
+            emergencyTeardown()
+            onEngineInterrupted?()
+            return
+        }
+
+        // Check kAudioDevicePropertyDeviceIsAlive via CoreAudio
+        var isAlive: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDeviceIsAlive,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        AudioObjectGetPropertyData(deviceID, &addr, 0, nil, &size, &isAlive)
+
+        if isAlive == 0 {
+            // True disconnect — tear down as before
+            await AppLogger.shared.log(
+                "Audio device \(deviceID) is dead — performing emergency teardown",
+                level: .info, category: "Audio"
+            )
+            emergencyTeardown()
+            onEngineInterrupted?()
+            return
+        }
+
+        // Codec switch — attempt graceful recovery
+        await AppLogger.shared.log(
+            "Audio engine config changed — device \(deviceID) still alive (Bluetooth codec switch), attempting graceful recovery",
+            level: .info, category: "Audio"
+        )
+        await recoverFromCodecSwitch()
+    }
+
+    /// Graceful recovery from a Bluetooth A2DP→SCO codec switch.
+    /// Removes the tap, stops the engine, waits for the format to stabilize,
+    /// then reinstalls the tap and restarts the engine. `capturedSamples` is preserved.
+    private func recoverFromCodecSwitch() async {
+        isRecovering = true
+        defer { isRecovering = false }
+
+        // 1. Signal the tap handler to stop before removing the tap
+        tapStoppedFlag?.set()
+
+        // 2. Remove the existing tap so the engine can be stopped cleanly
+        engine.inputNode.removeTap(onBus: 0)
+
+        // 3. Stop the engine (it may already be stopped after the config change)
+        engine.stop()
+
+        // 4. Poll for format stabilization — the SCO format settles within 200ms–1s
+        let stabilized = await waitForFormatStabilization(
+            maxWait: 1.5,
+            pollInterval: 0.2
+        )
+        guard stabilized else {
+            // Format never settled — treat as unrecoverable
+            await AppLogger.shared.log(
+                "Format stabilization timed out during codec switch recovery — performing emergency teardown",
+                level: .info, category: "Audio"
+            )
+            emergencyTeardown()
+            onEngineInterrupted?()
+            return
+        }
+
+        // 5. Rebuild converter and reinstall tap with the new format, then restart engine
+        do {
+            let inputNode = engine.inputNode
+            let inputFormat = inputNode.outputFormat(forBus: 0)
+
+            guard let targetFormat = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: Self.targetSampleRate,
+                channels: Self.targetChannels,
+                interleaved: false
+            ) else {
+                throw AudioError.formatCreationFailed
+            }
+
+            guard let audioConverter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
+                throw AudioError.formatCreationFailed
+            }
+            self.converter = audioConverter
+
+            // Create a new stopped flag for the recovery tap
+            let stoppedFlag = TapStoppedFlag()
+            self.tapStoppedFlag = stoppedFlag
+
+            let maxSamples = Self.maxRecordingSamples
+            let onSamples: @Sendable (Float, [Float]) -> Void = { [weak self] level, samples in
+                Task { @MainActor in
+                    guard let self, self.isCapturing else { return }
+                    self.audioLevel = level
+                    self.capturedSamples.append(contentsOf: samples)
+                    if self.capturedSamples.count >= maxSamples {
+                        await AppLogger.shared.log(
+                            "Max recording duration reached (\(Self.maxRecordingDurationSeconds)s) — auto-stopping",
+                            level: .info, category: "Audio"
+                        )
+                        self.emergencyTeardown()
+                        self.onEngineInterrupted?()
+                    }
+                }
+            }
+
+            let tapContinuation = self.bufferContinuation
+            let bufferCallback = self.onBufferCaptured
+
+            let bufferSize: AVAudioFrameCount = 4096
+            let tapHandler = Self.makeTapHandler(
+                audioConverter: audioConverter,
+                targetFormat: targetFormat,
+                inputFormat: inputFormat,
+                continuation: tapContinuation,
+                onSamples: onSamples,
+                onBuffer: bufferCallback,
+                stoppedFlag: stoppedFlag
+            )
+            inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat, block: tapHandler)
+
+            do {
+                try engine.start()
+            } catch {
+                // Clean up the orphaned tap on engine start failure
+                stoppedFlag.set()
+                tapStoppedFlag = nil
+                inputNode.removeTap(onBus: 0)
+                throw error
+            }
+
+            await AppLogger.shared.log(
+                "Graceful recovery from codec switch succeeded — recording continues",
+                level: .info, category: "Audio"
+            )
+        } catch {
+            await AppLogger.shared.log(
+                "Codec switch recovery failed: \(error.localizedDescription) — performing emergency teardown",
+                level: .info, category: "Audio"
+            )
+            emergencyTeardown()
+            onEngineInterrupted?()
+        }
+    }
+
+    /// Poll the input node's output format until it stabilizes (two consecutive equal formats).
+    func waitForFormatStabilization(
+        maxWait: TimeInterval = 1.5,
+        pollInterval: TimeInterval = 0.2
+    ) async -> Bool {
+        var lastFormat: AVAudioFormat? = nil
+        let deadline = Date().addingTimeInterval(maxWait)
+        while Date() < deadline {
+            let format = engine.inputNode.outputFormat(forBus: 0)
+            if format == lastFormat { return true }
+            lastFormat = format
+            try? await Task.sleep(for: .seconds(pollInterval))
+        }
+        return false
     }
 
     /// Emergency teardown after device disconnect or engine configuration change.
@@ -310,6 +584,8 @@ final class AudioCaptureManager {
         engine.reset()
 
         isCapturing = false
+        currentInputDeviceID = nil
+        isRecovering = false
         bufferContinuation?.finish()
         bufferContinuation = nil
         converter = nil

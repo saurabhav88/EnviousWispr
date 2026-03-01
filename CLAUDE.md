@@ -8,15 +8,17 @@ macOS dictation app — record → transcribe → polish → clipboard/paste. Co
 swift package resolve               # Fetch dependencies (first time / after Package.swift change)
 swift build                         # Command Line Tools only, no Xcode
 swift build --build-tests           # Verify test target compiles
+swift package clean                 # Clear build cache (fixes stale-cache build errors)
 /wispr-rebuild-and-relaunch         # Build + bundle + launch with fresh permissions
 /wispr-run-smoke-test               # Fast compile gate (no launch/UAT)
-python3 Tests/UITests/uat_runner.py run --files Tests/UITests/generated/test_foo.py --verbose   # UAT tests (app running, MUST use run_in_background:true)
+python3 Tests/UITests/uat_runner.py run --files Tests/UITests/generated/<test>.py --verbose   # UAT tests (app running, MUST use run_in_background:true)
 ```
 
 ## Environment
 
-- macOS 14+, Swift 6.2+ (CLT only — no Xcode, no XCTest, no xcodebuild)
+- macOS 14+, Swift 6 language mode (`swift-tools-version: 6.0`), runtime 6.2+ (CLT only — no Xcode, no XCTest, no xcodebuild)
 - `swift build`, never `xcodebuild`
+- Dependencies: FluidAudio 0.12+, WhisperKit 0.12+, Sparkle 2.6+
 
 ## Rules
 

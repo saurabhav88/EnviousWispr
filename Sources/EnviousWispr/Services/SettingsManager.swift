@@ -38,6 +38,7 @@ final class SettingsManager {
         case whisperKitLanguageAutoDetect
         case selectedInputDeviceUID
         case noiseSuppression
+        case preferredInputDeviceIDOverride
     }
 
     var onChange: ((SettingKey) -> Void)?
@@ -280,6 +281,14 @@ final class SettingsManager {
         }
     }
 
+    /// User override for input device. Empty string means "Auto" (smart selection).
+    var preferredInputDeviceIDOverride: String {
+        didSet {
+            UserDefaults.standard.set(preferredInputDeviceIDOverride, forKey: "preferredInputDeviceIDOverride")
+            onChange?(.preferredInputDeviceIDOverride)
+        }
+    }
+
     var activePolishInstructions: PolishInstructions {
         customSystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? .default
@@ -354,6 +363,7 @@ final class SettingsManager {
         whisperKitNoSpeechThreshold = defaults.object(forKey: "whisperKitNoSpeechThreshold") as? Float ?? 0.6
         whisperKitLanguageAutoDetect = defaults.object(forKey: "whisperKitLanguageAutoDetect") as? Bool ?? false
         selectedInputDeviceUID = defaults.string(forKey: "selectedInputDeviceUID") ?? ""
-        noiseSuppression = defaults.object(forKey: "noiseSuppression") as? Bool ?? true
+        noiseSuppression = defaults.object(forKey: "noiseSuppression") as? Bool ?? false
+        preferredInputDeviceIDOverride = defaults.string(forKey: "preferredInputDeviceIDOverride") ?? ""
     }
 }

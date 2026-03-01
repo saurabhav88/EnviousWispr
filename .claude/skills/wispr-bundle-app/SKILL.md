@@ -33,10 +33,19 @@ chmod +x "$BUNDLE/Contents/MacOS/EnviousWispr"
 ## Copy Info.plist
 
 Copy the committed Info.plist, which includes CFBundleIconFile, Sparkle keys, and all other required entries.
+Then stamp it as a local build so the running app is clearly distinguishable from a GitHub release build.
 
 ```bash
 RESOURCES_SRC=/Users/m4pro_sv/Desktop/EnviousWispr/Sources/EnviousWispr/Resources
 cp "$RESOURCES_SRC/Info.plist" "$BUNDLE/Contents/Info.plist"
+
+# Stamp local build version and display name — this is a dev bundle, not a release build.
+# CI/release builds use build-dmg.sh which uses the committed Info.plist as-is (or overrides via env).
+LOCAL_VERSION="0.0.0-local"
+plutil -replace CFBundleVersion -string "$LOCAL_VERSION" "$BUNDLE/Contents/Info.plist"
+plutil -replace CFBundleShortVersionString -string "$LOCAL_VERSION" "$BUNDLE/Contents/Info.plist"
+# Display name is already "EnviousWispr Local" in the committed Info.plist.
+# If build-dmg.sh needs to override for a production release, it should stamp these too.
 ```
 
 ## Copy AppIcon.icns and menu bar icons

@@ -23,6 +23,22 @@ Generates targeted UAT tests for the current project scope, runs them, reports r
 
 ## Steps
 
+### 0. Pre-flight: Ensure TCC Accessibility Permission
+
+UAT tests use CGEvent for input simulation and AX APIs for element inspection — both require Accessibility permission. Attempt to grant it automatically:
+
+```bash
+sudo tccutil grant Accessibility com.enviouswispr.app 2>/dev/null
+```
+
+- PASS: exit code 0 — proceed
+- FAIL: Print a warning but continue (tests may still work if permission was previously granted):
+  ```
+  WARNING: Could not auto-grant Accessibility permission (sudo required).
+  → UAT tests may fail if Accessibility is not enabled for the terminal/IDE.
+  → Check System Settings > Privacy & Security > Accessibility.
+  ```
+
 ### 1. Wipe generated tests
 
 ```bash

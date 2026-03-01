@@ -66,8 +66,9 @@ Scopes: `asr`, `audio`, `ui`, `llm`, `pipeline`, `settings`, `hotkey`, `vad`, `b
 
 ## Release & Versioning
 
-- Semver tags: `v1.0.0`, `v1.1.0`, etc. — `v` prefix required (triggers CI)
-- `scripts/build-dmg.sh <version>` for local builds
+- **Semver tags:** `v1.0.0`, `v1.1.0`, etc. — `v` prefix required (triggers CI for release builds)
+- **Local development:** `swift build`, `/wispr-rebuild-and-relaunch`, or `./scripts/build-dmg.sh` (no version arg) produce builds tagged with `-local` in the version string (e.g., `0.0.0-local`)
+- **Release builds:** `git tag v1.0.0 && git push origin v1.0.0` (CI) or `./scripts/build-dmg.sh 1.0.0` (explicit). Clean version numbers, distributed via GitHub Releases.
 - CI generates `appcast.xml` on each release (gitignored locally)
 - Changelog: `generate-changelog` skill or `git log --oneline v1.0.0..HEAD`
 
