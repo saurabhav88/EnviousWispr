@@ -10,9 +10,10 @@ import SwiftUI
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
-    private(set) var updaterController: SPUStandardUpdaterController!
+    private(set) var updaterController: SPUStandardUpdaterController?
     private let iconAnimator = MenuBarIconAnimator()
     private weak var mainWindow: NSWindow?
+    private var windowCloseObserver: (any NSObjectProtocol)?
 
     /// Shared app state — created here so it's available before any SwiftUI scene loads.
     let appState = AppState()
@@ -26,7 +27,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // When the unified window closes, revert to .accessory immediately.
         // There's only one window now, so no need for the 200ms re-check delay.
-        NotificationCenter.default.addObserver(
+        // Store token so we can remove on termination (H11 observer leak fix).
+        windowCloseObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification,
             object: nil,
             queue: .main
@@ -221,10 +223,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(settingsItem)
 
         // Check for Updates
-        let updateItem = NSMenuItem(title: "Check for Updates…", action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)), keyEquivalent: "")
-        updateItem.image = NSImage(systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: "Update")
-        updateItem.target = updaterController
-        menu.addItem(updateItem)
+        if let updaterController {
+            let updateItem = NSMenuItem(title: "Check for Updates…", action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)), keyEquivalent: "")
+            updateItem.image = NSImage(systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: "Update")
+            updateItem.target = updaterController
+            menu.addItem(updateItem)
+        }
 
         menu.addItem(.separator())
 
@@ -286,6 +290,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        if let observer = windowCloseObserver {
+            NotificationCenter.default.removeObserver(observer)
+            windowCloseObserver = nil
+        }
         appState.ollamaSetup.cleanup()
         appState.hotkeyService.stop()
         LLMNetworkSession.shared.invalidate()

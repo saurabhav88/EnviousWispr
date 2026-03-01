@@ -65,6 +65,24 @@ final class TranscriptionPipeline {
         llmPolishStep.onWillProcess = { [weak self] in
             self?.state = .polishing
         }
+
+        // Handle audio engine interruption (device disconnect, max duration cap).
+        // Perform full pipeline cleanup and transition to error state.
+        audioCapture.onEngineInterrupted = { [weak self] in
+            guard let self else { return }
+            self.vadMonitorTask?.cancel()
+            self.vadMonitorTask = nil
+            self.silenceDetector = nil
+            if self.streamingASRActive {
+                Task { [weak self] in
+                    await self?.asrManager.cancelStreaming()
+                }
+            }
+            self.deactivateStreamingForwarding()
+            self.targetApp = nil
+            self.recordingStartTime = nil
+            self.state = .error("Audio device disconnected")
+        }
         // Activate SSE streaming for Gemini — a non-nil onToken causes GeminiConnector
         // to use streamGenerateContent instead of batch generateContent.
         // No-op callback is correct; live token display in overlay is a future follow-up.
@@ -111,20 +129,29 @@ final class TranscriptionPipeline {
 
         // Start streaming ASR if the backend supports it — feed audio buffers
         // to the ASR model during recording so transcription overlaps with capture.
+        var streamingSetupSucceeded = false
+        defer { if !streamingSetupSucceeded { deactivateStreamingForwarding() } }
+
         let supportsStreaming = await asrManager.activeBackendSupportsStreaming
         if supportsStreaming {
             do {
                 try await asrManager.startStreaming(options: transcriptionOptions)
                 streamingASRActive = true
 
-                // Wire audio buffer forwarding: each converted buffer goes to streaming ASR
+                // Wire audio buffer forwarding: each converted buffer goes to streaming ASR.
+                // The streamingASRActive flag gates delivery — deactivateStreamingForwarding()
+                // sets it to false and nils onBufferCaptured, so in-flight tasks exit quickly.
+                //
+                // NOTE: This callback runs on the real-time audio thread. The TapStoppedFlag
+                // in AudioCaptureManager prevents this from being called after teardown starts.
+                // The nonisolated(unsafe) is safe because the buffer is created on the audio
+                // thread, transferred to the main thread via Task, and never accessed from
+                // both threads simultaneously.
                 audioCapture.onBufferCaptured = { [weak self] buffer in
                     guard let self else { return }
-                    // AVAudioPCMBuffer isn't Sendable but is consumed immediately
-                    // on the main actor — safe to suppress the data race diagnostic.
                     nonisolated(unsafe) let safeBuffer = buffer
                     Task { @MainActor in
-                        guard self.streamingASRActive else { return }
+                        guard self.streamingASRActive, self.state == .recording else { return }
                         try? await self.asrManager.feedAudio(safeBuffer)
                     }
                 }
@@ -145,6 +172,7 @@ final class TranscriptionPipeline {
 
         do {
             _ = try audioCapture.startCapture()
+            streamingSetupSucceeded = true
             state = .recording
             recordingStartTime = Date()
             currentTranscript = nil
@@ -157,6 +185,10 @@ final class TranscriptionPipeline {
             // Always start VAD monitoring for silence removal
             startVADMonitoring()
         } catch {
+            // startCapture() failed — cancel any streaming session we started
+            if streamingASRActive {
+                await asrManager.cancelStreaming()
+            }
             deactivateStreamingForwarding()
             state = .error("Recording failed: \(error.localizedDescription)")
         }
@@ -208,6 +240,10 @@ final class TranscriptionPipeline {
         )
 
         guard !rawSamples.isEmpty else {
+            // Cancel streaming if it was active — empty samples means no useful audio
+            if wasStreaming {
+                await asrManager.cancelStreaming()
+            }
             state = .error("No audio captured")
             return
         }
@@ -253,13 +289,14 @@ final class TranscriptionPipeline {
             let result: ASRResult
             if wasStreaming {
                 do {
-                    result = try await asrManager.finalizeStreaming()
+                    result = try await finalizeStreamingWithTimeout(samples: samples)
                     Task { await AppLogger.shared.log(
                         "Pipeline timing: streaming ASR finalized in \(String(format: "%.3f", CFAbsoluteTimeGetCurrent() - asrStart))s",
                         level: .info, category: "PipelineTiming"
                     ) }
                 } catch {
-                    // Streaming finalization failed — fall back to batch
+                    // Streaming finalization failed or timed out — cancel and fall back to batch
+                    await asrManager.cancelStreaming()
                     Task { await AppLogger.shared.log(
                         "Streaming ASR finalize failed, falling back to batch: \(error.localizedDescription)",
                         level: .info, category: "Pipeline"
@@ -461,14 +498,22 @@ final class TranscriptionPipeline {
         vadMonitorTask = nil
         silenceDetector = nil
 
-        // Cancel streaming ASR session on the backend (discards partial results)
-        if streamingASRActive {
-            await asrManager.cancelStreaming()
-        }
+        // Deactivate streaming forwarding FIRST to prevent new buffer dispatches
+        let wasStreaming = streamingASRActive
         deactivateStreamingForwarding()
 
-        // Stop audio engine and explicitly discard all captured samples
+        // Stop the audio engine and discard samples BEFORE awaiting cancelStreaming().
+        // This is critical: stopCapture() sets the TapStoppedFlag which prevents
+        // the real-time audio thread from creating any new Task allocations. If we
+        // await cancelStreaming() first (which suspends), the audio engine continues
+        // firing tap callbacks during the suspension, creating Tasks that race with
+        // teardown and corrupt the heap.
         _ = audioCapture.stopCapture()
+
+        // Now cancel streaming ASR session (safe to await — engine is stopped)
+        if wasStreaming {
+            await asrManager.cancelStreaming()
+        }
 
         // Clear target app reference — nothing will be pasted
         targetApp = nil
@@ -547,6 +592,36 @@ final class TranscriptionPipeline {
             }
 
             try? await Task.sleep(for: .milliseconds(100))
+        }
+    }
+
+    // MARK: - Streaming Finalization
+
+    /// Maximum time to wait for streaming ASR finalization before falling back to batch.
+    private static let streamingFinalizeTimeoutSeconds: Int = 10
+
+    /// Finalize streaming ASR with a timeout.
+    /// Races finalization against a deadline using a task group. Whichever task
+    /// completes first wins; the loser is cancelled. No shared mutable state needed.
+    private func finalizeStreamingWithTimeout(samples: [Float]) async throws -> ASRResult {
+        // Capture the manager reference on @MainActor before entering the task group.
+        // addTask closures are @Sendable and cannot capture @MainActor-isolated self,
+        // so we snapshot what we need here.
+        let manager = self.asrManager
+        let timeout = Self.streamingFinalizeTimeoutSeconds
+
+        return try await withThrowingTaskGroup(of: ASRResult.self) { group in
+            group.addTask {
+                try await manager.finalizeStreaming()
+            }
+            group.addTask {
+                try await Task.sleep(for: .seconds(timeout))
+                throw ASRError.streamingTimeout
+            }
+            // Whichever finishes first wins; cancel the other.
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
         }
     }
 

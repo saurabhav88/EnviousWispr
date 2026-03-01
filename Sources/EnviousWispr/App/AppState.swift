@@ -395,10 +395,13 @@ final class AppState {
                 guard let self, !Task.isCancelled else { return }
                 self.permissions.refreshAccessibilityStatus()
                 if self.permissions.accessibilityGranted {
-                    // Permission granted — nil out so restartAccessibilityMonitoringIfNeeded
-                    // can detect the task is done and restart if permission is later revoked.
-                    self.accessibilityMonitorTask = nil
+                    // Fire the callback first so observers see consistent state
+                    // (task still non-nil = monitoring was active). Nil it out
+                    // after so restartAccessibilityMonitoringIfNeeded cannot
+                    // observe the intermediate state where task is nil but
+                    // accessibilityGranted hasn't propagated yet.
                     self.onAccessibilityChange?()
+                    self.accessibilityMonitorTask = nil
                     return
                 }
             }

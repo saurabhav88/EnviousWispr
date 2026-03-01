@@ -23,14 +23,14 @@ Reverse lookup: type name → file, isolation, category. Use this to find where 
 
 | Class | File | Purpose |
 |-------|------|---------|
-| `AppState` | `App/AppState.swift` | Root observable, owns everything |
+| `AppState` | `App/AppState.swift` | Root observable, owns everything; includes availableInputDevices + audioDeviceMonitor wiring |
 | `TranscriptionPipeline` | `Pipeline/TranscriptionPipeline.swift` | Core state machine orchestrator |
 | `ASRManager` | `ASR/ASRManager.swift` | Backend router + idle timer |
-| `AudioCaptureManager` | `Audio/AudioCaptureManager.swift` | AVAudioEngine mic capture |
+| `AudioCaptureManager` | `Audio/AudioCaptureManager.swift` | AVAudioEngine mic capture; `emergencyTeardown()` for device disconnect, `trackTask()` for cooperative task cancellation, `onEngineInterrupted` callback to pipeline |
 | `HotkeyService` | `Services/HotkeyService.swift` | Carbon hotkeys + NSEvent monitors |
 | `PermissionsService` | `Services/PermissionsService.swift` | Mic + Accessibility checks |
-| `SettingsManager` | `Services/SettingsManager.swift` | UserDefaults persistence (26 keys) |
-| `OllamaSetupService` | `LLM/OllamaSetupService.swift` | Ollama install wizard |
+| `SettingsManager` | `Services/SettingsManager.swift` | UserDefaults persistence (26+ keys); includes whisperKitLanguageAutoDetect, whisperKitTemperature, whisperKitNoSpeechThreshold, selectedInputDeviceUID, noiseSuppression |
+| `OllamaSetupService` | `LLM/OllamaSetupService.swift` | Ollama install wizard; static modelCatalog, isWeakModel(), pullModel(), deleteModel() |
 | `BenchmarkSuite` | `Utilities/BenchmarkSuite.swift` | ASR/pipeline benchmarks |
 
 ## @MainActor Classes (not Observable)
@@ -39,10 +39,11 @@ Reverse lookup: type name → file, isolation, category. Use this to find where 
 |-------|------|---------|
 | `AppDelegate` | `App/AppDelegate.swift` | Menu bar, Sparkle, lifecycle |
 | `TranscriptStore` | `Storage/TranscriptStore.swift` | JSON file persistence |
-| `RecordingOverlayPanel` | `Views/Overlay/RecordingOverlayPanel.swift` | Floating NSPanel |
+| `RecordingOverlayPanel` | `Views/Overlay/RecordingOverlayPanel.swift` | Floating NSPanel; generation-counter token gating prevents ghost overlays during rapid async show/hide transitions |
 | `MenuBarIconAnimator` | `App/MenuBarIconAnimator.swift` | CG-rendered 4-state menu bar icons, audio-reactive |
 | `LLMPolishStep` | `Pipeline/Steps/LLMPolishStep.swift` | LLM polish with extended thinking |
 | `WordCorrectionStep` | `Pipeline/Steps/WordCorrectionStep.swift` | Custom word fuzzy matching |
+| `AudioDeviceMonitor` | `Audio/AudioDeviceManager.swift` | Monitors CoreAudio device connect/disconnect events |
 
 ## Sendable Classes
 
@@ -55,6 +56,7 @@ Reverse lookup: type name → file, isolation, category. Use this to find where 
 
 | Struct | File | Key Fields |
 |--------|------|------------|
+| `AudioInputDevice` | `Audio/AudioDeviceManager.swift` | uid, name, isDefault — represents a CoreAudio input device; Identifiable, Sendable |
 | `ASRResult` | `Models/ASRResult.swift` | text, segments, language, duration, processingTime, confidence, backendType |
 | `TranscriptSegment` | `Models/ASRResult.swift` | text, startTime, endTime |
 | `TranscriptionOptions` | `Models/ASRResult.swift` | language?, enableTimestamps |
@@ -73,6 +75,7 @@ Reverse lookup: type name → file, isolation, category. Use this to find where 
 | `BenchmarkSuite.PipelineBenchmarkResult` | `Utilities/BenchmarkSuite.swift` | batchASRTime, streamingFinalizeTime, werDelta |
 | `WERCalculator.Result` | `Utilities/WERCalculator.swift` | WER calculation result |
 | `TextProcessingContext` | `Pipeline/TextProcessingStep.swift` | text, polishedText?, llmProvider?, llmModel? |
+| `OllamaModelCatalogEntry` | `LLM/OllamaSetupService.swift` | name, displayName, parameterSize, qualityTier, description — model catalog entry |
 
 ## Sendable Structs (LLM connectors)
 
@@ -105,13 +108,14 @@ Reverse lookup: type name → file, isolation, category. Use this to find where 
 | `IconState` | `App/MenuBarIconAnimator.swift` | idle, recording, processing, error (nested in MenuBarIconAnimator) |
 | `StepState` | `Views/Onboarding/OnboardingView.swift` | completed, current, upcoming |
 | `HotkeyID` | `Services/HotkeyService.swift` | toggle(1), ptt(2), cancel(3) (private nested in HotkeyService) |
-| `SettingsSection` | `Views/Settings/SettingsSection.swift` | history, speechEngine, shortcuts, aiPolish, wordCorrection, clipboard, memory, permissions, diagnostics |
+| `SettingsSection` | `Views/Settings/SettingsSection.swift` | history, speechEngine, audio, shortcuts, aiPolish, wordCorrection, clipboard, memory, permissions, diagnostics |
 | `SettingsGroup` | `Views/Settings/SettingsSection.swift` | app, record, process, output, system |
 
 ## Enum Namespaces (no cases, static members only)
 
 | Enum | File | Purpose |
 |------|------|---------|
+| `AudioDeviceEnumerator` | `Audio/AudioDeviceManager.swift` | Static CoreAudio device enumeration: listInputDevices(), defaultInputDeviceUID() |
 | `AppConstants` | `Utilities/Constants.swift` | App name, paths |
 | `AudioConstants` | `Utilities/Constants.swift` | Sample rate, buffer size |
 | `TimingConstants` | `Utilities/Constants.swift` | Delays, intervals |
@@ -151,6 +155,7 @@ Reverse lookup: type name → file, isolation, category. Use this to find where 
 | `RecordingOverlayView` | `Views/Overlay/RecordingOverlayPanel.swift` | Floating recording indicator |
 | `PolishingOverlayView` | `Views/Overlay/RecordingOverlayPanel.swift` | Floating polishing indicator |
 | `ActionWirer` | `App/EnviousWisprApp.swift` | Invisible view wiring window actions (private) |
+| `AudioSettingsView` | `Views/Settings/AudioSettingsView.swift` | Settings tab — audio input device selection and noise suppression |
 | `SpeechEngineSettingsView` | `Views/Settings/SpeechEngineSettingsView.swift` | Settings tab |
 | `AIPolishSettingsView` | `Views/Settings/AIPolishSettingsView.swift` | Settings tab (512 lines — largest view) |
 | `ShortcutsSettingsView` | `Views/Settings/ShortcutsSettingsView.swift` | Settings tab |

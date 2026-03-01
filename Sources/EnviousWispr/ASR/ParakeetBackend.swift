@@ -69,6 +69,13 @@ actor ParakeetBackend: ASRBackend {
     func startStreaming(options: TranscriptionOptions) async throws {
         guard isReady, let models = fluidModels else { throw ASRError.notReady }
 
+        // Cancel any existing streaming session before starting a new one.
+        // Prevents double-session state where the old manager is leaked.
+        if let existing = streamingManager {
+            await existing.cancel()
+            streamingManager = nil
+        }
+
         let config = StreamingAsrConfig.streaming
         let manager = StreamingAsrManager(config: config)
         try await manager.start(models: models, source: .microphone)

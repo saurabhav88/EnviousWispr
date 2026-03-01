@@ -35,6 +35,42 @@
 | 4. Add state properties | `Services/SettingsManager.swift` → new properties + UserDefaults keys |
 | 5. Propagate changes | `App/AppState.swift` → handleSettingChanged() |
 
+### Add audio input device selection
+**Agents:** audio-pipeline + macos-platform
+| Step | Files |
+|------|-------|
+| 1. Enumerate devices | `Audio/AudioDeviceManager.swift` — CoreAudio `kAudioHardwarePropertyDevices`, return `[AudioDevice]` |
+| 2. Apply selected device | `Audio/AudioCaptureManager.swift` — use UID to configure AVAudioEngine input node |
+| 3. Persist selection | `Services/SettingsManager.swift` — `selectedAudioDeviceUID` (String?) |
+| 4. Wire into pipeline | `App/AppState.swift` — `handleSettingChanged(.selectedAudioDeviceUID)` |
+| 5. Settings UI | `Views/Settings/AudioSettingsView.swift` — device picker |
+
+### Add noise suppression
+**Agent:** audio-pipeline
+| Step | Files |
+|------|-------|
+| 1. Toggle Voice Processing | `Audio/AudioCaptureManager.swift` — `AVAudioInputNode` voice processing I/O unit flag |
+| 2. Persist preference | `Services/SettingsManager.swift` — `noiseSuppressionEnabled` (Bool, default `true`) |
+| 3. Settings UI | `Views/Settings/AudioSettingsView.swift` — toggle control |
+
+### Modify Ollama model management
+**Agent:** macos-platform
+| Step | Files |
+|------|-------|
+| 1. Model catalog | `Services/OllamaSetupService.swift` — REST API `GET /api/tags`, `POST /api/pull`, `DELETE /api/delete` |
+| 2. Quality tiers | `Services/OllamaSetupService.swift` — classify models as strong/weak for feature gating |
+| 3. In-app download/delete | `Views/Settings/AIPolishSettingsView.swift` — progress UI for pull, confirm-delete |
+| 4. Prompt restrictions | `Views/Settings/AIPolishSettingsView.swift` — hide custom prompt section for weak models |
+
+### Add WhisperKit quality controls
+**Agents:** audio-pipeline + macos-platform
+| Step | Files |
+|------|-------|
+| 1. Transcription options | `ASR/WhisperKitBackend.swift` — `temperature`, `noSpeechThreshold`, `language` (auto-detect) |
+| 2. Persist settings | `Services/SettingsManager.swift` — `whisperTemperature`, `whisperNoSpeechThreshold`, `whisperLanguage` |
+| 3. Settings UI | `Views/Settings/SpeechEngineSettingsView.swift` — sliders/pickers for quality knobs |
+| 4. Temperature fallback | `ASR/WhisperKitBackend.swift` — retry with higher temperature on low-confidence result |
+
 ### Add a new SwiftUI view
 **Agent:** feature-scaffolding | **Skill:** `wispr-scaffold-swiftui-view`
 - Inject state: `@Environment(AppState.self) private var appState`
@@ -217,7 +253,7 @@ AppDelegate ──owns──> MenuBarIconAnimator (drives icon state from pipeli
 EnviousWisprApp ──refs──> AppDelegate (via @NSApplicationDelegateAdaptor)
 ```
 
-## Top 10 Most-Edited Files (git-verified)
+## Top 12 Most-Edited Files (git-verified)
 
 These files are touched by almost every feature. Read them first when scoping work:
 
@@ -225,9 +261,11 @@ These files are touched by almost every feature. Read them first when scoping wo
 2. **`Pipeline/TranscriptionPipeline.swift`** (563 lines) — 16 edits
 3. **`App/AppDelegate.swift`** (312 lines) — 16 edits
 4. **`Views/Settings/SettingsView.swift`** (81 lines) — 13 edits
-5. **`Views/Main/MainWindowView.swift`** (324 lines) — 9 edits
-6. **`LLM/GeminiConnector.swift`** (219 lines) — 9 edits
-7. **`Views/Overlay/RecordingOverlayPanel.swift`** (347 lines) — 8 edits
-8. **`Utilities/Constants.swift`** (93 lines) — 8 edits
-9. **`Services/PasteService.swift`** (130 lines) — 8 edits
-10. **`Audio/SilenceDetector.swift`** (295 lines) — 8 edits
+5. **`Services/SettingsManager.swift`** — 12 edits (every new setting lands here)
+6. **`Views/Main/MainWindowView.swift`** (324 lines) — 9 edits
+7. **`LLM/GeminiConnector.swift`** (219 lines) — 9 edits
+8. **`Views/Overlay/RecordingOverlayPanel.swift`** (347 lines) — 8 edits
+9. **`Utilities/Constants.swift`** (93 lines) — 8 edits
+10. **`Services/PasteService.swift`** (130 lines) — 8 edits
+11. **`Audio/AudioCaptureManager.swift`** — 8 edits (capture config, noise suppression, device selection)
+12. **`Audio/SilenceDetector.swift`** (295 lines) — 8 edits

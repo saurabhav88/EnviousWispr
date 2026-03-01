@@ -10,6 +10,15 @@ Prevents the "stale bundle" problem where `swift build` passes but the running a
 
 ## Step 1 — Release Build
 
+**First, invalidate the main target's build artifacts** to prevent swiftc WMO from reusing stale `.o` files. Release builds use `-whole-module-optimization` which checks per-file `.o` mtime vs source mtime — if a source file's mtime hasn't advanced past its `.o`, swiftc silently reuses the old object code. This produces a "fresh" binary that contains stale compiled code. Removing only the EnviousWispr build dir (~11MB) forces a full recompile of the main target while preserving all dependency artifacts (~470MB), keeping rebuild time at ~10-15s instead of 73s.
+
+```bash
+rm -rf /Users/m4pro_sv/Desktop/EnviousWispr/.build/arm64-apple-macosx/release/EnviousWispr.build/
+rm -rf /Users/m4pro_sv/Desktop/EnviousWispr/.build/arm64-apple-macosx/release/Modules/EnviousWispr.swiftmodule
+```
+
+Then build:
+
 ```bash
 swift build -c release 2>&1
 ```
@@ -48,13 +57,24 @@ if [ -n "$NEWEST_SRC" ]; then
 fi
 ```
 
-- PASS: no source files newer than the binary
-- FAIL: binary is stale — do NOT proceed, re-run Step 1
+**Binary hash check** (catches silent bundle failures where the old bundle was never replaced):
+
+```bash
+BUILD_HASH=$(shasum /Users/m4pro_sv/Desktop/EnviousWispr/.build/release/EnviousWispr | cut -d' ' -f1)
+BUNDLE_HASH=$(shasum "$BINARY" | cut -d' ' -f1)
+if [ "$BUILD_HASH" != "$BUNDLE_HASH" ]; then
+    echo "ERROR: Bundle binary does not match build output — bundle step failed silently"
+    exit 1
+fi
+```
+
+- PASS: no source files newer than the binary AND bundle hash matches build output
+- FAIL: binary is stale or bundle is mismatched — do NOT proceed, re-run from Step 1
 
 ## Step 4 — Kill and Relaunch
 
 ```bash
-pkill -x EnviousWispr 2>/dev/null; sleep 1
+killall EnviousWispr 2>/dev/null; sleep 2
 BINARY=/Users/m4pro_sv/Desktop/EnviousWispr/build/EnviousWispr.app/Contents/MacOS/EnviousWispr
 if [ ! -x "$BINARY" ]; then echo "ERROR: binary not found or not executable at $BINARY"; exit 1; fi
 "$BINARY" &

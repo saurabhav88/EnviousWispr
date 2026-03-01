@@ -92,3 +92,51 @@ When Ollama server is down, polish operations may silently fail. Detection: chec
 ## WhisperKitBackend Missing @preconcurrency
 
 `WhisperKitBackend.swift` imports AVFoundation WITHOUT `@preconcurrency` prefix but should match all other import sites. Risk: Swift 6 concurrency strictness with non-Sendable AVFoundation types.
+
+## Task { @MainActor } vs DispatchQueue.main.async — Run-Loop Deferral
+
+`Task { @MainActor in ... }` and `DispatchQueue.main.async { ... }` are NOT equivalent. `DispatchQueue.main.async` guarantees execution on the *next* run-loop cycle, while `Task { @MainActor }` may execute immediately if already on the main actor (no deferral guarantee).
+
+This matters when creating NSHostingView during menu/overlay animations — the view must be created *after* the current animation pass completes. Using `Task { @MainActor }` caused re-entrant NSHostingView creation during menu animations → crash.
+
+**Affected call sites:** `show()`, `showPolishing()`, `transitionToPolishing()` in the overlay layer.
+
+**Rule:** When you need run-loop-cycle deferral (e.g., presenting views during animations), use `DispatchQueue.main.async`, not `Task { @MainActor }`.
+
+## AVAudioEngine Device Disconnect
+
+`AVAudioEngine` auto-stops when the audio device is disconnected (e.g., USB mic unplugged), but it does **not** clean up internal state. The engine is left in a degraded state where subsequent `start()` calls fail silently or crash. Handling `AVAudioEngineConfigurationChange` notification requires **full teardown**: stop the engine, remove all taps, reset the engine (`engine.reset()`), and reconstruct from scratch. `AudioCaptureManager.emergencyTeardown()` implements this pattern. `onEngineInterrupted` callback propagates the event to `TranscriptionPipeline` to cancel in-progress work and transition to error state.
+
+## installTap Before engine.start() Leaves Orphaned Tap on Failure
+
+If `engine.start()` throws after a tap has been installed on the input node, the tap remains attached even though recording never started. A subsequent `startCapture()` call will then fail with "format mismatch" or "tap already installed". **Always remove the tap in the error path** before rethrowing. Pattern:
+
+```swift
+inputNode.installTap(...)
+do {
+    try engine.start()
+} catch {
+    inputNode.removeTap(onBus: 0)   // clean up orphaned tap
+    throw error
+}
+```
+
+## NSScreen.screens Can Be Empty
+
+`NSScreen.screens` returns an empty array during display sleep/wake cycles, monitor disconnect/reconnect, or certain window server transitions. **Never force-index** with `NSScreen.screens[0]` — it will crash with an index-out-of-bounds trap. Always use `.first` with a `guard` or `??` fallback:
+
+```swift
+guard let screen = NSScreen.screens.first else { return }
+```
+
+## Streaming ASR Must End Exactly Once
+
+`finalizeStreaming()` and `cancelStreaming()` must each be called **at most once** per session, and exactly one of them must be called on every exit path (success, error, timeout, cancellation). Multiple exit paths in a pipeline (VAD cancel, timeout, device disconnect, explicit stop) can each independently trigger cleanup and create double-finalize or double-cancel conditions, which crash or corrupt the streaming state machine. Use a `defer` block with a `Bool` flag (`streamingSetupSucceeded`) to guarantee cleanup on all paths, and guard against double sessions in the backend with an `isStreaming` flag.
+
+## Per-Element .animation() Modifiers Create Exponential State Transitions
+
+Applying `.animation(.easeOut(duration: 0.05), value: audioLevel)` to each of N child views (e.g., 18 bars in RainbowLipsIcon) creates N × (updates/sec) animation state transitions. Over a 2-minute recording at 12 updates/sec, that's ~43,200 transitions — overwhelming SwiftUI's view graph and causing heap corruption.
+
+**Fix:** Use a single `.animation()` on the container view instead of per-element modifiers. One `.animation(.easeOut(duration: 0.08))` on the HStack/container achieves the same visual effect with 1/N the state transitions.
+
+**Rule:** Never put `.animation(value:)` on individual elements inside a `ForEach` or repeated view. Always animate the container.

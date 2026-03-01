@@ -66,8 +66,14 @@ final class ASRManager {
     // MARK: - Streaming ASR
 
     /// Start streaming ASR on the active backend. Falls back silently if unsupported.
+    /// If a streaming session is already active, cancels it first to prevent double-session state.
     func startStreaming(options: TranscriptionOptions = .default) async throws {
         guard await activeBackend.supportsStreaming else { return }
+        // Cancel any existing session before starting a new one
+        if isStreaming {
+            await activeBackend.cancelStreaming()
+            isStreaming = false
+        }
         try await activeBackend.startStreaming(options: options)
         isStreaming = true
     }
@@ -96,9 +102,16 @@ final class ASRManager {
     }
 
     /// Unload the active backend, freeing model RAM.
+    /// Refuses to unload if a streaming session is active — cancel streaming first.
     func unloadModel() async {
         guard isModelLoaded else { return }
-        isStreaming = false
+        if isStreaming {
+            Task { await AppLogger.shared.log(
+                "unloadModel() refused — streaming session is active. Cancel streaming first.",
+                level: .info, category: "ASR"
+            ) }
+            return
+        }
         await activeBackend.unload()
         isModelLoaded = false
     }

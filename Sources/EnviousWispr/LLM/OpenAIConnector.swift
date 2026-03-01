@@ -32,7 +32,10 @@ struct OpenAIConnector: TranscriptPolisher {
             body["reasoning_effort"] = reasoningEffort
         }
 
-        var request = URLRequest(url: URL(string: baseURL)!)
+        guard let url = URL(string: baseURL) else {
+            throw LLMError.requestFailed("Invalid OpenAI URL")
+        }
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

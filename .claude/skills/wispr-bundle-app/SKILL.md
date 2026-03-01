@@ -61,8 +61,10 @@ install_name_tool -add_rpath @executable_path/../Frameworks "$BUNDLE/Contents/Ma
 
 ## Create PkgInfo
 
+**IMPORTANT**: The `????` characters are interpreted as glob patterns by zsh. Use hex escapes to avoid silent failures.
+
 ```bash
-printf 'APPL????' > "$BUNDLE/Contents/PkgInfo"
+printf 'APPL\x3f\x3f\x3f\x3f' > "$BUNDLE/Contents/PkgInfo"
 ```
 
 ## Dev-sign the bundle

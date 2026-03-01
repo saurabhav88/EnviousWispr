@@ -23,7 +23,7 @@ Sources/EnviousWispr/
     ├── Main/         # History list, detail, controls
     ├── Onboarding/   # First-launch flow
     ├── Overlay/      # RecordingOverlayPanel, brand icons (SpectrumWheelIcon, RainbowLipsIcon)
-    └── Settings/     # Speech Engine, Shortcuts, AI Polish, Voice Detection, etc.
+    └── Settings/     # Speech Engine, Shortcuts, AI Polish, Voice Detection, Audio (device + noise suppression), etc.
 
 docs/
 ├── comparison-handy-vs-enviouswispr.md   # Technical comparison with Handy
@@ -52,7 +52,8 @@ scripts/
 | `GeminiConnector` | Gemini polish | `struct` → `TranscriptPolisher` |
 | `OllamaConnector` | Ollama local LLM polish | `struct` → `TranscriptPolisher` |
 | `AppleIntelligenceConnector` | Apple Intelligence polish | `struct` → `TranscriptPolisher` |
-| `OllamaSetupService` | Ollama server detection + model mgmt | `@MainActor` |
+| `AudioDeviceManager` | CoreAudio device enumeration — returns `[AudioDevice]` with UID + display name | `@MainActor` |
+| `OllamaSetupService` | Ollama server detection + model catalog (REST pull/delete, quality tiers) | `@MainActor` |
 | `LLMModelDiscovery` | Runtime discovery of available LLM models | — |
 | `SettingsManager` | Centralized settings persistence (26 keys) | `@MainActor` |
 | `MenuBarIconAnimator` | CG-rendered 4-state menu bar icons, audio-reactive | `@MainActor` |
@@ -93,6 +94,13 @@ Hotkey → AudioCaptureManager.startCapture() → AVAudioEngine tap (4096 frames
 - **ClipboardSnapshot** — saves/restores clipboard contents around paste operations so user's clipboard is not clobbered.
 - **Extended Thinking** — `LLMPolishStep.resolveThinkingConfig()` supports Gemini `thinkingBudget` (2.5 Flash/Pro) and OpenAI `reasoningEffort` (o-series). Controlled by `useExtendedThinking` setting. `LLMProviderConfig` carries `thinkingBudget: Int?` and `reasoningEffort: String?`.
 - **Menu Bar Icon Animation** — `MenuBarIconAnimator` renders 4 icon states via Core Graphics: idle (grey lips), recording (rainbow lips with audio-reactive bars), processing (rotating spectrum wheel), error (red lips). Driven by `AppDelegate` via pipeline state callbacks.
+- **Audio Device Selection** — `AudioDeviceManager` enumerates CoreAudio input devices via `kAudioHardwarePropertyDevices`. Selected device UID persisted in `SettingsManager.selectedAudioDeviceUID`; `AudioCaptureManager` applies it when configuring the AVAudioEngine input node.
+- **Noise Suppression** — Apple Voice Processing I/O unit toggled on the AVAudioEngine input node in `AudioCaptureManager`. Controlled by `SettingsManager.noiseSuppressionEnabled` (default `true`). Exposed in Audio settings tab.
+- **Audio Capture Resilience** — `AudioCaptureManager` has `emergencyTeardown()` for device disconnect (full engine teardown + reset), `maxRecordingDurationSeconds = 600` cap on `capturedSamples`, `activeTasks` array with `trackTask()` for cooperative cancellation, and an `onEngineInterrupted` callback. `TranscriptionPipeline` wires `onEngineInterrupted` to cancel VAD, cancel streaming ASR, deactivate sample forwarding, and transition to error state.
+- **Streaming Finalize Timeout** — `TranscriptionPipeline.finalizeStreaming()` has a timeout with batch fallback. A `defer` block with a `streamingSetupSucceeded` flag guarantees cleanup on all exit paths (success, error, timeout, device disconnect).
+- **Overlay Generation Gating** — `RecordingOverlayPanel` uses an integer generation counter to token-gate async `show()`/`hide()` operations. Stale async closures that arrive after a counter increment are discarded, preventing ghost overlays during rapid state transitions.
+- **Ollama Model Catalog** — `OllamaSetupService` calls `GET /api/tags` to list installed models, `POST /api/pull` to download, and `DELETE /api/delete` to remove. Models are classified into quality tiers; weak-tier models hide the custom prompt UI in `AIPolishSettingsView`.
+- **WhisperKit Quality Controls** — `WhisperKitBackend` exposes `temperature`, `noSpeechThreshold`, and `language` (empty string = auto-detect). Temperature fallback retry: if initial result confidence is low, retranscribe with elevated temperature. Settings persisted in `SettingsManager` and surfaced in Speech Engine settings.
 
 ## UAT Testing Architecture
 

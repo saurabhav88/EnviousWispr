@@ -10,15 +10,27 @@ import SwiftUI
 final class RecordingOverlayPanel {
     private var panel: NSPanel?
 
+    /// Monotonically-increasing generation token. Incremented on every show/hide
+    /// call. The DispatchQueue.main.async closures capture their token at dispatch
+    /// time and bail out silently if a newer operation has superseded them before
+    /// they run. This eliminates all "async outlives state" races (H8, H9).
+    private var generation: UInt64 = 0
+
     func show(audioLevelProvider: @escaping () -> Float) {
         guard panel == nil else { return }
+        generation &+= 1
+        let token = generation
 
         // Delay creation to the next run loop cycle.
         // When triggered from an NSStatusItem menu action, the menu dismiss
         // animation is still in progress. Creating an NSHostingView during
         // that animation causes a re-entrant NSWindow layout cycle (SIGABRT).
-        Task { @MainActor [weak self] in
-            self?.createPanel(audioLevelProvider: audioLevelProvider)
+        // NOTE: Do NOT replace with Task { @MainActor } — DispatchQueue.main.async
+        // guarantees next-run-loop-cycle deferral; Task may execute immediately
+        // if already on the main actor.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.generation == token else { return }
+            self.createPanel(audioLevelProvider: audioLevelProvider)
         }
     }
 
@@ -29,9 +41,12 @@ final class RecordingOverlayPanel {
             transitionToPolishing()
             return
         }
+        generation &+= 1
+        let token = generation
 
-        Task { @MainActor [weak self] in
-            self?.createPolishingPanel()
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.generation == token else { return }
+            self.createPolishingPanel()
         }
     }
 
@@ -57,15 +72,24 @@ final class RecordingOverlayPanel {
         existingPanel.close()
         panel = nil
 
+        generation &+= 1
+        let token = generation
+
         // Defer to the next run loop cycle so the close animation completes
         // before the new panel appears, preventing a visual flash.
-        Task { @MainActor [weak self] in
-            self?.showPanel(content: PolishingOverlayView().frame(width: 152, height: 44), width: 152, y: y)
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.generation == token else { return }
+            self.showPanel(content: PolishingOverlayView().frame(width: 152, height: 44), width: 152, y: y)
         }
     }
 
     /// Create and show a floating overlay panel with the given SwiftUI content.
     private func showPanel<V: View>(content: V, width: CGFloat, y: CGFloat? = nil) {
+        // Guard against the edge case where no screen is available (C3).
+        guard let targetScreen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) })
+                ?? NSScreen.main
+                ?? NSScreen.screens.first else { return }
+
         let size = NSRect(x: 0, y: 0, width: width, height: 44)
 
         let p = NSPanel(
@@ -74,6 +98,7 @@ final class RecordingOverlayPanel {
             backing: .buffered,
             defer: false
         )
+        p.isReleasedWhenClosed = false
         p.isOpaque = false
         p.backgroundColor = .clear
         p.level = .floating
@@ -85,7 +110,6 @@ final class RecordingOverlayPanel {
         hostingView.frame = size
         p.contentView = hostingView
 
-        let targetScreen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main ?? NSScreen.screens[0]
         let x = targetScreen.visibleFrame.midX - width / 2
         let panelY = y ?? (targetScreen.visibleFrame.maxY - 60)
         p.setFrameOrigin(NSPoint(x: x, y: panelY))
@@ -95,6 +119,7 @@ final class RecordingOverlayPanel {
     }
 
     func hide() {
+        generation &+= 1
         panel?.close()
         panel = nil
     }
@@ -125,14 +150,29 @@ struct SpectrumWheelIcon: View {
     var body: some View {
         // Scale factor: SVG viewBox is 64x64, we map to `size`
         let scale = size / 64.0
-        ZStack {
-            ForEach(0..<bars.count, id: \.self) { i in
-                let bar = bars[i]
-                RoundedRectangle(cornerRadius: 2 * scale)
-                    .fill(bar.color)
-                    .frame(width: 4 * scale, height: bar.height * scale)
-                    .offset(y: -(32 * scale - bar.yOffset * scale - bar.height * scale / 2))
-                    .rotationEffect(.degrees(bar.deg))
+        Canvas { context, size in
+            let cx = size.width / 2
+            let cy = size.height / 2
+            for bar in bars {
+                let barW = 4.0 * scale
+                let barH = bar.height * scale
+                // Bar rect centered on the canvas, offset upward by yOffset so
+                // its visual center sits at the correct radial distance.
+                let distFromCenter = 32.0 * scale - bar.yOffset * scale - barH / 2
+                let rect = CGRect(
+                    x: -barW / 2,
+                    y: -distFromCenter - barH / 2,
+                    width: barW,
+                    height: barH
+                )
+                let cornerRadius = 2.0 * scale
+                let barPath = Path(roundedRect: rect, cornerRadius: cornerRadius)
+                // Rotate around canvas center by bar's degree offset (converted to radians).
+                let angle = bar.deg * .pi / 180.0
+                let transform = CGAffineTransform(translationX: cx, y: cy)
+                    .rotated(by: angle)
+                let rotatedPath = barPath.applying(transform)
+                context.fill(rotatedPath, with: .color(bar.color))
             }
         }
         .frame(width: size, height: size)
@@ -209,40 +249,53 @@ struct RainbowLipsIcon: View {
     var body: some View {
         let scale = size / 64.0
         let level = CGFloat(min(max(audioLevel, 0), 1))
-        ZStack {
+        Canvas { context, canvasSize in
             // maxSeparation: maximum vertical translation (in points) applied to
             // each lip half at peak audio level. Scaled proportionally with icon size.
-            let maxSeparation = 3.5 * (size / 64.0)
-            ForEach(0..<upperBars.count, id: \.self) { i in
+            let maxSeparation = 3.5 * scale
+            let barW = 4.5 * scale
+            let cornerRadius = 1.5 * scale
+
+            // Upper bars — each bar scales from its bottom edge upward and
+            // translates upward, giving the upper lip a "rising" motion.
+            for i in 0..<upperBars.count {
                 let bar = upperBars[i]
-                RoundedRectangle(cornerRadius: 1.5 * scale)
-                    .fill(bar.color)
-                    .frame(width: 4.5 * scale, height: bar.h * scale)
-                    // Anchor at .bottom so the bar grows upward from its base,
-                    // giving the upper lip a "rising" motion.
-                    .scaleEffect(y: yScale(for: i, level: level), anchor: .bottom)
-                    // Translate upward proportional to level so the upper lip
-                    // visibly separates from the lower lip when speaking.
-                    .offset(y: -maxSeparation * level * sensitivity[i])
-                    .position(x: (bar.x + 2.25) * scale, y: (bar.y + bar.h / 2) * scale)
-                    .animation(.easeOut(duration: 0.05), value: audioLevel)
+                let s = yScale(for: i, level: level)
+                let scaledH = bar.h * scale * s
+                // Bottom edge of the bar sits at the unscaled bottom position.
+                // Original bar bottom (in canvas coords) = (bar.y + bar.h) * scale.
+                // Upper-lip separation: shift upward proportional to level.
+                let separation = -maxSeparation * level * sensitivity[i]
+                let barBottom = (bar.y + bar.h) * scale + separation
+                let rect = CGRect(
+                    x: bar.x * scale,
+                    y: barBottom - scaledH,
+                    width: barW,
+                    height: scaledH
+                )
+                let barPath = Path(roundedRect: rect, cornerRadius: cornerRadius)
+                context.fill(barPath, with: .color(bar.color))
             }
-            ForEach(0..<lowerBars.count, id: \.self) { i in
+
+            // Lower bars — each bar scales from its top edge downward and
+            // translates downward, giving the lower lip a "dropping" motion.
+            for i in 0..<lowerBars.count {
                 let bar = lowerBars[i]
-                RoundedRectangle(cornerRadius: 1.5 * scale)
-                    .fill(bar.color)
-                    .frame(width: 4.5 * scale, height: bar.h * scale)
-                    // Lower bars mirror the sensitivity so outer edges of both
-                    // halves move less than the center, matching the menu bar CG
-                    // implementation's centerDistance weighting.
-                    // Anchor at .top so the bar grows downward from its top edge,
-                    // giving the lower lip a "dropping" motion.
-                    .scaleEffect(y: yScale(for: 8 - i, level: level), anchor: .top)
-                    // Translate downward proportional to level so the lower lip
-                    // visibly separates from the upper lip when speaking.
-                    .offset(y: maxSeparation * level * sensitivity[8 - i])
-                    .position(x: (bar.x + 2.25) * scale, y: (bar.y + bar.h / 2) * scale)
-                    .animation(.easeOut(duration: 0.05), value: audioLevel)
+                let s = yScale(for: 8 - i, level: level)
+                let scaledH = bar.h * scale * s
+                // Top edge of the bar sits at the unscaled top position.
+                // Original bar top (in canvas coords) = bar.y * scale.
+                // Lower-lip separation: shift downward proportional to level.
+                let separation = maxSeparation * level * sensitivity[8 - i]
+                let barTop = bar.y * scale + separation
+                let rect = CGRect(
+                    x: bar.x * scale,
+                    y: barTop,
+                    width: barW,
+                    height: scaledH
+                )
+                let barPath = Path(roundedRect: rect, cornerRadius: cornerRadius)
+                context.fill(barPath, with: .color(bar.color))
             }
         }
         .frame(width: size, height: size)
@@ -316,6 +369,9 @@ struct RecordingOverlayView: View {
                 .font(.system(size: 13, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white)
         }
+        // Single container animation prevents animation stacking: N per-element
+        // modifiers × update rate creates exponential state transitions (gotchas.md).
+        .animation(.easeOut(duration: 0.08), value: audioLevel)
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(OverlayCapsuleBackground())

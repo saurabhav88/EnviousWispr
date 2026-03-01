@@ -9,16 +9,16 @@ final class FillerRemovalStep: TextProcessingStep {
 
     var isEnabled: Bool { fillerRemovalEnabled }
 
-    // Compiled once at class load — pattern is a hardcoded literal, no runtime failure possible.
-    static let fillerPattern = try! NSRegularExpression(
+    static let fillerPattern = try? NSRegularExpression(
         pattern: #"(?:^|\s*)\b(um|umm|uh|uhh|hmm|mm|mhm|mmm|ah|er)\b[-.,!?…:;—]*(?=\s|$)"#,
         options: .caseInsensitive
     )
 
     func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
         let text = context.text
+        guard let pattern = Self.fillerPattern else { return context }
         let range = NSRange(text.startIndex..., in: text)
-        let cleaned = Self.fillerPattern.stringByReplacingMatches(
+        let cleaned = pattern.stringByReplacingMatches(
             in: text, range: range, withTemplate: ""
         )
         // Collapse multiple spaces and trim
