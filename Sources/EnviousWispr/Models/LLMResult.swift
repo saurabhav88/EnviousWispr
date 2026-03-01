@@ -56,6 +56,7 @@ struct PolishInstructions: Codable, Sendable {
             - Remove filler words (um, uh, like, you know) and false starts
             - Break run-on sentences; paragraph breaks only at topic shifts
             Do NOT rephrase, expand, or add content. Output ONLY the corrected transcript.
+            Do NOT include any preamble, greeting, or commentary. Begin directly with the corrected text.
             """
     )
 }
@@ -87,7 +88,7 @@ enum PromptPreset: String, CaseIterable, Identifiable, Sendable {
                 Remove filler words and false starts. \
                 Preserve the speaker's original meaning exactly — do not add, remove, or \
                 summarize content. \
-                Return only the rewritten text with no commentary.
+                Return ONLY the rewritten text. Do NOT include any preamble, greeting, or commentary.
                 """
         case .casual:
             return """
@@ -95,7 +96,7 @@ enum PromptPreset: String, CaseIterable, Identifiable, Sendable {
                 while keeping a natural, conversational tone. \
                 Fix obvious errors but keep contractions, informal phrasing, and the speaker's \
                 personality. Remove only the most distracting filler words (um, uh, like). \
-                Return only the cleaned text with no commentary.
+                Return ONLY the cleaned text. Do NOT include any preamble, greeting, or commentary.
                 """
         }
     }

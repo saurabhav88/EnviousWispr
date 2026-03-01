@@ -84,6 +84,7 @@ final class AppState {
         pipeline.restoreClipboardAfterPaste = settings.restoreClipboardAfterPaste
         pipeline.llmPolish.polishInstructions = settings.activePolishInstructions
         pipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
+        pipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
         pipeline.wordCorrection.customWords = customWords
         pipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
 
@@ -237,6 +238,8 @@ final class AppState {
             pipeline.llmPolish.polishInstructions = settings.activePolishInstructions
         case .wordCorrectionEnabled:
             pipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
+        case .fillerRemovalEnabled:
+            pipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
         case .isDebugModeEnabled:
             Task { await AppLogger.shared.setDebugMode(settings.isDebugModeEnabled) }
         case .debugLogLevel:

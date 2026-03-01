@@ -11,11 +11,13 @@ Prevents the "stale bundle" problem where `swift build` passes but the running a
 ## Step 1 — Release Build
 
 ```bash
-swift build -c release 2>&1 | tail -5
+swift build -c release 2>&1
 ```
 
-- PASS: last line is `Build complete!`
-- FAIL: stop here and invoke `auto-fix-compiler-errors`
+**IMPORTANT**: Do NOT pipe through `tail` or any other command — piping swallows the exit code, causing a failed build to appear successful. The agent then bundles the OLD binary from `.build/release/`, which is the root cause of the "stale bundle" bug.
+
+- PASS: exit code 0 AND last line contains `Build complete!`
+- FAIL: non-zero exit code OR any `error:` line — stop here and invoke `auto-fix-compiler-errors`
 
 ## Step 2 — Create .app Bundle
 
@@ -25,7 +27,7 @@ It creates `/tmp/EnviousWispr.app` with the release binary, Info.plist, AppIcon.
 
 **Do NOT inline bundle logic here.** If bundle steps need to change (new resource, new framework), update `wispr-bundle-app` only.
 
-## Step 3 — Replace Running Bundle
+## Step 3 — Replace Running Bundle and Verify Freshness
 
 ```bash
 DEST=/Users/m4pro_sv/Desktop/EnviousWispr/build/EnviousWispr.app
@@ -35,14 +37,33 @@ ditto --norsrc /tmp/EnviousWispr.app "$DEST"
 
 Use `ditto --norsrc` (not `cp -r`) to strip extended attributes that break codesigning.
 
+**Staleness check** (defense-in-depth — catches stale binaries regardless of cause):
+
+```bash
+BINARY=/Users/m4pro_sv/Desktop/EnviousWispr/build/EnviousWispr.app/Contents/MacOS/EnviousWispr
+NEWEST_SRC=$(find /Users/m4pro_sv/Desktop/EnviousWispr/Sources -name "*.swift" -newer "$BINARY" | head -1)
+if [ -n "$NEWEST_SRC" ]; then
+    echo "ERROR: Binary is older than source file: $NEWEST_SRC — build may have failed silently"
+    exit 1
+fi
+```
+
+- PASS: no source files newer than the binary
+- FAIL: binary is stale — do NOT proceed, re-run Step 1
+
 ## Step 4 — Kill and Relaunch
 
 ```bash
 pkill -x EnviousWispr 2>/dev/null; sleep 1
-open /Users/m4pro_sv/Desktop/EnviousWispr/build/EnviousWispr.app
+BINARY=/Users/m4pro_sv/Desktop/EnviousWispr/build/EnviousWispr.app/Contents/MacOS/EnviousWispr
+if [ ! -x "$BINARY" ]; then echo "ERROR: binary not found or not executable at $BINARY"; exit 1; fi
+"$BINARY" &
+disown
 ```
 
 - The `sleep 1` ensures the old process is fully terminated
+- **Launch the binary directly** instead of using `open ... .app`. The `open` command goes through Launch Services, and if the app crashes immediately or the bundle is briefly malformed, `open` falls back to opening the parent `build/` directory in Finder. Launching the binary directly avoids this Finder side-effect entirely.
+- `disown` detaches the process from the shell so it survives after the shell exits
 - Do NOT run `tccutil reset` — it forces the user to re-approve Accessibility on every rebuild
 - If Accessibility stops working after a rebuild, the user can re-grant manually in System Settings
 

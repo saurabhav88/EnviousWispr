@@ -31,7 +31,9 @@ Module exports a struct `FluidAudio` that shadows the module name. **Never quali
 
 ## API Keys
 
-macOS Keychain via `KeychainManager` (service: `"com.enviouswispr.api-keys"`). **Never UserDefaults.** Never log keys. Both `retrieve()` and `store()` may throw `KeychainError`. Uses `#if DEBUG` pattern: file-based storage (`~/.enviouswispr-keys/`, 0600 perms) in debug builds, real macOS Keychain (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`) in release builds.
+Secure file-based storage via `KeychainManager` at `~/.enviouswispr-keys/` (dir 0700, files 0600). **Never UserDefaults.** Never log keys. Both `retrieve()` and `store()` may throw `KeychainError`.
+
+**Why not macOS Keychain:** The Data Protection Keychain (`kSecUseDataProtectionKeychain`) requires entitlements unavailable to non-sandboxed, ad-hoc-signed SPM CLI builds (fails with `errSecMissingEntitlement` / -34018). The legacy Keychain's partition list / cdhash-based ACLs cause password prompts on every rebuild. File-based storage with strict POSIX permissions is standard practice for non-sandboxed macOS apps and avoids both issues.
 
 ## Ollama Local LLM
 

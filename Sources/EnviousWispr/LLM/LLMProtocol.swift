@@ -29,33 +29,59 @@ extension TranscriptPolisher {
 
 extension String {
     /// Strip common LLM preamble/acknowledgment patterns from polished transcript output.
+    ///
+    /// Strategy:
+    /// 1. Strip a leading single-word/phrase acknowledgment (e.g. "Certainly!", "Sure,", "Got it.")
+    /// 2. If the (remaining) first line is short (<100 chars) and ends with ":", treat it as a
+    ///    preamble line (e.g. "Here is the corrected version of the speech transcript:") and strip it.
     func strippingLLMPreamble() -> String {
         var result = self.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Common acknowledgment prefixes LLMs prepend
-        let preamblePatterns = [
-            "Certainly! Here's the cleaned transcript:",
-            "Certainly! Here is the cleaned transcript:",
+
+        // Step 1: Strip a leading acknowledgment word/phrase if present.
+        let acknowledgments = [
             "Certainly!",
-            "Sure! Here's the cleaned transcript:",
-            "Sure! Here is the cleaned transcript:",
-            "Sure,",
             "Sure!",
-            "Here's the cleaned transcript:",
-            "Here is the cleaned transcript:",
-            "Here's the cleaned-up transcript:",
-            "Here is the cleaned-up transcript:",
-            "Here's the proofread transcript:",
-            "Here is the proofread transcript:",
-            "Here you go:",
+            "Sure,",
             "Of course!",
+            "Got it.",
+            "Got it!",
+            "Absolutely!",
+            "Here you go:",
         ]
-        for pattern in preamblePatterns {
-            if result.hasPrefix(pattern) {
-                result = String(result.dropFirst(pattern.count))
+        for ack in acknowledgments {
+            if result.hasPrefix(ack) {
+                result = String(result.dropFirst(ack.count))
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 break
             }
         }
+
+        // Step 2: If the first line is short and ends with ":", it's likely a preamble line.
+        // e.g. "Here is the corrected version of the speech transcript:"
+        // Also catches "Here's the cleaned-up transcript:" etc.
+        let firstNewline = result.firstIndex(of: "\n") ?? result.endIndex
+        let firstLine = result[result.startIndex..<firstNewline]
+        if firstLine.count < 100,
+           firstLine.hasSuffix(":"),
+           !firstLine.isEmpty {
+            // Additional guard: only strip if it looks like a preamble, not legitimate content.
+            // Preamble lines typically start with "Here" or are very short introductions.
+            let trimmedFirst = firstLine.trimmingCharacters(in: .whitespaces).lowercased()
+            let isPreambleLike = trimmedFirst.hasPrefix("here")
+                || trimmedFirst.hasPrefix("below")
+                || trimmedFirst.hasPrefix("the corrected")
+                || trimmedFirst.hasPrefix("the cleaned")
+                || trimmedFirst.hasPrefix("the polished")
+                || trimmedFirst.hasPrefix("the rewritten")
+                || trimmedFirst.hasPrefix("corrected version")
+                || trimmedFirst.hasPrefix("cleaned")
+                || trimmedFirst.hasPrefix("polished")
+            if isPreambleLike {
+                result = String(result[firstNewline...])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+
         return result
     }
 }

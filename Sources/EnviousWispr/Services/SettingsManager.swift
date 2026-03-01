@@ -27,6 +27,7 @@ final class SettingsManager {
         case restoreClipboardAfterPaste
         case customSystemPrompt
         case wordCorrectionEnabled
+        case fillerRemovalEnabled
         case isDebugModeEnabled
         case debugLogLevel
         case useExtendedThinking
@@ -195,6 +196,13 @@ final class SettingsManager {
         }
     }
 
+    var fillerRemovalEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(fillerRemovalEnabled, forKey: "fillerRemovalEnabled")
+            onChange?(.fillerRemovalEnabled)
+        }
+    }
+
     var isDebugModeEnabled: Bool {
         didSet {
             UserDefaults.standard.set(isDebugModeEnabled, forKey: "isDebugModeEnabled")
@@ -278,6 +286,7 @@ final class SettingsManager {
         restoreClipboardAfterPaste = defaults.object(forKey: "restoreClipboardAfterPaste") as? Bool ?? false
         customSystemPrompt = defaults.string(forKey: "customSystemPrompt") ?? ""
         wordCorrectionEnabled = defaults.object(forKey: "wordCorrectionEnabled") as? Bool ?? true
+        fillerRemovalEnabled = defaults.object(forKey: "fillerRemovalEnabled") as? Bool ?? true
         isDebugModeEnabled = defaults.object(forKey: "isDebugModeEnabled") as? Bool ?? false
         debugLogLevel = DebugLogLevel(
             rawValue: defaults.string(forKey: "debugLogLevel") ?? ""

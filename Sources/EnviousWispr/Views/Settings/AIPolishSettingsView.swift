@@ -29,7 +29,11 @@ struct AIPolishSettingsView: View {
                     HStack {
                         Picker("Model", selection: $state.settings.llmModel) {
                             if appState.discoveredModels.isEmpty && !appState.isDiscoveringModels {
-                                Text(appState.settings.llmModel.isEmpty ? "Save API key to discover models" : appState.settings.llmModel)
+                                Text(appState.settings.llmModel.isEmpty
+                                     ? (appState.settings.llmProvider == .ollama
+                                        ? "No models found"
+                                        : "Save API key to discover models")
+                                     : appState.settings.llmModel)
                                     .tag(appState.settings.llmModel)
                             }
 
@@ -67,7 +71,7 @@ struct AIPolishSettingsView: View {
                     }
                 }
 
-                if appState.settings.llmProvider != .none {
+                if appState.settings.llmProvider != .none && appState.settings.llmProvider != .appleIntelligence {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("System Prompt")
@@ -85,6 +89,12 @@ struct AIPolishSettingsView: View {
                         }
                         .controlSize(.small)
                     }
+                }
+
+                if appState.settings.llmProvider == .appleIntelligence {
+                    Text("Apple Intelligence uses an optimized built-in prompt.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -118,7 +128,7 @@ struct AIPolishSettingsView: View {
 
                     HStack {
                         Button("Save Key") {
-                            saveKey(key: openAIKey, keychainId: KeychainManager.openAIKeyID)
+                            guard saveKey(key: openAIKey, keychainId: KeychainManager.openAIKeyID) else { return }
                             if appState.settings.llmProvider == .openAI {
                                 Task { await appState.validateKeyAndDiscoverModels(provider: .openAI) }
                             }
@@ -168,7 +178,7 @@ struct AIPolishSettingsView: View {
 
                     HStack {
                         Button("Save Key") {
-                            saveKey(key: geminiKey, keychainId: KeychainManager.geminiKeyID)
+                            guard saveKey(key: geminiKey, keychainId: KeychainManager.geminiKeyID) else { return }
                             if appState.settings.llmProvider == .gemini {
                                 Task { await appState.validateKeyAndDiscoverModels(provider: .gemini) }
                             }
@@ -331,7 +341,12 @@ struct AIPolishSettingsView: View {
                                 .foregroundStyle(.secondary)
 
                             Button("Try Again") {
-                                Task { await appState.ollamaSetup.detectState() }
+                                Task {
+                                    await appState.ollamaSetup.detectState()
+                                    if case .ready = appState.ollamaSetup.setupState {
+                                        await appState.validateKeyAndDiscoverModels(provider: .ollama)
+                                    }
+                                }
                             }
                             .controlSize(.small)
                         }
@@ -388,7 +403,13 @@ struct AIPolishSettingsView: View {
             openAIKey = (try? appState.keychainManager.retrieve(key: KeychainManager.openAIKeyID)) ?? ""
             geminiKey = (try? appState.keychainManager.retrieve(key: KeychainManager.geminiKeyID)) ?? ""
             if appState.settings.llmProvider == .ollama {
-                Task { await appState.ollamaSetup.detectState() }
+                appState.loadCachedModels(for: .ollama)
+                Task {
+                    await appState.ollamaSetup.detectState()
+                    if case .ready = appState.ollamaSetup.setupState {
+                        await appState.validateKeyAndDiscoverModels(provider: .ollama)
+                    }
+                }
             } else if appState.settings.llmProvider == .appleIntelligence {
                 Task { await appState.validateKeyAndDiscoverModels(provider: appState.settings.llmProvider) }
             } else if appState.settings.llmProvider != .none {
@@ -404,16 +425,23 @@ struct AIPolishSettingsView: View {
             case .ollama:
                 appState.discoveredModels = []
                 appState.keyValidationState = .idle
-                Task { await appState.ollamaSetup.detectState() }
+                Task {
+                    await appState.ollamaSetup.detectState()
+                    if case .ready = appState.ollamaSetup.setupState {
+                        await appState.validateKeyAndDiscoverModels(provider: .ollama)
+                    }
+                }
             case .appleIntelligence:
                 appState.discoveredModels = []
                 appState.keyValidationState = .idle
                 appState.ollamaSetup.cancelPull()
                 Task { await appState.validateKeyAndDiscoverModels(provider: newProvider) }
             default:
-                appState.loadCachedModels(for: newProvider)
+                appState.discoveredModels = []
                 appState.keyValidationState = .idle
                 appState.ollamaSetup.cancelPull()
+                appState.loadCachedModels(for: newProvider)
+                Task { await appState.validateKeyAndDiscoverModels(provider: newProvider) }
             }
         }
         .onChange(of: appState.ollamaSetup.setupState) { _, newState in
@@ -423,7 +451,8 @@ struct AIPolishSettingsView: View {
         }
     }
 
-    private func saveKey(key: String, keychainId: String) {
+    @discardableResult
+    private func saveKey(key: String, keychainId: String) -> Bool {
         do {
             try appState.keychainManager.store(key: keychainId, value: key)
             validationStatus = "Saved!"
@@ -431,8 +460,10 @@ struct AIPolishSettingsView: View {
                 try? await Task.sleep(for: .seconds(2))
                 validationStatus = ""
             }
+            return true
         } catch {
             validationStatus = "Failed: \(error.localizedDescription)"
+            return false
         }
     }
 
@@ -502,7 +533,12 @@ struct AIPolishSettingsView: View {
     @ViewBuilder
     private func ollamaRefreshButton() -> some View {
         Button {
-            Task { await appState.ollamaSetup.detectState() }
+            Task {
+                await appState.ollamaSetup.detectState()
+                if case .ready = appState.ollamaSetup.setupState {
+                    await appState.validateKeyAndDiscoverModels(provider: .ollama)
+                }
+            }
         } label: {
             Image(systemName: "arrow.clockwise")
         }

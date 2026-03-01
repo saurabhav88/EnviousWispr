@@ -11,11 +11,14 @@ Complete a release build first (`swift build -c release`).
 
 ## Create the bundle directory structure
 
+**Always wipe the old bundle first** — `cp -R` merges into existing directories, which can leave stale framework files from previous builds.
+
 ```bash
 APP=EnviousWispr.app
 BUNDLE=/tmp/$APP
 BINARY=/Users/m4pro_sv/Desktop/EnviousWispr/.build/release/EnviousWispr
 
+rm -rf "$BUNDLE"
 mkdir -p "$BUNDLE/Contents/MacOS"
 mkdir -p "$BUNDLE/Contents/Resources"
 ```
@@ -40,8 +43,10 @@ cp "$RESOURCES_SRC/Info.plist" "$BUNDLE/Contents/Info.plist"
 
 ```bash
 cp "$RESOURCES_SRC/AppIcon.icns" "$BUNDLE/Contents/Resources/AppIcon.icns"
-cp "$RESOURCES_SRC"/menubar-*.png "$BUNDLE/Contents/Resources/"
+find "$RESOURCES_SRC" -name 'menubar-*.png' -exec cp {} "$BUNDLE/Contents/Resources/" \;
 ```
+
+**Note**: Use `find ... -exec cp` instead of `cp menubar-*.png` because zsh strict globbing fails if some expected icons don't exist yet.
 
 ## Embed Sparkle.framework
 

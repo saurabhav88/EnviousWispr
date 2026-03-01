@@ -31,11 +31,14 @@ final class TranscriptionPipeline {
 
     // Text processing steps
     private let wordCorrectionStep = WordCorrectionStep()
+    private let fillerRemovalStep = FillerRemovalStep()
     private let llmPolishStep: LLMPolishStep
     private var textProcessingSteps: [any TextProcessingStep] = []
 
     /// Access word correction step for configuration.
     var wordCorrection: WordCorrectionStep { wordCorrectionStep }
+    /// Access filler removal step for configuration.
+    var fillerRemoval: FillerRemovalStep { fillerRemovalStep }
     /// Access LLM polish step for configuration.
     var llmPolish: LLMPolishStep { llmPolishStep }
 
@@ -65,7 +68,7 @@ final class TranscriptionPipeline {
         // to use streamGenerateContent instead of batch generateContent.
         // No-op callback is correct; live token display in overlay is a future follow-up.
         llmPolishStep.onToken = { _ in }
-        textProcessingSteps = [wordCorrectionStep, llmPolishStep]
+        textProcessingSteps = [wordCorrectionStep, fillerRemovalStep, llmPolishStep]
     }
 
     /// Toggle recording: start if idle, stop if recording.

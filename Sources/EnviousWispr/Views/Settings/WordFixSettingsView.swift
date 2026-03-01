@@ -10,6 +10,15 @@ struct WordFixSettingsView: View {
 
         Form {
             Section {
+                Toggle("Remove filler words (um, uh, hmm...)", isOn: $state.settings.fillerRemovalEnabled)
+                Text("Strips common filler words from transcriptions. LLM polish handles this more thoroughly when enabled.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } header: {
+                Text("Filler Removal")
+            }
+
+            Section {
                 Toggle("Enable word correction", isOn: $state.settings.wordCorrectionEnabled)
                 Text("After transcription, each word is scored against your custom list using edit distance, n-gram similarity, and phonetic matching. Words scoring above 0.82 are replaced.")
                     .font(.caption)
