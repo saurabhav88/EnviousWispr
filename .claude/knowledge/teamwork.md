@@ -119,10 +119,34 @@ Any agent spawned as a teammate follows these 9 steps:
 
 **Never broadcast for routine updates.** DM the coordinator instead.
 
+## Agent Type Selection — MANDATORY
+
+**NEVER use `general-purpose` as `subagent_type` when a project agent covers the domain.**
+
+Before spawning any teammate, consult this lookup table. Match the task to the correct `subagent_type`:
+
+| Task domain | `subagent_type` | Agent file |
+| ----------- | --------------- | ---------- |
+| Audio capture, VAD, ASR, transcription | `audio-pipeline` | `.claude/agents/audio-pipeline.md` |
+| Build failures, compiler errors, dependencies | `build-compile` | `.claude/agents/build-compile.md` |
+| Permissions, hotkeys, menu bar, paste, SwiftUI | `macos-platform` | `.claude/agents/macos-platform.md` |
+| Concurrency, actor isolation, Sendable, secrets | `quality-security` | `.claude/agents/quality-security.md` |
+| New backends, connectors, views, tabs | `feature-scaffolding` | `.claude/agents/feature-scaffolding.md` |
+| Smoke tests, UAT, benchmarks, API contracts | `testing` | `.claude/agents/testing.md` |
+| UAT test generation from scope/diff | `uat-generator` | `.claude/agents/uat-generator.md` |
+| Packaging, signing, changelog, migration | `release-maintenance` | `.claude/agents/release-maintenance.md` |
+| Feature planning, coordination | `feature-planning` | `.claude/agents/feature-planning.md` |
+| Accounts, licensing, entitlements, payments | `user-management` | `.claude/agents/user-management.md` |
+
+**Only use `general-purpose` when NO project agent covers the task** (e.g., pure research, non-Swift work, one-off investigation). This should be rare — most work maps to a domain agent.
+
+**Why this matters**: Project agents have domain-specific instructions, skills, knowledge references, and team participation protocols baked in. A `general-purpose` agent doesn't know about FluidAudio naming collisions, Sparkle rpath gotchas, or UAT test consolidation rules. It produces generic output that often needs rework.
+
 ## Anti-Patterns
 
 | Don't | Do Instead |
 | ----- | ---------- |
+| Use `general-purpose` when a project agent exists | Check the agent lookup table above |
 | Spawn parallel Tasks when agents need each other's output | TeamCreate so they can communicate |
 | Use TeamCreate for a single quick lookup | Parallel Task — it's faster |
 | Have coordinator implement code | Spawn a teammate to do it |

@@ -72,12 +72,12 @@ Stop here. Do not generate tests. Do not run anything. This is a valid outcome.
 
 ### 4. Dispatch uat-generator agent
 
-Use the Task tool:
+Use the Agent tool with the project's dedicated UAT agent:
 
 ```
-Task(
-    subagent_type="general-purpose",
-    prompt="""You are the uat-generator agent. Read .claude/agents/uat-generator.md for your full instructions.
+Agent(
+    subagent_type="uat-generator",
+    prompt="""You are the uat-generator agent.
 
     SCOPE:
     <paste the synthesized scope block here>
