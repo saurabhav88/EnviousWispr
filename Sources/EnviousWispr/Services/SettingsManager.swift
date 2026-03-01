@@ -248,7 +248,7 @@ final class SettingsManager {
         vadAutoStop = defaults.object(forKey: "vadAutoStop") as? Bool ?? false
         vadSilenceTimeout = defaults.object(forKey: "vadSilenceTimeout") as? Double ?? 1.5
         vadSensitivity = defaults.object(forKey: "vadSensitivity") as? Float ?? 0.5
-        vadEnergyGate = defaults.object(forKey: "vadEnergyGate") as? Bool ?? false
+        vadEnergyGate = defaults.object(forKey: "vadEnergyGate") as? Bool ?? true
         hasCompletedOnboarding = defaults.object(forKey: "hasCompletedOnboarding") as? Bool ?? false
 
         let savedCancelKeyCode = defaults.object(forKey: "cancelKeyCode") as? Int

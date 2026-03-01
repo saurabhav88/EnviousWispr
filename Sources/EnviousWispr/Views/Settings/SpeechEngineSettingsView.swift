@@ -68,11 +68,9 @@ struct SpeechEngineSettingsView: View {
                     .foregroundStyle(.secondary)
 
                 Toggle("Energy pre-gate", isOn: $state.settings.vadEnergyGate)
-                if appState.settings.vadEnergyGate {
-                    Text("Skips neural VAD for very quiet audio. Saves CPU during silence-heavy recordings.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text("Saves battery by skipping speech detection when the mic hears only silence. Safe to leave on.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
