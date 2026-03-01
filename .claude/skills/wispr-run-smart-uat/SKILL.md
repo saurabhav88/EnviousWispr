@@ -88,6 +88,13 @@ Stop here. Do not generate tests. Do not run anything. This is a valid outcome.
 
 ### 4. Dispatch uat-generator agent
 
+Before dispatching, read these knowledge files and include relevant summaries in the agent prompt:
+- `.claude/knowledge/architecture.md` — include 2-3 bullets about relevant views/pipeline/state
+- `.claude/knowledge/file-index.md` — include paths and purposes for files identified in the scope
+- `.claude/knowledge/gotchas.md` — include any gotchas relevant to the scope
+
+This gives the uat-generator pre-built context so it doesn't need to explore the codebase.
+
 Use the Agent tool with the project's dedicated UAT agent:
 
 ```
@@ -124,7 +131,8 @@ Agent(
 
 1. Read the agent's response. Find the `GENERATED_FILES:` block.
 2. If `[]` or missing: report "No generated tests needed for this scope." Stop.
-3. If file paths listed: verify each exists, then run (MUST be background):
+3. After extracting file paths from the `GENERATED_FILES:` block, deduplicate them (remove any repeated paths) before passing to `--files`. This prevents tests from being registered multiple times.
+4. If file paths listed: verify each exists, then run (MUST be background):
 
 ```bash
 python3 Tests/UITests/uat_runner.py run --files <verified paths> --verbose 2>&1

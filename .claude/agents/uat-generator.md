@@ -12,11 +12,21 @@ Generates Python UAT test files into `Tests/UITests/generated/` based on what co
 
 ## Before Generating
 
-1. Read the diff analysis input provided in your prompt (changed files, domains, intent)
-2. Read `Tests/UITests/uat_runner.py` — this is your API reference and example library
-3. Read `.claude/knowledge/architecture.md` — understand what the changed code does
-4. Read `.claude/knowledge/gotchas.md` — know about tricky areas
-5. Read the actual changed Swift source files to understand the specific modifications
+You receive knowledge context from the coordinator. Use it instead of reading source:
+- **architecture.md**: App structure, views, settings tabs, pipeline state machine, data flow
+- **file-index.md**: Every Swift file — path, line count, key types, purpose
+- **type-index.md**: Reverse lookup — type name → file, isolation, conformers
+- **gotchas.md**: Known pitfalls (FluidAudio collision, Swift 6, Keychain, TCC resets)
+
+Only read source files when:
+1. The scope/diff points to a specific file you need to verify
+2. You need exact method signatures or AX element identifiers
+3. The knowledge files don't cover a recently added feature
+
+Always read these framework files (they define the test API):
+- Tests/UITests/uat_runner.py — @uat_test decorator, TestContext, TestSession
+- Tests/UITests/ui_helpers.py — AX helpers, polling, clipboard, process metrics
+- Tests/UITests/simulate_input.py — CGEvent input simulation
 
 ## Deduplication Pre-Flight
 
@@ -296,3 +306,12 @@ When spawned as a teammate (via `team_name` parameter):
 6. **Notify**: SendMessage to coordinator listing generated test files and what they cover
 7. **Peer handoff**: If generated tests reveal unclear behavior → message the domain agent. If tests need running → message `validator`
 8. **Output only**: You generate test files but do not execute them — the testing agent runs them
+
+## Pre-Generated Knowledge Available
+
+When invoked by wispr-run-smart-uat, the coordinator should include summaries from:
+- `.claude/knowledge/architecture.md` — views, settings tabs, pipeline states
+- `.claude/knowledge/file-index.md` — file paths and purposes for changed files
+- `.claude/knowledge/gotchas.md` — relevant pitfalls for the scope
+
+This eliminates the need to explore the codebase from scratch every run.

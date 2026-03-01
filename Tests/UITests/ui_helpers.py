@@ -18,6 +18,19 @@ from ApplicationServices import (
 )
 
 
+# =============================================================================
+# Knowledge Files (for test generation context)
+# =============================================================================
+# These project knowledge files provide codebase context without reading source:
+#   .claude/knowledge/architecture.md  — app structure, views, pipeline states
+#   .claude/knowledge/file-index.md    — every Swift file, types, purpose
+#   .claude/knowledge/type-index.md    — type → file reverse lookup
+#   .claude/knowledge/gotchas.md       — known pitfalls and patterns
+# The uat-generator agent should receive summaries from these files
+# instead of exploring the codebase from scratch each run.
+# =============================================================================
+
+
 # ---------------------------------------------------------------------------
 # Process helpers
 # ---------------------------------------------------------------------------

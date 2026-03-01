@@ -751,7 +751,8 @@ def uat_test(name, suite="default", context="none"):
     """
     def decorator(fn):
         _TESTS[name] = {"fn": fn, "suite": suite, "name": name, "context": context}
-        _SUITES.setdefault(suite, []).append(name)
+        if name not in _SUITES.get(suite, []):
+            _SUITES.setdefault(suite, []).append(name)
         return fn
     return decorator
 
@@ -783,6 +784,12 @@ def run_tests(test_names, verbose=False):
         print(f"  App readiness check: {msg}", file=sys.stderr)
 
     session = TestSession(pid, verbose=verbose)
+
+    # Warn if caller passed duplicate test names
+    unique_names = len(set(test_names))
+    if unique_names < len(test_names):
+        dupes = {name: test_names.count(name) for name in set(test_names) if test_names.count(name) > 1}
+        print(f"WARNING: Duplicate test names detected: {dupes}", file=sys.stderr)
 
     # Sort known tests by context to batch UI operations, keep unknowns at end
     known = [n for n in test_names if n in _TESTS]
@@ -1199,6 +1206,8 @@ def _is_inside_generated(path):
 
 def _load_test_files(file_paths):
     """Load specific test files. Returns (registered_names_list, skipped_paths)."""
+    file_paths = list(dict.fromkeys(file_paths))  # Preserve order, deduplicate
+
     if __name__ == "__main__" and "uat_runner" not in sys.modules:
         sys.modules["uat_runner"] = sys.modules[__name__]
 
