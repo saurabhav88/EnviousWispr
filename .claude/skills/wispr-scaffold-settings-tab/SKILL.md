@@ -14,6 +14,9 @@ Create `Sources/EnviousWispr/Views/Settings/<Name>SettingsView.swift`.
 
 ```swift
 import SwiftUI
+// If the view interacts with AVFoundation types (e.g. audio device lists), use:
+// @preconcurrency import AVFoundation
+// See .claude/rules/swift-patterns.md for the full @preconcurrency import list.
 
 struct <Name>SettingsView: View {
     @Environment(AppState.self) private var appState

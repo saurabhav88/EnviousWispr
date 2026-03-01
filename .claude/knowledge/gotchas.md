@@ -89,10 +89,6 @@ When `onToken` callback is provided, GeminiConnector switches from `generateCont
 
 When Ollama server is down, polish operations may silently fail. Detection: check binary existence, then server reachability, then model availability. Server runs on `http://localhost:11434` with 3-second strict timeout.
 
-## WhisperKitBackend Missing @preconcurrency
-
-`WhisperKitBackend.swift` imports AVFoundation WITHOUT `@preconcurrency` prefix but should match all other import sites. Risk: Swift 6 concurrency strictness with non-Sendable AVFoundation types.
-
 ## Task { @MainActor } vs DispatchQueue.main.async — Run-Loop Deferral
 
 `Task { @MainActor in ... }` and `DispatchQueue.main.async { ... }` are NOT equivalent. `DispatchQueue.main.async` guarantees execution on the *next* run-loop cycle, while `Task { @MainActor }` may execute immediately if already on the main actor (no deferral guarantee).

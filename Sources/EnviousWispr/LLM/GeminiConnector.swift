@@ -58,10 +58,12 @@ struct GeminiConnector: TranscriptPolisher {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         request.timeoutInterval = 60
 
-        if let onToken {
-            return try await polishStreaming(request: request, config: config, onToken: onToken)
-        } else {
-            return try await polishBatch(request: request, config: config)
+        return try await performWithRetry(config: config) {
+            if let onToken {
+                return try await self.polishStreaming(request: request, config: config, onToken: onToken)
+            } else {
+                return try await self.polishBatch(request: request, config: config)
+            }
         }
     }
 
@@ -191,15 +193,77 @@ struct GeminiConnector: TranscriptPolisher {
     }
 
     private func handleHTTPError(statusCode: Int, body: String) throws -> Never {
+        let truncated = String(body.prefix(200))
+        Task { await AppLogger.shared.log(
+            "Gemini HTTP \(statusCode): \(truncated)",
+            level: .verbose, category: "LLM"
+        ) }
         switch statusCode {
         case 400:
             if body.contains("API_KEY_INVALID") { throw LLMError.invalidAPIKey }
-            throw LLMError.requestFailed("Bad request: \(body)")
+            throw LLMError.requestFailed("Gemini rejected the request. Check model name and parameters.")
         case 403: throw LLMError.invalidAPIKey
         case 429: throw LLMError.rateLimited
         default:
-            throw LLMError.requestFailed("HTTP \(statusCode): \(body)")
+            throw LLMError.requestFailed(Self.friendlyMessage(for: statusCode))
         }
+    }
+
+    private static func friendlyMessage(for statusCode: Int) -> String {
+        switch statusCode {
+        case 400: return "Gemini rejected the request. Check model name and parameters."
+        case 403: return "Gemini access denied. Check your API key permissions."
+        case 404: return "Gemini model not found. Verify the model name in settings."
+        case 500...599: return "Gemini server error (HTTP \(statusCode)). Try again shortly."
+        default: return "Gemini request failed (HTTP \(statusCode))."
+        }
+    }
+
+    // MARK: - Retry
+
+    private func performWithRetry(
+        config: LLMProviderConfig,
+        maxRetries: Int = 2,
+        delays: [UInt64] = [1_000_000_000, 3_000_000_000],
+        operation: () async throws -> LLMResult
+    ) async throws -> LLMResult {
+        var lastError: Error?
+        for attempt in 0...maxRetries {
+            if attempt > 0 {
+                let delay = delays[min(attempt - 1, delays.count - 1)]
+                Task { await AppLogger.shared.log(
+                    "Gemini retry \(attempt)/\(maxRetries) after \(delay / 1_000_000_000)s (model=\(config.model))",
+                    level: .verbose, category: "LLM"
+                ) }
+                try await Task.sleep(nanoseconds: delay)
+            }
+            do {
+                return try await operation()
+            } catch {
+                lastError = error
+                if !Self.isRetryable(error) { throw error }
+            }
+        }
+        throw lastError!
+    }
+
+    private static func isRetryable(_ error: Error) -> Bool {
+        if let llmError = error as? LLMError {
+            switch llmError {
+            case .rateLimited: return true
+            case .requestFailed(let msg):
+                return msg.contains("server error")
+            default: return false
+            }
+        }
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .timedOut, .networkConnectionLost, .cannotConnectToHost:
+                return true
+            default: return false
+            }
+        }
+        return false
     }
 
     private func getAPIKey(config: LLMProviderConfig) throws -> String {

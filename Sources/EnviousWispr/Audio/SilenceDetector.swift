@@ -127,11 +127,18 @@ actor SilenceDetector {
                 speechPadding: 0.1
             )
 
-            guard let result = try? await vad.processStreamingChunk(
-                samples,
-                state: streamState,
-                config: segConfig
-            ) else {
+            let result: VadStreamResult
+            do {
+                result = try await vad.processStreamingChunk(
+                    samples,
+                    state: streamState,
+                    config: segConfig
+                )
+            } catch {
+                Task { await AppLogger.shared.log(
+                    "VAD processChunk failed: \(error)",
+                    level: .verbose, category: "VAD"
+                ) }
                 processedSampleCount += samples.count
                 return false
             }

@@ -72,4 +72,28 @@ spctl --assess --type exec --verbose /tmp/EnviousWispr.app
 
 ## Notarization note
 
-Notarization (`xcrun notarytool`) requires the full Xcode Developer Tools package, not just Command Line Tools. It is not available in this environment. For notarization, use a CI machine with full Xcode installed.
+Notarization uses `xcrun notarytool`, which is available with macOS Command Line Tools (CLT) on macOS 13+. Full Xcode is **not** required.
+
+```bash
+xcrun notarytool submit EnviousWispr.dmg \
+  --apple-id "$APPLE_ID" \
+  --password "$APPLE_ID_PASSWORD" \
+  --team-id "$APPLE_TEAM_ID" \
+  --wait
+```
+
+Use an **app-specific password** (not your Apple ID login password) — generate one at appleid.apple.com. The `--wait` flag blocks until notarization completes and prints the result inline.
+
+After notarization, staple the ticket:
+
+```bash
+xcrun stapler staple EnviousWispr.dmg
+```
+
+## TCC persistence and signing identity
+
+**Developer ID signing preserves TCC grants across rebuilds.** When the binary is signed with a stable Developer ID Application certificate, macOS anchors the TCC grant to the certificate identity rather than the binary hash — so Microphone and Accessibility permissions survive `swift build` cycles without re-granting.
+
+**Ad-hoc signing (`-`) does NOT preserve TCC grants.** Every rebuild changes the binary hash, which invalidates the existing TCC entry. After each ad-hoc rebuild, you must manually re-grant permissions in System Settings > Privacy & Security.
+
+Use Developer ID signing for development builds whenever possible to avoid repeated permission prompts.

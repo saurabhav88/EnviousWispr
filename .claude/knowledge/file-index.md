@@ -2,7 +2,7 @@
 
 Quick-reference for every source file. Use this to find files by domain or purpose.
 
-**63 Swift files, ~10,754 lines** in `Sources/EnviousWispr/`
+**64 Swift files, ~10,856 lines** in `Sources/EnviousWispr/`
 
 ## App (4 files, ~1,218 lines)
 
@@ -31,7 +31,7 @@ Quick-reference for every source file. Use this to find files by domain or purpo
 | `Audio/AudioDeviceManager.swift` | 278 | `AudioInputDevice` (struct), `AudioDeviceEnumerator` (enum), `AudioDeviceMonitor` (class) | CoreAudio device enumeration, UID persistence, connect/disconnect monitoring, Bluetooth device detection, smart input device selection, recommendedInputDevice(), built-in mic fallback |
 | `Audio/SilenceDetector.swift` | 295 | `SilenceDetector` (actor), `SmoothedVADConfig`, `SmoothedVADPhase`, `SpeechSegment` | Silero VAD wrapper, 3-phase state machine (idle/speech/hangover), auto-stop |
 
-## Pipeline (4 files, ~856 lines)
+## Pipeline (5 files, ~886 lines)
 
 | File | Lines | Key Types | Purpose |
 |------|-------|-----------|---------|
@@ -39,6 +39,7 @@ Quick-reference for every source file. Use this to find files by domain or purpo
 | `Pipeline/TextProcessingStep.swift` | 32 | `TextProcessingContext` (struct), `TextProcessingStep` (protocol) | Step interface and context carrier for processing chain |
 | `Pipeline/Steps/LLMPolishStep.swift` | 117 | `LLMPolishStep` (@MainActor) | Selects LLM connector, resolves ${transcript} placeholder, streams tokens, extended thinking config |
 | `Pipeline/Steps/WordCorrectionStep.swift` | 28 | `WordCorrectionStep` (@MainActor) | Runs WordCorrector against custom word list |
+| `Pipeline/Steps/FillerRemovalStep.swift` | 30 | `FillerRemovalStep` (@MainActor) | Regex-based filler word removal (um, uh, etc.) |
 
 ## LLM (9 files, ~1,555 lines)
 

@@ -171,10 +171,48 @@ When creating todos for code work during a project, include:
 
 Format: `Fix X in Y (user-visible result Z)`
 
-Examples:
+**Good examples** (produce testable UAT scope):
 - `Fix tab order in SettingsView (Tab moves top-to-bottom in General tab)`
 - `Fix status icon in StatusBarView (icon reflects idle vs recording state)`
 - `Fix tooltip text in TranscriptionRow (hover text matches action)`
+- `Add cancel button to RecordingOverlay (user can dismiss overlay mid-recording)`
+
+**Bad examples** (internal-only, no UI-observable effect — will be SKIPPED):
+- `Refactor AudioPipeline actor isolation` — no observable behavior change
+- `Fix Swift 6 Sendable warning in TranscriptStore` — compiler fix only
+- `Add @preconcurrency import to VadManager` — concurrency hygiene, not UI
+- `Extract helper method in LLM connector` — pure refactor
+
+The user-visible result clause is what drives UAT scope. If you cannot write that clause, the change has no UAT scope.
+
+## Conversation Context Extraction Rules
+
+When using conversation context as the scope source (no completed todos), extract only behaviors that:
+1. Were explicitly implemented (not just discussed)
+2. Produce a UI-observable change the user can see or interact with
+3. Are stable enough to verify against the running app
+
+Do NOT include:
+- Changes mentioned but not yet implemented
+- Internal bug fixes with no observable side effect
+- Work in progress or partial implementations
+- Anything the user said "we'll add later"
+
+If the conversation describes multiple changes, list only the ones with UI-observable results.
+
+## Scope Size Validation
+
+After building the scope block, count the number of files/behaviors identified.
+
+**If scope references more than 10 changed files**: Print a warning before dispatching:
+
+```
+WARNING: Scope is broad (N files). Consider narrowing with Custom mode:
+  /wispr-run-smart-uat "test only the <specific feature>"
+Proceeding with full scope — this may generate slow or unfocused tests.
+```
+
+This is a warning only, not a stop condition. Continue to step 4.
 
 ## Todo Hygiene
 
@@ -183,3 +221,11 @@ Start a fresh todo list for each project/workstream. If reusing a list, clear co
 ## FIRM RULE: Background Execution
 
 Every `uat_runner.py` invocation MUST use `run_in_background: true` in the Bash tool. No exceptions.
+
+## Relationship to wispr-generate-uat-tests
+
+`wispr-run-smart-uat` is the **primary executable path** for UAT. It generates Python test files via the `uat-generator` agent and runs them immediately.
+
+`wispr-generate-uat-tests` is for **planning documents only** — it outputs markdown scenario files to `Tests/UITests/scenarios/`. These are human-readable specs, not executable tests.
+
+Use `wispr-run-smart-uat` to actually validate a feature. Use `wispr-generate-uat-tests` when you need to think through test coverage before or after implementation.

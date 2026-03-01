@@ -1,7 +1,8 @@
 import Foundation
 
 /// Persists the user's custom word list to disk as JSON.
-final class CustomWordStore: Sendable {
+@MainActor
+final class CustomWordStore {
     private let fileURL: URL
 
     init() {

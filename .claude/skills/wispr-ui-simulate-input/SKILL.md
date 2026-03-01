@@ -8,8 +8,23 @@ description: "Use when simulating real human mouse clicks or keyboard input on t
 ## Prerequisites
 
 - EnviousWispr must be running
-- Terminal/IDE must have Accessibility permission
+- **Terminal/IDE must have Accessibility permission** (System Settings > Privacy & Security > Accessibility)
 - Python deps: pyobjc (installed)
+
+## Accessibility Permission — Critical for CGEvent
+
+**`CGEvent.post()` requires Accessibility permission on modern macOS (14+), regardless of tap level.** Both `.cghidEventTap` and `.cgSessionEventTap` require the posting process to be trusted via `AXIsProcessTrusted()`.
+
+**Silent drop**: Without Accessibility, `CGEvent.post()` returns without error — events are silently discarded and never delivered to the target app. There is no warning, exception, or log output.
+
+**Checklist before running simulate-input**:
+1. Open **System Settings > Privacy & Security > Accessibility**
+2. Confirm your terminal (iTerm2, Terminal.app, VS Code) is listed and ON
+3. If EnviousWispr was recently rebuilt, its binary hash changed — macOS revokes the old TCC grant. Re-grant manually after each rebuild.
+4. **NEVER run** `tccutil reset Accessibility` without a bundle ID — wipes permissions for ALL apps
+5. **To reset only EnviousWispr** (if needed): `tccutil reset Accessibility com.enviouswispr.app`
+
+**Diagnosing a silent drop**: If clicks/keypresses appear to succeed but nothing happens in the app, check Accessibility first — this is the most common cause.
 
 ## CRITICAL: Why CGEvent, Not AX Actions
 

@@ -58,6 +58,8 @@ FluidAudio : current=0.1.0   latest=0.1.0   → up to date
 - Minor bump across 0.x boundary: check changelog for API changes before recommending.
 - Major bump: invoke `handle-breaking-changes` skill after updating.
 
+**FluidAudio arm64 constraint**: FluidAudio relies on `Float16`, which is only available on arm64. Any FluidAudio update must be validated on Apple Silicon only — do not test or promise x86_64 compatibility. If a new FluidAudio release drops `Float16` usage, this constraint may be revisited, but verify in the changelog before assuming universal support.
+
 ## Step 5 — Update Package.swift (if approved)
 
 Edit the relevant `.package(url:from:)` line in Package.swift with the new version,

@@ -8,8 +8,23 @@ description: "Use when inspecting the Accessibility tree of the running EnviousW
 ## Prerequisites
 
 - EnviousWispr must be running (`swift run EnviousWispr` or built binary)
-- Terminal/IDE must have Accessibility permission (System Settings > Privacy > Accessibility)
+- **Both the terminal AND the running app must have Accessibility permission** (System Settings > Privacy & Security > Accessibility). If either is missing, AX tree inspection returns an empty or incomplete tree — not an error.
 - Python deps: pyobjc (installed)
+
+## Accessibility Permission — Failure Guidance
+
+**Symptom**: AX dump returns `{}` or an empty tree, or `find` returns no results even for elements visible on screen.
+
+**Cause**: Missing Accessibility permission for the terminal process (iTerm2, Terminal.app, VS Code, etc.) or the EnviousWispr app itself.
+
+**Fix**:
+1. Open **System Settings > Privacy & Security > Accessibility**
+2. Ensure both your terminal app AND EnviousWispr are listed and toggled ON
+3. If EnviousWispr was recently rebuilt, macOS invalidates the old TCC grant because the binary hash changed — re-grant manually after each rebuild
+4. **NEVER run** `tccutil reset Accessibility` without a bundle ID — this wipes permissions for ALL apps system-wide
+5. **To reset only EnviousWispr** (if needed): `tccutil reset Accessibility com.enviouswispr.app`
+
+**Note**: There is no CLI command to auto-grant Accessibility permission — `tccutil` only supports `reset`, not `grant`. Manual re-grant via System Settings is the only option for non-sandboxed builds.
 
 ## Commands
 

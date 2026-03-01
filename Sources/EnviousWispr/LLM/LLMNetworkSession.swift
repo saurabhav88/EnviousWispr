@@ -13,6 +13,7 @@ final class LLMNetworkSession: Sendable {
     private init() {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 60
+        config.timeoutIntervalForResource = 180
         config.waitsForConnectivity = false
         config.networkServiceType = .responsiveData
         session = URLSession(configuration: config)

@@ -5,6 +5,16 @@ description: "Use when a feature has been implemented and needs UAT test scenari
 
 # Generate UAT Test Scenarios from Feature Spec
 
+## Role Clarification
+
+**This skill produces planning documents (markdown), NOT executable tests.**
+
+- Output goes to `Tests/UITests/scenarios/NNN-feature-name.md` — human-readable specs
+- These files are NOT run by `uat_runner.py`
+- To actually execute UAT tests, use `wispr-run-smart-uat`
+
+Use this skill when you need to think through test coverage systematically: before implementing a feature, during design review, or as a reference for what `wispr-run-smart-uat` should verify.
+
 ## When to Use
 
 After implementing a feature, BEFORE declaring it complete. This skill generates comprehensive behavioral test scenarios that verify the feature actually works as a user would experience it.
@@ -170,3 +180,13 @@ For the ESC cancel feature, this process would have generated:
 - **P2**: ESC with other modifiers held
 - **P2**: ESC when app is not frontmost (global monitor)
 - **P3**: Custom cancel key (non-ESC) configured
+
+## Relationship to wispr-run-smart-uat
+
+`wispr-generate-uat-tests` produces **planning documents** (markdown files in `Tests/UITests/scenarios/`). These are human-readable specs for review — they are NOT executed by `uat_runner.py`.
+
+`wispr-run-smart-uat` is the **primary executable path**. It generates Python test files via the `uat-generator` agent and runs them against the live app.
+
+Typical workflow:
+1. Use `wispr-generate-uat-tests` to enumerate scenarios during feature design or review
+2. Use `wispr-run-smart-uat` (or `wispr-rebuild-and-relaunch` which chains it) to actually verify the feature

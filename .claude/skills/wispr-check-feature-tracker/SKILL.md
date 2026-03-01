@@ -20,6 +20,21 @@ Parse the tracker tables and count:
 - `[~]` = In progress
 - `[x]` = Complete
 
+#### TRACKER.md checkbox format examples
+
+```markdown
+| #   | Feature                     | Status |
+|-----|-----------------------------|--------|
+| 001 | Cancel Hotkey               | [x]    |
+| 005 | Clipboard Save/Restore      | [x]    |
+| 008 | Custom Word Correction      | [~]    |
+| 013 | Multi-language Switching    | [ ]    |
+```
+
+- `[x]` — feature is committed and build-clean (code merged, tests passed)
+- `[~]` — implementation plan exists OR code is in progress but not yet merged
+- `[ ]` — not started (plan may or may not exist)
+
 ### 3. Report summary
 
 Output a table like:
@@ -44,3 +59,15 @@ Read `docs/feature-requests/NNN-*.md` and report:
 - Whether implementation plan is written
 - Whether testing strategy is defined
 - Priority level
+
+## Definition of Done — when to mark `[x]`
+
+A feature is `[x]` (Complete) only when ALL of the following pass (from `conventions.md`):
+
+1. `swift build -c release` exits 0
+2. `swift build --build-tests` exits 0
+3. `.app` bundle rebuilt and relaunched (`wispr-rebuild-and-relaunch`)
+4. Smart UAT tests pass (`wispr-run-smart-uat` — scope-driven, generates targeted tests for the feature)
+5. All UAT execution used `run_in_background: true`
+
+Mark `[~]` (In Progress) when code is merged but UAT has not yet passed, or when the implementation plan exists but code is not yet started.

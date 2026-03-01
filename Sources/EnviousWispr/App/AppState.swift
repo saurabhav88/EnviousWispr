@@ -51,6 +51,7 @@ final class AppState {
 
     // Feature #8: custom word correction
     var customWords: [String] = []
+    var customWordError: String?
 
     // Model discovery
     var discoveredModels: [LLMModelInfo] = []
@@ -509,13 +510,23 @@ final class AppState {
 
     // Feature #8: custom word management
     func addCustomWord(_ word: String) {
-        try? customWordStore.add(word, to: &customWords)
-        pipeline.wordCorrection.customWords = customWords
+        do {
+            try customWordStore.add(word, to: &customWords)
+            pipeline.wordCorrection.customWords = customWords
+            customWordError = nil
+        } catch {
+            customWordError = error.localizedDescription
+        }
     }
 
     func removeCustomWord(_ word: String) {
-        try? customWordStore.remove(word, from: &customWords)
-        pipeline.wordCorrection.customWords = customWords
+        do {
+            try customWordStore.remove(word, from: &customWords)
+            pipeline.wordCorrection.customWords = customWords
+            customWordError = nil
+        } catch {
+            customWordError = error.localizedDescription
+        }
     }
 
     /// Validate an API key and discover available models for the given provider.

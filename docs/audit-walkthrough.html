@@ -1,0 +1,1292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EnviousWispr Code Audit Walkthrough</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --green: #16a34a;
+      --green-bg: #f0fdf4;
+      --green-border: #bbf7d0;
+      --blue: #2563eb;
+      --blue-bg: #eff6ff;
+      --blue-border: #bfdbfe;
+      --orange: #ea580c;
+      --orange-bg: #fff7ed;
+      --orange-border: #fed7aa;
+      --purple: #7c3aed;
+      --purple-bg: #f5f3ff;
+      --purple-border: #ddd6fe;
+      --red: #dc2626;
+      --red-bg: #fef2f2;
+      --red-border: #fecaca;
+      --gray-50: #f9fafb;
+      --gray-100: #f3f4f6;
+      --gray-200: #e5e7eb;
+      --gray-300: #d1d5db;
+      --gray-400: #9ca3af;
+      --gray-500: #6b7280;
+      --gray-600: #4b5563;
+      --gray-700: #374151;
+      --gray-800: #1f2937;
+      --gray-900: #111827;
+      --radius: 12px;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+      --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+      --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+      --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--gray-50);
+      color: var(--gray-800);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Print styles */
+    @media print {
+      body { background: white; }
+      .phase-section { break-inside: avoid; }
+      .change-card { break-inside: avoid; page-break-inside: avoid; }
+      .hero { background: white !important; color: black !important; }
+      .hero h1, .hero p { color: black !important; }
+      .stat-value { color: black !important; }
+      .expand-all-btn, .collapse-indicator { display: none !important; }
+      .phase-items { max-height: none !important; opacity: 1 !important; overflow: visible !important; }
+      .progress-section { display: none; }
+    }
+
+    .hero {
+      background: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4338ca 100%);
+      color: white;
+      padding: 3rem 1.5rem 2.5rem;
+      text-align: center;
+    }
+
+    .hero-badge {
+      display: inline-block;
+      background: rgba(255,255,255,0.15);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 100px;
+      padding: 0.35rem 1rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 1rem;
+    }
+
+    .hero h1 {
+      font-size: clamp(1.8rem, 4vw, 2.8rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.75rem;
+      line-height: 1.15;
+    }
+
+    .hero p {
+      font-size: 1.05rem;
+      opacity: 0.85;
+      max-width: 600px;
+      margin: 0 auto;
+      line-height: 1.5;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 0 1.5rem 4rem;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 1rem;
+      margin: -2rem auto 2rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    .stat-card {
+      background: white;
+      border-radius: var(--radius);
+      padding: 1.25rem 1rem;
+      text-align: center;
+      box-shadow: var(--shadow-md);
+      border: 1px solid var(--gray-100);
+    }
+
+    .stat-icon { font-size: 1.5rem; margin-bottom: 0.25rem; }
+
+    .stat-value {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1;
+      margin-bottom: 0.25rem;
+    }
+
+    .stat-label {
+      font-size: 0.78rem;
+      color: var(--gray-500);
+      font-weight: 500;
+    }
+
+    /* Progress Bar */
+    .progress-section {
+      background: white;
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--gray-200);
+    }
+
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.75rem;
+    }
+
+    .progress-title {
+      font-weight: 700;
+      font-size: 1rem;
+      color: var(--gray-800);
+    }
+
+    .progress-pct {
+      font-weight: 700;
+      font-size: 1rem;
+      color: var(--green);
+    }
+
+    .progress-track {
+      height: 10px;
+      background: var(--gray-100);
+      border-radius: 100px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #16a34a, #22c55e);
+      border-radius: 100px;
+      transition: width 1.5s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .progress-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.8rem;
+      color: var(--gray-600);
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* Expand all button */
+    .controls-row {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 1rem;
+    }
+
+    .expand-all-btn {
+      background: white;
+      border: 1px solid var(--gray-300);
+      border-radius: 8px;
+      padding: 0.5rem 1rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--gray-600);
+      cursor: pointer;
+      transition: all 0.15s;
+      font-family: inherit;
+    }
+
+    .expand-all-btn:hover {
+      background: var(--gray-100);
+      color: var(--gray-800);
+      border-color: var(--gray-400);
+    }
+
+    /* Phase sections */
+    .phase-section {
+      background: white;
+      border-radius: var(--radius);
+      margin-bottom: 1.25rem;
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--gray-200);
+      overflow: hidden;
+    }
+
+    .phase-header {
+      display: flex;
+      align-items: center;
+      padding: 1.25rem 1.5rem;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.15s;
+      gap: 1rem;
+    }
+
+    .phase-header:hover {
+      background: var(--gray-50);
+    }
+
+    .phase-icon-wrap {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.35rem;
+      flex-shrink: 0;
+    }
+
+    .phase-header-text {
+      flex: 1;
+    }
+
+    .phase-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.1rem;
+    }
+
+    .phase-title {
+      font-weight: 700;
+      font-size: 1.05rem;
+      color: var(--gray-900);
+      line-height: 1.3;
+    }
+
+    .phase-subtitle {
+      font-size: 0.85rem;
+      color: var(--gray-500);
+      margin-top: 0.15rem;
+    }
+
+    .phase-count {
+      background: var(--gray-100);
+      border-radius: 100px;
+      padding: 0.2rem 0.65rem;
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--gray-600);
+      flex-shrink: 0;
+    }
+
+    .collapse-indicator {
+      font-size: 1.2rem;
+      color: var(--gray-400);
+      transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+      flex-shrink: 0;
+      line-height: 1;
+    }
+
+    .collapse-indicator.open {
+      transform: rotate(180deg);
+    }
+
+    .phase-items {
+      max-height: 0;
+      opacity: 0;
+      overflow: hidden;
+      transition: max-height 0.45s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s ease;
+    }
+
+    .phase-items.open {
+      max-height: 8000px;
+      opacity: 1;
+    }
+
+    .phase-items-inner {
+      padding: 0 1.5rem 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    /* Change cards */
+    .change-card {
+      border-radius: 10px;
+      padding: 1.25rem;
+      border-width: 1px;
+      border-style: solid;
+      transition: box-shadow 0.2s, transform 0.2s;
+    }
+
+    .change-card:hover {
+      box-shadow: var(--shadow-md);
+      transform: translateY(-1px);
+    }
+
+    .change-card.green { background: var(--green-bg); border-color: var(--green-border); }
+    .change-card.blue { background: var(--blue-bg); border-color: var(--blue-border); }
+    .change-card.orange { background: var(--orange-bg); border-color: var(--orange-border); }
+    .change-card.purple { background: var(--purple-bg); border-color: var(--purple-border); }
+
+    .card-top {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      margin-bottom: 0.6rem;
+    }
+
+    .card-icon {
+      font-size: 1.4rem;
+      line-height: 1;
+      flex-shrink: 0;
+      margin-top: 0.1rem;
+    }
+
+    .card-title-group {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .card-number {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.15rem;
+    }
+
+    .card-number.green { color: var(--green); }
+    .card-number.blue { color: var(--blue); }
+    .card-number.orange { color: var(--orange); }
+    .card-number.purple { color: var(--purple); }
+
+    .card-title {
+      font-weight: 700;
+      font-size: 1rem;
+      color: var(--gray-900);
+      line-height: 1.3;
+    }
+
+    .card-badges {
+      display: flex;
+      gap: 0.5rem;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.2rem 0.6rem;
+      border-radius: 100px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+
+    .badge-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .badge-critical { background: #fecaca; color: #991b1b; }
+    .badge-critical .badge-dot { background: #dc2626; }
+    .badge-high { background: #fed7aa; color: #9a3412; }
+    .badge-high .badge-dot { background: #ea580c; }
+    .badge-medium { background: #fef08a; color: #854d0e; }
+    .badge-medium .badge-dot { background: #eab308; }
+    .badge-low { background: #d1fae5; color: #065f46; }
+    .badge-low .badge-dot { background: #10b981; }
+
+    .badge-category {
+      background: rgba(0,0,0,0.06);
+      color: var(--gray-600);
+    }
+
+    .card-description {
+      font-size: 0.92rem;
+      color: var(--gray-700);
+      line-height: 1.65;
+      margin-left: 2.15rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .card-user-impact {
+      margin-left: 2.15rem;
+      background: rgba(0,0,0,0.03);
+      border-radius: 8px;
+      padding: 0.65rem 0.85rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+    }
+
+    .card-user-impact-icon {
+      flex-shrink: 0;
+      font-size: 0.85rem;
+      margin-top: 0.1rem;
+    }
+
+    .card-user-impact-text {
+      font-size: 0.82rem;
+      color: var(--gray-600);
+      line-height: 1.55;
+      font-style: italic;
+    }
+
+    .card-user-impact-label {
+      font-weight: 700;
+      font-style: normal;
+      color: var(--gray-700);
+    }
+
+    /* Category summary */
+    .category-summary {
+      background: white;
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--gray-200);
+    }
+
+    .category-summary h2 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+      color: var(--gray-800);
+    }
+
+    .category-bars {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .category-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .category-label {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--gray-600);
+      width: 180px;
+      flex-shrink: 0;
+      text-align: right;
+    }
+
+    .category-bar-track {
+      flex: 1;
+      height: 24px;
+      background: var(--gray-100);
+      border-radius: 6px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .category-bar-fill {
+      height: 100%;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      padding-left: 0.6rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: white;
+      transition: width 1s cubic-bezier(0.22, 1, 0.36, 1);
+      min-width: fit-content;
+    }
+
+    .category-bar-fill.green { background: var(--green); }
+    .category-bar-fill.blue { background: var(--blue); }
+    .category-bar-fill.orange { background: var(--orange); }
+    .category-bar-fill.purple { background: var(--purple); }
+    .category-bar-fill.sky { background: #0ea5e9; }
+    .category-bar-fill.gray { background: var(--gray-500); }
+
+    /* Legend section */
+    .legend-section {
+      background: white;
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      margin-top: 0.5rem;
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--gray-200);
+    }
+
+    .legend-section h3 {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--gray-800);
+      margin-bottom: 1rem;
+    }
+
+    .legend-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2rem;
+    }
+
+    .legend-group-title {
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--gray-500);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.5rem;
+    }
+
+    .legend-color-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      font-size: 0.8rem;
+      color: var(--gray-600);
+    }
+
+    .legend-color-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .legend-color-swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      padding: 2rem 1.5rem;
+      color: var(--gray-400);
+      font-size: 0.8rem;
+    }
+
+    /* Responsive */
+    @media (max-width: 640px) {
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .hero { padding: 2rem 1rem 2rem; }
+      .container { padding: 0 1rem 3rem; }
+      .phase-header { padding: 1rem 1.25rem; }
+      .phase-items-inner { padding: 0 1.25rem 1.25rem; }
+      .card-top { flex-direction: column; }
+      .card-badges { margin-top: 0.25rem; }
+      .category-label { width: 120px; font-size: 0.75rem; }
+      .card-description { margin-left: 0; }
+      .card-user-impact { margin-left: 0; }
+    }
+
+    /* Animations */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .animate-in {
+      animation: fadeInUp 0.5s ease forwards;
+      opacity: 0;
+    }
+
+    .delay-1 { animation-delay: 0.1s; }
+    .delay-2 { animation-delay: 0.2s; }
+    .delay-3 { animation-delay: 0.3s; }
+    .delay-4 { animation-delay: 0.4s; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // ---------- DATA ----------
+
+    const PHASES = [
+      {
+        id: 1,
+        title: "Fixed Broken Instruction Manuals",
+        subtitle: "Three \u201Cskill files\u201D \u2014 instruction manuals that tell AI agents how to do specific jobs \u2014 had wrong instructions.",
+        phaseIcon: "\uD83D\uDCD6",
+        color: "#dc2626",
+        bgColor: "rgba(220,38,38,0.08)",
+        items: [
+          {
+            num: 1,
+            title: "Fixed Speech Recognition Setup Guide",
+            description: "The guide told agents to use features that don\u2019t exist \u2014 like telling someone to press a button that isn\u2019t on the remote. Now it matches what the app actually supports.",
+            userImpact: "Prevents agents from writing broken code that would have caused build failures.",
+            severity: "high",
+            category: "Safety Fix",
+            colorClass: "green",
+            icon: "\uD83D\uDCCB"
+          },
+          {
+            num: 2,
+            title: "Fixed Language Settings Guide",
+            description: "Function names were wrong (like telling someone the file is called \u201CReport.doc\u201D when it\u2019s actually \u201CReport.docx\u201D). Now all names match the real code.",
+            userImpact: "Eliminates build failures caused by agents using outdated function names.",
+            severity: "high",
+            category: "Safety Fix",
+            colorClass: "green",
+            icon: "\uD83C\uDF10"
+          },
+          {
+            num: 3,
+            title: "Fixed Permissions Guide",
+            description: "Said the app didn\u2019t need special permission to paste text. It does on modern Macs (macOS 14+). Like telling someone they don\u2019t need a key to open a locked door. Now correctly documented.",
+            userImpact: "Paste feature will no longer silently fail on newer Macs.",
+            severity: "high",
+            category: "Safety Fix",
+            colorClass: "green",
+            icon: "\uD83D\uDD10"
+          }
+        ]
+      },
+      {
+        id: 2,
+        title: "Safety Fixes + Documentation",
+        subtitle: "Prevented data loss, fixed silent failures, and filled dangerous documentation gaps.",
+        phaseIcon: "\uD83D\uDEE1\uFE0F",
+        color: "#ea580c",
+        bgColor: "rgba(234,88,12,0.08)",
+        items: [
+          {
+            num: 4,
+            title: "Fixed Notarization Documentation",
+            description: "Said you need the full $99 Xcode developer suite to get Apple approval. You actually don\u2019t \u2014 the free Command Line Tools work fine. Saved confusion and potentially money.",
+            userImpact: "Saves time and potentially money during the release process.",
+            severity: "medium",
+            category: "Documentation Fix",
+            colorClass: "blue",
+            icon: "\uD83C\uDF4E"
+          },
+          {
+            num: 5,
+            title: "Improved Release Checklist",
+            description: "The checklist for publishing new versions was missing critical details: how to sign updates so users get them, how to roll back a bad update, and version number formatting rules. Like a pilot checklist missing \u201Ccheck fuel.\u201D",
+            userImpact: "Reduces the risk of botched releases that could strand users on broken versions.",
+            severity: "high",
+            category: "Safety Documentation",
+            colorClass: "green",
+            icon: "\u2705"
+          },
+          {
+            num: 6,
+            title: "Added Hardware Warning",
+            description: "The app only works on Apple Silicon Macs (M1/M2/M3/M4). This wasn\u2019t documented anywhere. Now build tools warn you upfront instead of failing with a cryptic error.",
+            userImpact: "Users on older Intel Macs get a clear message instead of mysterious failures.",
+            severity: "medium",
+            category: "Documentation Fix",
+            colorClass: "blue",
+            icon: "\uD83D\uDDA5\uFE0F"
+          },
+          {
+            num: 7,
+            title: "Save Recording on Device Disconnect",
+            description: "If your Bluetooth headset disconnected mid-recording, the entire recording was thrown away \u2014 even a 10-minute dictation. Now it saves whatever was captured before the disconnect. Like auto-saving a document before a crash.",
+            userImpact: "Users never lose their dictation due to Bluetooth hiccups again.",
+            severity: "critical",
+            category: "Data Loss Prevention",
+            colorClass: "green",
+            icon: "\uD83D\uDCBE"
+          },
+          {
+            num: 8,
+            title: "Show Error When Microphone Switches Fail",
+            description: "If the app couldn\u2019t switch to your selected microphone, it silently used the default one. You\u2019d get garbage transcription without knowing why. Now it shows you a warning.",
+            userImpact: "Users are immediately told when something goes wrong with their mic selection.",
+            severity: "high",
+            category: "Silent Failure Fix",
+            colorClass: "green",
+            icon: "\uD83C\uDF99\uFE0F"
+          },
+          {
+            num: 9,
+            title: "Added Network Timeout",
+            description: "AI text polishing could hang forever if the service was slow. Now it has a 3-minute maximum. Like adding a timer to prevent the oven from being left on.",
+            userImpact: "The app can no longer freeze indefinitely while waiting for AI services.",
+            severity: "medium",
+            category: "Reliability Fix",
+            colorClass: "green",
+            icon: "\u23F1\uFE0F"
+          }
+        ]
+      },
+      {
+        id: 3,
+        title: "Robustness + Infrastructure",
+        subtitle: "Made the app more resilient, added diagnostics, and built foundations for future features.",
+        phaseIcon: "\uD83C\uDFD7\uFE0F",
+        color: "#7c3aed",
+        bgColor: "rgba(124,58,237,0.08)",
+        items: [
+          {
+            num: 10,
+            title: "Added Auto-Retry for AI Services",
+            description: "If the AI polishing service had a brief hiccup (server busy, temporary outage), the app would just fail. Now it automatically retries twice with increasing wait times. Like redialing when you get a busy signal.",
+            userImpact: "Temporary service glitches are handled automatically \u2014 users may never notice them.",
+            severity: "medium",
+            category: "Reliability",
+            colorClass: "orange",
+            icon: "\uD83D\uDD04"
+          },
+          {
+            num: 11,
+            title: "Friendly Error Messages",
+            description: "Error messages showed raw technical gibberish from the server. Now they say things like \u201CAI service temporarily unavailable\u201D instead of long strings of computer code.",
+            userImpact: "When something goes wrong, users see a message they can actually understand.",
+            severity: "medium",
+            category: "User Experience",
+            colorClass: "orange",
+            icon: "\uD83D\uDCAC"
+          },
+          {
+            num: 12,
+            title: "Fixed Double-Tap Recording Bug",
+            description: "Rapidly pressing the record hotkey twice could start two recordings simultaneously, causing a crash. Now the second press is ignored while the first is processing. Like an elevator ignoring button mashing.",
+            userImpact: "No more crashes from accidental double-taps of the record shortcut.",
+            severity: "high",
+            category: "Bug Fix",
+            colorClass: "green",
+            icon: "\uD83D\uDC1B"
+          },
+          {
+            num: 13,
+            title: "Fixed Potential Crash in Transcription",
+            description: "A rare crash could occur when streaming transcription returned no results. Now it handles this gracefully instead of crashing. Like putting a safety net under a tightrope.",
+            userImpact: "Eliminates a rare but frustrating crash during speech-to-text.",
+            severity: "high",
+            category: "Crash Prevention",
+            colorClass: "green",
+            icon: "\uD83D\uDEE1\uFE0F"
+          },
+          {
+            num: 14,
+            title: "Fixed Thread Safety Issue",
+            description: "The custom word correction feature had a subtle timing issue that could theoretically cause data corruption. Now it\u2019s properly protected. Like adding a lock to a shared filing cabinet.",
+            userImpact: "Custom word lists are now safe from rare data corruption.",
+            severity: "high",
+            category: "Data Safety",
+            colorClass: "green",
+            icon: "\uD83D\uDD12"
+          },
+          {
+            num: 15,
+            title: "Added Voice Detection Error Logging",
+            description: "When the voice-vs-silence detector failed, it failed silently. Now errors are logged so we can diagnose auto-stop issues. Like adding a check engine light.",
+            userImpact: "Makes it easier to diagnose why auto-stop might not be working correctly.",
+            severity: "low",
+            category: "Diagnostics",
+            colorClass: "orange",
+            icon: "\uD83D\uDCCA"
+          },
+          {
+            num: 16,
+            title: "Fixed File Deletion Consistency",
+            description: "Deleting all transcripts could partially fail \u2014 deleting some files but not others, leaving things in a messy state. Now it\u2019s all-or-nothing. Like properly emptying the trash instead of leaving some items behind.",
+            userImpact: "Transcript cleanup is now reliable and predictable.",
+            severity: "medium",
+            category: "Bug Fix",
+            colorClass: "green",
+            icon: "\uD83D\uDDD1\uFE0F"
+          },
+          {
+            num: 17,
+            title: "Custom Word Error Feedback",
+            description: "Adding/removing custom words could silently fail. Now the settings screen shows you what went wrong. Like getting an error message instead of a form just doing nothing.",
+            userImpact: "Users know immediately if a custom word was saved or if something went wrong.",
+            severity: "medium",
+            category: "User Experience",
+            colorClass: "orange",
+            icon: "\uD83D\uDCDD"
+          },
+          {
+            num: 18,
+            title: "Improved Testing Scope Rules",
+            description: "The testing system didn\u2019t have clear rules for what to test. Now it has explicit guidelines, format examples, and validates scope size. Like giving a QA tester a clear checklist instead of \u201Ctest everything.\u201D",
+            userImpact: "Better test coverage means fewer bugs slip through to users.",
+            severity: "low",
+            category: "Testing Infrastructure",
+            colorClass: "purple",
+            icon: "\uD83E\uDDEA"
+          },
+          {
+            num: 19,
+            title: "Clarified Test Workflow",
+            description: "Two testing tools had overlapping descriptions, causing confusion. Now each clearly states its role: one plans tests (documents), the other runs them (automated).",
+            userImpact: "Faster, more reliable testing means quicker, higher-quality releases.",
+            severity: "low",
+            category: "Documentation",
+            colorClass: "blue",
+            icon: "\uD83D\uDCD6"
+          },
+          {
+            num: 20,
+            title: "Built Account System Foundation",
+            description: "Created the planning documents and templates for future paid features: subscription tiers, payment options, license keys, trial rules, and privacy-respecting analytics. The blueprint before construction.",
+            userImpact: "Lays the groundwork for subscriptions, trials, and account management.",
+            severity: "medium",
+            category: "New Capability",
+            colorClass: "orange",
+            icon: "\uD83C\uDFD7\uFE0F"
+          },
+          {
+            num: 21,
+            title: "Created Incident Response Guide",
+            description: "A quick-reference guide for emergencies: build failures, critical bugs, leaked credentials, service outages, and permission issues. Like a laminated emergency procedures card on an airplane.",
+            userImpact: "When something goes wrong in production, the team has a clear playbook.",
+            severity: "high",
+            category: "Operations",
+            colorClass: "purple",
+            icon: "\uD83D\uDEA8"
+          }
+        ]
+      },
+      {
+        id: 4,
+        title: "Polish + Standards",
+        subtitle: "Fixed templates, improved documentation, and added error-handling guides to every agent.",
+        phaseIcon: "\u2728",
+        color: "#2563eb",
+        bgColor: "rgba(37,99,235,0.08)",
+        items: [
+          {
+            num: 22,
+            title: "Created Key Rotation Procedure",
+            description: "Step-by-step instructions for replacing compromised API keys, signing certificates, and other secrets. Because when a key leaks, you need to act fast with zero mistakes.",
+            userImpact: "If a security credential is ever leaked, the team can respond quickly and correctly.",
+            severity: "high",
+            category: "Security",
+            colorClass: "purple",
+            icon: "\uD83D\uDD11"
+          },
+          {
+            num: 23,
+            title: "Fixed AI Connector Template",
+            description: "The template for adding new AI services had 5 wrong pieces \u2014 wrong function names, wrong parameters, wrong output format. All fixed to match reality.",
+            userImpact: "Adding new AI providers (like switching from OpenAI to Gemini) is now smooth.",
+            severity: "medium",
+            category: "Template Fix",
+            colorClass: "blue",
+            icon: "\uD83E\uDDE9"
+          },
+          {
+            num: 24,
+            title: "Removed Invalid Setting",
+            description: "A configuration flag that doesn\u2019t exist was cluttering a skill file. Removed.",
+            userImpact: "Cleaner configuration means fewer potential sources of confusion.",
+            severity: "low",
+            category: "Cleanup",
+            colorClass: "blue",
+            icon: "\uD83E\uDDF9"
+          },
+          {
+            num: 25,
+            title: "Added Import Warnings to Templates",
+            description: "Swift 6 has strict rules about importing libraries. Three templates were missing required import annotations, which would cause build errors. Now they include the correct pattern.",
+            userImpact: "New features built from templates will compile correctly on the first try.",
+            severity: "medium",
+            category: "Template Fix",
+            colorClass: "blue",
+            icon: "\u26A0\uFE0F"
+          },
+          {
+            num: 26,
+            title: "Enhanced API Contract Validation",
+            description: "Added guidance for handling rate limits (when the AI service says \u201Cslow down\u201D) and detecting API deprecation (when the service changes how it works).",
+            userImpact: "Better handling of AI service changes means fewer unexpected breakages.",
+            severity: "low",
+            category: "Documentation",
+            colorClass: "blue",
+            icon: "\uD83D\uDCDC"
+          },
+          {
+            num: 27,
+            title: "Added Permission Troubleshooting",
+            description: "Two testing tools that require special macOS permissions didn\u2019t explain what to do when permissions are missing. Now they have clear failure guidance and diagnostic steps.",
+            userImpact: "Testing setup is less frustrating, especially for new team members.",
+            severity: "low",
+            category: "Documentation",
+            colorClass: "blue",
+            icon: "\uD83D\uDD27"
+          },
+          {
+            num: 28,
+            title: "Feature Tracker Format Guide",
+            description: "The feature tracking checklist didn\u2019t explain its own format. Now it shows what the checkboxes mean and what \u201Cdone\u201D actually means.",
+            userImpact: "Anyone can read the feature tracker and understand project status at a glance.",
+            severity: "low",
+            category: "Documentation",
+            colorClass: "blue",
+            icon: "\uD83D\uDCCB"
+          },
+          {
+            num: 29,
+            title: "Release Pipeline Clarification",
+            description: "Explained how the automatic update feed (appcast.xml) gets generated during releases, plus manual fallback steps if automation fails.",
+            userImpact: "Releases are more predictable, with a backup plan if automation breaks.",
+            severity: "low",
+            category: "Documentation",
+            colorClass: "blue",
+            icon: "\uD83D\uDE80"
+          },
+          {
+            num: 30,
+            title: "Testing Tool Comparison",
+            description: "Clearly distinguished between the quick compile check (smoke test) and the full build-launch-test cycle. Like the difference between turning the car key and actually test-driving it.",
+            userImpact: "The team picks the right testing tool for the job, saving time.",
+            severity: "low",
+            category: "Documentation",
+            colorClass: "blue",
+            icon: "\uD83D\uDD0D"
+          },
+          {
+            num: 31,
+            title: "Added Error Handling Guides to All 10 Agents",
+            description: "Every AI agent now has domain-specific troubleshooting guides, testing requirements, and a curated list of known traps. Like giving every employee a role-specific FAQ and training manual. This was the single largest change in the audit.",
+            userImpact: "Agents make fewer mistakes, leading to faster development and fewer bugs reaching users.",
+            severity: "high",
+            category: "Infrastructure",
+            colorClass: "purple",
+            icon: "\uD83D\uDCDA"
+          },
+          {
+            num: 32,
+            title: "Enhanced Team Communication Protocols",
+            description: "All 10 agents now have decision trees for: what to do when blocked by a colleague, how to handle disagreements, and how to communicate when work is incomplete. Like adding conflict resolution and escalation procedures to an employee handbook.",
+            userImpact: "Multi-agent work is smoother, with fewer stalls and miscommunications.",
+            severity: "medium",
+            category: "Infrastructure",
+            colorClass: "purple",
+            icon: "\uD83E\uDD1D"
+          }
+        ]
+      }
+    ];
+
+    const TOTAL_ITEMS = PHASES.reduce((sum, p) => sum + p.items.length, 0);
+
+    const CATEGORY_DATA = [
+      { label: "Safety / Crash Fixes", count: 7, colorClass: "green" },
+      { label: "User Experience", count: 5, colorClass: "orange" },
+      { label: "Documentation Fixes", count: 8, colorClass: "blue" },
+      { label: "Infrastructure", count: 6, colorClass: "purple" },
+      { label: "Template Fixes", count: 3, colorClass: "sky" },
+      { label: "Cleanup", count: 2, colorClass: "gray" }
+    ];
+
+    // ---------- COMPONENTS ----------
+
+    function SeverityBadge({ severity }) {
+      const map = {
+        critical: { cls: "badge-critical", label: "Critical" },
+        high: { cls: "badge-high", label: "High" },
+        medium: { cls: "badge-medium", label: "Medium" },
+        low: { cls: "badge-low", label: "Low" }
+      };
+      const info = map[severity];
+      if (!info) return null;
+      return (
+        <span className={`badge ${info.cls}`}>
+          <span className="badge-dot"></span>
+          {info.label}
+        </span>
+      );
+    }
+
+    function ChangeCard({ item }) {
+      return (
+        <div className={`change-card ${item.colorClass}`}>
+          <div className="card-top">
+            <span className="card-icon">{item.icon}</span>
+            <div className="card-title-group">
+              <div className={`card-number ${item.colorClass}`}>Change #{item.num}</div>
+              <div className="card-title">{item.title}</div>
+            </div>
+            <div className="card-badges">
+              <SeverityBadge severity={item.severity} />
+              <span className="badge badge-category">{item.category}</span>
+            </div>
+          </div>
+          <div className="card-description">{item.description}</div>
+          <div className="card-user-impact">
+            <span className="card-user-impact-icon">{'\uD83D\uDC64'}</span>
+            <span className="card-user-impact-text">
+              <span className="card-user-impact-label">What this means for users: </span>
+              {item.userImpact}
+            </span>
+          </div>
+        </div>
+      );
+    }
+
+    function PhaseSection({ phase, isOpen, onToggle }) {
+      return (
+        <div className="phase-section">
+          <div className="phase-header" onClick={onToggle} role="button" tabIndex={0}
+               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}>
+            <div className="phase-icon-wrap" style={{ background: phase.bgColor }}>
+              {phase.phaseIcon}
+            </div>
+            <div className="phase-header-text">
+              <div className="phase-label" style={{ color: phase.color }}>Phase {phase.id}</div>
+              <div className="phase-title">{phase.title}</div>
+              <div className="phase-subtitle">{phase.subtitle}</div>
+            </div>
+            <div className="phase-count">{phase.items.length} items</div>
+            <div className={`collapse-indicator ${isOpen ? 'open' : ''}`}>&#9660;</div>
+          </div>
+          <div className={`phase-items ${isOpen ? 'open' : ''}`}>
+            <div className="phase-items-inner">
+              {phase.items.map(item => (
+                <ChangeCard key={item.num} item={item} />
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function ProgressBar() {
+      const [width, setWidth] = useState(0);
+      useEffect(() => {
+        const timer = setTimeout(() => setWidth(100), 100);
+        return () => clearTimeout(timer);
+      }, []);
+
+      return (
+        <div className="progress-section animate-in delay-2">
+          <div className="progress-header">
+            <span className="progress-title">Audit Completion</span>
+            <span className="progress-pct">{TOTAL_ITEMS}/{TOTAL_ITEMS} tasks done</span>
+          </div>
+          <div className="progress-track">
+            <div className="progress-fill" style={{ width: `${width}%` }} />
+          </div>
+          <div className="progress-legend">
+            <div className="legend-item">
+              <div className="legend-dot" style={{ background: 'var(--green)' }} />
+              Safety fixes
+            </div>
+            <div className="legend-item">
+              <div className="legend-dot" style={{ background: 'var(--blue)' }} />
+              Documentation
+            </div>
+            <div className="legend-item">
+              <div className="legend-dot" style={{ background: 'var(--orange)' }} />
+              New capabilities
+            </div>
+            <div className="legend-item">
+              <div className="legend-dot" style={{ background: 'var(--purple)' }} />
+              Infrastructure
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function CategoryChart() {
+      const maxCount = Math.max(...CATEGORY_DATA.map(c => c.count));
+      return (
+        <div className="category-summary animate-in delay-3">
+          <h2>Changes by Category</h2>
+          <div className="category-bars">
+            {CATEGORY_DATA.map((cat, i) => (
+              <div className="category-row" key={i}>
+                <div className="category-label">{cat.label}</div>
+                <div className="category-bar-track">
+                  <div
+                    className={`category-bar-fill ${cat.colorClass}`}
+                    style={{ width: `${(cat.count / maxCount) * 100}%` }}
+                  >
+                    {cat.count}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    function LegendSection() {
+      return (
+        <div className="legend-section">
+          <h3>Legend</h3>
+          <div className="legend-grid">
+            <div>
+              <div className="legend-group-title">Severity Levels</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <SeverityBadge severity="critical" />
+                <SeverityBadge severity="high" />
+                <SeverityBadge severity="medium" />
+                <SeverityBadge severity="low" />
+              </div>
+            </div>
+            <div style={{ borderLeft: '1px solid var(--gray-200)', paddingLeft: '1.5rem' }}>
+              <div className="legend-group-title">Color Coding</div>
+              <div className="legend-color-list">
+                <div className="legend-color-row">
+                  <span className="legend-color-swatch" style={{ background: 'var(--green)' }}></span>
+                  Green = Fixed a safety issue
+                </div>
+                <div className="legend-color-row">
+                  <span className="legend-color-swatch" style={{ background: 'var(--blue)' }}></span>
+                  Blue = Improved documentation
+                </div>
+                <div className="legend-color-row">
+                  <span className="legend-color-swatch" style={{ background: 'var(--orange)' }}></span>
+                  Orange = Added new capability
+                </div>
+                <div className="legend-color-row">
+                  <span className="legend-color-swatch" style={{ background: 'var(--purple)' }}></span>
+                  Purple = Infrastructure
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function App() {
+      const [openPhases, setOpenPhases] = useState({});
+      const allOpen = PHASES.every(p => openPhases[p.id]);
+
+      const togglePhase = (id) => {
+        setOpenPhases(prev => ({ ...prev, [id]: !prev[id] }));
+      };
+
+      const toggleAll = () => {
+        if (allOpen) {
+          setOpenPhases({});
+        } else {
+          const next = {};
+          PHASES.forEach(p => { next[p.id] = true; });
+          setOpenPhases(next);
+        }
+      };
+
+      return (
+        <div>
+          {/* Hero */}
+          <div className="hero">
+            <div className="hero-badge">{'\u2705'} Completed March 2026</div>
+            <h1>EnviousWispr Code Audit</h1>
+            <p>
+              A comprehensive review of the entire codebase. Every change explained
+              in plain English, organized by phase, with clear impact descriptions.
+              No jargon, no code snippets.
+            </p>
+          </div>
+
+          <div className="container">
+            {/* Stats */}
+            <div className="stats-grid animate-in delay-1">
+              <div className="stat-card">
+                <div className="stat-icon">{'\u2705'}</div>
+                <div className="stat-value" style={{ color: 'var(--purple)' }}>31</div>
+                <div className="stat-label">Tasks Completed</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-icon">{'\uD83D\uDCC4'}</div>
+                <div className="stat-value" style={{ color: 'var(--blue)' }}>~40</div>
+                <div className="stat-label">Files Modified</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-icon">{'\uD83C\uDFAF'}</div>
+                <div className="stat-value" style={{ color: 'var(--orange)' }}>4</div>
+                <div className="stat-label">Phases</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-icon">{'\uD83E\uDD16'}</div>
+                <div className="stat-value" style={{ color: 'var(--green)' }}>~15</div>
+                <div className="stat-label">Agents Used</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-icon">{'\u23F1\uFE0F'}</div>
+                <div className="stat-value" style={{ color: 'var(--red)' }}>~20</div>
+                <div className="stat-label">Minutes Total</div>
+              </div>
+            </div>
+
+            {/* Progress */}
+            <ProgressBar />
+
+            {/* Category Breakdown */}
+            <CategoryChart />
+
+            {/* Expand/Collapse */}
+            <div className="controls-row">
+              <button className="expand-all-btn" onClick={toggleAll}>
+                {allOpen ? '\u25B2 Collapse All Sections' : '\u25BC Expand All Sections'}
+              </button>
+            </div>
+
+            {/* Phases */}
+            {PHASES.map((phase, i) => (
+              <div key={phase.id} className={`animate-in delay-${Math.min(i + 2, 4)}`}>
+                <PhaseSection
+                  phase={phase}
+                  isOpen={!!openPhases[phase.id]}
+                  onToggle={() => togglePhase(phase.id)}
+                />
+              </div>
+            ))}
+
+            {/* Legend */}
+            <LegendSection />
+          </div>
+
+          <div className="footer">
+            EnviousWispr Code Audit Walkthrough &middot; Generated March 1, 2026
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>

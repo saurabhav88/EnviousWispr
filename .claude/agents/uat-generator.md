@@ -270,6 +270,33 @@ Before writing generated test files, group your planned tests:
 4. **Order assertions** logically within the consolidated test — existence checks first,
    then property checks, then interaction checks
 
+## Error Handling
+
+| Failure Mode | Detection | Recovery |
+|---|---|---|
+| Generated test imports non-existent helper | UAT runner fails with ImportError | Only import from `uat_runner`, `ui_helpers`, `simulate_input` -- never add new imports |
+| Test hits element that doesn't exist in AX tree | `assert_element_exists` fails at runtime | Verify element identifiers by reading the source view file, check accessibility labels |
+| Duplicate test covers same scenario as static test | Dedup pre-flight (`uat_runner.py signatures`) missed overlap | Re-run signatures check, remove duplicate generated test |
+| Generated test file has syntax error | Python interpreter fails on import | Validate generated code follows the exact template pattern -- no freestyle Python |
+| Scope has no UI-observable changes | Diff only touches internals, types, or docs | Generate NO files, report `GENERATED_FILES: []` -- SKIPPED is valid |
+
+## Testing Requirements
+
+Generated tests must follow the quality standards from `.claude/knowledge/conventions.md`:
+
+1. Every test uses Given/When/Then docstring format
+2. Every test is behavioral (verifies state change, not just element existence)
+3. Every test ends with `assert_process_running(ctx.app_name)` (no crash check)
+4. Every test registers cleanup via `ctx.on_cleanup()` for state-changing operations
+5. Use `ctx.wait()` between actions (minimum 0.3s after clicks, 1.0s after state transitions)
+
+## Gotchas
+
+Relevant items from `.claude/knowledge/gotchas.md`:
+
+- **UAT Runner Must Run in Background** -- generated tests will be run with `run_in_background: true`, but this is the runner's concern, not yours
+- **FluidAudio Naming Collision** -- affects test expectations if checking ASR-related UI (unqualified type names in labels)
+
 ## Coordination
 
 - You are typically invoked by the `wispr-run-smart-uat` skill
@@ -306,6 +333,26 @@ When spawned as a teammate (via `team_name` parameter):
 6. **Notify**: SendMessage to coordinator listing generated test files and what they cover
 7. **Peer handoff**: If generated tests reveal unclear behavior → message the domain agent. If tests need running → message `validator`
 8. **Output only**: You generate test files but do not execute them — the testing agent runs them
+
+### When Blocked by a Peer
+
+1. Is the blocker unclear diff/scope from coordinator? → SendMessage to coordinator asking for explicit scope description
+2. Is the blocker inability to find AX element identifiers? → Read the source view file directly, or ask macos-platform peer for accessibility label details
+3. Is the blocker unknown UI behavior for a new feature? → Ask the domain agent what the expected user-visible behavior is
+4. No response after your message? → Generate tests based on your best understanding, note assumptions in test docstrings
+
+### When You Disagree with a Peer
+
+1. Is it about what tests to generate? → You are the authority on test generation strategy -- cite behavioral testing principles
+2. Is it about whether a scenario is already covered? → Run `uat_runner.py signatures` and share the evidence
+3. Is it about test quality (structural vs behavioral)? → You own test quality -- generated tests must be behavioral, non-negotiable
+4. Cannot resolve? → SendMessage to coordinator with your reasoning
+
+### When Your Deliverable Is Incomplete
+
+1. Scope is too broad to cover in one pass? → Generate tests for the highest-risk scenarios first, note remaining scenarios in your report
+2. Can't determine correct assertions for some scenarios? → Generate the test structure with a `# TODO: verify expected value` comment, report which tests need domain input
+3. All scenarios already covered by static tests? → Report `GENERATED_FILES: []` -- this is a valid and correct outcome, not a failure
 
 ## Pre-Generated Knowledge Available
 

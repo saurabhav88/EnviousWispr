@@ -33,6 +33,11 @@ struct WordFixSettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.red)
                 }
+                if let storeError = appState.customWordError {
+                    Text(storeError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
 
                 if appState.customWords.isEmpty {
                     Text("No custom words yet. Add proper nouns, product names, or technical terms the ASR frequently misrecognizes.")

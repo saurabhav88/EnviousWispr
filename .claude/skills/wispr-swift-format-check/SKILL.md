@@ -1,7 +1,6 @@
 ---
 name: wispr-swift-format-check
 description: Check Swift formatting across the project without modifying files. Reports files that would change.
-disable-model-invocation: true
 ---
 
 # Swift Format Check

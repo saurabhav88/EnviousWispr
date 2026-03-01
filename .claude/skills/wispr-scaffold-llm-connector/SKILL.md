@@ -15,6 +15,8 @@ The struct must be `Sendable` (store no mutable state; use `KeychainManager` for
 
 ```swift
 import Foundation
+// Use @preconcurrency for any provider SDK that is not fully Sendable-annotated.
+// Example: @preconcurrency import SomeProviderSDK
 
 struct <Name>Connector: TranscriptPolisher {
     private let keychainManager: KeychainManager
@@ -31,7 +33,8 @@ struct <Name>Connector: TranscriptPolisher {
     func polish(
         text: String,
         instructions: PolishInstructions,
-        config: LLMProviderConfig
+        config: LLMProviderConfig,
+        onToken: (@Sendable (String) -> Void)?
     ) async throws -> LLMResult {
         let apiKey = try getAPIKey()
 
@@ -43,9 +46,9 @@ struct <Name>Connector: TranscriptPolisher {
         request.timeoutInterval = 30
         // request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let startTime = CFAbsoluteTimeGetCurrent()
-        let (data, response) = try await URLSession.shared.data(for: request)
-        let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+        // Use LLMNetworkSession for HTTP/2 multiplexing and TLS session resumption.
+        let session = LLMNetworkSession.shared.session
+        let (data, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw LLMError.requestFailed("Invalid response")
@@ -58,28 +61,14 @@ struct <Name>Connector: TranscriptPolisher {
             throw LLMError.requestFailed("HTTP \(httpResponse.statusCode)")
         }
 
-        // Parse response JSON and extract polished text
+        // Parse response JSON and extract polished text.
+        // If onToken is non-nil, deliver fragments via onToken as they arrive (SSE/streaming).
         let polishedText = "" // replace with actual parsing
         guard !polishedText.isEmpty else { throw LLMError.emptyResponse }
 
         return LLMResult(
-            originalText: text,
-            polishedText: polishedText.trimmingCharacters(in: .whitespacesAndNewlines),
-            provider: .<caseName>,
-            model: config.model,
-            tokensUsed: nil,
-            latency: elapsed
+            polishedText: polishedText.trimmingCharacters(in: .whitespacesAndNewlines)
         )
-    }
-
-    func validateCredentials(config: LLMProviderConfig) async throws -> Bool {
-        let apiKey = try getAPIKey()
-        // Lightweight auth check — e.g., hit a /models or /info endpoint
-        var request = URLRequest(url: URL(string: "<health-check-url>")!)
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.timeoutInterval = 10
-        let (_, response) = try await URLSession.shared.data(for: request)
-        return (response as? HTTPURLResponse)?.statusCode == 200
     }
 
     private func getAPIKey() throws -> String {
@@ -148,3 +137,28 @@ File: `Sources/EnviousWispr/Views/Settings/SettingsView.swift`
 ```bash
 swift build
 ```
+
+## Protocol reference
+
+```swift
+protocol TranscriptPolisher: Sendable {
+    func polish(
+        text: String,
+        instructions: PolishInstructions,
+        config: LLMProviderConfig,
+        onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult
+}
+```
+
+`onToken` is `nil` for batch mode. For streaming, deliver each text fragment via `onToken` as it arrives (e.g. SSE chunks).
+
+`LLMResult` has a single field: `polishedText: String`.
+
+## Gotchas
+
+- **No `validateCredentials()`**: `TranscriptPolisher` has no such method — do not add it. Credential errors surface via `LLMError.invalidAPIKey` from `polish()`.
+- **`LLMResult` is minimal**: Only `polishedText: String`. No `originalText`, `provider`, `model`, `tokensUsed`, or `latency` fields.
+- **Use `LLMNetworkSession.shared.session`**, not `URLSession.shared` — ensures HTTP/2 multiplexing and correct timeouts.
+- **`@preconcurrency` imports**: Required for any provider SDK that is not fully Sendable-annotated (see `.claude/rules/swift-patterns.md`).
+- **`Sendable` struct**: Store no mutable state in the connector. Keys go through `KeychainManager` only.

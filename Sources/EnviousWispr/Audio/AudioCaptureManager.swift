@@ -48,6 +48,14 @@ final class AudioCaptureManager {
     /// The pipeline should transition to an error state when this fires.
     var onEngineInterrupted: (() -> Void)?
 
+    /// Called before emergency teardown discards captured samples.
+    /// Allows the pipeline to salvage a partial transcript from an interrupted recording.
+    var onPartialSamples: (([Float]) -> Void)?
+
+    /// Called when an audio device operation fails (e.g., input device switch).
+    /// The pipeline should surface this to the user as a visible error banner.
+    var onDeviceError: ((String) -> Void)?
+
     /// Whether noise suppression via Apple Voice Processing is enabled.
     var noiseSuppressionEnabled = false
 
@@ -113,6 +121,7 @@ final class AudioCaptureManager {
                 "Failed to set input device \(deviceID): OSStatus \(status)",
                 level: .info, category: "Audio"
             ) }
+            onDeviceError?("Audio device switch failed for device \(deviceID)")
         }
     }
 
@@ -590,6 +599,13 @@ final class AudioCaptureManager {
         bufferContinuation = nil
         converter = nil
         audioLevel = 0.0
+
+        // Salvage partial samples before discarding — a 10-minute recording
+        // should not be silently lost on device disconnect.
+        if !capturedSamples.isEmpty {
+            let partialSamples = capturedSamples
+            onPartialSamples?(partialSamples)
+        }
         capturedSamples = []
 
         if let observer = configChangeObserver {

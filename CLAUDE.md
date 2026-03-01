@@ -7,6 +7,7 @@ macOS dictation app — record → transcribe → polish → clipboard/paste. Co
 ```bash
 swift package resolve               # Fetch dependencies (first time / after Package.swift change)
 swift build                         # Command Line Tools only, no Xcode
+swift build -c release              # Release build (for .app bundle / distribution)
 swift build --build-tests           # Verify test target compiles
 swift package clean                 # Clear build cache (fixes stale-cache build errors)
 /wispr-rebuild-and-relaunch         # Build + bundle + launch with fresh permissions
@@ -25,7 +26,7 @@ python3 Tests/UITests/uat_runner.py run --files Tests/UITests/generated/<test>.p
 1. **Read [gotchas](.claude/knowledge/gotchas.md) before any code change.** FluidAudio naming collision and Sparkle rpath will bite you.
 2. **Always delegate to an Agent first.** You are a coordinator, not a laborer.
 3. **Never do an agent's job.** If a task falls in an agent's domain, that agent handles it.
-4. **If no agent or skill exists, create one.** Scaffold in `.claude/agents/` or `.claude/skills/` before doing the work yourself.
+4. **If no agent or skill exists, create one.** Scaffold in `.claude/agents/` or `.claude/skills/` before doing the work yourself. For trivial one-off tasks (a debug print, a single-line fix), proceed directly and state your reasoning.
 5. **Compose, don't improvise.** Chain agents: Audio Pipeline diagnoses → Build fixes → Testing validates.
 6. **Read knowledge files before acting.** Consult `.claude/knowledge/` first.
 7. **Teams first for multi-agent work.** If 2+ agents are needed and their outputs depend on each other → `TeamCreate`. See [teamwork](.claude/knowledge/teamwork.md) for compositions, lifecycle, and decision matrix. Only use parallel `Task` for independent single-agent lookups.
@@ -51,13 +52,13 @@ python3 Tests/UITests/uat_runner.py run --files Tests/UITests/generated/<test>.p
 
 | File | Contents |
 | ---- | -------- |
-| [swift-patterns](.claude/rules/swift-patterns.md) | FluidAudio type qualification, required @preconcurrency imports (auto-loaded) |
-| [architecture](.claude/knowledge/architecture.md) | Structure, key types, pipeline state machine, data flow |
-| [gotchas](.claude/knowledge/gotchas.md) | FluidAudio collision, Swift 6, audio format, Keychain |
-| [conventions](.claude/knowledge/conventions.md) | Commit style, DI patterns, view patterns, imports, Definition of Done (UAT) |
-| [distribution](.claude/knowledge/distribution.md) | Release pipeline, Sparkle, DMG build, CI/CD, codesigning |
-| [roadmap](.claude/knowledge/roadmap.md) | Feature requests, tracker, priority system, implementation workflow |
-| [teamwork](.claude/knowledge/teamwork.md) | Team compositions, lifecycle, decision matrix, communication patterns |
-| [file-index](.claude/knowledge/file-index.md) | Every Swift source file — path, lines, types, purpose |
-| [type-index](.claude/knowledge/type-index.md) | Reverse lookup — type name to file, isolation, conformers |
-| [task-router](.claude/knowledge/task-router.md) | Common tasks → files to change, agent to dispatch, skill to invoke |
+| [swift-patterns](.claude/rules/swift-patterns.md) | **Auto-loaded.** FluidAudio `Module.Type` shadowing workaround, `@preconcurrency` import list |
+| [architecture](.claude/knowledge/architecture.md) | App structure, key protocols/actors, pipeline state machine, full data flow diagram |
+| [gotchas](.claude/knowledge/gotchas.md) | 20+ non-obvious traps: FluidAudio collision, Swift 6 concurrency, audio format, Keychain, Sparkle rpath |
+| [conventions](.claude/knowledge/conventions.md) | Commit message style, DI patterns, SwiftUI view patterns, import order, Definition of Done (UAT) |
+| [distribution](.claude/knowledge/distribution.md) | Two-tier build model, Sparkle auto-update, DMG build script, CI/CD workflow, codesigning |
+| [roadmap](.claude/knowledge/roadmap.md) | 20 feature requests, tracker, priority tiers, implementation workflow, agent mapping |
+| [teamwork](.claude/knowledge/teamwork.md) | Standard team compositions, lifecycle protocol, decision matrix, communication patterns |
+| [file-index](.claude/knowledge/file-index.md) | Every Swift source file (60 files, ~8,650 lines) — path, line count, key types, purpose |
+| [type-index](.claude/knowledge/type-index.md) | Reverse lookup — every protocol, actor, class, struct, enum → file path + isolation |
+| [task-router](.claude/knowledge/task-router.md) | Common task patterns → exact files to change, agent to dispatch, skill to invoke |

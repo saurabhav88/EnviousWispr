@@ -50,6 +50,8 @@ final class TranscriptionPipeline {
     private var recordingStartTime: Date?
     /// Whether streaming ASR was successfully started for the current recording.
     private var streamingASRActive = false
+    /// Guards against concurrent stopAndTranscribe calls (e.g., VAD auto-stop racing PTT release).
+    private var isStopping = false
     /// Whether audio input has been pre-warmed (engine started) by PTT key-down.
     private var isPreWarmed = false
 
@@ -226,7 +228,9 @@ final class TranscriptionPipeline {
 
     /// Stop recording and transcribe the captured audio.
     func stopAndTranscribe() async {
-        guard state == .recording else { return }
+        guard state == .recording, !isStopping else { return }
+        isStopping = true
+        defer { isStopping = false }
 
         let pipelineStart = CFAbsoluteTimeGetCurrent()
 
@@ -627,6 +631,7 @@ final class TranscriptionPipeline {
                 }
 
                 processedSampleCount += chunkSize
+                await Task.yield()
             }
 
             try? await Task.sleep(for: .milliseconds(100))
@@ -657,7 +662,9 @@ final class TranscriptionPipeline {
                 throw ASRError.streamingTimeout
             }
             // Whichever finishes first wins; cancel the other.
-            let result = try await group.next()!
+            guard let result = try await group.next() else {
+                throw ASRError.streamingTimeout
+            }
             group.cancelAll()
             return result
         }

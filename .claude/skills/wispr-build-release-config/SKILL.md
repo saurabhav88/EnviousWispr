@@ -54,6 +54,10 @@ ls /Users/m4pro_sv/Desktop/EnviousWispr/.build/release/EnviousWispr.dSYM 2>/dev/
 
 Keep the `.dSYM` alongside any distributed binary for symbolication of crash reports.
 
+## arm64-only constraint (FluidAudio)
+
+FluidAudio uses `Float16` arithmetic internally, which requires the arm64 instruction set. The release binary will be `arm64`-only — a universal (x86_64 + arm64) binary is **not possible** while FluidAudio is a dependency. Do not attempt `swift build -c release --arch x86_64`; it will fail with missing `Float16` symbols. This is expected and acceptable for an Apple Silicon-only consumer product.
+
 ## Common issues
 
 - **Build fails with concurrency errors only in release** — WMO surfaces additional Swift 6 isolation issues not seen in debug. Fix actor isolation on the affected type.

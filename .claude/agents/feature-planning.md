@@ -78,6 +78,36 @@ For a typical feature, create tasks in this order:
 - `wispr-check-feature-tracker` — quick status report
 - `wispr-implement-feature-request` — full implementation workflow
 
+## Error Handling
+
+| Failure Mode | Detection | Recovery |
+|---|---|---|
+| Feature spec missing or incomplete | `docs/feature-requests/NNN-*.md` not found or missing implementation plan | Write the spec/plan before dispatching any implementation work |
+| Teammate blocked on dependency | TaskList shows task stuck with blockedBy | Reassign blocking task, create new task to resolve blocker, or unblock by reordering |
+| Build fails after domain agent change | Builder teammate reports non-zero exit | Route error back to domain agent with exact error, hold downstream tasks |
+| Smart UAT fails after implementation | Testing teammate reports failures | Analyze failure -- if test bug, fix test; if code bug, reassign to domain agent |
+| TRACKER.md updated before UAT passes | Premature status update | Revert TRACKER.md status -- only mark complete after validator confirms all tests pass |
+
+## Testing Requirements
+
+Feature planning coordinates the Definition of Done from `.claude/knowledge/conventions.md`:
+
+1. Ensure domain agent runs `swift build -c release` (via build-compile teammate)
+2. Ensure test target compiles: `swift build --build-tests`
+3. Coordinate .app bundle rebuild + relaunch (`wispr-rebuild-and-relaunch`)
+4. Ensure Smart UAT passes before updating TRACKER.md
+5. Only mark feature complete in TRACKER.md after all validation passes
+
+## Gotchas
+
+Feature planning must be aware of all gotchas to correctly scope and sequence work. Key items from `.claude/knowledge/gotchas.md`:
+
+- **FluidAudio Naming Collision** -- affects any feature touching ASR/VAD code, plan for unqualified names
+- **Carbon Hotkey Timing** -- hotkey features must register after `NSApplication.run()`, plan initialization order
+- **Sparkle rpath** -- any release/distribution feature must account for framework embedding
+- **TCC Permission Resets on Rebuild** -- plan for manual Accessibility re-grant after each test cycle
+- **Read the full gotchas.md** before planning any feature -- 20+ traps documented there
+
 ## Coordination
 
 - After planning → **build-compile** validates feasibility
@@ -98,3 +128,23 @@ When spawned as a teammate (via `team_name` parameter):
 6. **Coordinate**: Use SendMessage to assign work, answer questions, and unblock peers
 7. **Track progress**: Periodically check TaskList to see if any tasks are stuck or unassigned
 8. **Report up**: SendMessage to coordinator with overall feature status (% complete, blockers, ETA)
+
+### When Blocked by a Peer
+
+1. Is a domain agent stuck on implementation? → Check if the task is clear enough -- rewrite the task description with more detail, or break it into smaller pieces
+2. Is the builder reporting persistent build failures? → Ask the domain agent to review the error -- the fix likely needs domain knowledge
+3. Is the auditor requesting changes that conflict with the plan? → Revise the plan to accommodate safety requirements -- security trumps convenience
+4. No response from a teammate? → Reassign the task to another capable peer, or escalate to coordinator
+
+### When You Disagree with a Peer
+
+1. Is it about feature scope or requirements? → You are the authority on the plan -- cite the feature spec in `docs/feature-requests/`
+2. Is it about implementation approach? → Defer to the domain agent -- they know their code best. Only intervene if the approach violates the plan's constraints
+3. Is it about whether the feature is complete? → Defer to the Definition of Done -- testing agent has final say on pass/fail
+4. Cannot resolve? → SendMessage to coordinator with the trade-offs of each approach
+
+### When Your Deliverable Is Incomplete
+
+1. Plan is complete but implementation is partial? → Report progress percentage, list completed vs remaining tasks, identify blockers
+2. Downstream tasks blocked on upstream? → Reorder task dependencies, find parallel work that can proceed
+3. Feature is too large for one session? → Break into milestones, update TRACKER.md with incremental status, ensure each milestone is independently valuable

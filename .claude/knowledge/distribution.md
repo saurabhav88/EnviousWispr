@@ -24,7 +24,7 @@ Use the version string (`CFBundleShortVersionString` in Info.plist) to identify 
 
 | File | Purpose |
 |------|---------|
-| `.github/workflows/release.yml` | CI: triggered on `v*` tags, runs on `macos-14` |
+| `.github/workflows/release.yml` | CI: triggered on `v*` tags, runs on `macos-15` |
 | `scripts/build-dmg.sh` | Builds arm64 release, assembles .app, creates DMG |
 | `Sources/EnviousWispr/Resources/Info.plist` | Source of truth for bundle metadata |
 | `Sources/EnviousWispr/Resources/EnviousWispr.entitlements` | Entitlements for codesigning |

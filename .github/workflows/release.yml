@@ -11,6 +11,7 @@ permissions:
 jobs:
   build-and-release:
     runs-on: macos-15
+    timeout-minutes: 45
 
     steps:
       - name: Checkout

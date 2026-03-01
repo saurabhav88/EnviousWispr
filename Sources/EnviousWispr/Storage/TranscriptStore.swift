@@ -88,21 +88,14 @@ final class TranscriptStore {
         try FileManager.default.removeItem(at: url)
     }
 
-    /// Delete all transcripts from disk.
+    /// Delete all transcripts from disk atomically.
+    /// Removes and recreates the directory to avoid partial-failure states.
     func deleteAll() throws {
         guard FileManager.default.fileExists(atPath: directory.path) else { return }
-        let files = try FileManager.default.contentsOfDirectory(
+        try FileManager.default.removeItem(at: directory)
+        try FileManager.default.createDirectory(
             at: directory,
-            includingPropertiesForKeys: nil
+            withIntermediateDirectories: true
         )
-        var firstError: Error?
-        for file in files where file.pathExtension == "json" {
-            do {
-                try FileManager.default.removeItem(at: file)
-            } catch {
-                if firstError == nil { firstError = error }
-            }
-        }
-        if let firstError { throw firstError }
     }
 }

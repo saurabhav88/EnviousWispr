@@ -49,31 +49,7 @@ struct OllamaConnector: TranscriptPolisher {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         request.timeoutInterval = 60
 
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await LLMNetworkSession.shared.session.data(for: request)
-        } catch let urlError as URLError {
-            switch urlError.code {
-            case .cannotConnectToHost, .timedOut, .cannotFindHost,
-                 .networkConnectionLost, .notConnectedToInternet:
-                throw LLMError.providerUnavailable
-            default:
-                throw LLMError.requestFailed("Network error: \(urlError.localizedDescription)")
-            }
-        }
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw LLMError.requestFailed("Invalid response")
-        }
-
-        switch httpResponse.statusCode {
-        case 200: break
-        case 404:
-            throw LLMError.modelNotFound(config.model)
-        default:
-            let body = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw LLMError.requestFailed("HTTP \(httpResponse.statusCode): \(body)")
-        }
+        let (data, _) = try await performWithRetry(request: request, config: config)
 
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         guard let choices = json?["choices"] as? [[String: Any]],
@@ -95,5 +71,92 @@ struct OllamaConnector: TranscriptPolisher {
             polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines)
                 .strippingLLMPreamble()
         )
+    }
+
+    // MARK: - Retry
+
+    private func performWithRetry(
+        request: URLRequest,
+        config: LLMProviderConfig,
+        maxRetries: Int = 2,
+        delays: [UInt64] = [1_000_000_000, 3_000_000_000]
+    ) async throws -> (Data, HTTPURLResponse) {
+        var lastError: Error?
+        for attempt in 0...maxRetries {
+            if attempt > 0 {
+                let delay = delays[min(attempt - 1, delays.count - 1)]
+                Task { await AppLogger.shared.log(
+                    "Ollama retry \(attempt)/\(maxRetries) after \(delay / 1_000_000_000)s (model=\(config.model))",
+                    level: .verbose, category: "LLM"
+                ) }
+                try await Task.sleep(nanoseconds: delay)
+            }
+
+            do {
+                let (data, response): (Data, URLResponse)
+                do {
+                    (data, response) = try await LLMNetworkSession.shared.session.data(for: request)
+                } catch let urlError as URLError {
+                    switch urlError.code {
+                    case .cannotConnectToHost, .cannotFindHost, .notConnectedToInternet:
+                        throw LLMError.providerUnavailable
+                    case .timedOut, .networkConnectionLost:
+                        throw urlError  // retryable — will be caught below
+                    default:
+                        throw LLMError.requestFailed("Network error: \(urlError.localizedDescription)")
+                    }
+                }
+
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    throw LLMError.requestFailed("Invalid response")
+                }
+
+                switch httpResponse.statusCode {
+                case 200:
+                    return (data, httpResponse)
+                case 404:
+                    throw LLMError.modelNotFound(config.model)
+                default:
+                    let body = String(data: data, encoding: .utf8) ?? ""
+                    let truncated = String(body.prefix(200))
+                    Task { await AppLogger.shared.log(
+                        "Ollama HTTP \(httpResponse.statusCode): \(truncated)",
+                        level: .verbose, category: "LLM"
+                    ) }
+                    throw LLMError.requestFailed(Self.friendlyMessage(for: httpResponse.statusCode))
+                }
+            } catch {
+                lastError = error
+                if !Self.isRetryable(error) { throw error }
+            }
+        }
+        throw lastError!
+    }
+
+    private static func friendlyMessage(for statusCode: Int) -> String {
+        switch statusCode {
+        case 400: return "Ollama rejected the request. Check model name and parameters."
+        case 500...599: return "Ollama server error (HTTP \(statusCode)). Try restarting Ollama."
+        default: return "Ollama request failed (HTTP \(statusCode))."
+        }
+    }
+
+    private static func isRetryable(_ error: Error) -> Bool {
+        if let llmError = error as? LLMError {
+            switch llmError {
+            case .rateLimited: return true
+            case .requestFailed(let msg):
+                return msg.contains("server error")
+            default: return false
+            }
+        }
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .timedOut, .networkConnectionLost:
+                return true
+            default: return false
+            }
+        }
+        return false
     }
 }
