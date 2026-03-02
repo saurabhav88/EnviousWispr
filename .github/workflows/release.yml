@@ -69,31 +69,35 @@ jobs:
 
       - name: Notarize DMG
         env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
         run: |
           set -euo pipefail
           VERSION="${{ steps.version.outputs.version }}"
           DMG_PATH="build/EnviousWispr-${VERSION}.dmg"
 
-          echo "==> Submitting ${DMG_PATH} for notarization ..."
+          # Write API key from base64 secret to temp file
+          KEY_PATH="${RUNNER_TEMP}/AuthKey_${APPLE_API_KEY_ID}.p8"
+          echo -n "${APPLE_API_KEY_BASE64}" | base64 --decode -o "${KEY_PATH}"
+
+          echo "==> Submitting ${DMG_PATH} for notarization (API key auth) ..."
           SUBMIT_OUTPUT=$(xcrun notarytool submit "${DMG_PATH}" \
-            --apple-id "${APPLE_ID}" \
-            --password "${APPLE_ID_PASSWORD}" \
-            --team-id "${APPLE_TEAM_ID}" 2>&1)
+            --key "${KEY_PATH}" \
+            --key-id "${APPLE_API_KEY_ID}" \
+            --issuer "${APPLE_API_ISSUER_ID}" 2>&1)
 
           echo "${SUBMIT_OUTPUT}"
           SUBMISSION_ID=$(echo "${SUBMIT_OUTPUT}" | grep "id:" | head -1 | awk '{print $2}')
 
           if [ -z "${SUBMISSION_ID}" ]; then
             echo "::error::Failed to get submission ID from notarytool"
+            rm -f "${KEY_PATH}"
             exit 1
           fi
           echo "==> Submission ID: ${SUBMISSION_ID}"
 
           # Poll for status instead of --wait (avoids indefinite hangs)
-          # First-time notarization with CoreML models can take 30-45 min
           MAX_ATTEMPTS=90
           ATTEMPT=0
           while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
@@ -102,9 +106,9 @@ jobs:
 
             echo "==> Checking notarization status (attempt ${ATTEMPT}/${MAX_ATTEMPTS}) ..."
             STATUS_OUTPUT=$(xcrun notarytool info "${SUBMISSION_ID}" \
-              --apple-id "${APPLE_ID}" \
-              --password "${APPLE_ID_PASSWORD}" \
-              --team-id "${APPLE_TEAM_ID}" 2>&1) || true
+              --key "${KEY_PATH}" \
+              --key-id "${APPLE_API_KEY_ID}" \
+              --issuer "${APPLE_API_ISSUER_ID}" 2>&1) || true
 
             echo "${STATUS_OUTPUT}"
 
@@ -112,19 +116,22 @@ jobs:
               echo "==> Notarization accepted!"
               xcrun stapler staple "${DMG_PATH}"
               echo "==> Stapled. Done."
+              rm -f "${KEY_PATH}"
               exit 0
             fi
 
             if echo "${STATUS_OUTPUT}" | grep -q "status: Invalid"; then
               echo "::error::Notarization REJECTED"
               xcrun notarytool log "${SUBMISSION_ID}" \
-                --apple-id "${APPLE_ID}" \
-                --password "${APPLE_ID_PASSWORD}" \
-                --team-id "${APPLE_TEAM_ID}" 2>&1 || true
+                --key "${KEY_PATH}" \
+                --key-id "${APPLE_API_KEY_ID}" \
+                --issuer "${APPLE_API_ISSUER_ID}" 2>&1 || true
+              rm -f "${KEY_PATH}"
               exit 1
             fi
           done
 
+          rm -f "${KEY_PATH}"
           echo "::error::Notarization timed out after $((MAX_ATTEMPTS * 30 / 60)) minutes"
           exit 1
 
