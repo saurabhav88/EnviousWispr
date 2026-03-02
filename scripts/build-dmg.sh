@@ -210,6 +210,12 @@ hdiutil convert \
 rm -f "${TEMP_DMG}"
 rm -rf "${DMG_STAGING}"
 
+# Sign the DMG container itself (required for notarization and Gatekeeper).
+if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
+    echo "    Signing DMG container ..."
+    codesign --sign "${CODESIGN_IDENTITY}" --timestamp "${DMG_OUT}"
+fi
+
 # ---------------------------------------------------------------------------
 # 7. Optional notarization
 # ---------------------------------------------------------------------------
