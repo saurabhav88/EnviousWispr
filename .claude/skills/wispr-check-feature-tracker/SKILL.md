@@ -31,8 +31,8 @@ Parse the tracker tables and count:
 | 013 | Multi-language Switching    | [ ]    |
 ```
 
-- `[x]` — feature is committed and build-clean (code merged, tests passed)
-- `[~]` — implementation plan exists OR code is in progress but not yet merged
+- `[x]` — feature is complete: PR merged to `main`, CI `build-check` passed, UAT passed
+- `[~]` — implementation plan exists OR code is in progress but PR not yet merged to `main`
 - `[ ]` — not started (plan may or may not exist)
 
 ### 3. Report summary
@@ -69,5 +69,7 @@ A feature is `[x]` (Complete) only when ALL of the following pass (from `convent
 3. `.app` bundle rebuilt and relaunched (`wispr-rebuild-and-relaunch`)
 4. Smart UAT tests pass (`wispr-run-smart-uat` — scope-driven, generates targeted tests for the feature)
 5. All UAT execution used `run_in_background: true`
+6. PR created targeting `main`, CI `build-check` passed
+7. PR merged to `main`
 
-Mark `[~]` (In Progress) when code is merged but UAT has not yet passed, or when the implementation plan exists but code is not yet started.
+Mark `[~]` (In Progress) when code is on a feature branch but the PR is not yet merged to `main`, or when the implementation plan exists but code is not yet started.

@@ -1,0 +1,1897 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EnviousWispr — GitHub Workflow Guide</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   RESET + BASE
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface-raised: #1c2129;
+  --border: #30363d;
+  --border-subtle: #21262d;
+  --primary: #58a6ff;
+  --primary-muted: #388bfd26;
+  --success: #3fb950;
+  --success-muted: #23863626;
+  --danger: #f85149;
+  --danger-muted: #f8514926;
+  --warning: #d29922;
+  --warning-muted: #d2992226;
+  --text: #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted: #6e7681;
+  --accent-purple: #bc8cff;
+  --accent-cyan: #39d2c0;
+  --font-body: 'DM Sans', -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.4);
+  --shadow-lg: 0 12px 48px rgba(0,0,0,0.5);
+  --pipeline-line: 3px;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+
+/* ============================================================
+   LAYOUT
+   ============================================================ */
+.page-container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* ============================================================
+   HEADER / HERO
+   ============================================================ */
+.hero {
+  padding: 80px 0 60px;
+  text-align: center;
+  position: relative;
+}
+
+.hero::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 600px;
+  height: 400px;
+  background: radial-gradient(ellipse at center, var(--primary-muted) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 6px 16px 6px 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 24px;
+  position: relative;
+  z-index: 1;
+}
+
+.hero-badge .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(63, 185, 80, 0.4); }
+  50% { opacity: 0.8; box-shadow: 0 0 0 6px rgba(63, 185, 80, 0); }
+}
+
+.hero h1 {
+  font-size: clamp(32px, 5vw, 52px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin-bottom: 16px;
+  position: relative;
+  z-index: 1;
+}
+
+.hero h1 .gradient-text {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--accent-purple) 50%, var(--accent-cyan) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.hero p {
+  font-size: 18px;
+  color: var(--text-secondary);
+  max-width: 560px;
+  margin: 0 auto;
+  position: relative;
+  z-index: 1;
+}
+
+/* ============================================================
+   NAVIGATION TABS
+   ============================================================ */
+.nav-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  margin-bottom: 48px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.nav-tab {
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 10px 18px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.nav-tab:hover {
+  color: var(--text);
+  background: var(--surface-raised);
+}
+
+.nav-tab.active {
+  background: var(--primary-muted);
+  color: var(--primary);
+  border: 1px solid rgba(88, 166, 255, 0.2);
+}
+
+/* ============================================================
+   SECTIONS
+   ============================================================ */
+.section {
+  display: none;
+  animation: fadeInSection 0.3s ease;
+}
+
+.section.active {
+  display: block;
+}
+
+@keyframes fadeInSection {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.section-title {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-bottom: 8px;
+}
+
+.section-subtitle {
+  font-size: 16px;
+  color: var(--text-secondary);
+  margin-bottom: 40px;
+  max-width: 640px;
+}
+
+.section-subtitle code {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--success);
+}
+
+/* ============================================================
+   PIPELINE VISUALIZATION
+   ============================================================ */
+.pipeline {
+  position: relative;
+  padding: 20px 0;
+}
+
+.pipeline-step {
+  position: relative;
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  padding-bottom: 0;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  opacity: 0;
+  transform: translateY(16px);
+  animation: stepFadeIn 0.4s ease forwards;
+}
+
+.pipeline-step:nth-child(1) { animation-delay: 0.05s; }
+.pipeline-step:nth-child(2) { animation-delay: 0.1s; }
+.pipeline-step:nth-child(3) { animation-delay: 0.15s; }
+.pipeline-step:nth-child(4) { animation-delay: 0.2s; }
+.pipeline-step:nth-child(5) { animation-delay: 0.25s; }
+.pipeline-step:nth-child(6) { animation-delay: 0.3s; }
+.pipeline-step:nth-child(7) { animation-delay: 0.35s; }
+.pipeline-step:nth-child(8) { animation-delay: 0.4s; }
+
+@keyframes stepFadeIn {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.pipeline-step:last-child .pipeline-connector { display: none; }
+
+/* Left column: icon + connector line */
+.pipeline-icon-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  width: 48px;
+  z-index: 2;
+}
+
+.pipeline-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  border: 2px solid var(--border);
+  background: var(--surface);
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.pipeline-step.reached .pipeline-icon { color: var(--primary); }
+.pipeline-step.success .pipeline-icon { color: var(--success); }
+.pipeline-step.fail .pipeline-icon { color: var(--danger); }
+
+.pipeline-step.reached .pipeline-icon {
+  border-color: var(--primary);
+  background: var(--primary-muted);
+  box-shadow: 0 0 16px rgba(88, 166, 255, 0.2);
+}
+
+.pipeline-step.success .pipeline-icon {
+  border-color: var(--success);
+  background: var(--success-muted);
+  box-shadow: 0 0 16px rgba(63, 185, 80, 0.2);
+}
+
+.pipeline-step.fail .pipeline-icon {
+  border-color: var(--danger);
+  background: var(--danger-muted);
+  box-shadow: 0 0 16px rgba(248, 81, 73, 0.2);
+}
+
+.pipeline-connector {
+  width: var(--pipeline-line);
+  flex-grow: 1;
+  min-height: 32px;
+  background: var(--border);
+  transition: background 0.5s ease;
+}
+
+.pipeline-step.reached .pipeline-connector,
+.pipeline-step.success .pipeline-connector {
+  background: linear-gradient(to bottom, var(--primary), var(--border));
+}
+
+/* Right column: content card */
+.pipeline-content {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 20px 24px;
+  margin-bottom: 16px;
+  transition: all 0.25s ease;
+}
+
+.pipeline-step:hover .pipeline-content {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary), var(--shadow-md);
+}
+
+.pipeline-step.active-step .pipeline-content {
+  border-color: var(--primary);
+  background: var(--surface-raised);
+  box-shadow: 0 0 0 1px var(--primary), 0 0 24px rgba(88, 166, 255, 0.08);
+}
+
+.pipeline-content h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pipeline-content h3 .step-num {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--primary);
+  background: var(--primary-muted);
+  padding: 2px 8px;
+  border-radius: 100px;
+}
+
+.pipeline-content p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+
+.pipeline-content p code,
+.pipeline-detail-inner code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--accent-cyan);
+}
+
+.pipeline-detail {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.35s ease, margin-top 0.35s ease, opacity 0.3s ease;
+  opacity: 0;
+  margin-top: 0;
+}
+
+.pipeline-step.active-step .pipeline-detail {
+  max-height: 600px;
+  opacity: 1;
+  margin-top: 14px;
+}
+
+.pipeline-detail-inner {
+  background: var(--bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+
+.pipeline-detail-inner ul {
+  list-style: none;
+  padding: 0;
+}
+
+.pipeline-detail-inner ul li {
+  position: relative;
+  padding-left: 20px;
+  margin-bottom: 4px;
+}
+
+.pipeline-detail-inner ul li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 9px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+/* ============================================================
+   CONTROLS (Play/Reset for pipeline)
+   ============================================================ */
+.pipeline-controls {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 32px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 10px 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: #79bbff;
+  box-shadow: var(--shadow-md);
+}
+
+.btn-secondary {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.btn-secondary:hover {
+  background: var(--surface-raised);
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.btn-danger {
+  background: var(--danger-muted);
+  border: 1px solid rgba(248, 81, 73, 0.3);
+  color: var(--danger);
+}
+
+.btn-danger:hover {
+  background: rgba(248, 81, 73, 0.2);
+}
+
+/* Button icon containers */
+.btn svg { flex-shrink: 0; }
+
+/* ============================================================
+   SETUP CARDS (What Was Set Up section)
+   ============================================================ */
+.setup-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.setup-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 24px;
+  transition: all 0.25s ease;
+  cursor: default;
+  position: relative;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(16px);
+  animation: stepFadeIn 0.4s ease forwards;
+}
+
+.setup-card:nth-child(1) { animation-delay: 0.05s; }
+.setup-card:nth-child(2) { animation-delay: 0.1s; }
+.setup-card:nth-child(3) { animation-delay: 0.15s; }
+.setup-card:nth-child(4) { animation-delay: 0.2s; }
+.setup-card:nth-child(5) { animation-delay: 0.25s; }
+.setup-card:nth-child(6) { animation-delay: 0.3s; }
+
+.setup-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--card-accent, var(--primary));
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.setup-card:hover {
+  border-color: color-mix(in srgb, var(--card-accent, var(--primary)) 50%, transparent);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.setup-card:hover::before {
+  opacity: 1;
+}
+
+.setup-card-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.setup-card h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.setup-card p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.setup-card p code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.setup-card .tag {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 100px;
+  margin-top: 12px;
+}
+
+.tag-required {
+  background: var(--danger-muted);
+  color: var(--danger);
+  border: 1px solid rgba(248, 81, 73, 0.2);
+}
+
+.tag-auto {
+  background: var(--success-muted);
+  color: var(--success);
+  border: 1px solid rgba(63, 185, 80, 0.2);
+}
+
+.tag-weekly {
+  background: var(--warning-muted);
+  color: var(--warning);
+  border: 1px solid rgba(210, 153, 34, 0.2);
+}
+
+/* ============================================================
+   WHY IT MATTERS — BENEFIT BLOCKS
+   ============================================================ */
+.benefits-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.benefit-item {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  transition: all 0.2s ease;
+  opacity: 0;
+  transform: translateY(16px);
+  animation: stepFadeIn 0.4s ease forwards;
+}
+
+.benefit-item:nth-child(1) { animation-delay: 0.05s; }
+.benefit-item:nth-child(2) { animation-delay: 0.1s; }
+.benefit-item:nth-child(3) { animation-delay: 0.15s; }
+.benefit-item:nth-child(4) { animation-delay: 0.2s; }
+.benefit-item:nth-child(5) { animation-delay: 0.25s; }
+
+.benefit-item:hover {
+  border-color: var(--text-muted);
+}
+
+.benefit-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.benefit-text h4 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.benefit-text p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.benefit-text p code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* ============================================================
+   FAILURE SCENARIO
+   ============================================================ */
+.scenario-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-top: 32px;
+}
+
+.scenario-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.scenario-header:hover {
+  background: var(--surface-raised);
+}
+
+.scenario-header .scenario-warn-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.scenario-header h3 {
+  font-size: 15px;
+  font-weight: 600;
+  flex: 1;
+}
+
+.scenario-header .chevron {
+  color: var(--text-muted);
+  transition: transform 0.3s ease;
+  font-size: 14px;
+}
+
+.scenario-box.open .scenario-header .chevron {
+  transform: rotate(180deg);
+}
+
+.scenario-body {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.4s ease;
+}
+
+.scenario-box.open .scenario-body {
+  max-height: 1200px;
+}
+
+.scenario-body-inner {
+  padding: 24px;
+}
+
+.scenario-body-inner p {
+  color: var(--text-secondary);
+}
+
+.scenario-body-inner .action-title {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Terminal-style CI output */
+.ci-output {
+  background: #010409;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.8;
+  overflow-x: auto;
+  margin: 12px 0;
+}
+
+.ci-output .line-pass { color: var(--success); }
+.ci-output .line-fail { color: var(--danger); }
+.ci-output .line-info { color: var(--text-muted); }
+.ci-output .line-warning { color: var(--warning); }
+
+.scenario-steps {
+  color: var(--text-secondary);
+  padding-left: 20px;
+  font-size: 14px;
+  line-height: 2;
+  margin: 16px 0;
+}
+
+.scenario-success-box {
+  background: var(--success-muted);
+  border: 1px solid rgba(63, 185, 80, 0.2);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  margin-top: 16px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.scenario-success-box .check-icon {
+  color: var(--success);
+  font-size: 16px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.scenario-success-box p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.scenario-success-box strong {
+  color: var(--success);
+}
+
+.scenario-success-box code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--surface);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* ============================================================
+   FLOW DIAGRAM (SVG-based PR lifecycle)
+   ============================================================ */
+.flow-diagram-wrapper {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 32px;
+  margin: 32px 0;
+  overflow-x: auto;
+}
+
+.flow-svg {
+  width: 100%;
+  max-width: 860px;
+  margin: 0 auto;
+  display: block;
+}
+
+/* ============================================================
+   FILE REFERENCE CARD
+   ============================================================ */
+.file-ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--primary);
+}
+
+/* ============================================================
+   DIAGRAM LEGEND
+   ============================================================ */
+.diagram-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.legend-swatch {
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
+.footer {
+  margin-top: 80px;
+  padding: 32px 0;
+  border-top: 1px solid var(--border);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.footer a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.footer a:hover {
+  text-decoration: underline;
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 640px) {
+  .hero { padding: 48px 0 40px; }
+  .hero h1 { font-size: 28px; }
+  .hero p { font-size: 15px; }
+  .nav-tabs { padding: 3px; }
+  .nav-tab { padding: 8px 14px; font-size: 13px; }
+  .setup-grid { grid-template-columns: 1fr; }
+  .pipeline-step { gap: 16px; }
+  .pipeline-content { padding: 16px; }
+  .flow-diagram-wrapper { padding: 16px; }
+}
+
+/* ============================================================
+   WHO/AUTO BADGES
+   ============================================================ */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 100px;
+  letter-spacing: 0.03em;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.badge-you {
+  background: rgba(88, 166, 255, 0.12);
+  color: #58a6ff;
+  border: 1px solid rgba(88, 166, 255, 0.3);
+}
+
+.badge-auto {
+  background: rgba(63, 185, 80, 0.12);
+  color: #3fb950;
+  border: 1px solid rgba(63, 185, 80, 0.3);
+}
+
+/* ============================================================
+   ANALOGY BOX (section-level grounding)
+   ============================================================ */
+.analogy-box {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--primary);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  margin-bottom: 32px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.analogy-box strong {
+  color: var(--text);
+}
+
+/* ============================================================
+   LEGEND / KEY
+   ============================================================ */
+.who-legend {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  margin-bottom: 28px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.who-legend-label {
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-right: 4px;
+}
+
+.who-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ============================================================
+   UTILITY
+   ============================================================ */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  border: 0;
+}
+
+.mt-2 { margin-top: 8px; }
+.mt-4 { margin-top: 16px; }
+.mb-2 { margin-bottom: 8px; }
+.mb-4 { margin-bottom: 16px; }
+</style>
+</head>
+<body>
+
+<div class="page-container">
+
+  <!-- ======== HERO ======== -->
+  <header class="hero">
+    <div class="hero-badge">
+      <span class="dot"></span>
+      Infrastructure Active
+    </div>
+    <h1>Your <span class="gradient-text">GitHub Workflow</span><br>Explained</h1>
+    <p>A visual guide to the development infrastructure now protecting EnviousWispr. No jargon, no walls of text — just how it works.</p>
+  </header>
+
+  <!-- ======== NAVIGATION ======== -->
+  <nav class="nav-tabs" role="tablist" aria-label="Guide sections">
+    <button class="nav-tab active" role="tab" aria-selected="true" data-tab="workflow">The Workflow</button>
+    <button class="nav-tab" role="tab" aria-selected="false" data-tab="setup">What Was Set Up</button>
+    <button class="nav-tab" role="tab" aria-selected="false" data-tab="why">Why It Matters</button>
+    <button class="nav-tab" role="tab" aria-selected="false" data-tab="diagram">Visual Map</button>
+  </nav>
+
+  <!-- ======================================================
+       SECTION 1: THE WORKFLOW (Interactive Pipeline)
+       ====================================================== -->
+  <section class="section active" id="section-workflow" role="tabpanel">
+    <h2 class="section-title">The Developer Workflow</h2>
+    <p class="section-subtitle">Click any step to learn more, or press Play to watch the full journey of your code from idea to <code>main</code>.</p>
+
+    <div class="analogy-box">
+      <strong>Think of <code>main</code> like a published book.</strong> You never scribble edits directly into the published copy — you draft changes on separate scratch paper first, then submit them for a quick quality check before they make it into the next edition.
+    </div>
+
+    <div class="who-legend">
+      <span class="who-legend-label">Key:</span>
+      <span class="who-legend-item"><span class="badge badge-you">&#129489; YOU</span> Steps where you need to take action</span>
+      <span class="who-legend-item"><span class="badge badge-auto">&#129302; AUTO</span> Steps that happen automatically — no action needed</span>
+    </div>
+
+    <div class="pipeline-controls">
+      <button class="btn btn-primary" id="btn-play">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.5v11l9-5.5z"/></svg>
+        <span id="btn-play-text">Play Walkthrough</span>
+      </button>
+      <button class="btn btn-secondary" id="btn-reset">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 8a6 6 0 1 1 1.8 4.3"/><path d="M2 12.5V8h4.5" fill="none"/></svg>
+        Reset
+      </button>
+      <button class="btn btn-danger" id="btn-fail">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zM6.7 5.3a.7.7 0 0 1 1 0L8 5.6l.3-.3a.7.7 0 1 1 1 1L9 6.6l.3.3a.7.7 0 0 1-1 1L8 7.6l-.3.3a.7.7 0 1 1-1-1L7 6.6l-.3-.3a.7.7 0 0 1 0-1z"/></svg>
+        See: CI Fails
+      </button>
+    </div>
+
+    <div class="pipeline" id="pipeline">
+
+      <!-- Step 1: Create Branch -->
+      <div class="pipeline-step" data-step="1">
+        <div class="pipeline-icon-col">
+          <div class="pipeline-icon">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M11.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5zm-2.25.75a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.5 2.5 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25zM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5zM4.25 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5z"/></svg>
+          </div>
+          <div class="pipeline-connector"></div>
+        </div>
+        <div class="pipeline-content">
+          <h3><span class="step-num">01</span> Create Your Scratch Copy <span class="badge badge-you">&#129489; YOU</span></h3>
+          <p>Make a separate copy of the code just for your new idea. The published version (<code>main</code>) stays untouched.</p>
+          <div class="pipeline-detail">
+            <div class="pipeline-detail-inner">
+              <p>Step 1: Run this in your terminal — replace the name with your feature:</p>
+              <div class="ci-output mt-2 mb-2">
+                <span class="line-info">$</span> <span style="color:var(--text)">git checkout -b feat/add-dark-mode</span>
+              </div>
+              <ul>
+                <li>Name it after what you're building: <code>feat/</code> for features, <code>fix/</code> for bug fixes, <code>docs/</code> for docs</li>
+                <li>You now have your own copy of the code to experiment in — nothing you do here touches <code>main</code></li>
+                <li>Think of it as a sandbox: break things, try ideas, nothing is permanent yet</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2: Make Changes -->
+      <div class="pipeline-step" data-step="2">
+        <div class="pipeline-icon-col">
+          <div class="pipeline-icon">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61zm1.414 1.06a.25.25 0 0 0-.354 0L3.462 11.1a.25.25 0 0 0-.064.108l-.563 1.97 1.971-.564a.25.25 0 0 0 .108-.064l8.61-8.61a.25.25 0 0 0 0-.354z"/></svg>
+          </div>
+          <div class="pipeline-connector"></div>
+        </div>
+        <div class="pipeline-content">
+          <h3><span class="step-num">02</span> Write Your Code <span class="badge badge-you">&#129489; YOU</span></h3>
+          <p>Make changes, add features, fix bugs. Work at your own pace — nothing here is permanent until you say so.</p>
+          <div class="pipeline-detail">
+            <div class="pipeline-detail-inner">
+              <ul>
+                <li>Step 2: Write code and save your progress with <code>git commit -m "what I did"</code> as often as you like</li>
+                <li>You can save progress in small chunks — ten tiny commits is fine, nobody will see them</li>
+                <li>Nothing you do here changes <code>main</code> until the very end of this process</li>
+                <li>Made a mistake? No problem — your scratch copy is isolated</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3: Commit and Push -->
+      <div class="pipeline-step" data-step="3">
+        <div class="pipeline-icon-col">
+          <div class="pipeline-icon">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0zm.75 4.75a.75.75 0 0 0-1.5 0v2.5h-2.5a.75.75 0 0 0 0 1.5h2.5v2.5a.75.75 0 0 0 1.5 0v-2.5h2.5a.75.75 0 0 0 0-1.5h-2.5z"/></svg>
+          </div>
+          <div class="pipeline-connector"></div>
+        </div>
+        <div class="pipeline-content">
+          <h3><span class="step-num">03</span> Upload Your Changes to GitHub <span class="badge badge-you">&#129489; YOU</span></h3>
+          <p>Send your scratch copy up to GitHub so it's backed up and ready to review. Your copy only — <code>main</code> is still untouched.</p>
+          <div class="pipeline-detail">
+            <div class="pipeline-detail-inner">
+              <p>Step 3: Run these three commands:</p>
+              <div class="ci-output mb-2">
+                <span class="line-info">$</span> <span style="color:var(--text)">git add -A</span><br>
+                <span class="line-info">$</span> <span style="color:var(--text)">git commit -m "feat: add dark mode toggle"</span><br>
+                <span class="line-info">$</span> <span style="color:var(--text)">git push -u origin feat/add-dark-mode</span>
+              </div>
+              <ul>
+                <li>You can push to your own copy anytime — no restrictions, no approval needed</li>
+                <li>The <code>-u</code> flag is only needed the first time you push a new copy (it links your computer to GitHub)</li>
+                <li>GitHub automatically scans for accidentally pasted API keys or passwords as a safety net</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 4: Open PR -->
+      <div class="pipeline-step" data-step="4">
+        <div class="pipeline-icon-col">
+          <div class="pipeline-icon">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354zM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0z"/></svg>
+          </div>
+          <div class="pipeline-connector"></div>
+        </div>
+        <div class="pipeline-content">
+          <h3><span class="step-num">04</span> Submit Your Changes for Review <span class="badge badge-you">&#129489; YOU</span></h3>
+          <p>On GitHub, click "Open Pull Request" to say: "I'm ready — please check this over before it goes live."</p>
+          <div class="pipeline-detail">
+            <div class="pipeline-detail-inner">
+              <p>Step 4: On GitHub, click the green "Compare &amp; pull request" button that appears after your push. Then these things happen automatically:</p>
+              <ul>
+                <li><span class="badge badge-auto">&#129302; AUTO</span> A pre-filled checklist appears — what changed, what to verify, any release notes needed</li>
+                <li><span class="badge badge-auto">&#129302; AUTO</span> You are assigned as the reviewer (since you own the whole project)</li>
+                <li><span class="badge badge-auto">&#129302; AUTO</span> The quality checks start running immediately in the background</li>
+                <li>The green "Merge" button stays locked until everything passes</li>
+              </ul>
+              <p class="mt-2">Files behind this:</p>
+              <div class="mt-2" style="display:flex;flex-wrap:wrap;gap:6px">
+                <span class="file-ref">.github/pull_request_template.md</span>
+                <span class="file-ref">.github/CODEOWNERS</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 5: CI Checks -->
+      <div class="pipeline-step" data-step="5">
+        <div class="pipeline-icon-col">
+          <div class="pipeline-icon">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M2.5 1.75v11.5c0 .138.112.25.25.25h10.5a.75.75 0 0 1 0 1.5H2.75A1.75 1.75 0 0 1 1 13.25V1.75a.75.75 0 0 1 1.5 0zm3.024 5.086A.75.75 0 0 1 6.5 6.5L8 7.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L8.53 9.53a.75.75 0 0 1-1.06 0L5.72 7.78z"/></svg>
+          </div>
+          <div class="pipeline-connector"></div>
+        </div>
+        <div class="pipeline-content">
+          <h3><span class="step-num">05</span> Automated Quality Checks <span class="badge badge-auto">&#129302; AUTO</span></h3>
+          <p>GitHub automatically builds your code three different ways to catch problems before they go live. You don't do anything — just wait.</p>
+          <div class="pipeline-detail">
+            <div class="pipeline-detail-inner">
+              <p>Three checks run automatically on a fresh Mac in the cloud:</p>
+              <div class="ci-output mt-2 mb-2">
+                <span class="line-pass">&#10003; Normal Build</span> <span class="line-info">— does it compile at all?</span><br>
+                <span class="line-pass">&#10003; Release Build</span> <span class="line-info">— does it compile the way users would get it?</span><br>
+                <span class="line-pass">&#10003; Test Build</span> <span class="line-info">— do the automated tests still compile?</span>
+              </div>
+              <ul>
+                <li>Cached packages keep it fast: usually done in about 1 minute 40 seconds</li>
+                <li>If <strong>any</strong> check fails, the Merge button stays locked — nothing broken can reach <code>main</code></li>
+                <li>Watch them run live in the "Checks" tab on the PR page</li>
+              </ul>
+              <p class="mt-2">File: <span class="file-ref">.github/workflows/pr-check.yml</span></p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 6: Review -->
+      <div class="pipeline-step" data-step="6">
+        <div class="pipeline-icon-col">
+          <div class="pipeline-icon">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M10.5 5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0zm.514 3.243a4 4 0 1 0-5.028 0 7.5 7.5 0 0 0-5.486 7.007.75.75 0 0 0 1.5 0 6 6 0 0 1 12 0 .75.75 0 0 0 1.5 0 7.5 7.5 0 0 0-5.486-7.007z"/></svg>
+          </div>
+          <div class="pipeline-connector"></div>
+        </div>
+        <div class="pipeline-content">
+          <h3><span class="step-num">06</span> Read Your Own Changes <span class="badge badge-you">&#129489; YOU</span></h3>
+          <p>Before merging, take a few minutes to read what you actually changed. This single habit catches an astonishing number of bugs.</p>
+          <div class="pipeline-detail">
+            <div class="pipeline-detail-inner">
+              <p>Step 6: On the PR page, read the "Files changed" tab — everything highlighted in green is new, red is removed.</p>
+              <ul>
+                <li>Seeing your changes laid out side-by-side catches things you overlooked while writing</li>
+                <li>Work through the pre-filled checklist: tests, docs, anything to mention in release notes?</li>
+                <li>Since you own the whole project, you approve your own PR — click "Approve" in the review panel</li>
+                <li>You can also paste the diff into Claude and ask "does anything look off here?"</li>
+                <li>Any open comments or questions on the PR must be marked resolved before merging</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 7: Merge -->
+      <div class="pipeline-step" data-step="7">
+        <div class="pipeline-icon-col">
+          <div class="pipeline-icon">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M5.45 5.154A4.25 4.25 0 0 0 9.25 7.5h1.378a2.251 2.251 0 1 1 0 1.5H9.25A5.734 5.734 0 0 1 5 7.123v3.505a2.25 2.25 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.95-.218zM4.25 13.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5zm8-9a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5z"/></svg>
+          </div>
+          <div class="pipeline-connector"></div>
+        </div>
+        <div class="pipeline-content">
+          <h3><span class="step-num">07</span> Merge — Ship It <span class="badge badge-you">&#129489; YOU</span></h3>
+          <p>When everything passes, click Merge. Your changes are now live in <code>main</code>, squashed into one clean entry in the history.</p>
+          <div class="pipeline-detail">
+            <div class="pipeline-detail-inner">
+              <p>Step 7: The green "Merge" button becomes clickable only when:</p>
+              <ul>
+                <li>All three automated checks passed</li>
+                <li>You approved the review</li>
+                <li>All open comments are resolved</li>
+              </ul>
+              <p class="mt-2"><strong>What "squash" means:</strong> Even if you made 47 messy "fix typo" commits on your scratch copy, <code>main</code> gets just one clean, tidy entry that says what the feature was. It's like turning a rough draft into a final published paragraph — all the messy in-progress saves disappear. This is enforced automatically; you can't accidentally do it the messy way.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 8: Cleanup -->
+      <div class="pipeline-step" data-step="8">
+        <div class="pipeline-icon-col">
+          <div class="pipeline-icon">
+            <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75zM6.5 1.75v1.25h3V1.75a.25.25 0 0 0-.25-.25h-2.5a.25.25 0 0 0-.25.25zM3.613 5.5l.806 8.873A1.75 1.75 0 0 0 6.163 16h3.674a1.75 1.75 0 0 0 1.744-1.627L12.387 5.5z"/></svg>
+          </div>
+        </div>
+        <div class="pipeline-content">
+          <h3><span class="step-num">08</span> Tidy Up <span class="badge badge-you">&#129489; YOU</span></h3>
+          <p>Delete the scratch copy — it's done its job. Keep things tidy for next time.</p>
+          <div class="pipeline-detail">
+            <div class="pipeline-detail-inner">
+              <p>Step 8: GitHub shows a "Delete branch" button right after you merge — click it. Then on your computer:</p>
+              <div class="ci-output mb-2">
+                <span class="line-info">$</span> <span style="color:var(--text)">git checkout main</span><br>
+                <span class="line-info">$</span> <span style="color:var(--text)">git pull</span><br>
+                <span class="line-info">$</span> <span style="color:var(--text)">git branch -d feat/add-dark-mode</span>
+              </div>
+              <ul>
+                <li>Don't worry — your changes are already safely in <code>main</code>. Deleting the scratch copy doesn't lose anything</li>
+                <li>You're now back on the latest version of <code>main</code> with your feature included</li>
+                <li>Ready to start the whole cycle again for the next thing</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Failure Scenario -->
+    <div class="scenario-box" id="fail-scenario">
+      <div class="scenario-header" id="scenario-toggle">
+        <span class="scenario-warn-icon">&#9888;</span>
+        <h3>What Happens If CI Fails?</h3>
+        <span class="chevron">&#9660;</span>
+      </div>
+      <div class="scenario-body">
+        <div class="scenario-body-inner">
+          <p style="margin-bottom:16px">When any automated check fails, the Merge button stays <strong style="color:var(--danger)">locked</strong>. Nothing broken can reach <code>main</code>. Here is what it looks like:</p>
+
+          <div class="ci-output">
+            <span class="line-pass">&#10003; Normal Build</span> <span class="line-info">— passed in 47s</span><br>
+            <span class="line-fail">&#10007; Release Build</span> <span class="line-info">— failed in 1m 12s</span><br>
+            <span class="line-warning">&#9711; Test Build</span> <span class="line-info">— skipped (waiting on Release Build)</span>
+          </div>
+
+          <p class="action-title" style="margin:16px 0 12px"><span class="badge badge-you">&#129489; YOU</span> What to do:</p>
+          <ol class="scenario-steps">
+            <li>Click the red "failed" check on the PR page — it opens the full error log</li>
+            <li>Find the error message (usually near the bottom of the log)</li>
+            <li>Fix it in your code on your scratch copy</li>
+            <li>Save and push again — <span class="badge badge-auto" style="font-size:10px">&#129302; AUTO</span> the checks start over automatically</li>
+            <li>Once all three turn green, the Merge button unlocks</li>
+          </ol>
+
+          <div class="scenario-success-box">
+            <span class="check-icon">&#10003;</span>
+            <p><strong>This is the whole point.</strong> You catch build problems before they reach users. Without this, a broken build could ship to users for days before anyone notices.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ======================================================
+       SECTION 2: WHAT WAS SET UP
+       ====================================================== -->
+  <section class="section" id="section-setup" role="tabpanel">
+    <h2 class="section-title">What Was Set Up</h2>
+    <p class="section-subtitle">Six layers of protection, each one solving a specific problem that trips up solo developers.</p>
+
+    <div class="analogy-box">
+      <strong>Think of these as safety rails on a highway.</strong> You still drive the car — but the rails are there if you drift. Most of the time you won't notice them. When you do, they'll have saved you from something bad.
+    </div>
+
+    <div class="who-legend">
+      <span class="who-legend-label">Key:</span>
+      <span class="who-legend-item"><span class="badge badge-you">&#129489; YOU</span> Needs a one-time setup action from you</span>
+      <span class="who-legend-item"><span class="badge badge-auto">&#129302; AUTO</span> Runs on its own — nothing for you to do</span>
+    </div>
+
+    <div class="setup-grid">
+
+      <div class="setup-card" style="--card-accent: var(--danger)">
+        <div class="setup-card-icon" style="color:var(--danger)">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M4 4a4 4 0 0 1 8 0v2h.25c.966 0 1.75.784 1.75 1.75v5.5A1.75 1.75 0 0 1 12.25 15h-8.5A1.75 1.75 0 0 1 2 13.25v-5.5C2 6.784 2.784 6 3.75 6H4zm8.25 3.5h-8.5a.25.25 0 0 0-.25.25v5.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-5.5a.25.25 0 0 0-.25-.25zM10.5 6V4a2.5 2.5 0 1 0-5 0v2z"/></svg>
+        </div>
+        <h3>Main Branch Lock <span class="badge badge-auto" style="font-size:10px">&#129302; AUTO</span></h3>
+        <p><code>main</code> is locked — nobody can push directly to it, not even you. Every change must go through the full PR process. There is no way to accidentally skip the checks.</p>
+        <span class="tag tag-required">ENFORCED</span>
+      </div>
+
+      <div class="setup-card" style="--card-accent: var(--success)">
+        <div class="setup-card-icon" style="color:var(--success)">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm3.78-9.72a.75.75 0 0 0-1.06-1.06L6.75 9.19 5.28 7.72a.75.75 0 0 0-1.06 1.06l2 2a.75.75 0 0 0 1.06 0z"/></svg>
+        </div>
+        <h3>Automated Build Checks <span class="badge badge-auto" style="font-size:10px">&#129302; AUTO</span></h3>
+        <p>Every time you open a PR, GitHub automatically builds your code three ways in the cloud. You don't run these — they just run. Usually done in about 1 minute 40 seconds.</p>
+        <span class="tag tag-auto">AUTOMATIC</span>
+      </div>
+
+      <div class="setup-card" style="--card-accent: var(--primary)">
+        <div class="setup-card-icon" style="color:var(--primary)">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.743 3.743 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.623-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75zm7.251 10.324l.004-5.073-.002-2.253A2.25 2.25 0 0 0 5.003 2.5H1.5v9h3.757a3.75 3.75 0 0 1 1.994.574zM8.755 4.75l-.004 7.322a3.75 3.75 0 0 1 1.992-.572H14.5v-9h-3.495a2.25 2.25 0 0 0-2.25 2.25z"/></svg>
+        </div>
+        <h3>Pre-filled PR Checklist <span class="badge badge-auto" style="font-size:10px">&#129302; AUTO</span></h3>
+        <p>When you open a PR, a checklist automatically appears: what changed, what to test, whether release notes are needed. It's like a reminder card so you never forget a step.</p>
+        <span class="tag tag-auto">AUTOMATIC</span>
+      </div>
+
+      <div class="setup-card" style="--card-accent: var(--accent-purple)">
+        <div class="setup-card-icon" style="color:var(--accent-purple)">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M2 5.5a3.5 3.5 0 1 1 5.898 2.549 5.507 5.507 0 0 1 3.034 4.084.75.75 0 1 1-1.482.235 4.001 4.001 0 0 0-7.9 0 .75.75 0 0 1-1.482-.236A5.507 5.507 0 0 1 3.102 8.05 3.49 3.49 0 0 1 2 5.5zM5.5 4a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm6.164-1.033a.75.75 0 0 1 1.062-.025 3.07 3.07 0 0 1 .065 4.284.75.75 0 1 1-1.088-1.032 1.57 1.57 0 0 0-.039-2.165.75.75 0 0 1 0-1.062zM11.5 9.68a.75.75 0 0 1 1.035-.232 3.07 3.07 0 0 1 1.397 2.645.75.75 0 0 1-1.5 0 1.57 1.57 0 0 0-.7-1.378.75.75 0 0 1-.232-1.035z"/></svg>
+        </div>
+        <h3>Auto-Assigned Reviewer <span class="badge badge-auto" style="font-size:10px">&#129302; AUTO</span></h3>
+        <p>Every PR automatically tags you (<code>@saurabhav88</code>) as a reviewer via CODEOWNERS. Merging requires only the build-check CI to pass — no human approval is enforced by branch protection.</p>
+        <span class="tag tag-auto">AUTOMATIC</span>
+      </div>
+
+      <div class="setup-card" style="--card-accent: var(--warning)">
+        <div class="setup-card-icon" style="color:var(--warning)">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M5.75 1a.75.75 0 0 0-.75.75v3c0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75v-3a.75.75 0 0 0-.75-.75h-4.5zm.75 3V2.5h3V4h-3zm-2.874 6.78l3.093 3.093a.75.75 0 0 0 1.06.022l5.098-4.874a.75.75 0 1 0-1.036-1.085L7.293 12.39l-2.56-2.56a.75.75 0 0 0-1.057 1.05z"/></svg>
+        </div>
+        <h3>Weekly Dependency Updates <span class="badge badge-auto" style="font-size:10px">&#129302; AUTO</span></h3>
+        <p>Every Monday, GitHub automatically checks if any of your code packages have newer versions. If they do, it opens a PR with the update ready to review — like a personal assistant that tracks software updates for you.</p>
+        <span class="tag tag-weekly">WEEKLY</span>
+      </div>
+
+      <div class="setup-card" style="--card-accent: var(--accent-cyan)">
+        <div class="setup-card-icon" style="color:var(--accent-cyan)">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8.533.133a1.75 1.75 0 0 0-1.066 0l-5.25 1.68A1.75 1.75 0 0 0 1 3.48V7c0 1.566.32 3.182 1.303 4.682.983 1.498 2.585 2.813 5.032 3.855a1.7 1.7 0 0 0 1.33 0c2.447-1.042 4.049-2.357 5.032-3.855C14.68 10.182 15 8.566 15 7V3.48a1.75 1.75 0 0 0-1.217-1.667zm-.61 1.429a.25.25 0 0 1 .153 0l5.25 1.68a.25.25 0 0 1 .174.238V7c0 1.358-.275 2.666-1.057 3.86-.784 1.194-2.121 2.34-4.366 3.297a.2.2 0 0 1-.154 0c-2.245-.956-3.582-2.104-4.366-3.298C2.775 9.666 2.5 8.36 2.5 7V3.48a.25.25 0 0 1 .174-.238z"/></svg>
+        </div>
+        <h3>Secret &amp; Vulnerability Guard <span class="badge badge-auto" style="font-size:10px">&#129302; AUTO</span></h3>
+        <p>Three things happen automatically: known security bugs in your packages trigger alerts; if you accidentally paste an API key into your code, the push gets blocked; any leaked tokens already in the repo get flagged.</p>
+        <span class="tag tag-auto">ALWAYS ON</span>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ======================================================
+       SECTION 3: WHY IT MATTERS
+       ====================================================== -->
+  <section class="section" id="section-why" role="tabpanel">
+    <h2 class="section-title">Why This Matters</h2>
+    <p class="section-subtitle">Every piece of this solves a real problem that solo developers hit eventually. Usually at the worst possible moment.</p>
+
+    <div class="analogy-box">
+      <strong>Solo developers skip these guardrails because it feels like extra work.</strong> It's not — it's insurance. The overhead is maybe 5 extra minutes per change. The time saved catching one bad deployment before users see it is measured in hours.
+    </div>
+
+    <div class="benefits-list">
+
+      <div class="benefit-item">
+        <div class="benefit-icon" style="color:var(--danger)">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M4 4a4 4 0 0 1 8 0v2h.25c.966 0 1.75.784 1.75 1.75v5.5A1.75 1.75 0 0 1 12.25 15h-8.5A1.75 1.75 0 0 1 2 13.25v-5.5C2 6.784 2.784 6 3.75 6H4zm8.25 3.5h-8.5a.25.25 0 0 0-.25.25v5.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-5.5a.25.25 0 0 0-.25-.25zM10.5 6V4a2.5 2.5 0 1 0-5 0v2z"/></svg>
+        </div>
+        <div class="benefit-text">
+          <h4>You Can't Accidentally Ship a Broken Build</h4>
+          <p>Without this, one mistyped command (<code>git push</code> straight to main) can send broken code to every user. Now that literally cannot happen — every change is locked behind the automated checks.</p>
+        </div>
+      </div>
+
+      <div class="benefit-item">
+        <div class="benefit-icon" style="color:var(--primary)">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M10.5 5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0zm.514 3.243a4 4 0 1 0-5.028 0 7.5 7.5 0 0 0-5.486 7.007.75.75 0 0 0 1.5 0 6 6 0 0 1 12 0 .75.75 0 0 0 1.5 0 7.5 7.5 0 0 0-5.486-7.007z"/></svg>
+        </div>
+        <div class="benefit-text">
+          <h4>Reading Your Own Code Before Shipping It Catches Bugs</h4>
+          <p>When you're in the middle of writing code, you miss things. Stepping back and reading your changes as a diff — highlighted red and green in the PR — catches an astonishing number of mistakes. The PR process forces a natural pause before shipping.</p>
+        </div>
+      </div>
+
+      <div class="benefit-item">
+        <div class="benefit-icon" style="color:var(--success)">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm3.78-9.72a.75.75 0 0 0-1.06-1.06L6.75 9.19 5.28 7.72a.75.75 0 0 0-1.06 1.06l2 2a.75.75 0 0 0 1.06 0z"/></svg>
+        </div>
+        <div class="benefit-text">
+          <h4>"Works on My Machine" Is Not Good Enough</h4>
+          <p>Code that compiles fine on your Mac might fail in a clean environment — different cached files, different tool versions, different defaults. The automated checks run on a fresh Mac in the cloud every time, catching those invisible differences before users see them.</p>
+        </div>
+      </div>
+
+      <div class="benefit-item">
+        <div class="benefit-icon" style="color:var(--accent-purple)">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M11.93 8.5a4.002 4.002 0 0 1-7.86 0H.75a.75.75 0 0 1 0-1.5h3.32a4.002 4.002 0 0 1 7.86 0h3.32a.75.75 0 0 1 0 1.5zM8 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"/></svg>
+        </div>
+        <div class="benefit-text">
+          <h4>Your Code History Stays Readable</h4>
+          <p>All those in-progress saves ("fix typo", "actually fix it", "ok REALLY fixed now") get collapsed into one clean commit when you merge. Six months from now when something breaks, you can scan the history and immediately see: what changed, when, and what it was for — not 47 lines of noise.</p>
+        </div>
+      </div>
+
+      <div class="benefit-item">
+        <div class="benefit-icon" style="color:var(--accent-cyan)">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8.533.133a1.75 1.75 0 0 0-1.066 0l-5.25 1.68A1.75 1.75 0 0 0 1 3.48V7c0 1.566.32 3.182 1.303 4.682.983 1.498 2.585 2.813 5.032 3.855a1.7 1.7 0 0 0 1.33 0c2.447-1.042 4.049-2.357 5.032-3.855C14.68 10.182 15 8.566 15 7V3.48a1.75 1.75 0 0 0-1.217-1.667zm-.61 1.429a.25.25 0 0 1 .153 0l5.25 1.68a.25.25 0 0 1 .174.238V7c0 1.358-.275 2.666-1.057 3.86-.784 1.194-2.121 2.34-4.366 3.297a.2.2 0 0 1-.154 0c-2.245-.956-3.582-2.104-4.366-3.298C2.775 9.666 2.5 8.36 2.5 7V3.48a.25.25 0 0 1 .174-.238z"/></svg>
+        </div>
+        <div class="benefit-text">
+          <h4>Accidentally Pasting a Password Into Code Won't Ruin You</h4>
+          <p>It happens to experienced developers all the time — you copy an API key to test something and forget to remove it before committing. Push protection catches it <strong>before it reaches GitHub</strong> and blocks the upload entirely. Without this, that key is now public and you have minutes to revoke it before bots find it.</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ======================================================
+       SECTION 4: VISUAL MAP (SVG Diagram)
+       ====================================================== -->
+  <section class="section" id="section-diagram" role="tabpanel">
+    <h2 class="section-title">Visual Map</h2>
+    <p class="section-subtitle">The full journey of a code change from start to shipped. Hover over any element for details.</p>
+
+    <div class="analogy-box">
+      <strong>Blue line = your scratch copy.</strong> Green line = the path to the published version. The checks box in the middle is the gatekeeper — your changes can't skip it.
+    </div>
+
+    <div class="who-legend">
+      <span class="who-legend-label">Key:</span>
+      <span class="who-legend-item"><span class="badge badge-you">&#129489; YOU</span> You do this</span>
+      <span class="who-legend-item"><span class="badge badge-auto">&#129302; AUTO</span> Happens automatically</span>
+    </div>
+
+    <div class="flow-diagram-wrapper">
+      <svg class="flow-svg" viewBox="0 0 860 520" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M 0 1 L 9 5 L 0 9 z" fill="#58a6ff"/>
+          </marker>
+          <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M 0 1 L 9 5 L 0 9 z" fill="#3fb950"/>
+          </marker>
+          <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M 0 1 L 9 5 L 0 9 z" fill="#f85149"/>
+          </marker>
+          <marker id="arrow-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M 0 1 L 9 5 L 0 9 z" fill="#bc8cff"/>
+          </marker>
+          <!-- Grid pattern -->
+          <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+            <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#21262d" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+
+        <!-- Background grid -->
+        <rect width="860" height="520" fill="#0d1117" rx="12"/>
+        <rect width="860" height="520" fill="url(#grid)" rx="12" opacity="0.5"/>
+
+        <!-- MAIN BRANCH LINE -->
+        <line x1="80" y1="90" x2="780" y2="90" stroke="#30363d" stroke-width="3" stroke-dasharray="8 4"/>
+        <text x="16" y="86" fill="#8b949e" font-family="'DM Sans', sans-serif" font-size="10" font-weight="600">main</text>
+        <text x="16" y="100" fill="#6e7681" font-family="'DM Sans', sans-serif" font-size="9">(published)</text>
+
+        <!-- MAIN BRANCH NODES -->
+        <circle cx="80" cy="90" r="8" fill="#161b22" stroke="#30363d" stroke-width="2"/>
+        <circle cx="780" cy="90" r="8" fill="#161b22" stroke="#3fb950" stroke-width="2">
+          <animate attributeName="r" values="8;10;8" dur="2s" repeatCount="indefinite"/>
+        </circle>
+        <text x="760" y="72" fill="#3fb950" font-family="'DM Sans', sans-serif" font-size="10" font-weight="500" text-anchor="middle">shipped!</text>
+
+        <!-- FEATURE BRANCH splits off -->
+        <path d="M 80 90 L 80 200 L 180 200" fill="none" stroke="#58a6ff" stroke-width="2.5" marker-end="url(#arrow-blue)"/>
+        <text x="20" y="160" fill="#58a6ff" font-family="'DM Sans', sans-serif" font-size="9" font-weight="600" transform="rotate(-90, 20, 160)">YOUR COPY</text>
+
+        <!-- Feature branch line -->
+        <line x1="190" y1="200" x2="630" y2="200" stroke="#58a6ff" stroke-width="2" opacity="0.4"/>
+
+        <!-- YOU badge near scratch copy start -->
+        <rect x="165" y="140" width="90" height="24" rx="12" fill="#58a6ff" opacity="0.15"/>
+        <text x="210" y="156" fill="#58a6ff" font-family="'DM Sans', sans-serif" font-size="9" font-weight="700" text-anchor="middle">&#129489; scratch copy</text>
+
+        <!-- COMMIT DOTS on feature branch -->
+        <g class="diagram-node" data-tooltip="Save your work as you go (you do this)">
+          <circle cx="220" cy="200" r="6" fill="#58a6ff" opacity="0.6"/>
+        </g>
+        <g class="diagram-node" data-tooltip="Another save">
+          <circle cx="280" cy="200" r="6" fill="#58a6ff" opacity="0.6"/>
+        </g>
+        <g class="diagram-node" data-tooltip="Fix and save again — no limit">
+          <circle cx="340" cy="200" r="6" fill="#58a6ff" opacity="0.6"/>
+        </g>
+
+        <!-- PUSH / UPLOAD arrow -->
+        <path d="M 370 200 L 400 200" fill="none" stroke="#58a6ff" stroke-width="2" marker-end="url(#arrow-blue)"/>
+        <text x="385" y="190" fill="#8b949e" font-family="'DM Sans', sans-serif" font-size="9" text-anchor="middle">upload</text>
+
+        <!-- PR BOX -->
+        <g class="diagram-node" data-tooltip="YOU: Open a Pull Request — checks start automatically">
+          <rect x="410" y="170" width="120" height="60" rx="8" fill="#161b22" stroke="#58a6ff" stroke-width="1.5"/>
+          <rect x="410" y="170" width="120" height="3" rx="2" fill="#58a6ff"/>
+          <text x="470" y="192" fill="#e6edf3" font-family="'DM Sans', sans-serif" font-size="12" font-weight="600" text-anchor="middle">Submit for</text>
+          <text x="470" y="207" fill="#e6edf3" font-family="'DM Sans', sans-serif" font-size="12" font-weight="600" text-anchor="middle">Review</text>
+          <text x="470" y="222" fill="#58a6ff" font-family="'DM Sans', sans-serif" font-size="9" font-weight="700" text-anchor="middle">&#129489; YOU</text>
+        </g>
+
+        <!-- CI CHECKS BOX -->
+        <path d="M 470 230 L 470 290" fill="none" stroke="#58a6ff" stroke-width="1.5" marker-end="url(#arrow-blue)"/>
+
+        <g class="diagram-node" data-tooltip="AUTO: Three build checks run automatically in the cloud">
+          <rect x="370" y="300" width="200" height="120" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+          <rect x="370" y="300" width="200" height="3" rx="2" fill="#d29922"/>
+          <text x="470" y="322" fill="#e6edf3" font-family="'DM Sans', sans-serif" font-size="12" font-weight="600" text-anchor="middle">Automated Checks</text>
+          <text x="470" y="336" fill="#3fb950" font-family="'DM Sans', sans-serif" font-size="9" font-weight="700" text-anchor="middle">&#129302; AUTO — runs in the cloud</text>
+
+          <!-- Check items -->
+          <circle cx="396" cy="358" r="5" fill="none" stroke="#3fb950" stroke-width="1.5"/>
+          <text x="406" y="362" fill="#3fb950" font-family="'DM Sans', sans-serif" font-size="10">Normal Build</text>
+          <circle cx="396" cy="378" r="5" fill="none" stroke="#3fb950" stroke-width="1.5"/>
+          <text x="406" y="382" fill="#3fb950" font-family="'DM Sans', sans-serif" font-size="10">Release Build</text>
+          <circle cx="396" cy="398" r="5" fill="none" stroke="#3fb950" stroke-width="1.5"/>
+          <text x="406" y="402" fill="#3fb950" font-family="'DM Sans', sans-serif" font-size="10">Test Build</text>
+        </g>
+
+        <!-- CI PASS path -->
+        <path d="M 570 355 L 630 355 L 630 200" fill="none" stroke="#3fb950" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+        <text x="642" y="280" fill="#3fb950" font-family="'DM Sans', sans-serif" font-size="9" font-weight="600">PASS</text>
+
+        <!-- CI FAIL path -->
+        <path d="M 370 380 L 310 380 L 310 260 L 220 260 L 220 210" fill="none" stroke="#f85149" stroke-width="1.5" stroke-dasharray="6 3" marker-end="url(#arrow-red)"/>
+        <text x="260" y="275" fill="#f85149" font-family="'DM Sans', sans-serif" font-size="9" font-weight="600">FAIL → fix &amp; resubmit</text>
+
+        <!-- REVIEW BOX -->
+        <g class="diagram-node" data-tooltip="YOU: Read your changes, tick the checklist, click Approve">
+          <rect x="620" y="170" width="100" height="60" rx="8" fill="#161b22" stroke="#bc8cff" stroke-width="1.5"/>
+          <rect x="620" y="170" width="100" height="3" rx="2" fill="#bc8cff"/>
+          <text x="670" y="192" fill="#e6edf3" font-family="'DM Sans', sans-serif" font-size="12" font-weight="600" text-anchor="middle">Read &amp;</text>
+          <text x="670" y="207" fill="#e6edf3" font-family="'DM Sans', sans-serif" font-size="12" font-weight="600" text-anchor="middle">Approve</text>
+          <text x="670" y="222" fill="#bc8cff" font-family="'DM Sans', sans-serif" font-size="9" font-weight="700" text-anchor="middle">&#129489; YOU</text>
+        </g>
+
+        <!-- MERGE arrow -->
+        <path d="M 720 200 L 750 200 L 750 90 L 770 90" fill="none" stroke="#3fb950" stroke-width="2" marker-end="url(#arrow-green)"/>
+        <text x="762" y="145" fill="#3fb950" font-family="'DM Sans', sans-serif" font-size="9" font-weight="700" text-anchor="middle" transform="rotate(-90, 762, 145)">MERGE &#129489;</text>
+
+        <!-- Security shield -->
+        <g class="diagram-node" data-tooltip="AUTO: Blocks accidental API key leaks, flags vulnerable packages" transform="translate(70, 420)">
+          <rect width="160" height="50" rx="8" fill="#161b22" stroke="#39d2c0" stroke-width="1" opacity="0.7"/>
+          <text x="80" y="20" fill="#39d2c0" font-family="'DM Sans', sans-serif" font-size="11" font-weight="600" text-anchor="middle">Secret Guard</text>
+          <text x="80" y="34" fill="#6e7681" font-family="'DM Sans', sans-serif" font-size="9" text-anchor="middle">&#129302; blocks leaked passwords</text>
+        </g>
+
+        <!-- Dependabot -->
+        <g class="diagram-node" data-tooltip="AUTO: Every Monday, checks if your packages need updating" transform="translate(630, 430)">
+          <rect width="160" height="50" rx="8" fill="#161b22" stroke="#d29922" stroke-width="1" opacity="0.7"/>
+          <text x="80" y="20" fill="#d29922" font-family="'DM Sans', sans-serif" font-size="11" font-weight="600" text-anchor="middle">Weekly Update Check</text>
+          <text x="80" y="34" fill="#6e7681" font-family="'DM Sans', sans-serif" font-size="9" text-anchor="middle">&#129302; auto-opens update PRs</text>
+        </g>
+
+        <!-- Tooltip (hidden by default, positioned via JS) -->
+        <g id="svg-tooltip" visibility="hidden">
+          <rect id="svg-tooltip-bg" rx="6" fill="#1c2129" stroke="#30363d" stroke-width="1"/>
+          <text id="svg-tooltip-text" fill="#e6edf3" font-family="'DM Sans', sans-serif" font-size="11"/>
+        </g>
+      </svg>
+    </div>
+
+    <div class="diagram-legend">
+      <div class="legend-item">
+        <div class="legend-swatch" style="background:var(--primary)"></div>
+        Your scratch copy
+      </div>
+      <div class="legend-item">
+        <div class="legend-swatch" style="background:var(--success)"></div>
+        Checks passed / shipped
+      </div>
+      <div class="legend-item">
+        <div class="legend-swatch" style="background:var(--danger)"></div>
+        Check failed — go fix it
+      </div>
+      <div class="legend-item">
+        <div class="legend-swatch" style="background:var(--border)"></div>
+        Published version (locked)
+      </div>
+    </div>
+  </section>
+
+  <!-- ======== FOOTER ======== -->
+  <footer class="footer">
+    <p>EnviousWispr GitHub Infrastructure &middot; Set up March 2026 &middot; <a href="https://github.com/saurabhav88/EnviousWispr">View Repository</a></p>
+    <p style="margin-top:8px;font-size:12px;color:var(--text-muted)">Keyboard: <kbd style="font-family:var(--font-mono);background:var(--surface);border:1px solid var(--border);padding:1px 5px;border-radius:3px;font-size:11px">1</kbd>-<kbd style="font-family:var(--font-mono);background:var(--surface);border:1px solid var(--border);padding:1px 5px;border-radius:3px;font-size:11px">4</kbd> switch tabs &middot; <kbd style="font-family:var(--font-mono);background:var(--surface);border:1px solid var(--border);padding:1px 5px;border-radius:3px;font-size:11px">Space</kbd> play/pause</p>
+  </footer>
+
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ============================================================
+  // TAB NAVIGATION
+  // ============================================================
+  var tabs = document.querySelectorAll('.nav-tab');
+  var sections = document.querySelectorAll('.section');
+
+  tabs.forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      var target = tab.dataset.tab;
+
+      tabs.forEach(function(t) {
+        t.classList.remove('active');
+        t.setAttribute('aria-selected', 'false');
+      });
+      tab.classList.add('active');
+      tab.setAttribute('aria-selected', 'true');
+
+      sections.forEach(function(s) { s.classList.remove('active'); });
+      document.getElementById('section-' + target).classList.add('active');
+    });
+  });
+
+  // ============================================================
+  // PIPELINE INTERACTION
+  // ============================================================
+  var pipelineSteps = document.querySelectorAll('.pipeline-step');
+  var playInterval = null;
+  var currentPlayStep = 0;
+  var btnPlayText = document.getElementById('btn-play-text');
+  var btnPlay = document.getElementById('btn-play');
+  var btnPlaySvg = btnPlay.querySelector('svg');
+
+  pipelineSteps.forEach(function(step) {
+    step.addEventListener('click', function() {
+      toggleStep(step);
+    });
+  });
+
+  function toggleStep(stepEl) {
+    var wasActive = stepEl.classList.contains('active-step');
+    pipelineSteps.forEach(function(s) { s.classList.remove('active-step'); });
+    if (!wasActive) {
+      stepEl.classList.add('active-step');
+    }
+  }
+
+  function setPlayButtonState(state) {
+    // state: 'play', 'pause', 'resume', 'replay'
+    var svgPaths = {
+      play: 'M4 2.5v11l9-5.5z',
+      resume: 'M4 2.5v11l9-5.5z',
+      replay: 'M4 2.5v11l9-5.5z',
+      pause: ''
+    };
+
+    if (state === 'pause') {
+      btnPlaySvg.setAttribute('viewBox', '0 0 16 16');
+      // Two pause bars
+      while (btnPlaySvg.firstChild) btnPlaySvg.removeChild(btnPlaySvg.firstChild);
+      var r1 = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      r1.setAttribute('x', '3'); r1.setAttribute('y', '2');
+      r1.setAttribute('width', '4'); r1.setAttribute('height', '12');
+      r1.setAttribute('rx', '1'); r1.setAttribute('fill', 'currentColor');
+      var r2 = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      r2.setAttribute('x', '9'); r2.setAttribute('y', '2');
+      r2.setAttribute('width', '4'); r2.setAttribute('height', '12');
+      r2.setAttribute('rx', '1'); r2.setAttribute('fill', 'currentColor');
+      btnPlaySvg.appendChild(r1);
+      btnPlaySvg.appendChild(r2);
+    } else {
+      while (btnPlaySvg.firstChild) btnPlaySvg.removeChild(btnPlaySvg.firstChild);
+      var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', svgPaths[state]);
+      path.setAttribute('fill', 'currentColor');
+      btnPlaySvg.appendChild(path);
+    }
+
+    var labels = { play: 'Play Walkthrough', pause: 'Pause', resume: 'Resume', replay: 'Replay' };
+    btnPlayText.textContent = labels[state];
+  }
+
+  function resetPipeline() {
+    if (playInterval) {
+      clearInterval(playInterval);
+      playInterval = null;
+    }
+    currentPlayStep = 0;
+    pipelineSteps.forEach(function(s) {
+      s.classList.remove('reached', 'success', 'fail', 'active-step');
+    });
+    setPlayButtonState('play');
+    document.getElementById('fail-scenario').classList.remove('open');
+  }
+
+  function playPipeline() {
+    if (playInterval) {
+      clearInterval(playInterval);
+      playInterval = null;
+      setPlayButtonState('resume');
+      return;
+    }
+
+    if (currentPlayStep >= pipelineSteps.length) {
+      resetPipeline();
+    }
+
+    setPlayButtonState('pause');
+
+    playInterval = setInterval(function() {
+      if (currentPlayStep >= pipelineSteps.length) {
+        clearInterval(playInterval);
+        playInterval = null;
+        setPlayButtonState('replay');
+        pipelineSteps.forEach(function(s) {
+          s.classList.remove('reached');
+          s.classList.add('success');
+        });
+        return;
+      }
+
+      pipelineSteps.forEach(function(s) { s.classList.remove('active-step'); });
+
+      var step = pipelineSteps[currentPlayStep];
+      step.classList.add('reached', 'active-step');
+      step.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+      currentPlayStep++;
+    }, 1800);
+  }
+
+  function showFailScenario() {
+    resetPipeline();
+
+    var failStep = 0;
+    var failInterval = setInterval(function() {
+      if (failStep > 4) {
+        clearInterval(failInterval);
+        pipelineSteps[4].classList.add('fail');
+        pipelineSteps[4].classList.remove('reached');
+        pipelineSteps[4].classList.add('active-step');
+        setTimeout(function() {
+          var box = document.getElementById('fail-scenario');
+          box.classList.add('open');
+          box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 600);
+        return;
+      }
+      pipelineSteps[failStep].classList.add('reached');
+      failStep++;
+    }, 400);
+  }
+
+  document.getElementById('btn-play').addEventListener('click', playPipeline);
+  document.getElementById('btn-reset').addEventListener('click', resetPipeline);
+  document.getElementById('btn-fail').addEventListener('click', showFailScenario);
+
+  // Scenario toggle
+  document.getElementById('scenario-toggle').addEventListener('click', function() {
+    this.parentElement.classList.toggle('open');
+  });
+
+  // ============================================================
+  // SVG DIAGRAM TOOLTIPS
+  // ============================================================
+  var diagramNodes = document.querySelectorAll('.diagram-node');
+  var svgTooltip = document.getElementById('svg-tooltip');
+  var svgTooltipBg = document.getElementById('svg-tooltip-bg');
+  var svgTooltipText = document.getElementById('svg-tooltip-text');
+
+  diagramNodes.forEach(function(node) {
+    node.style.cursor = 'pointer';
+
+    node.addEventListener('mouseenter', function() {
+      var text = node.dataset.tooltip;
+      if (!text) return;
+
+      svgTooltipText.textContent = text;
+      var textBBox = svgTooltipText.getBBox();
+      var padding = 10;
+
+      svgTooltipBg.setAttribute('width', textBBox.width + padding * 2);
+      svgTooltipBg.setAttribute('height', textBBox.height + padding * 2);
+
+      var nodeBBox = node.getBBox();
+      var tx, ty;
+
+      // Check for transform attribute
+      var transform = node.getAttribute('transform');
+      if (transform) {
+        var match = transform.match(/translate\(([^,]+),\s*([^)]+)\)/);
+        if (match) {
+          tx = parseFloat(match[1]) + nodeBBox.width / 2;
+          ty = parseFloat(match[2]) - 10;
+        }
+      }
+
+      if (tx === undefined) {
+        tx = nodeBBox.x + nodeBBox.width / 2;
+        ty = nodeBBox.y - 15;
+      }
+
+      var bgW = textBBox.width + padding * 2;
+      var bgH = textBBox.height + padding * 2;
+      svgTooltipBg.setAttribute('x', tx - bgW / 2);
+      svgTooltipBg.setAttribute('y', ty - bgH);
+      svgTooltipText.setAttribute('x', tx);
+      svgTooltipText.setAttribute('y', ty - padding);
+      svgTooltipText.setAttribute('text-anchor', 'middle');
+
+      svgTooltip.setAttribute('visibility', 'visible');
+    });
+
+    node.addEventListener('mouseleave', function() {
+      svgTooltip.setAttribute('visibility', 'hidden');
+    });
+  });
+
+  // ============================================================
+  // HOVER GLOW ON DIAGRAM NODES
+  // ============================================================
+  diagramNodes.forEach(function(node) {
+    var rects = node.querySelectorAll('rect');
+    var circles = node.querySelectorAll('circle');
+
+    node.addEventListener('mouseenter', function() {
+      rects.forEach(function(r) {
+        r.style.transition = 'filter 0.2s ease';
+        r.style.filter = 'drop-shadow(0 0 8px rgba(88, 166, 255, 0.3))';
+      });
+      circles.forEach(function(c) {
+        c.style.transition = 'filter 0.2s ease';
+        c.style.filter = 'drop-shadow(0 0 6px rgba(88, 166, 255, 0.4))';
+      });
+    });
+
+    node.addEventListener('mouseleave', function() {
+      rects.forEach(function(r) { r.style.filter = 'none'; });
+      circles.forEach(function(c) { c.style.filter = 'none'; });
+    });
+  });
+
+  // ============================================================
+  // KEYBOARD NAVIGATION (1-4 for tabs)
+  // ============================================================
+  document.addEventListener('keydown', function(e) {
+    // Only if no input is focused
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+    var tabKeys = { '1': 'workflow', '2': 'setup', '3': 'why', '4': 'diagram' };
+    var targetTab = tabKeys[e.key];
+    if (targetTab) {
+      tabs.forEach(function(t) {
+        t.classList.remove('active');
+        t.setAttribute('aria-selected', 'false');
+      });
+      sections.forEach(function(s) { s.classList.remove('active'); });
+
+      var matchingTab = document.querySelector('.nav-tab[data-tab="' + targetTab + '"]');
+      if (matchingTab) {
+        matchingTab.classList.add('active');
+        matchingTab.setAttribute('aria-selected', 'true');
+      }
+      document.getElementById('section-' + targetTab).classList.add('active');
+
+      // Scroll tabs into view
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // Space to play/pause pipeline (when on workflow tab)
+    if (e.key === ' ' && document.getElementById('section-workflow').classList.contains('active')) {
+      e.preventDefault();
+      playPipeline();
+    }
+  });
+
+})();
+</script>
+
+</body>
+</html>

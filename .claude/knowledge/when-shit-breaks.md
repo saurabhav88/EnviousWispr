@@ -45,7 +45,7 @@ git push -u origin hotfix/rollback-appcast-v1.0.Y
 ~/bin/gh pr merge --squash --admin  # admin merge to skip review in emergencies
 
 # 4. Verify Sparkle feed points to last-good DMG
-curl https://raw.githubusercontent.com/saurabhav88/EnviousWispr/main/appcast.xml | grep enclosure
+curl https://saurabhav88.github.io/EnviousWispr/appcast.xml | grep enclosure
 ```
 
 **Sparkle clients already running will check the feed on their next update interval. Rolling back appcast.xml stops them from downloading the bad version.**

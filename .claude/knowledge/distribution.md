@@ -18,15 +18,28 @@ Use the version string (`CFBundleShortVersionString` in Info.plist) to identify 
 
 ## Release Flow
 
-`git tag v1.0.0` → GitHub Actions → build → sign → notarize (`--wait`) → staple → DMG → appcast.xml commit → GitHub Release
+`git tag v1.0.0` → GitHub Actions → build → sign → notarize (`--wait`) → staple → DMG → appcast push to main → GitHub Release
 
 **v1.0.0 released 2026-03-02.** Full pipeline completes in ~3.5 min.
+
+### Branch Protection (CI-only)
+
+`main` is protected with a minimal, solo-dev-appropriate setup:
+
+- **Required status check:** `build-check` (from `pr-check.yml`) must pass on PRs
+- **Linear history:** Squash-merge only
+- **Enforce admins:** No — admin PAT can push directly (needed for CI appcast updates)
+- **No required reviews** — solo dev, self-approval is ceremony
+
+The release workflow pushes appcast.xml directly to `main` using `APPCAST_BOT_TOKEN` (a Fine-Grained PAT). See [github-workflow](github-workflow.md) for full details.
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
 | `.github/workflows/release.yml` | CI: triggered on `v*` tags, runs on `macos-15` |
+| `.github/workflows/pr-check.yml` | CI: triggered on PRs to `main`, required status check (`build-check`) |
+| `.github/workflows/codeql.yml` | CI: CodeQL security scanning on PRs and pushes to `main` |
 | `scripts/build-dmg.sh` | Builds arm64 release, assembles .app, creates DMG |
 | `Sources/EnviousWispr/Resources/Info.plist` | Source of truth for bundle metadata |
 | `Sources/EnviousWispr/Resources/EnviousWispr.entitlements` | Entitlements for codesigning |
@@ -39,7 +52,7 @@ Use the version string (`CFBundleShortVersionString` in Info.plist) to identify 
 - `SPUStandardUpdaterController` initialized on launch (`startingUpdater: true`)
 - "Check for Updates..." menu item wired to `updaterController.checkForUpdates(_:)`
 - EdDSA signing (not DSA) — public key in Info.plist (`SUPublicEDKey`)
-- Feed URL in Info.plist (`SUFeedURL`) — overridden by env var in CI
+- Feed URL in Info.plist (`SUFeedURL`): `https://saurabhav88.github.io/EnviousWispr/appcast.xml` (GitHub Pages — more reliable caching than raw.githubusercontent.com)
 
 ## DMG Build (`scripts/build-dmg.sh`)
 
@@ -54,10 +67,11 @@ Use the version string (`CFBundleShortVersionString` in Info.plist) to identify 
 
 | Secret | Purpose |
 |--------|---------|
+| `APPCAST_BOT_TOKEN` | Fine-Grained PAT — pushes appcast.xml directly to main after release |
 | `DEVELOPER_ID_CERT_BASE64` | Code signing certificate (p12, base64) |
 | `DEVELOPER_ID_CERT_PASSWORD` | Certificate password |
 | `APPLE_API_KEY_BASE64` | App Store Connect API key (.p8, base64) |
-| `APPLE_API_KEY_ID` | API key ID (e.g., `6MBC4PS4G6`) |
+| `APPLE_API_KEY_ID` | API key ID |
 | `APPLE_API_ISSUER_ID` | API issuer UUID |
 | `APPLE_TEAM_ID` | Apple Developer Team ID |
 | `APPLE_TEAM_NAME` | Team name (for codesign identity string) |

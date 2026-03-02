@@ -88,7 +88,7 @@ Copy these values into `appcast.xml` for the corresponding `<enclosure>` element
 
 ### 9. Merge release PR to main
 
-All changes must go through a PR before tagging. Create a PR targeting `main`, ensure CI `build-check` passes and the PR is approved, then merge:
+All changes must go through a PR before tagging. Create a PR targeting `main`, ensure CI `build-check` passes, then merge:
 
 ```bash
 # Create release branch and PR (if not already open)
@@ -96,7 +96,7 @@ git checkout -b release/v<version>
 git push -u origin release/v<version>
 gh pr create --title "chore(release): prepare v<version>" --body "Version bump and changelog for v<version>" --base main
 
-# After CI passes and review is approved:
+# After CI passes:
 gh pr merge --squash
 ```
 
@@ -168,7 +168,7 @@ Insert a new `<item>` block before the closing `</channel>` tag. Replace `<versi
 
 **Step 3 — Commit and push to main**
 
-Push the appcast update directly (admin PAT bypasses status checks):
+Push the appcast update directly to main (APPCAST_BOT_TOKEN PAT, enforce admins is off):
 
 ```bash
 git add appcast.xml

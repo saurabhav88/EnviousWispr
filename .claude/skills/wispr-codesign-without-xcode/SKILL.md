@@ -76,13 +76,13 @@ Notarization uses `xcrun notarytool`, which is available with macOS Command Line
 
 ```bash
 xcrun notarytool submit EnviousWispr.dmg \
-  --apple-id "$APPLE_ID" \
-  --password "$APPLE_ID_PASSWORD" \
-  --team-id "$APPLE_TEAM_ID" \
+  --key "$API_KEY_PATH" \
+  --key-id "$API_KEY_ID" \
+  --issuer "$API_ISSUER_ID" \
   --wait
 ```
 
-Use an **app-specific password** (not your Apple ID login password) — generate one at appleid.apple.com. The `--wait` flag blocks until notarization completes and prints the result inline.
+Uses App Store Connect API key authentication (`--key`/`--key-id`/`--issuer`). Generate an API key at App Store Connect > Users and Access > Integrations > App Store Connect API. The `--wait` flag blocks until notarization completes and prints the result inline.
 
 After notarization, staple the ticket:
 
