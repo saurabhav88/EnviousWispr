@@ -51,7 +51,8 @@ A dedicated 4-step onboarding window that auto-opens on first launch, guides the
 - Headline: "Getting Ready..."
 - Indeterminate spinner (FluidAudio doesn't expose download progress)
 - Body: "Downloading the on-device transcription model (~100MB). This is a one-time setup that enables fast, private dictation."
-- Below spinner: "Your hotkey is **Option + D**. Press and hold it anytime to start dictating."
+- Below spinner: "Your hotkey is **Right ⌘ (Command)**. Press and hold it anytime to start dictating."
+- "Change Hotkey" section: shows current binding with "Customize..." button
 - Helper text: "Usually takes less than a minute on a standard connection."
 
 **Logic:**
@@ -181,29 +182,31 @@ class OnboardingViewModel {
 Before writing code, produce and approve the following artifacts:
 
 ### Visual Mockups
-- [x] Step 1 (Welcome + Mic) — layout, icon placement, button states (default, disabled, error recovery)
-- [x] Step 2 (Model Download) — spinner placement, hotkey callout styling, helper text hierarchy
-- [x] Step 3 (Try It Now) — keyboard visual, live feedback area states (waiting → recording → result → success)
-- [x] Step 4 (Ready + Enhancements) — toggle layout, AI Polish discovery link, "Done" button prominence
-- [x] Abort state — menu bar badge appearance, "Setup Required" menu item styling
-- [x] Window chrome — size (~420x380pt), resizability (none), title bar style, close button behavior
+- [x] Step 1 (Welcome + Mic) — animated rainbow lips icon, button states (default, denied/recovery, granted)
+- [x] Step 2 (Model Download + Hotkey) — download progress, Right ⌘ keycap with customize option, 3-phase completion animation
+- [x] Step 3 (AI Polish) — On-Device vs BYOK cards, BYOK card flip to OpenAI/Gemini provider selection with API key field
+- [x] Step 4 (Try It Now) — in-window transcription preview (waiting → recording waveform → transcribing → result → success)
+- [x] Step 5 (All Set) — Auto-Paste toggle, Settings link, Done button
+- [x] Abort state — menu bar badge, "Setup Required" menu item
+- [x] Post-onboarding menu bar — 4 variants (missing mic, missing accessibility, no LLM, all configured)
+- [x] Window chrome — 420px, non-resizable, macOS traffic lights, EnviousWispr branding
 
 **Interactive HTML mockup**: [`docs/designs/onboarding-mockup.html`](../designs/onboarding-mockup.html)
 
 ### Copy Review
-- [ ] All headlines, body text, and button labels finalized
-- [ ] Error states: mic denied, mic revoked, model download failed, network offline
-- [ ] Accessibility framing — confirm "Enable Auto-Paste" wording works without mentioning "Accessibility"
-- [ ] Spinner helper text — validate "usually takes less than a minute" against real download times
+- [x] All headlines, body text, and button labels finalized
+- [x] Error states: mic denied, model download failed (retry button)
+- [x] Accessibility framing — "Enable Auto-Paste" wording confirmed (no mention of Accessibility)
+- [x] Provider helper text — "Get your API key at platform.openai.com/api-keys" / "aistudio.google.com/apikey"
 
 ### Interaction Spec
-- [ ] Step transition animations (cross-fade, slide, or instant)
-- [ ] Auto-advance timing (e.g., 1-second delay after successful transcription in Step 3)
-- [ ] Keyboard navigation — can the user Tab through buttons? Enter to confirm?
-- [ ] Window behavior — can user move it? Does it float above other windows?
+- [x] Step transitions — CSS slide+fade (0.35s cubic-bezier)
+- [x] Auto-advance — Step 2 complete (download → verify → "Good!" → auto-advance ~2.6s), Step 4 success (auto after 0.8s)
+- [x] Hotkey default — Right ⌘ (Command), with customize option during model download
+- [x] Window behavior — non-resizable, centered, movable
 
 ### Design Sign-Off
-All mockups reviewed and approved before implementation begins. Use `frontend-designer` agent to produce interactive HTML mockups for rapid iteration.
+- [x] Design phase complete — mockup reviewed and approved 2026-03-02
 
 ## QA Phase
 

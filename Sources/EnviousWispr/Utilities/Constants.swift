@@ -1,7 +1,7 @@
 import Foundation
 
 enum AppConstants {
-    static let appName = "EnviousWispr Local"
+    static let appName = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "EnviousWispr"
     static let appSupportDir = "EnviousWispr"
     static let transcriptsDir = "transcripts"
 
