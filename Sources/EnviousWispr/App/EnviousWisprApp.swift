@@ -5,7 +5,7 @@ struct EnviousWisprApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        Window("EnviousWispr Local", id: "main") {
+        Window(AppConstants.appName, id: "main") {
             UnifiedWindowView()
                 .frame(minWidth: 560, minHeight: 400)
                 .environment(appDelegate.appState)

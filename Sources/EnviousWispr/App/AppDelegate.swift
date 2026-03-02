@@ -167,7 +167,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Final fallback: SF Symbol
         let fallback = NSImage(
             systemSymbolName: "mic",
-            accessibilityDescription: "EnviousWispr Local"
+            accessibilityDescription: AppConstants.appName
         )
         fallback?.isTemplate = isTemplate
         fallback?.size = NSSize(width: 18, height: 18)
@@ -231,7 +231,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
 
         // Quit
-        let quitItem = NSMenuItem(title: "Quit EnviousWispr Local", action: #selector(quitApp), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "Quit \(AppConstants.appName)", action: #selector(quitApp), keyEquivalent: "q")
         quitItem.image = NSImage(systemSymbolName: "power", accessibilityDescription: "Quit")
         quitItem.target = self
         menu.addItem(quitItem)
@@ -268,7 +268,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             action()
         } else {
             // Fallback: find and show an existing window
-            for window in NSApp.windows where window.title == "EnviousWispr Local" {
+            for window in NSApp.windows where window.title == AppConstants.appName {
                 window.makeKeyAndOrderFront(nil)
                 break
             }
