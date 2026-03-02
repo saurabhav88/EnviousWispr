@@ -62,8 +62,31 @@ Only one backend active at a time. Always unload before switching: `await active
 - **Sparkle needs `@preconcurrency import`** — not fully Sendable-annotated, same as FluidAudio/WhisperKit.
 - **Sparkle.framework must be in bundle** — `build-dmg.sh` copies it; without it the app crashes on launch.
 - **Codesigning without Xcode** — use `codesign` CLI directly with `--options runtime` and entitlements file.
-- **Notarization requires app-specific password** — not the Apple ID password itself.
 - **Sparkle EdDSA key pair** — private key in macOS Keychain + `/tmp/sparkle_eddsa_private_key.txt`; public key in Info.plist.
+
+## CI / GitHub Actions Release Gotchas
+
+### Use `notarytool submit --wait` — NEVER Hand-Roll Polling (CRITICAL)
+
+**`xcrun notarytool submit --wait --timeout 18000` is the correct approach.** Apple handles exponential backoff internally. Do NOT write manual polling loops — a previous Claude session hallucinated that `--wait` could "hang indefinitely" and implemented a manual polling loop instead. This was wrong. The manual polling loop caused the v1.0.0 release to fail repeatedly overnight. `--wait` with `--timeout` worked perfectly on the first try.
+
+**Rule:** If you're tempted to replace `--wait` with manual polling, you are wrong. `--wait` is Apple's recommended approach and works reliably.
+
+### GitHub Actions 6-Hour Job Ceiling
+
+GitHub-hosted runners enforce a **6-hour maximum job runtime** regardless of `timeout-minutes`. Setting `timeout-minutes: 1500` (25h) does nothing — the job dies at 6h. Keep total job time well under 6h. Current release workflow completes in ~3.5 min.
+
+### Tag-Triggered Workflows Run in Detached HEAD
+
+When a workflow triggers on `push: tags: ['v*']`, the runner checks out the tag in **detached HEAD** state. `git checkout main` fails because no local `main` branch exists. Fix: `git fetch origin main && git checkout -B main origin/main`.
+
+### appcast.xml Must Not Be Gitignored
+
+The release workflow commits `appcast.xml` to main (Sparkle reads it from the raw GitHub URL). If `appcast.xml` is in `.gitignore`, `git add appcast.xml` fails silently. The file was removed from `.gitignore`; the workflow also uses `git add -f` as a safety net.
+
+### Notarization Uses API Key Auth (Not Apple ID)
+
+Apple ID + password auth is unreliable in headless CI (2FA hangs). Use App Store Connect API keys: `--key <.p8>`, `--key-id`, `--issuer`. Secrets: `APPLE_API_KEY_BASE64`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`.
 
 ## Streaming ASR — Parakeet Only
 
