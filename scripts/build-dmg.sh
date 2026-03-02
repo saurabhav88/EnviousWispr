@@ -73,8 +73,8 @@ FRAMEWORKS_DIR="${CONTENTS}/Frameworks"
 mkdir -p "${FRAMEWORKS_DIR}"
 SPARKLE_FW="${PROJECT_ROOT}/.build/arm64-apple-macosx/release/Sparkle.framework"
 if [[ -d "${SPARKLE_FW}" ]]; then
-    echo "    Copying Sparkle.framework into bundle ..."
-    cp -R "${SPARKLE_FW}" "${FRAMEWORKS_DIR}/"
+    echo "    Copying Sparkle.framework into bundle (ditto --norsrc to strip resource forks) ..."
+    ditto --norsrc "${SPARKLE_FW}" "${FRAMEWORKS_DIR}/Sparkle.framework"
     # Add the standard Frameworks rpath so the binary finds the framework.
     install_name_tool -add_rpath "@executable_path/../Frameworks" "${MACOS_DIR}/${BINARY_NAME}" 2>/dev/null || true
 else
@@ -138,31 +138,89 @@ if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
     echo ""
     echo "==> [3/5] Signing .app bundle ..."
 
-    # Sign nested frameworks first (Apple notarization requires all code signed
-    # with hardened runtime). Sparkle.framework contains nested binaries.
-    if [[ -d "${FRAMEWORKS_DIR}/Sparkle.framework" ]]; then
-        echo "    Signing Sparkle.framework nested binaries ..."
-        # Sign XPC services and helper tools inside Sparkle
-        find "${FRAMEWORKS_DIR}/Sparkle.framework" -type f \( -name "*.xpc" -o -perm +111 \) | while read -r binary; do
-            # Skip directories and non-Mach-O files
-            file_type=$(file -b "$binary" 2>/dev/null || true)
-            if echo "$file_type" | grep -q "Mach-O"; then
-                codesign --force --options runtime --timestamp --sign "${CODESIGN_IDENTITY}" "$binary" 2>/dev/null || true
-            fi
-        done
-        # Sign the Sparkle framework bundle itself
+    # -------------------------------------------------------------------------
+    # iCloud Desktop sync re-injects com.apple.FinderInfo and
+    # com.apple.fileprovider.fpfs#P on bundle directories within seconds of
+    # them being created. xattr -cr is not sufficient because the daemon
+    # races us. Strategy: build to /tmp (outside iCloud), copy final artifacts
+    # back only after signing and DMG creation.
+    #
+    # We relocate the app bundle to /tmp for signing and DMG assembly, then
+    # copy the final signed DMG back to BUILD_DIR for output.
+    # -------------------------------------------------------------------------
+    SIGN_WORK="/tmp/enviouswispr-sign-$$"
+    SIGN_APP="${SIGN_WORK}/EnviousWispr.app"
+    echo "    Relocating bundle to ${SIGN_WORK} (outside iCloud) for clean signing ..."
+    rm -rf "${SIGN_WORK}"
+    mkdir -p "${SIGN_WORK}"
+    ditto "${APP_BUNDLE}" "${SIGN_APP}"
+
+    SIGN_FRAMEWORKS="${SIGN_APP}/Contents/Frameworks"
+    SIGN_SPARKLE="${SIGN_FRAMEWORKS}/Sparkle.framework"
+    SIGN_MACOS="${SIGN_APP}/Contents/MacOS"
+    SIGN_ENTITLEMENTS="${SIGN_WORK}/EnviousWispr.entitlements"
+    cp "${ENTITLEMENTS_DEST}" "${SIGN_ENTITLEMENTS}"
+
+    # Strip any residual xattrs from the ditto copy
+    xattr -cr "${SIGN_APP}"
+
+    echo "    Signing Sparkle.framework nested bundles and binaries (inside-out) ..."
+
+    # 1. Sign XPC service bundles
+    # Downloader.xpc has com.apple.security.network.client entitlement from Sparkle 2.6+
+    # that MUST be preserved, otherwise notarization rejects it.
+    SIGN_DOWNLOADER="${SIGN_SPARKLE}/Versions/B/XPCServices/Downloader.xpc"
+    if [[ -d "${SIGN_DOWNLOADER}" ]]; then
+        echo "      Signing Downloader.xpc (preserving entitlements) ..."
         codesign --force --options runtime --timestamp \
+            --preserve-metadata=entitlements \
             --sign "${CODESIGN_IDENTITY}" \
-            "${FRAMEWORKS_DIR}/Sparkle.framework"
+            "${SIGN_DOWNLOADER}"
     fi
 
-    # Sign the main app bundle
+    SIGN_INSTALLER="${SIGN_SPARKLE}/Versions/B/XPCServices/Installer.xpc"
+    if [[ -d "${SIGN_INSTALLER}" ]]; then
+        echo "      Signing Installer.xpc ..."
+        codesign --force --options runtime --timestamp \
+            --sign "${CODESIGN_IDENTITY}" \
+            "${SIGN_INSTALLER}"
+    fi
+
+    # 2. Sign Updater.app helper bundle
+    SIGN_UPDATER="${SIGN_SPARKLE}/Versions/B/Updater.app"
+    if [[ -d "${SIGN_UPDATER}" ]]; then
+        echo "      Signing Updater.app ..."
+        codesign --force --options runtime --timestamp \
+            --sign "${CODESIGN_IDENTITY}" \
+            "${SIGN_UPDATER}"
+    fi
+
+    # 3. Sign Autoupdate flat binary — a standalone executable (not a bundle)
+    #    that sits directly in Versions/B/. It gets an ad-hoc signature from
+    #    the SPM build but needs a proper Developer ID + timestamp for notarization.
+    SIGN_AUTOUPDATE="${SIGN_SPARKLE}/Versions/B/Autoupdate"
+    if [[ -f "${SIGN_AUTOUPDATE}" ]]; then
+        echo "      Signing Autoupdate (flat binary) ..."
+        codesign --force --options runtime --timestamp \
+            --sign "${CODESIGN_IDENTITY}" \
+            "${SIGN_AUTOUPDATE}"
+    fi
+
+    # 4. Sign the Sparkle framework bundle itself
+    echo "      Signing Sparkle.framework ..."
     codesign --force --options runtime --timestamp \
         --sign "${CODESIGN_IDENTITY}" \
-        --entitlements "${ENTITLEMENTS_DEST}" \
-        "${APP_BUNDLE}"
-    codesign --verify --deep --strict "${APP_BUNDLE}"
+        "${SIGN_SPARKLE}"
+
+    # 4. Sign the main app bundle
+    echo "    Signing main app bundle ..."
+    codesign --force --options runtime --timestamp \
+        --sign "${CODESIGN_IDENTITY}" \
+        --entitlements "${SIGN_ENTITLEMENTS}" \
+        "${SIGN_APP}"
+    codesign --verify --deep --strict "${SIGN_APP}"
     echo "    Signature verified."
+    # NOTE: SIGN_WORK stays alive — DMG is built from /tmp below to avoid iCloud re-injection.
 else
     echo ""
     echo "==> [3/5] Skipping code signing (CODESIGN_IDENTITY not set)."
@@ -170,45 +228,72 @@ fi
 
 # ---------------------------------------------------------------------------
 # 6. Build DMG with hdiutil (native, no third-party tools)
+#
+# When signing, we build the DMG directly from /tmp (SIGN_APP) so the
+# iCloud Desktop sync daemon cannot re-inject xattrs between signing and
+# DMG creation. The final DMG is written to /tmp then copied to BUILD_DIR.
 # ---------------------------------------------------------------------------
 echo ""
 echo "==> [4/5] Creating DMG staging area ..."
 
-rm -rf "${DMG_STAGING}"
-mkdir -p "${DMG_STAGING}"
+# Determine the source .app for DMG: use /tmp signed copy if available.
+if [[ -n "${SIGN_WORK:-}" && -d "${SIGN_APP:-}" ]]; then
+    DMG_SOURCE_APP="${SIGN_APP}"
+    DMG_STAGING_BASE="${SIGN_WORK}/dmg-staging"
+    DMG_TMP_OUT="${SIGN_WORK}/${DMG_NAME}"
+    DMG_TEMP_IMG="${SIGN_WORK}/${APP_NAME}-tmp.dmg"
+else
+    DMG_SOURCE_APP="${APP_BUNDLE}"
+    DMG_STAGING_BASE="${DMG_STAGING}"
+    DMG_TMP_OUT="${DMG_OUT}"
+    DMG_TEMP_IMG="${BUILD_DIR}/${APP_NAME}-tmp.dmg"
+fi
+
+rm -rf "${DMG_STAGING_BASE}"
+mkdir -p "${DMG_STAGING_BASE}"
 
 # Copy the .app and a symlink to /Applications into the staging folder.
-cp -R "${APP_BUNDLE}" "${DMG_STAGING}/"
-ln -s /Applications "${DMG_STAGING}/Applications"
+ditto "${DMG_SOURCE_APP}" "${DMG_STAGING_BASE}/EnviousWispr.app"
+ln -s /Applications "${DMG_STAGING_BASE}/Applications"
 
 echo "    Building DMG with hdiutil ..."
 
 # Remove any leftover DMG from a prior run.
-rm -f "${DMG_OUT}"
+rm -f "${DMG_TMP_OUT}"
 
 # Step A: create a writable temporary image from the staging folder.
-TEMP_DMG="${BUILD_DIR}/${APP_NAME}-tmp.dmg"
-rm -f "${TEMP_DMG}"
+rm -f "${DMG_TEMP_IMG}"
 
 hdiutil create \
-    -srcfolder "${DMG_STAGING}" \
+    -srcfolder "${DMG_STAGING_BASE}" \
     -volname "${VOLUME_NAME}" \
     -fs HFS+ \
     -fsargs "-c c=64,a=16,b=16" \
     -format UDRW \
     -size 400m \
-    "${TEMP_DMG}"
+    "${DMG_TEMP_IMG}"
 
 # Step B: compress into a read-only, internet-enabled DMG.
+rm -f "${DMG_OUT}"
 hdiutil convert \
-    "${TEMP_DMG}" \
+    "${DMG_TEMP_IMG}" \
     -format UDZO \
     -imagekey zlib-level=9 \
-    -o "${DMG_OUT}"
+    -o "${DMG_TMP_OUT}"
 
-# Clean up the writable temp image.
-rm -f "${TEMP_DMG}"
-rm -rf "${DMG_STAGING}"
+# Copy DMG to BUILD_DIR if it was built in /tmp
+if [[ "${DMG_TMP_OUT}" != "${DMG_OUT}" ]]; then
+    cp "${DMG_TMP_OUT}" "${DMG_OUT}"
+fi
+
+# Clean up the writable temp image and staging.
+rm -f "${DMG_TEMP_IMG}"
+rm -rf "${DMG_STAGING_BASE}"
+
+# Clean up /tmp signing workspace now that DMG is done
+if [[ -n "${SIGN_WORK:-}" ]]; then
+    rm -rf "${SIGN_WORK}"
+fi
 
 # Sign the DMG container itself (required for notarization and Gatekeeper).
 if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
