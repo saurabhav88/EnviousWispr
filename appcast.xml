@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>EnviousWispr Updates</title>
+      <item>
+      <title>Version 1.0.0</title>
+      <pubDate>Mon, 02 Mar 2026 14:55:59 +0000</pubDate>
+      <sparkle:version>1.0.0</sparkle:version>
+      <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
+      <enclosure
+        url="https://github.com/saurabhav88/EnviousWispr/releases/download/v1.0.0/EnviousWispr-1.0.0.dmg"
+        length="4896605"
+        type="application/octet-stream"
+        sparkle:edSignature="sparkle:edSignature="nM+4RxxPj2Id8d0z/oEaHu4CAtx4W7n69/mYJz0G77VTJv3KM//ZgZkb6bqQMgE4e85TfcGt/S4cEhspgzy2Ag==" length="4896605""
+      />
+    </item>
+
+    </channel>
+</rss>
