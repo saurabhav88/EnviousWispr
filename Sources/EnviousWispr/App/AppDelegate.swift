@@ -93,9 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         guard let button = statusItem?.button else { return }
 
-        let idleImage = loadMenuBarImage(named: "menubar-idle", isTemplate: true)
-        button.image = idleImage
-        iconAnimator.configure(button: button, idleImage: idleImage)
+        iconAnimator.configure(button: button)
         iconAnimator.audioLevelProvider = { [weak self] in self?.appState.audioCapture.audioLevel ?? 0 }
 
         let menu = NSMenu()
