@@ -1,0 +1,1562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EnviousWispr Onboarding Mockup</title>
+<style>
+  /* ============================================================
+     CSS RESET + BASE
+     ============================================================ */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background: #e8e8ed;
+    color: #1d1d1f;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px 60px;
+    min-height: 100vh;
+  }
+
+  /* ============================================================
+     CSS VARIABLES — Apple System Colors
+     ============================================================ */
+  :root {
+    --blue: #007AFF;
+    --green: #34C759;
+    --orange: #FF9500;
+    --red: #FF3B30;
+    --gray1: #8E8E93;
+    --gray2: #AEAEB2;
+    --gray3: #C7C7CC;
+    --gray4: #D1D1D6;
+    --gray5: #E5E5EA;
+    --gray6: #F2F2F7;
+    --text-primary: #1d1d1f;
+    --text-secondary: #8E8E93;
+    --text-tertiary: #AEAEB2;
+    --window-bg: #f5f5f7;
+    --window-chrome: #e8e8ed;
+    --window-border: rgba(0,0,0,0.12);
+    --window-shadow: 0 22px 70px rgba(0,0,0,0.18), 0 0 0 0.5px rgba(0,0,0,0.08);
+    --card-bg: #ffffff;
+    --card-border: rgba(0,0,0,0.06);
+    --card-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 0 0 0.5px rgba(0,0,0,0.04);
+  }
+
+  /* ============================================================
+     VIEW SWITCHER (top tabs)
+     ============================================================ */
+  .view-switcher {
+    display: flex;
+    gap: 2px;
+    background: rgba(0,0,0,0.06);
+    border-radius: 8px;
+    padding: 2px;
+    margin-bottom: 32px;
+  }
+  .view-switcher button {
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    padding: 7px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .view-switcher button.active {
+    background: #ffffff;
+    color: var(--text-primary);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 0 0 0.5px rgba(0,0,0,0.04);
+  }
+  .view-switcher button:not(.active):hover {
+    color: var(--text-primary);
+  }
+
+  /* ============================================================
+     macOS WINDOW CHROME
+     ============================================================ */
+  .macos-window {
+    width: 420px;
+    min-height: 380px;
+    background: var(--window-bg);
+    border-radius: 10px;
+    box-shadow: var(--window-shadow);
+    overflow: hidden;
+    position: relative;
+  }
+
+  .titlebar {
+    height: 38px;
+    background: linear-gradient(180deg, #fafafa 0%, #eeeeee 100%);
+    border-bottom: 1px solid rgba(0,0,0,0.08);
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    position: relative;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .traffic-lights {
+    display: flex;
+    gap: 8px;
+    z-index: 1;
+  }
+  .traffic-light {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    position: relative;
+  }
+  .traffic-light.close {
+    background: #ff5f57;
+    border: 0.5px solid rgba(0,0,0,0.12);
+  }
+  .traffic-light.minimize {
+    background: #ffbd2e;
+    border: 0.5px solid rgba(0,0,0,0.12);
+  }
+  .traffic-light.maximize {
+    background: #28c840;
+    border: 0.5px solid rgba(0,0,0,0.12);
+  }
+
+  .titlebar-text {
+    position: absolute;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(0,0,0,0.85);
+    pointer-events: none;
+  }
+
+  /* ============================================================
+     WINDOW CONTENT
+     ============================================================ */
+  .window-content {
+    padding: 24px;
+    min-height: 342px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* ============================================================
+     STEP CONTAINER + TRANSITIONS
+     ============================================================ */
+  .step-panel {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    animation: stepFadeIn 0.3s ease-in-out;
+    flex: 1;
+  }
+  .step-panel.active {
+    display: flex;
+  }
+
+  @keyframes stepFadeIn {
+    from { opacity: 0; transform: translateX(20px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes stepFadeInReverse {
+    from { opacity: 0; transform: translateX(-20px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  /* ============================================================
+     PROGRESS DOTS
+     ============================================================ */
+  .progress-bar {
+    display: flex;
+    justify-content: center;
+    gap: 0;
+    margin-bottom: 20px;
+    width: 100%;
+    align-items: center;
+  }
+  .progress-connector {
+    width: 24px;
+    height: 2px;
+    background: var(--gray5);
+    transition: background 0.3s ease;
+  }
+  .progress-connector.done {
+    background: var(--green);
+  }
+  .progress-dot {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    position: relative;
+  }
+  .progress-dot.upcoming {
+    background: var(--gray5);
+    color: var(--gray2);
+  }
+  .progress-dot.current {
+    background: var(--blue);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(0,122,255,0.3);
+  }
+  .progress-dot.completed {
+    background: var(--green);
+    color: #fff;
+  }
+
+  /* ============================================================
+     ICON CIRCLES
+     ============================================================ */
+  .icon-circle {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 38px;
+    margin-bottom: 16px;
+    transition: all 0.4s ease;
+    flex-shrink: 0;
+  }
+  .icon-circle.orange {
+    background: rgba(255,149,0,0.12);
+    border: 1px solid rgba(255,149,0,0.3);
+    color: var(--orange);
+  }
+  .icon-circle.green {
+    background: rgba(52,199,89,0.12);
+    border: 1px solid rgba(52,199,89,0.3);
+    color: var(--green);
+  }
+  .icon-circle.red {
+    background: rgba(255,59,48,0.12);
+    border: 1px solid rgba(255,59,48,0.3);
+    color: var(--red);
+  }
+  .icon-circle.blue {
+    background: rgba(0,122,255,0.12);
+    border: 1px solid rgba(0,122,255,0.3);
+    color: var(--blue);
+  }
+
+  /* ============================================================
+     TEXT STYLES
+     ============================================================ */
+  .step-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+    text-align: center;
+    letter-spacing: -0.3px;
+  }
+  .step-body {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    text-align: center;
+    margin-bottom: 16px;
+    max-width: 340px;
+  }
+  .step-body strong {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+  .caption {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    text-align: center;
+  }
+
+  /* ============================================================
+     BUTTONS
+     ============================================================ */
+  .btn {
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    border: none;
+    border-radius: 7px;
+    padding: 9px 20px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn-primary {
+    background: var(--blue);
+    color: #fff;
+  }
+  .btn-primary:hover { background: #0069e0; }
+  .btn-primary:disabled {
+    background: var(--gray4);
+    color: var(--gray2);
+    cursor: default;
+    transform: none;
+  }
+  .btn-secondary {
+    background: transparent;
+    color: var(--text-secondary);
+  }
+  .btn-secondary:hover { color: var(--text-primary); }
+  .btn-orange {
+    background: var(--orange);
+    color: #fff;
+  }
+  .btn-orange:hover { background: #e08600; }
+  .btn-done {
+    background: var(--blue);
+    color: #fff;
+    width: 100%;
+    padding: 11px 20px;
+    font-size: 15px;
+    font-weight: 600;
+    justify-content: center;
+    border-radius: 7px;
+  }
+  .btn-done:hover { background: #0069e0; }
+  .btn-done:active { transform: scale(0.98); }
+
+  .skip-link {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    text-decoration: none;
+    cursor: pointer;
+    transition: color 0.15s ease;
+    align-self: flex-end;
+    margin-top: auto;
+    padding-top: 8px;
+  }
+  .skip-link:hover { color: var(--text-secondary); }
+
+  /* ============================================================
+     INLINE ALERT
+     ============================================================ */
+  .inline-alert {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 12px;
+    width: 100%;
+    max-width: 340px;
+    transition: all 0.3s ease;
+  }
+  .inline-alert.red-alert {
+    background: rgba(255,59,48,0.1);
+    border: 1px solid rgba(255,59,48,0.25);
+    color: var(--red);
+  }
+  .inline-alert.green-alert {
+    background: rgba(52,199,89,0.1);
+    border: 1px solid rgba(52,199,89,0.25);
+    color: var(--green);
+  }
+
+  /* ============================================================
+     ICON FLOW (mic -> app -> text)
+     ============================================================ */
+  .icon-flow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+  .icon-flow-item {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: var(--gray6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+  }
+  .icon-flow-arrow {
+    font-size: 11px;
+    color: var(--gray2);
+  }
+
+  /* ============================================================
+     SPINNER
+     ============================================================ */
+  .spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--gray5);
+    border-top-color: var(--blue);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-bottom: 16px;
+    flex-shrink: 0;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* ============================================================
+     STATUS ICON (for step 2 complete/failed)
+     ============================================================ */
+  .status-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 16px;
+    flex-shrink: 0;
+  }
+  .status-icon.green-bg {
+    background: rgba(52,199,89,0.15);
+    color: var(--green);
+  }
+  .status-icon.red-bg {
+    background: rgba(255,59,48,0.15);
+    color: var(--red);
+  }
+
+  /* ============================================================
+     HOTKEY CALLOUT CARD
+     ============================================================ */
+  .callout-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    padding: 16px;
+    width: 100%;
+    max-width: 340px;
+    box-shadow: var(--card-shadow);
+    margin-bottom: 12px;
+  }
+  .callout-card .callout-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+  .callout-card .callout-body {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    margin-bottom: 12px;
+  }
+
+  /* ============================================================
+     KEYBOARD KEY CAPS
+     ============================================================ */
+  .keycaps {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .keycap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 42px;
+    height: 36px;
+    padding: 0 10px;
+    background: linear-gradient(180deg, #fafafa 0%, #e8e8e8 100%);
+    border: 1px solid rgba(0,0,0,0.15);
+    border-bottom-width: 2px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+    font-family: inherit;
+    letter-spacing: 0.3px;
+  }
+  .keycap-plus {
+    font-size: 13px;
+    color: var(--gray2);
+    font-weight: 500;
+  }
+
+  .keycaps-large .keycap {
+    min-width: 52px;
+    height: 44px;
+    font-size: 16px;
+    border-radius: 8px;
+  }
+
+  @keyframes keycapPulse {
+    0%, 100% { box-shadow: 0 1px 2px rgba(0,0,0,0.06), 0 0 0 0 rgba(0,122,255,0); }
+    50% { box-shadow: 0 1px 2px rgba(0,0,0,0.06), 0 0 0 4px rgba(0,122,255,0.15); }
+  }
+  .keycap.pulse {
+    animation: keycapPulse 2s ease-in-out infinite;
+  }
+
+  /* ============================================================
+     FEEDBACK AREA (Step 3)
+     ============================================================ */
+  .feedback-area {
+    width: 100%;
+    max-width: 340px;
+    min-height: 56px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    transition: all 0.3s ease;
+    font-size: 14px;
+  }
+  .feedback-area.waiting {
+    background: var(--gray6);
+    color: var(--text-tertiary);
+    font-style: italic;
+  }
+  .feedback-area.recording {
+    background: rgba(255,59,48,0.08);
+    border: 1px solid rgba(255,59,48,0.2);
+    color: var(--red);
+    font-weight: 500;
+  }
+  .feedback-area.transcribed {
+    background: #fff;
+    border: 1.5px solid rgba(52,199,89,0.4);
+    color: var(--text-primary);
+  }
+  .feedback-area.success {
+    background: rgba(52,199,89,0.1);
+    border: 1px solid rgba(52,199,89,0.3);
+    color: var(--green);
+    font-weight: 500;
+  }
+
+  @keyframes pulseDot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  .rec-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--red);
+    animation: pulseDot 1s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+
+  /* ============================================================
+     TOGGLE SWITCH
+     ============================================================ */
+  .toggle-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 6px 0;
+    width: 100%;
+  }
+  .toggle-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+  .toggle-caption {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+    line-height: 1.3;
+  }
+  .toggle-switch {
+    width: 42px;
+    height: 25px;
+    border-radius: 13px;
+    background: var(--gray4);
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s ease;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .toggle-switch.on { background: var(--green); }
+  .toggle-switch .toggle-knob {
+    width: 21px;
+    height: 21px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    transition: transform 0.2s ease;
+  }
+  .toggle-switch.on .toggle-knob {
+    transform: translateX(17px);
+  }
+
+  /* ============================================================
+     ENHANCEMENT CARD (Step 4)
+     ============================================================ */
+  .enhancement-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    width: 100%;
+    max-width: 340px;
+    box-shadow: var(--card-shadow);
+    margin-bottom: 16px;
+  }
+  .enhancement-divider {
+    height: 1px;
+    background: var(--gray5);
+    margin: 10px 0;
+  }
+  .enhancement-link {
+    font-size: 13px;
+    color: var(--blue);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 0;
+  }
+  .enhancement-link:hover { text-decoration: underline; }
+
+  /* ============================================================
+     MENU BAR MOCKUP
+     ============================================================ */
+  .menubar-mock {
+    width: 420px;
+    background: rgba(0,0,0,0.0);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: var(--window-shadow);
+  }
+  .menubar-strip {
+    height: 28px;
+    background: linear-gradient(180deg, #3a3a3c 0%, #2c2c2e 100%);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 12px;
+    gap: 12px;
+  }
+  .menubar-icon {
+    font-size: 14px;
+    position: relative;
+    cursor: pointer;
+    color: #fff;
+    opacity: 0.9;
+  }
+  .menubar-badge {
+    position: absolute;
+    top: -3px;
+    right: -5px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+  .menubar-badge.orange-badge { background: var(--orange); }
+  .menubar-badge.red-badge { background: var(--red); }
+
+  .menubar-dropdown {
+    background: rgba(246,246,246,0.98);
+    border-radius: 0 0 8px 8px;
+    padding: 6px 0;
+    backdrop-filter: blur(20px);
+  }
+  .menubar-item {
+    padding: 6px 14px;
+    font-size: 13px;
+    color: var(--text-primary);
+    cursor: default;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .menubar-item.disabled {
+    color: var(--text-tertiary);
+  }
+  .menubar-item.warning {
+    color: var(--orange);
+    font-weight: 500;
+  }
+  .menubar-item.error {
+    color: var(--red);
+    font-weight: 500;
+  }
+  .menubar-item.accent {
+    color: var(--blue);
+  }
+  .menubar-item .shortcut {
+    margin-left: auto;
+    color: var(--text-tertiary);
+    font-size: 12px;
+  }
+  .menubar-divider {
+    height: 1px;
+    background: rgba(0,0,0,0.08);
+    margin: 4px 0;
+  }
+
+  /* ============================================================
+     MENU BAR GRID
+     ============================================================ */
+  .menubar-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    width: 100%;
+    max-width: 860px;
+  }
+  .menubar-grid-item {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .menubar-grid-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .menubar-grid .menubar-mock {
+    width: 100%;
+  }
+
+  /* ============================================================
+     CONTROL PANEL
+     ============================================================ */
+  .controls {
+    margin-top: 32px;
+    width: 420px;
+    background: #fff;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 0 0 0.5px rgba(0,0,0,0.04);
+  }
+  .controls-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 12px;
+  }
+  .controls-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+  .controls-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    min-width: 60px;
+    font-weight: 500;
+  }
+  .ctrl-btn {
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid var(--gray4);
+    background: #fff;
+    color: var(--text-primary);
+    padding: 5px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .ctrl-btn:hover {
+    background: var(--gray6);
+    border-color: var(--gray3);
+  }
+  .ctrl-btn.active {
+    background: var(--blue);
+    color: #fff;
+    border-color: var(--blue);
+  }
+  .controls-divider {
+    height: 1px;
+    background: var(--gray5);
+    margin: 12px 0;
+  }
+
+  /* ============================================================
+     VIEW CONTAINERS
+     ============================================================ */
+  .view-container { display: none; }
+  .view-container.active { display: flex; flex-direction: column; align-items: center; }
+
+  /* ============================================================
+     AUTO-ADVANCE HINT
+     ============================================================ */
+  .auto-hint {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-top: 4px;
+    font-style: italic;
+  }
+
+  /* ============================================================
+     BUTTON ROW
+     ============================================================ */
+  .button-row {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    max-width: 340px;
+    margin-top: auto;
+    padding-top: 8px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     VIEW SWITCHER
+     ============================================================ -->
+<div class="view-switcher" id="viewSwitcher">
+  <button class="active" data-view="onboarding" onclick="switchView('onboarding')">Onboarding</button>
+  <button data-view="abort" onclick="switchView('abort')">Abort State</button>
+  <button data-view="menubar" onclick="switchView('menubar')">Post-Onboarding</button>
+</div>
+
+<!-- ============================================================
+     VIEW 1: ONBOARDING WIZARD
+     ============================================================ -->
+<div class="view-container active" id="view-onboarding">
+  <div class="macos-window" id="onboardingWindow">
+    <div class="titlebar">
+      <div class="traffic-lights">
+        <div class="traffic-light close"></div>
+        <div class="traffic-light minimize"></div>
+        <div class="traffic-light maximize"></div>
+      </div>
+      <div class="titlebar-text">EnviousWispr Setup</div>
+    </div>
+    <div class="window-content">
+
+      <!-- PROGRESS BAR -->
+      <div class="progress-bar" id="progressBar">
+        <div class="progress-dot current" id="dot1"><span>1</span></div>
+        <div class="progress-connector" id="conn12"></div>
+        <div class="progress-dot upcoming" id="dot2"><span>2</span></div>
+        <div class="progress-connector" id="conn23"></div>
+        <div class="progress-dot upcoming" id="dot3"><span>3</span></div>
+        <div class="progress-connector" id="conn34"></div>
+        <div class="progress-dot upcoming" id="dot4"><span>4</span></div>
+      </div>
+
+      <!-- ==================== STEP 1 ==================== -->
+      <div class="step-panel active" id="step1">
+        <div class="icon-circle orange" id="step1Icon">
+          <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+        </div>
+
+        <div class="step-title" id="step1Title">Welcome to EnviousWispr</div>
+        <div class="step-body" id="step1Body">Press a hotkey to transcribe your voice. First, we need microphone access.</div>
+
+        <div class="icon-flow" id="step1Flow">
+          <div class="icon-flow-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+          </div>
+          <div class="icon-flow-arrow">&rarr;</div>
+          <div class="icon-flow-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="12" cy="12" r="3"/></svg>
+          </div>
+          <div class="icon-flow-arrow">&rarr;</div>
+          <div class="icon-flow-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8E8E93" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="16" y2="12"/><line x1="4" y1="17" x2="12" y2="17"/></svg>
+          </div>
+        </div>
+
+        <!-- Alert area (hidden by default) -->
+        <div id="step1Alert" style="display:none; width:100%; max-width:340px;"></div>
+
+        <div class="button-row">
+          <button class="btn btn-primary" id="step1GrantBtn" onclick="handleStep1Grant()">Grant Microphone Access</button>
+          <button class="btn btn-primary" id="step1ContinueBtn" disabled onclick="goToStep(2)">Continue</button>
+        </div>
+      </div>
+
+      <!-- ==================== STEP 2 ==================== -->
+      <div class="step-panel" id="step2">
+        <div class="step-title" style="margin-bottom:16px;">Getting Ready...</div>
+
+        <!-- Status area (spinner / check / x) -->
+        <div id="step2StatusArea">
+          <div class="spinner" id="step2Spinner"></div>
+        </div>
+
+        <div class="step-body" id="step2Body">Downloading the on-device transcription model (~100 MB). This is a one-time setup that enables fast, private dictation.</div>
+
+        <div class="callout-card">
+          <div class="callout-title">Your hotkey is Option + D</div>
+          <div class="callout-body">Press and hold it anytime to start dictating.</div>
+          <div class="keycaps">
+            <span class="keycap">&#x2325; Option</span>
+            <span class="keycap-plus">+</span>
+            <span class="keycap">D</span>
+          </div>
+        </div>
+
+        <div class="caption" id="step2Caption">Usually takes less than a minute on a standard connection.</div>
+
+        <div class="button-row" id="step2Buttons" style="display:none;">
+          <button class="btn btn-orange" id="step2RetryBtn" onclick="setStep2State('downloading')" style="display:none;">Retry Download</button>
+          <button class="btn btn-primary" id="step2ContinueBtn" onclick="goToStep(3)" style="display:none;">Continue</button>
+        </div>
+      </div>
+
+      <!-- ==================== STEP 3 ==================== -->
+      <div class="step-panel" id="step3">
+        <div class="step-title" style="margin-bottom:6px;">Let's Try It Out</div>
+        <div class="step-body">Press and hold <strong>Option + D</strong>, say a few words, then release.</div>
+
+        <div class="keycaps keycaps-large" style="margin-bottom:16px;">
+          <span class="keycap pulse" id="keycapOpt">&#x2325; Option</span>
+          <span class="keycap-plus">+</span>
+          <span class="keycap pulse" id="keycapD">D</span>
+        </div>
+
+        <div class="feedback-area waiting" id="feedbackArea">
+          <span id="feedbackText">Waiting for dictation...</span>
+        </div>
+
+        <span class="skip-link" onclick="goToStep(4)">Skip this step &rarr;</span>
+      </div>
+
+      <!-- ==================== STEP 4 ==================== -->
+      <div class="step-panel" id="step4">
+        <div class="icon-circle green">
+          <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+        </div>
+
+        <div class="step-title">You're All Set!</div>
+        <div class="step-body">EnviousWispr is running in your menu bar. Press <strong>Option + D</strong> anytime to dictate.</div>
+
+        <div class="enhancement-card">
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-label">Enable Auto-Paste</div>
+              <div class="toggle-caption">Automatically paste transcriptions into the active app.</div>
+            </div>
+            <div class="toggle-switch" id="autoPasteToggle" onclick="toggleAutoPaste()">
+              <div class="toggle-knob"></div>
+            </div>
+          </div>
+          <div class="enhancement-divider"></div>
+          <div class="enhancement-link">
+            <span>&#x2728;</span> AI Polish available &mdash; configure in Settings
+          </div>
+        </div>
+
+        <div style="width:100%; max-width:340px;">
+          <button class="btn btn-done">Done</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- CONTROLS FOR ONBOARDING -->
+  <div class="controls" id="onboardingControls">
+    <div class="controls-title">Controls</div>
+
+    <div class="controls-row">
+      <span class="controls-label">Step</span>
+      <button class="ctrl-btn active" id="ctrlStep1" onclick="goToStep(1)">1</button>
+      <button class="ctrl-btn" id="ctrlStep2" onclick="goToStep(2)">2</button>
+      <button class="ctrl-btn" id="ctrlStep3" onclick="goToStep(3)">3</button>
+      <button class="ctrl-btn" id="ctrlStep4" onclick="goToStep(4)">4</button>
+      <span style="flex:1"></span>
+      <button class="ctrl-btn" onclick="goToPrevStep()">&larr; Prev</button>
+      <button class="ctrl-btn" onclick="goToNextStep()">Next &rarr;</button>
+    </div>
+
+    <div class="controls-divider"></div>
+
+    <div class="controls-row" id="stateControls1">
+      <span class="controls-label">State</span>
+      <button class="ctrl-btn active" onclick="setStep1State('default')">Default</button>
+      <button class="ctrl-btn" onclick="setStep1State('denied')">Denied</button>
+      <button class="ctrl-btn" onclick="setStep1State('granted')">Granted</button>
+    </div>
+
+    <div class="controls-row" id="stateControls2" style="display:none;">
+      <span class="controls-label">State</span>
+      <button class="ctrl-btn active" onclick="setStep2State('downloading')">Downloading</button>
+      <button class="ctrl-btn" onclick="setStep2State('failed')">Failed</button>
+      <button class="ctrl-btn" onclick="setStep2State('complete')">Complete</button>
+    </div>
+
+    <div class="controls-row" id="stateControls3" style="display:none;">
+      <span class="controls-label">State</span>
+      <button class="ctrl-btn active" onclick="setStep3State('waiting')">Waiting</button>
+      <button class="ctrl-btn" onclick="setStep3State('recording')">Recording</button>
+      <button class="ctrl-btn" onclick="setStep3State('transcribed')">Transcribed</button>
+      <button class="ctrl-btn" onclick="setStep3State('success')">Success</button>
+    </div>
+
+    <div class="controls-row" id="stateControls4" style="display:none;">
+      <span class="controls-label" style="color:var(--text-tertiary); font-style:italic;">No additional states</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     VIEW 2: ABORT / RECOVERY STATE
+     ============================================================ -->
+<div class="view-container" id="view-abort">
+  <div class="menubar-mock">
+    <div class="menubar-strip">
+      <span style="color:#fff; font-size:12px; opacity:0.7; margin-right:auto;">EnviousWispr</span>
+      <div class="menubar-icon">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#fff;"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+        <div class="menubar-badge orange-badge"></div>
+      </div>
+    </div>
+    <div class="menubar-dropdown">
+      <div class="menubar-item warning">&#x26A0;&#xFE0F; Setup Required: Continue Setup...</div>
+      <div class="menubar-divider"></div>
+      <div class="menubar-item disabled">Start Recording <span class="shortcut">&#x2325;D</span></div>
+      <div class="menubar-item disabled">Settings...</div>
+      <div class="menubar-divider"></div>
+      <div class="menubar-item">Quit EnviousWispr <span class="shortcut">&#x2318;Q</span></div>
+    </div>
+  </div>
+
+  <div class="controls" style="width:420px; margin-top:24px;">
+    <div class="controls-title">About this state</div>
+    <p style="font-size:13px; color:var(--text-secondary); line-height:1.5;">
+      When the user closes the onboarding window before completing setup, the menu bar icon shows an orange warning badge. The dropdown prompts them to continue setup. Core features (recording) are disabled until onboarding is complete.
+    </p>
+  </div>
+</div>
+
+<!-- ============================================================
+     VIEW 3: POST-ONBOARDING MENU BAR STATES
+     ============================================================ -->
+<div class="view-container" id="view-menubar">
+  <div class="menubar-grid">
+
+    <!-- Missing Microphone -->
+    <div class="menubar-grid-item">
+      <div class="menubar-grid-label">Missing Microphone</div>
+      <div class="menubar-mock">
+        <div class="menubar-strip">
+          <span style="color:#fff; font-size:12px; opacity:0.7; margin-right:auto;">EnviousWispr</span>
+          <div class="menubar-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF3B30" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+            <div class="menubar-badge red-badge"></div>
+          </div>
+        </div>
+        <div class="menubar-dropdown">
+          <div class="menubar-item error">&#x1F534; Microphone Access Required</div>
+          <div class="menubar-item accent" style="font-size:12px; padding-left:32px;">Open System Settings...</div>
+          <div class="menubar-divider"></div>
+          <div class="menubar-item disabled">Start Recording <span class="shortcut">&#x2325;D</span></div>
+          <div class="menubar-item">Settings...</div>
+          <div class="menubar-divider"></div>
+          <div class="menubar-item">Quit EnviousWispr <span class="shortcut">&#x2318;Q</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Missing Accessibility -->
+    <div class="menubar-grid-item">
+      <div class="menubar-grid-label">Missing Accessibility</div>
+      <div class="menubar-mock">
+        <div class="menubar-strip">
+          <span style="color:#fff; font-size:12px; opacity:0.7; margin-right:auto;">EnviousWispr</span>
+          <div class="menubar-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF9500" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+            <div class="menubar-badge orange-badge"></div>
+          </div>
+        </div>
+        <div class="menubar-dropdown">
+          <div class="menubar-item warning">&#x26A0;&#xFE0F; Paste disabled &mdash; enable Auto-Paste...</div>
+          <div class="menubar-divider"></div>
+          <div class="menubar-item">Start Recording <span class="shortcut">&#x2325;D</span></div>
+          <div class="menubar-item">Settings...</div>
+          <div class="menubar-divider"></div>
+          <div class="menubar-item">Quit EnviousWispr <span class="shortcut">&#x2318;Q</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- No LLM Configured -->
+    <div class="menubar-grid-item">
+      <div class="menubar-grid-label">No LLM Configured</div>
+      <div class="menubar-mock">
+        <div class="menubar-strip">
+          <span style="color:#fff; font-size:12px; opacity:0.7; margin-right:auto;">EnviousWispr</span>
+          <div class="menubar-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+          </div>
+        </div>
+        <div class="menubar-dropdown">
+          <div class="menubar-item accent">&#x2728; AI Polish available &mdash; configure in Settings</div>
+          <div class="menubar-divider"></div>
+          <div class="menubar-item">Start Recording <span class="shortcut">&#x2325;D</span></div>
+          <div class="menubar-item">Settings...</div>
+          <div class="menubar-divider"></div>
+          <div class="menubar-item">Quit EnviousWispr <span class="shortcut">&#x2318;Q</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- All Configured -->
+    <div class="menubar-grid-item">
+      <div class="menubar-grid-label">All Configured</div>
+      <div class="menubar-mock">
+        <div class="menubar-strip">
+          <span style="color:#fff; font-size:12px; opacity:0.7; margin-right:auto;">EnviousWispr</span>
+          <div class="menubar-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+          </div>
+        </div>
+        <div class="menubar-dropdown">
+          <div class="menubar-item">Start Recording <span class="shortcut">&#x2325;D</span></div>
+          <div class="menubar-item">Settings...</div>
+          <div class="menubar-divider"></div>
+          <div class="menubar-item">Quit EnviousWispr <span class="shortcut">&#x2318;Q</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ============================================================
+     JAVASCRIPT
+     ============================================================ -->
+<script>
+  // ============================================================
+  // STATE
+  // ============================================================
+  var currentStep = 1;
+  var currentView = 'onboarding';
+  var step1State = 'default';
+  var step2State = 'downloading';
+  var step3State = 'waiting';
+  var autoPasteOn = false;
+
+  // ============================================================
+  // VIEW SWITCHING
+  // ============================================================
+  function switchView(view) {
+    currentView = view;
+    var containers = document.querySelectorAll('.view-container');
+    for (var i = 0; i < containers.length; i++) {
+      containers[i].classList.remove('active');
+    }
+    document.getElementById('view-' + view).classList.add('active');
+
+    var buttons = document.querySelectorAll('#viewSwitcher button');
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].classList.remove('active');
+      if (buttons[i].getAttribute('data-view') === view) {
+        buttons[i].classList.add('active');
+      }
+    }
+  }
+
+  // ============================================================
+  // STEP NAVIGATION
+  // ============================================================
+  function goToStep(step) {
+    if (step < 1 || step > 4) return;
+    currentStep = step;
+
+    // Update panels
+    var panels = document.querySelectorAll('.step-panel');
+    for (var i = 0; i < panels.length; i++) {
+      panels[i].classList.remove('active');
+    }
+    var panel = document.getElementById('step' + step);
+    panel.classList.add('active');
+    panel.style.animation = 'none';
+    void panel.offsetHeight; // trigger reflow
+    panel.style.animation = 'stepFadeIn 0.3s ease-in-out';
+
+    // Update progress dots
+    for (var i = 1; i <= 4; i++) {
+      var dot = document.getElementById('dot' + i);
+      dot.className = 'progress-dot';
+      var span = dot.querySelector('span');
+      if (i < step) {
+        dot.classList.add('completed');
+        if (span) span.textContent = '\u2713';
+      } else if (i === step) {
+        dot.classList.add('current');
+        if (span) span.textContent = String(i);
+      } else {
+        dot.classList.add('upcoming');
+        if (span) span.textContent = String(i);
+      }
+    }
+
+    // Update connectors
+    var connectors = [
+      { id: 'conn12', after: 1 },
+      { id: 'conn23', after: 2 },
+      { id: 'conn34', after: 3 }
+    ];
+    for (var c = 0; c < connectors.length; c++) {
+      var conn = document.getElementById(connectors[c].id);
+      if (conn) {
+        if (connectors[c].after < step) {
+          conn.classList.add('done');
+        } else {
+          conn.classList.remove('done');
+        }
+      }
+    }
+
+    // Update step nav buttons
+    for (var i = 1; i <= 4; i++) {
+      var btn = document.getElementById('ctrlStep' + i);
+      if (i === step) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    }
+
+    // Show/hide state controls
+    for (var i = 1; i <= 4; i++) {
+      var ctrl = document.getElementById('stateControls' + i);
+      if (ctrl) ctrl.style.display = (i === step) ? 'flex' : 'none';
+    }
+
+    // Reset state controls highlight
+    updateStateControlHighlights();
+  }
+
+  function goToPrevStep() {
+    goToStep(Math.max(1, currentStep - 1));
+  }
+
+  function goToNextStep() {
+    goToStep(Math.min(4, currentStep + 1));
+  }
+
+  function updateStateControlHighlights() {
+    var stateMap = { 1: step1State, 2: step2State, 3: step3State };
+    var stateValue = stateMap[currentStep];
+    if (!stateValue) return;
+
+    var container = document.getElementById('stateControls' + currentStep);
+    if (!container) return;
+
+    var btns = container.querySelectorAll('.ctrl-btn');
+    for (var i = 0; i < btns.length; i++) {
+      var val = btns[i].textContent.toLowerCase().trim();
+      if (val === stateValue) {
+        btns[i].classList.add('active');
+      } else {
+        btns[i].classList.remove('active');
+      }
+    }
+  }
+
+  // ============================================================
+  // STEP 1 STATES
+  // ============================================================
+  function handleStep1Grant() {
+    setStep1State('granted');
+  }
+
+  function setStep1State(state) {
+    step1State = state;
+    var icon = document.getElementById('step1Icon');
+    var body = document.getElementById('step1Body');
+    var flow = document.getElementById('step1Flow');
+    var alert = document.getElementById('step1Alert');
+    var grantBtn = document.getElementById('step1GrantBtn');
+    var continueBtn = document.getElementById('step1ContinueBtn');
+
+    // Build alert content safely
+    while (alert.firstChild) alert.removeChild(alert.firstChild);
+
+    if (state === 'default') {
+      icon.className = 'icon-circle orange';
+      setIconMic(icon);
+      body.textContent = 'Press a hotkey to transcribe your voice. First, we need microphone access.';
+      flow.style.display = 'flex';
+      alert.style.display = 'none';
+      grantBtn.style.display = '';
+      grantBtn.textContent = 'Grant Microphone Access';
+      grantBtn.className = 'btn btn-primary';
+      grantBtn.onclick = handleStep1Grant;
+      continueBtn.disabled = true;
+
+    } else if (state === 'denied') {
+      icon.className = 'icon-circle red';
+      setIconMicDenied(icon);
+      body.textContent = 'Press a hotkey to transcribe your voice. First, we need microphone access.';
+      flow.style.display = 'flex';
+      alert.style.display = 'block';
+      var alertDiv = document.createElement('div');
+      alertDiv.className = 'inline-alert red-alert';
+      alertDiv.textContent = 'Microphone access was denied.';
+      alert.appendChild(alertDiv);
+      grantBtn.style.display = '';
+      grantBtn.textContent = 'Open System Settings';
+      grantBtn.className = 'btn btn-orange';
+      grantBtn.onclick = function() {};
+      continueBtn.disabled = true;
+
+    } else if (state === 'granted') {
+      icon.className = 'icon-circle green';
+      setIconCheck(icon);
+      body.textContent = 'Press a hotkey to transcribe your voice. First, we need microphone access.';
+      flow.style.display = 'none';
+      alert.style.display = 'block';
+      var alertDiv = document.createElement('div');
+      alertDiv.className = 'inline-alert green-alert';
+      alertDiv.textContent = 'Microphone access granted \u2713';
+      alert.appendChild(alertDiv);
+      grantBtn.style.display = 'none';
+      continueBtn.disabled = false;
+    }
+
+    updateStateControlHighlights();
+  }
+
+  function setIconMic(container) {
+    while (container.firstChild) container.removeChild(container.firstChild);
+    var ns = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('width', '38');
+    svg.setAttribute('height', '38');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '1.8');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+
+    var p1 = document.createElementNS(ns, 'path');
+    p1.setAttribute('d', 'M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z');
+    var p2 = document.createElementNS(ns, 'path');
+    p2.setAttribute('d', 'M19 10v2a7 7 0 0 1-14 0v-2');
+    var l1 = document.createElementNS(ns, 'line');
+    l1.setAttribute('x1', '12'); l1.setAttribute('y1', '19');
+    l1.setAttribute('x2', '12'); l1.setAttribute('y2', '23');
+    var l2 = document.createElementNS(ns, 'line');
+    l2.setAttribute('x1', '8'); l2.setAttribute('y1', '23');
+    l2.setAttribute('x2', '16'); l2.setAttribute('y2', '23');
+
+    svg.appendChild(p1);
+    svg.appendChild(p2);
+    svg.appendChild(l1);
+    svg.appendChild(l2);
+    container.appendChild(svg);
+  }
+
+  function setIconMicDenied(container) {
+    while (container.firstChild) container.removeChild(container.firstChild);
+    var ns = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('width', '38');
+    svg.setAttribute('height', '38');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '1.8');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+
+    var p1 = document.createElementNS(ns, 'path');
+    p1.setAttribute('d', 'M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z');
+    var p2 = document.createElementNS(ns, 'path');
+    p2.setAttribute('d', 'M19 10v2a7 7 0 0 1-14 0v-2');
+    var l1 = document.createElementNS(ns, 'line');
+    l1.setAttribute('x1', '4'); l1.setAttribute('y1', '4');
+    l1.setAttribute('x2', '20'); l1.setAttribute('y2', '20');
+    l1.setAttribute('stroke-width', '2.5');
+
+    svg.appendChild(p1);
+    svg.appendChild(p2);
+    svg.appendChild(l1);
+    container.appendChild(svg);
+  }
+
+  function setIconCheck(container) {
+    while (container.firstChild) container.removeChild(container.firstChild);
+    var ns = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('width', '38');
+    svg.setAttribute('height', '38');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '2.5');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+
+    var pl = document.createElementNS(ns, 'polyline');
+    pl.setAttribute('points', '20 6 9 17 4 12');
+    svg.appendChild(pl);
+    container.appendChild(svg);
+  }
+
+  // ============================================================
+  // STEP 2 STATES
+  // ============================================================
+  function setStep2State(state) {
+    step2State = state;
+    var statusArea = document.getElementById('step2StatusArea');
+    var body = document.getElementById('step2Body');
+    var caption = document.getElementById('step2Caption');
+    var buttons = document.getElementById('step2Buttons');
+    var retryBtn = document.getElementById('step2RetryBtn');
+    var continueBtn = document.getElementById('step2ContinueBtn');
+
+    // Clear status area safely
+    while (statusArea.firstChild) statusArea.removeChild(statusArea.firstChild);
+
+    if (state === 'downloading') {
+      var spinner = document.createElement('div');
+      spinner.className = 'spinner';
+      statusArea.appendChild(spinner);
+      body.textContent = 'Downloading the on-device transcription model (~100 MB). This is a one-time setup that enables fast, private dictation.';
+      caption.textContent = 'Usually takes less than a minute on a standard connection.';
+      caption.className = 'caption';
+      caption.style.display = '';
+      buttons.style.display = 'none';
+      retryBtn.style.display = 'none';
+      continueBtn.style.display = 'none';
+
+    } else if (state === 'failed') {
+      var iconDiv = document.createElement('div');
+      iconDiv.className = 'status-icon red-bg';
+      iconDiv.textContent = '\u2717';
+      statusArea.appendChild(iconDiv);
+      body.textContent = 'Download failed. Check your internet connection and try again.';
+      caption.style.display = 'none';
+      buttons.style.display = 'flex';
+      retryBtn.style.display = '';
+      continueBtn.style.display = 'none';
+
+    } else if (state === 'complete') {
+      var iconDiv = document.createElement('div');
+      iconDiv.className = 'status-icon green-bg';
+      iconDiv.textContent = '\u2713';
+      statusArea.appendChild(iconDiv);
+      body.textContent = 'Model ready!';
+      caption.textContent = 'Moving to next step...';
+      caption.className = 'auto-hint';
+      caption.style.display = '';
+      buttons.style.display = 'flex';
+      retryBtn.style.display = 'none';
+      continueBtn.style.display = '';
+    }
+
+    updateStateControlHighlights();
+  }
+
+  // ============================================================
+  // STEP 3 STATES
+  // ============================================================
+  function setStep3State(state) {
+    step3State = state;
+    var area = document.getElementById('feedbackArea');
+    var optKey = document.getElementById('keycapOpt');
+    var dKey = document.getElementById('keycapD');
+
+    area.className = 'feedback-area ' + state;
+
+    // Clear feedback area safely
+    while (area.firstChild) area.removeChild(area.firstChild);
+
+    if (state === 'waiting') {
+      var span = document.createElement('span');
+      span.textContent = 'Waiting for dictation...';
+      area.appendChild(span);
+      optKey.classList.add('pulse');
+      dKey.classList.add('pulse');
+
+    } else if (state === 'recording') {
+      var dot = document.createElement('span');
+      dot.className = 'rec-dot';
+      area.appendChild(dot);
+      var text = document.createElement('span');
+      text.textContent = ' Recording...';
+      area.appendChild(text);
+      optKey.classList.remove('pulse');
+      dKey.classList.remove('pulse');
+
+    } else if (state === 'transcribed') {
+      var text = document.createElement('span');
+      text.textContent = '\u201CHello, this is a test transcription.\u201D';
+      area.appendChild(text);
+      optKey.classList.remove('pulse');
+      dKey.classList.remove('pulse');
+
+    } else if (state === 'success') {
+      var text = document.createElement('span');
+      text.textContent = '\u2713 Great! Moving on...';
+      area.appendChild(text);
+      optKey.classList.remove('pulse');
+      dKey.classList.remove('pulse');
+    }
+
+    updateStateControlHighlights();
+  }
+
+  // ============================================================
+  // TOGGLE
+  // ============================================================
+  function toggleAutoPaste() {
+    autoPasteOn = !autoPasteOn;
+    var toggle = document.getElementById('autoPasteToggle');
+    if (autoPasteOn) {
+      toggle.classList.add('on');
+    } else {
+      toggle.classList.remove('on');
+    }
+  }
+</script>
+
+</body>
+</html>
