@@ -25,6 +25,14 @@ Sources/EnviousWispr/
     ├── Overlay/      # RecordingOverlayPanel, brand icons (SpectrumWheelIcon, RainbowLipsIcon)
     └── Settings/     # Speech Engine, Shortcuts, AI Polish, Voice Detection, Audio (device + noise suppression), etc.
 
+### Settings UI Structure
+
+- **Layout:** NavigationSplitView — left sidebar (List with SettingsSection enum) + right detail pane
+- **AX tree:** AXSplitGroup → AXOutline (sidebar) containing AXRow children → each row has AXStaticText with section label
+- **Sections (10):** History, Speech Engine, Audio, Shortcuts, AI Polish, Custom Words, Clipboard, Memory, Permissions, Diagnostics
+- **Tab selection in tests:** `set_attr(row, "AXSelected", True)` on matching AXRow (NOT AXPress — AXPress doesn't work on AXRow)
+- **Picker controls:** SwiftUI `Picker("Label", ...)` renders as sibling AXStaticText (label) + AXPopUpButton (current value). The label is NOT the button's title.
+
 docs/
 ├── comparison-handy-vs-enviouswispr.md   # Technical comparison with Handy
 ├── feature-requests/                      # Future feature specs + tracker

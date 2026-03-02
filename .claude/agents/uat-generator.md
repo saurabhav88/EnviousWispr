@@ -112,6 +112,38 @@ def test_<name>(ctx):
     ...
 ```
 
+## SwiftUI → AX Tree Mappings
+
+Generated tests must account for how SwiftUI controls render in the Accessibility tree:
+
+### Settings Sidebar Navigation
+- SwiftUI: `NavigationSplitView { List(selection:) { ... } }`
+- AX tree: `AXOutline` → `AXRow` children → each has `AXStaticText` with label
+- **Use `ctx.ensure_tab_selected(tab_name)`** — handles all AX traversal automatically
+- **NEVER use `perform_action(row, "AXPress")`** — AXPress does NOT work on AXRow
+- Selection method: `set_attr(row, "AXSelected", True)`
+
+### Picker / PopUpButton Controls
+- SwiftUI: `Picker("Provider", selection: $binding) { ... }`
+- AX tree: `AXStaticText` (label, value="Provider") + adjacent `AXPopUpButton` (value=current selection like "OpenAI")
+- **The Picker label is a SIBLING AXStaticText, NOT the button's title**
+- Pattern to find a picker by label:
+  1. `find_element(window, role="AXStaticText", value="Provider")` — find the label
+  2. Get parent's children, find adjacent `AXPopUpButton`
+  3. `perform_action(popup, "AXPress")` to open
+  4. `find_all_elements(app, role="AXMenuItem")` to find options
+  5. Match by `AXTitle` on the menu item
+
+### Toggle / CheckBox Controls
+- SwiftUI: `Toggle("Label", isOn: $binding)`
+- AX tree: `AXStaticText` (label) + `AXCheckBox` (value="0" or "1")
+- Same sibling pattern as Picker — label is separate from the control
+
+### Section Headers
+- SwiftUI: `Section("Title") { ... }`
+- AX tree: `AXHeading` with `description="Title"` (NOT AXStaticText)
+- Content is in a sibling `AXGroup`
+
 ## Constraints
 
 1. **Only use existing primitives** from `uat_runner.py`, `ui_helpers.py`, and `simulate_input.py`. Do NOT import new libraries.

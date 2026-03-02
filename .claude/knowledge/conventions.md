@@ -60,7 +60,7 @@ Scopes: `asr`, `audio`, `ui`, `llm`, `pipeline`, `settings`, `hotkey`, `vad`, `b
 ## View Patterns
 
 - `Form { ... }.formStyle(.grouped)` for settings
-- `TabView` with labeled tabs for Settings window
+- `NavigationSplitView` with sidebar List for Settings window (SettingsSection enum)
 - `NavigationSplitView` for main window
 - `.task { }` for async on-appear work
 

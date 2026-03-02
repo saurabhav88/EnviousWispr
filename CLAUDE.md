@@ -47,6 +47,7 @@ python3 Tests/UITests/uat_runner.py run --files Tests/UITests/generated/<test>.p
 | [release-maintenance](.claude/agents/release-maintenance.md) | Packaging, signing, changelog, migration, dead code | `wispr-build-release-config`, `wispr-bundle-app`, `wispr-rebuild-and-relaunch`, `wispr-codesign-without-xcode`, `wispr-generate-changelog`, `wispr-migrate-swift-version`, `wispr-find-dead-code`, `wispr-release-checklist` |
 | [feature-planning](.claude/agents/feature-planning.md) | Feature request planning, implementation coordination | `wispr-check-feature-tracker`, `wispr-implement-feature-request` |
 | [user-management](.claude/agents/user-management.md) | Accounts, licensing, entitlements, trials, payments, analytics | — |
+| [frontend-designer](.claude/agents/frontend-designer.md) | Interactive diagrams, dashboards, HTML artifacts, visual design | — (multi-turn, browser-verified) |
 
 ## Knowledge
 

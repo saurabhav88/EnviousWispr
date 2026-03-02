@@ -107,6 +107,13 @@ Agent(
     CHANGED FILES:
     <list files if known from todos/context, otherwise omit>
 
+    SETTINGS UI ARCHITECTURE (include this in every settings-related test):
+    - Layout: NavigationSplitView sidebar (AXOutline with AXRow children) + detail pane
+    - Tab selection: ctx.ensure_tab_selected("Tab Name") — handles AX traversal, do NOT write custom sidebar nav
+    - Pickers: AXPopUpButton (value=current selection). Label is sibling AXStaticText, NOT button title.
+    - Section headers: AXHeading (description=title), NOT AXStaticText
+    - Row selection: set_attr(row, "AXSelected", True) — AXPress does NOT work on AXRow
+
     TASK: Generate targeted UAT test files into Tests/UITests/generated/ for the above scope ONLY.
     Do not test anything outside this scope.
     Read Tests/UITests/uat_runner.py for the API reference and examples.

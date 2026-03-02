@@ -32,16 +32,16 @@ swift build -c release 2>&1
 
 Invoke `/wispr-bundle-app` — this is the single source of truth for bundle assembly.
 
-It creates `/tmp/EnviousWispr.app` with the release binary, Info.plist, AppIcon.icns, Sparkle.framework (with rpath patch), and PkgInfo.
+It creates `/tmp/EnviousWispr Local.app` with the release binary, Info.plist, AppIcon.icns, Sparkle.framework (with rpath patch), and PkgInfo.
 
 **Do NOT inline bundle logic here.** If bundle steps need to change (new resource, new framework), update `wispr-bundle-app` only.
 
 ## Step 3 — Replace Running Bundle and Verify Freshness
 
 ```bash
-DEST=/Users/m4pro_sv/Desktop/EnviousWispr/build/EnviousWispr.app
+DEST="/Users/m4pro_sv/Desktop/EnviousWispr/build/EnviousWispr Local.app"
 rm -rf "$DEST"
-ditto --norsrc /tmp/EnviousWispr.app "$DEST"
+ditto --norsrc "/tmp/EnviousWispr Local.app" "$DEST"
 ```
 
 Use `ditto --norsrc` (not `cp -r`) to strip extended attributes that break codesigning.
@@ -49,7 +49,7 @@ Use `ditto --norsrc` (not `cp -r`) to strip extended attributes that break codes
 **Staleness check** (defense-in-depth — catches stale binaries regardless of cause):
 
 ```bash
-BINARY=/Users/m4pro_sv/Desktop/EnviousWispr/build/EnviousWispr.app/Contents/MacOS/EnviousWispr
+BINARY="/Users/m4pro_sv/Desktop/EnviousWispr/build/EnviousWispr Local.app/Contents/MacOS/EnviousWispr"
 NEWEST_SRC=$(find /Users/m4pro_sv/Desktop/EnviousWispr/Sources -name "*.swift" -newer "$BINARY" | head -1)
 if [ -n "$NEWEST_SRC" ]; then
     echo "ERROR: Binary is older than source file: $NEWEST_SRC — build may have failed silently"
@@ -75,7 +75,7 @@ fi
 
 ```bash
 killall EnviousWispr 2>/dev/null; sleep 2
-BINARY=/Users/m4pro_sv/Desktop/EnviousWispr/build/EnviousWispr.app/Contents/MacOS/EnviousWispr
+BINARY="/Users/m4pro_sv/Desktop/EnviousWispr/build/EnviousWispr Local.app/Contents/MacOS/EnviousWispr"
 if [ ! -x "$BINARY" ]; then echo "ERROR: binary not found or not executable at $BINARY"; exit 1; fi
 "$BINARY" &
 disown
@@ -118,7 +118,7 @@ All UAT execution MUST use `run_in_background: true` (CGEvent collides with VSCo
 
 ```
 Release build: PASS / FAIL
-Bundle:        created at build/EnviousWispr.app
+Bundle:        created at build/EnviousWispr Local.app
 App running:   yes / no
 Smart UAT:     PASS / FAIL (N tests run)
 ```

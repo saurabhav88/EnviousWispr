@@ -14,8 +14,8 @@ Complete a release build first (`swift build -c release`).
 **Always wipe the old bundle first** — `cp -R` merges into existing directories, which can leave stale framework files from previous builds.
 
 ```bash
-APP=EnviousWispr.app
-BUNDLE=/tmp/$APP
+APP="EnviousWispr Local.app"
+BUNDLE="/tmp/$APP"
 BINARY=/Users/m4pro_sv/Desktop/EnviousWispr/.build/release/EnviousWispr
 
 rm -rf "$BUNDLE"
