@@ -64,14 +64,15 @@ For a typical feature, create tasks in this order:
 6. `[build] Fix any audit findings` — blocked on task 5 (if audit was performed)
 7. `[test] Smoke test + rebuild bundle` — blocked on all above
 8. `[test] Run smart UAT` — blocked on task 7 (invoke `wispr-run-smart-uat` — auto-generates targeted tests from diff + runs all in background)
-9. `[planner] Update TRACKER.md status` — blocked on task 8 (ONLY after smart UAT passes)
+9. `[planner] Create PR to main` — blocked on task 8 (push feature branch, open PR via `gh pr create`, wait for `build-check` CI to pass, squash-merge)
+10. `[planner] Update TRACKER.md status` — blocked on task 9 (ONLY after PR is merged)
 
 ### Communication Rules
 
 - **Don't micromanage**: Assign the task, let the teammate execute using their own skills
 - **Unblock quickly**: If a teammate reports a blocker, reassign or create a new task to resolve it
 - **Sequence matters**: Never assign a build validation before the code change it validates
-- **Final gate**: Only update TRACKER.md to complete after validator confirms all tests pass
+- **Final gate**: Only update TRACKER.md to complete after validator confirms all tests pass AND the PR to main is merged
 
 ## Skills
 

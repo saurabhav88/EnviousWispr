@@ -31,7 +31,7 @@ Accessibility permission is required for paste (`CGEvent.post`). When testing pa
 
 ## Commit Style
 
-Conventional commits: `type(scope): message`
+Conventional commits: `type(scope): message` (squash-merged on main — each PR becomes one commit)
 
 | Type | Use |
 |------|-----|
@@ -69,7 +69,8 @@ Scopes: `asr`, `audio`, `ui`, `llm`, `pipeline`, `settings`, `hotkey`, `vad`, `b
 - **Semver tags:** `v1.0.0`, `v1.1.0`, etc. — `v` prefix required (triggers CI for release builds)
 - **Local development:** `swift build`, `/wispr-rebuild-and-relaunch`, or `./scripts/build-dmg.sh` (no version arg) produce builds tagged with `-local` in the version string (e.g., `0.0.0-local`)
 - **Release builds:** `git tag v1.0.0 && git push origin v1.0.0` (CI) or `./scripts/build-dmg.sh 1.0.0` (explicit). Clean version numbers, distributed via GitHub Releases.
-- CI generates `appcast.xml` on each release (gitignored locally)
+- **PR-first workflow:** All code changes reach `main` via pull requests for the CI gate. Branch protection enforces required status checks (`build-check`) and linear history (squash-merge). No required reviews (solo dev). See [github-workflow](.claude/knowledge/github-workflow.md).
+- CI generates `appcast.xml` on each release; the release workflow pushes it directly to `main` via `APPCAST_BOT_TOKEN` PAT
 - Changelog: `generate-changelog` skill or `git log --oneline v1.0.0..HEAD`
 
 ## Required Imports
@@ -89,6 +90,7 @@ A feature is NOT done until ALL of these pass:
 3. .app bundle rebuilt + relaunched (`wispr-rebuild-and-relaunch`)
 4. **Smart UAT tests pass** (`wispr-run-smart-uat` — scope-driven, generates targeted tests for the current project)
 5. All UAT execution MUST use `run_in_background: true` — foreground fails due to CGEvent/VSCode collision
+6. **CI `build-check` passes** — PR must have green status checks before merge
 
 ### UAT: Two Modes Only
 

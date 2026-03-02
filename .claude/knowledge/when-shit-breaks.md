@@ -37,9 +37,12 @@ Quick-action checklists for the most common crises. No matrices.
 git push origin :refs/tags/v1.0.X
 
 # 3. Roll back appcast.xml to the last good version
+git checkout -b hotfix/rollback-appcast-v1.0.Y
 git checkout <last-good-commit> -- appcast.xml
 git commit -m "fix(release): roll back appcast.xml to v1.0.Y"
-git push origin main
+git push -u origin hotfix/rollback-appcast-v1.0.Y
+~/bin/gh pr create --base main --title "fix(release): roll back appcast to v1.0.Y" --body "Emergency rollback"
+~/bin/gh pr merge --squash --admin  # admin merge to skip review in emergencies
 
 # 4. Verify Sparkle feed points to last-good DMG
 curl https://raw.githubusercontent.com/saurabhav88/EnviousWispr/main/appcast.xml | grep enclosure

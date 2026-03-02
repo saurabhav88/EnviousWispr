@@ -190,6 +190,10 @@ guard let screen = NSScreen.screens.first else { return }
 
 `finalizeStreaming()` and `cancelStreaming()` must each be called **at most once** per session, and exactly one of them must be called on every exit path (success, error, timeout, cancellation). Multiple exit paths in a pipeline (VAD cancel, timeout, device disconnect, explicit stop) can each independently trigger cleanup and create double-finalize or double-cancel conditions, which crash or corrupt the streaming state machine. Use a `defer` block with a `Bool` flag (`streamingSetupSucceeded`) to guarantee cleanup on all paths, and guard against double sessions in the backend with an `isStreaming` flag.
 
+## Branch Protection — CI Gate on Main
+
+`main` has CI-only branch protection: required `build-check` status check, linear history (squash-merge only), no force pushes. **No required reviews** (solo dev). **Enforce admins is off** — admin PAT can push directly (needed for CI appcast updates). All code changes should go through PRs for the CI gate. The release workflow pushes appcast.xml directly to `main` using `APPCAST_BOT_TOKEN` (Fine-Grained PAT). See [github-workflow](github-workflow.md).
+
 ## Per-Element .animation() Modifiers Create Exponential State Transitions
 
 Applying `.animation(.easeOut(duration: 0.05), value: audioLevel)` to each of N child views (e.g., 18 bars in RainbowLipsIcon) creates N × (updates/sec) animation state transitions. Over a 2-minute recording at 12 updates/sec, that's ~43,200 transitions — overwhelming SwiftUI's view graph and causing heap corruption.
