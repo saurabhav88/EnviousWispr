@@ -67,6 +67,12 @@ Features identified from [Handy vs EnviousWispr comparison](../comparison-handy-
 | 17 | Cross-platform support (analysis) | [017-cross-platform.md](017-cross-platform.md) | [x] | [ ] | Low |
 | 18 | Homebrew cask distribution | [018-homebrew-cask.md](018-homebrew-cask.md) | [x] | [ ] | Medium |
 
+### UX & Onboarding
+
+| # | Feature | File | Plan | Code | Priority |
+| - | ------- | ---- | ---- | ---- | -------- |
+| 22 | First-run onboarding experience | [022-first-run-onboarding.md](022-first-run-onboarding.md) | [x] | [ ] | Critical |
+
 ### Developer Experience
 
 | # | Feature | File | Plan | Code | Priority |
@@ -78,7 +84,7 @@ Features identified from [Handy vs EnviousWispr comparison](../comparison-handy-
 
 | Status | Plans | Code |
 | ------ | ----- | ---- |
-| Not started | 0 | 13 |
+| Not started | 0 | 14 |
 | In progress | 0 | 0 |
-| Complete | 21 | 8 |
-| **Total** | **21** | **21** |
+| Complete | 22 | 8 |
+| **Total** | **22** | **22** |
