@@ -64,7 +64,7 @@ jobs:
       - name: Package and sign DMG
         env:
           CODESIGN_IDENTITY: "Developer ID Application: ${{ secrets.APPLE_TEAM_NAME }} (${{ secrets.APPLE_TEAM_ID }})"
-          SPARKLE_FEED_URL: "https://raw.githubusercontent.com/${{ github.repository }}/main/appcast.xml"
+          SPARKLE_FEED_URL: "https://saurabhav88.github.io/EnviousWispr/appcast.xml"
           SPARKLE_EDDSA_PUBLIC_KEY: ${{ secrets.SPARKLE_EDDSA_PUBLIC_KEY }}
         run: ./scripts/build-dmg.sh "${{ steps.version.outputs.version }}"
 
@@ -163,29 +163,23 @@ jobs:
           open('appcast.xml', 'w').write(content)
           "
 
-      - name: Commit updated appcast via PR
+      - name: Push appcast update to main
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPCAST_BOT_TOKEN: ${{ secrets.APPCAST_BOT_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git fetch origin main
-          git checkout -B main origin/main
-          git add -f appcast.xml
-          if git diff --cached --quiet; then
+          git checkout main
+          cp "$GITHUB_WORKSPACE/appcast.xml" appcast.xml
+          git add appcast.xml
+          if git diff --staged --quiet; then
             echo "==> appcast.xml unchanged, skipping."
           else
-            BRANCH="ci/appcast-v${VERSION}"
-            git checkout -b "${BRANCH}"
             git commit -m "chore(release): update appcast for v${VERSION}"
-            git push origin "${BRANCH}"
-            gh pr create \
-              --base main \
-              --head "${BRANCH}" \
-              --title "chore(release): update appcast for v${VERSION}" \
-              --body "Automated appcast update after release v${VERSION} was notarized and published."
-            gh pr merge --auto --squash "${BRANCH}"
+            git pull --rebase origin main
+            git push https://x-access-token:${APPCAST_BOT_TOKEN}@github.com/${{ github.repository }}.git main
           fi
 
       - name: Create GitHub Release
