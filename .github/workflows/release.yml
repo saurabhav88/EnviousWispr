@@ -11,7 +11,7 @@ permissions:
 jobs:
   build-and-release:
     runs-on: macos-15
-    timeout-minutes: 60
+    timeout-minutes: 1500
 
     steps:
       - name: Checkout
@@ -97,12 +97,12 @@ jobs:
           fi
           echo "==> Submission ID: ${SUBMISSION_ID}"
 
-          # Poll for status instead of --wait (avoids indefinite hangs)
-          MAX_ATTEMPTS=90
+          # Poll for status — 24 attempts at 1-hour intervals (24-hour window)
+          MAX_ATTEMPTS=24
           ATTEMPT=0
           while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
             ATTEMPT=$((ATTEMPT + 1))
-            sleep 30
+            sleep 3600
 
             echo "==> Checking notarization status (attempt ${ATTEMPT}/${MAX_ATTEMPTS}) ..."
             STATUS_OUTPUT=$(xcrun notarytool info "${SUBMISSION_ID}" \
@@ -132,7 +132,7 @@ jobs:
           done
 
           rm -f "${KEY_PATH}"
-          echo "::error::Notarization timed out after $((MAX_ATTEMPTS * 30 / 60)) minutes"
+          echo "::error::Notarization timed out after ${MAX_ATTEMPTS} hours"
           exit 1
 
       - name: Generate Sparkle appcast entry
