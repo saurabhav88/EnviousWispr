@@ -7,7 +7,7 @@ struct EnviousWisprApp: App {
     var body: some Scene {
         Window(AppConstants.appName, id: "main") {
             UnifiedWindowView()
-                .frame(minWidth: 560, minHeight: 400)
+                .frame(minWidth: 580, minHeight: 400)
                 .environment(appDelegate.appState)
                 .background(ActionWirer(appDelegate: appDelegate))
         }
@@ -19,7 +19,6 @@ struct EnviousWisprApp: App {
                 appDelegate.closeOnboardingWindow()
             })
             .environment(appDelegate.appState)
-            .background(OnboardingWirer(appDelegate: appDelegate))
         }
         .windowResizability(.contentSize)
         .defaultSize(width: 500, height: 550)
@@ -31,6 +30,7 @@ struct EnviousWisprApp: App {
 private struct ActionWirer: View {
     let appDelegate: AppDelegate
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
 
     var body: some View {
         Color.clear
@@ -39,25 +39,17 @@ private struct ActionWirer: View {
                 appDelegate.openMainWindowAction = { [openWindow] in
                     openWindow(id: "main")
                 }
-            }
-    }
-}
-
-/// Wires the openWindow action for the onboarding window to AppDelegate.
-private struct OnboardingWirer: View {
-    let appDelegate: AppDelegate
-    @Environment(\.openWindow) private var openWindow
-    @Environment(\.dismissWindow) private var dismissWindow
-
-    var body: some View {
-        Color.clear
-            .frame(width: 0, height: 0)
-            .task {
                 appDelegate.openOnboardingWindowAction = { [openWindow] in
                     openWindow(id: "onboarding")
                 }
                 appDelegate.dismissOnboardingWindowAction = { [dismissWindow] in
                     dismissWindow(id: "onboarding")
+                }
+                // Auto-open onboarding if needed (first launch).
+                // ActionWirer runs inside the main Window scene which is always created,
+                // so the callbacks are wired before we attempt to open the onboarding window.
+                if appDelegate.appState.settings.onboardingState != .completed {
+                    appDelegate.openOnboardingWindow()
                 }
             }
     }

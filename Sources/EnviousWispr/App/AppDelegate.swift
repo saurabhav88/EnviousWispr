@@ -32,8 +32,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var onboardingCloseObserver: (any NSObjectProtocol)?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Hide dock icon on launch — we're a menu bar utility
-        NSApp.setActivationPolicy(.accessory)
+        // Hide dock icon on launch — we're a menu bar utility.
+        // If onboarding is needed, stay .regular so SwiftUI creates the main window hierarchy
+        // and ActionWirer can wire callbacks before opening the onboarding window.
+        if appState.settings.onboardingState == .completed {
+            NSApp.setActivationPolicy(.accessory)
+        }
 
         // When the unified window closes, revert to .accessory immediately.
         // There's only one window now, so no need for the 200ms re-check delay.
@@ -90,14 +94,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             keychainManager: appState.keychainManager
         )
 
-        // Auto-open onboarding on first launch.
-        // openOnboardingWindowAction is wired by OnboardingWirer inside the SwiftUI scene,
-        // so we defer to the next run-loop cycle to ensure the window is ready.
-        if appState.settings.onboardingState != .completed {
-            DispatchQueue.main.async { [weak self] in
-                self?.openOnboardingWindow()
-            }
-        }
+        // Onboarding auto-open is handled by ActionWirer inside the main Window scene.
+        // ActionWirer wires all callbacks first, then calls openOnboardingWindow() if needed.
+        // No deferred dispatch required here.
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -116,6 +115,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openOnboardingWindowAction?()
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        // Hide the main window so only the onboarding window is visible during setup.
+        if let mainWin = self.mainWindow {
+            mainWin.orderOut(nil)
+        }
 
         // Capture the onboarding NSWindow by identity on first open.
         // We defer one run-loop cycle so SwiftUI has time to create/order the window
