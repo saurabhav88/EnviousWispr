@@ -181,12 +181,14 @@ class OnboardingViewModel {
 Before writing code, produce and approve the following artifacts:
 
 ### Visual Mockups
-- [ ] Step 1 (Welcome + Mic) — layout, icon placement, button states (default, disabled, error recovery)
-- [ ] Step 2 (Model Download) — spinner placement, hotkey callout styling, helper text hierarchy
-- [ ] Step 3 (Try It Now) — keyboard visual, live feedback area states (waiting → recording → result → success)
-- [ ] Step 4 (Ready + Enhancements) — toggle layout, AI Polish discovery link, "Done" button prominence
-- [ ] Abort state — menu bar badge appearance, "Setup Required" menu item styling
-- [ ] Window chrome — size (~420x380pt), resizability (none), title bar style, close button behavior
+- [x] Step 1 (Welcome + Mic) — layout, icon placement, button states (default, disabled, error recovery)
+- [x] Step 2 (Model Download) — spinner placement, hotkey callout styling, helper text hierarchy
+- [x] Step 3 (Try It Now) — keyboard visual, live feedback area states (waiting → recording → result → success)
+- [x] Step 4 (Ready + Enhancements) — toggle layout, AI Polish discovery link, "Done" button prominence
+- [x] Abort state — menu bar badge appearance, "Setup Required" menu item styling
+- [x] Window chrome — size (~420x380pt), resizability (none), title bar style, close button behavior
+
+**Interactive HTML mockup**: [`docs/designs/onboarding-mockup.html`](../designs/onboarding-mockup.html)
 
 ### Copy Review
 - [ ] All headlines, body text, and button labels finalized

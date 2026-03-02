@@ -1,0 +1,41 @@
+# EnviousWispr CODEOWNERS
+#
+# This file defines code ownership and review responsibilities for the EnviousWispr project.
+# GitHub uses this file to automatically request review from the appropriate owners
+# when a pull request modifies code they own.
+#
+# Format: <pattern> <owner-github-usernames>
+#
+# Documentation: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# HOW TO ADD MORE OWNERS:
+# 1. As contributors and contractors join, add them by GitHub username (e.g., @username)
+# 2. Assign ownership by file path or directory pattern
+# 3. You can assign multiple owners per pattern (space-separated)
+# 4. More specific patterns take precedence over general patterns
+# 5. Example: If you add a contractor for audio work, create a line like:
+#    Sources/EnviousWispr/Pipeline/Audio/  @contractor-username @saurabhav88
+#
+# CURRENT OWNERSHIP STRUCTURE:
+# - Default: all files owned by project founder
+# - CI/CD workflows: separate line for clarity and easier delegation to DevOps
+# - Build/Release scripts: separate line for clarity and easier delegation
+# - Bundle metadata: separate line for configuration management
+#
+# As the project scales, you can further subdivide by domain (e.g., audio pipeline,
+# UI/SwiftUI, testing, etc.) and assign subject-matter experts.
+
+# Default ownership — all files not matched by more specific patterns
+* @saurabhav88
+
+# CI/CD Workflows — automate testing, building, signing, and release
+# Delegate to a DevOps engineer or CI/CD specialist as needed
+.github/workflows/ @saurabhav88
+
+# Build and release scripts — shell scripts, Swift build config, bundling
+# Delegate to release engineer or build automation specialist as needed
+scripts/ @saurabhav88
+
+# Bundle metadata — Info.plist, app configuration, version strings
+# Critical for distribution, codesigning, and App Store metadata
+Sources/EnviousWispr/Resources/Info.plist @saurabhav88

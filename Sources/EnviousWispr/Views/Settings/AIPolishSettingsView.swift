@@ -110,13 +110,13 @@ struct AIPolishSettingsView: View {
             if appState.settings.llmProvider == .openAI {
                 Section("Model Guide") {
                     VStack(alignment: .leading, spacing: 4) {
-                        openAIModelGuideRow("GPT-4o Mini", detail: "Fast · Affordable · Great quality", badge: "Recommended", badgeColor: .green)
+                        modelGuideRow("GPT-4o Mini", detail: "Fast · Affordable · Great quality", badge: "Recommended", badgeColor: .green)
                         Divider()
-                        openAIModelGuideRow("GPT-4.1 Mini", detail: "Fast · Affordable · Newer model", badge: "Also great", badgeColor: .blue)
+                        modelGuideRow("GPT-4.1 Mini", detail: "Fast · Affordable · Newer model", badge: "Also great", badgeColor: .blue)
                         Divider()
-                        openAIModelGuideRow("GPT-4o / 4.1", detail: "Medium speed · Higher cost", badge: "Overkill", badgeColor: .orange)
+                        modelGuideRow("GPT-4o / 4.1", detail: "Medium speed · Higher cost", badge: "Overkill", badgeColor: .orange)
                         Divider()
-                        openAIModelGuideRow("GPT-3.5 Turbo", detail: "Fast · Cheapest · Lower quality", badge: "Budget", badgeColor: .secondary)
+                        modelGuideRow("GPT-3.5 Turbo", detail: "Fast · Cheapest · Lower quality", badge: "Budget", badgeColor: .secondary)
                     }
 
                     Text("Transcript polishing is straightforward — smaller models handle it well at a fraction of the cost.")
@@ -129,13 +129,13 @@ struct AIPolishSettingsView: View {
             if appState.settings.llmProvider == .gemini {
                 Section("Model Guide") {
                     VStack(alignment: .leading, spacing: 4) {
-                        geminiModelGuideRow("Gemini 2.0 Flash", detail: "Fast · Affordable · Great quality", badge: "Recommended", badgeColor: .green)
+                        modelGuideRow("Gemini 2.0 Flash", detail: "Fast · Affordable · Great quality", badge: "Recommended", badgeColor: .green)
                         Divider()
-                        geminiModelGuideRow("Gemini 2.5 Flash", detail: "Fast · Newer · Strong reasoning", badge: "Also great", badgeColor: .blue)
+                        modelGuideRow("Gemini 2.5 Flash", detail: "Fast · Newer · Strong reasoning", badge: "Also great", badgeColor: .blue)
                         Divider()
-                        geminiModelGuideRow("Gemini 1.5 Flash", detail: "Fast · Older · Still capable", badge: "Budget", badgeColor: .secondary)
+                        modelGuideRow("Gemini 1.5 Flash", detail: "Fast · Older · Still capable", badge: "Budget", badgeColor: .secondary)
                         Divider()
-                        geminiModelGuideRow("Gemini 2.5 Pro", detail: "Slower · Expensive · Best quality", badge: "Overkill", badgeColor: .orange)
+                        modelGuideRow("Gemini 2.5 Pro", detail: "Slower · Expensive · Best quality", badge: "Overkill", badgeColor: .orange)
                     }
 
                     Text("Transcript polishing is straightforward — Flash models handle it well at a fraction of the cost of Pro.")
@@ -611,25 +611,7 @@ struct AIPolishSettingsView: View {
     }
 
     @ViewBuilder
-    private func openAIModelGuideRow(_ name: String, detail: String, badge: String, badgeColor: Color) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(name)
-                    .font(.caption)
-                Text(detail)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
-            Spacer()
-            Text(badge)
-                .font(.caption2)
-                .foregroundStyle(badgeColor)
-        }
-        .padding(.vertical, 2)
-    }
-
-    @ViewBuilder
-    private func geminiModelGuideRow(_ name: String, detail: String, badge: String, badgeColor: Color) -> some View {
+    private func modelGuideRow(_ name: String, detail: String, badge: String, badgeColor: Color) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 1) {
                 Text(name)
