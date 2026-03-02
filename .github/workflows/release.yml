@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   build-and-release:
@@ -123,7 +124,7 @@ jobs:
 
           # Sign the DMG with Sparkle's EdDSA key
           if [[ -n "${SPARKLE_PRIVATE_KEY}" ]]; then
-            EDDSA_SIG=$(echo "${SPARKLE_PRIVATE_KEY}" | .build/artifacts/sparkle/Sparkle/bin/sign_update "${DMG_PATH}" --ed-key-file /dev/stdin 2>/dev/null || echo "")
+            EDDSA_SIG=$(echo "${SPARKLE_PRIVATE_KEY}" | .build/artifacts/sparkle/Sparkle/bin/sign_update -p "${DMG_PATH}" --ed-key-file /dev/stdin 2>/dev/null || echo "")
           fi
 
           mkdir -p build
@@ -162,15 +163,30 @@ jobs:
           open('appcast.xml', 'w').write(content)
           "
 
-      - name: Commit updated appcast
+      - name: Commit updated appcast via PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git fetch origin main
           git checkout -B main origin/main
           git add -f appcast.xml
-          git diff --cached --quiet || git commit -m "chore(release): update appcast for v${{ steps.version.outputs.version }}"
-          git push origin main
+          if git diff --cached --quiet; then
+            echo "==> appcast.xml unchanged, skipping."
+          else
+            BRANCH="ci/appcast-v${VERSION}"
+            git checkout -b "${BRANCH}"
+            git commit -m "chore(release): update appcast for v${VERSION}"
+            git push origin "${BRANCH}"
+            gh pr create \
+              --base main \
+              --head "${BRANCH}" \
+              --title "chore(release): update appcast for v${VERSION}" \
+              --body "Automated appcast update after release v${VERSION} was notarized and published."
+            gh pr merge --auto --squash "${BRANCH}"
+          fi
 
       - name: Create GitHub Release
         env:
