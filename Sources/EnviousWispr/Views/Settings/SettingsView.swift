@@ -4,7 +4,6 @@ import SwiftUI
 struct UnifiedWindowView: View {
     @Environment(AppState.self) private var appState
     @State private var selectedSection: SettingsSection = .history
-    @State private var showOnboarding = false
 
     var body: some View {
         NavigationSplitView {
@@ -35,14 +34,6 @@ struct UnifiedWindowView: View {
         }
         .task {
             appState.loadTranscripts()
-
-            if !appState.settings.hasCompletedOnboarding {
-                showOnboarding = true
-            }
-        }
-        .sheet(isPresented: $showOnboarding) {
-            OnboardingView(isPresented: $showOnboarding)
-                .environment(appState)
         }
         .onChange(of: appState.pendingNavigationSection) { _, newSection in
             if let section = newSection {

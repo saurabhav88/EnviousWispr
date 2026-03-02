@@ -12,6 +12,17 @@ struct EnviousWisprApp: App {
                 .background(ActionWirer(appDelegate: appDelegate))
         }
         .defaultSize(width: 820, height: 600)
+
+        // Onboarding window — non-resizable, centered, auto-opens on first launch.
+        Window("Setup", id: "onboarding") {
+            OnboardingView(onComplete: {
+                appDelegate.closeOnboardingWindow()
+            })
+            .environment(appDelegate.appState)
+            .background(OnboardingWirer(appDelegate: appDelegate))
+        }
+        .windowResizability(.contentSize)
+        .defaultSize(width: 500, height: 550)
     }
 }
 
@@ -27,6 +38,26 @@ private struct ActionWirer: View {
             .task {
                 appDelegate.openMainWindowAction = { [openWindow] in
                     openWindow(id: "main")
+                }
+            }
+    }
+}
+
+/// Wires the openWindow action for the onboarding window to AppDelegate.
+private struct OnboardingWirer: View {
+    let appDelegate: AppDelegate
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .task {
+                appDelegate.openOnboardingWindowAction = { [openWindow] in
+                    openWindow(id: "onboarding")
+                }
+                appDelegate.dismissOnboardingWindowAction = { [dismissWindow] in
+                    dismissWindow(id: "onboarding")
                 }
             }
     }
