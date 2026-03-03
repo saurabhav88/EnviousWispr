@@ -84,35 +84,32 @@ A feature is NOT done until ALL of these pass:
 1. `swift build -c release` exits 0
 2. `swift build --build-tests` exits 0
 3. .app bundle rebuilt + relaunched (`wispr-rebuild-and-relaunch`)
-4. **Smart UAT tests pass** (`wispr-run-smart-uat` — scope-driven, generates targeted tests for the current project)
-5. All UAT execution MUST use `run_in_background: true` — foreground fails due to CGEvent/VSCode collision
+4. **Wispr Eyes verification passes** (`wispr-eyes` — agent-native UI verification of the running app)
+5. Only `type_text`/`press_key` need `run_in_background: true` — all other verification works in foreground via AX APIs
 6. **CI `build-check` green** (informational — not required for merge, but check for visibility)
 
-### UAT: Two Modes Only
+### Verification: Two Modes Only
 
 | Mode       | Invocation                     | Scope source                                          |
 | ---------- | ------------------------------ | ----------------------------------------------------- |
-| **Smart**  | `/wispr-run-smart-uat`         | Completed todos → conversation context → diff fallback |
-| **Custom** | `/wispr-run-smart-uat "test X"` | Your explicit instruction                             |
+| **Smart**  | `/wispr-eyes`                  | Completed todos → conversation context                |
+| **Custom** | `/wispr-eyes "verify X"`       | Your explicit instruction                             |
 
-There is no separate "static UAT" or "full UAT" mode. Static test functions exist in `uat_runner.py` but are not a distinct workflow tier.
+### Verification Workflow for Every Feature
 
-### UAT Workflow for Every Feature
+1. After implementing code → invoke `wispr-eyes`
+2. Wispr Eyes dispatches a Sonnet agent that connects to the running app, navigates, inspects, and reports in plain English
+3. Review results — VERIFIED/ISSUE/BLOCKED per scope item
+4. If scope has no UI-observable changes, Wispr Eyes reports SKIPPED — this is valid
+5. Only commit when all scope items are VERIFIED (or validly SKIPPED)
 
-1. After implementing code → invoke `wispr-run-smart-uat`
-2. Smart UAT wipes `Tests/UITests/generated/`, builds scope from completed todos (or conversation context), generates targeted tests, runs them in background
-3. Review results — generated test failures may indicate real bugs or test generation issues
-4. If scope has no UI-observable changes, Smart UAT reports SKIPPED — this is valid
-5. Only commit when generated tests pass (or are validly skipped)
-6. Generated tests are ephemeral — wiped at the start of every run, never accumulate
-
-### Todo Quality for UAT
+### Todo Quality for Verification
 
 When creating todos for code work, include what changed, where, and user-visible result:
 
 Format: `Fix X in Y (user-visible result Z)`
 
-Start a fresh todo list for each project. Smart UAT uses completed todos from the active project only.
+Start a fresh todo list for each project. Wispr Eyes uses completed todos from the active project only.
 
 ## Feature Request Docs
 
