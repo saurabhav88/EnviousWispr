@@ -1,61 +1,44 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- Identity -->
-    <key>CFBundleIdentifier</key>
-    <string>com.enviouswispr.app.dev</string>
-    <key>CFBundleName</key>
-    <string>EnviousWispr Dev</string>
-    <key>CFBundleDisplayName</key>
-    <string>EnviousWispr Dev</string>
-    <key>CFBundleExecutable</key>
-    <string>EnviousWispr</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleSignature</key>
-    <string>????</string>
-
-    <!-- Versioning — build-dmg.sh substitutes these at packaging time -->
-    <key>CFBundleVersion</key>
-    <string>1.0.4</string>
-    <key>CFBundleShortVersionString</key>
-    <string>1.0.4</string>
-
-    <!-- Platform -->
-    <key>LSMinimumSystemVersion</key>
-    <string>14.0</string>
-    <!-- Apple Silicon only (FluidAudio requires arm64 for Float16) -->
-    <key>LSArchitecturePriority</key>
-    <array>
-        <string>arm64</string>
-    </array>
-
-    <!-- Menu bar app — suppress Dock icon and app switcher entry -->
-    <key>LSUIElement</key>
-    <true/>
-
-    <!-- Privacy usage descriptions -->
-    <key>NSMicrophoneUsageDescription</key>
-    <string>EnviousWispr needs microphone access for speech-to-text dictation.</string>
-    <key>NSAppleEventsUsageDescription</key>
-    <string>EnviousWispr uses Accessibility APIs to paste transcribed text into the active application.</string>
-
-    <!-- High-resolution / Retina display -->
-    <key>NSHighResolutionCapable</key>
-    <true/>
-
-    <!-- Required for AppKit-based apps launched without a XIB/storyboard -->
-    <key>NSPrincipalClass</key>
-    <string>NSApplication</string>
-
-    <!-- Sparkle auto-updater -->
-    <key>SUFeedURL</key>
-    <string>https://saurabhav88.github.io/EnviousWispr/appcast.xml</string>
-    <key>SUPublicEDKey</key>
-    <string>jHq1RIQKDmtO64qtCdZ6jNdHNFrfyScE16yuu+ufvDw=</string>
-    <key>CFBundleIconFile</key>
-    <string>AppIcon</string>
+	<key>CFBundleDisplayName</key>
+	<string>EnviousWispr Dev</string>
+	<key>CFBundleExecutable</key>
+	<string>EnviousWispr</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.enviouswispr.app.dev</string>
+	<key>CFBundleName</key>
+	<string>EnviousWispr Dev</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.5</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleVersion</key>
+	<string>1.0.5</string>
+	<key>LSArchitecturePriority</key>
+	<array>
+		<string>arm64</string>
+	</array>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>EnviousWispr uses Accessibility APIs to paste transcribed text into the active application.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>EnviousWispr needs microphone access for speech-to-text dictation.</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>SUFeedURL</key>
+	<string>https://saurabhav88.github.io/EnviousWispr/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>jHq1RIQKDmtO64qtCdZ6jNdHNFrfyScE16yuu+ufvDw=</string>
 </dict>
 </plist>
