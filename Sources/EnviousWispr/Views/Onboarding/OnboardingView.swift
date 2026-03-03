@@ -278,8 +278,9 @@ final class OnboardingViewModel {
             // Step 3: Set provider in Settings
             appState.settings.llmProvider = provider.llmProvider
 
-            // Step 4: Trigger full model discovery so AppState.discoveredModels is populated
-            Task { await appState.validateKeyAndDiscoverModels(provider: provider.llmProvider) }
+            // Step 4: Await model discovery so a model is selected before advancing
+            // (validateKeyAndDiscoverModels already picks a default model)
+            await appState.validateKeyAndDiscoverModels(provider: provider.llmProvider)
 
             byokValidationState = .valid
 
@@ -872,6 +873,7 @@ private struct AIPolishStepView: View {
     @State private var selectedProvider: BYOKProvider = .openai
     @State private var apiKey: String = ""
     @State private var validationTask: Task<Void, Never>? = nil
+    @State private var autoAdvanceTask: Task<Void, Never>? = nil
 
     enum PolishOption { case onDevice, byok }
 
@@ -1029,6 +1031,7 @@ private struct AIPolishStepView: View {
                 byokFeedbackView
 
                 Button("Continue") {
+                    autoAdvanceTask?.cancel()
                     applyPolishChoice()
                     viewModel.advanceToNextStep()
                 }
@@ -1041,6 +1044,7 @@ private struct AIPolishStepView: View {
                 )
 
                 Button("Skip for now \u{2192}") {
+                    autoAdvanceTask?.cancel()
                     viewModel.advanceToNextStep()
                 }
                 .font(.system(size: 12, weight: .medium))
@@ -1054,14 +1058,27 @@ private struct AIPolishStepView: View {
                 viewModel.byokValidationState = .idle
             }
         }
+        .onChange(of: viewModel.byokValidationState) { _, newState in
+            if case .valid = newState {
+                autoAdvanceTask = Task {
+                    try? await Task.sleep(for: .seconds(1.5))
+                    guard !Task.isCancelled else { return }
+                    applyPolishChoice()
+                    viewModel.advanceToNextStep()
+                }
+            }
+        }
+        .onDisappear {
+            autoAdvanceTask?.cancel()
+        }
     }
 
     private func applyPolishChoice() {
         switch selectedOption {
         case .onDevice:
-            appState.settings.llmProvider = .none
+            appState.settings.llmProvider = .appleIntelligence
         case .byok:
-            break // provider and key were handled by validateAndSaveKey on validation success
+            break // provider + model already set by validateAndSaveKey → validateKeyAndDiscoverModels
         }
     }
 
