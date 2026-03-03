@@ -22,7 +22,10 @@ xcuserdata/
 *~
 
 # Claude Code
-.claude/settings.local.json
+.claude/
+CLAUDE.md
+
+# Task artifacts
 .needs-uat
 
 # Logs
@@ -57,6 +60,10 @@ Tests/Resources/jfk.wav
 node_modules/
 dist/
 build/
+
+# Screenshots and diagrams (local artifacts)
+*.png
+docs/
 
 # App bundle (build artifact)
 EnviousWispr.app/
