@@ -295,6 +295,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         recordItem.isEnabled = !(state.isActive && state != .recording)
         menu.addItem(recordItem)
 
+        // Auto-stop on silence indicator
+        if appState.settings.vadAutoStop {
+            let autoStopTitle = state == .recording
+                ? "Auto-stop: Active (\(String(format: "%.1fs", appState.settings.vadSilenceTimeout)) silence)"
+                : "Auto-stop on silence: On"
+            let autoStopItem = NSMenuItem(title: autoStopTitle, action: nil, keyEquivalent: "")
+            autoStopItem.image = NSImage(systemSymbolName: "waveform.badge.minus", accessibilityDescription: "Auto-stop on silence")
+            autoStopItem.isEnabled = false
+            menu.addItem(autoStopItem)
+        }
+
         // Accessibility warning — shown only when paste is unavailable and not dismissed.
         if appState.permissions.shouldShowAccessibilityWarning {
             let warningItem = NSMenuItem(

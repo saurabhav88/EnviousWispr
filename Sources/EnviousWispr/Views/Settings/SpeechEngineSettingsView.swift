@@ -72,6 +72,9 @@ struct SpeechEngineSettingsView: View {
 
             Section("Voice Activity Detection") {
                 Toggle("Auto-stop on silence", isOn: $state.settings.vadAutoStop)
+                Text("Automatically stops recording after a period of silence. Recommended off for most users — natural pauses in speech may trigger early stops.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
                 if appState.settings.vadAutoStop {
                     HStack {
