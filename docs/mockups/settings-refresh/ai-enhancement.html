@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Enhancement — Settings Mockup</title>
+  <style>
+    /* ── Brand tokens (macOS context) ─────────────────────────────── */
+    :root {
+      --accent:         #7c3aed;
+      --accent-hover:   #6d28d9;
+      --accent-soft:    rgba(124, 58, 237, 0.08);
+      --accent-glow:    rgba(124, 58, 237, 0.20);
+      --green:          #00c880;
+      --cyan:           #00ccdd;
+      --red:            #e6253a;
+      --text:           #0f0a1a;
+      --text-2:         #4a3d60;
+      --text-3:         #7d6f96;
+      --bg:             #f5f5f7;
+      --surface:        #ffffff;
+      --border:         rgba(0,0,0,0.08);
+      --border-hover:   rgba(0,0,0,0.14);
+      --font:           system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+      --radius-sm:      6px;
+      --radius-md:      10px;
+      --radius-lg:      12px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.4;
+      display: flex;
+      justify-content: center;
+      padding: 24px 16px 48px;
+      min-height: 100vh;
+    }
+
+    .settings-panel {
+      width: 480px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .page-title {
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: -0.2px;
+      margin-bottom: 16px;
+      padding: 0 4px;
+    }
+
+    /* ── Section ─────────────────────────────────────────────────── */
+    .section {
+      margin-bottom: 20px;
+    }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-3);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 6px;
+      padding: 0 16px;
+    }
+
+    /* ── Form group card ─────────────────────────────────────────── */
+    .form-group {
+      background: var(--surface);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    /* ── Form row ────────────────────────────────────────────────── */
+    .form-row {
+      display: flex;
+      align-items: center;
+      min-height: 40px;
+      padding: 0 14px;
+      gap: 10px;
+    }
+
+    .form-row + .form-row {
+      border-top: 1px solid var(--border);
+    }
+
+    .form-row.tall {
+      align-items: flex-start;
+      padding-top: 10px;
+      padding-bottom: 10px;
+    }
+
+    .row-label {
+      font-size: 13px;
+      color: var(--text);
+      flex: 1;
+      min-width: 0;
+    }
+
+    .row-label strong { font-weight: 500; }
+
+    .row-value {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .row-helper {
+      font-size: 11.5px;
+      color: var(--text-3);
+      margin-top: 2px;
+      line-height: 1.4;
+    }
+
+    .section-footer {
+      font-size: 11.5px;
+      color: var(--text-3);
+      padding: 7px 16px 0;
+      line-height: 1.45;
+    }
+
+    .off-helper-banner {
+      margin-top: -10px;
+      margin-bottom: 4px;
+      background: var(--accent-soft);
+      border-radius: var(--radius-md);
+      border: 1px solid rgba(124, 58, 237, 0.12);
+      padding: 10px 14px;
+      font-size: 12px;
+      color: var(--text-2);
+      line-height: 1.45;
+    }
+
+    /* ── Picker ──────────────────────────────────────────────────── */
+    .picker {
+      appearance: none;
+      -webkit-appearance: none;
+      background: rgba(0,0,0,0.04);
+      border: 1px solid rgba(0,0,0,0.12);
+      border-radius: var(--radius-sm);
+      font-family: var(--font);
+      font-size: 12.5px;
+      color: var(--text);
+      padding: 3px 22px 3px 8px;
+      cursor: pointer;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23888' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 7px center;
+      min-width: 140px;
+      transition: border-color 0.15s;
+    }
+
+    .picker:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2.5px var(--accent-glow);
+    }
+
+    .picker:hover { border-color: var(--border-hover); }
+
+    /* ── Toggle ──────────────────────────────────────────────────── */
+    .toggle {
+      position: relative;
+      width: 36px;
+      height: 20px;
+      flex-shrink: 0;
+      display: inline-block;
+    }
+
+    .toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+      position: absolute;
+    }
+
+    .toggle-track {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.15);
+      border-radius: 100px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .toggle input:checked + .toggle-track { background: var(--accent); }
+
+    .toggle-thumb {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 16px;
+      height: 16px;
+      background: white;
+      border-radius: 50%;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+      transition: transform 0.2s;
+      pointer-events: none;
+    }
+
+    .toggle input:checked ~ .toggle-thumb { transform: translateX(16px); }
+
+    /* ── Buttons ─────────────────────────────────────────────────── */
+    .btn {
+      font-family: var(--font);
+      font-size: 12.5px;
+      font-weight: 500;
+      padding: 4px 12px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: background 0.15s, box-shadow 0.15s;
+      border: none;
+      white-space: nowrap;
+    }
+
+    .btn-default {
+      background: rgba(0,0,0,0.07);
+      color: var(--text);
+      border: 1px solid rgba(0,0,0,0.12);
+    }
+
+    .btn-default:hover { background: rgba(0,0,0,0.11); }
+
+    .btn-accent {
+      background: var(--accent);
+      color: white;
+      border: 1px solid transparent;
+    }
+
+    .btn-accent:hover {
+      background: var(--accent-hover);
+      box-shadow: 0 2px 8px var(--accent-glow);
+    }
+
+    .btn-destructive {
+      background: rgba(230, 37, 58, 0.08);
+      color: var(--red);
+      border: 1px solid rgba(230, 37, 58, 0.15);
+    }
+
+    .btn-destructive:hover { background: rgba(230, 37, 58, 0.13); }
+
+    /* ── API Key field ───────────────────────────────────────────── */
+    .secure-field {
+      font-family: var(--font);
+      font-size: 12.5px;
+      color: var(--text);
+      background: rgba(0,0,0,0.04);
+      border: 1px solid rgba(0,0,0,0.12);
+      border-radius: var(--radius-sm);
+      padding: 3px 8px;
+      width: 175px;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    .secure-field:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2.5px var(--accent-glow);
+    }
+
+    .eye-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text-3);
+      padding: 2px 4px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      transition: color 0.15s;
+    }
+
+    .eye-btn:hover { color: var(--text-2); }
+
+    /* ── Validation badge ────────────────────────────────────────── */
+    .validation-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 100px;
+    }
+
+    .badge-valid {
+      background: rgba(0, 200, 128, 0.12);
+      color: #007a4d;
+      border: 1px solid rgba(0, 200, 128, 0.25);
+    }
+
+    .badge-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    /* ── Link ────────────────────────────────────────────────────── */
+    .link {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 12px;
+    }
+
+    .link:hover {
+      color: var(--accent-hover);
+      text-decoration: underline;
+    }
+
+    /* ── Model recommendation cards ──────────────────────────────── */
+    .model-card {
+      display: flex;
+      align-items: center;
+      padding: 8px 14px;
+      gap: 10px;
+      border-top: 1px solid var(--border);
+    }
+
+    .model-card-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+
+    .model-card-body {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .model-card-name {
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .model-card-desc {
+      font-size: 11px;
+      color: var(--text-3);
+      margin-top: 1px;
+    }
+
+    .model-badge {
+      font-size: 10.5px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 100px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .badge-green {
+      background: rgba(0, 200, 128, 0.12);
+      color: #007a4d;
+      border: 1px solid rgba(0, 200, 128, 0.22);
+    }
+
+    .badge-blue {
+      background: rgba(0, 204, 221, 0.12);
+      color: #006f7a;
+      border: 1px solid rgba(0, 204, 221, 0.22);
+    }
+
+    .badge-gray {
+      background: rgba(0,0,0,0.05);
+      color: var(--text-3);
+      border: 1px solid rgba(0,0,0,0.09);
+    }
+
+    .instructions-hint {
+      font-size: 12px;
+      color: var(--text-3);
+      font-style: italic;
+    }
+
+    /* ── Conditional section visibility ──────────────────────────── */
+    .conditional-section { display: none; }
+    .conditional-section.visible { display: block; }
+  </style>
+</head>
+<body>
+
+<div class="settings-panel">
+
+  <h1 class="page-title">AI Enhancement</h1>
+
+  <!-- ── Section 1: AI Enhancement ──────────────────────────────── -->
+  <div class="section">
+    <div class="section-label">AI Enhancement</div>
+    <div class="form-group">
+      <div class="form-row">
+        <span class="row-label">Enhancement</span>
+        <div class="row-value">
+          <select class="picker" id="provider-picker" onchange="onProviderChange(this.value)">
+            <option value="off">Off</option>
+            <option value="openai" selected>OpenAI</option>
+            <option value="gemini">Google Gemini</option>
+            <option value="ollama">Local (Ollama)</option>
+            <option value="apple">Apple Intelligence</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div id="off-helper" class="off-helper-banner" style="display:none; margin-top:8px;">
+      Turn on AI enhancement to automatically fix grammar, punctuation, and formatting.
+    </div>
+  </div>
+
+  <!-- ── Section 2: Model ────────────────────────────────────────── -->
+  <div class="section conditional-section visible" id="section-model">
+    <div class="section-label">Model</div>
+    <div class="form-group" id="model-form-group">
+
+      <!-- Model picker row -->
+      <div class="form-row">
+        <span class="row-label">Model</span>
+        <div class="row-value">
+          <select class="picker" id="model-picker" onchange="onModelChange(this.value)">
+            <option value="gpt-4o-mini" selected>GPT-4o Mini</option>
+            <option value="gpt-41-mini">GPT-4.1 Mini</option>
+            <option value="gpt-4o">GPT-4o</option>
+            <option value="gpt-35-turbo">GPT-3.5 Turbo</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Model recommendation cards — rendered by JS -->
+      <div id="model-cards-container"></div>
+
+      <!-- Custom instructions row -->
+      <div class="form-row tall" style="border-top: 1px solid var(--border); align-items:center;">
+        <div style="flex:1;">
+          <div class="row-label"><strong>Custom instructions</strong></div>
+          <div class="row-helper instructions-hint">Using default instructions</div>
+        </div>
+        <div class="row-value">
+          <button class="btn btn-default">Edit Instructions</button>
+        </div>
+      </div>
+
+    </div>
+    <div class="section-footer" id="model-footer">
+      Transcript cleanup is straightforward — smaller models handle it well at a fraction of the cost.
+    </div>
+  </div>
+
+  <!-- ── Section 3: API Key ─────────────────────────────────────── -->
+  <div class="section conditional-section visible" id="section-apikey">
+    <div class="section-label">API Key</div>
+    <div class="form-group">
+
+      <div class="form-row tall">
+        <div style="flex:1; min-width:0;">
+          <div class="row-label" style="margin-bottom:6px;"><strong id="apikey-label">OpenAI API Key</strong></div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <input type="password" class="secure-field" id="api-key-field"
+                   value="sk-proj-••••••••••••••••••••" placeholder="sk-proj-…" />
+            <button class="eye-btn" id="eye-btn" onclick="toggleKeyVisibility()" title="Show or hide key" aria-label="Toggle key visibility">
+              <svg id="eye-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
+                   aria-hidden="true">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="row-value" style="align-self:flex-end;">
+          <span class="validation-badge badge-valid">
+            <span class="badge-dot"></span>
+            Valid
+          </span>
+        </div>
+      </div>
+
+      <div class="form-row" style="justify-content:flex-end; gap:8px;">
+        <button class="btn btn-accent">Save Key</button>
+        <button class="btn btn-destructive">Clear Key</button>
+      </div>
+
+    </div>
+    <div class="section-footer">
+      <a href="#" class="link" id="apikey-link">Get your free API key</a>
+      <span id="apikey-link-suffix"> at platform.openai.com</span>
+    </div>
+  </div>
+
+  <!-- ── Section 4: Advanced ────────────────────────────────────── -->
+  <div class="section conditional-section visible" id="section-advanced">
+    <div class="section-label">Advanced</div>
+    <div class="form-group">
+      <div class="form-row tall" style="align-items:center;">
+        <div style="flex:1;">
+          <div class="row-label"><strong>Deep reasoning</strong></div>
+          <div class="row-helper">Takes longer but handles complex formatting instructions better.</div>
+        </div>
+        <div class="row-value" style="padding-top:1px;">
+          <label class="toggle" aria-label="Deep reasoning">
+            <input type="checkbox" id="deep-reasoning-toggle">
+            <div class="toggle-track"></div>
+            <div class="toggle-thumb"></div>
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- .settings-panel -->
+
+<script>
+  // ── Model definitions per provider ──────────────────────────────
+  var MODELS = {
+    openai: [
+      { value: 'gpt-4o-mini',   label: 'GPT-4o Mini',    desc: 'Fast · Affordable · Great quality', badge: 'Best value',  badgeClass: 'badge-green', iconBg: 'rgba(0,200,128,0.10)', icon: '⚡' },
+      { value: 'gpt-41-mini',   label: 'GPT-4.1 Mini',   desc: 'Fast · Affordable · Newer',         badge: 'Also great',  badgeClass: 'badge-blue',  iconBg: 'rgba(0,204,221,0.10)', icon: '✦' },
+      { value: 'gpt-4o',        label: 'GPT-4o / 4.1',   desc: 'Slower · Higher cost',              badge: 'Premium',     badgeClass: 'badge-gray',  iconBg: 'rgba(0,0,0,0.05)',    icon: '◈' },
+      { value: 'gpt-35-turbo',  label: 'GPT-3.5 Turbo',  desc: 'Cheapest · Lower quality',          badge: 'Budget',      badgeClass: 'badge-gray',  iconBg: 'rgba(0,0,0,0.05)',    icon: '◇' }
+    ],
+    gemini: [
+      { value: 'gemini-2-flash', label: 'Gemini 2.0 Flash', desc: 'Fast · Affordable · Great quality', badge: 'Best value',  badgeClass: 'badge-green', iconBg: 'rgba(0,200,128,0.10)', icon: '⚡' },
+      { value: 'gemini-15-flash',label: 'Gemini 1.5 Flash', desc: 'Fast · Stable · Proven',            badge: 'Also great',  badgeClass: 'badge-blue',  iconBg: 'rgba(0,204,221,0.10)', icon: '✦' },
+      { value: 'gemini-2-pro',   label: 'Gemini 2.0 Pro',   desc: 'Slower · Higher cost',              badge: 'Premium',     badgeClass: 'badge-gray',  iconBg: 'rgba(0,0,0,0.05)',    icon: '◈' }
+    ],
+    ollama: [
+      { value: 'llama3.2', label: 'Llama 3.2',  desc: 'Fast · Private · No internet needed',  badge: 'Recommended', badgeClass: 'badge-green', iconBg: 'rgba(0,200,128,0.10)', icon: '⚡' },
+      { value: 'llama3.1', label: 'Llama 3.1',  desc: 'Stable · Well tested',                 badge: 'Also great',  badgeClass: 'badge-blue',  iconBg: 'rgba(0,204,221,0.10)', icon: '✦' },
+      { value: 'phi3',     label: 'Phi-3 Mini', desc: 'Smallest · Fastest on older Macs',     badge: 'Lightweight', badgeClass: 'badge-gray',  iconBg: 'rgba(0,0,0,0.05)',    icon: '◇' }
+    ]
+  };
+
+  var API_KEY_META = {
+    openai: { label: 'OpenAI API Key',         suffix: ' at platform.openai.com' },
+    gemini: { label: 'Google Gemini API Key',  suffix: ' at aistudio.google.com' }
+  };
+
+  // ── Rebuild model picker options ─────────────────────────────────
+  function rebuildModelPicker(provider) {
+    var picker = document.getElementById('model-picker');
+    var models = MODELS[provider] || [];
+    // Remove all existing options
+    while (picker.options.length > 0) { picker.remove(0); }
+    models.forEach(function(m, i) {
+      var opt = document.createElement('option');
+      opt.value = m.value;
+      opt.textContent = m.label;
+      if (i === 0) { opt.selected = true; }
+      picker.appendChild(opt);
+    });
+  }
+
+  // ── Rebuild model recommendation cards ──────────────────────────
+  function rebuildModelCards(provider) {
+    var container = document.getElementById('model-cards-container');
+    // Remove existing children
+    while (container.firstChild) { container.removeChild(container.firstChild); }
+
+    var models = MODELS[provider] || [];
+    models.forEach(function(m) {
+      var card = document.createElement('div');
+      card.className = 'model-card';
+
+      var iconEl = document.createElement('div');
+      iconEl.className = 'model-card-icon';
+      iconEl.style.background = m.iconBg;
+      iconEl.textContent = m.icon;
+
+      var body = document.createElement('div');
+      body.className = 'model-card-body';
+
+      var nameEl = document.createElement('div');
+      nameEl.className = 'model-card-name';
+      nameEl.textContent = m.label;
+
+      var descEl = document.createElement('div');
+      descEl.className = 'model-card-desc';
+      descEl.textContent = m.desc;
+
+      body.appendChild(nameEl);
+      body.appendChild(descEl);
+
+      var badge = document.createElement('span');
+      badge.className = 'model-badge ' + m.badgeClass;
+      badge.textContent = m.badge;
+
+      card.appendChild(iconEl);
+      card.appendChild(body);
+      card.appendChild(badge);
+      container.appendChild(card);
+    });
+  }
+
+  // ── Provider change handler ──────────────────────────────────────
+  function onProviderChange(provider) {
+    var sectionModel    = document.getElementById('section-model');
+    var sectionApiKey   = document.getElementById('section-apikey');
+    var sectionAdvanced = document.getElementById('section-advanced');
+    var offHelper       = document.getElementById('off-helper');
+    var apikeyLabel     = document.getElementById('apikey-label');
+    var apikeyLinkSuffix = document.getElementById('apikey-link-suffix');
+
+    // Reset visibility
+    sectionModel.classList.remove('visible');
+    sectionApiKey.classList.remove('visible');
+    sectionAdvanced.classList.remove('visible');
+    offHelper.style.display = 'none';
+
+    if (provider === 'off') {
+      offHelper.style.display = 'block';
+      return;
+    }
+
+    if (provider === 'apple') {
+      // Apple Intelligence: no sections needed
+      return;
+    }
+
+    // Show model section for all active providers
+    sectionModel.classList.add('visible');
+    rebuildModelPicker(provider);
+    rebuildModelCards(provider);
+
+    if (provider === 'ollama') {
+      // Local: no API key, no advanced
+      return;
+    }
+
+    // Cloud providers: show API key + advanced
+    sectionApiKey.classList.add('visible');
+    sectionAdvanced.classList.add('visible');
+
+    var meta = API_KEY_META[provider] || API_KEY_META['openai'];
+    if (apikeyLabel) { apikeyLabel.textContent = meta.label; }
+    if (apikeyLinkSuffix) { apikeyLinkSuffix.textContent = meta.suffix; }
+  }
+
+  // ── Eye toggle ────────────────────────────────────────────────────
+  var keyVisible = false;
+
+  function setEyeIconOpen(svgEl) {
+    // "eye-off" paths — slash through eye
+    while (svgEl.firstChild) { svgEl.removeChild(svgEl.firstChild); }
+
+    var p1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    p1.setAttribute('d', 'M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94');
+
+    var p2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    p2.setAttribute('d', 'M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19');
+
+    var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', '1');
+    line.setAttribute('y1', '1');
+    line.setAttribute('x2', '23');
+    line.setAttribute('y2', '23');
+
+    svgEl.appendChild(p1);
+    svgEl.appendChild(p2);
+    svgEl.appendChild(line);
+  }
+
+  function setEyeIconClosed(svgEl) {
+    // "eye" path — visible eye
+    while (svgEl.firstChild) { svgEl.removeChild(svgEl.firstChild); }
+
+    var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z');
+
+    var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('cx', '12');
+    circle.setAttribute('cy', '12');
+    circle.setAttribute('r', '3');
+
+    svgEl.appendChild(path);
+    svgEl.appendChild(circle);
+  }
+
+  function toggleKeyVisibility() {
+    keyVisible = !keyVisible;
+    var field = document.getElementById('api-key-field');
+    var icon  = document.getElementById('eye-icon');
+    field.type = keyVisible ? 'text' : 'password';
+    if (keyVisible) {
+      setEyeIconOpen(icon);
+    } else {
+      setEyeIconClosed(icon);
+    }
+  }
+
+  // ── Init model cards on load ─────────────────────────────────────
+  rebuildModelCards('openai');
+</script>
+
+</body>
+</html>
