@@ -26,11 +26,12 @@ def _txt(el):
         if v and isinstance(v, str) and v.strip(): return v.strip()
     return ""
 
-def _row_text(row):
+def _row_text(row, depth=0):
+    if depth > 4: return ""
     t = _txt(row)
     if t: return t
     for k in (get_attr(row,"AXChildren") or []):
-        t = _txt(k)
+        t = _row_text(k, depth + 1)
         if t: return t
     return ""
 
@@ -148,6 +149,13 @@ def _walk(el, out, d):
         out.append(f"{ind}{_label(el, role, s)}")
     elif role == "AXApplication":
         out.append(f'{ind}[app "{get_attr(el,"AXTitle") or ""}"]')
+        # Walk windows first, then menus — windows have the useful content
+        windows = [c for c in children if (get_attr(c,"AXRole") or "") == "AXWindow"]
+        rest = [c for c in children if (get_attr(c,"AXRole") or "") != "AXWindow"]
+        for c in windows + rest:
+            if len(out) >= _MAX_LINES: return
+            _walk(c, out, d + 1)
+        return
     elif role and role not in _NOISE:
         t = _txt(el)
         if t: out.append(f'{ind}[{role.replace("AX","").lower()}] "{t}"')
@@ -210,8 +218,10 @@ def read(label):
             print(f"{label} = (no frame)"); return None
         lcx, lcy = lf["x"] + lf["width"]/2.0, lf["y"] + lf["height"]/2.0
 
-        # Find nearest control of any type
-        best, best_dist = None, 200.0
+        # Find nearest control on the same form row (Y-aligned).
+        # In SwiftUI Form, labels sit far left and controls far right,
+        # so X distance is large but Y should be within ~20px for same row.
+        best, best_dist = None, 800.0
         for cr in ("AXPopUpButton","AXTextField","AXCheckBox","AXTextArea"):
             for cand in find_all_elements(_app, role=cr):
                 cf = element_frame(cand)
@@ -219,7 +229,8 @@ def read(label):
                 dx = cf["x"] + cf["width"]/2.0 - lcx
                 dy = cf["y"] + cf["height"]/2.0 - lcy
                 if dx < -lf["width"] and dy < -lf["height"]: continue
-                dist = (dx*dx + dy*dy) ** 0.5
+                # Weight Y 10x to prefer same-row controls
+                dist = (dx*dx + dy*dy * 100) ** 0.5
                 if dist < best_dist:
                     best_dist, best = dist, cand
 
@@ -302,3 +313,48 @@ def begin_test(label):
 def end_test():
     try: _notify("UAT Complete"); print("Test ended")
     except Exception as e: print(f"end_test error: {e}")
+
+# ── High-Level Tasks (one call, no decisions) ─────────────────────────
+
+def check(tab, *labels):
+    """Navigate to a settings tab and read one or more label values.
+    Usage: check('polish', 'Provider', 'Model')
+    Returns dict of label→value."""
+    connect()
+    begin_test(f"check {tab}")
+    if not nav(tab):
+        end_test()
+        return {}
+    results = {}
+    for label in labels:
+        results[label] = read(label)
+    end_test()
+    return results
+
+def look(tab=None):
+    """Connect and show what's on screen. Optionally navigate to a tab first.
+    Usage: look()  or  look('polish')"""
+    connect()
+    if tab:
+        nav(tab)
+    see()
+
+def verify(tab, expectations):
+    """Navigate to a tab and check expected values. Reports VERIFIED/ISSUE per item.
+    Usage: verify('polish', {'Provider': 'OpenAI', 'Model': 'gpt-4o-mini'})
+    Pass None as value to just read without checking."""
+    connect()
+    begin_test(f"verify {tab}")
+    if not nav(tab):
+        print(f"BLOCKED: Could not navigate to '{tab}'")
+        end_test()
+        return
+    for label, expected in expectations.items():
+        actual = read(label)
+        if expected is None:
+            print(f"INFO: {label} = {actual}")
+        elif actual and expected.lower() in actual.lower():
+            print(f"VERIFIED: {label} = {actual}")
+        else:
+            print(f"ISSUE: {label} expected '{expected}', got '{actual}'")
+    end_test()
