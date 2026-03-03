@@ -29,10 +29,11 @@ final class MenuBarIconAnimator {
     // MARK: - Configuration
 
     /// Call once from setupStatusItem() after creating the button.
-    func configure(button: NSStatusBarButton, idleImage: NSImage?) {
+    func configure(button: NSStatusBarButton, idleImage: NSImage? = nil) {
         self.button = button
-        self.idleImage = idleImage
+        self.idleImage = renderIdleLips()
         self.errorImage = renderErrorLips()
+        button.image = self.idleImage
     }
 
     // MARK: - State Transitions
@@ -163,6 +164,52 @@ final class MenuBarIconAnimator {
 
             return true
         }
+    }
+
+    /// Render idle lips — same 9+9 bar geometry as recording/error lips, but monochrome.
+    /// Uses black at 0.65 alpha so macOS template rendering inverts correctly for dark/light mode.
+    private func renderIdleLips() -> NSImage {
+        let size = NSSize(width: 18, height: 18)
+        let image = NSImage(size: size, flipped: true) { rect in
+            guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
+
+            let scale = rect.width / 64.0
+            let barWidth: CGFloat = 4.5 * scale
+            let cornerRadius: CGFloat = 1.5 * scale
+            let fill = CGColor(red: 0, green: 0, blue: 0, alpha: 0.65)
+
+            let upperBars: [(x: CGFloat, y: CGFloat, h: CGFloat)] = [
+                (4,  22.25,   5),  (10, 17.6375, 8),  (16, 12.04,   12),
+                (22, 16.96,   9),  (28, 21.5575, 6),  (34, 16.96,   9),
+                (40, 12.04,   12), (46, 17.6375, 8),  (52, 22.25,   5),
+            ]
+
+            let lowerBars: [(x: CGFloat, y: CGFloat, h: CGFloat)] = [
+                (4,  30.25,   5),  (10, 28.6375, 9),  (16, 27.04,   12),
+                (22, 28.96,   15), (28, 30.5575, 17), (34, 28.96,   15),
+                (40, 27.04,   12), (46, 28.6375, 9),  (52, 30.25,   5),
+            ]
+
+            ctx.setFillColor(fill)
+
+            for bar in upperBars {
+                let barRect = CGRect(x: bar.x * scale, y: bar.y * scale, width: barWidth, height: bar.h * scale)
+                let path = CGPath(roundedRect: barRect, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
+                ctx.addPath(path)
+                ctx.fillPath()
+            }
+
+            for bar in lowerBars {
+                let barRect = CGRect(x: bar.x * scale, y: bar.y * scale, width: barWidth, height: bar.h * scale)
+                let path = CGPath(roundedRect: barRect, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
+                ctx.addPath(path)
+                ctx.fillPath()
+            }
+
+            return true
+        }
+        image.isTemplate = true
+        return image
     }
 
     /// Render error lips — same geometry as recording but all bars in red.

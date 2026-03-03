@@ -21,9 +21,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Callback set by SwiftUI to open the main window (since openWindow env is only available in views).
     var openMainWindowAction: (() -> Void)?
 
+    /// Callback set by SwiftUI to open the onboarding window.
+    var openOnboardingAction: (() -> Void)?
+
+    /// Callback set by SwiftUI to dismiss the onboarding window (state-driven).
+    var dismissOnboardingAction: (() -> Void)?
+
+    /// Weak reference to the onboarding window so we can detect when user closes it early.
+    private weak var onboardingWindow: NSWindow?
+    private var onboardingCloseObserver: (any NSObjectProtocol)?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Hide dock icon on launch — we're a menu bar utility
-        NSApp.setActivationPolicy(.accessory)
+        // Hide dock icon on launch — we're a menu bar utility.
+        // If onboarding is needed, stay .regular so SwiftUI creates the main window hierarchy
+        // and ActionWirer can wire callbacks before opening the onboarding window.
+        if appState.settings.onboardingState == .completed {
+            NSApp.setActivationPolicy(.accessory)
+        }
 
         // When the unified window closes, revert to .accessory immediately.
         // There's only one window now, so no need for the 200ms re-check delay.
@@ -79,6 +93,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             provider: appState.settings.llmProvider,
             keychainManager: appState.keychainManager
         )
+
+        // Onboarding auto-open is handled by ActionWirer inside the main Window scene.
+        // ActionWirer wires all callbacks first, then calls openOnboardingWindow() if needed.
+        // No deferred dispatch required here.
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -89,13 +107,69 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
+    // MARK: - Onboarding Window
+
+    /// Open the onboarding window and begin monitoring for early close (abort flow).
+    func openOnboardingWindow() {
+        guard appState.settings.onboardingState != .completed else { return }
+        openOnboardingAction?()
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        // Hide the main window so only the onboarding window is visible during setup.
+        if let mainWin = self.mainWindow {
+            mainWin.orderOut(nil)
+        }
+
+        // Capture the onboarding NSWindow by identity on first open.
+        // We defer one run-loop cycle so SwiftUI has time to create/order the window
+        // before we search NSApp.windows.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.onboardingWindow == nil else { return }
+            // SwiftUI Window(id: "onboarding") sets the title to the scene name ("Setup").
+            // We capture by identity here so the close observer can match by reference,
+            // not by title — title matching would fail if the scene name ever changes.
+            self.onboardingWindow = NSApp.windows.first { $0.title == "Setup" }
+        }
+
+        // Monitor for user closing the onboarding window before completion.
+        // Match by window identity (captured above), not by title string.
+        if onboardingCloseObserver == nil {
+            onboardingCloseObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.willCloseNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                guard let window = notification.object as? NSWindow else { return }
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    // Match by captured identity; fall back to title if not yet captured.
+                    let isOnboardingWindow = (self.onboardingWindow != nil)
+                        ? window === self.onboardingWindow
+                        : window.title == "Setup"
+                    guard isOnboardingWindow else { return }
+                    self.onboardingWindow = nil
+                    // Only treat as abort if onboarding not yet completed.
+                    if self.appState.settings.onboardingState != .completed {
+                        self.updateIcon()
+                    }
+                }
+            }
+        }
+    }
+
+    /// Called by the onboarding Done button via the onComplete callback.
+    /// State-driven: flips isOnboardingPresented to false, ActionWirer's onChange dismisses the window.
+    func closeOnboardingWindow() {
+        dismissOnboardingAction?()
+        NSApp.setActivationPolicy(.accessory)
+        updateIcon()
+    }
+
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         guard let button = statusItem?.button else { return }
 
-        let idleImage = loadMenuBarImage(named: "menubar-idle", isTemplate: true)
-        button.image = idleImage
-        iconAnimator.configure(button: button, idleImage: idleImage)
+        iconAnimator.configure(button: button)
         iconAnimator.audioLevelProvider = { [weak self] in self?.appState.audioCapture.audioLevel ?? 0 }
 
         let menu = NSMenu()
@@ -169,7 +243,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Final fallback: SF Symbol
         let fallback = NSImage(
             systemSymbolName: "mic",
-            accessibilityDescription: "EnviousWispr Local"
+            accessibilityDescription: AppConstants.appName
         )
         fallback?.isTemplate = isTemplate
         fallback?.size = NSSize(width: 18, height: 18)
@@ -181,6 +255,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.removeAllItems()
 
         let state = appState.pipelineState
+        let onboardingIncomplete = appState.settings.onboardingState != .completed
+
+        // Onboarding abort item — shown at the very top when setup is incomplete.
+        if onboardingIncomplete {
+            let setupItem = NSMenuItem(
+                title: "Setup Required: Continue Setup…",
+                action: #selector(continueOnboarding),
+                keyEquivalent: ""
+            )
+            setupItem.image = NSImage(systemSymbolName: "exclamationmark.circle.fill", accessibilityDescription: "Setup required")
+            setupItem.target = self
+            menu.addItem(setupItem)
+            menu.addItem(.separator())
+        }
 
         // Status: ASR model — LLM model
         let asrModel = appState.activeModelName
@@ -233,7 +321,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
 
         // Quit
-        let quitItem = NSMenuItem(title: "Quit EnviousWispr Local", action: #selector(quitApp), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "Quit \(AppConstants.appName)", action: #selector(quitApp), keyEquivalent: "q")
         quitItem.image = NSImage(systemSymbolName: "power", accessibilityDescription: "Quit")
         quitItem.target = self
         menu.addItem(quitItem)
@@ -243,8 +331,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func updateIcon() {
         let state = appState.pipelineState
         let needsAccessWarning = state == .idle && appState.permissions.shouldShowAccessibilityWarning
+        let onboardingIncomplete = appState.settings.onboardingState != .completed
 
-        if needsAccessWarning {
+        if needsAccessWarning || (onboardingIncomplete && state == .idle) {
             iconAnimator.transition(to: .error)
         } else if case .error = state {
             iconAnimator.transition(to: .error)
@@ -255,6 +344,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             iconAnimator.transition(to: .idle)
         }
+    }
+
+    @objc private func continueOnboarding() {
+        openOnboardingWindow()
     }
 
     @objc private func toggleRecording() {
@@ -270,7 +363,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             action()
         } else {
             // Fallback: find and show an existing window
-            for window in NSApp.windows where window.title == "EnviousWispr Local" {
+            for window in NSApp.windows where window.title == AppConstants.appName {
                 window.makeKeyAndOrderFront(nil)
                 break
             }
@@ -293,6 +386,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let observer = windowCloseObserver {
             NotificationCenter.default.removeObserver(observer)
             windowCloseObserver = nil
+        }
+        if let observer = onboardingCloseObserver {
+            NotificationCenter.default.removeObserver(observer)
+            onboardingCloseObserver = nil
         }
         appState.ollamaSetup.cleanup()
         appState.hotkeyService.stop()

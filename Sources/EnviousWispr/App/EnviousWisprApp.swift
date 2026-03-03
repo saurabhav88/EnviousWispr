@@ -3,15 +3,32 @@ import SwiftUI
 @main
 struct EnviousWisprApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @State private var isOnboardingPresented: Bool =
+        !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
 
     var body: some Scene {
-        Window("EnviousWispr Local", id: "main") {
+        Window(AppConstants.appName, id: "main") {
             UnifiedWindowView()
-                .frame(minWidth: 560, minHeight: 400)
+                .frame(minWidth: 580, minHeight: 400)
                 .environment(appDelegate.appState)
-                .background(ActionWirer(appDelegate: appDelegate))
+                .background(
+                    ActionWirer(
+                        appDelegate: appDelegate,
+                        isOnboardingPresented: $isOnboardingPresented
+                    )
+                )
         }
         .defaultSize(width: 820, height: 600)
+
+        // Onboarding window — non-resizable, centered, auto-opens on first launch.
+        Window("Setup", id: "onboarding") {
+            OnboardingView(onComplete: {
+                appDelegate.closeOnboardingWindow()
+            })
+            .environment(appDelegate.appState)
+        }
+        .windowResizability(.contentSize)
+        .defaultSize(width: 500, height: 550)
     }
 }
 
@@ -19,7 +36,9 @@ struct EnviousWisprApp: App {
 /// Must live inside a SwiftUI view hierarchy to access @Environment.
 private struct ActionWirer: View {
     let appDelegate: AppDelegate
+    @Binding var isOnboardingPresented: Bool
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
 
     var body: some View {
         Color.clear
@@ -27,6 +46,26 @@ private struct ActionWirer: View {
             .task {
                 appDelegate.openMainWindowAction = { [openWindow] in
                     openWindow(id: "main")
+                }
+                appDelegate.openOnboardingAction = { [openWindow] in
+                    openWindow(id: "onboarding")
+                }
+                appDelegate.dismissOnboardingAction = { [dismissWindow] in
+                    dismissWindow(id: "onboarding")
+                }
+                // Auto-open onboarding if needed (first launch).
+                // ActionWirer runs inside the main Window scene which is always created,
+                // so the callbacks are wired before we attempt to open the onboarding window.
+                if appDelegate.appState.settings.onboardingState != .completed {
+                    appDelegate.openOnboardingWindow()
+                }
+            }
+            .onChange(of: isOnboardingPresented) { _, newValue in
+                if !newValue {
+                    // State-driven dismissal: binding flipped to false → close window.
+                    dismissWindow(id: "onboarding")
+                    NSApp.setActivationPolicy(.accessory)
+                    appDelegate.updateIcon()
                 }
             }
     }

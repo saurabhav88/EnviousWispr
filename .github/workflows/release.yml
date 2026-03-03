@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   build-and-release:
@@ -63,7 +64,7 @@ jobs:
       - name: Package and sign DMG
         env:
           CODESIGN_IDENTITY: "Developer ID Application: ${{ secrets.APPLE_TEAM_NAME }} (${{ secrets.APPLE_TEAM_ID }})"
-          SPARKLE_FEED_URL: "https://raw.githubusercontent.com/${{ github.repository }}/main/appcast.xml"
+          SPARKLE_FEED_URL: "https://saurabhav88.github.io/EnviousWispr/appcast.xml"
           SPARKLE_EDDSA_PUBLIC_KEY: ${{ secrets.SPARKLE_EDDSA_PUBLIC_KEY }}
         run: ./scripts/build-dmg.sh "${{ steps.version.outputs.version }}"
 
@@ -123,7 +124,7 @@ jobs:
 
           # Sign the DMG with Sparkle's EdDSA key
           if [[ -n "${SPARKLE_PRIVATE_KEY}" ]]; then
-            EDDSA_SIG=$(echo "${SPARKLE_PRIVATE_KEY}" | .build/artifacts/sparkle/Sparkle/bin/sign_update "${DMG_PATH}" --ed-key-file /dev/stdin 2>/dev/null || echo "")
+            EDDSA_SIG=$(echo "${SPARKLE_PRIVATE_KEY}" | .build/artifacts/sparkle/Sparkle/bin/sign_update -p "${DMG_PATH}" --ed-key-file /dev/stdin 2>/dev/null || echo "")
           fi
 
           mkdir -p build
@@ -162,15 +163,24 @@ jobs:
           open('appcast.xml', 'w').write(content)
           "
 
-      - name: Commit updated appcast
+      - name: Push appcast update to main
+        env:
+          APPCAST_BOT_TOKEN: ${{ secrets.APPCAST_BOT_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git fetch origin main
-          git checkout -B main origin/main
-          git add -f appcast.xml
-          git diff --cached --quiet || git commit -m "chore(release): update appcast for v${{ steps.version.outputs.version }}"
-          git push origin main
+          git checkout main
+          cp "$GITHUB_WORKSPACE/appcast.xml" appcast.xml
+          git add appcast.xml
+          if git diff --staged --quiet; then
+            echo "==> appcast.xml unchanged, skipping."
+          else
+            git commit -m "chore(release): update appcast for v${VERSION}"
+            git pull --rebase origin main
+            git push https://x-access-token:${APPCAST_BOT_TOKEN}@github.com/${{ github.repository }}.git main
+          fi
 
       - name: Create GitHub Release
         env:

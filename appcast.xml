@@ -2,7 +2,7 @@
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
   <channel>
     <title>EnviousWispr Updates</title>
-      <item>
+    <item>
       <title>Version 1.0.0</title>
       <pubDate>Mon, 02 Mar 2026 14:55:59 +0000</pubDate>
       <sparkle:version>1.0.0</sparkle:version>
@@ -11,7 +11,31 @@
         url="https://github.com/saurabhav88/EnviousWispr/releases/download/v1.0.0/EnviousWispr-1.0.0.dmg"
         length="4896605"
         type="application/octet-stream"
-        sparkle:edSignature="sparkle:edSignature="nM+4RxxPj2Id8d0z/oEaHu4CAtx4W7n69/mYJz0G77VTJv3KM//ZgZkb6bqQMgE4e85TfcGt/S4cEhspgzy2Ag==" length="4896605""
+        sparkle:edSignature="nM+4RxxPj2Id8d0z/oEaHu4CAtx4W7n69/mYJz0G77VTJv3KM//ZgZkb6bqQMgE4e85TfcGt/S4cEhspgzy2Ag=="
+      />
+    </item>
+    <item>
+      <title>Version 1.0.1</title>
+      <pubDate>Mon, 02 Mar 2026 17:07:26 +0000</pubDate>
+      <sparkle:version>1.0.1</sparkle:version>
+      <sparkle:shortVersionString>1.0.1</sparkle:shortVersionString>
+      <enclosure
+        url="https://github.com/saurabhav88/EnviousWispr/releases/download/v1.0.1/EnviousWispr-1.0.1.dmg"
+        length="4892750"
+        type="application/octet-stream"
+        sparkle:edSignature="hzBdudCQOw/yhwI0N2iZh1GfcAnkl9O2D0wQw7sS4NCOYxqUoNgMemMyGbFKqf6XLPW/wYB1drDvjH1GoJAzBg=="
+      />
+    </item>
+      <item>
+      <title>Version 1.0.2</title>
+      <pubDate>Mon, 02 Mar 2026 19:40:30 +0000</pubDate>
+      <sparkle:version>1.0.2</sparkle:version>
+      <sparkle:shortVersionString>1.0.2</sparkle:shortVersionString>
+      <enclosure
+        url="https://github.com/saurabhav88/EnviousWispr/releases/download/v1.0.2/EnviousWispr-1.0.2.dmg"
+        length="4975479"
+        type="application/octet-stream"
+        sparkle:edSignature="YwR7tpHS2DlFlOGvuL8qDH7PE+OiqM+J7Cjc41x3lgXEfwgBX+nov/x86TOHtGnHdv5eOIgxj42UE2rGy7v5DA=="
       />
     </item>
 

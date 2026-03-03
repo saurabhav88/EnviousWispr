@@ -12,7 +12,7 @@ struct HistoryContentView: View {
 
             HSplitView {
                 TranscriptHistoryView()
-                    .frame(minWidth: 200, idealWidth: 250, maxWidth: 300)
+                    .frame(minWidth: 120, idealWidth: 200, maxWidth: 280)
 
                 Group {
                     if let transcript = appState.activeTranscript {
@@ -21,7 +21,7 @@ struct HistoryContentView: View {
                         StatusView()
                     }
                 }
-                .frame(minWidth: 350, idealWidth: 500, maxWidth: .infinity)
+                .frame(minWidth: 260, idealWidth: 420, maxWidth: .infinity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }

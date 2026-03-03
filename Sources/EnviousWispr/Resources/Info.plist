@@ -5,7 +5,7 @@
 <dict>
     <!-- Identity -->
     <key>CFBundleIdentifier</key>
-    <string>com.enviouswispr.app</string>
+    <string>com.enviouswispr.app.dev</string>
     <key>CFBundleName</key>
     <string>EnviousWispr Local</string>
     <key>CFBundleDisplayName</key>
@@ -19,9 +19,9 @@
 
     <!-- Versioning — build-dmg.sh substitutes these at packaging time -->
     <key>CFBundleVersion</key>
-    <string>1.0.0</string>
+    <string>1.0.3</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>1.0.3</string>
 
     <!-- Platform -->
     <key>LSMinimumSystemVersion</key>
@@ -52,7 +52,7 @@
 
     <!-- Sparkle auto-updater -->
     <key>SUFeedURL</key>
-    <string>https://raw.githubusercontent.com/saurabhav88/EnviousWispr/main/appcast.xml</string>
+    <string>https://saurabhav88.github.io/EnviousWispr/appcast.xml</string>
     <key>SUPublicEDKey</key>
     <string>jHq1RIQKDmtO64qtCdZ6jNdHNFrfyScE16yuu+ufvDw=</string>
     <key>CFBundleIconFile</key>

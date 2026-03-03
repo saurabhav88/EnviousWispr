@@ -138,6 +138,32 @@ Toggling Apple Voice Processing I/O at runtime can break the AVAudioEngine — t
 
 The binary hash changes on every `swift build`, which invalidates the existing Accessibility TCC grant. macOS `tccutil` only supports `reset`, NOT `grant` — there is no command-line way to auto-grant Accessibility. Workarounds: (1) sign local builds with a stable Developer ID cert (TCC persists across rebuilds), or (2) re-grant manually in System Settings > Privacy & Security > Accessibility after each rebuild. See also "NEVER Use Blanket TCC Resets" above.
 
+## Running Dev + Production Builds Simultaneously (TCC Permissions)
+
+**Problem**: macOS TCC database can get confused when granting Accessibility/Microphone permissions to two builds of the same app with different bundle IDs. Granting to one may invalidate the other.
+
+**Our setup**:
+- Production: `com.enviouswispr.app` ("EnviousWispr") — installed in /Applications
+- Development: `com.enviouswispr.app.dev` ("EnviousWispr Local") — runs from .build/
+
+**Fix when permissions break**:
+```bash
+# 1. Quit both apps
+# 2. Reset TCC for both bundle IDs
+tccutil reset Accessibility com.enviouswispr.app
+tccutil reset Accessibility com.enviouswispr.app.dev
+# 3. Reboot
+# 4. Re-grant permissions one at a time:
+#    - Launch production app first, grant Accessibility
+#    - Then launch dev app, grant Accessibility
+#    - For dev builds, manually drag .app into System Settings > Accessibility
+#      (don't rely on the automatic prompt — it's less reliable for unsigned builds)
+```
+
+**Best practice**: The two-app workflow (separate bundle IDs for dev vs prod) is industry standard. Apps like Raycast, Alfred, and Bartender all use this approach. Never develop against the production bundle ID — it risks data corruption, TCC chaos, and accidental debug releases.
+
+**Also**: UserDefaults are already separated by bundle ID (`UserDefaults.standard` uses `CFBundleIdentifier` as the domain), so dev and prod settings don't interfere.
+
 ## installTap Before engine.start() Leaves Orphaned Tap on Failure
 
 If `engine.start()` throws after a tap has been installed on the input node, the tap remains attached even though recording never started. A subsequent `startCapture()` call will then fail with "format mismatch" or "tap already installed". **Always remove the tap in the error path** before rethrowing. Pattern:
@@ -163,6 +189,10 @@ guard let screen = NSScreen.screens.first else { return }
 ## Streaming ASR Must End Exactly Once
 
 `finalizeStreaming()` and `cancelStreaming()` must each be called **at most once** per session, and exactly one of them must be called on every exit path (success, error, timeout, cancellation). Multiple exit paths in a pipeline (VAD cancel, timeout, device disconnect, explicit stop) can each independently trigger cleanup and create double-finalize or double-cancel conditions, which crash or corrupt the streaming state machine. Use a `defer` block with a `Bool` flag (`streamingSetupSucceeded`) to guarantee cleanup on all paths, and guard against double sessions in the backend with an `isStreaming` flag.
+
+## Branch Protection — CI Gate on Main
+
+`main` has CI-only branch protection: required `build-check` status check, linear history (squash-merge only), no force pushes. **No required reviews** (solo dev). **Enforce admins is off** — admin PAT can push directly (needed for CI appcast updates). All code changes should go through PRs for the CI gate. The release workflow pushes appcast.xml directly to `main` using `APPCAST_BOT_TOKEN` (Fine-Grained PAT). See [github-workflow](github-workflow.md).
 
 ## Per-Element .animation() Modifiers Create Exponential State Transitions
 

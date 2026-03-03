@@ -42,7 +42,6 @@ final class HotkeyService {
 
     private enum HotkeyID: UInt32 {
         case toggle = 1
-        case ptt = 2
         case cancel = 3
     }
 
@@ -50,7 +49,6 @@ final class HotkeyService {
 
     private var eventHandlerRef: EventHandlerRef?
     private var toggleHotkeyRef: EventHotKeyRef?
-    private var pttHotkeyRef: EventHotKeyRef?
     private var cancelHotkeyRef: EventHotKeyRef?
 
     // MARK: - NSEvent Modifier Monitors
@@ -81,12 +79,6 @@ final class HotkeyService {
     /// Toggle-mode required modifiers (default: Control).
     var toggleModifiers: NSEvent.ModifierFlags = [.control]
 
-    /// Push-to-talk key code (default: Space = 49).
-    var pushToTalkKeyCode: UInt16 = 49
-
-    /// Push-to-talk modifiers (default: Option).
-    var pushToTalkModifiers: NSEvent.ModifierFlags = [.option]
-
     /// Key code for the cancel hotkey. Default: Escape (53).
     var cancelKeyCode: UInt16 = 53
 
@@ -99,12 +91,8 @@ final class HotkeyService {
 
     func start() {
         guard !isEnabled else { return }
-        // Sync PTT keybind to match toggle keybind (unified shortcut)
-        pushToTalkKeyCode = toggleKeyCode
-        pushToTalkModifiers = toggleModifiers
         installCarbonEventHandler()
         registerToggleHotkey()
-        registerPTTHotkey()
         installModifierMonitors()
         // Cancel hotkey is NOT registered here — only during recording
         isEnabled = true
@@ -113,7 +101,6 @@ final class HotkeyService {
     func stop() {
         unregisterCancelHotkey()
         unregisterToggleHotkey()
-        unregisterPTTHotkey()
         removeCarbonEventHandler()
         removeModifierMonitors()
         isEnabled = false
@@ -125,7 +112,6 @@ final class HotkeyService {
         guard isEnabled, !isSuspended else { return }
         unregisterCancelHotkey()
         unregisterToggleHotkey()
-        unregisterPTTHotkey()
         removeModifierMonitors()
         isSuspended = true
     }
@@ -135,7 +121,6 @@ final class HotkeyService {
         guard isEnabled, isSuspended else { return }
         isModifierHeld = false
         registerToggleHotkey()
-        registerPTTHotkey()
         installModifierMonitors()
         isSuspended = false
     }
@@ -185,10 +170,8 @@ final class HotkeyService {
     private func installModifierMonitors() {
         removeModifierMonitors()
 
-        // Only install if at least one hotkey is modifier-only
-        let needsMonitor = ModifierKeyCodes.isModifierOnly(toggleKeyCode) ||
-                           ModifierKeyCodes.isModifierOnly(pushToTalkKeyCode)
-        guard needsMonitor else { return }
+        // Only install if the hotkey is modifier-only
+        guard ModifierKeyCodes.isModifierOnly(toggleKeyCode) else { return }
 
         globalModifierMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
             // NSEvent global monitor callbacks arrive on the main thread
@@ -244,25 +227,6 @@ final class HotkeyService {
         }
     }
 
-    private func registerPTTHotkey() {
-        unregisterPTTHotkey()
-        // Modifier-only hotkeys are handled via NSEvent flagsChanged monitors —
-        // Carbon RegisterEventHotKey cannot register a bare modifier key.
-        guard !ModifierKeyCodes.isModifierOnly(pushToTalkKeyCode) else { return }
-        pttHotkeyRef = registerHotkey(
-            id: HotkeyID.ptt.rawValue,
-            keyCode: pushToTalkKeyCode,
-            modifiers: carbonModifiers(from: pushToTalkModifiers)
-        )
-    }
-
-    private func unregisterPTTHotkey() {
-        if let ref = pttHotkeyRef {
-            UnregisterEventHotKey(ref)
-            pttHotkeyRef = nil
-        }
-    }
-
     private func registerHotkey(id: UInt32, keyCode: UInt16, modifiers: UInt32) -> EventHotKeyRef? {
         let hotkeyID = EventHotKeyID(signature: hotkeySignature, id: id)
         var ref: EventHotKeyRef?
@@ -286,7 +250,7 @@ final class HotkeyService {
             level: .info, category: "HotkeyService"
         ) }
         switch id {
-        case HotkeyID.toggle.rawValue, HotkeyID.ptt.rawValue:
+        case HotkeyID.toggle.rawValue:
             // Unified shortcut — behavior depends on recording mode
             if recordingMode == .toggle {
                 guard !isRelease else { return }
