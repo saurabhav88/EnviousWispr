@@ -150,6 +150,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.onboardingWindow = nil
                     // Only treat as abort if onboarding not yet completed.
                     if self.appState.settings.onboardingState != .completed {
+                        NSApp.setActivationPolicy(.accessory)
                         self.updateIcon()
                     }
                 }
