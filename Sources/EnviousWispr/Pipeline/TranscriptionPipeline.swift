@@ -52,6 +52,8 @@ final class TranscriptionPipeline {
     private var streamingASRActive = false
     /// Guards against concurrent stopAndTranscribe calls (e.g., VAD auto-stop racing PTT release).
     private var isStopping = false
+    /// Set by key-up when startRecording() is still in-flight; checked after .recording is entered.
+    private var stopRequested = false
     /// Whether audio input has been pre-warmed (engine started) by PTT key-down.
     private var isPreWarmed = false
 
@@ -118,6 +120,7 @@ final class TranscriptionPipeline {
     /// Start recording audio from the microphone.
     func startRecording() async {
         guard !state.isActive || state == .complete else { return }
+        stopRequested = false
 
         lastPolishError = nil
         deactivateStreamingForwarding()
@@ -209,6 +212,12 @@ final class TranscriptionPipeline {
             recordingStartTime = Date()
             currentTranscript = nil
 
+            if stopRequested {
+                stopRequested = false
+                await stopAndTranscribe()
+                return
+            }
+
             Task { await AppLogger.shared.log(
                 "Recording started. Backend: \(asrManager.activeBackendType.rawValue), streaming=\(streamingASRActive)",
                 level: .info, category: "Pipeline"
@@ -222,7 +231,17 @@ final class TranscriptionPipeline {
                 await asrManager.cancelStreaming()
             }
             deactivateStreamingForwarding()
+            stopRequested = false
             state = .error("Recording failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Stop recording, or set a flag if startRecording() is still in-flight.
+    func requestStop() async {
+        if state == .recording {
+            await stopAndTranscribe()
+        } else if state.isActive {
+            stopRequested = true
         }
     }
 
@@ -533,6 +552,7 @@ final class TranscriptionPipeline {
     /// Cancel an active recording immediately without transcribing.
     /// Guards on `.recording` state — safe to call from any other state.
     func cancelRecording() async {
+        stopRequested = false
         guard state == .recording else { return }
 
         // Stop VAD monitoring task immediately

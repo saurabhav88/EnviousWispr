@@ -161,10 +161,6 @@ final class AppState {
             guard let self else { return }
             await self.toggleRecording()
         }
-        hotkeyService.onPreWarmAudio = { [weak self] in
-            guard let self else { return }
-            await self.pipeline.preWarmAudioInput()
-        }
         hotkeyService.onStartRecording = { [weak self] in
             guard let self, !self.pipelineState.isActive else { return }
             // During onboarding tutorial (Step 4): never paste or copy — tutorial
@@ -181,6 +177,7 @@ final class AppState {
                     self.restartAccessibilityMonitoringIfNeeded()
                 }
             }
+            await self.pipeline.preWarmAudioInput()
             await self.pipeline.startRecording()
             if case .error = self.pipeline.state {
                 self.pipeline.autoPasteToActiveApp = false
@@ -188,13 +185,8 @@ final class AppState {
         }
         hotkeyService.onStopRecording = { [weak self] in
             guard let self else { return }
-            guard self.pipelineState == .recording else {
-                self.pipeline.autoPasteToActiveApp = false
-                return
-            }
-            await self.pipeline.stopAndTranscribe()
+            await self.pipeline.requestStop()
             self.pipeline.autoPasteToActiveApp = false
-            // Restore user's clipboard setting after tutorial recording ends
             if self.isOnboardingTutorialActive {
                 self.pipeline.autoCopyToClipboard = self.settings.autoCopyToClipboard
             }

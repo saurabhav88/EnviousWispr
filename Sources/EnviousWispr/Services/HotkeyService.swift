@@ -65,9 +65,6 @@ final class HotkeyService {
     var onStartRecording: (@MainActor () async -> Void)?
     var onStopRecording: (@MainActor () async -> Void)?
     var onCancelRecording: (@MainActor () async -> Void)?
-    /// Fired on PTT key-down before recording starts to pre-warm audio input
-    /// (triggers Bluetooth codec switch early to hide latency).
-    var onPreWarmAudio: (@MainActor () async -> Void)?
 
     // MARK: - Configuration
 
@@ -256,13 +253,11 @@ final class HotkeyService {
                 guard !isRelease else { return }
                 Task { await onToggleRecording?() }
             } else {
-                // Push-to-talk mode: key-DOWN starts recording, key-UP stops
-                // Pre-warm fires async on key-DOWN to trigger BT codec switch;
-                // startRecording fires immediately after — if pre-warm finishes
-                // first, startRecording skips engine phase 1 (isPreWarmed=true).
+                // Push-to-talk mode: key-DOWN starts recording, key-UP stops.
+                // Pre-warm runs sequentially inside onStartRecording (AppState)
+                // before startRecording — guarantees BT codec switch completes first.
                 if !isRelease && !isModifierHeld {
                     isModifierHeld = true
-                    Task { await onPreWarmAudio?() }
                     Task { await onStartRecording?() }
                 } else if isRelease && isModifierHeld {
                     isModifierHeld = false
@@ -315,7 +310,6 @@ final class HotkeyService {
                     "Modifier-only PTT press: keyCode=\(capturedKeyCode)", level: .info, category: "HotkeyService"
                 ) }
                 isModifierHeld = true
-                Task { await onPreWarmAudio?() }
                 Task { await onStartRecording?() }
             } else if !isPress && isModifierHeld {
                 Task { await AppLogger.shared.log(
