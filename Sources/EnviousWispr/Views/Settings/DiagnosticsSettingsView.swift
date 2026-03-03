@@ -19,6 +19,17 @@ struct DiagnosticsSettingsView: View {
                             Text(level.displayName).tag(level)
                         }
                     }
+
+                    Button("Restart Onboarding…") {
+                        appState.settings.onboardingState = .needsMicPermission
+                        if let delegate = NSApp.delegate as? AppDelegate {
+                            delegate.openOnboardingWindow()
+                        }
+                    }
+                    .disabled(appState.pipelineState != .idle)
+                    Text("Re-runs the 5-step onboarding flow without wiping app state. Disabled during recording.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 
