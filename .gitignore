@@ -65,10 +65,18 @@ node_modules/
 dist/
 build/
 
-# Screenshots and diagrams (local artifacts)
-*.png
-docs/
+# Screenshots and diagrams (local dev artifacts, not shipped)
+# Ignore PNGs at root level (ad-hoc screenshots, diagrams)
+/*.png
+
+# Allow PNGs in tracked asset directories
+# (Brand Assets/, Sources/Resources/ are auto-tracked)
+
+# Docs — ignore scratch work, allow published content
+docs/*
 !docs/website/
+!docs/mockups/
+!docs/plans/
 
 # App bundle (build artifact)
 EnviousWispr.app/
