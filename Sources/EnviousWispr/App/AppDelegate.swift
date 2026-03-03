@@ -124,11 +124,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // We defer one run-loop cycle so SwiftUI has time to create/order the window
         // before we search NSApp.windows.
         DispatchQueue.main.async { [weak self] in
-            guard let self, self.onboardingWindow == nil else { return }
+            guard let self else { return }
             // SwiftUI Window(id: "onboarding") sets the title to the scene name ("Setup").
             // We capture by identity here so the close observer can match by reference,
             // not by title — title matching would fail if the scene name ever changes.
-            self.onboardingWindow = NSApp.windows.first { $0.title == AppConstants.onboardingWindowTitle }
+            if self.onboardingWindow == nil {
+                self.onboardingWindow = NSApp.windows.first { $0.title == AppConstants.onboardingWindowTitle }
+            }
+            // Ensure the window is visible — openWindow(id:) is a silent no-op when
+            // reopening a single-instance Window scene that was previously dismissed.
+            self.onboardingWindow?.makeKeyAndOrderFront(nil)
         }
 
         // Monitor for user closing the onboarding window before completion.
