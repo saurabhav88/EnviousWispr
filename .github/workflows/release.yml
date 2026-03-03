@@ -172,8 +172,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git fetch origin main
           git checkout main
-          cp "$GITHUB_WORKSPACE/appcast.xml" appcast.xml
-          git add appcast.xml
+          git add -f appcast.xml
           if git diff --staged --quiet; then
             echo "==> appcast.xml unchanged, skipping."
           else
