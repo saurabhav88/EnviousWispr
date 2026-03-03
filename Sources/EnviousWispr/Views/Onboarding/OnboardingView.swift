@@ -1421,8 +1421,6 @@ private struct ReadyStepView: View {
     @Environment(AppState.self) private var appState
     let onComplete: () -> Void
 
-    @State private var autoPasteEnabled = false
-
     private var hotkeyDisplayString: String {
         KeySymbols.format(
             keyCode: appState.settings.toggleKeyCode,
@@ -1465,14 +1463,16 @@ private struct ReadyStepView: View {
 
                     Spacer()
 
-                    Toggle("", isOn: $autoPasteEnabled)
-                        .toggleStyle(.switch)
-                        .tint(Color.obSuccess)
-                        .onChange(of: autoPasteEnabled) { _, enabled in
+                    Toggle("", isOn: Binding(
+                        get: { appState.permissions.accessibilityGranted },
+                        set: { enabled in
                             if enabled {
                                 _ = appState.permissions.requestAccessibilityAccess()
                             }
                         }
+                    ))
+                    .toggleStyle(.switch)
+                    .tint(Color.obSuccess)
                 }
                 .padding(.vertical, 6)
 
@@ -1486,22 +1486,39 @@ private struct ReadyStepView: View {
                     .strokeBorder(Color.obBorder, lineWidth: 1)
             )
             .shadow(color: Color.obTextPrimary.opacity(0.04), radius: 1.5, y: 1)
-            .padding(.bottom, 18)
+            .padding(.bottom, 10)
+
+            if appState.permissions.accessibilityGranted {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(Color.obSuccess)
+                    Text("Accessibility enabled")
+                        .font(.obCaption)
+                        .foregroundStyle(Color.obSuccessText)
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+            }
 
             Spacer()
 
             // Full-width Done button
-            Button("Done") {
+            Button {
                 onComplete()
+            } label: {
+                Text("Done")
+                    .font(.obButton)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: 360)
+                    .padding(.vertical, 13)
+                    .background(Color.obBtnDark, in: RoundedRectangle(cornerRadius: 12))
             }
-            .font(.obButton)
-            .foregroundStyle(.white)
-            .frame(maxWidth: 360)
-            .padding(.vertical, 13)
-            .background(Color.obBtnDark, in: RoundedRectangle(cornerRadius: 12))
             .buttonStyle(.plain)
             .keyboardShortcut(.defaultAction)
             .padding(.top, 10)
+        }
+        .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in
+            guard !appState.permissions.accessibilityGranted else { return }
+            appState.permissions.refreshAccessibilityStatus()
         }
     }
 }
