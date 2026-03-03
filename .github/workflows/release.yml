@@ -164,11 +164,11 @@ jobs:
 
       - name: Push appcast update to main
         env:
-          APPCAST_BOT_TOKEN: ${{ secrets.APPCAST_BOT_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"
           git fetch origin main
           git checkout main
           git add -f appcast.xml
@@ -177,7 +177,7 @@ jobs:
           else
             git commit -m "chore(release): update appcast for v${VERSION}"
             git pull --rebase origin main
-            git push https://x-access-token:${APPCAST_BOT_TOKEN}@github.com/${{ github.repository }}.git main
+            git push origin main
           fi
 
       - name: Create GitHub Release
