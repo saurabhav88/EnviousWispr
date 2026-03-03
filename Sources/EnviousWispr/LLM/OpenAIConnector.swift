@@ -71,8 +71,8 @@ struct OpenAIConnector: TranscriptPolisher {
     private func performWithRetry(
         request: URLRequest,
         config: LLMProviderConfig,
-        maxRetries: Int = 2,
-        delays: [UInt64] = [1_000_000_000, 3_000_000_000]
+        maxRetries: Int = LLMRetryPolicy.defaultMaxRetries,
+        delays: [UInt64] = LLMRetryPolicy.defaultDelays
     ) async throws -> (Data, HTTPURLResponse) {
         var lastError: Error?
         for attempt in 0...maxRetries {
@@ -108,29 +108,10 @@ struct OpenAIConnector: TranscriptPolisher {
                 }
             } catch {
                 lastError = error
-                if !Self.isRetryable(error) { throw error }
+                if !LLMRetryPolicy.isRetryable(error) { throw error }
             }
         }
         throw lastError!
-    }
-
-    private static func isRetryable(_ error: Error) -> Bool {
-        if let llmError = error as? LLMError {
-            switch llmError {
-            case .rateLimited: return true
-            case .requestFailed(let msg):
-                return msg.contains("server error")
-            default: return false
-            }
-        }
-        if let urlError = error as? URLError {
-            switch urlError.code {
-            case .timedOut, .networkConnectionLost, .cannotConnectToHost:
-                return true
-            default: return false
-            }
-        }
-        return false
     }
 
     private static func friendlyMessage(for statusCode: Int) -> String {

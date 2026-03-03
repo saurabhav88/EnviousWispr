@@ -92,7 +92,6 @@ final class OllamaSetupService {
         if UserDefaults.standard.bool(forKey: Self.lastKnownStateKey) {
             if await isServerRunning() {
                 if await hasAnyModels() {
-                    await refreshDownloadedModels()
                     setupState = .ready
                     return
                 }
@@ -116,7 +115,6 @@ final class OllamaSetupService {
         }
 
         if await hasAnyModels() {
-            await refreshDownloadedModels()
             setupState = .ready
             UserDefaults.standard.set(true, forKey: Self.lastKnownStateKey)
         } else {
@@ -193,24 +191,8 @@ final class OllamaSetupService {
 
     /// Check whether Ollama has at least one pulled model.
     func hasAnyModels() async -> Bool {
-        guard let url = URL(string: "\(Self.baseURL)/api/tags") else { return false }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.timeoutInterval = 5
-
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                return false
-            }
-
-            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-            guard let models = json?["models"] as? [[String: Any]] else { return false }
-            return !models.isEmpty
-        } catch {
-            return false
-        }
+        await refreshDownloadedModels()
+        return !downloadedModelNames.isEmpty
     }
 
     // MARK: - Model Management
@@ -304,7 +286,6 @@ final class OllamaSetupService {
 
                 if await self.isServerRunning() {
                     if await self.hasAnyModels() {
-                        await self.refreshDownloadedModels()
                         self.setupState = .ready
                         UserDefaults.standard.set(true, forKey: Self.lastKnownStateKey)
                     } else {

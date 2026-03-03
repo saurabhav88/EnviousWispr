@@ -59,8 +59,7 @@ struct AppleIntelligenceConnector: TranscriptPolisher {
     ) async throws -> LLMResult {
         let session = try makeSession(instructions: instructions)
 
-        let wrappedText = text
-        let response = try await session.respond(to: wrappedText, generating: CleanedTranscript.self)
+        let response = try await session.respond(to: text, generating: CleanedTranscript.self)
         let content = response.text
 
         guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
