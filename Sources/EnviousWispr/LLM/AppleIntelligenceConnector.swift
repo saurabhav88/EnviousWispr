@@ -32,11 +32,16 @@ struct AppleIntelligenceConnector: TranscriptPolisher {
     ) async throws -> LLMResult {
 #if canImport(FoundationModels)
         guard #available(macOS 26.0, *) else {
-            throw LLMError.frameworkUnavailable
+            let version = ProcessInfo.processInfo.operatingSystemVersion
+            throw LLMError.frameworkUnavailable(
+                "Apple Intelligence requires macOS 26 or later. Current version: \(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
+            )
         }
         return try await polishWithFoundationModels(text: text, instructions: instructions)
 #else
-        throw LLMError.frameworkUnavailable
+        throw LLMError.frameworkUnavailable(
+            "This build was compiled without Apple Intelligence support. Rebuild with the macOS 26 SDK, or use a different AI polish provider."
+        )
 #endif
     }
 
@@ -120,8 +125,26 @@ struct AppleIntelligenceConnector: TranscriptPolisher {
     @available(macOS 26.0, *)
     private func makeSession(instructions: PolishInstructions) throws -> LanguageModelSession {
         let model = SystemLanguageModel.default
-        guard model.isAvailable else {
-            throw LLMError.frameworkUnavailable
+
+        if case .unavailable(let reason) = model.availability {
+            switch reason {
+            case .deviceNotEligible:
+                throw LLMError.frameworkUnavailable(
+                    "This Mac does not support Apple Intelligence. Requires Apple Silicon (M1 or later)."
+                )
+            case .appleIntelligenceNotEnabled:
+                throw LLMError.frameworkUnavailable(
+                    "Apple Intelligence is not enabled. Turn it on in System Settings > Apple Intelligence & Siri."
+                )
+            case .modelNotReady:
+                throw LLMError.frameworkUnavailable(
+                    "The on-device model is not ready — it may still be downloading or restricted by your organization. Try again later or use a different provider."
+                )
+            @unknown default:
+                throw LLMError.frameworkUnavailable(
+                    "Apple Intelligence is unavailable on this device."
+                )
+            }
         }
 
         // Use simplified instructions for Apple's on-device model when using

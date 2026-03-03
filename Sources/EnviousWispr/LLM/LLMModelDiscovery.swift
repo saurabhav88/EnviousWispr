@@ -248,13 +248,34 @@ struct LLMModelDiscovery: Sendable {
     private func appleIntelligenceModelInfo() -> [LLMModelInfo] {
 #if canImport(FoundationModels)
         if #available(macOS 26.0, *) {
-            let available = SystemLanguageModel.default.isAvailable
-            return [LLMModelInfo(
-                id: "apple-intelligence",
-                displayName: "Apple Intelligence (On-Device)",
-                provider: .appleIntelligence,
-                isAvailable: available
-            )]
+            let model = SystemLanguageModel.default
+            switch model.availability {
+            case .available:
+                return [LLMModelInfo(
+                    id: "apple-intelligence",
+                    displayName: "Apple Intelligence (On-Device)",
+                    provider: .appleIntelligence,
+                    isAvailable: true
+                )]
+            case .unavailable(let reason):
+                let suffix: String
+                switch reason {
+                case .deviceNotEligible:
+                    suffix = "Device Not Supported"
+                case .appleIntelligenceNotEnabled:
+                    suffix = "Not Enabled in Settings"
+                case .modelNotReady:
+                    suffix = "Model Not Ready"
+                @unknown default:
+                    suffix = "Unavailable"
+                }
+                return [LLMModelInfo(
+                    id: "apple-intelligence",
+                    displayName: "Apple Intelligence (\(suffix))",
+                    provider: .appleIntelligence,
+                    isAvailable: false
+                )]
+            }
         }
 #endif
         return [LLMModelInfo(

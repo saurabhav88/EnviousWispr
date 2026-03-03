@@ -94,7 +94,7 @@ enum LLMError: LocalizedError, Sendable, Equatable {
     case emptyResponse
     case providerUnavailable
     case modelNotFound(String)
-    case frameworkUnavailable
+    case frameworkUnavailable(String)
 
     var errorDescription: String? {
         switch self {
@@ -105,8 +105,8 @@ enum LLMError: LocalizedError, Sendable, Equatable {
         case .providerUnavailable: return "LLM provider is unavailable."
         case .modelNotFound(let model):
             return "Ollama model '\(model)' is not pulled. Run: ollama pull \(model)"
-        case .frameworkUnavailable:
-            return "Apple Intelligence requires macOS 26+ with Apple Intelligence support."
+        case .frameworkUnavailable(let reason):
+            return reason
         }
     }
 
@@ -115,11 +115,11 @@ enum LLMError: LocalizedError, Sendable, Equatable {
         case (.invalidAPIKey, .invalidAPIKey),
              (.rateLimited, .rateLimited),
              (.emptyResponse, .emptyResponse),
-             (.providerUnavailable, .providerUnavailable),
-             (.frameworkUnavailable, .frameworkUnavailable):
+             (.providerUnavailable, .providerUnavailable):
             return true
         case (.requestFailed(let a), .requestFailed(let b)),
-             (.modelNotFound(let a), .modelNotFound(let b)):
+             (.modelNotFound(let a), .modelNotFound(let b)),
+             (.frameworkUnavailable(let a), .frameworkUnavailable(let b)):
             return a == b
         default:
             return false
