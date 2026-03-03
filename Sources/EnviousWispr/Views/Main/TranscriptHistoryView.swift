@@ -85,16 +85,6 @@ struct TranscriptRowView: View {
                     .foregroundStyle(.purple)
                 }
 
-                if transcript.processingTime > 0 {
-                    Text(String(format: "%.1fs", transcript.processingTime))
-                        .font(.caption2)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(.blue.opacity(0.1), in: Capsule())
-                        .foregroundStyle(.blue)
-                        .monospacedDigit()
-                }
-
                 Text(transcript.backendType.displayName)
                     .font(.caption2)
                     .padding(.horizontal, 5)

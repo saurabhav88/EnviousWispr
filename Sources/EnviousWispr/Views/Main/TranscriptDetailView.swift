@@ -50,29 +50,6 @@ struct TranscriptDetailView: View {
 
                 Spacer()
 
-                // Metadata
-                HStack(spacing: 8) {
-                    Text(transcript.backendType.displayName)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    if transcript.processingTime > 0 {
-                        Text(String(format: "%.1fs", transcript.processingTime))
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                            .monospacedDigit()
-                    }
-
-                    if transcript.polishedText != nil {
-                        HStack(spacing: 2) {
-                            Image(systemName: "sparkles")
-                            Text(transcript.llmModel.map { "\($0) Enhanced" } ?? "Enhanced")
-                        }
-                        .font(.caption)
-                        .foregroundStyle(.purple)
-                    }
-                }
-
                 Button(role: .destructive) {
                     appState.deleteTranscript(transcript)
                 } label: {

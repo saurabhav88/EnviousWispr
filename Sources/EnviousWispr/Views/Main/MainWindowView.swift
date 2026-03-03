@@ -248,46 +248,46 @@ struct AudioLevelBar: View {
     }
 }
 
-/// Pipeline status badge in toolbar.
+/// Pipeline status badge in toolbar — hidden when idle/complete/error, minimal during active states.
 struct StatusBadge: View {
     @Environment(AppState.self) private var appState
 
     var body: some View {
-        HStack(spacing: 4) {
-            Circle()
-                .fill(statusColor)
-                .frame(width: 8, height: 8)
-
-            Text(statusLabel)
+        Group {
+            switch appState.pipelineState {
+            case .recording:
+                HStack(spacing: 4) {
+                    Image(systemName: "mic.fill")
+                        .foregroundStyle(.red)
+                        .symbolEffect(.pulse)
+                    Text("Recording")
+                        .foregroundStyle(.secondary)
+                }
                 .font(.caption)
-                .foregroundStyle(.secondary)
 
-            Text(appState.activeModelName)
+            case .transcribing:
+                HStack(spacing: 4) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Transcribing\u{2026}")
+                        .foregroundStyle(.secondary)
+                }
                 .font(.caption)
-                .foregroundStyle(.tertiary)
+
+            case .polishing:
+                HStack(spacing: 4) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Polishing\u{2026}")
+                        .foregroundStyle(.secondary)
+                }
+                .font(.caption)
+
+            case .idle, .complete, .error:
+                EmptyView()
+            }
         }
         .animation(.easeInOut(duration: 0.2), value: appState.pipelineState)
-    }
-
-    private var statusLabel: String {
-        switch appState.pipelineState {
-        case .idle: return "Ready"
-        case .recording: return "Recording"
-        case .transcribing: return "Transcribing"
-        case .polishing: return "Polishing"
-        case .complete: return "Done"
-        case .error: return "Error"
-        }
-    }
-
-    private var statusColor: Color {
-        switch appState.pipelineState {
-        case .idle: return .green
-        case .recording: return .red
-        case .transcribing, .polishing: return .orange
-        case .complete: return .green
-        case .error: return .red
-        }
     }
 }
 
