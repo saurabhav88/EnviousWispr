@@ -84,8 +84,11 @@ final class TranscriptStore {
     /// Delete a transcript by ID.
     func delete(id: UUID) throws {
         let url = directory.appendingPathComponent("\(id.uuidString).json")
-        guard FileManager.default.fileExists(atPath: url.path) else { return }
-        try FileManager.default.removeItem(at: url)
+        do {
+            try FileManager.default.removeItem(at: url)
+        } catch let error as CocoaError where error.code == .fileNoSuchFile {
+            return
+        }
     }
 
     /// Delete all transcripts from disk atomically.

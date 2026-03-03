@@ -95,8 +95,8 @@ sed -i '' "s|<string>1.0.0</string><!-- CFBundleVersion -->|<string>${VERSION}</
 # Use plutil for reliable version substitution
 plutil -replace CFBundleVersion -string "${VERSION}" "${CONTENTS}/Info.plist"
 plutil -replace CFBundleShortVersionString -string "${VERSION}" "${CONTENTS}/Info.plist"
-# Strip the "Local" suffix for production/release DMG builds.
-# The committed Info.plist uses "EnviousWispr Local" for local dev builds.
+# Strip the "Dev" suffix for production/release DMG builds.
+# The committed Info.plist uses "EnviousWispr Dev" for dev builds.
 plutil -replace CFBundleName -string "${APP_NAME}" "${CONTENTS}/Info.plist"
 plutil -replace CFBundleDisplayName -string "${APP_NAME}" "${CONTENTS}/Info.plist"
 

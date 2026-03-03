@@ -128,7 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // SwiftUI Window(id: "onboarding") sets the title to the scene name ("Setup").
             // We capture by identity here so the close observer can match by reference,
             // not by title — title matching would fail if the scene name ever changes.
-            self.onboardingWindow = NSApp.windows.first { $0.title == "Setup" }
+            self.onboardingWindow = NSApp.windows.first { $0.title == AppConstants.onboardingWindowTitle }
         }
 
         // Monitor for user closing the onboarding window before completion.
@@ -145,7 +145,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     // Match by captured identity; fall back to title if not yet captured.
                     let isOnboardingWindow = (self.onboardingWindow != nil)
                         ? window === self.onboardingWindow
-                        : window.title == "Setup"
+                        : window.title == AppConstants.onboardingWindowTitle
                     guard isOnboardingWindow else { return }
                     self.onboardingWindow = nil
                     // Only treat as abort if onboarding not yet completed.

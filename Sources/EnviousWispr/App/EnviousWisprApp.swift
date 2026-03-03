@@ -21,7 +21,7 @@ struct EnviousWisprApp: App {
         .defaultSize(width: 820, height: 600)
 
         // Onboarding window — non-resizable, centered, auto-opens on first launch.
-        Window("Setup", id: "onboarding") {
+        Window(AppConstants.onboardingWindowTitle, id: "onboarding") {
             OnboardingView(onComplete: {
                 appDelegate.closeOnboardingWindow()
             })

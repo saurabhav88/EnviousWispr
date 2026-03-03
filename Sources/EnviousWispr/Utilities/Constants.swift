@@ -4,6 +4,7 @@ enum AppConstants {
     static let appName = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "EnviousWispr"
     static let appSupportDir = "EnviousWispr"
     static let transcriptsDir = "transcripts"
+    static let onboardingWindowTitle = "Setup"
 
     /// Application Support directory for EnviousWispr.
     /// Falls back to a temporary directory if Application Support is unavailable.
