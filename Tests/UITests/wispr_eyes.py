@@ -192,11 +192,31 @@ def _label(el, role, s):
         return f'[heading] "{disp}"' if disp else "[heading]"
     return f'[{s} "{disp}"]' if disp else f"[{s}]"
 
+# Ordered: buttons/controls first, menu items last (they match too broadly via substring)
+_ACTIONABLE = ("AXButton","AXPopUpButton","AXCheckBox","AXRadioButton","AXLink","AXRow","AXMenuItem")
+
 def tap(text, role=None):
     _ensure_connected()
     try:
-        # Prefer exact match, fall back to fuzzy
-        tgt = _find_match(_app, text, role, exact=True) or _find_match(_app, text, role)
+        # Prefer exact match, fall back to fuzzy.
+        # When no role specified, try actionable elements in priority order
+        # to avoid matching static text or menu items that contain the same words.
+        if role:
+            tgt = _find_match(_app, text, role, exact=True) or _find_match(_app, text, role)
+        else:
+            tgt = None
+            # First pass: exact match on actionable roles
+            for r in _ACTIONABLE:
+                tgt = _find_match(_app, text, r, exact=True)
+                if tgt: break
+            # Second pass: fuzzy match on actionable roles
+            if not tgt:
+                for r in _ACTIONABLE:
+                    tgt = _find_match(_app, text, r)
+                    if tgt: break
+            # Final fallback: any role
+            if not tgt:
+                tgt = _find_match(_app, text, None, exact=True) or _find_match(_app, text, None)
         if not tgt: print(f"tap: '{text}' not found"); return False
         r, t = get_attr(tgt,"AXRole") or "", _txt(tgt)
         ok = set_attr(tgt,"AXSelected",True) if r=="AXRow" else perform_action(tgt,"AXPress")
@@ -314,6 +334,21 @@ def end_test():
     try: _notify("UAT Complete"); print("Test ended")
     except Exception as e: print(f"end_test error: {e}")
 
+def close_window():
+    """Close the frontmost app window via AXCloseButton."""
+    _ensure_connected()
+    try:
+        from ui_helpers import find_all_elements, perform_action
+        for w in find_all_elements(_app, role="AXWindow"):
+            btn = get_attr(w, "AXCloseButton")
+            if btn:
+                perform_action(btn, "AXPress")
+                print("Window closed")
+                return True
+        print("No window to close")
+        return False
+    except Exception as e: print(f"close_window error: {e}"); return False
+
 # ── High-Level Tasks (one call, no decisions) ─────────────────────────
 
 def check(tab, *labels):
@@ -324,11 +359,13 @@ def check(tab, *labels):
     begin_test(f"check {tab}")
     if not nav(tab):
         end_test()
+        close_window()
         return {}
     results = {}
     for label in labels:
         results[label] = read(label)
     end_test()
+    close_window()
     return results
 
 def look(tab=None):
@@ -348,6 +385,7 @@ def verify(tab, expectations):
     if not nav(tab):
         print(f"BLOCKED: Could not navigate to '{tab}'")
         end_test()
+        close_window()
         return
     for label, expected in expectations.items():
         actual = read(label)
@@ -358,3 +396,4 @@ def verify(tab, expectations):
         else:
             print(f"ISSUE: {label} expected '{expected}', got '{actual}'")
     end_test()
+    close_window()
