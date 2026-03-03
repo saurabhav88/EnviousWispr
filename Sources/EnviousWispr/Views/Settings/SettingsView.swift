@@ -32,6 +32,7 @@ struct UnifiedWindowView: View {
                 StatusBadge()
             }
         }
+        .preferredColorScheme(.light)
         .task {
             appState.loadTranscripts()
         }
