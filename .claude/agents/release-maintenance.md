@@ -32,7 +32,7 @@ Owned: `Package.swift` (shared with build-compile).
 - Notarize: `xcrun notarytool submit` (works with CLT, no full Xcode needed)
 - Sparkle rpath: Bundle MUST copy `Sparkle.framework` into `Contents/Frameworks/` and run `install_name_tool -add_rpath @executable_path/../Frameworks` — without this the app crashes on launch
 - **PR workflow**: All code changes to `main` go through PRs for the CI gate. Branch protection requires `build-check` CI to pass. No required reviews (solo dev). Squash merges only. Appcast updates are pushed directly by CI via `APPCAST_BOT_TOKEN` PAT.
-- **Appcast commits are CI-only**: `appcast.xml` is auto-committed by `release.yml` after a successful release. Never manually edit or commit appcast.xml.
+- **Appcast commits are CI-only**: `appcast.xml` is auto-committed by `release.yml` after a successful release. Only edit manually as a CI-failure fallback (see wispr-release-checklist step 10a).
 
 ## App Data Locations
 

@@ -62,6 +62,10 @@ Relevant items from `.claude/knowledge/gotchas.md`:
 - **ASR Backend Lifecycle** -- one active at a time, new backends must implement `prepare()` and `unload()` correctly
 - **Streaming ASR (Parakeet Only)** -- WhisperKit is batch-only, new backends must set `supportsStreaming` accurately
 
+## PR Workflow
+
+Scaffolded code goes to a feature branch, not directly to `main`. Submit via PR (`gh pr create`), which must pass `build-check` CI before squash-merge.
+
 ## Coordination
 
 - After scaffolding → **quality-security** for concurrency/security review

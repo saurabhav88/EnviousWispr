@@ -98,9 +98,7 @@ ALL must be true before marking a feature complete:
 - [ ] Code implemented and compiles (`swift build -c release`)
 - [ ] Test target compiles (`swift build --build-tests`)
 - [ ] App bundle rebuilt and launches without crashing
-- [ ] UAT scenarios generated and documented in `Tests/UITests/scenarios/`
-- [ ] UAT behavioral tests added to `uat_runner.py`
-- [ ] **All UAT tests pass** (`python3 Tests/UITests/uat_runner.py run --verbose`)
+- [ ] **Smart UAT tests pass** (`wispr-run-smart-uat` — generates tests in `Tests/UITests/generated/`, must use `run_in_background: true`)
 - [ ] TRACKER.md updated
 - [ ] Committed with conventional commit format
 - [ ] PR created targeting `main` branch

@@ -26,4 +26,3 @@
 
 ### Release Housekeeping (if targeting a release)
 - [ ] Version number updated in Info.plist (if applicable)
-- [ ] CHANGELOG.md updated with user-facing changes

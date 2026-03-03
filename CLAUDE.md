@@ -60,6 +60,7 @@ python3 Tests/UITests/uat_runner.py run --files Tests/UITests/generated/<test>.p
 | [distribution](.claude/knowledge/distribution.md) | Two-tier build model, Sparkle auto-update, DMG build script, CI/CD workflow, codesigning |
 | [roadmap](.claude/knowledge/roadmap.md) | 20 feature requests, tracker, priority tiers, implementation workflow, agent mapping |
 | [teamwork](.claude/knowledge/teamwork.md) | Standard team compositions, lifecycle protocol, decision matrix, communication patterns |
-| [file-index](.claude/knowledge/file-index.md) | Every Swift source file (60 files, ~8,650 lines) — path, line count, key types, purpose |
+| [file-index](.claude/knowledge/file-index.md) | Every Swift source file (64 files, ~10,856 lines) — path, line count, key types, purpose |
 | [type-index](.claude/knowledge/type-index.md) | Reverse lookup — every protocol, actor, class, struct, enum → file path + isolation |
 | [task-router](.claude/knowledge/task-router.md) | Common task patterns → exact files to change, agent to dispatch, skill to invoke |
+| [github-workflow](.claude/knowledge/github-workflow.md) | Branch protection, PR checks, CODEOWNERS, Dependabot, security scanning |
