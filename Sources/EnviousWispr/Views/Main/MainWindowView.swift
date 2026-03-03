@@ -266,28 +266,24 @@ struct StatusBadge: View {
                 .font(.caption)
 
             case .transcribing:
-                HStack(spacing: 4) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("Transcribing\u{2026}")
-                        .foregroundStyle(.secondary)
-                }
-                .font(.caption)
+                progressLabel("Transcribing\u{2026}")
 
             case .polishing:
-                HStack(spacing: 4) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("Polishing\u{2026}")
-                        .foregroundStyle(.secondary)
-                }
-                .font(.caption)
+                progressLabel("Polishing\u{2026}")
 
             case .idle, .complete, .error:
                 EmptyView()
             }
         }
         .animation(.easeInOut(duration: 0.2), value: appState.pipelineState)
+    }
+
+    private func progressLabel(_ text: String) -> some View {
+        HStack(spacing: 4) {
+            ProgressView().controlSize(.small)
+            Text(text).foregroundStyle(.secondary)
+        }
+        .font(.caption)
     }
 }
 
