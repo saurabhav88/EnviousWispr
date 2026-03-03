@@ -26,6 +26,9 @@ xcuserdata/
 CLAUDE.md
 .mcp.json
 
+# Test automation (local tooling, not shipped)
+Tests/UITests/
+
 # Task artifacts
 .needs-uat
 
