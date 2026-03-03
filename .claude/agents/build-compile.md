@@ -53,7 +53,7 @@ After every build fix, verify the full build matrix from `.claude/knowledge/conv
 2. `swift build --build-tests` exits 0
 3. If the fix touched runtime code, rebuild + relaunch the .app bundle (`wispr-rebuild-and-relaunch`)
 
-**CI gate**: `pr-check.yml` runs `swift build -c release` and `swift build --build-tests` on every PR. All changes must go through a PR to `main` — branch protection requires the `build-check` job to pass before merge. No required reviews (solo dev). `codeql.yml` also runs alongside `build-check` on PRs for static security analysis, but it is informational only and does not block merges.
+**CI gate**: `pr-check.yml` runs `swift build -c release` and `swift build --build-tests` on every PR. All changes must go through a PR to `main` — branch protection requires the `build-check` job to pass before merge. No required reviews (solo dev).
 
 ## Gotchas
 

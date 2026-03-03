@@ -39,7 +39,6 @@ The release workflow pushes appcast.xml directly to `main` using `APPCAST_BOT_TO
 |------|---------|
 | `.github/workflows/release.yml` | CI: triggered on `v*` tags, runs on `macos-15` |
 | `.github/workflows/pr-check.yml` | CI: triggered on PRs to `main`, required status check (`build-check`) |
-| `.github/workflows/codeql.yml` | CI: CodeQL security scanning on PRs and pushes to `main` |
 | `scripts/build-dmg.sh` | Builds arm64 release, assembles .app, creates DMG |
 | `Sources/EnviousWispr/Resources/Info.plist` | Source of truth for bundle metadata |
 | `Sources/EnviousWispr/Resources/EnviousWispr.entitlements` | Entitlements for codesigning |

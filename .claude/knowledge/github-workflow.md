@@ -35,14 +35,6 @@ Triggers on every pull request targeting `main`. Required status check for merge
 5. **Build (release)** — `swift build -c release --arch arm64`
 6. **Verify test target compiles** — `swift build --build-tests`
 
-### CodeQL Security Scanning
-
-`.github/workflows/codeql.yml` runs static analysis (SAST) to detect security vulnerabilities in Swift source code.
-
-- **Triggers:** Pull requests targeting `main` and direct pushes to `main`
-- **What it does:** Scans the codebase for common vulnerability patterns using GitHub's CodeQL engine
-- **Status:** Informational only — it is NOT a required status check. Failures are advisory and do not block merges
-
 ## PR Template (`.github/PULL_REQUEST_TEMPLATE.md`)
 
 Every PR auto-populates with a pre-merge checklist:
@@ -79,7 +71,6 @@ Dependabot opens PRs when dependency updates are available. These PRs go through
 | Dependabot alerts | Enabled |
 | Secret scanning | Enabled |
 | Push protection | Enabled — blocks commits containing detected secrets |
-| CodeQL code scanning | Enabled — informational SAST, not a required gate |
 
 ## Workflow for Code Changes
 
