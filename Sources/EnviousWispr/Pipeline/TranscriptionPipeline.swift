@@ -120,7 +120,6 @@ final class TranscriptionPipeline {
     /// Start recording audio from the microphone.
     func startRecording() async {
         guard !state.isActive || state == .complete else { return }
-        stopRequested = false
 
         lastPolishError = nil
         deactivateStreamingForwarding()
@@ -237,10 +236,11 @@ final class TranscriptionPipeline {
     }
 
     /// Stop recording, or set a flag if startRecording() is still in-flight.
+    /// Handles the pre-warm phase (.idle) as well as model loading (.transcribing).
     func requestStop() async {
         if state == .recording {
             await stopAndTranscribe()
-        } else if state.isActive {
+        } else {
             stopRequested = true
         }
     }
