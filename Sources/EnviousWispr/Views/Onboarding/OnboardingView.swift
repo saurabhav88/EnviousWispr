@@ -939,15 +939,16 @@ private struct AIPolishStepView: View {
                     .frame(maxWidth: 360)
 
                     VStack(alignment: .leading, spacing: 6) {
-                        TextField(
-                            "",
-                            text: $apiKey,
-                            prompt: Text("Paste your \(selectedProvider.displayName) API key")
-                                .foregroundColor(.obTextTertiary)
+                        ZStack(alignment: .leading) {
+                            if apiKey.isEmpty {
+                                Text("Paste your \(selectedProvider.displayName) API key")
+                                    .font(.obMono)
+                                    .foregroundColor(.obTextSecondary)
+                            }
+                            TextField("", text: $apiKey)
                                 .font(.obMono)
-                        )
-                        .font(.obMono)
-                        .textFieldStyle(.plain)
+                                .textFieldStyle(.plain)
+                        }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
                         .background(Color.obCardBg, in: RoundedRectangle(cornerRadius: 10))
