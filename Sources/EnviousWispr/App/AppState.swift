@@ -53,6 +53,11 @@ final class AppState {
     var customWords: [String] = []
     var customWordError: String?
 
+    /// Set to true while the onboarding Step 4 tutorial is active.
+    /// When true, hotkey callbacks skip setting autoPasteToActiveApp = true,
+    /// so the tutorial transcription never pastes into a background window.
+    var isOnboardingTutorialActive: Bool = false
+
     // Model discovery
     var discoveredModels: [LLMModelInfo] = []
     var isDiscoveringModels = false
@@ -152,8 +157,6 @@ final class AppState {
         hotkeyService.cancelModifiers = settings.cancelModifiers
         hotkeyService.toggleKeyCode = settings.toggleKeyCode
         hotkeyService.toggleModifiers = settings.toggleModifiers
-        hotkeyService.pushToTalkKeyCode = settings.toggleKeyCode
-        hotkeyService.pushToTalkModifiers = settings.toggleModifiers
         hotkeyService.onToggleRecording = { [weak self] in
             guard let self else { return }
             await self.toggleRecording()
@@ -164,11 +167,19 @@ final class AppState {
         }
         hotkeyService.onStartRecording = { [weak self] in
             guard let self, !self.pipelineState.isActive else { return }
-            self.pipeline.autoPasteToActiveApp = true
-            self.permissions.refreshAccessibilityStatus()
-            if !self.permissions.hasAccessibilityPermission {
+            // During onboarding tutorial (Step 4): never paste or copy — tutorial
+            // only shows the transcription in-window, not in any background app.
+            if self.isOnboardingTutorialActive {
                 self.pipeline.autoPasteToActiveApp = false
-                self.restartAccessibilityMonitoringIfNeeded()
+                self.pipeline.autoCopyToClipboard = false
+            } else {
+                self.pipeline.autoPasteToActiveApp = true
+                self.pipeline.autoCopyToClipboard = self.settings.autoCopyToClipboard
+                self.permissions.refreshAccessibilityStatus()
+                if !self.permissions.hasAccessibilityPermission {
+                    self.pipeline.autoPasteToActiveApp = false
+                    self.restartAccessibilityMonitoringIfNeeded()
+                }
             }
             await self.pipeline.startRecording()
             if case .error = self.pipeline.state {
@@ -183,6 +194,10 @@ final class AppState {
             }
             await self.pipeline.stopAndTranscribe()
             self.pipeline.autoPasteToActiveApp = false
+            // Restore user's clipboard setting after tutorial recording ends
+            if self.isOnboardingTutorialActive {
+                self.pipeline.autoCopyToClipboard = self.settings.autoCopyToClipboard
+            }
         }
 
         hotkeyService.onCancelRecording = { [weak self] in
@@ -240,20 +255,13 @@ final class AppState {
             hotkeyService.cancelModifiers = settings.cancelModifiers
         case .toggleKeyCode:
             hotkeyService.toggleKeyCode = settings.toggleKeyCode
-            hotkeyService.pushToTalkKeyCode = settings.toggleKeyCode
             reregisterHotkeys()
         case .toggleModifiers:
             hotkeyService.toggleModifiers = settings.toggleModifiers
-            hotkeyService.pushToTalkModifiers = settings.toggleModifiers
             reregisterHotkeys()
-        case .pushToTalkKeyCode:
-            // PTT intentionally mirrors toggle — single hotkey, mode determines behavior.
-            hotkeyService.pushToTalkKeyCode = settings.toggleKeyCode
-            reregisterHotkeys()
-        case .pushToTalkModifiers:
-            // PTT intentionally mirrors toggle — single hotkey, mode determines behavior.
-            hotkeyService.pushToTalkModifiers = settings.toggleModifiers
-            reregisterHotkeys()
+        case .pushToTalkKeyCode, .pushToTalkModifiers:
+            // PTT mirrors toggle — single hotkey, mode determines behavior. No separate registration needed.
+            break
         case .modelUnloadPolicy:
             pipeline.modelUnloadPolicy = settings.modelUnloadPolicy
             if settings.modelUnloadPolicy == .never {
@@ -292,7 +300,7 @@ final class AppState {
             } else {
                 audioCapture.buildEngine(noiseSuppression: settings.noiseSuppression)
             }
-        case .hasCompletedOnboarding:
+        case .onboardingState, .hasCompletedOnboarding:
             break
         }
     }

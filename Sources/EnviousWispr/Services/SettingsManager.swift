@@ -1,5 +1,16 @@
 import AppKit
 
+/// Tracks which onboarding step the user has reached.
+/// Replaces the old `hasCompletedOnboarding` Bool with a finer-grained state.
+/// Stored in UserDefaults under key `"onboardingState"`.
+/// Existing users with `hasCompletedOnboarding = true` are migrated to `.completed` on first read.
+enum OnboardingState: String, Codable, Sendable {
+    case needsMicPermission   // Fresh install — microphone not yet granted
+    case needsModelDownload   // Mic granted, model not yet downloaded
+    case needsCompletion      // Model ready, hard gates passed; user hasn't clicked Done
+    case completed            // User clicked Done on Step 5
+}
+
 @MainActor
 @Observable
 final class SettingsManager {
@@ -16,7 +27,8 @@ final class SettingsManager {
         case vadSilenceTimeout
         case vadSensitivity
         case vadEnergyGate
-        case hasCompletedOnboarding
+        case onboardingState
+        case hasCompletedOnboarding   // Legacy — kept for backward-compat writes only
         case cancelKeyCode
         case cancelModifiers
         case toggleKeyCode
@@ -127,11 +139,19 @@ final class SettingsManager {
         }
     }
 
-    var hasCompletedOnboarding: Bool {
+    var onboardingState: OnboardingState {
         didSet {
-            UserDefaults.standard.set(hasCompletedOnboarding, forKey: "hasCompletedOnboarding")
-            onChange?(.hasCompletedOnboarding)
+            UserDefaults.standard.set(onboardingState.rawValue, forKey: "onboardingState")
+            // Keep legacy key in sync so any existing observers see the right value.
+            UserDefaults.standard.set(onboardingState == .completed, forKey: "hasCompletedOnboarding")
+            onChange?(.onboardingState)
         }
+    }
+
+    /// Backward-compat computed property — true when onboarding is fully complete.
+    var hasCompletedOnboarding: Bool {
+        get { onboardingState == .completed }
+        set { onboardingState = newValue ? .completed : .needsMicPermission }
     }
 
     var cancelKeyCode: UInt16 {
@@ -314,7 +334,17 @@ final class SettingsManager {
         vadSilenceTimeout = defaults.object(forKey: "vadSilenceTimeout") as? Double ?? 1.5
         vadSensitivity = defaults.object(forKey: "vadSensitivity") as? Float ?? 0.5
         vadEnergyGate = defaults.object(forKey: "vadEnergyGate") as? Bool ?? true
-        hasCompletedOnboarding = defaults.object(forKey: "hasCompletedOnboarding") as? Bool ?? false
+        // Migrate legacy hasCompletedOnboarding Bool → OnboardingState enum.
+        // If the new "onboardingState" key exists, use it directly.
+        // Otherwise, fall back to the old Bool (existing users → .completed).
+        if let rawState = defaults.string(forKey: "onboardingState"),
+           let state = OnboardingState(rawValue: rawState) {
+            onboardingState = state
+        } else if defaults.object(forKey: "hasCompletedOnboarding") as? Bool == true {
+            onboardingState = .completed
+        } else {
+            onboardingState = .needsMicPermission
+        }
 
         let savedCancelKeyCode = defaults.object(forKey: "cancelKeyCode") as? Int
         cancelKeyCode = UInt16(savedCancelKeyCode ?? 53)

@@ -16,6 +16,17 @@ Features identified from [Handy vs EnviousWispr comparison](../comparison-handy-
 - [~] In progress
 - [x] Implemented — code merged and builds clean
 
+## Implementation Workflow
+
+All feature implementations follow the PR-based flow:
+
+1. **Feature branch** — create `feat/<feature-name>` from `main`
+2. **Implement** — code changes on the feature branch
+3. **PR** — open pull request targeting `main`
+4. **CI** — `build-check` (pr-check.yml) must pass: Swift 6 verify, debug+release builds, test compilation
+5. **Review** — 1 approving review required (CODEOWNERS: @saurabhav88)
+6. **Merge** — squash merge into `main` (linear history enforced)
+
 ## Features
 
 ### Hotkeys & Input

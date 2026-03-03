@@ -103,3 +103,6 @@ ALL must be true before marking a feature complete:
 - [ ] **All UAT tests pass** (`python3 Tests/UITests/uat_runner.py run --verbose`)
 - [ ] TRACKER.md updated
 - [ ] Committed with conventional commit format
+- [ ] PR created targeting `main` branch
+- [ ] CI `build-check` workflow passes on the PR
+- [ ] PR merged to `main` (squash-merge)
