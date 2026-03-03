@@ -65,6 +65,7 @@ build/
 # Screenshots and diagrams (local artifacts)
 *.png
 docs/
+!docs/website/
 
 # App bundle (build artifact)
 EnviousWispr.app/

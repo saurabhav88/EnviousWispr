@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EnviousWispr — The Full Picture</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200..800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+  :root{
+    --bg:#08080c;--surface:#111116;
+    --border:rgba(255,255,255,0.06);--border-hover:rgba(255,255,255,0.1);
+    --purple:#8b7cf6;--cyan:#22d3ee;--green:#34d399;--amber:#fbbf24;--red:#f87171;--pink:#f472b6;--orange:#fb923c;
+    --text:#ededf0;--text-2:#8e8ea0;--text-3:#5a5a6e;
+    --font:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,sans-serif;
+    --mono:'JetBrains Mono',monospace;
+  }
+  html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);font-family:var(--font);color:var(--text)}
+
+  /* FAKE MACOS MENU BAR */
+  .menu-bar{
+    position:fixed;top:0;left:0;right:0;height:28px;
+    background:rgba(8,8,12,0.95);backdrop-filter:blur(20px);
+    border-bottom:1px solid var(--border);
+    display:flex;align-items:center;justify-content:space-between;
+    padding:0 14px;z-index:100;
+    font-size:13px;font-weight:500;color:var(--text-2);
+    opacity:0;transition:opacity 0.8s ease;
+  }
+  .menu-bar.visible{opacity:1}
+  .menu-bar-left{display:flex;gap:18px;align-items:center}
+  .menu-bar-left .apple-logo{font-size:15px;color:var(--text);font-weight:600}
+  .menu-bar-right{display:flex;gap:14px;align-items:center;font-size:12px}
+  .mic-icon{
+    width:14px;height:14px;border-radius:50%;
+    background:var(--text-3);
+    transition:background 0.3s ease,box-shadow 0.3s ease;
+    position:relative;
+  }
+  .mic-icon::before{
+    content:'';position:absolute;top:3px;left:4.5px;
+    width:5px;height:5px;border-radius:2px 2px 50% 50%;
+    background:var(--bg);
+  }
+  .mic-icon.recording{
+    background:var(--red);
+    box-shadow:0 0 8px rgba(248,113,113,0.5);
+    animation:mic-pulse 1s ease-in-out infinite;
+  }
+  .mic-icon.done{background:var(--text-3);box-shadow:none;animation:none}
+  @keyframes mic-pulse{0%,100%{opacity:1}50%{opacity:0.6}}
+
+  .menu-time{font-family:var(--mono);font-size:12px;letter-spacing:0.3px}
+
+  /* DESKTOP */
+  .desktop{
+    position:fixed;top:28px;left:0;right:0;bottom:0;
+    display:flex;align-items:center;justify-content:center;
+    background:var(--bg);
+    background-image:radial-gradient(ellipse 800px 400px at 50% 40%,rgba(139,124,246,0.03),transparent);
+  }
+
+  /* EMAIL WINDOW */
+  .email-window{
+    width:640px;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:12px;
+    overflow:hidden;
+    box-shadow:0 25px 60px rgba(0,0,0,0.5),0 0 0 1px rgba(255,255,255,0.04);
+    opacity:0;transform:translateY(12px);
+    transition:opacity 0.8s ease,transform 0.8s ease,box-shadow 0.4s ease;
+    position:relative;
+  }
+  .email-window.visible{opacity:1;transform:translateY(0)}
+  .email-window.glow-green{
+    box-shadow:0 25px 60px rgba(0,0,0,0.5),0 0 0 1px rgba(52,211,153,0.15),0 0 40px rgba(52,211,153,0.06);
+  }
+
+  .title-bar{
+    height:40px;display:flex;align-items:center;
+    padding:0 14px;
+    background:rgba(255,255,255,0.02);
+    border-bottom:1px solid var(--border);
+    position:relative;
+  }
+  .traffic-lights{display:flex;gap:7px}
+  .dot{width:12px;height:12px;border-radius:50%}
+  .dot.red{background:#ff5f57}
+  .dot.yellow{background:#febc2e}
+  .dot.green-dot{background:#28c840}
+  .title-bar-text{
+    position:absolute;left:50%;transform:translateX(-50%);
+    font-size:13px;color:var(--text-2);font-weight:500;
+  }
+
+  .email-fields{
+    padding:12px 18px;
+    border-bottom:1px solid var(--border);
+    font-size:13px;
+  }
+  .email-field{
+    display:flex;align-items:center;gap:8px;
+    padding:5px 0;
+    color:var(--text-2);
+  }
+  .email-field:first-child{border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:3px}
+  .field-label{color:var(--text-3);font-weight:500;min-width:55px}
+  .field-value{color:var(--text)}
+
+  .email-body{
+    padding:18px 20px;
+    min-height:220px;
+    font-size:15px;line-height:1.65;
+    color:var(--text);
+    position:relative;
+  }
+  .email-greeting{margin-bottom:6px}
+  .cursor-line{display:inline}
+  .blinking-cursor{
+    display:inline-block;width:2px;height:18px;
+    background:var(--purple);
+    vertical-align:text-bottom;
+    margin-left:1px;
+    animation:blink 1s step-end infinite;
+  }
+  .blinking-cursor.hidden{display:none}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+  .reveal-area{margin-top:12px}
+  .word-span{
+    display:inline;
+    filter:blur(8px);
+    opacity:0.3;
+    transition:filter 0.15s ease-out,opacity 0.15s ease-out,text-shadow 0.3s ease;
+  }
+  .word-span.revealed{
+    filter:blur(0);opacity:1;
+    text-shadow:0 0 12px rgba(52,211,153,0.15);
+  }
+  .word-span.settled{
+    text-shadow:none;
+  }
+
+  /* RECORDING CAPSULE */
+  .capsule{
+    position:fixed;
+    left:50%;
+    top:calc(50% - 130px);
+    display:flex;align-items:center;gap:10px;
+    padding:10px 18px;
+    background:rgba(17,17,22,0.92);
+    backdrop-filter:blur(16px);
+    border:1px solid var(--border-hover);
+    border-radius:100px;
+    box-shadow:0 8px 30px rgba(0,0,0,0.4);
+    opacity:0;transform:translateX(-50%) scale(0.8);
+    transition:opacity 0.3s ease,transform 0.3s ease,box-shadow 0.4s ease;
+    z-index:50;
+    pointer-events:none;
+  }
+  .capsule.visible{opacity:1;transform:translateX(-50%) scale(1)}
+  .capsule.exit{
+    opacity:0;
+    transform:translateX(-50%) scale(0.7) translateY(-20px);
+    box-shadow:0 0 20px rgba(52,211,153,0.3);
+  }
+
+  .capsule-dot{
+    width:8px;height:8px;border-radius:50%;
+    background:var(--red);flex-shrink:0;
+    transition:background 0.3s ease;
+  }
+  .capsule-dot.recording{animation:capsule-dot-pulse 1s ease-in-out infinite}
+  .capsule-dot.amber{background:var(--amber);animation:none}
+  .capsule-dot.cyan{background:var(--cyan);animation:none}
+  .capsule-dot.green-state{background:var(--green);animation:none}
+  @keyframes capsule-dot-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(0.7)}}
+
+  .waveform{display:flex;align-items:center;gap:3px;height:20px}
+  .waveform .bar{
+    width:3px;border-radius:2px;
+    background:var(--red);
+    animation:wave 0.6s ease-in-out infinite;
+  }
+  .waveform .bar:nth-child(1){height:8px;animation-delay:0s}
+  .waveform .bar:nth-child(2){height:14px;animation-delay:0.1s}
+  .waveform .bar:nth-child(3){height:18px;animation-delay:0.2s}
+  .waveform .bar:nth-child(4){height:12px;animation-delay:0.3s}
+  .waveform .bar:nth-child(5){height:6px;animation-delay:0.15s}
+  @keyframes wave{0%,100%{transform:scaleY(1)}50%{transform:scaleY(0.4)}}
+
+  .capsule-timer{
+    font-family:var(--mono);font-size:13px;font-weight:500;
+    color:var(--text);min-width:38px;
+    letter-spacing:0.5px;
+  }
+  .capsule-label{
+    font-size:11px;font-weight:600;letter-spacing:1px;
+    color:var(--text-3);text-transform:uppercase;
+    margin-left:4px;
+  }
+  .capsule-status{
+    font-size:13px;font-weight:500;
+    color:var(--text-2);
+    display:none;
+  }
+  .capsule-spinner{
+    width:14px;height:14px;border-radius:50%;
+    border:2px solid transparent;
+    border-top-color:var(--amber);
+    animation:spin 0.8s linear infinite;
+    display:none;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* RIPPLE EFFECTS */
+  .ripple-container{
+    position:fixed;top:0;left:0;right:0;bottom:0;
+    pointer-events:none;z-index:40;overflow:hidden;
+  }
+  .ripple{
+    position:absolute;border-radius:50%;
+    border:1px solid;
+    opacity:0;
+    animation:ripple-out 1.5s ease-out forwards;
+  }
+  @keyframes ripple-out{
+    0%{width:0;height:0;opacity:0.4}
+    100%{width:300px;height:300px;opacity:0;margin-left:-150px;margin-top:-150px}
+  }
+  .ripple.reverse{
+    animation:ripple-in 0.8s ease-in forwards;
+    width:300px;height:300px;margin-left:-150px;margin-top:-150px;
+  }
+  @keyframes ripple-in{
+    0%{width:300px;height:300px;margin-left:-150px;margin-top:-150px;opacity:0.3}
+    100%{width:0;height:0;margin-left:0;margin-top:0;opacity:0}
+  }
+
+  /* HOTKEY BADGE */
+  .hotkey-badge{
+    position:fixed;
+    left:50%;top:50%;
+    transform:translate(-50%,-50%) scale(0.6);
+    display:flex;align-items:center;gap:8px;
+    padding:12px 22px;
+    background:rgba(139,124,246,0.12);
+    border:1px solid rgba(139,124,246,0.3);
+    border-radius:12px;
+    opacity:0;
+    transition:opacity 0.15s ease,transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    z-index:60;
+    pointer-events:none;
+  }
+  .hotkey-badge.flash{
+    opacity:1;
+    transform:translate(-50%,-50%) scale(1);
+    box-shadow:0 0 40px rgba(139,124,246,0.25),0 0 80px rgba(139,124,246,0.1);
+  }
+  .hotkey-badge .key{
+    font-family:var(--mono);font-size:15px;font-weight:500;
+    color:var(--purple);
+    background:rgba(139,124,246,0.1);
+    padding:4px 10px;border-radius:6px;
+    border:1px solid rgba(139,124,246,0.2);
+  }
+  .hotkey-badge .plus{color:var(--text-3);font-size:13px}
+
+  /* GREEN CHECKMARK */
+  .checkmark{
+    position:fixed;
+    left:50%;top:calc(50% - 130px);
+    transform:translate(-50%,-50%) scale(0);
+    width:36px;height:36px;
+    background:rgba(52,211,153,0.12);
+    border:1px solid rgba(52,211,153,0.25);
+    border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    opacity:0;z-index:55;
+    transition:opacity 0.3s ease,transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    pointer-events:none;
+  }
+  .checkmark.visible{opacity:1;transform:translate(-50%,-50%) scale(1)}
+  .checkmark svg{width:18px;height:18px}
+
+  /* STATS LINE */
+  .stats-line{
+    position:fixed;
+    left:50%;bottom:calc(50% - 180px);
+    transform:translateX(-50%);
+    font-family:var(--mono);font-size:12px;
+    color:var(--text-3);letter-spacing:0.5px;
+    opacity:0;transition:opacity 0.6s ease;
+    white-space:nowrap;
+    z-index:30;
+  }
+  .stats-line.visible{opacity:1}
+  .stats-line span{margin:0 6px;color:var(--text-3)}
+
+  /* PHASE STEPPER */
+  .stepper{
+    position:fixed;bottom:36px;left:50%;transform:translateX(-50%);
+    display:flex;align-items:center;gap:0;
+    z-index:100;
+  }
+  .step{
+    display:flex;flex-direction:column;align-items:center;gap:8px;
+    min-width:80px;position:relative;
+  }
+  .step-dot{
+    width:10px;height:10px;border-radius:50%;
+    background:var(--text-3);opacity:0.3;
+    transition:background 0.4s ease,opacity 0.4s ease,box-shadow 0.4s ease,transform 0.3s ease;
+  }
+  .step-dot.active{opacity:1;transform:scale(1.2)}
+  .step-dot.completed{opacity:0.6;transform:scale(1)}
+  .step-label{
+    font-size:10px;font-weight:600;letter-spacing:1.2px;
+    text-transform:uppercase;
+    color:var(--text-3);
+    transition:color 0.4s ease;
+  }
+  .step-connector{
+    width:32px;height:1px;
+    background:var(--text-3);opacity:0.15;
+    margin-bottom:22px;
+  }
+
+  /* TIMELINE BAR */
+  .timeline{
+    position:fixed;bottom:14px;left:50%;transform:translateX(-50%);
+    display:flex;align-items:center;gap:12px;
+    font-family:var(--mono);font-size:10px;color:var(--text-3);
+    opacity:0;transition:opacity 0.4s ease;
+    z-index:100;
+  }
+  .timeline.visible{opacity:1}
+  .timeline-segment{display:flex;align-items:center;gap:4px}
+  .timeline-bar{height:3px;border-radius:2px;opacity:0.6}
+
+  /* REPLAY BUTTON */
+  .replay-btn{
+    position:fixed;bottom:24px;right:24px;
+    width:40px;height:40px;border-radius:50%;
+    background:rgba(255,255,255,0.04);
+    border:1px solid var(--border-hover);
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;opacity:0;
+    transition:opacity 0.3s ease,background 0.2s ease,transform 0.2s ease;
+    z-index:200;
+  }
+  .replay-btn:hover{background:rgba(255,255,255,0.08);transform:scale(1.05)}
+  .replay-btn.visible{opacity:1}
+  .replay-btn svg{width:16px;height:16px;color:var(--text-2)}
+</style>
+</head>
+<body>
+
+<!-- Menu Bar -->
+<div class="menu-bar" id="menuBar">
+  <div class="menu-bar-left">
+    <span class="apple-logo">&#63743;</span>
+    <span>Finder</span><span>File</span><span>Edit</span><span>View</span>
+  </div>
+  <div class="menu-bar-right">
+    <span class="menu-time" id="menuTime">Fri 2:47 PM</span>
+    <div class="mic-icon" id="micIcon"></div>
+  </div>
+</div>
+
+<!-- Desktop -->
+<div class="desktop">
+  <!-- Email Window -->
+  <div class="email-window" id="emailWindow">
+    <div class="title-bar">
+      <div class="traffic-lights">
+        <div class="dot red"></div>
+        <div class="dot yellow"></div>
+        <div class="dot green-dot"></div>
+      </div>
+      <span class="title-bar-text">Mail &mdash; New Message</span>
+    </div>
+    <div class="email-fields">
+      <div class="email-field">
+        <span class="field-label">To:</span>
+        <span class="field-value">sarah@company.com</span>
+      </div>
+      <div class="email-field">
+        <span class="field-label">Subject:</span>
+        <span class="field-value">Re: Q3 Planning Follow-up</span>
+      </div>
+    </div>
+    <div class="email-body" id="emailBody">
+      <div class="email-greeting">Hi Sarah,</div>
+      <div class="reveal-area">
+        <span class="cursor-line"><span class="blinking-cursor" id="cursor"></span></span>
+        <span id="typedText"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Hotkey Badge -->
+<div class="hotkey-badge" id="hotkeyBadge">
+  <span class="key">&#x2325; Option</span>
+  <span class="plus">+</span>
+  <span class="key">Space</span>
+</div>
+
+<!-- Recording Capsule -->
+<div class="capsule" id="capsule">
+  <div class="capsule-dot recording" id="capsuleDot"></div>
+  <div class="waveform" id="waveform">
+    <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+  </div>
+  <span class="capsule-timer" id="capsuleTimer">00:00</span>
+  <span class="capsule-label" id="capsuleLabel">PTT</span>
+  <span class="capsule-status" id="capsuleStatus">Transcribing...</span>
+  <div class="capsule-spinner" id="capsuleSpinner"></div>
+</div>
+
+<!-- Ripple Container -->
+<div class="ripple-container" id="rippleContainer"></div>
+
+<!-- Green Checkmark -->
+<div class="checkmark" id="checkmark">
+  <svg viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="20 6 9 17 4 12"/>
+  </svg>
+</div>
+
+<!-- Stats Line -->
+<div class="stats-line" id="statsLine">
+  5s spoken<span>&mdash;</span>8.5s total<span>&mdash;</span>ready to send
+</div>
+
+<!-- Phase Stepper -->
+<div class="stepper" id="stepper">
+  <div class="step" data-phase="hotkey">
+    <div class="step-dot" id="stepDot0"></div>
+    <span class="step-label" id="stepLabel0">Hotkey</span>
+  </div>
+  <div class="step-connector"></div>
+  <div class="step" data-phase="recording">
+    <div class="step-dot" id="stepDot1"></div>
+    <span class="step-label" id="stepLabel1">Recording</span>
+  </div>
+  <div class="step-connector"></div>
+  <div class="step" data-phase="transcribing">
+    <div class="step-dot" id="stepDot2"></div>
+    <span class="step-label" id="stepLabel2">Transcribe</span>
+  </div>
+  <div class="step-connector"></div>
+  <div class="step" data-phase="polishing">
+    <div class="step-dot" id="stepDot3"></div>
+    <span class="step-label" id="stepLabel3">Polish</span>
+  </div>
+  <div class="step-connector"></div>
+  <div class="step" data-phase="pasted">
+    <div class="step-dot" id="stepDot4"></div>
+    <span class="step-label" id="stepLabel4">Pasted</span>
+  </div>
+</div>
+
+<!-- Timeline -->
+<div class="timeline" id="timeline">
+  <div class="timeline-segment">
+    <div class="timeline-bar" style="width:50px;background:var(--red)"></div>
+    <span>5.0s rec</span>
+  </div>
+  <div class="timeline-segment">
+    <div class="timeline-bar" style="width:20px;background:var(--amber)"></div>
+    <span>1.8s asr</span>
+  </div>
+  <div class="timeline-segment">
+    <div class="timeline-bar" style="width:18px;background:var(--cyan)"></div>
+    <span>1.2s llm</span>
+  </div>
+  <div class="timeline-segment">
+    <div class="timeline-bar" style="width:8px;background:var(--green)"></div>
+    <span>0.5s paste</span>
+  </div>
+</div>
+
+<!-- Replay Button -->
+<div class="replay-btn" id="replayBtn" title="Replay">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+  </svg>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  var REVEAL_TEXT = 'I wanted to follow up on our Q3 planning discussion from last Tuesday. I think the timeline we proposed is realistic, but we should add a buffer week for the integration testing phase. Would you have time to sync on this tomorrow?';
+
+  var menuBar       = document.getElementById('menuBar');
+  var emailWindow   = document.getElementById('emailWindow');
+  var micIcon       = document.getElementById('micIcon');
+  var hotkeyBadge   = document.getElementById('hotkeyBadge');
+  var capsule       = document.getElementById('capsule');
+  var capsuleDot    = document.getElementById('capsuleDot');
+  var waveform      = document.getElementById('waveform');
+  var capsuleTimer  = document.getElementById('capsuleTimer');
+  var capsuleLabel  = document.getElementById('capsuleLabel');
+  var capsuleStatus = document.getElementById('capsuleStatus');
+  var capsuleSpinner = document.getElementById('capsuleSpinner');
+  var rippleContainer = document.getElementById('rippleContainer');
+  var checkmark     = document.getElementById('checkmark');
+  var statsLine     = document.getElementById('statsLine');
+  var cursorEl      = document.getElementById('cursor');
+  var typedText     = document.getElementById('typedText');
+  var timelineEl    = document.getElementById('timeline');
+  var replayBtn     = document.getElementById('replayBtn');
+
+  var rippleIntervalId = null;
+  var timerIntervalId = null;
+  var animationTimeouts = [];
+
+  function clearAllTimeouts() {
+    for (var i = 0; i < animationTimeouts.length; i++) {
+      clearTimeout(animationTimeouts[i]);
+    }
+    animationTimeouts = [];
+    if (rippleIntervalId) { clearInterval(rippleIntervalId); rippleIntervalId = null; }
+    if (timerIntervalId) { clearInterval(timerIntervalId); timerIntervalId = null; }
+  }
+
+  function schedule(fn, delay) {
+    var t = setTimeout(fn, delay);
+    animationTimeouts.push(t);
+    return t;
+  }
+
+  function setStep(index, color) {
+    for (var i = 0; i < 5; i++) {
+      var dot = document.getElementById('stepDot' + i);
+      var label = document.getElementById('stepLabel' + i);
+      dot.classList.remove('active', 'completed');
+      dot.style.background = '';
+      dot.style.boxShadow = '';
+      label.style.color = '';
+      if (i < index) {
+        dot.classList.add('completed');
+        dot.style.background = 'var(--text-3)';
+      }
+    }
+    if (index >= 0 && index < 5) {
+      var activeDot = document.getElementById('stepDot' + index);
+      var activeLabel = document.getElementById('stepLabel' + index);
+      activeDot.classList.add('active');
+      activeDot.style.background = 'var(--' + color + ')';
+      activeDot.style.boxShadow = '0 0 10px var(--' + color + ')';
+      activeLabel.style.color = 'var(--' + color + ')';
+    }
+  }
+
+  function spawnRipple(color, reverse) {
+    var r = document.createElement('div');
+    r.className = 'ripple' + (reverse ? ' reverse' : '');
+    r.style.borderColor = color;
+    var cx = window.innerWidth / 2;
+    var cy = window.innerHeight / 2 - 130;
+    r.style.left = cx + 'px';
+    r.style.top = cy + 'px';
+    rippleContainer.appendChild(r);
+    setTimeout(function() { r.remove(); }, reverse ? 800 : 1500);
+  }
+
+  function buildWordSpans() {
+    // Clear existing content
+    while (typedText.firstChild) {
+      typedText.removeChild(typedText.firstChild);
+    }
+
+    var words = REVEAL_TEXT.split(' ');
+    for (var i = 0; i < words.length; i++) {
+      var span = document.createElement('span');
+      span.className = 'word-span';
+      span.setAttribute('data-i', i);
+      span.textContent = words[i];
+      typedText.appendChild(span);
+      if (i < words.length - 1) {
+        typedText.appendChild(document.createTextNode(' '));
+      }
+    }
+  }
+
+  function resetAll() {
+    clearAllTimeouts();
+    menuBar.classList.remove('visible');
+    emailWindow.classList.remove('visible', 'glow-green');
+    micIcon.classList.remove('recording', 'done');
+    hotkeyBadge.classList.remove('flash');
+    capsule.classList.remove('visible', 'exit');
+    capsuleDot.className = 'capsule-dot recording';
+    waveform.style.display = '';
+    var bars = waveform.querySelectorAll('.bar');
+    for (var i = 0; i < bars.length; i++) {
+      bars[i].style.background = '';
+      bars[i].style.animation = '';
+    }
+    capsuleTimer.textContent = '00:00';
+    capsuleTimer.style.display = '';
+    capsuleLabel.style.display = '';
+    capsuleStatus.style.display = 'none';
+    capsuleSpinner.style.display = 'none';
+    checkmark.classList.remove('visible');
+    statsLine.classList.remove('visible');
+    cursorEl.classList.remove('hidden');
+    // Clear typed text safely
+    while (typedText.firstChild) {
+      typedText.removeChild(typedText.firstChild);
+    }
+    timelineEl.classList.remove('visible');
+    replayBtn.classList.remove('visible');
+    // Clear ripples safely
+    while (rippleContainer.firstChild) {
+      rippleContainer.removeChild(rippleContainer.firstChild);
+    }
+  }
+
+  function runAnimation() {
+    resetAll();
+
+    // Phase 1 - Idle Desktop (0-2s)
+    schedule(function() {
+      menuBar.classList.add('visible');
+    }, 200);
+    schedule(function() {
+      emailWindow.classList.add('visible');
+    }, 600);
+
+    // Phase 2 - Hotkey (2-3s)
+    schedule(function() {
+      hotkeyBadge.classList.add('flash');
+      setStep(0, 'purple');
+    }, 2000);
+    schedule(function() {
+      hotkeyBadge.classList.remove('flash');
+    }, 3000);
+
+    // Phase 3 - Recording (3-8s)
+    schedule(function() {
+      micIcon.classList.add('recording');
+      capsule.classList.add('visible');
+      setStep(1, 'red');
+
+      var seconds = 0;
+      timerIntervalId = setInterval(function() {
+        seconds++;
+        capsuleTimer.textContent = '00:0' + seconds;
+      }, 1000);
+
+      rippleIntervalId = setInterval(function() {
+        spawnRipple('rgba(248,113,113,0.2)');
+      }, 2000);
+      spawnRipple('rgba(248,113,113,0.2)');
+    }, 3000);
+
+    // Phase 4 - Transcribing (8-10s)
+    schedule(function() {
+      clearInterval(timerIntervalId);
+      clearInterval(rippleIntervalId);
+      rippleIntervalId = null;
+      timerIntervalId = null;
+
+      capsuleDot.classList.remove('recording');
+      capsuleDot.classList.add('amber');
+      waveform.style.display = 'none';
+      capsuleTimer.style.display = 'none';
+      capsuleLabel.style.display = 'none';
+      capsuleStatus.style.display = 'inline';
+      capsuleStatus.textContent = 'Transcribing...';
+      capsuleStatus.style.color = 'var(--amber)';
+      capsuleSpinner.style.display = 'block';
+      capsuleSpinner.style.borderTopColor = 'var(--amber)';
+
+      setStep(2, 'amber');
+      spawnRipple('rgba(251,191,36,0.2)');
+    }, 8000);
+
+    // Phase 5 - Polishing (10-12s)
+    schedule(function() {
+      capsuleDot.classList.remove('amber');
+      capsuleDot.classList.add('cyan');
+      capsuleStatus.textContent = 'Polishing...';
+      capsuleStatus.style.color = 'var(--cyan)';
+      capsuleSpinner.style.borderTopColor = 'var(--cyan)';
+
+      setStep(3, 'cyan');
+      spawnRipple('rgba(34,211,238,0.2)');
+    }, 10000);
+
+    // Phase 6 - The Reveal (12-18s)
+    schedule(function() {
+      capsule.classList.remove('visible');
+      capsule.classList.add('exit');
+      micIcon.classList.remove('recording');
+      micIcon.classList.add('done');
+
+      spawnRipple('rgba(52,211,153,0.15)', true);
+
+      emailWindow.classList.add('glow-green');
+
+      cursorEl.classList.add('hidden');
+
+      buildWordSpans();
+
+      var wordEls = typedText.querySelectorAll('.word-span');
+      for (var i = 0; i < wordEls.length; i++) {
+        (function(el, idx) {
+          schedule(function() {
+            el.classList.add('revealed');
+            schedule(function() { el.classList.add('settled'); }, 400);
+          }, idx * 80);
+        })(wordEls[i], i);
+      }
+
+      setStep(4, 'green');
+    }, 12000);
+
+    // Phase 7 - Done (18-20s)
+    schedule(function() {
+      emailWindow.classList.remove('glow-green');
+      checkmark.classList.add('visible');
+      schedule(function() { checkmark.classList.remove('visible'); }, 1200);
+
+      statsLine.classList.add('visible');
+      timelineEl.classList.add('visible');
+      replayBtn.classList.add('visible');
+    }, 18000);
+  }
+
+  replayBtn.addEventListener('click', function() {
+    runAnimation();
+  });
+
+  window.addEventListener('load', function() {
+    schedule(function() { runAnimation(); }, 300);
+  });
+})();
+</script>
+
+</body>
+</html>
