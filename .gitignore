@@ -72,12 +72,6 @@ build/
 # Allow PNGs in tracked asset directories
 # (Brand Assets/, Sources/Resources/ are auto-tracked)
 
-# Docs — ignore scratch work, allow published content
-docs/*
-!docs/website/
-!docs/mockups/
-!docs/plans/
-
 # App bundle (build artifact)
 EnviousWispr.app/
 
