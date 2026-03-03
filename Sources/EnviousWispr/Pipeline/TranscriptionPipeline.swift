@@ -45,6 +45,8 @@ final class TranscriptionPipeline {
 
     /// The app that was frontmost when recording started — re-activated before pasting.
     private var targetApp: NSRunningApplication?
+    /// The specific text field that was focused when recording started — used for AX direct insertion.
+    private var targetElement: AXUIElement?
     private var silenceDetector: SilenceDetector?
     private var vadMonitorTask: Task<Void, Never>?
     private var recordingStartTime: Date?
@@ -138,9 +140,10 @@ final class TranscriptionPipeline {
             }
         }
 
-        // Remember the frontmost app so we can re-activate it before pasting
+        // Remember the frontmost app and focused text field so we can paste back
         // (LLM polishing can take seconds, during which focus may shift)
         targetApp = NSWorkspace.shared.frontmostApplication
+        targetElement = PasteService.captureFocusedElement()
 
         // Start streaming ASR if the backend supports it — feed audio buffers
         // to the ASR model during recording so transcription overlaps with capture.
@@ -421,42 +424,91 @@ final class TranscriptionPipeline {
             // Notify ASR manager that transcription is done; schedules unload timer if configured.
             asrManager.noteTranscriptionComplete(policy: modelUnloadPolicy)
 
-            // Auto-copy/paste + auto-submit
+            // Auto-copy/paste + auto-submit — tiered cascade
             let pasteStart = CFAbsoluteTimeGetCurrent()
             if autoPasteToActiveApp {
-                // Re-activate the app that was frontmost when recording started,
-                // since focus may have shifted during transcription/polishing.
-                if let app = targetApp, !app.isTerminated {
-                    app.activate()
-                    try? await Task.sleep(for: .milliseconds(150))
-                }
+                let text = transcript.displayText
+                let bundleId = targetApp?.bundleIdentifier ?? "unknown"
+                var tier: PasteTier = .clipboardOnly
 
-                // Optionally snapshot the clipboard before writing the transcript.
-                let snapshot: ClipboardSnapshot? = restoreClipboardAfterPaste
-                    ? PasteService.saveClipboard()
-                    : nil
-
-                let changeCountAfterPaste = PasteService.pasteToActiveApp(transcript.displayText)
-
-                // Restore after a delay — long enough for the target app to
-                // consume the pasteboard contents but short enough to feel instant.
-                if let snapshot {
-                    try? await Task.sleep(for: .milliseconds(TimingConstants.clipboardRestoreDelayMs))
-                    let changeCountBeforeRestore = NSPasteboard.general.changeCount
-                    if changeCountBeforeRestore != changeCountAfterPaste {
-                        Task { await AppLogger.shared.log(
-                            "Pipeline timing: clipboard race detected — changeCount moved from \(changeCountAfterPaste) to \(changeCountBeforeRestore) before restore",
-                            level: .info, category: "PipelineTiming"
-                        ) }
+                // Tier 1: AX direct insertion — zero disruption, no clipboard, no focus change.
+                if let element = targetElement {
+                    if PasteService.insertViaAccessibility(text, element: element) {
+                        tier = .axDirect
                     }
-                    PasteService.restoreClipboard(snapshot, changeCountAfterPaste: changeCountAfterPaste)
                 }
+
+                // Tier 2: Activate target app + CGEvent Cmd+V
+                if tier == .clipboardOnly, let app = targetApp, !app.isTerminated {
+                    let pollInterval = TimingConstants.activationPollIntervalMs
+                    let timeout = TimingConstants.activationTimeoutMs
+                    // Activate once, then poll. Retry activation at longer intervals.
+                    app.activate(options: .activateIgnoringOtherApps)
+                    var elapsed = 0
+                    while elapsed < timeout {
+                        try? await Task.sleep(for: .milliseconds(pollInterval))
+                        elapsed += pollInterval
+                        if NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier {
+                            break
+                        }
+                        if elapsed % 300 < pollInterval {
+                            app.activate(options: .activateIgnoringOtherApps)
+                        }
+                    }
+
+                    let activated = NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier
+
+                    if activated {
+                        let snapshot: ClipboardSnapshot? = restoreClipboardAfterPaste
+                            ? PasteService.saveClipboard()
+                            : nil
+
+                        let changeCountAfterPaste = PasteService.pasteToActiveApp(text)
+                        tier = .cgEvent
+
+                        if let snapshot {
+                            try? await Task.sleep(for: .milliseconds(TimingConstants.clipboardRestoreDelayMs))
+                            PasteService.restoreClipboard(snapshot, changeCountAfterPaste: changeCountAfterPaste)
+                        }
+                    } else {
+                        // Tier 2b: AppleScript Edit > Paste (needs frontmost, try one more activation)
+                        app.activate(options: .activateIgnoringOtherApps)
+                        try? await Task.sleep(for: .milliseconds(TimingConstants.clipboardRestoreDelayMs))
+
+                        let snapshot: ClipboardSnapshot? = restoreClipboardAfterPaste
+                            ? PasteService.saveClipboard()
+                            : nil
+
+                        let changeCount = PasteService.copyToClipboardReturningChangeCount(text)
+
+                        if PasteService.pasteViaAppleScript(pid: app.processIdentifier) {
+                            tier = .appleScript
+                        }
+
+                        if let snapshot {
+                            try? await Task.sleep(for: .milliseconds(TimingConstants.clipboardRestoreDelayMs))
+                            PasteService.restoreClipboard(snapshot, changeCountAfterPaste: changeCount)
+                        }
+                    }
+                }
+
+                // Tier 3: Clipboard + fallback — text is never lost
+                if tier == .clipboardOnly {
+                    PasteService.copyToClipboard(text)
+                }
+
+                let durationMs = Int((CFAbsoluteTimeGetCurrent() - pasteStart) * 1000)
+                Task { await AppLogger.shared.log(
+                    "Pipeline paste: tier=\(tier.rawValue), app=\(bundleId), duration=\(durationMs)ms",
+                    level: .info, category: "PipelineTiming"
+                ) }
 
             } else if autoCopyToClipboard {
                 PasteService.copyToClipboard(transcript.displayText)
             }
             let pasteEnd = CFAbsoluteTimeGetCurrent()
             targetApp = nil
+            targetElement = nil
 
             let pipelineEnd = CFAbsoluteTimeGetCurrent()
             Task { await AppLogger.shared.log(

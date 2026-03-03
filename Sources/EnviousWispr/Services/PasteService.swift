@@ -10,13 +10,36 @@ struct ClipboardSnapshot: Sendable {
     let changeCount: Int
 }
 
+/// Which paste tier succeeded — logged for compatibility analytics.
+enum PasteTier: String {
+    case axDirect = "ax_direct"
+    case cgEvent = "cgevent"
+    case appleScript = "applescript"
+    case clipboardOnly = "clipboard_only"
+}
+
 /// Handles copying text to clipboard and pasting into the active app.
 enum PasteService {
+
+    /// AX roles that accept text insertion.
+    private static let textRoles: Set<String> = [
+        kAXTextFieldRole as String,
+        kAXTextAreaRole as String,
+        kAXComboBoxRole as String,
+        "AXSearchField",
+    ]
+
     /// Copy text to the system clipboard.
     static func copyToClipboard(_ text: String) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
+    }
+
+    /// Copy text to clipboard and return the resulting change count.
+    static func copyToClipboardReturningChangeCount(_ text: String) -> Int {
+        copyToClipboard(text)
+        return NSPasteboard.general.changeCount
     }
 
     /// Capture the current pasteboard contents for later restoration.
@@ -73,6 +96,91 @@ enum PasteService {
         pasteboard.writeObjects(pbItems)
     }
 
+    // MARK: - Tier 1: AX Direct Insertion
+
+    /// Capture the system-wide focused UI element (the specific text field, not just the app).
+    /// Sets a 1-second AX timeout on the element to avoid hanging on misbehaving apps.
+    /// Returns nil if no element is focused or accessibility is not trusted.
+    static func captureFocusedElement() -> AXUIElement? {
+        guard AXIsProcessTrusted() else { return nil }
+        let systemWide = AXUIElementCreateSystemWide()
+        var focusedRef: CFTypeRef?
+        let err = AXUIElementCopyAttributeValue(
+            systemWide,
+            kAXFocusedUIElementAttribute as CFString,
+            &focusedRef
+        )
+        guard err == .success else { return nil }
+        let element = (focusedRef as! AXUIElement)
+        // Set timeout once at capture — persists for the element's lifetime.
+        AXUIElementSetAttributeValue(
+            element,
+            "AXTimeout" as CFString,
+            Float(1.0) as CFTypeRef
+        )
+        return element
+    }
+
+    /// Insert text directly into an AX element at the cursor position.
+    /// Uses kAXSelectedTextAttribute which inserts at cursor / replaces selection.
+    /// Returns true only if the text verifiably appeared in the element.
+    static func insertViaAccessibility(_ text: String, element: AXUIElement) -> Bool {
+        // Verify the element is a text field or text area.
+        var roleRef: CFTypeRef?
+        let roleErr = AXUIElementCopyAttributeValue(
+            element,
+            kAXRoleAttribute as CFString,
+            &roleRef
+        )
+        guard roleErr == .success, let role = roleRef as? String else {
+            return false
+        }
+        guard textRoles.contains(role) else { return false }
+
+        // Verify the element is writable (not read-only).
+        var settableRef: DarwinBoolean = false
+        let settableErr = AXUIElementIsAttributeSettable(
+            element,
+            kAXValueAttribute as CFString,
+            &settableRef
+        )
+        guard settableErr == .success, settableRef.boolValue else { return false }
+
+        // Snapshot character count before insertion for verification.
+        var charCountBefore: CFTypeRef?
+        AXUIElementCopyAttributeValue(
+            element,
+            kAXNumberOfCharactersAttribute as CFString,
+            &charCountBefore
+        )
+        let countBefore = (charCountBefore as? Int) ?? -1
+
+        // Insert at cursor via kAXSelectedTextAttribute.
+        let err = AXUIElementSetAttributeValue(
+            element,
+            kAXSelectedTextAttribute as CFString,
+            text as CFTypeRef
+        )
+        guard err == .success else { return false }
+
+        // Verify text actually appeared (Electron apps report success but don't render).
+        // If we can't read character counts, treat as unverified and fall through to Tier 2.
+        var charCountAfter: CFTypeRef?
+        AXUIElementCopyAttributeValue(
+            element,
+            kAXNumberOfCharactersAttribute as CFString,
+            &charCountAfter
+        )
+        let countAfter = (charCountAfter as? Int) ?? -1
+
+        if countBefore < 0 || countAfter < 0 {
+            return false  // Can't verify — let Tier 2 handle it
+        }
+        return countAfter > countBefore
+    }
+
+    // MARK: - Tier 2: CGEvent Cmd+V
+
     /// Copy text to clipboard and simulate Cmd+V to paste into the frontmost app.
     /// - Returns: The pasteboard `changeCount` after our write, needed by `restoreClipboard`.
     @discardableResult
@@ -87,25 +195,13 @@ enum PasteService {
         let changeCountAfterWrite = pasteboard.changeCount
         let clipboardWriteSuccess = pasteboard.changeCount != previousChangeCount
 
-        guard let source = CGEventSource(stateID: .combinedSessionState) else {
+        guard dispatchCmdV() else {
             Task { await AppLogger.shared.log(
-                "Paste attempt: accessibility=\(accessibilityTrusted), cgEventAttempted=false, clipboardWrite=\(clipboardWriteSuccess) — Failed to create CGEventSource",
+                "Paste attempt: accessibility=\(accessibilityTrusted), cgEventAttempted=false, clipboardWrite=\(clipboardWriteSuccess) — Failed to create CGEvent",
                 level: .info, category: "PasteService"
             ) }
             return changeCountAfterWrite
         }
-        guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: UInt16(kVK_ANSI_V), keyDown: true),
-              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: UInt16(kVK_ANSI_V), keyDown: false) else {
-            Task { await AppLogger.shared.log(
-                "Paste attempt: accessibility=\(accessibilityTrusted), cgEventAttempted=false, clipboardWrite=\(clipboardWriteSuccess) — Failed to create CGEvent for Cmd+V",
-                level: .info, category: "PasteService"
-            ) }
-            return changeCountAfterWrite
-        }
-        keyDown.flags = .maskCommand
-        keyDown.post(tap: .cghidEventTap)
-        keyUp.flags = .maskCommand
-        keyUp.post(tap: .cghidEventTap)
 
         let pasteEnd = CFAbsoluteTimeGetCurrent()
         Task { await AppLogger.shared.log(
@@ -117,14 +213,42 @@ enum PasteService {
         return changeCountAfterWrite
     }
 
+    // MARK: - Tier 2b: AppleScript Edit > Paste
+
+    /// Paste via AppleScript by clicking the Edit > Paste menu item via process ID.
+    /// Requires the target app to be frontmost. Returns true on success.
+    static func pasteViaAppleScript(pid: pid_t) -> Bool {
+        let script = """
+        tell application "System Events"
+            tell (first process whose unix id is \(pid))
+                click menu item "Paste" of menu "Edit" of menu bar 1
+            end tell
+        end tell
+        """
+        var error: NSDictionary?
+        let appleScript = NSAppleScript(source: script)
+        appleScript?.executeAndReturnError(&error)
+        return error == nil
+    }
+
     /// Simulate Cmd+V keystroke to paste from clipboard into the active app.
     static func simulatePaste() {
-        guard let source = CGEventSource(stateID: .combinedSessionState) else { return }
-        guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: UInt16(kVK_ANSI_V), keyDown: true),
-              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: UInt16(kVK_ANSI_V), keyDown: false) else { return }
+        dispatchCmdV()
+    }
+
+    // MARK: - Private
+
+    /// Send Cmd+V keystroke via CGEvent. Returns true on success.
+    @discardableResult
+    private static func dispatchCmdV() -> Bool {
+        guard let source = CGEventSource(stateID: .combinedSessionState),
+              let keyDown = CGEvent(keyboardEventSource: source, virtualKey: UInt16(kVK_ANSI_V), keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: UInt16(kVK_ANSI_V), keyDown: false)
+        else { return false }
         keyDown.flags = .maskCommand
-        keyDown.post(tap: .cghidEventTap)
+        keyDown.post(tap: .cgAnnotatedSessionEventTap)
         keyUp.flags = .maskCommand
-        keyUp.post(tap: .cghidEventTap)
+        keyUp.post(tap: .cgAnnotatedSessionEventTap)
+        return true
     }
 }
