@@ -943,7 +943,7 @@ private struct AIPolishStepView: View {
                             "",
                             text: $apiKey,
                             prompt: Text("Paste your \(selectedProvider.displayName) API key")
-                                .foregroundColor(Color(NSColor.tertiaryLabelColor))
+                                .foregroundColor(.obTextTertiary)
                                 .font(.obMono)
                         )
                         .font(.obMono)
