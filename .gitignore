@@ -82,3 +82,7 @@ EnviousWispr.app/
 *.gguf
 *.bin
 .me
+
+# Dolt database files (added by bd init)
+.dolt/
+*.db
