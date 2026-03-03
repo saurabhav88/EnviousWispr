@@ -53,11 +53,6 @@ final class AppState {
     var customWords: [String] = []
     var customWordError: String?
 
-    /// Set to true while the onboarding Step 4 tutorial is active.
-    /// When true, hotkey callbacks skip setting autoPasteToActiveApp = true,
-    /// so the tutorial transcription never pastes into a background window.
-    var isOnboardingTutorialActive: Bool = false
-
     // Model discovery
     var discoveredModels: [LLMModelInfo] = []
     var isDiscoveringModels = false
@@ -163,19 +158,12 @@ final class AppState {
         }
         hotkeyService.onStartRecording = { [weak self] in
             guard let self, !self.pipelineState.isActive else { return }
-            // During onboarding tutorial (Step 4): never paste or copy — tutorial
-            // only shows the transcription in-window, not in any background app.
-            if self.isOnboardingTutorialActive {
+            self.pipeline.autoPasteToActiveApp = true
+            self.pipeline.autoCopyToClipboard = self.settings.autoCopyToClipboard
+            self.permissions.refreshAccessibilityStatus()
+            if !self.permissions.hasAccessibilityPermission {
                 self.pipeline.autoPasteToActiveApp = false
-                self.pipeline.autoCopyToClipboard = false
-            } else {
-                self.pipeline.autoPasteToActiveApp = true
-                self.pipeline.autoCopyToClipboard = self.settings.autoCopyToClipboard
-                self.permissions.refreshAccessibilityStatus()
-                if !self.permissions.hasAccessibilityPermission {
-                    self.pipeline.autoPasteToActiveApp = false
-                    self.restartAccessibilityMonitoringIfNeeded()
-                }
+                self.restartAccessibilityMonitoringIfNeeded()
             }
             await self.pipeline.preWarmAudioInput()
             await self.pipeline.startRecording()
@@ -187,9 +175,6 @@ final class AppState {
             guard let self else { return }
             await self.pipeline.requestStop()
             self.pipeline.autoPasteToActiveApp = false
-            if self.isOnboardingTutorialActive {
-                self.pipeline.autoCopyToClipboard = self.settings.autoCopyToClipboard
-            }
         }
 
         hotkeyService.onCancelRecording = { [weak self] in

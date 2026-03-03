@@ -14,6 +14,7 @@ enum LipsAnimationState: Equatable {
     case pulse       // Gentle synchronized wave — Step 4 processing
     case smile       // Curved smile shape — Step 4 result success
     case triumph     // Explosive bounce + glow — Step 5 all set (one-shot then continuous)
+    case heart       // Heart shape + heartbeat pulse — Ready screen
 }
 
 // MARK: - Bar Data
@@ -67,17 +68,17 @@ private enum LipsData {
     // Idle: per-bar delay
     static let idleDelays: [Double] = [0.0, 0.1, 0.2, 0.15, 0.05, 0.25, 0.3, 0.1, 0.2]
 
-    // Equalizer configs (moderate speed)
+    // Equalizer configs (energetic — wider range, faster cycles)
     static let eqConfigs: [EqBarConfig] = [
-        EqBarConfig(minScale: 0.5,  maxScale: 1.1,  duration: 0.45, delay: 0.0),
-        EqBarConfig(minScale: 0.4,  maxScale: 1.0,  duration: 0.52, delay: 0.07),
-        EqBarConfig(minScale: 0.7,  maxScale: 1.2,  duration: 0.38, delay: 0.14),
-        EqBarConfig(minScale: 0.5,  maxScale: 1.1,  duration: 0.61, delay: 0.05),
-        EqBarConfig(minScale: 0.6,  maxScale: 1.15, duration: 0.44, delay: 0.11),
-        EqBarConfig(minScale: 0.55, maxScale: 1.0,  duration: 0.57, delay: 0.03),
-        EqBarConfig(minScale: 0.75, maxScale: 1.05, duration: 0.41, delay: 0.18),
-        EqBarConfig(minScale: 0.45, maxScale: 1.1,  duration: 0.49, delay: 0.08),
-        EqBarConfig(minScale: 0.55, maxScale: 1.1,  duration: 0.55, delay: 0.13),
+        EqBarConfig(minScale: 0.35, maxScale: 1.25, duration: 0.36, delay: 0.0),
+        EqBarConfig(minScale: 0.25, maxScale: 1.20, duration: 0.42, delay: 0.07),
+        EqBarConfig(minScale: 0.50, maxScale: 1.35, duration: 0.30, delay: 0.14),
+        EqBarConfig(minScale: 0.30, maxScale: 1.25, duration: 0.48, delay: 0.05),
+        EqBarConfig(minScale: 0.40, maxScale: 1.30, duration: 0.35, delay: 0.11),
+        EqBarConfig(minScale: 0.35, maxScale: 1.20, duration: 0.45, delay: 0.03),
+        EqBarConfig(minScale: 0.55, maxScale: 1.25, duration: 0.33, delay: 0.18),
+        EqBarConfig(minScale: 0.30, maxScale: 1.25, duration: 0.39, delay: 0.08),
+        EqBarConfig(minScale: 0.35, maxScale: 1.25, duration: 0.43, delay: 0.13),
     ]
 
     // Recording configs (fast, wide range)
@@ -111,6 +112,10 @@ private enum LipsData {
     // Smile: static scale multipliers
     static let smileUpperScales: [CGFloat] = [1.3, 1.1, 1.0, 1.0, 0.6, 1.0, 1.0, 1.1, 1.3]
     static let smileLowerScales: [CGFloat] = [0.5, 1.0, 1.0, 1.3, 1.3, 1.3, 1.0, 1.0, 0.5]
+
+    // Heart: upper bars form two humps (♥ top), lower bars form V-point (♥ bottom)
+    static let heartUpperScales: [CGFloat] = [0.3, 1.0, 1.4, 1.0, 0.4, 1.0, 1.4, 1.0, 0.3]
+    static let heartLowerScales: [CGFloat] = [0.15, 0.4, 0.7, 1.1, 1.5, 1.1, 0.7, 0.4, 0.15]
 }
 
 // MARK: - RainbowLipsView
@@ -162,6 +167,16 @@ struct RainbowLipsView: View {
             glowOpacity = 0.0
             glowRadius = 0.0
             applyGlobalModifiers(for: newExpression)
+
+            // Heart gets a warm glow immediately
+            if newExpression == .heart {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                        glowOpacity = 0.45
+                        glowRadius = 10.0
+                    }
+                }
+            }
 
             // Schedule triumph glow phase after the one-shot bounce completes
             if newExpression == .triumph {
@@ -225,8 +240,8 @@ struct RainbowLipsView: View {
         case .idle:
             let delay = LipsData.idleDelays[i]
             let phase = ((t - delay).truncatingRemainder(dividingBy: 2.8)) / 2.8
-            // 1.0 → 0.88 → 1.0, using abs(sin) for a smooth V-shaped oscillation
-            return 1.0 - 0.12 * CGFloat(abs(sin(phase * .pi)))
+            // 1.0 → 0.78 → 1.0, using abs(sin) for a smooth V-shaped oscillation
+            return 1.0 - 0.22 * CGFloat(abs(sin(phase * .pi)))
 
         case .denied:
             // Upper: oscillate 0.45 ↔ 0.38, Lower: 0.35 ↔ 0.28
@@ -240,9 +255,15 @@ struct RainbowLipsView: View {
             return oneShotBounce(localT: localT, duration: 0.6, peakScale: bar.isUpper ? 1.25 : 1.2)
 
         case .equalizer:
-            let cfg = LipsData.eqConfigs[i]
-            let phase = ((t - cfg.delay).truncatingRemainder(dividingBy: cfg.duration)) / cfg.duration
-            return cfg.minScale + (cfg.maxScale - cfg.minScale) * CGFloat(0.5 + 0.5 * sin(phase * .pi * 2))
+            // DNA double helix: two waves sweep across bars in opposite phase.
+            // ~1.5 visible wavelengths across 9 bars + fast sweep = clear propagation.
+            let spatialFreq = 3.0 * .pi / 9.0   // 1.5 wavelengths across 9 bars
+            let temporalFreq = 5.0                // fast sweep — clearly visible motion
+            let phaseOffset: Double = bar.isUpper ? 0 : .pi  // upper/lower 180° out of phase
+            let sinVal = sin(Double(i) * spatialFreq - t * temporalFreq + phaseOffset)
+            let minScale: CGFloat = 0.15
+            let maxScale: CGFloat = 1.45
+            return minScale + (maxScale - minScale) * CGFloat(0.5 + 0.5 * sinVal)
 
         case .wave:
             let delay = LipsData.waveDelays[i]
@@ -276,13 +297,42 @@ struct RainbowLipsView: View {
                 : LipsData.smileLowerScales[i]
             return staticScale * animatedScale
 
+        case .heart:
+            // Heart shape with "lub-dub" heartbeat pulse (1.2s cycle)
+            let baseScale = bar.isUpper
+                ? LipsData.heartUpperScales[i]
+                : LipsData.heartLowerScales[i]
+            let cycle = 1.2
+            let phase = t.truncatingRemainder(dividingBy: cycle)
+            let beat: CGFloat
+            if phase < 0.08 {
+                // "Lub" — quick scale up
+                beat = 1.0 + 0.20 * CGFloat(easeOut(phase / 0.08))
+            } else if phase < 0.18 {
+                // Return with slight undershoot
+                beat = 1.20 - 0.25 * CGFloat(easeInOut((phase - 0.08) / 0.10))
+            } else if phase < 0.30 {
+                // Settle back
+                beat = 0.95 + 0.05 * CGFloat(easeInOut((phase - 0.18) / 0.12))
+            } else if phase < 0.38 {
+                // "Dub" — small secondary pulse
+                beat = 1.0 + 0.10 * CGFloat(easeOut((phase - 0.30) / 0.08))
+            } else if phase < 0.48 {
+                // Return to rest
+                beat = 1.10 - 0.10 * CGFloat(easeInOut((phase - 0.38) / 0.10))
+            } else {
+                // Rest
+                beat = 1.0
+            }
+            return baseScale * beat
+
         case .triumph:
             let delay = LipsData.triumphDelays[i]
             let localT = max(0, elapsed - delay)
             if localT >= 0.9 {
-                // Settled into gentle breath at 1.1
+                // Settled into celebratory breath at 1.1
                 let settledPhase = (localT - 0.9).truncatingRemainder(dividingBy: 2.0) / 2.0
-                return 1.1 + 0.05 * CGFloat(sin(settledPhase * .pi * 2))
+                return 1.1 + 0.10 * CGFloat(sin(settledPhase * .pi * 2))
             }
             return oneShotTriumph(localT: localT)
         }

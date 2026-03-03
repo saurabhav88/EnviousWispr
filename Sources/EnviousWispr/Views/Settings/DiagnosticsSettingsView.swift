@@ -21,13 +21,13 @@ struct DiagnosticsSettingsView: View {
                     }
 
                     Button("Restart Onboarding…") {
-                        appState.settings.onboardingState = .needsMicPermission
+                        appState.settings.onboardingState = .notStarted
                         if let delegate = NSApp.delegate as? AppDelegate {
                             delegate.openOnboardingWindow()
                         }
                     }
                     .disabled(appState.pipelineState != .idle)
-                    Text("Re-runs the 5-step onboarding flow without wiping app state. Disabled during recording.")
+                    Text("Re-runs the onboarding flow without wiping app state. Disabled during recording.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

@@ -1,14 +1,12 @@
 import AppKit
 
 /// Tracks which onboarding step the user has reached.
-/// Replaces the old `hasCompletedOnboarding` Bool with a finer-grained state.
-/// Stored in UserDefaults under key `"onboardingState"`.
-/// Existing users with `hasCompletedOnboarding = true` are migrated to `.completed` on first read.
+/// Raw values are legacy UserDefaults strings — do NOT change them.
 enum OnboardingState: String, Codable, Sendable {
-    case needsMicPermission   // Fresh install — microphone not yet granted
-    case needsModelDownload   // Mic granted, model not yet downloaded
-    case needsCompletion      // Model ready, hard gates passed; user hasn't clicked Done
-    case completed            // User clicked Done on Step 5
+    case notStarted       = "needsMicPermission"
+    case settingUp        = "needsModelDownload"
+    case needsPermissions = "needsCompletion"
+    case completed        = "completed"
 }
 
 @MainActor
@@ -151,7 +149,7 @@ final class SettingsManager {
     /// Backward-compat computed property — true when onboarding is fully complete.
     var hasCompletedOnboarding: Bool {
         get { onboardingState == .completed }
-        set { onboardingState = newValue ? .completed : .needsMicPermission }
+        set { onboardingState = newValue ? .completed : .notStarted }
     }
 
     var cancelKeyCode: UInt16 {
@@ -343,7 +341,7 @@ final class SettingsManager {
         } else if defaults.object(forKey: "hasCompletedOnboarding") as? Bool == true {
             onboardingState = .completed
         } else {
-            onboardingState = .needsMicPermission
+            onboardingState = .notStarted
         }
 
         let savedCancelKeyCode = defaults.object(forKey: "cancelKeyCode") as? Int

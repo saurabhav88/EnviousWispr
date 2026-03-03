@@ -5,7 +5,7 @@ import AppKit
 
 /// Custom NSView subclass that intercepts key events — including system key equivalents
 /// (Command+Arrow, Option+Arrow, etc.) — before macOS consumes them.
-private final class KeyCaptureNSView: NSView {
+final class KeyCaptureNSView: NSView {
     var onKeyEvent: ((NSEvent) -> Void)?
 
     override var acceptsFirstResponder: Bool { true }
@@ -60,7 +60,7 @@ private final class KeyCaptureNSView: NSView {
 
 /// SwiftUI wrapper around `KeyCaptureNSView`. When `isRecording` is true the underlying
 /// NSView becomes first responder so it receives all key input ahead of the system.
-private struct KeyCaptureView: NSViewRepresentable {
+struct KeyCaptureView: NSViewRepresentable {
     let isRecording: Bool
     let onKeyEvent: (NSEvent) -> Void
 

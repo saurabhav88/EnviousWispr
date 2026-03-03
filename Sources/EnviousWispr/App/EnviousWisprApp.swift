@@ -22,7 +22,7 @@ struct EnviousWisprApp: App {
 
         // Onboarding window — non-resizable, centered, auto-opens on first launch.
         Window(AppConstants.onboardingWindowTitle, id: "onboarding") {
-            OnboardingView(onComplete: {
+            OnboardingV2View(onComplete: {
                 appDelegate.closeOnboardingWindow()
             })
             .environment(appDelegate.appState)
