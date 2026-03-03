@@ -8,5 +8,14 @@
 {"key":"compact_tier2_dep_levels","value":"5"}
 {"key":"compaction_enabled","value":"false"}
 {"key":"issue_prefix","value":"ew"}
+{"key":"kv.memory.agent-routing-never-general-purpose-when-a-project","value":"Agent routing: NEVER general-purpose when a project agent fits. UI verification → wispr-eyes, build → build-compile, UI → macos-platform/feature-scaffolding, audio → audio-pipeline."}
+{"key":"kv.memory.buddies-hygiene-proactively-offer-to-delete-finished-session","value":"Buddies hygiene: Proactively offer to delete finished sessions. Clean stale ones at session start."}
+{"key":"kv.memory.context-conservation-never-debug-yourself-spin-up-an","value":"Context conservation: NEVER debug yourself — spin up an agent. Main context = coordination only."}
+{"key":"kv.memory.frontend-designer-sonnet-model-incremental-iteration-opus-on","value":"Frontend designer: Sonnet model, incremental iteration. Opus only for complex visual systems."}
+{"key":"kv.memory.multi-session-safety-one-session-per-branch-plans","value":"Multi-session safety: One session per branch. Plans in docs/plans/, never /tmp/."}
+{"key":"kv.memory.ops-gmail-saurabhav-gmail-com-github-saurabhav88-repo","value":"Ops — Gmail: saurabhav@gmail.com | GitHub: saurabhav88, repo saurabhav88/EnviousWispr, ~/bin/gh | CI: No required status checks, GITHUB_TOKEN for everything, no PATs."}
+{"key":"kv.memory.ops-mcp-keys-enviouswispr-keys-gemini-api-key","value":"Ops — MCP keys: ~/.enviouswispr-keys/ (gemini-api-key, openai-api-key). Gemini quota exhausted 2026-03-03 — use OpenAI for buddies until quota resets."}
+{"key":"kv.memory.ops-sparkle-sign-update-build-artifacts-sparkle-sparkle","value":"Ops — Sparkle sign_update: .build/artifacts/sparkle/Sparkle/bin/sign_update — use -p for raw signature. SUPublicEDKey: jHq1RIQKDmtO64qtCdZ6jNdHNFrfyScE16yuu+ufvDw="}
+{"key":"kv.memory.uat-after-every-fix-fix-rebuild-relaunch-wispr","value":"UAT after every fix: fix → rebuild \u0026 relaunch → wispr-eyes → only THEN done. SKIPPED valid for non-UI changes."}
 {"key":"schema_version","value":"6"}
 {"key":"types.custom","value":"research"}
