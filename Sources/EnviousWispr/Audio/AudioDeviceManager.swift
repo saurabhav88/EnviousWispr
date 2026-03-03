@@ -96,14 +96,7 @@ enum AudioDeviceEnumerator {
 
     /// Returns true if the given device uses Bluetooth transport (Classic or LE).
     static func isBluetoothDevice(_ deviceID: AudioDeviceID) -> Bool {
-        var transport: UInt32 = 0
-        var size = UInt32(MemoryLayout<UInt32>.size)
-        var addr = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyTransportType,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        AudioObjectGetPropertyData(deviceID, &addr, 0, nil, &size, &transport)
+        let transport = transportType(for: deviceID)
         return transport == kAudioDeviceTransportTypeBluetooth
             || transport == kAudioDeviceTransportTypeBluetoothLE
     }
@@ -111,17 +104,7 @@ enum AudioDeviceEnumerator {
     /// Returns the AudioDeviceID of the built-in microphone, if one exists.
     static func builtInMicrophoneDeviceID() -> AudioDeviceID? {
         let devices = allInputDevices()
-        return devices.first { device in
-            var transport: UInt32 = 0
-            var size = UInt32(MemoryLayout<UInt32>.size)
-            var addr = AudioObjectPropertyAddress(
-                mSelector: kAudioDevicePropertyTransportType,
-                mScope: kAudioObjectPropertyScopeGlobal,
-                mElement: kAudioObjectPropertyElementMain
-            )
-            AudioObjectGetPropertyData(device.id, &addr, 0, nil, &size, &transport)
-            return transport == kAudioDeviceTransportTypeBuiltIn
-        }?.id
+        return devices.first { transportType(for: $0.id) == kAudioDeviceTransportTypeBuiltIn }?.id
     }
 
     /// Returns the default system output device ID, or nil if unavailable.
@@ -172,6 +155,18 @@ enum AudioDeviceEnumerator {
     }
 
     // MARK: - Private Helpers
+
+    private static func transportType(for deviceID: AudioDeviceID) -> UInt32 {
+        var transport: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyTransportType,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        AudioObjectGetPropertyData(deviceID, &addr, 0, nil, &size, &transport)
+        return transport
+    }
 
     private static func inputChannelCount(for deviceID: AudioDeviceID) -> Int {
         var propertyAddress = AudioObjectPropertyAddress(

@@ -615,9 +615,8 @@ final class AudioCaptureManager {
     }
 
     /// Track a spawned Task so it can be cancelled during teardown.
-    /// Prunes already-completed tasks on each call to prevent unbounded growth.
+    /// Tracked tasks are cancelled and cleared during teardown.
     func trackTask(_ task: Task<Void, Never>) {
-        activeTasks.removeAll { $0.isCancelled }
         activeTasks.append(task)
     }
 
