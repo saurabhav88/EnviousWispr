@@ -1,0 +1,28 @@
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T14:58:44Z","event_type":"created","id":1,"issue_id":"ew-8mp","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T14:58:47Z","event_type":"closed","id":2,"issue_id":"ew-8mp","new_value":"Implemented","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T14:58:54Z","event_type":"created","id":3,"issue_id":"ew-fqw","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T14:58:54Z","event_type":"created","id":4,"issue_id":"ew-9p3","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T14:58:54Z","event_type":"created","id":5,"issue_id":"ew-wg7","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T14:58:54Z","event_type":"created","id":6,"issue_id":"ew-v4b","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T14:58:54Z","event_type":"created","id":7,"issue_id":"ew-7u8","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T14:58:54Z","event_type":"created","id":8,"issue_id":"ew-jzl","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T14:58:54Z","event_type":"created","id":9,"issue_id":"ew-3qv","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T14:58:59Z","event_type":"closed","id":10,"issue_id":"ew-fqw","new_value":"Implemented","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T14:58:59Z","event_type":"closed","id":11,"issue_id":"ew-9p3","new_value":"Implemented","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T14:58:59Z","event_type":"closed","id":12,"issue_id":"ew-wg7","new_value":"Implemented","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T14:58:59Z","event_type":"closed","id":13,"issue_id":"ew-v4b","new_value":"Implemented","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T14:58:59Z","event_type":"closed","id":14,"issue_id":"ew-7u8","new_value":"Implemented","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T14:58:59Z","event_type":"closed","id":15,"issue_id":"ew-jzl","new_value":"Implemented","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T14:58:59Z","event_type":"closed","id":16,"issue_id":"ew-3qv","new_value":"Implemented","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T14:59:06Z","event_type":"created","id":17,"issue_id":"ew-bw0","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T14:59:06Z","event_type":"created","id":18,"issue_id":"ew-gb5","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T14:59:06Z","event_type":"created","id":19,"issue_id":"ew-3sx","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T14:59:07Z","event_type":"created","id":20,"issue_id":"ew-ivo","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T14:59:07Z","event_type":"created","id":21,"issue_id":"ew-de6","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T14:59:07Z","event_type":"created","id":22,"issue_id":"ew-4xj","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T15:04:55Z","event_type":"closed","id":23,"issue_id":"ew-4xj","new_value":"Implemented","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T15:04:56Z","event_type":"closed","id":24,"issue_id":"ew-bw0","new_value":"Won't do — user swaps between Apple Intelligence and LLM in settings instead of separate hotkey","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T15:04:57Z","event_type":"closed","id":25,"issue_id":"ew-gb5","new_value":"Won't do — parent feature (separate LLM hotkey) cancelled","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T15:07:29Z","event_type":"closed","id":26,"issue_id":"ew-ivo","new_value":"Won't do — no longer pursuing direct typing mode","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T15:07:29Z","event_type":"closed","id":27,"issue_id":"ew-de6","new_value":"Won't do — parent feature (direct typing mode) cancelled","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-03T15:07:29Z","event_type":"closed","id":28,"issue_id":"ew-3sx","new_value":"Won't do — no longer pursuing Unix signal integration","old_value":""}
