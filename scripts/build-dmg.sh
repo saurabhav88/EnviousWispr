@@ -227,7 +227,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 6. Build DMG with hdiutil (native, no third-party tools)
+# 6. Build DMG with create-dmg (custom background + icon positioning)
 #
 # When signing, we build the DMG directly from /tmp (SIGN_APP) so the
 # iCloud Desktop sync daemon cannot re-inject xattrs between signing and
@@ -241,53 +241,62 @@ if [[ -n "${SIGN_WORK:-}" && -d "${SIGN_APP:-}" ]]; then
     DMG_SOURCE_APP="${SIGN_APP}"
     DMG_STAGING_BASE="${SIGN_WORK}/dmg-staging"
     DMG_TMP_OUT="${SIGN_WORK}/${DMG_NAME}"
-    DMG_TEMP_IMG="${SIGN_WORK}/${APP_NAME}-tmp.dmg"
 else
     DMG_SOURCE_APP="${APP_BUNDLE}"
     DMG_STAGING_BASE="${DMG_STAGING}"
     DMG_TMP_OUT="${DMG_OUT}"
-    DMG_TEMP_IMG="${BUILD_DIR}/${APP_NAME}-tmp.dmg"
 fi
 
 rm -rf "${DMG_STAGING_BASE}"
 mkdir -p "${DMG_STAGING_BASE}"
 
-# Copy the .app and a symlink to /Applications into the staging folder.
+# Copy the .app into the staging folder (no Applications symlink — create-dmg adds it).
 ditto "${DMG_SOURCE_APP}" "${DMG_STAGING_BASE}/EnviousWispr.app"
-ln -s /Applications "${DMG_STAGING_BASE}/Applications"
 
-echo "    Building DMG with hdiutil ..."
+echo "    Building DMG with create-dmg ..."
 
 # Remove any leftover DMG from a prior run.
 rm -f "${DMG_TMP_OUT}"
 
-# Step A: create a writable temporary image from the staging folder.
-rm -f "${DMG_TEMP_IMG}"
+# Background image for the branded drag-to-Applications experience.
+DMG_BACKGROUND="${PROJECT_ROOT}/Brand Assets/dmg/dmg-background.png"
 
-hdiutil create \
-    -srcfolder "${DMG_STAGING_BASE}" \
-    -volname "${VOLUME_NAME}" \
-    -fs HFS+ \
-    -fsargs "-c c=64,a=16,b=16" \
-    -format UDRW \
-    -size 400m \
-    "${DMG_TEMP_IMG}"
+# create-dmg builds a styled, compressed DMG in one step:
+#   - Custom background image with drag instructions
+#   - App icon positioned at (140, 195), Applications link at (510, 195)
+#   - 660×400 window matching the background dimensions
+# Note: create-dmg may exit with code 2 if Finder background can't be set
+# (e.g., headless CI). The DMG is still created and functional.
+set +e
+create-dmg \
+    --volname "${VOLUME_NAME}" \
+    --background "${DMG_BACKGROUND}" \
+    --window-size 660 400 \
+    --window-pos 200 120 \
+    --icon-size 96 \
+    --icon "EnviousWispr.app" 140 195 \
+    --app-drop-link 510 195 \
+    --no-internet-enable \
+    "${DMG_TMP_OUT}" \
+    "${DMG_STAGING_BASE}"
+CREATE_DMG_EXIT=$?
+set -e
 
-# Step B: compress into a read-only, internet-enabled DMG.
-rm -f "${DMG_OUT}"
-hdiutil convert \
-    "${DMG_TEMP_IMG}" \
-    -format UDZO \
-    -imagekey zlib-level=9 \
-    -o "${DMG_TMP_OUT}"
+if [[ ! -f "${DMG_TMP_OUT}" ]]; then
+    echo "ERROR: create-dmg failed to produce DMG (exit code: ${CREATE_DMG_EXIT})" >&2
+    exit 1
+fi
+
+if [[ ${CREATE_DMG_EXIT} -eq 2 ]]; then
+    echo "    Warning: Finder background could not be set (headless?). DMG still functional."
+fi
 
 # Copy DMG to BUILD_DIR if it was built in /tmp
 if [[ "${DMG_TMP_OUT}" != "${DMG_OUT}" ]]; then
     cp "${DMG_TMP_OUT}" "${DMG_OUT}"
 fi
 
-# Clean up the writable temp image and staging.
-rm -f "${DMG_TEMP_IMG}"
+# Clean up staging.
 rm -rf "${DMG_STAGING_BASE}"
 
 # Clean up /tmp signing workspace now that DMG is done

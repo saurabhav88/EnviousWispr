@@ -37,6 +37,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-spm-
 
+      - name: Install create-dmg
+        run: brew install create-dmg
+
       - name: Build release binary
         run: |
           echo "==> Building arm64 release binary ..."
@@ -183,12 +186,16 @@ jobs:
       - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
+          # Copy versioned DMG to a fixed-name asset for direct download links.
+          # Website uses: /releases/latest/download/EnviousWispr.dmg
+          cp "build/EnviousWispr-${VERSION}.dmg" "build/EnviousWispr.dmg"
           gh release create "v${VERSION}" \
             --title "EnviousWispr v${VERSION}" \
             --generate-notes \
-            "build/EnviousWispr-${VERSION}.dmg"
+            "build/EnviousWispr-${VERSION}.dmg" \
+            "build/EnviousWispr.dmg"
 
       - name: Cleanup keychain
         if: always()
