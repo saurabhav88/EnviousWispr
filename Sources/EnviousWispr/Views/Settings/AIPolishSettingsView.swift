@@ -7,31 +7,102 @@ struct AIPolishSettingsView: View {
 
     @State private var openAIKey: String = ""
     @State private var geminiKey: String = ""
-    @State private var showOpenAIKey = false
-    @State private var showGeminiKey = false
     @State private var validationStatus: String = ""
     @State private var showPromptEditor = false
     @State private var showManageModels = false
+
+    private var isCloudProvider: Bool {
+        appState.settings.llmProvider == .openAI || appState.settings.llmProvider == .gemini
+    }
+
+    private var showModelSection: Bool {
+        appState.settings.llmProvider != .none && appState.settings.llmProvider != .appleIntelligence
+    }
+
+    private var showWritingStyleSection: Bool {
+        appState.settings.llmProvider != .none
+    }
 
     var body: some View {
         @Bindable var state = appState
 
         Form {
-            Section("LLM Provider") {
-                Picker("Provider", selection: $state.settings.llmProvider) {
-                    Text("None").tag(LLMProvider.none)
+            // ── Section 1: Writing Style ──────────────────────────────
+            if showWritingStyleSection {
+                Section("Writing Style") {
+                    writingStylePresetCards
+                    Divider()
+                    HStack {
+                        if state.settings.writingStylePreset == .custom {
+                            Text("Custom instructions active")
+                                .font(.caption)
+                                .italic()
+                                .foregroundStyle(Color(hex: "7c3aed"))
+                        } else {
+                            Text("Want more control?")
+                                .font(.caption)
+                                .italic()
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Edit Custom Instructions") {
+                            showPromptEditor = true
+                        }
+                        .controlSize(.small)
+                    }
+                }
+            }
+
+            // ── Section 2: LLM Provider ───────────────────────────────
+            Section(content: {
+                Picker("LLM Provider", selection: $state.settings.llmProvider) {
+                    Text("Off").tag(LLMProvider.none)
                     Text("OpenAI").tag(LLMProvider.openAI)
                     Text("Google Gemini").tag(LLMProvider.gemini)
-                    Text("Ollama (Local)").tag(LLMProvider.ollama)
+                    Text("Local (Ollama)").tag(LLMProvider.ollama)
                     Text("Apple Intelligence").tag(LLMProvider.appleIntelligence)
                 }
 
                 if appState.settings.llmProvider == .none {
-                    Text("Enable an AI provider to automatically clean up grammar, punctuation, and formatting in your transcriptions.")
-                        .font(.callout)
+                    Text("Turn on AI polish to automatically fix grammar, punctuation, and formatting.")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                } else {
+                }
+
+                // Nested API key row — only for cloud providers
+                if isCloudProvider {
+                    apiKeyRow
+                }
+
+                // Ollama wizard
+                if appState.settings.llmProvider == .ollama {
+                    ollamaSetupContent
+                }
+
+                // Apple Intelligence status
+                if appState.settings.llmProvider == .appleIntelligence {
+                    appleIntelligenceStatus
+                }
+            }, header: {
+                Text("LLM Provider")
+            }, footer: {
+                if isCloudProvider {
+                    if appState.settings.llmProvider == .openAI {
+                        Link("Get your free API key at platform.openai.com",
+                             destination: URL(string: "https://platform.openai.com/api-keys")!)
+                            .font(.caption)
+                    } else if appState.settings.llmProvider == .gemini {
+                        Link("Get your free API key at aistudio.google.com",
+                             destination: URL(string: "https://aistudio.google.com/apikey")!)
+                            .font(.caption)
+                    }
+                }
+            })
+
+            // ── Section 3: Model ──────────────────────────────────────
+            if showModelSection {
+                Section("Model") {
                     HStack {
                         Picker("Model", selection: $state.settings.llmModel) {
                             if appState.discoveredModels.isEmpty && !appState.isDiscoveringModels {
@@ -76,376 +147,36 @@ struct AIPolishSettingsView: View {
                             .foregroundStyle(.orange)
                     }
 
-                    if appState.settings.llmProvider == .appleIntelligence {
-                        Text("Apple Intelligence uses an optimized built-in prompt.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else if appState.settings.llmProvider == .ollama &&
-                              OllamaSetupService.isWeakModel(appState.settings.llmModel) {
-                        Text("This model uses an optimized built-in prompt for best results.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else if appState.settings.llmProvider != .appleIntelligence {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("System Prompt")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Text(appState.settings.customSystemPrompt.isEmpty
-                                     ? "Using built-in default"
-                                     : "Custom prompt active")
-                                    .font(.caption2)
-                                    .foregroundStyle(appState.settings.customSystemPrompt.isEmpty ? Color.secondary : Color.accentColor)
-                            }
-                            Spacer()
-                            Button("Edit Prompt") {
-                                showPromptEditor = true
-                            }
-                            .controlSize(.small)
-                        }
+                    // Model recommendation cards
+                    modelRecommendationCards
+                }
+            }
+
+            // Manage Models for Ollama (when ready)
+            if appState.settings.llmProvider == .ollama,
+               case .ready = appState.ollamaSetup.setupState {
+                Section("Manage Models") {
+                    DisclosureGroup("Download / Remove Models", isExpanded: $showManageModels) {
+                        ollamaModelCatalogView
                     }
                 }
             }
 
-            if appState.settings.llmProvider == .openAI {
-                Section("Model Guide") {
-                    VStack(alignment: .leading, spacing: 4) {
-                        modelGuideRow("GPT-4o Mini", detail: "Fast · Affordable · Great quality", badge: "Recommended", badgeColor: .green)
-                        Divider()
-                        modelGuideRow("GPT-4.1 Mini", detail: "Fast · Affordable · Newer model", badge: "Also great", badgeColor: .blue)
-                        Divider()
-                        modelGuideRow("GPT-4o / 4.1", detail: "Medium speed · Higher cost", badge: "Overkill", badgeColor: .orange)
-                        Divider()
-                        modelGuideRow("GPT-3.5 Turbo", detail: "Fast · Cheapest · Lower quality", badge: "Budget", badgeColor: .secondary)
-                    }
-
-                    Text("Transcript polishing is straightforward — smaller models handle it well at a fraction of the cost.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            if appState.settings.llmProvider == .gemini {
-                Section("Model Guide") {
-                    VStack(alignment: .leading, spacing: 4) {
-                        modelGuideRow("Gemini 2.0 Flash", detail: "Fast · Affordable · Great quality", badge: "Recommended", badgeColor: .green)
-                        Divider()
-                        modelGuideRow("Gemini 2.5 Flash", detail: "Fast · Newer · Strong reasoning", badge: "Also great", badgeColor: .blue)
-                        Divider()
-                        modelGuideRow("Gemini 1.5 Flash", detail: "Fast · Older · Still capable", badge: "Budget", badgeColor: .secondary)
-                        Divider()
-                        modelGuideRow("Gemini 2.5 Pro", detail: "Slower · Expensive · Best quality", badge: "Overkill", badgeColor: .orange)
-                    }
-
-                    Text("Transcript polishing is straightforward — Flash models handle it well at a fraction of the cost of Pro.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            if appState.settings.llmProvider == .gemini || appState.settings.llmProvider == .openAI {
+            // ── Section 4: Advanced ───────────────────────────────────
+            if isCloudProvider {
                 Section("Advanced") {
-                    Toggle("Use extended thinking", isOn: $state.settings.useExtendedThinking)
-                    Text("Lets the model reason through complex prompts before responding. Uses more tokens and increases latency. Best for custom prompts with multi-step instructions.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            if appState.settings.llmProvider == .openAI {
-                Section("OpenAI API Key") {
-                    HStack {
-                        if showOpenAIKey {
-                            TextField("sk-...", text: $openAIKey)
-                                .textFieldStyle(.roundedBorder)
-                        } else {
-                            SecureField("sk-...", text: $openAIKey)
-                                .textFieldStyle(.roundedBorder)
-                        }
-
-                        Button {
-                            showOpenAIKey.toggle()
-                        } label: {
-                            Image(systemName: showOpenAIKey ? "eye.slash" : "eye")
-                        }
-                        .buttonStyle(.borderless)
-                    }
-
-                    HStack {
-                        Button("Save Key") {
-                            guard saveKey(key: openAIKey, keychainId: KeychainManager.openAIKeyID) else { return }
-                            if appState.settings.llmProvider == .openAI {
-                                Task { await appState.validateKeyAndDiscoverModels(provider: .openAI) }
-                            }
-                        }
-                        .disabled(openAIKey.isEmpty)
-
-                        Button("Clear Key") {
-                            clearKey(keychainId: KeychainManager.openAIKeyID)
-                            openAIKey = ""
-                            if appState.settings.llmProvider == .openAI {
-                                appState.discoveredModels = []
-                                appState.keyValidationState = .idle
-                            }
-                        }
-
-                        validationBadge
-                    }
-
-                    HStack(spacing: 4) {
-                        Text("Get your API key at")
+                    @Bindable var state2 = appState
+                    VStack(alignment: .leading, spacing: 4) {
+                        Toggle("Deep reasoning", isOn: $state2.settings.useExtendedThinking)
+                        Text("Takes longer but handles complex formatting instructions better.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Link("platform.openai.com", destination: URL(string: "https://platform.openai.com/api-keys")!)
-                            .font(.caption)
-                    }
-                }
-            }
-
-            if appState.settings.llmProvider == .gemini {
-                Section("Gemini API Key") {
-                    HStack {
-                        if showGeminiKey {
-                            TextField("AI...", text: $geminiKey)
-                                .textFieldStyle(.roundedBorder)
-                        } else {
-                            SecureField("AI...", text: $geminiKey)
-                                .textFieldStyle(.roundedBorder)
-                        }
-
-                        Button {
-                            showGeminiKey.toggle()
-                        } label: {
-                            Image(systemName: showGeminiKey ? "eye.slash" : "eye")
-                        }
-                        .buttonStyle(.borderless)
-                    }
-
-                    HStack {
-                        Button("Save Key") {
-                            guard saveKey(key: geminiKey, keychainId: KeychainManager.geminiKeyID) else { return }
-                            if appState.settings.llmProvider == .gemini {
-                                Task { await appState.validateKeyAndDiscoverModels(provider: .gemini) }
-                            }
-                        }
-                        .disabled(geminiKey.isEmpty)
-
-                        Button("Clear Key") {
-                            clearKey(keychainId: KeychainManager.geminiKeyID)
-                            geminiKey = ""
-                            if appState.settings.llmProvider == .gemini {
-                                appState.discoveredModels = []
-                                appState.keyValidationState = .idle
-                            }
-                        }
-
-                        validationBadge
-                    }
-
-                    HStack(spacing: 4) {
-                        Text("Get your API key at")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Link("aistudio.google.com", destination: URL(string: "https://aistudio.google.com/apikey")!)
-                            .font(.caption)
-                    }
-                }
-            }
-
-            if appState.settings.llmProvider == .ollama {
-                Section("Ollama") {
-                    switch appState.ollamaSetup.setupState {
-                    case .detecting:
-                        HStack {
-                            ProgressView()
-                                .controlSize(.small)
-                            Text("Checking Ollama installation...")
-                                .foregroundStyle(.secondary)
-                        }
-
-                    case .notInstalled:
-                        VStack(alignment: .leading, spacing: 8) {
-                            ollamaStepIndicators(current: 1)
-
-                            Text("Ollama runs AI models privately on your Mac — no cloud, no API keys, completely free.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-
-                            HStack {
-                                Button("Download Ollama") {
-                                    if let url = URL(string: "https://ollama.com/download") {
-                                        NSWorkspace.shared.open(url)
-                                    }
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .controlSize(.small)
-
-                                ollamaRefreshButton()
-                            }
-
-                            Text("After installing, come back and click refresh.")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                        }
-
-                    case .installedNotRunning:
-                        VStack(alignment: .leading, spacing: 8) {
-                            ollamaStepIndicators(current: 2)
-
-                            Text("Ollama is installed but isn't running yet.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-
-                            HStack {
-                                Button("Start Ollama") {
-                                    appState.ollamaSetup.startServer()
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .controlSize(.small)
-
-                                ollamaRefreshButton()
-                            }
-
-                            Text("Or run `ollama serve` in Terminal.")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                        }
-
-                    case .runningNoModels:
-                        VStack(alignment: .leading, spacing: 8) {
-                            ollamaStepIndicators(current: 3)
-
-                            Text("Ollama needs a language model to polish your text.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-
-                            HStack {
-                                Button("Download \(appState.settings.ollamaModel)") {
-                                    appState.ollamaSetup.pullModel(appState.settings.ollamaModel)
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .controlSize(.small)
-
-                                ollamaRefreshButton()
-                            }
-
-                            Text("About 2 GB download. Runs entirely on your Mac.")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                        }
-
-                    case .pullingModel(let progress, let status):
-                        VStack(alignment: .leading, spacing: 8) {
-                            ollamaStepIndicators(current: 3, currentLabel: "Downloading...")
-
-                            ProgressView(value: progress)
-                                .progressViewStyle(.linear)
-
-                            HStack {
-                                Text(status)
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                                    .lineLimit(1)
-                                Spacer()
-                                if progress > 0 {
-                                    Text("\(Int(progress * 100))%")
-                                        .font(.caption2)
-                                        .monospacedDigit()
-                                        .foregroundStyle(.secondary)
-                                }
-                                Button("Cancel") {
-                                    appState.ollamaSetup.cancelPull()
-                                }
-                                .controlSize(.small)
-                                .buttonStyle(.borderless)
-                                .foregroundStyle(.red)
-                            }
-                        }
-
-                    case .ready:
-                        HStack {
-                            Text("Status:")
-                            Spacer()
-                            Label("Running", systemImage: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-
-                            ollamaRefreshButton()
-                        }
-
-                        Text("You're all set! Select a model above.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        DisclosureGroup("Manage Models", isExpanded: $showManageModels) {
-                            ollamaModelCatalogView
-                        }
-
-                    case .error(let message):
-                        VStack(alignment: .leading, spacing: 8) {
-                            Label("Something went wrong", systemImage: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.orange)
-
-                            Text(message)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-
-                            Button("Try Again") {
-                                Task {
-                                    await appState.ollamaSetup.detectState()
-                                    if case .ready = appState.ollamaSetup.setupState {
-                                        await appState.validateKeyAndDiscoverModels(provider: .ollama)
-                                    }
-                                }
-                            }
-                            .controlSize(.small)
-                        }
-                    }
-                }
-            }
-
-            if appState.settings.llmProvider == .appleIntelligence {
-                Section("Apple Intelligence") {
-                    Text("On-device model — no internet or API key required.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    if #available(macOS 26.0, *) {
-                        HStack {
-                            Text("Status:")
-                            Spacer()
-                            switch appState.keyValidationState {
-                            case .valid:
-                                Label("Available", systemImage: "checkmark.circle.fill")
-                                    .foregroundStyle(.green)
-                            case .invalid(let msg):
-                                Label(msg, systemImage: "xmark.circle.fill")
-                                    .foregroundStyle(.red)
-                                    .font(.caption)
-                            case .validating:
-                                ProgressView().controlSize(.small)
-                            case .idle:
-                                Text("Not checked").foregroundStyle(.secondary)
-                            }
-
-                            Button {
-                                Task { await appState.validateKeyAndDiscoverModels(provider: .appleIntelligence) }
-                            } label: {
-                                Image(systemName: "arrow.clockwise")
-                            }
-                            .buttonStyle(.borderless)
-                            .help("Check Apple Intelligence availability")
-                        }
-                    } else {
-                        Label("Requires macOS 26 or later.", systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
-                            .font(.caption)
                     }
                 }
             }
         }
         .formStyle(.grouped)
+        .tint(Color(hex: "7c3aed"))
         .sheet(isPresented: $showPromptEditor) {
             PromptEditorView()
                 .environment(appState)
@@ -468,7 +199,6 @@ struct AIPolishSettingsView: View {
             }
         }
         .onChange(of: appState.settings.llmProvider) { _, newProvider in
-            // Always clear models and reset model selection to avoid stale state from previous provider
             appState.discoveredModels = []
             appState.keyValidationState = .idle
             appState.settings.llmModel = ""
@@ -504,26 +234,115 @@ struct AIPolishSettingsView: View {
         }
     }
 
-    @discardableResult
-    private func saveKey(key: String, keychainId: String) -> Bool {
-        do {
-            try appState.keychainManager.store(key: keychainId, value: key)
-            validationStatus = "Saved!"
-            Task {
-                try? await Task.sleep(for: .seconds(2))
-                validationStatus = ""
+    // MARK: - Writing Style Preset Cards
+
+    @ViewBuilder
+    private var writingStylePresetCards: some View {
+        @Bindable var state = appState
+        HStack(spacing: 8) {
+            writingStyleCard(preset: .formal, emoji: "👔", name: "Formal", desc: "Professional tone, proper grammar", binding: $state.settings.writingStylePreset)
+            writingStyleCard(preset: .standard, emoji: "✨", name: "Standard", desc: "Clean up grammar and punctuation", binding: $state.settings.writingStylePreset)
+            writingStyleCard(preset: .friendly, emoji: "💬", name: "Friendly", desc: "Casual, conversational tone", binding: $state.settings.writingStylePreset)
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private func writingStyleCard(
+        preset: WritingStylePreset,
+        emoji: String,
+        name: String,
+        desc: String,
+        binding: Binding<WritingStylePreset>
+    ) -> some View {
+        let isSelected = binding.wrappedValue == preset
+        Button {
+            binding.wrappedValue = preset
+        } label: {
+            VStack(spacing: 5) {
+                Text(emoji)
+                    .font(.title2)
+                Text(name)
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(isSelected ? Color(hex: "7c3aed") : .primary)
+                Text(desc)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            return true
-        } catch {
-            validationStatus = "Failed: \(error.localizedDescription)"
-            return false
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .padding(.horizontal, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 9)
+                    .fill(isSelected ? Color(hex: "7c3aed").opacity(0.08) : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 9)
+                    .strokeBorder(
+                        isSelected ? Color(hex: "7c3aed") : Color.primary.opacity(0.12),
+                        lineWidth: isSelected ? 1.5 : 1
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - API Key Row
+
+    @ViewBuilder
+    private var apiKeyRow: some View {
+        let isOpenAI = appState.settings.llmProvider == .openAI
+        VStack(alignment: .leading, spacing: 6) {
+            Text(isOpenAI ? "OpenAI API Key" : "Google Gemini API Key")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                if isOpenAI {
+                    SecureField("sk-proj-…", text: $openAIKey)
+                        .textFieldStyle(.roundedBorder)
+                } else {
+                    SecureField("AI…", text: $geminiKey)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                validationBadge
+
+                Button("Save") {
+                    if isOpenAI {
+                        guard saveKey(key: openAIKey, keychainId: KeychainManager.openAIKeyID) else { return }
+                        Task { await appState.validateKeyAndDiscoverModels(provider: .openAI) }
+                    } else {
+                        guard saveKey(key: geminiKey, keychainId: KeychainManager.geminiKeyID) else { return }
+                        Task { await appState.validateKeyAndDiscoverModels(provider: .gemini) }
+                    }
+                }
+                .disabled(isOpenAI ? openAIKey.isEmpty : geminiKey.isEmpty)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+
+                Button("Clear") {
+                    if isOpenAI {
+                        clearKey(keychainId: KeychainManager.openAIKeyID)
+                        openAIKey = ""
+                    } else {
+                        clearKey(keychainId: KeychainManager.geminiKeyID)
+                        geminiKey = ""
+                    }
+                    appState.discoveredModels = []
+                    appState.keyValidationState = .idle
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .foregroundStyle(.red)
+            }
         }
     }
 
-    private func clearKey(keychainId: String) {
-        try? appState.keychainManager.delete(key: keychainId)
-        validationStatus = ""
-    }
+    // MARK: - Validation Badge
 
     @ViewBuilder
     private var validationBadge: some View {
@@ -538,7 +357,7 @@ struct AIPolishSettingsView: View {
             HStack(spacing: 4) {
                 ProgressView()
                     .controlSize(.mini)
-                Text("Validating...")
+                Text("Validating…")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -560,6 +379,291 @@ struct AIPolishSettingsView: View {
             }
         }
     }
+
+    // MARK: - Model Recommendation Cards
+
+    @ViewBuilder
+    private var modelRecommendationCards: some View {
+        let cards = modelCards(for: appState.settings.llmProvider)
+        if !cards.isEmpty {
+            VStack(spacing: 0) {
+                ForEach(cards.indices, id: \.self) { index in
+                    let card = cards[index]
+                    HStack(spacing: 10) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 7)
+                                .fill(card.iconBg)
+                                .frame(width: 28, height: 28)
+                            Text(card.icon)
+                                .font(.system(size: 13))
+                        }
+
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(card.name)
+                                .font(.caption)
+                                .fontWeight(.medium)
+                            Text(card.desc)
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+
+                        Spacer()
+
+                        Text(card.badge)
+                            .font(.caption2)
+                            .fontWeight(.semibold)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule().fill(card.badgeBg)
+                            )
+                            .overlay(
+                                Capsule().strokeBorder(card.badgeBorder, lineWidth: 1)
+                            )
+                            .foregroundStyle(card.badgeFg)
+                    }
+                    .padding(.vertical, 6)
+
+                    if index < cards.count - 1 {
+                        Divider()
+                    }
+                }
+            }
+
+            Text("Transcript cleanup is straightforward — smaller models handle it well at a fraction of the cost.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private struct ModelCardInfo {
+        let name: String
+        let desc: String
+        let badge: String
+        let icon: String
+        let iconBg: Color
+        let badgeBg: Color
+        let badgeBorder: Color
+        let badgeFg: Color
+    }
+
+    private func modelCards(for provider: LLMProvider) -> [ModelCardInfo] {
+        switch provider {
+        case .openAI:
+            return [
+                ModelCardInfo(name: "GPT-4o Mini",    desc: "Fast · Affordable · Great quality", badge: "Best value", icon: "⚡", iconBg: Color.green.opacity(0.10),   badgeBg: Color.green.opacity(0.12),  badgeBorder: Color.green.opacity(0.22),  badgeFg: Color(hex: "007a4d")),
+                ModelCardInfo(name: "GPT-4.1 Mini",   desc: "Fast · Affordable · Newer",         badge: "Also great", icon: "✦", iconBg: Color.cyan.opacity(0.10),    badgeBg: Color.cyan.opacity(0.12),   badgeBorder: Color.cyan.opacity(0.22),   badgeFg: Color(hex: "006f7a")),
+                ModelCardInfo(name: "GPT-4o / 4.1",   desc: "Slower · Higher cost",              badge: "Premium",    icon: "◈", iconBg: Color.primary.opacity(0.05), badgeBg: Color.primary.opacity(0.05), badgeBorder: Color.primary.opacity(0.09), badgeFg: Color.secondary),
+                ModelCardInfo(name: "GPT-3.5 Turbo",  desc: "Cheapest · Lower quality",          badge: "Budget",     icon: "◇", iconBg: Color.primary.opacity(0.05), badgeBg: Color.primary.opacity(0.05), badgeBorder: Color.primary.opacity(0.09), badgeFg: Color.secondary),
+            ]
+        case .gemini:
+            return [
+                ModelCardInfo(name: "Gemini 2.0 Flash", desc: "Fast · Affordable · Great quality", badge: "Best value", icon: "⚡", iconBg: Color.green.opacity(0.10),   badgeBg: Color.green.opacity(0.12),  badgeBorder: Color.green.opacity(0.22),  badgeFg: Color(hex: "007a4d")),
+                ModelCardInfo(name: "Gemini 1.5 Flash", desc: "Fast · Stable · Proven",            badge: "Also great", icon: "✦", iconBg: Color.cyan.opacity(0.10),    badgeBg: Color.cyan.opacity(0.12),   badgeBorder: Color.cyan.opacity(0.22),   badgeFg: Color(hex: "006f7a")),
+                ModelCardInfo(name: "Gemini 2.0 Pro",   desc: "Slower · Higher cost",              badge: "Premium",    icon: "◈", iconBg: Color.primary.opacity(0.05), badgeBg: Color.primary.opacity(0.05), badgeBorder: Color.primary.opacity(0.09), badgeFg: Color.secondary),
+            ]
+        case .ollama:
+            return [
+                ModelCardInfo(name: "Llama 3.2",  desc: "Fast · Private · No internet needed",  badge: "Recommended", icon: "⚡", iconBg: Color.green.opacity(0.10),   badgeBg: Color.green.opacity(0.12),  badgeBorder: Color.green.opacity(0.22),  badgeFg: Color(hex: "007a4d")),
+                ModelCardInfo(name: "Llama 3.1",  desc: "Stable · Well tested",                 badge: "Also great",  icon: "✦", iconBg: Color.cyan.opacity(0.10),    badgeBg: Color.cyan.opacity(0.12),   badgeBorder: Color.cyan.opacity(0.22),   badgeFg: Color(hex: "006f7a")),
+                ModelCardInfo(name: "Phi-3 Mini", desc: "Smallest · Fastest on older Macs",     badge: "Lightweight", icon: "◇", iconBg: Color.primary.opacity(0.05), badgeBg: Color.primary.opacity(0.05), badgeBorder: Color.primary.opacity(0.09), badgeFg: Color.secondary),
+            ]
+        default:
+            return []
+        }
+    }
+
+    // MARK: - Ollama Setup
+
+    @ViewBuilder
+    private var ollamaSetupContent: some View {
+        switch appState.ollamaSetup.setupState {
+        case .detecting:
+            HStack {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Checking Ollama installation...")
+                    .foregroundStyle(.secondary)
+            }
+
+        case .notInstalled:
+            VStack(alignment: .leading, spacing: 8) {
+                ollamaStepIndicators(current: 1)
+
+                Text("Ollama runs AI models privately on your Mac — no cloud, no API keys, completely free.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                HStack {
+                    Button("Download Ollama") {
+                        if let url = URL(string: "https://ollama.com/download") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+
+                    ollamaRefreshButton()
+                }
+
+                Text("After installing, come back and click refresh.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+
+        case .installedNotRunning:
+            VStack(alignment: .leading, spacing: 8) {
+                ollamaStepIndicators(current: 2)
+
+                Text("Ollama is installed but isn't running yet.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                HStack {
+                    Button("Start Ollama") {
+                        appState.ollamaSetup.startServer()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+
+                    ollamaRefreshButton()
+                }
+
+                Text("Or run `ollama serve` in Terminal.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+
+        case .runningNoModels:
+            VStack(alignment: .leading, spacing: 8) {
+                ollamaStepIndicators(current: 3)
+
+                Text("Ollama needs a language model to polish your text.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                HStack {
+                    Button("Download \(appState.settings.ollamaModel)") {
+                        appState.ollamaSetup.pullModel(appState.settings.ollamaModel)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+
+                    ollamaRefreshButton()
+                }
+
+                Text("About 2 GB download. Runs entirely on your Mac.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+
+        case .pullingModel(let progress, let status):
+            VStack(alignment: .leading, spacing: 8) {
+                ollamaStepIndicators(current: 3, currentLabel: "Downloading...")
+
+                ProgressView(value: progress)
+                    .progressViewStyle(.linear)
+
+                HStack {
+                    Text(status)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                    Spacer()
+                    if progress > 0 {
+                        Text("\(Int(progress * 100))%")
+                            .font(.caption2)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                    Button("Cancel") {
+                        appState.ollamaSetup.cancelPull()
+                    }
+                    .controlSize(.small)
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.red)
+                }
+            }
+
+        case .ready:
+            HStack {
+                Text("Status:")
+                Spacer()
+                Label("Running", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+
+                ollamaRefreshButton()
+            }
+
+            Text("You're all set! Select a model above.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+        case .error(let message):
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Something went wrong", systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Button("Try Again") {
+                    Task {
+                        await appState.ollamaSetup.detectState()
+                        if case .ready = appState.ollamaSetup.setupState {
+                            await appState.validateKeyAndDiscoverModels(provider: .ollama)
+                        }
+                    }
+                }
+                .controlSize(.small)
+            }
+        }
+    }
+
+    // MARK: - Apple Intelligence Status
+
+    @ViewBuilder
+    private var appleIntelligenceStatus: some View {
+        Text("On-device model — no internet or API key required.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+        if #available(macOS 26.0, *) {
+            HStack {
+                Text("Status:")
+                Spacer()
+                switch appState.keyValidationState {
+                case .valid:
+                    Label("Available", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                case .invalid(let msg):
+                    Label(msg, systemImage: "xmark.circle.fill")
+                        .foregroundStyle(.red)
+                        .font(.caption)
+                case .validating:
+                    ProgressView().controlSize(.small)
+                case .idle:
+                    Text("Not checked").foregroundStyle(.secondary)
+                }
+
+                Button {
+                    Task { await appState.validateKeyAndDiscoverModels(provider: .appleIntelligence) }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless)
+                .help("Check Apple Intelligence availability")
+            }
+        } else {
+            Label("Requires macOS 26 or later.", systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .font(.caption)
+        }
+    }
+
+    // MARK: - Ollama Model Catalog
 
     @ViewBuilder
     private var ollamaModelCatalogView: some View {
@@ -610,22 +714,27 @@ struct AIPolishSettingsView: View {
         .padding(.top, 4)
     }
 
-    @ViewBuilder
-    private func modelGuideRow(_ name: String, detail: String, badge: String, badgeColor: Color) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(name)
-                    .font(.caption)
-                Text(detail)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+    // MARK: - Helpers
+
+    @discardableResult
+    private func saveKey(key: String, keychainId: String) -> Bool {
+        do {
+            try appState.keychainManager.store(key: keychainId, value: key)
+            validationStatus = "Saved!"
+            Task {
+                try? await Task.sleep(for: .seconds(2))
+                validationStatus = ""
             }
-            Spacer()
-            Text(badge)
-                .font(.caption2)
-                .foregroundStyle(badgeColor)
+            return true
+        } catch {
+            validationStatus = "Failed: \(error.localizedDescription)"
+            return false
         }
-        .padding(.vertical, 2)
+    }
+
+    private func clearKey(keychainId: String) {
+        try? appState.keychainManager.delete(key: keychainId)
+        validationStatus = ""
     }
 
     @ViewBuilder

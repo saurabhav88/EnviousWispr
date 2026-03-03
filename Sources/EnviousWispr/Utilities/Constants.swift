@@ -47,6 +47,12 @@ enum TimingConstants {
     /// Delay after hiding the app before simulating paste (ms).
     static let appHideBeforePasteDelayMs: Int = 300
 
+    /// Interval between activation-check polls (ms).
+    static let activationPollIntervalMs: Int = 50
+
+    /// Maximum time to wait for target app activation before pasting anyway (ms).
+    static let activationTimeoutMs: Int = 1000
+
     /// Accessibility permission polling interval (seconds).
     static let accessibilityPollIntervalSec: Double = 5.0
 

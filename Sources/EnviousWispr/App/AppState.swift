@@ -222,6 +222,11 @@ final class AppState {
             pipeline.vadAutoStop = settings.vadAutoStop
         case .vadSilenceTimeout:
             pipeline.vadSilenceTimeout = settings.vadSilenceTimeout
+        case .environmentPreset:
+            let sensitivity = settings.environmentPreset.vadSensitivity
+            settings.vadSensitivity = sensitivity
+        case .writingStylePreset:
+            break
         case .vadSensitivity:
             pipeline.vadSensitivity = settings.vadSensitivity
         case .vadEnergyGate:

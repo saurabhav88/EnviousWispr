@@ -18,13 +18,13 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     var label: String {
         switch self {
         case .history:        return "History"
-        case .speechEngine:   return "Speech Engine"
-        case .audio:          return "Audio"
+        case .speechEngine:   return "Transcription"
+        case .audio:          return "Microphone"
         case .shortcuts:      return "Shortcuts"
         case .aiPolish:       return "AI Polish"
-        case .wordCorrection: return "Custom Words"
+        case .wordCorrection: return "Your Words"
         case .clipboard:      return "Clipboard"
-        case .memory:         return "Memory"
+        case .memory:         return "Performance"
         case .permissions:    return "Permissions"
         case .diagnostics:    return "Diagnostics"
         }

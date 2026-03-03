@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Enhancement — Settings Mockup</title>
+  <title>AI Polish — Settings Mockup</title>
   <style>
     /* ── Brand tokens (macOS context) ─────────────────────────────── */
     :root {
@@ -268,20 +268,6 @@
       box-shadow: 0 0 0 2.5px var(--accent-glow);
     }
 
-    .eye-btn {
-      background: none;
-      border: none;
-      cursor: pointer;
-      color: var(--text-3);
-      padding: 2px 4px;
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      transition: color 0.15s;
-    }
-
-    .eye-btn:hover { color: var(--text-2); }
-
     /* ── Validation badge ────────────────────────────────────────── */
     .validation-badge {
       display: inline-flex;
@@ -391,20 +377,171 @@
     /* ── Conditional section visibility ──────────────────────────── */
     .conditional-section { display: none; }
     .conditional-section.visible { display: block; }
+
+    /* ── Preset Cards (Writing Style) ────────────────────────────── */
+    .preset-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      padding: 14px 14px 12px;
+    }
+
+    .preset-card {
+      border: 1.5px solid rgba(0,0,0,0.10);
+      border-radius: 9px;
+      padding: 12px 10px 11px;
+      cursor: pointer;
+      background: var(--surface);
+      text-align: center;
+      transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+      position: relative;
+      user-select: none;
+    }
+
+    .preset-card:hover {
+      border-color: rgba(0,0,0,0.18);
+      background: #fafafa;
+    }
+
+    .preset-card.selected {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      box-shadow: 0 0 0 1px var(--accent), 0 2px 8px var(--accent-glow);
+    }
+
+    .preset-emoji {
+      font-size: 22px;
+      line-height: 1;
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .preset-name {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text);
+      display: block;
+      margin-bottom: 3px;
+      letter-spacing: -0.1px;
+    }
+
+    .preset-desc {
+      font-size: 10.5px;
+      color: var(--text-3);
+      line-height: 1.35;
+    }
+
+    .preset-check {
+      position: absolute;
+      top: 6px;
+      right: 7px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .preset-card.selected .preset-check {
+      display: flex;
+    }
+
+    .preset-check svg {
+      width: 8px;
+      height: 8px;
+      fill: none;
+      stroke: white;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* Custom instructions row within Writing Style section */
+    .custom-hint {
+      font-size: 12px;
+      color: var(--text-3);
+      font-style: italic;
+    }
+
+    .custom-hint.active {
+      font-style: normal;
+      color: var(--accent);
+      font-weight: 500;
+    }
   </style>
 </head>
 <body>
 
 <div class="settings-panel">
 
-  <h1 class="page-title">AI Enhancement</h1>
+  <h1 class="page-title">AI Polish</h1>
 
-  <!-- ── Section 1: AI Enhancement ──────────────────────────────── -->
-  <div class="section">
-    <div class="section-label">AI Enhancement</div>
+  <!-- ── Section 1: Writing Style ──────────────────────────────── -->
+  <div class="section conditional-section" id="section-style">
+    <div class="section-label">Writing Style</div>
     <div class="form-group">
+
+      <!-- Preset cards grid -->
+      <div class="preset-grid" id="style-preset-grid">
+
+        <div class="preset-card" tabindex="0" data-style="formal"
+             onclick="selectStyle('formal')"
+             onkeydown="if(event.key==='Enter'||event.key===' ')selectStyle('formal')">
+          <span class="preset-check">
+            <svg viewBox="0 0 10 10"><polyline points="1.5,5 4,7.5 8.5,2.5"/></svg>
+          </span>
+          <span class="preset-emoji">👔</span>
+          <span class="preset-name">Formal</span>
+          <span class="preset-desc">Professional tone, proper grammar</span>
+        </div>
+
+        <div class="preset-card selected" tabindex="0" data-style="standard"
+             onclick="selectStyle('standard')"
+             onkeydown="if(event.key==='Enter'||event.key===' ')selectStyle('standard')">
+          <span class="preset-check">
+            <svg viewBox="0 0 10 10"><polyline points="1.5,5 4,7.5 8.5,2.5"/></svg>
+          </span>
+          <span class="preset-emoji">✨</span>
+          <span class="preset-name">Standard</span>
+          <span class="preset-desc">Clean up grammar and punctuation</span>
+        </div>
+
+        <div class="preset-card" tabindex="0" data-style="friendly"
+             onclick="selectStyle('friendly')"
+             onkeydown="if(event.key==='Enter'||event.key===' ')selectStyle('friendly')">
+          <span class="preset-check">
+            <svg viewBox="0 0 10 10"><polyline points="1.5,5 4,7.5 8.5,2.5"/></svg>
+          </span>
+          <span class="preset-emoji">💬</span>
+          <span class="preset-name">Friendly</span>
+          <span class="preset-desc">Casual, conversational tone</span>
+        </div>
+
+      </div>
+
+      <!-- Custom instructions row -->
+      <div class="form-row" style="border-top: 1px solid var(--border); align-items:center;">
+        <div style="flex:1;">
+          <span class="custom-hint" id="custom-hint-text">Want more control?</span>
+        </div>
+        <div class="row-value">
+          <button class="btn btn-default">Edit Custom Instructions</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Section 2: LLM Provider ─────────────────────────────────── -->
+  <div class="section">
+    <div class="section-label">LLM Provider</div>
+    <div class="form-group">
+
+      <!-- Provider picker row -->
       <div class="form-row">
-        <span class="row-label">Enhancement</span>
+        <span class="row-label">LLM Provider</span>
         <div class="row-value">
           <select class="picker" id="provider-picker" onchange="onProviderChange(this.value)">
             <option value="off">Off</option>
@@ -415,15 +552,39 @@
           </select>
         </div>
       </div>
+
+      <!-- Nested API key row — shown only for cloud providers (openai/gemini) -->
+      <div class="form-row tall conditional-section" id="apikey-row" style="display:none;">
+        <div style="flex:1; min-width:0;">
+          <div class="row-label" style="margin-bottom:6px;"><strong id="apikey-label">OpenAI API Key</strong></div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <input type="password" class="secure-field" id="api-key-field"
+                   value="sk-proj-••••••••••••••••••••" placeholder="sk-proj-…" />
+            <span class="validation-badge badge-valid">
+              <span class="badge-dot"></span>
+              Valid
+            </span>
+          </div>
+        </div>
+        <div class="row-value" style="align-self:flex-end;">
+          <button class="btn btn-accent">Save</button>
+          <button class="btn btn-destructive" style="margin-left:6px;">Clear</button>
+        </div>
+      </div>
+
     </div>
 
     <div id="off-helper" class="off-helper-banner" style="display:none; margin-top:8px;">
-      Turn on AI enhancement to automatically fix grammar, punctuation, and formatting.
+      Turn on AI polish to automatically fix grammar, punctuation, and formatting.
+    </div>
+
+    <div class="section-footer conditional-section" id="apikey-footer" style="display:none;">
+      <a href="#" class="link">Get your free API key</a><span id="apikey-link-suffix"> at platform.openai.com</span>
     </div>
   </div>
 
-  <!-- ── Section 2: Model ────────────────────────────────────────── -->
-  <div class="section conditional-section visible" id="section-model">
+  <!-- ── Section 3: Model ────────────────────────────────────────── -->
+  <div class="section conditional-section" id="section-model">
     <div class="section-label">Model</div>
     <div class="form-group" id="model-form-group">
 
@@ -443,66 +604,14 @@
       <!-- Model recommendation cards — rendered by JS -->
       <div id="model-cards-container"></div>
 
-      <!-- Custom instructions row -->
-      <div class="form-row tall" style="border-top: 1px solid var(--border); align-items:center;">
-        <div style="flex:1;">
-          <div class="row-label"><strong>Custom instructions</strong></div>
-          <div class="row-helper instructions-hint">Using default instructions</div>
-        </div>
-        <div class="row-value">
-          <button class="btn btn-default">Edit Instructions</button>
-        </div>
-      </div>
-
     </div>
     <div class="section-footer" id="model-footer">
       Transcript cleanup is straightforward — smaller models handle it well at a fraction of the cost.
     </div>
   </div>
 
-  <!-- ── Section 3: API Key ─────────────────────────────────────── -->
-  <div class="section conditional-section visible" id="section-apikey">
-    <div class="section-label">API Key</div>
-    <div class="form-group">
-
-      <div class="form-row tall">
-        <div style="flex:1; min-width:0;">
-          <div class="row-label" style="margin-bottom:6px;"><strong id="apikey-label">OpenAI API Key</strong></div>
-          <div style="display:flex; align-items:center; gap:6px;">
-            <input type="password" class="secure-field" id="api-key-field"
-                   value="sk-proj-••••••••••••••••••••" placeholder="sk-proj-…" />
-            <button class="eye-btn" id="eye-btn" onclick="toggleKeyVisibility()" title="Show or hide key" aria-label="Toggle key visibility">
-              <svg id="eye-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
-                   stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"
-                   aria-hidden="true">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                <circle cx="12" cy="12" r="3"/>
-              </svg>
-            </button>
-          </div>
-        </div>
-        <div class="row-value" style="align-self:flex-end;">
-          <span class="validation-badge badge-valid">
-            <span class="badge-dot"></span>
-            Valid
-          </span>
-        </div>
-      </div>
-
-      <div class="form-row" style="justify-content:flex-end; gap:8px;">
-        <button class="btn btn-accent">Save Key</button>
-        <button class="btn btn-destructive">Clear Key</button>
-      </div>
-
-    </div>
-    <div class="section-footer">
-      <a href="#" class="link" id="apikey-link">Get your free API key</a>
-      <span id="apikey-link-suffix"> at platform.openai.com</span>
-    </div>
-  </div>
-
   <!-- ── Section 4: Advanced ────────────────────────────────────── -->
-  <div class="section conditional-section visible" id="section-advanced">
+  <div class="section conditional-section" id="section-advanced">
     <div class="section-label">Advanced</div>
     <div class="form-group">
       <div class="form-row tall" style="align-items:center;">
@@ -545,15 +654,14 @@
   };
 
   var API_KEY_META = {
-    openai: { label: 'OpenAI API Key',         suffix: ' at platform.openai.com' },
-    gemini: { label: 'Google Gemini API Key',  suffix: ' at aistudio.google.com' }
+    openai: { label: 'OpenAI API Key',        suffix: ' at platform.openai.com' },
+    gemini: { label: 'Google Gemini API Key', suffix: ' at aistudio.google.com' }
   };
 
   // ── Rebuild model picker options ─────────────────────────────────
   function rebuildModelPicker(provider) {
     var picker = document.getElementById('model-picker');
     var models = MODELS[provider] || [];
-    // Remove all existing options
     while (picker.options.length > 0) { picker.remove(0); }
     models.forEach(function(m, i) {
       var opt = document.createElement('option');
@@ -567,7 +675,6 @@
   // ── Rebuild model recommendation cards ──────────────────────────
   function rebuildModelCards(provider) {
     var container = document.getElementById('model-cards-container');
-    // Remove existing children
     while (container.firstChild) { container.removeChild(container.firstChild); }
 
     var models = MODELS[provider] || [];
@@ -605,19 +712,35 @@
     });
   }
 
+  // ── Show/hide nested API key row ─────────────────────────────────
+  function setApikeyRowVisible(visible, provider) {
+    var apikeyRow    = document.getElementById('apikey-row');
+    var apikeyFooter = document.getElementById('apikey-footer');
+    var apikeyLabel  = document.getElementById('apikey-label');
+    var linkSuffix   = document.getElementById('apikey-link-suffix');
+
+    apikeyRow.style.display    = visible ? 'flex' : 'none';
+    apikeyFooter.style.display = visible ? 'block' : 'none';
+
+    if (visible) {
+      var meta = API_KEY_META[provider] || API_KEY_META['openai'];
+      if (apikeyLabel) { apikeyLabel.textContent = meta.label; }
+      if (linkSuffix)  { linkSuffix.textContent  = meta.suffix; }
+    }
+  }
+
   // ── Provider change handler ──────────────────────────────────────
   function onProviderChange(provider) {
     var sectionModel    = document.getElementById('section-model');
-    var sectionApiKey   = document.getElementById('section-apikey');
+    var sectionStyle    = document.getElementById('section-style');
     var sectionAdvanced = document.getElementById('section-advanced');
     var offHelper       = document.getElementById('off-helper');
-    var apikeyLabel     = document.getElementById('apikey-label');
-    var apikeyLinkSuffix = document.getElementById('apikey-link-suffix');
 
-    // Reset visibility
+    // Reset all conditional visibility
     sectionModel.classList.remove('visible');
-    sectionApiKey.classList.remove('visible');
+    sectionStyle.classList.remove('visible');
     sectionAdvanced.classList.remove('visible');
+    setApikeyRowVisible(false, provider);
     offHelper.style.display = 'none';
 
     if (provider === 'off') {
@@ -625,84 +748,60 @@
       return;
     }
 
+    // All active providers show Writing Style
+    sectionStyle.classList.add('visible');
+
     if (provider === 'apple') {
-      // Apple Intelligence: no sections needed
+      // Apple Intelligence: no model or API key sections needed
       return;
     }
 
-    // Show model section for all active providers
+    // All active non-apple providers get Model section
     sectionModel.classList.add('visible');
     rebuildModelPicker(provider);
     rebuildModelCards(provider);
 
     if (provider === 'ollama') {
-      // Local: no API key, no advanced
+      // Local: no API key, no advanced (privacy-first, no cloud config)
       return;
     }
 
-    // Cloud providers: show API key + advanced
-    sectionApiKey.classList.add('visible');
+    // Cloud providers (openai, gemini): show nested API key row and Advanced
+    setApikeyRowVisible(true, provider);
     sectionAdvanced.classList.add('visible');
-
-    var meta = API_KEY_META[provider] || API_KEY_META['openai'];
-    if (apikeyLabel) { apikeyLabel.textContent = meta.label; }
-    if (apikeyLinkSuffix) { apikeyLinkSuffix.textContent = meta.suffix; }
   }
 
-  // ── Eye toggle ────────────────────────────────────────────────────
-  var keyVisible = false;
-
-  function setEyeIconOpen(svgEl) {
-    // "eye-off" paths — slash through eye
-    while (svgEl.firstChild) { svgEl.removeChild(svgEl.firstChild); }
-
-    var p1 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    p1.setAttribute('d', 'M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94');
-
-    var p2 = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    p2.setAttribute('d', 'M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19');
-
-    var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    line.setAttribute('x1', '1');
-    line.setAttribute('y1', '1');
-    line.setAttribute('x2', '23');
-    line.setAttribute('y2', '23');
-
-    svgEl.appendChild(p1);
-    svgEl.appendChild(p2);
-    svgEl.appendChild(line);
-  }
-
-  function setEyeIconClosed(svgEl) {
-    // "eye" path — visible eye
-    while (svgEl.firstChild) { svgEl.removeChild(svgEl.firstChild); }
-
-    var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', 'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z');
-
-    var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    circle.setAttribute('cx', '12');
-    circle.setAttribute('cy', '12');
-    circle.setAttribute('r', '3');
-
-    svgEl.appendChild(path);
-    svgEl.appendChild(circle);
-  }
-
-  function toggleKeyVisibility() {
-    keyVisible = !keyVisible;
-    var field = document.getElementById('api-key-field');
-    var icon  = document.getElementById('eye-icon');
-    field.type = keyVisible ? 'text' : 'password';
-    if (keyVisible) {
-      setEyeIconOpen(icon);
-    } else {
-      setEyeIconClosed(icon);
+  // ── Model change handler ─────────────────────────────────────────
+  function onModelChange(value) {
+    var cards = document.querySelectorAll('#model-cards-container .model-card');
+    var models = MODELS[document.getElementById('provider-picker').value] || [];
+    var i;
+    for (i = 0; i < cards.length; i++) {
+      var isSelected = (models[i] && models[i].value === value);
+      cards[i].style.background  = isSelected ? 'rgba(124,58,237,0.04)' : '';
+      cards[i].style.borderLeft  = isSelected ? '3px solid var(--accent)' : '';
     }
   }
 
-  // ── Init model cards on load ─────────────────────────────────────
-  rebuildModelCards('openai');
+  // ── Writing Style preset selector ────────────────────────────────
+  var customStyleActive = false;
+
+  function selectStyle(style) {
+    var cards = document.querySelectorAll('#style-preset-grid .preset-card');
+    var i;
+    for (i = 0; i < cards.length; i++) {
+      cards[i].classList.toggle('selected', cards[i].getAttribute('data-style') === style);
+    }
+    customStyleActive = false;
+    var hintEl = document.getElementById('custom-hint-text');
+    if (hintEl) {
+      hintEl.textContent = 'Want more control?';
+      hintEl.classList.remove('active');
+    }
+  }
+
+  // ── Init on load (default: openai selected) ──────────────────────
+  onProviderChange('openai');
 </script>
 
 </body>

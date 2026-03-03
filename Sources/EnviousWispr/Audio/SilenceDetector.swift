@@ -10,6 +10,10 @@ struct SmoothedVADConfig: Sendable {
     var prebufferChunks: Int = 2
     var energyGateThreshold: Float = 0.0
 
+    static func fromPreset(_ preset: EnvironmentPreset) -> SmoothedVADConfig {
+        return fromSensitivity(preset.vadSensitivity)
+    }
+
     static func fromSensitivity(_ sensitivity: Float) -> SmoothedVADConfig {
         let onset = 0.7 - (sensitivity * 0.4)       // 0.3 at sens=1.0, 0.7 at sens=0.0
         let offset = max(0.1, onset - 0.15)

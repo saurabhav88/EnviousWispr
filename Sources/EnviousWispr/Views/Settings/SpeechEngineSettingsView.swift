@@ -1,6 +1,9 @@
 import SwiftUI
 
-/// ASR backend, recording mode, and benchmark settings.
+private let brandPurple: Color = Color(hex: "7c3aed")
+private let brandPurpleSoft: Color = Color(hex: "7c3aed").opacity(0.08)
+
+/// Transcription engine, multi-language options, recording environment, and cleanup settings.
 struct SpeechEngineSettingsView: View {
     @Environment(AppState.self) private var appState
 
@@ -8,123 +11,213 @@ struct SpeechEngineSettingsView: View {
         @Bindable var state = appState
 
         Form {
-            Section("ASR Backend") {
-                Picker("Backend", selection: $state.settings.selectedBackend) {
-                    Text("Parakeet v3 (Primary)").tag(ASRBackendType.parakeet)
-                    Text("WhisperKit (Fallback)").tag(ASRBackendType.whisperKit)
+            // ── Section 1: Transcription Engine ──────────────────────────────
+            Section("Transcription Engine") {
+                Picker("Engine", selection: $state.settings.selectedBackend) {
+                    Text("Fast (English)").tag(ASRBackendType.parakeet)
+                    Text("Multi-Language").tag(ASRBackendType.whisperKit)
                 }
                 .pickerStyle(.segmented)
 
-                if appState.settings.selectedBackend == .parakeet {
-                    Text("Fast English transcription with built-in punctuation.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("Broader language support with configurable quality controls.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                if appState.settings.selectedBackend == .whisperKit {
-                    Picker("Model Quality", selection: $state.settings.whisperKitModel) {
-                        Text("Base (Fast, Lower Quality)").tag("base")
-                        Text("Small (Balanced)").tag("small")
-                        Text("Large v3 (Best Quality)").tag("large-v3")
-                    }
-                    Text("Larger models produce better transcription but require more download time and memory.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            if appState.settings.selectedBackend == .whisperKit {
-                Section("WhisperKit Quality") {
-                    Toggle("Auto-detect language", isOn: $state.settings.whisperKitLanguageAutoDetect)
-                    Text("When enabled, WhisperKit detects the spoken language automatically instead of assuming English.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    HStack {
-                        Text("Temperature")
-                        Slider(value: $state.settings.whisperKitTemperature, in: 0.0...1.0, step: 0.1)
-                        Text(String(format: "%.1f", appState.settings.whisperKitTemperature))
-                            .font(.caption)
-                            .monospacedDigit()
-                            .frame(width: 30)
-                    }
-                    Text("Lower values (0.0 = greedy) are more deterministic. Higher values add variety but may reduce accuracy. Automatic retry at higher temperatures if quality filters reject the output.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    HStack {
-                        Text("No-speech threshold")
-                        Slider(value: $state.settings.whisperKitNoSpeechThreshold, in: 0.0...1.0, step: 0.05)
-                        Text(String(format: "%.2f", appState.settings.whisperKitNoSpeechThreshold))
-                            .font(.caption)
-                            .monospacedDigit()
-                            .frame(width: 35)
-                    }
-                    Text("Segments below this speech probability are suppressed. Lower values keep more audio; higher values filter silence more aggressively.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Section("Voice Activity Detection") {
-                Toggle("Auto-stop on silence", isOn: $state.settings.vadAutoStop)
-                Text("Automatically stops recording after a period of silence. Recommended off for most users — natural pauses in speech may trigger early stops.")
+                Text(appState.settings.selectedBackend == .parakeet
+                    ? "Powered by Parakeet — fast English transcription with built-in punctuation."
+                    : "Powered by WhisperKit — broader language support with configurable quality controls.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+
+            // ── Section 2: Multi-Language Options (conditional) ───────────────
+            if appState.settings.selectedBackend == .whisperKit {
+                Section("Multi-Language Options") {
+                    Toggle("Auto-detect language", isOn: $state.settings.whisperKitLanguageAutoDetect)
+                        .tint(brandPurple)
+                    Text("Automatically identifies which language you're speaking.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Accuracy")
+                            Spacer()
+                            Text(String(format: "%.1f", appState.settings.whisperKitTemperature))
+                                .font(.caption)
+                                .fontWeight(.medium)
+                                .foregroundStyle(brandPurple)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1)
+                                .background(brandPurpleSoft)
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                        }
+                        HStack(spacing: 8) {
+                            Text("Low").font(.caption2).foregroundStyle(.secondary)
+                            Slider(value: $state.settings.whisperKitTemperature, in: 0.0...1.0, step: 0.1)
+                                .tint(brandPurple)
+                            Text("High").font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
+                    Text("Lower = more consistent, higher = more creative.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Speech filter")
+                            Spacer()
+                            Text(String(format: "%.1f", appState.settings.whisperKitNoSpeechThreshold))
+                                .font(.caption)
+                                .fontWeight(.medium)
+                                .foregroundStyle(brandPurple)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1)
+                                .background(brandPurpleSoft)
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                        }
+                        HStack(spacing: 8) {
+                            Text("Low").font(.caption2).foregroundStyle(.secondary)
+                            Slider(value: $state.settings.whisperKitNoSpeechThreshold, in: 0.0...1.0, step: 0.05)
+                                .tint(brandPurple)
+                            Text("High").font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
+                    Text("How aggressively to filter silence from the transcript.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            // ── Section 3: Recording Environment ─────────────────────────────
+            Section("Recording Environment") {
+                EnvironmentPresetCards(selection: Binding(
+                    get: { appState.settings.environmentPreset },
+                    set: { state.settings.environmentPreset = $0 }
+                ))
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+
+                Toggle("Stop recording on silence", isOn: $state.settings.vadAutoStop)
+                    .tint(brandPurple)
 
                 if appState.settings.vadAutoStop {
-                    HStack {
-                        Text("Silence timeout")
-                        Slider(value: $state.settings.vadSilenceTimeout, in: 0.5...3.0, step: 0.25)
-                        Text(String(format: "%.1fs", appState.settings.vadSilenceTimeout))
-                            .font(.caption)
-                            .monospacedDigit()
-                            .frame(width: 30)
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Pause duration")
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text(String(format: "%.1fs", appState.settings.vadSilenceTimeout))
+                                .font(.caption)
+                                .fontWeight(.medium)
+                                .foregroundStyle(brandPurple)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1)
+                                .background(brandPurpleSoft)
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                        }
+                        HStack(spacing: 8) {
+                            Text("0.5s").font(.caption2).foregroundStyle(.secondary)
+                            Slider(value: $state.settings.vadSilenceTimeout, in: 0.5...3.0, step: 0.25)
+                                .tint(brandPurple)
+                            Text("3.0s").font(.caption2).foregroundStyle(.secondary)
+                        }
                     }
-
-                    Text("Recording stops automatically after this duration of silence following speech.")
+                    Text("How long to wait after you stop speaking before ending the recording.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-
-                HStack {
-                    Text("VAD Sensitivity")
-                    Slider(value: $state.settings.vadSensitivity, in: 0.0...1.0, step: 0.1)
-                    Text(vadSensitivityLabel(appState.settings.vadSensitivity))
-                        .font(.caption)
-                        .monospacedDigit()
-                        .frame(width: 55)
-                }
-                Text("Higher sensitivity detects quieter speech but may pick up background noise.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Toggle("Energy pre-gate", isOn: $state.settings.vadEnergyGate)
-                Text("Saves battery by skipping speech detection when the mic hears only silence. Safe to leave on.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
-            Section("Post-Processing") {
+            // ── Section 4: Cleanup ────────────────────────────────────────────
+            Section("Cleanup") {
                 Toggle("Remove filler words (um, uh, hmm...)", isOn: $state.settings.fillerRemovalEnabled)
-                Text("Strips common filler words from transcriptions. LLM polish handles this more thoroughly when enabled.")
+                    .tint(brandPurple)
+                Text("Strips common filler words from transcriptions.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-
         }
         .formStyle(.grouped)
+        .tint(brandPurple)
     }
+}
 
-    private func vadSensitivityLabel(_ value: Float) -> String {
-        switch value {
-        case 0.0..<0.3: return "Low"
-        case 0.3..<0.7: return "Medium"
-        default:         return "High"
+// ── Environment preset card picker ───────────────────────────────────────────
+
+private struct PresetInfo {
+    let preset: EnvironmentPreset
+    let emoji: String
+    let name: String
+    let description: String
+}
+
+private let presets: [PresetInfo] = [
+    PresetInfo(preset: .quiet, emoji: "🤫", name: "Quiet",  description: "Library, bedroom, quiet office"),
+    PresetInfo(preset: .normal, emoji: "🏠", name: "Normal", description: "Home, private office"),
+    PresetInfo(preset: .noisy, emoji: "🏢", name: "Noisy",  description: "Open office, café, outdoors"),
+]
+
+private struct EnvironmentPresetCards: View {
+    @Binding var selection: EnvironmentPreset
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(presets, id: \.preset) { info in
+                PresetCard(info: info, isSelected: selection == info.preset) {
+                    selection = info.preset
+                }
+            }
         }
+        .padding(12)
+    }
+}
+
+private struct PresetCard: View {
+    let info: PresetInfo
+    let isSelected: Bool
+    let onTap: () -> Void
+
+    private let brandPurple = Color(hex: "7c3aed")
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 4) {
+                ZStack(alignment: .topTrailing) {
+                    Color.clear.frame(height: 1) // layout anchor
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.white)
+                            .background(brandPurple)
+                            .clipShape(Circle())
+                            .offset(x: 2, y: -2)
+                    }
+                }
+                .frame(height: 12)
+
+                Text(info.emoji)
+                    .font(.system(size: 22))
+
+                Text(info.name)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(.primary)
+
+                Text(info.description)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+            }
+            .padding(.vertical, 10)
+            .padding(.horizontal, 8)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 9)
+                    .fill(isSelected ? brandPurple.opacity(0.08) : Color(nsColor: .controlBackgroundColor))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 9)
+                            .stroke(isSelected ? brandPurple : Color(nsColor: .separatorColor), lineWidth: isSelected ? 1.5 : 1)
+                    )
+                    .shadow(color: isSelected ? brandPurple.opacity(0.20) : .clear, radius: 4, y: 2)
+            )
+        }
+        .buttonStyle(.plain)
     }
 }

@@ -9,6 +9,27 @@ enum OnboardingState: String, Codable, Sendable {
     case completed        = "completed"
 }
 
+enum EnvironmentPreset: String, CaseIterable, Codable, Sendable {
+    case quiet = "quiet"
+    case normal = "normal"
+    case noisy = "noisy"
+
+    var vadSensitivity: Float {
+        switch self {
+        case .quiet: return 0.8
+        case .normal: return 0.5
+        case .noisy: return 0.2
+        }
+    }
+}
+
+enum WritingStylePreset: String, CaseIterable, Codable, Sendable {
+    case formal = "formal"
+    case standard = "standard"
+    case friendly = "friendly"
+    case custom = "custom"
+}
+
 @MainActor
 @Observable
 final class SettingsManager {
@@ -49,6 +70,8 @@ final class SettingsManager {
         case selectedInputDeviceUID
         case noiseSuppression
         case preferredInputDeviceIDOverride
+        case environmentPreset
+        case writingStylePreset
     }
 
     var onChange: ((SettingKey) -> Void)?
@@ -307,6 +330,20 @@ final class SettingsManager {
         }
     }
 
+    var environmentPreset: EnvironmentPreset {
+        didSet {
+            UserDefaults.standard.set(environmentPreset.rawValue, forKey: "environmentPreset")
+            onChange?(.environmentPreset)
+        }
+    }
+
+    var writingStylePreset: WritingStylePreset {
+        didSet {
+            UserDefaults.standard.set(writingStylePreset.rawValue, forKey: "writingStylePreset")
+            onChange?(.writingStylePreset)
+        }
+    }
+
     var activePolishInstructions: PolishInstructions {
         customSystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? .default
@@ -393,5 +430,7 @@ final class SettingsManager {
         selectedInputDeviceUID = defaults.string(forKey: "selectedInputDeviceUID") ?? ""
         noiseSuppression = defaults.object(forKey: "noiseSuppression") as? Bool ?? false
         preferredInputDeviceIDOverride = defaults.string(forKey: "preferredInputDeviceIDOverride") ?? ""
+        environmentPreset = EnvironmentPreset(rawValue: defaults.string(forKey: "environmentPreset") ?? "") ?? .normal
+        writingStylePreset = WritingStylePreset(rawValue: defaults.string(forKey: "writingStylePreset") ?? "") ?? .standard
     }
 }
