@@ -22,10 +22,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var openMainWindowAction: (() -> Void)?
 
     /// Callback set by SwiftUI to open the onboarding window.
-    var openOnboardingWindowAction: (() -> Void)?
+    var openOnboardingAction: (() -> Void)?
 
-    /// Callback set by SwiftUI to dismiss the onboarding window.
-    var dismissOnboardingWindowAction: (() -> Void)?
+    /// Callback set by SwiftUI to dismiss the onboarding window (state-driven).
+    var dismissOnboardingAction: (() -> Void)?
 
     /// Weak reference to the onboarding window so we can detect when user closes it early.
     private weak var onboardingWindow: NSWindow?
@@ -112,7 +112,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Open the onboarding window and begin monitoring for early close (abort flow).
     func openOnboardingWindow() {
         guard appState.settings.onboardingState != .completed else { return }
-        openOnboardingWindowAction?()
+        openOnboardingAction?()
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         // Hide the main window so only the onboarding window is visible during setup.
@@ -158,8 +158,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Called by the onboarding Done button via the onComplete callback.
+    /// State-driven: flips isOnboardingPresented to false, ActionWirer's onChange dismisses the window.
     func closeOnboardingWindow() {
-        dismissOnboardingWindowAction?()
+        dismissOnboardingAction?()
         NSApp.setActivationPolicy(.accessory)
         updateIcon()
     }

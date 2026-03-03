@@ -53,12 +53,28 @@ extension Color {
     )
 }
 
+// MARK: - Onboarding Font Tokens
+
+extension Font {
+    static let obDisplay      = Font.system(size: 22, weight: .heavy, design: .rounded)
+    static let obHeading      = Font.system(size: 18, weight: .bold, design: .rounded)
+    static let obSubheading   = Font.system(size: 14, weight: .semibold)
+    static let obBody         = Font.system(size: 14, weight: .regular)
+    static let obCaption      = Font.system(size: 12, weight: .regular)
+    static let obCaptionSmall = Font.system(size: 11, weight: .regular)
+    static let obMono         = Font.system(size: 12, weight: .regular, design: .monospaced)
+    static let obMonoBold     = Font.system(size: 12, weight: .bold, design: .monospaced)
+    static let obLabel        = Font.system(size: 13, weight: .medium)
+    static let obButton       = Font.system(size: 15, weight: .bold)
+    static let obButtonSmall  = Font.system(size: 13, weight: .semibold)
+}
+
 // MARK: - Button Styles
 
 struct OnboardingPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 14, weight: .semibold))
+            .font(.obSubheading)
             .kerning(-0.1)
             .foregroundStyle(.white)
             .padding(.horizontal, 28)
@@ -71,7 +87,7 @@ struct OnboardingPrimaryButtonStyle: ButtonStyle {
 struct OnboardingSecondaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 14, weight: .semibold))
+            .font(.obSubheading)
             .foregroundStyle(Color.obTextSecondary)
             .padding(.horizontal, 24)
             .padding(.vertical, 10)
@@ -87,7 +103,7 @@ struct OnboardingSecondaryButtonStyle: ButtonStyle {
 struct OnboardingAccentButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 14, weight: .semibold))
+            .font(.obSubheading)
             .foregroundStyle(.white)
             .padding(.horizontal, 28)
             .padding(.vertical, 11)
@@ -99,7 +115,7 @@ struct OnboardingAccentButtonStyle: ButtonStyle {
 struct OnboardingErrorButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 14, weight: .semibold))
+            .font(.obSubheading)
             .foregroundStyle(.white)
             .padding(.horizontal, 28)
             .padding(.vertical, 11)
@@ -364,11 +380,11 @@ struct OnboardingView: View {
 
                     if isCompleted {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.obMonoBold)
                             .foregroundStyle(.white)
                     } else {
                         Text("\(step.rawValue + 1)")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.obMonoBold)
                             .foregroundStyle(isCurrent ? .white : Color.obTextTertiary)
                     }
                 }
@@ -428,14 +444,14 @@ private struct WelcomeStepView: View {
 
             // Title
             Text("Welcome to EnviousWispr")
-                .font(.system(size: 22, weight: .heavy))
+                .font(.obDisplay)
                 .foregroundStyle(Color.obTextPrimary)
                 .kerning(-0.4)
                 .padding(.bottom, 6)
 
             // Subtitle
             Text("Press a hotkey to transcribe your voice. First, we need microphone access.")
-                .font(.system(size: 14, weight: .regular))
+                .font(.obBody)
                 .lineSpacing(7.7)
                 .foregroundStyle(Color.obTextSecondary)
                 .multilineTextAlignment(.center)
@@ -462,7 +478,7 @@ private struct WelcomeStepView: View {
             if viewModel.micStatus == .granted {
                 HStack(spacing: 8) {
                     Text("Microphone access granted ✓")
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.obLabel)
                         .foregroundStyle(Color.obSuccessText)
                 }
                 .padding(.horizontal, 14)
@@ -480,7 +496,7 @@ private struct WelcomeStepView: View {
                         Text(viewModel.micStatus == .restricted
                              ? "Microphone access is restricted by your organization."
                              : "Microphone access was denied.")
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.obLabel)
                             .foregroundStyle(Color.obError)
                     }
                     .padding(.horizontal, 14)
@@ -494,13 +510,13 @@ private struct WelcomeStepView: View {
 
                     if viewModel.micStatus == .restricted {
                         Text("This setting is controlled by a device management profile and cannot be changed.")
-                            .font(.system(size: 12, weight: .regular))
+                            .font(.obCaption)
                             .foregroundStyle(Color.obTextTertiary)
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: 340)
                     } else {
                         Text("Open System Settings > Privacy & Security > Microphone and enable EnviousWispr.")
-                            .font(.system(size: 12, weight: .regular))
+                            .font(.obCaption)
                             .foregroundStyle(Color.obTextTertiary)
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: 340)
@@ -587,13 +603,13 @@ private struct ModelDownloadStepView: View {
             if viewModel.downloadComplete {
                 // Success state
                 Text("Model Ready")
-                    .font(.system(size: 22, weight: .heavy))
+                    .font(.obDisplay)
                     .foregroundStyle(Color.obTextPrimary)
                     .kerning(-0.4)
                     .padding(.bottom, 6)
 
                 Text("The on-device transcription model is installed and ready to use.")
-                    .font(.system(size: 14, weight: .regular))
+                    .font(.obBody)
                     .lineSpacing(7.7)
                     .foregroundStyle(Color.obTextSecondary)
                     .multilineTextAlignment(.center)
@@ -603,13 +619,13 @@ private struct ModelDownloadStepView: View {
             } else if let error = viewModel.downloadError {
                 // Error state
                 Text("Download Failed")
-                    .font(.system(size: 22, weight: .heavy))
+                    .font(.obDisplay)
                     .foregroundStyle(Color.obTextPrimary)
                     .kerning(-0.4)
                     .padding(.bottom, 6)
 
                 Text(error)
-                    .font(.system(size: 14, weight: .regular))
+                    .font(.obBody)
                     .lineSpacing(7.7)
                     .foregroundStyle(Color.obTextSecondary)
                     .multilineTextAlignment(.center)
@@ -633,13 +649,13 @@ private struct ModelDownloadStepView: View {
                 .onAppear { spinAngle = 360 }
 
                 Text("Getting Ready…")
-                    .font(.system(size: 22, weight: .heavy))
+                    .font(.obDisplay)
                     .foregroundStyle(Color.obTextPrimary)
                     .kerning(-0.4)
                     .padding(.bottom, 6)
 
                 Text("Downloading the on-device transcription model (~100 MB). This is a one-time setup that enables fast, private dictation.")
-                    .font(.system(size: 14, weight: .regular))
+                    .font(.obBody)
                     .lineSpacing(7.7)
                     .foregroundStyle(Color.obTextSecondary)
                     .multilineTextAlignment(.center)
@@ -662,7 +678,7 @@ private struct ModelDownloadStepView: View {
                 .padding(.bottom, 12)
 
                 Text("Usually takes less than a minute on a standard connection.")
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.obCaption)
                     .foregroundStyle(Color.obTextTertiary)
                     .multilineTextAlignment(.center)
                     .padding(.bottom, 14)
@@ -781,7 +797,7 @@ private struct HotkeyConfigRow: View {
                 )
 
                 Text("Click the shortcut to change it")
-                    .font(.system(size: 11, weight: .regular))
+                    .font(.obCaptionSmall)
                     .foregroundStyle(Color.obTextTertiary)
             }
 
@@ -804,6 +820,14 @@ private struct HotkeyConfigRow: View {
 enum BYOKProvider: Equatable {
     case openai
     case gemini
+
+    /// Display name for the provider.
+    var displayName: String {
+        switch self {
+        case .openai: return "OpenAI"
+        case .gemini: return "Gemini"
+        }
+    }
 
     /// Placeholder text for the API key input field.
     var keyPlaceholder: String {
@@ -858,13 +882,13 @@ private struct AIPolishStepView: View {
                 .padding(.bottom, 18)
 
             Text("Enhance Your Transcriptions")
-                .font(.system(size: 22, weight: .heavy))
+                .font(.obDisplay)
                 .foregroundStyle(Color.obTextPrimary)
                 .kerning(-0.4)
                 .padding(.bottom, 6)
 
             Text("AI Polish cleans up grammar, punctuation, and filler words after transcription. Choose how you'd like it to work:")
-                .font(.system(size: 14, weight: .regular))
+                .font(.obBody)
                 .lineSpacing(7.7)
                 .foregroundStyle(Color.obTextSecondary)
                 .multilineTextAlignment(.center)
@@ -918,11 +942,11 @@ private struct AIPolishStepView: View {
                         TextField(
                             "",
                             text: $apiKey,
-                            prompt: Text(selectedProvider.keyPlaceholder)
-                                .foregroundColor(Color.obTextTertiary)
-                                .font(.system(size: 12, weight: .regular, design: .monospaced))
+                            prompt: Text("Paste your \(selectedProvider.displayName) API key")
+                                .foregroundColor(Color(NSColor.tertiaryLabelColor))
+                                .font(.obMono)
                         )
-                        .font(.system(size: 12, weight: .regular, design: .monospaced))
+                        .font(.obMono)
                         .textFieldStyle(.plain)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
@@ -931,13 +955,17 @@ private struct AIPolishStepView: View {
                             RoundedRectangle(cornerRadius: 10)
                                 .strokeBorder(Color.obBorderHover, lineWidth: 1)
                         )
+
+                        Text("Your key should start with \"\(selectedProvider.keyPlaceholder)\"")
+                            .font(.obCaptionSmall)
+                            .foregroundStyle(Color(NSColor.secondaryLabelColor))
                     }
                     .frame(maxWidth: 360)
 
                     // Help link row
                     HStack(spacing: 4) {
                         Text("Don't have a key?")
-                            .font(.system(size: 11, weight: .regular))
+                            .font(.obCaptionSmall)
                             .foregroundStyle(Color.obTextTertiary)
 
                         Button("Get one here \u{2192}") {
@@ -964,7 +992,7 @@ private struct AIPolishStepView: View {
             }
 
             Text("You can change this anytime in Settings")
-                .font(.system(size: 12, weight: .regular))
+                .font(.obCaption)
                 .foregroundStyle(Color.obTextTertiary)
                 .multilineTextAlignment(.center)
                 .padding(.bottom, 10)
@@ -1043,7 +1071,7 @@ private struct AIPolishStepView: View {
             EmptyView()
         case .validating:
             Text("Validating key... (this can take a few seconds)")
-                .font(.system(size: 12, weight: .regular))
+                .font(.obCaption)
                 .foregroundStyle(Color.obTextTertiary)
         case .valid:
             HStack(spacing: 6) {
@@ -1092,7 +1120,7 @@ private struct AIPolishStepView: View {
                     .kerning(-0.1)
 
                 Text(body)
-                    .font(.system(size: 11, weight: .regular))
+                    .font(.obCaptionSmall)
                     .foregroundStyle(Color.obTextSecondary)
                     .lineSpacing(11 * 0.4)
                     .lineLimit(nil)
@@ -1144,7 +1172,7 @@ private struct AIPolishStepView: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(name)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.obMonoBold)
                         .foregroundStyle(Color.obTextPrimary)
                         .kerning(-0.1)
                     Text(subtitle)
@@ -1204,13 +1232,13 @@ private struct TryItNowStepView: View {
                 .padding(.bottom, 18)
 
             Text("Let's Try It Out")
-                .font(.system(size: 22, weight: .heavy))
+                .font(.obDisplay)
                 .foregroundStyle(Color.obTextPrimary)
                 .kerning(-0.4)
                 .padding(.bottom, 6)
 
             Text("Press and hold **\(hotkeyDisplayString)**, say a few words, then release.")
-                .font(.system(size: 14, weight: .regular))
+                .font(.obBody)
                 .lineSpacing(7.7)
                 .foregroundStyle(Color.obTextSecondary)
                 .multilineTextAlignment(.center)
@@ -1315,7 +1343,7 @@ private struct TryItNowStepView: View {
         case .waiting:
             VStack(spacing: 8) {
                 Text("Your transcription will appear here...")
-                    .font(.system(size: 14, weight: .regular))
+                    .font(.obBody)
                     .foregroundStyle(Color.obTextTertiary)
                     .italic()
             }
@@ -1408,13 +1436,13 @@ private struct ReadyStepView: View {
                 .padding(.bottom, 18)
 
             Text("You're All Set!")
-                .font(.system(size: 22, weight: .heavy))
+                .font(.obDisplay)
                 .foregroundStyle(Color.obTextPrimary)
                 .kerning(-0.4)
                 .padding(.bottom, 6)
 
             Text("EnviousWispr is running in your menu bar. Press **\(hotkeyDisplayString)** anytime to dictate.")
-                .font(.system(size: 14, weight: .regular))
+                .font(.obBody)
                 .lineSpacing(7.7)
                 .foregroundStyle(Color.obTextSecondary)
                 .multilineTextAlignment(.center)
@@ -1426,10 +1454,10 @@ private struct ReadyStepView: View {
                 HStack(alignment: .top, spacing: 0) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Enable Auto-Paste")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.obSubheading)
                             .foregroundStyle(Color.obTextPrimary)
                         Text("Automatically paste transcriptions into the active app.")
-                            .font(.system(size: 12, weight: .regular))
+                            .font(.obCaption)
                             .foregroundStyle(Color.obTextSecondary)
                             .lineSpacing(12 * 0.35)
                     }
@@ -1465,7 +1493,7 @@ private struct ReadyStepView: View {
             Button("Done") {
                 onComplete()
             }
-            .font(.system(size: 15, weight: .bold))
+            .font(.obButton)
             .foregroundStyle(.white)
             .frame(maxWidth: 360)
             .padding(.vertical, 13)

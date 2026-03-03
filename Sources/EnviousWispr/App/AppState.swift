@@ -157,8 +157,6 @@ final class AppState {
         hotkeyService.cancelModifiers = settings.cancelModifiers
         hotkeyService.toggleKeyCode = settings.toggleKeyCode
         hotkeyService.toggleModifiers = settings.toggleModifiers
-        hotkeyService.pushToTalkKeyCode = settings.toggleKeyCode
-        hotkeyService.pushToTalkModifiers = settings.toggleModifiers
         hotkeyService.onToggleRecording = { [weak self] in
             guard let self else { return }
             await self.toggleRecording()
@@ -257,20 +255,13 @@ final class AppState {
             hotkeyService.cancelModifiers = settings.cancelModifiers
         case .toggleKeyCode:
             hotkeyService.toggleKeyCode = settings.toggleKeyCode
-            hotkeyService.pushToTalkKeyCode = settings.toggleKeyCode
             reregisterHotkeys()
         case .toggleModifiers:
             hotkeyService.toggleModifiers = settings.toggleModifiers
-            hotkeyService.pushToTalkModifiers = settings.toggleModifiers
             reregisterHotkeys()
-        case .pushToTalkKeyCode:
-            // PTT intentionally mirrors toggle — single hotkey, mode determines behavior.
-            hotkeyService.pushToTalkKeyCode = settings.toggleKeyCode
-            reregisterHotkeys()
-        case .pushToTalkModifiers:
-            // PTT intentionally mirrors toggle — single hotkey, mode determines behavior.
-            hotkeyService.pushToTalkModifiers = settings.toggleModifiers
-            reregisterHotkeys()
+        case .pushToTalkKeyCode, .pushToTalkModifiers:
+            // PTT mirrors toggle — single hotkey, mode determines behavior. No separate registration needed.
+            break
         case .modelUnloadPolicy:
             pipeline.modelUnloadPolicy = settings.modelUnloadPolicy
             if settings.modelUnloadPolicy == .never {
