@@ -1,5 +1,4 @@
 import SwiftUI
-@preconcurrency import AVFoundation
 
 // MARK: - ViewModel
 
@@ -24,7 +23,6 @@ final class OnboardingV2ViewModel {
 
     var micGranted = false
     var accessibilityGranted = false
-    var accessibilitySkipped = false
     var showSkipLink = false
 
     var downloadError: String?
@@ -79,22 +77,13 @@ final class OnboardingV2ViewModel {
         retryCount += 1
     }
 
-    func requestMicPermission() async {
-        switch AVCaptureDevice.authorizationStatus(for: .audio) {
-        case .authorized:
-            micGranted = true
-        case .notDetermined:
-            micGranted = await AVCaptureDevice.requestAccess(for: .audio)
-        case .denied, .restricted:
-            micGranted = false
-        @unknown default:
-            break
-        }
+    func requestMicPermission(permissions: PermissionsService) async {
+        _ = await permissions.requestMicrophoneAccess()
+        micGranted = permissions.hasMicrophonePermission
     }
 
-    func openAccessibilitySettings() {
-        let options = ["AXTrustedCheckOptionPrompt" as CFString: true as CFBoolean] as CFDictionary
-        _ = AXIsProcessTrustedWithOptions(options)
+    func openAccessibilitySettings(permissions: PermissionsService) {
+        _ = permissions.requestAccessibilityAccess()
     }
 
     func finishOnboarding(settings: SettingsManager) {
@@ -159,8 +148,9 @@ struct OnboardingV2View: View {
         case .needsPermissions:
             viewModel.currentScreen = .settingUp
             viewModel.checklistStatuses = [.completed, .completed, .completed]
-            viewModel.micGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
-            viewModel.accessibilityGranted = AXIsProcessTrusted()
+            appState.permissions.refreshAccessibilityStatus()
+            viewModel.micGranted = appState.permissions.hasMicrophonePermission
+            viewModel.accessibilityGranted = appState.permissions.accessibilityGranted
             if viewModel.micGranted && viewModel.accessibilityGranted {
                 viewModel.currentScreen = .ready
             } else {
@@ -239,7 +229,7 @@ private struct WelcomeScreenV2: View {
             Button("Get Started") {
                 viewModel.currentScreen = .settingUp
             }
-            .buttonStyle(OnboardingPrimaryButtonStyle())
+            .buttonStyle(OnboardingButtonStyle())
         }
         .onAppear { appeared = true }
     }
@@ -324,7 +314,7 @@ private struct ChecklistPhaseView: View {
                         .multilineTextAlignment(.center)
 
                     Button("Retry") { viewModel.retryDownload() }
-                        .buttonStyle(OnboardingErrorButtonStyle())
+                        .buttonStyle(OnboardingButtonStyle(color: .obError))
                 }
                 .padding(.top, 4)
             }
@@ -450,7 +440,7 @@ private struct PermissionsPhaseView: View {
                     title: "Microphone",
                     subtitle: "To hear your voice for transcription.",
                     isGranted: viewModel.micGranted,
-                    onGrant: { Task { await viewModel.requestMicPermission() } }
+                    onGrant: { Task { await viewModel.requestMicPermission(permissions: appState.permissions) } }
                 )
 
                 PermissionRow(
@@ -458,7 +448,7 @@ private struct PermissionsPhaseView: View {
                     title: "Accessibility",
                     subtitle: "To paste your transcribed text into any app.",
                     isGranted: viewModel.accessibilityGranted,
-                    onGrant: { viewModel.openAccessibilitySettings() }
+                    onGrant: { viewModel.openAccessibilitySettings(permissions: appState.permissions) }
                 )
             }
             .padding(.bottom, 20)
@@ -470,12 +460,12 @@ private struct PermissionsPhaseView: View {
                     viewModel.currentScreen = .ready
                 } label: {
                     Text("Continue")
-                        .font(.obButton)
+                        .font(.obSubheading)
                         .foregroundStyle(.white)
                         .frame(maxWidth: 360)
                         .padding(.vertical, 13)
                         .background(
-                            viewModel.micGranted ? Color.obBtnDark : Color.obBtnDark.opacity(0.4),
+                            viewModel.micGranted ? Color.obTextPrimary : Color.obTextPrimary.opacity(0.4),
                             in: RoundedRectangle(cornerRadius: 12)
                         )
                 }
@@ -484,7 +474,6 @@ private struct PermissionsPhaseView: View {
 
                 if viewModel.showSkipLink && !viewModel.accessibilityGranted {
                     Button("Skip for now") {
-                        viewModel.accessibilitySkipped = true
                         viewModel.currentScreen = .ready
                     }
                     .font(.obCaption)
@@ -495,19 +484,20 @@ private struct PermissionsPhaseView: View {
             }
         }
         .onAppear {
-            viewModel.micGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
-            viewModel.accessibilityGranted = AXIsProcessTrusted()
+            appState.permissions.refreshAccessibilityStatus()
+            viewModel.micGranted = appState.permissions.hasMicrophonePermission
+            viewModel.accessibilityGranted = appState.permissions.accessibilityGranted
             if viewModel.accessibilityGranted {
                 appState.settings.autoCopyToClipboard = true
             }
         }
-        .task { await pollAccessibilityAndSkipTimer() }
-        .task { await pollMicStatus() }
+        .task { await pollPermissions() }
     }
 
-    /// Polls accessibility status every 2 seconds indefinitely.
-    /// Shows "Skip for now" link after 10 seconds. Stops when granted or Task is cancelled.
-    private func pollAccessibilityAndSkipTimer() async {
+    /// Polls both mic and accessibility status every 2 seconds.
+    /// Shows "Skip for now" link after 10 seconds if accessibility not granted.
+    /// Auto-cancelled when the view disappears via .task modifier.
+    private func pollPermissions() async {
         var elapsed = 0
         while !Task.isCancelled {
             try? await Task.sleep(nanoseconds: 2_000_000_000)
@@ -515,29 +505,18 @@ private struct PermissionsPhaseView: View {
 
             elapsed += 2
 
-            if AXIsProcessTrusted() {
-                if !viewModel.accessibilityGranted {
-                    viewModel.accessibilityGranted = true
-                    appState.settings.autoCopyToClipboard = true
-                }
-                return
+            appState.permissions.refreshAccessibilityStatus()
+            if appState.permissions.accessibilityGranted && !viewModel.accessibilityGranted {
+                viewModel.accessibilityGranted = true
+                appState.settings.autoCopyToClipboard = true
+            }
+
+            if appState.permissions.hasMicrophonePermission && !viewModel.micGranted {
+                viewModel.micGranted = true
             }
 
             if elapsed >= 10 && !viewModel.showSkipLink {
                 withAnimation { viewModel.showSkipLink = true }
-            }
-        }
-    }
-
-    /// Polls mic authorization every 2 seconds. Updates state if granted after denial.
-    /// Auto-cancelled when the view disappears via .task modifier.
-    private func pollMicStatus() async {
-        while !Task.isCancelled {
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            guard !Task.isCancelled else { return }
-
-            if AVCaptureDevice.authorizationStatus(for: .audio) == .authorized && !viewModel.micGranted {
-                viewModel.micGranted = true
             }
         }
     }
@@ -585,7 +564,7 @@ private struct PermissionRow: View {
                 Button("Grant") {
                     onGrant()
                 }
-                .buttonStyle(OnboardingAccentButtonStyle())
+                .buttonStyle(OnboardingButtonStyle(color: .obAccent))
                 .font(.system(size: 12, weight: .semibold))
             }
         }
@@ -640,7 +619,7 @@ private struct ReadyScreenV2: View {
             )
             .padding(.bottom, 20)
 
-            if viewModel.accessibilitySkipped {
+            if !appState.permissions.accessibilityGranted {
                 HStack(spacing: 10) {
                     Image(systemName: "lightbulb.fill")
                         .foregroundStyle(Color.obWarning)
@@ -674,7 +653,7 @@ private struct ReadyScreenV2: View {
                         .foregroundStyle(.white)
                         .frame(maxWidth: 360)
                         .padding(.vertical, 13)
-                        .background(Color.obBtnDark, in: RoundedRectangle(cornerRadius: 12))
+                        .background(Color.obTextPrimary, in: RoundedRectangle(cornerRadius: 12))
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.defaultAction)
@@ -696,7 +675,7 @@ private struct ReadyScreenV2: View {
                 }
             }
         }
-        .animation(.easeInOut(duration: 0.35), value: viewModel.accessibilitySkipped)
+        .animation(.easeInOut(duration: 0.35), value: appState.permissions.accessibilityGranted)
     }
 }
 
@@ -748,7 +727,7 @@ private struct KeycapHotkeyView: View {
                         y: isRecording ? 0 : 3
                     )
                     .shadow(
-                        color: isRecording ? .clear : Color(red: 0.059, green: 0.039, blue: 0.102).opacity(0.07),
+                        color: isRecording ? .clear : Color.obTextPrimary.opacity(0.07),
                         radius: 2, y: 1
                     )
                     .overlay(
@@ -824,7 +803,7 @@ private struct KeycapHotkeyView: View {
         .shadow(
             color: isRecording
                 ? Color.obAccent.opacity(0.12)
-                : Color(red: 0.059, green: 0.039, blue: 0.102).opacity(0.04),
+                : Color.obTextPrimary.opacity(0.04),
             radius: isRecording ? 6 : 2,
             y: isRecording ? 0 : 1
         )

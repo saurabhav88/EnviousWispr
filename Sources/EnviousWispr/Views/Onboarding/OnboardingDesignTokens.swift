@@ -29,9 +29,6 @@ extension Color {
     static let obBorder       = Color(red: 0.541, green: 0.169, blue: 0.886).opacity(0.06)
     static let obBorderHover  = Color(red: 0.541, green: 0.169, blue: 0.886).opacity(0.12)
 
-    // Buttons
-    static let obBtnDark      = Color(red: 0.059, green: 0.039, blue: 0.102)
-
     // Rainbow gradient (static property — used as AnyShapeStyle)
     static let obRainbow = LinearGradient(
         colors: [
@@ -59,12 +56,13 @@ extension Font {
     static let obCaption      = Font.system(size: 12, weight: .regular)
     static let obCaptionSmall = Font.system(size: 11, weight: .regular)
     static let obLabel        = Font.system(size: 13, weight: .medium)
-    static let obButton       = Font.system(size: 15, weight: .bold)
 }
 
 // MARK: - Button Styles
 
-struct OnboardingPrimaryButtonStyle: ButtonStyle {
+struct OnboardingButtonStyle: ButtonStyle {
+    var color: Color = .obTextPrimary
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.obSubheading)
@@ -72,31 +70,7 @@ struct OnboardingPrimaryButtonStyle: ButtonStyle {
             .foregroundStyle(.white)
             .padding(.horizontal, 28)
             .padding(.vertical, 11)
-            .background(Color.obBtnDark, in: RoundedRectangle(cornerRadius: 12))
-            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
-    }
-}
-
-struct OnboardingAccentButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.obSubheading)
-            .foregroundStyle(.white)
-            .padding(.horizontal, 28)
-            .padding(.vertical, 11)
-            .background(Color.obAccent, in: RoundedRectangle(cornerRadius: 12))
-            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
-    }
-}
-
-struct OnboardingErrorButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.obSubheading)
-            .foregroundStyle(.white)
-            .padding(.horizontal, 28)
-            .padding(.vertical, 11)
-            .background(Color.obError, in: RoundedRectangle(cornerRadius: 12))
+            .background(color, in: RoundedRectangle(cornerRadius: 12))
             .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
     }
 }
