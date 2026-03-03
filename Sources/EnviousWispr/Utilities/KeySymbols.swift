@@ -114,6 +114,18 @@ enum KeySymbols {
         format(keyCode: keyCode, modifiers: modifiers)
     }
 
+    /// Returns the single symbol glyph for a modifier key code (e.g. 58 → "⌥").
+    /// Returns nil if the key code is not a modifier key.
+    static func symbolForModifierKeyCode(_ keyCode: UInt16) -> String? {
+        switch keyCode {
+        case 55, 54: return "⌘"
+        case 58, 61: return "⌥"
+        case 59, 62: return "⌃"
+        case 56, 60: return "⇧"
+        default: return nil
+        }
+    }
+
     /// Format just modifiers for push-to-talk display.
     /// When a keyCode is provided the label distinguishes left vs. right physical keys.
     static func formatModifierOnly(_ flags: NSEvent.ModifierFlags, keyCode: UInt16? = nil) -> String {

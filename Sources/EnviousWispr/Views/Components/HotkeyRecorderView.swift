@@ -81,6 +81,20 @@ private struct KeyCaptureView: NSViewRepresentable {
     }
 }
 
+// MARK: - HotkeyRecorderColors
+
+struct HotkeyRecorderColors {
+    var label: Color = .primary
+    var fieldText: Color = .primary
+    var fieldBackground: Color = Color.secondary.opacity(0.1)
+    var recordingBackground: Color = Color.accentColor.opacity(0.2)
+    var recordingBorder: Color = Color.accentColor
+    var placeholder: Color = Color.secondary
+    var resetIcon: Color = Color.secondary
+
+    static let system = HotkeyRecorderColors()
+}
+
 // MARK: - HotkeyRecorderView
 
 /// A reusable view for recording keyboard shortcuts.
@@ -92,6 +106,7 @@ struct HotkeyRecorderView: View {
     let defaultKeyCode: UInt16
     let defaultModifiers: NSEvent.ModifierFlags
     let label: String
+    var colors: HotkeyRecorderColors = .system
 
     @Environment(AppState.self) private var appState
 
@@ -100,25 +115,27 @@ struct HotkeyRecorderView: View {
     var body: some View {
         HStack {
             Text(label)
+                .foregroundStyle(colors.label)
             Spacer()
 
             // Use onTapGesture on a plain view to avoid Button stealing key events
             HStack(spacing: 4) {
                 if isRecording {
                     Text("Press keys...")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(colors.placeholder)
                 } else {
                     Text(KeySymbols.format(keyCode: keyCode, modifiers: modifiers))
+                        .foregroundStyle(colors.fieldText)
                 }
             }
             .frame(minWidth: 100)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(isRecording ? Color.accentColor.opacity(0.2) : Color.secondary.opacity(0.1))
+            .background(isRecording ? colors.recordingBackground : colors.fieldBackground)
             .cornerRadius(6)
             .overlay(
                 RoundedRectangle(cornerRadius: 6)
-                    .stroke(isRecording ? Color.accentColor : Color.clear, lineWidth: 1)
+                    .stroke(isRecording ? colors.recordingBorder : Color.clear, lineWidth: 1)
             )
             // Overlay a zero-size KeyCaptureView so it can steal first responder
             // without affecting visual layout.
@@ -137,7 +154,7 @@ struct HotkeyRecorderView: View {
             if keyCode != defaultKeyCode || modifiers != defaultModifiers {
                 Button(action: resetToDefault) {
                     Image(systemName: "arrow.counterclockwise")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(colors.resetIcon)
                 }
                 .buttonStyle(.plain)
                 .help("Reset to default")

@@ -774,10 +774,16 @@ private struct ModelDownloadStepView: View {
 private struct HotkeyConfigRow: View {
     @Bindable var appState: AppState
 
+    private var badgeSymbol: String {
+        let syms = KeySymbols.symbolsForModifiers(appState.settings.toggleModifiers)
+        if !syms.isEmpty { return syms }
+        return KeySymbols.symbolForModifierKeyCode(appState.settings.toggleKeyCode) ?? "⌨"
+    }
+
     var body: some View {
         HStack(spacing: 12) {
-            // Modifier icon badge — always uses toggleModifiers (single source of truth)
-            Text(KeySymbols.symbolsForModifiers(appState.settings.toggleModifiers))
+            // Modifier icon badge — falls back to modifier key symbol for modifier-only hotkeys
+            Text(badgeSymbol)
                 .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(Color.obAccent)
                 .frame(width: 36, height: 36)
@@ -794,7 +800,16 @@ private struct HotkeyConfigRow: View {
                     modifiers: $appState.settings.toggleModifiers,
                     defaultKeyCode: 49,
                     defaultModifiers: .control,
-                    label: "Hotkey"
+                    label: "Hotkey",
+                    colors: .init(
+                        label: .obTextPrimary,
+                        fieldText: .obTextPrimary,
+                        fieldBackground: .obCardBg,
+                        recordingBackground: Color.obAccent.opacity(0.1),
+                        recordingBorder: .obAccent,
+                        placeholder: .obTextTertiary,
+                        resetIcon: .obTextTertiary
+                    )
                 )
 
                 Text("Click the shortcut to change it")
