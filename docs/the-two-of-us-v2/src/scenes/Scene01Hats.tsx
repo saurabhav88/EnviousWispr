@@ -1,15 +1,12 @@
-import { motion, useInView } from 'framer-motion';
-import { useRef } from 'react';
+import { motion } from 'framer-motion';
 import { Scene } from '../components/Scene';
 import styles from './Scene01Hats.module.css';
 
 export function Scene01Hats() {
-  const ref = useRef<HTMLDivElement>(null);
-  const isInView = useInView(ref, { once: true, margin: '-10%' });
 
   return (
     <Scene id="scene-01-hats" background="radial-gradient(ellipse at 50% 70%, rgba(60,20,80,0.6), #0f0a1a)">
-      <div className={styles.sceneInner} ref={ref}>
+      <div className={styles.sceneInner}>
         <div className={styles.artContainer}>
           <motion.img
             src="/scenes/scene-01-hats.png"
