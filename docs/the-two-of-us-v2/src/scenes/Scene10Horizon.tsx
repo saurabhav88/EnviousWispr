@@ -9,7 +9,7 @@ export function Scene10Horizon() {
       <div className={styles.sceneInner}>
         <div className={styles.artContainer}>
           <motion.img
-            src="/scenes/scene-10-horizon.png"
+            src={`${import.meta.env.BASE_URL}scenes/scene-10-horizon.png`}
             alt=""
             className={styles.bgIllustration}
             loading="lazy"

@@ -21,7 +21,7 @@ export function Scene04Office() {
     <Scene id="scene-04" background="radial-gradient(ellipse at 50% 50%, rgba(60,20,80,0.4), #0f0a1a)">
       <div className={styles.sceneInner} ref={ref}>
         <div className={styles.artContainer}>
-          <motion.img src="/scenes/scene-04-office.png" alt="" className={styles.bgIllustration} loading="lazy"
+          <motion.img src={`${import.meta.env.BASE_URL}scenes/scene-04-office.png`} alt="" className={styles.bgIllustration} loading="lazy"
             initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} transition={{ duration: 1.5 }} />
           <div className={styles.overlay}>
             <motion.h2 className={styles.title} variants={titleVariants} initial="hidden" animate={isInView ? 'visible' : 'hidden'}>

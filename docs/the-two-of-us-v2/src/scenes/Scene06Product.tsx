@@ -9,7 +9,7 @@ export function Scene06Product() {
       <div className={styles.sceneInner}>
         <div className={styles.artContainer}>
           <motion.img
-            src="/scenes/scene-06-product.png"
+            src={`${import.meta.env.BASE_URL}scenes/scene-06-product.png`}
             alt=""
             className={styles.bgIllustration}
             loading="lazy"
