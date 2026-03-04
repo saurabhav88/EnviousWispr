@@ -345,9 +345,18 @@ final class SettingsManager {
     }
 
     var activePolishInstructions: PolishInstructions {
-        customSystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? .default
-            : .custom(systemPrompt: customSystemPrompt)
+        switch writingStylePreset {
+        case .formal:
+            return PolishInstructions(systemPrompt: PromptPreset.formal.systemPrompt)
+        case .standard:
+            return .default
+        case .friendly:
+            return PolishInstructions(systemPrompt: PromptPreset.casual.systemPrompt)
+        case .custom:
+            // Legacy: if someone had a custom prompt saved, honor it
+            let trimmed = customSystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? .default : .custom(systemPrompt: customSystemPrompt)
+        }
     }
 
     var isPushToTalk: Bool {

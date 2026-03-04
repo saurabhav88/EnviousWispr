@@ -8,7 +8,6 @@ struct AIPolishSettingsView: View {
     @State private var openAIKey: String = ""
     @State private var geminiKey: String = ""
     @State private var validationStatus: String = ""
-    @State private var showPromptEditor = false
     @State private var showManageModels = false
 
     private var isCloudProvider: Bool {
@@ -34,24 +33,9 @@ struct AIPolishSettingsView: View {
                         writingStylePresetCards
                     }
                     BrandedRow(showDivider: false) {
-                        HStack {
-                            if state.settings.writingStylePreset == .custom {
-                                Text("Custom instructions active")
-                                    .font(.stHelper)
-                                    .italic()
-                                    .foregroundStyle(Color.stAccent)
-                            } else {
-                                Text("Want more control?")
-                                    .font(.stHelper)
-                                    .italic()
-                                    .foregroundStyle(Color.stTextTertiary)
-                            }
-                            Spacer()
-                            Button("Edit Custom Instructions") {
-                                showPromptEditor = true
-                            }
-                            .controlSize(.small)
-                        }
+                        Text("Controls how your dictation is cleaned up and formatted.")
+                            .font(.stHelper)
+                            .foregroundStyle(Color.stTextTertiary)
                     }
                 }
             }
@@ -196,10 +180,6 @@ struct AIPolishSettingsView: View {
                     }
                 }
             }
-        }
-        .sheet(isPresented: $showPromptEditor) {
-            PromptEditorView()
-                .environment(appState)
         }
         .onAppear {
             openAIKey = (try? appState.keychainManager.retrieve(key: KeychainManager.openAIKeyID)) ?? ""

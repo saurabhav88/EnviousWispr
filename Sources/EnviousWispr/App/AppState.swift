@@ -226,7 +226,7 @@ final class AppState {
             let sensitivity = settings.environmentPreset.vadSensitivity
             settings.vadSensitivity = sensitivity
         case .writingStylePreset:
-            break
+            pipeline.llmPolish.polishInstructions = settings.activePolishInstructions
         case .vadSensitivity:
             pipeline.vadSensitivity = settings.vadSensitivity
         case .vadEnergyGate:
