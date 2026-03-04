@@ -3,5 +3,5 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  base: '/EnviousWispr/the-two-of-us-v2/',
+  base: './',
 })

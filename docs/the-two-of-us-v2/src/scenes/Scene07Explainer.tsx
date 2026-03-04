@@ -8,7 +8,7 @@ export function Scene07Explainer() {
       <div className={styles.sceneInner}>
         <div className={styles.artContainer}>
           <motion.img
-            src={`${import.meta.env.BASE_URL}scenes/scene-07-explainer.png`}
+            src={`${import.meta.env.BASE_URL}scenes/scene-07-explainer.jpg`}
             alt=""
             className={styles.bgIllustration}
             loading="lazy"

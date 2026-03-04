@@ -9,7 +9,7 @@ export function Scene02Canvas() {
       <div className={styles.sceneInner}>
         <div className={styles.artContainer}>
           <motion.img
-            src={`${import.meta.env.BASE_URL}scenes/scene-02-canvas.png`}
+            src={`${import.meta.env.BASE_URL}scenes/scene-02-canvas.jpg`}
             alt=""
             className={styles.bgIllustration}
             loading="lazy"

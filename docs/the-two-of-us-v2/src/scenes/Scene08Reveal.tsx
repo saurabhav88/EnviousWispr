@@ -9,7 +9,7 @@ export function Scene08Reveal() {
       <div className={styles.sceneInner}>
         <div className={styles.artContainer}>
           <motion.img
-            src={`${import.meta.env.BASE_URL}scenes/scene-08-reveal.png`}
+            src={`${import.meta.env.BASE_URL}scenes/scene-08-reveal.jpg`}
             alt=""
             className={styles.bgIllustration}
             loading="lazy"

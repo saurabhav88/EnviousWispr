@@ -9,7 +9,7 @@ export function Scene07People() {
       <div className={styles.sceneInner}>
         <div className={styles.artContainer}>
           <motion.img
-            src={`${import.meta.env.BASE_URL}scenes/scene-07-people.png`}
+            src={`${import.meta.env.BASE_URL}scenes/scene-07-people.jpg`}
             alt=""
             className={styles.bgIllustration}
             loading="lazy"

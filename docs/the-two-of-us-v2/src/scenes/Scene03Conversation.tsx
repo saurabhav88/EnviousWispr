@@ -9,7 +9,7 @@ export function Scene03Conversation() {
     <Scene id="scene-03" background="linear-gradient(180deg, #0f0a1a 0%, #1a1028 100%)">
       <div className={styles.sceneInner}>
         <div className={styles.artContainer}>
-          <motion.img src={`${import.meta.env.BASE_URL}scenes/scene-03-conversation.png`} alt="" className={styles.bgIllustration} loading="lazy"
+          <motion.img src={`${import.meta.env.BASE_URL}scenes/scene-03-conversation.jpg`} alt="" className={styles.bgIllustration} loading="lazy"
             initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} transition={{ duration: 1.5 }} />
           <div className={styles.headerWrap}>
             <h2 className={styles.title}>He found Claude Code...</h2>

@@ -9,7 +9,7 @@ export function Scene01Hats() {
       <div className={styles.sceneInner}>
         <div className={styles.artContainer}>
           <motion.img
-            src={`${import.meta.env.BASE_URL}scenes/scene-01-hats.png`}
+            src={`${import.meta.env.BASE_URL}scenes/scene-01-hats.jpg`}
             alt=""
             className={styles.bgIllustration}
             loading="lazy"
