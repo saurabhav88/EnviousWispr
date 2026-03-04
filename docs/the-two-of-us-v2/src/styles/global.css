@@ -28,8 +28,6 @@ html, body {
   background: var(--bg-dark);
   color: var(--text-light);
   font-family: var(--font-body);
-  overflow-x: hidden;
-  overscroll-behavior: none;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
