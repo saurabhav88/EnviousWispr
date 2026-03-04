@@ -26,157 +26,177 @@ struct AIPolishSettingsView: View {
     var body: some View {
         @Bindable var state = appState
 
-        Form {
+        SettingsContentView {
             // ── Section 1: Writing Style ──────────────────────────────
             if showWritingStyleSection {
-                Section("Writing Style") {
-                    writingStylePresetCards
-                    Divider()
-                    HStack {
-                        if state.settings.writingStylePreset == .custom {
-                            Text("Custom instructions active")
-                                .font(.caption)
-                                .italic()
-                                .foregroundStyle(Color(hex: "7c3aed"))
-                        } else {
-                            Text("Want more control?")
-                                .font(.caption)
-                                .italic()
-                                .foregroundStyle(.secondary)
+                BrandedSection(header: "Writing Style") {
+                    BrandedRow {
+                        writingStylePresetCards
+                    }
+                    BrandedRow(showDivider: false) {
+                        HStack {
+                            if state.settings.writingStylePreset == .custom {
+                                Text("Custom instructions active")
+                                    .font(.stHelper)
+                                    .italic()
+                                    .foregroundStyle(Color.stAccent)
+                            } else {
+                                Text("Want more control?")
+                                    .font(.stHelper)
+                                    .italic()
+                                    .foregroundStyle(Color.stTextTertiary)
+                            }
+                            Spacer()
+                            Button("Edit Custom Instructions") {
+                                showPromptEditor = true
+                            }
+                            .controlSize(.small)
                         }
-                        Spacer()
-                        Button("Edit Custom Instructions") {
-                            showPromptEditor = true
-                        }
-                        .controlSize(.small)
                     }
                 }
             }
 
             // ── Section 2: LLM Provider ───────────────────────────────
-            Section(content: {
-                Picker("LLM Provider", selection: $state.settings.llmProvider) {
-                    Text("Off").tag(LLMProvider.none)
-                    Text("OpenAI").tag(LLMProvider.openAI)
-                    Text("Google Gemini").tag(LLMProvider.gemini)
-                    Text("Local (Ollama)").tag(LLMProvider.ollama)
-                    Text("Apple Intelligence").tag(LLMProvider.appleIntelligence)
+            BrandedSection(header: "LLM Provider", content: {
+                BrandedRow {
+                    Picker("LLM Provider", selection: $state.settings.llmProvider) {
+                        Text("Off").tag(LLMProvider.none)
+                        Text("OpenAI").tag(LLMProvider.openAI)
+                        Text("Google Gemini").tag(LLMProvider.gemini)
+                        Text("Local (Ollama)").tag(LLMProvider.ollama)
+                        Text("Apple Intelligence").tag(LLMProvider.appleIntelligence)
+                    }
                 }
 
                 if appState.settings.llmProvider == .none {
-                    Text("Turn on AI polish to automatically fix grammar, punctuation, and formatting.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    BrandedRow {
+                        Text("Turn on AI polish to automatically fix grammar, punctuation, and formatting.")
+                            .font(.stHelper)
+                            .foregroundStyle(Color.stTextTertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
 
                 // Nested API key row — only for cloud providers
                 if isCloudProvider {
-                    apiKeyRow
+                    BrandedRow {
+                        apiKeyRow
+                    }
                 }
 
                 // Ollama wizard
                 if appState.settings.llmProvider == .ollama {
-                    ollamaSetupContent
+                    BrandedRow {
+                        ollamaSetupContent
+                    }
                 }
 
                 // Apple Intelligence status
                 if appState.settings.llmProvider == .appleIntelligence {
-                    appleIntelligenceStatus
+                    BrandedRow(showDivider: false) {
+                        appleIntelligenceStatus
+                    }
                 }
-            }, header: {
-                Text("LLM Provider")
             }, footer: {
                 if isCloudProvider {
                     if appState.settings.llmProvider == .openAI {
                         Link("Get your free API key at platform.openai.com",
                              destination: URL(string: "https://platform.openai.com/api-keys")!)
-                            .font(.caption)
+                            .font(.stHelper)
                     } else if appState.settings.llmProvider == .gemini {
                         Link("Get your free API key at aistudio.google.com",
                              destination: URL(string: "https://aistudio.google.com/apikey")!)
-                            .font(.caption)
+                            .font(.stHelper)
                     }
                 }
             })
 
             // ── Section 3: Model ──────────────────────────────────────
             if showModelSection {
-                Section("Model") {
-                    HStack {
-                        Picker("Model", selection: $state.settings.llmModel) {
-                            if appState.discoveredModels.isEmpty && !appState.isDiscoveringModels {
-                                Text(appState.settings.llmModel.isEmpty
-                                     ? (appState.settings.llmProvider == .ollama
-                                        ? "No models found"
-                                        : "Save API key to discover models")
-                                     : appState.settings.llmModel)
-                                    .tag(appState.settings.llmModel)
-                            }
-
-                            ForEach(appState.discoveredModels) { model in
-                                HStack {
-                                    Text(model.displayName)
-                                    if !model.isAvailable {
-                                        Image(systemName: "lock.fill")
-                                            .font(.caption2)
-                                    }
+                BrandedSection(header: "Model") {
+                    BrandedRow {
+                        HStack {
+                            Picker("Model", selection: $state.settings.llmModel) {
+                                if appState.discoveredModels.isEmpty && !appState.isDiscoveringModels {
+                                    Text(appState.settings.llmModel.isEmpty
+                                         ? (appState.settings.llmProvider == .ollama
+                                            ? "No models found"
+                                            : "Save API key to discover models")
+                                         : appState.settings.llmModel)
+                                        .tag(appState.settings.llmModel)
                                 }
-                                .tag(model.id)
-                            }
-                        }
 
-                        if appState.isDiscoveringModels {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Button {
-                                Task { await appState.validateKeyAndDiscoverModels(provider: appState.settings.llmProvider) }
-                            } label: {
-                                Image(systemName: "arrow.clockwise")
+                                ForEach(appState.discoveredModels) { model in
+                                    HStack {
+                                        Text(model.displayName)
+                                        if !model.isAvailable {
+                                            Image(systemName: "lock.fill")
+                                                .font(.caption2)
+                                        }
+                                    }
+                                    .tag(model.id)
+                                }
                             }
-                            .buttonStyle(.borderless)
-                            .help("Refresh available models")
+
+                            if appState.isDiscoveringModels {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Button {
+                                    Task { await appState.validateKeyAndDiscoverModels(provider: appState.settings.llmProvider) }
+                                } label: {
+                                    Image(systemName: "arrow.clockwise")
+                                }
+                                .buttonStyle(.borderless)
+                                .help("Refresh available models")
+                            }
                         }
                     }
 
                     if let selectedModel = appState.discoveredModels.first(where: { $0.id == appState.settings.llmModel }),
                        !selectedModel.isAvailable {
-                        Text("This model requires a paid API plan.")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
+                        BrandedRow {
+                            Text("This model requires a paid API plan.")
+                                .font(.stHelper)
+                                .foregroundStyle(.orange)
+                        }
                     }
 
                     // Model recommendation cards
-                    modelRecommendationCards
+                    BrandedRow(showDivider: false) {
+                        modelRecommendationCards
+                    }
                 }
             }
 
             // Manage Models for Ollama (when ready)
             if appState.settings.llmProvider == .ollama,
                case .ready = appState.ollamaSetup.setupState {
-                Section("Manage Models") {
-                    DisclosureGroup("Download / Remove Models", isExpanded: $showManageModels) {
-                        ollamaModelCatalogView
+                BrandedSection(header: "Manage Models") {
+                    BrandedRow(showDivider: false) {
+                        DisclosureGroup("Download / Remove Models", isExpanded: $showManageModels) {
+                            ollamaModelCatalogView
+                        }
                     }
                 }
             }
 
             // ── Section 4: Advanced ───────────────────────────────────
             if isCloudProvider {
-                Section("Advanced") {
-                    @Bindable var state2 = appState
-                    VStack(alignment: .leading, spacing: 4) {
-                        Toggle("Deep reasoning", isOn: $state2.settings.useExtendedThinking)
-                        Text("Takes longer but handles complex formatting instructions better.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                BrandedSection(header: "Advanced") {
+                    BrandedRow(showDivider: false) {
+                        @Bindable var state2 = appState
+                        VStack(alignment: .leading, spacing: 4) {
+                            Toggle("Deep reasoning", isOn: $state2.settings.useExtendedThinking)
+                                .toggleStyle(BrandedToggleStyle())
+                            Text("Takes longer but handles complex formatting instructions better.")
+                                .font(.stHelper)
+                                .foregroundStyle(Color.stTextTertiary)
+                        }
                     }
                 }
             }
         }
-        .formStyle(.grouped)
-        .tint(Color(hex: "7c3aed"))
         .sheet(isPresented: $showPromptEditor) {
             PromptEditorView()
                 .environment(appState)
@@ -265,7 +285,7 @@ struct AIPolishSettingsView: View {
                 Text(name)
                     .font(.caption)
                     .fontWeight(.semibold)
-                    .foregroundStyle(isSelected ? Color(hex: "7c3aed") : .primary)
+                    .foregroundStyle(isSelected ? Color.stAccent : .primary)
                 Text(desc)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -278,12 +298,12 @@ struct AIPolishSettingsView: View {
             .padding(.horizontal, 6)
             .background(
                 RoundedRectangle(cornerRadius: 9)
-                    .fill(isSelected ? Color(hex: "7c3aed").opacity(0.08) : Color.clear)
+                    .fill(isSelected ? Color.stAccent.opacity(0.08) : Color.clear)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 9)
                     .strokeBorder(
-                        isSelected ? Color(hex: "7c3aed") : Color.primary.opacity(0.12),
+                        isSelected ? Color.stAccent : Color.primary.opacity(0.12),
                         lineWidth: isSelected ? 1.5 : 1
                     )
             )
@@ -298,8 +318,8 @@ struct AIPolishSettingsView: View {
         let isOpenAI = appState.settings.llmProvider == .openAI
         VStack(alignment: .leading, spacing: 6) {
             Text(isOpenAI ? "OpenAI API Key" : "Google Gemini API Key")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.stHelper)
+                .foregroundStyle(Color.stTextTertiary)
             HStack(spacing: 8) {
                 if isOpenAI {
                     SecureField("sk-proj-…", text: $openAIKey)
@@ -358,8 +378,8 @@ struct AIPolishSettingsView: View {
                 ProgressView()
                     .controlSize(.mini)
                 Text("Validating…")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.stHelper)
+                    .foregroundStyle(Color.stTextTertiary)
             }
         case .valid:
             HStack(spacing: 4) {
@@ -404,7 +424,7 @@ struct AIPolishSettingsView: View {
                                 .fontWeight(.medium)
                             Text(card.desc)
                                 .font(.caption2)
-                                .foregroundStyle(.tertiary)
+                                .foregroundStyle(Color.stTextTertiary)
                         }
 
                         Spacer()
@@ -431,8 +451,8 @@ struct AIPolishSettingsView: View {
             }
 
             Text("Transcript cleanup is straightforward — smaller models handle it well at a fraction of the cost.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.stHelper)
+                .foregroundStyle(Color.stTextTertiary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -484,7 +504,7 @@ struct AIPolishSettingsView: View {
                 ProgressView()
                     .controlSize(.small)
                 Text("Checking Ollama installation...")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.stTextTertiary)
             }
 
         case .notInstalled:
@@ -492,8 +512,8 @@ struct AIPolishSettingsView: View {
                 ollamaStepIndicators(current: 1)
 
                 Text("Ollama runs AI models privately on your Mac — no cloud, no API keys, completely free.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.stHelper)
+                    .foregroundStyle(Color.stTextTertiary)
 
                 HStack {
                     Button("Download Ollama") {
@@ -508,8 +528,8 @@ struct AIPolishSettingsView: View {
                 }
 
                 Text("After installing, come back and click refresh.")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .font(.stHelper)
+                    .foregroundStyle(Color.stTextTertiary)
             }
 
         case .installedNotRunning:
@@ -517,8 +537,8 @@ struct AIPolishSettingsView: View {
                 ollamaStepIndicators(current: 2)
 
                 Text("Ollama is installed but isn't running yet.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.stHelper)
+                    .foregroundStyle(Color.stTextTertiary)
 
                 HStack {
                     Button("Start Ollama") {
@@ -531,8 +551,8 @@ struct AIPolishSettingsView: View {
                 }
 
                 Text("Or run `ollama serve` in Terminal.")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .font(.stHelper)
+                    .foregroundStyle(Color.stTextTertiary)
             }
 
         case .runningNoModels:
@@ -540,8 +560,8 @@ struct AIPolishSettingsView: View {
                 ollamaStepIndicators(current: 3)
 
                 Text("Ollama needs a language model to polish your text.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.stHelper)
+                    .foregroundStyle(Color.stTextTertiary)
 
                 HStack {
                     Button("Download \(appState.settings.ollamaModel)") {
@@ -554,8 +574,8 @@ struct AIPolishSettingsView: View {
                 }
 
                 Text("About 2 GB download. Runs entirely on your Mac.")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .font(.stHelper)
+                    .foregroundStyle(Color.stTextTertiary)
             }
 
         case .pullingModel(let progress, let status):
@@ -568,14 +588,14 @@ struct AIPolishSettingsView: View {
                 HStack {
                     Text(status)
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Color.stTextTertiary)
                         .lineLimit(1)
                     Spacer()
                     if progress > 0 {
                         Text("\(Int(progress * 100))%")
                             .font(.caption2)
                             .monospacedDigit()
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.stTextTertiary)
                     }
                     Button("Cancel") {
                         appState.ollamaSetup.cancelPull()
@@ -597,8 +617,8 @@ struct AIPolishSettingsView: View {
             }
 
             Text("You're all set! Select a model above.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.stHelper)
+                .foregroundStyle(Color.stTextTertiary)
 
         case .error(let message):
             VStack(alignment: .leading, spacing: 8) {
@@ -606,8 +626,8 @@ struct AIPolishSettingsView: View {
                     .foregroundStyle(.orange)
 
                 Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.stHelper)
+                    .foregroundStyle(Color.stTextTertiary)
 
                 Button("Try Again") {
                     Task {
@@ -627,8 +647,8 @@ struct AIPolishSettingsView: View {
     @ViewBuilder
     private var appleIntelligenceStatus: some View {
         Text("On-device model — no internet or API key required.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.stHelper)
+            .foregroundStyle(Color.stTextTertiary)
 
         if #available(macOS 26.0, *) {
             HStack {
@@ -645,7 +665,7 @@ struct AIPolishSettingsView: View {
                 case .validating:
                     ProgressView().controlSize(.small)
                 case .idle:
-                    Text("Not checked").foregroundStyle(.secondary)
+                    Text("Not checked").foregroundStyle(Color.stTextTertiary)
                 }
 
                 Button {
@@ -659,7 +679,7 @@ struct AIPolishSettingsView: View {
         } else {
             Label("Requires macOS 26 or later.", systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
-                .font(.caption)
+                .font(.stHelper)
         }
     }
 
@@ -680,7 +700,7 @@ struct AIPolishSettingsView: View {
                         }
                         Text("\(entry.parameterCount) · \(entry.downloadSize)")
                             .font(.caption2)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(Color.stTextTertiary)
                     }
 
                     Spacer()

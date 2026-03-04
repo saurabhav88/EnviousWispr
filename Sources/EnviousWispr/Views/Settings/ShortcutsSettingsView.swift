@@ -7,42 +7,46 @@ struct ShortcutsSettingsView: View {
     var body: some View {
         @Bindable var state = appState
 
-        Form {
-            Section("Transcribe Shortcut") {
-                HotkeyRecorderView(
-                    keyCode: $state.settings.toggleKeyCode,
-                    modifiers: $state.settings.toggleModifiers,
-                    defaultKeyCode: 49,  // Space
-                    defaultModifiers: .control,
-                    label: "Shortcut"
-                )
-
-                Toggle(
-                    appState.settings.isPushToTalk ? "Push to Talk" : "Toggle",
-                    isOn: $state.settings.isPushToTalk
-                )
-
-                Text(appState.settings.isPushToTalk
-                     ? "Hold the hotkey to record, release to stop."
-                     : "Press the hotkey to start recording, press again to stop.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Divider()
-
-                HotkeyRecorderView(
-                    keyCode: $state.settings.cancelKeyCode,
-                    modifiers: $state.settings.cancelModifiers,
-                    defaultKeyCode: 53,  // Escape
-                    defaultModifiers: [],
-                    label: "Cancel recording"
-                )
-
-                Text("Press this to discard the current recording and return to idle.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        SettingsContentView {
+            BrandedSection(header: "Transcribe Shortcut") {
+                BrandedRow {
+                    HotkeyRecorderView(
+                        keyCode: $state.settings.toggleKeyCode,
+                        modifiers: $state.settings.toggleModifiers,
+                        defaultKeyCode: 49,
+                        defaultModifiers: .control,
+                        label: "Shortcut"
+                    )
+                }
+                BrandedRow {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Toggle(
+                            appState.settings.isPushToTalk ? "Push to Talk" : "Toggle",
+                            isOn: $state.settings.isPushToTalk
+                        )
+                        .toggleStyle(BrandedToggleStyle())
+                        Text(appState.settings.isPushToTalk
+                             ? "Hold the hotkey to record, release to stop."
+                             : "Press the hotkey to start recording, press again to stop.")
+                            .font(.stHelper)
+                            .foregroundStyle(.stTextTertiary)
+                    }
+                }
+                BrandedRow {
+                    HotkeyRecorderView(
+                        keyCode: $state.settings.cancelKeyCode,
+                        modifiers: $state.settings.cancelModifiers,
+                        defaultKeyCode: 53,
+                        defaultModifiers: [],
+                        label: "Cancel recording"
+                    )
+                }
+                BrandedRow(showDivider: false) {
+                    Text("Press this to discard the current recording and return to idle.")
+                        .font(.stHelper)
+                        .foregroundStyle(.stTextTertiary)
+                }
             }
         }
-        .formStyle(.grouped)
     }
 }

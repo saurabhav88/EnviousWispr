@@ -18,11 +18,14 @@ struct UnifiedWindowView: View {
                 }
             }
             .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .background(Color.stSidebarBg)
             .navigationSplitViewColumnWidth(min: 160, ideal: 180, max: 200)
         } detail: {
             detailContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .accentColor(.stAccent)
         .navigationTitle(AppConstants.appName)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {

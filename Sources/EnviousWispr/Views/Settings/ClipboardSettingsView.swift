@@ -7,15 +7,22 @@ struct ClipboardSettingsView: View {
     var body: some View {
         @Bindable var state = appState
 
-        Form {
-            Section("Clipboard") {
-                Toggle("Auto-copy to clipboard", isOn: $state.settings.autoCopyToClipboard)
-                Toggle("Restore clipboard after paste", isOn: $state.settings.restoreClipboardAfterPaste)
-                Text("Saves and restores whatever was on your clipboard before pasting the transcript.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        SettingsContentView {
+            BrandedSection(header: "Clipboard") {
+                BrandedRow {
+                    Toggle("Auto-copy to clipboard", isOn: $state.settings.autoCopyToClipboard)
+                        .toggleStyle(BrandedToggleStyle())
+                }
+                BrandedRow(showDivider: false) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Toggle("Restore clipboard after paste", isOn: $state.settings.restoreClipboardAfterPaste)
+                            .toggleStyle(BrandedToggleStyle())
+                        Text("Saves and restores whatever was on your clipboard before pasting the transcript.")
+                            .font(.stHelper)
+                            .foregroundStyle(.stTextTertiary)
+                    }
+                }
             }
         }
-        .formStyle(.grouped)
     }
 }

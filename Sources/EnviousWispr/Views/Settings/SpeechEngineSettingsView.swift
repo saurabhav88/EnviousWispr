@@ -1,8 +1,5 @@
 import SwiftUI
 
-private let brandPurple: Color = Color(hex: "7c3aed")
-private let brandPurpleSoft: Color = Color(hex: "7c3aed").opacity(0.08)
-
 /// Transcription engine, multi-language options, recording environment, and cleanup settings.
 struct SpeechEngineSettingsView: View {
     @Environment(AppState.self) private var appState
@@ -10,132 +7,97 @@ struct SpeechEngineSettingsView: View {
     var body: some View {
         @Bindable var state = appState
 
-        Form {
+        SettingsContentView {
             // ── Section 1: Transcription Engine ──────────────────────────────
-            Section("Transcription Engine") {
-                Picker("Engine", selection: $state.settings.selectedBackend) {
-                    Text("Fast (English)").tag(ASRBackendType.parakeet)
-                    Text("Multi-Language").tag(ASRBackendType.whisperKit)
+            BrandedSection(header: "Transcription Engine") {
+                BrandedRow {
+                    BrandedSegmentedPicker(
+                        options: [
+                            ("Fast (English)", ASRBackendType.parakeet),
+                            ("Multi-Language", ASRBackendType.whisperKit)
+                        ],
+                        selection: $state.settings.selectedBackend
+                    )
                 }
-                .pickerStyle(.segmented)
-
-                Text(appState.settings.selectedBackend == .parakeet
-                    ? "Powered by Parakeet — fast English transcription with built-in punctuation."
-                    : "Powered by WhisperKit — broader language support with configurable quality controls.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                BrandedRow(showDivider: false) {
+                    Text(appState.settings.selectedBackend == .parakeet
+                        ? "Powered by Parakeet — fast English transcription with built-in punctuation."
+                        : "Powered by WhisperKit — broader language support with configurable quality controls.")
+                        .font(.stHelper)
+                        .foregroundStyle(.stTextTertiary)
+                }
             }
 
             // ── Section 2: Multi-Language Options (conditional) ───────────────
             if appState.settings.selectedBackend == .whisperKit {
-                Section("Multi-Language Options") {
-                    Toggle("Auto-detect language", isOn: $state.settings.whisperKitLanguageAutoDetect)
-                        .tint(brandPurple)
-                    Text("Automatically identifies which language you're speaking.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text("Accuracy")
-                            Spacer()
-                            Text(String(format: "%.1f", appState.settings.whisperKitTemperature))
-                                .font(.caption)
-                                .fontWeight(.medium)
-                                .foregroundStyle(brandPurple)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 1)
-                                .background(brandPurpleSoft)
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
-                        }
-                        HStack(spacing: 8) {
-                            Text("Low").font(.caption2).foregroundStyle(.secondary)
-                            Slider(value: $state.settings.whisperKitTemperature, in: 0.0...1.0, step: 0.1)
-                                .tint(brandPurple)
-                            Text("High").font(.caption2).foregroundStyle(.secondary)
+                BrandedSection(header: "Multi-Language Options") {
+                    BrandedRow {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Toggle("Auto-detect language", isOn: $state.settings.whisperKitLanguageAutoDetect)
+                                .toggleStyle(BrandedToggleStyle())
+                            Text("Automatically identifies which language you're speaking.")
+                                .font(.stHelper)
+                                .foregroundStyle(.stTextTertiary)
                         }
                     }
-                    Text("Lower = more consistent, higher = more creative.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text("Speech filter")
-                            Spacer()
-                            Text(String(format: "%.1f", appState.settings.whisperKitNoSpeechThreshold))
-                                .font(.caption)
-                                .fontWeight(.medium)
-                                .foregroundStyle(brandPurple)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 1)
-                                .background(brandPurpleSoft)
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
-                        }
-                        HStack(spacing: 8) {
-                            Text("Low").font(.caption2).foregroundStyle(.secondary)
-                            Slider(value: $state.settings.whisperKitNoSpeechThreshold, in: 0.0...1.0, step: 0.05)
-                                .tint(brandPurple)
-                            Text("High").font(.caption2).foregroundStyle(.secondary)
+                    BrandedRow {
+                        VStack(alignment: .leading, spacing: 4) {
+                            BrandedSlider("Accuracy", value: $state.settings.whisperKitTemperature, in: 0.0...1.0, step: 0.1)
+                            Text("Lower = more consistent, higher = more creative.")
+                                .font(.stHelper)
+                                .foregroundStyle(.stTextTertiary)
                         }
                     }
-                    Text("How aggressively to filter silence from the transcript.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    BrandedRow(showDivider: false) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            BrandedSlider("Speech filter", value: $state.settings.whisperKitNoSpeechThreshold, in: 0.0...1.0, step: 0.05)
+                            Text("How aggressively to filter silence from the transcript.")
+                                .font(.stHelper)
+                                .foregroundStyle(.stTextTertiary)
+                        }
+                    }
                 }
             }
 
             // ── Section 3: Recording Environment ─────────────────────────────
-            Section("Recording Environment") {
-                EnvironmentPresetCards(selection: Binding(
-                    get: { appState.settings.environmentPreset },
-                    set: { state.settings.environmentPreset = $0 }
-                ))
-                .listRowInsets(EdgeInsets())
-                .listRowBackground(Color.clear)
-
-                Toggle("Stop recording on silence", isOn: $state.settings.vadAutoStop)
-                    .tint(brandPurple)
-
+            BrandedSection(header: "Recording Environment") {
+                BrandedRow {
+                    EnvironmentPresetCards(selection: Binding(
+                        get: { appState.settings.environmentPreset },
+                        set: { state.settings.environmentPreset = $0 }
+                    ))
+                }
+                BrandedRow {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Toggle("Stop recording on silence", isOn: $state.settings.vadAutoStop)
+                            .toggleStyle(BrandedToggleStyle())
+                    }
+                }
                 if appState.settings.vadAutoStop {
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text("Pause duration")
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Text(String(format: "%.1fs", appState.settings.vadSilenceTimeout))
-                                .font(.caption)
-                                .fontWeight(.medium)
-                                .foregroundStyle(brandPurple)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 1)
-                                .background(brandPurpleSoft)
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
-                        }
-                        HStack(spacing: 8) {
-                            Text("0.5s").font(.caption2).foregroundStyle(.secondary)
-                            Slider(value: $state.settings.vadSilenceTimeout, in: 0.5...3.0, step: 0.25)
-                                .tint(brandPurple)
-                            Text("3.0s").font(.caption2).foregroundStyle(.secondary)
+                    BrandedRow {
+                        VStack(alignment: .leading, spacing: 4) {
+                            BrandedSlider("Pause duration", value: $state.settings.vadSilenceTimeout, in: 0.5...3.0, step: 0.25, low: "0.5s", high: "3.0s", format: "%.1fs")
+                            Text("How long to wait after you stop speaking before ending the recording.")
+                                .font(.stHelper)
+                                .foregroundStyle(.stTextTertiary)
                         }
                     }
-                    Text("How long to wait after you stop speaking before ending the recording.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
             }
 
             // ── Section 4: Cleanup ────────────────────────────────────────────
-            Section("Cleanup") {
-                Toggle("Remove filler words (um, uh, hmm...)", isOn: $state.settings.fillerRemovalEnabled)
-                    .tint(brandPurple)
-                Text("Strips common filler words from transcriptions.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            BrandedSection(header: "Cleanup") {
+                BrandedRow(showDivider: false) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Toggle("Remove filler words (um, uh, hmm...)", isOn: $state.settings.fillerRemovalEnabled)
+                            .toggleStyle(BrandedToggleStyle())
+                        Text("Strips common filler words from transcriptions.")
+                            .font(.stHelper)
+                            .foregroundStyle(.stTextTertiary)
+                    }
+                }
             }
         }
-        .formStyle(.grouped)
-        .tint(brandPurple)
     }
 }
 
@@ -165,7 +127,6 @@ private struct EnvironmentPresetCards: View {
                 }
             }
         }
-        .padding(12)
     }
 }
 
@@ -173,8 +134,6 @@ private struct PresetCard: View {
     let info: PresetInfo
     let isSelected: Bool
     let onTap: () -> Void
-
-    private let brandPurple = Color(hex: "7c3aed")
 
     var body: some View {
         Button(action: onTap) {
@@ -185,7 +144,7 @@ private struct PresetCard: View {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 11))
                             .foregroundStyle(.white)
-                            .background(brandPurple)
+                            .background(Color.stAccent)
                             .clipShape(Circle())
                             .offset(x: 2, y: -2)
                     }
@@ -210,12 +169,12 @@ private struct PresetCard: View {
             .frame(maxWidth: .infinity)
             .background(
                 RoundedRectangle(cornerRadius: 9)
-                    .fill(isSelected ? brandPurple.opacity(0.08) : Color(nsColor: .controlBackgroundColor))
+                    .fill(isSelected ? Color.stAccent.opacity(0.08) : Color(nsColor: .controlBackgroundColor))
                     .overlay(
                         RoundedRectangle(cornerRadius: 9)
-                            .stroke(isSelected ? brandPurple : Color(nsColor: .separatorColor), lineWidth: isSelected ? 1.5 : 1)
+                            .stroke(isSelected ? Color.stAccent : Color(nsColor: .separatorColor), lineWidth: isSelected ? 1.5 : 1)
                     )
-                    .shadow(color: isSelected ? brandPurple.opacity(0.20) : .clear, radius: 4, y: 2)
+                    .shadow(color: isSelected ? Color.stAccent.opacity(0.20) : .clear, radius: 4, y: 2)
             )
         }
         .buttonStyle(.plain)
