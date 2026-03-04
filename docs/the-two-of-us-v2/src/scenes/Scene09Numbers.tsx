@@ -79,7 +79,7 @@ export function Scene09Numbers() {
       id="scene-09-numbers"
       minHeight="100vh"
       background="#0a0a1a"
-      parallaxIntensity={0.08}
+     
     >
       <motion.img
         src="/scenes/scene-09-numbers.png"

@@ -10,7 +10,7 @@ export function Scene10Horizon() {
       id="scene-10-horizon"
       minHeight="100vh"
       background="linear-gradient(180deg, #0a0a1a 0%, #0d0820 50%, #0a0012 100%)"
-      parallaxIntensity={0.05}
+     
     >
       <motion.img
         src="/scenes/scene-10-horizon.png"

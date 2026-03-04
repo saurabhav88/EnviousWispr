@@ -16,7 +16,7 @@ export function Scene05Building() {
       id="scene-05-building"
       minHeight="100vh"
       background="linear-gradient(180deg, #0a1a14 0%, #0f0a1a 100%)"
-      parallaxIntensity={0.08}
+     
     >
       <motion.img
         src="/scenes/scene-05-building.png"

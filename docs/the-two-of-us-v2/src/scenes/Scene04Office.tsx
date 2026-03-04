@@ -18,7 +18,7 @@ export function Scene04Office() {
   const isInView = useInView(ref, { once: true, margin: '-10%' });
 
   return (
-    <Scene id="scene-04" minHeight="110vh" background="radial-gradient(ellipse at 50% 50%, rgba(60,20,80,0.4), #0f0a1a)" parallaxIntensity={0.12}>
+    <Scene id="scene-04" minHeight="110vh" background="radial-gradient(ellipse at 50% 50%, rgba(60,20,80,0.4), #0f0a1a)">
       <motion.img src="/scenes/scene-04-office.png" alt="" className={styles.bgIllustration} loading="lazy"
         initial={{ opacity: 0 }} whileInView={{ opacity: 0.55 }} viewport={{ once: true }} transition={{ duration: 1.5 }} />
       <div className={styles.wrapper} ref={ref}>

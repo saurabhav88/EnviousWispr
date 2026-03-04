@@ -12,7 +12,7 @@ export function Scene06Product() {
       id="scene-06-product"
       minHeight="100vh"
       background="radial-gradient(ellipse at 50% 40%, rgba(40,30,0,0.4), #0f0a1a)"
-      parallaxIntensity={0.06}
+     
     >
       <motion.img
         src="/scenes/scene-06-product.png"

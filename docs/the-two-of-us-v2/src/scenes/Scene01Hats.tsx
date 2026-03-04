@@ -114,7 +114,7 @@ export function Scene01Hats() {
       id="scene-01-hats"
       minHeight="100vh"
       background="radial-gradient(ellipse at 50% 70%, rgba(60,20,80,0.6), #0f0a1a)"
-      parallaxIntensity={0.15}
+     
     >
       <ParticleField
         density={55}
