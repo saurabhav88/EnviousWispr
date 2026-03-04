@@ -1,88 +1,42 @@
+.sceneInner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.artContainer {
+  position: relative;
+  width: 100%;
+  max-width: 700px;
+  margin: 0 auto;
+}
+
 .bgIllustration {
-  position: absolute;
-  inset: 0;
+  display: block;
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  height: auto;
   pointer-events: none;
-  z-index: 0;
-  mask-image: linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, black 5%, black 95%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 5%, black 95%, transparent 100%);
 }
 
-.wrapper {
-  position: relative;
+.headerWrap {
+  position: absolute;
+  top: 4%;
+  left: 0;
+  right: 0;
   display: flex;
-  flex-direction: column;
-  align-items: center;
   justify-content: center;
-  min-height: 100vh;
-  padding: 80px 24px;
-  z-index: 1;
+  z-index: 2;
 }
 
-/* ── Hats Row ── */
-.hatsRow {
-  position: relative;
-  width: 100%;
-  height: 140px;
-  margin-bottom: 24px;
-}
-
-.hat {
-  position: absolute;
-  transform: translateX(-50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  cursor: default;
-}
-
-.hatGlow {
-  position: absolute;
-  inset: -10px;
-  border-radius: 50%;
-  background: radial-gradient(circle, var(--hat-color, #7c3aed) 0%, transparent 70%);
-  opacity: 0.15;
-  filter: blur(8px);
-}
-
-.hatIcon {
-  position: relative;
-  z-index: 1;
-  filter: drop-shadow(0 0 8px var(--hat-color, #7c3aed));
-}
-
-.hatLabel {
-  font-family: var(--font-mono, 'JetBrains Mono', monospace);
-  font-size: 10px;
+.title {
+  font-family: var(--font-body);
+  font-size: 1.5rem;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-light, #f8f5ff);
-  text-shadow:
-    0 1px 4px rgba(0, 0, 0, 0.9),
-    0 0 2px rgba(0, 0, 0, 1);
-}
-
-/* Caption */
-.captionArea {
-  margin-top: 64px;
   text-align: center;
-  max-width: 560px;
-}
-
-/* Ambient glow behind scene */
-.ambientGlow {
-  position: absolute;
-  bottom: 15%;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 600px;
-  height: 200px;
-  background: radial-gradient(ellipse, rgba(60, 20, 100, 0.35) 0%, transparent 70%);
-  filter: blur(40px);
-  pointer-events: none;
-  z-index: 0;
+  margin: 0;
+  color: #ffffff;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,1);
 }

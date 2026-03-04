@@ -1,24 +1,35 @@
-.bgIllustration {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  pointer-events: none;
-  z-index: 0;
-  mask-image: linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%);
-}
-
-.wrapper {
+.sceneInner {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3rem;
-  padding: 5rem 2rem 4rem;
   width: 100%;
-  max-width: 1000px;
+}
+
+.artContainer {
+  position: relative;
+  width: 100%;
+  max-width: 700px;
   margin: 0 auto;
+}
+
+.bgIllustration {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+  mask-image: linear-gradient(to bottom, transparent 0%, black 5%, black 95%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 5%, black 95%, transparent 100%);
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 15% 2rem 2rem;
+  z-index: 2;
 }
 
 .title {
@@ -28,4 +39,14 @@
   text-align: center;
   margin: 0;
   line-height: 1.1;
+}
+
+.captionWrap {
+  position: absolute;
+  bottom: 5%;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  z-index: 2;
 }

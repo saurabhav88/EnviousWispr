@@ -18,16 +18,22 @@ export function Scene04Office() {
   const isInView = useInView(ref, { once: true, margin: '-10%' });
 
   return (
-    <Scene id="scene-04" minHeight="110vh" background="radial-gradient(ellipse at 50% 50%, rgba(60,20,80,0.4), #0f0a1a)">
-      <motion.img src="/scenes/scene-04-office.png" alt="" className={styles.bgIllustration} loading="lazy"
-        initial={{ opacity: 0 }} whileInView={{ opacity: 0.55 }} viewport={{ once: true }} transition={{ duration: 1.5 }} />
-      <div className={styles.wrapper} ref={ref}>
-        <motion.h2 className={styles.title} variants={titleVariants} initial="hidden" animate={isInView ? 'visible' : 'hidden'}>
-          <RainbowText>The Office Fills Up</RainbowText>
-        </motion.h2>
-        <Caption>
-          One conversation became a team.{'\n'}The same mind, wearing every hat — by choice this time.
-        </Caption>
+    <Scene id="scene-04" background="radial-gradient(ellipse at 50% 50%, rgba(60,20,80,0.4), #0f0a1a)">
+      <div className={styles.sceneInner} ref={ref}>
+        <div className={styles.artContainer}>
+          <motion.img src="/scenes/scene-04-office.png" alt="" className={styles.bgIllustration} loading="lazy"
+            initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} transition={{ duration: 1.5 }} />
+          <div className={styles.overlay}>
+            <motion.h2 className={styles.title} variants={titleVariants} initial="hidden" animate={isInView ? 'visible' : 'hidden'}>
+              <RainbowText>Claude Gets to Work!</RainbowText>
+            </motion.h2>
+          </div>
+          <div className={styles.captionWrap}>
+            <Caption>
+              Architects, builders, testers — all summoned in seconds.{'\n'}He handled the vision. Claude handled everything else.
+            </Caption>
+          </div>
+        </div>
       </div>
     </Scene>
   );

@@ -1,47 +1,54 @@
-.bgIllustration {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  pointer-events: none;
-  z-index: 0;
-  mask-image: linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 10%, black 90%, transparent 100%);
-}
-
-.container {
-  width: 100%;
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 80px 40px;
+.sceneInner {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 64px;
+  width: 100%;
 }
 
-.caption {
-  text-align: center;
-  font-size: clamp(18px, 2.5vw, 24px);
-  font-weight: 600;
-  line-height: 1.7;
-  color: var(--text-light, #f8f5ff);
-  max-width: 560px;
-  white-space: pre-line;
-  background: rgba(0, 0, 0, 0.5);
-  padding: 20px 36px;
-  border-radius: 14px;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  text-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.9),
-    0 0 2px rgba(0, 0, 0, 1);
+.artContainer {
+  position: relative;
+  width: 100%;
+  max-width: 700px;
+  margin: 0 auto;
 }
 
-.emphasized {
-  color: var(--text-light, #f8f5ff);
+.bgIllustration {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+  mask-image: linear-gradient(to bottom, transparent 0%, black 5%, black 95%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 5%, black 95%, transparent 100%);
+}
+
+.headerWrap {
+  position: absolute;
+  top: 4%;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  z-index: 2;
+}
+
+.title {
+  font-family: var(--font-body);
+  font-size: 1.5rem;
   font-weight: 700;
+  text-align: center;
+  margin: 0;
+  color: #ffffff;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,1);
+}
+
+.captionWrap {
+  position: absolute;
+  bottom: 5%;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  z-index: 2;
 }
 
 .gold {
@@ -51,10 +58,4 @@
     0 0 20px rgba(230, 194, 0, 0.4),
     0 2px 8px rgba(0, 0, 0, 0.9),
     0 0 2px rgba(0, 0, 0, 1);
-}
-
-@media (max-width: 600px) {
-  .container {
-    padding: 60px 20px;
-  }
 }
