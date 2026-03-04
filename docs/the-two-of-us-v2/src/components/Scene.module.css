@@ -7,27 +7,6 @@
   overflow: hidden;
 }
 
-.scene::before,
-.scene::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 120px;
-  z-index: 3;
-  pointer-events: none;
-}
-
-.scene::before {
-  top: 0;
-  background: linear-gradient(to bottom, var(--bg-dark), transparent);
-}
-
-.scene::after {
-  bottom: 0;
-  background: linear-gradient(to top, var(--bg-dark), transparent);
-}
-
 .content {
   position: relative;
   z-index: 1;
@@ -42,11 +21,6 @@
 }
 
 @media (max-width: 480px) {
-  .scene::before,
-  .scene::after {
-    height: 80px;
-  }
-
   .content {
     padding: 3rem 1.25rem;
     gap: 1.5rem;
