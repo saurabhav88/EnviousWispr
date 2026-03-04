@@ -35,8 +35,8 @@ export function Scene05Building() {
               <motion.span
                 className={styles.stepLabel}
                 style={{ color: stepColors[i], textShadow: `0 0 20px ${stepColors[i]}40` }}
-                initial={{ opacity: 0, y: 16 }}
-                animate={isInView ? { opacity: 1, y: 0 } : {}}
+                initial={{ y: 16 }}
+                animate={isInView ? { y: 0 } : {}}
                 transition={{ duration: 0.5, delay: 0.2 + i * 0.15 }}
               >
                 {step}
@@ -44,8 +44,9 @@ export function Scene05Building() {
               {i < steps.length - 1 && (
                 <motion.span
                   className={styles.arrow}
-                  initial={{ opacity: 0 }}
-                  animate={isInView ? { opacity: 0.4 } : {}}
+                  style={{ opacity: 0.4 }}
+                  initial={{}}
+                  animate={{}}
                   transition={{ duration: 0.3, delay: 0.35 + i * 0.15 }}
                 >
                   →
@@ -57,8 +58,8 @@ export function Scene05Building() {
 
         <motion.p
           className={styles.caption}
-          initial={{ opacity: 0, y: 24 }}
-          animate={isInView ? { opacity: 1, y: 0 } : {}}
+          initial={{ y: 24 }}
+          animate={isInView ? { y: 0 } : {}}
           transition={{ duration: 0.7, delay: 0.9 }}
         >
           Ideas became <span className={styles.emphasized}>real</span>. Not in months. In{' '}

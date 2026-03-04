@@ -27,8 +27,8 @@ export function Scene06Product() {
       <div ref={ref} className={styles.container}>
         <motion.p
           className={styles.caption}
-          initial={{ opacity: 0, y: 24 }}
-          animate={isInView ? { opacity: 1, y: 0 } : {}}
+          initial={{ y: 24 }}
+          animate={isInView ? { y: 0 } : {}}
           transition={{ duration: 0.7, delay: 0.6 }}
         >
           Speak. It <span className={styles.emphasized}>listens</span>. It{' '}

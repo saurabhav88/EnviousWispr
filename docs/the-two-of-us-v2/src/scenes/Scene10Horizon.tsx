@@ -31,16 +31,16 @@ export function Scene10Horizon() {
       <div className={styles.wrapper}>
         <motion.div
           className={styles.captionTop}
-          initial={{ opacity: 0, y: -20 }}
-          whileInView={{ opacity: 1, y: 0 }}
+          initial={{ y: -20 }}
+          whileInView={{ y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.8, delay: 0.2 }}
         >
           <span className={styles.captionLine1}>Everyone has an idea.</span>
           <motion.span
             className={styles.captionLine2}
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
+            initial={{}}
+            whileInView={{}}
             viewport={{ once: true }}
             transition={{ duration: 0.8, delay: 0.6 }}
           >
@@ -50,8 +50,8 @@ export function Scene10Horizon() {
 
         <motion.div
           className={styles.wordmark}
-          initial={{ opacity: 0, y: 24 }}
-          whileInView={{ opacity: 1, y: 0 }}
+          initial={{ y: 24 }}
+          whileInView={{ y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.9, delay: 0.4 }}
         >

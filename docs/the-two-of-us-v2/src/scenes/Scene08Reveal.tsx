@@ -14,28 +14,28 @@ export function Scene08Reveal() {
         initial={{ opacity: 0 }} whileInView={{ opacity: 0.45 }} viewport={{ once: true }} transition={{ duration: 1.5 }} />
       <div className={styles.wrapper} ref={ref}>
         <motion.span className={styles.eyebrow}
-          initial={{ opacity: 0, letterSpacing: '0.3em' }}
-          animate={isInView ? { opacity: 1, letterSpacing: '0.18em' } : {}}
+          initial={{ letterSpacing: '0.3em' }}
+          animate={isInView ? { letterSpacing: '0.18em' } : {}}
           transition={{ duration: 1, ease: 'easeOut', delay: 0.1 }}>
           The Reveal
         </motion.span>
 
         <motion.h2 className={styles.mainText}
-          initial={{ opacity: 0, y: 32 }}
-          animate={isInView ? { opacity: 1, y: 0 } : {}}
+          initial={{ y: 32 }}
+          animate={isInView ? { y: 0 } : {}}
           transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1], delay: 0.4 }}>
           All of this...{' '}<RainbowText>was two of us.</RainbowText>
         </motion.h2>
 
         <motion.p className={styles.subText}
-          initial={{ opacity: 0, y: 20 }}
-          animate={isInView ? { opacity: 1, y: 0 } : {}}
+          initial={{ y: 20 }}
+          animate={isInView ? { y: 0 } : {}}
           transition={{ duration: 0.8, ease: 'easeOut', delay: 0.8 }}>
           One developer. One AI. One apartment, one laptop, one cold cup of coffee at 2 AM.
         </motion.p>
 
         <motion.div className={styles.signature}
-          initial={{ opacity: 0 }} animate={isInView ? { opacity: 1 } : {}}
+          initial={{}} animate={{}}
           transition={{ duration: 1.2, ease: 'easeOut', delay: 1.2 }}>
           <div className={styles.signatureLine} />
           <span className={styles.signatureText}>EnviousWispr — made with intent</span>

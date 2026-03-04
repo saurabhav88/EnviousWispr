@@ -89,14 +89,12 @@ function FloatingHat({ hat, index }: { hat: (typeof hats)[0]; index: number }) {
     <motion.div
       className={styles.hat}
       style={{ left: `calc(50% + ${hat.x})` } as React.CSSProperties}
-      initial={{ opacity: 0, y: 60, rotate: index % 2 === 0 ? -12 : 12 }}
+      initial={{ y: 60, rotate: index % 2 === 0 ? -12 : 12 }}
       animate={{
-        opacity: 1,
         y: [0, -12, 0],
         rotate: [index % 2 === 0 ? -6 : 6, index % 2 === 0 ? 6 : -6, index % 2 === 0 ? -6 : 6],
       }}
       transition={{
-        opacity: { duration: 0.6, delay: hat.delay + 0.4 },
         y: { duration: 3.2 + index * 0.4, repeat: Infinity, ease: 'easeInOut', delay: hat.delay },
         rotate: { duration: 4 + index * 0.3, repeat: Infinity, ease: 'easeInOut', delay: hat.delay + 0.5 },
       }}
@@ -144,8 +142,8 @@ export function Scene01Hats() {
 
         <motion.div
           className={styles.captionArea}
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
+          initial={{ y: 20 }}
+          whileInView={{ y: 0 }}
           viewport={{ once: true, margin: '-10%' }}
           transition={{ duration: 0.7, delay: 1.0 }}
         >

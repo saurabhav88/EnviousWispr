@@ -21,8 +21,8 @@ function StatRow({ number, label, rainbow = false, delay }: StatRowProps) {
     <motion.div
       ref={ref}
       className={styles.statRow}
-      initial={{ opacity: 0, x: -32 }}
-      animate={isInView ? { opacity: 1, x: 0 } : {}}
+      initial={{ x: -32 }}
+      animate={isInView ? { x: 0 } : {}}
       transition={{ duration: 0.6, delay, ease: 'easeOut' }}
     >
       <span className={styles.statNumber}>
@@ -41,8 +41,8 @@ function TeamComparison() {
     <motion.div
       ref={ref}
       className={styles.teamComparison}
-      initial={{ opacity: 0, y: 24 }}
-      animate={isInView ? { opacity: 1, y: 0 } : {}}
+      initial={{ y: 24 }}
+      animate={isInView ? { y: 0 } : {}}
       transition={{ duration: 0.7, delay: 0.2 }}
     >
       <div className={styles.teamOld}>
@@ -52,16 +52,16 @@ function TeamComparison() {
       </div>
       <motion.div
         className={styles.arrow}
-        initial={{ opacity: 0, scale: 0.5 }}
-        animate={isInView ? { opacity: 1, scale: 1 } : {}}
+        initial={{ scale: 0.5 }}
+        animate={isInView ? { scale: 1 } : {}}
         transition={{ duration: 0.4, delay: 0.6 }}
       >
         →
       </motion.div>
       <motion.div
         className={styles.teamNew}
-        initial={{ opacity: 0, scale: 0.8 }}
-        animate={isInView ? { opacity: 1, scale: 1 } : {}}
+        initial={{ scale: 0.8 }}
+        animate={isInView ? { scale: 1 } : {}}
         transition={{ duration: 0.5, delay: 0.8, ease: 'easeOut' }}
       >
         <span className={styles.teamNumberNew}>
@@ -100,8 +100,8 @@ export function Scene09Numbers() {
       <div className={styles.wrapper}>
         <motion.div
           className={styles.label}
-          initial={{ opacity: 0, y: -12 }}
-          whileInView={{ opacity: 1, y: 0 }}
+          initial={{ y: -12 }}
+          whileInView={{ y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6 }}
         >
@@ -121,8 +121,8 @@ export function Scene09Numbers() {
 
         <motion.div
           className={styles.captionArea}
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
+          initial={{ y: 20 }}
+          whileInView={{ y: 0 }}
           viewport={{ once: true, margin: '-5%' }}
           transition={{ duration: 0.7, delay: 0.3 }}
         >

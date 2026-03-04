@@ -29,7 +29,7 @@ export function Scene07People() {
         initial={{ opacity: 0 }} whileInView={{ opacity: 0.5 }} viewport={{ once: true }} transition={{ duration: 1.5 }} />
       <div className={styles.wrapper}>
         <motion.div ref={headlineRef} className={styles.headline}
-          initial={{ opacity: 0, y: 24 }} animate={isHeadlineInView ? { opacity: 1, y: 0 } : {}}
+          initial={{ y: 24 }} animate={isHeadlineInView ? { y: 0 } : {}}
           transition={{ duration: 0.8, ease: 'easeOut' }}>
           <span className={styles.headlineWhite}>Built for real people.</span>{' '}
           <span className={styles.headlineGold}>Used by real people.</span>
@@ -39,8 +39,8 @@ export function Scene07People() {
           {vignettes.map((v, i) => (
             <motion.div key={v.persona} className={styles.pair}
               style={{ '--accent': v.accent } as React.CSSProperties}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
+              initial={{ y: 20 }}
+              whileInView={{ y: 0 }}
               viewport={{ once: true, margin: '-5%' }}
               transition={{ duration: 0.5, delay: i * 0.12 }}>
               <span className={styles.persona}>{v.persona}</span>

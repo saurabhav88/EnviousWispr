@@ -15,9 +15,8 @@ const containerVariants = {
 };
 
 const bubbleVariants = {
-  hidden: { opacity: 0, scale: 0.85, y: 16 },
+  hidden: { scale: 0.85, y: 16 },
   visible: {
-    opacity: 1,
     scale: 1,
     y: 0,
     transition: { duration: 0.5, ease: 'easeOut' },
