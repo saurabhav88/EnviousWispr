@@ -17,6 +17,7 @@
 {"key":"kv.memory.ops-mcp-keys-enviouswispr-keys-gemini-api-key","value":"Ops — MCP keys: ~/.enviouswispr-keys/ (gemini-api-key, openai-api-key). Gemini quota exhausted 2026-03-03 — use OpenAI for buddies until quota resets."}
 {"key":"kv.memory.ops-sparkle-sign-update-build-artifacts-sparkle-sparkle","value":"Ops — Sparkle sign_update: .build/artifacts/sparkle/Sparkle/bin/sign_update — use -p for raw signature. SUPublicEDKey: jHq1RIQKDmtO64qtCdZ6jNdHNFrfyScE16yuu+ufvDw="}
 {"key":"kv.memory.paste-system-tiered-cascade-validated-tier-1-ax","value":"Paste system: Tiered cascade validated. Tier 1=AX kAXSelectedTextAttribute (zero disruption), Tier 2=activate+CGEvent .cgAnnotatedSessionEventTap, Tier 2b=AppleScript Edit\u003ePaste, Tier 3=clipboard+notify. All AX on MainActor. Set AXTimeout(1s). Log (bundle_id, tier, ms). Sources: Hex, speak2, Gemini, OpenAI. Issue ew-zwn."}
+{"key":"kv.memory.proactive-constraint-surfacing-during-planning-design-phase","value":"Proactive constraint surfacing: During planning/design phase, flag technical gotchas like 'this mockup requires replacing native SwiftUI Form with custom views' BEFORE implementation. User wants expectation-setting early — answer questions upfront, don't let them discover gaps after the fact."}
 {"key":"kv.memory.uat-after-every-fix-fix-rebuild-relaunch-wispr","value":"UAT after every fix: fix → rebuild \u0026 relaunch → wispr-eyes → only THEN done. SKIPPED valid for non-UI changes."}
 {"key":"schema_version","value":"6"}
 {"key":"types.custom","value":"research"}
