@@ -24,11 +24,16 @@
 .caption {
   text-align: center;
   font-size: clamp(18px, 2.5vw, 24px);
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.7;
   color: var(--text-light, #f8f5ff);
   max-width: 560px;
   white-space: pre-line;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 20px 36px;
+  border-radius: 14px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   text-shadow:
     0 2px 8px rgba(0, 0, 0, 0.9),
     0 0 2px rgba(0, 0, 0, 1);

@@ -27,6 +27,11 @@
   gap: 24px;
   flex-wrap: wrap;
   justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 24px 40px;
+  border-radius: 16px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .stepLabel {
@@ -43,7 +48,8 @@
 
 .arrow {
   font-size: 24px;
-  color: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.75);
+  text-shadow: 0 0 8px rgba(138, 43, 226, 0.5);
 }
 
 .caption {
@@ -53,6 +59,9 @@
   line-height: 1.6;
   color: var(--text-light, #f8f5ff);
   max-width: 640px;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 16px 32px;
+  border-radius: 12px;
   text-shadow:
     0 2px 8px rgba(0, 0, 0, 0.9),
     0 0 2px rgba(0, 0, 0, 1);

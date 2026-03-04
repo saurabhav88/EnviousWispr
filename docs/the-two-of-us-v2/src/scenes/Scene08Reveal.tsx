@@ -11,7 +11,7 @@ export function Scene08Reveal() {
   return (
     <Scene id="scene-08" minHeight="120vh" background="#0f0a1a">
       <motion.img src="/scenes/scene-08-reveal.png" alt="" className={styles.bgIllustration} loading="lazy"
-        initial={{ opacity: 0 }} whileInView={{ opacity: 0.45 }} viewport={{ once: true }} transition={{ duration: 1.5 }} />
+        initial={{ opacity: 0 }} whileInView={{ opacity: 0.28 }} viewport={{ once: true }} transition={{ duration: 1.5 }} />
       <div className={styles.wrapper} ref={ref}>
         <motion.span className={styles.eyebrow}
           initial={{ letterSpacing: '0.3em' }}
