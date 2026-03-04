@@ -24,7 +24,7 @@ export function Scene07People() {
   const isHeadlineInView = useInView(headlineRef, { once: true, margin: '-5%' });
 
   return (
-    <Scene id="scene-07" minHeight="120vh" background="linear-gradient(180deg, #1a0a1a 0%, #0f0a1a 100%)" parallaxIntensity={12}>
+    <Scene id="scene-07" minHeight="120vh" background="linear-gradient(180deg, #1a0a1a 0%, #0f0a1a 100%)" parallaxIntensity={0.12}>
       <motion.img src="/scenes/scene-07-people.png" alt="" className={styles.bgIllustration} loading="lazy"
         initial={{ opacity: 0 }} whileInView={{ opacity: 0.5 }} viewport={{ once: true }} transition={{ duration: 1.5 }} />
       <div className={styles.wrapper}>

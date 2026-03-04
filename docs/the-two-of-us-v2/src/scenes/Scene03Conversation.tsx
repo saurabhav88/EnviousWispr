@@ -29,7 +29,7 @@ export function Scene03Conversation() {
   const isInView = useInView(ref, { once: true, margin: '-10%' });
 
   return (
-    <Scene id="scene-03" minHeight="100vh" background="linear-gradient(180deg, #0f0a1a 0%, #1a1028 100%)" parallaxIntensity={15}>
+    <Scene id="scene-03" minHeight="100vh" background="linear-gradient(180deg, #0f0a1a 0%, #1a1028 100%)" parallaxIntensity={0.15}>
       <motion.img src="/scenes/scene-03-conversation.png" alt="" className={styles.bgIllustration} loading="lazy"
         initial={{ opacity: 0 }} whileInView={{ opacity: 0.55 }} viewport={{ once: true }} transition={{ duration: 1.5 }} />
       <div className={styles.wrapper} ref={ref}>

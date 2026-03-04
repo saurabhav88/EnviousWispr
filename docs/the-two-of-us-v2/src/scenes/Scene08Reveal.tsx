@@ -9,7 +9,7 @@ export function Scene08Reveal() {
   const isInView = useInView(ref, { once: true, margin: '-8%' });
 
   return (
-    <Scene id="scene-08" minHeight="120vh" background="#0f0a1a" parallaxIntensity={8}>
+    <Scene id="scene-08" minHeight="120vh" background="#0f0a1a" parallaxIntensity={0.08}>
       <motion.img src="/scenes/scene-08-reveal.png" alt="" className={styles.bgIllustration} loading="lazy"
         initial={{ opacity: 0 }} whileInView={{ opacity: 0.45 }} viewport={{ once: true }} transition={{ duration: 1.5 }} />
       <div className={styles.wrapper} ref={ref}>
