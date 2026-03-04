@@ -57,10 +57,13 @@
 .hatLabel {
   font-family: var(--font-mono, 'JetBrains Mono', monospace);
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  opacity: 0.75;
+  color: var(--text-light, #f8f5ff);
+  text-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.9),
+    0 0 2px rgba(0, 0, 0, 1);
 }
 
 /* Caption */

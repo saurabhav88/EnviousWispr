@@ -25,9 +25,13 @@
   text-align: center;
   font-family: var(--font-body, 'Plus Jakarta Sans', sans-serif);
   font-size: clamp(2rem, 4vw, 3.2rem);
-  font-weight: 700;
+  font-weight: 800;
   line-height: 1.2;
   letter-spacing: -0.02em;
+  text-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.9),
+    0 0 2px rgba(0, 0, 0, 1),
+    0 0 40px rgba(15, 10, 26, 0.7);
 }
 
 .headlineWhite {
@@ -36,6 +40,10 @@
 
 .headlineGold {
   color: #e6c200;
+  text-shadow:
+    0 0 20px rgba(230, 194, 0, 0.4),
+    0 2px 8px rgba(0, 0, 0, 0.9),
+    0 0 2px rgba(0, 0, 0, 1);
 }
 
 .pairs {
@@ -55,9 +63,11 @@
 .persona {
   font-family: var(--font-body, 'Plus Jakarta Sans', sans-serif);
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--accent, #7c3aed);
-  text-shadow: 0 0 12px color-mix(in srgb, var(--accent, #7c3aed) 30%, transparent);
+  text-shadow:
+    0 0 12px color-mix(in srgb, var(--accent, #7c3aed) 30%, transparent),
+    0 1px 4px rgba(0, 0, 0, 0.9);
 }
 
 .textRow {

@@ -24,10 +24,14 @@
 .caption {
   text-align: center;
   font-size: clamp(18px, 2.5vw, 24px);
+  font-weight: 500;
   line-height: 1.7;
-  color: var(--text-2-light, #b0a3c8);
+  color: var(--text-light, #f8f5ff);
   max-width: 560px;
   white-space: pre-line;
+  text-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.9),
+    0 0 2px rgba(0, 0, 0, 1);
 }
 
 .emphasized {
@@ -38,7 +42,10 @@
 .gold {
   color: #e6c200;
   font-weight: 700;
-  text-shadow: 0 0 20px rgba(230, 194, 0, 0.3);
+  text-shadow:
+    0 0 20px rgba(230, 194, 0, 0.4),
+    0 2px 8px rgba(0, 0, 0, 0.9),
+    0 0 2px rgba(0, 0, 0, 1);
 }
 
 @media (max-width: 600px) {

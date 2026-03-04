@@ -32,12 +32,14 @@
 .bubble {
   font-family: var(--font-body);
   font-size: 0.9rem;
+  font-weight: 500;
   line-height: 1.55;
   padding: 0.8rem 1.1rem;
   border-radius: 14px;
   max-width: 280px;
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
 }
 
 .bubbleHuman {

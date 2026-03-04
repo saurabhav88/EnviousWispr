@@ -25,10 +25,11 @@
 .eyebrow {
   font-family: var(--font-mono, 'JetBrains Mono', monospace);
   font-size: 0.7rem;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: rgba(176, 163, 200, 0.4);
+  color: rgba(200, 185, 230, 0.7);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
 }
 
 /* Main text */
@@ -41,18 +42,25 @@
   color: var(--text-light, #f8f5ff);
   text-align: center;
   margin: 0;
+  text-shadow:
+    0 2px 12px rgba(0, 0, 0, 0.95),
+    0 0 2px rgba(0, 0, 0, 1),
+    0 0 50px rgba(15, 10, 26, 0.8);
 }
 
 /* Sub text */
 .subText {
   font-family: var(--font-body, 'Plus Jakarta Sans', sans-serif);
   font-size: clamp(1rem, 2vw, 1.2rem);
-  font-weight: 400;
+  font-weight: 500;
   line-height: 1.7;
-  color: rgba(176, 163, 200, 0.65);
+  color: rgba(220, 210, 240, 0.85);
   text-align: center;
   max-width: 560px;
   margin: 0;
+  text-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.9),
+    0 0 2px rgba(0, 0, 0, 1);
 }
 
 /* Signature */
@@ -74,8 +82,9 @@
 .signatureText {
   font-family: var(--font-mono, 'JetBrains Mono', monospace);
   font-size: 0.7rem;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0.08em;
-  color: rgba(124, 58, 237, 0.5);
+  color: rgba(160, 120, 237, 0.75);
   white-space: nowrap;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
 }
