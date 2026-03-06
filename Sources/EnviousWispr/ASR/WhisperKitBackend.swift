@@ -1,4 +1,4 @@
-@preconcurrency import AVFoundation
+import Foundation
 @preconcurrency import WhisperKit
 
 /// Hardcoded compute options optimized for Apple Silicon dictation.

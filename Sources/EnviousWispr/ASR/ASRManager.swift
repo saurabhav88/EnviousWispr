@@ -48,7 +48,6 @@ final class ASRManager {
     }
 
 
-
     /// Load the active backend's model.
     func loadModel() async throws {
         try await activeBackend.prepare()

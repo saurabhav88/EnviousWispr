@@ -308,7 +308,6 @@ final class AppState {
     }
 
 
-
     /// Re-register Carbon hotkeys after a config change.
     private func reregisterHotkeys() {
         guard hotkeyService.isEnabled else { return }

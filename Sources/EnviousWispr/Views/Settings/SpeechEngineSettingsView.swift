@@ -22,7 +22,7 @@ struct SpeechEngineSettingsView: View {
                 BrandedRow(showDivider: false) {
                     Text(appState.settings.selectedBackend == .parakeet
                         ? "Powered by Parakeet — fast English transcription with built-in punctuation."
-                        : "Powered by WhisperKit — broader language support with configurable quality controls.")
+                        : "Powered by WhisperKit — broader language support with optimized quality defaults.")
                         .font(.stHelper)
                         .foregroundStyle(.stTextTertiary)
                 }
