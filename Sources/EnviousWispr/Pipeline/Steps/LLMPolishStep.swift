@@ -26,8 +26,26 @@ final class LLMPolishStep: TextProcessingStep {
         self.keychainManager = keychainManager
     }
 
+    /// Minimum word count to send to the LLM. Transcripts at or below this
+    /// threshold are passed through verbatim — LLMs hallucinate on ultra-short
+    /// input (e.g., "Yeah" → a full essay). See ew-zr4.
+    private static let minWordsForPolish = 3
+
     func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
         onWillProcess?()
+
+        // Short-circuit: ultra-short transcripts get passed through verbatim.
+        // LLMs treat 1-3 word inputs as prompts to respond to, not text to clean.
+        let wordCount = context.text.split(whereSeparator: \.isWhitespace).count
+        if wordCount <= Self.minWordsForPolish {
+            Task { await AppLogger.shared.log(
+                "LLM polish skipped: transcript too short (\(wordCount) words, minimum \(Self.minWordsForPolish + 1))",
+                level: .info, category: "LLM"
+            ) }
+            var ctx = context
+            ctx.polishedText = context.text
+            return ctx
+        }
 
         Task { await AppLogger.shared.log(
             "LLM polish requested: provider=\(llmProvider.rawValue), model=\(llmModel)",
@@ -121,6 +139,20 @@ final class LLMPolishStep: TextProcessingStep {
                 Apply the same rules below but in the transcript's language.
 
                 \(systemPrompt)
+                """
+        }
+
+        // Guard against hallucination on short transcripts (4-10 words).
+        // The hard cutoff in process() catches ≤3 words; this prompt
+        // reinforcement catches the gray zone where the LLM might still
+        // treat a short phrase as a prompt to respond to.
+        let wordCount = context.text.split(whereSeparator: \.isWhitespace).count
+        if wordCount <= 10 {
+            systemPrompt += """
+
+                IMPORTANT: If the transcript is very short (just a few words or a single sentence), \
+                return it as-is with only minimal punctuation/capitalization fixes. \
+                Do NOT expand, elaborate, or generate new content. Short inputs are intentional.
                 """
         }
 
