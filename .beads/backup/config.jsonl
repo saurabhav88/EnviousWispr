@@ -31,6 +31,7 @@
 {"key":"kv.memory.manhwa-scroll-story-text-text-shadow-doesn-t","value":"Manhwa/scroll-story text: text-shadow doesn't work on background-clip:text elements (like RainbowText gradient). Use filter: drop-shadow() instead."}
 {"key":"kv.memory.manhwa-scroll-story-z-index-pseudo-element-overlays","value":"Manhwa/scroll-story: z-index pseudo-element overlays (::before/::after for edge blending) at z-index above content will fade text as user scrolls. If AI images already have CSS mask-image for edge blending, pseudo-elements are redundant — remove them."}
 {"key":"kv.memory.multi-session-safety-one-session-per-branch-plans","value":"Multi-session safety: One session per branch. Plans in docs/plans/, never /tmp/."}
+{"key":"kv.memory.ops-gemini-key-source-gemini-api-key-sourced","value":"ops-gemini-key-source Gemini API key sourced from Google Cloud Console (console.cloud.google.com), not AI Studio."}
 {"key":"kv.memory.ops-gmail-saurabhav-gmail-com-github-saurabhav88-repo","value":"Ops — Gmail: saurabhav@gmail.com | GitHub: saurabhav88, repo saurabhav88/EnviousWispr, ~/bin/gh | CI: No required status checks, GITHUB_TOKEN for everything, no PATs."}
 {"key":"kv.memory.ops-mcp-keys-api-keys-at-enviouswispr-keys","value":"ops-mcp-keys API keys at ~/.enviouswispr-keys/ (gemini-api-key, openai-api-key). Both active."}
 {"key":"kv.memory.ops-sparkle-sign-update-build-artifacts-sparkle-sparkle","value":"Ops — Sparkle sign_update: .build/artifacts/sparkle/Sparkle/bin/sign_update — use -p for raw signature. SUPublicEDKey: jHq1RIQKDmtO64qtCdZ6jNdHNFrfyScE16yuu+ufvDw="}
