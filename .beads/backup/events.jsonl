@@ -87,3 +87,10 @@
 {"actor":"saurabhav88","comment":null,"created_at":"2026-03-05T21:31:12Z","event_type":"closed","id":87,"issue_id":"ew-cqb","new_value":"Implemented and verified: WhisperKitSetupService, settings UI with download/progress/ready states, /simplify review applied","old_value":""}
 {"actor":"saurabhav88","comment":null,"created_at":"2026-03-05T21:31:37Z","event_type":"created","id":88,"issue_id":"ew-v7h","new_value":"","old_value":""}
 {"actor":"saurabhav88","comment":null,"created_at":"2026-03-05T21:31:39Z","event_type":"status_changed","id":89,"issue_id":"ew-v7h","new_value":"{\"status\":\"in_progress\"}","old_value":"{\"id\":\"ew-v7h\",\"title\":\"WhisperKit setup UX bugs\",\"description\":\"User reports remaining bugs in the WhisperKit model download/setup flow. Parent work: ew-cqb. Keep open until user confirms fixed.\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"bug\",\"owner\":\"saurabhav@gmail.com\",\"created_at\":\"2026-03-06T02:31:37Z\",\"created_by\":\"saurabhav88\",\"updated_at\":\"2026-03-06T02:31:37Z\"}"}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-05T22:08:13Z","event_type":"created","id":90,"issue_id":"ew-b93","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-05T22:08:42Z","event_type":"created","id":91,"issue_id":"ew-bv1","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-05T22:08:42Z","event_type":"created","id":92,"issue_id":"ew-dvm","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-05T22:08:42Z","event_type":"created","id":93,"issue_id":"ew-1np","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-05T22:08:42Z","event_type":"created","id":94,"issue_id":"ew-ld8","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-05T22:08:42Z","event_type":"created","id":95,"issue_id":"ew-fwg","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-05T22:08:42Z","event_type":"created","id":96,"issue_id":"ew-k4i","new_value":"","old_value":""}
