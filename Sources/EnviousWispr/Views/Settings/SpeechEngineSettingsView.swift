@@ -37,15 +37,19 @@ struct SpeechEngineSettingsView: View {
                 }
             }
 
-            // ── Section 3: Multi-Language Options (only when model is ready) ──
+            // ── Section 3: Language Selection (only when model is ready) ──
             if appState.settings.selectedBackend == .whisperKit,
                case .ready = appState.whisperKitSetup.setupState {
-                BrandedSection(header: "Multi-Language Options") {
+                BrandedSection(header: "Language") {
                     BrandedRow(showDivider: false) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Toggle("Auto-detect language", isOn: $state.settings.whisperKitLanguageAutoDetect)
-                                .toggleStyle(BrandedToggleStyle())
-                            Text("Automatically identifies which language you're speaking.")
+                        VStack(alignment: .leading, spacing: 8) {
+                            Picker("Language", selection: $state.settings.whisperKitLanguage) {
+                                Text("English").tag("en")
+                                Text("German (Deutsch)").tag("de")
+                                Text("Tamil (தமிழ்)").tag("ta")
+                            }
+                            .pickerStyle(.segmented)
+                            Text("Select the language you'll be speaking. Parakeet is English-only; WhisperKit supports multiple languages.")
                                 .font(.stHelper)
                                 .foregroundStyle(.stTextTertiary)
                         }

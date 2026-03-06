@@ -164,7 +164,7 @@ final class AppState {
             switch newState {
             case .recording:
                 self.hotkeyService.registerCancelHotkey()
-            case .loadingModel, .transcribing, .polishing, .error, .idle, .ready, .complete:
+            case .startingUp, .loadingModel, .transcribing, .polishing, .error, .idle, .ready, .complete:
                 self.hotkeyService.unregisterCancelHotkey()
             }
             // Intent-driven overlay — pipeline.overlayIntent maps state to the correct label
@@ -187,31 +187,37 @@ final class AppState {
         }
         hotkeyService.onStartRecording = { [weak self] in
             guard let self else { return }
-            if self.asrManager.activeBackendType == .whisperKit {
+            let isWhisperKit = self.asrManager.activeBackendType == .whisperKit
+            let active = self.activePipeline
+
+            if isWhisperKit {
                 guard !self.whisperKitPipeline.state.isActive else { return }
                 self.whisperKitPipeline.autoPasteToActiveApp = true
                 self.whisperKitPipeline.autoCopyToClipboard = self.settings.autoCopyToClipboard
-                self.permissions.refreshAccessibilityStatus()
-                if !self.permissions.hasAccessibilityPermission {
-                    self.whisperKitPipeline.autoPasteToActiveApp = false
-                    self.restartAccessibilityMonitoringIfNeeded()
-                }
-                await self.whisperKitPipeline.handle(event: .preWarm)
-                await self.whisperKitPipeline.startRecording()
-                if case .error = self.whisperKitPipeline.state {
-                    self.whisperKitPipeline.autoPasteToActiveApp = false
-                }
             } else {
                 guard !self.pipelineState.isActive else { return }
                 self.pipeline.autoPasteToActiveApp = true
                 self.pipeline.autoCopyToClipboard = self.settings.autoCopyToClipboard
-                self.permissions.refreshAccessibilityStatus()
-                if !self.permissions.hasAccessibilityPermission {
+            }
+
+            self.permissions.refreshAccessibilityStatus()
+            if !self.permissions.hasAccessibilityPermission {
+                if isWhisperKit {
+                    self.whisperKitPipeline.autoPasteToActiveApp = false
+                } else {
                     self.pipeline.autoPasteToActiveApp = false
-                    self.restartAccessibilityMonitoringIfNeeded()
                 }
-                await self.pipeline.preWarmAudioInput()
-                await self.pipeline.startRecording()
+                self.restartAccessibilityMonitoringIfNeeded()
+            }
+
+            await active.handle(event: .preWarm)
+            await active.handle(event: .toggleRecording)
+
+            if isWhisperKit {
+                if case .error = self.whisperKitPipeline.state {
+                    self.whisperKitPipeline.autoPasteToActiveApp = false
+                }
+            } else {
                 if case .error = self.pipeline.state {
                     self.pipeline.autoPasteToActiveApp = false
                 }
@@ -219,11 +225,10 @@ final class AppState {
         }
         hotkeyService.onStopRecording = { [weak self] in
             guard let self else { return }
+            await self.activePipeline.handle(event: .requestStop)
             if self.asrManager.activeBackendType == .whisperKit {
-                await self.whisperKitPipeline.handle(event: .requestStop)
                 self.whisperKitPipeline.autoPasteToActiveApp = false
             } else {
-                await self.pipeline.requestStop()
                 self.pipeline.autoPasteToActiveApp = false
             }
         }
@@ -346,7 +351,7 @@ final class AppState {
         case .useExtendedThinking:
             pipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
             whisperKitPipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
-        case .whisperKitLanguageAutoDetect:
+        case .whisperKitLanguage:
             syncTranscriptionOptions()
         case .selectedInputDeviceUID:
             audioCapture.selectedInputDeviceUID = settings.selectedInputDeviceUID
@@ -371,7 +376,10 @@ final class AppState {
     /// Sync shared transcription options (language, timestamps) to both pipelines.
     private func syncTranscriptionOptions() {
         var opts = TranscriptionOptions()
-        opts.language = settings.whisperKitLanguageAutoDetect ? nil : "en"
+        // Parakeet is English-only; WhisperKit uses the user's selected language.
+        // Pass the language to both pipelines — Parakeet ignores it, WhisperKit
+        // passes it through to DecodingOptions.
+        opts.language = settings.whisperKitLanguage
         pipeline.transcriptionOptions = opts
         whisperKitPipeline.transcriptionOptions = opts
     }
@@ -498,7 +506,9 @@ final class AppState {
 
     /// Toggle recording on/off (plain, no forced LLM).
     func toggleRecording() async {
-        if asrManager.activeBackendType == .whisperKit {
+        let active = activePipeline
+        // Set auto-paste before toggle
+        if active is WhisperKitPipeline {
             switch whisperKitPipeline.state {
             case .idle, .ready, .complete, .error:
                 whisperKitPipeline.autoPasteToActiveApp = true
@@ -507,14 +517,7 @@ final class AppState {
                     whisperKitPipeline.autoPasteToActiveApp = false
                     restartAccessibilityMonitoringIfNeeded()
                 }
-            default:
-                break
-            }
-            await whisperKitPipeline.toggleRecording()
-            if case .complete = whisperKitPipeline.state {
-                whisperKitPipeline.autoPasteToActiveApp = false
-            } else if case .error = whisperKitPipeline.state {
-                whisperKitPipeline.autoPasteToActiveApp = false
+            default: break
             }
         } else {
             switch pipeline.state {
@@ -525,15 +528,19 @@ final class AppState {
                     pipeline.autoPasteToActiveApp = false
                     restartAccessibilityMonitoringIfNeeded()
                 }
-            default:
-                break
+            default: break
             }
-            await pipeline.toggleRecording()
-            if pipeline.state == .complete {
-                pipeline.autoPasteToActiveApp = false
-            } else if case .error = pipeline.state {
-                pipeline.autoPasteToActiveApp = false
-            }
+        }
+
+        await active.handle(event: .toggleRecording)
+
+        // Clear auto-paste on completion/error
+        if active is WhisperKitPipeline {
+            if case .complete = whisperKitPipeline.state { whisperKitPipeline.autoPasteToActiveApp = false }
+            if case .error = whisperKitPipeline.state { whisperKitPipeline.autoPasteToActiveApp = false }
+        } else {
+            if pipeline.state == .complete { pipeline.autoPasteToActiveApp = false }
+            if case .error = pipeline.state { pipeline.autoPasteToActiveApp = false }
         }
     }
 
@@ -589,15 +596,15 @@ final class AppState {
 
     /// Cancel an active recording, discarding all captured audio.
     func cancelRecording() async {
-        if asrManager.activeBackendType == .whisperKit {
+        recordingOverlay.hide()
+        let isWhisperKit = asrManager.activeBackendType == .whisperKit
+        if isWhisperKit {
             let wkState = whisperKitPipeline.state
-            guard wkState == .recording || wkState == .loadingModel else { return }
-            recordingOverlay.hide()
+            guard wkState == .recording || wkState == .loadingModel || wkState == .startingUp else { return }
             whisperKitPipeline.autoPasteToActiveApp = false
-            await whisperKitPipeline.cancelRecording()
+            await whisperKitPipeline.handle(event: .cancelRecording)
         } else {
             guard pipelineState == .recording else { return }
-            recordingOverlay.hide()
             pipeline.autoPasteToActiveApp = false
             await pipeline.cancelRecording()
         }

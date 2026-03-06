@@ -4,6 +4,7 @@ import Foundation
 /// Internal state machine for the WhisperKit highway — independent of PipelineState.
 enum WhisperKitPipelineState: Equatable, Sendable {
     case idle
+    case startingUp       // engine warm-up / pre-capture setup
     case loadingModel
     case ready
     case recording
@@ -14,7 +15,7 @@ enum WhisperKitPipelineState: Equatable, Sendable {
 
     var isActive: Bool {
         switch self {
-        case .recording, .transcribing, .polishing, .loadingModel:
+        case .startingUp, .recording, .transcribing, .polishing, .loadingModel:
             return true
         default:
             return false
@@ -67,8 +68,6 @@ final class WhisperKitPipeline: DictationPipeline {
     private var recordingStartTime: Date?
     /// Guards against concurrent stopAndTranscribe calls.
     private var isStopping = false
-    /// Set by key-up when startRecording() is still in-flight.
-    private var stopRequested = false
     /// Whether audio input has been pre-warmed by PTT key-down.
     private var isPreWarmed = false
 
@@ -96,6 +95,8 @@ final class WhisperKitPipeline: DictationPipeline {
 
     var overlayIntent: OverlayIntent {
         switch state {
+        case .startingUp:
+            return .hidden
         case .loadingModel:
             return .processing(label: "Loading model...")
         case .recording:
@@ -160,7 +161,7 @@ final class WhisperKitPipeline: DictationPipeline {
             await startRecording()
         case .recording:
             await stopAndTranscribe()
-        case .loadingModel, .transcribing, .polishing:
+        case .loadingModel, .startingUp, .transcribing, .polishing:
             break
         }
     }
@@ -168,14 +169,13 @@ final class WhisperKitPipeline: DictationPipeline {
     func startRecording() async {
         guard !state.isActive || state == .complete || state == .ready else { return }
 
-        // Clear any stale stopRequested from a previous cycle (e.g., PTT key-up
-        // that arrived during .polishing — the flag outlives the pipeline run
-        // and would otherwise abort this new recording immediately).
-        stopRequested = false
+        state = .startingUp
         lastPolishError = nil
 
-        // Load model if not ready — explicit .loadingModel state
+        // Load model if not ready
         let isBackendReady = await backend.isReady
+        guard state == .startingUp else { return }  // cancelled during await
+
         if !isBackendReady {
             state = .loadingModel
             do {
@@ -184,13 +184,8 @@ final class WhisperKitPipeline: DictationPipeline {
                 state = .error("Model load failed: \(error.localizedDescription)")
                 return
             }
-        }
-
-        // Check if cancel was requested during model load
-        if stopRequested {
-            stopRequested = false
-            state = .idle
-            return
+            guard state == .loadingModel else { return }  // cancelled during model load
+            state = .startingUp  // back to startingUp for engine setup
         }
 
         // Capture target app for paste-back
@@ -207,6 +202,7 @@ final class WhisperKitPipeline: DictationPipeline {
                     maxWait: 1.5,
                     pollInterval: 0.2
                 )
+                guard state == .startingUp else { return }  // cancelled during stabilization
                 if !stabilized {
                     audioCapture.rebuildEngine()
                     try audioCapture.startEnginePhase()
@@ -219,18 +215,11 @@ final class WhisperKitPipeline: DictationPipeline {
             recordingStartTime = Date()
             currentTranscript = nil
 
-            if stopRequested {
-                stopRequested = false
-                await stopAndTranscribe()
-                return
-            }
-
             Task { await AppLogger.shared.log(
                 "WhisperKit recording started (batch mode)",
                 level: .info, category: "WhisperKitPipeline"
             ) }
         } catch {
-            stopRequested = false
             state = .error("Recording failed: \(error.localizedDescription)")
         }
     }
@@ -239,11 +228,10 @@ final class WhisperKitPipeline: DictationPipeline {
         switch state {
         case .recording:
             await stopAndTranscribe()
-        case .loadingModel, .idle:
-            // .loadingModel: PTT cancel during model load → startRecording will check and go idle.
-            // .idle: startRecording is in-flight (pre-warm/engine setup) → will check after entering .recording.
-            stopRequested = true
-        case .transcribing, .polishing, .complete, .error, .ready:
+        case .startingUp, .loadingModel:
+            // Clean abort — startRecording() checks state after each await suspension point.
+            state = .idle
+        case .transcribing, .polishing, .complete, .error, .ready, .idle:
             // Pipeline is past the point of no return or already finished — ignore.
             break
         }
@@ -366,10 +354,8 @@ final class WhisperKitPipeline: DictationPipeline {
     }
 
     func cancelRecording() async {
-        stopRequested = false
-
-        if state == .loadingModel {
-            // Cancel during model load — transition to idle
+        if state == .startingUp || state == .loadingModel {
+            // Cancel during startup or model load — transition to idle
             state = .idle
             return
         }

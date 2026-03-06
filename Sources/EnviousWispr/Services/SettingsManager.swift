@@ -62,7 +62,7 @@ final class SettingsManager {
         case isDebugModeEnabled
         case debugLogLevel
         case useExtendedThinking
-        case whisperKitLanguageAutoDetect
+        case whisperKitLanguage
         case selectedInputDeviceUID
         case noiseSuppression
         case preferredInputDeviceIDOverride
@@ -269,10 +269,12 @@ final class SettingsManager {
         }
     }
 
-    var whisperKitLanguageAutoDetect: Bool {
+    /// WhisperKit language code (ISO 639-1). Manual selection, not auto-detect.
+    /// EN, DE, TA supported. "en" is default.
+    var whisperKitLanguage: String {
         didSet {
-            UserDefaults.standard.set(whisperKitLanguageAutoDetect, forKey: "whisperKitLanguageAutoDetect")
-            onChange?(.whisperKitLanguageAutoDetect)
+            UserDefaults.standard.set(whisperKitLanguage, forKey: "whisperKitLanguage")
+            onChange?(.whisperKitLanguage)
         }
     }
 
@@ -399,7 +401,7 @@ final class SettingsManager {
             rawValue: defaults.string(forKey: "debugLogLevel") ?? ""
         ) ?? .info
         useExtendedThinking = defaults.object(forKey: "useExtendedThinking") as? Bool ?? false
-        whisperKitLanguageAutoDetect = defaults.object(forKey: "whisperKitLanguageAutoDetect") as? Bool ?? false
+        whisperKitLanguage = defaults.string(forKey: "whisperKitLanguage") ?? "en"
         selectedInputDeviceUID = defaults.string(forKey: "selectedInputDeviceUID") ?? ""
         noiseSuppression = defaults.object(forKey: "noiseSuppression") as? Bool ?? false
         preferredInputDeviceIDOverride = defaults.string(forKey: "preferredInputDeviceIDOverride") ?? ""
