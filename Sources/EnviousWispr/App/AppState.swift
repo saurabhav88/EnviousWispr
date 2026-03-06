@@ -24,8 +24,9 @@ final class AppState {
     var availableInputDevices: [AudioInputDevice] = []
     private var deviceMonitor: AudioDeviceMonitor?
 
-    // Pipeline — initialized after sub-systems
+    // Pipelines — initialized after sub-systems
     let pipeline: TranscriptionPipeline
+    let whisperKitPipeline: WhisperKitPipeline
 
     /// Called when pipeline state changes — set by AppDelegate for icon updates.
     var onPipelineStateChange: ((PipelineState) -> Void)?
@@ -70,9 +71,17 @@ final class AppState {
         // Load custom words
         customWords = (try? customWordStore.load()) ?? []
 
+        // Both pipeline properties must be initialized before `self` can be used.
+        // WhisperKitBackend default is large-v3-turbo; reconfigured from settings below.
         pipeline = TranscriptionPipeline(
             audioCapture: audioCapture,
             asrManager: asrManager,
+            transcriptStore: transcriptStore,
+            keychainManager: keychainManager
+        )
+        whisperKitPipeline = WhisperKitPipeline(
+            audioCapture: audioCapture,
+            backend: WhisperKitBackend(),
             transcriptStore: transcriptStore,
             keychainManager: keychainManager
         )
@@ -93,6 +102,8 @@ final class AppState {
         pipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
         pipeline.wordCorrection.customWords = customWords
         pipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
+        // Sync WhisperKit pipeline settings
+        syncWhisperKitPipelineSettings()
         // Build engine with correct noise suppression config from the start.
         // This sets noiseSuppressionEnabled and configures anti-ducking if needed.
         if settings.noiseSuppression {
@@ -150,6 +161,33 @@ final class AppState {
             }
         }
 
+        // Wire WhisperKit pipeline state changes to overlay and icon
+        whisperKitPipeline.onStateChange = { [weak self] newState in
+            guard let self else { return }
+            switch newState {
+            case .loadingModel:
+                self.recordingOverlay.showPolishing()
+            case .recording:
+                self.hotkeyService.registerCancelHotkey()
+                self.recordingOverlay.show(
+                    audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 }
+                )
+            case .transcribing:
+                self.hotkeyService.unregisterCancelHotkey()
+                self.recordingOverlay.showPolishing()
+            case .polishing:
+                self.hotkeyService.unregisterCancelHotkey()
+                self.recordingOverlay.showPolishing()
+            case .error, .idle, .ready:
+                self.hotkeyService.unregisterCancelHotkey()
+                self.recordingOverlay.hide()
+            case .complete:
+                self.hotkeyService.unregisterCancelHotkey()
+                self.recordingOverlay.hide()
+                self.loadTranscripts()
+            }
+        }
+
         // Wire hotkey callbacks
         hotkeyService.recordingMode = settings.recordingMode
         hotkeyService.cancelKeyCode = settings.cancelKeyCode
@@ -161,24 +199,46 @@ final class AppState {
             await self.toggleRecording()
         }
         hotkeyService.onStartRecording = { [weak self] in
-            guard let self, !self.pipelineState.isActive else { return }
-            self.pipeline.autoPasteToActiveApp = true
-            self.pipeline.autoCopyToClipboard = self.settings.autoCopyToClipboard
-            self.permissions.refreshAccessibilityStatus()
-            if !self.permissions.hasAccessibilityPermission {
-                self.pipeline.autoPasteToActiveApp = false
-                self.restartAccessibilityMonitoringIfNeeded()
-            }
-            await self.pipeline.preWarmAudioInput()
-            await self.pipeline.startRecording()
-            if case .error = self.pipeline.state {
-                self.pipeline.autoPasteToActiveApp = false
+            guard let self else { return }
+            if self.asrManager.activeBackendType == .whisperKit {
+                guard !self.whisperKitPipeline.state.isActive else { return }
+                self.whisperKitPipeline.autoPasteToActiveApp = true
+                self.whisperKitPipeline.autoCopyToClipboard = self.settings.autoCopyToClipboard
+                self.permissions.refreshAccessibilityStatus()
+                if !self.permissions.hasAccessibilityPermission {
+                    self.whisperKitPipeline.autoPasteToActiveApp = false
+                    self.restartAccessibilityMonitoringIfNeeded()
+                }
+                await self.whisperKitPipeline.handle(event: .preWarm)
+                await self.whisperKitPipeline.startRecording()
+                if case .error = self.whisperKitPipeline.state {
+                    self.whisperKitPipeline.autoPasteToActiveApp = false
+                }
+            } else {
+                guard !self.pipelineState.isActive else { return }
+                self.pipeline.autoPasteToActiveApp = true
+                self.pipeline.autoCopyToClipboard = self.settings.autoCopyToClipboard
+                self.permissions.refreshAccessibilityStatus()
+                if !self.permissions.hasAccessibilityPermission {
+                    self.pipeline.autoPasteToActiveApp = false
+                    self.restartAccessibilityMonitoringIfNeeded()
+                }
+                await self.pipeline.preWarmAudioInput()
+                await self.pipeline.startRecording()
+                if case .error = self.pipeline.state {
+                    self.pipeline.autoPasteToActiveApp = false
+                }
             }
         }
         hotkeyService.onStopRecording = { [weak self] in
             guard let self else { return }
-            await self.pipeline.requestStop()
-            self.pipeline.autoPasteToActiveApp = false
+            if self.asrManager.activeBackendType == .whisperKit {
+                await self.whisperKitPipeline.handle(event: .requestStop)
+                self.whisperKitPipeline.autoPasteToActiveApp = false
+            } else {
+                await self.pipeline.requestStop()
+                self.pipeline.autoPasteToActiveApp = false
+            }
         }
 
         hotkeyService.onCancelRecording = { [weak self] in
@@ -220,17 +280,21 @@ final class AppState {
             hotkeyService.recordingMode = settings.recordingMode
         case .llmProvider:
             pipeline.llmPolish.llmProvider = settings.llmProvider
+            whisperKitPipeline.llmPolish.llmProvider = settings.llmProvider
         case .llmModel:
             pipeline.llmPolish.llmModel = settings.llmModel
+            whisperKitPipeline.llmPolish.llmModel = settings.llmModel
             if settings.llmProvider == .ollama {
                 settings.ollamaModel = settings.llmModel
             }
         case .ollamaModel:
             if settings.llmProvider == .ollama {
                 pipeline.llmPolish.llmModel = settings.ollamaModel
+                whisperKitPipeline.llmPolish.llmModel = settings.ollamaModel
             }
         case .autoCopyToClipboard:
             pipeline.autoCopyToClipboard = settings.autoCopyToClipboard
+            whisperKitPipeline.autoCopyToClipboard = settings.autoCopyToClipboard
         case .hotkeyEnabled:
             if settings.hotkeyEnabled { hotkeyService.start() } else { hotkeyService.stop() }
         case .vadAutoStop:
@@ -242,6 +306,7 @@ final class AppState {
             settings.vadSensitivity = sensitivity
         case .writingStylePreset:
             pipeline.llmPolish.polishInstructions = settings.activePolishInstructions
+            whisperKitPipeline.llmPolish.polishInstructions = settings.activePolishInstructions
         case .vadSensitivity:
             pipeline.vadSensitivity = settings.vadSensitivity
         case .vadEnergyGate:
@@ -266,18 +331,23 @@ final class AppState {
             }
         case .restoreClipboardAfterPaste:
             pipeline.restoreClipboardAfterPaste = settings.restoreClipboardAfterPaste
+            whisperKitPipeline.restoreClipboardAfterPaste = settings.restoreClipboardAfterPaste
         case .customSystemPrompt:
             pipeline.llmPolish.polishInstructions = settings.activePolishInstructions
+            whisperKitPipeline.llmPolish.polishInstructions = settings.activePolishInstructions
         case .wordCorrectionEnabled:
             pipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
+            whisperKitPipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
         case .fillerRemovalEnabled:
             pipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
+            whisperKitPipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
         case .isDebugModeEnabled:
             Task { await AppLogger.shared.setDebugMode(settings.isDebugModeEnabled) }
         case .debugLogLevel:
             Task { await AppLogger.shared.setLogLevel(settings.debugLogLevel) }
         case .useExtendedThinking:
             pipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
+            whisperKitPipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
         case .whisperKitLanguageAutoDetect:
             syncTranscriptionOptions()
         case .selectedInputDeviceUID:
@@ -300,11 +370,28 @@ final class AppState {
         }
     }
 
-    /// Sync shared transcription options (language, timestamps) to the pipeline.
+    /// Sync shared transcription options (language, timestamps) to both pipelines.
     private func syncTranscriptionOptions() {
         var opts = TranscriptionOptions()
         opts.language = settings.whisperKitLanguageAutoDetect ? nil : "en"
         pipeline.transcriptionOptions = opts
+        whisperKitPipeline.transcriptionOptions = opts
+    }
+
+    /// Sync all user-facing settings to the WhisperKit pipeline.
+    private func syncWhisperKitPipelineSettings() {
+        whisperKitPipeline.autoCopyToClipboard = settings.autoCopyToClipboard
+        whisperKitPipeline.restoreClipboardAfterPaste = settings.restoreClipboardAfterPaste
+        whisperKitPipeline.llmPolish.llmProvider = settings.llmProvider
+        whisperKitPipeline.llmPolish.llmModel = settings.llmModel
+        if settings.llmProvider == .ollama {
+            whisperKitPipeline.llmPolish.llmModel = settings.ollamaModel
+        }
+        whisperKitPipeline.llmPolish.polishInstructions = settings.activePolishInstructions
+        whisperKitPipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
+        whisperKitPipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
+        whisperKitPipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
+        whisperKitPipeline.wordCorrection.customWords = customWords
     }
 
 
@@ -313,6 +400,11 @@ final class AppState {
         guard hotkeyService.isEnabled else { return }
         hotkeyService.stop()
         hotkeyService.start()
+    }
+
+    /// Active dictation pipeline — routes based on selected backend.
+    var activePipeline: any DictationPipeline {
+        asrManager.activeBackendType == .whisperKit ? whisperKitPipeline : pipeline
     }
 
     /// Convenience: current pipeline state.
@@ -361,33 +453,62 @@ final class AppState {
 
     /// Model status text for sidebar display.
     var modelStatusText: String {
-        if pipelineState == .recording { return "Recording" }
-        if pipelineState == .transcribing { return "Transcribing" }
-        if pipelineState == .polishing { return "Polishing" }
-        if case .error = pipelineState { return "Error" }
+        if asrManager.activeBackendType == .whisperKit {
+            switch whisperKitPipeline.state {
+            case .loadingModel: return "Loading Model"
+            case .recording: return "Recording"
+            case .transcribing: return "Transcribing"
+            case .polishing: return "Polishing"
+            case .error: return "Error"
+            default: break
+            }
+        } else {
+            if pipelineState == .recording { return "Recording" }
+            if pipelineState == .transcribing { return "Transcribing" }
+            if pipelineState == .polishing { return "Polishing" }
+            if case .error = pipelineState { return "Error" }
+        }
         return asrManager.isModelLoaded ? "Loaded" : "Unloaded"
     }
 
     /// Toggle recording on/off (plain, no forced LLM).
     func toggleRecording() async {
-        switch pipeline.state {
-        case .idle, .complete, .error:
-            pipeline.autoPasteToActiveApp = true
-            permissions.refreshAccessibilityStatus()
-            if !permissions.hasAccessibilityPermission {
-                pipeline.autoPasteToActiveApp = false
-                restartAccessibilityMonitoringIfNeeded()
+        if asrManager.activeBackendType == .whisperKit {
+            switch whisperKitPipeline.state {
+            case .idle, .ready, .complete, .error:
+                whisperKitPipeline.autoPasteToActiveApp = true
+                permissions.refreshAccessibilityStatus()
+                if !permissions.hasAccessibilityPermission {
+                    whisperKitPipeline.autoPasteToActiveApp = false
+                    restartAccessibilityMonitoringIfNeeded()
+                }
+            default:
+                break
             }
-        default:
-            break
-        }
-
-        await pipeline.toggleRecording()
-
-        if pipeline.state == .complete {
-            pipeline.autoPasteToActiveApp = false
-        } else if case .error = pipeline.state {
-            pipeline.autoPasteToActiveApp = false
+            await whisperKitPipeline.toggleRecording()
+            if case .complete = whisperKitPipeline.state {
+                whisperKitPipeline.autoPasteToActiveApp = false
+            } else if case .error = whisperKitPipeline.state {
+                whisperKitPipeline.autoPasteToActiveApp = false
+            }
+        } else {
+            switch pipeline.state {
+            case .idle, .complete, .error:
+                pipeline.autoPasteToActiveApp = true
+                permissions.refreshAccessibilityStatus()
+                if !permissions.hasAccessibilityPermission {
+                    pipeline.autoPasteToActiveApp = false
+                    restartAccessibilityMonitoringIfNeeded()
+                }
+            default:
+                break
+            }
+            await pipeline.toggleRecording()
+            if pipeline.state == .complete {
+                pipeline.autoPasteToActiveApp = false
+            } else if case .error = pipeline.state {
+                pipeline.autoPasteToActiveApp = false
+            }
         }
     }
 
@@ -443,16 +564,18 @@ final class AppState {
 
     /// Cancel an active recording, discarding all captured audio.
     func cancelRecording() async {
-        guard pipelineState == .recording else { return }
-        // Immediately hide the overlay before any async suspension. If show()
-        // queued a deferred createPanel via DispatchQueue.main.async, the
-        // generation counter increment here prevents it from executing after we
-        // return. Without this, there is a window where cancelRecording() awaits
-        // pipeline.cancelRecording() and the deferred createPanel fires first,
-        // leaving a visible panel even though state transitions to .idle.
-        recordingOverlay.hide()
-        pipeline.autoPasteToActiveApp = false
-        await pipeline.cancelRecording()
+        if asrManager.activeBackendType == .whisperKit {
+            let wkState = whisperKitPipeline.state
+            guard wkState == .recording || wkState == .loadingModel else { return }
+            recordingOverlay.hide()
+            whisperKitPipeline.autoPasteToActiveApp = false
+            await whisperKitPipeline.cancelRecording()
+        } else {
+            guard pipelineState == .recording else { return }
+            recordingOverlay.hide()
+            pipeline.autoPasteToActiveApp = false
+            await pipeline.cancelRecording()
+        }
     }
 
     /// Polish an existing transcript with LLM.
@@ -513,6 +636,7 @@ final class AppState {
         do {
             try customWordStore.add(word, to: &customWords)
             pipeline.wordCorrection.customWords = customWords
+            whisperKitPipeline.wordCorrection.customWords = customWords
             customWordError = nil
         } catch {
             customWordError = error.localizedDescription
@@ -523,6 +647,7 @@ final class AppState {
         do {
             try customWordStore.remove(word, from: &customWords)
             pipeline.wordCorrection.customWords = customWords
+            whisperKitPipeline.wordCorrection.customWords = customWords
             customWordError = nil
         } catch {
             customWordError = error.localizedDescription

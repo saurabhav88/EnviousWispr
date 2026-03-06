@@ -38,7 +38,7 @@ final class WhisperKitSetupService {
     private(set) var setupState: WhisperKitSetupState = .checking
 
     /// Model variant to download (synced from AppSettings).
-    var modelVariant: String = "large-v3"
+    var modelVariant: String = "large-v3-turbo"
 
     // MARK: - Private
 

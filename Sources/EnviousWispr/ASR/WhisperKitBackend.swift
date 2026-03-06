@@ -23,7 +23,7 @@ actor WhisperKitBackend: ASRBackend {
     private let modelVariant: String
     private var whisperKit: WhisperKit?
 
-    init(modelVariant: String = "large-v3") {
+    init(modelVariant: String = "large-v3-turbo") {
         self.modelVariant = modelVariant
     }
 

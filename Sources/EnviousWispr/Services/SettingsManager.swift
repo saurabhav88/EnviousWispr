@@ -335,7 +335,7 @@ final class SettingsManager {
     init() {
         let defaults = UserDefaults.standard
         selectedBackend = ASRBackendType(rawValue: defaults.string(forKey: "selectedBackend") ?? "") ?? .parakeet
-        whisperKitModel = defaults.string(forKey: "whisperKitModel") ?? "large-v3"
+        whisperKitModel = defaults.string(forKey: "whisperKitModel") ?? "large-v3-turbo"
         recordingMode = RecordingMode(rawValue: defaults.string(forKey: "recordingMode") ?? "") ?? .pushToTalk
         llmProvider = LLMProvider(rawValue: defaults.string(forKey: "llmProvider") ?? "") ?? .none
         llmModel = defaults.string(forKey: "llmModel") ?? "gpt-4o-mini"

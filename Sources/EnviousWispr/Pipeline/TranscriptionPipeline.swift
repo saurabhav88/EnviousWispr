@@ -4,7 +4,7 @@ import Foundation
 /// Orchestrates the full dictation pipeline: record → transcribe → (correct) → (polish) → store → copy/paste.
 @MainActor
 @Observable
-final class TranscriptionPipeline {
+final class TranscriptionPipeline: DictationPipeline {
     private let audioCapture: AudioCaptureManager
     private let asrManager: ASRManager
     private let transcriptStore: TranscriptStore
@@ -754,5 +754,35 @@ final class TranscriptionPipeline {
             context = try await step.process(context)
         }
         return context
+    }
+
+    // MARK: - DictationPipeline Conformance
+
+    var overlayIntent: OverlayIntent {
+        switch state {
+        case .recording:
+            return .recording(audioLevel: 0) // actual level provided by AudioCaptureManager
+        case .transcribing:
+            return .processing(label: "Transcribing...")
+        case .polishing:
+            return .processing(label: "Polishing...")
+        case .idle, .complete, .error:
+            return .hidden
+        }
+    }
+
+    func handle(event: PipelineEvent) async {
+        switch event {
+        case .preWarm:
+            await preWarmAudioInput()
+        case .toggleRecording:
+            await toggleRecording()
+        case .requestStop:
+            await requestStop()
+        case .cancelRecording:
+            await cancelRecording()
+        case .reset:
+            reset()
+        }
     }
 }
