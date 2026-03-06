@@ -1,23 +1,20 @@
 @preconcurrency import AVFoundation
 @preconcurrency import WhisperKit
 
-/// WhisperKit-specific decoding configuration, separate from shared TranscriptionOptions.
-/// Lives here so deleting WhisperKit files removes all WhisperKit-specific types cleanly.
-struct WhisperKitDecodingConfig: Sendable, Equatable {
-    var temperature: Float = 0.0
-    var compressionRatioThreshold: Float = 2.4
-    var logProbThreshold: Float = -1.0
-    var noSpeechThreshold: Float = 0.6
-    var skipSpecialTokens: Bool = true
+/// Hardcoded compute options optimized for Apple Silicon dictation.
+/// Audio encoder + text decoder → Neural Engine, mel spectrogram → GPU, prefill → CPU only.
+private let dictationComputeOptions = ModelComputeOptions(
+    melCompute: .cpuAndGPU,
+    audioEncoderCompute: .cpuAndNeuralEngine,
+    textDecoderCompute: .cpuAndNeuralEngine,
+    prefillCompute: .cpuOnly
+)
 
-    static let `default` = WhisperKitDecodingConfig()
-}
-
-/// WhisperKit ASR backend — broad language support with configurable quality.
+/// WhisperKit ASR backend — broad language support with hardcoded dictation-optimized quality.
 ///
 /// Uses Argmax WhisperKit SPM for Whisper-based speech recognition.
-/// Supports language auto-detection, temperature control, compression ratio
-/// filtering, and configurable decoding thresholds for quality parity.
+/// Decoding options and compute hardware allocation are hardcoded for optimal
+/// dictation accuracy on Apple Silicon (Neural Engine for encoder/decoder).
 ///
 /// The model must be downloaded via WhisperKitSetupService before calling prepare().
 actor WhisperKitBackend: ASRBackend {
@@ -25,15 +22,9 @@ actor WhisperKitBackend: ASRBackend {
 
     private let modelVariant: String
     private var whisperKit: WhisperKit?
-    private(set) var decodingConfig: WhisperKitDecodingConfig = .default
 
     init(modelVariant: String = "large-v3") {
         self.modelVariant = modelVariant
-    }
-
-    /// Update decoding configuration. Safe to call while model is loaded.
-    func updateDecodingConfig(_ config: WhisperKitDecodingConfig) {
-        self.decodingConfig = config
     }
 
     func prepare() async throws {
@@ -50,6 +41,7 @@ actor WhisperKitBackend: ASRBackend {
         let config = WhisperKitConfig(
             model: modelVariant,
             modelFolder: modelPath,
+            computeOptions: dictationComputeOptions,
             download: false
         )
         let kit = try await WhisperKit(config)
@@ -97,26 +89,25 @@ actor WhisperKitBackend: ASRBackend {
     // MARK: - Private
 
     private func makeDecodeOptions(from options: TranscriptionOptions) -> DecodingOptions {
-        var decodeOptions = DecodingOptions()
+        var opts = DecodingOptions()
 
         // Shared options (from TranscriptionOptions)
-        decodeOptions.language = options.language
-        decodeOptions.wordTimestamps = options.enableTimestamps
+        opts.language = options.language
+        opts.wordTimestamps = options.enableTimestamps
 
-        // WhisperKit-specific quality parameters (from actor-local config)
-        decodeOptions.temperature = decodingConfig.temperature
-        decodeOptions.compressionRatioThreshold = decodingConfig.compressionRatioThreshold
-        decodeOptions.logProbThreshold = decodingConfig.logProbThreshold
-        decodeOptions.noSpeechThreshold = decodingConfig.noSpeechThreshold
-        decodeOptions.skipSpecialTokens = decodingConfig.skipSpecialTokens
+        // Hardcoded dictation-optimized defaults
+        opts.temperature = 0.0
+        opts.temperatureFallbackCount = 3
+        opts.temperatureIncrementOnFallback = 0.2
+        opts.compressionRatioThreshold = 2.4
+        opts.logProbThreshold = -1.0
+        opts.noSpeechThreshold = 0.6
+        opts.skipSpecialTokens = true
+        opts.suppressBlank = true
+        opts.usePrefillPrompt = true
+        opts.usePrefillCache = true
 
-        // Temperature fallback: retry with higher temperature if quality filters trigger
-        if decodingConfig.temperature < 0.5 {
-            decodeOptions.temperatureFallbackCount = 3
-            decodeOptions.temperatureIncrementOnFallback = 0.2
-        }
-
-        return decodeOptions
+        return opts
     }
 
     private func mapResults(_ results: [TranscriptionResult], processingTime: TimeInterval) -> ASRResult {

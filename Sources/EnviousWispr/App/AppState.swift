@@ -103,7 +103,6 @@ final class AppState {
         audioCapture.selectedInputDeviceUID = settings.selectedInputDeviceUID
         audioCapture.preferredInputDeviceIDOverride = settings.preferredInputDeviceIDOverride
         syncTranscriptionOptions()
-        syncWhisperKitDecodingConfig()
 
         // Enumerate input devices and monitor for changes
         refreshInputDevices()
@@ -279,12 +278,8 @@ final class AppState {
             Task { await AppLogger.shared.setLogLevel(settings.debugLogLevel) }
         case .useExtendedThinking:
             pipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
-        case .whisperKitTemperature, .whisperKitCompressionThreshold,
-             .whisperKitLogProbThreshold, .whisperKitNoSpeechThreshold:
-            syncWhisperKitDecodingConfig()
         case .whisperKitLanguageAutoDetect:
             syncTranscriptionOptions()
-            syncWhisperKitDecodingConfig()
         case .selectedInputDeviceUID:
             audioCapture.selectedInputDeviceUID = settings.selectedInputDeviceUID
         case .preferredInputDeviceIDOverride:
@@ -312,16 +307,7 @@ final class AppState {
         pipeline.transcriptionOptions = opts
     }
 
-    /// Sync WhisperKit-specific decoding config to its backend.
-    private func syncWhisperKitDecodingConfig() {
-        let config = WhisperKitDecodingConfig(
-            temperature: settings.whisperKitTemperature,
-            compressionRatioThreshold: settings.whisperKitCompressionThreshold,
-            logProbThreshold: settings.whisperKitLogProbThreshold,
-            noSpeechThreshold: settings.whisperKitNoSpeechThreshold
-        )
-        Task { await asrManager.updateWhisperKitDecodingConfig(config) }
-    }
+
 
     /// Re-register Carbon hotkeys after a config change.
     private func reregisterHotkeys() {

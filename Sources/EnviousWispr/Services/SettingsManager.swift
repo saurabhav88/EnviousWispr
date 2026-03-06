@@ -62,10 +62,6 @@ final class SettingsManager {
         case isDebugModeEnabled
         case debugLogLevel
         case useExtendedThinking
-        case whisperKitTemperature
-        case whisperKitCompressionThreshold
-        case whisperKitLogProbThreshold
-        case whisperKitNoSpeechThreshold
         case whisperKitLanguageAutoDetect
         case selectedInputDeviceUID
         case noiseSuppression
@@ -273,34 +269,6 @@ final class SettingsManager {
         }
     }
 
-    var whisperKitTemperature: Float {
-        didSet {
-            UserDefaults.standard.set(whisperKitTemperature, forKey: "whisperKitTemperature")
-            onChange?(.whisperKitTemperature)
-        }
-    }
-
-    var whisperKitCompressionThreshold: Float {
-        didSet {
-            UserDefaults.standard.set(whisperKitCompressionThreshold, forKey: "whisperKitCompressionThreshold")
-            onChange?(.whisperKitCompressionThreshold)
-        }
-    }
-
-    var whisperKitLogProbThreshold: Float {
-        didSet {
-            UserDefaults.standard.set(whisperKitLogProbThreshold, forKey: "whisperKitLogProbThreshold")
-            onChange?(.whisperKitLogProbThreshold)
-        }
-    }
-
-    var whisperKitNoSpeechThreshold: Float {
-        didSet {
-            UserDefaults.standard.set(whisperKitNoSpeechThreshold, forKey: "whisperKitNoSpeechThreshold")
-            onChange?(.whisperKitNoSpeechThreshold)
-        }
-    }
-
     var whisperKitLanguageAutoDetect: Bool {
         didSet {
             UserDefaults.standard.set(whisperKitLanguageAutoDetect, forKey: "whisperKitLanguageAutoDetect")
@@ -431,10 +399,6 @@ final class SettingsManager {
             rawValue: defaults.string(forKey: "debugLogLevel") ?? ""
         ) ?? .info
         useExtendedThinking = defaults.object(forKey: "useExtendedThinking") as? Bool ?? false
-        whisperKitTemperature = defaults.object(forKey: "whisperKitTemperature") as? Float ?? 0.0
-        whisperKitCompressionThreshold = defaults.object(forKey: "whisperKitCompressionThreshold") as? Float ?? 2.4
-        whisperKitLogProbThreshold = defaults.object(forKey: "whisperKitLogProbThreshold") as? Float ?? -1.0
-        whisperKitNoSpeechThreshold = defaults.object(forKey: "whisperKitNoSpeechThreshold") as? Float ?? 0.6
         whisperKitLanguageAutoDetect = defaults.object(forKey: "whisperKitLanguageAutoDetect") as? Bool ?? false
         selectedInputDeviceUID = defaults.string(forKey: "selectedInputDeviceUID") ?? ""
         noiseSuppression = defaults.object(forKey: "noiseSuppression") as? Bool ?? false

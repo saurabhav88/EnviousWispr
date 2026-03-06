@@ -41,27 +41,11 @@ struct SpeechEngineSettingsView: View {
             if appState.settings.selectedBackend == .whisperKit,
                case .ready = appState.whisperKitSetup.setupState {
                 BrandedSection(header: "Multi-Language Options") {
-                    BrandedRow {
+                    BrandedRow(showDivider: false) {
                         VStack(alignment: .leading, spacing: 4) {
                             Toggle("Auto-detect language", isOn: $state.settings.whisperKitLanguageAutoDetect)
                                 .toggleStyle(BrandedToggleStyle())
                             Text("Automatically identifies which language you're speaking.")
-                                .font(.stHelper)
-                                .foregroundStyle(.stTextTertiary)
-                        }
-                    }
-                    BrandedRow {
-                        VStack(alignment: .leading, spacing: 4) {
-                            BrandedSlider("Accuracy", value: $state.settings.whisperKitTemperature, in: 0.0...1.0, step: 0.1)
-                            Text("Lower = more consistent, higher = more creative.")
-                                .font(.stHelper)
-                                .foregroundStyle(.stTextTertiary)
-                        }
-                    }
-                    BrandedRow(showDivider: false) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            BrandedSlider("Speech filter", value: $state.settings.whisperKitNoSpeechThreshold, in: 0.0...1.0, step: 0.05)
-                            Text("How aggressively to filter silence from the transcript.")
                                 .font(.stHelper)
                                 .foregroundStyle(.stTextTertiary)
                         }

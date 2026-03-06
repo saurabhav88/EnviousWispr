@@ -47,10 +47,7 @@ final class ASRManager {
         }
     }
 
-    /// Update WhisperKit decoding configuration. Safe to call while model is loaded.
-    func updateWhisperKitDecodingConfig(_ config: WhisperKitDecodingConfig) async {
-        await whisperKitBackend.updateDecodingConfig(config)
-    }
+
 
     /// Load the active backend's model.
     func loadModel() async throws {
