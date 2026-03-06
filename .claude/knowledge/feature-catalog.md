@@ -35,7 +35,7 @@ Auto-generated stats from source code.
 
 # Feature Catalog
 
-Feature → files → settings → UI lookup. 14 groups, 49 features. Paths relative to `Sources/EnviousWispr/`.
+Feature → files → settings → UI lookup. Paths relative to `Sources/EnviousWispr/`.
 
 ## Pipeline (5)
 

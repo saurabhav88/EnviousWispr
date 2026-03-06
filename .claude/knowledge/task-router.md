@@ -131,12 +131,6 @@
 
 <!-- MANUAL SECTION BELOW — human-authored, preserved across regeneration -->
 
-# Task Router — EnviousWispr
-
-**Use this file first.** Given a task description, find the files to change, agent to dispatch, and skill to invoke.
-
-**For detailed file info, see [file-index.md](file-index.md). For reverse lookups (type → file), see [type-index.md](type-index.md).**
-
 ## Common Task Patterns
 
 ### Create a mockup / visual artifact / HTML design
@@ -253,7 +247,7 @@
 
 ### Fix a pipeline bug (recording/transcription)
 **Agent:** audio-pipeline | **Skill:** `wispr-trace-audio-pipeline`
-- **State machine issue:** `Pipeline/TranscriptionPipeline.swift` (686 lines — the big one)
+- **State machine issue:** `Pipeline/TranscriptionPipeline.swift` (the big one)
 - **Audio capture:** `Audio/AudioCaptureManager.swift`
 - **VAD/silence:** `Audio/SilenceDetector.swift`
 - **ASR routing:** `ASR/ASRManager.swift`
@@ -263,7 +257,7 @@
 
 ### Fix hotkey/shortcut issues
 **Agent:** macos-platform | **Skill:** `wispr-review-platform`
-- **Carbon registration:** `Services/HotkeyService.swift` (415 lines)
+- **Carbon registration:** `Services/HotkeyService.swift`
 - **Recorder widget:** `Views/Components/HotkeyRecorderView.swift`
 - **Key formatting:** `Utilities/KeySymbols.swift`
 - **Settings persistence:** `Services/SettingsManager.swift` (keyCode/modifier keys)
@@ -277,12 +271,12 @@
 
 ### Fix LLM polish issues
 **Agent:** audio-pipeline (pipeline) or feature-scaffolding (connector)
-- **Polish step:** `Pipeline/Steps/LLMPolishStep.swift` (113 lines — extended thinking, provider routing)
+- **Polish step:** `Pipeline/Steps/LLMPolishStep.swift` (extended thinking, provider routing)
 - **Connector code:** `LLM/{Provider}Connector.swift`
 - **Error types:** `LLM/LLMProtocol.swift`
 - **Network session:** `LLM/LLMNetworkSession.swift`
 - **Model discovery:** `LLM/LLMModelDiscovery.swift`
-- **Settings UI:** `Views/Settings/AIPolishSettingsView.swift` (668 lines)
+- **Settings UI:** `Views/Settings/AIPolishSettingsView.swift`
 - **Streaming polish:**
   - `LLM/GeminiConnector.swift` — SSE streaming via `streamGenerateContent?alt=sse`, thinking budget
   - `LLM/LLMProtocol.swift` — `onToken` callback parameter
@@ -296,7 +290,7 @@
 
 ### Fix VAD/silence detection
 **Agent:** audio-pipeline | **Skill:** `wispr-apply-vad-manager-patterns`
-- **VAD actor:** `Audio/SilenceDetector.swift` (302 lines)
+- **VAD actor:** `Audio/SilenceDetector.swift`
 - **VAD monitoring loop:** `Pipeline/TranscriptionPipeline.swift` → `monitorVAD()`
 - **Settings:** `Services/SettingsManager.swift` (vadAutoStop, vadSilenceTimeout, vadSensitivity, vadEnergyGate)
 - **Settings UI:** `Views/Settings/SpeechEngineSettingsView.swift`
@@ -312,14 +306,14 @@
 
 ### Change menu bar behavior
 **Agent:** macos-platform | **Skill:** `wispr-review-platform`
-- **Icon animator:** `App/MenuBarIconAnimator.swift` (312 lines) — CG-rendered icons, 4 states, audio-reactive
+- **Icon animator:** `App/MenuBarIconAnimator.swift` — CG-rendered icons, 4 states, audio-reactive
 - **Menu construction:** `App/AppDelegate.swift` → `populateMenu()` (NSMenuDelegate)
 - **Icon state management:** `App/AppDelegate.swift` → drives `MenuBarIconAnimator` via pipeline state callbacks
 - **Window targeting:** `App/AppDelegate.swift` → `openSettings()`, NSApp window focus
 
 ### Change overlay appearance
 **Agent:** macos-platform | **Skill:** `wispr-review-platform`
-- **Overlay panel:** `Views/Overlay/RecordingOverlayPanel.swift` (457 lines)
+- **Overlay panel:** `Views/Overlay/RecordingOverlayPanel.swift`
 - **Brand icons:** `SpectrumWheelIcon` (rotating rainbow wheel), `RainbowLipsIcon` (cupid's bow bars with bounce)
 - **Background:** `OverlayCapsuleBackground` (capsule with blur)
 - **Recording view:** `RecordingOverlayView` — waveform + timer + brand icon
@@ -451,15 +445,15 @@ EnviousWisprApp ──refs──> AppDelegate (via @NSApplicationDelegateAdaptor
 
 These files are touched by almost every feature. Read them first when scoping work:
 
-1. **`App/AppState.swift`** (613 lines) — 26 edits
-2. **`Pipeline/TranscriptionPipeline.swift`** (686 lines) — 16 edits
-3. **`App/AppDelegate.swift`** (423 lines) — 16 edits
-4. **`Views/Settings/SettingsView.swift`** (71 lines) — 13 edits
-5. **`Services/SettingsManager.swift`** (399 lines) — 12 edits (every new setting lands here)
-6. **`Views/Main/MainWindowView.swift`** (314 lines) — 9 edits
-7. **`LLM/GeminiConnector.swift`** (260 lines) — 9 edits
-8. **`Views/Overlay/RecordingOverlayPanel.swift`** (457 lines) — 8 edits
-9. **`Utilities/Constants.swift`** (82 lines) — 8 edits
-10. **`Services/PasteService.swift`** (130 lines) — 8 edits
-11. **`Audio/AudioCaptureManager.swift`** (699 lines) — 8 edits (capture config, noise suppression, device selection)
-12. **`Audio/SilenceDetector.swift`** (302 lines) — 8 edits
+1. **`App/AppState.swift`** — 26 edits
+2. **`Pipeline/TranscriptionPipeline.swift`** — 16 edits
+3. **`App/AppDelegate.swift`** — 16 edits
+4. **`Views/Settings/SettingsView.swift`** — 13 edits
+5. **`Services/SettingsManager.swift`** — 12 edits (every new setting lands here)
+6. **`Views/Main/MainWindowView.swift`** — 9 edits
+7. **`LLM/GeminiConnector.swift`** — 9 edits
+8. **`Views/Overlay/RecordingOverlayPanel.swift`** — 8 edits
+9. **`Utilities/Constants.swift`** — 8 edits
+10. **`Services/PasteService.swift`** — 8 edits
+11. **`Audio/AudioCaptureManager.swift`** — 8 edits (capture config, noise suppression, device selection)
+12. **`Audio/SilenceDetector.swift`** — 8 edits

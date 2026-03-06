@@ -59,7 +59,7 @@ Scopes: `asr`, `audio`, `ui`, `llm`, `pipeline`, `settings`, `hotkey`, `vad`, `b
 ## Settings Persistence
 
 - **Non-sensitive:** `UserDefaults.standard` with `didSet` pattern
-- **Sensitive (API keys):** `KeychainManager` (service: `"com.enviouswispr.api-keys"`). Uses `#if DEBUG` pattern: file-based storage in debug, real macOS Keychain in release
+- **Sensitive (API keys):** `KeychainManager` — file-based storage at `~/.enviouswispr-keys/` (dir 0700, files 0600). Never macOS Keychain. See [gotchas.md](gotchas.md) for rationale
 
 ## View Patterns
 
