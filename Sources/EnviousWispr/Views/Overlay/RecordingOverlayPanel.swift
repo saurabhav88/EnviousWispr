@@ -22,6 +22,29 @@ final class RecordingOverlayPanel {
     /// pressed within a single run-loop cycle of show().
     private var pendingCreateWork: DispatchWorkItem?
 
+    /// Last intent shown — guards against redundant show calls that would
+    /// close and recreate the panel for the same visual state (flicker).
+    private var currentIntent: OverlayIntent = .hidden
+
+    // MARK: - Intent-driven API
+
+    /// Unified entry point: render the overlay for the given intent.
+    /// Guards against identical intents to prevent flicker.
+    func show(intent: OverlayIntent, audioLevelProvider: @escaping () -> Float = { 0 }) {
+        guard intent != currentIntent else { return }
+        currentIntent = intent
+        switch intent {
+        case .hidden:
+            hide()
+        case .recording:
+            show(audioLevelProvider: audioLevelProvider)
+        case .processing(let label):
+            showPolishing(label: label)
+        }
+    }
+
+    // MARK: - Legacy API (internal)
+
     func show(audioLevelProvider: @escaping () -> Float) {
         guard panel == nil else { return }
         // Cancel any lingering deferred work from a prior session that wasn't
@@ -48,11 +71,11 @@ final class RecordingOverlayPanel {
         DispatchQueue.main.async(execute: work)
     }
 
-    /// Show a "Polishing..." overlay during LLM processing.
-    func showPolishing() {
+    /// Show a processing overlay with a custom label during model loading, transcription, or LLM polishing.
+    func showPolishing(label: String = "Polishing...") {
         guard panel == nil else {
             // If recording overlay is showing, transition to polishing
-            transitionToPolishing()
+            transitionToPolishing(label: label)
             return
         }
         // Cancel any prior deferred work defensively before queuing new work.
@@ -64,7 +87,7 @@ final class RecordingOverlayPanel {
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.generation == token else { return }
             self.pendingCreateWork = nil
-            self.createPolishingPanel()
+            self.createPolishingPanel(label: label)
         }
         pendingCreateWork = work
         DispatchQueue.main.async(execute: work)
@@ -78,14 +101,14 @@ final class RecordingOverlayPanel {
         showPanel(content: overlayView, width: 185)
     }
 
-    private func createPolishingPanel() {
+    private func createPolishingPanel(label: String = "Polishing...") {
         guard panel == nil else { return }
 
-        showPanel(content: PolishingOverlayView().frame(width: 152, height: 44), width: 152)
+        showPanel(content: PolishingOverlayView(label: label).frame(width: 185, height: 44), width: 185)
     }
 
     /// Transition an existing panel from recording to polishing mode.
-    private func transitionToPolishing() {
+    private func transitionToPolishing(label: String = "Polishing...") {
         guard let existingPanel = panel else { return }
         let y = existingPanel.frame.origin.y
 
@@ -107,7 +130,7 @@ final class RecordingOverlayPanel {
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.generation == token else { return }
             self.pendingCreateWork = nil
-            self.showPanel(content: PolishingOverlayView().frame(width: 152, height: 44), width: 152, y: y)
+            self.showPanel(content: PolishingOverlayView(label: label).frame(width: 185, height: 44), width: 185, y: y)
         }
         pendingCreateWork = work
         DispatchQueue.main.async(execute: work)
@@ -149,6 +172,7 @@ final class RecordingOverlayPanel {
     }
 
     func hide() {
+        currentIntent = .hidden
         generation &+= 1
         // Cancel any pending deferred panel creation so it never fires.
         // This handles the rapid-ESC race: if hide() is called before the
@@ -441,12 +465,14 @@ struct RecordingOverlayView: View {
 
 /// Compact polishing indicator overlay shown during LLM processing.
 struct PolishingOverlayView: View {
+    var label: String = "Polishing..."
+
     var body: some View {
         HStack(spacing: 10) {
             // Spinning spectrum wheel icon — polishing/processing state
             SpectrumWheelIcon(size: 24)
 
-            Text("Polishing...")
+            Text(label)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.white)
         }

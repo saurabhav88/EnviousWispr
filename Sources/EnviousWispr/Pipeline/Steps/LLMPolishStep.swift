@@ -60,11 +60,13 @@ final class LLMPolishStep: TextProcessingStep {
             reasoningEffort: reasoningEffort
         )
 
-        // Resolve ${transcript} placeholder if present
-        var resolvedInstructions = polishInstructions
+        // Enrich instructions with pipeline context (language, etc.)
+        // then resolve ${transcript} placeholder if present.
+        let enriched = enrichedInstructions(polishInstructions, context: context)
+        var resolvedInstructions = enriched
         var userText = context.text
-        if polishInstructions.systemPrompt.contains("${transcript}") {
-            let resolved = polishInstructions.systemPrompt.replacingOccurrences(
+        if enriched.systemPrompt.contains("${transcript}") {
+            let resolved = enriched.systemPrompt.replacingOccurrences(
                 of: "${transcript}", with: context.text
             )
             resolvedInstructions = PolishInstructions(
@@ -93,6 +95,36 @@ final class LLMPolishStep: TextProcessingStep {
         ctx.llmProvider = llmProvider.rawValue
         ctx.llmModel = llmModel
         return ctx
+    }
+
+    // MARK: - Context-Aware Prompt Enrichment
+
+    /// Enrich polish instructions with pipeline context before sending to the LLM.
+    /// This is the single place to add context-aware prompt modifications.
+    /// Language handling lives here (not in PolishInstructions or TranscriptPolisher)
+    /// because it's pipeline metadata, not user-facing prompt configuration.
+    private func enrichedInstructions(
+        _ base: PolishInstructions,
+        context: TextProcessingContext
+    ) -> PolishInstructions {
+        var systemPrompt = base.systemPrompt
+
+        // Add language context for non-English transcripts.
+        // Without this, the LLM assumes English and corrupts non-English text.
+        if let language = context.language,
+           !language.isEmpty,
+           !language.lowercased().hasPrefix("en") {
+            let languageName = Locale.current.localizedString(forLanguageCode: language) ?? language
+            systemPrompt = """
+                LANGUAGE: This transcript is in \(languageName) (\(language)). \
+                Polish it in \(languageName) — do NOT translate to English. \
+                Apply the same rules below but in the transcript's language.
+
+                \(systemPrompt)
+                """
+        }
+
+        return PolishInstructions(systemPrompt: systemPrompt)
     }
 
     /// Resolve thinking/reasoning config based on provider, model, and user toggle.

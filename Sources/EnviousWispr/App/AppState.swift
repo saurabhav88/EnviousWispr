@@ -24,6 +24,9 @@ final class AppState {
     var availableInputDevices: [AudioInputDevice] = []
     private var deviceMonitor: AudioDeviceMonitor?
 
+    /// Background task that observes WhisperKitSetupService.setupState and pre-loads the model when ready.
+    private var whisperKitPreloadTask: Task<Void, Never>?
+
     // Pipelines — initialized after sub-systems
     let pipeline: TranscriptionPipeline
     let whisperKitPipeline: WhisperKitPipeline
@@ -139,53 +142,37 @@ final class AppState {
         pipeline.onStateChange = { [weak self] newState in
             guard let self else { return }
             self.onPipelineStateChange?(newState)
+            // Hotkey management
             switch newState {
             case .recording:
                 self.hotkeyService.registerCancelHotkey()
-                self.recordingOverlay.show(
-                    audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 }
-                )
-            case .transcribing:
+            case .transcribing, .polishing, .error, .idle, .complete:
                 self.hotkeyService.unregisterCancelHotkey()
-                // Recording overlay stays visible — will transition to polishing
-            case .polishing:
-                self.hotkeyService.unregisterCancelHotkey()
-                self.recordingOverlay.showPolishing()
-            case .error, .idle:
-                self.hotkeyService.unregisterCancelHotkey()
-                self.recordingOverlay.hide()
-            case .complete:
-                self.hotkeyService.unregisterCancelHotkey()
-                self.recordingOverlay.hide()
-                self.loadTranscripts()
             }
+            // Intent-driven overlay — pipeline.overlayIntent maps state to the correct label
+            self.recordingOverlay.show(
+                intent: self.pipeline.overlayIntent,
+                audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 }
+            )
+            if newState == .complete { self.loadTranscripts() }
         }
 
         // Wire WhisperKit pipeline state changes to overlay and icon
         whisperKitPipeline.onStateChange = { [weak self] newState in
             guard let self else { return }
+            // Hotkey management
             switch newState {
-            case .loadingModel:
-                self.recordingOverlay.showPolishing()
             case .recording:
                 self.hotkeyService.registerCancelHotkey()
-                self.recordingOverlay.show(
-                    audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 }
-                )
-            case .transcribing:
+            case .loadingModel, .transcribing, .polishing, .error, .idle, .ready, .complete:
                 self.hotkeyService.unregisterCancelHotkey()
-                self.recordingOverlay.showPolishing()
-            case .polishing:
-                self.hotkeyService.unregisterCancelHotkey()
-                self.recordingOverlay.showPolishing()
-            case .error, .idle, .ready:
-                self.hotkeyService.unregisterCancelHotkey()
-                self.recordingOverlay.hide()
-            case .complete:
-                self.hotkeyService.unregisterCancelHotkey()
-                self.recordingOverlay.hide()
-                self.loadTranscripts()
             }
+            // Intent-driven overlay — pipeline.overlayIntent maps state to the correct label
+            self.recordingOverlay.show(
+                intent: self.whisperKitPipeline.overlayIntent,
+                audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 }
+            )
+            if newState == .complete { self.loadTranscripts() }
         }
 
         // Wire hotkey callbacks
@@ -245,6 +232,13 @@ final class AppState {
             await self?.cancelRecording()
         }
 
+        // Pre-load WhisperKit model in background to eliminate cold-start delay.
+        // Detect cached model state first (setupState starts as .checking), then observe for .ready.
+        Task { [weak self] in
+            await self?.whisperKitSetup.detectState()
+            self?.startWhisperKitPreloadObservation()
+        }
+
         // NOTE: hotkey registration is deferred to startHotkeyServiceIfEnabled(),
         // called from applicationDidFinishLaunching. Carbon RegisterEventHotKey
         // requires the NSApplication event loop to be running for event delivery.
@@ -267,6 +261,8 @@ final class AppState {
                 await asrManager.switchBackend(to: backend)
                 if backend == .whisperKit {
                     await whisperKitSetup.detectState()
+                    // Re-observe setupState to pre-load model when ready
+                    startWhisperKitPreloadObservation()
                 }
             }
         case .whisperKitModel:
@@ -275,6 +271,8 @@ final class AppState {
             Task {
                 await asrManager.updateWhisperKitModel(model)
                 await whisperKitSetup.forceDetectState()
+                // Re-observe setupState to pre-load new model variant when ready
+                startWhisperKitPreloadObservation()
             }
         case .recordingMode:
             hotkeyService.recordingMode = settings.recordingMode
@@ -394,6 +392,33 @@ final class AppState {
         whisperKitPipeline.wordCorrection.customWords = customWords
     }
 
+
+    /// Observe WhisperKitSetupService.setupState and pre-load the model when it becomes .ready.
+    /// Uses withObservationTracking to react to @Observable property changes outside SwiftUI.
+    private func startWhisperKitPreloadObservation() {
+        whisperKitPreloadTask?.cancel()
+        whisperKitPreloadTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+
+                // Check current state — if already .ready, trigger pre-load
+                let currentState = self.whisperKitSetup.setupState
+                if currentState == .ready {
+                    await self.whisperKitPipeline.prepareBackendSilently()
+                    return  // Model loaded — no need to keep observing
+                }
+
+                // Wait for the next change to setupState
+                await withCheckedContinuation { continuation in
+                    withObservationTracking {
+                        _ = self.whisperKitSetup.setupState
+                    } onChange: {
+                        continuation.resume()
+                    }
+                }
+            }
+        }
+    }
 
     /// Re-register Carbon hotkeys after a config change.
     private func reregisterHotkeys() {

@@ -85,6 +85,9 @@ EnviousWispr.app/
 *.bin
 .me
 
+# Sub-projects (separate git repos, nested inside EnviousWispr for tooling access)
+EnviousType/
+
 # Dolt database files (added by bd init)
 .dolt/
 *.db

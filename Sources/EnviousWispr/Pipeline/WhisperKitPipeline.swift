@@ -124,6 +124,28 @@ final class WhisperKitPipeline: DictationPipeline {
         }
     }
 
+    // MARK: - Background Pre-load
+
+    /// Silently load the WhisperKit model into RAM without changing pipeline state.
+    /// Called after model download completes or on launch if model is already cached.
+    /// If user presses record before this finishes, startRecording() handles it with its own .loadingModel flow.
+    func prepareBackendSilently() async {
+        let isBackendReady = await backend.isReady
+        guard !isBackendReady else { return }
+        do {
+            try await backend.prepare()
+            Task { await AppLogger.shared.log(
+                "WhisperKit model pre-loaded successfully (background)",
+                level: .info, category: "WhisperKitPipeline"
+            ) }
+        } catch {
+            Task { await AppLogger.shared.log(
+                "WhisperKit model pre-load failed: \(error.localizedDescription)",
+                level: .info, category: "WhisperKitPipeline"
+            ) }
+        }
+    }
+
     // MARK: - Recording Lifecycle
 
     func preWarmAudioInput() async {
@@ -146,6 +168,10 @@ final class WhisperKitPipeline: DictationPipeline {
     func startRecording() async {
         guard !state.isActive || state == .complete || state == .ready else { return }
 
+        // Clear any stale stopRequested from a previous cycle (e.g., PTT key-up
+        // that arrived during .polishing — the flag outlives the pipeline run
+        // and would otherwise abort this new recording immediately).
+        stopRequested = false
         lastPolishError = nil
 
         // Load model if not ready — explicit .loadingModel state
@@ -210,13 +236,16 @@ final class WhisperKitPipeline: DictationPipeline {
     }
 
     func requestStop() async {
-        if state == .recording {
+        switch state {
+        case .recording:
             await stopAndTranscribe()
-        } else if state == .loadingModel {
-            // PTT cancel during model load → clean idle
+        case .loadingModel, .idle:
+            // .loadingModel: PTT cancel during model load → startRecording will check and go idle.
+            // .idle: startRecording is in-flight (pre-warm/engine setup) → will check after entering .recording.
             stopRequested = true
-        } else {
-            stopRequested = true
+        case .transcribing, .polishing, .complete, .error, .ready:
+            // Pipeline is past the point of no return or already finished — ignore.
+            break
         }
     }
 

@@ -123,6 +123,10 @@ final class TranscriptionPipeline: DictationPipeline {
     func startRecording() async {
         guard !state.isActive || state == .complete else { return }
 
+        // Clear any stale stopRequested from a previous cycle (e.g., PTT key-up
+        // that arrived during .polishing — the flag outlives the pipeline run
+        // and would otherwise abort this new recording immediately).
+        stopRequested = false
         lastPolishError = nil
         deactivateStreamingForwarding()
 
@@ -241,10 +245,16 @@ final class TranscriptionPipeline: DictationPipeline {
     /// Stop recording, or set a flag if startRecording() is still in-flight.
     /// Handles the pre-warm phase (.idle) as well as model loading (.transcribing).
     func requestStop() async {
-        if state == .recording {
+        switch state {
+        case .recording:
             await stopAndTranscribe()
-        } else {
+        case .idle, .transcribing:
+            // .idle: startRecording is in-flight (pre-warm/engine setup) → will check after entering .recording.
+            // .transcribing: model load in progress → startRecording will check and stop.
             stopRequested = true
+        case .polishing, .complete, .error:
+            // Pipeline is past the point of no return or already finished — ignore.
+            break
         }
     }
 

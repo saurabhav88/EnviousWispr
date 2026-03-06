@@ -28,6 +28,8 @@ actor WhisperKitBackend: ASRBackend {
     }
 
     func prepare() async throws {
+        guard !isReady else { return }  // Idempotent — skip if already loaded
+
         // Use cached model path from WhisperKitSetupService (no network call).
         // Falls back to WhisperKit.download() if path not found (handles edge cases).
         let modelPath: String
