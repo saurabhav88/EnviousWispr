@@ -107,7 +107,7 @@ final class WhisperKitPipeline: DictationPipeline {
     var overlayIntent: OverlayIntent {
         switch state {
         case .startingUp:
-            return .hidden
+            return .processing(label: "Starting...")
         case .loadingModel:
             return .processing(label: "Loading model...")
         case .recording:
@@ -164,6 +164,8 @@ final class WhisperKitPipeline: DictationPipeline {
         guard !state.isActive, state != .recording else { return }
         await audioCapture.preWarm()
         isPreWarmed = true
+        // Defense-in-depth: ensure model is loaded (idempotent, no-op if ready)
+        Task { try? await backend.prepare() }
     }
 
     func toggleRecording() async {

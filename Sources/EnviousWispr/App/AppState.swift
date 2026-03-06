@@ -268,6 +268,16 @@ final class AppState {
     private func handleSettingChanged(_ key: SettingsManager.SettingKey) {
         switch key {
         case .selectedBackend:
+            // Don't switch backends while a pipeline is actively recording/transcribing
+            let parakeetActive = pipelineState.isActive
+            let whisperKitActive = whisperKitPipeline.state.isActive
+            if parakeetActive || whisperKitActive {
+                Task { await AppLogger.shared.log(
+                    "Backend switch blocked — pipeline is active",
+                    level: .info, category: "AppState"
+                ) }
+                break
+            }
             let backend = settings.selectedBackend
             Task {
                 await asrManager.switchBackend(to: backend)
