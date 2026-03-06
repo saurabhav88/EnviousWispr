@@ -455,3 +455,4 @@ struct PolishingOverlayView: View {
         .background(OverlayCapsuleBackground())
     }
 }
+

@@ -18,6 +18,7 @@ final class AppState {
     let recordingOverlay = RecordingOverlayPanel()
     let customWordStore = CustomWordStore()
     let ollamaSetup = OllamaSetupService()
+    let whisperKitSetup = WhisperKitSetupService()
 
     // Audio device management
     var availableInputDevices: [AudioInputDevice] = []
@@ -102,6 +103,7 @@ final class AppState {
         audioCapture.selectedInputDeviceUID = settings.selectedInputDeviceUID
         audioCapture.preferredInputDeviceIDOverride = settings.preferredInputDeviceIDOverride
         syncTranscriptionOptions()
+        syncWhisperKitDecodingConfig()
 
         // Enumerate input devices and monitor for changes
         refreshInputDevices()
@@ -116,6 +118,9 @@ final class AppState {
             await AppLogger.shared.setLogLevel(settings.debugLogLevel)
             await AppLogger.shared.setDebugMode(settings.isDebugModeEnabled)
         }
+
+        // Sync WhisperKit setup service model variant
+        whisperKitSetup.modelVariant = settings.whisperKitModel
 
         // Wire settings change handler
         settings.onChange = { [weak self] key in self?.handleSettingChanged(key) }
@@ -198,9 +203,20 @@ final class AppState {
     private func handleSettingChanged(_ key: SettingsManager.SettingKey) {
         switch key {
         case .selectedBackend:
-            Task { await asrManager.switchBackend(to: settings.selectedBackend) }
+            let backend = settings.selectedBackend
+            Task {
+                await asrManager.switchBackend(to: backend)
+                if backend == .whisperKit {
+                    await whisperKitSetup.detectState()
+                }
+            }
         case .whisperKitModel:
-            Task { await asrManager.updateWhisperKitModel(settings.whisperKitModel) }
+            let model = settings.whisperKitModel
+            whisperKitSetup.modelVariant = model
+            Task {
+                await asrManager.updateWhisperKitModel(model)
+                await whisperKitSetup.forceDetectState()
+            }
         case .recordingMode:
             hotkeyService.recordingMode = settings.recordingMode
         case .llmProvider:
@@ -264,9 +280,11 @@ final class AppState {
         case .useExtendedThinking:
             pipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
         case .whisperKitTemperature, .whisperKitCompressionThreshold,
-             .whisperKitLogProbThreshold, .whisperKitNoSpeechThreshold,
-             .whisperKitLanguageAutoDetect:
+             .whisperKitLogProbThreshold, .whisperKitNoSpeechThreshold:
+            syncWhisperKitDecodingConfig()
+        case .whisperKitLanguageAutoDetect:
             syncTranscriptionOptions()
+            syncWhisperKitDecodingConfig()
         case .selectedInputDeviceUID:
             audioCapture.selectedInputDeviceUID = settings.selectedInputDeviceUID
         case .preferredInputDeviceIDOverride:
@@ -287,15 +305,22 @@ final class AppState {
         }
     }
 
-    /// Build TranscriptionOptions from current settings.
+    /// Sync shared transcription options (language, timestamps) to the pipeline.
     private func syncTranscriptionOptions() {
         var opts = TranscriptionOptions()
         opts.language = settings.whisperKitLanguageAutoDetect ? nil : "en"
-        opts.temperature = settings.whisperKitTemperature
-        opts.compressionRatioThreshold = settings.whisperKitCompressionThreshold
-        opts.logProbThreshold = settings.whisperKitLogProbThreshold
-        opts.noSpeechThreshold = settings.whisperKitNoSpeechThreshold
         pipeline.transcriptionOptions = opts
+    }
+
+    /// Sync WhisperKit-specific decoding config to its backend.
+    private func syncWhisperKitDecodingConfig() {
+        let config = WhisperKitDecodingConfig(
+            temperature: settings.whisperKitTemperature,
+            compressionRatioThreshold: settings.whisperKitCompressionThreshold,
+            logProbThreshold: settings.whisperKitLogProbThreshold,
+            noSpeechThreshold: settings.whisperKitNoSpeechThreshold
+        )
+        Task { await asrManager.updateWhisperKitDecodingConfig(config) }
     }
 
     /// Re-register Carbon hotkeys after a config change.

@@ -39,7 +39,7 @@ protocol ASRBackend: Actor {
     func cancelStreaming() async
 }
 
-/// Default implementations for streaming — backends that don't support streaming get no-op defaults.
+/// Default implementations for optional protocol members.
 extension ASRBackend {
     var supportsStreaming: Bool { false }
 

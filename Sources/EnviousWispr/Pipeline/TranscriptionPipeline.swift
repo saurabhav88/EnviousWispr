@@ -129,9 +129,9 @@ final class TranscriptionPipeline {
         // Cancel idle timer so model stays loaded during recording.
         asrManager.cancelIdleTimer()
 
-        // Ensure model is loaded
+        // Ensure model is loaded (model should already be cached by WhisperKitSetupService)
         if !asrManager.isModelLoaded {
-            state = .transcribing // Show "loading" state
+            state = .transcribing
             do {
                 try await asrManager.loadModel()
             } catch {

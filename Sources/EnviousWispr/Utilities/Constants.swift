@@ -2,6 +2,12 @@ import Foundation
 
 enum AppConstants {
     static let appName = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "EnviousWispr"
+    static let appVersion: String = {
+        let raw = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        // Strip leading "v" and git metadata (e.g. "v1.0.6-1-gabcdef-dev" → "1.0.6")
+        let stripped = raw.hasPrefix("v") ? String(raw.dropFirst()) : raw
+        return stripped.split(separator: "-").first.map(String.init) ?? stripped
+    }()
     static let appSupportDir = "EnviousWispr"
     static let transcriptsDir = "transcripts"
     static let onboardingWindowTitle = "Setup"

@@ -283,6 +283,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.isEnabled = false
         menu.addItem(statusItem)
 
+        // Version
+        let versionItem = NSMenuItem(title: "Version: \(AppConstants.appVersion)", action: nil, keyEquivalent: "")
+        versionItem.isEnabled = false
+        menu.addItem(versionItem)
+
         menu.addItem(.separator())
 
         // Record / Stop

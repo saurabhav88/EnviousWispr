@@ -28,8 +28,18 @@ struct SpeechEngineSettingsView: View {
                 }
             }
 
-            // ── Section 2: Multi-Language Options (conditional) ───────────────
+            // ── Section 2: WhisperKit Model Setup (conditional) ───────────────
             if appState.settings.selectedBackend == .whisperKit {
+                BrandedSection(header: "Model Setup") {
+                    BrandedRow(showDivider: false) {
+                        whisperKitSetupContent
+                    }
+                }
+            }
+
+            // ── Section 3: Multi-Language Options (only when model is ready) ──
+            if appState.settings.selectedBackend == .whisperKit,
+               case .ready = appState.whisperKitSetup.setupState {
                 BrandedSection(header: "Multi-Language Options") {
                     BrandedRow {
                         VStack(alignment: .leading, spacing: 4) {
@@ -98,6 +108,121 @@ struct SpeechEngineSettingsView: View {
                 }
             }
         }
+        .onAppear {
+            if appState.settings.selectedBackend == .whisperKit {
+                Task { await appState.whisperKitSetup.detectState() }
+            }
+        }
+        .onChange(of: appState.settings.selectedBackend) { _, newBackend in
+            if newBackend == .whisperKit {
+                Task { await appState.whisperKitSetup.detectState() }
+            }
+        }
+    }
+
+    // MARK: - WhisperKit Setup UI
+
+    @ViewBuilder
+    private var whisperKitSetupContent: some View {
+        switch appState.whisperKitSetup.setupState {
+        case .checking:
+            HStack {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Checking model status...")
+                    .foregroundStyle(.stTextTertiary)
+            }
+
+        case .notDownloaded:
+            VStack(alignment: .leading, spacing: 8) {
+                whisperKitStepIndicator("Download Model")
+
+                Text("WhisperKit requires a ~1.5 GB model download. It runs fully on your Mac — no internet needed after setup.")
+                    .font(.stHelper)
+                    .foregroundStyle(.stTextTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack {
+                    Button("Download WhisperKit Model") {
+                        appState.whisperKitSetup.downloadModel()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+
+                    whisperKitRefreshButton
+                }
+            }
+
+        case .downloading(let progress, let status):
+            VStack(alignment: .leading, spacing: 8) {
+                whisperKitStepIndicator("Downloading...")
+
+                ProgressView(value: progress)
+                    .progressViewStyle(.linear)
+
+                HStack {
+                    Text(status)
+                        .font(.caption2)
+                        .foregroundStyle(.stTextTertiary)
+                        .lineLimit(1)
+                    Spacer()
+                    if progress > 0 {
+                        Text("\(Int(progress * 100))%")
+                            .font(.caption2)
+                            .monospacedDigit()
+                            .foregroundStyle(.stTextTertiary)
+                    }
+                    Button("Cancel") {
+                        appState.whisperKitSetup.cancelDownload()
+                    }
+                    .controlSize(.small)
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.red)
+                }
+            }
+
+        case .ready:
+            HStack {
+                Label("Model Ready", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                Spacer()
+                whisperKitRefreshButton
+            }
+
+        case .error(let message):
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Something went wrong", systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+
+                Text(message)
+                    .font(.stHelper)
+                    .foregroundStyle(.stTextTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button("Try Again") {
+                    Task { await appState.whisperKitSetup.detectState() }
+                }
+                .controlSize(.small)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func whisperKitStepIndicator(_ title: String) -> some View {
+        Label(title, systemImage: "1.circle.fill")
+            .foregroundStyle(Color.accentColor)
+            .font(.caption.bold())
+    }
+
+    @ViewBuilder
+    private var whisperKitRefreshButton: some View {
+        Button {
+            Task { await appState.whisperKitSetup.forceDetectState() }
+        } label: {
+            Image(systemName: "arrow.clockwise")
+        }
+        .buttonStyle(.borderless)
+        .help("Re-check model status")
     }
 }
 
