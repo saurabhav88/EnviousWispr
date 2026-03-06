@@ -112,3 +112,15 @@
 {"actor":"saurabhav88","comment":null,"created_at":"2026-03-06T01:02:31Z","event_type":"closed","id":112,"issue_id":"ew-792","new_value":"Reverted patches in favor of pipeline split architecture. Research and plan preserved in docs/whisperkit-ux-parity-plan.md and docs/whisperkit-architecture-decision.md","old_value":""}
 {"actor":"saurabhav88","comment":null,"created_at":"2026-03-06T01:04:54Z","event_type":"created","id":113,"issue_id":"ew-u2d","new_value":"","old_value":""}
 {"actor":"saurabhav88","comment":null,"created_at":"2026-03-06T01:21:12Z","event_type":"created","id":114,"issue_id":"ew-b8e","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-06T01:21:16Z","event_type":"status_changed","id":115,"issue_id":"ew-b8e","new_value":"{\"status\":\"in_progress\"}","old_value":"{\"id\":\"ew-b8e\",\"title\":\"WhisperKit Highway: Phased Implementation Plan\",\"description\":\"Planning-only initiative. Design a clean, independent WhisperKit information highway (engine load → record → transcribe → Polish LLM handoff). Two-highway model: strict swimlane separation from Parakeet until the Polish LLM merge point. Deliverable: comprehensive phased planning package. No code.\",\"status\":\"open\",\"priority\":1,\"issue_type\":\"feature\",\"owner\":\"saurabhav@gmail.com\",\"created_at\":\"2026-03-06T06:21:13Z\",\"created_by\":\"saurabhav88\",\"updated_at\":\"2026-03-06T06:21:13Z\"}"}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-06T01:21:29Z","event_type":"created","id":116,"issue_id":"ew-z74","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-06T01:21:29Z","event_type":"created","id":117,"issue_id":"ew-eie","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-06T01:21:30Z","event_type":"created","id":118,"issue_id":"ew-5fs","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-06T01:21:30Z","event_type":"created","id":119,"issue_id":"ew-eu6","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-06T01:21:45Z","event_type":"created","id":120,"issue_id":"ew-ka5","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-06T01:21:45Z","event_type":"created","id":121,"issue_id":"ew-et8","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-06T01:21:45Z","event_type":"created","id":122,"issue_id":"ew-f0i","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-06T01:21:46Z","event_type":"created","id":123,"issue_id":"ew-tfy","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-06T01:21:46Z","event_type":"created","id":124,"issue_id":"ew-rsk","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-06T01:21:46Z","event_type":"created","id":125,"issue_id":"ew-6s7","new_value":"","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-06T01:21:46Z","event_type":"created","id":126,"issue_id":"ew-ezq","new_value":"","old_value":""}
