@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+@preconcurrency import WhisperKit
 
 /// Internal state machine for the WhisperKit highway — independent of PipelineState.
 enum WhisperKitPipelineState: Equatable, Sendable {
@@ -70,6 +71,16 @@ final class WhisperKitPipeline: DictationPipeline {
     private var isStopping = false
     /// Whether audio input has been pre-warmed by PTT key-down.
     private var isPreWarmed = false
+
+    // VAD properties
+    var vadAutoStop: Bool = false
+    var vadSilenceTimeout: Double = 1.5
+    var vadSensitivity: Float = 0.5
+    var vadEnergyGate: Bool = false
+
+    private var silenceDetector: SilenceDetector?
+    private var vadMonitorTask: Task<Void, Never>?
+    private var incrementalWorker: WhisperKitIncrementalWorker?
 
     init(
         audioCapture: AudioCaptureManager,
@@ -214,9 +225,11 @@ final class WhisperKitPipeline: DictationPipeline {
             state = .recording
             recordingStartTime = Date()
             currentTranscript = nil
+            startVADMonitoring()
+            await startIncrementalWorker()
 
             Task { await AppLogger.shared.log(
-                "WhisperKit recording started (batch mode)",
+                "WhisperKit recording started (batch mode, incremental worker active)",
                 level: .info, category: "WhisperKitPipeline"
             ) }
         } catch {
@@ -248,6 +261,10 @@ final class WhisperKitPipeline: DictationPipeline {
         if let startTime = recordingStartTime {
             let elapsed = Date().timeIntervalSince(startTime)
             if elapsed < TimingConstants.minimumRecordingDuration {
+                vadMonitorTask?.cancel()
+                vadMonitorTask = nil
+                await incrementalWorker?.cancel()
+                incrementalWorker = nil
                 _ = audioCapture.stopCapture()
                 recordingStartTime = nil
                 state = .idle
@@ -259,6 +276,8 @@ final class WhisperKitPipeline: DictationPipeline {
             }
         }
         recordingStartTime = nil
+        vadMonitorTask?.cancel()
+        vadMonitorTask = nil
 
         let rawSamples = audioCapture.stopCapture()
 
@@ -273,9 +292,27 @@ final class WhisperKitPipeline: DictationPipeline {
             return
         }
 
-        // Pad short recordings
-        var samples = rawSamples
+        // Post-capture VAD filtering — remove silence segments
+        var samples: [Float]
+        if let detector = silenceDetector {
+            await detector.finalizeSegments(totalSampleCount: rawSamples.count)
+            samples = await detector.filterSamples(from: rawSamples)
+            let pct = String(format: "%.1f", Double(samples.count) / Double(max(rawSamples.count, 1)) * 100)
+            Task { await AppLogger.shared.log(
+                "WhisperKit VAD filtered to \(samples.count) samples (\(pct)% voiced)",
+                level: .info, category: "WhisperKitPipeline"
+            ) }
+        } else {
+            samples = rawSamples
+        }
+
+        // Fallback: if VAD was too aggressive, use raw
         let minimumSamples = AudioConstants.minimumTranscriptionSamples
+        if samples.count < minimumSamples && rawSamples.count >= minimumSamples {
+            samples = rawSamples
+        }
+
+        // Pad short recordings
         if samples.count > 0 && samples.count < minimumSamples {
             samples.append(contentsOf: [Float](repeating: 0, count: minimumSamples - samples.count))
         }
@@ -284,17 +321,69 @@ final class WhisperKitPipeline: DictationPipeline {
 
         do {
             let asrStart = CFAbsoluteTimeGetCurrent()
-            let result = try await backend.transcribe(audioSamples: samples, options: transcriptionOptions)
+
+            // Try background worker result first, batch fallback if stale/empty
+            let asrText: String
+            let asrLanguage: String?
+            var usedIncremental = false
+
+            if let worker = incrementalWorker {
+                let segments = await silenceDetector?.speechSegments ?? []
+                let result = await worker.finalize(finalSamples: rawSamples, speechSegments: segments)
+                incrementalWorker = nil
+
+                let coveragePct = rawSamples.count > 0
+                    ? String(format: "%.1f", Double(result.samplesCovered) / Double(rawSamples.count) * 100)
+                    : "0"
+
+                if result.accepted, let text = result.text,
+                   !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    asrText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    asrLanguage = transcriptionOptions.language
+                    usedIncremental = true
+
+                    Task { await AppLogger.shared.log(
+                        "WhisperKit finalize: strategy=\(result.strategy), mode=\(result.mode), " +
+                        "decodes=\(result.decodeCount), tailDecodeMs=\(result.tailDecodeMs), " +
+                        "coverage=\(result.samplesCovered)/\(rawSamples.count) (\(coveragePct)%)",
+                        level: .info, category: "WhisperKitPipeline"
+                    ) }
+                } else {
+                    Task { await AppLogger.shared.log(
+                        "WhisperKit finalize: strategy=\(result.strategy), " +
+                        "workerDecodes=\(result.decodeCount), workerCoverage=\(coveragePct)%, " +
+                        "falling back to batch",
+                        level: .info, category: "WhisperKitPipeline"
+                    ) }
+
+                    let batchStart = CFAbsoluteTimeGetCurrent()
+                    let batchResult = try await backend.transcribe(audioSamples: samples, options: transcriptionOptions)
+                    let batchMs = Int((CFAbsoluteTimeGetCurrent() - batchStart) * 1000)
+                    asrText = batchResult.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    asrLanguage = batchResult.language
+
+                    Task { await AppLogger.shared.log(
+                        "WhisperKit finalize: strategy=\(result.strategy), batchMs=\(batchMs), " +
+                        "workerDecodes=\(result.decodeCount), workerCoverage=\(coveragePct)%",
+                        level: .info, category: "WhisperKitPipeline"
+                    ) }
+                }
+            } else {
+                let batchResult = try await backend.transcribe(audioSamples: samples, options: transcriptionOptions)
+                asrText = batchResult.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                asrLanguage = batchResult.language
+            }
+
             let asrEnd = CFAbsoluteTimeGetCurrent()
 
-            let asrText = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !asrText.isEmpty else {
                 state = .error("No speech detected — try speaking closer to the microphone")
                 return
             }
 
             Task { await AppLogger.shared.log(
-                "WhisperKit ASR completed in \(String(format: "%.3f", asrEnd - asrStart))s (\(asrText.count) chars, lang=\(result.language ?? "?"))",
+                "WhisperKit ASR completed in \(String(format: "%.3f", asrEnd - asrStart))s " +
+                "(\(asrText.count) chars, lang=\(asrLanguage ?? "?"), incremental=\(usedIncremental))",
                 level: .info, category: "WhisperKitPipeline"
             ) }
 
@@ -302,10 +391,10 @@ final class WhisperKitPipeline: DictationPipeline {
             let polishStart = CFAbsoluteTimeGetCurrent()
             var context: TextProcessingContext
             do {
-                context = try await runTextProcessing(asrText: asrText, language: result.language)
+                context = try await runTextProcessing(asrText: asrText, language: asrLanguage)
             } catch {
                 lastPolishError = error.localizedDescription
-                context = TextProcessingContext(text: asrText, originalASRText: asrText, language: result.language)
+                context = TextProcessingContext(text: asrText, originalASRText: asrText, language: asrLanguage)
             }
             let polishEnd = CFAbsoluteTimeGetCurrent()
 
@@ -315,12 +404,13 @@ final class WhisperKitPipeline: DictationPipeline {
                 return
             }
 
+            let recordingDuration = Double(rawSamples.count) / 16000.0
             let transcript = Transcript(
                 text: context.text,
                 polishedText: context.polishedText,
-                language: result.language,
-                duration: result.duration,
-                processingTime: result.processingTime,
+                language: asrLanguage,
+                duration: recordingDuration,
+                processingTime: asrEnd - asrStart,
                 backendType: .whisperKit,
                 llmProvider: context.llmProvider,
                 llmModel: context.llmModel
@@ -361,6 +451,11 @@ final class WhisperKitPipeline: DictationPipeline {
         }
 
         guard state == .recording else { return }
+        vadMonitorTask?.cancel()
+        vadMonitorTask = nil
+        await incrementalWorker?.cancel()
+        incrementalWorker = nil
+        silenceDetector = nil
         _ = audioCapture.stopCapture()
         targetApp = nil
         targetElement = nil
@@ -369,6 +464,14 @@ final class WhisperKitPipeline: DictationPipeline {
     }
 
     func reset() {
+        vadMonitorTask?.cancel()
+        vadMonitorTask = nil
+        // Fire-and-forget cancel — reset() is synchronous, worker cancel is safe to defer
+        if let worker = incrementalWorker {
+            incrementalWorker = nil
+            Task { await worker.cancel() }
+        }
+        silenceDetector = nil
         if audioCapture.isCapturing {
             _ = audioCapture.stopCapture()
         }
@@ -376,6 +479,85 @@ final class WhisperKitPipeline: DictationPipeline {
         recordingStartTime = nil
         state = .idle
         currentTranscript = nil
+    }
+
+    // MARK: - Incremental Worker
+
+    private func startIncrementalWorker() async {
+        guard let kit = await backend.whisperKitInstance else { return }
+        let opts = await backend.makeDecodeOptions(from: transcriptionOptions, sampleCount: 0)
+        // nonisolated(unsafe): WhisperTokenizer is not Sendable but is safe to transfer —
+        // the backend is the sole owner and we pass it to a single actor that holds it for its lifetime.
+        nonisolated(unsafe) let tokenizer = await backend.whisperKitTokenizer
+        let worker = WhisperKitIncrementalWorker(whisperKit: kit, decodingOptions: opts, tokenizer: tokenizer)
+        self.incrementalWorker = worker
+
+        // Provide audio samples from MainActor-isolated audioCapture
+        let capture = audioCapture
+        await worker.start(audioSamplesProvider: { @MainActor in
+            let samples = capture.capturedSamples
+            return (samples: samples, count: samples.count)
+        })
+    }
+
+    // MARK: - VAD Monitoring
+
+    private func startVADMonitoring() {
+        vadMonitorTask = Task { [weak self] in
+            await self?.monitorVAD()
+        }
+    }
+
+    private func monitorVAD() async {
+        var config = SmoothedVADConfig.fromSensitivity(vadSensitivity)
+        if vadEnergyGate {
+            config.energyGateThreshold = 0.005
+        }
+
+        if silenceDetector == nil {
+            silenceDetector = SilenceDetector(silenceTimeout: vadSilenceTimeout, vadConfig: config)
+        }
+        guard let detector = silenceDetector else { return }
+
+        await detector.reset()
+        await detector.updateConfig(config)
+
+        if !(await detector.isReady) {
+            do {
+                try await detector.prepare()
+            } catch {
+                Task { await AppLogger.shared.log(
+                    "WhisperKit VAD preparation failed: \(error)",
+                    level: .info, category: "WhisperKitPipeline"
+                ) }
+                return
+            }
+        }
+
+        var processedSampleCount = 0
+        let chunkSize = SilenceDetector.chunkSize
+
+        while state == .recording && !Task.isCancelled {
+            let currentCount = audioCapture.capturedSamples.count
+
+            while processedSampleCount + chunkSize <= currentCount && !Task.isCancelled {
+                let endIdx = processedSampleCount + chunkSize
+                let chunk = Array(audioCapture.capturedSamples[processedSampleCount..<endIdx])
+                let autoStop = vadAutoStop
+
+                let shouldStop = await detector.processChunk(chunk)
+
+                if shouldStop && autoStop && state == .recording {
+                    Task { [weak self] in await self?.stopAndTranscribe() }
+                    return
+                }
+
+                processedSampleCount += chunkSize
+                await Task.yield()
+            }
+
+            try? await Task.sleep(for: .milliseconds(100))
+        }
     }
 
     // MARK: - Text Processing

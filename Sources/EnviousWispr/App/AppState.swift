@@ -135,6 +135,13 @@ final class AppState {
         // Sync WhisperKit setup service model variant
         whisperKitSetup.modelVariant = settings.whisperKitModel
 
+        // Restore persisted backend selection (ASRManager defaults to .parakeet)
+        if settings.selectedBackend != .parakeet {
+            Task {
+                await asrManager.switchBackend(to: settings.selectedBackend)
+            }
+        }
+
         // Wire settings change handler
         settings.onChange = { [weak self] key in self?.handleSettingChanged(key) }
 
@@ -302,8 +309,10 @@ final class AppState {
             if settings.hotkeyEnabled { hotkeyService.start() } else { hotkeyService.stop() }
         case .vadAutoStop:
             pipeline.vadAutoStop = settings.vadAutoStop
+            whisperKitPipeline.vadAutoStop = settings.vadAutoStop
         case .vadSilenceTimeout:
             pipeline.vadSilenceTimeout = settings.vadSilenceTimeout
+            whisperKitPipeline.vadSilenceTimeout = settings.vadSilenceTimeout
         case .environmentPreset:
             let sensitivity = settings.environmentPreset.vadSensitivity
             settings.vadSensitivity = sensitivity
@@ -312,8 +321,10 @@ final class AppState {
             whisperKitPipeline.llmPolish.polishInstructions = settings.activePolishInstructions
         case .vadSensitivity:
             pipeline.vadSensitivity = settings.vadSensitivity
+            whisperKitPipeline.vadSensitivity = settings.vadSensitivity
         case .vadEnergyGate:
             pipeline.vadEnergyGate = settings.vadEnergyGate
+            whisperKitPipeline.vadEnergyGate = settings.vadEnergyGate
         case .cancelKeyCode:
             hotkeyService.cancelKeyCode = settings.cancelKeyCode
         case .cancelModifiers:
@@ -398,6 +409,10 @@ final class AppState {
         whisperKitPipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
         whisperKitPipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
         whisperKitPipeline.wordCorrection.customWords = customWords
+        whisperKitPipeline.vadAutoStop = settings.vadAutoStop
+        whisperKitPipeline.vadSilenceTimeout = settings.vadSilenceTimeout
+        whisperKitPipeline.vadSensitivity = settings.vadSensitivity
+        whisperKitPipeline.vadEnergyGate = settings.vadEnergyGate
     }
 
 

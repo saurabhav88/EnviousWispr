@@ -23,6 +23,12 @@ actor WhisperKitBackend: ASRBackend {
     private let modelVariant: String
     private var whisperKit: WhisperKit?
 
+    /// Exposes the WhisperKit instance for background incremental transcription.
+    var whisperKitInstance: WhisperKit? { whisperKit }
+
+    /// Exposes the tokenizer for prompt token encoding (used by incremental worker tail decode).
+    var whisperKitTokenizer: (any WhisperTokenizer)? { whisperKit?.tokenizer }
+
     init(modelVariant: String = "openai_whisper-large-v3_turbo") {
         self.modelVariant = modelVariant
     }
@@ -54,7 +60,7 @@ actor WhisperKitBackend: ASRBackend {
     func transcribe(audioURL: URL, options: TranscriptionOptions) async throws -> ASRResult {
         guard isReady, let kit = whisperKit else { throw ASRError.notReady }
 
-        let decodeOptions = makeDecodeOptions(from: options)
+        let decodeOptions = makeDecodeOptions(from: options, sampleCount: 0)
         let startTime = CFAbsoluteTimeGetCurrent()
         let results: [TranscriptionResult]
         do {
@@ -70,11 +76,12 @@ actor WhisperKitBackend: ASRBackend {
     func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult {
         guard isReady, let kit = whisperKit else { throw ASRError.notReady }
 
-        let decodeOptions = makeDecodeOptions(from: options)
+        let paddedSamples = Self.padAudioWithSilence(audioSamples)
+        let decodeOptions = makeDecodeOptions(from: options, sampleCount: paddedSamples.count)
         let startTime = CFAbsoluteTimeGetCurrent()
         let results: [TranscriptionResult]
         do {
-            results = try await kit.transcribe(audioArray: audioSamples, decodeOptions: decodeOptions)
+            results = try await kit.transcribe(audioArray: paddedSamples, decodeOptions: decodeOptions)
         } catch {
             throw ASRError.transcriptionFailed(error.localizedDescription)
         }
@@ -90,7 +97,7 @@ actor WhisperKitBackend: ASRBackend {
 
     // MARK: - Private
 
-    private func makeDecodeOptions(from options: TranscriptionOptions) -> DecodingOptions {
+    func makeDecodeOptions(from options: TranscriptionOptions, sampleCount: Int) -> DecodingOptions {
         var opts = DecodingOptions()
 
         // Shared options (from TranscriptionOptions)
@@ -109,7 +116,26 @@ actor WhisperKitBackend: ASRBackend {
         opts.usePrefillPrompt = true
         opts.usePrefillCache = true
 
+        // Use VAD chunking for long recordings to prevent hallucinated repetitions
+        let thirtySeconds = 16000 * 30  // 480_000 samples
+        opts.chunkingStrategy = sampleCount > thirtySeconds ? .vad : ChunkingStrategy.none
+
+        // Disable windowClipTime (default 1.0s) which skips the last 1s of audio.
+        // We pad audio with silence instead, which provides the look-ahead context
+        // the decoder needs without sacrificing real content.
+        opts.windowClipTime = 0
+
         return opts
+    }
+
+    /// Pads audio with trailing silence so the Whisper decoder has look-ahead context
+    /// at the end of speech. Without this, abruptly-ending audio loses the last 1-3 words.
+    private static let silencePaddingSamples = Int(0.5 * 16000)  // 500ms at 16kHz
+
+    static func padAudioWithSilence(_ samples: [Float]) -> [Float] {
+        var padded = samples
+        padded.append(contentsOf: [Float](repeating: 0, count: silencePaddingSamples))
+        return padded
     }
 
     private func mapResults(_ results: [TranscriptionResult], processingTime: TimeInterval) -> ASRResult {
