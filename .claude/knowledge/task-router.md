@@ -1,3 +1,136 @@
+<!-- GENERATED — do not hand-edit. Run scripts/brain-refresh.sh to update. -->
+
+# Task Router -- EnviousWispr
+
+**Use this file first.** Given a task description, find the files to change, agent to dispatch, and skill to invoke.
+
+**For detailed file info, see [file-index.md](file-index.md). For reverse lookups (type -> file), see [type-index.md](type-index.md).**
+
+## Source File Map (auto-generated)
+
+### Sources/EnviousWispr/App
+
+- `AppDelegate.swift` (444 lines)
+- `AppState.swift` (771 lines)
+- `EnviousWisprApp.swift` (72 lines)
+- `MenuBarIconAnimator.swift` (312 lines)
+
+### Sources/EnviousWispr/ASR
+
+- `ASRManager.swift` (148 lines)
+- `ASRProtocol.swift` (76 lines)
+- `ParakeetBackend.swift` (129 lines)
+- `WhisperKitBackend.swift` (133 lines)
+- `WhisperKitSetupService.swift` (172 lines)
+
+### Sources/EnviousWispr/Audio
+
+- `AudioBufferProcessor.swift` (35 lines)
+- `AudioCaptureManager.swift` (699 lines)
+- `AudioDeviceManager.swift` (273 lines)
+- `SilenceDetector.swift` (306 lines)
+
+### Sources/EnviousWispr/LLM
+
+- `AppleIntelligenceConnector.swift` (163 lines)
+- `GeminiConnector.swift` (260 lines)
+- `KeychainManager.swift` (119 lines)
+- `LLMModelDiscovery.swift` (335 lines)
+- `LLMNetworkSession.swift` (52 lines)
+- `LLMProtocol.swift` (128 lines)
+- `LLMRetryPolicy.swift` (29 lines)
+- `OllamaConnector.swift` (143 lines)
+- `OllamaSetupService.swift` (426 lines)
+- `OpenAIConnector.swift` (137 lines)
+
+### Sources/EnviousWispr/Models
+
+- `AppSettings.swift` (80 lines)
+- `ASRResult.swift` (31 lines)
+- `LLMResult.swift` (103 lines)
+- `Transcript.swift` (44 lines)
+
+### Sources/EnviousWispr/Pipeline
+
+- `DictationPipeline.swift` (25 lines)
+- `TextProcessingStep.swift` (32 lines)
+- `TranscriptionPipeline.swift` (788 lines)
+- `WhisperKitPipeline.swift` (473 lines)
+
+### Sources/EnviousWispr/Pipeline/Steps
+
+- `FillerRemovalStep.swift` (57 lines)
+- `LLMPolishStep.swift` (113 lines)
+- `WordCorrectionStep.swift` (28 lines)
+
+### Sources/EnviousWispr/PostProcessing
+
+- `CustomWordStore.swift` (38 lines)
+- `WordCorrector.swift` (138 lines)
+
+### Sources/EnviousWispr/Services
+
+- `HotkeyService.swift` (409 lines)
+- `PasteService.swift` (254 lines)
+- `PermissionsService.swift` (79 lines)
+- `SettingsManager.swift` (409 lines)
+
+### Sources/EnviousWispr/Storage
+
+- `TranscriptStore.swift` (104 lines)
+
+### Sources/EnviousWispr/Utilities
+
+- `AppLogger.swift` (125 lines)
+- `BenchmarkSuite.swift` (268 lines)
+- `Constants.swift` (94 lines)
+- `DebugLogLevel.swift` (20 lines)
+- `KeySymbols.swift` (160 lines)
+- `WERCalculator.swift` (48 lines)
+
+### Sources/EnviousWispr/Views/Components
+
+- `AccessibilityWarningBanner.swift` (49 lines)
+- `HotkeyRecorderView.swift` (226 lines)
+
+### Sources/EnviousWispr/Views/Main
+
+- `HistoryContentView.swift` (30 lines)
+- `MainWindowView.swift` (310 lines)
+- `SidebarStatsHeader.swift` (94 lines)
+- `TranscriptDetailView.swift` (113 lines)
+- `TranscriptHistoryView.swift` (98 lines)
+
+### Sources/EnviousWispr/Views/Onboarding
+
+- `OnboardingDesignTokens.swift` (76 lines)
+- `OnboardingV2View.swift` (927 lines)
+- `RainbowLipsView.swift` (460 lines)
+
+### Sources/EnviousWispr/Views/Overlay
+
+- `RecordingOverlayPanel.swift` (458 lines)
+
+### Sources/EnviousWispr/Views/Settings
+
+- `AIPolishSettingsView.swift` (777 lines)
+- `AudioSettingsView.swift` (48 lines)
+- `ClipboardSettingsView.swift` (28 lines)
+- `DiagnosticsSettingsView.swift` (189 lines)
+- `MemorySettingsView.swift` (36 lines)
+- `PermissionsSettingsView.swift` (41 lines)
+- `PromptEditorView.swift` (138 lines)
+- `SettingsComponents.swift` (345 lines)
+- `SettingsDesignTokens.swift` (74 lines)
+- `SettingsSection.swift` (69 lines)
+- `SettingsView.swift` (82 lines)
+- `ShortcutsSettingsView.swift` (52 lines)
+- `SpeechEngineSettingsView.swift` (291 lines)
+- `WordFixSettingsView.swift` (98 lines)
+
+
+<!-- MANUAL SECTION BELOW — human-authored, preserved across regeneration -->
+
 # Task Router — EnviousWispr
 
 **Use this file first.** Given a task description, find the files to change, agent to dispatch, and skill to invoke.
@@ -5,6 +138,16 @@
 **For detailed file info, see [file-index.md](file-index.md). For reverse lookups (type → file), see [type-index.md](type-index.md).**
 
 ## Common Task Patterns
+
+### Create a mockup / visual artifact / HTML design
+**Agent:** frontend-designer | **Skill:** `brand-guide`
+| Step | Files |
+|------|-------|
+| 1. Read brand guide | `.claude/skills/brand-guide/SKILL.md` — colors, fonts, gradients, components |
+| 2. Create artifact | `docs/mockups/descriptive-name.html` |
+| 3. Verify in browser | Open in Chrome, screenshot, iterate |
+
+**All visual artifacts MUST use brand tokens.** No improvising colors or fonts. Web mockups use Plus Jakarta Sans; macOS settings mockups use system-ui with brand accent colors.
 
 ### Add a new LLM provider
 **Agent:** feature-scaffolding | **Skill:** `wispr-scaffold-llm-connector`
@@ -72,6 +215,28 @@
 | 2. Persist settings | `Services/SettingsManager.swift` — `whisperTemperature`, `whisperNoSpeechThreshold`, `whisperLanguage` |
 | 3. Settings UI | `Views/Settings/SpeechEngineSettingsView.swift` — sliders/pickers for quality knobs |
 | 4. Temperature fallback | `ASR/WhisperKitBackend.swift` — retry with higher temperature on low-confidence result |
+
+### Build the WhisperKit independent highway
+**Agent:** audio-pipeline | **Skills:** `wispr-scaffold-whisperkit-capture`, `wispr-scaffold-independent-pipeline`, `wispr-configure-whisperkit-vad`, `wispr-configure-whisperkit-streaming`
+| Step | Files |
+|------|-------|
+| 1. DictationPipeline protocol (Phase 0) | **NEW:** `Pipeline/DictationPipeline.swift` — PipelineEvent, OverlayIntent, DictationPipeline protocol |
+| 2. TranscriptionPipeline conformance | `Pipeline/TranscriptionPipeline.swift` — add DictationPipeline conformance (1-line) |
+| 3. WhisperKitPipeline (Phase 1) | **NEW:** `Pipeline/WhisperKitPipeline.swift` — WhisperKitPipelineState, shared AudioCaptureManager, batch transcription |
+| 4. AppState routing | `App/AppState.swift` — activePipeline: any DictationPipeline, dispatch(_ event:) |
+| 5. Overlay decoupling | `Views/Overlay/RecordingOverlayPanel.swift` — observe OverlayIntent, not PipelineState |
+| 6. VAD integration (Phase 2) | `Pipeline/WhisperKitPipeline.swift` + `ASR/WhisperKitBackend.swift` — EnergyVAD, chunkingStrategy |
+| 7. Streaming coordinator (Phase 3) | **NEW:** `ASR/WhisperKitStreamingCoordinator.swift` — AudioStreamTranscriber wrapper |
+| 8. Test dual pipeline | Use `wispr-test-dual-pipeline` for regression verification |
+
+### Test dual-pipeline architecture
+**Agent:** testing | **Skill:** `wispr-test-dual-pipeline`
+| Step | Files |
+|------|-------|
+| 1. Regression check | Verify Parakeet path unchanged after WhisperKit changes |
+| 2. Backend switching | Test Parakeet->WhisperKit and back, rapid switching |
+| 3. State machine tests | Verify all state transitions per pipeline |
+| 4. Performance baseline | Run benchmarks for both backends |
 
 ### Add a new SwiftUI view
 **Agent:** feature-scaffolding | **Skill:** `wispr-scaffold-swiftui-view`
@@ -188,14 +353,14 @@
 ### Implement a feature request
 **Agent:** feature-planning | **Skill:** `wispr-implement-feature-request`
 - **Feature specs:** `docs/feature-requests/NNN-feature-name.md`
-- **Tracker:** `docs/feature-requests/TRACKER.md`
+- **Tracker:** Beads (`bd ready`, `bd show <id>`, `bd close <id>`)
 - **Roadmap:** `.claude/knowledge/roadmap.md`
 - Dispatches to domain agents for implementation
 
 ### Run tests / validate
 **Agent:** testing
 - **Smoke test (compile only):** Skill `wispr-run-smoke-test`
-- **Smart UAT (behavioral):** Skill `wispr-run-smart-uat`
+- **UI verification:** Skill `wispr-eyes`
 - **Benchmarks:** Skill `wispr-run-benchmarks`
 - **API contracts:** Skill `wispr-validate-api-contracts`
 - **UI testing (AX inspect, input simulation, screenshot):** Skill `wispr-ui-testing-tools`

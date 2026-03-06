@@ -12,12 +12,16 @@ swift build --build-tests  # Verify tests compile
 
 ## Bundle Workflow: Avoid Stale Binaries
 
-`swift build` compiles to `.build/debug/` (or `.build/release/`), but the **running app** is at `build/EnviousWispr.app`. These are separate binaries. After any code change:
+`swift build` compiles to `.build/debug/` (or `.build/release/`), but the **running app** is at `build/EnviousWispr.app`. These are separate binaries.
 
-1. Use `rebuild-and-relaunch` skill — chains release build → bundle → kill → relaunch
-2. Or use `run-smoke-test` — automatically rebuilds the bundle before launching
+After ANY code change during feature work:
 
-**Never test code changes via `swift run` alone** — always rebuild the .app bundle so runtime behavior matches what the user sees.
+**MANDATORY: Always invoke `/wispr-rebuild-and-relaunch`** — this is the only path that ensures the running .app matches your source code.
+
+- `/wispr-rebuild-and-relaunch` chains: release build → bundle → kill old process → relaunch → process check
+- `/wispr-run-smoke-test` is compile-only (no launch); use it only as a fast pre-check, NOT as a substitute
+
+Never test code changes via `swift build` alone — the binary at `.build/release/` is not what users run. Always rebuild and relaunch the .app bundle.
 
 ## App Lifecycle
 
@@ -69,7 +73,7 @@ Scopes: `asr`, `audio`, `ui`, `llm`, `pipeline`, `settings`, `hotkey`, `vad`, `b
 - **Semver tags:** `v1.0.0`, `v1.1.0`, etc. — `v` prefix required (triggers CI for release builds)
 - **Local development:** `swift build`, `/wispr-rebuild-and-relaunch`, or `./scripts/build-dmg.sh` (no version arg) produce builds tagged with `-local` in the version string (e.g., `0.0.0-local`)
 - **Release builds:** `git tag v1.0.0 && git push origin v1.0.0` (CI) or `./scripts/build-dmg.sh 1.0.0` (explicit). Clean version numbers, distributed via GitHub Releases.
-- **Lean workflow:** Direct pushes to `main` or PRs — both work. `build-check` runs on PRs for visibility but isn't required. No required reviews (lean team). See [github-workflow](.claude/knowledge/github-workflow.md).
+- **Lean workflow:** Direct pushes to `main` or PRs — both work. `build-check` runs on PRs for visibility but isn't required. No required reviews (lean team). See [github-workflow](github-workflow.md).
 - CI generates `appcast.xml` on each release; the release workflow pushes it directly to `main` via built-in `GITHUB_TOKEN`
 - Changelog: `generate-changelog` skill or `git log --oneline v1.0.0..HEAD`
 
@@ -87,6 +91,8 @@ A feature is NOT done until ALL of these pass:
 4. **Wispr Eyes verification passes** (`wispr-eyes` — agent-native UI verification of the running app)
 5. Only `type_text`/`press_key` need `run_in_background: true` — all other verification works in foreground via AX APIs
 6. **CI `build-check` green** (informational — not required for merge, but check for visibility)
+7. **Update affected brain files** — if new types/files/settings added, run `scripts/brain-refresh.sh`
+8. **Close corresponding bead** — `bd close <id> --reason "..."`
 
 ### Verification: Two Modes Only
 
@@ -111,13 +117,23 @@ Format: `Fix X in Y (user-visible result Z)`
 
 Start a fresh todo list for each project. Wispr Eyes uses completed todos from the active project only.
 
+## Brand & Visual Design
+
+All visual artifacts (HTML mockups, diagrams, landing pages) MUST use the brand design system at `.claude/skills/brand-guide/SKILL.md`. Key tokens:
+
+- **Accent:** `#7c3aed` (purple) — selected states, buttons, links
+- **Fonts:** Plus Jakarta Sans (web), system-ui (macOS settings), JetBrains Mono (code)
+- **Surfaces:** `#f8f5ff` (bg), `#f0ecf9` (cards) — warm lavender tint
+- **Rainbow gradient:** Brand signature for hero elements and premium features
+- **macOS settings:** Use system-ui fonts + brand accent purple instead of default blue
+
 ## Feature Request Docs
 
 Feature request specs live in `docs/feature-requests/`. See `.claude/knowledge/roadmap.md` for the full format template.
 
 Key conventions:
 - One file per feature, zero-padded ID: `NNN-feature-name.md`
-- Status tracked in `TRACKER.md` (source of truth)
+- Status tracked in Beads (`bd ready`, `bd stats`)
 - Implementation plans written before any code
 - Commit scope matches primary code area: `feat(hotkey):`, `feat(clipboard):`, etc.
 

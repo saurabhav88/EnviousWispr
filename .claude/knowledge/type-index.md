@@ -1,194 +1,172 @@
-# Type Index — EnviousWispr
+<!-- GENERATED — do not hand-edit. Run scripts/brain-refresh.sh to update. -->
 
-Reverse lookup: type name → file, isolation, category. Use this to find where any type is defined.
+# Type Index -- EnviousWispr
 
-See [file-index.md](file-index.md) for files organized by domain.
+Reverse lookup: type name -> file, kind, line number. Auto-generated from source tree.
 
-## Protocols
+| Type | Kind | File | Line |
+|------|------|------|------|
+| `AccessibilityWarningBanner` | struct | `Sources/EnviousWispr/Views/Components/AccessibilityWarningBanner.swift` | 7 |
+| `ActionWirer` | struct | `Sources/EnviousWispr/App/EnviousWisprApp.swift` | 37 |
+| `AIPolishSettingsView` | struct | `Sources/EnviousWispr/Views/Settings/AIPolishSettingsView.swift` | 5 |
+| `AppConstants` | enum | `Sources/EnviousWispr/Utilities/Constants.swift` | 3 |
+| `AppDelegate` | class | `Sources/EnviousWispr/App/AppDelegate.swift` | 11 |
+| `AppleIntelligenceConnector` | struct | `Sources/EnviousWispr/LLM/AppleIntelligenceConnector.swift` | 9 |
+| `AppLogger` | actor | `Sources/EnviousWispr/Utilities/AppLogger.swift` | 11 |
+| `AppState` | class | `Sources/EnviousWispr/App/AppState.swift` | 6 |
+| `ASRBackend` | protocol | `Sources/EnviousWispr/ASR/ASRProtocol.swift` | 8 |
+| `ASRBackendType` | enum | `Sources/EnviousWispr/Models/ASRResult.swift` | 4 |
+| `ASRError` | enum | `Sources/EnviousWispr/ASR/ASRProtocol.swift` | 62 |
+| `ASRManager` | class | `Sources/EnviousWispr/ASR/ASRManager.swift` | 7 |
+| `ASRResult` | struct | `Sources/EnviousWispr/Models/ASRResult.swift` | 17 |
+| `AudioBufferProcessor` | enum | `Sources/EnviousWispr/Audio/AudioBufferProcessor.swift` | 4 |
+| `AudioCaptureManager` | class | `Sources/EnviousWispr/Audio/AudioCaptureManager.swift` | 33 |
+| `AudioConstants` | enum | `Sources/EnviousWispr/Utilities/Constants.swift` | 32 |
+| `AudioDeviceEnumerator` | enum | `Sources/EnviousWispr/Audio/AudioDeviceManager.swift` | 15 |
+| `AudioDeviceMonitor` | class | `Sources/EnviousWispr/Audio/AudioDeviceManager.swift` | 221 |
+| `AudioError` | enum | `Sources/EnviousWispr/Audio/AudioBufferProcessor.swift` | 27 |
+| `AudioInputDevice` | struct | `Sources/EnviousWispr/Audio/AudioDeviceManager.swift` | 6 |
+| `AudioLevelBar` | struct | `Sources/EnviousWispr/Views/Main/MainWindowView.swift` | 233 |
+| `AudioSettingsView` | struct | `Sources/EnviousWispr/Views/Settings/AudioSettingsView.swift` | 4 |
+| `BenchmarkSuite` | class | `Sources/EnviousWispr/Utilities/BenchmarkSuite.swift` | 7 |
+| `BrandedRow` | struct | `Sources/EnviousWispr/Views/Settings/SettingsComponents.swift` | 84 |
+| `BrandedSection` | struct | `Sources/EnviousWispr/Views/Settings/SettingsComponents.swift` | 27 |
+| `BrandedSegmentedPicker` | struct | `Sources/EnviousWispr/Views/Settings/SettingsComponents.swift` | 195 |
+| `BrandedSlider` | struct | `Sources/EnviousWispr/Views/Settings/SettingsComponents.swift` | 141 |
+| `BrandedStatusRow` | struct | `Sources/EnviousWispr/Views/Settings/SettingsComponents.swift` | 237 |
+| `BrandedToggleStyle` | struct | `Sources/EnviousWispr/Views/Settings/SettingsComponents.swift` | 112 |
+| `BrandedWordChip` | struct | `Sources/EnviousWispr/Views/Settings/SettingsComponents.swift` | 272 |
+| `ChecklistItemRow` | struct | `Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift` | 327 |
+| `ChecklistItemStatus` | enum | `Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift` | 11 |
+| `ChecklistPhaseView` | struct | `Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift` | 261 |
+| `CleanedTranscript` | struct | `Sources/EnviousWispr/LLM/AppleIntelligenceConnector.swift` | 55 |
+| `ClipboardSettingsView` | struct | `Sources/EnviousWispr/Views/Settings/ClipboardSettingsView.swift` | 4 |
+| `ClipboardSnapshot` | struct | `Sources/EnviousWispr/Services/PasteService.swift` | 6 |
+| `CustomWordStore` | class | `Sources/EnviousWispr/PostProcessing/CustomWordStore.swift` | 5 |
+| `DebugLogLevel` | enum | `Sources/EnviousWispr/Utilities/DebugLogLevel.swift` | 3 |
+| `DiagnosticsSettingsView` | struct | `Sources/EnviousWispr/Views/Settings/DiagnosticsSettingsView.swift` | 3 |
+| `DictationPipeline` | protocol | `Sources/EnviousWispr/Pipeline/DictationPipeline.swift` | 22 |
+| `EnviousWisprApp` | struct | `Sources/EnviousWispr/App/EnviousWisprApp.swift` | 4 |
+| `EnvironmentPreset` | enum | `Sources/EnviousWispr/Services/SettingsManager.swift` | 12 |
+| `EnvironmentPresetCards` | struct | `Sources/EnviousWispr/Views/Settings/SpeechEngineSettingsView.swift` | 228 |
+| `EqBarConfig` | struct | `Sources/EnviousWispr/Views/Onboarding/RainbowLipsView.swift` | 32 |
+| `FillerRemovalStep` | class | `Sources/EnviousWispr/Pipeline/Steps/FillerRemovalStep.swift` | 6 |
+| `FormattingConstants` | enum | `Sources/EnviousWispr/Utilities/Constants.swift` | 87 |
+| `GeminiConnector` | struct | `Sources/EnviousWispr/LLM/GeminiConnector.swift` | 5 |
+| `HistoryContentView` | struct | `Sources/EnviousWispr/Views/Main/HistoryContentView.swift` | 4 |
+| `HotkeyID` | enum | `Sources/EnviousWispr/Services/HotkeyService.swift` | 43 |
+| `HotkeyRecorderColors` | struct | `Sources/EnviousWispr/Views/Components/HotkeyRecorderView.swift` | 86 |
+| `HotkeyRecorderView` | struct | `Sources/EnviousWispr/Views/Components/HotkeyRecorderView.swift` | 102 |
+| `HotkeyService` | class | `Sources/EnviousWispr/Services/HotkeyService.swift` | 40 |
+| `IconState` | enum | `Sources/EnviousWispr/App/MenuBarIconAnimator.swift` | 10 |
+| `KeycapHotkeyView` | struct | `Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift` | 686 |
+| `KeyCaptureNSView` | class | `Sources/EnviousWispr/Views/Components/HotkeyRecorderView.swift` | 8 |
+| `KeyCaptureView` | struct | `Sources/EnviousWispr/Views/Components/HotkeyRecorderView.swift` | 63 |
+| `KeychainError` | enum | `Sources/EnviousWispr/LLM/KeychainManager.swift` | 107 |
+| `KeychainManager` | struct | `Sources/EnviousWispr/LLM/KeychainManager.swift` | 17 |
+| `KeySymbols` | enum | `Sources/EnviousWispr/Utilities/KeySymbols.swift` | 4 |
+| `KeyValidationState` | enum | `Sources/EnviousWispr/App/AppState.swift` | 66 |
+| `LipsAnimationState` | enum | `Sources/EnviousWispr/Views/Onboarding/RainbowLipsView.swift` | 5 |
+| `LipsBar` | struct | `Sources/EnviousWispr/Views/Onboarding/RainbowLipsView.swift` | 22 |
+| `LipsData` | enum | `Sources/EnviousWispr/Views/Onboarding/RainbowLipsView.swift` | 41 |
+| `LLMConstants` | enum | `Sources/EnviousWispr/Utilities/Constants.swift` | 72 |
+| `LLMError` | enum | `Sources/EnviousWispr/LLM/LLMProtocol.swift` | 90 |
+| `LLMModelDiscovery` | struct | `Sources/EnviousWispr/LLM/LLMModelDiscovery.swift` | 8 |
+| `LLMModelInfo` | struct | `Sources/EnviousWispr/Models/LLMResult.swift` | 40 |
+| `LLMNetworkSession` | class | `Sources/EnviousWispr/LLM/LLMNetworkSession.swift` | 8 |
+| `LLMPolishStep` | class | `Sources/EnviousWispr/Pipeline/Steps/LLMPolishStep.swift` | 5 |
+| `LLMProvider` | enum | `Sources/EnviousWispr/Models/LLMResult.swift` | 4 |
+| `LLMProviderConfig` | struct | `Sources/EnviousWispr/Models/LLMResult.swift` | 30 |
+| `LLMResult` | struct | `Sources/EnviousWispr/Models/LLMResult.swift` | 25 |
+| `LLMRetryPolicy` | enum | `Sources/EnviousWispr/LLM/LLMRetryPolicy.swift` | 5 |
+| `MemorySettingsView` | struct | `Sources/EnviousWispr/Views/Settings/MemorySettingsView.swift` | 4 |
+| `MenuBarIconAnimator` | class | `Sources/EnviousWispr/App/MenuBarIconAnimator.swift` | 8 |
+| `ModelCardInfo` | struct | `Sources/EnviousWispr/Views/Settings/AIPolishSettingsView.swift` | 440 |
+| `ModelStatusBar` | struct | `Sources/EnviousWispr/Views/Main/SidebarStatsHeader.swift` | 54 |
+| `ModelUnloadPolicy` | enum | `Sources/EnviousWispr/Models/AppSettings.swift` | 48 |
+| `ModifierKeyCodes` | enum | `Sources/EnviousWispr/Services/HotkeyService.swift` | 6 |
+| `OllamaConnector` | struct | `Sources/EnviousWispr/LLM/OllamaConnector.swift` | 5 |
+| `OllamaModelCatalogEntry` | struct | `Sources/EnviousWispr/LLM/OllamaSetupService.swift` | 31 |
+| `OllamaQualityTier` | enum | `Sources/EnviousWispr/LLM/OllamaSetupService.swift` | 16 |
+| `OllamaSetupService` | class | `Sources/EnviousWispr/LLM/OllamaSetupService.swift` | 44 |
+| `OllamaSetupState` | enum | `Sources/EnviousWispr/LLM/OllamaSetupService.swift` | 5 |
+| `OnboardingButtonStyle` | struct | `Sources/EnviousWispr/Views/Onboarding/OnboardingDesignTokens.swift` | 63 |
+| `OnboardingState` | enum | `Sources/EnviousWispr/Services/SettingsManager.swift` | 5 |
+| `OnboardingV2View` | struct | `Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift` | 96 |
+| `OnboardingV2ViewModel` | class | `Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift` | 7 |
+| `OpenAIConnector` | struct | `Sources/EnviousWispr/LLM/OpenAIConnector.swift` | 4 |
+| `OverlayCapsuleBackground` | struct | `Sources/EnviousWispr/Views/Overlay/RecordingOverlayPanel.swift` | 361 |
+| `OverlayIntent` | enum | `Sources/EnviousWispr/Pipeline/DictationPipeline.swift` | 13 |
+| `ParakeetBackend` | actor | `Sources/EnviousWispr/ASR/ParakeetBackend.swift` | 10 |
+| `PasteService` | enum | `Sources/EnviousWispr/Services/PasteService.swift` | 22 |
+| `PasteTier` | enum | `Sources/EnviousWispr/Services/PasteService.swift` | 14 |
+| `PermissionRow` | struct | `Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift` | 525 |
+| `PermissionsPhaseView` | struct | `Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift` | 415 |
+| `PermissionsService` | class | `Sources/EnviousWispr/Services/PermissionsService.swift` | 7 |
+| `PermissionsSettingsView` | struct | `Sources/EnviousWispr/Views/Settings/PermissionsSettingsView.swift` | 4 |
+| `PipelineBenchmarkResult` | struct | `Sources/EnviousWispr/Utilities/BenchmarkSuite.swift` | 19 |
+| `PipelineEvent` | enum | `Sources/EnviousWispr/Pipeline/DictationPipeline.swift` | 4 |
+| `PipelineState` | enum | `Sources/EnviousWispr/Models/AppSettings.swift` | 17 |
+| `PolishingOverlayView` | struct | `Sources/EnviousWispr/Views/Overlay/RecordingOverlayPanel.swift` | 443 |
+| `PolishInstructions` | struct | `Sources/EnviousWispr/Models/LLMResult.swift` | 48 |
+| `PresetCard` | struct | `Sources/EnviousWispr/Views/Settings/SpeechEngineSettingsView.swift` | 242 |
+| `PresetInfo` | struct | `Sources/EnviousWispr/Views/Settings/SpeechEngineSettingsView.swift` | 215 |
+| `PromptEditorView` | struct | `Sources/EnviousWispr/Views/Settings/PromptEditorView.swift` | 4 |
+| `PromptPreset` | enum | `Sources/EnviousWispr/Models/LLMResult.swift` | 72 |
+| `PulsingRingsView` | struct | `Sources/EnviousWispr/Views/Main/MainWindowView.swift` | 175 |
+| `RainbowLipsIcon` | struct | `Sources/EnviousWispr/Views/Overlay/RecordingOverlayPanel.swift` | 252 |
+| `RainbowLipsView` | struct | `Sources/EnviousWispr/Views/Onboarding/RainbowLipsView.swift` | 123 |
+| `ReadyScreenV2` | struct | `Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift` | 580 |
+| `RecordButton` | struct | `Sources/EnviousWispr/Views/Main/MainWindowView.swift` | 291 |
+| `RecordingMode` | enum | `Sources/EnviousWispr/Models/AppSettings.swift` | 4 |
+| `RecordingOverlayPanel` | class | `Sources/EnviousWispr/Views/Overlay/RecordingOverlayPanel.swift` | 10 |
+| `RecordingOverlayView` | struct | `Sources/EnviousWispr/Views/Overlay/RecordingOverlayPanel.swift` | 406 |
+| `Result` | struct | `Sources/EnviousWispr/Utilities/BenchmarkSuite.swift` | 8 |
+| `Result` | struct | `Sources/EnviousWispr/Utilities/WERCalculator.swift` | 8 |
+| `Screen` | enum | `Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift` | 8 |
+| `SettingKey` | enum | `Sources/EnviousWispr/Services/SettingsManager.swift` | 36 |
+| `SettingsContentView` | struct | `Sources/EnviousWispr/Views/Settings/SettingsComponents.swift` | 6 |
+| `SettingsGroup` | enum | `Sources/EnviousWispr/Views/Settings/SettingsSection.swift` | 59 |
+| `SettingsLayout` | enum | `Sources/EnviousWispr/Views/Settings/SettingsDesignTokens.swift` | 66 |
+| `SettingsManager` | class | `Sources/EnviousWispr/Services/SettingsManager.swift` | 35 |
+| `SettingsSection` | enum | `Sources/EnviousWispr/Views/Settings/SettingsSection.swift` | 4 |
+| `SettingUpScreenV2` | struct | `Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift` | 240 |
+| `SetupPhase` | enum | `Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift` | 9 |
+| `ShimmerVals` | struct | `Sources/EnviousWispr/Views/Onboarding/RainbowLipsView.swift` | 343 |
+| `ShortcutsSettingsView` | struct | `Sources/EnviousWispr/Views/Settings/ShortcutsSettingsView.swift` | 4 |
+| `SidebarStatsHeader` | struct | `Sources/EnviousWispr/Views/Main/SidebarStatsHeader.swift` | 4 |
+| `SilenceDetector` | actor | `Sources/EnviousWispr/Audio/SilenceDetector.swift` | 47 |
+| `SmoothedVADConfig` | struct | `Sources/EnviousWispr/Audio/SilenceDetector.swift` | 4 |
+| `SmoothedVADPhase` | enum | `Sources/EnviousWispr/Audio/SilenceDetector.swift` | 31 |
+| `SpectrumWheelIcon` | struct | `Sources/EnviousWispr/Views/Overlay/RecordingOverlayPanel.swift` | 182 |
+| `SpeechEngineSettingsView` | struct | `Sources/EnviousWispr/Views/Settings/SpeechEngineSettingsView.swift` | 4 |
+| `SpeechSegment` | struct | `Sources/EnviousWispr/Audio/SilenceDetector.swift` | 37 |
+| `StatusBadge` | struct | `Sources/EnviousWispr/Views/Main/MainWindowView.swift` | 252 |
+| `StatusView` | struct | `Sources/EnviousWispr/Views/Main/MainWindowView.swift` | 4 |
+| `TapStoppedFlag` | class | `Sources/EnviousWispr/Audio/AudioCaptureManager.swift` | 11 |
+| `TextProcessingContext` | struct | `Sources/EnviousWispr/Pipeline/TextProcessingStep.swift` | 5 |
+| `TextProcessingStep` | protocol | `Sources/EnviousWispr/Pipeline/TextProcessingStep.swift` | 25 |
+| `TimingConstants` | enum | `Sources/EnviousWispr/Utilities/Constants.swift` | 49 |
+| `Transcript` | struct | `Sources/EnviousWispr/Models/Transcript.swift` | 4 |
+| `TranscriptDetailView` | struct | `Sources/EnviousWispr/Views/Main/TranscriptDetailView.swift` | 4 |
+| `TranscriptHistoryView` | struct | `Sources/EnviousWispr/Views/Main/TranscriptHistoryView.swift` | 4 |
+| `TranscriptionOptions` | struct | `Sources/EnviousWispr/Models/ASRResult.swift` | 26 |
+| `TranscriptionPipeline` | class | `Sources/EnviousWispr/Pipeline/TranscriptionPipeline.swift` | 7 |
+| `TranscriptPolisher` | protocol | `Sources/EnviousWispr/LLM/LLMProtocol.swift` | 4 |
+| `TranscriptRowView` | struct | `Sources/EnviousWispr/Views/Main/TranscriptHistoryView.swift` | 62 |
+| `TranscriptStore` | class | `Sources/EnviousWispr/Storage/TranscriptStore.swift` | 5 |
+| `UnifiedWindowView` | struct | `Sources/EnviousWispr/Views/Settings/SettingsView.swift` | 4 |
+| `WaveformView` | struct | `Sources/EnviousWispr/Views/Main/MainWindowView.swift` | 200 |
+| `WelcomeScreenV2` | struct | `Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift` | 167 |
+| `WERCalculator` | enum | `Sources/EnviousWispr/Utilities/WERCalculator.swift` | 7 |
+| `WhisperKitBackend` | actor | `Sources/EnviousWispr/ASR/WhisperKitBackend.swift` | 20 |
+| `WhisperKitPipeline` | class | `Sources/EnviousWispr/Pipeline/WhisperKitPipeline.swift` | 31 |
+| `WhisperKitPipelineState` | enum | `Sources/EnviousWispr/Pipeline/WhisperKitPipeline.swift` | 5 |
+| `WhisperKitSetupService` | class | `Sources/EnviousWispr/ASR/WhisperKitSetupService.swift` | 34 |
+| `WhisperKitSetupState` | enum | `Sources/EnviousWispr/ASR/WhisperKitSetupService.swift` | 22 |
+| `WordCorrectionStep` | class | `Sources/EnviousWispr/Pipeline/Steps/WordCorrectionStep.swift` | 5 |
+| `WordCorrector` | struct | `Sources/EnviousWispr/PostProcessing/WordCorrector.swift` | 8 |
+| `WordFixSettingsView` | struct | `Sources/EnviousWispr/Views/Settings/WordFixSettingsView.swift` | 3 |
+| `WrappingHStack` | struct | `Sources/EnviousWispr/Views/Settings/SettingsComponents.swift` | 299 |
+| `WritingStylePreset` | enum | `Sources/EnviousWispr/Services/SettingsManager.swift` | 26 |
 
-| Protocol | File | Isolation | Conformers |
-|----------|------|-----------|------------|
-| `ASRBackend` | `ASR/ASRProtocol.swift` | `: Actor` | `ParakeetBackend`, `WhisperKitBackend` |
-| `TranscriptPolisher` | `LLM/LLMProtocol.swift` | `: Sendable` | `OpenAIConnector`, `GeminiConnector`, `OllamaConnector`, `AppleIntelligenceConnector` |
-| `TextProcessingStep` | `Pipeline/TextProcessingStep.swift` | `@MainActor` | `LLMPolishStep`, `WordCorrectionStep` |
-
-## Actors (true Swift actors — own executor)
-
-| Actor | File | Purpose |
-|-------|------|---------|
-| `SilenceDetector` | `Audio/SilenceDetector.swift` | Silero VAD, 3-phase speech detection |
-| `ParakeetBackend` | `ASR/ParakeetBackend.swift` | FluidAudio ASR, batch + streaming |
-| `WhisperKitBackend` | `ASR/WhisperKitBackend.swift` | WhisperKit ASR, batch only |
-| `AppLogger` | `Utilities/AppLogger.swift` | Thread-safe logging singleton |
-
-## @MainActor @Observable Classes
-
-| Class | File | Purpose |
-|-------|------|---------|
-| `AppState` | `App/AppState.swift` | Root observable, owns everything; includes availableInputDevices + audioDeviceMonitor wiring |
-| `TranscriptionPipeline` | `Pipeline/TranscriptionPipeline.swift` | Core state machine orchestrator; `preWarmAudioInput()` pre-warm audio before recording, `isPreWarmed: Bool` pre-warm state |
-| `ASRManager` | `ASR/ASRManager.swift` | Backend router + idle timer |
-| `AudioCaptureManager` | `Audio/AudioCaptureManager.swift` | AVAudioEngine mic capture; `emergencyTeardown()` for device disconnect, `trackTask()` for cooperative task cancellation, `onEngineInterrupted` callback to pipeline, `currentInputDeviceID: AudioDeviceID?` CoreAudio device ID, `isRecovering: Bool` re-entrant guard, two-phase start (`startEnginePhase()` / `beginCapturePhase()`), `rebuildEngine()` / `buildEngine(noiseSuppression:)` engine lifecycle, `preWarm()` BT codec pre-trigger, `handleEngineConfigurationChange()` codec-switch vs disconnect, `recoverFromCodecSwitch()` graceful BT recovery, `waitForFormatStabilization()` format polling |
-| `HotkeyService` | `Services/HotkeyService.swift` | Carbon hotkeys + NSEvent monitors; `onPreWarmAudio: (@MainActor () async -> Void)?` fired on PTT key-down |
-| `PermissionsService` | `Services/PermissionsService.swift` | Mic + Accessibility checks |
-| `SettingsManager` | `Services/SettingsManager.swift` | UserDefaults persistence (26+ keys); includes whisperKitLanguageAutoDetect, whisperKitTemperature, whisperKitNoSpeechThreshold, selectedInputDeviceUID, noiseSuppression, preferredInputDeviceIDOverride (empty = Auto) |
-| `OllamaSetupService` | `LLM/OllamaSetupService.swift` | Ollama install wizard; static modelCatalog, isWeakModel(), pullModel(), deleteModel() |
-| `BenchmarkSuite` | `Utilities/BenchmarkSuite.swift` | ASR/pipeline benchmarks |
-
-## @MainActor Classes (not Observable)
-
-| Class | File | Purpose |
-|-------|------|---------|
-| `AppDelegate` | `App/AppDelegate.swift` | Menu bar, Sparkle, lifecycle |
-| `TranscriptStore` | `Storage/TranscriptStore.swift` | JSON file persistence |
-| `RecordingOverlayPanel` | `Views/Overlay/RecordingOverlayPanel.swift` | Floating NSPanel; generation-counter token gating prevents ghost overlays during rapid async show/hide transitions |
-| `MenuBarIconAnimator` | `App/MenuBarIconAnimator.swift` | CG-rendered 4-state menu bar icons, audio-reactive |
-| `LLMPolishStep` | `Pipeline/Steps/LLMPolishStep.swift` | LLM polish with extended thinking |
-| `WordCorrectionStep` | `Pipeline/Steps/WordCorrectionStep.swift` | Custom word fuzzy matching |
-| `AudioDeviceMonitor` | `Audio/AudioDeviceManager.swift` | Monitors CoreAudio device connect/disconnect events |
-
-## Sendable Classes
-
-| Class | File | Purpose |
-|-------|------|---------|
-| `LLMNetworkSession` | `LLM/LLMNetworkSession.swift` | Singleton URLSession wrapper for API requests |
-
-## Sendable Structs (data types)
-
-| Struct | File | Key Fields |
-|--------|------|------------|
-| `AudioInputDevice` | `Audio/AudioDeviceManager.swift` | uid, name, isDefault — represents a CoreAudio input device; Identifiable, Sendable |
-| `ASRResult` | `Models/ASRResult.swift` | text, segments, language, duration, processingTime, confidence, backendType |
-| `BenchmarkSuite.PipelineBenchmarkResult` | `Utilities/BenchmarkSuite.swift` | batchASRTime, streamingFinalizeTime, werDelta |
-| `BenchmarkSuite.Result` | `Utilities/BenchmarkSuite.swift` | label, audioDuration, processingTime, rtf, backend |
-| `ClipboardSnapshot` | `Services/PasteService.swift` | items, changeCount |
-| `CustomWordStore` | `PostProcessing/CustomWordStore.swift` | Persists custom words as JSON (final class) |
-| `KeychainManager` | `LLM/KeychainManager.swift` | file-based key store at ~/.enviouswispr-keys/ |
-| `LLMModelDiscovery` | `LLM/LLMModelDiscovery.swift` | multi-provider model discovery |
-| `LLMProviderConfig` | `Models/LLMResult.swift` | provider, model, apiKeyKeychainId?, maxTokens, temperature, thinkingBudget?, reasoningEffort? |
-| `LLMResult` | `Models/LLMResult.swift` | polishedText, provider, model |
-| `LLMModelInfo` | `Models/LLMResult.swift` | id, displayName, provider, isAvailable |
-| `OllamaModelCatalogEntry` | `LLM/OllamaSetupService.swift` | name, displayName, parameterSize, qualityTier, description — model catalog entry |
-| `PolishInstructions` | `Models/LLMResult.swift` | systemPrompt, removeFillerWords, fixGrammar, fixPunctuation |
-| `SmoothedVADConfig` | `Audio/SilenceDetector.swift` | thresholds, chunk counts, energy gate |
-| `SpeechSegment` | `Audio/SilenceDetector.swift` | startSample, endSample |
-| `TextProcessingContext` | `Pipeline/TextProcessingStep.swift` | text, polishedText?, llmProvider?, llmModel? |
-| `Transcript` | `Models/Transcript.swift` | id, text, polishedText?, duration, processingTime, backendType, createdAt, llmProvider? |
-| `TranscriptSegment` | `Models/ASRResult.swift` | text, startTime, endTime |
-| `TranscriptionOptions` | `Models/ASRResult.swift` | language?, enableTimestamps |
-| `WERCalculator.Result` | `Utilities/WERCalculator.swift` | WER calculation result |
-| `WordCorrector` | `PostProcessing/WordCorrector.swift` | fuzzy matching engine |
-
-## Sendable Structs (LLM connectors)
-
-| Struct | File | Endpoint |
-|--------|------|----------|
-| `OpenAIConnector` | `LLM/OpenAIConnector.swift` | `api.openai.com/v1/chat/completions` |
-| `GeminiConnector` | `LLM/GeminiConnector.swift` | `generativelanguage.googleapis.com/v1beta/...` |
-| `OllamaConnector` | `LLM/OllamaConnector.swift` | `localhost:11434/v1/chat/completions` |
-| `AppleIntelligenceConnector` | `LLM/AppleIntelligenceConnector.swift` | On-device FoundationModels (macOS 26+) |
-
-## Enums (state/config)
-
-| Enum | File | Cases |
-|------|------|-------|
-| `PipelineState` | `Models/AppSettings.swift` | idle, recording, transcribing, polishing, complete, error(String) |
-| `RecordingMode` | `Models/AppSettings.swift` | pushToTalk, toggle |
-| `ModelUnloadPolicy` | `Models/AppSettings.swift` | never, immediately, 2/5/10/15/60 min |
-| `ASRBackendType` | `Models/ASRResult.swift` | parakeet, whisperKit |
-| `LLMProvider` | `Models/LLMResult.swift` | openAI, gemini, ollama, appleIntelligence, none |
-| `PromptPreset` | `Models/LLMResult.swift` | cleanUp, formal, casual |
-| `DebugLogLevel` | `Utilities/DebugLogLevel.swift` | info, verbose, debug |
-| `SettingKey` | `Services/SettingsManager.swift` | 27 cases for all UserDefaults keys (nested in SettingsManager); includes `preferredInputDeviceIDOverride` |
-| `ASRError` | `ASR/ASRProtocol.swift` | notReady, modelLoadFailed, transcriptionFailed, streamingNotSupported |
-| `AudioError` | `Audio/AudioBufferProcessor.swift` | formatCreationFailed |
-| `LLMError` | `LLM/LLMProtocol.swift` | invalidAPIKey, requestFailed, rateLimited, emptyResponse, providerUnavailable, modelNotFound, frameworkUnavailable |
-| `KeychainError` | `LLM/KeychainManager.swift` | storeFailed, retrieveFailed, deleteFailed |
-| `KeyValidationState` | `App/AppState.swift` | idle, validating, valid, invalid(String) |
-| `LipsAnimationState` | `Views/Onboarding/RainbowLipsView.swift` | idle, denied, happy, equalizer, wave, drooping, shimmer, recording, pulse, smile, triumph, heart |
-| `LLMRetryPolicy` | `LLM/LLMRetryPolicy.swift` | (no cases — static methods only) |
-| `OllamaSetupState` | `LLM/OllamaSetupService.swift` | detecting, notInstalled, installedNotRunning, runningNoModels, pullingModel, ready, error |
-| `PromptPreset` | `Models/LLMResult.swift` | cleanUp, formal, casual |
-| `RecordingMode` | `Models/AppSettings.swift` | pushToTalk, toggle |
-| `SettingsGroup` | `Views/Settings/SettingsSection.swift` | app, record, process, output, system |
-| `SettingsSection` | `Views/Settings/SettingsSection.swift` | history, speechEngine, audio, shortcuts, aiPolish, wordCorrection, clipboard, memory, permissions, diagnostics |
-| `SmoothedVADPhase` | `Audio/SilenceDetector.swift` | idle, speech, hangover(chunksRemaining) |
-| `OnboardingState` | `Services/SettingsManager.swift` | notStarted, settingUp, needsPermissions, completed |
-| `HotkeyID` | `Services/HotkeyService.swift` | toggle(1), ptt(2), cancel(3) (private nested in HotkeyService) |
-| `IconState` | `App/MenuBarIconAnimator.swift` | idle, recording, processing, error (nested in MenuBarIconAnimator) |
-| `ModelUnloadPolicy` | `Models/AppSettings.swift` | never, immediately, 2/5/10/15/60 min |
-| `PipelineState` | `Models/AppSettings.swift` | idle, recording, transcribing, polishing, complete, error(String) |
-| `ASRBackendType` | `Models/ASRResult.swift` | parakeet, whisperKit |
-| `LLMProvider` | `Models/LLMResult.swift` | openAI, gemini, ollama, appleIntelligence, none |
-| `DebugLogLevel` | `Utilities/DebugLogLevel.swift` | info, verbose, debug |
-| `SettingKey` | `Services/SettingsManager.swift` | 27 cases for all UserDefaults keys (nested in SettingsManager); includes `preferredInputDeviceIDOverride` |
-| `ASRError` | `ASR/ASRProtocol.swift` | notReady, modelLoadFailed, transcriptionFailed, streamingNotSupported |
-| `AudioError` | `Audio/AudioBufferProcessor.swift` | formatCreationFailed |
-| `LLMError` | `LLM/LLMProtocol.swift` | invalidAPIKey, requestFailed, rateLimited, emptyResponse, providerUnavailable, modelNotFound, frameworkUnavailable |
-
-## Enum Namespaces (no cases, static members only)
-
-| Enum | File | Purpose |
-|------|------|---------|
-| `AudioDeviceEnumerator` | `Audio/AudioDeviceManager.swift` | Static CoreAudio device enumeration: listInputDevices(), defaultInputDeviceUID(), isBluetoothDevice(_:), builtInMicrophoneDeviceID(), defaultOutputDeviceID(), isDeviceRunningSomewhere(_:), recommendedInputDevice() |
-| `AppConstants` | `Utilities/Constants.swift` | App name, paths |
-| `AudioConstants` | `Utilities/Constants.swift` | Sample rate, buffer size |
-| `TimingConstants` | `Utilities/Constants.swift` | Delays, intervals |
-| `LLMConstants` | `Utilities/Constants.swift` | Max tokens, probe limits, thinking budget |
-| `FormattingConstants` | `Utilities/Constants.swift` | Duration formatting |
-| `PasteService` | `Services/PasteService.swift` | Clipboard/paste operations |
-| `AudioBufferProcessor` | `Audio/AudioBufferProcessor.swift` | RMS calculation |
-| `KeySymbols` | `Utilities/KeySymbols.swift` | Keycode formatting |
-| `WERCalculator` | `Utilities/WERCalculator.swift` | Word error rate |
-| `ModifierKeyCodes` | `Services/HotkeyService.swift` | Modifier key code constants |
-
-## SwiftUI Views
-
-| View | File | Parent Context |
-|------|------|---------------|
-| `UnifiedWindowView` | `Views/Settings/SettingsView.swift` | Window root — NavigationSplitView |
-| `HistoryContentView` | `Views/Main/HistoryContentView.swift` | History tab — HSplitView |
-| `TranscriptHistoryView` | `Views/Main/TranscriptHistoryView.swift` | Sidebar list |
-| `TranscriptRowView` | `Views/Main/TranscriptHistoryView.swift` | List row |
-| `TranscriptDetailView` | `Views/Main/TranscriptDetailView.swift` | Detail pane |
-| `SidebarStatsHeader` | `Views/Main/SidebarStatsHeader.swift` | Above sidebar list |
-| `ModelStatusBar` | `Views/Main/SidebarStatsHeader.swift` | Inside stats header |
-| `StatusView` | `Views/Main/MainWindowView.swift` | Detail when no transcript |
-| `PulsingRingsView` | `Views/Main/MainWindowView.swift` | Recording animation |
-| `WaveformView` | `Views/Main/MainWindowView.swift` | Audio level bars |
-| `AudioLevelBar` | `Views/Main/MainWindowView.swift` | Horizontal level bar |
-| `StatusBadge` | `Views/Main/MainWindowView.swift` | Toolbar status |
-| `RecordButton` | `Views/Main/MainWindowView.swift` | Toolbar record toggle |
-| `OnboardingV2View` | `Views/Onboarding/OnboardingV2View.swift` | 3-screen first-launch flow |
-| `KeycapHotkeyView` | `Views/Onboarding/OnboardingV2View.swift` | Redesigned hotkey display with keycap + change chip |
-| `RainbowLipsView` | `Views/Onboarding/RainbowLipsView.swift` | Animated rainbow lips component with 12 animation states |
-| `HotkeyRecorderView` | `Views/Components/HotkeyRecorderView.swift` | Shortcut capture widget |
-| `AccessibilityWarningBanner` | `Views/Components/AccessibilityWarningBanner.swift` | Top-of-history warning |
-| `SpectrumWheelIcon` | `Views/Overlay/RecordingOverlayPanel.swift` | Rotating rainbow spectrum wheel (processing state) |
-| `RainbowLipsIcon` | `Views/Overlay/RecordingOverlayPanel.swift` | Rainbow cupid's bow lips with bounce animation |
-| `OverlayCapsuleBackground` | `Views/Overlay/RecordingOverlayPanel.swift` | Capsule background for overlay (private) |
-| `RecordingOverlayView` | `Views/Overlay/RecordingOverlayPanel.swift` | Floating recording indicator |
-| `PolishingOverlayView` | `Views/Overlay/RecordingOverlayPanel.swift` | Floating polishing indicator |
-| `ActionWirer` | `App/EnviousWisprApp.swift` | Invisible view wiring window actions (private) |
-| `AudioSettingsView` | `Views/Settings/AudioSettingsView.swift` | Settings tab — audio input device selection and noise suppression |
-| `SpeechEngineSettingsView` | `Views/Settings/SpeechEngineSettingsView.swift` | Settings tab |
-| `AIPolishSettingsView` | `Views/Settings/AIPolishSettingsView.swift` | Settings tab (512 lines — largest view) |
-| `ShortcutsSettingsView` | `Views/Settings/ShortcutsSettingsView.swift` | Settings tab |
-| `PermissionsSettingsView` | `Views/Settings/PermissionsSettingsView.swift` | Settings tab |
-| `ClipboardSettingsView` | `Views/Settings/ClipboardSettingsView.swift` | Settings tab |
-| `MemorySettingsView` | `Views/Settings/MemorySettingsView.swift` | Settings tab |
-| `WordFixSettingsView` | `Views/Settings/WordFixSettingsView.swift` | Settings tab |
-| `PromptEditorView` | `Views/Settings/PromptEditorView.swift` | Modal prompt editor |
-| `DiagnosticsSettingsView` | `Views/Settings/DiagnosticsSettingsView.swift` | Settings tab |
-
-## NSView Subclasses
-
-| Class | File | Purpose |
-|-------|------|---------|
-| `KeyCaptureNSView` | `Views/Components/HotkeyRecorderView.swift` | Raw key event capture for shortcut recording (private) |
-
-## NSViewRepresentable Wrappers
-
-| Struct | File | Purpose |
-|--------|------|---------|
-| `KeyCaptureView` | `Views/Components/HotkeyRecorderView.swift` | SwiftUI bridge for KeyCaptureNSView (private) |

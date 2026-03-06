@@ -1,3 +1,38 @@
+<!-- GENERATED — do not hand-edit. Run scripts/brain-refresh.sh to update. -->
+
+# Feature Catalog -- EnviousWispr
+
+Auto-generated stats from source code.
+
+## Source Stats
+
+- **SettingKey cases:** 52
+- **Total type declarations:** 163
+
+## Files by Directory
+
+| Directory | Files | Lines |
+|-----------|-------|-------|
+| `Sources/EnviousWispr/App` | 4 | 1599 |
+| `Sources/EnviousWispr/ASR` | 5 | 658 |
+| `Sources/EnviousWispr/Audio` | 4 | 1313 |
+| `Sources/EnviousWispr/LLM` | 10 | 1792 |
+| `Sources/EnviousWispr/Models` | 4 | 258 |
+| `Sources/EnviousWispr/Pipeline` | 4 | 1318 |
+| `Sources/EnviousWispr/Pipeline/Steps` | 3 | 198 |
+| `Sources/EnviousWispr/PostProcessing` | 2 | 176 |
+| `Sources/EnviousWispr/Services` | 4 | 1151 |
+| `Sources/EnviousWispr/Storage` | 1 | 104 |
+| `Sources/EnviousWispr/Utilities` | 6 | 715 |
+| `Sources/EnviousWispr/Views/Components` | 2 | 275 |
+| `Sources/EnviousWispr/Views/Main` | 5 | 645 |
+| `Sources/EnviousWispr/Views/Onboarding` | 3 | 1463 |
+| `Sources/EnviousWispr/Views/Overlay` | 1 | 458 |
+| `Sources/EnviousWispr/Views/Settings` | 14 | 2268 |
+| **Total** | **72** | **14391** |
+
+<!-- MANUAL SECTION BELOW — human-authored, preserved across regeneration -->
+
 # Feature Catalog
 
 Feature → files → settings → UI lookup. 14 groups, 49 features. Paths relative to `Sources/EnviousWispr/`.
@@ -45,6 +80,9 @@ Feature → files → settings → UI lookup. 14 groups, 49 features. Paths rela
 | Backend selection | Parakeet v3 (streaming) or WhisperKit (batch) | `ASR/ASRManager`, `ASR/*Backend` | `selectedBackend` | SpeechEngineSettingsView |
 | WhisperKit tuning | Temperature, no-speech threshold, language auto-detect | `ASR/WhisperKitBackend` | `whisperKitTemperature`, `whisperKitNoSpeechThreshold`, `whisperKitLanguageAutoDetect` | SpeechEngineSettingsView |
 | Temperature fallback | Re-transcribe with elevated temp on low confidence | `ASR/WhisperKitBackend` | — | — |
+| WhisperKit independent pipeline | DictationPipeline conformance, WhisperKitPipelineState, shared AudioCaptureManager | `Pipeline/WhisperKitPipeline`, `Pipeline/DictationPipeline` | — | — |
+| WhisperKit VAD | EnergyVAD silence trimming + chunkingStrategy for long recordings | `Pipeline/WhisperKitPipeline`, `ASR/WhisperKitBackend` | — | — |
+| WhisperKit streaming | AudioStreamTranscriber chunked streaming with batch fallback | `ASR/WhisperKitStreamingCoordinator`, `Pipeline/WhisperKitPipeline` | — | — |
 
 ## Post-Processing (2)
 
@@ -120,3 +158,9 @@ Feature → files → settings → UI lookup. 14 groups, 49 features. Paths rela
 | Feature | Description | Files | Settings | UI |
 |---------|-------------|-------|----------|----|
 | 3-screen onboarding | Welcome → Setting Up (auto-install + permissions) → Ready to Wispr | `Views/Onboarding/OnboardingV2View`, `Views/Onboarding/OnboardingDesignTokens`, `Views/Onboarding/RainbowLipsView` | `onboardingState` | OnboardingV2View |
+
+## Brand & Design (1)
+
+| Feature | Description | Files | Settings | UI |
+|---------|-------------|-------|----------|----|
+| Brand design system | Color palette, typography, gradients, component patterns for all visual artifacts | `.claude/skills/brand-guide/SKILL.md`, `Views/Onboarding/OnboardingDesignTokens` | — | All views (accent purple, rainbow spectrum) |
