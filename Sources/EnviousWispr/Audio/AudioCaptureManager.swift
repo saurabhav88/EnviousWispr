@@ -356,6 +356,19 @@ final class AudioCaptureManager {
         _ = await waitForFormatStabilization(maxWait: 1.5, pollInterval: 0.2)
     }
 
+    /// Stop a pre-warmed engine that never started capturing.
+    /// Called when PTT is released before recording began — cleans up the engine
+    /// without the full capture teardown (no tap was installed).
+    func abortPreWarm() {
+        guard engine.isRunning, !isCapturing else { return }
+        engine.stop()
+        try? engine.inputNode.setVoiceProcessingEnabled(false)
+        if let observer = configChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+            configChangeObserver = nil
+        }
+    }
+
     /// Inject pre-recorded samples directly into the capture buffer for benchmark/testing.
     /// Sets `capturedSamples` without starting the audio engine.
     func injectSamples(_ samples: [Float]) {
@@ -658,6 +671,7 @@ final class AudioCaptureManager {
             ) else { return }
 
             var error: NSError?
+            // BRAIN: gotcha id=nonisolated-unsafe-callback
             nonisolated(unsafe) var inputConsumed = false
             audioConverter.convert(to: convertedBuffer, error: &error) { _, outStatus in
                 if inputConsumed {

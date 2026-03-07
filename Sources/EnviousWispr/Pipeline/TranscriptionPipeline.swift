@@ -259,6 +259,11 @@ final class TranscriptionPipeline: DictationPipeline {
             // .idle: startRecording is in-flight (pre-warm/engine setup) → will check after entering .recording.
             // .transcribing: model load in progress → startRecording will check and stop.
             stopRequested = true
+            // PTT release before recording started — clean up pre-warmed audio engine
+            if state == .idle, isPreWarmed {
+                isPreWarmed = false
+                audioCapture.abortPreWarm()
+            }
         case .polishing, .complete, .error:
             // Pipeline is past the point of no return or already finished — ignore.
             break

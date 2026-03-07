@@ -218,7 +218,11 @@ final class AppState {
             }
 
             await active.handle(event: .preWarm)
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled else {
+                // PTT release arrived during preWarm — stop the engine that preWarm started
+                self.audioCapture.abortPreWarm()
+                return
+            }
             await active.handle(event: .toggleRecording)
 
             if isWhisperKit {

@@ -164,6 +164,7 @@ final class WhisperKitPipeline: DictationPipeline {
     func preWarmAudioInput() async {
         guard !state.isActive, state != .recording else { return }
         await audioCapture.preWarm()
+        guard !Task.isCancelled else { return }
         isPreWarmed = true
         // Defense-in-depth: ensure model is loaded (idempotent, no-op if ready)
         Task { try? await backend.prepare() }
@@ -251,8 +252,14 @@ final class WhisperKitPipeline: DictationPipeline {
         case .startingUp, .loadingModel:
             // Clean abort — startRecording() checks state after each await suspension point.
             state = .idle
-        case .transcribing, .polishing, .complete, .error, .ready, .idle:
-            // Pipeline is past the point of no return or already finished — ignore.
+        case .idle, .ready, .complete, .error:
+            // PTT release before recording started — clean up pre-warmed audio engine
+            if isPreWarmed {
+                isPreWarmed = false
+                audioCapture.abortPreWarm()
+            }
+        case .transcribing, .polishing:
+            // Pipeline is past the point of no return — ignore.
             break
         }
     }
@@ -494,6 +501,7 @@ final class WhisperKitPipeline: DictationPipeline {
     private func startIncrementalWorker() async {
         guard let kit = await backend.whisperKitInstance else { return }
         let opts = await backend.makeDecodeOptions(from: transcriptionOptions, sampleCount: 0)
+        // BRAIN: gotcha id=nonisolated-unsafe-tokenizer
         // nonisolated(unsafe): WhisperTokenizer is not Sendable but is safe to transfer —
         // the backend is the sole owner and we pass it to a single actor that holds it for its lifetime.
         nonisolated(unsafe) let tokenizer = await backend.whisperKitTokenizer
