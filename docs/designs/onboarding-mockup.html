@@ -1,0 +1,2805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EnviousWispr Onboarding Mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* ============================================================
+     CSS RESET + BASE
+     ============================================================ */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f8f5ff;
+    --surface: #f0ecf9;
+    --card-bg: #ffffff;
+    --text-primary: #0f0a1a;
+    --text-secondary: #4a3d60;
+    --text-tertiary: #7d6f96;
+    --accent: #7c3aed;
+    --accent-hover: #6d28d9;
+    --accent-soft: rgba(124,58,237,0.1);
+    --accent-glow: rgba(124,58,237,0.15);
+    --success: #00c880;
+    --success-soft: rgba(0,200,128,0.1);
+    --warning: #e6c200;
+    --warning-soft: rgba(230,194,0,0.1);
+    --error: #e6253a;
+    --error-soft: rgba(230,37,58,0.1);
+    --border: rgba(138,43,226,0.06);
+    --border-hover: rgba(138,43,226,0.12);
+    --btn-dark: #0f0a1a;
+    --window-shadow: 0 22px 70px rgba(15,10,26,0.12), 0 0 0 1px rgba(138,43,226,0.06);
+    --card-shadow: 0 1px 3px rgba(15,10,26,0.04), 0 0 0 1px rgba(138,43,226,0.04);
+    --glow: 0 0 15px rgba(124,58,237,0.15), 0 0 30px rgba(0,255,255,0.08);
+    --rainbow: linear-gradient(90deg, #ff2a40, #ff8c00, #ffd700, #adff2f, #00fa9a, #00ffff, #1e90ff, #4169e1, #8a2be2);
+    --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', 'Menlo', monospace;
+  }
+
+  body {
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background: var(--bg);
+    color: var(--text-primary);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px 60px;
+    min-height: 100vh;
+    position: relative;
+  }
+
+  /* Ambient background glow */
+  body::before {
+    content: '';
+    position: fixed;
+    top: -20%;
+    right: -10%;
+    width: 600px;
+    height: 600px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(124,58,237,0.06) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  body::after {
+    content: '';
+    position: fixed;
+    bottom: -15%;
+    left: -10%;
+    width: 500px;
+    height: 500px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(0,255,255,0.04) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ============================================================
+     VIEW SWITCHER (top tabs)
+     ============================================================ */
+  .view-switcher {
+    display: flex;
+    gap: 2px;
+    background: rgba(138,43,226,0.06);
+    border-radius: 12px;
+    padding: 3px;
+    margin-bottom: 32px;
+    position: relative;
+    z-index: 1;
+  }
+  .view-switcher button {
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 600;
+    border: none;
+    background: transparent;
+    color: var(--text-tertiary);
+    padding: 8px 18px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .view-switcher button.active {
+    background: var(--card-bg);
+    color: var(--text-primary);
+    box-shadow: 0 1px 4px rgba(15,10,26,0.08), 0 0 0 1px rgba(138,43,226,0.06);
+  }
+  .view-switcher button:not(.active):hover {
+    color: var(--text-secondary);
+  }
+
+  /* ============================================================
+     macOS WINDOW CHROME
+     ============================================================ */
+  .macos-window {
+    width: 460px;
+    min-height: 440px;
+    background: var(--card-bg);
+    border-radius: 12px;
+    box-shadow: var(--window-shadow);
+    overflow: hidden;
+    position: relative;
+    z-index: 1;
+    border: 1px solid var(--border);
+  }
+
+  .titlebar {
+    height: 42px;
+    background: linear-gradient(180deg, #faf8ff 0%, #f0ecf9 100%);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    position: relative;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .traffic-lights {
+    display: flex;
+    gap: 8px;
+    z-index: 1;
+  }
+  .traffic-light {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    position: relative;
+  }
+  .traffic-light.close {
+    background: #ff5f57;
+    border: 0.5px solid rgba(0,0,0,0.12);
+  }
+  .traffic-light.minimize {
+    background: #ffbd2e;
+    border: 0.5px solid rgba(0,0,0,0.12);
+  }
+  .traffic-light.maximize {
+    background: #28c840;
+    border: 0.5px solid rgba(0,0,0,0.12);
+  }
+
+  .titlebar-text {
+    position: absolute;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+    pointer-events: none;
+    letter-spacing: -0.2px;
+  }
+
+  /* ============================================================
+     WINDOW CONTENT
+     ============================================================ */
+  .window-content {
+    padding: 24px 28px 28px;
+    min-height: 396px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* ============================================================
+     STEP CONTAINER + TRANSITIONS
+     ============================================================ */
+  .step-panel {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    animation: stepFadeIn 0.35s cubic-bezier(0.16,1,0.3,1);
+    flex: 1;
+  }
+  .step-panel.active {
+    display: flex;
+  }
+
+  @keyframes stepFadeIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ============================================================
+     PROGRESS DOTS — Rainbow Gradient
+     ============================================================ */
+  .progress-bar {
+    display: flex;
+    justify-content: center;
+    gap: 0;
+    margin-bottom: 22px;
+    width: 100%;
+    align-items: center;
+  }
+  .progress-connector {
+    width: 28px;
+    height: 2px;
+    background: var(--surface);
+    transition: all 0.4s cubic-bezier(0.16,1,0.3,1);
+    border-radius: 1px;
+  }
+  .progress-connector.done {
+    background: var(--rainbow);
+    background-size: 200% 100%;
+  }
+  .progress-dot {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    transition: all 0.4s cubic-bezier(0.16,1,0.3,1);
+    position: relative;
+    font-family: var(--font-body);
+  }
+  .progress-dot.upcoming {
+    background: var(--surface);
+    color: var(--text-tertiary);
+  }
+  .progress-dot.current {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 2px 12px rgba(124,58,237,0.3);
+  }
+  .progress-dot.completed {
+    background: var(--success);
+    color: #fff;
+  }
+
+  /* ============================================================
+     ICON CIRCLES
+     ============================================================ */
+  .icon-circle {
+    width: 76px;
+    height: 76px;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 36px;
+    margin-bottom: 18px;
+    transition: all 0.4s cubic-bezier(0.16,1,0.3,1);
+    flex-shrink: 0;
+  }
+  .icon-circle.violet {
+    background: var(--accent-soft);
+    border: 1px solid rgba(124,58,237,0.2);
+    color: var(--accent);
+  }
+  .icon-circle.green {
+    background: var(--success-soft);
+    border: 1px solid rgba(0,200,128,0.25);
+    color: var(--success);
+  }
+  .icon-circle.red {
+    background: var(--error-soft);
+    border: 1px solid rgba(230,37,58,0.25);
+    color: var(--error);
+  }
+
+  /* ============================================================
+     TEXT STYLES
+     ============================================================ */
+  .step-title {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+    text-align: center;
+    letter-spacing: -0.4px;
+    line-height: 1.2;
+  }
+  .step-body {
+    font-size: 14px;
+    line-height: 1.55;
+    color: var(--text-secondary);
+    text-align: center;
+    margin-bottom: 18px;
+    max-width: 360px;
+    font-weight: 400;
+  }
+  .step-body strong {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+  .caption {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    text-align: center;
+    font-weight: 400;
+  }
+
+  /* ============================================================
+     BUTTONS — Brand Styled
+     ============================================================ */
+  .btn {
+    font-family: var(--font-body);
+    font-size: 14px;
+    font-weight: 600;
+    border: none;
+    border-radius: 12px;
+    padding: 11px 28px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16,1,0.3,1);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    letter-spacing: -0.1px;
+  }
+  .btn:active { transform: scale(0.97); }
+
+  .btn-primary {
+    background: var(--btn-dark);
+    color: #fff;
+  }
+  .btn-primary:hover {
+    background: #1a1230;
+    box-shadow: 0 4px 16px rgba(15,10,26,0.2);
+    transform: translateY(-1px);
+  }
+  .btn-primary:disabled {
+    background: var(--surface);
+    color: var(--text-tertiary);
+    cursor: default;
+    transform: none;
+    box-shadow: none;
+  }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-hover);
+    padding: 10px 24px;
+  }
+  .btn-secondary:hover {
+    color: var(--text-primary);
+    border-color: rgba(138,43,226,0.2);
+    background: rgba(138,43,226,0.03);
+  }
+
+  .btn-accent {
+    background: var(--accent);
+    color: #fff;
+  }
+  .btn-accent:hover {
+    background: var(--accent-hover);
+    box-shadow: 0 4px 16px rgba(124,58,237,0.3);
+    transform: translateY(-1px);
+  }
+
+  .btn-error {
+    background: var(--error);
+    color: #fff;
+  }
+  .btn-error:hover {
+    background: #cc1f32;
+    box-shadow: 0 4px 16px rgba(230,37,58,0.2);
+  }
+
+  .btn-done {
+    background: var(--btn-dark);
+    color: #fff;
+    width: 100%;
+    padding: 13px 28px;
+    font-size: 15px;
+    font-weight: 700;
+    justify-content: center;
+    border-radius: 12px;
+  }
+  .btn-done:hover {
+    background: #1a1230;
+    box-shadow: 0 4px 16px rgba(15,10,26,0.2);
+    transform: translateY(-1px);
+  }
+
+  .skip-link {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    text-decoration: none;
+    cursor: pointer;
+    transition: color 0.15s ease;
+    align-self: flex-end;
+    margin-top: auto;
+    padding-top: 8px;
+    font-weight: 500;
+  }
+  .skip-link:hover { color: var(--accent); }
+
+  /* ============================================================
+     INLINE ALERT
+     ============================================================ */
+  .inline-alert {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 14px;
+    width: 100%;
+    max-width: 360px;
+    transition: all 0.3s ease;
+  }
+  .inline-alert.red-alert {
+    background: var(--error-soft);
+    border: 1px solid rgba(230,37,58,0.2);
+    color: var(--error);
+  }
+  .inline-alert.green-alert {
+    background: var(--success-soft);
+    border: 1px solid rgba(0,200,128,0.2);
+    color: #008a56;
+  }
+
+  /* ============================================================
+     ICON FLOW (mic -> app -> text)
+     ============================================================ */
+  .icon-flow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 18px;
+  }
+  .icon-flow-item {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: var(--surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    border: 1px solid var(--border);
+  }
+  .icon-flow-arrow {
+    font-size: 11px;
+    color: var(--text-tertiary);
+  }
+
+  /* ============================================================
+     SPINNER — Brand violet
+     ============================================================ */
+  .spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--surface);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-bottom: 16px;
+    flex-shrink: 0;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* Small spinner for transcription */
+  .spinner-small {
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--surface);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+
+  /* ============================================================
+     STATUS ICON
+     ============================================================ */
+  .status-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 16px;
+    flex-shrink: 0;
+  }
+  .status-icon.green-bg {
+    background: var(--success-soft);
+    color: var(--success);
+  }
+  .status-icon.red-bg {
+    background: var(--error-soft);
+    color: var(--error);
+  }
+
+  /* ============================================================
+     CALLOUT CARD
+     ============================================================ */
+  .callout-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 18px;
+    width: 100%;
+    max-width: 360px;
+    box-shadow: var(--card-shadow);
+    margin-bottom: 14px;
+    transition: border-color 0.2s ease;
+  }
+  .callout-card:hover {
+    border-color: var(--border-hover);
+  }
+  .callout-card .callout-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+    letter-spacing: -0.1px;
+  }
+  .callout-card .callout-body {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.45;
+    margin-bottom: 14px;
+  }
+
+  /* ============================================================
+     KEYBOARD KEY CAPS — Brand styled
+     ============================================================ */
+  .keycaps {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .keycap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    height: 38px;
+    padding: 0 12px;
+    background: linear-gradient(180deg, #ffffff 0%, #f0ecf9 100%);
+    border: 1px solid var(--border-hover);
+    border-bottom-width: 2px;
+    border-bottom-color: rgba(138,43,226,0.15);
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    box-shadow: 0 1px 3px rgba(15,10,26,0.06);
+    font-family: var(--font-body);
+    letter-spacing: 0.2px;
+    transition: all 0.2s ease;
+  }
+  .keycap-plus {
+    font-size: 13px;
+    color: var(--text-tertiary);
+    font-weight: 500;
+  }
+
+  .keycaps-large .keycap {
+    min-width: 64px;
+    height: 52px;
+    font-size: 18px;
+    border-radius: 12px;
+    font-weight: 700;
+  }
+
+  /* Single large keycap for Right Command */
+  .keycap-hero {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 80px;
+    height: 56px;
+    padding: 0 20px;
+    background: linear-gradient(180deg, #ffffff 0%, #f0ecf9 100%);
+    border: 1.5px solid rgba(138,43,226,0.15);
+    border-bottom-width: 3px;
+    border-bottom-color: rgba(138,43,226,0.2);
+    border-radius: 14px;
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--accent);
+    box-shadow: 0 2px 8px rgba(124,58,237,0.1);
+    font-family: var(--font-body);
+    transition: all 0.2s ease;
+  }
+
+  .keycap-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    margin-top: 6px;
+    text-align: center;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+  }
+
+  @keyframes keycapPulse {
+    0%, 100% { box-shadow: 0 2px 8px rgba(124,58,237,0.1), 0 0 0 0 rgba(124,58,237,0); }
+    50% { box-shadow: 0 2px 8px rgba(124,58,237,0.1), 0 0 0 6px rgba(124,58,237,0.08); }
+  }
+  .keycap-hero.pulse {
+    animation: keycapPulse 2s ease-in-out infinite;
+  }
+
+  /* ============================================================
+     CHANGE HOTKEY SECTION (Step 2)
+     ============================================================ */
+  .hotkey-config {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px 16px;
+    width: 100%;
+    max-width: 360px;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .hotkey-config-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .hotkey-config-key {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-hover);
+    border-radius: 8px;
+    font-size: 18px;
+    color: var(--accent);
+    font-weight: 700;
+    box-shadow: 0 1px 2px rgba(15,10,26,0.04);
+  }
+  .hotkey-config-text {
+    display: flex;
+    flex-direction: column;
+  }
+  .hotkey-config-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.1px;
+  }
+  .hotkey-config-sub {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-weight: 400;
+  }
+  .hotkey-config-btn {
+    font-family: var(--font-body);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    background: transparent;
+    border: 1px solid rgba(124,58,237,0.15);
+    border-radius: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+  }
+  .hotkey-config-btn:hover {
+    background: var(--accent-soft);
+    border-color: rgba(124,58,237,0.25);
+  }
+
+  /* ============================================================
+     TRANSCRIPTION PREVIEW (Step 4 — Try It Now)
+     ============================================================ */
+  .transcription-box {
+    width: 100%;
+    max-width: 360px;
+    min-height: 100px;
+    border-radius: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 20px;
+    margin-bottom: 14px;
+    transition: all 0.4s cubic-bezier(0.16,1,0.3,1);
+    position: relative;
+    overflow: hidden;
+  }
+  .transcription-box.waiting {
+    background: var(--surface);
+    border: 1.5px dashed rgba(138,43,226,0.12);
+  }
+  .transcription-box.waiting .tb-placeholder {
+    color: var(--text-tertiary);
+    font-size: 14px;
+    font-style: italic;
+    font-weight: 400;
+  }
+  .transcription-box.recording {
+    background: rgba(230,37,58,0.04);
+    border: 1.5px solid rgba(230,37,58,0.2);
+  }
+  .transcription-box.processing {
+    background: var(--accent-soft);
+    border: 1.5px solid rgba(124,58,237,0.15);
+  }
+  .transcription-box.result {
+    background: var(--card-bg);
+    border: 1.5px solid rgba(0,200,128,0.25);
+    box-shadow: 0 4px 20px rgba(0,200,128,0.08);
+    align-items: flex-start;
+    justify-content: flex-start;
+  }
+  .transcription-box.success {
+    background: var(--success-soft);
+    border: 1.5px solid rgba(0,200,128,0.3);
+  }
+
+  .tb-recording-indicator {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .tb-recording-text {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--error);
+  }
+
+  /* Waveform animation */
+  .waveform {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    height: 24px;
+  }
+  .waveform-bar {
+    width: 3px;
+    border-radius: 2px;
+    background: var(--error);
+    animation: waveAnim 0.8s ease-in-out infinite;
+  }
+  .waveform-bar:nth-child(1) { height: 8px; animation-delay: 0s; }
+  .waveform-bar:nth-child(2) { height: 16px; animation-delay: 0.1s; }
+  .waveform-bar:nth-child(3) { height: 12px; animation-delay: 0.2s; }
+  .waveform-bar:nth-child(4) { height: 20px; animation-delay: 0.15s; }
+  .waveform-bar:nth-child(5) { height: 14px; animation-delay: 0.25s; }
+  .waveform-bar:nth-child(6) { height: 10px; animation-delay: 0.05s; }
+  .waveform-bar:nth-child(7) { height: 18px; animation-delay: 0.3s; }
+
+  @keyframes waveAnim {
+    0%, 100% { transform: scaleY(0.4); opacity: 0.5; }
+    50% { transform: scaleY(1); opacity: 1; }
+  }
+
+  .tb-result-text {
+    font-size: 16px;
+    font-weight: 400;
+    color: var(--text-primary);
+    line-height: 1.6;
+    position: relative;
+    padding-left: 14px;
+  }
+  .tb-result-text::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 2px;
+    bottom: 2px;
+    width: 3px;
+    border-radius: 2px;
+    background: var(--rainbow);
+  }
+
+  .tb-success-overlay {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .tb-success-check {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--success);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .tb-success-text {
+    font-size: 14px;
+    font-weight: 600;
+    color: #008a56;
+  }
+
+  /* ============================================================
+     AI POLISH CARDS (Step 3)
+     ============================================================ */
+  .polish-cards {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+    max-width: 380px;
+    margin-bottom: 14px;
+    align-items: stretch;
+  }
+  /* On-device card stretches to match the flip container height */
+  #polishOnDevice {
+    height: 200px;
+  }
+  .polish-card {
+    flex: 1;
+    background: var(--card-bg);
+    border: 1.5px solid var(--border);
+    border-radius: 16px;
+    padding: 16px 14px;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.16,1,0.3,1);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    position: relative;
+  }
+  .polish-card:hover {
+    border-color: var(--border-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(15,10,26,0.06);
+  }
+  .polish-card.selected {
+    border-color: var(--accent);
+    background: rgba(124,58,237,0.03);
+    box-shadow: 0 0 0 3px rgba(124,58,237,0.08);
+  }
+  .polish-card-icon {
+    font-size: 24px;
+    line-height: 1;
+  }
+  .polish-card-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.1px;
+  }
+  .polish-card-body {
+    font-size: 11px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+  }
+  .polish-card-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    width: fit-content;
+  }
+  .polish-card-badge.private {
+    background: var(--success-soft);
+    color: #008a56;
+  }
+  .polish-card-badge.cloud {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  /* API Key input (shown when BYOK selected) */
+  .api-key-field {
+    width: 100%;
+    max-width: 360px;
+    margin-bottom: 12px;
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    transition: all 0.35s cubic-bezier(0.16,1,0.3,1);
+  }
+  .api-key-field.visible {
+    max-height: 100px;
+    opacity: 1;
+  }
+  .api-key-input {
+    width: 100%;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 10px 14px;
+    border: 1px solid var(--border-hover);
+    border-radius: 10px;
+    background: var(--card-bg);
+    color: var(--text-primary);
+    outline: none;
+    transition: border-color 0.2s ease;
+    margin-bottom: 6px;
+  }
+  .api-key-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(124,58,237,0.08);
+  }
+  .api-key-input::placeholder {
+    color: var(--text-tertiary);
+    font-style: italic;
+  }
+  .api-key-helper {
+    font-size: 11px;
+    color: var(--accent);
+    cursor: pointer;
+    text-decoration: none;
+    font-weight: 500;
+    display: block;
+    padding: 1px 2px;
+    transition: opacity 0.15s ease;
+  }
+  .api-key-helper:hover {
+    text-decoration: underline;
+    opacity: 0.8;
+  }
+
+  /* ============================================================
+     BYOK CARD FLIP
+     ============================================================ */
+  .card-flip-container {
+    flex: 1;
+    perspective: 1000px;
+    /* Height is fixed so the layout doesn't jump when card flips */
+    height: 200px;
+    position: relative;
+  }
+  .card-flip-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transition: transform 0.5s cubic-bezier(0.16,1,0.3,1);
+    transform-style: preserve-3d;
+  }
+  .card-flip-inner.flipped {
+    transform: rotateY(180deg);
+  }
+  .card-front,
+  .card-back {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .card-back {
+    transform: rotateY(180deg);
+    background: var(--card-bg);
+    border: 1.5px solid var(--accent);
+    background: rgba(124,58,237,0.03);
+    box-shadow: 0 0 0 3px rgba(124,58,237,0.08);
+    display: flex;
+    flex-direction: column;
+    padding: 12px 12px;
+    gap: 10px;
+  }
+  .card-back-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    color: var(--text-tertiary);
+    padding: 0 2px;
+    flex-shrink: 0;
+  }
+  .provider-mini-card {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--card-bg);
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 10px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16,1,0.3,1);
+    min-width: 0;
+  }
+  .provider-mini-card:hover {
+    border-color: var(--border-hover);
+    background: var(--surface);
+  }
+  .provider-mini-card.selected {
+    border-color: var(--accent);
+    background: rgba(124,58,237,0.06);
+    box-shadow: 0 0 0 2px rgba(124,58,237,0.1);
+  }
+  .provider-mini-icon {
+    font-size: 16px;
+    line-height: 1;
+    flex-shrink: 0;
+    width: 22px;
+    text-align: center;
+  }
+  .provider-mini-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+  }
+  .provider-mini-name {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.1px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .provider-mini-sub {
+    font-size: 10px;
+    color: var(--text-secondary);
+    font-weight: 400;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .provider-mini-check {
+    margin-left: auto;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .provider-mini-card.selected .provider-mini-check {
+    display: flex;
+  }
+
+  /* ============================================================
+     RECORDING DOT
+     ============================================================ */
+  @keyframes pulseDot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.85); }
+  }
+  .rec-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--error);
+    animation: pulseDot 1s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+
+  /* ============================================================
+     TOGGLE SWITCH — Brand styled
+     ============================================================ */
+  .toggle-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 6px 0;
+    width: 100%;
+  }
+  .toggle-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .toggle-caption {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+    line-height: 1.35;
+  }
+  .toggle-switch {
+    width: 44px;
+    height: 26px;
+    border-radius: 13px;
+    background: var(--surface);
+    border: 1px solid var(--border-hover);
+    position: relative;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .toggle-switch.on {
+    background: var(--success);
+    border-color: transparent;
+  }
+  .toggle-switch .toggle-knob {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(15,10,26,0.15);
+    position: absolute;
+    top: 1.5px;
+    left: 1.5px;
+    transition: transform 0.2s ease;
+  }
+  .toggle-switch.on .toggle-knob {
+    transform: translateX(18px);
+  }
+
+  /* ============================================================
+     ENHANCEMENT CARD (Step 5)
+     ============================================================ */
+  .enhancement-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px 18px;
+    width: 100%;
+    max-width: 360px;
+    box-shadow: var(--card-shadow);
+    margin-bottom: 18px;
+  }
+  .enhancement-divider {
+    height: 1px;
+    background: var(--surface);
+    margin: 12px 0;
+  }
+  .enhancement-link {
+    font-size: 13px;
+    color: var(--accent);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 0;
+    font-weight: 500;
+  }
+  .enhancement-link:hover { text-decoration: underline; }
+
+  /* ============================================================
+     MENU BAR MOCKUP — Restyled
+     ============================================================ */
+  .menubar-mock {
+    width: 460px;
+    background: transparent;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--window-shadow);
+  }
+  .menubar-strip {
+    height: 30px;
+    background: linear-gradient(180deg, #1a1230 0%, #0f0a1a 100%);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 14px;
+    gap: 12px;
+  }
+  .menubar-icon {
+    font-size: 14px;
+    position: relative;
+    cursor: pointer;
+    color: #fff;
+    opacity: 0.9;
+  }
+  .menubar-badge {
+    position: absolute;
+    top: -3px;
+    right: -5px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+  .menubar-badge.orange-badge { background: var(--warning); }
+  .menubar-badge.red-badge { background: var(--error); }
+
+  .menubar-dropdown {
+    background: rgba(255,255,255,0.97);
+    border-radius: 0 0 12px 12px;
+    padding: 6px 0;
+    backdrop-filter: blur(20px);
+  }
+  .menubar-item {
+    padding: 7px 16px;
+    font-size: 13px;
+    color: var(--text-primary);
+    cursor: default;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 400;
+  }
+  .menubar-item.disabled {
+    color: var(--text-tertiary);
+  }
+  .menubar-item.warning {
+    color: var(--warning);
+    font-weight: 600;
+  }
+  .menubar-item.error {
+    color: var(--error);
+    font-weight: 600;
+  }
+  .menubar-item.accent-item {
+    color: var(--accent);
+    font-weight: 500;
+  }
+  .menubar-item .shortcut {
+    margin-left: auto;
+    color: var(--text-tertiary);
+    font-size: 12px;
+    font-family: var(--font-body);
+  }
+  .menubar-divider {
+    height: 1px;
+    background: var(--surface);
+    margin: 4px 0;
+  }
+
+  /* ============================================================
+     MENU BAR GRID
+     ============================================================ */
+  .menubar-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    width: 100%;
+    max-width: 940px;
+  }
+  .menubar-grid-item {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .menubar-grid-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .menubar-grid .menubar-mock {
+    width: 100%;
+  }
+
+  /* ============================================================
+     CONTROL PANEL — Brand styled
+     ============================================================ */
+  .controls {
+    margin-top: 32px;
+    width: 460px;
+    background: var(--card-bg);
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: var(--card-shadow);
+    border: 1px solid var(--border);
+    position: relative;
+    z-index: 1;
+  }
+  .controls-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 14px;
+  }
+  .controls-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+  .controls-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    min-width: 55px;
+    font-weight: 600;
+  }
+  .ctrl-btn {
+    font-family: var(--font-body);
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid var(--border-hover);
+    background: var(--card-bg);
+    color: var(--text-primary);
+    padding: 5px 13px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .ctrl-btn:hover {
+    background: var(--surface);
+    border-color: rgba(138,43,226,0.2);
+  }
+  .ctrl-btn.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  .controls-divider {
+    height: 1px;
+    background: var(--surface);
+    margin: 12px 0;
+  }
+
+  /* ============================================================
+     VIEW CONTAINERS
+     ============================================================ */
+  .view-container { display: none; position: relative; z-index: 1; }
+  .view-container.active { display: flex; flex-direction: column; align-items: center; }
+
+  /* ============================================================
+     AUTO-ADVANCE HINT
+     ============================================================ */
+  .auto-hint {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-top: 4px;
+    font-style: italic;
+  }
+
+  /* ============================================================
+     BUTTON ROW
+     ============================================================ */
+  .button-row {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    max-width: 360px;
+    margin-top: auto;
+    padding-top: 10px;
+  }
+
+  /* ============================================================
+     RAINBOW PROGRESS BAR (download)
+     ============================================================ */
+  .download-progress {
+    width: 100%;
+    max-width: 360px;
+    height: 4px;
+    background: var(--surface);
+    border-radius: 2px;
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  .download-progress-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--rainbow);
+    background-size: 200% 100%;
+    animation: shimmer 2s linear infinite;
+    width: 65%;
+    transition: width 0.3s ease;
+  }
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* ============================================================
+     MISC
+     ============================================================ */
+  .settings-hint {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    text-align: center;
+    font-weight: 400;
+  }
+
+  @keyframes scaleUp {
+    from { transform: scale(0.4); opacity: 0; }
+    to   { transform: scale(1);   opacity: 1; }
+  }
+
+  /* Success confetti-like glow on step 5 icon */
+  @keyframes successGlow {
+    0%, 100% { box-shadow: 0 0 20px rgba(0,200,128,0.15); }
+    50% { box-shadow: 0 0 40px rgba(0,200,128,0.25), 0 0 60px rgba(0,200,128,0.1); }
+  }
+  .icon-circle.green-glow {
+    animation: successGlow 2s ease-in-out infinite;
+  }
+
+  /* ============================================================
+     RAINBOW LIPS ICON
+     ============================================================ */
+  .lips-wrap {
+    width: 70px;
+    height: 70px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 18px;
+    flex-shrink: 0;
+  }
+  .lips-icon {
+    width: 70px;
+    height: 70px;
+    overflow: visible;
+  }
+
+  /* ---- IDLE (Step 1 default, Step 4 waiting) ---- */
+  @keyframes lipsBreath {
+    0%, 100% { transform: scaleY(1); }
+    50%       { transform: scaleY(0.88); }
+  }
+  .lips-idle .upper-bar,
+  .lips-idle .lower-bar {
+    animation: lipsBreath 2.8s ease-in-out infinite;
+  }
+  .lips-idle .upper-bar { transform-origin: bottom center; }
+  .lips-idle .lower-bar { transform-origin: top center; }
+  .lips-idle .u0, .lips-idle .l0 { animation-delay: 0s; }
+  .lips-idle .u1, .lips-idle .l1 { animation-delay: 0.1s; }
+  .lips-idle .u2, .lips-idle .l2 { animation-delay: 0.2s; }
+  .lips-idle .u3, .lips-idle .l3 { animation-delay: 0.15s; }
+  .lips-idle .u4, .lips-idle .l4 { animation-delay: 0.05s; }
+  .lips-idle .u5, .lips-idle .l5 { animation-delay: 0.25s; }
+  .lips-idle .u6, .lips-idle .l6 { animation-delay: 0.3s; }
+  .lips-idle .u7, .lips-idle .l7 { animation-delay: 0.1s; }
+  .lips-idle .u8, .lips-idle .l8 { animation-delay: 0.2s; }
+
+  /* ---- DENIED (sad, desaturated) ---- */
+  @keyframes lipsShrinkUpper {
+    0%, 100% { transform: scaleY(0.45); }
+    50%       { transform: scaleY(0.38); }
+  }
+  @keyframes lipsShrinkLower {
+    0%, 100% { transform: scaleY(0.35); }
+    50%       { transform: scaleY(0.28); }
+  }
+  .lips-denied .upper-bar {
+    animation: lipsShrinkUpper 3s ease-in-out infinite;
+    transform-origin: bottom center;
+    filter: saturate(0.25) brightness(0.85);
+  }
+  .lips-denied .lower-bar {
+    animation: lipsShrinkLower 3s ease-in-out infinite;
+    transform-origin: top center;
+    filter: saturate(0.25) brightness(0.85);
+  }
+
+  /* ---- HAPPY (granted / granted bounce) ---- */
+  @keyframes lipsBounceUpper {
+    0%   { transform: scaleY(1); }
+    30%  { transform: scaleY(1.25); }
+    55%  { transform: scaleY(0.95); }
+    75%  { transform: scaleY(1.1); }
+    100% { transform: scaleY(1); }
+  }
+  @keyframes lipsBounce {
+    0%   { transform: scaleY(1); }
+    30%  { transform: scaleY(1.2); }
+    55%  { transform: scaleY(0.9); }
+    75%  { transform: scaleY(1.05); }
+    100% { transform: scaleY(1); }
+  }
+  .lips-happy .upper-bar {
+    animation: lipsBounceUpper 0.6s cubic-bezier(0.34,1.56,0.64,1) forwards;
+    transform-origin: bottom center;
+  }
+  .lips-happy .lower-bar {
+    animation: lipsBounce 0.6s cubic-bezier(0.34,1.56,0.64,1) forwards;
+    transform-origin: top center;
+  }
+  .lips-happy .u0, .lips-happy .l0 { animation-delay: 0s; }
+  .lips-happy .u1, .lips-happy .l1 { animation-delay: 0.04s; }
+  .lips-happy .u2, .lips-happy .l2 { animation-delay: 0.08s; }
+  .lips-happy .u3, .lips-happy .l3 { animation-delay: 0.06s; }
+  .lips-happy .u4, .lips-happy .l4 { animation-delay: 0.02s; }
+  .lips-happy .u5, .lips-happy .l5 { animation-delay: 0.06s; }
+  .lips-happy .u6, .lips-happy .l6 { animation-delay: 0.08s; }
+  .lips-happy .u7, .lips-happy .l7 { animation-delay: 0.04s; }
+  .lips-happy .u8, .lips-happy .l8 { animation-delay: 0s; }
+
+  /* ---- EQUALIZER (downloading / talking) ---- */
+  @keyframes eqBar0  { 0%,100%{transform:scaleY(0.5)} 50%{transform:scaleY(1.1)} }
+  @keyframes eqBar1  { 0%,100%{transform:scaleY(1.0)} 50%{transform:scaleY(0.4)} }
+  @keyframes eqBar2  { 0%,100%{transform:scaleY(0.7)} 50%{transform:scaleY(1.2)} }
+  @keyframes eqBar3  { 0%,100%{transform:scaleY(1.1)} 50%{transform:scaleY(0.5)} }
+  @keyframes eqBar4  { 0%,100%{transform:scaleY(0.6)} 50%{transform:scaleY(1.15)} }
+  @keyframes eqBar5  { 0%,100%{transform:scaleY(1.0)} 50%{transform:scaleY(0.55)} }
+  @keyframes eqBar6  { 0%,100%{transform:scaleY(0.75)} 50%{transform:scaleY(1.05)} }
+  @keyframes eqBar7  { 0%,100%{transform:scaleY(1.1)} 50%{transform:scaleY(0.45)} }
+  @keyframes eqBar8  { 0%,100%{transform:scaleY(0.55)} 50%{transform:scaleY(1.1)} }
+
+  .lips-equalizer .upper-bar { transform-origin: bottom center; }
+  .lips-equalizer .lower-bar { transform-origin: top center; }
+  .lips-equalizer .u0,.lips-equalizer .l0 { animation: eqBar0 0.45s ease-in-out infinite; }
+  .lips-equalizer .u1,.lips-equalizer .l1 { animation: eqBar1 0.52s ease-in-out infinite; animation-delay: 0.07s; }
+  .lips-equalizer .u2,.lips-equalizer .l2 { animation: eqBar2 0.38s ease-in-out infinite; animation-delay: 0.14s; }
+  .lips-equalizer .u3,.lips-equalizer .l3 { animation: eqBar3 0.61s ease-in-out infinite; animation-delay: 0.05s; }
+  .lips-equalizer .u4,.lips-equalizer .l4 { animation: eqBar4 0.44s ease-in-out infinite; animation-delay: 0.11s; }
+  .lips-equalizer .u5,.lips-equalizer .l5 { animation: eqBar5 0.57s ease-in-out infinite; animation-delay: 0.03s; }
+  .lips-equalizer .u6,.lips-equalizer .l6 { animation: eqBar6 0.41s ease-in-out infinite; animation-delay: 0.18s; }
+  .lips-equalizer .u7,.lips-equalizer .l7 { animation: eqBar7 0.49s ease-in-out infinite; animation-delay: 0.08s; }
+  .lips-equalizer .u8,.lips-equalizer .l8 { animation: eqBar8 0.55s ease-in-out infinite; animation-delay: 0.13s; }
+
+  /* ---- DROOPING / FAILED ---- */
+  @keyframes lipsDroop {
+    0%, 100% { transform: scaleY(0.3) rotate(0deg); }
+    50%       { transform: scaleY(0.25) rotate(2deg); }
+  }
+  .lips-drooping .upper-bar,
+  .lips-drooping .lower-bar {
+    animation: lipsDroop 2.5s ease-in-out infinite;
+    transform-origin: center center;
+    filter: saturate(0.2) brightness(0.75);
+  }
+
+  /* ---- WAVE (download complete) ---- */
+  @keyframes lipsWave {
+    0%   { transform: scaleY(0.4); }
+    40%  { transform: scaleY(1.2); }
+    70%  { transform: scaleY(0.9); }
+    100% { transform: scaleY(1); }
+  }
+  .lips-wave .upper-bar {
+    animation: lipsWave 0.8s cubic-bezier(0.34,1.56,0.64,1) forwards;
+    transform-origin: bottom center;
+  }
+  .lips-wave .lower-bar {
+    animation: lipsWave 0.8s cubic-bezier(0.34,1.56,0.64,1) forwards;
+    transform-origin: top center;
+  }
+  .lips-wave .u0,.lips-wave .l0 { animation-delay: 0s; }
+  .lips-wave .u1,.lips-wave .l1 { animation-delay: 0.06s; }
+  .lips-wave .u2,.lips-wave .l2 { animation-delay: 0.12s; }
+  .lips-wave .u3,.lips-wave .l3 { animation-delay: 0.18s; }
+  .lips-wave .u4,.lips-wave .l4 { animation-delay: 0.24s; }
+  .lips-wave .u5,.lips-wave .l5 { animation-delay: 0.18s; }
+  .lips-wave .u6,.lips-wave .l6 { animation-delay: 0.12s; }
+  .lips-wave .u7,.lips-wave .l7 { animation-delay: 0.06s; }
+  .lips-wave .u8,.lips-wave .l8 { animation-delay: 0s; }
+
+  /* ---- SHIMMER (AI polish step 3) ---- */
+  @keyframes lipsShimmer {
+    0%   { opacity: 0.92; filter: brightness(1); }
+    50%  { opacity: 1;    filter: brightness(1.4) saturate(1.2); }
+    100% { opacity: 0.92; filter: brightness(1); }
+  }
+  .lips-shimmer .upper-bar,
+  .lips-shimmer .lower-bar {
+    animation: lipsShimmer 1.8s ease-in-out infinite;
+  }
+  .lips-shimmer .u0,.lips-shimmer .l0 { animation-delay: 0s; }
+  .lips-shimmer .u1,.lips-shimmer .l1 { animation-delay: 0.2s; }
+  .lips-shimmer .u2,.lips-shimmer .l2 { animation-delay: 0.4s; }
+  .lips-shimmer .u3,.lips-shimmer .l3 { animation-delay: 0.6s; }
+  .lips-shimmer .u4,.lips-shimmer .l4 { animation-delay: 0.8s; }
+  .lips-shimmer .u5,.lips-shimmer .l5 { animation-delay: 0.6s; }
+  .lips-shimmer .u6,.lips-shimmer .l6 { animation-delay: 0.4s; }
+  .lips-shimmer .u7,.lips-shimmer .l7 { animation-delay: 0.2s; }
+  .lips-shimmer .u8,.lips-shimmer .l8 { animation-delay: 0s; }
+
+  /* ---- RECORDING (vigorous equalizer, fast) ---- */
+  @keyframes recBar0  { 0%,100%{transform:scaleY(0.4)} 50%{transform:scaleY(1.3)} }
+  @keyframes recBar1  { 0%,100%{transform:scaleY(1.2)} 50%{transform:scaleY(0.3)} }
+  @keyframes recBar2  { 0%,100%{transform:scaleY(0.6)} 50%{transform:scaleY(1.4)} }
+  @keyframes recBar3  { 0%,100%{transform:scaleY(1.3)} 50%{transform:scaleY(0.4)} }
+  @keyframes recBar4  { 0%,100%{transform:scaleY(0.5)} 50%{transform:scaleY(1.35)} }
+  @keyframes recBar5  { 0%,100%{transform:scaleY(1.25)} 50%{transform:scaleY(0.35)} }
+  @keyframes recBar6  { 0%,100%{transform:scaleY(0.65)} 50%{transform:scaleY(1.3)} }
+  @keyframes recBar7  { 0%,100%{transform:scaleY(1.2)} 50%{transform:scaleY(0.4)} }
+  @keyframes recBar8  { 0%,100%{transform:scaleY(0.45)} 50%{transform:scaleY(1.25)} }
+
+  .lips-recording .upper-bar { transform-origin: bottom center; }
+  .lips-recording .lower-bar { transform-origin: top center; }
+  .lips-recording .u0,.lips-recording .l0 { animation: recBar0 0.22s ease-in-out infinite; }
+  .lips-recording .u1,.lips-recording .l1 { animation: recBar1 0.27s ease-in-out infinite; animation-delay: 0.03s; }
+  .lips-recording .u2,.lips-recording .l2 { animation: recBar2 0.19s ease-in-out infinite; animation-delay: 0.07s; }
+  .lips-recording .u3,.lips-recording .l3 { animation: recBar3 0.31s ease-in-out infinite; animation-delay: 0.02s; }
+  .lips-recording .u4,.lips-recording .l4 { animation: recBar4 0.24s ease-in-out infinite; animation-delay: 0.05s; }
+  .lips-recording .u5,.lips-recording .l5 { animation: recBar5 0.28s ease-in-out infinite; animation-delay: 0.01s; }
+  .lips-recording .u6,.lips-recording .l6 { animation: recBar6 0.21s ease-in-out infinite; animation-delay: 0.09s; }
+  .lips-recording .u7,.lips-recording .l7 { animation: recBar7 0.25s ease-in-out infinite; animation-delay: 0.04s; }
+  .lips-recording .u8,.lips-recording .l8 { animation: recBar8 0.29s ease-in-out infinite; animation-delay: 0.06s; }
+
+  /* ---- PROCESSING PULSE (synchronized wave) ---- */
+  @keyframes lipsPulse {
+    0%, 100% { transform: scaleY(0.7); }
+    50%       { transform: scaleY(1.1); }
+  }
+  .lips-pulse .upper-bar {
+    animation: lipsPulse 1.1s ease-in-out infinite;
+    transform-origin: bottom center;
+  }
+  .lips-pulse .lower-bar {
+    animation: lipsPulse 1.1s ease-in-out infinite;
+    transform-origin: top center;
+  }
+  .lips-pulse .u0,.lips-pulse .l0 { animation-delay: 0s; }
+  .lips-pulse .u1,.lips-pulse .l1 { animation-delay: 0.06s; }
+  .lips-pulse .u2,.lips-pulse .l2 { animation-delay: 0.12s; }
+  .lips-pulse .u3,.lips-pulse .l3 { animation-delay: 0.18s; }
+  .lips-pulse .u4,.lips-pulse .l4 { animation-delay: 0.22s; }
+  .lips-pulse .u5,.lips-pulse .l5 { animation-delay: 0.18s; }
+  .lips-pulse .u6,.lips-pulse .l6 { animation-delay: 0.12s; }
+  .lips-pulse .u7,.lips-pulse .l7 { animation-delay: 0.06s; }
+  .lips-pulse .u8,.lips-pulse .l8 { animation-delay: 0s; }
+
+  /* ---- SMILE (result success) ---- */
+  /* Outer bars taller than inner bars creates upward smile curve */
+  @keyframes lipsSmileUpper { 0%,100%{transform:scaleY(0.9)} 50%{transform:scaleY(1.05)} }
+  @keyframes lipsSmileLower { 0%,100%{transform:scaleY(0.9)} 50%{transform:scaleY(1.05)} }
+  .lips-smile .upper-bar { transform-origin: bottom center; animation: lipsSmileUpper 2.2s ease-in-out infinite; }
+  .lips-smile .lower-bar { transform-origin: top center; animation: lipsSmileLower 2.2s ease-in-out infinite; }
+  /* Scale outer bars larger */
+  .lips-smile .u0 { animation: lipsSmileUpper 2.2s ease-in-out infinite; transform: scaleY(1.3); }
+  .lips-smile .u8 { animation: lipsSmileUpper 2.2s ease-in-out infinite; transform: scaleY(1.3); }
+  .lips-smile .u1,.lips-smile .u7 { transform: scaleY(1.1); }
+  .lips-smile .u4 { transform: scaleY(0.6); }
+  .lips-smile .l0,.lips-smile .l8 { transform: scaleY(0.5); transform-origin: top center; }
+  .lips-smile .l3,.lips-smile .l4,.lips-smile .l5 { transform: scaleY(1.3); transform-origin: top center; }
+
+  /* ---- TRIUMPH (step 5 all set) ---- */
+  @keyframes lipsTriumph {
+    0%   { transform: scaleY(0.5); }
+    40%  { transform: scaleY(1.35); }
+    65%  { transform: scaleY(1.05); }
+    80%  { transform: scaleY(1.2); }
+    100% { transform: scaleY(1.1); }
+  }
+  @keyframes lipsTriumphGlow {
+    0%, 100% { filter: brightness(1) drop-shadow(0 0 4px rgba(124,58,237,0.2)); }
+    50%       { filter: brightness(1.2) drop-shadow(0 0 12px rgba(124,58,237,0.4)); }
+  }
+  .lips-triumph .upper-bar {
+    animation: lipsTriumph 0.9s cubic-bezier(0.34,1.56,0.64,1) forwards;
+    transform-origin: bottom center;
+  }
+  .lips-triumph .lower-bar {
+    animation: lipsTriumph 0.9s cubic-bezier(0.34,1.56,0.64,1) forwards;
+    transform-origin: top center;
+  }
+  .lips-triumph .u0,.lips-triumph .l0 { animation-delay: 0s; }
+  .lips-triumph .u1,.lips-triumph .l1 { animation-delay: 0.05s; }
+  .lips-triumph .u2,.lips-triumph .l2 { animation-delay: 0.1s; }
+  .lips-triumph .u3,.lips-triumph .l3 { animation-delay: 0.15s; }
+  .lips-triumph .u4,.lips-triumph .l4 { animation-delay: 0.18s; }
+  .lips-triumph .u5,.lips-triumph .l5 { animation-delay: 0.15s; }
+  .lips-triumph .u6,.lips-triumph .l6 { animation-delay: 0.1s; }
+  .lips-triumph .u7,.lips-triumph .l7 { animation-delay: 0.05s; }
+  .lips-triumph .u8,.lips-triumph .l8 { animation-delay: 0s; }
+  .lips-triumph g { animation: lipsTriumphGlow 1.6s ease-in-out 0.9s infinite; }
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     VIEW SWITCHER
+     ============================================================ -->
+<div class="view-switcher" id="viewSwitcher">
+  <button class="active" data-view="onboarding" onclick="switchView('onboarding')">Onboarding</button>
+  <button data-view="abort" onclick="switchView('abort')">Abort State</button>
+  <button data-view="menubar" onclick="switchView('menubar')">Post-Onboarding</button>
+</div>
+
+<!-- ============================================================
+     VIEW 1: ONBOARDING WIZARD
+     ============================================================ -->
+<div class="view-container active" id="view-onboarding">
+  <div class="macos-window" id="onboardingWindow">
+    <div class="titlebar">
+      <div class="traffic-lights">
+        <div class="traffic-light close"></div>
+        <div class="traffic-light minimize"></div>
+        <div class="traffic-light maximize"></div>
+      </div>
+      <div class="titlebar-text">EnviousWispr Setup</div>
+    </div>
+    <div class="window-content">
+
+      <!-- PROGRESS BAR (5 steps) -->
+      <div class="progress-bar" id="progressBar">
+        <div class="progress-dot current" id="dot1"><span>1</span></div>
+        <div class="progress-connector" id="conn12"></div>
+        <div class="progress-dot upcoming" id="dot2"><span>2</span></div>
+        <div class="progress-connector" id="conn23"></div>
+        <div class="progress-dot upcoming" id="dot3"><span>3</span></div>
+        <div class="progress-connector" id="conn34"></div>
+        <div class="progress-dot upcoming" id="dot4"><span>4</span></div>
+        <div class="progress-connector" id="conn45"></div>
+        <div class="progress-dot upcoming" id="dot5"><span>5</span></div>
+      </div>
+
+      <!-- ==================== STEP 1: Welcome + Mic ==================== -->
+      <div class="step-panel active" id="step1">
+        <div class="lips-wrap" id="step1Icon">
+          <svg class="lips-icon lips-idle" id="lipsStep1" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <filter id="lip-glow-1" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
+                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+            </defs>
+            <g transform="translate(8,13)" filter="url(#lip-glow-1)">
+              <rect class="upper-bar u0" x="16" y="84.2" width="14" height="20" rx="5" fill="#ff2a40" opacity="0.92"/>
+              <rect class="upper-bar u1" x="40" y="65.75" width="14" height="32" rx="5" fill="#ff8c00" opacity="0.92"/>
+              <rect class="upper-bar u2" x="64" y="43.36" width="14" height="48" rx="5" fill="#ffd700" opacity="0.92"/>
+              <rect class="upper-bar u3" x="88" y="63.04" width="14" height="36" rx="5" fill="#adff2f" opacity="0.92"/>
+              <rect class="upper-bar u4" x="112" y="81.43" width="14" height="24" rx="5" fill="#00fa9a" opacity="0.92"/>
+              <rect class="upper-bar u5" x="136" y="63.04" width="14" height="36" rx="5" fill="#00ffff" opacity="0.92"/>
+              <rect class="upper-bar u6" x="160" y="43.36" width="14" height="48" rx="5" fill="#1e90ff" opacity="0.92"/>
+              <rect class="upper-bar u7" x="184" y="65.75" width="14" height="32" rx="5" fill="#4169e1" opacity="0.92"/>
+              <rect class="upper-bar u8" x="208" y="84.2" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.92"/>
+              <rect class="lower-bar l0" x="16" y="125.8" width="14" height="20" rx="5" fill="#4169e1" opacity="0.88"/>
+              <rect class="lower-bar l1" x="40" y="119.35" width="14" height="36" rx="5" fill="#1e90ff" opacity="0.88"/>
+              <rect class="lower-bar l2" x="64" y="112.96" width="14" height="48" rx="5" fill="#00ffff" opacity="0.88"/>
+              <rect class="lower-bar l3" x="88" y="120.64" width="14" height="60" rx="5" fill="#00fa9a" opacity="0.88"/>
+              <rect class="lower-bar l4" x="112" y="127.03" width="14" height="68" rx="5" fill="#adff2f" opacity="0.88"/>
+              <rect class="lower-bar l5" x="136" y="120.64" width="14" height="60" rx="5" fill="#ffd700" opacity="0.88"/>
+              <rect class="lower-bar l6" x="160" y="112.96" width="14" height="48" rx="5" fill="#ff8c00" opacity="0.88"/>
+              <rect class="lower-bar l7" x="184" y="119.35" width="14" height="36" rx="5" fill="#ff2a40" opacity="0.88"/>
+              <rect class="lower-bar l8" x="208" y="125.8" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.88"/>
+            </g>
+          </svg>
+        </div>
+
+        <div class="step-title" id="step1Title">Welcome to EnviousWispr</div>
+        <div class="step-body" id="step1Body">Press a hotkey to transcribe your voice. First, we need microphone access.</div>
+
+        <div class="icon-flow" id="step1Flow">
+          <div class="icon-flow-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7d6f96" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+          </div>
+          <div class="icon-flow-arrow">&rarr;</div>
+          <div class="icon-flow-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7d6f96" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="12" cy="12" r="3"/></svg>
+          </div>
+          <div class="icon-flow-arrow">&rarr;</div>
+          <div class="icon-flow-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7d6f96" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="16" y2="12"/><line x1="4" y1="17" x2="12" y2="17"/></svg>
+          </div>
+        </div>
+
+        <!-- Alert area (hidden by default) -->
+        <div id="step1Alert" style="display:none; width:100%; max-width:360px;"></div>
+
+        <div class="button-row">
+          <button class="btn btn-primary" id="step1GrantBtn" onclick="handleStep1Grant()">Grant Microphone Access</button>
+          <button class="btn btn-primary" id="step1ContinueBtn" disabled onclick="goToStep(2)">Continue</button>
+        </div>
+      </div>
+
+      <!-- ==================== STEP 2: Model Download + Hotkey ==================== -->
+      <div class="step-panel" id="step2">
+        <div class="lips-wrap" id="step2Icon">
+          <svg class="lips-icon lips-equalizer" id="lipsStep2" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <filter id="lip-glow-2" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
+                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+            </defs>
+            <g transform="translate(8,13)" filter="url(#lip-glow-2)">
+              <rect class="upper-bar u0" x="16" y="84.2" width="14" height="20" rx="5" fill="#ff2a40" opacity="0.92"/>
+              <rect class="upper-bar u1" x="40" y="65.75" width="14" height="32" rx="5" fill="#ff8c00" opacity="0.92"/>
+              <rect class="upper-bar u2" x="64" y="43.36" width="14" height="48" rx="5" fill="#ffd700" opacity="0.92"/>
+              <rect class="upper-bar u3" x="88" y="63.04" width="14" height="36" rx="5" fill="#adff2f" opacity="0.92"/>
+              <rect class="upper-bar u4" x="112" y="81.43" width="14" height="24" rx="5" fill="#00fa9a" opacity="0.92"/>
+              <rect class="upper-bar u5" x="136" y="63.04" width="14" height="36" rx="5" fill="#00ffff" opacity="0.92"/>
+              <rect class="upper-bar u6" x="160" y="43.36" width="14" height="48" rx="5" fill="#1e90ff" opacity="0.92"/>
+              <rect class="upper-bar u7" x="184" y="65.75" width="14" height="32" rx="5" fill="#4169e1" opacity="0.92"/>
+              <rect class="upper-bar u8" x="208" y="84.2" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.92"/>
+              <rect class="lower-bar l0" x="16" y="125.8" width="14" height="20" rx="5" fill="#4169e1" opacity="0.88"/>
+              <rect class="lower-bar l1" x="40" y="119.35" width="14" height="36" rx="5" fill="#1e90ff" opacity="0.88"/>
+              <rect class="lower-bar l2" x="64" y="112.96" width="14" height="48" rx="5" fill="#00ffff" opacity="0.88"/>
+              <rect class="lower-bar l3" x="88" y="120.64" width="14" height="60" rx="5" fill="#00fa9a" opacity="0.88"/>
+              <rect class="lower-bar l4" x="112" y="127.03" width="14" height="68" rx="5" fill="#adff2f" opacity="0.88"/>
+              <rect class="lower-bar l5" x="136" y="120.64" width="14" height="60" rx="5" fill="#ffd700" opacity="0.88"/>
+              <rect class="lower-bar l6" x="160" y="112.96" width="14" height="48" rx="5" fill="#ff8c00" opacity="0.88"/>
+              <rect class="lower-bar l7" x="184" y="119.35" width="14" height="36" rx="5" fill="#ff2a40" opacity="0.88"/>
+              <rect class="lower-bar l8" x="208" y="125.8" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.88"/>
+            </g>
+          </svg>
+        </div>
+        <div class="step-title" style="margin-bottom:14px;">Getting Ready...</div>
+
+        <!-- Status area (spinner / check / x) — kept for download progress indicator -->
+        <div id="step2StatusArea">
+          <div class="spinner" id="step2Spinner"></div>
+        </div>
+
+        <div class="step-body" id="step2Body">Downloading the on-device transcription model (~100 MB). This is a one-time setup that enables fast, private dictation.</div>
+
+        <div class="download-progress" id="step2Progress">
+          <div class="download-progress-fill" id="step2ProgressFill"></div>
+        </div>
+
+        <!-- Hotkey callout card with Right Command -->
+        <div class="callout-card" style="margin-bottom:10px;">
+          <div class="callout-title">Your hotkey is Right Command</div>
+          <div class="callout-body" style="margin-bottom:10px;">Press and hold it anytime to start dictating.</div>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:4px;">
+            <span class="keycap-hero">&nbsp;&#x2318;&nbsp;</span>
+            <span class="keycap-label">Right Command</span>
+          </div>
+        </div>
+
+        <!-- Change Hotkey section -->
+        <div class="hotkey-config">
+          <div class="hotkey-config-left">
+            <div class="hotkey-config-key">&#x2318;</div>
+            <div class="hotkey-config-text">
+              <span class="hotkey-config-title">Right &#x2318; (Command)</span>
+              <span class="hotkey-config-sub">Current binding</span>
+            </div>
+          </div>
+          <button class="hotkey-config-btn">Customize...</button>
+        </div>
+
+        <div class="caption" id="step2Caption">Usually takes less than a minute on a standard connection.</div>
+
+        <div class="button-row" id="step2Buttons" style="display:none;">
+          <button class="btn btn-error" id="step2RetryBtn" onclick="setStep2State('downloading')" style="display:none;">Retry Download</button>
+          <button class="btn btn-primary" id="step2ContinueBtn" onclick="goToStep(3)" style="display:none;">Continue</button>
+        </div>
+      </div>
+
+      <!-- ==================== STEP 3: AI Polish Setup ==================== -->
+      <div class="step-panel" id="step3">
+        <div class="lips-wrap">
+          <svg class="lips-icon lips-shimmer" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <filter id="lip-glow-3" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
+                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+            </defs>
+            <g transform="translate(8,13)" filter="url(#lip-glow-3)">
+              <rect class="upper-bar u0" x="16" y="84.2" width="14" height="20" rx="5" fill="#ff2a40" opacity="0.92"/>
+              <rect class="upper-bar u1" x="40" y="65.75" width="14" height="32" rx="5" fill="#ff8c00" opacity="0.92"/>
+              <rect class="upper-bar u2" x="64" y="43.36" width="14" height="48" rx="5" fill="#ffd700" opacity="0.92"/>
+              <rect class="upper-bar u3" x="88" y="63.04" width="14" height="36" rx="5" fill="#adff2f" opacity="0.92"/>
+              <rect class="upper-bar u4" x="112" y="81.43" width="14" height="24" rx="5" fill="#00fa9a" opacity="0.92"/>
+              <rect class="upper-bar u5" x="136" y="63.04" width="14" height="36" rx="5" fill="#00ffff" opacity="0.92"/>
+              <rect class="upper-bar u6" x="160" y="43.36" width="14" height="48" rx="5" fill="#1e90ff" opacity="0.92"/>
+              <rect class="upper-bar u7" x="184" y="65.75" width="14" height="32" rx="5" fill="#4169e1" opacity="0.92"/>
+              <rect class="upper-bar u8" x="208" y="84.2" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.92"/>
+              <rect class="lower-bar l0" x="16" y="125.8" width="14" height="20" rx="5" fill="#4169e1" opacity="0.88"/>
+              <rect class="lower-bar l1" x="40" y="119.35" width="14" height="36" rx="5" fill="#1e90ff" opacity="0.88"/>
+              <rect class="lower-bar l2" x="64" y="112.96" width="14" height="48" rx="5" fill="#00ffff" opacity="0.88"/>
+              <rect class="lower-bar l3" x="88" y="120.64" width="14" height="60" rx="5" fill="#00fa9a" opacity="0.88"/>
+              <rect class="lower-bar l4" x="112" y="127.03" width="14" height="68" rx="5" fill="#adff2f" opacity="0.88"/>
+              <rect class="lower-bar l5" x="136" y="120.64" width="14" height="60" rx="5" fill="#ffd700" opacity="0.88"/>
+              <rect class="lower-bar l6" x="160" y="112.96" width="14" height="48" rx="5" fill="#ff8c00" opacity="0.88"/>
+              <rect class="lower-bar l7" x="184" y="119.35" width="14" height="36" rx="5" fill="#ff2a40" opacity="0.88"/>
+              <rect class="lower-bar l8" x="208" y="125.8" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.88"/>
+            </g>
+          </svg>
+        </div>
+
+        <div class="step-title">Enhance Your Transcriptions</div>
+        <div class="step-body">AI Polish cleans up grammar, punctuation, and filler words after transcription. Choose how you'd like it to work:</div>
+
+        <div class="polish-cards" id="polishCards">
+          <!-- On-Device card — unchanged -->
+          <div class="polish-card" id="polishOnDevice" onclick="selectPolishOption('ondevice')">
+            <span class="polish-card-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-secondary)">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+              </svg>
+            </span>
+            <span class="polish-card-title">On-Device (Free)</span>
+            <span class="polish-card-body">Runs locally on your Mac. No API key needed. Good for basic cleanup.</span>
+            <span class="polish-card-badge private">Private</span>
+          </div>
+
+          <!-- BYOK card — wrapped in flip container -->
+          <div class="card-flip-container" id="byokFlipContainer">
+            <div class="card-flip-inner" id="byokFlipInner">
+
+              <!-- FRONT: standard BYOK card -->
+              <div class="card-front">
+                <div class="polish-card" id="polishBYOK" style="height:100%; border-radius:16px;" onclick="selectPolishOption('byok')">
+                  <span class="polish-card-icon">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-secondary)">
+                      <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                    </svg>
+                  </span>
+                  <span class="polish-card-title">Bring Your Own Key</span>
+                  <span class="polish-card-body">Use OpenAI or Gemini for advanced polishing. Requires an API key.</span>
+                  <span class="polish-card-badge cloud">Better quality</span>
+                </div>
+              </div>
+
+              <!-- BACK: provider selection -->
+              <div class="card-back">
+                <span class="card-back-label">Choose provider</span>
+
+                <div class="provider-mini-card" id="providerOpenAI" onclick="selectBYOKProvider('openai')">
+                  <span class="provider-mini-icon">&#9889;</span>
+                  <div class="provider-mini-text">
+                    <span class="provider-mini-name">OpenAI</span>
+                    <span class="provider-mini-sub">GPT-4o for polishing</span>
+                  </div>
+                  <div class="provider-mini-check">&#10003;</div>
+                </div>
+
+                <div class="provider-mini-card" id="providerGemini" onclick="selectBYOKProvider('gemini')">
+                  <span class="provider-mini-icon">&#10022;</span>
+                  <div class="provider-mini-text">
+                    <span class="provider-mini-name">Google Gemini</span>
+                    <span class="provider-mini-sub">Gemini 2.5 Pro</span>
+                  </div>
+                  <div class="provider-mini-check">&#10003;</div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- API Key field (shown below cards when a BYOK provider is selected) -->
+        <div class="api-key-field" id="apiKeyField">
+          <input type="text" class="api-key-input" placeholder="sk-..." id="apiKeyInput">
+          <a class="api-key-helper" id="apiKeyHelper" href="#" onclick="return false;">Get your API key at platform.openai.com/api-keys</a>
+        </div>
+
+        <div class="settings-hint">You can change this anytime in Settings</div>
+
+        <div class="button-row">
+          <button class="btn btn-primary" id="step3ContinueBtn" onclick="goToStep(4)">Continue</button>
+          <span class="skip-link" onclick="goToStep(4)">Skip for now &rarr;</span>
+        </div>
+      </div>
+
+      <!-- ==================== STEP 4: Try It Now ==================== -->
+      <div class="step-panel" id="step4">
+        <div class="lips-wrap" id="step4Icon">
+          <svg class="lips-icon lips-idle" id="lipsStep4" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <filter id="lip-glow-4" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
+                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+            </defs>
+            <g transform="translate(8,13)" filter="url(#lip-glow-4)">
+              <rect class="upper-bar u0" x="16" y="84.2" width="14" height="20" rx="5" fill="#ff2a40" opacity="0.92"/>
+              <rect class="upper-bar u1" x="40" y="65.75" width="14" height="32" rx="5" fill="#ff8c00" opacity="0.92"/>
+              <rect class="upper-bar u2" x="64" y="43.36" width="14" height="48" rx="5" fill="#ffd700" opacity="0.92"/>
+              <rect class="upper-bar u3" x="88" y="63.04" width="14" height="36" rx="5" fill="#adff2f" opacity="0.92"/>
+              <rect class="upper-bar u4" x="112" y="81.43" width="14" height="24" rx="5" fill="#00fa9a" opacity="0.92"/>
+              <rect class="upper-bar u5" x="136" y="63.04" width="14" height="36" rx="5" fill="#00ffff" opacity="0.92"/>
+              <rect class="upper-bar u6" x="160" y="43.36" width="14" height="48" rx="5" fill="#1e90ff" opacity="0.92"/>
+              <rect class="upper-bar u7" x="184" y="65.75" width="14" height="32" rx="5" fill="#4169e1" opacity="0.92"/>
+              <rect class="upper-bar u8" x="208" y="84.2" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.92"/>
+              <rect class="lower-bar l0" x="16" y="125.8" width="14" height="20" rx="5" fill="#4169e1" opacity="0.88"/>
+              <rect class="lower-bar l1" x="40" y="119.35" width="14" height="36" rx="5" fill="#1e90ff" opacity="0.88"/>
+              <rect class="lower-bar l2" x="64" y="112.96" width="14" height="48" rx="5" fill="#00ffff" opacity="0.88"/>
+              <rect class="lower-bar l3" x="88" y="120.64" width="14" height="60" rx="5" fill="#00fa9a" opacity="0.88"/>
+              <rect class="lower-bar l4" x="112" y="127.03" width="14" height="68" rx="5" fill="#adff2f" opacity="0.88"/>
+              <rect class="lower-bar l5" x="136" y="120.64" width="14" height="60" rx="5" fill="#ffd700" opacity="0.88"/>
+              <rect class="lower-bar l6" x="160" y="112.96" width="14" height="48" rx="5" fill="#ff8c00" opacity="0.88"/>
+              <rect class="lower-bar l7" x="184" y="119.35" width="14" height="36" rx="5" fill="#ff2a40" opacity="0.88"/>
+              <rect class="lower-bar l8" x="208" y="125.8" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.88"/>
+            </g>
+          </svg>
+        </div>
+        <div class="step-title" style="margin-bottom:6px;">Let's Try It Out</div>
+        <div class="step-body" id="step4Body">Press and hold <strong>Right &#x2318; (Command)</strong>, say a few words, then release.</div>
+
+        <div style="display:flex; flex-direction:column; align-items:center; margin-bottom:16px;">
+          <span class="keycap-hero pulse" id="keycapCmd">&#x2318;</span>
+          <span class="keycap-label" id="keycapCmdLabel">Right Command</span>
+        </div>
+
+        <!-- Transcription Preview Box -->
+        <div class="transcription-box waiting" id="transcriptionBox">
+          <span class="tb-placeholder" id="tbContent">Your transcription will appear here...</span>
+        </div>
+
+        <span class="skip-link" onclick="goToStep(5)">Skip this step &rarr;</span>
+      </div>
+
+      <!-- ==================== STEP 5: You're All Set ==================== -->
+      <div class="step-panel" id="step5">
+        <div class="lips-wrap">
+          <svg class="lips-icon lips-triumph" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <filter id="lip-glow-5" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
+                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+            </defs>
+            <g transform="translate(8,13)" filter="url(#lip-glow-5)">
+              <rect class="upper-bar u0" x="16" y="84.2" width="14" height="20" rx="5" fill="#ff2a40" opacity="0.92"/>
+              <rect class="upper-bar u1" x="40" y="65.75" width="14" height="32" rx="5" fill="#ff8c00" opacity="0.92"/>
+              <rect class="upper-bar u2" x="64" y="43.36" width="14" height="48" rx="5" fill="#ffd700" opacity="0.92"/>
+              <rect class="upper-bar u3" x="88" y="63.04" width="14" height="36" rx="5" fill="#adff2f" opacity="0.92"/>
+              <rect class="upper-bar u4" x="112" y="81.43" width="14" height="24" rx="5" fill="#00fa9a" opacity="0.92"/>
+              <rect class="upper-bar u5" x="136" y="63.04" width="14" height="36" rx="5" fill="#00ffff" opacity="0.92"/>
+              <rect class="upper-bar u6" x="160" y="43.36" width="14" height="48" rx="5" fill="#1e90ff" opacity="0.92"/>
+              <rect class="upper-bar u7" x="184" y="65.75" width="14" height="32" rx="5" fill="#4169e1" opacity="0.92"/>
+              <rect class="upper-bar u8" x="208" y="84.2" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.92"/>
+              <rect class="lower-bar l0" x="16" y="125.8" width="14" height="20" rx="5" fill="#4169e1" opacity="0.88"/>
+              <rect class="lower-bar l1" x="40" y="119.35" width="14" height="36" rx="5" fill="#1e90ff" opacity="0.88"/>
+              <rect class="lower-bar l2" x="64" y="112.96" width="14" height="48" rx="5" fill="#00ffff" opacity="0.88"/>
+              <rect class="lower-bar l3" x="88" y="120.64" width="14" height="60" rx="5" fill="#00fa9a" opacity="0.88"/>
+              <rect class="lower-bar l4" x="112" y="127.03" width="14" height="68" rx="5" fill="#adff2f" opacity="0.88"/>
+              <rect class="lower-bar l5" x="136" y="120.64" width="14" height="60" rx="5" fill="#ffd700" opacity="0.88"/>
+              <rect class="lower-bar l6" x="160" y="112.96" width="14" height="48" rx="5" fill="#ff8c00" opacity="0.88"/>
+              <rect class="lower-bar l7" x="184" y="119.35" width="14" height="36" rx="5" fill="#ff2a40" opacity="0.88"/>
+              <rect class="lower-bar l8" x="208" y="125.8" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.88"/>
+            </g>
+          </svg>
+        </div>
+
+        <div class="step-title">You're All Set!</div>
+        <div class="step-body">EnviousWispr is running in your menu bar. Press <strong>Right &#x2318; (Command)</strong> anytime to dictate.</div>
+
+        <div class="enhancement-card">
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-label">Enable Auto-Paste</div>
+              <div class="toggle-caption">Automatically paste transcriptions into the active app.</div>
+            </div>
+            <div class="toggle-switch" id="autoPasteToggle" onclick="toggleAutoPaste()">
+              <div class="toggle-knob"></div>
+            </div>
+          </div>
+          <div class="enhancement-divider"></div>
+          <div class="enhancement-link" onclick="void(0)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+            <span>Open Settings for more options</span>
+          </div>
+        </div>
+
+        <div style="width:100%; max-width:360px;">
+          <button class="btn btn-done">Done</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- CONTROLS FOR ONBOARDING -->
+  <div class="controls" id="onboardingControls">
+    <div class="controls-title">Reviewer Controls</div>
+
+    <div class="controls-row">
+      <span class="controls-label">Step</span>
+      <button class="ctrl-btn active" id="ctrlStep1" onclick="goToStep(1)">1</button>
+      <button class="ctrl-btn" id="ctrlStep2" onclick="goToStep(2)">2</button>
+      <button class="ctrl-btn" id="ctrlStep3" onclick="goToStep(3)">3</button>
+      <button class="ctrl-btn" id="ctrlStep4" onclick="goToStep(4)">4</button>
+      <button class="ctrl-btn" id="ctrlStep5" onclick="goToStep(5)">5</button>
+      <span style="flex:1"></span>
+      <button class="ctrl-btn" onclick="goToPrevStep()">&larr; Prev</button>
+      <button class="ctrl-btn" onclick="goToNextStep()">Next &rarr;</button>
+    </div>
+
+    <div class="controls-divider"></div>
+
+    <div class="controls-row" id="stateControls1">
+      <span class="controls-label">State</span>
+      <button class="ctrl-btn active" onclick="setStep1State('default')">Default</button>
+      <button class="ctrl-btn" onclick="setStep1State('denied')">Denied</button>
+      <button class="ctrl-btn" onclick="setStep1State('granted')">Granted</button>
+    </div>
+
+    <div class="controls-row" id="stateControls2" style="display:none;">
+      <span class="controls-label">State</span>
+      <button class="ctrl-btn active" onclick="setStep2State('downloading')">Downloading</button>
+      <button class="ctrl-btn" onclick="setStep2State('failed')">Failed</button>
+      <button class="ctrl-btn" onclick="setStep2State('complete')">Complete</button>
+    </div>
+
+    <div class="controls-row" id="stateControls3" style="display:none;">
+      <span class="controls-label">State</span>
+      <button class="ctrl-btn active" id="ctrl3Default" onclick="setStep3State('default')">Default</button>
+      <button class="ctrl-btn" id="ctrl3OnDevice" onclick="setStep3State('ondevice')">On-Device</button>
+      <button class="ctrl-btn" id="ctrl3Byok" onclick="setStep3State('byok')">BYOK</button>
+    </div>
+    <div class="controls-row" id="stateControls3Provider" style="display:none;">
+      <span class="controls-label">Provider</span>
+      <button class="ctrl-btn" id="ctrl3OpenAI" onclick="selectBYOKProvider('openai')">OpenAI</button>
+      <button class="ctrl-btn" id="ctrl3Gemini" onclick="selectBYOKProvider('gemini')">Gemini</button>
+    </div>
+
+    <div class="controls-row" id="stateControls4" style="display:none;">
+      <span class="controls-label">State</span>
+      <button class="ctrl-btn active" onclick="setStep4State('waiting')">Waiting</button>
+      <button class="ctrl-btn" onclick="setStep4State('recording')">Recording</button>
+      <button class="ctrl-btn" onclick="setStep4State('processing')">Processing</button>
+      <button class="ctrl-btn" onclick="setStep4State('result')">Result</button>
+      <button class="ctrl-btn" onclick="setStep4State('success')">Success</button>
+    </div>
+
+    <div class="controls-row" id="stateControls5" style="display:none;">
+      <span class="controls-label" style="color:var(--text-tertiary); font-style:italic;">No additional states</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     VIEW 2: ABORT / RECOVERY STATE
+     ============================================================ -->
+<div class="view-container" id="view-abort">
+  <div class="menubar-mock">
+    <div class="menubar-strip">
+      <span style="color:#fff; font-size:12px; opacity:0.7; margin-right:auto; font-weight:500;">EnviousWispr</span>
+      <div class="menubar-icon">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#fff;"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+        <div class="menubar-badge orange-badge"></div>
+      </div>
+    </div>
+    <div class="menubar-dropdown">
+      <div class="menubar-item warning">&#x26A0;&#xFE0F; Setup Required: Continue Setup...</div>
+      <div class="menubar-divider"></div>
+      <div class="menubar-item disabled">Start Recording <span class="shortcut">Right &#x2318;</span></div>
+      <div class="menubar-item disabled">Settings...</div>
+      <div class="menubar-divider"></div>
+      <div class="menubar-item">Quit EnviousWispr <span class="shortcut">&#x2318;Q</span></div>
+    </div>
+  </div>
+
+  <div class="controls" style="width:460px; margin-top:24px;">
+    <div class="controls-title">About this state</div>
+    <p style="font-size:13px; color:var(--text-secondary); line-height:1.55;">
+      When the user closes the onboarding window before completing setup, the menu bar icon shows an orange warning badge. The dropdown prompts them to continue setup. Core features (recording) are disabled until onboarding is complete.
+    </p>
+  </div>
+</div>
+
+<!-- ============================================================
+     VIEW 3: POST-ONBOARDING MENU BAR STATES
+     ============================================================ -->
+<div class="view-container" id="view-menubar">
+  <div class="menubar-grid">
+
+    <!-- Missing Microphone -->
+    <div class="menubar-grid-item">
+      <div class="menubar-grid-label">Missing Microphone</div>
+      <div class="menubar-mock">
+        <div class="menubar-strip">
+          <span style="color:#fff; font-size:12px; opacity:0.7; margin-right:auto; font-weight:500;">EnviousWispr</span>
+          <div class="menubar-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e6253a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+            <div class="menubar-badge red-badge"></div>
+          </div>
+        </div>
+        <div class="menubar-dropdown">
+          <div class="menubar-item error">Microphone Access Required</div>
+          <div class="menubar-item accent-item" style="font-size:12px; padding-left:32px;">Open System Settings...</div>
+          <div class="menubar-divider"></div>
+          <div class="menubar-item disabled">Start Recording <span class="shortcut">Right &#x2318;</span></div>
+          <div class="menubar-item">Settings...</div>
+          <div class="menubar-divider"></div>
+          <div class="menubar-item">Quit EnviousWispr <span class="shortcut">&#x2318;Q</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Missing Accessibility -->
+    <div class="menubar-grid-item">
+      <div class="menubar-grid-label">Missing Accessibility</div>
+      <div class="menubar-mock">
+        <div class="menubar-strip">
+          <span style="color:#fff; font-size:12px; opacity:0.7; margin-right:auto; font-weight:500;">EnviousWispr</span>
+          <div class="menubar-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e6c200" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+            <div class="menubar-badge orange-badge"></div>
+          </div>
+        </div>
+        <div class="menubar-dropdown">
+          <div class="menubar-item warning">&#x26A0;&#xFE0F; Paste disabled &mdash; enable Auto-Paste...</div>
+          <div class="menubar-divider"></div>
+          <div class="menubar-item">Start Recording <span class="shortcut">Right &#x2318;</span></div>
+          <div class="menubar-item">Settings...</div>
+          <div class="menubar-divider"></div>
+          <div class="menubar-item">Quit EnviousWispr <span class="shortcut">&#x2318;Q</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- No LLM Configured -->
+    <div class="menubar-grid-item">
+      <div class="menubar-grid-label">No LLM Configured</div>
+      <div class="menubar-mock">
+        <div class="menubar-strip">
+          <span style="color:#fff; font-size:12px; opacity:0.7; margin-right:auto; font-weight:500;">EnviousWispr</span>
+          <div class="menubar-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+          </div>
+        </div>
+        <div class="menubar-dropdown">
+          <div class="menubar-item accent-item">AI Polish available &mdash; configure in Settings</div>
+          <div class="menubar-divider"></div>
+          <div class="menubar-item">Start Recording <span class="shortcut">Right &#x2318;</span></div>
+          <div class="menubar-item">Settings...</div>
+          <div class="menubar-divider"></div>
+          <div class="menubar-item">Quit EnviousWispr <span class="shortcut">&#x2318;Q</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- All Configured -->
+    <div class="menubar-grid-item">
+      <div class="menubar-grid-label">All Configured</div>
+      <div class="menubar-mock">
+        <div class="menubar-strip">
+          <span style="color:#fff; font-size:12px; opacity:0.7; margin-right:auto; font-weight:500;">EnviousWispr</span>
+          <div class="menubar-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+          </div>
+        </div>
+        <div class="menubar-dropdown">
+          <div class="menubar-item">Start Recording <span class="shortcut">Right &#x2318;</span></div>
+          <div class="menubar-item">Settings...</div>
+          <div class="menubar-divider"></div>
+          <div class="menubar-item">Quit EnviousWispr <span class="shortcut">&#x2318;Q</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ============================================================
+     JAVASCRIPT
+     ============================================================ -->
+<script>
+  // ============================================================
+  // STATE
+  // ============================================================
+  var totalSteps = 5;
+  var currentStep = 1;
+  var currentView = 'onboarding';
+  var step1State = 'default';
+  var step2State = 'downloading';
+  var step3State = 'default';
+  var step4State = 'waiting';
+  var polishSelection = null; // 'ondevice' or 'byok'
+  var byokProvider = null;    // 'openai' or 'gemini'
+  var autoPasteOn = false;
+
+  // ============================================================
+  // VIEW SWITCHING
+  // ============================================================
+  function switchView(view) {
+    currentView = view;
+    var containers = document.querySelectorAll('.view-container');
+    for (var i = 0; i < containers.length; i++) {
+      containers[i].classList.remove('active');
+    }
+    document.getElementById('view-' + view).classList.add('active');
+
+    var buttons = document.querySelectorAll('#viewSwitcher button');
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].classList.remove('active');
+      if (buttons[i].getAttribute('data-view') === view) {
+        buttons[i].classList.add('active');
+      }
+    }
+  }
+
+  // ============================================================
+  // STEP NAVIGATION
+  // ============================================================
+  function goToStep(step) {
+    if (step < 1 || step > totalSteps) return;
+    currentStep = step;
+
+    // Update panels
+    var panels = document.querySelectorAll('.step-panel');
+    for (var i = 0; i < panels.length; i++) {
+      panels[i].classList.remove('active');
+    }
+    var panel = document.getElementById('step' + step);
+    panel.classList.add('active');
+    panel.style.animation = 'none';
+    void panel.offsetHeight;
+    panel.style.animation = 'stepFadeIn 0.35s cubic-bezier(0.16,1,0.3,1)';
+
+    // Update progress dots
+    for (var i = 1; i <= totalSteps; i++) {
+      var dot = document.getElementById('dot' + i);
+      dot.className = 'progress-dot';
+      var span = dot.querySelector('span');
+      if (i < step) {
+        dot.classList.add('completed');
+        if (span) span.textContent = '\u2713';
+      } else if (i === step) {
+        dot.classList.add('current');
+        if (span) span.textContent = String(i);
+      } else {
+        dot.classList.add('upcoming');
+        if (span) span.textContent = String(i);
+      }
+    }
+
+    // Update connectors
+    var connectorIds = ['conn12', 'conn23', 'conn34', 'conn45'];
+    for (var c = 0; c < connectorIds.length; c++) {
+      var conn = document.getElementById(connectorIds[c]);
+      if (conn) {
+        if (c + 1 < step) {
+          conn.classList.add('done');
+        } else {
+          conn.classList.remove('done');
+        }
+      }
+    }
+
+    // Update step nav buttons
+    for (var i = 1; i <= totalSteps; i++) {
+      var btn = document.getElementById('ctrlStep' + i);
+      if (btn) {
+        if (i === step) {
+          btn.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+        }
+      }
+    }
+
+    // Show/hide state controls
+    for (var i = 1; i <= totalSteps; i++) {
+      var ctrl = document.getElementById('stateControls' + i);
+      if (ctrl) ctrl.style.display = (i === step) ? 'flex' : 'none';
+    }
+    // Show provider sub-row only when on step 3 and BYOK is active
+    var provRow = document.getElementById('stateControls3Provider');
+    if (provRow) provRow.style.display = (step === 3 && step3State === 'byok') ? 'flex' : 'none';
+
+    updateStateControlHighlights();
+  }
+
+  function goToPrevStep() {
+    goToStep(Math.max(1, currentStep - 1));
+  }
+
+  function goToNextStep() {
+    goToStep(Math.min(totalSteps, currentStep + 1));
+  }
+
+  function updateStateControlHighlights() {
+    // Step 3 manages its own button highlights inside setStep3State / selectBYOKProvider
+    if (currentStep === 3) return;
+
+    var stateMap = { 1: step1State, 2: step2State, 4: step4State };
+    var stateValue = stateMap[currentStep];
+    if (!stateValue) return;
+
+    var container = document.getElementById('stateControls' + currentStep);
+    if (!container) return;
+
+    var btns = container.querySelectorAll('.ctrl-btn');
+    for (var i = 0; i < btns.length; i++) {
+      var val = btns[i].textContent.toLowerCase().trim();
+      if (val === stateValue) {
+        btns[i].classList.add('active');
+      } else {
+        btns[i].classList.remove('active');
+      }
+    }
+  }
+
+  // ============================================================
+  // LIPS HELPER — swap expression class on a lips SVG
+  // ============================================================
+  var LIP_CLASSES = ['lips-idle','lips-denied','lips-happy','lips-equalizer',
+                     'lips-drooping','lips-wave','lips-shimmer','lips-recording',
+                     'lips-pulse','lips-smile','lips-triumph'];
+
+  function setLipsExpression(svgId, expression) {
+    var el = document.getElementById(svgId);
+    if (!el) return;
+    // Remove all expression classes
+    for (var i = 0; i < LIP_CLASSES.length; i++) {
+      el.classList.remove(LIP_CLASSES[i]);
+    }
+    el.classList.add('lips-' + expression);
+    // Re-trigger animations by forcing reflow
+    void el.offsetWidth;
+  }
+
+  // ============================================================
+  // STEP 1 STATES
+  // ============================================================
+  function handleStep1Grant() {
+    setStep1State('granted');
+  }
+
+  function setStep1State(state) {
+    step1State = state;
+    var body = document.getElementById('step1Body');
+    var flow = document.getElementById('step1Flow');
+    var alert = document.getElementById('step1Alert');
+    var grantBtn = document.getElementById('step1GrantBtn');
+    var continueBtn = document.getElementById('step1ContinueBtn');
+
+    while (alert.firstChild) alert.removeChild(alert.firstChild);
+
+    if (state === 'default') {
+      setLipsExpression('lipsStep1', 'idle');
+      body.textContent = 'Press a hotkey to transcribe your voice. First, we need microphone access.';
+      flow.style.display = 'flex';
+      alert.style.display = 'none';
+      grantBtn.style.display = '';
+      grantBtn.textContent = 'Grant Microphone Access';
+      grantBtn.className = 'btn btn-primary';
+      grantBtn.onclick = handleStep1Grant;
+      continueBtn.disabled = true;
+
+    } else if (state === 'denied') {
+      setLipsExpression('lipsStep1', 'denied');
+      body.textContent = 'Press a hotkey to transcribe your voice. First, we need microphone access.';
+      flow.style.display = 'flex';
+      alert.style.display = 'block';
+      var alertDiv = document.createElement('div');
+      alertDiv.className = 'inline-alert red-alert';
+      alertDiv.textContent = 'Microphone access was denied.';
+      alert.appendChild(alertDiv);
+      grantBtn.style.display = '';
+      grantBtn.textContent = 'Open System Settings';
+      grantBtn.className = 'btn btn-error';
+      grantBtn.onclick = function() {};
+      continueBtn.disabled = true;
+
+    } else if (state === 'granted') {
+      setLipsExpression('lipsStep1', 'happy');
+      body.textContent = 'Press a hotkey to transcribe your voice. First, we need microphone access.';
+      flow.style.display = 'none';
+      alert.style.display = 'block';
+      var alertDiv = document.createElement('div');
+      alertDiv.className = 'inline-alert green-alert';
+      alertDiv.textContent = 'Microphone access granted \u2713';
+      alert.appendChild(alertDiv);
+      grantBtn.style.display = 'none';
+      continueBtn.disabled = false;
+    }
+
+    updateStateControlHighlights();
+  }
+
+  // ============================================================
+  // STEP 2 STATES
+  // ============================================================
+  function setStep2State(state) {
+    step2State = state;
+
+    // Update lips expression for step 2
+    if (state === 'downloading') {
+      setLipsExpression('lipsStep2', 'equalizer');
+    } else if (state === 'failed') {
+      setLipsExpression('lipsStep2', 'drooping');
+    } else if (state === 'complete') {
+      setLipsExpression('lipsStep2', 'wave');
+    }
+
+    var statusArea = document.getElementById('step2StatusArea');
+    var body = document.getElementById('step2Body');
+    var caption = document.getElementById('step2Caption');
+    var buttons = document.getElementById('step2Buttons');
+    var retryBtn = document.getElementById('step2RetryBtn');
+    var continueBtn = document.getElementById('step2ContinueBtn');
+    var progress = document.getElementById('step2Progress');
+    var progressFill = document.getElementById('step2ProgressFill');
+
+    while (statusArea.firstChild) statusArea.removeChild(statusArea.firstChild);
+
+    if (state === 'downloading') {
+      var spinner = document.createElement('div');
+      spinner.className = 'spinner';
+      statusArea.appendChild(spinner);
+      body.textContent = 'Downloading the on-device transcription model (~100 MB). This is a one-time setup that enables fast, private dictation.';
+      caption.textContent = 'Usually takes less than a minute on a standard connection.';
+      caption.className = 'caption';
+      caption.style.display = '';
+      progress.style.display = '';
+      progressFill.style.width = '65%';
+      buttons.style.display = 'none';
+      retryBtn.style.display = 'none';
+      continueBtn.style.display = 'none';
+
+    } else if (state === 'failed') {
+      var iconDiv = document.createElement('div');
+      iconDiv.className = 'status-icon red-bg';
+      iconDiv.textContent = '\u2717';
+      statusArea.appendChild(iconDiv);
+      body.textContent = 'Download failed. Check your internet connection and try again.';
+      caption.style.display = 'none';
+      progress.style.display = 'none';
+      buttons.style.display = 'flex';
+      retryBtn.style.display = '';
+      continueBtn.style.display = 'none';
+
+    } else if (state === 'complete') {
+      // Phase 1 — "Download complete" (progress fills to 100%, spinner stops)
+      progress.style.display = '';
+      progressFill.style.width = '100%';
+      progressFill.style.animation = 'none';
+      buttons.style.display = 'none';
+      retryBtn.style.display = 'none';
+      continueBtn.style.display = 'none';
+      caption.style.display = 'none';
+      body.textContent = 'Download complete.';
+
+      // Phase 2 — "Verifying install..." (~0.8s later)
+      setTimeout(function() {
+        while (statusArea.firstChild) statusArea.removeChild(statusArea.firstChild);
+        var verifySpinner = document.createElement('div');
+        verifySpinner.className = 'spinner';
+        verifySpinner.style.width = '18px';
+        verifySpinner.style.height = '18px';
+        statusArea.appendChild(verifySpinner);
+        body.textContent = 'Verifying install\u2026';
+
+        // Phase 3 — "Good!" (~1s later)
+        setTimeout(function() {
+          while (statusArea.firstChild) statusArea.removeChild(statusArea.firstChild);
+          var iconDiv2 = document.createElement('div');
+          iconDiv2.className = 'status-icon green-bg';
+          iconDiv2.textContent = '\u2713';
+          iconDiv2.style.animation = 'scaleUp 0.35s cubic-bezier(0.34,1.56,0.64,1) forwards';
+          statusArea.appendChild(iconDiv2);
+          while (body.firstChild) body.removeChild(body.firstChild);
+          var goodSpan = document.createElement('strong');
+          goodSpan.style.color = 'var(--success)';
+          goodSpan.textContent = 'Good!';
+          body.appendChild(goodSpan);
+
+          // Auto-advance to Step 3 (~0.8s later)
+          setTimeout(function() {
+            goToStep(3);
+          }, 800);
+        }, 1000);
+      }, 800);
+    }
+
+    updateStateControlHighlights();
+  }
+
+  // ============================================================
+  // STEP 3 STATES (AI Polish)
+  // ============================================================
+  function selectPolishOption(option) {
+    polishSelection = option;
+    var onDevice = document.getElementById('polishOnDevice');
+    var flipInner = document.getElementById('byokFlipInner');
+    var apiKeyField = document.getElementById('apiKeyField');
+
+    onDevice.classList.remove('selected');
+
+    if (option === 'ondevice') {
+      onDevice.classList.add('selected');
+      // Flip card back to front if it was flipped
+      flipInner.classList.remove('flipped');
+      apiKeyField.classList.remove('visible');
+      byokProvider = null;
+      step3State = 'ondevice';
+      // Hide provider sub-row
+      var provRow = document.getElementById('stateControls3Provider');
+      if (provRow) provRow.style.display = 'none';
+    } else if (option === 'byok') {
+      // Trigger card flip
+      flipInner.classList.add('flipped');
+      step3State = 'byok';
+      // Show provider sub-row
+      var provRow = document.getElementById('stateControls3Provider');
+      if (provRow) provRow.style.display = 'flex';
+      // Don't show API key field until a provider is chosen
+      // (provider selection will call selectBYOKProvider)
+    }
+
+    updateStateControlHighlights();
+  }
+
+  function selectBYOKProvider(provider) {
+    byokProvider = provider;
+    var openaiCard = document.getElementById('providerOpenAI');
+    var geminiCard = document.getElementById('providerGemini');
+    var apiKeyField = document.getElementById('apiKeyField');
+    var apiKeyInput = document.getElementById('apiKeyInput');
+    var apiKeyHelper = document.getElementById('apiKeyHelper');
+
+    openaiCard.classList.remove('selected');
+    geminiCard.classList.remove('selected');
+
+    if (provider === 'openai') {
+      openaiCard.classList.add('selected');
+      apiKeyInput.placeholder = 'sk-...';
+      apiKeyHelper.textContent = 'Get your API key at platform.openai.com/api-keys';
+    } else if (provider === 'gemini') {
+      geminiCard.classList.add('selected');
+      apiKeyInput.placeholder = 'AIza...';
+      apiKeyHelper.textContent = 'Get your API key at aistudio.google.com/apikey';
+    }
+
+    apiKeyField.classList.add('visible');
+
+    // Highlight the correct ctrl button
+    var oBtn = document.getElementById('ctrl3OpenAI');
+    var gBtn = document.getElementById('ctrl3Gemini');
+    if (oBtn) oBtn.classList.toggle('active', provider === 'openai');
+    if (gBtn) gBtn.classList.toggle('active', provider === 'gemini');
+  }
+
+  function setStep3State(state) {
+    step3State = state;
+    var onDevice = document.getElementById('polishOnDevice');
+    var flipInner = document.getElementById('byokFlipInner');
+    var apiKeyField = document.getElementById('apiKeyField');
+    var openaiCard = document.getElementById('providerOpenAI');
+    var geminiCard = document.getElementById('providerGemini');
+    var provRow = document.getElementById('stateControls3Provider');
+
+    onDevice.classList.remove('selected');
+    openaiCard.classList.remove('selected');
+    geminiCard.classList.remove('selected');
+    apiKeyField.classList.remove('visible');
+    polishSelection = null;
+    byokProvider = null;
+
+    // Reset ctrl provider buttons
+    var oBtn = document.getElementById('ctrl3OpenAI');
+    var gBtn = document.getElementById('ctrl3Gemini');
+    if (oBtn) oBtn.classList.remove('active');
+    if (gBtn) gBtn.classList.remove('active');
+
+    if (state === 'default') {
+      flipInner.classList.remove('flipped');
+      if (provRow) provRow.style.display = 'none';
+    } else if (state === 'ondevice') {
+      polishSelection = 'ondevice';
+      onDevice.classList.add('selected');
+      flipInner.classList.remove('flipped');
+      if (provRow) provRow.style.display = 'none';
+    } else if (state === 'byok') {
+      polishSelection = 'byok';
+      flipInner.classList.add('flipped');
+      if (provRow) provRow.style.display = 'flex';
+    }
+
+    // Sync ctrl-btn highlights for the 3 main states
+    var defaultBtn = document.getElementById('ctrl3Default');
+    var ondevBtn = document.getElementById('ctrl3OnDevice');
+    var byokBtn = document.getElementById('ctrl3Byok');
+    if (defaultBtn) defaultBtn.classList.toggle('active', state === 'default');
+    if (ondevBtn) ondevBtn.classList.toggle('active', state === 'ondevice');
+    if (byokBtn) byokBtn.classList.toggle('active', state === 'byok');
+  }
+
+  // ============================================================
+  // STEP 4 STATES (Try It Now)
+  // ============================================================
+  function setStep4State(state) {
+    step4State = state;
+
+    // Update lips expression for step 4
+    if (state === 'waiting') {
+      setLipsExpression('lipsStep4', 'idle');
+    } else if (state === 'recording') {
+      setLipsExpression('lipsStep4', 'recording');
+    } else if (state === 'processing') {
+      setLipsExpression('lipsStep4', 'pulse');
+    } else if (state === 'result') {
+      setLipsExpression('lipsStep4', 'smile');
+    } else if (state === 'success') {
+      setLipsExpression('lipsStep4', 'happy');
+    }
+
+    var box = document.getElementById('transcriptionBox');
+    var keycapCmd = document.getElementById('keycapCmd');
+
+    box.className = 'transcription-box ' + state;
+
+    // Clear box content safely
+    while (box.firstChild) box.removeChild(box.firstChild);
+
+    if (state === 'waiting') {
+      var span = document.createElement('span');
+      span.className = 'tb-placeholder';
+      span.textContent = 'Your transcription will appear here...';
+      box.appendChild(span);
+      keycapCmd.classList.add('pulse');
+
+    } else if (state === 'recording') {
+      var indicator = document.createElement('div');
+      indicator.className = 'tb-recording-indicator';
+
+      var dot = document.createElement('span');
+      dot.className = 'rec-dot';
+      indicator.appendChild(dot);
+
+      var text = document.createElement('span');
+      text.className = 'tb-recording-text';
+      text.textContent = 'Listening...';
+      indicator.appendChild(text);
+      box.appendChild(indicator);
+
+      // Waveform
+      var waveform = document.createElement('div');
+      waveform.className = 'waveform';
+      for (var i = 0; i < 7; i++) {
+        var bar = document.createElement('div');
+        bar.className = 'waveform-bar';
+        waveform.appendChild(bar);
+      }
+      box.appendChild(waveform);
+
+      keycapCmd.classList.remove('pulse');
+
+    } else if (state === 'processing') {
+      var spinner = document.createElement('div');
+      spinner.className = 'spinner-small';
+      box.appendChild(spinner);
+
+      var text = document.createElement('span');
+      text.style.color = 'var(--text-secondary)';
+      text.style.fontSize = '14px';
+      text.style.fontWeight = '500';
+      text.textContent = 'Transcribing...';
+      box.appendChild(text);
+
+      keycapCmd.classList.remove('pulse');
+
+    } else if (state === 'result') {
+      var resultText = document.createElement('div');
+      resultText.className = 'tb-result-text';
+      resultText.textContent = 'Hello, this is a test transcription from EnviousWispr. The audio quality is excellent and the transcription is fast.';
+      box.appendChild(resultText);
+
+      keycapCmd.classList.remove('pulse');
+
+    } else if (state === 'success') {
+      var overlay = document.createElement('div');
+      overlay.className = 'tb-success-overlay';
+
+      var check = document.createElement('div');
+      check.className = 'tb-success-check';
+      check.textContent = '\u2713';
+      overlay.appendChild(check);
+
+      var text = document.createElement('span');
+      text.className = 'tb-success-text';
+      text.textContent = 'Perfect! Your first transcription.';
+      overlay.appendChild(text);
+
+      box.appendChild(overlay);
+      keycapCmd.classList.remove('pulse');
+    }
+
+    updateStateControlHighlights();
+  }
+
+  // ============================================================
+  // TOGGLE
+  // ============================================================
+  function toggleAutoPaste() {
+    autoPasteOn = !autoPasteOn;
+    var toggle = document.getElementById('autoPasteToggle');
+    if (autoPasteOn) {
+      toggle.classList.add('on');
+    } else {
+      toggle.classList.remove('on');
+    }
+  }
+</script>
+
+</body>
+</html>

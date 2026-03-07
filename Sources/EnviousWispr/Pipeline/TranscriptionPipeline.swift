@@ -54,6 +54,8 @@ final class TranscriptionPipeline: DictationPipeline {
     private var streamingASRActive = false
     /// Guards against concurrent stopAndTranscribe calls (e.g., VAD auto-stop racing PTT release).
     private var isStopping = false
+    /// Guards against concurrent startRecording calls (e.g., rapid toggle presses).
+    private var isStarting = false
     /// Set by key-up when startRecording() is still in-flight; checked after .recording is entered.
     private var stopRequested = false
     /// Whether audio input has been pre-warmed (engine started) by PTT key-down.
@@ -103,7 +105,9 @@ final class TranscriptionPipeline: DictationPipeline {
     /// Sets `isPreWarmed` so `startRecording()` skips engine phase 1.
     func preWarmAudioInput() async {
         guard !state.isActive, state != .recording else { return }
+        stopRequested = false
         await audioCapture.preWarm()
+        guard !Task.isCancelled else { return }
         isPreWarmed = true
     }
 
@@ -121,12 +125,12 @@ final class TranscriptionPipeline: DictationPipeline {
 
     /// Start recording audio from the microphone.
     func startRecording() async {
+        guard !Task.isCancelled else { return }
+        guard !isStarting else { return }
         guard !state.isActive || state == .complete else { return }
+        isStarting = true
+        defer { isStarting = false }
 
-        // Clear any stale stopRequested from a previous cycle (e.g., PTT key-up
-        // that arrived during .polishing — the flag outlives the pipeline run
-        // and would otherwise abort this new recording immediately).
-        stopRequested = false
         lastPolishError = nil
         deactivateStreamingForwarding()
 
@@ -139,9 +143,11 @@ final class TranscriptionPipeline: DictationPipeline {
             do {
                 try await asrManager.loadModel()
             } catch {
+                stopRequested = false
                 state = .error("Model load failed: \(error.localizedDescription)")
                 return
             }
+            guard !Task.isCancelled else { return }
         }
 
         // Remember the frontmost app and focused text field so we can paste back
@@ -202,6 +208,7 @@ final class TranscriptionPipeline: DictationPipeline {
                     maxWait: 1.5,
                     pollInterval: 0.2
                 )
+                guard !Task.isCancelled else { isPreWarmed = false; return }
 
                 // If format never settled, rebuild engine once and retry
                 if !stabilized {
@@ -592,6 +599,7 @@ final class TranscriptionPipeline: DictationPipeline {
 
     /// Reset pipeline to idle state.
     func reset() {
+        stopRequested = false
         vadMonitorTask?.cancel()
         vadMonitorTask = nil
         // Cancel any active streaming ASR session to prevent orphaned sessions.

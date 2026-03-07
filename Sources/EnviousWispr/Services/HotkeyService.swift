@@ -59,6 +59,11 @@ final class HotkeyService {
     private(set) var isEnabled = false
     private(set) var isModifierHeld = false
 
+    /// Tracks the in-flight recording Task so we can cancel zombie Tasks from
+    /// previous press/release events before starting new ones. This serializes
+    /// recording commands — only one start or stop operation runs at a time.
+    private var recordingTask: Task<Void, Never>?
+
     // MARK: - Callbacks (wired by AppState)
 
     var onToggleRecording: (@MainActor () async -> Void)?
@@ -254,14 +259,16 @@ final class HotkeyService {
                 Task { await onToggleRecording?() }
             } else {
                 // Push-to-talk mode: key-DOWN starts recording, key-UP stops.
-                // Pre-warm runs sequentially inside onStartRecording (AppState)
-                // before startRecording — guarantees BT codec switch completes first.
+                // Cancel previous recording Task to prevent zombie Tasks from
+                // piling up during rapid press/release (spam resilience).
                 if !isRelease && !isModifierHeld {
                     isModifierHeld = true
-                    Task { await onStartRecording?() }
+                    recordingTask?.cancel()
+                    recordingTask = Task { await onStartRecording?() }
                 } else if isRelease && isModifierHeld {
                     isModifierHeld = false
-                    Task { await onStopRecording?() }
+                    recordingTask?.cancel()
+                    recordingTask = Task { await onStopRecording?() }
                 }
             }
 
@@ -304,19 +311,23 @@ final class HotkeyService {
             ) }
             Task { await onToggleRecording?() }
         } else {
-            // Push-to-talk mode: key-DOWN starts recording, key-UP stops
+            // Push-to-talk mode: key-DOWN starts recording, key-UP stops.
+            // Cancel previous recording Task to prevent zombie Tasks from
+            // piling up during rapid press/release (spam resilience).
             if isPress && !isModifierHeld {
                 Task { await AppLogger.shared.log(
                     "Modifier-only PTT press: keyCode=\(capturedKeyCode)", level: .info, category: "HotkeyService"
                 ) }
                 isModifierHeld = true
-                Task { await onStartRecording?() }
+                recordingTask?.cancel()
+                recordingTask = Task { await onStartRecording?() }
             } else if !isPress && isModifierHeld {
                 Task { await AppLogger.shared.log(
                     "Modifier-only PTT release: keyCode=\(capturedKeyCode)", level: .info, category: "HotkeyService"
                 ) }
                 isModifierHeld = false
-                Task { await onStopRecording?() }
+                recordingTask?.cancel()
+                recordingTask = Task { await onStopRecording?() }
             }
         }
     }

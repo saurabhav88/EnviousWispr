@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EnviousWispr — Architecture Code Map</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #232733;
+    --border: #2e3345;
+    --text: #e2e4e9;
+    --text-dim: #8b8fa3;
+    --accent: #7c6bf5;
+    --accent-dim: #5a4dc7;
+    --blue: #3b82f6;
+    --green: #10b981;
+    --red: #ef4444;
+    --orange: #f97316;
+    --gray: #6b7280;
+    --pink: #ec4899;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    grid-template-rows: 1fr auto;
+  }
+
+  .sidebar {
+    grid-row: 1 / 3;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 16px;
+  }
+
+  .sidebar h2 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--text-dim);
+    margin: 16px 0 8px;
+  }
+  .sidebar h2:first-child { margin-top: 0; }
+
+  .logo {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--accent);
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .logo span { font-size: 18px; }
+
+  .presets { display: flex; flex-direction: column; gap: 4px; }
+  .preset-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 7px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s;
+  }
+  .preset-btn:hover { border-color: var(--accent-dim); }
+  .preset-btn.active {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+    color: #fff;
+  }
+
+  .check-group { display: flex; flex-direction: column; gap: 3px; }
+  .check-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.1s;
+  }
+  .check-item:hover { background: var(--surface2); }
+  .check-item input { accent-color: var(--accent); width: 14px; height: 14px; }
+  .color-dot {
+    width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex-shrink: 0;
+  }
+
+  .comments-list {
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .comment-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 11px;
+    position: relative;
+  }
+  .comment-target {
+    font-weight: 600; color: var(--accent); font-size: 11px;
+  }
+  .comment-file {
+    color: var(--text-dim); font-family: 'SF Mono', Menlo, monospace; font-size: 10px;
+  }
+  .comment-text {
+    margin-top: 4px; color: var(--text); line-height: 1.4; white-space: pre-wrap;
+  }
+  .delete-btn {
+    position: absolute; top: 6px; right: 6px;
+    background: none; border: none; color: var(--text-dim);
+    cursor: pointer; font-size: 14px; line-height: 1;
+  }
+  .delete-btn:hover { color: var(--red); }
+
+  .no-comments {
+    font-size: 11px; color: var(--text-dim); font-style: italic; padding: 4px 0;
+  }
+
+  .canvas-area {
+    position: relative;
+    overflow: hidden;
+    background: var(--bg);
+    background-image:
+      radial-gradient(circle, var(--border) 0.5px, transparent 0.5px);
+    background-size: 24px 24px;
+  }
+
+  .zoom-controls {
+    position: absolute; top: 12px; right: 12px;
+    display: flex; gap: 4px; z-index: 10;
+  }
+  .zoom-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    width: 32px; height: 32px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.1s;
+  }
+  .zoom-btn:hover { background: var(--surface2); }
+
+  .zoom-label {
+    position: absolute; top: 16px; right: 120px;
+    font-size: 11px; color: var(--text-dim); z-index: 10;
+    font-family: 'SF Mono', Menlo, monospace;
+  }
+
+  svg {
+    width: 100%;
+    height: 100%;
+    cursor: grab;
+  }
+  svg:active { cursor: grabbing; }
+
+  .legend {
+    position: absolute; bottom: 12px; left: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 11px;
+    z-index: 10;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .legend-title { font-weight: 600; margin-bottom: 2px; color: var(--text-dim); font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; }
+  .legend-item { display: flex; align-items: center; gap: 8px; }
+
+  .prompt-area {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 12px 16px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    max-height: 160px;
+  }
+
+  .prompt-text {
+    flex: 1;
+    font-family: 'SF Mono', Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    overflow-y: auto;
+    max-height: 136px;
+    min-height: 40px;
+    white-space: pre-wrap;
+  }
+
+  .copy-btn {
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .copy-btn:hover { background: var(--accent-dim); }
+  .copy-btn.copied { background: var(--green); }
+
+  .modal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 100;
+    align-items: center; justify-content: center;
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    width: 400px;
+    max-width: 90vw;
+  }
+  .modal h3 { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+  .modal .modal-file { font-size: 11px; color: var(--text-dim); font-family: 'SF Mono', Menlo, monospace; margin-bottom: 12px; }
+  .modal textarea {
+    width: 100%;
+    height: 80px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font-size: 13px;
+    padding: 8px 10px;
+    resize: vertical;
+    outline: none;
+  }
+  .modal textarea:focus { border-color: var(--accent); }
+  .modal-actions {
+    display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px;
+  }
+  .modal-btn {
+    padding: 6px 14px; border-radius: 6px; font-size: 12px; cursor: pointer; border: 1px solid var(--border);
+  }
+  .modal-btn.cancel { background: var(--surface2); color: var(--text); }
+  .modal-btn.save { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+
+  .node-tooltip {
+    display: none;
+    position: fixed;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 11px;
+    z-index: 50;
+    pointer-events: none;
+    max-width: 260px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+  .tt-label { font-weight: 600; font-size: 12px; }
+  .tt-file { color: var(--text-dim); font-family: 'SF Mono', Menlo, monospace; font-size: 10px; margin-top: 2px; }
+  .tt-type { color: var(--accent); font-size: 10px; margin-top: 4px; }
+  .tt-hint { color: var(--text-dim); font-size: 10px; margin-top: 6px; font-style: italic; }
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="logo"><span>&#9670;</span> EnviousWispr Code Map</div>
+
+  <h2>View Presets</h2>
+  <div class="presets" id="presets"></div>
+
+  <h2>Layers</h2>
+  <div class="check-group" id="layers"></div>
+
+  <h2>Connections</h2>
+  <div class="check-group" id="conn-filters"></div>
+
+  <h2>Comments (<span id="comment-count">0</span>)</h2>
+  <div class="comments-list" id="comments-list"></div>
+</div>
+
+<div class="canvas-area" id="canvas-area">
+  <div class="zoom-controls">
+    <button class="zoom-btn" onclick="zoomIn()">+</button>
+    <button class="zoom-btn" onclick="zoomOut()">&minus;</button>
+    <button class="zoom-btn" onclick="zoomReset()" style="font-size:11px;">1:1</button>
+  </div>
+  <span class="zoom-label" id="zoom-label">100%</span>
+  <svg id="diagram" xmlns="http://www.w3.org/2000/svg"></svg>
+
+  <div class="legend">
+    <div class="legend-title">Connections</div>
+    <div class="legend-item"><svg width="24" height="4"><line x1="0" y1="2" x2="24" y2="2" stroke="#3b82f6" stroke-width="2"/></svg><span>Data Flow</span></div>
+    <div class="legend-item"><svg width="24" height="4"><line x1="0" y1="2" x2="24" y2="2" stroke="#10b981" stroke-width="2" stroke-dasharray="6,3"/></svg><span>Control / Event</span></div>
+    <div class="legend-item"><svg width="24" height="4"><line x1="0" y1="2" x2="24" y2="2" stroke="#f97316" stroke-width="2" stroke-dasharray="8,4"/></svg><span>Dependency Injection</span></div>
+    <div class="legend-item"><svg width="24" height="4"><line x1="0" y1="2" x2="24" y2="2" stroke="#6b7280" stroke-width="2" stroke-dasharray="3,3"/></svg><span>Protocol Conformance</span></div>
+    <div class="legend-item"><svg width="24" height="4"><line x1="0" y1="2" x2="24" y2="2" stroke="#ec4899" stroke-width="2" stroke-dasharray="2,4"/></svg><span>Callback / Closure</span></div>
+  </div>
+</div>
+
+<div class="prompt-area">
+  <div class="prompt-text" id="prompt-output"></div>
+  <button class="copy-btn" id="copy-btn" onclick="copyPrompt()">Copy Prompt</button>
+</div>
+
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <h3 id="modal-title">Component</h3>
+    <div class="modal-file" id="modal-file">file.swift</div>
+    <textarea id="modal-text" placeholder="What changes would you like to make to this component?"></textarea>
+    <div class="modal-actions">
+      <button class="modal-btn cancel" onclick="closeModal()">Cancel</button>
+      <button class="modal-btn save" onclick="saveComment()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="node-tooltip" id="tooltip"></div>
+
+<script>
+// ============================================================
+// DATA
+// ============================================================
+
+const LAYERS = {
+  'app':       { label: 'App Shell',    color: '#4a6fa5', fill: '#1e3a5f' },
+  'state':     { label: 'Root State',   color: '#7c6bf5', fill: '#2d2554' },
+  'pipeline':  { label: 'Pipeline',     color: '#f59e0b', fill: '#4a3000' },
+  'audio':     { label: 'Audio',        color: '#3b82f6', fill: '#172554' },
+  'asr':       { label: 'ASR',          color: '#10b981', fill: '#064e3b' },
+  'llm':       { label: 'LLM Polish',   color: '#ec4899', fill: '#4a1942' },
+  'services':  { label: 'Services',     color: '#f97316', fill: '#4a2000' },
+  'storage':   { label: 'Storage',      color: '#8b5cf6', fill: '#2e1065' },
+  'views':     { label: 'Views',        color: '#06b6d4', fill: '#083344' },
+  'external':  { label: 'External',     color: '#6b7280', fill: '#1f2937' },
+};
+
+const CONN_TYPES = {
+  'data':       { label: 'Data Flow',         color: '#3b82f6', dash: '' },
+  'control':    { label: 'Control / Event',    color: '#10b981', dash: '6,3' },
+  'inject':     { label: 'Dependency Injection', color: '#f97316', dash: '8,4' },
+  'protocol':   { label: 'Protocol Conformance', color: '#6b7280', dash: '3,3' },
+  'callback':   { label: 'Callback / Closure',  color: '#ec4899', dash: '2,4' },
+};
+
+const nodes = [
+  // App Shell
+  { id: 'app-entry',    label: 'EnviousWisprApp',      subtitle: 'App/EnviousWisprApp.swift',    x: 440, y: 40,  w: 155, h: 44, layer: 'app',    type: '@main App' },
+  { id: 'app-delegate', label: 'AppDelegate',           subtitle: 'App/AppDelegate.swift',        x: 640, y: 40,  w: 140, h: 44, layer: 'app',    type: 'NSApplicationDelegate' },
+
+  // Root State
+  { id: 'app-state',    label: 'AppState',              subtitle: 'App/AppState.swift',           x: 540, y: 130, w: 160, h: 50, layer: 'state',  type: '@MainActor @Observable' },
+
+  // Pipeline
+  { id: 'pipeline',     label: 'TranscriptionPipeline', subtitle: 'Pipeline/TranscriptionPipeline.swift', x: 540, y: 240, w: 185, h: 50, layer: 'pipeline', type: '@MainActor @Observable' },
+
+  // Audio
+  { id: 'audio-capture',label: 'AudioCaptureManager',   subtitle: 'Audio/AudioCaptureManager.swift', x: 200, y: 350, w: 175, h: 44, layer: 'audio', type: '@MainActor @Observable' },
+  { id: 'silence-det',  label: 'SilenceDetector',       subtitle: 'Audio/SilenceDetector.swift',     x: 200, y: 420, w: 150, h: 44, layer: 'audio', type: 'actor (Silero VAD)' },
+  { id: 'audio-buf',    label: 'AudioBufferProcessor',  subtitle: 'Audio/AudioBufferProcessor.swift', x: 30,  y: 380, w: 160, h: 38, layer: 'audio', type: 'enum (static utility)' },
+
+  // ASR
+  { id: 'asr-manager',  label: 'ASRManager',            subtitle: 'ASR/ASRManager.swift',         x: 500, y: 360, w: 140, h: 44, layer: 'asr',    type: '@MainActor @Observable' },
+  { id: 'asr-protocol', label: 'ASRBackend',            subtitle: 'ASR/ASRProtocol.swift',        x: 500, y: 430, w: 130, h: 38, layer: 'asr',    type: 'protocol: Actor' },
+  { id: 'parakeet',     label: 'ParakeetBackend',       subtitle: 'ASR/ParakeetBackend.swift',    x: 430, y: 500, w: 150, h: 44, layer: 'asr',    type: 'actor (Parakeet v3)' },
+  { id: 'whisperkit',   label: 'WhisperKitBackend',     subtitle: 'ASR/WhisperKitBackend.swift',  x: 610, y: 500, w: 160, h: 44, layer: 'asr',    type: 'actor (WhisperKit)' },
+
+  // LLM
+  { id: 'openai',       label: 'OpenAIConnector',       subtitle: 'LLM/OpenAIConnector.swift',    x: 790, y: 340, w: 150, h: 40, layer: 'llm',    type: 'TranscriptPolisher' },
+  { id: 'gemini',       label: 'GeminiConnector',       subtitle: 'LLM/GeminiConnector.swift',    x: 790, y: 395, w: 150, h: 40, layer: 'llm',    type: 'TranscriptPolisher' },
+  { id: 'ollama',       label: 'OllamaConnector',       subtitle: 'LLM/OllamaConnector.swift',    x: 790, y: 450, w: 150, h: 40, layer: 'llm',    type: 'TranscriptPolisher' },
+  { id: 'apple-ai',     label: 'AppleIntelligence',     subtitle: 'LLM/AppleIntelligenceConnector.swift', x: 790, y: 505, w: 160, h: 40, layer: 'llm', type: 'TranscriptPolisher' },
+  { id: 'keychain',     label: 'KeychainManager',       subtitle: 'LLM/KeychainManager.swift',   x: 975, y: 370, w: 145, h: 40, layer: 'llm',    type: 'struct Sendable' },
+  { id: 'llm-discovery',label: 'LLMModelDiscovery',     subtitle: 'LLM/LLMModelDiscovery.swift', x: 975, y: 430, w: 155, h: 40, layer: 'llm',    type: 'struct Sendable' },
+
+  // Services
+  { id: 'hotkey',       label: 'HotkeyService',         subtitle: 'Services/HotkeyService.swift', x: 270, y: 140, w: 140, h: 44, layer: 'services', type: '@MainActor @Observable' },
+  { id: 'paste',        label: 'PasteService',          subtitle: 'Services/PasteService.swift',  x: 720, y: 240, w: 130, h: 40, layer: 'services', type: 'enum (static)' },
+  { id: 'permissions',  label: 'PermissionsService',    subtitle: 'Services/PermissionsService.swift', x: 100, y: 140, w: 155, h: 44, layer: 'services', type: '@MainActor @Observable' },
+
+  // Storage
+  { id: 'store',        label: 'TranscriptStore',       subtitle: 'Storage/TranscriptStore.swift', x: 860, y: 240, w: 145, h: 40, layer: 'storage', type: '@MainActor' },
+
+  // Views
+  { id: 'main-window',  label: 'MainWindowView',        subtitle: 'Views/Main/MainWindowView.swift',   x: 60,  y: 30,  w: 150, h: 42, layer: 'views', type: 'View' },
+  { id: 'settings-view',label: 'SettingsView',           subtitle: 'Views/Settings/SettingsView.swift', x: 230, y: 30,  w: 130, h: 42, layer: 'views', type: 'View (4 tabs)' },
+  { id: 'onboarding',   label: 'OnboardingView',         subtitle: 'Views/Onboarding/OnboardingView.swift', x: 60, y: 85, w: 145, h: 38, layer: 'views', type: 'View (sheet)' },
+  { id: 'overlay',      label: 'RecordingOverlayPanel',  subtitle: 'Views/Overlay/RecordingOverlayPanel.swift', x: 230, y: 85, w: 175, h: 38, layer: 'views', type: 'NSPanel' },
+
+  // External
+  { id: 'ext-fluidaudio', label: 'FluidAudio',          subtitle: 'SPM: AntinomyCollective',  x: 300, y: 560, w: 120, h: 38, layer: 'external', type: 'Parakeet + Silero VAD' },
+  { id: 'ext-whisperkit',  label: 'WhisperKit',          subtitle: 'SPM: argmaxinc',          x: 680, y: 570, w: 120, h: 38, layer: 'external', type: 'CoreML ASR' },
+  { id: 'ext-sparkle',     label: 'Sparkle',             subtitle: 'SPM: sparkle-project',    x: 820, y: 40,  w: 100, h: 36, layer: 'external', type: 'Auto-update' },
+];
+
+const connections = [
+  { from: 'app-entry',    to: 'app-delegate',  type: 'inject',   label: '@NSApplicationDelegateAdaptor' },
+  { from: 'app-delegate', to: 'app-state',     type: 'inject',   label: 'creates & owns' },
+  { from: 'app-delegate', to: 'ext-sparkle',   type: 'inject',   label: 'SPUStandardUpdaterController' },
+  { from: 'app-entry',    to: 'main-window',   type: 'data',     label: '.environment(appState)' },
+  { from: 'app-entry',    to: 'settings-view', type: 'data',     label: '.environment(appState)' },
+  { from: 'app-state',    to: 'app-delegate',  type: 'callback', label: 'onPipelineStateChange' },
+  { from: 'app-state',    to: 'pipeline',      type: 'inject',   label: 'constructs, injects deps' },
+  { from: 'app-state',    to: 'hotkey',        type: 'inject',   label: 'owns' },
+  { from: 'app-state',    to: 'permissions',   type: 'inject',   label: 'owns' },
+  { from: 'app-state',    to: 'audio-capture', type: 'inject',   label: 'owns, injects into pipeline' },
+  { from: 'app-state',    to: 'asr-manager',   type: 'inject',   label: 'owns, injects into pipeline' },
+  { from: 'app-state',    to: 'store',         type: 'inject',   label: 'owns, injects into pipeline' },
+  { from: 'app-state',    to: 'overlay',       type: 'control',  label: 'show/hide on state change' },
+  { from: 'hotkey',       to: 'app-state',     type: 'callback', label: 'onToggle/Start/Stop/Cancel' },
+  { from: 'app-state',    to: 'asr-manager',   type: 'control',  label: 'switchBackend, updateModel' },
+  { from: 'app-state',    to: 'llm-discovery', type: 'data',     label: 'validateKeyAndDiscover' },
+  { from: 'pipeline',     to: 'audio-capture', type: 'control',  label: 'start/stopCapture' },
+  { from: 'audio-capture',to: 'pipeline',      type: 'data',     label: 'AsyncStream + capturedSamples' },
+  { from: 'pipeline',     to: 'silence-det',   type: 'control',  label: 'prepare, processChunk' },
+  { from: 'silence-det',  to: 'pipeline',      type: 'data',     label: 'auto-stop + voiced samples' },
+  { from: 'audio-capture',to: 'audio-buf',     type: 'data',     label: 'calculateRMS' },
+  { from: 'pipeline',     to: 'asr-manager',   type: 'control',  label: 'loadModel, transcribe' },
+  { from: 'asr-manager',  to: 'pipeline',      type: 'data',     label: 'ASRResult' },
+  { from: 'asr-manager',  to: 'asr-protocol',  type: 'data',     label: 'delegates via protocol' },
+  { from: 'parakeet',     to: 'asr-protocol',  type: 'protocol', label: 'conforms' },
+  { from: 'whisperkit',   to: 'asr-protocol',  type: 'protocol', label: 'conforms' },
+  { from: 'asr-manager',  to: 'parakeet',      type: 'control',  label: 'prepare/transcribe/unload' },
+  { from: 'asr-manager',  to: 'whisperkit',    type: 'control',  label: 'prepare/transcribe/unload' },
+  { from: 'pipeline',     to: 'openai',        type: 'control',  label: 'polish (if selected)' },
+  { from: 'pipeline',     to: 'gemini',        type: 'control',  label: 'polish (if selected)' },
+  { from: 'pipeline',     to: 'ollama',        type: 'control',  label: 'polish (if selected)' },
+  { from: 'pipeline',     to: 'apple-ai',      type: 'control',  label: 'polish (if selected)' },
+  { from: 'openai',       to: 'keychain',      type: 'data',     label: 'retrieve API key' },
+  { from: 'gemini',       to: 'keychain',      type: 'data',     label: 'retrieve API key' },
+  { from: 'pipeline',     to: 'store',         type: 'data',     label: 'save transcript' },
+  { from: 'pipeline',     to: 'paste',         type: 'control',  label: 'copy/paste to app' },
+  { from: 'pipeline',     to: 'app-state',     type: 'callback', label: 'onStateChange' },
+  { from: 'parakeet',     to: 'ext-fluidaudio',type: 'data',     label: 'AsrModels, AsrManager' },
+  { from: 'silence-det',  to: 'ext-fluidaudio',type: 'data',     label: 'VadManager, VadConfig' },
+  { from: 'whisperkit',   to: 'ext-whisperkit',type: 'data',     label: 'WhisperKit transcribe' },
+  { from: 'main-window',  to: 'app-state',     type: 'data',     label: '@Environment reads' },
+  { from: 'settings-view',to: 'app-state',     type: 'data',     label: '@Environment reads/writes' },
+  { from: 'onboarding',   to: 'permissions',   type: 'control',  label: 'requestPermissions' },
+];
+
+// ============================================================
+// STATE
+// ============================================================
+
+const state = {
+  layers: Object.fromEntries(Object.keys(LAYERS).map(k => [k, true])),
+  connTypes: Object.fromEntries(Object.keys(CONN_TYPES).map(k => [k, true])),
+  comments: [],
+  zoom: 1,
+  panX: 0,
+  panY: 0,
+  activePreset: 'full',
+};
+
+const PRESETS = {
+  full:     { label: 'Full System',    layers: Object.fromEntries(Object.keys(LAYERS).map(k => [k, true])) },
+  dataflow: { label: 'Data Pipeline',  layers: { app: false, state: true, pipeline: true, audio: true, asr: true, llm: true, services: false, storage: true, views: false, external: true } },
+  audio:    { label: 'Audio \u2192 ASR',    layers: { app: false, state: false, pipeline: true, audio: true, asr: true, llm: false, services: false, storage: false, views: false, external: true } },
+  llm:      { label: 'LLM Polish',     layers: { app: false, state: true, pipeline: true, audio: false, asr: false, llm: true, services: false, storage: true, views: false, external: false } },
+  ui:       { label: 'UI Layer',       layers: { app: true, state: true, pipeline: false, audio: false, asr: false, llm: false, services: true, storage: false, views: true, external: false } },
+};
+
+// ============================================================
+// SAFE DOM HELPERS
+// ============================================================
+
+function clearChildren(el) {
+  while (el.firstChild) el.removeChild(el.firstChild);
+}
+
+function createElement(tag, className, textContent) {
+  const el = document.createElement(tag);
+  if (className) el.className = className;
+  if (textContent !== undefined) el.textContent = textContent;
+  return el;
+}
+
+function svgEl(tag, attrs) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  if (attrs) {
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  }
+  return el;
+}
+
+// ============================================================
+// RENDER CONTROLS
+// ============================================================
+
+function renderPresets() {
+  const el = document.getElementById('presets');
+  clearChildren(el);
+  for (const [key, preset] of Object.entries(PRESETS)) {
+    const btn = createElement('button', 'preset-btn' + (state.activePreset === key ? ' active' : ''), preset.label);
+    btn.onclick = () => {
+      state.activePreset = key;
+      state.layers = { ...preset.layers };
+      renderAll();
+    };
+    el.appendChild(btn);
+  }
+}
+
+function renderLayerToggles() {
+  const el = document.getElementById('layers');
+  clearChildren(el);
+  for (const [key, layer] of Object.entries(LAYERS)) {
+    const item = createElement('label', 'check-item');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = state.layers[key];
+    cb.onchange = () => {
+      state.layers[key] = cb.checked;
+      state.activePreset = '';
+      renderAll();
+    };
+    const dot = createElement('span', 'color-dot');
+    dot.style.background = layer.color;
+    item.appendChild(cb);
+    item.appendChild(dot);
+    item.appendChild(document.createTextNode(' ' + layer.label));
+    el.appendChild(item);
+  }
+}
+
+function renderConnFilters() {
+  const el = document.getElementById('conn-filters');
+  clearChildren(el);
+  for (const [key, ct] of Object.entries(CONN_TYPES)) {
+    const item = createElement('label', 'check-item');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = state.connTypes[key];
+    cb.onchange = () => {
+      state.connTypes[key] = cb.checked;
+      renderAll();
+    };
+    const dot = createElement('span', 'color-dot');
+    dot.style.background = ct.color;
+    item.appendChild(cb);
+    item.appendChild(dot);
+    item.appendChild(document.createTextNode(' ' + ct.label));
+    el.appendChild(item);
+  }
+}
+
+function renderCommentsList() {
+  const el = document.getElementById('comments-list');
+  clearChildren(el);
+  document.getElementById('comment-count').textContent = state.comments.length;
+  if (state.comments.length === 0) {
+    el.appendChild(createElement('div', 'no-comments', 'Click any component to add feedback.'));
+    return;
+  }
+  for (const c of state.comments) {
+    const card = createElement('div', 'comment-card');
+    card.appendChild(createElement('div', 'comment-target', c.targetLabel));
+    card.appendChild(createElement('div', 'comment-file', c.targetFile));
+    card.appendChild(createElement('div', 'comment-text', c.text));
+    const del = createElement('button', 'delete-btn', '\u00d7');
+    del.title = 'Remove';
+    del.onclick = () => {
+      state.comments = state.comments.filter(x => x.id !== c.id);
+      renderAll();
+    };
+    card.appendChild(del);
+    el.appendChild(card);
+  }
+}
+
+// ============================================================
+// SVG DIAGRAM
+// ============================================================
+
+function getEdgePoints(from, to) {
+  const fcx = from.x + from.w / 2;
+  const fcy = from.y + from.h / 2;
+  const tcx = to.x + to.w / 2;
+  const tcy = to.y + to.h / 2;
+
+  const dx = tcx - fcx;
+  const dy = tcy - fcy;
+  const angle = Math.atan2(dy, dx);
+
+  let x1, y1;
+  if (Math.abs(Math.cos(angle)) * from.h > Math.abs(Math.sin(angle)) * from.w) {
+    x1 = fcx + (Math.sign(Math.cos(angle)) * from.w / 2);
+    y1 = fcy + Math.tan(angle) * (Math.sign(Math.cos(angle)) * from.w / 2);
+  } else {
+    y1 = fcy + (Math.sign(Math.sin(angle)) * from.h / 2);
+    x1 = fcx + (Math.sign(Math.sin(angle)) * from.h / 2) / Math.tan(angle);
+  }
+
+  const rAngle = angle + Math.PI;
+  let x2, y2;
+  if (Math.abs(Math.cos(rAngle)) * to.h > Math.abs(Math.sin(rAngle)) * to.w) {
+    x2 = tcx + (Math.sign(Math.cos(rAngle)) * to.w / 2);
+    y2 = tcy + Math.tan(rAngle) * (Math.sign(Math.cos(rAngle)) * to.w / 2);
+  } else {
+    y2 = tcy + (Math.sign(Math.sin(rAngle)) * to.h / 2);
+    x2 = tcx + (Math.sign(Math.sin(rAngle)) * to.h / 2) / Math.tan(rAngle);
+  }
+
+  return [x1, y1, x2, y2];
+}
+
+function renderDiagram() {
+  const svg = document.getElementById('diagram');
+  clearChildren(svg);
+
+  const visibleNodes = nodes.filter(n => state.layers[n.layer]);
+  const visibleNodeIds = new Set(visibleNodes.map(n => n.id));
+  const visibleConns = connections.filter(c =>
+    state.connTypes[c.type] && visibleNodeIds.has(c.from) && visibleNodeIds.has(c.to)
+  );
+
+  // Defs
+  const defs = svgEl('defs');
+  for (const [key, ct] of Object.entries(CONN_TYPES)) {
+    const marker = svgEl('marker', {
+      id: 'arrow-' + key, markerWidth: '8', markerHeight: '6',
+      refX: '7', refY: '3', orient: 'auto', markerUnits: 'strokeWidth'
+    });
+    marker.appendChild(svgEl('polygon', { points: '0 0, 8 3, 0 6', fill: ct.color }));
+    defs.appendChild(marker);
+  }
+  svg.appendChild(defs);
+
+  const g = svgEl('g', { id: 'root-group' });
+  svg.appendChild(g);
+
+  // Connections
+  for (const conn of visibleConns) {
+    const fromNode = nodes.find(n => n.id === conn.from);
+    const toNode = nodes.find(n => n.id === conn.to);
+    if (!fromNode || !toNode) continue;
+
+    const ct = CONN_TYPES[conn.type];
+    const [x1, y1, x2, y2] = getEdgePoints(fromNode, toNode);
+
+    const dx = x2 - x1;
+    const cx1 = x1 + dx * 0.4;
+    const cy1 = y1;
+    const cx2 = x2 - dx * 0.4;
+    const cy2 = y2;
+
+    const pathAttrs = {
+      d: 'M' + x1 + ',' + y1 + ' C' + cx1 + ',' + cy1 + ' ' + cx2 + ',' + cy2 + ' ' + x2 + ',' + y2,
+      fill: 'none',
+      stroke: ct.color,
+      'stroke-width': '1.5',
+      'marker-end': 'url(#arrow-' + conn.type + ')',
+      opacity: '0.6',
+    };
+    if (ct.dash) pathAttrs['stroke-dasharray'] = ct.dash;
+    g.appendChild(svgEl('path', pathAttrs));
+  }
+
+  // Nodes
+  const commentedIds = new Set(state.comments.map(c => c.target));
+
+  for (const node of visibleNodes) {
+    const layer = LAYERS[node.layer];
+    const hasComment = commentedIds.has(node.id);
+    const ng = svgEl('g', { style: 'cursor: pointer;' });
+
+    // Shadow
+    ng.appendChild(svgEl('rect', {
+      x: String(node.x + 2), y: String(node.y + 2), width: String(node.w), height: String(node.h),
+      rx: '8', fill: 'rgba(0,0,0,0.3)'
+    }));
+
+    // Body
+    ng.appendChild(svgEl('rect', {
+      x: String(node.x), y: String(node.y), width: String(node.w), height: String(node.h),
+      rx: '8', fill: layer.fill,
+      stroke: hasComment ? '#f59e0b' : layer.color,
+      'stroke-width': hasComment ? '2.5' : '1.5',
+    }));
+
+    // Comment dot
+    if (hasComment) {
+      ng.appendChild(svgEl('circle', {
+        cx: String(node.x + node.w - 6), cy: String(node.y + 6),
+        r: '5', fill: '#f59e0b'
+      }));
+    }
+
+    // Label
+    const label = svgEl('text', {
+      x: String(node.x + node.w / 2), y: String(node.y + (node.h > 44 ? 22 : 18)),
+      'text-anchor': 'middle',
+      fill: '#e2e4e9',
+      'font-size': '11',
+      'font-weight': '600',
+      'font-family': '-apple-system, BlinkMacSystemFont, system-ui, sans-serif'
+    });
+    label.textContent = node.label;
+    ng.appendChild(label);
+
+    // Subtitle
+    if (node.h > 38) {
+      const sub = svgEl('text', {
+        x: String(node.x + node.w / 2), y: String(node.y + (node.h > 44 ? 36 : 32)),
+        'text-anchor': 'middle',
+        fill: '#8b8fa3',
+        'font-size': '9',
+        'font-family': 'SF Mono, Menlo, monospace'
+      });
+      const subText = node.subtitle.length > 28 ? node.subtitle.slice(0, 26) + '...' : node.subtitle;
+      sub.textContent = subText;
+      ng.appendChild(sub);
+    }
+
+    ng.addEventListener('click', (e) => { e.stopPropagation(); openModal(node); });
+    ng.addEventListener('mouseenter', (e) => showTooltip(e, node));
+    ng.addEventListener('mousemove', (e) => moveTooltip(e));
+    ng.addEventListener('mouseleave', hideTooltip);
+
+    g.appendChild(ng);
+  }
+
+  applyTransform();
+}
+
+function applyTransform() {
+  const g = document.getElementById('root-group');
+  if (g) g.setAttribute('transform', 'translate(' + state.panX + ',' + state.panY + ') scale(' + state.zoom + ')');
+  document.getElementById('zoom-label').textContent = Math.round(state.zoom * 100) + '%';
+}
+
+// ============================================================
+// ZOOM / PAN
+// ============================================================
+
+function zoomIn() { state.zoom = Math.min(3, state.zoom * 1.2); applyTransform(); }
+function zoomOut() { state.zoom = Math.max(0.3, state.zoom / 1.2); applyTransform(); }
+function zoomReset() { state.zoom = 1; state.panX = 0; state.panY = 0; applyTransform(); }
+
+let isPanning = false, panStart = { x: 0, y: 0 };
+const canvas = document.getElementById('canvas-area');
+
+canvas.addEventListener('mousedown', (e) => {
+  if (e.target.closest('g[style]')) return;
+  isPanning = true;
+  panStart = { x: e.clientX - state.panX, y: e.clientY - state.panY };
+});
+canvas.addEventListener('mousemove', (e) => {
+  if (!isPanning) return;
+  state.panX = e.clientX - panStart.x;
+  state.panY = e.clientY - panStart.y;
+  applyTransform();
+});
+canvas.addEventListener('mouseup', () => isPanning = false);
+canvas.addEventListener('mouseleave', () => isPanning = false);
+
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const factor = e.deltaY > 0 ? 0.95 : 1.05;
+  state.zoom = Math.max(0.3, Math.min(3, state.zoom * factor));
+  applyTransform();
+}, { passive: false });
+
+// ============================================================
+// TOOLTIP
+// ============================================================
+
+function showTooltip(e, node) {
+  const tt = document.getElementById('tooltip');
+  clearChildren(tt);
+  const commentCount = state.comments.filter(c => c.target === node.id).length;
+
+  tt.appendChild(createElement('div', 'tt-label', node.label));
+  tt.appendChild(createElement('div', 'tt-file', node.subtitle));
+  tt.appendChild(createElement('div', 'tt-type', node.type));
+  tt.appendChild(createElement('div', 'tt-hint',
+    commentCount > 0 ? commentCount + ' comment' + (commentCount > 1 ? 's' : '') : 'Click to comment'));
+
+  tt.style.display = 'block';
+  moveTooltip(e);
+}
+
+function moveTooltip(e) {
+  const tt = document.getElementById('tooltip');
+  tt.style.left = (e.clientX + 14) + 'px';
+  tt.style.top = (e.clientY + 14) + 'px';
+}
+
+function hideTooltip() {
+  document.getElementById('tooltip').style.display = 'none';
+}
+
+// ============================================================
+// COMMENT MODAL
+// ============================================================
+
+let modalNode = null;
+
+function openModal(node) {
+  modalNode = node;
+  document.getElementById('modal-title').textContent = node.label;
+  document.getElementById('modal-file').textContent = node.subtitle;
+  document.getElementById('modal-text').value = '';
+  document.getElementById('modal-overlay').classList.add('show');
+  setTimeout(() => document.getElementById('modal-text').focus(), 50);
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('show');
+  modalNode = null;
+}
+
+function saveComment() {
+  const text = document.getElementById('modal-text').value.trim();
+  if (!text || !modalNode) return;
+  state.comments.push({
+    id: Date.now(),
+    target: modalNode.id,
+    targetLabel: modalNode.label,
+    targetFile: modalNode.subtitle,
+    text: text
+  });
+  closeModal();
+  renderAll();
+}
+
+document.getElementById('modal-text').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeModal();
+  if (e.key === 'Enter' && e.metaKey) saveComment();
+});
+document.getElementById('modal-overlay').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('modal-overlay')) closeModal();
+});
+
+// ============================================================
+// PROMPT OUTPUT
+// ============================================================
+
+function updatePrompt() {
+  const el = document.getElementById('prompt-output');
+  const visibleLayers = Object.entries(state.layers)
+    .filter(([_, v]) => v)
+    .map(([k]) => LAYERS[k].label);
+
+  const allVisible = visibleLayers.length === Object.keys(LAYERS).length;
+
+  let text = 'This is the EnviousWispr architecture';
+  if (!allVisible && visibleLayers.length > 0) {
+    text += ', focusing on: ' + visibleLayers.join(', ');
+  }
+  text += '.\n\nEnviousWispr is a local-first macOS dictation app: Record \u2192 Transcribe (Parakeet v3 / WhisperKit) \u2192 optional LLM polish \u2192 clipboard/paste.';
+
+  if (state.comments.length > 0) {
+    text += '\n\nFeedback on specific components:\n';
+    for (const c of state.comments) {
+      text += '\n**' + c.targetLabel + '** (' + c.targetFile + '):\n' + c.text + '\n';
+    }
+  }
+
+  el.textContent = text;
+}
+
+function copyPrompt() {
+  const text = document.getElementById('prompt-output').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('copy-btn');
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy Prompt'; btn.classList.remove('copied'); }, 1500);
+  });
+}
+
+// ============================================================
+// INIT
+// ============================================================
+
+function renderAll() {
+  renderPresets();
+  renderLayerToggles();
+  renderConnFilters();
+  renderCommentsList();
+  renderDiagram();
+  updatePrompt();
+}
+
+renderAll();
+</script>
+</body>
+</html>

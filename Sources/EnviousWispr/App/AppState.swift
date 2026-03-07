@@ -218,6 +218,7 @@ final class AppState {
             }
 
             await active.handle(event: .preWarm)
+            guard !Task.isCancelled else { return }
             await active.handle(event: .toggleRecording)
 
             if isWhisperKit {
