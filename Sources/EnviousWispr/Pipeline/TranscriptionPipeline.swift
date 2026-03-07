@@ -155,6 +155,7 @@ final class TranscriptionPipeline: DictationPipeline {
         targetApp = NSWorkspace.shared.frontmostApplication
         targetElement = PasteService.captureFocusedElement()
 
+        // BRAIN: gotcha id=pipeline-timing-misconception
         // Start streaming ASR if the backend supports it — feed audio buffers
         // to the ASR model during recording so transcription overlaps with capture.
         var streamingSetupSucceeded = false

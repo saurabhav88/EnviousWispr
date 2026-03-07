@@ -75,6 +75,7 @@ struct StatusView: View {
                             .font(.body.weight(.medium))
                             .padding(.horizontal, 16)
                             .padding(.vertical, 8)
+                            .contentShape(Rectangle())
                             .background(
                                 RoundedRectangle(cornerRadius: 8)
                                     .stroke(.red, lineWidth: 1.5)

@@ -280,6 +280,7 @@ private struct PresetCard: View {
             .padding(.vertical, 10)
             .padding(.horizontal, 8)
             .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 9)
                     .fill(isSelected ? Color.stAccent.opacity(0.08) : Color(nsColor: .controlBackgroundColor))

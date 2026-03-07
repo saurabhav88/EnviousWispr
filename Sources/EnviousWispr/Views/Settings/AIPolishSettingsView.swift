@@ -276,6 +276,7 @@ struct AIPolishSettingsView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 10)
             .padding(.horizontal, 6)
+            .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 9)
                     .fill(isSelected ? Color.stAccent.opacity(0.08) : Color.clear)

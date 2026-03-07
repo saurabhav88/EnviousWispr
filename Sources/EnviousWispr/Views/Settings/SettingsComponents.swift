@@ -211,6 +211,7 @@ struct BrandedSegmentedPicker<T: Hashable>: View {
                         .padding(.vertical, 6)
                         .padding(.horizontal, 12)
                         .frame(maxWidth: .infinity)
+                        .contentShape(Rectangle())
                         .background(isSelected ? Color.stAccentLight : Color.clear)
                 }
                 .buttonStyle(.plain)
