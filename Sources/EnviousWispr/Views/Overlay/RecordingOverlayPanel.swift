@@ -46,7 +46,12 @@ final class RecordingOverlayPanel {
     // MARK: - Legacy API (internal)
 
     func show(audioLevelProvider: @escaping () -> Float) {
-        guard panel == nil else { return }
+        if panel != nil {
+            // A panel already exists (e.g., "Starting..." polishing panel).
+            // Transition to recording — mirrors transitionToPolishing() in reverse.
+            transitionToRecording(audioLevelProvider: audioLevelProvider)
+            return
+        }
         // Cancel any lingering deferred work from a prior session that wasn't
         // cleaned up (e.g., if a VAD self-cancel left pendingCreateWork set but
         // panel still nil). This is defensive — normally hide() clears it.
@@ -93,12 +98,12 @@ final class RecordingOverlayPanel {
         DispatchQueue.main.async(execute: work)
     }
 
-    private func createPanel(audioLevelProvider: @escaping () -> Float) {
+    private func createPanel(audioLevelProvider: @escaping () -> Float, y: CGFloat? = nil) {
         guard panel == nil else { return }
 
         let overlayView = RecordingOverlayView(audioLevelProvider: audioLevelProvider)
             .frame(width: 185, height: 44)
-        showPanel(content: overlayView, width: 185)
+        showPanel(content: overlayView, width: 185, y: y)
     }
 
     private func createPolishingPanel(label: String = "Polishing...") {
@@ -131,6 +136,31 @@ final class RecordingOverlayPanel {
             guard let self, self.generation == token else { return }
             self.pendingCreateWork = nil
             self.showPanel(content: PolishingOverlayView(label: label).frame(width: 185, height: 44), width: 185, y: y)
+        }
+        pendingCreateWork = work
+        DispatchQueue.main.async(execute: work)
+    }
+
+    /// Transition an existing panel from polishing/processing to recording mode.
+    /// Mirrors transitionToPolishing() — tears down the current panel and creates
+    /// a recording panel at the same position on the next run loop cycle.
+    private func transitionToRecording(audioLevelProvider: @escaping () -> Float) {
+        guard let existingPanel = panel else { return }
+        let y = existingPanel.frame.origin.y
+
+        panel = nil
+        pendingCreateWork?.cancel()
+        pendingCreateWork = nil
+        CATransaction.flush()
+        existingPanel.close()
+
+        generation &+= 1
+        let token = generation
+
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.generation == token else { return }
+            self.pendingCreateWork = nil
+            self.createPanel(audioLevelProvider: audioLevelProvider, y: y)
         }
         pendingCreateWork = work
         DispatchQueue.main.async(execute: work)
