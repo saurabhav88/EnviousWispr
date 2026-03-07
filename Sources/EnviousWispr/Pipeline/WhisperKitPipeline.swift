@@ -81,6 +81,7 @@ final class WhisperKitPipeline: DictationPipeline {
     private var silenceDetector: SilenceDetector?
     private var vadMonitorTask: Task<Void, Never>?
     private var incrementalWorker: WhisperKitIncrementalWorker?
+    private var modelUnloadTask: Task<Void, Never>?
 
     init(
         audioCapture: AudioCaptureManager,
@@ -181,6 +182,10 @@ final class WhisperKitPipeline: DictationPipeline {
 
     func startRecording() async {
         guard !state.isActive || state == .complete || state == .ready else { return }
+
+        // Cancel any pending model unload — keep model loaded during recording.
+        modelUnloadTask?.cancel()
+        modelUnloadTask = nil
 
         state = .startingUp
         lastPolishError = nil
@@ -440,6 +445,7 @@ final class WhisperKitPipeline: DictationPipeline {
 
             currentTranscript = transcript
             state = .complete
+            scheduleModelUnloadIfNeeded()
         } catch {
             state = .error("Transcription failed: \(error.localizedDescription)")
         }
@@ -540,6 +546,13 @@ final class WhisperKitPipeline: DictationPipeline {
         let chunkSize = SilenceDetector.chunkSize
 
         while state == .recording && !Task.isCancelled {
+            // Graceful max duration check — auto-stop before AudioCaptureManager's hard limit.
+            if let startTime = recordingStartTime,
+               Date().timeIntervalSince(startTime) >= TimingConstants.maxRecordingDuration {
+                Task { [weak self] in await self?.stopAndTranscribe() }
+                return
+            }
+
             let currentCount = audioCapture.capturedSamples.count
 
             while processedSampleCount + chunkSize <= currentCount && !Task.isCancelled {
@@ -559,6 +572,29 @@ final class WhisperKitPipeline: DictationPipeline {
             }
 
             try? await Task.sleep(for: .milliseconds(100))
+        }
+    }
+
+    // MARK: - Model Lifecycle
+
+    private func scheduleModelUnloadIfNeeded() {
+        modelUnloadTask?.cancel()
+        modelUnloadTask = nil
+
+        switch modelUnloadPolicy {
+        case .never:
+            return
+        case .immediately:
+            modelUnloadTask = Task { [weak self] in
+                await self?.backend.unload()
+            }
+        default:
+            guard let interval = modelUnloadPolicy.interval else { return }
+            modelUnloadTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(interval))
+                guard !Task.isCancelled else { return }
+                await self?.backend.unload()
+            }
         }
     }
 

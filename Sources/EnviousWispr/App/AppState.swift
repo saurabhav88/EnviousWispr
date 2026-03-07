@@ -350,6 +350,7 @@ final class AppState {
             break
         case .modelUnloadPolicy:
             pipeline.modelUnloadPolicy = settings.modelUnloadPolicy
+            whisperKitPipeline.modelUnloadPolicy = settings.modelUnloadPolicy
             if settings.modelUnloadPolicy == .never {
                 asrManager.cancelIdleTimer()
             }
@@ -423,6 +424,7 @@ final class AppState {
         whisperKitPipeline.vadSilenceTimeout = settings.vadSilenceTimeout
         whisperKitPipeline.vadSensitivity = settings.vadSensitivity
         whisperKitPipeline.vadEnergyGate = settings.vadEnergyGate
+        whisperKitPipeline.modelUnloadPolicy = settings.modelUnloadPolicy
     }
 
 

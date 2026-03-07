@@ -65,6 +65,11 @@ enum TimingConstants {
     /// Minimum recording duration before transcription (seconds).
     /// Recordings shorter than this are silently discarded (accidental taps).
     static let minimumRecordingDuration: TimeInterval = 0.5
+
+    /// Maximum recording duration before graceful auto-stop (seconds).
+    /// Prevents runaway recordings from consuming unbounded memory/CPU.
+    /// AudioCaptureManager has a hard emergency limit at 600s; this fires earlier and gracefully.
+    static let maxRecordingDuration: TimeInterval = 300
 }
 
 // MARK: - LLM Constants

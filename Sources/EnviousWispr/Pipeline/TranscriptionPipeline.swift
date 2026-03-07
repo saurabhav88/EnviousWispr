@@ -694,6 +694,13 @@ final class TranscriptionPipeline: DictationPipeline {
         let chunkSize = SilenceDetector.chunkSize
 
         while state == .recording && !Task.isCancelled {
+            // Graceful max duration check — auto-stop before AudioCaptureManager's hard limit.
+            if let startTime = recordingStartTime,
+               Date().timeIntervalSince(startTime) >= TimingConstants.maxRecordingDuration {
+                Task { [weak self] in await self?.stopAndTranscribe() }
+                return
+            }
+
             // Snapshot @MainActor-isolated data before any await suspension.
             let currentCount = audioCapture.capturedSamples.count
 
