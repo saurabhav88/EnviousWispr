@@ -285,3 +285,4 @@
 {"actor":"saurabhav88","comment":null,"created_at":"2026-03-06T22:55:48Z","event_type":"created","id":285,"issue_id":"ew-901","new_value":"","old_value":""}
 {"actor":"saurabhav88","comment":null,"created_at":"2026-03-06T23:34:53Z","event_type":"created","id":286,"issue_id":"ew-cjc","new_value":"","old_value":""}
 {"actor":"saurabhav88","comment":null,"created_at":"2026-03-06T23:34:58Z","event_type":"closed","id":287,"issue_id":"ew-cjc","new_value":"Fixed in 2fd9fc5. Added abortPreWarm() to AudioCaptureManager, cancellation cleanup in AppState.onStartRecording, Task.isCancelled guard in WhisperKitPipeline.preWarmAudioInput, defense-in-depth in both pipelines' requestStop(). UAT passed: quick tap, 8x spam, 2s hold — all clean.","old_value":""}
+{"actor":"saurabhav88","comment":null,"created_at":"2026-03-07T11:21:10Z","event_type":"created","id":288,"issue_id":"ew-t4a","new_value":"","old_value":""}
