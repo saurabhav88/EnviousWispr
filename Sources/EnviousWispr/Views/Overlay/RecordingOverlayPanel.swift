@@ -64,6 +64,7 @@ final class RecordingOverlayPanel {
         // When triggered from an NSStatusItem menu action, the menu dismiss
         // animation is still in progress. Creating an NSHostingView during
         // that animation causes a re-entrant NSWindow layout cycle (SIGABRT).
+        // BRAIN: gotcha id=dispatch-queue-not-task
         // NOTE: Do NOT replace with Task { @MainActor } — DispatchQueue.main.async
         // guarantees next-run-loop-cycle deferral; Task may execute immediately
         // if already on the main actor.

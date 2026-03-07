@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Brain System Evolution — EnviousWispr</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200;300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:           #0f0a1a;
+      --surface:      #1a1425;
+      --surface-2:    #221c30;
+      --border:       rgba(138, 43, 226, 0.12);
+      --border-hover: rgba(138, 43, 226, 0.22);
+      --accent:       #7c3aed;
+      --accent-glow:  rgba(124, 58, 237, 0.20);
+      --text:         #f8f5ff;
+      --text-2:       #b0a3c8;
+      --text-3:       #6d6080;
+      --green:        #00c880;
+      --green-soft:   rgba(0, 200, 128, 0.10);
+      --amber:        #e6c200;
+      --amber-soft:   rgba(230, 194, 0, 0.10);
+      --cyan:         #00ccdd;
+
+      --rainbow-full: linear-gradient(90deg, #ff2a40, #ff8c00, #ffd700, #adff2f, #00fa9a, #00ffff, #1e90ff, #4169e1, #8a2be2);
+      --rainbow-hero: linear-gradient(135deg, #8a2be2 0%, #00ffff 100%);
+      --rainbow-cool: linear-gradient(90deg, #00ffff, #1e90ff, #4169e1, #8a2be2);
+
+      --font-body: 'Plus Jakarta Sans', -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+
+      --radius-card: 16px;
+      --radius-pill: 100px;
+      --max-width: 820px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      font-size: 15px;
+      line-height: 1.65;
+      min-height: 100vh;
+      padding: 60px 24px 100px;
+    }
+
+    /* ─── Layout ─── */
+    .page {
+      max-width: var(--max-width);
+      margin: 0 auto;
+    }
+
+    /* ─── Header ─── */
+    .header {
+      margin-bottom: 64px;
+    }
+
+    .header-eyebrow {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-3);
+      margin-bottom: 14px;
+    }
+
+    .header h1 {
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+      color: var(--text);
+      margin-bottom: 12px;
+    }
+
+    .header h1 span {
+      background: var(--rainbow-cool);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .header-desc {
+      color: var(--text-2);
+      font-size: 15px;
+      max-width: 520px;
+      font-weight: 400;
+    }
+
+    .header-rule {
+      height: 1px;
+      background: var(--rainbow-full);
+      opacity: 0.25;
+      margin-top: 32px;
+    }
+
+    /* ─── Timeline ─── */
+    .timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      position: relative;
+    }
+
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 27px;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      background: linear-gradient(180deg, transparent, var(--border) 10%, var(--border) 90%, transparent);
+    }
+
+    /* ─── Version Entry ─── */
+    .version-entry {
+      display: grid;
+      grid-template-columns: 56px 1fr;
+      gap: 0 20px;
+      padding-bottom: 56px;
+    }
+
+    .version-entry:last-child {
+      padding-bottom: 0;
+    }
+
+    /* Dot on the timeline */
+    .v-dot {
+      display: flex;
+      align-items: flex-start;
+      padding-top: 4px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .v-dot-inner {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--surface-2);
+      border: 2px solid var(--border-hover);
+      margin: 0 auto;
+      flex-shrink: 0;
+      transition: border-color 0.2s;
+    }
+
+    .version-entry.v0 .v-dot-inner { border-color: var(--text-3); background: var(--bg); }
+    .version-entry.v1 .v-dot-inner { border-color: var(--cyan); box-shadow: 0 0 8px rgba(0,204,221,0.3); }
+    .version-entry.v2 .v-dot-inner { border-color: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
+    .version-entry.v21 .v-dot-inner { border-color: var(--green); box-shadow: 0 0 10px rgba(0,200,128,0.35); }
+
+    /* Version content */
+    .v-content {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* Version header */
+    .v-header {
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .v-label {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      padding: 3px 10px;
+      border-radius: var(--radius-pill);
+      flex-shrink: 0;
+    }
+
+    .v0 .v-label { background: rgba(109,96,128,0.18); color: var(--text-3); border: 1px solid rgba(109,96,128,0.25); }
+    .v1 .v-label { background: rgba(0,204,221,0.10); color: var(--cyan); border: 1px solid rgba(0,204,221,0.20); }
+    .v2 .v-label { background: rgba(124,58,237,0.12); color: #a78bfa; border: 1px solid rgba(124,58,237,0.22); }
+    .v21 .v-label { background: rgba(0,200,128,0.10); color: var(--green); border: 1px solid rgba(0,200,128,0.22); }
+
+    .v-title {
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: -0.01em;
+    }
+
+    /* Card */
+    .v-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-card);
+      overflow: hidden;
+    }
+
+    /* Card sections */
+    .v-section {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .v-section:last-child {
+      border-bottom: none;
+    }
+
+    .v-section-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-3);
+      margin-bottom: 12px;
+    }
+
+    /* Bullet lists */
+    .bullet-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .bullet-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 14px;
+      color: var(--text-2);
+      line-height: 1.55;
+    }
+
+    .bullet-list li .bullet-icon {
+      flex-shrink: 0;
+      width: 16px;
+      height: 16px;
+      margin-top: 1px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Pain bullets */
+    .pain-list li .bullet-icon { color: var(--text-3); font-size: 12px; }
+
+    /* Built bullets */
+    .built-list li .bullet-icon { color: #a78bfa; font-size: 14px; }
+
+    /* Status rows */
+    .status-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 14px;
+      line-height: 1.55;
+      padding: 6px 0;
+    }
+
+    .status-row:first-child { padding-top: 0; }
+    .status-row:last-child  { padding-bottom: 0; }
+
+    .status-pill {
+      flex-shrink: 0;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      padding: 2px 8px;
+      border-radius: var(--radius-pill);
+      margin-top: 2px;
+    }
+
+    .status-pill.solved {
+      background: var(--green-soft);
+      color: var(--green);
+      border: 1px solid rgba(0,200,128,0.18);
+    }
+
+    .status-pill.remaining {
+      background: var(--amber-soft);
+      color: var(--amber);
+      border: 1px solid rgba(230,194,0,0.18);
+    }
+
+    .status-text {
+      color: var(--text-2);
+    }
+
+    /* Code / file names inline */
+    code {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: #a78bfa;
+      background: rgba(124,58,237,0.10);
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+
+    /* "What was built" file chips */
+    .file-chip {
+      display: inline-flex;
+      align-items: center;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--cyan);
+      background: rgba(0,204,221,0.07);
+      border: 1px solid rgba(0,204,221,0.14);
+      border-radius: var(--radius-pill);
+      padding: 2px 9px;
+    }
+
+    /* Mechanism blocks for V2 */
+    .mechanism-list {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .mechanism {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+    }
+
+    .mechanism-num {
+      flex-shrink: 0;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: rgba(124,58,237,0.15);
+      border: 1px solid rgba(124,58,237,0.28);
+      color: #a78bfa;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 1px;
+    }
+
+    .mechanism-body {
+      flex: 1;
+    }
+
+    .mechanism-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+
+    .mechanism-desc {
+      font-size: 13px;
+      color: var(--text-2);
+      line-height: 1.5;
+    }
+
+    /* ─── Summary Section ─── */
+    .summary-section {
+      margin-top: 72px;
+      padding-top: 40px;
+      border-top: 1px solid var(--border);
+    }
+
+    .summary-header {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-3);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-family: var(--font-mono);
+      margin-bottom: 28px;
+    }
+
+    .coverage-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 32px;
+    }
+
+    .coverage-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 20px;
+    }
+
+    .coverage-num {
+      font-family: var(--font-mono);
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+
+    .coverage-card:nth-child(1) .coverage-num { color: var(--cyan); }
+    .coverage-card:nth-child(2) .coverage-num { color: #a78bfa; }
+    .coverage-card:nth-child(3) .coverage-num { color: var(--green); }
+    .coverage-card:nth-child(4) .coverage-num { color: var(--amber); }
+    .coverage-card:nth-child(5) .coverage-num { color: #ff8c00; }
+
+    .coverage-label {
+      font-size: 12px;
+      color: var(--text-3);
+      line-height: 1.4;
+    }
+
+    .coverage-sub {
+      font-size: 11px;
+      color: var(--text-3);
+      margin-top: 3px;
+      font-family: var(--font-mono);
+    }
+
+    /* What's left */
+    .whats-left {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-card);
+      padding: 20px 24px;
+    }
+
+    .whats-left-title {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-3);
+      font-family: var(--font-mono);
+      margin-bottom: 12px;
+    }
+
+    .whats-left-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .whats-left-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--text-2);
+      line-height: 1.5;
+    }
+
+    .whats-left-list li .dot {
+      color: var(--amber);
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    /* Footer */
+    .footer {
+      margin-top: 60px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-3);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding-top: 20px;
+      border-top: 1px solid rgba(138,43,226,0.07);
+    }
+
+    /* Subtle rainbow top bar */
+    .rainbow-bar {
+      height: 3px;
+      background: var(--rainbow-full);
+      border-radius: 0 0 3px 3px;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      opacity: 0.7;
+    }
+
+    /* ─── Responsive ─── */
+    @media (max-width: 560px) {
+      .timeline::before { left: 19px; }
+      .version-entry { grid-template-columns: 40px 1fr; gap: 0 12px; }
+      .v-section { padding: 16px 18px; }
+      .coverage-grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="rainbow-bar"></div>
+
+  <div class="page">
+
+    <!-- Header -->
+    <header class="header">
+      <p class="header-eyebrow">Internal Doc &mdash; EnviousWispr</p>
+      <h1>Brain System <span>Evolution</span></h1>
+      <p class="header-desc">How the agent knowledge layer grew from hand-maintained markdown to a partially self-healing, integrity-checked system. V0 through V2.1.</p>
+      <div class="header-rule"></div>
+    </header>
+
+    <!-- Timeline -->
+    <div class="timeline">
+
+      <!-- ───── V0 ───── -->
+      <div class="version-entry v0">
+        <div class="v-dot"><div class="v-dot-inner"></div></div>
+        <div class="v-content">
+          <div class="v-header">
+            <span class="v-label">V0</span>
+            <span class="v-title">The Starting Point — Pure Hand-Maintenance</span>
+          </div>
+          <div class="v-card">
+
+            <div class="v-section">
+              <div class="v-section-label">What existed</div>
+              <ul class="bullet-list pain-list">
+                <li>
+                  <span class="bullet-icon">&#x25A1;</span>
+                  <span>Hand-written markdown in <code>.claude/knowledge/</code> — <code>architecture.md</code>, <code>gotchas.md</code>, <code>conventions.md</code>, and others</span>
+                </li>
+                <li>
+                  <span class="bullet-icon">&#x25A1;</span>
+                  <span>Agent files in <code>.claude/agents/</code> and skill files in <code>.claude/skills/</code></span>
+                </li>
+                <li>
+                  <span class="bullet-icon">&#x25A1;</span>
+                  <span>All facts — file counts, type lists, line numbers, dependency versions — written and updated entirely by hand</span>
+                </li>
+              </ul>
+            </div>
+
+            <div class="v-section">
+              <div class="v-section-label">The pain</div>
+              <div class="status-row">
+                <span class="status-pill remaining">pain</span>
+                <span class="status-text">File counts, type lists, and line numbers went stale the moment code changed</span>
+              </div>
+              <div class="status-row">
+                <span class="status-pill remaining">pain</span>
+                <span class="status-text">No way to know if a knowledge file was outdated without manually checking every source file</span>
+              </div>
+              <div class="status-row">
+                <span class="status-pill remaining">pain</span>
+                <span class="status-text">Dependency versions hardcoded in three agent files and <code>distribution.md</code> — diverged silently over time</span>
+              </div>
+              <div class="status-row">
+                <span class="status-pill remaining">pain</span>
+                <span class="status-text">New sessions started with potentially stale context — the AI would confidently state wrong facts</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ───── V1 ───── -->
+      <div class="version-entry v1">
+        <div class="v-dot"><div class="v-dot-inner"></div></div>
+        <div class="v-content">
+          <div class="v-header">
+            <span class="v-label">V1</span>
+            <span class="v-title">Generated Files + Session Priming</span>
+          </div>
+          <div class="v-card">
+
+            <div class="v-section">
+              <div class="v-section-label">What was built</div>
+              <ul class="bullet-list built-list">
+                <li>
+                  <span class="bullet-icon">+</span>
+                  <span><span class="file-chip">brain-refresh.sh</span> — auto-generates 4 files from source: <code>file-index.md</code>, <code>type-index.md</code>, <code>task-router.md</code>, <code>feature-catalog.md</code></span>
+                </li>
+                <li>
+                  <span class="bullet-icon">+</span>
+                  <span><span class="file-chip">brain-check.sh</span> — diffs generated files against source to detect staleness</span>
+                </li>
+                <li>
+                  <span class="bullet-icon">+</span>
+                  <span><span class="file-chip">brain-prime.sh</span> — runs at session start, auto-fixes stale generated files before any agent reads them</span>
+                </li>
+                <li>
+                  <span class="bullet-icon">+</span>
+                  <span>Manual/generated split via <code>&lt;!-- MANUAL SECTION --&gt;</code> delimiter — human prose preserved across regeneration</span>
+                </li>
+              </ul>
+            </div>
+
+            <div class="v-section">
+              <div class="v-section-label">Pain solved</div>
+              <div class="status-row">
+                <span class="status-pill solved">solved</span>
+                <span class="status-text">Code-derived facts (file counts, type lists, line counts) can no longer go stale — regenerated on every session</span>
+              </div>
+              <div class="status-row">
+                <span class="status-pill solved">solved</span>
+                <span class="status-text">Session start always has fresh derived data via <code>brain-prime.sh</code></span>
+              </div>
+            </div>
+
+            <div class="v-section">
+              <div class="v-section-label">Pain remaining</div>
+              <div class="status-row">
+                <span class="status-pill remaining">gap</span>
+                <span class="status-text">Canonical files (<code>architecture.md</code>, <code>gotchas.md</code>, <code>whisperkit-research.md</code>) had zero staleness detection — still 100% hand-maintained</span>
+              </div>
+              <div class="status-row">
+                <span class="status-pill remaining">gap</span>
+                <span class="status-text">When WhisperKit highway shipped: <code>gotchas.md</code> missed 6 traps, <code>whisperkit-research.md</code> contradicted the codebase, <code>architecture.md</code> missed a protocol conformer</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ───── V2 ───── -->
+      <div class="version-entry v2">
+        <div class="v-dot"><div class="v-dot-inner"></div></div>
+        <div class="v-content">
+          <div class="v-header">
+            <span class="v-label">V2</span>
+            <span class="v-title">Auto-Sections + Source Annotations + Integrity Checks</span>
+          </div>
+          <div class="v-card">
+
+            <div class="v-section">
+              <div class="v-section-label">Three new mechanisms</div>
+              <div class="mechanism-list">
+                <div class="mechanism">
+                  <div class="mechanism-num">1</div>
+                  <div class="mechanism-body">
+                    <div class="mechanism-name">Auto-generated sections in canonical docs</div>
+                    <div class="mechanism-desc"><code>&lt;!-- BEGIN AUTO: name --&gt;</code> / <code>&lt;!-- END AUTO: name --&gt;</code> markers. <code>brain-refresh.sh</code> replaces content between markers; human prose outside is preserved. Initially 2 sections: a <code>protocol_conformers</code> table in <code>architecture.md</code> and a <code>whisperkit_defaults</code> table in <code>whisperkit-research.md</code>.</div>
+                  </div>
+                </div>
+                <div class="mechanism">
+                  <div class="mechanism-num">2</div>
+                  <div class="mechanism-body">
+                    <div class="mechanism-name">BRAIN ID source annotations</div>
+                    <div class="mechanism-desc"><code>// BRAIN: gotcha id=silence-padding</code> in Swift source files linked bidirectionally to <code>&lt;!-- BRAIN: id=silence-padding --&gt;</code> in docs. <code>brain-check.sh</code> verifies every source annotation has a matching doc entry. 8 annotations across 5 source files.</div>
+                  </div>
+                </div>
+                <div class="mechanism">
+                  <div class="mechanism-num">3</div>
+                  <div class="mechanism-body">
+                    <div class="mechanism-name">Agent and skill file integrity</div>
+                    <div class="mechanism-desc"><code>brain-check.sh</code> verifies: all agent refs in <code>CLAUDE.md</code> point to existing files, all skill refs in agent files point to an existing <code>SKILL.md</code>, and orphan detection runs for both directions.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="v-section">
+              <div class="v-section-label">Pain solved</div>
+              <div class="status-row">
+                <span class="status-pill solved">solved</span>
+                <span class="status-text">Machine-derivable facts in canonical docs auto-update — no longer fully hand-maintained</span>
+              </div>
+              <div class="status-row">
+                <span class="status-pill solved">solved</span>
+                <span class="status-text">Source gotchas have verifiable links to doc entries — a source annotation with no doc match fails <code>brain-check.sh</code></span>
+              </div>
+              <div class="status-row">
+                <span class="status-pill solved">solved</span>
+                <span class="status-text">Broken agent/skill cross-references are caught automatically rather than discovered at runtime</span>
+              </div>
+            </div>
+
+            <div class="v-section">
+              <div class="v-section-label">Pain remaining</div>
+              <div class="status-row">
+                <span class="status-pill remaining">gap</span>
+                <span class="status-text">Only 2 auto-sections — most machine-derivable facts still scattered across agent files as hardcoded text</span>
+              </div>
+              <div class="status-row">
+                <span class="status-pill remaining">gap</span>
+                <span class="status-text">Dependency versions duplicated in 3 agent files and <code>distribution.md</code> — still no single authoritative source</span>
+              </div>
+              <div class="status-row">
+                <span class="status-pill remaining">gap</span>
+                <span class="status-text">Adding a settings tab required manually updating both <code>architecture.md</code> and <code>wispr-eyes.md</code></span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ───── V2.1 ───── -->
+      <div class="version-entry v21">
+        <div class="v-dot"><div class="v-dot-inner"></div></div>
+        <div class="v-content">
+          <div class="v-header">
+            <span class="v-label">V2.1</span>
+            <span class="v-title">Deep Coverage + Deduplication</span>
+          </div>
+          <div class="v-card">
+
+            <div class="v-section">
+              <div class="v-section-label">What was built</div>
+              <ul class="bullet-list built-list">
+                <li>
+                  <span class="bullet-icon">+</span>
+                  <span>6 new auto-generators added to <code>brain-refresh.sh</code> — total now 8 auto-sections plus the original 4 fully-generated files</span>
+                </li>
+                <li>
+                  <span class="bullet-icon">+</span>
+                  <span>9 auto-sections across 4 files (up from 2 sections in 2 files):
+                    <ul style="margin-top:6px; padding-left:4px; list-style:none; display:flex; flex-direction:column; gap:4px;">
+                      <li style="font-size:13px; color: var(--text-3);"><code>architecture.md</code> &rarr; <code>settings_sections</code>, <code>pipeline_states</code>, <code>llm_providers</code>, <code>asr_backend_types</code>, <code>audio_constants</code>, <code>protocol_conformers</code></li>
+                      <li style="font-size:13px; color: var(--text-3);"><code>whisperkit-research.md</code> &rarr; <code>whisperkit_defaults</code></li>
+                      <li style="font-size:13px; color: var(--text-3);"><code>distribution.md</code> &rarr; <code>dependency_versions</code></li>
+                      <li style="font-size:13px; color: var(--text-3);"><code>wispr-eyes.md</code> &rarr; <code>settings_sections</code></li>
+                    </ul>
+                  </span>
+                </li>
+                <li>
+                  <span class="bullet-icon">+</span>
+                  <span>3 agent files deduplicated — hardcoded dependency versions replaced with references to canonical source in <code>distribution.md</code></span>
+                </li>
+                <li>
+                  <span class="bullet-icon">+</span>
+                  <span><code>brain-check.sh</code> expanded to validate all new auto-section files and coverage</span>
+                </li>
+              </ul>
+            </div>
+
+            <div class="v-section">
+              <div class="v-section-label">Pain solved</div>
+              <div class="status-row">
+                <span class="status-pill solved">solved</span>
+                <span class="status-text">Adding a settings tab, LLM provider, or ASR backend now auto-propagates to all relevant docs — no manual hunting</span>
+              </div>
+              <div class="status-row">
+                <span class="status-pill solved">solved</span>
+                <span class="status-text">Dependency version bumps auto-update in <code>distribution.md</code> and propagate to agent files that reference it</span>
+              </div>
+              <div class="status-row">
+                <span class="status-pill solved">solved</span>
+                <span class="status-text">"One file says X, another says Y" class of bugs is structurally eliminated for all covered facts</span>
+              </div>
+            </div>
+
+            <div class="v-section">
+              <div class="v-section-label">What's left</div>
+              <div class="status-row">
+                <span class="status-pill remaining">minor</span>
+                <span class="status-text">Prose sections in canonical docs (strategic rationale, usage guidance) still hand-maintained — intentional, not a bug</span>
+              </div>
+              <div class="status-row">
+                <span class="status-pill remaining">minor</span>
+                <span class="status-text">BRAIN annotation coverage is partial — only 8 gotcha annotations; not every non-obvious code behavior has one</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <!-- end timeline -->
+
+    <!-- ─── Summary ─── -->
+    <div class="summary-section">
+      <div class="summary-header">Current State &mdash; V2.1 Coverage</div>
+
+      <div class="coverage-grid">
+        <div class="coverage-card">
+          <div class="coverage-num">4</div>
+          <div class="coverage-label">Fully generated files</div>
+          <div class="coverage-sub">file-index, type-index, task-router, feature-catalog</div>
+        </div>
+        <div class="coverage-card">
+          <div class="coverage-num">9</div>
+          <div class="coverage-label">Auto-sections in canonical docs</div>
+          <div class="coverage-sub">across architecture, whisperkit, distribution, wispr-eyes</div>
+        </div>
+        <div class="coverage-card">
+          <div class="coverage-num">8</div>
+          <div class="coverage-label">BRAIN source annotations</div>
+          <div class="coverage-sub">across 5 Swift source files</div>
+        </div>
+        <div class="coverage-card">
+          <div class="coverage-num">&check;</div>
+          <div class="coverage-label">Agent + skill integrity checks</div>
+          <div class="coverage-sub">refs, orphans, SKILL.md presence</div>
+        </div>
+        <div class="coverage-card">
+          <div class="coverage-num">&check;</div>
+          <div class="coverage-label">Session-start auto-fix</div>
+          <div class="coverage-sub">via brain-prime.sh</div>
+        </div>
+      </div>
+
+      <div class="whats-left">
+        <div class="whats-left-title">Remaining exposure</div>
+        <ul class="whats-left-list">
+          <li>
+            <span class="dot">&#x25CF;</span>
+            <span>Strategic and prose content in canonical docs is still entirely human-maintained. This is correct — the system is not trying to auto-generate reasoning or design intent, only machine-derivable facts.</span>
+          </li>
+          <li>
+            <span class="dot">&#x25CF;</span>
+            <span>BRAIN annotation coverage is incomplete. Any non-obvious behavior in Swift source that hasn't been annotated still has no guaranteed doc link. Incremental: add annotations when bugs reveal a gap.</span>
+          </li>
+          <li>
+            <span class="dot">&#x25CF;</span>
+            <span>New auto-sections require a dev to add the generator to <code>brain-refresh.sh</code> and the marker to the target doc. There's no automatic discovery of "this fact should have an auto-section."</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <span>EnviousWispr &mdash; Brain System</span>
+      <span>docs/brain-system-evolution.html</span>
+    </div>
+
+  </div><!-- end .page -->
+</body>
+</html>

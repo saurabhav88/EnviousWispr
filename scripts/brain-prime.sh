@@ -15,6 +15,9 @@ if [[ -x "$CHECK_SCRIPT" ]]; then
     check_output=$("$CHECK_SCRIPT" 2>&1)
     check_exit=$?
 
+    # Extract warnings (annotation + integrity) regardless of exit code
+    warnings=$(echo "$check_output" | grep '  WARNING:' || true)
+
     if [[ $check_exit -ne 0 ]]; then
         # Brain is stale — auto-refresh
         if [[ -x "$REFRESH_SCRIPT" ]]; then
@@ -24,7 +27,7 @@ if [[ -x "$CHECK_SCRIPT" ]]; then
             if [[ $refresh_exit -eq 0 ]]; then
                 echo "# Brain Auto-Refresh"
                 echo ""
-                echo "Brain indexes were stale. Auto-refreshed 4 generated files from source."
+                echo "Brain indexes were stale. Auto-refreshed generated files + auto-sections from source."
             else
                 echo "# Brain WARNING"
                 echo ""
@@ -40,5 +43,15 @@ if [[ -x "$CHECK_SCRIPT" ]]; then
             echo "Brain indexes are stale but brain-refresh.sh not found or not executable."
             echo "Run \`scripts/brain-refresh.sh\` manually."
         fi
+    fi
+
+    # Surface warnings (these are informational, not auto-fixable)
+    if [[ -n "$warnings" ]]; then
+        echo ""
+        echo "# Brain Warnings (informational)"
+        echo ""
+        echo "$warnings"
+        echo ""
+        echo "These require manual attention — run \`scripts/brain-check.sh\` for details."
     fi
 fi

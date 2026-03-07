@@ -29,6 +29,7 @@ actor WhisperKitBackend: ASRBackend {
     /// Exposes the tokenizer for prompt token encoding (used by incremental worker tail decode).
     var whisperKitTokenizer: (any WhisperTokenizer)? { whisperKit?.tokenizer }
 
+    // BRAIN: gotcha id=default-model-turbo
     init(modelVariant: String = "openai_whisper-large-v3_turbo") {
         self.modelVariant = modelVariant
     }
@@ -118,11 +119,13 @@ actor WhisperKitBackend: ASRBackend {
 
         // Use VAD chunking for long recordings to prevent hallucinated repetitions
         let thirtySeconds = 16000 * 30  // 480_000 samples
+        // BRAIN: gotcha id=vad-chunking-30s
         opts.chunkingStrategy = sampleCount > thirtySeconds ? .vad : ChunkingStrategy.none
 
         // Disable windowClipTime (default 1.0s) which skips the last 1s of audio.
         // We pad audio with silence instead, which provides the look-ahead context
         // the decoder needs without sacrificing real content.
+        // BRAIN: gotcha id=window-clip-time-zero
         opts.windowClipTime = 0
 
         return opts
@@ -130,6 +133,7 @@ actor WhisperKitBackend: ASRBackend {
 
     /// Pads audio with trailing silence so the Whisper decoder has look-ahead context
     /// at the end of speech. Without this, abruptly-ending audio loses the last 1-3 words.
+    // BRAIN: gotcha id=silence-padding
     private static let silencePaddingSamples = Int(0.5 * 16000)  // 500ms at 16kHz
 
     static func padAudioWithSilence(_ samples: [Float]) -> [Float] {

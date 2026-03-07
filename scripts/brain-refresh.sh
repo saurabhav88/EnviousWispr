@@ -49,6 +49,366 @@ HEADER="<!-- GENERATED — do not hand-edit. Run scripts/brain-refresh.sh to upd
 DELIMITER="<!-- MANUAL SECTION BELOW — human-authored, preserved across regeneration -->"
 
 # --------------------------------------------------------------------------
+# Helper: inject auto-generated content between <!-- BEGIN AUTO: name --> and <!-- END AUTO: name --> markers.
+# If the target file doesn't exist or markers are missing, does nothing.
+# Usage: inject_auto_section <target_file> <section_name> <content>
+# --------------------------------------------------------------------------
+inject_auto_section() {
+    local target_file="$1"
+    local section_name="$2"
+    local content="$3"
+
+    if [[ ! -f "$target_file" ]]; then
+        return
+    fi
+
+    local begin_marker="<!-- BEGIN AUTO: ${section_name} -->"
+    local end_marker="<!-- END AUTO: ${section_name} -->"
+
+    # Check if markers exist
+    if ! grep -qF "$begin_marker" "$target_file" || ! grep -qF "$end_marker" "$target_file"; then
+        return
+    fi
+
+    local begin_line end_line
+    begin_line=$(grep -nF "$begin_marker" "$target_file" | head -1 | cut -d: -f1)
+    end_line=$(grep -nF "$end_marker" "$target_file" | head -1 | cut -d: -f1)
+
+    if [[ -z "$begin_line" || -z "$end_line" || "$begin_line" -ge "$end_line" ]]; then
+        return
+    fi
+
+    # Build new file: head (up to begin marker) + content + tail (from end marker)
+    local tmpfile
+    tmpfile=$(mktemp)
+    head -n "$begin_line" "$target_file" > "$tmpfile"
+    echo "$content" >> "$tmpfile"
+    tail -n +"$end_line" "$target_file" >> "$tmpfile"
+    mv "$tmpfile" "$target_file"
+}
+
+# --------------------------------------------------------------------------
+# Auto-generate: protocol conformers table for architecture.md
+# --------------------------------------------------------------------------
+generate_protocol_conformers() {
+    echo "| Protocol | Conforming Types |"
+    echo "|----------|-----------------|"
+
+    # Map of protocols to search for
+    local protocols=("ASRBackend" "TranscriptPolisher" "DictationPipeline" "TextProcessingStep")
+
+    for proto in "${protocols[@]}"; do
+        local conformers
+        conformers=$(grep -rnE "(class|struct|actor|enum) [A-Za-z0-9_]+.*:.*\b${proto}\b" "$SOURCES_DIR" --include='*.swift' \
+            | grep -oE "(class|struct|actor|enum) [A-Za-z0-9_]+" \
+            | awk '{print $2}' \
+            | sort -u)
+
+        if [[ -n "$conformers" ]]; then
+            # Format as backtick-wrapped, comma-separated list
+            local formatted=""
+            local first=true
+            while IFS= read -r name; do
+                if $first; then
+                    formatted="\`$name\`"
+                    first=false
+                else
+                    formatted="$formatted, \`$name\`"
+                fi
+            done <<< "$conformers"
+            echo "| \`$proto\` | $formatted |"
+        fi
+    done
+}
+
+# --------------------------------------------------------------------------
+# Auto-generate: WhisperKit defaults table for whisperkit-research.md
+# --------------------------------------------------------------------------
+generate_whisperkit_defaults() {
+    local wk_file="$SOURCES_DIR/EnviousWispr/ASR/WhisperKitBackend.swift"
+
+    if [[ ! -f "$wk_file" ]]; then
+        echo "*(WhisperKitBackend.swift not found — skipping)*"
+        return
+    fi
+
+    echo "| Setting | Value | Source |"
+    echo "|---------|-------|--------|"
+
+    # Default model (from init parameter default)
+    local default_model
+    default_model=$(grep -n 'init(modelVariant.*=' "$wk_file" | head -1)
+    if [[ -n "$default_model" ]]; then
+        local line_num model_val
+        line_num=$(echo "$default_model" | cut -d: -f1)
+        model_val=$(echo "$default_model" | grep -oE '"[^"]*"' | head -1)
+        echo "| Default model | \`$model_val\` | WhisperKitBackend.swift:$line_num |"
+    fi
+
+    # Compute options (from file-level let)
+    local compute_lines
+    compute_lines=$(grep -n 'Compute\|melCompute\|audioEncoderCompute\|textDecoderCompute\|prefillCompute' "$wk_file")
+    while IFS= read -r line; do
+        local lnum lval field
+        lnum=$(echo "$line" | cut -d: -f1)
+        lval=$(echo "$line" | cut -d: -f2-)
+        if echo "$lval" | grep -q 'audioEncoderCompute'; then
+            field=$(echo "$lval" | grep -oE '\.[a-zA-Z]+' | tail -1)
+            echo "| Compute (encoder) | \`$field\` | WhisperKitBackend.swift:$lnum |"
+        elif echo "$lval" | grep -q 'prefillCompute'; then
+            field=$(echo "$lval" | grep -oE '\.[a-zA-Z]+' | tail -1)
+            echo "| Compute (prefill) | \`$field\` | WhisperKitBackend.swift:$lnum |"
+        fi
+    done <<< "$compute_lines"
+
+    # Silence padding
+    local padding_line
+    padding_line=$(grep -n 'silencePaddingSamples' "$wk_file" | grep 'private static' | head -1)
+    if [[ -n "$padding_line" ]]; then
+        local lnum
+        lnum=$(echo "$padding_line" | cut -d: -f1)
+        echo "| Silence padding | 500ms (8000 samples) | WhisperKitBackend.swift:$lnum |"
+    fi
+
+    # Chunking threshold
+    local chunk_line
+    chunk_line=$(grep -n 'chunkingStrategy' "$wk_file" | head -1)
+    if [[ -n "$chunk_line" ]]; then
+        local lnum
+        lnum=$(echo "$chunk_line" | cut -d: -f1)
+        echo "| Chunking threshold | 30s → \`.vad\` | WhisperKitBackend.swift:$lnum |"
+    fi
+
+    # windowClipTime
+    local clip_line
+    clip_line=$(grep -n 'windowClipTime' "$wk_file" | head -1)
+    if [[ -n "$clip_line" ]]; then
+        local lnum
+        lnum=$(echo "$clip_line" | cut -d: -f1)
+        echo "| windowClipTime | 0 (disabled) | WhisperKitBackend.swift:$lnum |"
+    fi
+}
+
+# --------------------------------------------------------------------------
+# Auto-generate: settings sections table from SettingsSection enum
+# --------------------------------------------------------------------------
+generate_settings_sections() {
+    local ss_file="$SOURCES_DIR/EnviousWispr/Views/Settings/SettingsSection.swift"
+
+    if [[ ! -f "$ss_file" ]]; then
+        echo "*(SettingsSection.swift not found — skipping)*"
+        return
+    fi
+
+    echo "| Case | Display Name |"
+    echo "|------|-------------|"
+
+    # Extract labels from the `var label` computed property block only
+    # Match lines like: case .history:        return "History"
+    # Only within the label property (between "var label:" and next "var " or "}")
+    local in_label=false
+    while IFS= read -r line; do
+        if echo "$line" | grep -q 'var label: String'; then
+            in_label=true
+            continue
+        fi
+        if $in_label && echo "$line" | grep -qE '^\s*(var |func |\})'; then
+            if echo "$line" | grep -q '^    }'; then
+                in_label=false
+                continue
+            fi
+            if echo "$line" | grep -qE '^\s*(var |func )'; then
+                break
+            fi
+        fi
+        if $in_label; then
+            local case_name label
+            case_name=$(echo "$line" | grep -oE 'case \.[a-zA-Z]+' | sed 's/case \.//')
+            label=$(echo "$line" | grep -oE 'return "[^"]*"' | sed 's/return "//;s/"$//')
+            if [[ -n "$case_name" && -n "$label" ]]; then
+                echo "| \`$case_name\` | $label |"
+            fi
+        fi
+    done < "$ss_file"
+}
+
+# --------------------------------------------------------------------------
+# Auto-generate: dependency versions table from Package.swift
+# --------------------------------------------------------------------------
+generate_dependency_versions() {
+    local pkg_file="$PROJECT_ROOT/Package.swift"
+
+    if [[ ! -f "$pkg_file" ]]; then
+        echo "*(Package.swift not found — skipping)*"
+        return
+    fi
+
+    echo "| Package | Repo | Min Version |"
+    echo "|---------|------|-------------|"
+
+    # Extract .package(url: ..., from: ...) lines
+    grep '\.package(url:' "$pkg_file" | while IFS= read -r line; do
+        local repo version pkg_name
+        repo=$(echo "$line" | grep -oE 'https://[^"]+' | sed 's/\.git$//')
+        version=$(echo "$line" | grep -oE 'from: "[^"]*"' | grep -oE '"[^"]*"' | tr -d '"')
+        pkg_name=$(echo "$repo" | awk -F/ '{print $NF}')
+        if [[ -n "$pkg_name" && -n "$version" ]]; then
+            echo "| $pkg_name | \`$repo\` | $version+ |"
+        fi
+    done
+}
+
+# --------------------------------------------------------------------------
+# Auto-generate: pipeline states for architecture.md
+# --------------------------------------------------------------------------
+generate_pipeline_states() {
+    echo "**PipelineState** (Parakeet highway — \`Models/AppSettings.swift\`):"
+    echo "\`\`\`"
+
+    local ps_file="$SOURCES_DIR/EnviousWispr/Models/AppSettings.swift"
+    if [[ -f "$ps_file" ]]; then
+        # Extract cases only from PipelineState enum (skip RecordingMode)
+        local in_enum=false
+        while IFS= read -r line; do
+            if echo "$line" | grep -q '^enum PipelineState'; then
+                in_enum=true
+                continue
+            fi
+            if $in_enum; then
+                if echo "$line" | grep -qE '^\s*case '; then
+                    echo "$line" | sed 's/^\s*//'
+                elif echo "$line" | grep -qE '^\s*(var |func |})'; then
+                    break
+                fi
+            fi
+        done < "$ps_file"
+    fi
+
+    echo "\`\`\`"
+    echo ""
+    echo "**WhisperKitPipelineState** (WhisperKit highway — \`Pipeline/WhisperKitPipeline.swift\`):"
+    echo "\`\`\`"
+
+    local wkps_file="$SOURCES_DIR/EnviousWispr/Pipeline/WhisperKitPipeline.swift"
+    if [[ -f "$wkps_file" ]]; then
+        local in_enum=false
+        while IFS= read -r line; do
+            if echo "$line" | grep -q '^enum WhisperKitPipelineState'; then
+                in_enum=true
+                continue
+            fi
+            if $in_enum; then
+                if echo "$line" | grep -qE '^\s*case '; then
+                    echo "$line" | sed 's/^\s*//'
+                elif echo "$line" | grep -qE '^\s*(var |func |})'; then
+                    break
+                fi
+            fi
+        done < "$wkps_file"
+    fi
+
+    echo "\`\`\`"
+}
+
+# --------------------------------------------------------------------------
+# Auto-generate: LLM providers table
+# --------------------------------------------------------------------------
+generate_llm_providers() {
+    local llm_file="$SOURCES_DIR/EnviousWispr/Models/LLMResult.swift"
+
+    if [[ ! -f "$llm_file" ]]; then
+        echo "*(LLMResult.swift not found — skipping)*"
+        return
+    fi
+
+    echo "| Case | Display Name |"
+    echo "|------|-------------|"
+
+    # Extract case names from enum
+    local cases
+    cases=$(sed -n '/^enum LLMProvider/,/^}/p' "$llm_file" | grep '^\s*case ' | awk '{print $2}')
+
+    while IFS= read -r case_name; do
+        local label
+        label=$(grep -E "case \.$case_name:" "$llm_file" | grep -oE '"[^"]*"' | tr -d '"')
+        if [[ -n "$label" ]]; then
+            echo "| \`$case_name\` | $label |"
+        fi
+    done <<< "$cases"
+}
+
+# --------------------------------------------------------------------------
+# Auto-generate: ASR backend types table
+# --------------------------------------------------------------------------
+generate_asr_backend_types() {
+    local asr_file="$SOURCES_DIR/EnviousWispr/Models/ASRResult.swift"
+
+    if [[ ! -f "$asr_file" ]]; then
+        echo "*(ASRResult.swift not found — skipping)*"
+        return
+    fi
+
+    echo "| Case | Display Name |"
+    echo "|------|-------------|"
+
+    local cases
+    cases=$(sed -n '/^enum ASRBackendType/,/^}/p' "$asr_file" | grep '^\s*case ' | awk '{print $2}')
+
+    while IFS= read -r case_name; do
+        local label
+        label=$(grep -E "case \.$case_name:" "$asr_file" | grep -oE '"[^"]*"' | tr -d '"')
+        if [[ -n "$label" ]]; then
+            echo "| \`$case_name\` | $label |"
+        fi
+    done <<< "$cases"
+}
+
+# --------------------------------------------------------------------------
+# Auto-generate: audio constants table
+# --------------------------------------------------------------------------
+generate_audio_constants() {
+    local const_file="$SOURCES_DIR/EnviousWispr/Utilities/Constants.swift"
+
+    if [[ ! -f "$const_file" ]]; then
+        echo "*(Constants.swift not found — skipping)*"
+        return
+    fi
+
+    echo "| Constant | Value | Description |"
+    echo "|----------|-------|-------------|"
+
+    # Read AudioConstants block, tracking doc comments for each static let
+    local in_enum=false
+    local prev_comment=""
+    while IFS= read -r line; do
+        if echo "$line" | grep -q '^enum AudioConstants'; then
+            in_enum=true
+            continue
+        fi
+        if $in_enum; then
+            if echo "$line" | grep -q '^}'; then
+                break
+            fi
+            # Capture doc comment
+            if echo "$line" | grep -qE '^\s*///'; then
+                prev_comment=$(echo "$line" | sed 's/^[[:space:]]*\/\/\/ *//')
+                continue
+            fi
+            # Capture static let
+            if echo "$line" | grep -q 'static let'; then
+                local name value
+                name=$(echo "$line" | grep -oE 'let [a-zA-Z]+' | awk '{print $2}')
+                value=$(echo "$line" | grep -oE '= [0-9.]+' | awk '{print $2}')
+                if [[ -n "$name" && -n "$value" ]]; then
+                    echo "| \`$name\` | $value | ${prev_comment:-—} |"
+                fi
+                prev_comment=""
+            fi
+        fi
+    done < "$const_file"
+}
+
+# --------------------------------------------------------------------------
 # Helper: get manual section from an existing file (everything from delimiter onward)
 # If delimiter not found, returns empty string.
 # --------------------------------------------------------------------------
@@ -293,9 +653,99 @@ FEATURE_CATALOG_MANUAL=$(get_manual_section "$KNOWLEDGE_DIR/feature-catalog.md")
     fi
 } > "$FEATURE_CATALOG"
 
+# --------------------------------------------------------------------------
+# 5. Auto-generated sections in canonical docs
+# --------------------------------------------------------------------------
+# These inject machine-derived facts into human-authored files.
+# Only the content between <!-- BEGIN AUTO --> and <!-- END AUTO --> markers
+# is replaced; all surrounding prose is preserved.
+
+ARCH_FILE="$KNOWLEDGE_DIR/architecture.md"
+WK_FILE="$KNOWLEDGE_DIR/whisperkit-research.md"
+DIST_FILE="$KNOWLEDGE_DIR/distribution.md"
+EYES_FILE="$PROJECT_ROOT/.claude/agents/wispr-eyes.md"
+
+if [[ -z "$OUTPUT_DIR" ]]; then
+    # In-place mode: inject directly into canonical files
+    echo "Injecting auto-sections into canonical docs..."
+
+    PROTO_TABLE=$(generate_protocol_conformers)
+    inject_auto_section "$ARCH_FILE" "protocol_conformers" "$PROTO_TABLE"
+
+    SETTINGS_TABLE=$(generate_settings_sections)
+    inject_auto_section "$ARCH_FILE" "settings_sections" "$SETTINGS_TABLE"
+
+    PIPELINE_TABLE=$(generate_pipeline_states)
+    inject_auto_section "$ARCH_FILE" "pipeline_states" "$PIPELINE_TABLE"
+
+    LLM_TABLE=$(generate_llm_providers)
+    inject_auto_section "$ARCH_FILE" "llm_providers" "$LLM_TABLE"
+
+    ASR_TABLE=$(generate_asr_backend_types)
+    inject_auto_section "$ARCH_FILE" "asr_backend_types" "$ASR_TABLE"
+
+    AUDIO_TABLE=$(generate_audio_constants)
+    inject_auto_section "$ARCH_FILE" "audio_constants" "$AUDIO_TABLE"
+
+    WK_TABLE=$(generate_whisperkit_defaults)
+    inject_auto_section "$WK_FILE" "whisperkit_defaults" "$WK_TABLE"
+
+    DEP_TABLE=$(generate_dependency_versions)
+    inject_auto_section "$DIST_FILE" "dependency_versions" "$DEP_TABLE"
+
+    # wispr-eyes.md gets settings sections too (needs inline for nav())
+    inject_auto_section "$EYES_FILE" "settings_sections" "$SETTINGS_TABLE"
+else
+    # Output-dir mode: copy canonical files, then inject, for freshness diffing
+    for canonical in architecture.md whisperkit-research.md; do
+        src="$KNOWLEDGE_DIR/$canonical"
+        if [[ -f "$src" ]]; then
+            cp "$src" "$OUTPUT_DIR/$canonical"
+        fi
+    done
+    for extra in distribution.md; do
+        src="$KNOWLEDGE_DIR/$extra"
+        if [[ -f "$src" ]]; then
+            cp "$src" "$OUTPUT_DIR/$extra"
+        fi
+    done
+    # Also copy wispr-eyes.md for freshness check
+    if [[ -f "$EYES_FILE" ]]; then
+        cp "$EYES_FILE" "$OUTPUT_DIR/wispr-eyes.md"
+    fi
+
+    PROTO_TABLE=$(generate_protocol_conformers)
+    inject_auto_section "$OUTPUT_DIR/architecture.md" "protocol_conformers" "$PROTO_TABLE"
+
+    SETTINGS_TABLE=$(generate_settings_sections)
+    inject_auto_section "$OUTPUT_DIR/architecture.md" "settings_sections" "$SETTINGS_TABLE"
+
+    PIPELINE_TABLE=$(generate_pipeline_states)
+    inject_auto_section "$OUTPUT_DIR/architecture.md" "pipeline_states" "$PIPELINE_TABLE"
+
+    LLM_TABLE=$(generate_llm_providers)
+    inject_auto_section "$OUTPUT_DIR/architecture.md" "llm_providers" "$LLM_TABLE"
+
+    ASR_TABLE=$(generate_asr_backend_types)
+    inject_auto_section "$OUTPUT_DIR/architecture.md" "asr_backend_types" "$ASR_TABLE"
+
+    AUDIO_TABLE=$(generate_audio_constants)
+    inject_auto_section "$OUTPUT_DIR/architecture.md" "audio_constants" "$AUDIO_TABLE"
+
+    WK_TABLE=$(generate_whisperkit_defaults)
+    inject_auto_section "$OUTPUT_DIR/whisperkit-research.md" "whisperkit_defaults" "$WK_TABLE"
+
+    DEP_TABLE=$(generate_dependency_versions)
+    inject_auto_section "$OUTPUT_DIR/distribution.md" "dependency_versions" "$DEP_TABLE"
+
+    # wispr-eyes.md
+    inject_auto_section "$OUTPUT_DIR/wispr-eyes.md" "settings_sections" "$SETTINGS_TABLE"
+fi
+
 echo ""
 echo "Brain refresh complete."
 echo "  - $FILE_INDEX"
 echo "  - $TYPE_INDEX"
 echo "  - $TASK_ROUTER"
 echo "  - $FEATURE_CATALOG"
+echo "  - Auto-sections in architecture.md, whisperkit-research.md, distribution.md, wispr-eyes.md"
