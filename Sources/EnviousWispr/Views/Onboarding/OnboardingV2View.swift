@@ -778,9 +778,14 @@ private struct KeycapHotkeyView: View {
                     + Text(" to cancel without changing your hotkey.").foregroundStyle(Color.obTextSecondary))
                         .font(.system(size: 12))
                 } else {
-                    Text("Hold to dictate. Release to transcribe.")
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(Color.obTextSecondary)
+                    VStack(spacing: 4) {
+                        Text("Hold to dictate. Release to transcribe.")
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(Color.obTextSecondary)
+                        Text("Double-press to go hands-free.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.obAccent.opacity(0.72))
+                    }
                 }
             }
             .multilineTextAlignment(.center)

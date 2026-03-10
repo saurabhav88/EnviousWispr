@@ -30,6 +30,11 @@ struct ShortcutsSettingsView: View {
                              : "Press the hotkey to start recording, press again to stop.")
                             .font(.stHelper)
                             .foregroundStyle(.stTextTertiary)
+                        if appState.settings.isPushToTalk {
+                            Text("Double-press to go hands-free. Triple-press to cancel.")
+                                .font(.stHelper)
+                                .foregroundStyle(.stTextTertiary.opacity(0.72))
+                        }
                     }
                 }
                 BrandedRow {
