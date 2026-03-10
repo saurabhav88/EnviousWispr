@@ -567,17 +567,26 @@ final class AudioCaptureManager {
     }
 
     /// Poll the input node's output format until it stabilizes (two consecutive equal formats).
+    /// Uses a fast initial check (10ms) for built-in mic where format is already stable,
+    /// then falls back to slower polling (200ms) for Bluetooth codec switch scenarios.
     func waitForFormatStabilization(
         maxWait: TimeInterval = 1.5,
         pollInterval: TimeInterval = 0.2
     ) async -> Bool {
-        var lastFormat: AVAudioFormat? = nil
         let deadline = Date().addingTimeInterval(maxWait)
+        // Read initial format before any sleep — may already be stable (built-in mic)
+        var lastFormat = engine.inputNode.outputFormat(forBus: 0)
+        // Fast first check: 10ms is enough for built-in mic (saves ~190ms vs old 200ms poll)
+        try? await Task.sleep(for: .milliseconds(10))
+        let recheck = engine.inputNode.outputFormat(forBus: 0)
+        if recheck == lastFormat { return true }
+        lastFormat = recheck
+        // Format still changing (Bluetooth codec switch) — full polling
         while Date() < deadline {
+            try? await Task.sleep(for: .seconds(pollInterval))
             let format = engine.inputNode.outputFormat(forBus: 0)
             if format == lastFormat { return true }
             lastFormat = format
-            try? await Task.sleep(for: .seconds(pollInterval))
         }
         return false
     }

@@ -225,10 +225,21 @@ final class AppState {
                 self.restartAccessibilityMonitoringIfNeeded()
             }
 
+            // Show recording overlay IMMEDIATELY for instant visual feedback.
+            // The pipeline hasn't started yet, but the user needs to see the
+            // overlay now — especially for double-press detection where they
+            // need visual confirmation before tapping again.
+            self.recordingOverlay.show(
+                intent: .recording(audioLevel: 0),
+                audioLevelProvider: { self.audioCapture.audioLevel },
+                isRecordingLocked: false
+            )
+
             await active.handle(event: .preWarm)
             guard !Task.isCancelled else {
                 // PTT release arrived during preWarm — stop the engine that preWarm started
                 self.audioCapture.abortPreWarm()
+                self.recordingOverlay.show(intent: .hidden)
                 return
             }
             await active.handle(event: .toggleRecording)

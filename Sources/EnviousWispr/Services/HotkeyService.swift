@@ -79,6 +79,11 @@ final class HotkeyService {
     /// second press before stopping. Cancelled on double-press or new recording.
     private var debounceTask: Task<Void, Never>? = nil
 
+    /// Timestamp when hands-free lock was activated. Used as a cooldown guard:
+    /// presses within 500ms of locking are ignored to prevent accidental
+    /// finger-bounce from immediately stopping the locked recording.
+    private var lockTime: Date? = nil
+
     // MARK: - Callbacks (wired by AppState)
 
     var onToggleRecording: (@MainActor () async -> Void)?
@@ -174,6 +179,7 @@ final class HotkeyService {
     private func performCleanup() {
         isRecordingLocked = false
         recordingStartTime = nil
+        lockTime = nil
         debounceTask?.cancel()
         debounceTask = nil
     }
@@ -238,11 +244,26 @@ final class HotkeyService {
                 debounceTask?.cancel()
                 debounceTask = nil
                 isRecordingLocked = true
-                recordingTask?.cancel()
-                recordingTask = Task { await onLocked?() }
+                lockTime = Date()
+                // DO NOT cancel recordingTask here — the pipeline startup must
+                // continue running. Cancelling it aborts preWarm/toggleRecording,
+                // leaving the UI locked but no actual recording happening.
+                Task { await onLocked?() }
             }
         } else if isRecordingLocked {
-            // Single press while locked (after 500ms) → stop
+            // Lock cooldown: ignore presses within 500ms of locking.
+            // Prevents accidental finger-bounce on modifier keys from
+            // immediately stopping a just-locked recording.
+            if let lt = lockTime,
+               Date().timeIntervalSince(lt) <= Double(TimingConstants.handsFreeDebounceDelayMs) / 1000.0 {
+                Task { await AppLogger.shared.log(
+                    "Press ignored — lock cooldown (\(Int(Date().timeIntervalSince(lt) * 1000))ms since lock)",
+                    level: .info, category: "HotkeyService"
+                ) }
+                isModifierHeld = false
+                return
+            }
+            // Single press while locked (after cooldown) → stop
             Task { await AppLogger.shared.log(
                 "Single press while locked — stopping hands-free recording",
                 level: .info, category: "HotkeyService"
