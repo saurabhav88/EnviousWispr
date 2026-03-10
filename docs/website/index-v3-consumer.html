@@ -1,0 +1,1596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EnviousWispr — AI Dictation for Mac. Private by Design.</title>
+<meta name="description" content="The fastest way to turn your voice into polished text on Mac. Private by design — your voice never leaves your device. Free download.">
+<meta name="robots" content="index, follow">
+<meta name="author" content="Envious Labs">
+<meta name="keywords" content="private dictation mac, on-device speech to text, AI dictation macOS, voice to text privacy, offline dictation mac, macOS speech recognition, local transcription, macos dictation alternative, whisper mac app, local speech to text, EnviousWispr">
+<link rel="canonical" href="https://saurabhav88.github.io/EnviousWispr/docs/website/">
+<meta property="og:title" content="EnviousWispr — AI Dictation for Mac. Private by Design.">
+<meta property="og:description" content="Turn your voice into polished text on Mac. Private, on-device — your voice never leaves your Mac. Free download.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://saurabhav88.github.io/EnviousWispr/docs/website/">
+<meta property="og:site_name" content="EnviousWispr">
+<meta property="og:image" content="https://saurabhav88.github.io/EnviousWispr/docs/website/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="EnviousWispr — AI dictation for macOS. Your voice never leaves your Mac.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="EnviousWispr — AI Dictation for Mac. Private by Design.">
+<meta name="twitter:description" content="Turn your voice into polished text on Mac. Private, on-device — your voice never leaves your Mac.">
+<meta name="twitter:image" content="https://saurabhav88.github.io/EnviousWispr/docs/website/og-image.png">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="theme-color" content="#f8f5ff">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200;300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════
+   EnviousWispr V3 — Consumer Design System
+   ═══════════════════════════════════════════════════════ */
+:root {
+  --v2-red: #ff2a40;
+  --v2-orange: #ff8c00;
+  --v2-gold: #ffd700;
+  --v2-lime: #adff2f;
+  --v2-spring: #00fa9a;
+  --v2-cyan: #00ffff;
+  --v2-blue: #1e90ff;
+  --v2-royal: #4169e1;
+  --v2-violet: #8a2be2;
+  --rainbow-full: linear-gradient(90deg, #ff2a40, #ff8c00, #ffd700, #adff2f, #00fa9a, #00ffff, #1e90ff, #4169e1, #8a2be2);
+  --rainbow-135: linear-gradient(135deg, #ff2a40, #ff8c00, #ffd700, #adff2f, #00fa9a, #00ffff, #1e90ff, #4169e1, #8a2be2);
+  --rainbow-hero: linear-gradient(135deg, #8a2be2 0%, #00ffff 100%);
+  --rainbow-warm: linear-gradient(90deg, #ff2a40, #ff8c00, #ffd700);
+  --rainbow-cool: linear-gradient(90deg, #00ffff, #1e90ff, #4169e1, #8a2be2);
+  --bg: #f8f5ff;
+  --surface: #f0ecf9;
+  --border: rgba(138, 43, 226, 0.06);
+  --border-hover: rgba(138, 43, 226, 0.12);
+  --text: #0f0a1a;
+  --text-2: #4a3d60;
+  --text-3: #7d6f96;
+  --accent: #7c3aed;
+  --accent-soft: rgba(124, 58, 237, 0.08);
+  --accent-glow: rgba(124, 58, 237, 0.20);
+  --accent-hover: #6d28d9;
+  --cyan: #00ccdd;
+  --green: #00c880;
+  --amber: #e6c200;
+  --red: #e6253a;
+  --orange: #e67e00;
+  --font-body: 'Plus Jakarta Sans', -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --radius-card: 16px;
+  --radius-btn: 12px;
+  --radius-pill: 100px;
+  --max-width: 1200px;
+  --section-pad: 88px;
+}
+
+.rainbow-text {
+  background: var(--rainbow-full);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.rainbow-border {
+  border: 1px solid transparent;
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  background-image: linear-gradient(var(--surface), var(--surface)), var(--rainbow-full);
+}
+.rainbow-glow {
+  box-shadow: 0 0 15px rgba(124,58,237,0.15), 0 0 30px rgba(0,255,255,0.08), 0 0 45px rgba(255,42,64,0.05);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+body { font-family: var(--font-body); background: var(--bg); color: var(--text); line-height: 1.6; overflow-x: hidden; }
+
+body::before {
+  content: '';
+  position: fixed;
+  top: -200px; right: -200px;
+  width: 600px; height: 600px;
+  background: radial-gradient(circle, rgba(124,58,237,0.06), transparent 70%);
+  pointer-events: none; z-index: 0;
+}
+body::after {
+  content: '';
+  position: fixed;
+  bottom: -200px; left: -200px;
+  width: 600px; height: 600px;
+  background: radial-gradient(circle, rgba(109,40,217,0.05), transparent 70%);
+  pointer-events: none; z-index: 0;
+}
+.dot-grid {
+  position: fixed; inset: 0;
+  background-image: radial-gradient(circle, rgba(124,58,237,0.03) 1px, transparent 1px);
+  background-size: 24px 24px;
+  pointer-events: none; z-index: 0;
+}
+.container {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 0 32px;
+  position: relative;
+  z-index: 1;
+}
+.reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1), transform 0.65s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.reveal.visible { opacity: 1; transform: translateY(0); }
+.reveal-stagger > .reveal { transition-delay: calc(var(--i, 0) * 100ms); }
+
+/* ═══════════════════════════════════════════════════════
+   Navigation
+   ═══════════════════════════════════════════════════════ */
+.nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+  background: rgba(248,245,255,0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  transition: background 0.3s;
+}
+.nav-inner {
+  max-width: var(--max-width); margin: 0 auto; padding: 0 32px;
+  height: 64px; display: flex; align-items: center; justify-content: space-between;
+}
+.nav-logo {
+  font-size: 18px; font-weight: 800; letter-spacing: -0.5px;
+  color: var(--text); text-decoration: none;
+  display: flex; align-items: center; gap: 10px;
+}
+.nav-logo svg { width: 30px; height: 30px; }
+.nav-links { display: flex; align-items: center; gap: 32px; list-style: none; }
+.nav-links a {
+  font-size: 14px; font-weight: 500; color: var(--text-2);
+  text-decoration: none; transition: color 0.2s;
+}
+.nav-links a:hover { color: var(--text); }
+.nav-gh {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 500; color: var(--text-3);
+  text-decoration: none; transition: color 0.2s;
+}
+.nav-gh:hover { color: var(--text-2); }
+.nav-cta {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 20px; background: var(--text); color: #fff;
+  font-size: 14px; font-weight: 600; border-radius: var(--radius-btn);
+  text-decoration: none; transition: background 0.2s, transform 0.2s;
+}
+.nav-cta:hover { background: #2a2035; transform: translateY(-1px); }
+.nav-cta-group { display: flex; align-items: center; gap: 16px; }
+.nav-toggle {
+  display: none; background: none; border: none;
+  color: var(--text); cursor: pointer; padding: 4px;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Hero
+   ═══════════════════════════════════════════════════════ */
+.hero {
+  padding: 120px 0 96px;
+  text-align: center;
+  position: relative; z-index: 1;
+}
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 18px;
+  background: var(--accent-soft);
+  border: 1px solid rgba(124,58,237,0.2);
+  border-radius: var(--radius-pill);
+  font-size: 13px; font-weight: 600; color: var(--accent);
+  margin-bottom: 32px;
+}
+.hero-badge .dot {
+  width: 7px; height: 7px;
+  background: var(--green);
+  border-radius: 50%;
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+@keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+.hero h1 {
+  font-size: 76px; font-weight: 800;
+  letter-spacing: -3.5px; line-height: 1.04;
+  color: var(--text);
+  margin-bottom: 28px;
+  max-width: 840px; margin-left: auto; margin-right: auto;
+}
+.hero-sub {
+  font-size: 21px; font-weight: 400;
+  color: var(--text-2); line-height: 1.6;
+  max-width: 580px; margin: 0 auto 44px;
+}
+.hero-ctas {
+  display: flex; align-items: center; justify-content: center;
+  gap: 16px; margin-bottom: 40px;
+  flex-wrap: wrap;
+}
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 15px 34px; background: var(--text); color: #fff;
+  font-size: 16px; font-weight: 600; border-radius: var(--radius-btn);
+  text-decoration: none; border: none; cursor: pointer;
+  transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+.btn-primary:hover { background: #2a2035; transform: translateY(-2px); box-shadow: 0 8px 32px rgba(15,10,26,0.25); }
+.btn-primary svg { width: 18px; height: 18px; }
+.btn-secondary {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 15px 34px; background: transparent; color: var(--text);
+  font-size: 16px; font-weight: 600; border-radius: var(--radius-btn);
+  text-decoration: none; border: 1px solid var(--border-hover); cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, transform 0.2s;
+}
+.btn-secondary:hover { background: rgba(124,58,237,0.05); border-color: rgba(124,58,237,0.2); transform: translateY(-2px); }
+.btn-secondary svg { width: 18px; height: 18px; }
+
+.hero-trust {
+  font-size: 13px; color: var(--text-3);
+  display: flex; align-items: center; justify-content: center; gap: 20px;
+  flex-wrap: wrap;
+}
+.hero-trust .trust-item {
+  display: flex; align-items: center; gap: 6px;
+}
+.hero-trust .trust-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--green);
+}
+
+/* ── Lips animation (identical to v2) ── */
+.hero-lips {
+  display: block; margin: 0 auto 36px;
+  filter: drop-shadow(0 0 40px rgba(124,58,237,0.15));
+}
+.hero-lips .upper-bar { transform-box: fill-box; transform-origin: center bottom; }
+.hero-lips .lower-bar { transform-box: fill-box; transform-origin: center top; }
+@keyframes rec-bounce-0 { 0%,100%{transform:scaleY(1)} 30%{transform:scaleY(1.5)} 60%{transform:scaleY(0.7)} }
+@keyframes rec-bounce-1 { 0%,100%{transform:scaleY(1)} 25%{transform:scaleY(1.6)} 55%{transform:scaleY(0.6)} }
+@keyframes rec-bounce-2 { 0%,100%{transform:scaleY(1)} 35%{transform:scaleY(1.4)} 65%{transform:scaleY(0.75)} }
+@keyframes rec-bounce-3 { 0%,100%{transform:scaleY(1)} 20%{transform:scaleY(1.55)} 50%{transform:scaleY(0.65)} }
+@keyframes rec-bounce-4 { 0%,100%{transform:scaleY(1)} 40%{transform:scaleY(1.45)} 70%{transform:scaleY(0.7)} }
+@keyframes rec-bounce-5 { 0%,100%{transform:scaleY(1)} 28%{transform:scaleY(1.5)} 58%{transform:scaleY(0.68)} }
+@keyframes rec-bounce-6 { 0%,100%{transform:scaleY(1)} 33%{transform:scaleY(1.55)} 63%{transform:scaleY(0.72)} }
+@keyframes rec-bounce-7 { 0%,100%{transform:scaleY(1)} 22%{transform:scaleY(1.45)} 52%{transform:scaleY(0.65)} }
+@keyframes rec-bounce-8 { 0%,100%{transform:scaleY(1)} 38%{transform:scaleY(1.5)} 68%{transform:scaleY(0.7)} }
+@keyframes glow-pulse { 0%, 100% { opacity: 0.88; } 50% { opacity: 1; } }
+.hero-lips .u0 { animation: rec-bounce-0 0.50s ease-in-out 0.00s infinite; }
+.hero-lips .u1 { animation: rec-bounce-1 0.57s ease-in-out 0.06s infinite; }
+.hero-lips .u2 { animation: rec-bounce-2 0.64s ease-in-out 0.12s infinite; }
+.hero-lips .u3 { animation: rec-bounce-3 0.71s ease-in-out 0.18s infinite; }
+.hero-lips .u4 { animation: rec-bounce-4 0.78s ease-in-out 0.24s infinite; }
+.hero-lips .u5 { animation: rec-bounce-5 0.85s ease-in-out 0.30s infinite; }
+.hero-lips .u6 { animation: rec-bounce-6 0.92s ease-in-out 0.36s infinite; }
+.hero-lips .u7 { animation: rec-bounce-7 0.99s ease-in-out 0.42s infinite; }
+.hero-lips .u8 { animation: rec-bounce-8 1.06s ease-in-out 0.48s infinite; }
+.hero-lips .l0 { animation: rec-bounce-0 0.550s ease-in-out 0.05s infinite; }
+.hero-lips .l1 { animation: rec-bounce-1 0.615s ease-in-out 0.12s infinite; }
+.hero-lips .l2 { animation: rec-bounce-2 0.680s ease-in-out 0.19s infinite; }
+.hero-lips .l3 { animation: rec-bounce-3 0.745s ease-in-out 0.26s infinite; }
+.hero-lips .l4 { animation: rec-bounce-4 0.810s ease-in-out 0.33s infinite; }
+.hero-lips .l5 { animation: rec-bounce-5 0.875s ease-in-out 0.40s infinite; }
+.hero-lips .l6 { animation: rec-bounce-6 0.940s ease-in-out 0.47s infinite; }
+.hero-lips .l7 { animation: rec-bounce-7 1.005s ease-in-out 0.54s infinite; }
+.hero-lips .l8 { animation: rec-bounce-8 1.070s ease-in-out 0.61s infinite; }
+.hero-lips .lip-glow-group { animation: glow-pulse 4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .hero-lips .upper-bar, .hero-lips .lower-bar, .hero-lips .lip-glow-group { animation: none !important; }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Section Shared
+   ═══════════════════════════════════════════════════════ */
+.section { padding: var(--section-pad) 0; position: relative; z-index: 1; }
+
+.section-label {
+  display: inline-block; padding: 4px 14px; border-radius: var(--radius-pill);
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 16px;
+}
+.section-label.accent { background: var(--accent-soft); color: var(--accent); border: 1px solid rgba(124,58,237,0.2); }
+.section-label.green { background: rgba(0,250,154,0.1); color: var(--green); border: 1px solid rgba(0,250,154,0.2); }
+.section-label.cyan { background: rgba(0,255,255,0.1); color: var(--cyan); border: 1px solid rgba(0,255,255,0.2); }
+.section-label.amber { background: rgba(255,215,0,0.1); color: var(--amber); border: 1px solid rgba(255,215,0,0.2); }
+.section-label.red { background: rgba(255,42,64,0.1); color: var(--red); border: 1px solid rgba(255,42,64,0.2); }
+
+.section-head { text-align: center; margin-bottom: 56px; }
+.section-title { font-size: 52px; font-weight: 800; letter-spacing: -2px; line-height: 1.1; margin-bottom: 16px; }
+.section-sub { font-size: 18px; color: var(--text-2); max-width: 600px; margin: 0 auto; line-height: 1.6; }
+
+.section-head-left { margin-bottom: 48px; }
+.section-head-left .section-label { display: block; width: fit-content; }
+.section-title-left { font-size: 52px; font-weight: 800; letter-spacing: -2px; line-height: 1.08; margin-bottom: 16px; }
+.section-sub-left { font-size: 18px; color: var(--text-2); max-width: 560px; line-height: 1.6; }
+
+/* Vertical bar label */
+.section-label-bar {
+  display: inline-flex; align-items: center; gap: 10px; margin-bottom: 20px;
+}
+.section-label-bar::before {
+  content: ''; display: block; width: 3px; height: 1.2em;
+  background: var(--rainbow-135); border-radius: 2px; flex-shrink: 0;
+}
+.section-label-bar span {
+  font-size: 22px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 2px; color: var(--accent);
+}
+
+/* ═══════════════════════════════════════════════════════
+   Two Modes Section
+   ═══════════════════════════════════════════════════════ */
+.modes-section { padding: var(--section-pad) 0; position: relative; z-index: 1; }
+.modes-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 48px;
+}
+.mode-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 40px 36px;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.3s cubic-bezier(0.16,1,0.3,1), border-color 0.3s, box-shadow 0.3s;
+}
+.mode-card:hover {
+  transform: translateY(-5px);
+  border-color: var(--border-hover);
+  box-shadow: 0 20px 60px rgba(124,58,237,0.08);
+}
+.mode-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 3px;
+}
+.mode-card.push-card::before { background: var(--rainbow-warm); }
+.mode-card.hands-card::before { background: var(--rainbow-cool); }
+
+.mode-icon-wrap {
+  width: 72px; height: 72px; border-radius: 18px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 28px; position: relative;
+}
+.push-card .mode-icon-wrap {
+  background: rgba(255,140,0,0.1); border: 1px solid rgba(255,140,0,0.2);
+}
+.hands-card .mode-icon-wrap {
+  background: rgba(30,144,255,0.1); border: 1px solid rgba(30,144,255,0.2);
+}
+.mode-tag {
+  display: inline-block; padding: 4px 12px; border-radius: var(--radius-pill);
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 14px;
+}
+.push-card .mode-tag { background: rgba(255,140,0,0.12); color: var(--orange); }
+.hands-card .mode-tag { background: rgba(30,144,255,0.12); color: #1e90ff; }
+
+.mode-card h3 { font-size: 28px; font-weight: 800; letter-spacing: -0.8px; margin-bottom: 12px; }
+.mode-card p { font-size: 16px; color: var(--text-2); line-height: 1.65; margin-bottom: 28px; }
+
+.mode-hint {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 18px;
+  background: rgba(255,255,255,0.6);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.mode-hint-keys { display: flex; align-items: center; gap: 6px; }
+.key-cap {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 4px 10px; min-width: 36px; height: 32px;
+  background: #fff;
+  border: 1px solid rgba(124,58,237,0.15);
+  border-bottom: 3px solid rgba(124,58,237,0.2);
+  border-radius: 7px;
+  font-family: var(--font-mono);
+  font-size: 11px; font-weight: 700; color: var(--text-2);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.04);
+}
+.key-cap.held {
+  background: rgba(255,140,0,0.1);
+  border-color: rgba(255,140,0,0.3);
+  border-bottom-color: rgba(255,140,0,0.4);
+  color: var(--orange);
+}
+.key-cap.tap {
+  background: rgba(30,144,255,0.1);
+  border-color: rgba(30,144,255,0.3);
+  border-bottom-color: rgba(30,144,255,0.4);
+  color: #1e90ff;
+}
+.mode-hint-label { font-size: 12px; color: var(--text-3); font-weight: 500; }
+.key-sep { font-size: 12px; color: var(--text-3); }
+
+/* ═══════════════════════════════════════════════════════
+   Benefits Section
+   ═══════════════════════════════════════════════════════ */
+.benefits-section { padding: var(--section-pad) 0; position: relative; z-index: 1; }
+.benefits-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+.benefit-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 28px 24px;
+  transition: transform 0.3s cubic-bezier(0.16,1,0.3,1), border-color 0.3s, box-shadow 0.3s;
+}
+.benefit-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--border-hover);
+  box-shadow: 0 16px 48px rgba(0,0,0,0.07);
+}
+.benefit-icon {
+  width: 52px; height: 52px; border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 20px; font-size: 24px;
+}
+.benefit-icon.green { background: rgba(0,200,128,0.1); border: 1px solid rgba(0,200,128,0.15); }
+.benefit-icon.royal { background: rgba(65,105,225,0.1); border: 1px solid rgba(65,105,225,0.15); }
+.benefit-icon.cyan { background: rgba(0,204,221,0.1); border: 1px solid rgba(0,204,221,0.15); }
+.benefit-icon.amber { background: rgba(230,194,0,0.1); border: 1px solid rgba(230,194,0,0.15); }
+.benefit-icon.accent { background: var(--accent-soft); border: 1px solid rgba(124,58,237,0.15); }
+.benefit-icon.orange { background: rgba(230,126,0,0.1); border: 1px solid rgba(230,126,0,0.15); }
+.benefit-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+.benefit-card p { font-size: 14px; color: var(--text-2); line-height: 1.65; }
+
+/* ═══════════════════════════════════════════════════════
+   Privacy Section
+   ═══════════════════════════════════════════════════════ */
+.privacy-section { padding: var(--section-pad) 0; position: relative; z-index: 1; }
+.privacy-layout {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 72px; align-items: center;
+}
+.privacy-points { display: flex; flex-direction: column; gap: 32px; }
+.privacy-point { display: flex; gap: 18px; }
+.privacy-check {
+  width: 32px; height: 32px; border-radius: 10px;
+  background: rgba(0,200,128,0.1); border: 1px solid rgba(0,200,128,0.2);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px;
+}
+.privacy-check svg { width: 15px; height: 15px; color: var(--green); }
+.privacy-point h4 { font-size: 17px; font-weight: 700; margin-bottom: 5px; }
+.privacy-point p { font-size: 14px; color: var(--text-2); line-height: 1.65; }
+
+.privacy-visual {
+  display: flex; align-items: center; justify-content: center;
+}
+.privacy-card {
+  width: 100%; max-width: 420px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.08);
+}
+.pcard-header {
+  padding: 20px 24px;
+  background: rgba(0,200,128,0.05);
+  border-bottom: 1px solid rgba(0,200,128,0.12);
+  display: flex; align-items: center; gap: 12px;
+}
+.pcard-shield {
+  width: 44px; height: 44px; border-radius: 12px;
+  background: rgba(0,200,128,0.12); border: 1px solid rgba(0,200,128,0.2);
+  display: flex; align-items: center; justify-content: center; font-size: 22px;
+}
+.pcard-header-text h4 { font-size: 15px; font-weight: 700; color: var(--green); }
+.pcard-header-text p { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+.pcard-body { padding: 20px 24px; display: flex; flex-direction: column; gap: 10px; }
+.pcard-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 16px;
+  background: rgba(255,255,255,0.5);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.pcard-row-icon { font-size: 18px; flex-shrink: 0; }
+.pcard-row-label { flex: 1; font-size: 13px; color: var(--text-2); font-weight: 500; }
+.pcard-status { font-size: 12px; font-weight: 700; }
+.pcard-status.local { color: var(--green); }
+.pcard-status.optional { color: var(--amber); }
+.pcard-status.never { color: var(--red); }
+
+/* ═══════════════════════════════════════════════════════
+   Pipeline Section (How It Works) — identical to v2
+   ═══════════════════════════════════════════════════════ */
+.pipeline-section { padding: var(--section-pad) 0; position: relative; z-index: 1; }
+
+.pipeline-steps {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 40px;
+}
+.pipe-step {
+  text-align: center; padding: 20px 16px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  transition: border-color 0.3s; position: relative;
+}
+.pipe-step:hover { border-color: var(--border-hover); }
+.pipe-step-icon {
+  width: 48px; height: 48px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 14px; font-size: 22px;
+}
+.pipe-step-icon.red { background: rgba(255,42,64,0.1); color: var(--red); }
+.pipe-step-icon.amber { background: rgba(255,215,0,0.1); color: var(--amber); }
+.pipe-step-icon.cyan { background: rgba(0,255,255,0.1); color: var(--cyan); }
+.pipe-step-icon.green { background: rgba(0,250,154,0.1); color: var(--green); }
+.pipe-step h3 { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+.pipe-step p { font-size: 13px; color: var(--text-2); line-height: 1.5; }
+.pipe-step:not(:last-child)::after {
+  content: ''; position: absolute; right: -12px; top: 50%;
+  width: 8px; height: 8px;
+  border-top: 2px solid var(--text-3); border-right: 2px solid var(--text-3);
+  transform: translateY(-50%) rotate(45deg); opacity: 0.4;
+}
+
+/* Demo wrapper */
+.demo-wrapper {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+  padding: 32px; position: relative; overflow: hidden;
+}
+.demo-wrapper::before {
+  content: ''; position: absolute; inset: 0;
+  background-image: radial-gradient(circle, rgba(255,255,255,0.02) 1px, transparent 1px);
+  background-size: 20px 20px; pointer-events: none;
+}
+.demo-header { text-align: center; margin-bottom: 28px; }
+.demo-tag {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 14px; border-radius: var(--radius-pill);
+  background: rgba(124,58,237,0.12); border: 1px solid rgba(124,58,237,0.25);
+  font-size: 12px; font-weight: 600; color: var(--accent);
+  letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 12px;
+}
+.demo-tag::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent); animation: pulse-dot 1.5s ease-in-out infinite;
+}
+.demo-title {
+  font-size: 24px; font-weight: 700; letter-spacing: -0.5px;
+  background: linear-gradient(135deg, var(--text) 0%, var(--text-2) 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.demo-stage { display: flex; align-items: stretch; gap: 0; height: 340px; }
+.demo-panel {
+  background: rgba(248,245,255,0.7); border: 1px solid var(--border); border-radius: 14px;
+  padding: 20px; display: flex; flex-direction: column;
+  opacity: 0; transform: translateY(20px);
+  transition: opacity 0.7s ease, transform 0.7s ease, border-color 0.5s ease, box-shadow 0.5s ease;
+  position: relative; overflow: hidden;
+}
+.demo-panel.visible { opacity: 1; transform: translateY(0); }
+.demo-panel-left { flex: 0 0 38%; }
+.demo-panel-right { flex: 0 0 38%; }
+.demo-panel-right.glow-green {
+  border-color: rgba(0,250,154,0.35);
+  box-shadow: 0 0 30px rgba(0,250,154,0.08), inset 0 0 30px rgba(0,250,154,0.03);
+}
+.panel-label {
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 14px; display: flex; align-items: center; gap: 8px;
+}
+.panel-label.tertiary { color: var(--text-2); }
+.panel-label.green-label { color: #008855; }
+.live-badge {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px;
+  border-radius: var(--radius-pill); font-size: 9px; font-weight: 700;
+  letter-spacing: 0.8px; text-transform: uppercase; opacity: 0; transition: opacity 0.3s ease;
+}
+.live-badge.active { opacity: 1; }
+.live-badge.asr { background: rgba(255,215,0,0.15); color: var(--amber); border: 1px solid rgba(255,215,0,0.3); }
+.live-badge.asr::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--amber); animation: pulse-dot 0.8s ease-in-out infinite; }
+.live-badge.sse { background: rgba(0,255,255,0.15); color: var(--cyan); border: 1px solid rgba(0,255,255,0.3); }
+.live-badge.sse::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--cyan); animation: pulse-dot 0.6s ease-in-out infinite; }
+.waveform { display: flex; align-items: center; justify-content: center; gap: 2.5px; height: 48px; margin-bottom: 12px; padding: 0 4px; }
+.waveform .bar { width: 3px; border-radius: 2px; height: 8px; transition: height 0.12s ease; will-change: height; }
+.demo-text { flex: 1; font-size: 14px; line-height: 1.7; color: var(--text); overflow-y: auto; padding-right: 4px; }
+.demo-text::-webkit-scrollbar { width: 3px; }
+.demo-text::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+.filler { color: var(--red); background: rgba(255,42,64,0.1); padding: 1px 4px; border-radius: 3px; transition: all 0.4s ease; display: inline; text-decoration: none; }
+.filler.struck { text-decoration: line-through; opacity: 0.35; background: rgba(255,42,64,0.04); }
+.sse-word { display: inline; opacity: 0; transition: opacity 0.15s ease; }
+.sse-word.visible { opacity: 1; }
+.cursor-blink { display: inline-block; width: 2px; height: 1.1em; background: var(--green); vertical-align: text-bottom; animation: blink-cursor 0.6s step-end infinite; margin-left: 1px; }
+@keyframes blink-cursor { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+.demo-pipeline {
+  flex: 0 0 24%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 16px 24px 16px 12px; opacity: 0; transform: translateY(20px);
+  transition: opacity 0.7s ease, transform 0.7s ease; position: relative;
+}
+.demo-pipeline.visible { opacity: 1; transform: translateY(0); }
+.pipeline-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text-2); margin-bottom: 14px; }
+.gantt { width: 100%; display: flex; flex-direction: column; gap: 6px; }
+.gantt-row { display: flex; align-items: center; gap: 6px; height: 26px; }
+.gantt-label { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--text); width: 68px; text-align: right; flex-shrink: 0; white-space: nowrap; transition: color 0.3s ease; }
+.gantt-label.active { color: var(--text); }
+.gantt-track { flex: 1; height: 100%; background: rgba(255,255,255,0.02); border-radius: 4px; position: relative; overflow: hidden; }
+.gantt-bar { position: absolute; top: 2px; bottom: 2px; left: 0; width: 0%; border-radius: 3px; transition: width 0.3s linear; display: flex; align-items: center; justify-content: center; }
+.gantt-bar .bar-text { font-family: var(--font-mono); font-size: 10px; font-weight: 600; color: rgba(0,0,0,0.7); white-space: nowrap; opacity: 0; transition: opacity 0.3s ease; }
+.gantt-bar.active .bar-text { opacity: 1; }
+.gantt-bar.recording { background: rgba(220,30,50,0.5); border: 1px solid rgba(200,25,45,0.7); }
+.gantt-bar.recording.active { background: rgba(220,30,50,0.6); box-shadow: 0 0 12px rgba(220,30,50,0.25); }
+.gantt-bar.streaming-asr { background: rgba(200,170,0,0.5); border: 1px solid rgba(180,150,0,0.7); }
+.gantt-bar.streaming-asr.active { background: rgba(200,170,0,0.6); box-shadow: 0 0 12px rgba(200,170,0,0.25); }
+.gantt-bar.finalize { background: rgba(210,120,0,0.55); border: 1px solid rgba(190,100,0,0.7); }
+.gantt-bar.finalize.active { box-shadow: 0 0 12px rgba(210,120,0,0.3); }
+.gantt-bar.prewarm { background: rgba(100,40,200,0.5); border: 1px solid rgba(90,35,180,0.7); }
+.gantt-bar.prewarm.active { box-shadow: 0 0 12px rgba(100,40,200,0.3); }
+.gantt-bar.sse-polish { background: rgba(0,160,180,0.5); border: 1px solid rgba(0,140,160,0.7); }
+.gantt-bar.sse-polish.active { background: rgba(0,160,180,0.6); box-shadow: 0 0 12px rgba(0,160,180,0.25); }
+.gantt-bar.paste-bar { background: rgba(0,170,100,0.55); border: 1px solid rgba(0,150,90,0.7); }
+.gantt-bar.paste-bar.active { box-shadow: 0 0 12px rgba(0,170,100,0.3); }
+.gantt-bar.done { opacity: 0.4; box-shadow: none; }
+.overlap-bracket { position: absolute; right: -14px; top: 0; height: calc(200% + 6px); width: 10px; border: 2px solid rgba(124,58,237,0.4); border-left: none; border-radius: 0 6px 6px 0; opacity: 0; transition: opacity 0.4s ease; }
+.overlap-bracket.visible { opacity: 1; }
+.overlap-label { position: absolute; right: -68px; top: 50%; transform: translateY(-50%); font-family: var(--font-mono); font-size: 8px; color: var(--accent); white-space: nowrap; opacity: 0; transition: opacity 0.4s ease; }
+.overlap-label.visible { opacity: 1; }
+.concurrent-badge { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 10px; opacity: 0; transition: opacity 0.4s ease; }
+.concurrent-badge.visible { opacity: 1; }
+.concurrent-badge .cb-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.concurrent-badge .cb-text { font-family: var(--font-mono); font-size: 9px; font-weight: 500; color: var(--accent); letter-spacing: 0.3px; }
+.demo-replay { display: flex; justify-content: center; margin-top: 20px; }
+.replay-btn {
+  padding: 8px 18px; border-radius: 10px; border: 1px solid rgba(124,58,237,0.3);
+  background: rgba(124,58,237,0.08); color: var(--accent);
+  font-family: var(--font-body); font-size: 13px; font-weight: 600; cursor: pointer;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.4s ease, background 0.2s ease, transform 0.2s ease;
+  display: flex; align-items: center; gap: 6px;
+}
+.replay-btn:hover { background: rgba(124,58,237,0.15); transform: translateY(-1px); }
+.replay-btn.visible { opacity: 1; pointer-events: auto; }
+.paste-particle { position: absolute; width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 12px var(--green), 0 0 24px rgba(0,250,154,0.4); opacity: 0; z-index: 10; pointer-events: none; }
+
+/* ═══════════════════════════════════════════════════════
+   Getting Started Section
+   ═══════════════════════════════════════════════════════ */
+.start-section { padding: var(--section-pad) 0; position: relative; z-index: 1; }
+.steps-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin: 48px 0 48px; }
+.step-card {
+  text-align: center; padding: 40px 28px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-card); position: relative;
+}
+.step-num {
+  width: 40px; height: 40px; border-radius: 12px;
+  background: var(--accent-soft); border: 1px solid rgba(124,58,237,0.2);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: 15px; font-weight: 700;
+  color: var(--accent); margin: 0 auto 18px;
+}
+.step-card h3 { font-size: 19px; font-weight: 700; margin-bottom: 10px; }
+.step-card p { font-size: 14px; color: var(--text-2); line-height: 1.65; }
+.download-cta { text-align: center; }
+
+/* ═══════════════════════════════════════════════════════
+   Footer
+   ═══════════════════════════════════════════════════════ */
+.footer {
+  border-top: 1px solid var(--border);
+  padding: 56px 0 28px; position: relative; z-index: 1;
+}
+.footer-inner {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 48px; margin-bottom: 40px; flex-wrap: wrap;
+}
+.footer-brand { max-width: 300px; }
+.footer-brand-name {
+  font-size: 18px; font-weight: 800; letter-spacing: -0.5px;
+  display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+}
+.footer-brand-name svg { width: 24px; height: 24px; }
+.footer-brand p { font-size: 14px; color: var(--text-2); line-height: 1.6; }
+.footer-links { display: flex; gap: 56px; }
+.footer-col h4 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text-3); margin-bottom: 14px; }
+.footer-col ul { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.footer-col a { font-size: 14px; color: var(--text-2); text-decoration: none; transition: color 0.2s; }
+.footer-col a:hover { color: var(--text); }
+.footer-bottom { padding-top: 20px; border-top: 1px solid var(--border); font-size: 13px; color: var(--text-3); text-align: center; }
+
+/* ═══════════════════════════════════════════════════════
+   Responsive
+   ═══════════════════════════════════════════════════════ */
+@media (max-width: 1024px) {
+  :root { --section-pad: 64px; }
+  .hero h1 { font-size: 60px; letter-spacing: -2.5px; }
+  .section-title { font-size: 42px; }
+  .section-title-left { font-size: 42px; }
+  .benefits-grid { grid-template-columns: repeat(2, 1fr); }
+  .modes-grid { gap: 16px; }
+  .privacy-layout { gap: 48px; }
+  .pipeline-steps { grid-template-columns: repeat(2, 1fr); }
+  .pipe-step:not(:last-child)::after { display: none; }
+  .nav-links { display: none; }
+  .nav-links.nav-open {
+    display: flex; flex-direction: column; position: absolute; top: 64px; left: 0; right: 0;
+    background: rgba(248,245,255,0.97); backdrop-filter: blur(20px);
+    padding: 16px 32px; border-bottom: 1px solid var(--border); gap: 16px;
+  }
+  .nav-toggle { display: block; padding: 10px; }
+  .nav-cta-group { gap: 10px; }
+}
+@media (max-width: 768px) {
+  :root { --section-pad: 48px; }
+  .container { padding: 0 20px; }
+  .hero { padding: 110px 0 72px; }
+  .hero h1 { font-size: 40px; letter-spacing: -1.5px; }
+  .hero-sub { font-size: 17px; }
+  .hero-ctas { flex-direction: column; }
+  .section-title { font-size: 32px; letter-spacing: -1px; }
+  .section-sub { font-size: 16px; }
+  .section-title-left { font-size: 32px; letter-spacing: -0.5px; }
+  .section-sub-left { font-size: 16px; }
+  .section-label-bar span { font-size: 17px; letter-spacing: 1px; }
+  .benefits-grid { grid-template-columns: 1fr; }
+  .modes-grid { grid-template-columns: 1fr; }
+  .privacy-layout { grid-template-columns: 1fr; gap: 40px; }
+  .steps-row { grid-template-columns: 1fr; }
+  .footer-inner { flex-direction: column; gap: 32px; }
+  .footer-links { gap: 32px; }
+  .pipeline-steps { grid-template-columns: 1fr; gap: 12px; }
+  .demo-stage { flex-direction: column; height: auto; }
+  .demo-panel-left, .demo-panel-right { flex: none; min-height: 180px; }
+  .demo-pipeline { flex: none; padding: 20px 12px; min-height: 240px; }
+  .demo-wrapper { padding: 20px; }
+  .overlap-label, .overlap-bracket { display: none; }
+  .mode-card { padding: 28px 24px; }
+}
+@media (max-width: 480px) {
+  .hero h1 { font-size: 34px; letter-spacing: -1px; }
+  .btn-primary, .btn-secondary { width: 100%; justify-content: center; }
+  .section-title-left { font-size: 28px; }
+  .step-card { padding: 28px 20px; }
+  .hero-trust { flex-direction: column; gap: 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal { opacity: 1; transform: none; }
+}
+</style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "EnviousWispr",
+  "operatingSystem": "macOS",
+  "applicationCategory": "UtilitiesApplication",
+  "description": "Private AI dictation for macOS. On-device speech-to-text with AI polish. Your voice never leaves your Mac.",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "author": { "@type": "Organization", "name": "Envious Labs" },
+  "url": "https://saurabhav88.github.io/EnviousWispr/docs/website/",
+  "downloadUrl": "https://github.com/saurabhav88/EnviousWispr/releases",
+  "softwareVersion": "1.0"
+}
+</script>
+</head>
+<body>
+
+<div class="dot-grid"></div>
+
+<!-- ═══════════════════════════════════════════════════════
+     Navigation
+     ═══════════════════════════════════════════════════════ -->
+<nav class="nav" role="navigation" aria-label="Main navigation">
+  <div class="nav-inner">
+    <a href="#" class="nav-logo" aria-label="EnviousWispr home">
+      <svg width="30" height="30" viewBox="0 0 64 64" fill="none">
+        <rect x="4" y="22.25" width="4.5" height="5" rx="1.5" fill="#ff2a40"/>
+        <rect x="10" y="17.64" width="4.5" height="8" rx="1.5" fill="#ff8c00"/>
+        <rect x="16" y="12.04" width="4.5" height="12" rx="1.5" fill="#ffd700"/>
+        <rect x="22" y="16.96" width="4.5" height="9" rx="1.5" fill="#adff2f"/>
+        <rect x="28" y="21.56" width="4.5" height="6" rx="1.5" fill="#00fa9a"/>
+        <rect x="34" y="16.96" width="4.5" height="9" rx="1.5" fill="#00ffff"/>
+        <rect x="40" y="12.04" width="4.5" height="12" rx="1.5" fill="#1e90ff"/>
+        <rect x="46" y="17.64" width="4.5" height="8" rx="1.5" fill="#4169e1"/>
+        <rect x="52" y="22.25" width="4.5" height="5" rx="1.5" fill="#8a2be2"/>
+        <rect x="4" y="30.25" width="4.5" height="5" rx="1.5" fill="#4169e1"/>
+        <rect x="10" y="28.64" width="4.5" height="9" rx="1.5" fill="#1e90ff"/>
+        <rect x="16" y="27.04" width="4.5" height="12" rx="1.5" fill="#00ffff"/>
+        <rect x="22" y="28.96" width="4.5" height="15" rx="1.5" fill="#00fa9a"/>
+        <rect x="28" y="30.56" width="4.5" height="17" rx="1.5" fill="#adff2f"/>
+        <rect x="34" y="28.96" width="4.5" height="15" rx="1.5" fill="#ffd700"/>
+        <rect x="40" y="27.04" width="4.5" height="12" rx="1.5" fill="#ff8c00"/>
+        <rect x="46" y="28.64" width="4.5" height="9" rx="1.5" fill="#ff2a40"/>
+        <rect x="52" y="30.25" width="4.5" height="5" rx="1.5" fill="#8a2be2"/>
+      </svg>
+      EnviousWispr
+    </a>
+    <ul class="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#privacy">Privacy</a></li>
+      <li><a href="#download">Download</a></li>
+    </ul>
+    <div class="nav-cta-group">
+      <a href="https://github.com/saurabhav88/EnviousWispr" class="nav-gh" target="_blank" rel="noopener" aria-label="GitHub">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+        GitHub
+      </a>
+      <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="nav-cta">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+    </div>
+    <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+  </div>
+</nav>
+
+<main>
+
+<!-- ═══════════════════════════════════════════════════════
+     Hero
+     ═══════════════════════════════════════════════════════ -->
+<section class="hero" id="hero" aria-label="Hero">
+  <div class="container">
+    <div class="hero-badge reveal" style="--i:0">
+      <span class="dot"></span>
+      Free for macOS
+    </div>
+
+    <!-- Lip animation -->
+    <div class="reveal" style="--i:1; text-align:center; margin-bottom:32px;">
+      <svg class="hero-lips" style="width:160px;height:120px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" aria-label="EnviousWispr animated lip icon" role="img">
+        <defs>
+          <filter id="hero-glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <g transform="translate(8,13)" filter="url(#hero-glow)" class="lip-glow-group">
+          <rect class="upper-bar u0" x="16" y="84.2" width="14" height="20" rx="5" fill="#ff2a40" opacity="0.92"/>
+          <rect class="upper-bar u1" x="40" y="65.75" width="14" height="32" rx="5" fill="#ff8c00" opacity="0.92"/>
+          <rect class="upper-bar u2" x="64" y="43.36" width="14" height="48" rx="5" fill="#ffd700" opacity="0.92"/>
+          <rect class="upper-bar u3" x="88" y="63.04" width="14" height="36" rx="5" fill="#adff2f" opacity="0.92"/>
+          <rect class="upper-bar u4" x="112" y="81.43" width="14" height="24" rx="5" fill="#00fa9a" opacity="0.92"/>
+          <rect class="upper-bar u5" x="136" y="63.04" width="14" height="36" rx="5" fill="#00ffff" opacity="0.92"/>
+          <rect class="upper-bar u6" x="160" y="43.36" width="14" height="48" rx="5" fill="#1e90ff" opacity="0.92"/>
+          <rect class="upper-bar u7" x="184" y="65.75" width="14" height="32" rx="5" fill="#4169e1" opacity="0.92"/>
+          <rect class="upper-bar u8" x="208" y="84.2" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.92"/>
+          <rect class="lower-bar l0" x="16" y="125.8" width="14" height="20" rx="5" fill="#4169e1" opacity="0.88"/>
+          <rect class="lower-bar l1" x="40" y="119.35" width="14" height="36" rx="5" fill="#1e90ff" opacity="0.88"/>
+          <rect class="lower-bar l2" x="64" y="112.96" width="14" height="48" rx="5" fill="#00ffff" opacity="0.88"/>
+          <rect class="lower-bar l3" x="88" y="120.64" width="14" height="60" rx="5" fill="#00fa9a" opacity="0.88"/>
+          <rect class="lower-bar l4" x="112" y="127.03" width="14" height="68" rx="5" fill="#adff2f" opacity="0.88"/>
+          <rect class="lower-bar l5" x="136" y="120.64" width="14" height="60" rx="5" fill="#ffd700" opacity="0.88"/>
+          <rect class="lower-bar l6" x="160" y="112.96" width="14" height="48" rx="5" fill="#ff8c00" opacity="0.88"/>
+          <rect class="lower-bar l7" x="184" y="119.35" width="14" height="36" rx="5" fill="#ff2a40" opacity="0.88"/>
+          <rect class="lower-bar l8" x="208" y="125.8" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.88"/>
+        </g>
+      </svg>
+    </div>
+
+    <h1 class="reveal" style="--i:2">Talk naturally.<br>Paste perfectly.</h1>
+    <p class="hero-sub reveal" style="--i:3">The fastest way to turn your voice into polished text on Mac. Private by design &mdash; your voice never leaves your device.</p>
+
+    <div class="hero-ctas reveal" style="--i:4">
+      <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+      <a href="#how-it-works" class="btn-secondary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="10 8 14 12 10 16"/></svg>
+        See How It Works
+      </a>
+    </div>
+
+    <div class="hero-trust reveal" style="--i:5">
+      <span class="trust-item"><span class="trust-dot"></span> Free download</span>
+      <span class="trust-item"><span class="trust-dot"></span> No account needed</span>
+      <span class="trust-item"><span class="trust-dot"></span> Works offline</span>
+      <span class="trust-item"><span class="trust-dot"></span> macOS 14+</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     Two Modes
+     ═══════════════════════════════════════════════════════ -->
+<section class="modes-section section" id="modes" aria-label="Dictation Modes">
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="section-label accent">Two Ways to Dictate</span>
+      <h2 class="section-title">Pick the mode that<br>fits the moment.</h2>
+      <p class="section-sub">Whether you need a quick one-liner or a full email, there's a mode built for it.</p>
+    </div>
+
+    <div class="modes-grid reveal-stagger">
+      <div class="mode-card push-card reveal" style="--i:0">
+        <div class="mode-icon-wrap">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#e67e00" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        </div>
+        <span class="mode-tag">Push-to-Talk</span>
+        <h3>Hold to record.<br>Release to paste.</h3>
+        <p>Perfect for quick messages, replies, and search queries. Hold your hotkey while you speak &mdash; the moment you release, polished text appears exactly where you're typing.</p>
+        <div class="mode-hint">
+          <div class="mode-hint-keys">
+            <span class="key-cap held">⌥</span>
+            <span class="key-cap held">Space</span>
+            <span class="key-sep">— hold</span>
+          </div>
+          <span class="mode-hint-label">Hold while speaking, release to paste</span>
+        </div>
+      </div>
+      <div class="mode-card hands-card reveal" style="--i:1">
+        <div class="mode-icon-wrap">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#1e90ff" stroke-width="2" stroke-linecap="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M6 16h8"/></svg>
+        </div>
+        <span class="mode-tag">Hands-Free</span>
+        <h3>Double-press to start.<br>Press once to stop.</h3>
+        <p>Built for long-form writing &mdash; emails, documents, meeting notes. Double-press your hotkey to start recording, then press once to finish. Your hands stay free the whole time.</p>
+        <div class="mode-hint">
+          <div class="mode-hint-keys">
+            <span class="key-cap tap">⌃</span>
+            <span class="key-cap tap">Space</span>
+            <span class="key-sep">×2</span>
+          </div>
+          <span class="mode-hint-label">Double-press to start, press once to stop</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     Benefits
+     ═══════════════════════════════════════════════════════ -->
+<section class="benefits-section section" id="features" aria-label="Features">
+  <div class="container">
+    <div class="section-head-left reveal">
+      <div class="section-label-bar"><span>Benefits</span></div>
+      <h2 class="section-title-left">Everything you need.<br>Nothing you don't.</h2>
+      <p class="section-sub-left">Built for people who think faster than they type.</p>
+    </div>
+
+    <div class="benefits-grid reveal-stagger">
+      <div class="benefit-card reveal" style="--i:0">
+        <div class="benefit-icon green">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#00a868" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+        </div>
+        <h3>Private by Default</h3>
+        <p>Your voice is processed entirely on your Mac. Nothing is uploaded. Nothing is stored. Not even by us. Speech recognition runs on Apple Silicon, not in the cloud.</p>
+      </div>
+      <div class="benefit-card reveal" style="--i:1">
+        <div class="benefit-icon royal">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#4169e1" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </div>
+        <h3>Works Everywhere</h3>
+        <p>Dictate into any app &mdash; email, Slack, docs, notes, terminals. Text appears right where you're typing. Your previous clipboard is preserved.</p>
+      </div>
+      <div class="benefit-card reveal" style="--i:2">
+        <div class="benefit-icon cyan">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#0099aa" stroke-width="2" stroke-linecap="round"><path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2z"/></svg>
+        </div>
+        <h3>Cleans Up Your Words</h3>
+        <p>Removes ums, fixes grammar, and polishes your text automatically. Choose from clean, formal, or casual styles &mdash; or write your own custom prompt.</p>
+      </div>
+      <div class="benefit-card reveal" style="--i:3">
+        <div class="benefit-icon amber">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#c8a600" stroke-width="2" stroke-linecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        </div>
+        <h3>Blazing Fast</h3>
+        <p>Start talking, stop talking, text appears. The whole process takes about 2 seconds from the moment you release your hotkey.</p>
+      </div>
+      <div class="benefit-card reveal" style="--i:4">
+        <div class="benefit-icon accent">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2" stroke-linecap="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+        </div>
+        <h3>Your AI, Your Choice</h3>
+        <p>Works with OpenAI, Google Gemini, Apple Intelligence, or fully offline with Ollama. Bring your own API key &mdash; or go completely local, no internet required.</p>
+      </div>
+      <div class="benefit-card reveal" style="--i:5">
+        <div class="benefit-icon orange">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#e67e00" stroke-width="2" stroke-linecap="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M8 7h8M8 11h6"/></svg>
+        </div>
+        <h3>Knows Your Words</h3>
+        <p>Add names, technical terms, and company jargon to your personal dictionary. It learns how you talk and gets your words right every time.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     Privacy
+     ═══════════════════════════════════════════════════════ -->
+<section class="privacy-section section" id="privacy" aria-label="Privacy">
+  <div class="container">
+    <div class="privacy-layout">
+      <div>
+        <div class="section-head-left reveal">
+          <div class="section-label-bar"><span>Privacy</span></div>
+          <h2 class="section-title-left">Your voice stays<br>on your Mac.</h2>
+          <p class="section-sub-left">On-device transcription means the audio never leaves your hardware. No accounts. No data collection. No surprises.</p>
+        </div>
+        <div class="privacy-points reveal-stagger">
+          <div class="privacy-point reveal" style="--i:0">
+            <div class="privacy-check">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <div>
+              <h4>On-device processing</h4>
+              <p>Speech recognition runs entirely on your Mac. Your audio is processed in memory and never written to disk or sent anywhere.</p>
+            </div>
+          </div>
+          <div class="privacy-point reveal" style="--i:1">
+            <div class="privacy-check">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <div>
+              <h4>No data collection</h4>
+              <p>We don't collect usage data, transcripts, or any personal information. There's no account to create and nothing to opt out of.</p>
+            </div>
+          </div>
+          <div class="privacy-point reveal" style="--i:2">
+            <div class="privacy-check">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <div>
+              <h4>Optional cloud polish — you choose</h4>
+              <p>The only optional network call is AI text polishing. You control which provider you use, or you can use Ollama to stay fully offline.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="privacy-visual reveal" style="--i:2">
+        <div class="privacy-card">
+          <div class="pcard-header">
+            <div class="pcard-shield">&#x1f6e1;</div>
+            <div class="pcard-header-text">
+              <h4>All audio stays on-device</h4>
+              <p>Zero audio leaves your Mac</p>
+            </div>
+          </div>
+          <div class="pcard-body">
+            <div class="pcard-row">
+              <span class="pcard-row-icon">&#x1f3a4;</span>
+              <span class="pcard-row-label">Voice capture</span>
+              <span class="pcard-status local">On-device</span>
+            </div>
+            <div class="pcard-row">
+              <span class="pcard-row-icon">&#x1f9e0;</span>
+              <span class="pcard-row-label">Speech recognition</span>
+              <span class="pcard-status local">On-device</span>
+            </div>
+            <div class="pcard-row">
+              <span class="pcard-row-icon">&#x2728;</span>
+              <span class="pcard-row-label">AI polish</span>
+              <span class="pcard-status optional">Your choice</span>
+            </div>
+            <div class="pcard-row">
+              <span class="pcard-row-icon">&#x1f4e4;</span>
+              <span class="pcard-row-label">Audio upload</span>
+              <span class="pcard-status never">Never</span>
+            </div>
+            <div class="pcard-row">
+              <span class="pcard-row-icon">&#x1f4ca;</span>
+              <span class="pcard-row-label">Usage tracking</span>
+              <span class="pcard-status never">Never</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     How It Works (Pipeline)
+     ═══════════════════════════════════════════════════════ -->
+<section class="pipeline-section section" id="how-it-works" aria-label="How It Works">
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="section-label accent">How It Works</span>
+      <h2 class="section-title">Four steps.<br>Under two seconds.</h2>
+      <p class="section-sub">A streaming pipeline that starts transcribing while you're still talking.</p>
+    </div>
+
+    <div class="pipeline-steps reveal-stagger">
+      <div class="pipe-step reveal" style="--i:0">
+        <div class="pipe-step-icon red">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        </div>
+        <h3>Record</h3>
+        <p>Press your hotkey and talk. A floating overlay shows your waveform in real time.</p>
+      </div>
+      <div class="pipe-step reveal" style="--i:1">
+        <div class="pipe-step-icon amber">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 12h2l3-9 4 18 4-18 3 9h2"/></svg>
+        </div>
+        <h3>Transcribe</h3>
+        <p>AI on your Mac converts speech to text instantly — starts while you're still speaking.</p>
+      </div>
+      <div class="pipe-step reveal" style="--i:2">
+        <div class="pipe-step-icon cyan">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2z"/></svg>
+        </div>
+        <h3>Polish</h3>
+        <p>Grammar fixed, filler words removed automatically. Clean, readable text every time.</p>
+      </div>
+      <div class="pipe-step reveal" style="--i:3">
+        <div class="pipe-step-icon green">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 14l2 2 4-4"/></svg>
+        </div>
+        <h3>Paste</h3>
+        <p>Clean text appears wherever you're typing. Works in every app on your Mac.</p>
+      </div>
+    </div>
+
+    <!-- Interactive Demo -->
+    <div class="demo-wrapper reveal" id="demoWrapper">
+      <div class="demo-header">
+        <div class="demo-tag">Live Demo</div>
+        <div class="demo-title">Watch the pipeline in action</div>
+      </div>
+      <div class="demo-stage">
+        <div class="demo-panel demo-panel-left" id="demoPanelLeft">
+          <div class="panel-label tertiary">
+            What you said
+            <span class="live-badge asr" id="demoAsrBadge">Transcribing</span>
+          </div>
+          <div class="waveform" id="demoWaveform"></div>
+          <div class="demo-text" id="demoRawText"></div>
+        </div>
+        <div class="demo-pipeline" id="demoPipeline">
+          <div class="pipeline-title">Pipeline</div>
+          <div class="gantt">
+            <div class="gantt-row">
+              <div class="gantt-label" id="gRecLabel">Record</div>
+              <div class="gantt-track"><div class="gantt-bar recording" id="gRecBar"><span class="bar-text">5.0s</span></div></div>
+            </div>
+            <div class="gantt-row">
+              <div class="gantt-label" id="gAsrLabel">Stream ASR</div>
+              <div class="gantt-track" style="position:relative;">
+                <div class="gantt-bar streaming-asr" id="gAsrBar"><span class="bar-text">real-time</span></div>
+                <div class="overlap-bracket" id="gOverlapBracket"></div>
+                <div class="overlap-label" id="gOverlapLabel">parallel</div>
+              </div>
+            </div>
+            <div class="gantt-row">
+              <div class="gantt-label" id="gFinLabel">Finalize</div>
+              <div class="gantt-track"><div class="gantt-bar finalize" id="gFinBar"><span class="bar-text">~80ms</span></div></div>
+            </div>
+            <div class="gantt-row">
+              <div class="gantt-label" id="gPreLabel">Pre-warm</div>
+              <div class="gantt-track"><div class="gantt-bar prewarm" id="gPreBar"><span class="bar-text">TLS</span></div></div>
+            </div>
+            <div class="gantt-row">
+              <div class="gantt-label" id="gPolLabel">SSE Polish</div>
+              <div class="gantt-track"><div class="gantt-bar sse-polish" id="gPolBar"><span class="bar-text">~1.5s</span></div></div>
+            </div>
+            <div class="gantt-row">
+              <div class="gantt-label" id="gPasteLabel">Paste</div>
+              <div class="gantt-track"><div class="gantt-bar paste-bar" id="gPasteBar"><span class="bar-text">&lt;5ms</span></div></div>
+            </div>
+          </div>
+          <div class="concurrent-badge" id="gConcBadge">
+            <div class="cb-dot"></div>
+            <div class="cb-text" id="gConcText"></div>
+          </div>
+        </div>
+        <div class="demo-panel demo-panel-right" id="demoPanelRight">
+          <div class="panel-label green-label">
+            What got pasted
+            <span class="live-badge sse" id="demoSseBadge">Polishing</span>
+          </div>
+          <div class="demo-text" id="demoPolishedText" style="font-size:14px;line-height:1.75;"></div>
+        </div>
+      </div>
+      <div class="paste-particle" id="demoPasteParticle"></div>
+      <div class="demo-replay">
+        <button class="replay-btn" id="demoReplayBtn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+          Replay
+        </button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     Getting Started
+     ═══════════════════════════════════════════════════════ -->
+<section class="start-section section" id="download" aria-label="Download">
+  <div class="container">
+    <div class="section-head reveal">
+      <span class="section-label accent">Get Started</span>
+      <h2 class="section-title">Start dictating<br>in 30 seconds.</h2>
+      <p class="section-sub">No account required. No setup wizard. Just download and go.</p>
+    </div>
+
+    <div class="steps-row reveal-stagger">
+      <div class="step-card reveal" style="--i:0">
+        <div class="step-num">1</div>
+        <h3>Download</h3>
+        <p>Free from our website. Drag to Applications. Done.</p>
+      </div>
+      <div class="step-card reveal" style="--i:1">
+        <div class="step-num">2</div>
+        <h3>Set Up</h3>
+        <p>Grant microphone access. A quick setup guide walks you through it in under a minute.</p>
+      </div>
+      <div class="step-card reveal" style="--i:2">
+        <div class="step-num">3</div>
+        <h3>Start Talking</h3>
+        <p>Press your hotkey and go. Push-to-talk or hands-free &mdash; it's that simple.</p>
+      </div>
+    </div>
+
+    <div class="download-cta reveal">
+      <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="btn-primary" style="font-size:17px; padding:17px 40px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free for macOS
+      </a>
+      <p style="margin-top:16px; font-size:13px; color:var(--text-3);">macOS 14 or later &nbsp;&middot;&nbsp; Apple Silicon &amp; Intel &nbsp;&middot;&nbsp; Free</p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ═══════════════════════════════════════════════════════
+     Footer
+     ═══════════════════════════════════════════════════════ -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div class="footer-brand-name">
+          <svg width="24" height="24" viewBox="0 0 64 64" fill="none">
+            <rect x="4" y="22.25" width="4.5" height="5" rx="1.5" fill="#ff2a40"/>
+            <rect x="10" y="17.64" width="4.5" height="8" rx="1.5" fill="#ff8c00"/>
+            <rect x="16" y="12.04" width="4.5" height="12" rx="1.5" fill="#ffd700"/>
+            <rect x="22" y="16.96" width="4.5" height="9" rx="1.5" fill="#adff2f"/>
+            <rect x="28" y="21.56" width="4.5" height="6" rx="1.5" fill="#00fa9a"/>
+            <rect x="34" y="16.96" width="4.5" height="9" rx="1.5" fill="#00ffff"/>
+            <rect x="40" y="12.04" width="4.5" height="12" rx="1.5" fill="#1e90ff"/>
+            <rect x="46" y="17.64" width="4.5" height="8" rx="1.5" fill="#4169e1"/>
+            <rect x="52" y="22.25" width="4.5" height="5" rx="1.5" fill="#8a2be2"/>
+            <rect x="4" y="30.25" width="4.5" height="5" rx="1.5" fill="#4169e1"/>
+            <rect x="10" y="28.64" width="4.5" height="9" rx="1.5" fill="#1e90ff"/>
+            <rect x="16" y="27.04" width="4.5" height="12" rx="1.5" fill="#00ffff"/>
+            <rect x="22" y="28.96" width="4.5" height="15" rx="1.5" fill="#00fa9a"/>
+            <rect x="28" y="30.56" width="4.5" height="17" rx="1.5" fill="#adff2f"/>
+            <rect x="34" y="28.96" width="4.5" height="15" rx="1.5" fill="#ffd700"/>
+            <rect x="40" y="27.04" width="4.5" height="12" rx="1.5" fill="#ff8c00"/>
+            <rect x="46" y="28.64" width="4.5" height="9" rx="1.5" fill="#ff2a40"/>
+            <rect x="52" y="30.25" width="4.5" height="5" rx="1.5" fill="#8a2be2"/>
+          </svg>
+          EnviousWispr
+        </div>
+        <p>AI dictation for Mac. Private by design.</p>
+      </div>
+      <div class="footer-links">
+        <div class="footer-col">
+          <h4>Product</h4>
+          <ul>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#how-it-works">How It Works</a></li>
+            <li><a href="#privacy">Privacy</a></li>
+            <li><a href="#download">Download</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Links</h4>
+          <ul>
+            <li><a href="https://github.com/saurabhav88/EnviousWispr" target="_blank" rel="noopener">GitHub</a></li>
+            <li><a href="https://github.com/saurabhav88/EnviousWispr/releases" target="_blank" rel="noopener">Releases</a></li>
+            <li><a href="https://github.com/saurabhav88/EnviousWispr/issues/new?labels=bug" target="_blank" rel="noopener">Report a Bug</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">&copy; 2025 Envious Labs &nbsp;&middot;&nbsp; AI dictation for Mac &nbsp;&middot;&nbsp; Private by design</div>
+  </div>
+</footer>
+
+<!-- ═══════════════════════════════════════════════════════
+     JavaScript
+     ═══════════════════════════════════════════════════════ -->
+<script>
+(function() {
+  'use strict';
+
+  /* ─── Scroll Reveal ─── */
+  var revealObserver = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        revealObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
+
+  document.querySelectorAll('.reveal').forEach(function(el) {
+    revealObserver.observe(el);
+  });
+
+  /* ─── Nav scroll effect ─── */
+  var nav = document.querySelector('.nav');
+  window.addEventListener('scroll', function() {
+    nav.style.background = window.pageYOffset > 80
+      ? 'rgba(248,245,255,0.97)' : 'rgba(248,245,255,0.85)';
+  }, { passive: true });
+
+  /* ─── Mobile nav toggle ─── */
+  var navToggle = document.querySelector('.nav-toggle');
+  var navLinks = document.querySelector('.nav-links');
+  if (navToggle && navLinks) {
+    navToggle.addEventListener('click', function() {
+      var expanded = navLinks.classList.toggle('nav-open');
+      navToggle.setAttribute('aria-expanded', String(expanded));
+    });
+  }
+
+  /* ─── Smooth scroll ─── */
+  document.querySelectorAll('a[href^="#"]').forEach(function(a) {
+    a.addEventListener('click', function(e) {
+      var target = document.querySelector(a.getAttribute('href'));
+      if (target) {
+        e.preventDefault();
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  });
+
+  /* ═══════════════════════════════════════════════════════
+     Pipeline Demo (identical logic to v2)
+     ═══════════════════════════════════════════════════════ */
+  var BAR_COUNT = 40;
+  var V2_COLORS = ['#ff2a40','#ff8c00','#ffd700','#adff2f','#00fa9a','#00ffff','#1e90ff','#4169e1','#8a2be2'];
+
+  var rawSegments = [
+    { text: 'um ', filler: true },
+    { text: 'so ' },
+    { text: 'I I ', filler: true },
+    { text: 'wanted to ' },
+    { text: 'uh ', filler: true },
+    { text: 'circle back on, on our Q3 planning, ' },
+    { text: 'uh, ', filler: true },
+    { text: 'discussion from ' },
+    { text: 'like, ', filler: true },
+    { text: 'last Tuesday... I think ' },
+    { text: 'um ', filler: true },
+    { text: 'the timeline is ' },
+    { text: 'like ', filler: true },
+    { text: 'realistic but we should ' },
+    { text: 'uh ', filler: true },
+    { text: 'probably add a buffer week for the ' },
+    { text: 'um ', filler: true },
+    { text: 'integration phase' }
+  ];
+
+  var polishedStr = 'I wanted to circle back on our Q3 planning discussion from last Tuesday. I think the timeline is realistic, but we should probably add a buffer week for the integration phase.';
+  var polishedWords = polishedStr.split(' ');
+
+  var demoWrapper     = document.getElementById('demoWrapper');
+  var demoPanelLeft   = document.getElementById('demoPanelLeft');
+  var demoPipeline    = document.getElementById('demoPipeline');
+  var demoPanelRight  = document.getElementById('demoPanelRight');
+  var demoWaveform    = document.getElementById('demoWaveform');
+  var demoRawText     = document.getElementById('demoRawText');
+  var demoPolishedText = document.getElementById('demoPolishedText');
+  var demoAsrBadge    = document.getElementById('demoAsrBadge');
+  var demoSseBadge    = document.getElementById('demoSseBadge');
+  var demoPasteParticle = document.getElementById('demoPasteParticle');
+  var demoReplayBtn   = document.getElementById('demoReplayBtn');
+
+  var gRecBar   = document.getElementById('gRecBar');
+  var gAsrBar   = document.getElementById('gAsrBar');
+  var gFinBar   = document.getElementById('gFinBar');
+  var gPreBar   = document.getElementById('gPreBar');
+  var gPolBar   = document.getElementById('gPolBar');
+  var gPasteBar = document.getElementById('gPasteBar');
+  var gRecLabel   = document.getElementById('gRecLabel');
+  var gAsrLabel   = document.getElementById('gAsrLabel');
+  var gFinLabel   = document.getElementById('gFinLabel');
+  var gPreLabel   = document.getElementById('gPreLabel');
+  var gPolLabel   = document.getElementById('gPolLabel');
+  var gPasteLabel = document.getElementById('gPasteLabel');
+  var gOverlapBracket = document.getElementById('gOverlapBracket');
+  var gOverlapLabel   = document.getElementById('gOverlapLabel');
+  var gConcBadge = document.getElementById('gConcBadge');
+  var gConcText  = document.getElementById('gConcText');
+
+  var dTimers = [], dIntervals = [], dRafId = null;
+  function dLater(fn, ms) { var t = setTimeout(fn, ms); dTimers.push(t); return t; }
+  function dClearAll() {
+    dTimers.forEach(clearTimeout); dIntervals.forEach(clearInterval);
+    dTimers = []; dIntervals = [];
+    if (dRafId) cancelAnimationFrame(dRafId); dRafId = null;
+  }
+
+  function createDemoBars() {
+    while (demoWaveform.firstChild) demoWaveform.removeChild(demoWaveform.firstChild);
+    for (var i = 0; i < BAR_COUNT; i++) {
+      var bar = document.createElement('div');
+      bar.className = 'bar';
+      bar.style.background = V2_COLORS[i % V2_COLORS.length];
+      bar.style.height = '8px';
+      demoWaveform.appendChild(bar);
+    }
+  }
+
+  var dWaveActive = false;
+  function tickDemoWave() {
+    if (!dWaveActive) return;
+    var bars = demoWaveform.children;
+    var now = performance.now();
+    for (var i = 0; i < bars.length; i++) {
+      var phase = i * 0.35 + now * 0.004;
+      var h = 8 + Math.abs(Math.sin(phase)) * 30 + Math.abs(Math.sin(phase * 0.7 + i)) * 10;
+      bars[i].style.height = h + 'px';
+    }
+    dRafId = requestAnimationFrame(tickDemoWave);
+  }
+  function startDemoWave() { dWaveActive = true; tickDemoWave(); }
+  function stopDemoWave() {
+    dWaveActive = false;
+    if (dRafId) { cancelAnimationFrame(dRafId); dRafId = null; }
+    var bars = demoWaveform.children;
+    for (var i = 0; i < bars.length; i++) bars[i].style.height = '8px';
+  }
+
+  function animateGantt(bar, targetWidth, durMs, cb) {
+    bar.classList.add('active');
+    bar.style.transition = 'width ' + durMs + 'ms linear';
+    requestAnimationFrame(function() { bar.style.width = targetWidth; });
+    if (cb) dLater(cb, durMs);
+  }
+  function doneGantt(bar) { bar.classList.remove('active'); bar.classList.add('done'); }
+
+  function typeRaw(cb) {
+    while (demoRawText.firstChild) demoRawText.removeChild(demoRawText.firstChild);
+    var spans = [];
+    rawSegments.forEach(function(seg) {
+      var sp = document.createElement('span');
+      if (seg.filler) sp.className = 'filler';
+      demoRawText.appendChild(sp);
+      spans.push({ el: sp, text: seg.text, pos: 0 });
+    });
+    var segIdx = 0;
+    var totalChars = rawSegments.reduce(function(a, s) { return a + s.text.length; }, 0);
+    var avgDelay = 4800 / (totalChars / 3);
+    function tick() {
+      if (segIdx >= spans.length) { if (cb) cb(); return; }
+      var cur = spans[segIdx];
+      var chunk = 2 + Math.floor(Math.random() * 3);
+      var end = Math.min(cur.pos + chunk, cur.text.length);
+      cur.el.textContent = cur.text.slice(0, end);
+      cur.pos = end;
+      if (cur.pos >= cur.text.length) segIdx++;
+      if (segIdx < spans.length) { dLater(tick, avgDelay * (0.6 + Math.random() * 0.8)); }
+      else { if (cb) cb(); }
+    }
+    tick();
+  }
+
+  function strikeFillers(cb) {
+    var fillers = demoRawText.querySelectorAll('.filler');
+    fillers.forEach(function(f, i) { dLater(function() { f.classList.add('struck'); }, i * 200); });
+    dLater(cb, fillers.length * 200 + 200);
+  }
+
+  function streamPolished(cb) {
+    demoPolishedText.textContent = '';
+    var cursor = document.createElement('span');
+    cursor.className = 'cursor-blink';
+    demoPolishedText.appendChild(cursor);
+    var wordIdx = 0;
+    function emitBurst() {
+      if (wordIdx >= polishedWords.length) {
+        if (cursor.parentNode) cursor.parentNode.removeChild(cursor);
+        if (cb) cb(); return;
+      }
+      if (cursor.parentNode) cursor.parentNode.removeChild(cursor);
+      var burstSize = Math.min(1 + Math.floor(Math.random() * 3), polishedWords.length - wordIdx);
+      for (var i = 0; i < burstSize; i++) {
+        var ws = document.createElement('span');
+        ws.className = 'sse-word';
+        ws.textContent = (wordIdx > 0 ? ' ' : '') + polishedWords[wordIdx];
+        demoPolishedText.appendChild(ws);
+        (function(span, delay) { dLater(function() { span.classList.add('visible'); }, delay); })(ws, i * 30);
+        wordIdx++;
+      }
+      demoPolishedText.appendChild(cursor);
+      demoPolishedText.scrollTop = demoPolishedText.scrollHeight;
+      dLater(emitBurst, 40 + Math.random() * 60 + (Math.random() < 0.1 ? 60 : 0));
+    }
+    emitBurst();
+  }
+
+  function setConcBadge(text) { gConcText.textContent = text; gConcBadge.classList.add('visible'); }
+  function hideConcBadge() { gConcBadge.classList.remove('visible'); }
+
+  function resetDemo() {
+    dClearAll(); stopDemoWave();
+    [demoPanelLeft, demoPipeline, demoPanelRight].forEach(function(e) { e.classList.remove('visible'); });
+    demoPanelRight.classList.remove('glow-green');
+    demoReplayBtn.classList.remove('visible');
+    demoAsrBadge.classList.remove('active'); demoSseBadge.classList.remove('active');
+    hideConcBadge();
+    [gRecBar, gAsrBar, gFinBar, gPreBar, gPolBar, gPasteBar].forEach(function(b) {
+      b.style.transition = 'none'; b.style.width = '0%';
+      b.className = b.className.replace(/\s*(active|done)\b/g, '');
+    });
+    [gRecLabel, gAsrLabel, gFinLabel, gPreLabel, gPolLabel, gPasteLabel].forEach(function(l) { l.classList.remove('active'); });
+    gOverlapBracket.classList.remove('visible'); gOverlapLabel.classList.remove('visible');
+    demoRawText.textContent = ''; demoPolishedText.textContent = '';
+    demoPasteParticle.style.transition = 'none'; demoPasteParticle.style.opacity = '0';
+    createDemoBars();
+  }
+
+  function runDemo() {
+    resetDemo();
+    dLater(function() { demoPanelLeft.classList.add('visible'); }, 100);
+    dLater(function() { demoPipeline.classList.add('visible'); }, 400);
+    dLater(function() { demoPanelRight.classList.add('visible'); }, 700);
+    dLater(function() {
+      startDemoWave(); demoAsrBadge.classList.add('active');
+      gRecLabel.classList.add('active'); animateGantt(gRecBar, '100%', 5000);
+      gAsrLabel.classList.add('active'); animateGantt(gAsrBar, '100%', 5000);
+      dLater(function() { gOverlapBracket.classList.add('visible'); gOverlapLabel.classList.add('visible'); }, 800);
+      setConcBadge('Recording + ASR parallel');
+      typeRaw(function() {});
+    }, 1000);
+    dLater(function() {
+      stopDemoWave(); demoAsrBadge.classList.remove('active');
+      doneGantt(gRecBar); doneGantt(gAsrBar);
+      gRecLabel.classList.remove('active'); gAsrLabel.classList.remove('active');
+      gOverlapBracket.classList.remove('visible'); gOverlapLabel.classList.remove('visible');
+      gFinLabel.classList.add('active');
+      animateGantt(gFinBar, '15%', 500, function() { doneGantt(gFinBar); gFinLabel.classList.remove('active'); });
+      gPreLabel.classList.add('active');
+      animateGantt(gPreBar, '15%', 500, function() { doneGantt(gPreBar); gPreLabel.classList.remove('active'); });
+      setConcBadge('Finalize + pre-warm concurrent');
+      strikeFillers(function() {});
+    }, 6000);
+    dLater(function() {
+      gPolLabel.classList.add('active');
+      animateGantt(gPolBar, '100%', 1500, function() { doneGantt(gPolBar); gPolLabel.classList.remove('active'); });
+      demoSseBadge.classList.add('active'); setConcBadge('SSE tokens streaming');
+      demoPanelRight.classList.add('glow-green');
+      dLater(function() { streamPolished(function() { demoSseBadge.classList.remove('active'); }); }, 100);
+    }, 7500);
+    dLater(function() {
+      gPasteLabel.classList.add('active');
+      animateGantt(gPasteBar, '100%', 200, function() { doneGantt(gPasteBar); gPasteLabel.classList.remove('active'); });
+      hideConcBadge();
+    }, 9200);
+    dLater(function() { demoReplayBtn.classList.add('visible'); }, 10000);
+  }
+
+  demoReplayBtn.addEventListener('click', function() { runDemo(); });
+
+  var demoPlayed = false;
+  var demoObserver = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting && !demoPlayed) { demoPlayed = true; runDemo(); }
+    });
+  }, { threshold: 0.3 });
+  demoObserver.observe(demoWrapper);
+
+  createDemoBars();
+
+})();
+</script>
+
+</body>
+</html>
