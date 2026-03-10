@@ -70,6 +70,11 @@ enum TimingConstants {
     /// Prevents runaway recordings from consuming unbounded memory/CPU.
     /// AudioCaptureManager has a hard emergency limit at 600s; this fires earlier and gracefully.
     static let maxRecordingDuration: TimeInterval = 300
+
+    /// Double-press detection window for hands-free recording mode (milliseconds).
+    /// Release within this window starts a debounce timer; second press within
+    /// this window locks recording. Matches Wispr Flow's proven 500ms constant.
+    static let handsFreeDebounceDelayMs: UInt64 = 500
 }
 
 // MARK: - LLM Constants
