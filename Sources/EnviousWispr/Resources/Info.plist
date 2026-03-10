@@ -3,23 +3,23 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>EnviousWispr Dev</string>
+	<string>EnviousWispr</string>
 	<key>CFBundleExecutable</key>
 	<string>EnviousWispr</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.enviouswispr.app.dev</string>
+	<string>com.enviouswispr.app</string>
 	<key>CFBundleName</key>
-	<string>EnviousWispr Dev</string>
+	<string>EnviousWispr</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.6</string>
+	<string>1.1.0</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
 	<key>CFBundleVersion</key>
-	<string>1.0.6</string>
+	<string>1.1.0</string>
 	<key>LSArchitecturePriority</key>
 	<array>
 		<string>arm64</string>
