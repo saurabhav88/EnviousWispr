@@ -26,18 +26,23 @@ final class RecordingOverlayPanel {
     /// close and recreate the panel for the same visual state (flicker).
     private var currentIntent: OverlayIntent = .hidden
 
+    /// Tracks lock state for flicker guard comparison.
+    private var isRecordingLocked: Bool = false
+
     // MARK: - Intent-driven API
 
     /// Unified entry point: render the overlay for the given intent.
     /// Guards against identical intents to prevent flicker.
-    func show(intent: OverlayIntent, audioLevelProvider: @escaping () -> Float = { 0 }) {
-        guard intent != currentIntent else { return }
+    func show(intent: OverlayIntent, audioLevelProvider: @escaping () -> Float = { 0 }, isRecordingLocked: Bool = false) {
+        let isRecordingIntent: Bool = if case .recording = intent { true } else { false }
+        guard intent != currentIntent || (isRecordingIntent && self.isRecordingLocked != isRecordingLocked) else { return }
+        self.isRecordingLocked = isRecordingLocked
         currentIntent = intent
         switch intent {
         case .hidden:
             hide()
         case .recording:
-            show(audioLevelProvider: audioLevelProvider)
+            show(audioLevelProvider: audioLevelProvider, isRecordingLocked: isRecordingLocked)
         case .processing(let label):
             showPolishing(label: label)
         }
@@ -45,11 +50,11 @@ final class RecordingOverlayPanel {
 
     // MARK: - Legacy API (internal)
 
-    func show(audioLevelProvider: @escaping () -> Float) {
+    func show(audioLevelProvider: @escaping () -> Float, isRecordingLocked: Bool = false) {
         if panel != nil {
             // A panel already exists (e.g., "Starting..." polishing panel).
             // Transition to recording — mirrors transitionToPolishing() in reverse.
-            transitionToRecording(audioLevelProvider: audioLevelProvider)
+            transitionToRecording(audioLevelProvider: audioLevelProvider, isRecordingLocked: isRecordingLocked)
             return
         }
         // Cancel any lingering deferred work from a prior session that wasn't
@@ -71,7 +76,7 @@ final class RecordingOverlayPanel {
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.generation == token else { return }
             self.pendingCreateWork = nil
-            self.createPanel(audioLevelProvider: audioLevelProvider)
+            self.createPanel(audioLevelProvider: audioLevelProvider, isRecordingLocked: isRecordingLocked)
         }
         pendingCreateWork = work
         DispatchQueue.main.async(execute: work)
@@ -99,12 +104,17 @@ final class RecordingOverlayPanel {
         DispatchQueue.main.async(execute: work)
     }
 
-    private func createPanel(audioLevelProvider: @escaping () -> Float, y: CGFloat? = nil) {
+    private func createPanel(audioLevelProvider: @escaping () -> Float, isRecordingLocked: Bool = false, y: CGFloat? = nil) {
         guard panel == nil else { return }
 
-        let overlayView = RecordingOverlayView(audioLevelProvider: audioLevelProvider)
-            .frame(width: 185, height: 44)
-        showPanel(content: overlayView, width: 185, y: y)
+        let width: CGFloat = isRecordingLocked ? 120 : 185
+        let height: CGFloat = isRecordingLocked ? 64 : 44
+        let overlayView = RecordingOverlayView(
+            audioLevelProvider: audioLevelProvider,
+            isRecordingLocked: isRecordingLocked
+        )
+        .frame(width: width, height: height)
+        showPanel(content: overlayView, width: width, height: height, y: y)
     }
 
     private func createPolishingPanel(label: String = "Polishing...") {
@@ -145,7 +155,7 @@ final class RecordingOverlayPanel {
     /// Transition an existing panel from polishing/processing to recording mode.
     /// Mirrors transitionToPolishing() — tears down the current panel and creates
     /// a recording panel at the same position on the next run loop cycle.
-    private func transitionToRecording(audioLevelProvider: @escaping () -> Float) {
+    private func transitionToRecording(audioLevelProvider: @escaping () -> Float, isRecordingLocked: Bool = false) {
         guard let existingPanel = panel else { return }
         let y = existingPanel.frame.origin.y
 
@@ -161,20 +171,20 @@ final class RecordingOverlayPanel {
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.generation == token else { return }
             self.pendingCreateWork = nil
-            self.createPanel(audioLevelProvider: audioLevelProvider, y: y)
+            self.createPanel(audioLevelProvider: audioLevelProvider, isRecordingLocked: isRecordingLocked, y: y)
         }
         pendingCreateWork = work
         DispatchQueue.main.async(execute: work)
     }
 
     /// Create and show a floating overlay panel with the given SwiftUI content.
-    private func showPanel<V: View>(content: V, width: CGFloat, y: CGFloat? = nil) {
+    private func showPanel<V: View>(content: V, width: CGFloat, height: CGFloat = 44, y: CGFloat? = nil) {
         // Guard against the edge case where no screen is available (C3).
         guard let targetScreen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) })
                 ?? NSScreen.main
                 ?? NSScreen.screens.first else { return }
 
-        let size = NSRect(x: 0, y: 0, width: width, height: 44)
+        let size = NSRect(x: 0, y: 0, width: width, height: height)
 
         let p = NSPanel(
             contentRect: size,
@@ -204,6 +214,7 @@ final class RecordingOverlayPanel {
 
     func hide() {
         currentIntent = .hidden
+        isRecordingLocked = false
         generation &+= 1
         // Cancel any pending deferred panel creation so it never fires.
         // This handles the rapid-ESC race: if hide() is called before the
@@ -460,6 +471,7 @@ private struct OverlayCapsuleBackground: View {
 /// Compact recording indicator overlay.
 struct RecordingOverlayView: View {
     let audioLevelProvider: () -> Float
+    let isRecordingLocked: Bool
     @State private var audioLevel: Float = 0
     @State private var elapsed: TimeInterval = 0
 
@@ -469,12 +481,16 @@ struct RecordingOverlayView: View {
         HStack(spacing: 10) {
             // Rainbow lips icon — audio-reactive during recording
             RainbowLipsIcon(size: 24, audioLevel: audioLevel)
+                .scaleEffect(isRecordingLocked ? 2.0 : 1.0)
 
-            // Duration timer
-            Text(FormattingConstants.formatDuration(elapsed))
-                .font(.system(size: 13, weight: .medium, design: .monospaced))
-                .foregroundStyle(.white)
+            if !isRecordingLocked {
+                Text(FormattingConstants.formatDuration(elapsed))
+                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .transition(.opacity)
+            }
         }
+        .animation(.easeInOut(duration: 0.3), value: isRecordingLocked)
         // Single container animation prevents animation stacking: N per-element
         // modifiers × update rate creates exponential state transitions (gotchas.md).
         .animation(.easeOut(duration: 0.08), value: audioLevel)

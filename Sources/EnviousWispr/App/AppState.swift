@@ -164,7 +164,8 @@ final class AppState {
             // Intent-driven overlay — pipeline.overlayIntent maps state to the correct label
             self.recordingOverlay.show(
                 intent: self.pipeline.overlayIntent,
-                audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 }
+                audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 },
+                isRecordingLocked: self.isRecordingLocked
             )
             if newState == .complete { self.loadTranscripts() }
         }
@@ -183,7 +184,8 @@ final class AppState {
             // Intent-driven overlay — pipeline.overlayIntent maps state to the correct label
             self.recordingOverlay.show(
                 intent: self.whisperKitPipeline.overlayIntent,
-                audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 }
+                audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 },
+                isRecordingLocked: self.isRecordingLocked
             )
             if newState == .complete { self.loadTranscripts() }
         }
