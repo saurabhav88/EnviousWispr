@@ -1,10 +1,16 @@
 import SwiftUI
+import TelemetryDeck
 
 @main
 struct EnviousWisprApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var isOnboardingPresented: Bool =
         !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
+
+    init() {
+        let config = TelemetryDeck.Config(appID: "30801A60-9339-4313-8ACE-CC294B2A3EEA")
+        TelemetryDeck.initialize(config: config)
+    }
 
     var body: some Scene {
         Window(AppConstants.appName, id: "main") {

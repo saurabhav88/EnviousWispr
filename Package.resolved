@@ -1,5 +1,5 @@
 {
-  "originHash" : "34be01901e550fc721bd5acf62364a308e9f9ad287f1808f7d4d103560f74514",
+  "originHash" : "a09e5778ca7fdee2cfa06bbe8c9d185ff32f142c5ba48ab10a33ef79a76d868a",
   "pins" : [
     {
       "identity" : "fluidaudio",
@@ -71,6 +71,15 @@
       "state" : {
         "revision" : "150169bfba0889c229a2ce7494cf8949f18e6906",
         "version" : "1.1.9"
+      }
+    },
+    {
+      "identity" : "swiftsdk",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/TelemetryDeck/SwiftSDK.git",
+      "state" : {
+        "revision" : "8f332c1c256ba26cc46f74c9e5af94f7b1c37a9c",
+        "version" : "2.11.0"
       }
     },
     {

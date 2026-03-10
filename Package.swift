@@ -11,6 +11,7 @@ let package = Package(
         .package(url: "https://github.com/argmaxinc/WhisperKit.git", from: "0.12.0"),
         .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.12.0"),
         .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.6.0"),
+        .package(url: "https://github.com/TelemetryDeck/SwiftSDK.git", from: "2.0.0"),
     ],
     targets: [
         .executableTarget(
@@ -19,6 +20,7 @@ let package = Package(
                 "WhisperKit",
                 "FluidAudio",
                 "Sparkle",
+                .product(name: "TelemetryDeck", package: "SwiftSDK"),
             ],
             path: "Sources/EnviousWispr",
             exclude: ["Resources"]
