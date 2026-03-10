@@ -91,5 +91,18 @@
       />
     </item>
 
+        <item>
+      <title>Version 1.1.0</title>
+      <pubDate>Tue, 10 Mar 2026 18:28:19 +0000</pubDate>
+      <sparkle:version>1.1.0</sparkle:version>
+      <sparkle:shortVersionString>1.1.0</sparkle:shortVersionString>
+      <enclosure
+        url="https://github.com/saurabhav88/EnviousWispr/releases/download/v1.1.0/EnviousWispr-1.1.0.dmg"
+        length="5556043"
+        type="application/octet-stream"
+        sparkle:edSignature="KCK0C5+/jx1QLvxcV5IbKr0Uv06s03p+mSOeSVgjyXgh2NkhMxJazirha8H5dp4b4pT3Xcmfn4cZg++qFo1JDw=="
+      />
+    </item>
+
     </channel>
 </rss>
