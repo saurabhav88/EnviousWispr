@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>EnviousWispr — Private AI Dictation for macOS | On-Device Speech-to-Text</title>
+<title>EnviousWispr — Private AI Dictation for macOS</title>
 <meta name="description" content="Private AI dictation for macOS — on-device speech-to-text that never sends your voice to the cloud. Zero data collection, no cloud ASR, grammar-fixed polished text pasted in under 2 seconds.">
 <meta name="robots" content="index, follow">
 <meta name="author" content="Envious Labs">
@@ -18,13 +18,16 @@
 <meta property="og:image" content="https://saurabhav88.github.io/EnviousWispr/docs/website/og-image.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="EnviousWispr — Private AI dictation for macOS. Your voice never leaves your Mac.">
 <!-- Twitter Card -->
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="EnviousWispr — Private AI Dictation for macOS">
 <meta name="twitter:description" content="On-device AI dictation that never sends your voice to the cloud. Record, transcribe, polish, paste — all on your Mac.">
 <meta name="twitter:image" content="https://saurabhav88.github.io/EnviousWispr/docs/website/og-image.png">
+<meta name="twitter:image:alt" content="EnviousWispr — Private AI dictation for macOS. Your voice never leaves your Mac.">
 <!-- Favicon -->
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="theme-color" content="#f8f5ff">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200;300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -1718,6 +1721,54 @@ body::after {
     "Custom word correction",
     "Native macOS app built in Swift",
     "Streaming pipeline under 2 seconds"
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is EnviousWispr private? Does it upload my voice to the cloud?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes, EnviousWispr is fully private. Speech recognition runs entirely on your Mac using on-device models (Parakeet v3 and WhisperKit). Your audio is never uploaded to any server, never written to disk, and never leaves your hardware."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I use EnviousWispr completely offline?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. Transcription is 100% on-device with no internet required. The optional AI polish step can also run offline using Ollama (local LLM). You can skip polish entirely for fully offline operation."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How fast is EnviousWispr?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "EnviousWispr transcribes at 110x real-time speed on Apple Silicon. The full pipeline — from releasing the hotkey to polished text pasted into your app — takes about 1.6 seconds."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What macOS apps does EnviousWispr work with?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "EnviousWispr auto-pastes into any macOS app — Slack, VS Code, Gmail, Notes, Terminal, and more. It preserves your previous clipboard contents after pasting."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is EnviousWispr free?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "EnviousWispr is source-available under the BSL 1.1 license. You can download it for free from GitHub Releases."
+      }
+    }
   ]
 }
 </script>
