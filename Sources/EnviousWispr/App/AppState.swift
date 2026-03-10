@@ -47,6 +47,10 @@ final class AppState {
     var selectedTranscriptID: UUID?
     var pendingNavigationSection: SettingsSection?
 
+    /// True when recording is in hands-free (locked) mode via double-press.
+    /// Read by the overlay to switch to the expanded lips visual.
+    var isRecordingLocked: Bool = false
+
     var filteredTranscripts: [Transcript] {
         guard !searchQuery.isEmpty else { return transcripts }
         return transcripts.filter {
@@ -154,6 +158,7 @@ final class AppState {
             case .recording:
                 self.hotkeyService.registerCancelHotkey()
             case .transcribing, .polishing, .error, .idle, .complete:
+                self.isRecordingLocked = false
                 self.hotkeyService.unregisterCancelHotkey()
             }
             // Intent-driven overlay — pipeline.overlayIntent maps state to the correct label
@@ -172,6 +177,7 @@ final class AppState {
             case .recording:
                 self.hotkeyService.registerCancelHotkey()
             case .startingUp, .loadingModel, .transcribing, .polishing, .error, .idle, .ready, .complete:
+                self.isRecordingLocked = false
                 self.hotkeyService.unregisterCancelHotkey()
             }
             // Intent-driven overlay — pipeline.overlayIntent maps state to the correct label
@@ -237,6 +243,7 @@ final class AppState {
         }
         hotkeyService.onStopRecording = { [weak self] in
             guard let self else { return }
+            self.isRecordingLocked = false
             await self.activePipeline.handle(event: .requestStop)
             if self.asrManager.activeBackendType == .whisperKit {
                 self.whisperKitPipeline.autoPasteToActiveApp = false
@@ -246,7 +253,29 @@ final class AppState {
         }
 
         hotkeyService.onCancelRecording = { [weak self] in
+            self?.isRecordingLocked = false
             await self?.cancelRecording()
+        }
+
+        hotkeyService.onIsProcessing = { [weak self] in
+            guard let self else { return false }
+            // Block during any state that means "still working on the last recording"
+            if self.asrManager.activeBackendType == .whisperKit {
+                let state = self.whisperKitPipeline.state
+                return state == .transcribing || state == .polishing
+            } else {
+                let state = self.pipeline.state
+                return state == .transcribing || state == .polishing
+            }
+        }
+
+        hotkeyService.onLocked = { [weak self] in
+            guard let self else { return }
+            self.isRecordingLocked = true
+            Task { await AppLogger.shared.log(
+                "Hands-free mode activated — overlay should expand",
+                level: .info, category: "AppState"
+            ) }
         }
 
         // Pre-load WhisperKit model in background to eliminate cold-start delay.
@@ -628,6 +657,7 @@ final class AppState {
 
     /// Cancel an active recording, discarding all captured audio.
     func cancelRecording() async {
+        isRecordingLocked = false
         recordingOverlay.hide()
         let isWhisperKit = asrManager.activeBackendType == .whisperKit
         if isWhisperKit {
