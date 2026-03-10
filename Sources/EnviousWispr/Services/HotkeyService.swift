@@ -64,12 +64,34 @@ final class HotkeyService {
     /// recording commands — only one start or stop operation runs at a time.
     private var recordingTask: Task<Void, Never>?
 
+    // MARK: - Hands-Free (Double-Press Lock) State
+
+    /// True when recording is locked into hands-free mode.
+    /// When locked, key releases are suppressed and recording continues
+    /// until the next key press or cancel.
+    private(set) var isRecordingLocked: Bool = false
+
+    /// Timestamp of the key-down that started the current recording session.
+    /// Used for the 500ms double-press detection window.
+    private var recordingStartTime: Date? = nil
+
+    /// Debounce timer: on quick PTT release (< 500ms), waits for a possible
+    /// second press before stopping. Cancelled on double-press or new recording.
+    private var debounceTask: Task<Void, Never>? = nil
+
     // MARK: - Callbacks (wired by AppState)
 
     var onToggleRecording: (@MainActor () async -> Void)?
     var onStartRecording: (@MainActor () async -> Void)?
     var onStopRecording: (@MainActor () async -> Void)?
     var onCancelRecording: (@MainActor () async -> Void)?
+
+    /// Called when recording transitions to hands-free (locked) mode via double-press.
+    var onLocked: (@MainActor () async -> Void)?
+
+    /// Returns true if the pipeline is in a processing state (transcribing, polishing, etc.).
+    /// Used by the processing state gate to block new recordings during processing.
+    var onIsProcessing: (@MainActor () -> Bool)?
 
     // MARK: - Configuration
 
@@ -107,6 +129,7 @@ final class HotkeyService {
         removeModifierMonitors()
         isEnabled = false
         isModifierHeld = false
+        performCleanup()
     }
 
     /// Temporarily unregister all hotkeys so the recorder can capture key combos.
@@ -122,6 +145,7 @@ final class HotkeyService {
     func resume() {
         guard isEnabled, isSuspended else { return }
         isModifierHeld = false
+        performCleanup()
         registerToggleHotkey()
         installModifierMonitors()
         isSuspended = false
@@ -142,6 +166,128 @@ final class HotkeyService {
         if let ref = cancelHotkeyRef {
             UnregisterEventHotKey(ref)
             cancelHotkeyRef = nil
+        }
+    }
+
+    /// Reset all hands-free state. Called before every stop/cancel callback
+    /// and on service stop/resume.
+    private func performCleanup() {
+        isRecordingLocked = false
+        recordingStartTime = nil
+        debounceTask?.cancel()
+        debounceTask = nil
+    }
+
+    // MARK: - Hands-Free State Machine
+
+    /// Unified PTT + hands-free state machine.
+    /// Called by both `handleCarbonHotkey` and `handleFlagsChanged` for
+    /// push-to-talk mode press/release events.
+    private func handleRecordAction(isPress: Bool) {
+        if isPress {
+            handleRecordPress()
+        } else {
+            handleRecordRelease()
+        }
+    }
+
+    private func handleRecordPress() {
+        // Guard: if already held (duplicate press event), ignore
+        guard !isModifierHeld else { return }
+        isModifierHeld = true
+
+        // Anti-spam Layer 1: Block new recordings while pipeline is processing.
+        if let isProcessing = onIsProcessing, isProcessing() {
+            Task { await AppLogger.shared.log(
+                "Key press ignored — pipeline is still processing",
+                level: .info, category: "HotkeyService"
+            ) }
+            isModifierHeld = false
+            return
+        }
+
+        let isRecording = recordingStartTime != nil
+
+        if !isRecording {
+            // Not recording → start fresh
+            isRecordingLocked = false
+            recordingStartTime = Date()
+            debounceTask?.cancel()
+            debounceTask = nil
+            recordingTask?.cancel()
+            recordingTask = Task { await onStartRecording?() }
+        } else if let startTime = recordingStartTime,
+                  Date().timeIntervalSince(startTime) <= Double(TimingConstants.handsFreeDebounceDelayMs) / 1000.0 {
+            // Within 500ms window
+            if isRecordingLocked {
+                // Triple press → cancel
+                Task { await AppLogger.shared.log(
+                    "Triple press — cancelling hands-free recording",
+                    level: .info, category: "HotkeyService"
+                ) }
+                performCleanup()
+                isModifierHeld = false
+                recordingTask?.cancel()
+                recordingTask = Task { await onCancelRecording?() }
+            } else {
+                // Double press → lock into hands-free
+                Task { await AppLogger.shared.log(
+                    "Double press — locking into hands-free mode",
+                    level: .info, category: "HotkeyService"
+                ) }
+                debounceTask?.cancel()
+                debounceTask = nil
+                isRecordingLocked = true
+                recordingTask?.cancel()
+                recordingTask = Task { await onLocked?() }
+            }
+        } else if isRecordingLocked {
+            // Single press while locked (after 500ms) → stop
+            Task { await AppLogger.shared.log(
+                "Single press while locked — stopping hands-free recording",
+                level: .info, category: "HotkeyService"
+            ) }
+            performCleanup()
+            isModifierHeld = false
+            recordingTask?.cancel()
+            recordingTask = Task { await onStopRecording?() }
+        }
+    }
+
+    private func handleRecordRelease() {
+        guard isModifierHeld else { return }
+        isModifierHeld = false
+
+        let isRecording = recordingStartTime != nil
+
+        // Not recording → ignore
+        guard isRecording else { return }
+
+        // Locked → suppress release entirely
+        if isRecordingLocked { return }
+
+        // Quick release (within 500ms) → debounce, wait for double-press
+        if let startTime = recordingStartTime,
+           Date().timeIntervalSince(startTime) <= Double(TimingConstants.handsFreeDebounceDelayMs) / 1000.0 {
+            debounceTask?.cancel()
+            debounceTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(TimingConstants.handsFreeDebounceDelayMs))
+                guard !Task.isCancelled, let self else { return }
+                // Timer fired — user didn't double-press. Stop as normal PTT.
+                guard self.recordingStartTime != nil, !self.isRecordingLocked else { return }
+                Task { await AppLogger.shared.log(
+                    "Debounce timer fired — stopping PTT (no double-press detected)",
+                    level: .info, category: "HotkeyService"
+                ) }
+                self.performCleanup()
+                self.recordingTask?.cancel()
+                self.recordingTask = Task { await self.onStopRecording?() }
+            }
+        } else {
+            // Normal PTT release (held > 500ms) → stop immediately
+            performCleanup()
+            recordingTask?.cancel()
+            recordingTask = Task { await onStopRecording?() }
         }
     }
 
@@ -253,27 +399,17 @@ final class HotkeyService {
         ) }
         switch id {
         case HotkeyID.toggle.rawValue:
-            // Unified shortcut — behavior depends on recording mode
             if recordingMode == .toggle {
                 guard !isRelease else { return }
                 Task { await onToggleRecording?() }
             } else {
-                // Push-to-talk mode: key-DOWN starts recording, key-UP stops.
-                // Cancel previous recording Task to prevent zombie Tasks from
-                // piling up during rapid press/release (spam resilience).
-                if !isRelease && !isModifierHeld {
-                    isModifierHeld = true
-                    recordingTask?.cancel()
-                    recordingTask = Task { await onStartRecording?() }
-                } else if isRelease && isModifierHeld {
-                    isModifierHeld = false
-                    recordingTask?.cancel()
-                    recordingTask = Task { await onStopRecording?() }
-                }
+                // Push-to-talk mode with hands-free support
+                handleRecordAction(isPress: !isRelease)
             }
 
         case HotkeyID.cancel.rawValue:
             guard !isRelease else { return }
+            performCleanup()
             Task { await onCancelRecording?() }
 
         default:
@@ -311,24 +447,8 @@ final class HotkeyService {
             ) }
             Task { await onToggleRecording?() }
         } else {
-            // Push-to-talk mode: key-DOWN starts recording, key-UP stops.
-            // Cancel previous recording Task to prevent zombie Tasks from
-            // piling up during rapid press/release (spam resilience).
-            if isPress && !isModifierHeld {
-                Task { await AppLogger.shared.log(
-                    "Modifier-only PTT press: keyCode=\(capturedKeyCode)", level: .info, category: "HotkeyService"
-                ) }
-                isModifierHeld = true
-                recordingTask?.cancel()
-                recordingTask = Task { await onStartRecording?() }
-            } else if !isPress && isModifierHeld {
-                Task { await AppLogger.shared.log(
-                    "Modifier-only PTT release: keyCode=\(capturedKeyCode)", level: .info, category: "HotkeyService"
-                ) }
-                isModifierHeld = false
-                recordingTask?.cancel()
-                recordingTask = Task { await onStopRecording?() }
-            }
+            // Push-to-talk mode with hands-free support
+            handleRecordAction(isPress: isPress)
         }
     }
 
