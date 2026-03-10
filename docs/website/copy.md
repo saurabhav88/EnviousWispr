@@ -8,7 +8,7 @@ All copy for the homepage, organized by section. Two hero options provided.
 
 ### Option A: "Talk naturally. Paste perfectly."
 
-**Badge:** Open Source macOS App
+**Badge:** macOS App
 
 **Headline:** Talk naturally. Paste perfectly.
 
@@ -21,7 +21,7 @@ All copy for the homepage, organized by section. Two hero options provided.
 
 ### Option B: "Speak. Polish. Paste."
 
-**Badge:** Open Source macOS App
+**Badge:** macOS App
 
 **Headline:** Speak. Polish. Paste.
 
@@ -153,7 +153,7 @@ All copy for the homepage, organized by section. Two hero options provided.
 **Description:** The only network call is the optional LLM polish step — and you control the provider. Use Ollama for fully offline operation. Or skip polish entirely.
 
 ### Point 4
-**Headline:** Open source
+**Headline:** Source available
 **Description:** Every line of code is on GitHub. Audit the source. Verify the claims. No trust required.
 
 ---
@@ -174,15 +174,15 @@ All copy for the homepage, organized by section. Two hero options provided.
 
 ---
 
-## 7. Open Source CTA
+## 7. Source Available CTA
 
-**Section headline:** Open source. Open roadmap.
-**Section subheadline:** EnviousWispr is built in the open. Read the code, file issues, suggest features, or contribute directly.
+**Section headline:** Source available. Open roadmap.
+**Section subheadline:** EnviousWispr is built in the open. Read the code, file issues, suggest features, or contribute directly. Licensed under BSL 1.1.
 
 **CTA button:** View on GitHub
 **CTA link:** https://github.com/saurabhav88/EnviousWispr
 
-**Supporting text:** MIT-friendly contributions welcome. Built with Swift 6, SwiftUI, and Apple's Neural Engine APIs.
+**Supporting text:** Contributions welcome. Built with Swift 6, SwiftUI, and Apple's Neural Engine APIs.
 
 ---
 
@@ -210,7 +210,7 @@ All copy for the homepage, organized by section. Two hero options provided.
 
 **Left column:**
 EnviousWispr
-Open-source AI dictation for macOS.
+AI dictation for macOS. By Envious Labs.
 
 **Links column 1 — Product:**
 - Download
@@ -224,7 +224,7 @@ Open-source AI dictation for macOS.
 - Report a Bug
 
 **Bottom bar:**
-Built with Swift and SwiftUI on macOS. Open source on GitHub.
+Built with Swift and SwiftUI on macOS. Source available on GitHub.
 
 ---
 

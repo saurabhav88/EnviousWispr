@@ -2,6 +2,8 @@
 
 Local-first macOS dictation — record, transcribe, polish, paste. All processing happens on your Mac.
 
+**[enviouswispr.com](https://enviouswispr.com)** | Built by Envious Labs
+
 ## Features
 
 - **On-device transcription** — choose between [Parakeet v3](https://github.com/FluidInference/FluidAudio) (NVIDIA NeMo) or [WhisperKit](https://github.com/argmaxinc/WhisperKit) (OpenAI Whisper). No audio ever leaves your machine.
@@ -83,4 +85,6 @@ This project uses conventional commits: `feat(scope):`, `fix(scope):`, `refactor
 
 ## License
 
-EnviousWispr is licensed under the [GNU General Public License v3.0](LICENSE). Derivative works must remain free and open source under the same terms.
+EnviousWispr is source-available under the [Business Source License 1.1](LICENSE). You may view, fork, and modify the code for personal, non-commercial use. Commercial use requires a license from Envious Labs. The code converts to Apache 2.0 on March 10, 2030.
+
+For commercial licensing inquiries: saurabhav@gmail.com
