@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 1200px;
+    height: 630px;
+    font-family: -apple-system, 'Helvetica Neue', sans-serif;
+    background: #f8f5ff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+  }
+  body::before {
+    content: '';
+    position: absolute;
+    top: -100px;
+    right: -100px;
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle, rgba(124,58,237,0.08), transparent 70%);
+    pointer-events: none;
+  }
+  body::after {
+    content: '';
+    position: absolute;
+    bottom: -100px;
+    left: -100px;
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle, rgba(109,40,217,0.06), transparent 70%);
+    pointer-events: none;
+  }
+  .card {
+    text-align: center;
+    position: relative;
+    z-index: 1;
+  }
+  .icon { margin-bottom: 32px; }
+  .badge {
+    display: inline-block;
+    padding: 6px 18px;
+    background: rgba(124,58,237,0.08);
+    border: 1px solid rgba(124,58,237,0.2);
+    border-radius: 100px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #7c3aed;
+    margin-bottom: 24px;
+    letter-spacing: 0.5px;
+  }
+  h1 {
+    font-size: 64px;
+    font-weight: 800;
+    letter-spacing: -2.5px;
+    line-height: 1.1;
+    color: #0f0a1a;
+    margin-bottom: 20px;
+  }
+  .sub {
+    font-size: 22px;
+    color: #4a3d60;
+    line-height: 1.5;
+    max-width: 700px;
+  }
+  .privacy {
+    font-weight: 600;
+    color: #7c3aed;
+  }
+  .bottom-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 6px;
+    background: linear-gradient(90deg, #ff2a40, #ff8c00, #ffd700, #adff2f, #00fa9a, #00ffff, #1e90ff, #4169e1, #8a2be2);
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">
+      <svg width="80" height="60" viewBox="0 0 256 256">
+        <g transform="translate(8,13)">
+          <rect x="16" y="84.2" width="14" height="20" rx="5" fill="#ff2a40" opacity="0.92"/>
+          <rect x="40" y="65.75" width="14" height="32" rx="5" fill="#ff8c00" opacity="0.92"/>
+          <rect x="64" y="43.36" width="14" height="48" rx="5" fill="#ffd700" opacity="0.92"/>
+          <rect x="88" y="63.04" width="14" height="36" rx="5" fill="#adff2f" opacity="0.92"/>
+          <rect x="112" y="81.43" width="14" height="24" rx="5" fill="#00fa9a" opacity="0.92"/>
+          <rect x="136" y="63.04" width="14" height="36" rx="5" fill="#00ffff" opacity="0.92"/>
+          <rect x="160" y="43.36" width="14" height="48" rx="5" fill="#1e90ff" opacity="0.92"/>
+          <rect x="184" y="65.75" width="14" height="32" rx="5" fill="#4169e1" opacity="0.92"/>
+          <rect x="208" y="84.2" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.92"/>
+          <rect x="16" y="116.8" width="14" height="20" rx="5" fill="#ff2a40" opacity="0.92"/>
+          <rect x="40" y="116.8" width="14" height="32" rx="5" fill="#ff8c00" opacity="0.92"/>
+          <rect x="64" y="116.8" width="14" height="48" rx="5" fill="#ffd700" opacity="0.92"/>
+          <rect x="88" y="116.8" width="14" height="36" rx="5" fill="#adff2f" opacity="0.92"/>
+          <rect x="112" y="116.8" width="14" height="24" rx="5" fill="#00fa9a" opacity="0.92"/>
+          <rect x="136" y="116.8" width="14" height="36" rx="5" fill="#00ffff" opacity="0.92"/>
+          <rect x="160" y="116.8" width="14" height="48" rx="5" fill="#1e90ff" opacity="0.92"/>
+          <rect x="184" y="116.8" width="14" height="32" rx="5" fill="#4169e1" opacity="0.92"/>
+          <rect x="208" y="116.8" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.92"/>
+        </g>
+      </svg>
+    </div>
+    <div class="badge">Private macOS Dictation</div>
+    <h1>Talk naturally.<br>Paste perfectly.</h1>
+    <p class="sub"><span class="privacy">Your voice never leaves your Mac.</span> On-device AI dictation — record, transcribe, polish, paste in under 2 seconds.</p>
+  </div>
+  <div class="bottom-bar"></div>
+</body>
+</html>
