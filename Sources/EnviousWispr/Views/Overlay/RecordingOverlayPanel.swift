@@ -1,6 +1,18 @@
 import AppKit
 import SwiftUI
 
+// MARK: - Shared Lock State
+
+/// Observable state holder for hands-free lock mode.
+/// Shared between RecordingOverlayPanel and RecordingOverlayView so that
+/// locking mid-recording triggers a reactive SwiftUI update (with animation)
+/// without tearing down and recreating the panel.
+@MainActor
+@Observable
+final class OverlayLockState {
+    var isLocked: Bool = false
+}
+
 // MARK: - RecordingOverlayPanel
 
 /// Floating overlay panel that shows recording and polishing status.
@@ -9,6 +21,9 @@ import SwiftUI
 @MainActor
 final class RecordingOverlayPanel {
     private var panel: NSPanel?
+
+    /// Reactive lock state shared with RecordingOverlayView.
+    private let lockState = OverlayLockState()
 
     /// Monotonically-increasing generation token. Incremented on every show/hide
     /// call. The DispatchQueue.main.async closures capture their token at dispatch
@@ -107,14 +122,17 @@ final class RecordingOverlayPanel {
     private func createPanel(audioLevelProvider: @escaping () -> Float, isRecordingLocked: Bool = false, y: CGFloat? = nil) {
         guard panel == nil else { return }
 
-        let width: CGFloat = isRecordingLocked ? 120 : 185
-        let height: CGFloat = isRecordingLocked ? 64 : 44
+        lockState.isLocked = isRecordingLocked
         let overlayView = RecordingOverlayView(
             audioLevelProvider: audioLevelProvider,
-            isRecordingLocked: isRecordingLocked
+            lockState: lockState
         )
-        .frame(width: width, height: height)
-        showPanel(content: overlayView, width: width, height: height, y: y)
+        // Use a generous fixed frame that accommodates both normal (185x44) and
+        // locked (120x64) sizes. The SwiftUI content inside handles its own sizing
+        // via padding and intrinsic size. This avoids needing to resize the panel
+        // window frame on lock transitions.
+        .frame(width: 185, height: 64)
+        showPanel(content: overlayView, width: 185, height: 64, y: y)
     }
 
     private func createPolishingPanel(label: String = "Polishing...") {
@@ -212,9 +230,19 @@ final class RecordingOverlayPanel {
         self.panel = p
     }
 
+    /// Update the lock state reactively. Called by AppState when
+    /// hands-free mode is activated or deactivated mid-recording.
+    /// The shared OverlayLockState triggers a SwiftUI animation
+    /// on the existing RecordingOverlayView without panel recreation.
+    func updateLockState(_ locked: Bool) {
+        lockState.isLocked = locked
+        isRecordingLocked = locked
+    }
+
     func hide() {
         currentIntent = .hidden
         isRecordingLocked = false
+        lockState.isLocked = false
         generation &+= 1
         // Cancel any pending deferred panel creation so it never fires.
         // This handles the rapid-ESC race: if hide() is called before the
@@ -471,7 +499,7 @@ private struct OverlayCapsuleBackground: View {
 /// Compact recording indicator overlay.
 struct RecordingOverlayView: View {
     let audioLevelProvider: () -> Float
-    let isRecordingLocked: Bool
+    var lockState: OverlayLockState
     @State private var audioLevel: Float = 0
     @State private var elapsed: TimeInterval = 0
 
@@ -479,18 +507,19 @@ struct RecordingOverlayView: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            // Rainbow lips icon — audio-reactive during recording
+            // Rainbow lips icon — audio-reactive during recording.
+            // Scales to 2x in hands-free (locked) mode.
             RainbowLipsIcon(size: 24, audioLevel: audioLevel)
-                .scaleEffect(isRecordingLocked ? 2.0 : 1.0)
+                .scaleEffect(lockState.isLocked ? 2.0 : 1.0)
 
-            if !isRecordingLocked {
+            if !lockState.isLocked {
                 Text(FormattingConstants.formatDuration(elapsed))
                     .font(.system(size: 13, weight: .medium, design: .monospaced))
                     .foregroundStyle(.white)
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.3), value: isRecordingLocked)
+        .animation(.easeInOut(duration: 0.3), value: lockState.isLocked)
         // Single container animation prevents animation stacking: N per-element
         // modifiers × update rate creates exponential state transitions (gotchas.md).
         .animation(.easeOut(duration: 0.08), value: audioLevel)

@@ -274,8 +274,9 @@ final class AppState {
         hotkeyService.onLocked = { [weak self] in
             guard let self else { return }
             self.isRecordingLocked = true
+            self.recordingOverlay.updateLockState(true)
             Task { await AppLogger.shared.log(
-                "Hands-free mode activated — overlay should expand",
+                "Hands-free mode activated — overlay expanding",
                 level: .info, category: "AppState"
             ) }
         }
