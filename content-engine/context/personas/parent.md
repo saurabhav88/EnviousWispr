@@ -13,7 +13,7 @@ Parents juggling childcare, household management, and work — often simultaneou
 - Dictate email replies and Slack messages while holding a toddler or folding laundry
 - Capture grocery lists, to-do items, and appointment notes hands-free throughout the day
 - Reply to school messages and teacher emails quickly between tasks without sitting down at a desk
-- Use the privacy toggle to pause processing during sensitive family conversations
+- Dictation is on-demand — it only records when you press the hotkey, so sensitive conversations stay private by default. A dedicated privacy toggle is on the roadmap.
 
 ## Keywords they search for
 - "hands free typing mac"

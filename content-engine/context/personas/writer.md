@@ -12,8 +12,8 @@ Novelists, bloggers, journalists, and copywriters who spend hours each day produ
 ## How they'd use EnviousWispr
 - Draft blog posts and articles by voice while pacing around the room, letting ideas flow without the friction of typing
 - Capture dialogue and scene ideas on a walk, dictating directly into their writing app
-- Use custom prompts to get a clean first draft — filler words stripped, punctuation fixed — so they can jump straight to editing
-- Set per-app presets so dictation into Ulysses formats differently than dictation into Slack
+- Get a clean first draft with filler words stripped and punctuation fixed via LLM post-processing — jump straight to editing
+- Switch between Formal (Ulysses essays) and Friendly (Slack messages) with one click. Per-app presets for automatic switching are on the roadmap.
 
 ## Keywords they search for
 - "voice to text app for writers mac"

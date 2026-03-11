@@ -1,18 +1,16 @@
 ---
-title: "Dictate Emails at the Speed of Thought"
+title: "Dictate Emails on macOS at the Speed of Thought"
 description: "Stop typing emails between meetings. Dictate them in seconds with on-device speech to text that keeps sensitive company data on your MacBook."
-pubDate: 2026-03-11
+pubDate: 2026-03-13
 tags: ["dictation", "email", "productivity", "executive", "privacy"]
-draft: false
+draft: true
 ---
 
-You just walked out of a board meeting. There are six emails to send before the next call in twelve minutes. You sit down, open your laptop, and start typing the first one. By the time you've wordsmithed the second paragraph, you're already late.
+The average executive types around 40 words per minute. They speak 150. That's not a marginal improvement -- it's nearly 4x throughput on the single activity that dominates their day: writing emails.
 
-This is the communication debt problem. Every meeting generates follow-up messages — updates, decisions, delegation, context for people who weren't in the room. The decisions happen fast. Writing them down doesn't.
+Between meetings, most leaders face a growing backlog of follow-up messages -- updates, decisions, delegation, context for people who weren't in the room. The decisions happen fast. Writing them down doesn't. And dictating into a cloud tool that routes every word through someone else's servers isn't an option when you're handling sensitive strategy, personnel decisions, or M&A discussions.
 
-Most executives deal with this by letting the backlog grow, sending terse replies that lack context, or dictating into a cloud tool that routes every word through someone else's servers. None of these are good options when you're handling sensitive strategy, personnel decisions, or M&A discussions.
-
-There's a faster way.
+There's a faster, more private way.
 
 ## Speaking Is 3x Faster Than Typing
 
@@ -24,25 +22,29 @@ But raw speed only matters if the output is usable. Nobody wants to send an emai
 
 EnviousWispr handles this differently. After transcription, your text runs through a local LLM that strips filler words, fixes punctuation, tightens sentence structure, and adjusts tone. You speak your thoughts loosely. What lands in your email client reads like you sat down and wrote it carefully. The whole cycle — record, transcribe, clean up, paste — takes a second or two on Apple Silicon.
 
-## Custom Prompts for Every Email Type
+<!-- TODO: Screenshot — Custom prompt config: the settings UI showing a custom prompt configured for email dictation with formal tone -->
 
-Not every email sounds the same. A response to a board member requires different language than a quick delegation to your direct report. EnviousWispr's custom prompts let you control exactly how your dictated speech gets processed.
+## Writing Style Presets for Every Email Type
+
+Not every email sounds the same. A response to a board member requires different language than a quick delegation to your direct report. EnviousWispr's three writing style presets — Formal, Standard, and Friendly — let you shape the output to match the context.
 
 ### Formal correspondence
 
-Set up a prompt that produces structured, professional prose. Dictate your key points conversationally, and the LLM will output polished paragraphs with proper salutations and clear paragraph breaks. Useful for investor updates, client responses, and cross-functional announcements.
+Switch to the Formal preset for structured, professional prose. Dictate your key points conversationally, and the LLM will output polished paragraphs with proper salutations and clear paragraph breaks. Useful for investor updates, client responses, and cross-functional announcements.
 
 ### Quick replies
 
-Configure a prompt for brevity. Speak a few sentences, get back a tight two-line response. No fluff, no preamble. This is ideal for the Slack-style "acknowledged, here's the next step" messages that pile up between meetings.
+The Standard preset works well for brevity. Speak a few sentences, get back a clean, direct response. No fluff, no preamble. This is ideal for the Slack-style "acknowledged, here's the next step" messages that pile up between meetings.
 
 ### Delegation emails
 
-Create a prompt that formats your speech into action items. Dictate what needs to happen, who owns it, and the deadline. The output arrives as a clean bulleted list with names and dates — ready to paste and send.
+The LLM post-processing step naturally formats action-oriented dictation into structured output. Dictate what needs to happen, who owns it, and the deadline. The output arrives as a clean bulleted list with names and dates — ready to paste and send.
 
-### Per-app presets
+### Coming soon: custom prompts and per-app presets
 
-With [per-app presets](/how-it-works/), you can assign different processing rules to different applications automatically. Your email client gets the formal treatment. Slack gets the concise version. Your notes app gets raw capture. You don't switch settings manually — EnviousWispr detects the active app and applies the right prompt.
+<!-- TODO: Screenshot — Per-app presets: the UI showing presets for email client (formal), Slack (concise), and notes app (raw capture) -->
+
+On the roadmap: custom prompts will let you write your own processing instructions, and per-app presets will assign different rules to different applications automatically — so your email client gets the formal treatment, Slack gets the concise version, and your notes app gets raw capture, all without switching settings manually.
 
 ## Sensitive Data Stays on Your MacBook
 
@@ -50,7 +52,7 @@ Here's where the executive dictation tool conversation gets uncomfortable. Most 
 
 When you dictate an email about a pending acquisition, a personnel decision, or quarterly numbers before they're public, that audio travels to a data center you don't control. It gets processed on hardware you can't audit. The provider's privacy policy might be fine today and different after the next acquisition or policy update.
 
-EnviousWispr runs transcription on-device using either Parakeet (streaming English) or WhisperKit (multi-language via Apple's Whisper model), both executing natively via Core ML on your Mac's Neural Engine. Post-processing — the LLM step that cleans up your text — also runs locally using your local LLM of choice. Your recordings never leave your Mac unless you explicitly configure an external API.
+EnviousWispr runs transcription on-device using either Parakeet (streaming English) or WhisperKit (multi-language via Apple's Whisper model), both executing natively via Core ML on the Neural Engine in every M-series chip. Post-processing — the LLM step that cleans up your text — also runs locally using your local LLM of choice. Your recordings never leave your Mac unless you explicitly configure an external API.
 
 No audio uploaded. No transcripts stored on someone else's server. This isn't a privacy feature bolted onto a cloud product. It's how the entire system works by default. For a detailed comparison of on-device and cloud dictation approaches, see [On-Device vs Cloud Dictation: What Stays Private](/blog/on-device-vs-cloud-dictation-privacy/).
 
@@ -71,7 +73,7 @@ For longer emails or strategy memos, hands-free mode lets EnviousWispr transcrib
 
 ## What This Looks Like in Practice
 
-Picture your Tuesday morning. Three meetings between 9 and 11:30. Between each one, you have five to seven minutes. In that window, you open your inbox, hold the hotkey, and speak:
+Picture your Tuesday morning on your M3 MacBook Pro. Three meetings between 9 and 11:30. Between each one, you have five to seven minutes. In that window, you open your inbox, hold the hotkey, and speak:
 
 *"Send a note to the product team. The board approved the Q3 roadmap with one change — we're pulling the enterprise tier launch forward to August. Lisa owns the GTM timeline. Ask her to have a revised plan by Friday."*
 
@@ -79,7 +81,7 @@ You release the key. A second later, your email client contains:
 
 > The board approved the Q3 roadmap with one change: the enterprise tier launch moves forward to August. Lisa owns the GTM timeline — please have a revised plan ready by Friday.
 
-Clean, direct, ready to send. No filler words. Proper punctuation. The right tone for an internal team email. You hit send and walk into your next meeting.
+Clean, direct, ready to send. No filler words. Proper punctuation. The right tone for an internal team email. You hit send and walk into your next meeting with the confidence that nothing's slipping through the cracks.
 
 Do that ten times a day and you've replaced 45 minutes of typing with 15 minutes of speaking — without compromising clarity or tone.
 

@@ -1,16 +1,16 @@
 ---
-title: "Voice Input for RSI: A Keyboard-Free Workflow"
+title: "Voice Input for RSI on macOS: A Keyboard-Free Workflow"
 description: "RSI makes every keystroke a trade-off. Voice input offers a practical path to a keyboard-reduced workflow that keeps you productive without the pain."
-pubDate: 2026-03-11
+pubDate: 2026-03-12
 tags: ["accessibility", "rsi", "voice-input", "workflow", "hands-free"]
-draft: false
+draft: true
 ---
 
-If you've ever finished a workday with aching wrists, numb fingertips, or a burning sensation running from your forearms to your shoulders, you already know. Repetitive strain injury doesn't announce itself with a single dramatic moment. It builds quietly -- one email, one Slack thread, one commit message at a time -- until typing becomes something you ration instead of something you do without thinking.
+Most knowledge workers produce somewhere between 5,000 and 10,000 words per day across emails, messages, documents, and tickets. That's roughly 125,000 to 250,000 keystrokes -- every single workday, five days a week, for years. The human wrist was not designed for this.
 
-RSI is underreported among knowledge workers because it doesn't look like an injury. There's no cast, no crutch, nothing visible. You just start making quiet calculations: can I afford to type this reply, or should I save my keystrokes for the report due at five? That mental overhead is exhausting, and it compounds the physical problem.
+Repetitive strain injury doesn't announce itself with a single dramatic moment. It builds quietly -- one email, one Slack thread, one commit message at a time -- until typing becomes something you ration instead of something you do without thinking. You start making calculations: can I afford to type this reply, or should I save my keystrokes for the report due at five?
 
-Voice input for RSI isn't a novelty. For many people, it's the most practical way to stay productive without making the injury worse.
+Voice input changes that math entirely. Not as a novelty, but as a genuine reduction in the repetitive motion that causes the damage.
 
 ## Why Voice Input Is the Most Direct RSI Mitigation
 
@@ -22,7 +22,9 @@ The practical barrier has always been accuracy. If dictation produces text so me
 
 That's where modern on-device transcription changes the equation. EnviousWispr uses two on-device backends -- Parakeet for fast English dictation and WhisperKit for multi-language support, both running natively via Core ML -- to transcribe speech locally on your Mac. Accuracy is high enough that corrections are the exception, not the rule. And because post-processing with a local LLM automatically cleans up filler words, fixes punctuation, and produces polished text, the output from your voice is often closer to finished than a rushed typed draft would be.
 
-The result: you speak a paragraph, and a second or two later on Apple Silicon, clean text lands in whatever app you're working in. No server round-trip, no cloud dependency, no corrections marathon.
+The result: you speak a paragraph, and a second or two later on Apple Silicon, clean text lands in whatever app you're working in. No server round-trip, no cloud dependency, no corrections marathon. The tension leaves your shoulders. You realize you've been bracing for pain with every keystroke, and now you don't have to.
+
+<!-- TODO: Screenshot — Recording state: the app showing it's actively recording and transcribing, with the hotkey indicator visible -->
 
 ## Hands-Free Mode: No Keys to Hold at All
 
@@ -32,22 +34,31 @@ EnviousWispr's hands-free mode solves this. It runs continuous background transc
 
 For someone with RSI, this is the difference between a tool you can use for five minutes and a tool you can use all day. Hands-free mode turns EnviousWispr into a primary text input method -- not a supplement to typing, but a genuine replacement for the tasks that cause the most strain.
 
-Long emails, meeting notes, document drafts, journal entries -- these are the high-volume typing tasks that accumulate the most damage over a workday. Moving them entirely to voice removes the biggest source of repetitive strain while keeping you productive.
+Long emails, meeting notes, document drafts, journal entries -- these are the high-volume typing tasks that accumulate the most damage over a workday. Moving them entirely to voice removes the biggest source of repetitive strain while keeping you productive. For the first time in months, you can finish a workday without dreading the keyboard.
 
-## Custom Prompts for Different Work Contexts
+## What It Looks Like in Practice
 
-One concern people have about switching to voice input is that different contexts need different kinds of text. A Slack message should sound casual. A client email needs a professional tone. Terminal commands need precision, not prose.
+Here's a real example — dictating a status update instead of typing one:
 
-EnviousWispr handles this with custom prompts and per-app presets. You can tell the post-processing step exactly how to handle your speech depending on where it's going:
+**What you say:**
+> um so today I finished the migration script for the legacy database and I ran it against staging and it looks good there's one edge case with null timestamps that I need to handle but otherwise it's ready for review I'll have the PR up by end of day
 
-- **Email and documents** -- format as clean prose with proper punctuation and paragraph breaks
-- **Chat and messaging** -- keep it conversational, skip the formality
-- **Technical writing** -- preserve specific terminology, use precise formatting
-- **Personal notes** -- minimal cleanup, capture the thought as-is
+**What gets pasted:**
+> Finished the migration script for the legacy database. Ran it against staging successfully. One edge case remaining: null timestamps need handling. PR will be up by end of day.
 
-Per-app presets make this automatic. You configure the rules once per application, and EnviousWispr applies the right processing based on which app has focus. You don't have to switch modes or remember settings. Speak into Slack and get casual text. Speak into your writing app and get polished prose.
+That took about ten seconds to speak. Typing it — with RSI making every keystroke a negotiation — would have taken two or three painful minutes. Same information, zero keystrokes.
 
-This matters for RSI because it eliminates the rework cycle. When voice output matches the expected tone and format for each context, you're not going back to the keyboard to fix things. The text is ready.
+## Writing Style Presets for Different Contexts
+
+One concern people have about switching to voice input is that different contexts need different kinds of text. A Slack message should sound casual. A client email needs a professional tone.
+
+EnviousWispr ships with three writing style presets — Formal, Standard, and Friendly — that control how the post-processing LLM shapes your dictated text. Switch to Friendly for casual Slack messages, Formal for client emails, or Standard for everyday use. It takes one click to change.
+
+<!-- TODO: Screenshot — Writing style presets: the settings UI showing Formal, Standard, and Friendly preset options -->
+
+Per-app presets are on the roadmap, so eventually the app will automatically apply the right tone based on which app has focus — casual in Slack, polished in Mail.app — without you switching anything. For now, toggling between presets is fast and keeps the rework cycle to a minimum.
+
+This matters for RSI because it reduces the need to go back to the keyboard and fix tone or formatting. When voice output is already close to what you need, you're not adding correction keystrokes on top.
 
 ## Building a Keyboard-Reduced Workflow
 
@@ -77,9 +88,9 @@ People dealing with RSI often dictate content that's more personal than the aver
 
 This is exactly the kind of content you don't want leaving your machine. EnviousWispr processes everything locally. Your recordings never leave your Mac unless you explicitly configure an external API. No cloud upload, no third-party server handling your audio, no data leaving your device.
 
-For health-related dictation specifically, on-device processing isn't a nice-to-have -- it's a baseline requirement. You shouldn't have to wonder whether your description of a medical condition is sitting in someone else's training dataset. With EnviousWispr, the audio is processed via Core ML on your Mac's Neural Engine and never transmitted anywhere. You can read exactly how this works on the [how it works page](/how-it-works/).
+For health-related dictation specifically, on-device processing isn't a nice-to-have -- it's a baseline requirement. You shouldn't have to wonder whether your description of a medical condition is sitting in someone else's training dataset. With EnviousWispr, the audio is processed via Core ML on the Neural Engine built into every Apple Silicon chip and never transmitted anywhere. You can read exactly how this works on the [how it works page](/how-it-works/).
 
-The privacy toggle adds another layer. If you're in a conversation you'd rather not capture at all -- a medical appointment over speakerphone, a sensitive personal call -- a single click pauses all processing until you're ready to resume.
+Dictation is also entirely on-demand — it only records when you actively initiate it. If you're in a conversation you'd rather not capture — a medical appointment over speakerphone, a sensitive personal call — simply don't start a dictation session. Nothing is listening in the background.
 
 ## Getting Started Without Making It Harder
 
@@ -92,7 +103,7 @@ If you're dealing with RSI, the last thing you need is a setup process that invo
 
 That's four steps from download to functional voice input. Works out of the box — no account creation, no payment. EnviousWispr is free and open source.
 
-If you want to fine-tune the experience later -- setting up per-app presets, adjusting custom prompts, choosing a different model size for your hardware -- all of that is available but none of it is required to start. The default configuration produces clean, accurate text out of the box.
+If you want to fine-tune the experience later — switching between writing style presets (Formal, Standard, Friendly), choosing a different model size for your hardware — that's all available in settings. Per-app presets and custom prompts are coming soon, but the default configuration produces clean, accurate text out of the box.
 
 ## This Isn't Medical Advice, But It Is Practical Advice
 

@@ -1,20 +1,20 @@
 ---
-title: "Hands-Free Typing While Your Toddler Climbs You"
+title: "Hands-Free Mac Dictation While Your Toddler Climbs You"
 description: "Hands-free typing for parents who never have both hands available. Dictate emails, lists, and messages while wrangling kids — privately, on your Mac."
-pubDate: 2026-03-11
+pubDate: 2026-03-15
 tags: ["parenting", "hands-free", "dictation", "privacy"]
-draft: false
+draft: true
 ---
 
-You're halfway through an email to your kid's teacher when a small human decides your lap is a climbing wall. One hand goes to the keyboard, the other goes to preventing a head injury. The email sits there, half-finished, for the next three hours.
+It's 2 PM. Your toddler just woke up from a nap that was supposed to last another hour. You're three sentences into an email to your kid's teacher when a small human decides your lap is a climbing wall. One hand goes to the keyboard, the other goes to preventing a head injury. The email sits there, half-finished, for the next three hours.
 
-If you're a parent who works from a laptop — or just a parent who needs to type anything, ever — you know this scene. The problem isn't motivation or time management. The problem is that typing requires two free hands, and you haven't had two free hands since 2024.
+This is Tuesday. This is also Wednesday, Thursday, and most of the weekend. The problem isn't motivation or time management. The problem is that typing requires two free hands, and you haven't had two free hands simultaneously since your youngest was born.
 
 ## The hands problem is a typing problem
 
 Parents don't lack things to say. They lack the physical ability to say them into a keyboard. Emails pile up. Grocery lists live in your head until you forget the yogurt again. That message to the pediatrician's office stays in drafts because you started it while holding a sippy cup and never came back.
 
-Most productivity advice assumes you can sit down, open a laptop, and focus. That's a fantasy when you're supervising a toddler who has recently discovered that markers work on walls. You need a way to get text out of your brain and into the right place without sitting down, without a keyboard, and without waiting for naptime.
+Most productivity advice assumes you can sit down, open your MacBook Air, and focus. That's a fantasy when you're supervising a toddler who has recently discovered that markers work on walls. You need a way to get text out of your brain and into the right place without sitting down, without a keyboard, and without waiting for naptime.
 
 That's where hands-free dictation changes things.
 
@@ -23,6 +23,8 @@ That's where hands-free dictation changes things.
 EnviousWispr has a hands-free mode that lets you dictate continuously without holding any keys. You speak, and your words become text — cleaned up, punctuated, and ready to go. It runs in the background while you do everything else.
 
 The core loop works like this: you talk, EnviousWispr transcribes what you said using either Parakeet or WhisperKit (both run locally via Core ML on your Mac), then a local LLM cleans up the filler words and fixes punctuation. The polished text lands on your clipboard or pastes directly into whatever app you're using. The whole thing takes a second or two on Apple Silicon.
+
+<!-- TODO: Screenshot — Hands-free mode indicator: the recording overlay showing hands-free/locked mode active with continuous background transcription -->
 
 For the push-to-talk mode, you hold a hotkey, speak, and release. But for parents, hands-free mode is the real feature. You don't need to touch the keyboard at all. Start it up, and EnviousWispr keeps listening and transcribing until you tell it to stop.
 
@@ -38,7 +40,17 @@ EnviousWispr doesn't do that. Transcription and post-processing both happen loca
 
 For parents, this isn't an abstract privacy preference. It's practical peace of mind. You can dictate in the middle of your living room without wondering what ambient audio is being captured and stored on a server you don't control. Your family's background noise is nobody's business, and it stays that way.
 
-If you need to pause processing entirely — say, during a private conversation with your partner or a phone call with your kid's doctor — there's a privacy toggle that stops everything with a single click.
+And because dictation is on-demand — it only records when you actively initiate it — there's no ambient listening to worry about. When you're not dictating, nothing is being captured. During a private conversation with your partner or a phone call with your kid's doctor, simply don't start a dictation session.
+
+Here's what hands-free dictation actually produces — a message dictated while making lunch:
+
+**What you say:**
+> hey sarah so about saturday um we'd love to come to the birthday party can you remind me what time it starts and is it okay if we bring nora's little brother he's 18 months so he'll basically just crawl around and eat cheerios off the floor also do you need us to bring anything
+
+**What gets pasted:**
+> Hey Sarah — we'd love to come to the birthday party on Saturday! Can you remind me what time it starts? Is it okay if we bring Nora's little brother? He's 18 months, so he'll mostly crawl around. Let us know if you need us to bring anything.
+
+That took about ten seconds to say out loud, both hands were on a cutting board, and the toddler was on your hip. The message reads like you sat down and typed it carefully. You didn't.
 
 ## Real scenarios that actually happen
 
@@ -60,6 +72,8 @@ Your kid's school sends a message asking if you can volunteer for the spring eve
 
 You have an idea for a work project while pushing a stroller. Or a thought about a birthday gift while folding laundry. These thoughts have a half-life of about ninety seconds in a parent's brain. Dictate them into a note immediately, and they actually survive until you can act on them.
 
+<!-- TODO: Screenshot — Recording state: the app showing it's actively recording speech with the transcription progress visible -->
+
 ## Setting it up (it takes about five minutes)
 
 You don't need to be technical for this. Here's the whole process:
@@ -72,7 +86,7 @@ You don't need to be technical for this. Here's the whole process:
 
 4. **Turn on hands-free mode.** In the app settings, enable hands-free mode. This switches from push-to-talk to continuous background transcription. No hotkey needed.
 
-5. **Start talking.** Open the app you want text to go into — Mail, Notes, Messages, Slack, whatever — and speak normally. EnviousWispr transcribes, cleans up, and pastes. That's it.
+5. **Start talking.** Open the app you want text to go into — Mail.app, Notes.app, Messages, Slack, whatever — and speak normally. EnviousWispr transcribes, cleans up, and pastes. That's it.
 
 The entire setup is a one-time thing. After that, you launch the app and start dictating whenever you need to. Install it and start dictating. No registration, no payment. It's [free and open source](https://github.com/saurabhav88/EnviousWispr).
 
@@ -90,4 +104,4 @@ EnviousWispr doesn't try to be a personal assistant or a voice-activated everyth
 
 If you want to understand more about how the transcription pipeline works under the hood, the [how it works page](/how-it-works/) walks through the full process. But honestly, you don't need to know any of that to use it. Download it, turn on hands-free mode, and start getting your emails done while your toddler treats you like playground equipment.
 
-Your text gets written. Your kid gets your attention. Nobody's audio goes to the cloud. That's the whole pitch.
+Your text gets written. Your kid gets your attention. Nobody's audio goes to the cloud. You get to be the parent who's actually present -- not the one hunched over a keyboard saying "one more minute." That's the whole pitch.

@@ -1,18 +1,16 @@
 ---
-title: "Dictation for Remote Workers Tired of Typing"
+title: "macOS Dictation for Remote Workers Tired of Typing"
 description: "Remote work means typing all day — Slack, email, docs, tickets. Dictation with on-device transcription cuts the load without sending your words to the cloud."
-pubDate: 2026-03-11
+pubDate: 2026-03-17
 tags: ["dictation", "remote-work", "productivity", "voice-typing", "privacy"]
-draft: false
+draft: true
 ---
 
-You finished your third video call of the morning. Now you have four Slack threads to catch up on, two emails to write, a project brief to update, and a standup summary to post before lunch. All of it requires typing. You've been typing since 8 AM and your hands are starting to feel it.
+It's 2:30 PM on a Wednesday. You've been in three video calls since 9 AM. Now you're staring at four Slack threads, two emails, a project brief, and a standup summary -- all due before end of day. All requiring typing. Your wrists ache from the morning's messages, and you haven't even started the real writing yet.
 
-This is the quiet tax of remote work. When you're not in a meeting, you're writing. Slack messages, async updates, email replies, ticket comments, documentation — the volume of text you produce in a day as a remote worker rivals that of a professional writer. Except nobody calls it writing. They call it "communication," and it's expected to happen instantly, all day long.
+This is the quiet tax of remote work. When you're not in a meeting, you're writing. Slack messages, async updates, email replies, ticket comments, documentation -- the volume of text you produce in a day rivals that of a professional writer. Except nobody calls it writing. They call it "communication," and it's expected to happen instantly, all day long.
 
-If typing is the bottleneck, voice is the obvious workaround. But most people who've tried dictation on their Mac gave up after a few attempts. The built-in tool gets basic phrases wrong. Cloud dictation services work better but route everything through external servers — not ideal when you're discussing internal roadmaps or team dynamics in a Slack DM.
-
-Dictation doesn't have to be a novelty you try once and abandon. It can be a daily tool that absorbs a real share of your typing load — if it's fast enough, accurate enough, and private enough to trust with work conversations.
+Dictation can absorb a real share of that typing load -- if it's fast enough, accurate enough, and private enough to trust with work conversations. Most people who've tried it gave up after a few attempts with clunky tools. But the technology has caught up.
 
 ## The Typing Volume Problem
 
@@ -40,6 +38,16 @@ That privacy piece matters more than you might think. Remote workers discuss sen
 
 The practical question is: where does dictation actually slot into the apps and habits you already have?
 
+Here's what dictation looks like for a typical remote work message:
+
+**What you say:**
+> hey just a heads up the deploy is gonna be delayed um the staging environment is throwing errors on the new auth flow and I need to debug it before we push to prod I'll have an update by 3pm but if it's a bigger issue I might need to pull in james to help with the Redis config
+
+**What gets pasted:**
+> Heads up — the deploy is delayed. The staging environment is throwing errors on the new auth flow, and I need to debug before pushing to prod. I'll have an update by 3 PM. If it's a bigger issue, I may need to pull in James to help with the Redis config.
+
+Fifteen seconds of speaking replaced two minutes of typing. The message is clear, includes all the relevant context, and your wrists didn't have to do any of the work. By 5 PM, you might actually feel like logging off on time instead of grinding through one more round of messages.
+
 ### Slack messages
 
 This is the highest-volume, lowest-effort win. Most Slack messages are conversational — they don't need to be perfectly structured. You're explaining a decision, asking a question, giving context on a thread. Speak it the same way you'd say it on a call, and you'll have a reply ready in seconds.
@@ -56,18 +64,21 @@ The ten minutes after a video call are the highest-value window for follow-up me
 
 These are repetitive and formulaic — perfect for dictation. You know what you worked on. Just say it. The post-processing handles formatting.
 
-## Per-App Presets: Different Tone for Different Contexts
+<!-- TODO: Screenshot — Writing style presets: the settings UI showing Formal, Standard, and Friendly options -->
 
-One of the real workflow advantages of EnviousWispr is [per-app presets](/how-it-works/). You can configure different processing rules depending on which app has focus when you dictate.
+## Writing Style Presets: Match the Tone to the Task
 
-Here's what that looks like in practice:
+EnviousWispr ships with three writing style presets — **Formal**, **Standard**, and **Friendly** — that control how the LLM post-processor shapes your output. You switch between them with a click, matching the tone to what you're writing:
 
-- **Slack:** Keep it casual and concise. Strip filler words but don't over-formalize. The result should read like a quick typed message, not a business memo.
-- **Mail:** Polish the tone. Fix grammar, add proper punctuation, structure longer replies into clear paragraphs.
-- **Notion or Google Docs:** Format as prose or bullet points depending on context. Apply your preferred writing style.
-- **Jira or Linear:** Keep it terse. Ticket comments don't need full sentences — just clear, direct status updates.
+- **Friendly for Slack:** Casual and concise. Strips filler words but doesn't over-formalize. The result reads like a quick typed message, not a business memo.
+- **Formal for email and docs:** Polished tone, proper grammar, structured paragraphs. Your spoken brain dump comes out as something you'd be happy to send to a client.
+- **Standard for everything else:** The default. Cleans up your speech without pushing it in either direction — works well for ticket comments, status updates, and general-purpose writing.
 
-You set these up once and then forget about them. The right processing rules apply automatically based on where you're working. You don't adjust settings throughout the day. You just talk, and the output matches the context.
+Switching takes a single click, and you'll quickly build a habit of toggling before you dictate.
+
+> **Coming soon:** Per-app presets will make even that click unnecessary. You'll assign a writing style to each app — Friendly for Slack, Formal for Mail, Standard for Linear — and EnviousWispr will apply the right rules automatically based on which app has focus. Set it once, forget about it.
+
+<!-- TODO: Screenshot — Menu bar icon: the EnviousWispr menu bar dropdown showing recording controls and quick-access settings -->
 
 ## The Ergonomic Case for Mixing Voice and Keyboard
 
@@ -77,7 +88,7 @@ Mixing voice input with keyboard input throughout the day distributes the physic
 
 Some practical patterns:
 
-- **Morning Slack catch-up:** Dictate replies to overnight threads while your coffee is still too hot to hold a mug properly. Walk around, speak into your Mac, and clear the backlog without sitting at the desk yet.
+- **Morning Slack catch-up:** Dictate replies to overnight threads while your coffee is still too hot to hold a mug properly. Walk around, speak into your M2 MacBook Air, and clear the backlog without sitting at the desk yet.
 - **Post-meeting bursts:** Dictate follow-ups immediately after calls. Stay standing, pace if you want to. Your hands stay free.
 - **End-of-day summaries:** Dictate your standup or status update as a brain dump. The LLM cleans it into something readable.
 - **Mid-afternoon slump:** When your typing speed drops and your wrists ache, switch to voice for the rest of the afternoon. The quality of your messages stays consistent even when your hands are tired.
@@ -90,7 +101,7 @@ Working from home introduces a specific privacy concern with cloud dictation: ba
 
 EnviousWispr processes everything on-device. Your audio never leaves your Mac. If the microphone picks up something you didn't intend to transcribe, that audio stays local and gets discarded. There's no server log, no retention policy to wonder about.
 
-You also get a privacy toggle — one click pauses all processing. If you're about to have a sensitive conversation near your desk, pause it. When you're ready to dictate again, unpause. Simple controls for a real concern.
+And since EnviousWispr only records when you're actively holding the hotkey, there's no always-on microphone to worry about. You control exactly when audio is captured.
 
 ## Getting Started
 
@@ -98,7 +109,7 @@ EnviousWispr is [free and open source](https://github.com/saurabhav88/EnviousWis
 
 Start small. Pick one high-volume context — Slack replies or email — and commit to dictating instead of typing for a full day. You'll feel awkward for the first hour. By the end of the day, you'll notice how much less your hands hurt.
 
-Then set up a couple of per-app presets so your Slack messages stay casual and your emails come out polished. Once that's dialed in, dictation stops being something you're "trying" and starts being how you work.
+Then get comfortable switching between Friendly (for Slack) and Formal (for email) as you move between tasks. Once that toggle becomes second nature, dictation stops being something you're "trying" and starts being how you work.
 
 ## Related Posts
 

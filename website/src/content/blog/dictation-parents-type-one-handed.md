@@ -1,16 +1,16 @@
 ---
-title: "Dictation for Parents Who Type One-Handed"
+title: "macOS Dictation for Parents Who Type One-Handed"
 description: "Voice typing for parents who can't sit at a keyboard. EnviousWispr turns speech into polished text on your Mac — privately, with no cloud uploads."
-pubDate: 2026-03-11
+pubDate: 2026-03-15
 tags: ["parents", "dictation", "hands-free", "privacy"]
-draft: false
+draft: true
 ---
 
-You know the posture. Baby asleep on your left arm, phone balanced on a knee, right thumb pecking out a reply to a daycare email. You misspell three words, autocorrect turns "pickup at 3" into something unrecognizable, and you give up. The email sits in drafts until bedtime — if you remember it at all.
+It's 7:15 AM. Your baby is asleep on your left arm. Your right thumb is pecking out a reply to a daycare email on your phone. You misspell three words, autocorrect turns "pickup at 3" into something unrecognizable, and you give up. The email sits in drafts until bedtime -- if you remember it at all.
 
 Parents don't have a typing problem. They have a hands problem. And most productivity advice assumes you have two of them free, a quiet room, and an uninterrupted block of time. That's not your life right now. What you need is a way to turn speech into usable text without sitting down, without both hands, and without sending your family's background audio to a corporate server.
 
-That's what EnviousWispr does. Hold a hotkey, speak, release. A second or two later, polished text lands in whatever app you're using. Everything runs on your Mac — your recordings never leave your device.
+That's what EnviousWispr does. Hold a hotkey, speak, release. A second or two later, polished text lands in whatever app you're using. Everything runs on your Mac -- your recordings never leave your device.
 
 ## Why most dictation tools fall short for parents
 
@@ -37,9 +37,11 @@ Push-to-talk works well for:
 
 ### Hands-free mode
 
+<!-- TODO: Screenshot — Hands-free mode indicator: the recording overlay showing hands-free/locked mode active for continuous dictation -->
+
 Sometimes you need to talk for longer — drafting a detailed school email, brain-dumping a to-do list, or writing a message to a friend while both hands are occupied with a bottle and a burp cloth. Hands-free mode lets EnviousWispr transcribe continuously in the background without holding any keys.
 
-You can pause processing with a single click whenever you need to — during a private conversation, when the pediatrician calls, or just because you're done.
+Since dictation is on-demand — it only records when you actively initiate it — privacy is built into the interaction model. When you're not dictating, nothing is listening.
 
 ## Your kid's babbling stays on your Mac
 
@@ -53,9 +55,19 @@ This isn't a privacy policy promise. It's how the software is built. The code is
 
 Dictation isn't a novelty when your hands aren't free. It's the difference between getting something done now and adding it to the mental pile for later.
 
+Here's what that actually looks like — dictating a reply to a teacher while holding a baby:
+
+**What you say:**
+> hi ms chen so about the field trip permission slip yes liam can go um we're fine with him riding the bus and I can volunteer as a chaperone if you still need people oh and he's allergic to tree nuts so can you make sure the snack situation is handled thanks so much
+
+**What gets pasted:**
+> Hi Ms. Chen — yes, Liam can attend the field trip and we're fine with bus transportation. I can volunteer as a chaperone if you still need people. One note: he has a tree nut allergy, so please ensure snacks are nut-free. Thank you!
+
+Fifteen seconds of speaking, one hand free, baby undisturbed. The email is polished, all the important details are there, and you didn't have to thumb-type a single word. That quiet guilt of "just let me finish typing this" -- it's gone, because you never had to pull your attention away.
+
 ### School and daycare emails
 
-The teacher sends a message asking if your kid can bring a specific item for a project. You're holding the baby and making oatmeal. Instead of trying to type one-handed: hold the hotkey, say "Hi Ms. Chen, yes we have egg cartons at home, I'll send two in with Liam tomorrow morning, thanks," release. EnviousWispr cleans it up, adds punctuation, and pastes it into your email. Done before the oatmeal is ready.
+The teacher sends a message asking if your kid can bring a specific item for a project. You're holding the baby and making oatmeal, MacBook Air open on the counter. Instead of trying to type one-handed: hold the hotkey, say "Hi Ms. Chen, yes we have egg cartons at home, I'll send two in with Liam tomorrow morning, thanks," release. EnviousWispr cleans it up, adds punctuation, and pastes it into your email. Done before the oatmeal is ready.
 
 ### Meal planning and grocery lists
 
@@ -63,7 +75,7 @@ Standing in the kitchen, checking what's left in the fridge: "We need milk, eggs
 
 ### Work messages during nap time
 
-The baby just fell asleep on you. You can't move without waking them, but you need to reply to a few Slack messages. Push-to-talk at a low volume, and EnviousWispr handles the rest. With per-app presets, your Slack messages stay casual and your email replies come out more polished — automatically.
+The baby just fell asleep on you on the couch, Mac Mini running quietly in the corner hooked up to the TV. You can't move without waking them, but you need to reply to a few Slack messages. Push-to-talk at a low volume, and EnviousWispr handles the rest. You can pick a writing style preset — Formal, Standard, or Friendly — to match the tone you need. Per-app presets are coming soon, so eventually your Slack messages will stay casual and your email replies will come out polished automatically.
 
 ### Capturing ideas before they vanish
 
@@ -72,6 +84,8 @@ Parents have roughly four seconds between having a thought and losing it to the 
 ### Late-night brain dumps
 
 Kids are finally asleep. You have twenty things rattling around your head — appointments to schedule, forms to fill out, a birthday party to plan. Instead of typing it all out, speak the whole list in one go. Hands-free mode is perfect here. Let it run, say everything, then clean up the output in the morning.
+
+<!-- TODO: Screenshot — Menu bar icon: the EnviousWispr menu bar dropdown showing quick access to recording and settings -->
 
 ## Getting started
 

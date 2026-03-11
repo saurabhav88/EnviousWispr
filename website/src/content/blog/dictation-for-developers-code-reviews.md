@@ -1,16 +1,14 @@
 ---
-title: "Dictation for Developers: Code Reviews and PRs"
+title: "macOS Dictation for Developers: Code Reviews and PRs"
 description: "How developers use voice dictation to write PR descriptions, code review comments, and documentation without breaking flow state."
-pubDate: 2026-03-11
+pubDate: 2026-03-12
 tags: ["developers", "dictation", "productivity", "code-review"]
-draft: false
+draft: true
 ---
 
-Developers write more prose than they think. Between PR descriptions, code review comments, Slack threads, incident postmortems, design docs, and README updates, a significant chunk of your day is spent producing English, not code. And most of that writing happens in the cracks — context-switching from an implementation you're deep in to a textarea where you need to explain what you just did and why.
+Studies on developer productivity consistently find the same thing: the biggest time sink isn't writing code -- it's everything around the code. PR descriptions, review comments, Slack threads, postmortems, design docs, README updates. One analysis of engineering time found that developers spend roughly 30% of their workday writing prose, not code. And most of that prose gets typed in the cracks between implementation work, breaking flow state every time.
 
-That switch is expensive. Not because typing is hard, but because the mental gear-change from "thinking in code" to "writing for humans" pulls you out of the state where you're most productive.
-
-EnviousWispr lets you stay in flow and talk through the prose parts instead. Hold a hotkey, speak, release. Your words get transcribed on-device, cleaned up by a local LLM, and pasted into whatever app has focus. The whole cycle takes a second or two on Apple Silicon.
+That context-switch cost is what makes voice input valuable for developers. Hold a hotkey, speak, release. Your words get transcribed on-device, cleaned up by a local LLM, and pasted into whatever app has focus. The whole cycle takes a second or two on Apple Silicon. No cloud API, no uploaded audio.
 
 Here's how that fits into a developer's actual day.
 
@@ -22,35 +20,33 @@ So you write something minimal. "Fixed race condition in queue handler." Your re
 
 The fix isn't writing better descriptions through sheer discipline. The fix is making it easier to produce them without breaking your train of thought. If you can just talk through what you did — the same way you'd explain it to a colleague at your desk — the description writes itself.
 
-## Per-app presets: different tone for different tools
+## Writing style presets: match the tone to the task
 
-Not all developer writing sounds the same. A terminal command is terse. A PR description is structured. A Slack reply is conversational. EnviousWispr handles this with [per-app presets](/how-it-works/) — different post-processing rules depending on which app has focus when you dictate.
+Not all developer writing sounds the same. A commit message is terse. A PR description is structured. A Slack reply is conversational. EnviousWispr ships with three writing style presets — **Formal**, **Standard**, and **Friendly** — that control how the LLM post-processor shapes your dictated text.
 
-Here's what that looks like in practice:
+Here's how each one maps to developer tasks:
 
-### Terminal / IDE
+### Formal
 
-**Preset goal:** minimal formatting, no filler, preserve technical terms exactly.
+Best for PR descriptions, documentation, and design docs. Full sentences, proper punctuation, structured prose. You talk through your reasoning and the post-processor organizes it into clean, readable text. Markdown headers, bullet points, and code references stay intact.
 
-When you dictate into your terminal or editor, the preset strips filler words and keeps output tight. You say "git commit dash m fix null pointer in session handler" and you get a clean commit message, not a polished paragraph.
+### Standard
 
-### GitHub / browser
+The default. Works well for most developer writing — review comments, ticket updates, README sections. It cleans up filler words and fixes punctuation without over-formalizing.
 
-**Preset goal:** structured prose, markdown formatting, technical detail preserved.
+### Friendly
 
-When you're writing a PR description or review comment in the browser, the preset produces full sentences with proper punctuation. You talk through your reasoning and the LLM post-processor organizes it into readable prose. Markdown headers, bullet points, and code references stay intact.
+Best for Slack messages and casual communication. Keeps things informal — closer to how you'd actually talk. "Hey, the deploy is blocked on that config change, can you merge it when you get a chance" comes out natural, not stiff.
 
-### Slack
+<!-- TODO: Screenshot — Writing style presets: the settings UI showing Formal, Standard, and Friendly options -->
 
-**Preset goal:** conversational, casual punctuation, shorter sentences.
+You switch between presets with a click. Pick the tone that matches what you're writing, and the post-processor handles the rest.
 
-Slack messages don't need to read like documentation. The Slack preset keeps things informal — closer to how you'd actually talk. "Hey, the deploy is blocked on that config change, can you merge it when you get a chance" comes out natural, not stiff.
-
-You configure these presets once. After that, EnviousWispr detects which app has focus and applies the right rules automatically. No manual switching.
+> **Coming soon:** Per-app presets will let you assign different writing styles to different apps — Terminal stays terse, Slack stays casual, your browser gets structured markdown — all automatically based on which app has focus. No manual switching.
 
 ## Real workflow: dictating a PR description
 
-Let's walk through a concrete example. You've just finished a feature branch that adds retry logic to an HTTP client. You switch to your browser, open the "Create Pull Request" page, click into the description field, and hold your hotkey.
+Let's walk through a concrete example. You've just finished a feature branch that adds retry logic to an HTTP client on your M4 Pro Mac Mini. You switch to your browser, open the "Create Pull Request" page, click into the description field, and hold your hotkey.
 
 You say something like:
 
@@ -59,6 +55,16 @@ You say something like:
 You release the hotkey. A second or two later, the post-processed text appears in the description field — punctuation fixed, filler words removed, structure tightened. The content is yours. The cleanup is automatic.
 
 That took maybe 20 seconds of speaking. Writing the same thing by hand, with the mental overhead of composing prose mid-flow, takes significantly longer.
+
+Here's the before and after — what you actually say versus what lands in the PR description field:
+
+**What you say:**
+> so basically this PR adds retry logic to the HTTP client um previously if a request failed it would just throw immediately now it retries up to three times with exponential backoff and the retry count and backoff multiplier are both configurable through the constructor I thought about doing this as middleware but it's simpler as direct integration since we don't need per-request retry policies yet
+
+**What gets pasted:**
+> Adds configurable retry logic to the HTTP client. Previously, failed requests threw immediately. The client now retries up to three times with exponential backoff. Retry count and backoff multiplier are configurable via the constructor. Considered a middleware approach but chose direct integration for simplicity — per-request retry policies aren't needed yet.
+
+Twenty seconds of speaking replaced five minutes of context-switching into prose mode. The reasoning is there. The trade-off is documented. Your reviewer has what they need. And you never had to break your mental model of the code to do it.
 
 ## Real workflow: code review comments
 
@@ -72,11 +78,13 @@ Release. The comment appears, properly punctuated, in the review textarea. You'r
 
 This works especially well for longer review comments — the kind where you need to explain a subtle issue or suggest an alternative approach. Those are exactly the comments that are most valuable to the author and most tedious to type out.
 
+<!-- TODO: Screenshot — Recording state: the app showing it's actively recording while the user is in a GitHub PR description field -->
+
 ## Real workflow: documentation and design docs
 
 Technical documentation has the highest typing-to-thinking ratio of anything developers write. You know what the system does. You just need to get it into words. Dictation makes this almost trivial.
 
-For documentation, you can go further with custom prompts. Set up a prompt that tells the LLM post-processor to format output as markdown with headers, or to structure it as API documentation with parameter descriptions. You talk through the architecture the way you'd explain it to a new team member, and the output lands formatted and ready to commit.
+For documentation, the Formal writing style preset works well — it produces structured prose with proper punctuation and clean paragraphs. You talk through the architecture the way you'd explain it to a new team member, and the output lands polished and ready to commit. Down the road, custom prompts will let you go even further — telling the post-processor to format output as API documentation with parameter descriptions, or to use specific header structures.
 
 This is particularly useful for the kind of documentation that always gets skipped — the "how does this subsystem actually work" docs that everyone wishes existed but nobody wants to sit down and type out. Speaking is lower friction than typing for this kind of knowledge dump, and the difference is enough to make it actually happen.
 
@@ -94,19 +102,17 @@ For developers working on proprietary codebases, under NDA, or at companies with
 
 Download EnviousWispr from the [releases page](https://github.com/saurabhav88/EnviousWispr/releases). On first launch, grant microphone access and pick a Whisper model — `large-v3-turbo` gives the best balance of speed and accuracy on Apple Silicon.
 
-To set up developer-friendly presets:
+To set up for developer use:
 
-1. **Open Preferences** and navigate to the presets section
-2. **Create a preset for your browser** — set the custom prompt to produce structured markdown with full sentences
-3. **Create a preset for your terminal** — set the prompt to keep output terse and literal
-4. **Create a preset for Slack** — set the prompt to keep things conversational
-5. **Assign each preset** to the corresponding app
+1. **Open Preferences** and choose your writing style preset — Formal works well for PR descriptions and docs, Friendly for Slack
+2. **Pick your hotkey** — something that doesn't collide with your IDE shortcuts
+3. **Switch presets as needed** — when you move from writing a PR description to replying in Slack, switch from Formal to Friendly with a click
 
-After that, dictation adapts automatically based on where you're working. Hold the hotkey in GitHub, get a detailed PR description. Hold it in the terminal, get a clean command. Hold it in Slack, get a casual reply.
+It's fast to switch, and you'll quickly develop a habit of matching the preset to the task. Hold the hotkey in GitHub with Formal selected, get a detailed PR description. Switch to Friendly for Slack, get a casual reply.
 
 ## Related Posts
 
-- [Why I Switched from Typing to Dictating Git Commits](/blog/switched-typing-to-dictating-git-commits/) — a practical look at per-app presets for your terminal
+- [Why I Switched from Typing to Dictating Git Commits](/blog/switched-typing-to-dictating-git-commits/) — a practical look at dictating commit messages with writing style presets
 - [Voice Coding on macOS Without Cloud APIs](/blog/voice-coding-macos-without-cloud/) — the full case for on-device voice input in dev workflows
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/) — setup walkthrough from download to first dictation
 

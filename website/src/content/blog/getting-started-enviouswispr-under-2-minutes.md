@@ -6,15 +6,15 @@ tags: ["getting-started", "tutorial", "setup", "dictation"]
 draft: false
 ---
 
-Two minutes. That's the gap between downloading EnviousWispr and dictating your first sentence into whatever app you're already using. You download, grant two permissions, and start talking. That's the whole setup.
+You'll be dictating polished text into your apps before you finish your coffee. No account to create, no API key to find, no subscription to debate. Download, grant two permissions, talk. That's the entire setup, and it takes under two minutes.
 
-This guide walks you through every step of getting started with EnviousWispr — from the initial download to your first dictation and beyond.
+This guide walks you through every step -- from the initial download to your first dictation and beyond.
 
 ## Step 1: Download the .dmg
 
 Head to the [EnviousWispr releases page on GitHub](https://github.com/saurabhav88/EnviousWispr/releases) and grab the latest `.dmg` file. It's a standard macOS disk image — open it, drag EnviousWispr into your Applications folder, and launch it.
 
-EnviousWispr requires macOS 14 (Sonoma) or later and runs best on Apple Silicon. If you're on an M1, M2, M3, or M4 Mac, transcription will finish in a second or two. Intel Macs work too, but expect slower processing times.
+EnviousWispr requires macOS Sonoma or later and runs best on Apple Silicon. If you're on an M1, M2, M3, or M4 Mac — from a MacBook Air to a Mac Studio — transcription will finish in a second or two. Intel Macs work too, but expect slower processing times.
 
 That's the entire install. No installer wizard, no setup assistant, no "create your workspace" screen.
 
@@ -48,11 +48,23 @@ EnviousWispr records while you hold, transcribes when you release, runs the text
 
 That's it. You've just dictated your first text with EnviousWispr.
 
+Here's what a first dictation typically looks like:
+
+**What you say:**
+> hey I just wanted to test this out so um basically I need to send an email to the team about the project timeline and let them know that we're pushing the deadline back by a week because the design review took longer than expected
+
+**What gets pasted:**
+> Sending a quick update on the project timeline — we're pushing the deadline back by one week. The design review took longer than expected.
+
+That's the before and after. You spoke naturally, with filler words and run-on phrasing. The output is clean, concise, and ready to paste into an email.
+
 ### What the post-processing does
 
 By default, EnviousWispr's post-processing pipeline removes filler words like "um," "uh," and "like," fixes punctuation, and produces clean prose. It runs on-device via your local LLM — no cloud round-trip, no latency penalty. If you want to understand [how the full pipeline works](/how-it-works/), we've documented each stage in detail.
 
 You don't need to configure anything for this to work. The defaults are designed to produce clean, readable text out of the box.
+
+<!-- TODO: Screenshot — Menu bar icon: the EnviousWispr menu bar dropdown showing the hotkey, recording status, and quick actions -->
 
 ## Step 4: Customize (Optional)
 
@@ -66,29 +78,13 @@ The first model download takes a few minutes depending on your connection. After
 
 For most people on Apple Silicon, the default model strikes a good balance between speed and accuracy. Experiment if you want — switching models takes a couple of clicks in the settings.
 
-### Custom prompts
+### Writing style presets
 
-Custom prompts let you tell the post-processor exactly how to handle your speech. A few examples:
+EnviousWispr ships with three writing style presets -- Formal, Standard, and Friendly -- that control the tone of your post-processed output. Switch between them depending on the task: Formal for polished emails, Standard for general writing, Friendly for casual messages.
 
-- **"Format as bullet points"** — great for meeting notes or brainstorming sessions
-- **"Keep it casual, like a Slack message"** — strips formality for quick replies
-- **"Translate to Spanish"** — real-time translation as you dictate
-- **"Write in my style: short sentences, no semicolons"** — match your personal voice
+### Coming soon: custom prompts and per-app presets
 
-You can create as many prompts as you need and switch between them depending on the task.
-
-### Per-app presets
-
-Per-app presets take custom prompts a step further. Instead of manually switching prompts, EnviousWispr detects which app has focus and applies the right processing rules automatically.
-
-A practical setup might look like this:
-
-- **Slack** — casual tone, short paragraphs, no formal punctuation
-- **Terminal** — terse, command-like output
-- **Your writing app** — full prose, your personal style, proper paragraph breaks
-- **Email** — professional but concise
-
-Per-app presets mean you dictate the same way every time — your natural speaking voice — and EnviousWispr adjusts the output to fit the context.
+Custom prompts will let you tell the post-processor exactly how to handle your speech -- "format as bullet points," "translate to Spanish," "write in my style: short sentences, no semicolons." Per-app presets will take that further by automatically applying different rules based on which app has focus -- casual for Slack, terse for Terminal, full prose for your writing app. Both are on the roadmap.
 
 ## What to Try Next
 
@@ -102,9 +98,9 @@ Hands-free mode lets EnviousWispr transcribe continuously in the background with
 
 By default, EnviousWispr pastes text directly into the focused app. If you prefer more control over where text ends up, switch to clipboard mode. Your transcription lands on the clipboard, and you paste it wherever you want with Cmd+V.
 
-### Privacy toggle
+### Privacy toggle (coming soon)
 
-If you're about to have a sensitive conversation — a private call, a confidential meeting — toggle processing off with a single click. EnviousWispr stops recording entirely until you turn it back on. No recordings are buffered or queued while paused.
+A dedicated privacy toggle is in the works -- a single click to pause all processing when you're in a sensitive conversation or confidential meeting. Until then, hands-free mode can simply be stopped when you need silence.
 
 ## Troubleshooting Quick Tips
 
@@ -128,7 +124,7 @@ That's normal. The first transcription after launch includes model loading time.
 
 ### Something else?
 
-EnviousWispr is [open source on GitHub](https://github.com/saurabhav88/EnviousWispr). If you hit a problem not covered here, open an issue and describe what happened. Include your macOS version, Mac model, and which Whisper model you're using — that helps us reproduce and fix it faster.
+EnviousWispr is [open source on GitHub](https://github.com/saurabhav88/EnviousWispr). If you hit a problem not covered here, open an issue and describe what happened. Include your macOS version (Sonoma, Sequoia, etc.), Mac model, and which Whisper model you're using — that helps us reproduce and fix it faster.
 
 ## Related Posts
 

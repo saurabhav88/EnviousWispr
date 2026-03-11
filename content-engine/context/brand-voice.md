@@ -133,7 +133,7 @@ The EnviousWispr tone is that of a senior engineer explaining a brilliant open-s
 - Emphasize workflow fit and speed
 
 **Use lines like:**
-- "Speak into Slack one way and your writing app another with per-app presets."
+- "Choose Friendly for Slack messages and Formal for client emails — switch writing styles in one click. Per-app presets that switch automatically are on the roadmap."
 - "Hands-free mode lets EnviousWispr keep transcribing in the background."
 
 **Avoid:**
@@ -186,7 +186,7 @@ The EnviousWispr tone is that of a senior engineer explaining a brilliant open-s
 - **Concept:** The product is easy by default but customizable for serious workflows.
 - **Key points:**
   - Core loop is simple
-  - Custom prompts, per-app presets, hands-free mode add depth
+  - Writing style presets and hands-free mode add depth; custom prompts and per-app presets are on the roadmap
   - Users stay in control
   - Works for both casual dictation and tuned personal workflows
 - **Best used in:** Feature pages, persona messaging, onboarding, release notes
@@ -206,7 +206,7 @@ The EnviousWispr tone is that of a senior engineer explaining a brilliant open-s
 
 **Parent:** Capture fleeting ideas hands-free while managing the kids, with zero risk of your family's background audio being uploaded to a corporate server.
 
-**Coder:** Dictate terminal commands or code documentation effortlessly using per-app presets that automatically understand and format developer syntax.
+**Coder:** Dictate code documentation effortlessly, then choose the right writing style preset (Standard for docs, Friendly for Slack). Per-app presets are on the roadmap.
 
 **Exec:** Draft sensitive memos and emails instantly, with the absolute guarantee that your confidential company data never leaves your MacBook.
 
@@ -272,7 +272,7 @@ Example:
 7. **post-processing** -- not "AI magic"
 8. **hold a hotkey, speak, release** -- not "seamless voice workflow"
 9. **pastes into the app that has focus** -- not "deep workflow integration"
-10. **per-app presets** -- not "smart adaptive contexts"
+10. **per-app presets (planned)** -- not "smart adaptive contexts"
 11. **custom prompts** -- not "personalized AI experiences"
 12. **pause processing** -- not "go incognito mode"
 13. **free and open source** -- not "community-powered solution"

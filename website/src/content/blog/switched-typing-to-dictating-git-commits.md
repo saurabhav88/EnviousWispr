@@ -1,16 +1,14 @@
 ---
-title: "Why I Switched from Typing to Dictating Git Commits"
-description: "Dictating git commits produces better messages than typing. Here's how per-app presets and custom prompts make voice commit messages practical."
-pubDate: 2026-03-11
+title: "Why I Switched to Dictating Git Commits on macOS"
+description: "Dictating git commits produces better messages than typing. Here's how writing style presets and LLM post-processing make voice commit messages practical."
+pubDate: 2026-03-16
 tags: ["developer", "git", "workflow", "dictation"]
-draft: false
+draft: true
 ---
 
-My commit messages used to be terrible. Not because I didn't know what I'd changed -- I always knew. The problem was that typing a commit message felt like a chore wedged between the satisfying part (writing code) and the next satisfying part (writing more code). So I'd type "fix bug" or "update stuff" and move on.
+Last month I went back through six months of my git history. The first three months were the usual graveyard: "fix bug," "update stuff," "misc changes." The last three months? Every commit had a subject line, a body, and actual reasoning. The code hadn't changed. My discipline hadn't changed. The only thing that changed was that I started speaking my commit messages instead of typing them.
 
-I knew this was bad. Every developer knows this is bad. We've all stared at a `git log` six months later and wondered what "misc changes" could possibly mean. But knowing something is bad and actually changing the behavior are two different things.
-
-What changed for me was dictating git commits instead of typing them.
+I didn't plan for this to work. I just got tired of the friction between finishing a satisfying piece of code and having to shift into prose mode to explain it. Dictating removed that friction entirely.
 
 ## The one-line commit message problem
 
@@ -18,11 +16,11 @@ Here's a pattern I bet you recognize. You've just spent forty-five minutes refac
 
 Then you type `git commit -m "refactor auth module"` and move on.
 
-The problem isn't laziness exactly. It's friction. Typing a good commit message means switching from code-brain to prose-brain. You have to think about sentence structure, capitalize things, decide how much detail is enough. Your fingers are already positioned for the next `vim` session. Writing two paragraphs of explanation in a terminal prompt feels wrong.
+The problem isn't laziness exactly. It's friction. Typing a good commit message means switching from code-brain to prose-brain. You have to think about sentence structure, capitalize things, decide how much detail is enough. Your fingers are already positioned for the next `vim` session in Terminal. Writing two paragraphs of explanation in a terminal prompt feels wrong.
 
 Speaking, though -- speaking is different. When someone asks you what you just changed, you don't struggle to explain it. You just talk. "I pulled the token validation out of the auth middleware and into its own service because we need to reuse it in the WebSocket handler, and the old approach was duplicating logic in three places."
 
-That's a good commit message. And it took about four seconds to say.
+That's a good commit message. And it took about four seconds to say. You stay in the flow -- the code is still alive in your head, and the explanation comes out while it's fresh, not after you've context-switched back to prose mode.
 
 ## Why speaking produces better commit messages
 
@@ -34,25 +32,25 @@ The other factor is speed. Speaking is roughly three to four times faster than t
 
 I've been dictating commit messages for a few months now, and looking back through my git history the difference is obvious. The typed era is full of one-liners. The dictated era has context, reasoning, and descriptions that actually help when I revisit the code.
 
-## Setting up per-app presets for your terminal
+<!-- TODO: Screenshot — Writing style presets: the settings UI showing Formal, Standard, and Friendly options -->
 
-The key to making developer dictation practical is that you don't want the same processing rules everywhere. When I dictate into Slack, I want natural conversational tone. When I dictate into a document, I want full prose with proper paragraphs.
+## Choosing the right writing style for commits
 
-But when I dictate into the terminal, I want something specific: terse, technical, no fluff, and formatted for git.
+The key to making developer dictation practical is matching the tone to the context. When I dictate a Slack reply, I want Friendly mode — natural, conversational. When I dictate documentation, I want Formal — full prose with proper paragraphs.
 
-EnviousWispr handles this with [per-app presets](/how-it-works/). You create a preset for Terminal (or iTerm2, or whatever you use), and it applies different post-processing rules automatically based on which app has focus. No switching modes, no remembering to toggle anything. The app detects that your terminal is in the foreground and applies the right prompt.
+But for commit messages, I want something stripped down: terse, technical, no fluff.
 
-For my terminal preset, I keep things stripped down. No filler words (obviously -- the LLM handles that regardless), but also no conversational padding. I don't want "So basically what I did was..." making it into a commit message. The preset tells the post-processor to keep output direct and technical.
+EnviousWispr ships with three writing style presets — **Formal**, **Standard**, and **Friendly** — and for terminal work, Standard hits the sweet spot. It cleans up filler words, fixes punctuation, and keeps output direct without over-formalizing. No "So basically what I did was..." making it into a commit message. The post-processor keeps things technical and to the point.
 
-## Custom prompt: format as conventional commit
+> **Coming soon:** Per-app presets will make this even smoother. You'll assign a writing style to Terminal, a different one to Slack, another to your browser — and EnviousWispr will apply the right rules automatically based on which app has focus. No switching, no remembering to toggle anything.
 
-This is where it gets good. EnviousWispr lets you define custom prompts that tell the local LLM exactly how to process your speech. For git commits, I use a prompt that formats my spoken words into conventional commit format with a subject line and body.
+## How the post-processor shapes commit messages
 
-Here's roughly what my custom prompt looks like:
+This is where it gets good. EnviousWispr's LLM post-processing step cleans up your spoken words into properly structured text. The Standard preset strips filler, fixes punctuation, and keeps output direct — which already gets you most of the way to a good commit message.
 
-> Format the following as a conventional commit message. First line should be a conventional commit subject (type, optional scope, colon, imperative description) under 72 characters. If the spoken input includes reasoning or context, add a blank line and a commit body with that detail. Remove filler words and conversational tone. Keep technical terms exact. Do not invent information that wasn't spoken.
+> **Coming soon:** Custom prompts will let you go even further — defining exact formatting rules like "output as a conventional commit with type, scope, and body." You'll be able to tell the post-processor precisely how to structure your commits, changelogs, or any other output format.
 
-So when I hold the hotkey and say:
+Even with the current presets, the results are surprisingly good. When I hold the hotkey and say:
 
 *"feat auth -- I added rate limiting to the login endpoint because we were getting hammered by credential stuffing bots. It uses a sliding window counter in Redis with a default of five attempts per minute per IP."*
 
@@ -109,11 +107,11 @@ The typed versions aren't wrong. They're just useless for future comprehension. 
 
 A few things I've learned from using developer dictation daily.
 
-**Accuracy with technical terms is good but not perfect.** WhisperKit handles common programming vocabulary well -- function names, framework names, language keywords. Occasionally it stumbles on very niche library names or unusual abbreviations. The LLM post-processing step catches most of these, especially if your custom prompt tells it to preserve technical terms.
+**Accuracy with technical terms is good but not perfect.** WhisperKit handles common programming vocabulary well -- function names, framework names, language keywords. Occasionally it stumbles on very niche library names or unusual abbreviations. The LLM post-processing step catches most of these.
 
-**You'll feel weird at first.** Talking to your computer in an open office is awkward. I started doing it at home and eventually stopped caring. Most of my team wears headphones anyway. If you're self-conscious, start with commit messages -- they're short, private, and the improvement is immediately visible in your git log.
+**You'll feel weird at first.** Talking to your M2 MacBook Air in an open office is awkward. I started doing it at home and eventually stopped caring. Most of my team wears headphones anyway. If you're self-conscious, start with commit messages -- they're short, private, and the improvement is immediately visible in your git log.
 
-**Per-app presets matter more than you'd think.** Without them, you'd need to mentally switch between "terminal mode" and "Slack mode" every time you dictate. The fact that EnviousWispr detects the focused app and applies the right processing rules automatically is what makes this sustainable as a daily workflow.
+**Switching presets becomes second nature.** You'll quickly build a habit of toggling between Standard for terminal work and Friendly for Slack before you dictate. It's a single click. And when per-app presets ship, even that click goes away — EnviousWispr will detect the focused app and apply the right style automatically.
 
 **It helps with RSI.** This wasn't my original motivation, but after eight-plus hours of typing every day, being able to offload even a portion of that to voice makes a noticeable difference in wrist strain by end of day. If RSI is your primary motivation, we have a dedicated guide on [voice input for RSI](/blog/voice-input-rsi-keyboard-free-workflow/).
 
@@ -123,9 +121,8 @@ If you want to try dictating git commits, here's the minimal setup.
 
 1. Download EnviousWispr from the [releases page](https://github.com/saurabhav88/EnviousWispr/releases) and grant it microphone and accessibility permissions on first launch
 2. Pick a Whisper model -- `large-v3-turbo` is the best balance of speed and accuracy on Apple Silicon
-3. Create a per-app preset for your terminal app
-4. Add a custom prompt that formats output as conventional commits (use the example above as a starting point)
-5. Open your terminal, hold the hotkey, describe your change, release
+3. Select the **Standard** writing style preset — it keeps output direct and technical, which works well for commit messages
+4. Open your terminal, hold the hotkey, describe your change, release
 
 That's the whole workflow. Hold, speak, release. Your commit message lands formatted and ready to go. EnviousWispr is [free and open source](https://github.com/saurabhav88/EnviousWispr) — no account, no API key, no subscription.
 

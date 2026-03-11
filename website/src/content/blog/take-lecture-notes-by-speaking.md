@@ -1,16 +1,16 @@
 ---
-title: "How to Take Lecture Notes by Speaking"
+title: "How to Take Lecture Notes by Speaking on Mac"
 description: "Stop missing key points while typing. Use voice notes for students to capture lecture notes by speaking — free, private, and on-device."
-pubDate: 2026-03-11
+pubDate: 2026-03-18
 tags: ["students", "lecture-notes", "dictation", "how-to"]
-draft: false
+draft: true
 ---
 
-You know the feeling. The professor is three slides ahead, rattling off distinctions between concepts you're still trying to spell correctly. Your fingers are moving as fast as they can, but by the time you finish one sentence, you've missed the next two. Typing during lectures is a losing game — your attention splits between what's being said and what you're writing, and both suffer.
+It's a 9 AM organic chemistry lecture. The professor is three slides ahead, rattling off the difference between SN1 and SN2 mechanisms while you're still trying to spell "nucleophilic." Your fingers are moving as fast as they can, but by the time you finish one sentence, you've missed the next two. You look at your notes after class and half of them are gibberish.
 
-There's a better approach: take lecture notes by speaking. Instead of typing, you dictate quietly into your laptop's microphone and let transcription software turn your spoken words into organized text. It's faster, it keeps your eyes on the professor, and with the right setup, it costs you nothing.
+Here's the thing: you could have captured better notes by whispering them. Speaking is faster than typing, it keeps your eyes on the slides instead of the keyboard, and with the right tool, your spoken notes come back cleaned up and formatted -- for free.
 
-Here's how to do it with EnviousWispr — a free, open-source dictation app that runs entirely on your Mac.
+Here's how to set that up with EnviousWispr, a free, open-source dictation app that runs entirely on your Mac.
 
 ## Step 1: Install EnviousWispr in five minutes
 
@@ -20,6 +20,8 @@ The app will download and compile the model locally. This takes a few minutes th
 
 It's free. No account walls, no trial periods. You're a student — your budget matters, and EnviousWispr is open source.
 
+<!-- TODO: Screenshot — Hands-free mode indicator: the recording overlay showing hands-free/locked mode active for continuous lecture capture -->
+
 ## Step 2: Turn on hands-free mode
 
 For regular dictation, EnviousWispr uses a push-to-talk hotkey — hold to record, release to transcribe. That works great for quick notes, but during a lecture you don't want to hold down a key for 50 minutes.
@@ -28,25 +30,19 @@ Switch to **hands-free mode**. This tells EnviousWispr to transcribe continuousl
 
 Hands-free mode detects natural pauses in your speech, so each thought gets processed as its own chunk. You'll see transcribed text appear as you go.
 
-## Step 3: Set up a custom prompt for lecture notes
+<!-- TODO: Screenshot — Writing style presets: the settings UI showing Formal, Standard, and Friendly preset options -->
 
-Raw transcription is useful, but the real power for students is in post-processing. EnviousWispr runs your transcribed text through a local LLM that cleans it up — removing filler words like "um" and "uh," fixing punctuation, and formatting the output however you tell it to.
+## Step 3: Pick the right writing style preset
 
-Set a custom prompt like:
+Raw transcription is useful, but the real power for students is in post-processing. EnviousWispr runs your transcribed text through a local LLM that cleans it up — removing filler words like "um" and "uh," fixing punctuation, and producing polished output.
 
-> Format as bullet points. Bold key terms and definitions. Remove filler words.
+The app ships with three writing style presets — Formal, Standard, and Friendly. For lecture notes, **Standard** works well: it cleans up your speech into clear, well-punctuated prose without making it overly stiff.
 
-Or for a more structured approach:
-
-> Organize into sections by topic. Use bullet points for details. Bold vocabulary terms. Add a "Key Takeaways" section at the end.
-
-This turns your raw dictation into study-ready notes — without you doing any manual formatting during the lecture. The speech to text study workflow becomes almost automatic.
-
-You can experiment with different prompts depending on the class. A history lecture might benefit from chronological formatting, while a science class might need emphasis on formulas and processes.
+Custom prompts — where you could tell the LLM to format output as bullet points, bold key terms, or organize by topic — are on the roadmap. Once that ships, you'll be able to tailor post-processing per class (chronological formatting for history, emphasis on formulas for science). For now, the built-in presets already turn your raw dictation into clean, readable notes without any manual formatting during the lecture.
 
 ## Step 4: Position your microphone and speak naturally
 
-You don't need an external microphone. Your MacBook's built-in mic works fine in a lecture hall if you're speaking at a normal volume — which you should be doing anyway. Quiet dictation works. You're not giving a speech; you're murmuring your notes.
+You don't need an external microphone. Your MacBook Air's built-in mic works fine in a lecture hall if you're speaking at a normal volume — which you should be doing anyway. Quiet dictation works. You're not giving a speech; you're murmuring your notes.
 
 A few practical tips:
 
@@ -55,14 +51,27 @@ A few practical tips:
 - **Paraphrase rather than transcribe verbatim.** Your own words stick in memory better, and the LLM cleanup handles the rest.
 - **Don't worry about perfect speech.** That's what post-processing is for. Say "um" all you want — the LLM strips it out.
 
+Here's what this looks like in practice — whispering notes during a chemistry lecture:
+
+**What you say:**
+> okay so SN1 reactions happen in two steps first the leaving group leaves and forms a carbocation intermediate and then the nucleophile attacks um it's favored by tertiary substrates and polar protic solvents and the rate only depends on the substrate concentration not the nucleophile
+
+**What gets pasted:**
+> **SN1 Reactions**
+> - Two-step mechanism: leaving group departs first, forming a carbocation intermediate, then the nucleophile attacks
+> - Favored by: tertiary substrates, polar protic solvents
+> - Rate = first-order (depends only on substrate concentration, not nucleophile)
+
+Ten seconds of whispering captured what would have taken a minute of frantic typing — and the LLM post-processing cleaned it up into study-ready notes automatically. Walking out of a lecture with complete, polished notes instead of a half-finished mess changes how you feel about the whole class.
+
 ## Step 5: Review and clean up after the lecture
 
-Even with a good custom prompt, your notes will benefit from a quick review. Here's an efficient post-lecture cleanup routine:
+Even with clean post-processing, your notes will benefit from a quick review. Here's an efficient post-lecture cleanup routine:
 
 1. **Read through within 24 hours.** Research on memory consolidation says this matters. Your dictation lecture notes serve double duty — they're both a record and a review tool.
 2. **Fix any transcription errors.** WhisperKit is accurate, but proper nouns and specialized terms sometimes get mangled. Correct them while the lecture is fresh.
 3. **Add context you didn't dictate.** Diagrams from the board, slide numbers, or references the professor mentioned. Drop these in as annotations.
-4. **Reorganize if needed.** Your custom prompt does most of the formatting, but you might want to merge related points or reorder sections.
+4. **Reorganize if needed.** The LLM cleanup handles the basics, but you might want to merge related points or reorder sections.
 5. **Highlight what you don't understand.** Mark anything confusing now so you know what to ask about in office hours.
 
 This review step takes 10-15 minutes and dramatically improves how much you retain.
@@ -84,7 +93,7 @@ If you're ready to try voice notes for students, the setup takes less than five 
 2. Grant microphone access on first launch
 3. Choose the `large-v3-turbo` model
 4. Turn on hands-free mode
-5. Set a custom prompt for lecture formatting
+5. Pick a writing style preset
 6. Start your next lecture
 
 ## Related Posts
@@ -93,4 +102,4 @@ If you're ready to try voice notes for students, the setup takes less than five 
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/) — full setup walkthrough from download to first dictation
 - [On-Device vs Cloud Dictation: What Stays Private](/blog/on-device-vs-cloud-dictation-privacy/) — why your academic work stays safer with on-device processing
 
-That's it. No sign-up, no credit card, no trial period. Just a dictation tool that runs on your Mac and stays out of your way. Your notes will thank you.
+That's it. No sign-up, no credit card, no trial period. Just a dictation tool that runs on your Mac — macOS Sonoma or later — and stays out of your way. Your notes will thank you.

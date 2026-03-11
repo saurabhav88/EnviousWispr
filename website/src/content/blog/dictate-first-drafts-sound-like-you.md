@@ -1,16 +1,16 @@
 ---
 title: "Dictate First Drafts That Sound Like You"
-description: "Most dictation tools strip your voice. Here's how to dictate first drafts that keep your writing style intact using custom prompts and per-app presets."
-pubDate: 2026-03-11
-tags: ["writing", "dictation", "workflow", "custom-prompts"]
-draft: false
+description: "Most dictation tools strip your voice. Here's how to dictate first drafts that keep your writing style intact using writing style presets and LLM post-processing."
+pubDate: 2026-03-14
+tags: ["writing", "dictation", "workflow", "writing-style"]
+draft: true
 ---
 
-You dictate a paragraph. You look at the screen. It reads like a robot wrote it -- flat, lifeless, scrubbed of every quirk that makes your writing yours. The punctuation is wrong. The sentence rhythm is off. The filler words are gone but so is your voice.
+Every dictation tool on the market is lying to you about the same thing. They promise "natural-sounding text" and then hand you output that reads like it was written by a corporate chatbot. The filler words are gone, sure -- but so is your voice, your rhythm, every stylistic choice that makes your writing yours.
 
-This is the experience most writers have with dictation software, and it's why so many give up on voice-to-text entirely. They go back to typing, back to the blinking cursor, back to wrist pain and slow first drafts.
+The problem isn't speech-to-text accuracy. The problem is that most tools treat post-processing as "make it sound professional" instead of "make it sound like the person who said it."
 
-It doesn't have to work that way.
+That's a solvable problem -- if the tool gives you control over what happens after transcription.
 
 If you're new to EnviousWispr, the [getting started guide](/blog/getting-started-enviouswispr-under-2-minutes/) walks you through setup in under two minutes.
 
@@ -28,10 +28,12 @@ EnviousWispr splits the work into two stages: transcription and post-processing.
 
 Here's what makes the difference for writers:
 
-- **Custom prompts** -- you write the instructions for how your speech gets cleaned up. Want em dashes? Say so. Want sentence fragments preserved? Tell it. Want everything formatted as Markdown with H2 headings? Done.
-- **Per-app presets** -- different processing rules for different apps. Your writing app gets full prose with your preferred style. Slack gets casual. Your notes app gets raw, unpolished stream of consciousness.
+- **Writing style presets** -- three built-in modes that shape how the LLM cleans up your dictation. **Friendly** keeps your natural voice and conversational rhythm intact -- contractions, sentence fragments, the way you actually talk. **Standard** gives you clean, balanced prose. **Formal** tightens everything up for professional or academic contexts.
+- **LLM post-processing** -- your local LLM (or an external API if you choose) handles the cleanup. It strips filler words, fixes punctuation, and reshapes the text according to whichever preset you've selected. The result sounds like you wrote it, not like a template.
 
-This isn't "smart adaptive context." It's a text field where you type what you want, and the post-processor follows your instructions. You're in control.
+Switching presets takes one click, so you can move between freewriting and polished output without changing how you speak. You're in control.
+
+> **On the roadmap:** Custom prompts will let you write your own post-processing instructions -- things like "use em dashes, not semicolons" or "format as Markdown with H2 headings." And per-app presets will auto-detect which app has focus and apply different rules automatically, so your writing app gets full prose while Slack gets casual short-form text.
 
 For a deeper look at how the transcription and post-processing pipeline connects, see the [How It Works](/how-it-works/) page.
 
@@ -49,56 +51,59 @@ No account. No API key. No subscription. It's free and open source.
 
 Open EnviousWispr's settings and pick a model size. For writing, accuracy matters more than raw speed, so `large-v3-turbo` is a solid default. The first model download takes a few minutes. After that, you're done.
 
-On Apple Silicon, even the larger models transcribe in a second or two. The Neural Engine handles the heavy lifting.
+On Apple Silicon, even the larger models transcribe in a second or two — I've tested this on both an M2 MacBook Air and an M3 MacBook Pro with near-identical speed. The Neural Engine handles the heavy lifting.
 
-### Step 3: Write Your Custom Prompt
+### Step 3: Pick Your Writing Style Preset
 
-This is where it gets interesting. Open the post-processing settings and write a prompt that describes your writing style. Be specific. Here are some starting points:
+<!-- TODO: Screenshot — Writing style presets: the settings UI showing Formal, Standard, and Friendly preset options -->
 
-**For a novelist who writes in short, punchy sentences:**
-> Clean up filler words. Keep sentence fragments -- they're intentional. Use em dashes, not semicolons. Don't add words I didn't say. Preserve my paragraph breaks.
+This is where it gets interesting. Open EnviousWispr's settings and choose the writing style preset that matches what you're working on:
 
-**For a blogger who writes conversationally:**
-> Fix punctuation and capitalization. Keep contractions. Remove "um" and "uh" but leave casual phrasing intact. Format as Markdown with paragraph breaks. Don't formalize my tone.
+**Friendly** -- for novelists, bloggers, and freewriters who want their natural voice preserved. Filler words go away, but contractions, casual phrasing, and your sentence rhythm stay intact.
 
-**For a journalist drafting notes:**
-> Minimal cleanup. Fix obvious transcription errors. Keep it rough -- I'll edit later. No formatting, no structure changes. Just accurate raw text.
+**Standard** -- the balanced middle ground. Clean, readable prose that works for newsletters, articles, and general drafting. Your voice comes through, just a bit more polished.
 
-The prompt runs through your local LLM of choice, so it stays on your Mac. Your writing style instructions, your raw dictation -- none of it leaves your device unless you explicitly configure an external API.
+**Formal** -- for academic papers, client deliverables, and professional correspondence. Tighter sentence structure, no casual phrasing, polished output.
 
-### Step 4: Set Up Per-App Presets
+All processing runs through your local LLM of choice, so it stays on your Mac. Your raw dictation never leaves your device unless you explicitly configure an external API.
 
-If you write in multiple apps, per-app presets save you from switching prompts manually. Open EnviousWispr's preset settings and create one for each app:
+> **Coming soon:** Custom prompts will let you write your own post-processing instructions for even finer control -- things like "use em dashes, not semicolons" or "keep sentence fragments, they're intentional." And per-app presets will auto-detect which app has focus and apply different rules automatically, so Ulysses gets your prose style while Slack gets casual short-form text.
 
-- **Ulysses / iA Writer / Scrivener** -- full prose mode with your custom style prompt, Markdown output
-- **Slack / Messages** -- casual, short, no Markdown formatting
-- **Notes / Obsidian** -- raw capture, minimal cleanup, preserve everything
-
-When you dictate, EnviousWispr detects which app has focus and applies the right preset automatically. You speak into Ulysses one way and Slack another without touching a single setting.
-
-### Step 5: Dictate Your First Draft
+### Step 4: Dictate Your First Draft
 
 Hold your hotkey. Start talking. Don't edit in your head -- just speak. Release the hotkey when you're done with a thought. A second or two later on Apple Silicon, polished text lands in your writing app, styled the way you specified.
 
-That's it. No copying and pasting. No switching apps. The text pastes into the app that has focus, formatted according to your preset.
+That's it. No copying and pasting. No switching apps. The text pastes into the app that has focus, cleaned up according to your chosen writing style.
+
+## What the Difference Actually Looks Like
+
+Here's a concrete example. A writer dictating a blog intro:
+
+**What you say:**
+> okay so I want to start this piece by talking about how like most productivity advice is written by people who've never had a real creative block they just say write every day and do morning pages but that doesn't help when the problem isn't discipline it's that you're scared of writing something bad
+
+**What gets pasted:**
+> Most productivity advice is written by people who've never had a real creative block. "Write every day" and "do morning pages" sound reasonable -- but they don't help when the problem isn't discipline. It's that you're scared of writing something bad.
+
+The voice is the same. The mess is gone. And the writer didn't type a single character. The draft sounds like them -- not like a template, not like an AI, but like the person who had the idea in the first place.
 
 ## Real Workflows: What This Looks Like in Practice
 
 ### Morning Pages in Ulysses
 
-You open Ulysses. You hold the hotkey. You talk for three minutes about whatever's on your mind -- messy, circular, half-formed. You release. The text appears in your editor with clean punctuation, your preferred em dash style, and paragraph breaks where you paused. The filler words are gone but your voice is still there. You didn't type a single character.
+You open Ulysses. You hold the hotkey. You talk for three minutes about whatever's on your mind -- messy, circular, half-formed. You release. The text appears in your editor with clean punctuation and paragraph breaks where you paused. The filler words are gone but your voice is still there. You didn't type a single character.
 
 ### Blog Drafting in iA Writer
 
-You have an outline. You dictate each section, one hotkey press at a time. Your custom prompt formats everything as Markdown with H2 headings. Each dictation chunk lands in iA Writer ready to edit. By the time you've walked through your outline, you have a 1,200-word rough draft that took fifteen minutes instead of an hour.
+You have an outline. You dictate each section, one hotkey press at a time. Your writing style preset cleans up each chunk into polished prose. Each dictation chunk lands in iA Writer ready to edit. By the time you've walked through your outline, you have a 1,200-word rough draft that took fifteen minutes instead of an hour.
 
 ### Quick Slack Replies Between Writing Sessions
 
-You switch to Slack. Your per-app preset kicks in -- casual tone, no Markdown, short and direct. You dictate a reply to your editor. It reads like a quick message, not like a paragraph from your manuscript. Back to writing.
+You switch to Slack. You flip your preset to Friendly -- casual tone, natural phrasing. You dictate a reply to your editor. It reads like a quick message, not like a paragraph from your manuscript. Back to writing. One click to switch presets, no friction.
 
 ### Capturing Ideas on a Walk
 
-You're away from your desk but your Mac is open at home with hands-free mode running. You come back, sit down, hold the hotkey, and dump every idea you had on your walk. The post-processor cleans it up according to your notes preset -- rough, barely formatted, but captured. You'll shape it later.
+You're away from your desk but your Mac Mini is running at home with hands-free mode on. You come back, sit down, hold the hotkey, and dump every idea you had on your walk. The post-processor cleans it up with your Friendly preset -- natural, lightly polished, captured. You'll shape it later.
 
 ## Why Privacy Matters for Writers
 
@@ -106,14 +111,14 @@ Writers dictate sensitive material. Unpublished manuscripts. Client work under N
 
 EnviousWispr processes everything on-device. Your recordings never leave your Mac. Transcription runs locally via WhisperKit and Core ML. Post-processing runs through your local LLM. There's no server receiving your audio, no vendor storing your transcripts, no account tied to your creative output.
 
-If you're working on something sensitive, you can also pause processing entirely with a single click. When you unpause, everything picks back up where you left off. For a detailed look at how on-device processing compares to cloud alternatives, see our [on-device vs cloud dictation comparison](/blog/on-device-vs-cloud-dictation-privacy/).
+For a detailed look at how on-device processing compares to cloud alternatives, see our [on-device vs cloud dictation comparison](/blog/on-device-vs-cloud-dictation-privacy/).
 
 ## Getting Past the "Dictation Doesn't Work for Me" Wall
 
 Most writers who've tried dictation and quit had one of three problems:
 
-1. **The output didn't sound like them** -- solved by custom prompts that encode your style
-2. **Switching between apps was tedious** -- solved by per-app presets that auto-detect context
+1. **The output didn't sound like them** -- solved by writing style presets that match your tone (and custom prompts are coming soon for even finer control)
+2. **Switching between contexts was tedious** -- one-click preset switching makes it fast today, and per-app presets on the roadmap will make it automatic
 3. **Privacy concerns with cloud tools** -- solved by on-device processing that never phones home
 
 The first few sessions feel awkward. You'll over-explain, stumble, repeat yourself. That's normal. The post-processor catches most of it, and within a week you'll find a rhythm. Dictation isn't a replacement for writing -- it's a way to get your first draft out of your head faster so you can spend your energy on editing, which is where the real writing happens anyway.
@@ -123,7 +128,7 @@ The first few sessions feel awkward. You'll over-explain, stumble, repeat yourse
 EnviousWispr is free, open source, and yours to keep -- no strings.
 
 1. Download the latest release from [GitHub](https://github.com/saurabhav88/EnviousWispr/releases)
-2. Write a custom prompt that matches your voice
+2. Pick the writing style preset that matches your voice -- Friendly, Standard, or Formal
 3. Dictate your next first draft
 
 ## Related Posts

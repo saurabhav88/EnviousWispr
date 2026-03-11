@@ -13,7 +13,7 @@ Founders, C-suite leaders, and managers who spend most of their day in meetings 
 - Dictate email responses during the five-minute gap between meetings, with LLM post-processing to tighten the language
 - Draft memos and strategy docs by voice while reviewing notes, then paste directly into Google Docs or Notion
 - Fire off quick Slack updates to their team without breaking stride between calls
-- Use custom prompts to maintain a consistent professional tone across all dictated communications
+- Use the Formal writing style preset to maintain a consistent professional tone across emails, memos, and meeting summaries
 
 ## Keywords they search for
 - "fastest dictation app mac"

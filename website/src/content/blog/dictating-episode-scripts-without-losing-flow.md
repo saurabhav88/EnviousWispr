@@ -1,16 +1,16 @@
 ---
-title: "Dictating Episode Scripts Without Losing Flow"
-description: "Stop wrestling with blank pages. Learn how to dictate podcast scripts that capture your natural speaking voice using custom prompts and hands-free mode."
-pubDate: 2026-03-11
-tags: ["podcasting", "dictation", "workflow", "custom-prompts", "hands-free"]
-draft: false
+title: "Dictating Podcast Scripts on macOS Without Losing Flow"
+description: "Stop wrestling with blank pages. Learn how to dictate podcast scripts that capture your natural speaking voice using on-device post-processing and hands-free mode."
+pubDate: 2026-03-19
+tags: ["podcasting", "dictation", "workflow", "post-processing", "hands-free"]
+draft: true
 ---
 
-You know exactly what you want to say. You've got the episode mapped out in your head -- the cold open, the three main points, the callback to last week's guest. Then you sit down to type the script, and something breaks. The words that flowed so easily when you were talking through the idea in the shower now feel stilted on screen. You second-guess phrasing. You backspace. You stare at the cursor.
+You will never write a better podcast script than the one you speak out loud. That's not motivational fluff -- it's the fundamental mismatch that makes typed scripts sound wrong on mic. You type in "writing voice." You record in "speaking voice." They're different registers, and the gap between them is where your show's energy goes to die.
 
-Here's the thing: if your show works because you sound like *you*, why would you script it by typing?
+The fix is obvious once you see it: stop typing scripts. Dictate them. Capture the speaking version directly, clean it up with a local LLM, and you have a script that already sounds like you -- because it literally is you.
 
-Podcasters think in speech. The best podcast scripts don't read like essays -- they read like someone talking. And the fastest way to write something that sounds like you talking is to actually talk. That's where dictation changes the podcast script workflow from something you dread into something that takes 20 minutes.
+That's where dictation turns podcast prep from a dreaded chore into a twenty-minute workflow.
 
 ## Why Typing Kills the Conversational Tone
 
@@ -28,35 +28,42 @@ For podcast scripting, this means you can talk through your episode the way you'
 
 But raw transcription isn't a script. It's a wall of text with filler words, false starts, and no structure. That's where post-processing comes in.
 
-## Custom Prompts: Your Script's Formatting Brain
+<!-- TODO: Screenshot — Custom prompt config: the settings UI showing a custom prompt for podcast scripting with conversational tone preservation -->
 
-EnviousWispr lets you write custom prompts that control how your speech gets processed after transcription. This is the difference between "a dump of everything you said" and "a usable script."
+## Post-Processing: Your Script's Formatting Brain
 
-For podcast scripting, a prompt like this works well:
+EnviousWispr's post-processing pipeline cleans up your speech after transcription -- removing filler words, fixing punctuation, and producing polished text. Today you can choose between three writing style presets (Formal, Standard, Friendly) to control the tone. For podcast scripting, the Friendly preset preserves your conversational voice while cleaning up the rough edges.
 
-**"Keep my conversational tone. Remove filler words but preserve sentence fragments and casual phrasing. Add section breaks between distinct topics. Format with H2 headings for each segment."**
+Custom prompts are coming soon, which will let you write specific processing instructions -- like "keep sentence fragments, add section breaks between topics, format with H2 headings." That level of control will make dictated scripts even more useful.
 
-That's it. You speak your episode, and the output already has the structure you need -- broken into sections, cleaned of "um" and "you know," but still sounding like you.
+Even with today's presets, the output already has the structure you need -- cleaned of "um" and "you know," but still sounding like you.
 
-Here are some prompt variations depending on your show format:
+Here's what that looks like in practice — dictating a cold open for an episode about creative burnout:
 
-- **Interview prep**: "Format as a numbered list of questions. Keep them conversational, not formal. Add a follow-up prompt under each question."
-- **Solo episode script**: "Keep my natural speaking rhythm. Add paragraph breaks every 3-4 sentences. Mark any tangent with [ASIDE] so I can decide whether to keep it."
-- **Show notes draft**: "Summarize each section as a single bullet point. Include any names, links, or resources I mention."
-- **Cold open**: "Tighten this into 3-4 punchy sentences. Keep the energy high, remove any setup or rambling."
+**What you say:**
+> so here's the thing about burnout that nobody talks about um it doesn't feel like exhaustion it feels like apathy you stop caring about the thing you used to love and that's way scarier than being tired because tired has a fix you sleep apathy doesn't have an obvious fix and I think that's why so many creators just quietly disappear instead of talking about it
 
-You can save different prompts as per-app presets, so your writing app gets full prose while your notes app gets bullet points. Check [how EnviousWispr's pipeline works](/how-it-works/) for the full picture on how transcription and post-processing fit together.
+**What gets pasted:**
+> Here's the thing about burnout that nobody talks about: it doesn't feel like exhaustion. It feels like apathy. You stop caring about the thing you used to love — and that's way scarier than being tired. Tired has a fix: you sleep. Apathy doesn't have an obvious fix. That's why so many creators quietly disappear instead of talking about it.
+
+That's a usable cold open. It sounds like you because it literally is you — just without the filler words and with proper punctuation. Read that back into the mic and it works immediately. The idea made it from your head to the page before it had a chance to evaporate.
+
+Once custom prompts ship, you'll be able to fine-tune output for different show formats -- interview prep as numbered questions, solo scripts with paragraph breaks, show notes as bullet summaries, cold opens tightened to three punchy sentences. Per-app presets are also on the roadmap, so your writing app could produce full prose while your notes app gets bullets -- no manual switching needed.
+
+Check [how EnviousWispr's pipeline works](/how-it-works/) for the full picture on how transcription and post-processing fit together.
+
+<!-- TODO: Screenshot — Hands-free mode indicator: the recording overlay showing hands-free/locked mode for extended script dictation -->
 
 ## Hands-Free Mode for Extended Sessions
 
 Push-to-talk is great for quick dictation -- a paragraph here, a Slack reply there. But podcast scripts are longer. You don't want to hold a key for 10 minutes while you talk through an entire episode.
 
-Hands-free mode lets EnviousWispr keep transcribing in the background without holding any keys. Start it, talk through your episode from top to bottom, and stop when you're done. The text lands in your app, processed through whatever prompt you've set.
+Hands-free mode lets EnviousWispr keep transcribing in the background without holding any keys. Start it, talk through your episode from top to bottom, and stop when you're done. The text lands in your app, cleaned up by the post-processing pipeline.
 
 This is where voice to script dictation gets genuinely useful for podcasters. You can:
 
-- **Walk and talk.** Step away from the desk, pace around, gesture -- whatever helps you get into your speaking groove. Your Mac picks up the audio, and the script builds itself.
-- **Do a full episode run-through.** Talk through the entire episode as if you're recording. The transcript becomes your first draft, already structured by your custom prompt.
+- **Walk and talk.** Step away from the desk, pace around, gesture -- whatever helps you get into your speaking groove. Your Mac Studio's external mic picks up the audio from across the room, and the script builds itself.
+- **Do a full episode run-through.** Talk through the entire episode as if you're recording. The transcript becomes your first draft, already cleaned up by the post-processing pipeline.
 - **Capture ideas between sessions.** When an idea hits between recordings, flip into hands-free mode and talk it out. You'll have a written version waiting when you sit down to plan the next episode.
 
 Because everything runs on-device, you don't need to worry about recording sensitive pre-release content or unreleased guest details being sent to someone else's servers. Your recordings stay on your Mac unless you explicitly configure an external API.
@@ -79,7 +86,7 @@ This is the hardest habit to break. You'll say something awkward, and every inst
 
 ### Use Verbal Section Markers
 
-Say "new section" or "next topic" or "heading: [topic name]" as you dictate. With the right custom prompt, EnviousWispr will turn those verbal cues into actual formatting in your output. It's faster than switching to a keyboard to add structure manually.
+Say "new section" or "next topic" or "heading: [topic name]" as you dictate. The post-processing pipeline picks up on these verbal cues and uses them to add structure to your output. Once custom prompts arrive, you'll have even more control over how those markers get formatted.
 
 ### Do a Read-Back Pass
 
@@ -90,15 +97,15 @@ After dictating, read the script out loud once. Not to edit the words -- to edit
 If you already have EnviousWispr installed, you can start dictating episode scripts right now:
 
 1. Open your writing app -- whatever you use for scripts (Notion, Obsidian, Google Docs, a plain text editor)
-2. Set a custom prompt tuned for podcast scripting: conversational tone, section breaks, filler words removed
+2. Choose the Friendly writing style preset to keep your conversational tone while cleaning up filler words
 3. Hold the hotkey and talk through your next episode's cold open
 4. Look at the output. Adjust the prompt. Try again
 
-If you don't have EnviousWispr yet, [grab it from GitHub](https://github.com/saurabhav88/EnviousWispr/releases) -- it's free, open source, and doesn't require an account or subscription. For longer scripts, switch to hands-free mode and talk through the whole episode without touching the keyboard.
+If you don't have EnviousWispr yet, [grab it from GitHub](https://github.com/saurabhav88/EnviousWispr/releases) -- it's free, open source, runs on macOS Sonoma or later, and doesn't require an account or subscription. For longer scripts, switch to hands-free mode and talk through the whole episode without touching the keyboard.
 
 ## Related Posts
 
-- [Turn Podcast Show Notes Into Blog Posts](/blog/podcast-show-notes-to-blog-posts/) — repurpose your episodes into written content with custom prompts
+- [Turn Podcast Show Notes Into Blog Posts](/blog/podcast-show-notes-to-blog-posts/) — repurpose your episodes into written content with on-device dictation
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/) — from download to first dictation
 - [Dictation for Writers: Skip the Blank Page](/blog/dictation-for-writers-skip-blank-page/) — the same principle that helps writers applies to podcast scripting
 

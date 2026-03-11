@@ -1,22 +1,20 @@
 ---
 title: "Voice Coding on macOS Without Cloud APIs"
 description: "How to use on-device voice dictation for coding workflows on macOS — no cloud APIs, no uploaded audio, no subscriptions."
-pubDate: 2026-03-11
+pubDate: 2026-03-16
 tags: ["voice-coding", "privacy", "developer", "macos", "dictation"]
-draft: false
+draft: true
 ---
 
-Developers have good reason to be cautious about where their audio ends up. You spend your day surrounded by proprietary code, internal architecture discussions, and credentials that flash across your screen. The last thing you need is a dictation tool streaming recordings of your work environment to someone else's infrastructure.
+Most voice-to-text tools are solving the wrong problem for developers. They optimize for casual messages and emails while ignoring the actual pain point: you spend half your day writing prose -- PR descriptions, code reviews, docs, Slack threads, incident reports -- and every word of it breaks your flow state. Meanwhile, those same tools happily stream recordings of your terminal, your architecture discussions, and your credentials to someone else's infrastructure.
 
-But here's the thing — developers also write a lot of prose. PR descriptions, code review comments, documentation, Slack threads, incident reports, design docs. All of it typed manually, breaking your flow state every time you context-switch from code to English. Voice dictation solves that problem, but most options on the market require sending audio to a cloud API.
-
-They don't have to.
+Developers don't need a prettier dictation UI. They need voice input that stays on their machine and fits into a code-first workflow.
 
 ## Why cloud dictation is a problem for developers
 
 The core issue isn't abstract privacy ideology. It's practical risk. When you dictate near your workstation, the audio can capture:
 
-- Variable names and function signatures from what you're reading aloud
+- Variable names and function signatures from what you're reading aloud in VS Code or Terminal
 - Internal project names mentioned in conversation
 - Credentials or tokens visible on screen that you reference verbally
 - Discussions about unreleased features or infrastructure
@@ -45,20 +43,31 @@ Getting started takes about five minutes:
 
 3. **Set your hotkey.** Pick a key combination that doesn't collide with your IDE shortcuts. Hold to record, release to transcribe — the cycle completes in a second or two.
 
-4. **Configure per-app presets.** This is where it gets useful for dev work. You can set different post-processing rules depending on which app has focus:
-   - **Terminal** — terse, no capitalization cleanup, preserve technical terms
-   - **Slack** — casual tone, contractions, concise
-   - **Your docs tool** — full sentences, markdown formatting, professional tone
+<!-- TODO: Screenshot — Writing style presets: the settings UI showing Formal, Standard, and Friendly options -->
 
-5. **Write custom prompts.** Tell the post-processor exactly what you need. "Format as a markdown bullet list." "Write in past tense for a changelog entry." "Keep it under two sentences." The prompt applies to every transcription in that preset.
+4. **Choose a writing style preset.** EnviousWispr ships with three presets — **Formal**, **Standard**, and **Friendly** — that control how the LLM post-processor shapes your output. Use Formal for documentation and PR descriptions, Standard for general-purpose writing, and Friendly for Slack and casual messages. Switch between them with a click as you move between tasks.
+
+> **On the roadmap:** Per-app presets will automatically apply different processing rules based on which app has focus — terse for Terminal, casual for Slack, structured for your docs tool. And custom prompts will let you tell the post-processor exactly what you need: "Format as a markdown bullet list," "Write in past tense for a changelog entry," "Keep it under two sentences."
 
 ## Real examples: where voice dictation fits a dev workflow
 
 ### Dictating documentation
 
-Writing docs is one of the highest-friction tasks in software development. You know the architecture. You can explain it verbally in two minutes. But sitting down to type it out feels like a chore, so it doesn't get done.
+Writing docs is one of the highest-friction tasks in software development. You know the architecture. You can explain it verbally in two minutes. But sitting down to type it out feels like a chore, so it doesn't get done. Dictation lets you capture that explanation while it's still sharp in your mind -- before the details fade and the motivation disappears.
 
-With EnviousWispr, you can talk through the architecture the way you'd explain it to a new teammate, and the post-processor formats it as clean markdown. Set a custom prompt like "Format as technical documentation with H2 headers and code block placeholders" and you get a solid first draft by speaking naturally.
+With EnviousWispr, you can talk through the architecture the way you'd explain it to a new teammate, and the post-processor formats it as clean markdown. Switch to the Formal writing style preset and you get a solid first draft by speaking naturally — proper paragraphs, clean punctuation, structured prose.
+
+Here's what that looks like in practice:
+
+**What you say:**
+> okay so the auth service sits between the API gateway and the user database um it handles token validation and refresh and it caches active sessions in Redis so we don't hit Postgres on every request the main thing to know is that refresh tokens are rotated on use so if you see a token reuse that means something is wrong and the session gets invalidated
+
+**What gets pasted:**
+> ## Auth Service
+>
+> The auth service sits between the API gateway and the user database. It handles token validation and refresh, caching active sessions in Redis to avoid hitting Postgres on every request.
+>
+> **Key behavior:** Refresh tokens are rotated on use. Token reuse indicates a potential compromise, and the session is automatically invalidated.
 
 ### PR descriptions and commit messages
 
@@ -76,7 +85,7 @@ The LLM post-processor smooths the phrasing and fixes any verbal artifacts. The 
 
 Instead of switching mental modes to write a structured bug report, just describe what happened: "When you click the export button with an empty dataset, the app throws an unhandled exception instead of showing the empty state. Expected behavior is the empty state view with a message saying no data to export. Repro steps: create a new project, don't add any data, click export."
 
-Set the custom prompt to format as a bug report template, and the output arrives structured and ready to paste into your issue tracker.
+Use the Formal preset to keep the output structured and professional, and the result arrives clean and ready to paste into your issue tracker.
 
 ## Cloud vs. local: an honest comparison
 
@@ -93,8 +102,8 @@ It's worth being direct about the trade-offs.
 - **Data stays on your machine.** No audio leaves your Mac. Period. This isn't a policy — it's an architecture. There's no server to send to.
 - **No latency dependency.** Transcription speed depends on your hardware, not your internet connection. On Apple Silicon, the full pipeline runs in one to two seconds.
 - **No recurring cost.** No API usage fees, no subscription tiers, no per-minute billing. EnviousWispr is free and open source.
-- **Customization.** Per-app presets, custom prompts, choice of Whisper model size — you control the pipeline. Cloud APIs give you an endpoint and a response format.
-- **Works offline.** Airplane, coffee shop with bad WiFi, or just a network outage — local transcription doesn't care.
+- **Customization.** Writing style presets, choice of Whisper model size, and choice of LLM provider — you control the pipeline. Per-app presets and custom prompts are on the roadmap. Cloud APIs give you an endpoint and a response format.
+- **Works offline.** Airplane, coffee shop with bad WiFi on your M2 MacBook Air, or just a network outage — local transcription doesn't care.
 
 We cover this comparison in much more depth in [On-Device vs Cloud Dictation: What Stays Private](/blog/on-device-vs-cloud-dictation-privacy/). For developers specifically, the privacy argument usually closes the discussion. If you're dictating anywhere near proprietary code, internal discussions, or sensitive project details, sending that audio to an external API is a risk most security-conscious teams won't accept.
 
@@ -106,7 +115,7 @@ If you want to understand the full transcription and post-processing pipeline be
 
 ## Related Posts
 
-- [Dictation for Developers: Code Reviews and PRs](/blog/dictation-for-developers-code-reviews/) — how to use per-app presets for PR descriptions, review comments, and docs
+- [Dictation for Developers: Code Reviews and PRs](/blog/dictation-for-developers-code-reviews/) — how to use writing style presets for PR descriptions, review comments, and docs
 - [Why I Switched from Typing to Dictating Git Commits](/blog/switched-typing-to-dictating-git-commits/) — a real before-and-after comparison of typed vs. dictated commit messages
 - [On-Device vs Cloud Dictation: What Stays Private](/blog/on-device-vs-cloud-dictation-privacy/) — a fair comparison of where your recordings go
 

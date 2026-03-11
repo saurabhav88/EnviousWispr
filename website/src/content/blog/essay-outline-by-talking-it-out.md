@@ -1,14 +1,16 @@
 ---
-title: "Write Your Essay Outline by Talking It Out"
+title: "Write Your Essay Outline by Talking It Out on Mac"
 description: "Use voice dictation to talk through your essay structure and get an organized outline with thesis and supporting points — free, private, no account needed."
-pubDate: 2026-03-11
-tags: ["students", "essays", "dictation", "custom-prompts", "study-hack"]
-draft: false
+pubDate: 2026-03-18
+tags: ["students", "essays", "dictation", "writing-style", "study-hack"]
+draft: true
 ---
 
-You already know the trick, even if nobody taught it to you formally. When you're stuck on an essay, you explain your argument to a friend — and suddenly the structure clicks. The ideas were there the whole time. You just needed to say them out loud instead of staring at a blinking cursor.
+What if your essay outline was already in your head -- and all you had to do was say it out loud?
 
-That instinct is backed by research. Articulating ideas verbally activates different cognitive pathways than writing does. Speaking forces you to linearize your thinking — to pick a starting point, build a sequence, and land somewhere. That's exactly what an outline is. So why not skip the middleman and dictate your outline directly?
+You've probably noticed this before: you're stuck on a paper, you explain your argument to a friend, and suddenly the structure clicks. The thesis, the supporting points, the counter-argument -- it all comes together when you talk through it. That's not a coincidence. Speaking forces you to linearize your thinking in a way that staring at a blank document doesn't.
+
+So why not capture that spoken structure directly and let software turn it into a formatted outline?
 
 ## Why speaking produces better outlines than typing
 
@@ -18,17 +20,15 @@ Speaking changes the dynamic. You're not editing as you go — you're just think
 
 There's a practical speed advantage too. Most people speak at 130-150 words per minute but type at 40-60. For the brainstorming phase of an outline — where volume of ideas matters more than polish — voice wins by a wide margin.
 
-## The setup: one custom prompt, zero friction
+## The setup: pick a preset, start talking
 
-Here's where EnviousWispr's [custom prompts](/how-it-works/) come in. Instead of dictating raw text and then manually reorganizing it, you can tell the post-processor exactly what to do with your spoken thoughts.
+Here's how EnviousWispr fits in. Instead of dictating raw text and then manually reorganizing it, the LLM post-processor cleans up your spoken thoughts into polished, structured prose. Choose the **Formal** writing style preset for academic work -- it tightens sentence structure and produces clean, organized output from your rambling.
 
-Set up a custom prompt like this:
+Hold the hotkey, talk through your argument, and release. EnviousWispr transcribes your speech locally, runs it through the LLM post-processor, and delivers cleaned-up text. The whole thing takes a few seconds on any M-series chip.
 
-> Organize my thoughts into an essay outline with a clear thesis statement and three supporting points. Use Roman numeral formatting. Keep my original ideas but sharpen the language.
+The Formal preset gives you the most structured output, but even Standard produces clean prose that's easy to reorganize into an outline. The key insight is that speaking your argument out loud forces you to linearize it -- the structure emerges from how you naturally explain things.
 
-That's it. Now when you hold the hotkey, ramble through your argument, and release — EnviousWispr transcribes your speech locally, runs it through the LLM post-processor with your prompt, and delivers a structured outline. The whole thing takes a few seconds on Apple Silicon.
-
-You can adjust the prompt to match whatever your assignment needs. Five supporting points instead of three? A counter-argument section? MLA-style topic sentences? Just update the prompt text.
+> **Coming soon:** Custom prompts will take this even further. You'll be able to write specific instructions like "organize my thoughts into an essay outline with a thesis and three supporting points, Roman numeral formatting." That turns a one-minute ramble directly into a formatted outline without any manual reorganizing.
 
 ## Walking through a real example
 
@@ -36,7 +36,7 @@ Let's say you're writing a paper on why public libraries remain relevant in the 
 
 > "Okay so I think my main argument is that public libraries are still important even though everything is online now. First because they provide free internet access to people who can't afford it at home, which is a huge equity issue. Second, they're community spaces — like, people go there for job help, ESL classes, after-school programs, stuff that has nothing to do with books. And third, they curate information in a way that algorithms don't. Librarians help people find trustworthy sources instead of just whatever shows up first on Google."
 
-Not exactly polished academic writing. But that's the point — you're thinking, not editing. After EnviousWispr processes it with your custom prompt, you get something like:
+Not exactly polished academic writing. But that's the point — you're thinking, not editing. After EnviousWispr processes it with the Formal preset, the LLM cleans it into structured prose. With a quick reorganization, you get something like:
 
 ---
 
@@ -56,7 +56,9 @@ Not exactly polished academic writing. But that's the point — you're thinking,
 
 ---
 
-You went from a one-minute ramble to a working outline with a thesis and three structured supporting points. That's a foundation you can start writing from immediately.
+You went from a one-minute ramble to a working outline with a thesis and three structured supporting points. That's a foundation you can start writing from immediately. The relief of seeing a real structure on screen -- when five minutes ago you had nothing -- is hard to overstate.
+
+<!-- TODO: Screenshot — Recording state: the app showing it's actively recording while the user dictates into a writing app -->
 
 ## Making it part of your workflow
 
@@ -64,21 +66,19 @@ Once you've got the basic pattern down, there are a few ways to build on it.
 
 ### Iterate by talking
 
-Your first spoken pass gives you the skeleton. But you can refine it the same way. Look at the outline, notice a weak point, hold the hotkey again: "Actually, for section two I should focus more on the employment statistics — libraries in low-income areas have higher job placement rates for people who use their career services." Run it through the same prompt, or a different one that says "refine this section."
+Your first spoken pass gives you the skeleton. But you can refine it the same way. Look at what you've got, notice a weak point, hold the hotkey again: "Actually, for section two I should focus more on the employment statistics — libraries in low-income areas have higher job placement rates for people who use their career services." The post-processor cleans it up, and you drop it into your outline where it fits.
 
-### Match the prompt to the assignment
+### Match the preset to the context
 
-Different essays need different structures. A comparative essay needs a different prompt than an argumentative one. You might use:
+For essay work, the Formal preset gives you the tightest, most structured output. But if you're brainstorming early ideas, try Friendly -- it keeps your natural phrasing intact, which can help you find your argument before you formalize it. Switch between presets with one click as your thinking evolves from rough brainstorm to polished draft.
 
-- "Organize into a compare-and-contrast outline with point-by-point structure"
-- "Create an outline for a persuasive essay with a counter-argument section"
-- "Structure as a five-paragraph essay with topic sentences for each body paragraph"
+> **On the roadmap:** Custom prompts will let you save specific instructions for different assignment types -- "organize as compare-and-contrast with point-by-point structure" or "structure as a five-paragraph essay with topic sentences." A small library of prompts for different essay formats.
 
-Swap prompts as needed. EnviousWispr lets you save multiple custom prompts, so you can keep a small library of them for different assignment types.
+### Switch presets as you switch tasks
 
-### Use per-app presets for different contexts
+If you're dictating rough notes one minute and drafting polished outline text the next, flip between Friendly and Formal with one click. Friendly for raw brainstorming, Formal for structured output. It takes a second and keeps each task's output matching its purpose.
 
-If you're dictating notes in one app and drafting outlines in another, per-app presets let you set different processing rules for each. Your note-taking app gets raw, lightly cleaned transcription. Your writing app gets the full outline-formatting treatment. No switching settings back and forth.
+> **Coming soon:** Per-app presets will handle this automatically -- your notes app gets lightly cleaned transcription while your writing app gets the full formal treatment, no manual switching needed.
 
 ## Why this works for students specifically
 
@@ -90,11 +90,11 @@ A few things make this approach a good fit for the student workflow.
 
 **It's fast to set up.** Download the `.dmg`, grant microphone access, pick a Whisper model, and you're dictating within a few minutes. The [getting started guide](/blog/getting-started-enviouswispr-under-2-minutes/) walks through every step. The first model download takes a bit — after that, everything runs instantly on-device.
 
-**It fits how students actually work.** You're not at a desk with perfect focus for eight hours. You're between classes, at the library, on the bus. Being able to hold a hotkey and talk through your essay structure in sixty seconds — then have a formatted outline waiting — fits the fragmented reality of student life better than sitting down for a formal outlining session.
+**It fits how students actually work.** You're not at a desk with perfect focus for eight hours. You're between classes with your MacBook Air, at the library, on the bus. Being able to hold a hotkey and talk through your essay structure in sixty seconds — then have a formatted outline waiting — fits the fragmented reality of student life better than sitting down for a formal outlining session.
 
 ## Get started
 
-If you've got a paper due and the outline isn't cooperating, try talking it out. Download EnviousWispr from the [releases page](https://github.com/saurabhav88/EnviousWispr/releases), set up a custom prompt for essay outlines, and spend one minute speaking your argument out loud.
+If you've got a paper due and the outline isn't cooperating, try talking it out. Download EnviousWispr from the [releases page](https://github.com/saurabhav88/EnviousWispr/releases), set the writing style to Formal, and spend one minute speaking your argument out loud.
 
 ## Related Posts
 

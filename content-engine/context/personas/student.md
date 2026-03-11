@@ -13,7 +13,7 @@ College and graduate students balancing lectures, research, papers, and part-tim
 - Dictate lecture notes in real-time during class, capturing ideas faster than typing allows
 - Draft essay paragraphs and thesis sections by voice, using LLM post-processing to clean up academic prose
 - Record and transcribe study group discussions or office hours for review later
-- Use custom prompts to format dictated text as bullet points for study guides or as formal paragraphs for papers
+- Use Standard preset for study guide notes, Formal for essay paragraphs — switch styles depending on the assignment
 
 ## Keywords they search for
 - "free dictation app for students mac"

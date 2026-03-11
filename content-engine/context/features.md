@@ -9,7 +9,7 @@ Reference document for content generation. These are the actual product capabili
 - **Fast on Apple Silicon** — 1-2 seconds end-to-end from speech to text, leveraging the Neural Engine
 - **Multiple model sizes** — choose between speed and accuracy depending on your hardware and needs
 
-> **Content note:** Content must reference both transcription backends. WhisperKit for multi-language/accuracy, Parakeet for fast English streaming.
+> **Content note:** For English-language content, lead with Parakeet as the primary backend — it's faster, streaming-native, and the default experience. Mention WhisperKit only as the option for multi-language/accuracy needs. Only lead with WhisperKit in international/multilingual content where language support is the selling point.
 
 ## Input Modes
 
@@ -19,8 +19,12 @@ Reference document for content generation. These are the actual product capabili
 ## Post-Processing
 
 - **LLM post-processing** — automatically clean up filler words ("um", "uh", "like"), fix punctuation, and produce polished text
-- **Custom prompts** — tell it exactly how to process your speech: format as bullet points, translate to another language, match your writing style, summarize, or anything else
-- **Per-app presets** — different processing rules for different apps. Slack messages stay casual, terminal input stays terse, your writing app gets full prose
+- **Writing style presets** — three built-in tones: Formal (professional), Standard (clean grammar), Friendly (casual conversational)
+
+> **Content note — NOT YET SHIPPED:**
+> - **Custom prompts** (user-editable prompt text) — legacy code exists but no active UI. Do NOT present as a current feature.
+> - **Per-app presets** (different rules per app) — not implemented. Do NOT reference in content.
+> - **Privacy toggle** (pause processing) — not implemented. Do NOT reference in content.
 
 ## Output
 
@@ -30,7 +34,7 @@ Reference document for content generation. These are the actual product capabili
 ## Privacy
 
 - **Fully on-device** — audio is processed locally using Core ML. No internet connection required for transcription
-- **Privacy toggle** — pause all processing during sensitive conversations with a single click
+- ~~**Privacy toggle**~~ — *planned, not yet shipped*
 - **No account required** — no sign-up, no login, no cloud dependency, no telemetry
 
 ## Platform

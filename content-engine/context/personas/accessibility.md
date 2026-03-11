@@ -11,7 +11,7 @@ People with RSI, carpal tunnel syndrome, motor disabilities, chronic pain condit
 
 ## How they'd use EnviousWispr
 - Use as their primary text input method across all applications — email, chat, documents, web forms
-- Write code by voice using per-app presets tuned for terminal and IDE conventions
+- Write code by voice using writing style presets — Standard for clean output, Friendly for casual notes. Per-app presets are on the roadmap.
 - Produce long-form writing (reports, personal projects, correspondence) without the physical toll of typing
 - Rely on on-device processing to keep sensitive medical and personal dictation completely private
 

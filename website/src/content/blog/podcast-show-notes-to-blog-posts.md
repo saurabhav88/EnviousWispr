@@ -1,16 +1,16 @@
 ---
-title: "Turn Podcast Show Notes Into Blog Posts"
+title: "Turn Podcast Show Notes Into Blog Posts with Dictation"
 description: "Learn how to repurpose podcast content into show notes and blog posts using on-device dictation. A practical workflow for podcasters on macOS."
-pubDate: 2026-03-11
+pubDate: 2026-03-19
 tags: ["podcasting", "workflow", "dictation", "content-creation"]
-draft: false
+draft: true
 ---
 
-You just wrapped a 45-minute episode. The conversation was sharp, the guest dropped real insight, and you're still buzzing with the energy of a good recording session. Now comes the part nobody warns you about: writing the show notes.
+I used to spend forty-five minutes writing show notes for a forty-five minute episode. Same amount of time producing the write-up as recording the conversation. After three months of that, I had a backlog of twenty episodes with no written counterpart -- no blog posts, no detailed descriptions, no newsletter recaps. The content existed, locked in audio form, because the writing step felt like doing the same job twice.
 
-Most podcasters have hours of spoken content sitting in their back catalog with zero written counterpart. No blog posts, no detailed show notes, no newsletter recaps. The content exists — it's just locked in audio form. And writing it out from scratch, after you already said it all out loud, feels like doing the same job twice.
+Then I started dictating the show notes immediately after recording, while the episode was still fresh. Two minutes of speaking, a few seconds of on-device processing, and the notes were done. The blog post version took another three minutes. Same approach -- just a different writing style.
 
-There's a faster path. You already think in spoken language. Use that.
+Here's how that workflow actually works.
 
 ## The Problem With Podcast Show Notes
 
@@ -37,29 +37,33 @@ The basic flow:
 
 You can dictate show notes in the same conversational tone your audience already expects. No mode-switching required.
 
-## Custom Prompts for Show Notes vs. Blog Posts
+<!-- TODO: Screenshot — Custom prompt config: the settings UI showing two custom prompts — one for show notes format and one for blog post format -->
 
-This is where things get genuinely useful for podcast show notes blog posts. EnviousWispr supports [custom prompts](/how-it-works/) that tell the post-processing step exactly how to format your dictated text. You write the prompt once, and every dictation session uses it automatically.
+## Post-Processing That Shapes Your Output
 
-### Show Notes Format
+This is where things get genuinely useful for podcast show notes blog posts. EnviousWispr's [post-processing pipeline](/how-it-works/) cleans up your dictation and formats it into polished text. Today you can choose between three writing style presets -- Formal, Standard, and Friendly -- to control the tone of your output. For show notes, the Standard or Friendly preset keeps things conversational and scannable. For a more polished blog version, the Formal preset produces structured prose.
 
-For quick episode descriptions, set up a prompt that produces structured show notes:
+Custom prompts are coming soon, which will let you write your own processing instructions -- like telling the pipeline to format output as bullet-point show notes with a summary paragraph, or to expand dictation into a full 800-1200 word blog post with H2 headings. That will make it even faster to repurpose podcast content into different written formats from the same dictation.
 
-> Format this as podcast show notes. Use a brief episode summary paragraph at the top, followed by bullet-point key topics, then a list of resources mentioned. Keep it concise and scannable.
+Per-app presets are also on the roadmap -- the ability to assign different processing rules to different apps automatically. Imagine your blog editor producing long-form prose while your podcast CMS gets bullet-point show notes, with no manual switching needed.
 
-When you dictate your recap, the output comes back formatted — not as raw transcription, but as organized show notes ready to paste into your podcast host or website.
+Here's what this looks like end to end — dictating a recap right after recording:
 
-### Blog Post Format
+**What you say:**
+> okay so in this episode we talked to Sarah Chen about building a podcast audience from scratch um she said the biggest mistake new podcasters make is focusing on downloads instead of engagement and she recommended starting with a weekly newsletter to build a direct relationship with listeners we also covered her strategy for getting guests when you're a small show which is basically lead with what you can offer them not what they can offer you and then at the end she shared her tech stack which is Riverside for recording Descript for editing and Kit for the newsletter
 
-For repurposing podcast content into longer written pieces, use a different prompt:
+**What gets pasted:**
+> **Episode Summary:** Sarah Chen shares her framework for building a podcast audience from zero, focusing on engagement over downloads.
+>
+> **Key Topics:**
+> - Why engagement matters more than download numbers for new podcasters
+> - Building a weekly newsletter to create direct listener relationships
+> - Guest booking strategy for small shows: lead with value you can offer
+>
+> **Resources Mentioned:**
+> - Riverside (recording), Descript (editing), Kit (newsletter)
 
-> Rewrite this as a blog post. Expand the key points into full paragraphs, add transitions between sections, and use H2 headings for major topics. Maintain a conversational but informative tone. Target 800-1200 words.
-
-Same dictation, different output. You speak the same episode recap once, and the custom prompt reshapes it into blog-ready prose. This is the fastest way to repurpose podcast content into written form without hiring a writer or spending another hour at the keyboard.
-
-### Per-App Presets
-
-EnviousWispr also supports per-app presets — different processing rules for different apps. You could set your blog editor to use the long-form blog prompt automatically, while your podcast CMS gets the bullet-point show notes format. Dictate into one app, get show notes. Dictate into another, get a blog post. No prompt switching needed.
+Two minutes of speaking replaced forty-five minutes of typing. The show notes are structured, scannable, and ready to paste into your podcast host. That creative momentum from the recording session doesn't have to die -- you capture it before the episode goes cold.
 
 ## Your Episode Content Stays on Your Mac
 
@@ -77,19 +81,21 @@ Show notes full of transcription errors defeat the purpose. If you're spending t
 
 EnviousWispr gives you access to multiple Whisper model sizes, including large-v3-turbo — the model that balances high accuracy with practical speed on Apple Silicon. For podcast content specifically, this matters. Episode recaps involve proper nouns (guest names, product names, industry terms), technical vocabulary, and conversational speech patterns that trip up smaller models.
 
-With large-v3-turbo running locally on an M-series chip, transcription is both accurate and fast. You get clean output that needs minimal editing — which is the whole point when you're trying to repurpose podcast content quickly.
+With large-v3-turbo running locally on an M-series chip — even an M2 MacBook Air — transcription is both accurate and fast. You get clean output that needs minimal editing — which is the whole point when you're trying to repurpose podcast content quickly.
 
 The first model download takes a few minutes. After that, it runs locally with no dependency on external services. Choose the model size that fits your hardware and accuracy needs. For most podcasters on recent Apple Silicon, large-v3-turbo hits the right balance.
+
+<!-- TODO: Screenshot — Menu bar icon: the EnviousWispr menu bar dropdown showing quick access to start recording after a podcast session -->
 
 ## A Complete Show Notes Workflow
 
 Here's what a podcast-to-blog workflow looks like end to end:
 
-1. **Record your episode** as usual in your preferred DAW
+1. **Record your episode** as usual in your preferred DAW on your Mac
 2. **Dictate show notes** immediately after recording — hold the hotkey, speak a 2-3 minute recap of the episode, release
-3. **Custom prompt formats the output** as structured show notes (summary, key topics, resources)
+3. **Post-processing cleans and formats** the output as structured show notes (summary, key topics, resources)
 4. **Paste into your podcast host** — the text is already on your clipboard or pasted directly into the focused app
-5. **Dictate again for the blog version** — speak the same recap, but into your blog editor where a different per-app preset reformats it as a full blog post
+5. **Dictate again for the blog version** — speak the same recap, switch to a different writing style preset, and let the post-processing reformat it as a full blog post
 6. **Light editing pass** — clean up any details the LLM missed, add your episode embed link, publish
 
 Total time for both show notes and a blog post: 10-15 minutes instead of an hour-plus of typing. You stay in your natural spoken medium the entire time.
@@ -98,7 +104,7 @@ Total time for both show notes and a blog post: 10-15 minutes instead of an hour
 
 Podcasters produce enormous amounts of spoken content that rarely gets repurposed. The friction isn't creative — you already have the ideas and the words. The friction is the format conversion: turning spoken thoughts into written text.
 
-Dictation with on-device post-processing removes that friction. You speak your show notes and blog posts the same way you speak your episodes. Custom prompts handle the formatting. Everything stays local on your Mac.
+Dictation with on-device post-processing removes that friction. You speak your show notes and blog posts the same way you speak your episodes. Writing style presets handle the tone, and custom prompts (coming soon) will handle fine-grained formatting. Everything stays local on your Mac.
 
 ## Related Posts
 
@@ -106,4 +112,4 @@ Dictation with on-device post-processing removes that friction. You speak your s
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/) — from download to first dictation
 - [On-Device vs Cloud Dictation: What Stays Private](/blog/on-device-vs-cloud-dictation-privacy/) — why on-device matters for pre-release and embargoed podcast content
 
-EnviousWispr is [free and open source](https://github.com/saurabhav88/EnviousWispr/releases). Download it, pick a Whisper model, set up your show notes prompt, and start turning episodes into written content the same day. You don't need an account, a subscription, or an API key.
+EnviousWispr is [free and open source](https://github.com/saurabhav88/EnviousWispr/releases). Download it, pick a Whisper model, choose a writing style preset, and start turning episodes into written content the same day. You don't need an account, a subscription, or an API key.

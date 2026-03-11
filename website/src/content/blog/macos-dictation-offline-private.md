@@ -6,9 +6,9 @@ tags: ["accessibility", "privacy", "dictation", "offline"]
 draft: false
 ---
 
-If voice input is how you write -- because typing hurts, or because it's simply not an option -- reliability isn't a nice-to-have. It's the whole point. And reliability that depends on an internet connection, a third-party server staying up, or a subscription staying active is not reliability at all.
+What happens to your primary input method when the Wi-Fi goes down? If voice input is how you write -- because typing hurts, or because it's simply not an option -- that's not a hypothetical question. It's the difference between a tool you can depend on and one that fails when you need it most.
 
-That's the problem with most macOS dictation options today. The fast ones send your audio to someone else's servers. The private ones feel like afterthoughts. And if you're someone who depends on voice input for accessibility reasons, you're stuck making trade-offs that shouldn't exist.
+Most macOS dictation tools treat offline capability as a nice-to-have. For someone who relies on voice input for accessibility, it's the whole point. And "works offline" shouldn't come with the usual asterisks: reduced accuracy, no post-processing, no customization.
 
 EnviousWispr is a different approach: on-device dictation for macOS that processes everything locally, works without an internet connection, and treats accessibility as a core use case rather than a footnote.
 
@@ -18,7 +18,7 @@ For someone with RSI, carpal tunnel, chronic pain, or a motor disability, dictat
 
 That means the tool needs to work every time. Not "every time the Wi-Fi is stable." Not "every time the cloud service isn't experiencing degraded performance." Every time.
 
-Offline dictation removes the most common point of failure. Your Mac's processing power is always available. There's no server latency. There's no outage page to check. You speak, the text appears.
+Offline dictation removes the most common point of failure. Your Mac's processing power is always available. There's no server latency. There's no outage page to check. You speak, the text appears. That reliability isn't just convenient -- it's the kind of thing that lets you stop worrying and start trusting your hands can rest.
 
 Privacy matters here too, and not in the abstract. People dictate medical information, therapy notes, personal health details, financial data. If you're using voice input as your primary way of interacting with your computer, everything flows through it. Sending all of that to a cloud service -- even one with a solid privacy policy -- is a decision most people would rather not make.
 
@@ -39,6 +39,18 @@ End-to-end, this takes a second or two on Apple Silicon. No network round-trip. 
 
 You can choose between different Whisper model sizes depending on your hardware and accuracy needs. Smaller models run faster. Larger models catch more nuance. The choice is yours, and it's easy to change.
 
+Here's what on-device dictation looks like in practice — composing an email without touching the keyboard:
+
+**What you say:**
+> hi dr martinez I wanted to follow up on my appointment last week um you mentioned I should schedule a follow-up in six weeks and I also need to get the referral paperwork for the hand specialist can you send that to my patient portal and let me know if there's anything I need to fill out beforehand thanks
+
+**What gets pasted:**
+> Hi Dr. Martinez — following up on last week's appointment. You mentioned scheduling a follow-up in six weeks. I also need the referral paperwork for the hand specialist. Could you send that to my patient portal and let me know if there's anything I need to fill out beforehand? Thank you.
+
+That message was composed entirely by voice, processed on-device, and never left the Mac. For someone dictating medical or personal health content, that distinction matters.
+
+<!-- TODO: Screenshot — Hands-free mode indicator: the recording overlay showing hands-free/locked mode is active with continuous transcription -->
+
 ## Hands-Free Mode for Extended Dictation
 
 The standard input method is push-to-talk: hold a hotkey, speak, release. That works well for short bursts -- a quick reply, a search query, a note.
@@ -47,7 +59,7 @@ But if holding a key is difficult or painful, or if you need to dictate for long
 
 This matters for accessibility in a direct, practical way. If the reason you're using voice input is that your hands hurt, a tool that requires you to hold down a key for every sentence is solving the wrong problem. Hands-free mode removes that requirement entirely.
 
-You can still pause processing when you need to -- during a phone call, a conversation with someone in the room, or any moment when you don't want your speech captured. A single click pauses everything.
+A privacy toggle is coming soon that will let you pause all processing with a single click -- useful during phone calls, conversations with someone in the room, or any moment when you don't want your speech captured.
 
 ## How EnviousWispr Compares to Other macOS Dictation Options
 
@@ -55,12 +67,12 @@ There are several ways to dictate on a Mac. Each one makes different trade-offs.
 
 ### macOS Built-in Dictation
 
-Apple's built-in dictation has improved significantly. On Apple Silicon Macs running macOS 14 or later, basic dictation can run on-device. That's a real benefit.
+Apple's built-in dictation has improved significantly. On Apple Silicon Macs running macOS Sonoma or later, basic dictation can run on-device. That's a real benefit.
 
 Where it falls short:
 
 - **No post-processing** -- what you say is what you get, filler words and all
-- **Limited customization** -- no custom prompts, no per-app behavior, no way to adjust output formatting
+- **Limited customization** -- no writing style presets, no per-app behavior, no way to adjust output formatting
 - **No hands-free mode** -- you need to trigger it each time
 - **No open source transparency** -- you can't inspect what's happening under the hood
 
@@ -94,8 +106,8 @@ EnviousWispr differs on three axes:
 | On-device transcription | Yes | Partial | No | No |
 | Post-processing | Local LLM | None | Cloud | Cloud |
 | Hands-free mode | Yes | No | Varies | No |
-| Custom prompts | Yes | No | Varies | Yes |
-| Per-app presets | Yes | No | No | Yes |
+| Custom prompts | Coming soon | No | Varies | Yes |
+| Per-app presets | Coming soon | No | No | Yes |
 | Internet required | No | No | Yes | Yes |
 | Cost | Free | Free | Subscription | Subscription |
 | Open source | Yes | No | No | No |
@@ -125,7 +137,7 @@ Both prompts appear automatically. Click Allow for each.
 
 EnviousWispr will prompt you to download a Whisper model. For most Apple Silicon Macs, the large-v3-turbo model gives the best balance of speed and accuracy. The download happens once -- after that, everything runs locally.
 
-If you're on an older or lower-spec machine, a smaller model will transcribe faster with slightly less accuracy.
+If you're on an older or lower-spec machine — say, a base M1 MacBook Air — a smaller model will transcribe faster with slightly less accuracy.
 
 ### Configure for Hands-Free Use
 
@@ -137,9 +149,9 @@ If you want to avoid holding keys:
 
 Once enabled, you can speak naturally and EnviousWispr will capture and process everything in the background.
 
-### Set Up Per-App Presets
+### Choose a Writing Style Preset
 
-Different apps benefit from different formatting. You might want casual tone for Slack, full prose for your writing app, and terse output for terminal commands. Per-app presets let you configure this once and forget about it.
+EnviousWispr ships with three writing style presets -- Formal, Standard, and Friendly -- so you can match the tone of your output to the task at hand. Per-app presets are on the roadmap, which will let you assign different processing rules to different apps automatically -- casual tone for Slack, full prose for your writing app, terse output for terminal commands.
 
 ## A Tool That Works When You Need It
 

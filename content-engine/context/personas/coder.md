@@ -12,8 +12,8 @@ Software engineers, DevOps folks, and technical leads who write code all day but
 ## How they'd use EnviousWispr
 - Dictate commit messages and PR descriptions without leaving the terminal workflow
 - Draft Slack replies and code review comments by voice, then let LLM post-processing clean up the filler
-- Write technical documentation and READMEs by talking through the architecture, with custom prompts to format as markdown
-- Use per-app presets so dictation into the terminal stays terse while dictation into Notion gets full sentences
+- Write technical documentation and READMEs by talking through the architecture — Standard preset cleans up grammar, Formal preset adds polish
+- Switch between writing styles depending on context — terse for terminal notes, full sentences for Notion docs. Per-app presets (automatic switching) are on the roadmap.
 
 ## Keywords they search for
 - "voice to text for developers mac"

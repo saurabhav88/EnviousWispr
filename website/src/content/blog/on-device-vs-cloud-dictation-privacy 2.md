@@ -1,14 +1,14 @@
 ---
-title: "On-Device vs Cloud Dictation on macOS: What's Private"
+title: "On-Device vs Cloud Dictation: What Stays Private"
 description: "A fair comparison of on-device and cloud dictation — how each handles your voice data, where recordings go, and what that means for privacy."
-pubDate: 2026-03-20
+pubDate: 2026-03-11
 tags: ["privacy", "dictation", "comparison", "on-device", "speech-to-text"]
-draft: true
+draft: false
 ---
 
-"Your data is processed securely." Every cloud dictation service says some version of this. Almost none of them tell you what it actually means -- where your audio goes, who can access it, how long it persists, or what happens to it after transcription. The assumption is that you won't ask.
+When you hold down a key and start speaking, your voice gets converted to an audio signal, processed by a speech recognition model, and returned as text. That much is obvious. What's less obvious — and rarely explained — is where that processing happens, who has access to the recording, and how long it sticks around.
 
-You should ask. Because the difference between on-device and cloud dictation isn't a marketing distinction. It's an architectural one, and it determines whether your recordings stay on your hardware or travel through infrastructure you can't inspect.
+Most people using dictation on their Mac, phone, or browser have no idea whether their audio leaves the device. The answer depends entirely on which tool you're using, and the difference matters more than most users realize.
 
 ## How cloud dictation works
 
@@ -35,7 +35,7 @@ In 2022, OpenAI released Whisper, an open-source automatic speech recognition mo
 
 On Apple Silicon specifically, Apple's Core ML framework compiles neural networks to run natively on the Mac's Neural Engine, GPU, and CPU. [WhisperKit](https://github.com/argmaxinc/WhisperKit), developed by Argmax, wraps Whisper models for Core ML execution. The result is fast, accurate transcription that runs entirely on your Mac — no server required.
 
-The practical experience: on an M-series Mac — whether it's an M2 MacBook Air or an M4 Pro Mac Mini — a typical dictation segment transcribes in one to two seconds. That's end-to-end, from the moment you stop speaking to the moment text appears.
+The practical experience: on an M-series Mac, a typical dictation segment transcribes in one to two seconds. That's end-to-end, from the moment you stop speaking to the moment text appears.
 
 ## Comparison: on-device vs cloud dictation
 
@@ -83,26 +83,14 @@ For many people — especially those dictating work-related content on a Mac —
 
 EnviousWispr is an on-device dictation app for macOS. It ships with two transcription backends — Parakeet for fast English dictation and WhisperKit for multi-language support — both running natively via Core ML on Apple Silicon. Your audio is recorded, transcribed, and post-processed — all locally. Recordings never leave your Mac unless you explicitly configure an external API.
 
-<!-- TODO: Screenshot — Menu bar icon: the EnviousWispr menu bar dropdown showing the privacy toggle and on-device processing status -->
-
-Here's what the workflow looks like: hold a hotkey, speak, release. A second or two later, polished text lands on your clipboard or pastes directly into the app you're using. Post-processing — punctuation cleanup, filler word removal, tone adjustment — runs through a local LLM of your choice. Three writing style presets (Formal, Standard, Friendly) let you shape the output for different contexts, with custom prompts and per-app presets coming soon.
-
-Here's what that looks like in practice:
-
-**What you say:**
-> so the main takeaway from the security review is that we need to encrypt all user data at rest not just in transit and we also need to uh rotate the API keys quarterly instead of annually which is gonna require some changes to the deployment pipeline
-
-**What gets pasted:**
-> The security review identified two required changes: all user data must be encrypted at rest (not just in transit), and API keys need quarterly rotation instead of annual. The deployment pipeline will need updates to support the new rotation schedule.
-
-That entire pipeline — from your voice to polished text — ran locally on your Mac. No audio left the device.
+Here's what the workflow looks like: hold a hotkey, speak, release. A second or two later, polished text lands on your clipboard or pastes directly into the app you're using. Post-processing — punctuation cleanup, filler word removal, tone adjustment — runs through a local LLM of your choice. You can set [custom prompts and per-app presets](/how-it-works/) to control how text is formatted for different contexts.
 
 A few specifics worth noting:
 
 - **No sign-up required.** No login, no telemetry, no account walls.
 - **Free and open source.** EnviousWispr is available on [GitHub](https://github.com/saurabhav88/EnviousWispr) at no cost.
 - **Hands-free mode.** For extended dictation sessions, you can switch to continuous background transcription without holding a key.
-- **Privacy toggle (coming soon).** A planned feature that will let you pause all processing with one click — useful during sensitive conversations.
+- **Privacy toggle.** One click pauses all processing — useful during sensitive conversations.
 - **Offline by default.** The app works with no internet connection. Network access is only needed if you choose to connect an external API for post-processing.
 
 EnviousWispr doesn't try to be everything for everyone. It's built specifically for macOS users on Apple Silicon who want fast, private dictation that doesn't require trusting a third party with their recordings.
@@ -141,7 +129,7 @@ On modern hardware, yes. OpenAI's Whisper large-v3 model achieves word error rat
 
 ### Does on-device dictation work offline?
 
-Yes. Because the speech recognition model runs locally on your hardware, no internet connection is needed. EnviousWispr works fully offline — on a plane, in a basement, or at a coffee shop with your MacBook Air and no Wi-Fi.
+Yes. Because the speech recognition model runs locally on your hardware, no internet connection is needed. EnviousWispr works fully offline — on a plane, in a basement, or anywhere without Wi-Fi.
 
 ### What happens to my audio recordings with cloud dictation?
 

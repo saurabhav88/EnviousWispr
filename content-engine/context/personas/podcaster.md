@@ -12,7 +12,7 @@ Podcasters, YouTubers, newsletter writers, and indie content creators who produc
 ## How they'd use EnviousWispr
 - Dictate show notes and episode descriptions immediately after recording while the content is fresh
 - Draft newsletter sections and social media posts by voice, capturing the conversational tone their audience expects
-- Use custom prompts to format dictated text as bullet-point show notes or as polished blog paragraphs
+- Use Standard preset for quick show notes, Formal for polished blog paragraphs derived from episodes
 - Capture episode ideas, guest research notes, and interview questions by voice throughout the day
 
 ## Keywords they search for

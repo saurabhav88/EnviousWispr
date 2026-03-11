@@ -1,14 +1,14 @@
 ---
-title: "Dictation for Writers: Skip the Blank Page"
+title: "macOS Dictation for Writers: Skip the Blank Page"
 description: "Voice writing bypasses the blank page entirely. Learn how dictation fits a writer's workflow and why speaking your first draft changes everything."
-pubDate: 2026-03-11
+pubDate: 2026-03-14
 tags: ["writing", "dictation", "workflow", "creativity"]
-draft: false
+draft: true
 ---
 
-The cursor blinks. The page is white. You know what you want to say -- you outlined it an hour ago, you've been thinking about it all morning -- but the words won't come out through your fingers. So you retype the opening sentence for the fourth time, delete it, check your email, and come back to the same blank page.
+What if the blank page wasn't the starting point? What if, instead of sitting down to type your first sentence, you could skip straight to having 800 words of rough prose on the screen -- words that sound like you, organized roughly the way you think, ready to edit?
 
-This is the oldest problem in writing. And the fix isn't discipline or a better outline or a new app. It's bypassing the bottleneck entirely. Instead of typing your first draft, speak it.
+That's not a fantasy workflow. It's what happens when you speak your first draft instead of typing it. The blank page problem doesn't go away -- you just stop starting there.
 
 ## Why Speaking Unlocks What Typing Can't
 
@@ -24,35 +24,37 @@ Here's the reframe: most of what we call writer's block isn't a thinking problem
 
 Dictation closes that gap. You speak the way you'd explain something to a colleague -- conversational, direct, maybe a little loose -- and the text appears. It won't be publication-ready. It shouldn't be. First drafts aren't supposed to be clean. They're supposed to exist.
 
-The shift is psychological as much as practical. When you dictate, you give yourself permission to be imperfect, because the medium itself is imperfect. Nobody speaks in polished prose. That lowers the bar just enough to get moving, and once you're moving, momentum takes over.
+The shift is psychological as much as practical. When you dictate, you give yourself permission to be imperfect, because the medium itself is imperfect. Nobody speaks in polished prose. That lowers the bar just enough to get moving, and once you're moving, momentum takes over. There's a creative freedom in letting words pour out faster than your fingers could ever manage -- the draft that emerges sounds like you, not like typing.
 
 ## How EnviousWispr Fits a Writer's Workflow
 
 Most dictation tools were built for business users -- people dictating emails and memos. Writers need something different. You need output that sounds like writing, not like a transcribed meeting. And you need it to land in your writing app, formatted the way you work.
 
-EnviousWispr handles this with two features that matter specifically to writers: custom prompts and per-app presets.
+EnviousWispr handles this with writing style presets and LLM post-processing that matter specifically to writers.
 
-### Custom Prompts: Your Editor on Autopilot
+### Writing Style Presets: Match Your Tone Instantly
 
-After EnviousWispr transcribes your speech, it runs the text through a local LLM for post-processing. By default, this strips filler words ("um," "uh," "like") and fixes punctuation. But you can customize the prompt to do much more.
+After EnviousWispr transcribes your speech, it runs the text through a local LLM for post-processing. You choose from three writing style presets -- **Formal**, **Standard**, and **Friendly** -- that shape how the LLM cleans up your dictation. For first-draft prose, Friendly keeps your natural voice and conversational rhythm intact. Standard gives you clean, balanced output. Formal tightens everything up for professional contexts.
 
-For a first draft, you might set the prompt to: "Clean up the transcription into flowing prose paragraphs. Remove filler words and false starts. Keep my voice and word choices intact. Don't add anything I didn't say."
+That processing runs on-device -- your local LLM of choice handles it without sending your words anywhere. The result is a clean first draft that sounds like you, not like a robot or a corporate memo.
 
-That instruction runs on-device -- your local LLM of choice processes it without sending your words anywhere. The result is a clean first draft that sounds like you, not like a robot or a corporate memo.
+Switching presets takes one click, so you can move between brainstorming (Friendly, loose and natural), blog drafting (Standard, clean but conversational), and client-facing work (Formal, polished) without friction.
 
-You can also create prompts for specific writing tasks:
+> **Coming soon:** Custom prompts will let you write your own post-processing instructions -- things like "format as screenplay-style dialogue" or "keep this as stream of consciousness with line breaks." And per-app presets will automatically apply different rules depending on which app has focus, so your writing app gets full prose while Slack gets casual short-form text.
 
-- **Brainstorming:** "Keep this as a loose stream of consciousness. Separate distinct ideas with line breaks."
-- **Dialogue drafting:** "Format as screenplay-style dialogue. Each new speaker gets a new line."
-- **Blog drafts:** "Structure as a blog post with clear topic sentences. Add paragraph breaks where the topic shifts."
+For a step-by-step look at how this works in a real writing session, see [Voice to Prose: A Realistic Writing Workflow](/blog/voice-to-prose-writing-workflow/).
 
-### Per-App Presets: Different Rules for Different Contexts
+## What the Shift Looks Like
 
-Writers don't just write in one app. You might draft in Ulysses, take notes in Obsidian, reply to your editor in Slack, and jot ideas in Apple Notes. Each of those contexts calls for different formatting.
+Here's a concrete example. A writer dictating the opening of a personal essay:
 
-Per-app presets let you set different processing rules for each app. Your writing app gets full prose with proper paragraphs. Your notes app gets clean bullet points. Slack gets casual, short-form text. You don't have to think about it -- EnviousWispr detects which app has focus and applies the right preset automatically.
+**What you say:**
+> so I've been thinking about how we use the word busy as like a shield um like when someone asks how you're doing and you say busy it's not really an answer it's a way of saying don't ask me anything else and I think we do that because admitting that we're not busy feels like admitting we're not important
 
-This means you can dictate a paragraph into your manuscript, switch to Slack to answer a question, dictate a quick reply, switch back, and keep drafting -- all without changing any settings. The context switches happen for you. For a step-by-step look at how this works in a real writing session, see [Voice to Prose: A Realistic Writing Workflow](/blog/voice-to-prose-writing-workflow/).
+**What gets pasted:**
+> We use the word "busy" as a shield. When someone asks how you're doing and you say "busy," it's not really an answer — it's a way of saying *don't ask me anything else*. We do that because admitting we're not busy feels like admitting we're not important.
+
+That's a first draft of a real paragraph — with voice, rhythm, and a point of view. It took about ten seconds to speak. The blank page never had a chance.
 
 ## Practical Tips for Dictating Prose
 
@@ -74,9 +76,11 @@ Seriously. Get away from the desk. Some of the best dictated prose comes from pe
 
 Instead of aiming for 500 words, aim for 10 minutes of continuous dictation. You'll almost always overshoot the word count, and you'll have material to cut -- which is a much better problem than having nothing on the page.
 
+<!-- TODO: Screenshot — Hands-free mode indicator: the recording overlay showing hands-free/locked mode for extended dictation sessions -->
+
 ### Use Hands-Free Mode for Long Sessions
 
-For anything longer than a quick paragraph, switch to hands-free mode. Instead of holding the hotkey the entire time, EnviousWispr transcribes continuously in the background. You can pace, pause to think, and keep going without worrying about key presses. It turns your Mac into a dictation station.
+For anything longer than a quick paragraph, switch to hands-free mode. Instead of holding the hotkey the entire time, EnviousWispr transcribes continuously in the background. You can pace, pause to think, and keep going without worrying about key presses. It turns your MacBook Air or Mac Mini into a dictation station.
 
 ### Edit in a Separate Pass
 
@@ -105,7 +109,7 @@ You can read more about [how the pipeline works](/how-it-works/) -- from microph
 
 ## Related Posts
 
-- [Dictate First Drafts That Sound Like You](/blog/dictate-first-drafts-sound-like-you/) — how to set up custom prompts that preserve your writing style
+- [Dictate First Drafts That Sound Like You](/blog/dictate-first-drafts-sound-like-you/) — how writing style presets preserve your voice during dictation
 - [Voice to Prose: A Realistic Writing Workflow](/blog/voice-to-prose-writing-workflow/) — a real before-and-after look at dictated prose
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/) — from download to first dictation
 
@@ -113,6 +117,6 @@ You can read more about [how the pipeline works](/how-it-works/) -- from microph
 
 EnviousWispr is free and open source. You don't need an account, a subscription, or an API key.
 
-Download the latest release from [GitHub](https://github.com/saurabhav88/EnviousWispr/releases), install it, grant microphone and accessibility permissions, and you're dictating within a few minutes. Pick a Whisper model that fits your Mac (larger models are more accurate, smaller models are faster), set up a custom prompt for your writing style, and try dictating your next first draft instead of typing it.
+Download the latest release from [GitHub](https://github.com/saurabhav88/EnviousWispr/releases), install it, grant microphone and accessibility permissions, and you're dictating within a few minutes. Pick a Whisper model that fits your Mac — on Apple Silicon, even the larger models run fast thanks to the Neural Engine. Pick a writing style preset that matches your voice, and try dictating your next first draft instead of typing it.
 
 The blank page problem doesn't go away. But when you can speak your way past it, it stops being the thing that kills your morning.

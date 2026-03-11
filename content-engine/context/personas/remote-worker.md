@@ -12,7 +12,7 @@ Remote and hybrid knowledge workers — product managers, designers, marketers, 
 ## How they'd use EnviousWispr
 - Dictate Slack messages and async standup updates between video calls without sitting back down at the keyboard
 - Draft meeting follow-up emails by voice immediately after a call, while context is still fresh
-- Use per-app presets so Slack messages stay casual and concise while emails get a more polished tone
+- Switch to Friendly for Slack messages, Formal for client emails — one click in settings. Per-app presets for automatic switching are on the roadmap.
 - Fire off quick replies during the day from anywhere in the house, not just the desk
 
 ## Keywords they search for
