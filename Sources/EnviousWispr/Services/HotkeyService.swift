@@ -343,9 +343,15 @@ final class HotkeyService {
         guard ModifierKeyCodes.isModifierOnly(toggleKeyCode) else { return }
 
         globalModifierMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            // NSEvent global monitor callbacks arrive on the main thread
-            MainActor.assumeIsolated {
-                self?.handleFlagsChanged(event)
+            // Global monitor callbacks may arrive off the main thread.
+            // Extract event data here (NSEvent is not Sendable).
+            let keyCode = event.keyCode
+            let flags = event.modifierFlags
+            DispatchQueue.main.async {
+                guard let self else { return }
+                MainActor.assumeIsolated {
+                    self.handleFlagsChangedValues(keyCode: keyCode, flags: flags)
+                }
             }
         }
 
@@ -443,10 +449,16 @@ final class HotkeyService {
     /// NSEvent gives us the exact keyCode that changed, so we know precisely which
     /// modifier was pressed or released without needing to diff against a previous state.
     private func handleFlagsChanged(_ event: NSEvent) {
+        handleFlagsChangedValues(keyCode: event.keyCode, flags: event.modifierFlags)
+    }
+
+    /// Processes modifier key changes from pre-extracted values.
+    /// Used by the global monitor (which dispatches to main thread with raw values)
+    /// and directly by the local monitor via handleFlagsChanged.
+    private func handleFlagsChangedValues(keyCode: UInt16, flags: NSEvent.ModifierFlags) {
         guard !isSuspended else { return }
 
-        let currentFlags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        let keyCode = event.keyCode
+        let currentFlags = flags.intersection(.deviceIndependentFlagsMask)
 
         // Only process known modifier key codes
         guard ModifierKeyCodes.isModifierOnly(keyCode) else { return }
@@ -455,16 +467,13 @@ final class HotkeyService {
         let flag = flagForKeyCode(keyCode)
         let isPress = currentFlags.contains(flag)
 
-        // Extract values before async dispatch (NSEvent is not Sendable)
-        let capturedKeyCode = keyCode
-
         // Unified shortcut — both modes use toggleKeyCode
-        guard capturedKeyCode == toggleKeyCode else { return }
+        guard keyCode == toggleKeyCode else { return }
 
         if recordingMode == .toggle {
             guard isPress else { return }
             Task { await AppLogger.shared.log(
-                "Modifier-only toggle: keyCode=\(capturedKeyCode)", level: .info, category: "HotkeyService"
+                "Modifier-only toggle: keyCode=\(keyCode)", level: .info, category: "HotkeyService"
             ) }
             Task { await onToggleRecording?() }
         } else {
