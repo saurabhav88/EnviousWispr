@@ -91,3 +91,9 @@ EnviousType/
 # Dolt database files (added by bd init)
 .dolt/
 *.db
+.notebooklm/
+
+# Content Engine
+content-engine/scripts/__pycache__/
+content-engine/.seo-geo-config.json
+content-engine/generated_images/
