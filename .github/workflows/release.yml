@@ -66,7 +66,7 @@ jobs:
       - name: Package and sign DMG
         env:
           CODESIGN_IDENTITY: "Developer ID Application: ${{ secrets.APPLE_TEAM_NAME }} (${{ secrets.APPLE_TEAM_ID }})"
-          SPARKLE_FEED_URL: "https://saurabhav88.github.io/EnviousWispr/appcast.xml"
+          SPARKLE_FEED_URL: "https://enviouswispr.com/appcast.xml"
           SPARKLE_EDDSA_PUBLIC_KEY: ${{ secrets.SPARKLE_EDDSA_PUBLIC_KEY }}
         run: ./scripts/build-dmg.sh "${{ steps.version.outputs.version }}"
 
@@ -164,6 +164,7 @@ jobs:
           content = content.replace('</channel>', entry + '\n    </channel>')
           open('appcast.xml', 'w').write(content)
           "
+          cp appcast.xml website/public/appcast.xml
 
       - name: Push appcast update to main
         env:
@@ -174,7 +175,7 @@ jobs:
           git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"
           git fetch origin main
           git checkout main
-          git add -f appcast.xml
+          git add -f appcast.xml website/public/appcast.xml
           if git diff --staged --quiet; then
             echo "==> appcast.xml unchanged, skipping."
           else

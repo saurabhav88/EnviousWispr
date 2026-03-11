@@ -37,7 +37,7 @@
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>SUFeedURL</key>
-	<string>https://saurabhav88.github.io/EnviousWispr/appcast.xml</string>
+	<string>https://enviouswispr.com/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>jHq1RIQKDmtO64qtCdZ6jNdHNFrfyScE16yuu+ufvDw=</string>
 </dict>
