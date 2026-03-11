@@ -1,5 +1,5 @@
 #!/bin/bash
-# Publish blog posts whose pubDate has arrived (draft: true → false)
+# Publish blog posts whose pubDate has arrived (draft: true -> false)
 # Runs daily via cron. Commits + pushes to trigger Cloudflare deploy.
 
 set -euo pipefail
@@ -22,11 +22,11 @@ for file in "$BLOG_DIR"/*.md; do
   # Extract pubDate
   PUB_DATE=$(grep "^pubDate:" "$file" | head -1 | sed 's/pubDate: *//' | tr -d '"' | tr -d "'" | xargs)
 
-  # If pubDate <= today, publish it
-  if [[ "$PUB_DATE" <= "$TODAY" ]]; then
+  # If pubDate <= today, publish it (string comparison works for YYYY-MM-DD)
+  if [[ ! "$PUB_DATE" > "$TODAY" ]]; then
     sed -i '' 's/^draft: true/draft: false/' "$file"
     PUBLISHED+=("$(basename "$file")")
-    echo "[publish] $PUB_DATE <= $TODAY → $(basename "$file")"
+    echo "[publish] $PUB_DATE <= $TODAY -- $(basename "$file")"
   fi
 done
 
@@ -39,11 +39,14 @@ echo "[publish] Publishing ${#PUBLISHED[@]} post(s)..."
 
 # Commit and push
 git add "$BLOG_DIR"/*.md
-git commit -m "blog: publish ${#PUBLISHED[@]} scheduled post(s) for $TODAY
+git commit -m "$(cat <<EOF
+blog: publish ${#PUBLISHED[@]} scheduled post(s) for $TODAY
 
 Posts: ${PUBLISHED[*]}
 
-Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+EOF
+)"
 
 git push
 
