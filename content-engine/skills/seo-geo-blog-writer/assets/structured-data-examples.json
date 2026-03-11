@@ -1,0 +1,271 @@
+{
+  "article_schema": {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    "headline": "Your Article Title Here",
+    "description": "Your meta description",
+    "image": "https://example.com/featured-image.jpg",
+    "datePublished": "2024-01-15T08:00:00+00:00",
+    "dateModified": "2024-06-20T10:30:00+00:00",
+    "author": {
+      "@type": "Person",
+      "name": "Author Name",
+      "url": "https://example.com/author/name",
+      "jobTitle": "Job Title"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "Your Site Name",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://example.com/logo.png"
+      }
+    },
+    "mainEntityOfPage": {
+      "@type": "WebPage",
+      "@id": "https://example.com/article-url"
+    }
+  },
+  
+  "faq_schema": {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "What is SEO?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "SEO (Search Engine Optimization) is the practice of optimizing websites to rank higher in search engine results pages (SERPs). It involves improving content quality, technical elements, and building authority to increase organic visibility and traffic."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How long does SEO take to work?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "SEO typically takes 3-6 months to show significant results. This timeframe varies based on competition, domain authority, and implementation quality. Some improvements like site speed can show immediate impact, while competitive keywords may take 6-12 months."
+        }
+      }
+    ]
+  },
+
+  "howto_schema": {
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "How to Optimize a Blog Post for SEO",
+    "description": "Complete step-by-step guide to optimizing blog posts for search engines",
+    "image": "https://example.com/howto-image.jpg",
+    "totalTime": "PT2H",
+    "estimatedCost": {
+      "@type": "MonetaryAmount",
+      "currency": "USD",
+      "value": "0"
+    },
+    "tool": [
+      {
+        "@type": "HowToTool",
+        "name": "Keyword research tool"
+      }
+    ],
+    "step": [
+      {
+        "@type": "HowToStep",
+        "name": "Conduct Keyword Research",
+        "text": "Identify target keywords with search volume and low competition",
+        "image": "https://example.com/step1.jpg",
+        "url": "https://example.com/article#step1"
+      },
+      {
+        "@type": "HowToStep",
+        "name": "Optimize Title and Headers",
+        "text": "Place primary keyword in title and use variations in H2 headers",
+        "image": "https://example.com/step2.jpg",
+        "url": "https://example.com/article#step2"
+      }
+    ]
+  },
+
+  "article_with_review_schema": {
+    "@context": "https://schema.org",
+    "@type": "Review",
+    "itemReviewed": {
+      "@type": "Product",
+      "name": "Product Name",
+      "image": "https://example.com/product.jpg",
+      "description": "Product description"
+    },
+    "reviewRating": {
+      "@type": "Rating",
+      "ratingValue": 4.5,
+      "bestRating": 5,
+      "worstRating": 1
+    },
+    "author": {
+      "@type": "Person",
+      "name": "Reviewer Name"
+    },
+    "reviewBody": "Detailed review content here...",
+    "datePublished": "2024-01-15"
+  },
+
+  "combined_example": {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "BlogPosting",
+        "headline": "Complete SEO Guide for 2024",
+        "author": {"@type": "Person", "name": "Jane Smith"},
+        "datePublished": "2024-01-15"
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Question 1",
+            "acceptedAnswer": {"@type": "Answer", "text": "Answer 1"}
+          }
+        ]
+      }
+    ]
+  }
+}
+JSON_EOF
+
+cat assets/structured-data-examples.json
+Output
+
+{
+  "article_schema": {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    "headline": "Your Article Title Here",
+    "description": "Your meta description",
+    "image": "https://example.com/featured-image.jpg",
+    "datePublished": "2024-01-15T08:00:00+00:00",
+    "dateModified": "2024-06-20T10:30:00+00:00",
+    "author": {
+      "@type": "Person",
+      "name": "Author Name",
+      "url": "https://example.com/author/name",
+      "jobTitle": "Job Title"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "Your Site Name",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://example.com/logo.png"
+      }
+    },
+    "mainEntityOfPage": {
+      "@type": "WebPage",
+      "@id": "https://example.com/article-url"
+    }
+  },
+  
+  "faq_schema": {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "What is SEO?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "SEO (Search Engine Optimization) is the practice of optimizing websites to rank higher in search engine results pages (SERPs). It involves improving content quality, technical elements, and building authority to increase organic visibility and traffic."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How long does SEO take to work?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "SEO typically takes 3-6 months to show significant results. This timeframe varies based on competition, domain authority, and implementation quality. Some improvements like site speed can show immediate impact, while competitive keywords may take 6-12 months."
+        }
+      }
+    ]
+  },
+
+  "howto_schema": {
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    "name": "How to Optimize a Blog Post for SEO",
+    "description": "Complete step-by-step guide to optimizing blog posts for search engines",
+    "image": "https://example.com/howto-image.jpg",
+    "totalTime": "PT2H",
+    "estimatedCost": {
+      "@type": "MonetaryAmount",
+      "currency": "USD",
+      "value": "0"
+    },
+    "tool": [
+      {
+        "@type": "HowToTool",
+        "name": "Keyword research tool"
+      }
+    ],
+    "step": [
+      {
+        "@type": "HowToStep",
+        "name": "Conduct Keyword Research",
+        "text": "Identify target keywords with search volume and low competition",
+        "image": "https://example.com/step1.jpg",
+        "url": "https://example.com/article#step1"
+      },
+      {
+        "@type": "HowToStep",
+        "name": "Optimize Title and Headers",
+        "text": "Place primary keyword in title and use variations in H2 headers",
+        "image": "https://example.com/step2.jpg",
+        "url": "https://example.com/article#step2"
+      }
+    ]
+  },
+
+  "article_with_review_schema": {
+    "@context": "https://schema.org",
+    "@type": "Review",
+    "itemReviewed": {
+      "@type": "Product",
+      "name": "Product Name",
+      "image": "https://example.com/product.jpg",
+      "description": "Product description"
+    },
+    "reviewRating": {
+      "@type": "Rating",
+      "ratingValue": 4.5,
+      "bestRating": 5,
+      "worstRating": 1
+    },
+    "author": {
+      "@type": "Person",
+      "name": "Reviewer Name"
+    },
+    "reviewBody": "Detailed review content here...",
+    "datePublished": "2024-01-15"
+  },
+
+  "combined_example": {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "BlogPosting",
+        "headline": "Complete SEO Guide for 2024",
+        "author": {"@type": "Person", "name": "Jane Smith"},
+        "datePublished": "2024-01-15"
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Question 1",
+            "acceptedAnswer": {"@type": "Answer", "text": "Answer 1"}
+          }
+        ]
+      }
+    ]
+  }
+}
