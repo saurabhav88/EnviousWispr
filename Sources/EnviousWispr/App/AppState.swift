@@ -16,7 +16,7 @@ final class AppState {
     let hotkeyService = HotkeyService()
     let benchmark = BenchmarkSuite()
     let recordingOverlay = RecordingOverlayPanel()
-    let customWordStore = CustomWordStore()
+    let customWordsManager = CustomWordsManager()
     let ollamaSetup = OllamaSetupService()
     let whisperKitSetup = WhisperKitSetupService()
 
@@ -59,7 +59,7 @@ final class AppState {
     }
 
     // Feature #8: custom word correction
-    var customWords: [String] = []
+    var customWords: [CustomWord] = []
     var customWordError: String?
 
     // Model discovery
@@ -76,7 +76,7 @@ final class AppState {
 
     init() {
         // Load custom words
-        customWords = (try? customWordStore.load()) ?? []
+        customWords = customWordsManager.load()
 
         // Both pipeline properties must be initialized before `self` can be used.
         // WhisperKitBackend default is large-v3-turbo; reconfigured from settings below.
@@ -742,24 +742,43 @@ final class AppState {
     // Feature #8: custom word management
     func addCustomWord(_ word: String) {
         do {
-            try customWordStore.add(word, to: &customWords)
-            pipeline.wordCorrection.customWords = customWords
-            whisperKitPipeline.wordCorrection.customWords = customWords
+            try customWordsManager.add(canonical: word, to: &customWords)
+            syncCustomWordsToPipelines()
             customWordError = nil
         } catch {
             customWordError = error.localizedDescription
         }
     }
 
-    func removeCustomWord(_ word: String) {
+    func removeCustomWord(_ id: UUID) {
         do {
-            try customWordStore.remove(word, from: &customWords)
-            pipeline.wordCorrection.customWords = customWords
-            whisperKitPipeline.wordCorrection.customWords = customWords
+            try customWordsManager.remove(id: id, from: &customWords)
+            syncCustomWordsToPipelines()
             customWordError = nil
         } catch {
             customWordError = error.localizedDescription
         }
+    }
+
+    /// Convenience: remove by canonical string (used by legacy callers).
+    func removeCustomWord(_ word: String) {
+        guard let match = customWords.first(where: { $0.canonical == word }) else { return }
+        removeCustomWord(match.id)
+    }
+
+    func updateCustomWord(_ word: CustomWord) {
+        do {
+            try customWordsManager.update(word: word, in: &customWords)
+            syncCustomWordsToPipelines()
+            customWordError = nil
+        } catch {
+            customWordError = error.localizedDescription
+        }
+    }
+
+    private func syncCustomWordsToPipelines() {
+        pipeline.wordCorrection.customWords = customWords
+        whisperKitPipeline.wordCorrection.customWords = customWords
     }
 
     /// Validate an API key and discover available models for the given provider.

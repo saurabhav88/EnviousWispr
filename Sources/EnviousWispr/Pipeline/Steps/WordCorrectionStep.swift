@@ -6,7 +6,7 @@ final class WordCorrectionStep: TextProcessingStep {
     let name = "Word Correction"
 
     var wordCorrectionEnabled: Bool = false
-    var customWords: [String] = []
+    var customWords: [CustomWord] = []
 
     var isEnabled: Bool {
         wordCorrectionEnabled && !customWords.isEmpty
@@ -14,7 +14,7 @@ final class WordCorrectionStep: TextProcessingStep {
 
     func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
         let corrector = WordCorrector()
-        let (fixed, count) = corrector.correct(context.text, against: customWords)
+        let (fixed, count) = corrector.correct(context.text, against: customWords.canonicals)
         if count > 0 {
             Task { await AppLogger.shared.log(
                 "WordCorrector applied \(count) correction(s)",

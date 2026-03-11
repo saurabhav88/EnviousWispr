@@ -4,6 +4,7 @@ struct WordFixSettingsView: View {
     @Environment(AppState.self) private var appState
     @State private var newWord: String = ""
     @State private var errorMessage: String = ""
+    @State private var editingWord: CustomWord?
 
     var body: some View {
         @Bindable var state = appState
@@ -59,10 +60,12 @@ struct WordFixSettingsView: View {
                 } else {
                     BrandedRow(showDivider: false) {
                         WrappingHStack(spacing: 8) {
-                            ForEach(appState.customWords.sorted(), id: \.self) { word in
-                                BrandedWordChip(word: word) {
-                                    appState.removeCustomWord(word)
-                                }
+                            ForEach(appState.customWords.sorted { $0.canonical.localizedCaseInsensitiveCompare($1.canonical) == .orderedAscending }) { word in
+                                CustomWordChip(word: word, onTap: {
+                                    editingWord = word
+                                }, onRemove: {
+                                    appState.removeCustomWord(word.id)
+                                })
                             }
                         }
                     }
@@ -82,6 +85,11 @@ struct WordFixSettingsView: View {
                 }
             }
         }
+        .sheet(item: $editingWord) { word in
+            CustomWordEditSheet(word: word) { updated in
+                appState.updateCustomWord(updated)
+            }
+        }
     }
 
     private func addWord() {
@@ -94,5 +102,161 @@ struct WordFixSettingsView: View {
         errorMessage = ""
         appState.addCustomWord(trimmed)
         newWord = ""
+    }
+}
+
+// MARK: - Custom Word Chip
+
+private struct CustomWordChip: View {
+    let word: CustomWord
+    let onTap: () -> Void
+    let onRemove: () -> Void
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Button(action: onTap) {
+                HStack(spacing: 4) {
+                    Text(word.canonical)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.stAccent)
+
+                    if word.category != .general {
+                        Text(word.category.rawValue.prefix(1).uppercased())
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.stTextTertiary)
+                            .padding(.horizontal, 3)
+                            .padding(.vertical, 1)
+                            .background(Color.stAccentLight)
+                            .clipShape(RoundedRectangle(cornerRadius: 3))
+                    }
+
+                    if !word.aliases.isEmpty {
+                        Text("+\(word.aliases.count)")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.stTextTertiary)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+
+            Button(action: onRemove) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.stTextTertiary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color.stAccentLight)
+        .clipShape(Capsule())
+        .contentShape(Capsule())
+    }
+}
+
+// MARK: - Edit Sheet
+
+private struct CustomWordEditSheet: View {
+    @State private var word: CustomWord
+    @State private var newAlias: String = ""
+    let onSave: (CustomWord) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    init(word: CustomWord, onSave: @escaping (CustomWord) -> Void) {
+        _word = State(initialValue: word)
+        self.onSave = onSave
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Edit Custom Word")
+                .font(.headline)
+
+            // Canonical
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Word")
+                    .font(.stHelper)
+                    .foregroundStyle(.stTextSecondary)
+                TextField("Word", text: $word.canonical)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            // Category
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Category")
+                    .font(.stHelper)
+                    .foregroundStyle(.stTextSecondary)
+                Picker("Category", selection: $word.category) {
+                    ForEach(WordCategory.allCases, id: \.self) { cat in
+                        Text(cat.rawValue.capitalized).tag(cat)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+
+            // Aliases
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Aliases (spoken variants the ASR produces)")
+                    .font(.stHelper)
+                    .foregroundStyle(.stTextSecondary)
+
+                HStack {
+                    TextField("Add alias (e.g. clawed)", text: $newAlias)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit { addAlias() }
+                    Button("Add") { addAlias() }
+                        .disabled(newAlias.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+
+                if !word.aliases.isEmpty {
+                    WrappingHStack(spacing: 6) {
+                        ForEach(word.aliases, id: \.self) { alias in
+                            HStack(spacing: 3) {
+                                Text(alias)
+                                    .font(.system(size: 11))
+                                Button {
+                                    word.aliases.removeAll { $0 == alias }
+                                } label: {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 8, weight: .bold))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Color.stAccentLight)
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                        }
+                    }
+                }
+            }
+
+            // Force replace toggle
+            Toggle("Force replace (always apply, skip scoring)", isOn: $word.forceReplace)
+                .toggleStyle(.switch)
+
+            Spacer()
+
+            // Actions
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Save") {
+                    onSave(word)
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 400, height: 420)
+    }
+
+    private func addAlias() {
+        let trimmed = newAlias.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, !word.aliases.contains(trimmed) else { return }
+        word.aliases.append(trimmed)
+        newAlias = ""
     }
 }
