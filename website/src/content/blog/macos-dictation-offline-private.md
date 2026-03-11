@@ -1,6 +1,6 @@
 ---
 title: "macOS Dictation That Works Offline and Stays Private"
-description: "On-device dictation for macOS that never sends your voice to the cloud. How EnviousWispr handles offline speech-to-text with accessibility in mind."
+description: "Fully private, on-device dictation for macOS that never sends your voice to the cloud. How EnviousWispr delivers offline speech-to-text you can trust."
 pubDate: 2026-03-11
 tags: ["accessibility", "privacy", "dictation", "offline"]
 draft: false

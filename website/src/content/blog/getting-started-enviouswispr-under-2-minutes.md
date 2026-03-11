@@ -1,6 +1,6 @@
 ---
 title: "Getting Started with EnviousWispr in Under 2 Minutes"
-description: "Install EnviousWispr, grant two permissions, and start dictating. This step-by-step guide walks you through setup in under two minutes."
+description: "Install EnviousWispr, grant two permissions, and start dictating in any app. This step-by-step guide walks you through full setup in under two minutes."
 pubDate: 2026-03-11
 tags: ["getting-started", "tutorial", "setup", "dictation"]
 draft: false
