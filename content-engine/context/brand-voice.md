@@ -323,3 +323,8 @@ Before publishing any content, verify:
 - [ ] Are the paragraphs short (3-4 sentences max) and easily scannable?
 - [ ] Did we direct users to GitHub for feedback or issues instead of a generic support channel?
 - [ ] Does this sound like a senior developer talking to a respected peer?
+- [ ] Did we mention BOTH transcription backends (WhisperKit and Parakeet) when describing how transcription works?
+- [ ] Did we add cross-links to at least 2 related blog posts?
+- [ ] Did we use 'Core ML' (with space), not 'CoreML'?
+- [ ] Are all cited statistics verifiable? No fabricated citations or hallucinated reports?
+- [ ] Did we avoid 'change the game' and other variants of banned buzzwords?

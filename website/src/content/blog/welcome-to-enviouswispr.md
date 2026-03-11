@@ -25,4 +25,6 @@ A few things that make it worth using day-to-day:
 
 Download the `.dmg` from the [releases page](https://github.com/saurabhav88/EnviousWispr/releases), open it, and drag EnviousWispr to your Applications folder. On first launch you'll grant microphone access and choose a Whisper model — we recommend `large-v3-turbo` for the best balance of speed and accuracy on Apple Silicon. The app will download and compile the model locally; this takes a few minutes once and never again.
 
+For a step-by-step walkthrough, see our [Getting Started in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/) guide. And if you want to understand why on-device processing matters, read our [On-Device vs Cloud Dictation comparison](/blog/on-device-vs-cloud-dictation-privacy/).
+
 That's it. No account, no API key, no subscription. EnviousWispr is free and open source. If you run into issues or have ideas, open an issue on GitHub — we read everything.

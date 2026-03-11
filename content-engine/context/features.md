@@ -4,9 +4,12 @@ Reference document for content generation. These are the actual product capabili
 
 ## Core Transcription
 
-- **On-device transcription** via WhisperKit (Apple's Whisper implementation using CoreML) and Parakeet — nothing leaves your Mac
+- **On-device transcription** via WhisperKit (Apple's Whisper implementation using Core ML) and Parakeet — nothing leaves your Mac
+- **Dual transcription backends** — WhisperKit for multi-language support and accuracy; Parakeet for fast English streaming
 - **Fast on Apple Silicon** — 1-2 seconds end-to-end from speech to text, leveraging the Neural Engine
 - **Multiple model sizes** — choose between speed and accuracy depending on your hardware and needs
+
+> **Content note:** Content must reference both transcription backends. WhisperKit for multi-language/accuracy, Parakeet for fast English streaming.
 
 ## Input Modes
 
@@ -26,7 +29,7 @@ Reference document for content generation. These are the actual product capabili
 
 ## Privacy
 
-- **Fully on-device** — audio is processed locally using CoreML. No internet connection required for transcription
+- **Fully on-device** — audio is processed locally using Core ML. No internet connection required for transcription
 - **Privacy toggle** — pause all processing during sensitive conversations with a single click
 - **No account required** — no sign-up, no login, no cloud dependency, no telemetry
 
