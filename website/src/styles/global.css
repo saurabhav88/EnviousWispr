@@ -12,7 +12,7 @@
   --rainbow-cool: linear-gradient(90deg,#00ffff,#1e90ff,#4169e1,#8a2be2);
   --bg: #f8f5ff; --surface: #f0ecf9;
   --border: rgba(138,43,226,0.06); --border-hover: rgba(138,43,226,0.12);
-  --text: #0f0a1a; --text-2: #4a3d60; --text-3: #7d6f96;
+  --text: #0f0a1a; --text-2: #4a3d60; --text-3: #665a7d;
   --accent: #7c3aed; --accent-soft: rgba(124,58,237,0.08);
   --accent-glow: rgba(124,58,237,0.20); --accent-hover: #6d28d9;
   --cyan: #00ccdd; --green: #00c880; --amber: #e6c200;
@@ -84,7 +84,7 @@ body::after {
   color: var(--text); text-decoration: none; display: flex; align-items: center; gap: 10px;
 }
 .nav-links { display: flex; align-items: center; gap: 28px; list-style: none; }
-.nav-links a { font-size: 14px; font-weight: 500; color: var(--text-2); text-decoration: none; transition: color 0.2s; }
+.nav-links a { font-size: 14px; font-weight: 500; color: var(--text-2); text-decoration: none; transition: color 0.2s; min-height: 44px; display: inline-flex; align-items: center; padding: 8px 2px; }
 .nav-links a:hover { color: var(--text); }
 .nav-links a.active { color: var(--accent); font-weight: 600; }
 .nav-cta-group { display: flex; align-items: center; gap: 14px; }
@@ -92,16 +92,17 @@ body::after {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 13px; font-weight: 500; color: var(--text-3);
   text-decoration: none; transition: color 0.2s;
+  min-height: 44px; padding: 8px 4px;
 }
 .nav-gh:hover { color: var(--text-2); }
 .nav-cta {
   display: inline-flex; align-items: center; gap: 7px;
-  padding: 8px 20px; background: var(--text); color: #fff;
+  padding: 12px 20px; min-height: 44px; background: var(--text); color: #fff;
   font-size: 14px; font-weight: 600; border-radius: var(--radius-btn);
   text-decoration: none; transition: background 0.2s, transform 0.2s;
 }
 .nav-cta:hover { background: #2a2035; transform: translateY(-1px); }
-.nav-toggle { display: none; background: none; border: none; color: var(--text); cursor: pointer; padding: 4px; }
+.nav-toggle { display: none; background: none; border: none; color: var(--text); cursor: pointer; padding: 11px; min-width: 44px; min-height: 44px; }
 
 /* ── Shared Section Styles ── */
 .section { padding: var(--section-pad) 0; position: relative; z-index: 1; }
