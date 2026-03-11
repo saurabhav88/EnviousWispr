@@ -143,5 +143,18 @@
       />
     </item>
 
+        <item>
+      <title>Version 1.2.2</title>
+      <pubDate>Wed, 11 Mar 2026 05:31:01 +0000</pubDate>
+      <sparkle:version>1.2.2</sparkle:version>
+      <sparkle:shortVersionString>1.2.2</sparkle:shortVersionString>
+      <enclosure
+        url="https://github.com/saurabhav88/EnviousWispr/releases/download/v1.2.2/EnviousWispr-1.2.2.dmg"
+        length="5682510"
+        type="application/octet-stream"
+        sparkle:edSignature="goYty5GuYhUhLdDB/i46kq/kAovEU65YzLspcTXUZEcIFWGFweZQSoaJUl7Y86uGgMjVciCYTUZp4P1t4I9oDQ=="
+      />
+    </item>
+
     </channel>
 </rss>
