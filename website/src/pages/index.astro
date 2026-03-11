@@ -797,15 +797,15 @@ const jsonLd = JSON.stringify({
 .marquee-row { display: flex; gap: 12px; animation: marquee-scroll 32s linear infinite; width: max-content; will-change: transform; }
 .marquee-row:hover { animation-play-state: paused; }
 @keyframes marquee-scroll { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
-.app-chip {
+/* JS-created elements need :global() to bypass Astro scoping */
+.marquee-row :global(.app-chip) {
   display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px;
   background: #fff; border: 1px solid var(--border-hover); border-radius: var(--radius-pill);
   font-size: 14px; font-weight: 600; color: var(--text-2); white-space: nowrap; flex-shrink: 0;
   transition: border-color 0.2s, color 0.2s;
 }
-.app-chip:hover { border-color: var(--accent); color: var(--text); }
-.chip-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.app-chip svg { width: 20px; height: 20px; flex-shrink: 0; }
+.marquee-row :global(.app-chip:hover) { border-color: var(--accent); color: var(--text); }
+.marquee-row :global(.app-chip svg) { width: 18px; height: 18px; flex-shrink: 0; }
 
 /* ═══════════════════════════════════════════════════════
    Use Cases — Tabbed
