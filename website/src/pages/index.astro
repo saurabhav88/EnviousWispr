@@ -410,7 +410,7 @@ const jsonLd = JSON.stringify({
           <h3>Hold to record.<br/>Release to paste.</h3>
           <p>Perfect for quick messages, replies, and search queries. Hold your hotkey while you speak — the moment you release, polished text appears exactly where you're typing.</p>
           <div class="mode-hint">
-            <div class="mode-hint-keys" aria-label="Keyboard shortcut: Right Command, hold">
+            <div class="mode-hint-keys" role="img" aria-label="Keyboard shortcut: Right Command, hold">
               <span class="key-cap held" aria-hidden="true">&#8984;</span>
               <span class="key-sep" aria-hidden="true">— hold</span>
             </div>
@@ -425,7 +425,7 @@ const jsonLd = JSON.stringify({
           <h3>Double-press to start.<br/>Press once to stop.</h3>
           <p>Built for long-form writing — emails, documents, meeting notes. Double-press your hotkey to start recording, then press once to finish. Your hands stay free the whole time.</p>
           <div class="mode-hint">
-            <div class="mode-hint-keys" aria-label="Keyboard shortcut: Right Command double-press">
+            <div class="mode-hint-keys" role="img" aria-label="Keyboard shortcut: Right Command double-press">
               <span class="key-cap tap" aria-hidden="true">&#8984;</span>
               <span class="key-sep" aria-hidden="true">&#215;2</span>
             </div>
@@ -538,7 +538,7 @@ const jsonLd = JSON.stringify({
 
       <div class="testimonials-grid reveal-stagger">
         <div class="testimonial-card reveal" style="--i:0">
-          <div class="testimonial-stars" aria-label="5 stars">
+          <div class="testimonial-stars" role="img" aria-label="5 stars">
             <span class="star" aria-hidden="true">&#9733;</span><span class="star" aria-hidden="true">&#9733;</span><span class="star" aria-hidden="true">&#9733;</span><span class="star" aria-hidden="true">&#9733;</span><span class="star" aria-hidden="true">&#9733;</span>
           </div>
           <p class="testimonial-quote">"I use it for every email now. I just ramble out loud and it gives me something clean I can actually send. I've cut my inbox time in half."</p>
@@ -551,7 +551,7 @@ const jsonLd = JSON.stringify({
           </div>
         </div>
         <div class="testimonial-card reveal" style="--i:1">
-          <div class="testimonial-stars" aria-label="5 stars">
+          <div class="testimonial-stars" role="img" aria-label="5 stars">
             <span class="star" aria-hidden="true">&#9733;</span><span class="star" aria-hidden="true">&#9733;</span><span class="star" aria-hidden="true">&#9733;</span><span class="star" aria-hidden="true">&#9733;</span><span class="star" aria-hidden="true">&#9733;</span>
           </div>
           <p class="testimonial-quote">"As a developer, I dictate commit messages and code comments. The formal tone option is shockingly good at technical phrasing."</p>
@@ -564,7 +564,7 @@ const jsonLd = JSON.stringify({
           </div>
         </div>
         <div class="testimonial-card reveal" style="--i:2">
-          <div class="testimonial-stars" aria-label="5 stars">
+          <div class="testimonial-stars" role="img" aria-label="5 stars">
             <span class="star" aria-hidden="true">&#9733;</span><span class="star" aria-hidden="true">&#9733;</span><span class="star" aria-hidden="true">&#9733;</span><span class="star" aria-hidden="true">&#9733;</span><span class="star" aria-hidden="true">&#9733;</span>
           </div>
           <p class="testimonial-quote">"I write all my essays by talking first. EnviousWispr turns my stream-of-consciousness into paragraphs I can actually use."</p>
@@ -779,7 +779,7 @@ const jsonLd = JSON.stringify({
   display: flex; gap: 8px; margin-bottom: 20px;
 }
 .tone-tab {
-  padding: 9px 28px; border-radius: var(--radius-pill);
+  padding: 12px 28px; min-height: 44px; border-radius: var(--radius-pill);
   border: 1.5px solid var(--border-hover); background: transparent;
   font-family: var(--font-body); font-size: 14px; font-weight: 600; color: var(--text-2);
   cursor: pointer; transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
@@ -1138,8 +1138,8 @@ const jsonLd = JSON.stringify({
 
 /* Nav arrows */
 .uc-nav-btn {
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   border: 1px solid var(--uc-stroke);
   background: var(--uc-surface);
@@ -1190,6 +1190,16 @@ const jsonLd = JSON.stringify({
   cursor: pointer;
   border: none;
   padding: 0;
+  position: relative;
+}
+:global(.uc-dot)::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 44px;
+  height: 44px;
 }
 
 :global(.uc-dot.active) {
