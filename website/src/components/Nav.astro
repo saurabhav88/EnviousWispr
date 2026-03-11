@@ -1,0 +1,81 @@
+---
+interface Props {
+  activePage?: string;
+}
+const { activePage = 'home' } = Astro.props;
+---
+
+<nav class="nav" id="nav" aria-label="Main Navigation">
+  <div class="nav-inner">
+    <a href="/" class="nav-logo" aria-label="EnviousWispr Home">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" aria-hidden="true" style="width:30px;height:22px;">
+        <defs>
+          <filter id="nav-glow" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <g transform="translate(8,13)" filter="url(#nav-glow)">
+          <rect x="16" y="84.2" width="14" height="20" rx="5" fill="#ff2a40" opacity="0.9"/>
+          <rect x="40" y="65.75" width="14" height="32" rx="5" fill="#ff8c00" opacity="0.9"/>
+          <rect x="64" y="43.36" width="14" height="48" rx="5" fill="#ffd700" opacity="0.9"/>
+          <rect x="88" y="63.04" width="14" height="36" rx="5" fill="#adff2f" opacity="0.9"/>
+          <rect x="112" y="81.43" width="14" height="24" rx="5" fill="#00fa9a" opacity="0.9"/>
+          <rect x="136" y="63.04" width="14" height="36" rx="5" fill="#00ffff" opacity="0.9"/>
+          <rect x="160" y="43.36" width="14" height="48" rx="5" fill="#1e90ff" opacity="0.9"/>
+          <rect x="184" y="65.75" width="14" height="32" rx="5" fill="#4169e1" opacity="0.9"/>
+          <rect x="208" y="84.2" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.9"/>
+          <rect x="16" y="125.8" width="14" height="20" rx="5" fill="#4169e1" opacity="0.85"/>
+          <rect x="40" y="119.35" width="14" height="36" rx="5" fill="#1e90ff" opacity="0.85"/>
+          <rect x="64" y="112.96" width="14" height="48" rx="5" fill="#00ffff" opacity="0.85"/>
+          <rect x="88" y="120.64" width="14" height="60" rx="5" fill="#00fa9a" opacity="0.85"/>
+          <rect x="112" y="127.03" width="14" height="68" rx="5" fill="#adff2f" opacity="0.85"/>
+          <rect x="136" y="120.64" width="14" height="60" rx="5" fill="#ffd700" opacity="0.85"/>
+          <rect x="160" y="112.96" width="14" height="48" rx="5" fill="#ff8c00" opacity="0.85"/>
+          <rect x="184" y="119.35" width="14" height="36" rx="5" fill="#ff2a40" opacity="0.85"/>
+          <rect x="208" y="125.8" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.85"/>
+        </g>
+      </svg>
+      EnviousWispr
+    </a>
+    <ul class="nav-links" id="navLinks" role="list">
+      <li><a href="/#features" class:list={[{ active: activePage === 'home' }]}>Features</a></li>
+      <li><a href="/how-it-works/" class:list={[{ active: activePage === 'how-it-works' }]}>How It Works</a></li>
+      <li><a href="/#privacy">Privacy</a></li>
+      <li><a href="/blog/">Blog</a></li>
+    </ul>
+    <div class="nav-cta-group">
+      <a href="https://github.com/saurabhav88/EnviousWispr" class="nav-gh" target="_blank" rel="noopener" aria-label="GitHub">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="15" height="15" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+        GitHub
+      </a>
+      <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="nav-cta">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+    </div>
+    <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation menu" aria-expanded="false">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+  </div>
+</nav>
+
+<script>
+  const nav = document.getElementById('nav');
+  window.addEventListener('scroll', () => {
+    nav?.classList.toggle('scrolled', window.scrollY > 20);
+  }, { passive: true });
+
+  const navToggle = document.getElementById('navToggle');
+  const navLinks = document.getElementById('navLinks');
+  navToggle?.addEventListener('click', () => {
+    const isOpen = navLinks?.classList.toggle('nav-open');
+    navToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    if (!document.getElementById('nav-mobile-style')) {
+      const s = document.createElement('style');
+      s.id = 'nav-mobile-style';
+      s.textContent = '.nav-links.nav-open{display:flex!important;flex-direction:column;position:absolute;top:64px;left:0;right:0;background:rgba(248,245,255,0.97);backdrop-filter:blur(20px);padding:16px 32px;border-bottom:1px solid var(--border);gap:16px;z-index:999;}';
+      document.head.appendChild(s);
+    }
+  });
+</script>
