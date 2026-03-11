@@ -79,6 +79,13 @@ final class HotkeyService {
     /// second press before stopping. Cancelled on double-press or new recording.
     private var debounceTask: Task<Void, Never>? = nil
 
+    /// Monotonically increasing counter incremented on every state-changing event
+    /// (press, release, cleanup). Debounce callbacks compare their captured
+    /// generation to the current value — if they differ, the callback is stale
+    /// and must not fire. This is the primary guard against Task.isCancelled
+    /// races where cancellation hasn't propagated before the closure executes.
+    private var stateGeneration: UInt64 = 0
+
     /// Timestamp when hands-free lock was activated. Used as a cooldown guard:
     /// presses within 500ms of locking are ignored to prevent accidental
     /// finger-bounce from immediately stopping the locked recording.
@@ -177,6 +184,7 @@ final class HotkeyService {
     /// Reset all hands-free state. Called before every stop/cancel callback
     /// and on service stop/resume.
     private func performCleanup() {
+        stateGeneration &+= 1
         isRecordingLocked = false
         recordingStartTime = nil
         lockTime = nil
@@ -216,6 +224,7 @@ final class HotkeyService {
 
         if !isRecording {
             // Not recording → start fresh
+            stateGeneration &+= 1
             isRecordingLocked = false
             recordingStartTime = Date()
             debounceTask?.cancel()
@@ -290,10 +299,15 @@ final class HotkeyService {
         // Quick release (within 500ms) → debounce, wait for double-press
         if let startTime = recordingStartTime,
            Date().timeIntervalSince(startTime) <= Double(TimingConstants.handsFreeDebounceDelayMs) / 1000.0 {
+            stateGeneration &+= 1
+            let capturedGeneration = stateGeneration
             debounceTask?.cancel()
             debounceTask = Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .milliseconds(TimingConstants.handsFreeDebounceDelayMs))
                 guard !Task.isCancelled, let self else { return }
+                // Stale check: if any state-changing event occurred during sleep,
+                // this callback is outdated and must not fire.
+                guard self.stateGeneration == capturedGeneration else { return }
                 // Timer fired — user didn't double-press. Stop as normal PTT.
                 guard self.recordingStartTime != nil, !self.isRecordingLocked else { return }
                 Task { await AppLogger.shared.log(
@@ -306,7 +320,7 @@ final class HotkeyService {
             }
         } else {
             // Normal PTT release (held > 500ms) → stop immediately
-            performCleanup()
+            performCleanup()  // increments stateGeneration
             recordingTask?.cancel()
             recordingTask = Task { await onStopRecording?() }
         }
