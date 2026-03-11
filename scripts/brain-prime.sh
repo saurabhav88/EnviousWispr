@@ -7,51 +7,33 @@ PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # 1. Prime beads (existing behavior)
 bd prime 2>/dev/null
 
-# 2. Check brain freshness (only if brain-check.sh exists)
+# 2. Check brain freshness — if stale, auto-refresh
 CHECK_SCRIPT="$PROJECT_ROOT/scripts/brain-check.sh"
 REFRESH_SCRIPT="$PROJECT_ROOT/scripts/brain-refresh.sh"
 
 if [[ -x "$CHECK_SCRIPT" ]]; then
-    check_output=$("$CHECK_SCRIPT" 2>&1)
-    check_exit=$?
-
-    # Extract warnings (annotation + integrity) regardless of exit code
-    warnings=$(echo "$check_output" | grep '  WARNING:' || true)
-
-    if [[ $check_exit -ne 0 ]]; then
-        # Brain is stale — auto-refresh
+    if ! "$CHECK_SCRIPT" > /dev/null 2>&1; then
+        # Brain is stale — auto-refresh silently
         if [[ -x "$REFRESH_SCRIPT" ]]; then
-            refresh_output=$("$REFRESH_SCRIPT" 2>&1)
-            refresh_exit=$?
-
-            if [[ $refresh_exit -eq 0 ]]; then
+            if "$REFRESH_SCRIPT" > /dev/null 2>&1; then
                 echo "# Brain Auto-Refresh"
                 echo ""
                 echo "Brain indexes were stale. Auto-refreshed generated files + auto-sections from source."
             else
                 echo "# Brain WARNING"
                 echo ""
-                echo "Brain indexes are stale and auto-refresh FAILED."
-                echo "Run \`scripts/brain-refresh.sh\` manually to investigate."
-                echo ""
-                echo "Refresh output:"
-                echo "$refresh_output"
+                echo "Brain indexes are stale and auto-refresh FAILED. Run scripts/brain-refresh.sh manually."
             fi
-        else
-            echo "# Brain WARNING"
-            echo ""
-            echo "Brain indexes are stale but brain-refresh.sh not found or not executable."
-            echo "Run \`scripts/brain-refresh.sh\` manually."
         fi
     fi
+fi
 
-    # Surface warnings (these are informational, not auto-fixable)
-    if [[ -n "$warnings" ]]; then
+# 3. GitHub notifications summary
+GH_SCRIPT="$PROJECT_ROOT/scripts/gh-notifications.sh"
+if [[ -x "$GH_SCRIPT" ]]; then
+    GH_OUTPUT=$("$GH_SCRIPT" 2>/dev/null)
+    if [ -n "$GH_OUTPUT" ]; then
         echo ""
-        echo "# Brain Warnings (informational)"
-        echo ""
-        echo "$warnings"
-        echo ""
-        echo "These require manual attention — run \`scripts/brain-check.sh\` for details."
+        echo "$GH_OUTPUT"
     fi
 fi
