@@ -52,6 +52,9 @@ final class TranscriptionPipeline: DictationPipeline {
     private var recordingStartTime: Date?
     /// Whether streaming ASR was successfully started for the current recording.
     private var streamingASRActive = false
+    /// Counters for diagnosing streaming buffer delivery (tail-cutoff instrumentation).
+    private var streamingBuffersDispatched = 0
+    private var streamingBuffersFed = 0
     /// Guards against concurrent stopAndTranscribe calls (e.g., VAD auto-stop racing PTT release).
     private var isStopping = false
     /// Guards against concurrent startRecording calls (e.g., rapid toggle presses).
@@ -166,6 +169,8 @@ final class TranscriptionPipeline: DictationPipeline {
             do {
                 try await asrManager.startStreaming(options: transcriptionOptions)
                 streamingASRActive = true
+                streamingBuffersDispatched = 0
+                streamingBuffersFed = 0
 
                 // Wire audio buffer forwarding: each converted buffer goes to streaming ASR.
                 // The streamingASRActive flag gates delivery — deactivateStreamingForwarding()
@@ -180,8 +185,10 @@ final class TranscriptionPipeline: DictationPipeline {
                     guard let self else { return }
                     nonisolated(unsafe) let safeBuffer = buffer
                     Task { @MainActor in
+                        self.streamingBuffersDispatched += 1
                         guard self.streamingASRActive, self.state == .recording else { return }
                         try? await self.asrManager.feedAudio(safeBuffer)
+                        self.streamingBuffersFed += 1
                     }
                 }
 
@@ -305,11 +312,25 @@ final class TranscriptionPipeline: DictationPipeline {
         vadMonitorTask?.cancel()
         vadMonitorTask = nil
 
-        // Stop buffer forwarding to streaming ASR
         let wasStreaming = streamingASRActive
+
+        // Stop the audio tap FIRST — prevents new buffer-feed tasks from being dispatched.
+        // Then yield to drain any in-flight feed tasks already queued on @MainActor.
+        // These tasks check streamingASRActive (still true) and deliver their buffers
+        // to the Parakeet actor before we deactivate forwarding.
+        // Without this reorder, deactivateStreamingForwarding() sets the flag to false
+        // and all queued tasks drop their buffers — losing ~250-500ms of trailing audio.
+        let rawSamples = audioCapture.stopCapture()
+
+        if wasStreaming {
+            await Task.yield()
+            await Task.yield()
+        }
+
         deactivateStreamingForwarding()
 
-        let rawSamples = audioCapture.stopCapture()
+        // Defense: if cancelRecording() ran during yield, bail out
+        guard state == .recording else { return }
 
         // Pre-warm the LLM connection while ASR is still running (fire-and-forget).
         // Establishes TLS + HTTP/2 so the polish request skips the handshake.
@@ -369,10 +390,25 @@ final class TranscriptionPipeline: DictationPipeline {
             if wasStreaming {
                 do {
                     result = try await finalizeStreamingWithTimeout(samples: samples)
+                    let audioDuration = Double(rawSamples.count) / AudioCaptureManager.targetSampleRate
+                    let wordCount = result.text.split(whereSeparator: \.isWhitespace).count
+                    let wps = Double(wordCount) / max(audioDuration, 0.1)
                     Task { await AppLogger.shared.log(
                         "Pipeline timing: streaming ASR finalized in \(String(format: "%.3f", CFAbsoluteTimeGetCurrent() - asrStart))s",
                         level: .info, category: "PipelineTiming"
                     ) }
+                    Task { await AppLogger.shared.log(
+                        "Streaming tail check: fed=\(self.streamingBuffersFed)/\(self.streamingBuffersDispatched), " +
+                        "streaming=\(wasStreaming), audio=\(String(format: "%.1f", audioDuration))s, " +
+                        "words=\(wordCount), wps=\(String(format: "%.1f", wps))",
+                        level: .info, category: "PipelineTiming"
+                    ) }
+                    if wasStreaming && audioDuration >= 2.0 && wps < 1.0 {
+                        Task { await AppLogger.shared.log(
+                            "TAIL_SUSPECT: low wps (\(String(format: "%.1f", wps))) for \(String(format: "%.1f", audioDuration))s recording",
+                            level: .info, category: "PipelineTiming"
+                        ) }
+                    }
                 } catch {
                     // Streaming finalization failed or timed out — cancel and fall back to batch
                     await asrManager.cancelStreaming()
@@ -605,6 +641,7 @@ final class TranscriptionPipeline: DictationPipeline {
 
     /// Reset pipeline to idle state.
     func reset() {
+        guard !isStopping, !isStarting else { return }
         stopRequested = false
         vadMonitorTask?.cancel()
         vadMonitorTask = nil
