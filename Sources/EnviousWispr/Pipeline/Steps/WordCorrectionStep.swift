@@ -14,7 +14,7 @@ final class WordCorrectionStep: TextProcessingStep {
 
     func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
         let corrector = WordCorrector()
-        let (fixed, count) = corrector.correct(context.text, against: customWords.canonicals)
+        let (fixed, count) = corrector.correct(context.text, against: customWords)
         if count > 0 {
             Task { await AppLogger.shared.log(
                 "WordCorrector applied \(count) correction(s)",

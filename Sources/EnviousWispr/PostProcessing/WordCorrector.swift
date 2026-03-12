@@ -2,9 +2,12 @@ import Foundation
 
 /// Pure, Sendable word correction engine.
 ///
-/// Compares each word in the input text against a custom word list using a
-/// composite score of Levenshtein edit distance, bigram Dice coefficient,
-/// and Soundex phonetic matching. Words scoring above the threshold are replaced.
+/// Two-pass replacement:
+/// 1. **Alias match** — exact case-insensitive lookup against user-defined aliases.
+///    Instant O(1) per token. Handles phonetic gaps the fuzzy scorer can't bridge
+///    (e.g. "cloud" → "Claude").
+/// 2. **Fuzzy match** — composite score of Levenshtein, bigram Dice, and Soundex
+///    against canonicals. Catches typos and minor ASR drift.
 struct WordCorrector: Sendable {
     static let threshold: Double = 0.82
 
@@ -12,28 +15,47 @@ struct WordCorrector: Sendable {
     private static let bigramWeight      = 0.40
     private static let soundexWeight     = 0.20
 
-    func correct(_ text: String, against wordList: [String]) -> (corrected: String, replacements: Int) {
-        guard !wordList.isEmpty else { return (text, 0) }
+    /// Alias-aware correction against full CustomWord entries.
+    func correct(_ text: String, against words: [CustomWord]) -> (corrected: String, replacements: Int) {
+        guard !words.isEmpty else { return (text, 0) }
 
-        // Pre-compute lowercased versions to avoid repeated conversions
-        let lowercasedWordList = wordList.map { $0.lowercased() }
+        // Build alias lookup: lowercased alias → canonical string
+        var aliasMap: [String: String] = [:]
+        for word in words {
+            for alias in word.aliases {
+                aliasMap[alias.lowercased()] = word.canonical
+            }
+        }
+
+        // Pre-compute for fuzzy pass
+        let canonicals = words.map(\.canonical)
+        let lowercasedCanonicals = canonicals.map { $0.lowercased() }
 
         var replacements = 0
-        let words = text.components(separatedBy: .whitespaces)
-        let corrected = words.map { token -> String in
+        let tokens = text.components(separatedBy: .whitespaces)
+        let corrected = tokens.map { token -> String in
             let (prefix, core, suffix) = splitPunctuation(token)
-            guard !core.isEmpty, core.count >= 3 else { return token }
+            guard !core.isEmpty, core.count >= 2 else { return token }
 
             let coreLower = core.lowercased()
+
+            // Pass 1: exact alias match
+            if let canonical = aliasMap[coreLower], coreLower != canonical.lowercased() {
+                replacements += 1
+                return prefix + canonical + suffix
+            }
+
+            // Pass 2: fuzzy match against canonicals (skip short tokens)
+            guard core.count >= 3 else { return token }
+
             var bestScore = 0.0
             var bestMatch = ""
 
-            for (idx, targetLower) in lowercasedWordList.enumerated() {
+            for (idx, targetLower) in lowercasedCanonicals.enumerated() {
                 let s = score(coreLower, against: targetLower)
                 if s > bestScore {
                     bestScore = s
-                    bestMatch = wordList[idx]  // Use original case
-                    // Early exit on perfect match
+                    bestMatch = canonicals[idx]
                     if bestScore >= 1.0 { break }
                 }
             }
@@ -45,6 +67,12 @@ struct WordCorrector: Sendable {
             return token
         }
         return (corrected.joined(separator: " "), replacements)
+    }
+
+    /// Legacy bridge: correct against plain string list (no alias support).
+    func correct(_ text: String, against wordList: [String]) -> (corrected: String, replacements: Int) {
+        let words = wordList.map { CustomWord(canonical: $0) }
+        return correct(text, against: words)
     }
 
     func score(_ candidate: String, against target: String) -> Double {
@@ -94,7 +122,6 @@ struct WordCorrector: Sendable {
         soundex(a) == soundex(b) ? 1.0 : 0.0
     }
 
-    /// Soundex map for lowercase letters.
     private static let soundexMap: [Character: Character] = [
         "b":"1","f":"1","p":"1","v":"1",
         "c":"2","g":"2","j":"2","k":"2","q":"2","s":"2","x":"2","z":"2",
@@ -118,7 +145,6 @@ struct WordCorrector: Sendable {
             last = digit
         }
 
-        // Pad to 4 characters
         while code.count < 4 { code.append("0") }
         return code
     }
