@@ -2,21 +2,54 @@
 import CoreAudio
 import os
 
-/// Thread-safe stopped flag for the audio tap handler.
-/// Uses `os_unfair_lock` to guarantee visibility across the real-time audio
-/// thread and the main thread without priority inversion (unlike `NSLock`).
-/// The flag is set on the main thread BEFORE `removeTap(onBus:)` is called,
-/// so any in-flight or subsequent tap handler invocation sees `true` and
-/// skips all heap-allocating work (Task creation, continuation yield).
-private final class TapStoppedFlag: Sendable {
-    private let _lock = OSAllocatedUnfairLock(initialState: false)
+/// Diagnostic logger for BT crash investigation — safe from any thread including RT audio.
+/// Uses os_log under the hood (lock-free, no heap allocation on the log path).
+private let btCrashLogger = Logger(subsystem: "com.enviouswispr", category: "BTCrashDiag")
 
+/// Thread-safe stop token shared between the audio tap handler and the
+/// `AVAudioEngineConfigurationChange` observer.
+///
+/// The config-change observer flips this IMMEDIATELY on CoreAudio's thread
+/// (via `setFromConfigChange`), before any MainActor dispatch. The tap handler
+/// checks `isSet()` at the top of every invocation and bails out instantly,
+/// closing the race window between the BT event and main-thread recovery.
+///
+/// Uses `os_unfair_lock` to guarantee visibility across the real-time audio
+/// thread and the main thread without priority inversion.
+private final class TapStoppedFlag: Sendable {
+    private struct State: Sendable {
+        var stopped = false
+        var configChangeTime: CFAbsoluteTime = 0
+    }
+
+    private let _lock = OSAllocatedUnfairLock(initialState: State())
+
+    /// Mark as stopped (from main thread teardown paths).
     func set() {
-        _lock.withLock { $0 = true }
+        _lock.withLock { $0.stopped = true }
+    }
+
+    /// Mark as stopped from a config-change notification — records monotonic
+    /// timestamp for race-window measurement.
+    func setFromConfigChange() {
+        _lock.withLock {
+            $0.stopped = true
+            $0.configChangeTime = CFAbsoluteTimeGetCurrent()
+        }
     }
 
     func isSet() -> Bool {
-        _lock.withLock { $0 }
+        _lock.withLock { $0.stopped }
+    }
+
+    /// Reset for reuse after codec-switch recovery rebuilds the tap.
+    func reset() {
+        _lock.withLock { $0 = State() }
+    }
+
+    /// Timestamp of the last config-change stop, or 0 if none.
+    func lastConfigChangeTime() -> CFAbsoluteTime {
+        _lock.withLock { $0.configChangeTime }
     }
 }
 
@@ -128,8 +161,9 @@ final class AudioCaptureManager {
     // MARK: - Two-Phase Recording Start
 
     /// Phase 1: Start the engine to trigger any Bluetooth codec switch.
-    /// Sets the input device, enables voice processing, registers the config-change
-    /// observer, and starts the engine. Does NOT install a tap or begin capture.
+    /// Enables voice processing (creating the correct AudioUnit type), sets the input
+    /// device, registers the config-change observer, and starts the engine.
+    /// Does NOT install a tap or begin capture.
     /// Safe to call multiple times — no-op if the engine is already running.
     func startEnginePhase() throws {
         guard !engine.isRunning else { return }
@@ -140,9 +174,58 @@ final class AudioCaptureManager {
         activeTasks.removeAll()
         audioLevel = 0.0
 
-        // Step 1: Resolve input device — smart selection when in Auto mode
+        // Step 1: Voice Processing FIRST — creates the final AudioUnit type (AUVPIO vs AUHAL).
+        // CRITICAL: Must happen before setInputDevice(). If setInputDevice() runs first, it
+        // instantiates an AUHAL. Then setVoiceProcessingEnabled(true) DESTROYS that AUHAL and
+        // creates an AUVPIO. CoreAudio's BT I/O thread still holds a reference to the destroyed
+        // AUHAL → use-after-free → heap corruption → EXC_BAD_ACCESS.
+        //
+        // Split-route check: when input != output device (e.g., built-in mic + BT headphones),
+        // CoreAudio's AEC can't sync different hardware clocks. Disable VP in this case.
+        let inputDeviceID = AudioDeviceEnumerator.defaultInputDeviceID()
+        let outputDeviceID = AudioDeviceEnumerator.defaultOutputDeviceID()
+        let isSplitRoute = inputDeviceID != nil && outputDeviceID != nil && inputDeviceID != outputDeviceID
+        let effectiveNoiseSuppression = noiseSuppressionEnabled && !isSplitRoute
+
+        if isSplitRoute && noiseSuppressionEnabled {
+            btCrashLogger.info("Split route detected (input=\(inputDeviceID ?? 0) output=\(outputDeviceID ?? 0)) — disabling VP (AEC can't sync different clocks)")
+        }
+
+        if effectiveNoiseSuppression {
+            do {
+                try engine.inputNode.setVoiceProcessingEnabled(true)
+            } catch {
+                // VP may fail with err=-10876 on some configs — continue without it
+                Task { await AppLogger.shared.log(
+                    "Voice processing unavailable: \(error.localizedDescription). Continuing without noise suppression.",
+                    level: .info, category: "Audio"
+                ) }
+            }
+        } else {
+            // Ensure VP is off if previously enabled
+            try? engine.inputNode.setVoiceProcessingEnabled(false)
+        }
+
+        // Step 2: Resolve input device — smart selection when in Auto mode.
+        // SAFETY: Skip setInputDevice() entirely when BT output is active.
+        // Calling AudioUnitSetProperty(kAudioOutputUnitProperty_CurrentDevice) while
+        // CoreAudio is negotiating a BT codec switch (A2DP→SCO) causes memory corruption
+        // on CoreAudio's internal threads, which later manifests as EXC_BAD_ACCESS in
+        // SwiftUI Canvas rendering (swift_getObjectType → near-null dereference).
+        // Let macOS use its default input device routing when BT is involved.
+        let btOutputActive: Bool
+        if let outID = AudioDeviceEnumerator.defaultOutputDeviceID() {
+            btOutputActive = AudioDeviceEnumerator.isBluetoothDevice(outID)
+        } else {
+            btOutputActive = false
+        }
+
         let resolvedDeviceID: AudioDeviceID?
-        if !preferredInputDeviceIDOverride.isEmpty {
+        if btOutputActive {
+            // BT output active — skip device switch to avoid CoreAudio memory corruption
+            resolvedDeviceID = nil
+            btCrashLogger.info("BT output active — skipping setInputDevice (CoreAudio crash prevention)")
+        } else if !preferredInputDeviceIDOverride.isEmpty {
             // User explicitly chose a device — respect it
             resolvedDeviceID = AudioDeviceEnumerator.deviceID(forUID: preferredInputDeviceIDOverride)
         } else if !selectedInputDeviceUID.isEmpty {
@@ -161,36 +244,38 @@ final class AudioCaptureManager {
         try setInputDevice(resolvedDeviceID)
         currentInputDeviceID = resolvedDeviceID ?? AudioDeviceEnumerator.defaultInputDeviceID()
 
-        // Step 2: Enable voice processing (if enabled) — must be before installTap and engine.start()
-        if noiseSuppressionEnabled {
-            do {
-                try engine.inputNode.setVoiceProcessingEnabled(true)
-            } catch {
-                // VP may fail with err=-10876 on some configs — continue without it
-                Task { await AppLogger.shared.log(
-                    "Voice processing unavailable: \(error.localizedDescription). Continuing without noise suppression.",
-                    level: .info, category: "Audio"
-                ) }
-            }
-        } else {
-            // Ensure VP is off if previously enabled
-            try? engine.inputNode.setVoiceProcessingEnabled(false)
-        }
+        // Create the capture stop token for this session — shared between
+        // the tap handler and the config-change observer for immediate signaling.
+        let stopToken = TapStoppedFlag()
+        self.tapStoppedFlag = stopToken
 
         // Register for engine configuration changes (e.g., device disconnect, BT codec switch).
-        if configChangeObserver == nil {
-            configChangeObserver = NotificationCenter.default.addObserver(
-                forName: .AVAudioEngineConfigurationChange,
-                object: engine,
-                queue: nil
-            ) { [weak self] _ in
-                Task { @MainActor in
-                    await self?.handleEngineConfigurationChange()
-                }
+        // IMPORTANT: queue: nil so the callback fires IMMEDIATELY on CoreAudio's thread.
+        // The callback does exactly one synchronous thing: flip the stop token.
+        // All engine mutations happen later on MainActor via Task dispatch.
+        if let observer = configChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        configChangeObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engine,
+            queue: nil
+        ) { [weak self] _ in
+            // IMMEDIATE: flip stop token on CoreAudio's thread — closes the race
+            // window between config change and main-thread recovery reaching the tap.
+            // TapStoppedFlag uses OSAllocatedUnfairLock, safe from any thread.
+            stopToken.setFromConfigChange()
+            btCrashLogger.info("Config change notification — stop token flipped immediately")
+
+            // DEFERRED: heavy recovery (engine stop, tap removal, rebuild) on MainActor.
+            Task { @MainActor in
+                await self?.handleEngineConfigurationChange()
             }
         }
 
+        btCrashLogger.info("Engine starting — stop token created, observer registered (queue: nil)")
         try engine.start()
+        btCrashLogger.info("Engine started successfully")
     }
 
     /// Phase 2: Install the tap and begin capture.
@@ -219,9 +304,17 @@ final class AudioCaptureManager {
             self.bufferContinuation = continuation
         }
 
-        // Create a stopped flag for this capture session.
-        let stoppedFlag = TapStoppedFlag()
-        self.tapStoppedFlag = stoppedFlag
+        // Use the stop token created in startEnginePhase() — shared with the
+        // config-change observer so it can signal the tap immediately.
+        // Reset it first: config changes during engine startup (expected BT codec
+        // switch) may have flipped it before capture began. The observer correctly
+        // flips on ANY config change, but pre-capture changes are handled by
+        // waitForFormatStabilization(), not by the tap bailing out.
+        guard let stoppedFlag = self.tapStoppedFlag else {
+            throw AudioError.formatCreationFailed
+        }
+        stoppedFlag.reset()
+        btCrashLogger.info("beginCapturePhase: stop token reset, installing tap")
 
         // Create a @Sendable callback for dispatching audio data to the main actor.
         let maxSamples = Self.maxRecordingSamples
@@ -414,6 +507,7 @@ final class AudioCaptureManager {
     /// Determine whether an engine configuration change is a Bluetooth codec switch
     /// (device still alive) or a true disconnect (device dead), and react accordingly.
     private func handleEngineConfigurationChange() async {
+        btCrashLogger.info("handleEngineConfigurationChange on MainActor — isCapturing=\(self.isCapturing), isRecovering=\(self.isRecovering)")
         guard isCapturing, !isRecovering else { return }
 
         guard let deviceID = currentInputDeviceID else {
@@ -458,18 +552,31 @@ final class AudioCaptureManager {
     /// Graceful recovery from a Bluetooth A2DP→SCO codec switch.
     /// Removes the tap, stops the engine, waits for the format to stabilize,
     /// then reinstalls the tap and restarts the engine. `capturedSamples` is preserved.
+    ///
+    /// The stop token was already flipped by the config-change observer on CoreAudio's
+    /// thread (immediate, before this MainActor Task ran). The tap handler is already
+    /// bailing out. We just need to clean up and rebuild.
     private func recoverFromCodecSwitch() async {
         isRecovering = true
         defer { isRecovering = false }
 
-        // 1. Signal the tap handler to stop before removing the tap
+        // Measure race window: how long between config-change notification and recovery start
+        let configTime = tapStoppedFlag?.lastConfigChangeTime() ?? 0
+        let recoveryStart = CFAbsoluteTimeGetCurrent()
+        let gapMs = configTime > 0 ? (recoveryStart - configTime) * 1000 : -1
+        btCrashLogger.info("Recovery started — config→recovery gap: \(gapMs, format: .fixed(precision: 1))ms")
+
+        // 1. Stop token already set by observer — tap handler is already bailing.
+        //    Set again defensively (idempotent) for paths that reach here without observer.
         tapStoppedFlag?.set()
 
         // 2. Remove the existing tap so the engine can be stopped cleanly
         engine.inputNode.removeTap(onBus: 0)
+        btCrashLogger.info("Recovery: tap removed")
 
         // 3. Stop the engine (it may already be stopped after the config change)
         engine.stop()
+        btCrashLogger.info("Recovery: engine stopped")
 
         // 4. Poll for format stabilization — the SCO format settles within 200ms–1s
         let stabilized = await waitForFormatStabilization(
@@ -478,10 +585,7 @@ final class AudioCaptureManager {
         )
         guard stabilized else {
             // Format never settled — treat as unrecoverable
-            await AppLogger.shared.log(
-                "Format stabilization timed out during codec switch recovery — performing emergency teardown",
-                level: .info, category: "Audio"
-            )
+            btCrashLogger.error("Recovery: format stabilization timed out — emergency teardown")
             emergencyTeardown()
             onEngineInterrupted?()
             return
@@ -506,9 +610,13 @@ final class AudioCaptureManager {
             }
             self.converter = audioConverter
 
-            // Create a new stopped flag for the recovery tap
-            let stoppedFlag = TapStoppedFlag()
-            self.tapStoppedFlag = stoppedFlag
+            // Reset the shared stop token — same instance the observer captured,
+            // so future config changes will flip it again immediately.
+            guard let stoppedFlag = tapStoppedFlag else {
+                throw AudioError.formatCreationFailed
+            }
+            stoppedFlag.reset()
+            btCrashLogger.info("Recovery: stop token reset for new tap")
 
             let maxSamples = Self.maxRecordingSamples
             let onSamples: @Sendable (Float, [Float]) -> Void = { [weak self] level, samples in
@@ -552,15 +660,10 @@ final class AudioCaptureManager {
                 throw error
             }
 
-            await AppLogger.shared.log(
-                "Graceful recovery from codec switch succeeded — recording continues",
-                level: .info, category: "Audio"
-            )
+            let totalMs = (CFAbsoluteTimeGetCurrent() - recoveryStart) * 1000
+            btCrashLogger.info("Recovery succeeded — total: \(totalMs, format: .fixed(precision: 1))ms, recording continues")
         } catch {
-            await AppLogger.shared.log(
-                "Codec switch recovery failed: \(error.localizedDescription) — performing emergency teardown",
-                level: .info, category: "Audio"
-            )
+            btCrashLogger.error("Recovery failed: \(error.localizedDescription) — emergency teardown")
             emergencyTeardown()
             onEngineInterrupted?()
         }
@@ -665,15 +768,27 @@ final class AudioCaptureManager {
     ) -> (AVAudioPCMBuffer, AVAudioTime) -> Void {
         return { buffer, _ in
             // Bail out immediately if stop/teardown has been initiated.
-            // This is the critical guard that prevents heap corruption:
-            // without it, the tap handler would create Task allocations
-            // and yield to the continuation while the main thread is
-            // tearing down those same structures.
-            guard !stoppedFlag.isSet() else { return }
+            // With the shared stop token, this fires as soon as the config-change
+            // observer flips the token on CoreAudio's thread — no MainActor delay.
+            guard !stoppedFlag.isSet() else {
+                btCrashLogger.debug("Tap: bailing — stop flag set")
+                return
+            }
+
+            // Defensive format guard — may be redundant (AVAudioEngine typically
+            // doesn't change tap buffer format mid-stream), but kept during crash
+            // triage as additional hardening. Low cost: two float comparisons.
+            let bufferFormat = buffer.format
+            guard bufferFormat.sampleRate == inputFormat.sampleRate,
+                  bufferFormat.channelCount == inputFormat.channelCount else {
+                btCrashLogger.info("Tap: format mismatch — \(bufferFormat.sampleRate)Hz/\(bufferFormat.channelCount)ch vs expected \(inputFormat.sampleRate)Hz/\(inputFormat.channelCount)ch")
+                return
+            }
 
             // Convert to target format (16kHz mono)
             let ratio = targetFormat.sampleRate / inputFormat.sampleRate
             let outputFrameCount = AVAudioFrameCount(Double(buffer.frameLength) * ratio)
+            guard outputFrameCount > 0, outputFrameCount <= 65536 else { return }
             guard let convertedBuffer = AVAudioPCMBuffer(
                 pcmFormat: targetFormat,
                 frameCapacity: outputFrameCount
@@ -695,7 +810,10 @@ final class AudioCaptureManager {
             guard error == nil, convertedBuffer.frameLength > 0 else { return }
 
             // Re-check after potentially long convert() call
-            guard !stoppedFlag.isSet() else { return }
+            guard !stoppedFlag.isSet() else {
+                btCrashLogger.debug("Tap: bailing post-convert — stop flag set during conversion")
+                return
+            }
 
             // Calculate audio level for UI
             let level = AudioBufferProcessor.calculateRMS(convertedBuffer)
