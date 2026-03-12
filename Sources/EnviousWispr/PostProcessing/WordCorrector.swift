@@ -16,14 +16,26 @@ struct WordCorrector: Sendable {
     private static let soundexWeight     = 0.20
 
     /// Alias-aware correction against full CustomWord entries.
+    ///
+    /// Three passes over the text:
+    /// 1. **Multi-word alias match** — scan for 2- and 3-word spans that match
+    ///    multi-word aliases (e.g. "envious whisper" → "EnviousWispr").
+    /// 2. **Single-word alias match** — exact case-insensitive lookup per token.
+    /// 3. **Fuzzy match** — composite scoring against canonicals.
     func correct(_ text: String, against words: [CustomWord]) -> (corrected: String, replacements: Int) {
         guard !words.isEmpty else { return (text, 0) }
 
-        // Build alias lookup: lowercased alias → canonical string
-        var aliasMap: [String: String] = [:]
+        // Build alias lookups, partitioned by word count
+        var singleAliasMap: [String: String] = [:]
+        var multiAliasMap: [String: String] = [:]  // lowercased multi-word alias → canonical
         for word in words {
             for alias in word.aliases {
-                aliasMap[alias.lowercased()] = word.canonical
+                let key = alias.lowercased()
+                if alias.contains(" ") {
+                    multiAliasMap[key] = word.canonical
+                } else {
+                    singleAliasMap[key] = word.canonical
+                }
             }
         }
 
@@ -32,20 +44,46 @@ struct WordCorrector: Sendable {
         let lowercasedCanonicals = canonicals.map { $0.lowercased() }
 
         var replacements = 0
-        let tokens = text.components(separatedBy: .whitespaces)
+        var tokens = text.components(separatedBy: .whitespaces)
+
+        // Pass 1: multi-word alias matching (longest match first)
+        if !multiAliasMap.isEmpty {
+            let maxSpan = multiAliasMap.keys.reduce(0) { max($0, $1.components(separatedBy: " ").count) }
+            var i = 0
+            while i < tokens.count {
+                var matched = false
+                // Try longest spans first for greedy matching
+                for span in stride(from: min(maxSpan, tokens.count - i), through: 2, by: -1) {
+                    let slice = tokens[i..<(i + span)]
+                    let phrase = slice.map { stripPunctuation($0).lowercased() }.joined(separator: " ")
+                    if let canonical = multiAliasMap[phrase], phrase != canonical.lowercased() {
+                        // Preserve leading punctuation of first token and trailing punctuation of last
+                        let (firstPrefix, _, _) = splitPunctuation(tokens[i])
+                        let (_, _, lastSuffix) = splitPunctuation(tokens[i + span - 1])
+                        tokens.replaceSubrange(i..<(i + span), with: [firstPrefix + canonical + lastSuffix])
+                        replacements += 1
+                        matched = true
+                        break
+                    }
+                }
+                if !matched { i += 1 } else { i += 1 }
+            }
+        }
+
+        // Pass 2 & 3: single-word alias + fuzzy, per token
         let corrected = tokens.map { token -> String in
             let (prefix, core, suffix) = splitPunctuation(token)
             guard !core.isEmpty, core.count >= 2 else { return token }
 
             let coreLower = core.lowercased()
 
-            // Pass 1: exact alias match
-            if let canonical = aliasMap[coreLower], coreLower != canonical.lowercased() {
+            // Pass 2: exact single-word alias match
+            if let canonical = singleAliasMap[coreLower], coreLower != canonical.lowercased() {
                 replacements += 1
                 return prefix + canonical + suffix
             }
 
-            // Pass 2: fuzzy match against canonicals (skip short tokens)
+            // Pass 3: fuzzy match against canonicals (skip short tokens)
             guard core.count >= 3 else { return token }
 
             var bestScore = 0.0
@@ -67,6 +105,11 @@ struct WordCorrector: Sendable {
             return token
         }
         return (corrected.joined(separator: " "), replacements)
+    }
+
+    /// Strip punctuation and return just the core text, lowercased.
+    private func stripPunctuation(_ token: String) -> String {
+        splitPunctuation(token).core
     }
 
     /// Legacy bridge: correct against plain string list (no alias support).
