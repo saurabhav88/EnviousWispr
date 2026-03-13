@@ -18,10 +18,16 @@ let package = Package(
             name: "EnviousWisprCore",
             path: "Sources/EnviousWisprCore"
         ),
+        .target(
+            name: "EnviousWisprStorage",
+            dependencies: ["EnviousWisprCore"],
+            path: "Sources/EnviousWisprStorage"
+        ),
         .executableTarget(
             name: "EnviousWispr",
             dependencies: [
                 "EnviousWisprCore",
+                "EnviousWisprStorage",
                 "WhisperKit",
                 "FluidAudio",
                 "Sparkle",

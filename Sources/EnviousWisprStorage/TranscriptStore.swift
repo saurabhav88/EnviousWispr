@@ -3,10 +3,10 @@ import EnviousWisprCore
 
 /// Persists transcripts as JSON files in Application Support.
 @MainActor
-final class TranscriptStore {
+public final class TranscriptStore {
     private let directory: URL
 
-    init() {
+    public init() {
         directory = AppConstants.appSupportURL
             .appendingPathComponent(AppConstants.transcriptsDir, isDirectory: true)
 
@@ -17,7 +17,7 @@ final class TranscriptStore {
     }
 
     /// Save a transcript to disk.
-    func save(_ transcript: Transcript) throws {
+    public func save(_ transcript: Transcript) throws {
         let filename = "\(transcript.id.uuidString).json"
         let url = directory.appendingPathComponent(filename)
         let data = try JSONEncoder().encode(transcript)
@@ -26,7 +26,7 @@ final class TranscriptStore {
 
     /// Load all transcripts, sorted by creation date (newest first).
     /// Heavy file IO is performed on a background thread to keep UI responsive.
-    func loadAll() async throws -> [Transcript] {
+    public func loadAll() async throws -> [Transcript] {
         let dir = directory
         guard FileManager.default.fileExists(atPath: dir.path) else { return [] }
 
@@ -60,7 +60,7 @@ final class TranscriptStore {
 
     /// Synchronous load for cases where async isn't suitable.
     /// Prefer loadAll() async when possible to keep UI responsive.
-    func loadAllSync() throws -> [Transcript] {
+    public func loadAllSync() throws -> [Transcript] {
         guard FileManager.default.fileExists(atPath: directory.path) else { return [] }
 
         let files = try FileManager.default.contentsOfDirectory(
@@ -83,7 +83,7 @@ final class TranscriptStore {
     }
 
     /// Delete a transcript by ID.
-    func delete(id: UUID) throws {
+    public func delete(id: UUID) throws {
         let url = directory.appendingPathComponent("\(id.uuidString).json")
         do {
             try FileManager.default.removeItem(at: url)
@@ -94,7 +94,7 @@ final class TranscriptStore {
 
     /// Delete all transcripts from disk atomically.
     /// Removes and recreates the directory to avoid partial-failure states.
-    func deleteAll() throws {
+    public func deleteAll() throws {
         guard FileManager.default.fileExists(atPath: directory.path) else { return }
         try FileManager.default.removeItem(at: directory)
         try FileManager.default.createDirectory(
