@@ -1,4 +1,5 @@
 import SwiftUI
+import EnviousWisprCore
 
 /// Model memory management settings.
 struct MemorySettingsView: View {

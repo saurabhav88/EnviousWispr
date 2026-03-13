@@ -1,4 +1,5 @@
 import SwiftUI
+import EnviousWisprCore
 
 /// Sidebar list of past transcripts with stats header and search.
 struct TranscriptHistoryView: View {

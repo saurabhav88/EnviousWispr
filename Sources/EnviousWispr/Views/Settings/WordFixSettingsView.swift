@@ -1,4 +1,5 @@
 import SwiftUI
+import EnviousWisprCore
 
 struct WordFixSettingsView: View {
     @Environment(AppState.self) private var appState

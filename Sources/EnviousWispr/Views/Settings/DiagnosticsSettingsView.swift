@@ -1,4 +1,5 @@
 import SwiftUI
+import EnviousWisprCore
 
 struct DiagnosticsSettingsView: View {
     @Environment(AppState.self) private var appState

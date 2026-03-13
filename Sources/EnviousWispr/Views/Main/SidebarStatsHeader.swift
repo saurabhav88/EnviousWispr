@@ -1,4 +1,5 @@
 import SwiftUI
+import EnviousWisprCore
 
 /// Stats header shown above the transcript list in the sidebar.
 struct SidebarStatsHeader: View {

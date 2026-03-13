@@ -1,4 +1,5 @@
 import SwiftUI
+import EnviousWisprCore
 
 /// Inner content for the History tab: transcript list (left) + detail/status (right).
 struct HistoryContentView: View {

@@ -1,4 +1,8 @@
 import SwiftUI
+import EnviousWisprCore
+import EnviousWisprServices
+import EnviousWisprASR
+import EnviousWisprLLM
 
 // MARK: - ViewModel
 
