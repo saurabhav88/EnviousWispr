@@ -5,34 +5,24 @@ Maps tasks to skills to prevent overlap and noisy routing.
 ## Blog Production
 | Task | Skill | When |
 |------|-------|------|
-| Plan what to write | `marketing/content-strategy` | Before any writing — topic selection, editorial calendar |
 | Write a blog post | `seo-geo-blog-writer` | Primary blog creation skill (SEO+GEO optimized) |
-| Edit/polish a draft | `marketing/copy-editing` | After draft exists — seven-sweep editing pass |
-| Improve weak copy | `marketing/copywriting` | When specific sections need stronger persuasion/CTAs |
 
 ## SEO & Technical
 | Task | Skill | When |
 |------|-------|------|
-| SEO audit | `marketing/seo-audit` | Audit existing content or site structure |
-| Schema markup | `marketing/schema-markup` | Add structured data to posts |
-| AI search optimization | `marketing/ai-seo` | Optimize for AI citations (GEO) |
-| Site architecture | `marketing/site-architecture` | Plan URL structure, topic clusters |
+| Programmatic SEO | `marketing/programmatic-seo` | Template-driven pages at scale |
 
-## Social & Distribution
+## Outreach & Sales
 | Task | Skill | When |
 |------|-------|------|
-| Social media posts | `marketing/social-content` | Create social content from blog posts |
-| Email sequences | `marketing/email-sequence` | Drip campaigns, onboarding emails |
 | Cold outreach | `marketing/cold-email` | Outbound marketing emails |
+| Sales enablement | `marketing/sales-enablement` | Decks, one-pagers, objection handling |
 
 ## Growth & Conversion
 | Task | Skill | When |
 |------|-------|------|
-| Landing pages | `marketing/copywriting` | Write landing page copy |
-| Pricing strategy | `marketing/pricing-strategy` | Plan pricing tiers |
-| Launch planning | `marketing/launch-strategy` | Product launch campaigns |
-| A/B testing | `marketing/ab-test-setup` | Test copy/design variants |
-| Competitor analysis | `marketing/competitor-alternatives` | Compare against competitors |
+| Page CRO | `marketing/page-cro` | Optimize any marketing page for conversions |
+| Signup flow CRO | `marketing/signup-flow-cro` | Optimize signup/onboarding flows |
 
 ## Meta Rule
-When in doubt: `content-strategy` decides WHAT to write, `seo-geo-blog-writer` writes blog posts, `copywriting` writes everything else, `copy-editing` improves anything that already exists.
+When in doubt: `seo-geo-blog-writer` writes blog posts, `page-cro` optimizes existing pages, `cold-email` handles outbound.
