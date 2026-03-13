@@ -1,5 +1,6 @@
 import Foundation
 import EnviousWisprCore
+import EnviousWisprLLM
 
 /// Polishes transcribed text using an LLM provider.
 @MainActor

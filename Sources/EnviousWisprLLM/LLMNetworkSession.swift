@@ -6,10 +6,10 @@ import EnviousWisprCore
 /// Pre-warms connections to reduce first-request latency.
 ///
 /// URLSession is thread-safe, so this class is safe to use from any isolation domain.
-final class LLMNetworkSession: Sendable {
-    static let shared = LLMNetworkSession()
+public final class LLMNetworkSession: Sendable {
+    public static let shared = LLMNetworkSession()
 
-    let session: URLSession
+    public let session: URLSession
 
     private init() {
         let config = URLSessionConfiguration.default
@@ -23,7 +23,7 @@ final class LLMNetworkSession: Sendable {
     /// Pre-warm the connection to the given URL by sending a lightweight HEAD request.
     /// Establishes TLS + HTTP/2 connection so subsequent requests skip the handshake.
     /// Silently ignores errors — pre-warming is best-effort.
-    func preWarm(url: URL) {
+    public func preWarm(url: URL) {
         var request = URLRequest(url: url)
         request.httpMethod = "HEAD"
         request.timeoutInterval = 5
@@ -35,7 +35,7 @@ final class LLMNetworkSession: Sendable {
 
     /// Pre-warm the Gemini API connection using the configured model.
     /// Only fires if Gemini is the configured provider and an API key exists.
-    func preWarmIfConfigured(provider: LLMProvider, keychainManager: KeychainManager) {
+    public func preWarmIfConfigured(provider: LLMProvider, keychainManager: KeychainManager) {
         guard provider == .gemini else { return }
         guard let key = try? keychainManager.retrieve(key: KeychainManager.geminiKeyID),
               !key.isEmpty else { return }
@@ -47,7 +47,7 @@ final class LLMNetworkSession: Sendable {
 
     /// Invalidate the session on app termination.
     /// Uses finishTasksAndInvalidate to allow in-flight requests to complete.
-    func invalidate() {
+    public func invalidate() {
         session.finishTasksAndInvalidate()
     }
 }

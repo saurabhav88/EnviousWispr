@@ -1,56 +1,49 @@
 import Foundation
 import EnviousWisprCore
 
-/// Ollama local LLM connector. Uses Ollama's OpenAI-compatible endpoint.
-/// Requires Ollama to be running: https://ollama.com
-struct OllamaConnector: TranscriptPolisher {
-    private let baseURL: String
+/// OpenAI Chat Completions API connector for transcript polishing.
+public struct OpenAIConnector: TranscriptPolisher {
+    private let keychainManager: KeychainManager
+    private let baseURL = "https://api.openai.com/v1/chat/completions"
 
-    /// Simplified prompt for weak/small models that struggle with complex instructions.
-    private static let weakModelSystemPrompt = "Fix grammar and punctuation. Return only the corrected text."
-
-    init(baseURL: String = "http://localhost:11434") {
-        self.baseURL = baseURL
+    public init(keychainManager: KeychainManager = KeychainManager()) {
+        self.keychainManager = keychainManager
     }
 
-    func polish(
+    public func polish(
         text: String,
         instructions: PolishInstructions,
         config: LLMProviderConfig,
         onToken: (@Sendable (String) -> Void)?
     ) async throws -> LLMResult {
-        let endpointURL = "\(baseURL)/v1/chat/completions"
-        guard let url = URL(string: endpointURL) else {
-            throw LLMError.requestFailed("Invalid Ollama URL: \(endpointURL)")
-        }
+        let apiKey = try getAPIKey(config: config)
 
-        // Use a simplified prompt for weak/small models; full prompt for capable models.
-        let systemPrompt = OllamaSetupService.isWeakModel(config.model)
-            ? Self.weakModelSystemPrompt
-            : instructions.systemPrompt
-
-        var messages: [[String: String]] = [
-            ["role": "system", "content": systemPrompt],
+        let messages: [[String: String]] = [
+            ["role": "system", "content": instructions.systemPrompt],
+            ["role": "user", "content": text],
         ]
-        if !text.isEmpty {
-            messages.append(["role": "user", "content": text])
-        }
 
-        let body: [String: Any] = [
-            "model":       config.model,
-            "messages":    messages,
-            "max_tokens":  config.maxTokens,
+        var body: [String: Any] = [
+            "model": config.model,
+            "messages": messages,
+            "max_completion_tokens": config.maxTokens,
             "temperature": config.temperature,
-            "stream":      false,
         ]
+        if let reasoningEffort = config.reasoningEffort {
+            body["reasoning_effort"] = reasoningEffort
+        }
 
+        guard let url = URL(string: baseURL) else {
+            throw LLMError.requestFailed("Invalid OpenAI URL")
+        }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         request.timeoutInterval = 60
 
-        let (data, _) = try await performWithRetry(request: request, config: config)
+        let (data, httpResponse) = try await performWithRetry(request: request, config: config)
 
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         guard let choices = json?["choices"] as? [[String: Any]],
@@ -63,7 +56,7 @@ struct OllamaConnector: TranscriptPolisher {
         if let finishReason = choices.first?["finish_reason"] as? String,
            finishReason == "length" {
             Task { await AppLogger.shared.log(
-                "WARNING: Ollama response truncated (finish_reason=length, model=\(config.model), max_tokens=\(config.maxTokens))",
+                "WARNING: OpenAI response truncated (finish_reason=length, model=\(config.model), max_tokens=\(config.maxTokens))",
                 level: .info, category: "LLM"
             ) }
         }
@@ -87,41 +80,29 @@ struct OllamaConnector: TranscriptPolisher {
             if attempt > 0 {
                 let delay = delays[min(attempt - 1, delays.count - 1)]
                 Task { await AppLogger.shared.log(
-                    "Ollama retry \(attempt)/\(maxRetries) after \(delay / 1_000_000_000)s (model=\(config.model))",
+                    "OpenAI retry \(attempt)/\(maxRetries) after \(delay / 1_000_000_000)s (model=\(config.model))",
                     level: .verbose, category: "LLM"
                 ) }
                 try await Task.sleep(nanoseconds: delay)
             }
 
             do {
-                let (data, response): (Data, URLResponse)
-                do {
-                    (data, response) = try await LLMNetworkSession.shared.session.data(for: request)
-                } catch let urlError as URLError {
-                    switch urlError.code {
-                    case .cannotConnectToHost, .cannotFindHost, .notConnectedToInternet:
-                        throw LLMError.providerUnavailable
-                    case .timedOut, .networkConnectionLost:
-                        throw urlError  // retryable — will be caught below
-                    default:
-                        throw LLMError.requestFailed("Network error: \(urlError.localizedDescription)")
-                    }
-                }
-
+                let (data, response) = try await LLMNetworkSession.shared.session.data(for: request)
                 guard let httpResponse = response as? HTTPURLResponse else {
                     throw LLMError.requestFailed("Invalid response")
                 }
-
                 switch httpResponse.statusCode {
                 case 200:
                     return (data, httpResponse)
-                case 404:
-                    throw LLMError.modelNotFound(config.model)
+                case 401:
+                    throw LLMError.invalidAPIKey
+                case 429:
+                    throw LLMError.rateLimited
                 default:
                     let body = String(data: data, encoding: .utf8) ?? ""
                     let truncated = String(body.prefix(200))
                     Task { await AppLogger.shared.log(
-                        "Ollama HTTP \(httpResponse.statusCode): \(truncated)",
+                        "OpenAI HTTP \(httpResponse.statusCode): \(truncated)",
                         level: .verbose, category: "LLM"
                     ) }
                     throw LLMError.requestFailed(Self.friendlyMessage(for: httpResponse.statusCode))
@@ -136,9 +117,22 @@ struct OllamaConnector: TranscriptPolisher {
 
     private static func friendlyMessage(for statusCode: Int) -> String {
         switch statusCode {
-        case 400: return "Ollama rejected the request. Check model name and parameters."
-        case 500...599: return "Ollama server error (HTTP \(statusCode)). Try restarting Ollama."
-        default: return "Ollama request failed (HTTP \(statusCode))."
+        case 400: return "OpenAI rejected the request. Check model name and parameters."
+        case 403: return "OpenAI access denied. Check your API key permissions."
+        case 404: return "OpenAI model not found. Verify the model name in settings."
+        case 500...599: return "OpenAI server error (HTTP \(statusCode)). Try again shortly."
+        default: return "OpenAI request failed (HTTP \(statusCode))."
+        }
+    }
+
+    private func getAPIKey(config: LLMProviderConfig) throws -> String {
+        guard let keychainId = config.apiKeyKeychainId else {
+            throw LLMError.invalidAPIKey
+        }
+        do {
+            return try keychainManager.retrieve(key: keychainId)
+        } catch {
+            throw LLMError.invalidAPIKey
         }
     }
 }

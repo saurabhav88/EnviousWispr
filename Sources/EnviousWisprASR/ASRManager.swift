@@ -15,6 +15,8 @@ public final class ASRManager {
     private var parakeetBackend = ParakeetBackend()
     private var whisperKitBackend = WhisperKitBackend()
 
+    public init() {}
+
     /// The currently active backend.
     public var activeBackend: any ASRBackend {
         switch activeBackendType {

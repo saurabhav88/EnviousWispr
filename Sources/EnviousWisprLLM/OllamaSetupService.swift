@@ -3,7 +3,7 @@ import EnviousWisprCore
 import AppKit
 
 /// States in the Ollama guided-setup flow.
-enum OllamaSetupState: Equatable {
+public enum OllamaSetupState: Equatable {
     case detecting
     case notInstalled
     case installedNotRunning
@@ -14,12 +14,12 @@ enum OllamaSetupState: Equatable {
 }
 
 /// Quality tier for Ollama catalog models.
-enum OllamaQualityTier: String {
+public enum OllamaQualityTier: String, Sendable {
     case best = "best"
     case medium = "medium"
     case worst = "worst"
 
-    var label: String {
+    public var label: String {
         switch self {
         case .best: return "Best"
         case .medium: return "Medium"
@@ -29,31 +29,31 @@ enum OllamaQualityTier: String {
 }
 
 /// A model entry in the curated Ollama catalog.
-struct OllamaModelCatalogEntry: Identifiable, Sendable {
-    let name: String
-    let displayName: String
-    let parameterCount: String
-    let qualityTier: OllamaQualityTier
-    let downloadSize: String
+public struct OllamaModelCatalogEntry: Identifiable, Sendable {
+    public let name: String
+    public let displayName: String
+    public let parameterCount: String
+    public let qualityTier: OllamaQualityTier
+    public let downloadSize: String
 
-    var id: String { name }
+    public var id: String { name }
 }
 
 /// Guides users through Ollama installation, server startup, and model pulling.
 @MainActor
 @Observable
-final class OllamaSetupService {
+public final class OllamaSetupService {
 
     // MARK: - Public State
 
-    private(set) var setupState: OllamaSetupState = .detecting
-    private(set) var pullProgress: Double = 0
-    private(set) var pullStatusText: String = ""
-    private(set) var downloadedModelNames: Set<String> = []
+    public private(set) var setupState: OllamaSetupState = .detecting
+    public private(set) var pullProgress: Double = 0
+    public private(set) var pullStatusText: String = ""
+    public private(set) var downloadedModelNames: Set<String> = []
 
     // MARK: - Model Catalog
 
-    static let modelCatalog: [OllamaModelCatalogEntry] = [
+    public static let modelCatalog: [OllamaModelCatalogEntry] = [
         OllamaModelCatalogEntry(name: "llama3.2", displayName: "Llama 3.2", parameterCount: "3B", qualityTier: .best, downloadSize: "~2 GB"),
         OllamaModelCatalogEntry(name: "llama3.2:1b", displayName: "Llama 3.2 (1B)", parameterCount: "1B", qualityTier: .medium, downloadSize: "~800 MB"),
         OllamaModelCatalogEntry(name: "mistral", displayName: "Mistral", parameterCount: "7B", qualityTier: .best, downloadSize: "~4 GB"),
@@ -68,7 +68,7 @@ final class OllamaSetupService {
 
     // MARK: - Weak Model Detection
 
-    nonisolated static func isWeakModel(_ name: String) -> Bool {
+    public nonisolated static func isWeakModel(_ name: String) -> Bool {
         let prefixes: [String] = ["tinyllama", "phi-2", "gemma2:2b"]
         let lower = name.lowercased()
         return prefixes.contains(where: { lower.hasPrefix($0) })
@@ -85,8 +85,10 @@ final class OllamaSetupService {
 
     // MARK: - Detection Pipeline
 
+    public init() {}
+
     /// Run the full detection pipeline: binary → server → models.
-    func detectState() async {
+    public func detectState() async {
         setupState = .detecting
 
         // Fast path: if the user previously reached .ready, try the server directly.
@@ -126,7 +128,7 @@ final class OllamaSetupService {
     // MARK: - Binary Discovery
 
     /// Locate the Ollama binary on disk. Returns the path or nil.
-    func findOllamaBinary() -> String? {
+    public func findOllamaBinary() -> String? {
         // Check well-known paths first
         for path in Self.binaryPaths {
             if FileManager.default.isExecutableFile(atPath: path) {
@@ -165,7 +167,7 @@ final class OllamaSetupService {
     // MARK: - Server Health
 
     /// Check whether the Ollama server is reachable. Strict 3-second timeout.
-    func isServerRunning() async -> Bool {
+    public func isServerRunning() async -> Bool {
         guard let url = URL(string: Self.baseURL) else { return false }
 
         var request = URLRequest(url: url)
@@ -191,7 +193,7 @@ final class OllamaSetupService {
     }
 
     /// Check whether Ollama has at least one pulled model.
-    func hasAnyModels() async -> Bool {
+    public func hasAnyModels() async -> Bool {
         await refreshDownloadedModels()
         return !downloadedModelNames.isEmpty
     }
@@ -199,7 +201,7 @@ final class OllamaSetupService {
     // MARK: - Model Management
 
     /// Refresh the set of downloaded model names from GET /api/tags.
-    func refreshDownloadedModels() async {
+    public func refreshDownloadedModels() async {
         guard let url = URL(string: "\(Self.baseURL)/api/tags") else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -217,7 +219,7 @@ final class OllamaSetupService {
     }
 
     /// Delete a model by name via DELETE /api/delete.
-    func deleteModel(name: String) {
+    public func deleteModel(name: String) {
         Task {
             guard let url = URL(string: "\(Self.baseURL)/api/delete") else { return }
             let body: [String: Any] = ["model": name]
@@ -246,7 +248,7 @@ final class OllamaSetupService {
     // MARK: - Server Lifecycle
 
     /// Start the Ollama server, preferring the .app bundle, falling back to the CLI binary.
-    func startServer() {
+    public func startServer() {
         let appPath = "/Applications/Ollama.app"
 
         if FileManager.default.fileExists(atPath: appPath) {
@@ -303,7 +305,7 @@ final class OllamaSetupService {
     }
 
     /// Terminate the managed Ollama server process on app quit.
-    func cleanup() {
+    public func cleanup() {
         ollamaProcess?.terminate()
         ollamaProcess = nil
     }
@@ -311,7 +313,7 @@ final class OllamaSetupService {
     // MARK: - Model Pulling
 
     /// Pull a model by name, streaming progress updates.
-    func pullModel(_ modelName: String) {
+    public func pullModel(_ modelName: String) {
         // Cancel any in-flight pull
         pullTask?.cancel()
         pullTask = nil
@@ -347,7 +349,7 @@ final class OllamaSetupService {
     }
 
     /// Cancel an in-progress model pull.
-    func cancelPull() {
+    public func cancelPull() {
         pullTask?.cancel()
         pullTask = nil
         setupState = .runningNoModels

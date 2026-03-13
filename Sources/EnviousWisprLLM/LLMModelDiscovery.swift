@@ -6,7 +6,9 @@ import FoundationModels
 #endif
 
 /// Discovers available LLM models from provider APIs and probes their availability.
-struct LLMModelDiscovery: Sendable {
+public struct LLMModelDiscovery: Sendable {
+
+    public init() {}
 
     /// Exclusion patterns for model IDs that aren't useful for transcript polishing.
     private static let excludePatterns = [
@@ -24,7 +26,7 @@ struct LLMModelDiscovery: Sendable {
 
     /// Discover and probe models for the given provider.
     /// Returns models sorted: available first, then locked, alphabetically within each group.
-    func discoverModels(provider: LLMProvider, apiKey: String) async throws -> [LLMModelInfo] {
+    public func discoverModels(provider: LLMProvider, apiKey: String) async throws -> [LLMModelInfo] {
         let modelIDs: [(id: String, displayName: String)]
 
         switch provider {

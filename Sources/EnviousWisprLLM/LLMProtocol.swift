@@ -2,7 +2,7 @@ import Foundation
 import EnviousWisprCore
 
 /// Protocol for LLM-based transcript polishing.
-protocol TranscriptPolisher: Sendable {
+public protocol TranscriptPolisher: Sendable {
     /// Polish a transcript using the configured LLM provider.
     /// - Parameters:
     ///   - onToken: Optional streaming callback invoked with each text fragment as it arrives.
@@ -15,7 +15,7 @@ protocol TranscriptPolisher: Sendable {
     ) async throws -> LLMResult
 }
 
-extension TranscriptPolisher {
+public extension TranscriptPolisher {
     /// Convenience overload without streaming callback — preserves backward compatibility.
     func polish(
         text: String,
@@ -28,7 +28,7 @@ extension TranscriptPolisher {
 
 // MARK: - Preamble Stripping
 
-extension String {
+public extension String {
     /// Strip common LLM preamble/acknowledgment patterns from polished transcript output.
     ///
     /// Strategy:
@@ -88,7 +88,7 @@ extension String {
 }
 
 /// Errors that can occur during LLM operations.
-enum LLMError: LocalizedError, Sendable, Equatable {
+public enum LLMError: LocalizedError, Sendable, Equatable {
     case invalidAPIKey
     case requestFailed(String)
     case rateLimited
@@ -97,7 +97,7 @@ enum LLMError: LocalizedError, Sendable, Equatable {
     case modelNotFound(String)
     case frameworkUnavailable(String)
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .invalidAPIKey: return "Invalid API key."
         case .requestFailed(let msg): return "LLM request failed: \(msg)"
@@ -111,7 +111,7 @@ enum LLMError: LocalizedError, Sendable, Equatable {
         }
     }
 
-    static func == (lhs: LLMError, rhs: LLMError) -> Bool {
+    public static func == (lhs: LLMError, rhs: LLMError) -> Bool {
         switch (lhs, rhs) {
         case (.invalidAPIKey, .invalidAPIKey),
              (.rateLimited, .rateLimited),

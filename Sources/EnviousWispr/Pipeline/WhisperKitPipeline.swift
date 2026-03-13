@@ -4,6 +4,7 @@ import EnviousWisprStorage
 import EnviousWisprAudio
 import EnviousWisprServices
 import EnviousWisprASR
+import EnviousWisprLLM
 import Foundation
 @preconcurrency import WhisperKit
 

@@ -42,6 +42,8 @@ public final class WhisperKitSetupService {
     // BRAIN: gotcha id=model-name-format
     public var modelVariant: String = "openai_whisper-large-v3_turbo"
 
+    public init() {}
+
     // MARK: - Private
 
     private var downloadTask: Task<Void, Never>?

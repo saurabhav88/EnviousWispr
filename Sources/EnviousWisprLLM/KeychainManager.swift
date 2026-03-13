@@ -15,9 +15,11 @@ import EnviousWisprCore
 ///   every rebuild because each build produces a new cdhash.
 /// - File-based storage with strict permissions is standard practice for non-sandboxed
 ///   macOS developer tools and provides adequate protection for API keys.
-struct KeychainManager: Sendable {
-    static let openAIKeyID = "openai-api-key"
-    static let geminiKeyID = "gemini-api-key"
+public struct KeychainManager: Sendable {
+    public static let openAIKeyID = "openai-api-key"
+    public static let geminiKeyID = "gemini-api-key"
+
+    public init() {}
 
     // MARK: - Secure File Storage
 
@@ -50,7 +52,7 @@ struct KeychainManager: Sendable {
     }
 
     /// Store a value securely to a file.
-    func store(key: String, value: String) throws {
+    public func store(key: String, value: String) throws {
         guard let data = value.data(using: .utf8) else { return }
 
         try ensureDirectoryExists()
@@ -68,7 +70,7 @@ struct KeychainManager: Sendable {
     }
 
     /// Retrieve a value from a file.
-    func retrieve(key: String) throws -> String {
+    public func retrieve(key: String) throws -> String {
         let url = fileURL(for: key)
 
         guard FileManager.default.fileExists(atPath: url.path) else {
@@ -89,7 +91,7 @@ struct KeychainManager: Sendable {
     }
 
     /// Delete a key file.
-    func delete(key: String) throws {
+    public func delete(key: String) throws {
         let url = fileURL(for: key)
         let fm = FileManager.default
 
@@ -105,12 +107,12 @@ struct KeychainManager: Sendable {
     }
 }
 
-enum KeyStoreError: LocalizedError, Sendable {
+public enum KeyStoreError: LocalizedError, Sendable {
     case storeFailed(OSStatus)
     case retrieveFailed(OSStatus)
     case deleteFailed(OSStatus)
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .storeFailed(let s): return "Key store failed: \(s)"
         case .retrieveFailed(let s): return "Key retrieve failed: \(s)"

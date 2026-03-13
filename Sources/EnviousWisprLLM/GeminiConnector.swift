@@ -3,15 +3,15 @@ import EnviousWisprCore
 
 /// Google Gemini API connector for transcript polishing.
 /// Uses Server-Sent Events (SSE) streaming for lower perceived latency.
-struct GeminiConnector: TranscriptPolisher {
+public struct GeminiConnector: TranscriptPolisher {
     private let keychainManager: KeychainManager
     private let baseURL = "https://generativelanguage.googleapis.com/v1beta/models"
 
-    init(keychainManager: KeychainManager = KeychainManager()) {
+    public init(keychainManager: KeychainManager = KeychainManager()) {
         self.keychainManager = keychainManager
     }
 
-    func polish(
+    public func polish(
         text: String,
         instructions: PolishInstructions,
         config: LLMProviderConfig,

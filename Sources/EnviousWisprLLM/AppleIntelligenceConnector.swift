@@ -7,7 +7,9 @@ import FoundationModels
 
 /// Apple Intelligence connector using the on-device FoundationModels framework.
 /// Requires macOS 26+ with Apple Intelligence support. No API key, no internet connection.
-struct AppleIntelligenceConnector: TranscriptPolisher {
+public struct AppleIntelligenceConnector: TranscriptPolisher {
+
+    public init() {}
 
     /// Simplified default instructions for the on-device model.
     /// Mirrors Handy's numbered-list format which works well with Apple's small model.
@@ -25,7 +27,7 @@ struct AppleIntelligenceConnector: TranscriptPolisher {
         Transcript:
         """
 
-    func polish(
+    public func polish(
         text: String,
         instructions: PolishInstructions,
         config: LLMProviderConfig,

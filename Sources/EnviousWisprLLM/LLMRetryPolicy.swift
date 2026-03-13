@@ -3,13 +3,13 @@ import EnviousWisprCore
 
 /// Shared retry infrastructure for LLM connectors.
 /// Centralizes retry-eligibility logic so all connectors use the same rules.
-enum LLMRetryPolicy {
+public enum LLMRetryPolicy {
     /// Default retry delays: 1s, then 3s.
-    static let defaultDelays: [UInt64] = [1_000_000_000, 3_000_000_000]
-    static let defaultMaxRetries = 2
+    public static let defaultDelays: [UInt64] = [1_000_000_000, 3_000_000_000]
+    public static let defaultMaxRetries = 2
 
     /// Determine if an error is transient and worth retrying.
-    static func isRetryable(_ error: Error) -> Bool {
+    public static func isRetryable(_ error: Error) -> Bool {
         if let llmError = error as? LLMError {
             switch llmError {
             case .rateLimited: return true
