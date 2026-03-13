@@ -1,5 +1,4 @@
 import CoreAudio
-import AudioToolbox
 import Foundation
 
 /// Represents an audio input device discovered via CoreAudio.

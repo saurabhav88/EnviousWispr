@@ -43,7 +43,7 @@ struct KeychainManager: Sendable {
                     ofItemAtPath: dir.path
                 )
             } catch {
-                throw KeychainError.storeFailed(-1)
+                throw KeyStoreError.storeFailed(-1)
             }
         }
     }
@@ -62,7 +62,7 @@ struct KeychainManager: Sendable {
                 ofItemAtPath: url.path
             )
         } catch {
-            throw KeychainError.storeFailed(-1)
+            throw KeyStoreError.storeFailed(-1)
         }
     }
 
@@ -71,19 +71,19 @@ struct KeychainManager: Sendable {
         let url = fileURL(for: key)
 
         guard FileManager.default.fileExists(atPath: url.path) else {
-            throw KeychainError.retrieveFailed(-1)
+            throw KeyStoreError.retrieveFailed(-1)
         }
 
         do {
             let data = try Data(contentsOf: url)
             guard let value = String(data: data, encoding: .utf8) else {
-                throw KeychainError.retrieveFailed(-1)
+                throw KeyStoreError.retrieveFailed(-1)
             }
             return value
-        } catch is KeychainError {
-            throw KeychainError.retrieveFailed(-1)
+        } catch is KeyStoreError {
+            throw KeyStoreError.retrieveFailed(-1)
         } catch {
-            throw KeychainError.retrieveFailed(-1)
+            throw KeyStoreError.retrieveFailed(-1)
         }
     }
 
@@ -99,21 +99,21 @@ struct KeychainManager: Sendable {
         do {
             try fm.removeItem(at: url)
         } catch {
-            throw KeychainError.deleteFailed(-1)
+            throw KeyStoreError.deleteFailed(-1)
         }
     }
 }
 
-enum KeychainError: LocalizedError, Sendable {
+enum KeyStoreError: LocalizedError, Sendable {
     case storeFailed(OSStatus)
     case retrieveFailed(OSStatus)
     case deleteFailed(OSStatus)
 
     var errorDescription: String? {
         switch self {
-        case .storeFailed(let s): return "Keychain store failed: \(s)"
-        case .retrieveFailed(let s): return "Keychain retrieve failed: \(s)"
-        case .deleteFailed(let s): return "Keychain delete failed: \(s)"
+        case .storeFailed(let s): return "Key store failed: \(s)"
+        case .retrieveFailed(let s): return "Key retrieve failed: \(s)"
+        case .deleteFailed(let s): return "Key delete failed: \(s)"
         }
     }
 }

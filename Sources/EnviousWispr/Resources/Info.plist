@@ -16,8 +16,6 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>1.2.2</string>
-	<key>CFBundleSignature</key>
-	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>1.2.2</string>
 	<key>LSArchitecturePriority</key>
@@ -38,6 +36,8 @@
 	<string>NSApplication</string>
 	<key>SUFeedURL</key>
 	<string>https://enviouswispr.com/appcast.xml</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2025–2026 EnviousWispr. All rights reserved.</string>
 	<key>SUPublicEDKey</key>
 	<string>jHq1RIQKDmtO64qtCdZ6jNdHNFrfyScE16yuu+ufvDw=</string>
 </dict>
