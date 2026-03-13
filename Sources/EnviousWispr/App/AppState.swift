@@ -4,6 +4,7 @@ import EnviousWisprStorage
 import EnviousWisprPostProcessing
 import EnviousWisprAudio
 import EnviousWisprServices
+import EnviousWisprASR
 
 /// Root observable state for the entire application.
 @MainActor

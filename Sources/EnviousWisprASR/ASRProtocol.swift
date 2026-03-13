@@ -6,7 +6,7 @@ import Foundation
 ///
 /// Both WhisperKit and Parakeet/FluidAudio conform to this protocol,
 /// enabling seamless backend switching at runtime.
-protocol ASRBackend: Actor {
+public protocol ASRBackend: Actor {
     /// Whether the backend is initialized and ready to transcribe.
     var isReady: Bool { get }
 
@@ -41,7 +41,7 @@ protocol ASRBackend: Actor {
 }
 
 /// Default implementations for optional protocol members.
-extension ASRBackend {
+public extension ASRBackend {
     var supportsStreaming: Bool { false }
 
     func startStreaming(options: TranscriptionOptions) async throws {
@@ -60,13 +60,13 @@ extension ASRBackend {
 }
 
 /// Errors that can occur during ASR operations.
-enum ASRError: LocalizedError, Sendable {
+public enum ASRError: LocalizedError, Sendable {
     case notReady
     case streamingNotSupported
     case streamingTimeout
     case transcriptionFailed(String)
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .notReady: return "ASR backend is not ready. Call prepare() first."
         case .streamingNotSupported: return "This ASR backend does not support streaming transcription."

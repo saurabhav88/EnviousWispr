@@ -20,7 +20,7 @@ private func whisperKitDownload(
 }
 
 /// States in the WhisperKit model setup flow.
-enum WhisperKitSetupState: Equatable {
+public enum WhisperKitSetupState: Equatable {
     case checking           // initial detection
     case notDownloaded      // model not on disk
     case downloading(progress: Double, status: String) // actively downloading
@@ -32,15 +32,15 @@ enum WhisperKitSetupState: Equatable {
 /// Downloads happen in Settings — NOT auto-triggered on first record.
 @MainActor
 @Observable
-final class WhisperKitSetupService {
+public final class WhisperKitSetupService {
 
     // MARK: - Public State
 
-    private(set) var setupState: WhisperKitSetupState = .checking
+    public private(set) var setupState: WhisperKitSetupState = .checking
 
     /// Model variant to download (synced from AppSettings).
     // BRAIN: gotcha id=model-name-format
-    var modelVariant: String = "openai_whisper-large-v3_turbo"
+    public var modelVariant: String = "openai_whisper-large-v3_turbo"
 
     // MARK: - Private
 
@@ -59,7 +59,7 @@ final class WhisperKitSetupService {
     /// Check whether the model is already cached locally.
     /// Sets setupState to .ready or .notDownloaded (never triggers a download).
     /// Caches result for 5 seconds to avoid redundant file I/O on tab switches.
-    func detectState() async {
+    public func detectState() async {
         if let lastTime = lastDetectTime,
            Date().timeIntervalSince(lastTime) < 5.0,
            setupState != .checking {
@@ -73,19 +73,19 @@ final class WhisperKitSetupService {
     }
 
     /// Force a fresh state check, ignoring cache.
-    func forceDetectState() async {
+    public func forceDetectState() async {
         lastDetectTime = nil
         await detectState()
     }
 
     /// Returns true if a folder matching the given model variant exists in the HF cache.
-    nonisolated static func isModelCached(variant: String) -> Bool {
+    public nonisolated static func isModelCached(variant: String) -> Bool {
         return getLocalModelPath(variant: variant) != nil
     }
 
     /// Returns the local path to a cached WhisperKit model, or nil if not downloaded.
     /// WhisperKit 0.12+ stores models as direct subdirectories like `openai_whisper-large-v3`.
-    nonisolated static func getLocalModelPath(variant: String) -> String? {
+    public nonisolated static func getLocalModelPath(variant: String) -> String? {
         guard let root = whisperKitModelRoot else { return nil }
 
         let fm = FileManager.default
@@ -114,7 +114,7 @@ final class WhisperKitSetupService {
     // MARK: - Download
 
     /// Start downloading the model with progress tracking.
-    func downloadModel() {
+    public func downloadModel() {
         downloadTask?.cancel()
         setupState = .downloading(progress: 0, status: "Starting download...")
 
@@ -166,7 +166,7 @@ final class WhisperKitSetupService {
     }
 
     /// Cancel an in-progress download.
-    func cancelDownload() {
+    public func cancelDownload() {
         downloadTask?.cancel()
         downloadTask = nil
         setupState = .notDownloaded

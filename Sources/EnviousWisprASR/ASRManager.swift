@@ -5,10 +5,10 @@ import Foundation
 /// Manages ASR backend selection and delegates transcription calls.
 @MainActor
 @Observable
-final class ASRManager {
-    private(set) var activeBackendType: ASRBackendType = .parakeet
-    private(set) var isModelLoaded = false
-    private(set) var isStreaming = false
+public final class ASRManager {
+    public private(set) var activeBackendType: ASRBackendType = .parakeet
+    public private(set) var isModelLoaded = false
+    public private(set) var isStreaming = false
     private var idleTimer: Timer?
     private var lastTranscriptionTime: Date?
 
@@ -16,7 +16,7 @@ final class ASRManager {
     private var whisperKitBackend = WhisperKitBackend()
 
     /// The currently active backend.
-    var activeBackend: any ASRBackend {
+    public var activeBackend: any ASRBackend {
         switch activeBackendType {
         case .parakeet: return parakeetBackend
         case .whisperKit: return whisperKitBackend
@@ -24,14 +24,14 @@ final class ASRManager {
     }
 
     /// Whether the active backend supports streaming ASR.
-    var activeBackendSupportsStreaming: Bool {
+    public var activeBackendSupportsStreaming: Bool {
         get async {
             await activeBackend.supportsStreaming
         }
     }
 
     /// Switch to a different backend. Unloads the previous one.
-    func switchBackend(to type: ASRBackendType) async {
+    public func switchBackend(to type: ASRBackendType) async {
         guard type != activeBackendType else { return }
         await activeBackend.unload()
         activeBackendType = type
@@ -40,7 +40,7 @@ final class ASRManager {
     }
 
     /// Update the WhisperKit model variant. Requires reloading the model.
-    func updateWhisperKitModel(_ variant: String) async {
+    public func updateWhisperKitModel(_ variant: String) async {
         await whisperKitBackend.unload()
         whisperKitBackend = WhisperKitBackend(modelVariant: variant)
         if activeBackendType == .whisperKit {
@@ -50,18 +50,18 @@ final class ASRManager {
 
 
     /// Load the active backend's model.
-    func loadModel() async throws {
+    public func loadModel() async throws {
         try await activeBackend.prepare()
         isModelLoaded = await activeBackend.isReady
     }
 
     /// Transcribe audio from a file URL.
-    func transcribe(audioURL: URL, options: TranscriptionOptions = .default) async throws -> ASRResult {
+    public func transcribe(audioURL: URL, options: TranscriptionOptions = .default) async throws -> ASRResult {
         try await activeBackend.transcribe(audioURL: audioURL, options: options)
     }
 
     /// Transcribe raw audio samples (16kHz mono Float32).
-    func transcribe(audioSamples: [Float], options: TranscriptionOptions = .default) async throws -> ASRResult {
+    public func transcribe(audioSamples: [Float], options: TranscriptionOptions = .default) async throws -> ASRResult {
         try await activeBackend.transcribe(audioSamples: audioSamples, options: options)
     }
 
@@ -69,7 +69,7 @@ final class ASRManager {
 
     /// Start streaming ASR on the active backend. Falls back silently if unsupported.
     /// If a streaming session is already active, cancels it first to prevent double-session state.
-    func startStreaming(options: TranscriptionOptions = .default) async throws {
+    public func startStreaming(options: TranscriptionOptions = .default) async throws {
         guard await activeBackend.supportsStreaming else { return }
         // Cancel any existing session before starting a new one
         if isStreaming {
@@ -81,13 +81,13 @@ final class ASRManager {
     }
 
     /// Feed an audio buffer to the streaming ASR session.
-    func feedAudio(_ buffer: AVAudioPCMBuffer) async throws {
+    public func feedAudio(_ buffer: AVAudioPCMBuffer) async throws {
         guard isStreaming else { return }
         try await activeBackend.feedAudio(buffer)
     }
 
     /// Finalize streaming and return the transcript. Falls back to batch if streaming was not active.
-    func finalizeStreaming() async throws -> ASRResult {
+    public func finalizeStreaming() async throws -> ASRResult {
         guard isStreaming else {
             throw ASRError.streamingNotSupported
         }
@@ -97,7 +97,7 @@ final class ASRManager {
     }
 
     /// Cancel an active streaming session, discarding partial results.
-    func cancelStreaming() async {
+    public func cancelStreaming() async {
         guard isStreaming else { return }
         await activeBackend.cancelStreaming()
         isStreaming = false
@@ -105,7 +105,7 @@ final class ASRManager {
 
     /// Unload the active backend, freeing model RAM.
     /// Refuses to unload if a streaming session is active — cancel streaming first.
-    func unloadModel() async {
+    public func unloadModel() async {
         guard isModelLoaded else { return }
         if isStreaming {
             Task { await AppLogger.shared.log(
@@ -120,7 +120,7 @@ final class ASRManager {
 
     /// Called by pipeline after a transcript is saved.
     /// Records the timestamp and schedules/resets the idle timer.
-    func noteTranscriptionComplete(policy: ModelUnloadPolicy) {
+    public func noteTranscriptionComplete(policy: ModelUnloadPolicy) {
         lastTranscriptionTime = Date()
         if policy == .immediately {
             Task { await unloadModel() }
@@ -130,7 +130,7 @@ final class ASRManager {
     }
 
     /// Cancel any pending idle timer (called when recording starts).
-    func cancelIdleTimer() {
+    public func cancelIdleTimer() {
         idleTimer?.invalidate()
         idleTimer = nil
     }

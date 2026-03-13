@@ -3,7 +3,7 @@ import EnviousWisprCore
 @preconcurrency import FluidAudio
 
 // Disambiguate from FluidAudio.ASRResult — we always mean our own type.
-typealias ASRResult = EnviousWisprCore.ASRResult
+public typealias ASRResult = EnviousWisprCore.ASRResult
 
 /// Parakeet v3 ASR backend using FluidAudio/CoreML.
 ///
@@ -11,8 +11,8 @@ typealias ASRResult = EnviousWisprCore.ASRResult
 /// - ~110x real-time factor on Apple Silicon
 /// - Built-in punctuation and capitalization
 /// - 25 European language support
-actor ParakeetBackend: ASRBackend {
-    private(set) var isReady = false
+public actor ParakeetBackend: ASRBackend {
+    public private(set) var isReady = false
 
     private var fluidAsrManager: AsrManager?
     private var fluidModels: AsrModels?
@@ -21,9 +21,9 @@ actor ParakeetBackend: ASRBackend {
     private var streamingManager: StreamingAsrManager?
     private var streamingStartTime: CFAbsoluteTime = 0
 
-    var supportsStreaming: Bool { true }
+    public var supportsStreaming: Bool { true }
 
-    func prepare() async throws {
+    public func prepare() async throws {
         let loadedModels = try await AsrModels.downloadAndLoad(version: .v3)
         self.fluidModels = loadedModels
 
@@ -34,7 +34,7 @@ actor ParakeetBackend: ASRBackend {
         isReady = true
     }
 
-    func transcribe(audioURL: URL, options: TranscriptionOptions) async throws -> ASRResult {
+    public func transcribe(audioURL: URL, options: TranscriptionOptions) async throws -> ASRResult {
         guard isReady, let manager = fluidAsrManager else { throw ASRError.notReady }
 
         let startTime = CFAbsoluteTimeGetCurrent()
@@ -52,7 +52,7 @@ actor ParakeetBackend: ASRBackend {
         )
     }
 
-    func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult {
+    public func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult {
         guard isReady, let manager = fluidAsrManager else { throw ASRError.notReady }
 
         let startTime = CFAbsoluteTimeGetCurrent()
@@ -70,7 +70,7 @@ actor ParakeetBackend: ASRBackend {
 
     // MARK: - Streaming ASR
 
-    func startStreaming(options: TranscriptionOptions) async throws {
+    public func startStreaming(options: TranscriptionOptions) async throws {
         guard isReady, let models = fluidModels else { throw ASRError.notReady }
 
         // Cancel any existing streaming session before starting a new one.
@@ -87,12 +87,12 @@ actor ParakeetBackend: ASRBackend {
         self.streamingStartTime = CFAbsoluteTimeGetCurrent()
     }
 
-    func feedAudio(_ buffer: AVAudioPCMBuffer) async throws {
+    public func feedAudio(_ buffer: AVAudioPCMBuffer) async throws {
         guard let manager = streamingManager else { throw ASRError.streamingNotSupported }
         await manager.streamAudio(buffer)
     }
 
-    func finalizeStreaming() async throws -> ASRResult {
+    public func finalizeStreaming() async throws -> ASRResult {
         guard let manager = streamingManager else { throw ASRError.streamingNotSupported }
 
         let finalizeStart = CFAbsoluteTimeGetCurrent()
@@ -113,14 +113,14 @@ actor ParakeetBackend: ASRBackend {
         )
     }
 
-    func cancelStreaming() async {
+    public func cancelStreaming() async {
         if let manager = streamingManager {
             await manager.cancel()
             streamingManager = nil
         }
     }
 
-    func unload() async {
+    public func unload() async {
         if let streaming = streamingManager {
             await streaming.cancel()
             streamingManager = nil

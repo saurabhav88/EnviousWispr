@@ -18,24 +18,24 @@ private let dictationComputeOptions = ModelComputeOptions(
 /// dictation accuracy on Apple Silicon (Neural Engine for encoder/decoder).
 ///
 /// The model must be downloaded via WhisperKitSetupService before calling prepare().
-actor WhisperKitBackend: ASRBackend {
-    private(set) var isReady = false
+public actor WhisperKitBackend: ASRBackend {
+    public private(set) var isReady = false
 
     private let modelVariant: String
     private var whisperKit: WhisperKit?
 
     /// Exposes the WhisperKit instance for background incremental transcription.
-    var whisperKitInstance: WhisperKit? { whisperKit }
+    public var whisperKitInstance: WhisperKit? { whisperKit }
 
     /// Exposes the tokenizer for prompt token encoding (used by incremental worker tail decode).
-    var whisperKitTokenizer: (any WhisperTokenizer)? { whisperKit?.tokenizer }
+    public var whisperKitTokenizer: (any WhisperTokenizer)? { whisperKit?.tokenizer }
 
     // BRAIN: gotcha id=default-model-turbo
-    init(modelVariant: String = "openai_whisper-large-v3_turbo") {
+    public init(modelVariant: String = "openai_whisper-large-v3_turbo") {
         self.modelVariant = modelVariant
     }
 
-    func prepare() async throws {
+    public func prepare() async throws {
         guard !isReady else { return }  // Idempotent — skip if already loaded
 
         // Use cached model path from WhisperKitSetupService (no network call).
@@ -59,7 +59,7 @@ actor WhisperKitBackend: ASRBackend {
         isReady = true
     }
 
-    func transcribe(audioURL: URL, options: TranscriptionOptions) async throws -> ASRResult {
+    public func transcribe(audioURL: URL, options: TranscriptionOptions) async throws -> ASRResult {
         guard isReady, let kit = whisperKit else { throw ASRError.notReady }
 
         let decodeOptions = makeDecodeOptions(from: options, sampleCount: 0)
@@ -75,7 +75,7 @@ actor WhisperKitBackend: ASRBackend {
         return mapResults(results, processingTime: elapsed)
     }
 
-    func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult {
+    public func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult {
         guard isReady, let kit = whisperKit else { throw ASRError.notReady }
 
         let paddedSamples = Self.padAudioWithSilence(audioSamples)
@@ -92,14 +92,14 @@ actor WhisperKitBackend: ASRBackend {
         return mapResults(results, processingTime: elapsed)
     }
 
-    func unload() async {
+    public func unload() async {
         whisperKit = nil
         isReady = false
     }
 
     // MARK: - Private
 
-    func makeDecodeOptions(from options: TranscriptionOptions, sampleCount: Int) -> DecodingOptions {
+    public func makeDecodeOptions(from options: TranscriptionOptions, sampleCount: Int) -> DecodingOptions {
         var opts = DecodingOptions()
 
         // Shared options (from TranscriptionOptions)
@@ -137,7 +137,7 @@ actor WhisperKitBackend: ASRBackend {
     // BRAIN: gotcha id=silence-padding
     private static let silencePaddingSamples = Int(0.5 * 16000)  // 500ms at 16kHz
 
-    static func padAudioWithSilence(_ samples: [Float]) -> [Float] {
+    public static func padAudioWithSilence(_ samples: [Float]) -> [Float] {
         var padded = samples
         padded.append(contentsOf: [Float](repeating: 0, count: silencePaddingSamples))
         return padded

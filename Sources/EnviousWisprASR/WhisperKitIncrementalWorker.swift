@@ -3,15 +3,15 @@ import EnviousWisprCore
 import EnviousWisprAudio
 @preconcurrency import WhisperKit
 
-struct IncrementalResult: Sendable {
-    let text: String?
-    let samplesCovered: Int
-    let decodeCount: Int
-    let totalDecodeTimeMs: Int
-    let accepted: Bool
-    let mode: String
-    let strategy: String
-    let tailDecodeMs: Int
+public struct IncrementalResult: Sendable {
+    public let text: String?
+    public let samplesCovered: Int
+    public let decodeCount: Int
+    public let totalDecodeTimeMs: Int
+    public let accepted: Bool
+    public let mode: String
+    public let strategy: String
+    public let tailDecodeMs: Int
 }
 
 /// Periodically transcribes the growing audio buffer during recording.
@@ -21,7 +21,7 @@ struct IncrementalResult: Sendable {
 /// - Short recordings (<30s): re-transcribe full buffer each cycle (highest quality)
 /// - Long recordings (>30s): use clipTimestamps to only decode new audio (efficient)
 /// - On finalize: async tail decode covers speech after the last worker result
-actor WhisperKitIncrementalWorker {
+public actor WhisperKitIncrementalWorker {
     private let whisperKit: WhisperKit
     private let baseDecodingOptions: DecodingOptions
     private let tokenizer: (any WhisperTokenizer)?
@@ -38,13 +38,13 @@ actor WhisperKitIncrementalWorker {
     private var running = false
     private var loopTask: Task<Void, Never>?
 
-    init(whisperKit: WhisperKit, decodingOptions: DecodingOptions, tokenizer: (any WhisperTokenizer)?) {
+    public init(whisperKit: WhisperKit, decodingOptions: DecodingOptions, tokenizer: (any WhisperTokenizer)?) {
         self.whisperKit = whisperKit
         self.baseDecodingOptions = decodingOptions
         self.tokenizer = tokenizer
     }
 
-    func start(audioSamplesProvider: @Sendable @escaping () async -> (samples: [Float], count: Int)) {
+    public func start(audioSamplesProvider: @Sendable @escaping () async -> (samples: [Float], count: Int)) {
         running = true
         accumulatedText = ""
         lastFullResult = nil
@@ -59,7 +59,7 @@ actor WhisperKitIncrementalWorker {
         }
     }
 
-    func finalize(
+    public func finalize(
         finalSamples: [Float],
         speechSegments: [SpeechSegment]
     ) async -> IncrementalResult {
@@ -149,7 +149,7 @@ actor WhisperKitIncrementalWorker {
         }
     }
 
-    func cancel() {
+    public func cancel() {
         running = false
         loopTask?.cancel()
         loopTask = nil
