@@ -9,8 +9,8 @@ import EnviousWisprCore
 ///    (e.g. "cloud" → "Claude").
 /// 2. **Fuzzy match** — composite score of Levenshtein, bigram Dice, and Soundex
 ///    against canonicals. Catches typos and minor ASR drift.
-struct WordCorrector: Sendable {
-    static let threshold: Double = 0.82
+public struct WordCorrector: Sendable {
+    public static let threshold: Double = 0.82
 
     private static let levenshteinWeight = 0.40
     private static let bigramWeight      = 0.40
@@ -23,7 +23,9 @@ struct WordCorrector: Sendable {
     ///    multi-word aliases (e.g. "envious whisper" → "EnviousWispr").
     /// 2. **Single-word alias match** — exact case-insensitive lookup per token.
     /// 3. **Fuzzy match** — composite scoring against canonicals.
-    func correct(_ text: String, against words: [CustomWord]) -> (corrected: String, replacements: Int) {
+    public init() {}
+
+    public func correct(_ text: String, against words: [CustomWord]) -> (corrected: String, replacements: Int) {
         guard !words.isEmpty else { return (text, 0) }
 
         // Build alias lookups, partitioned by word count
@@ -114,12 +116,12 @@ struct WordCorrector: Sendable {
     }
 
     /// Legacy bridge: correct against plain string list (no alias support).
-    func correct(_ text: String, against wordList: [String]) -> (corrected: String, replacements: Int) {
+    public func correct(_ text: String, against wordList: [String]) -> (corrected: String, replacements: Int) {
         let words = wordList.map { CustomWord(canonical: $0) }
         return correct(text, against: words)
     }
 
-    func score(_ candidate: String, against target: String) -> Double {
+    public func score(_ candidate: String, against target: String) -> Double {
         let lev    = levenshteinSimilarity(candidate, target) * Self.levenshteinWeight
         let bigram = bigramDice(candidate, target)            * Self.bigramWeight
         let sdx    = soundexScore(candidate, target)          * Self.soundexWeight

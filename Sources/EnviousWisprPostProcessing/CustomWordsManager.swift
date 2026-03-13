@@ -4,10 +4,10 @@ import EnviousWisprCore
 /// Persists the user's custom word list to disk as JSON.
 /// Replaces CustomWordStore with richer CustomWord entries and migration from the old [String] format.
 @MainActor
-final class CustomWordsManager {
+public final class CustomWordsManager {
     private let fileURL: URL
 
-    init() {
+    public init() {
         let appSupport = FileManager.default.urls(
             for: .applicationSupportDirectory, in: .userDomainMask
         ).first!.appendingPathComponent("EnviousWispr", isDirectory: true)
@@ -18,7 +18,7 @@ final class CustomWordsManager {
     /// Load custom words from disk. Returns nil on I/O failure (as opposed to
     /// empty array for a missing file) so callers can distinguish "no words yet"
     /// from "couldn't read" and avoid overwriting real data.
-    func load() -> [CustomWord]? {
+    public func load() -> [CustomWord]? {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return [] }
         guard let data = try? Data(contentsOf: fileURL) else {
             Task {
@@ -64,7 +64,7 @@ final class CustomWordsManager {
         return []
     }
 
-    func save(_ words: [CustomWord]) throws {
+    public func save(_ words: [CustomWord]) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let sorted = words.sorted {
@@ -74,7 +74,7 @@ final class CustomWordsManager {
         try data.write(to: fileURL, options: .atomic)
     }
 
-    func add(canonical: String, to words: inout [CustomWord]) throws {
+    public func add(canonical: String, to words: inout [CustomWord]) throws {
         let trimmed = canonical.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         // Case-insensitive duplicate check
@@ -87,7 +87,7 @@ final class CustomWordsManager {
         words = updated
     }
 
-    func add(word: CustomWord, to words: inout [CustomWord]) throws {
+    public func add(word: CustomWord, to words: inout [CustomWord]) throws {
         guard !words.contains(where: { $0.id == word.id }) else { return }
         var updated = words
         updated.append(word)
@@ -95,14 +95,14 @@ final class CustomWordsManager {
         words = updated
     }
 
-    func remove(id: UUID, from words: inout [CustomWord]) throws {
+    public func remove(id: UUID, from words: inout [CustomWord]) throws {
         var updated = words
         updated.removeAll { $0.id == id }
         try save(updated)
         words = updated
     }
 
-    func update(word: CustomWord, in words: inout [CustomWord]) throws {
+    public func update(word: CustomWord, in words: inout [CustomWord]) throws {
         guard let index = words.firstIndex(where: { $0.id == word.id }) else { return }
         let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
