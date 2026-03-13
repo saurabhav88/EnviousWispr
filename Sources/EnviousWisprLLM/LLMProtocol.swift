@@ -28,7 +28,7 @@ public extension TranscriptPolisher {
 
 // MARK: - Preamble Stripping
 
-public extension String {
+extension String {
     /// Strip common LLM preamble/acknowledgment patterns from polished transcript output.
     ///
     /// Strategy:

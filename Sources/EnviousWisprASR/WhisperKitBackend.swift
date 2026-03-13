@@ -99,6 +99,8 @@ public actor WhisperKitBackend: ASRBackend {
 
     // MARK: - Private
 
+    // public: called by WhisperKitPipeline in EnviousWisprPipeline (cross-module boundary).
+    // TODO: Phase 2 — narrow to package once Pipeline moves into the same SPM package.
     public func makeDecodeOptions(from options: TranscriptionOptions, sampleCount: Int) -> DecodingOptions {
         var opts = DecodingOptions()
 
@@ -137,7 +139,7 @@ public actor WhisperKitBackend: ASRBackend {
     // BRAIN: gotcha id=silence-padding
     private static let silencePaddingSamples = Int(0.5 * 16000)  // 500ms at 16kHz
 
-    public static func padAudioWithSilence(_ samples: [Float]) -> [Float] {
+    static func padAudioWithSilence(_ samples: [Float]) -> [Float] {
         var padded = samples
         padded.append(contentsOf: [Float](repeating: 0, count: silencePaddingSamples))
         return padded
