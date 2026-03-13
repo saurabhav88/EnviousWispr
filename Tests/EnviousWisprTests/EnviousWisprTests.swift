@@ -11,6 +11,7 @@
 // - testRecordingModes: pushToTalk, toggle
 
 @testable import EnviousWispr
+import EnviousWisprCore
 
 // Smoke test: just verify types resolve correctly
 func verifyTypesCompile() {
