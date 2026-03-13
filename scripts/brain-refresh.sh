@@ -8,6 +8,8 @@ set -euo pipefail
 # This is used by brain-check.sh for freshness comparison.
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/brain-lib.sh"
 OUTPUT_DIR=""
 
 while [[ $# -gt 0 ]]; do
@@ -486,6 +488,25 @@ generate_file_index() {
 echo "Generating file-index.md..."
 generate_file_index > "$FILE_INDEX"
 
+if [[ -z "$OUTPUT_DIR" ]]; then
+    _src_hash=$("$SCRIPT_DIR/brain-hash.sh" glob "Sources/EnviousWispr/**/*.swift")
+    _content_hash=$("$SCRIPT_DIR/brain-hash.sh" file "$FILE_INDEX")
+    manifest_ensure
+    manifest_upsert_artifact ".claude/knowledge/file-index.md" "{
+        \"class\": \"derived\",
+        \"trust_state\": \"trusted\",
+        \"owner\": \"brain-refresh.sh\",
+        \"regenerate_cmd\": \"scripts/brain-refresh.sh\",
+        \"source_glob\": \"Sources/EnviousWispr/**/*.swift\",
+        \"source_hash\": \"$_src_hash\",
+        \"content_hash\": \"$_content_hash\",
+        \"last_generated\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+        \"last_validated\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+        \"expiry_policy\": \"on_source_change\",
+        \"review_interval_days\": null
+    }"
+fi
+
 # --------------------------------------------------------------------------
 # 2. type-index.md
 # --------------------------------------------------------------------------
@@ -524,6 +545,25 @@ generate_type_index() {
 
 echo "Generating type-index.md..."
 generate_type_index > "$TYPE_INDEX"
+
+if [[ -z "$OUTPUT_DIR" ]]; then
+    _src_hash=$("$SCRIPT_DIR/brain-hash.sh" glob "Sources/EnviousWispr/**/*.swift")
+    _content_hash=$("$SCRIPT_DIR/brain-hash.sh" file "$TYPE_INDEX")
+    manifest_ensure
+    manifest_upsert_artifact ".claude/knowledge/type-index.md" "{
+        \"class\": \"derived\",
+        \"trust_state\": \"trusted\",
+        \"owner\": \"brain-refresh.sh\",
+        \"regenerate_cmd\": \"scripts/brain-refresh.sh\",
+        \"source_glob\": \"Sources/EnviousWispr/**/*.swift\",
+        \"source_hash\": \"$_src_hash\",
+        \"content_hash\": \"$_content_hash\",
+        \"last_generated\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+        \"last_validated\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+        \"expiry_policy\": \"on_source_change\",
+        \"review_interval_days\": null
+    }"
+fi
 
 # --------------------------------------------------------------------------
 # 3. task-router.md (generated section + manual section)
@@ -578,6 +618,25 @@ TASK_ROUTER_MANUAL=$(get_manual_section "$KNOWLEDGE_DIR/task-router.md")
         fi
     fi
 } > "$TASK_ROUTER"
+
+if [[ -z "$OUTPUT_DIR" ]]; then
+    _src_hash=$("$SCRIPT_DIR/brain-hash.sh" glob "Sources/EnviousWispr/**/*.swift")
+    _content_hash=$("$SCRIPT_DIR/brain-hash.sh" file "$TASK_ROUTER")
+    manifest_ensure
+    manifest_upsert_artifact ".claude/knowledge/task-router.md" "{
+        \"class\": \"derived\",
+        \"trust_state\": \"trusted\",
+        \"owner\": \"brain-refresh.sh\",
+        \"regenerate_cmd\": \"scripts/brain-refresh.sh\",
+        \"source_glob\": \"Sources/EnviousWispr/**/*.swift\",
+        \"source_hash\": \"$_src_hash\",
+        \"content_hash\": \"$_content_hash\",
+        \"last_generated\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+        \"last_validated\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+        \"expiry_policy\": \"on_source_change\",
+        \"review_interval_days\": null
+    }"
+fi
 
 # --------------------------------------------------------------------------
 # 4. feature-catalog.md (generated section + manual section)
@@ -652,6 +711,25 @@ FEATURE_CATALOG_MANUAL=$(get_manual_section "$KNOWLEDGE_DIR/feature-catalog.md")
         fi
     fi
 } > "$FEATURE_CATALOG"
+
+if [[ -z "$OUTPUT_DIR" ]]; then
+    _src_hash=$("$SCRIPT_DIR/brain-hash.sh" glob "Sources/EnviousWispr/**/*.swift")
+    _content_hash=$("$SCRIPT_DIR/brain-hash.sh" file "$FEATURE_CATALOG")
+    manifest_ensure
+    manifest_upsert_artifact ".claude/knowledge/feature-catalog.md" "{
+        \"class\": \"derived\",
+        \"trust_state\": \"trusted\",
+        \"owner\": \"brain-refresh.sh\",
+        \"regenerate_cmd\": \"scripts/brain-refresh.sh\",
+        \"source_glob\": \"Sources/EnviousWispr/**/*.swift\",
+        \"source_hash\": \"$_src_hash\",
+        \"content_hash\": \"$_content_hash\",
+        \"last_generated\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+        \"last_validated\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+        \"expiry_policy\": \"on_source_change\",
+        \"review_interval_days\": null
+    }"
+fi
 
 # --------------------------------------------------------------------------
 # 5. Auto-generated sections in canonical docs
@@ -740,6 +818,76 @@ else
 
     # wispr-eyes.md
     inject_auto_section "$OUTPUT_DIR/wispr-eyes.md" "settings_sections" "$SETTINGS_TABLE"
+fi
+
+# --------------------------------------------------------------------------
+# 6. Manifest: auto-section source hashes for canonical files
+# --------------------------------------------------------------------------
+if [[ -z "$OUTPUT_DIR" ]]; then
+    echo "Writing auto-section hashes to manifest..."
+
+    # Compute auto-section source hashes
+    _proto_hash=$("$SCRIPT_DIR/brain-hash.sh" glob "Sources/EnviousWispr/**/*.swift")
+    _settings_hash=$("$SCRIPT_DIR/brain-hash.sh" file "$SOURCES_DIR/EnviousWispr/Views/Settings/SettingsSection.swift")
+    _pipeline_hash=$("$SCRIPT_DIR/brain-hash.sh" files "$SOURCES_DIR/EnviousWispr/Models/AppSettings.swift" "$SOURCES_DIR/EnviousWispr/Pipeline/WhisperKitPipeline.swift")
+    _llm_hash=$("$SCRIPT_DIR/brain-hash.sh" file "$SOURCES_DIR/EnviousWispr/Models/LLMResult.swift")
+    _asr_hash=$("$SCRIPT_DIR/brain-hash.sh" file "$SOURCES_DIR/EnviousWispr/Models/ASRResult.swift")
+    _audio_hash=$("$SCRIPT_DIR/brain-hash.sh" file "$SOURCES_DIR/EnviousWispr/Utilities/Constants.swift")
+    _wk_hash=$("$SCRIPT_DIR/brain-hash.sh" file "$SOURCES_DIR/EnviousWispr/ASR/WhisperKitBackend.swift")
+    _dep_hash=$("$SCRIPT_DIR/brain-hash.sh" file "$PROJECT_ROOT/Package.swift")
+
+    # Architecture.md auto-sections
+    _arch_content_hash=$("$SCRIPT_DIR/brain-hash.sh" file "$ARCH_FILE")
+    manifest_upsert_artifact ".claude/knowledge/architecture.md" "{
+        \"class\": \"canonical\",
+        \"trust_state\": \"trusted\",
+        \"owner\": \"human\",
+        \"content_hash\": \"$_arch_content_hash\",
+        \"last_validated\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+        \"expiry_policy\": \"manual_review\",
+        \"review_interval_days\": 30,
+        \"auto_sections\": {
+            \"protocol_conformers\": {\"source_glob\": \"Sources/EnviousWispr/**/*.swift\", \"source_hash\": \"$_proto_hash\"},
+            \"settings_sections\": {\"source_file\": \"Sources/EnviousWispr/Views/Settings/SettingsSection.swift\", \"source_hash\": \"$_settings_hash\"},
+            \"pipeline_states\": {\"source_files\": [\"Sources/EnviousWispr/Models/AppSettings.swift\", \"Sources/EnviousWispr/Pipeline/WhisperKitPipeline.swift\"], \"source_hash\": \"$_pipeline_hash\"},
+            \"llm_providers\": {\"source_file\": \"Sources/EnviousWispr/Models/LLMResult.swift\", \"source_hash\": \"$_llm_hash\"},
+            \"asr_backend_types\": {\"source_file\": \"Sources/EnviousWispr/Models/ASRResult.swift\", \"source_hash\": \"$_asr_hash\"},
+            \"audio_constants\": {\"source_file\": \"Sources/EnviousWispr/Utilities/Constants.swift\", \"source_hash\": \"$_audio_hash\"}
+        }
+    }"
+
+    # whisperkit-research.md auto-sections
+    _wkr_content_hash=$("$SCRIPT_DIR/brain-hash.sh" file "$WK_FILE")
+    manifest_upsert_artifact ".claude/knowledge/whisperkit-research.md" "{
+        \"class\": \"reference\",
+        \"trust_state\": \"trusted\",
+        \"owner\": \"human\",
+        \"content_hash\": \"$_wkr_content_hash\",
+        \"last_validated\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+        \"expiry_policy\": \"manual_review\",
+        \"review_interval_days\": 60,
+        \"auto_sections\": {
+            \"whisperkit_defaults\": {\"source_file\": \"Sources/EnviousWispr/ASR/WhisperKitBackend.swift\", \"source_hash\": \"$_wk_hash\"}
+        }
+    }"
+
+    # distribution.md auto-sections
+    _dist_content_hash=$("$SCRIPT_DIR/brain-hash.sh" file "$DIST_FILE")
+    manifest_upsert_artifact ".claude/knowledge/distribution.md" "{
+        \"class\": \"canonical\",
+        \"trust_state\": \"trusted\",
+        \"owner\": \"human\",
+        \"content_hash\": \"$_dist_content_hash\",
+        \"last_validated\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+        \"expiry_policy\": \"manual_review\",
+        \"review_interval_days\": 30,
+        \"auto_sections\": {
+            \"dependency_versions\": {\"source_file\": \"Package.swift\", \"source_hash\": \"$_dep_hash\"}
+        }
+    }"
+
+    # Update last_audit
+    manifest_set_field "__root__" "last_audit" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 fi
 
 echo ""
