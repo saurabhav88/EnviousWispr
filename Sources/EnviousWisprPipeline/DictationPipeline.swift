@@ -2,7 +2,7 @@ import Foundation
 import EnviousWisprCore
 
 /// Events that any dictation pipeline must handle.
-enum PipelineEvent: Sendable {
+public enum PipelineEvent: Sendable {
     case preWarm
     case toggleRecording
     case requestStop
@@ -11,7 +11,7 @@ enum PipelineEvent: Sendable {
 }
 
 /// What the overlay should display — decoupled from internal pipeline state.
-enum OverlayIntent: Equatable, Sendable {
+public enum OverlayIntent: Equatable, Sendable {
     case hidden
     case recording(audioLevel: Float)
     case processing(label: String)
@@ -20,7 +20,7 @@ enum OverlayIntent: Equatable, Sendable {
 /// Abstraction over dictation pipelines (Parakeet streaming, WhisperKit batch, etc.).
 /// Each pipeline owns its own state machine and emits `OverlayIntent` for UI.
 @MainActor
-protocol DictationPipeline: AnyObject {
+public protocol DictationPipeline: AnyObject {
     var overlayIntent: OverlayIntent { get }
     func handle(event: PipelineEvent) async
 }

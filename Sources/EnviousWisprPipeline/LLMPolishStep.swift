@@ -4,27 +4,27 @@ import EnviousWisprLLM
 
 /// Polishes transcribed text using an LLM provider.
 @MainActor
-final class LLMPolishStep: TextProcessingStep {
-    let name = "LLM Polish"
+public final class LLMPolishStep: TextProcessingStep {
+    public let name = "LLM Polish"
 
-    var llmProvider: LLMProvider = .none
-    var llmModel: String = "gpt-4o-mini"
-    var polishInstructions: PolishInstructions = .default
-    var useExtendedThinking: Bool = false
+    public var llmProvider: LLMProvider = .none
+    public var llmModel: String = "gpt-4o-mini"
+    public var polishInstructions: PolishInstructions = .default
+    public var useExtendedThinking: Bool = false
 
     /// Called before LLM processing starts (pipeline uses this to set .polishing state).
-    var onWillProcess: (() -> Void)?
+    public var onWillProcess: (() -> Void)?
 
     /// Streaming token callback — invoked with each text fragment as it arrives from the LLM.
-    var onToken: (@Sendable (String) -> Void)?
+    public var onToken: (@Sendable (String) -> Void)?
 
     private let keychainManager: KeychainManager
 
-    var isEnabled: Bool {
+    public var isEnabled: Bool {
         llmProvider != .none
     }
 
-    init(keychainManager: KeychainManager) {
+    public init(keychainManager: KeychainManager) {
         self.keychainManager = keychainManager
     }
 
@@ -33,7 +33,7 @@ final class LLMPolishStep: TextProcessingStep {
     /// input (e.g., "Yeah" → a full essay). See ew-zr4.
     private static let minWordsForPolish = 3
 
-    func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
+    public func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
         onWillProcess?()
 
         // Short-circuit: ultra-short transcripts get passed through verbatim.

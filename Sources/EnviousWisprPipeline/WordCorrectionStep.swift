@@ -4,17 +4,19 @@ import EnviousWisprPostProcessing
 
 /// Applies custom word corrections to ASR output.
 @MainActor
-final class WordCorrectionStep: TextProcessingStep {
-    let name = "Word Correction"
+public final class WordCorrectionStep: TextProcessingStep {
+    public let name = "Word Correction"
 
-    var wordCorrectionEnabled: Bool = false
-    var customWords: [CustomWord] = []
+    public var wordCorrectionEnabled: Bool = false
+    public var customWords: [CustomWord] = []
 
-    var isEnabled: Bool {
+    public var isEnabled: Bool {
         wordCorrectionEnabled && !customWords.isEmpty
     }
 
-    func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
+    public init() {}
+
+    public func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
         let corrector = WordCorrector()
         let (fixed, count) = corrector.correct(context.text, against: customWords)
         if count > 0 {

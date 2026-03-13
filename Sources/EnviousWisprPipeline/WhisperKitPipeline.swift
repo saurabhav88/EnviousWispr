@@ -9,7 +9,7 @@ import Foundation
 @preconcurrency import WhisperKit
 
 /// Internal state machine for the WhisperKit highway — independent of PipelineState.
-enum WhisperKitPipelineState: Equatable, Sendable {
+public enum WhisperKitPipelineState: Equatable, Sendable {
     case idle
     case startingUp       // engine warm-up / pre-capture setup
     case loadingModel
@@ -20,7 +20,7 @@ enum WhisperKitPipelineState: Equatable, Sendable {
     case complete
     case error(String)
 
-    var isActive: Bool {
+    public var isActive: Bool {
         switch self {
         case .startingUp, .recording, .transcribing, .polishing, .loadingModel:
             return true
@@ -36,38 +36,38 @@ enum WhisperKitPipelineState: Equatable, Sendable {
 /// with the Parakeet highway (TranscriptionPipeline). No streaming — batch only.
 @MainActor
 @Observable
-final class WhisperKitPipeline: DictationPipeline {
+public final class WhisperKitPipeline: DictationPipeline {
     private let audioCapture: AudioCaptureManager
     private let backend: WhisperKitBackend
     private let transcriptStore: TranscriptStore
     private let keychainManager: KeychainManager
 
-    private(set) var state: WhisperKitPipelineState = .idle {
+    public private(set) var state: WhisperKitPipelineState = .idle {
         didSet {
             if state != oldValue {
                 onStateChange?(state)
             }
         }
     }
-    var onStateChange: ((WhisperKitPipelineState) -> Void)?
-    private(set) var currentTranscript: Transcript?
-    var autoCopyToClipboard: Bool = true
-    var autoPasteToActiveApp: Bool = false
-    var restoreClipboardAfterPaste: Bool = false
-    var transcriptionOptions: TranscriptionOptions = .default
-    var lastPolishError: String?
-    var modelUnloadPolicy: ModelUnloadPolicy = .never
+    public var onStateChange: ((WhisperKitPipelineState) -> Void)?
+    public private(set) var currentTranscript: Transcript?
+    public var autoCopyToClipboard: Bool = true
+    public var autoPasteToActiveApp: Bool = false
+    public var restoreClipboardAfterPaste: Bool = false
+    public var transcriptionOptions: TranscriptionOptions = .default
+    public var lastPolishError: String?
+    public var modelUnloadPolicy: ModelUnloadPolicy = .never
 
     // Text processing steps (own instances — not shared with Parakeet)
-    let wordCorrectionStep = WordCorrectionStep()
-    let fillerRemovalStep = FillerRemovalStep()
-    let llmPolishStep: LLMPolishStep
+    public let wordCorrectionStep = WordCorrectionStep()
+    public let fillerRemovalStep = FillerRemovalStep()
+    public let llmPolishStep: LLMPolishStep
     private var textProcessingSteps: [any TextProcessingStep] = []
 
     /// Access for configuration
-    var wordCorrection: WordCorrectionStep { wordCorrectionStep }
-    var fillerRemoval: FillerRemovalStep { fillerRemovalStep }
-    var llmPolish: LLMPolishStep { llmPolishStep }
+    public var wordCorrection: WordCorrectionStep { wordCorrectionStep }
+    public var fillerRemoval: FillerRemovalStep { fillerRemovalStep }
+    public var llmPolish: LLMPolishStep { llmPolishStep }
 
     /// The app that was frontmost when recording started.
     private var targetApp: NSRunningApplication?
@@ -79,17 +79,17 @@ final class WhisperKitPipeline: DictationPipeline {
     private var isPreWarmed = false
 
     // VAD properties
-    var vadAutoStop: Bool = false
-    var vadSilenceTimeout: Double = 1.5
-    var vadSensitivity: Float = 0.5
-    var vadEnergyGate: Bool = false
+    public var vadAutoStop: Bool = false
+    public var vadSilenceTimeout: Double = 1.5
+    public var vadSensitivity: Float = 0.5
+    public var vadEnergyGate: Bool = false
 
     private var silenceDetector: SilenceDetector?
     private var vadMonitorTask: Task<Void, Never>?
     private var incrementalWorker: WhisperKitIncrementalWorker?
     private var modelUnloadTask: Task<Void, Never>?
 
-    init(
+    public init(
         audioCapture: AudioCaptureManager,
         backend: WhisperKitBackend,
         transcriptStore: TranscriptStore,
@@ -127,7 +127,7 @@ final class WhisperKitPipeline: DictationPipeline {
 
     // MARK: - DictationPipeline Conformance
 
-    var overlayIntent: OverlayIntent {
+    public var overlayIntent: OverlayIntent {
         switch state {
         case .startingUp:
             return .processing(label: "Starting...")
@@ -144,7 +144,7 @@ final class WhisperKitPipeline: DictationPipeline {
         }
     }
 
-    func handle(event: PipelineEvent) async {
+    public func handle(event: PipelineEvent) async {
         switch event {
         case .preWarm:
             await preWarmAudioInput()
@@ -164,7 +164,7 @@ final class WhisperKitPipeline: DictationPipeline {
     /// Silently load the WhisperKit model into RAM without changing pipeline state.
     /// Called after model download completes or on launch if model is already cached.
     /// If user presses record before this finishes, startRecording() handles it with its own .loadingModel flow.
-    func prepareBackendSilently() async {
+    public func prepareBackendSilently() async {
         let isBackendReady = await backend.isReady
         guard !isBackendReady else { return }
         do {
@@ -183,7 +183,7 @@ final class WhisperKitPipeline: DictationPipeline {
 
     // MARK: - Recording Lifecycle
 
-    func preWarmAudioInput() async {
+    public func preWarmAudioInput() async {
         guard !state.isActive, state != .recording else { return }
         await audioCapture.preWarm()
         guard !Task.isCancelled else { return }
@@ -192,7 +192,7 @@ final class WhisperKitPipeline: DictationPipeline {
         Task { try? await backend.prepare() }
     }
 
-    func toggleRecording() async {
+    public func toggleRecording() async {
         switch state {
         case .idle, .ready, .complete, .error:
             await startRecording()
@@ -203,7 +203,7 @@ final class WhisperKitPipeline: DictationPipeline {
         }
     }
 
-    func startRecording() async {
+    public func startRecording() async {
         guard !state.isActive || state == .complete || state == .ready else { return }
 
         // Cancel any pending model unload — keep model loaded during recording.
@@ -267,7 +267,7 @@ final class WhisperKitPipeline: DictationPipeline {
         }
     }
 
-    func requestStop() async {
+    public func requestStop() async {
         switch state {
         case .recording:
             await stopAndTranscribe()
@@ -286,7 +286,7 @@ final class WhisperKitPipeline: DictationPipeline {
         }
     }
 
-    func stopAndTranscribe() async {
+    public func stopAndTranscribe() async {
         guard state == .recording, !isStopping else { return }
         isStopping = true
         defer { isStopping = false }
@@ -480,7 +480,7 @@ final class WhisperKitPipeline: DictationPipeline {
         }
     }
 
-    func cancelRecording() async {
+    public func cancelRecording() async {
         if state == .startingUp || state == .loadingModel {
             // Cancel during startup or model load — transition to idle
             state = .idle
@@ -500,7 +500,7 @@ final class WhisperKitPipeline: DictationPipeline {
         state = .idle
     }
 
-    func reset() {
+    public func reset() {
         vadMonitorTask?.cancel()
         vadMonitorTask = nil
         // Fire-and-forget cancel — reset() is synchronous, worker cancel is safe to defer

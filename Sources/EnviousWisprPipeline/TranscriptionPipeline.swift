@@ -10,31 +10,31 @@ import Foundation
 /// Orchestrates the full dictation pipeline: record → transcribe → (correct) → (polish) → store → copy/paste.
 @MainActor
 @Observable
-final class TranscriptionPipeline: DictationPipeline {
+public final class TranscriptionPipeline: DictationPipeline {
     private let audioCapture: AudioCaptureManager
     private let asrManager: ASRManager
     private let transcriptStore: TranscriptStore
     private let keychainManager: KeychainManager
 
-    private(set) var state: PipelineState = .idle {
+    public private(set) var state: PipelineState = .idle {
         didSet {
             if state != oldValue {
                 onStateChange?(state)
             }
         }
     }
-    var onStateChange: ((PipelineState) -> Void)?
-    private(set) var currentTranscript: Transcript?
-    var autoCopyToClipboard: Bool = true
-    var autoPasteToActiveApp: Bool = false
-    var vadAutoStop: Bool = false
-    var vadSilenceTimeout: Double = 1.5
-    var vadSensitivity: Float = 0.5
-    var vadEnergyGate: Bool = false
-    var modelUnloadPolicy: ModelUnloadPolicy = .never
-    var restoreClipboardAfterPaste: Bool = false
-    var transcriptionOptions: TranscriptionOptions = .default
-    var lastPolishError: String?
+    public var onStateChange: ((PipelineState) -> Void)?
+    public private(set) var currentTranscript: Transcript?
+    public var autoCopyToClipboard: Bool = true
+    public var autoPasteToActiveApp: Bool = false
+    public var vadAutoStop: Bool = false
+    public var vadSilenceTimeout: Double = 1.5
+    public var vadSensitivity: Float = 0.5
+    public var vadEnergyGate: Bool = false
+    public var modelUnloadPolicy: ModelUnloadPolicy = .never
+    public var restoreClipboardAfterPaste: Bool = false
+    public var transcriptionOptions: TranscriptionOptions = .default
+    public var lastPolishError: String?
 
     // Text processing steps
     private let wordCorrectionStep = WordCorrectionStep()
@@ -43,11 +43,11 @@ final class TranscriptionPipeline: DictationPipeline {
     private var textProcessingSteps: [any TextProcessingStep] = []
 
     /// Access word correction step for configuration.
-    var wordCorrection: WordCorrectionStep { wordCorrectionStep }
+    public var wordCorrection: WordCorrectionStep { wordCorrectionStep }
     /// Access filler removal step for configuration.
-    var fillerRemoval: FillerRemovalStep { fillerRemovalStep }
+    public var fillerRemoval: FillerRemovalStep { fillerRemovalStep }
     /// Access LLM polish step for configuration.
-    var llmPolish: LLMPolishStep { llmPolishStep }
+    public var llmPolish: LLMPolishStep { llmPolishStep }
 
     /// The app that was frontmost when recording started — re-activated before pasting.
     private var targetApp: NSRunningApplication?
@@ -70,7 +70,7 @@ final class TranscriptionPipeline: DictationPipeline {
     /// Whether audio input has been pre-warmed (engine started) by PTT key-down.
     private var isPreWarmed = false
 
-    init(
+    public init(
         audioCapture: AudioCaptureManager,
         asrManager: ASRManager,
         transcriptStore: TranscriptStore,
@@ -112,7 +112,7 @@ final class TranscriptionPipeline: DictationPipeline {
     /// Pre-warm the audio input to trigger any Bluetooth codec switch before recording.
     /// Called on PTT key-down to hide the 0.5–2s Bluetooth negotiation latency.
     /// Sets `isPreWarmed` so `startRecording()` skips engine phase 1.
-    func preWarmAudioInput() async {
+    public func preWarmAudioInput() async {
         guard !state.isActive, state != .recording else { return }
         stopRequested = false
         await audioCapture.preWarm()
@@ -121,7 +121,7 @@ final class TranscriptionPipeline: DictationPipeline {
     }
 
     /// Toggle recording: start if idle, stop if recording.
-    func toggleRecording() async {
+    public func toggleRecording() async {
         switch state {
         case .idle, .complete, .error:
             await startRecording()
@@ -133,7 +133,7 @@ final class TranscriptionPipeline: DictationPipeline {
     }
 
     /// Start recording audio from the microphone.
-    func startRecording() async {
+    public func startRecording() async {
         guard !Task.isCancelled else { return }
         guard !isStarting else { return }
         guard !state.isActive || state == .complete else { return }
@@ -265,7 +265,7 @@ final class TranscriptionPipeline: DictationPipeline {
 
     /// Stop recording, or set a flag if startRecording() is still in-flight.
     /// Handles the pre-warm phase (.idle) as well as model loading (.transcribing).
-    func requestStop() async {
+    public func requestStop() async {
         switch state {
         case .recording:
             await stopAndTranscribe()
@@ -285,7 +285,7 @@ final class TranscriptionPipeline: DictationPipeline {
     }
 
     /// Stop recording and transcribe the captured audio.
-    func stopAndTranscribe() async {
+    public func stopAndTranscribe() async {
         guard state == .recording, !isStopping else { return }
         isStopping = true
         defer { isStopping = false }
@@ -592,7 +592,7 @@ final class TranscriptionPipeline: DictationPipeline {
     }
 
     /// Polish a single transcript on demand (from detail view).
-    func polishExistingTranscript(_ transcript: Transcript) async -> Transcript? {
+    public func polishExistingTranscript(_ transcript: Transcript) async -> Transcript? {
         guard llmPolishStep.isEnabled else { return nil }
         guard !state.isActive || state == .complete else { return nil }
 
@@ -646,7 +646,7 @@ final class TranscriptionPipeline: DictationPipeline {
     }
 
     /// Reset pipeline to idle state.
-    func reset() {
+    public func reset() {
         guard !isStopping, !isStarting else { return }
         stopRequested = false
         vadMonitorTask?.cancel()
@@ -670,7 +670,7 @@ final class TranscriptionPipeline: DictationPipeline {
 
     /// Cancel an active recording immediately without transcribing.
     /// Guards on `.recording` state — safe to call from any other state.
-    func cancelRecording() async {
+    public func cancelRecording() async {
         stopRequested = false
         guard state == .recording else { return }
 
@@ -849,7 +849,7 @@ final class TranscriptionPipeline: DictationPipeline {
 
     // MARK: - DictationPipeline Conformance
 
-    var overlayIntent: OverlayIntent {
+    public var overlayIntent: OverlayIntent {
         switch state {
         case .recording:
             return .recording(audioLevel: 0) // actual level provided by AudioCaptureManager
@@ -862,7 +862,7 @@ final class TranscriptionPipeline: DictationPipeline {
         }
     }
 
-    func handle(event: PipelineEvent) async {
+    public func handle(event: PipelineEvent) async {
         switch event {
         case .preWarm:
             await preWarmAudioInput()
