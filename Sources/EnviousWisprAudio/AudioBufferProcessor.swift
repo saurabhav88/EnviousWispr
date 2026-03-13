@@ -2,9 +2,9 @@
 import EnviousWisprCore
 
 /// Handles audio format conversion and buffer processing.
-enum AudioBufferProcessor {
+public enum AudioBufferProcessor {
     /// Calculate RMS audio level from a buffer (0.0 - 1.0).
-    static func calculateRMS(_ buffer: AVAudioPCMBuffer) -> Float {
+    public static func calculateRMS(_ buffer: AVAudioPCMBuffer) -> Float {
         guard let channelData = buffer.floatChannelData,
               buffer.frameLength > 0 else { return 0 }
 
@@ -25,10 +25,10 @@ enum AudioBufferProcessor {
 }
 
 /// Errors that can occur during audio operations.
-enum AudioError: LocalizedError, Sendable {
+public enum AudioError: LocalizedError, Sendable {
     case formatCreationFailed
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .formatCreationFailed: return "Failed to create audio format."
         }

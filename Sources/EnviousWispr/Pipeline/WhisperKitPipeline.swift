@@ -1,6 +1,7 @@
 import AppKit
 import EnviousWisprCore
 import EnviousWisprStorage
+import EnviousWisprAudio
 import Foundation
 @preconcurrency import WhisperKit
 

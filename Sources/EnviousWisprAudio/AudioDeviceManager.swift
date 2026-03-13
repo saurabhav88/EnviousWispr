@@ -3,18 +3,18 @@ import EnviousWisprCore
 import Foundation
 
 /// Represents an audio input device discovered via CoreAudio.
-struct AudioInputDevice: Sendable, Identifiable, Hashable {
-    let id: AudioDeviceID
-    let name: String
-    let uid: String
-    let manufacturer: String
-    let inputChannelCount: Int
+public struct AudioInputDevice: Sendable, Identifiable, Hashable {
+    public let id: AudioDeviceID
+    public let name: String
+    public let uid: String
+    public let manufacturer: String
+    public let inputChannelCount: Int
 }
 
 /// Enumerates audio input devices using CoreAudio HAL.
-enum AudioDeviceEnumerator {
+public enum AudioDeviceEnumerator {
     /// Returns all audio input devices currently connected.
-    static func allInputDevices() -> [AudioInputDevice] {
+    public static func allInputDevices() -> [AudioInputDevice] {
         var propertyAddress = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDevices,
             mScope: kAudioObjectPropertyScopeGlobal,
@@ -63,7 +63,7 @@ enum AudioDeviceEnumerator {
     }
 
     /// Returns the default system input device ID, or nil if unavailable.
-    static func defaultInputDeviceID() -> AudioDeviceID? {
+    public static func defaultInputDeviceID() -> AudioDeviceID? {
         var propertyAddress = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDefaultInputDevice,
             mScope: kAudioObjectPropertyScopeGlobal,
@@ -87,7 +87,7 @@ enum AudioDeviceEnumerator {
     }
 
     /// Finds a device ID by its persistent UID string.
-    static func deviceID(forUID uid: String) -> AudioDeviceID? {
+    public static func deviceID(forUID uid: String) -> AudioDeviceID? {
         let devices = allInputDevices()
         return devices.first(where: { $0.uid == uid })?.id
     }
@@ -95,20 +95,20 @@ enum AudioDeviceEnumerator {
     // MARK: - Bluetooth & Smart Device Selection
 
     /// Returns true if the given device uses Bluetooth transport (Classic or LE).
-    static func isBluetoothDevice(_ deviceID: AudioDeviceID) -> Bool {
+    public static func isBluetoothDevice(_ deviceID: AudioDeviceID) -> Bool {
         let transport = transportType(for: deviceID)
         return transport == kAudioDeviceTransportTypeBluetooth
             || transport == kAudioDeviceTransportTypeBluetoothLE
     }
 
     /// Returns the AudioDeviceID of the built-in microphone, if one exists.
-    static func builtInMicrophoneDeviceID() -> AudioDeviceID? {
+    public static func builtInMicrophoneDeviceID() -> AudioDeviceID? {
         let devices = allInputDevices()
         return devices.first { transportType(for: $0.id) == kAudioDeviceTransportTypeBuiltIn }?.id
     }
 
     /// Returns the default system output device ID, or nil if unavailable.
-    static func defaultOutputDeviceID() -> AudioDeviceID? {
+    public static func defaultOutputDeviceID() -> AudioDeviceID? {
         var propertyAddress = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDefaultOutputDevice,
             mScope: kAudioObjectPropertyScopeGlobal,
@@ -132,7 +132,7 @@ enum AudioDeviceEnumerator {
     }
 
     /// Returns true if the device's I/O cycle is active (audio is flowing somewhere).
-    static func isDeviceRunningSomewhere(_ deviceID: AudioDeviceID) -> Bool {
+    public static func isDeviceRunningSomewhere(_ deviceID: AudioDeviceID) -> Bool {
         var isRunning: UInt32 = 0
         var size = UInt32(MemoryLayout<UInt32>.size)
         var addr = AudioObjectPropertyAddress(
@@ -147,7 +147,7 @@ enum AudioDeviceEnumerator {
     /// Recommended input device given current output device and media-playing state.
     /// Returns the built-in mic if Bluetooth output is active and media is playing;
     /// nil otherwise (meaning "use whatever is currently selected").
-    static func recommendedInputDevice() -> AudioDeviceID? {
+    public static func recommendedInputDevice() -> AudioDeviceID? {
         guard let outputDeviceID = defaultOutputDeviceID() else { return nil }
         guard isBluetoothDevice(outputDeviceID) else { return nil }
         guard isDeviceRunningSomewhere(outputDeviceID) else { return nil }
@@ -218,12 +218,12 @@ enum AudioDeviceEnumerator {
 }
 
 /// Monitors audio device connect/disconnect events via CoreAudio property listener.
-final class AudioDeviceMonitor: Sendable {
+public final class AudioDeviceMonitor: Sendable {
     private let onDevicesChanged: @Sendable () -> Void
     /// Stored listener block — CoreAudio requires the same reference for removal.
     nonisolated(unsafe) private var listenerBlock: AudioObjectPropertyListenerBlock?
 
-    init(onDevicesChanged: @escaping @Sendable () -> Void) {
+    public init(onDevicesChanged: @escaping @Sendable () -> Void) {
         self.onDevicesChanged = onDevicesChanged
         startListening()
     }

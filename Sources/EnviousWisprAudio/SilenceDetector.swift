@@ -2,20 +2,38 @@ import Foundation
 import EnviousWisprCore
 @preconcurrency import FluidAudio
 
-struct SmoothedVADConfig: Sendable {
-    var emaAlpha: Float = 0.3
-    var onsetThreshold: Float = 0.5
-    var offsetThreshold: Float = 0.35
-    var onsetConfirmationChunks: Int = 1
-    var hangoverChunks: Int = 3
-    var prebufferChunks: Int = 2
-    var energyGateThreshold: Float = 0.0
+public struct SmoothedVADConfig: Sendable {
+    public var emaAlpha: Float = 0.3
+    public var onsetThreshold: Float = 0.5
+    public var offsetThreshold: Float = 0.35
+    public var onsetConfirmationChunks: Int = 1
+    public var hangoverChunks: Int = 3
+    public var prebufferChunks: Int = 2
+    public var energyGateThreshold: Float = 0.0
 
-    static func fromPreset(_ preset: EnvironmentPreset) -> SmoothedVADConfig {
+    public init(
+        emaAlpha: Float = 0.3,
+        onsetThreshold: Float = 0.5,
+        offsetThreshold: Float = 0.35,
+        onsetConfirmationChunks: Int = 1,
+        hangoverChunks: Int = 3,
+        prebufferChunks: Int = 2,
+        energyGateThreshold: Float = 0.0
+    ) {
+        self.emaAlpha = emaAlpha
+        self.onsetThreshold = onsetThreshold
+        self.offsetThreshold = offsetThreshold
+        self.onsetConfirmationChunks = onsetConfirmationChunks
+        self.hangoverChunks = hangoverChunks
+        self.prebufferChunks = prebufferChunks
+        self.energyGateThreshold = energyGateThreshold
+    }
+
+    public static func fromPreset(_ preset: EnvironmentPreset) -> SmoothedVADConfig {
         return fromSensitivity(preset.vadSensitivity)
     }
 
-    static func fromSensitivity(_ sensitivity: Float) -> SmoothedVADConfig {
+    public static func fromSensitivity(_ sensitivity: Float) -> SmoothedVADConfig {
         let onset = 0.7 - (sensitivity * 0.4)       // 0.3 at sens=1.0, 0.7 at sens=0.0
         let offset = max(0.1, onset - 0.15)
         let hangover = sensitivity > 0.7 ? 4 : 3
@@ -29,15 +47,15 @@ struct SmoothedVADConfig: Sendable {
     }
 }
 
-enum SmoothedVADPhase: Sendable {
+public enum SmoothedVADPhase: Sendable {
     case idle
     case speech
     case hangover(chunksRemaining: Int)
 }
 
-struct SpeechSegment: Sendable {
-    let startSample: Int
-    let endSample: Int
+public struct SpeechSegment: Sendable {
+    public let startSample: Int
+    public let endSample: Int
 }
 
 /// Monitors audio for speech activity and detects silence after speech for auto-stop.
@@ -45,12 +63,12 @@ struct SpeechSegment: Sendable {
 /// Uses FluidAudio's Silero VAD model for raw probability, then applies EMA smoothing
 /// and a three-phase state machine (idle/speech/hangover) for robust onset/offset detection.
 /// Processes 4096-sample chunks (256ms at 16kHz).
-actor SilenceDetector {
+public actor SilenceDetector {
     private var vadManager: VadManager?
     private var streamState: VadStreamState = .initial()
-    private(set) var speechDetected = false
-    private(set) var isReady = false
-    private(set) var speechSegments: [SpeechSegment] = []
+    public private(set) var speechDetected = false
+    public private(set) var isReady = false
+    public private(set) var speechSegments: [SpeechSegment] = []
     private var currentSpeechStart: Int? = nil
     private var processedSampleCount: Int = 0
 
@@ -58,17 +76,17 @@ actor SilenceDetector {
     private var phase: SmoothedVADPhase = .idle
     private var emaSmoothedProbability: Float = 0.0
     private var consecutiveAboveOnset: Int = 0
-    private(set) var vadConfig: SmoothedVADConfig
+    public private(set) var vadConfig: SmoothedVADConfig
 
     // Prebuffer ring buffer
     private var prebuffer: [[Float]] = []
     private var prebufferWriteIndex: Int = 0
     private var prebufferFilled: Bool = false
 
-    let silenceTimeout: TimeInterval
+    public let silenceTimeout: TimeInterval
 
     /// Chunk size expected by the Silero VAD model (256ms at 16kHz).
-    nonisolated static let chunkSize = 4096
+    public nonisolated static let chunkSize = 4096
 
     /// Hangover chunks derived from silenceTimeout so the detector waits
     /// the full user-configured duration before auto-stopping.
@@ -77,13 +95,13 @@ actor SilenceDetector {
         return max(3, Int(ceil(silenceTimeout / chunkDurationSeconds)))
     }
 
-    init(silenceTimeout: TimeInterval = 1.5, vadConfig: SmoothedVADConfig = SmoothedVADConfig()) {
+    public init(silenceTimeout: TimeInterval = 1.5, vadConfig: SmoothedVADConfig = SmoothedVADConfig()) {
         self.silenceTimeout = silenceTimeout
         self.vadConfig = vadConfig
     }
 
     /// Load the Silero VAD model. Call once before processing.
-    func prepare() async throws {
+    public func prepare() async throws {
         guard !isReady else { return }
         let config = VadConfig(defaultThreshold: 0.5)
         vadManager = try await VadManager(config: config)
@@ -91,7 +109,7 @@ actor SilenceDetector {
     }
 
     /// Reset streaming state for a new recording session.
-    func reset() {
+    public func reset() {
         streamState = .initial()
         speechDetected = false
         speechSegments = []
@@ -106,13 +124,13 @@ actor SilenceDetector {
     }
 
     /// Update the SmoothedVAD configuration.
-    func updateConfig(_ config: SmoothedVADConfig) {
+    public func updateConfig(_ config: SmoothedVADConfig) {
         vadConfig = config
     }
 
     /// Process a chunk of 4096 audio samples (16kHz mono).
     /// Returns `true` if silence after speech is detected (auto-stop should trigger).
-    func processChunk(_ samples: [Float]) async -> Bool {
+    public func processChunk(_ samples: [Float]) async -> Bool {
         guard let vad = vadManager else { return false }
 
         // 1. Write chunk to prebuffer (always)
@@ -209,7 +227,7 @@ actor SilenceDetector {
         return shouldAutoStop
     }
 
-    func finalizeSegments(totalSampleCount: Int) {
+    public func finalizeSegments(totalSampleCount: Int) {
         if let start = currentSpeechStart {
             speechSegments.append(SpeechSegment(
                 startSample: start,
@@ -219,7 +237,7 @@ actor SilenceDetector {
         }
     }
 
-    func filterSamples(from allSamples: [Float], padding: Int = 1600) -> [Float] {
+    public func filterSamples(from allSamples: [Float], padding: Int = 1600) -> [Float] {
         guard !speechSegments.isEmpty else { return allSamples }
 
         let totalVoiced = speechSegments.reduce(0) { $0 + ($1.endSample - $1.startSample) }
@@ -246,7 +264,7 @@ actor SilenceDetector {
     }
 
     /// Release the VAD model from memory.
-    func unload() {
+    public func unload() {
         vadManager = nil
         isReady = false
         reset()

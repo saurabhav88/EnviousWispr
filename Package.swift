@@ -28,12 +28,21 @@ let package = Package(
             dependencies: ["EnviousWisprCore"],
             path: "Sources/EnviousWisprPostProcessing"
         ),
+        .target(
+            name: "EnviousWisprAudio",
+            dependencies: [
+                "EnviousWisprCore",
+                "FluidAudio",
+            ],
+            path: "Sources/EnviousWisprAudio"
+        ),
         .executableTarget(
             name: "EnviousWispr",
             dependencies: [
                 "EnviousWisprCore",
                 "EnviousWisprStorage",
                 "EnviousWisprPostProcessing",
+                "EnviousWisprAudio",
                 "WhisperKit",
                 "FluidAudio",
                 "Sparkle",

@@ -64,44 +64,44 @@ private final class TapStoppedFlag: Sendable {
 /// full cleanup (tap removal, engine stop, continuation finish, state reset).
 @MainActor
 @Observable
-final class AudioCaptureManager {
+public final class AudioCaptureManager {
     /// Current recording state.
-    private(set) var isCapturing = false
+    public private(set) var isCapturing = false
 
     /// Current audio level (0.0 - 1.0) for waveform visualization.
-    private(set) var audioLevel: Float = 0.0
+    public private(set) var audioLevel: Float = 0.0
 
     /// Accumulated audio samples from the current recording.
-    private(set) var capturedSamples: [Float] = []
+    public private(set) var capturedSamples: [Float] = []
 
     /// Optional callback to forward converted audio buffers (e.g., to streaming ASR).
     /// Called on the audio thread — must be @Sendable.
-    var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?
+    public var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?
 
     /// Called on the main actor when the audio engine is interrupted (e.g., device disconnect).
     /// The pipeline should transition to an error state when this fires.
-    var onEngineInterrupted: (() -> Void)?
+    public var onEngineInterrupted: (() -> Void)?
 
     /// Called before emergency teardown discards captured samples.
     /// Allows the pipeline to salvage a partial transcript from an interrupted recording.
-    var onPartialSamples: (([Float]) -> Void)?
+    public var onPartialSamples: (([Float]) -> Void)?
 
     /// Called when an audio device operation fails (e.g., input device switch).
     /// The pipeline should surface this to the user as a visible error banner.
-    var onDeviceError: ((String) -> Void)?
+    public var onDeviceError: ((String) -> Void)?
 
     /// Whether noise suppression via Apple Voice Processing is enabled.
-    var noiseSuppressionEnabled = false
+    public var noiseSuppressionEnabled = false
 
     /// Persistent UID of the selected input device. Empty string means system default.
-    var selectedInputDeviceUID: String = ""
+    public var selectedInputDeviceUID: String = ""
 
     /// User override for input device. Empty string means "Auto" (smart selection enabled).
-    var preferredInputDeviceIDOverride: String = ""
+    public var preferredInputDeviceIDOverride: String = ""
 
     /// The CoreAudio device ID currently in use. Set at recording start, used by
     /// the config-change handler to check `kAudioDevicePropertyDeviceIsAlive`.
-    private(set) var currentInputDeviceID: AudioDeviceID?
+    public private(set) var currentInputDeviceID: AudioDeviceID?
 
     /// Guard against re-entrant codec switch recovery. Multiple
     /// `AVAudioEngineConfigurationChange` notifications can fire during a single
@@ -109,9 +109,9 @@ final class AudioCaptureManager {
     private var isRecovering = false
 
     /// Maximum recording duration in seconds. Prevents unbounded memory growth.
-    nonisolated static let maxRecordingDurationSeconds: Double = 600 // 10 minutes
+    public nonisolated static let maxRecordingDurationSeconds: Double = 600 // 10 minutes
     /// Maximum sample count derived from maxRecordingDurationSeconds at 16kHz.
-    nonisolated static let maxRecordingSamples: Int = Int(maxRecordingDurationSeconds * targetSampleRate)
+    public nonisolated static let maxRecordingSamples: Int = Int(maxRecordingDurationSeconds * targetSampleRate)
 
     private var engine = AVAudioEngine()
     private var converter: AVAudioConverter?
@@ -129,13 +129,15 @@ final class AudioCaptureManager {
     private var tapStoppedFlag: TapStoppedFlag?
 
     /// Target format: 16kHz, mono, Float32 — required by both Parakeet and WhisperKit.
-    nonisolated static let targetSampleRate: Double = 16000
-    nonisolated static let targetChannels: AVAudioChannelCount = 1
+    public nonisolated static let targetSampleRate: Double = 16000
+    public nonisolated static let targetChannels: AVAudioChannelCount = 1
+
+    public init() {}
 
     /// Set the input device for the audio engine.
     /// Must be called BEFORE startCapture().
     /// Pass nil or 0 to use the system default device.
-    func setInputDevice(_ deviceID: AudioDeviceID?) throws {
+    public func setInputDevice(_ deviceID: AudioDeviceID?) throws {
         guard let deviceID, deviceID != 0 else { return }
 
         let audioUnit = engine.inputNode.audioUnit
@@ -166,7 +168,7 @@ final class AudioCaptureManager {
     /// device, registers the config-change observer, and starts the engine.
     /// Does NOT install a tap or begin capture.
     /// Safe to call multiple times — no-op if the engine is already running.
-    func startEnginePhase() throws {
+    public func startEnginePhase() throws {
         guard !engine.isRunning else { return }
 
         // Pre-allocate for ~30 seconds of audio at 16kHz to reduce reallocations
@@ -282,7 +284,7 @@ final class AudioCaptureManager {
     /// Phase 2: Install the tap and begin capture.
     /// Call only after `startEnginePhase()` and `waitForFormatStabilization()`.
     /// Returns an `AsyncStream` of converted audio buffers.
-    func beginCapturePhase() throws -> AsyncStream<AVAudioPCMBuffer> {
+    public func beginCapturePhase() throws -> AsyncStream<AVAudioPCMBuffer> {
         let inputNode = engine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
@@ -376,7 +378,7 @@ final class AudioCaptureManager {
 
     /// Backward-compatible wrapper: runs both phases sequentially.
     /// Resolves `selectedInputDeviceUID` to a device ID if set.
-    func startCapture() throws -> AsyncStream<AVAudioPCMBuffer> {
+    public func startCapture() throws -> AsyncStream<AVAudioPCMBuffer> {
         guard !isCapturing else {
             return AsyncStream { $0.finish() }
         }
@@ -386,7 +388,7 @@ final class AudioCaptureManager {
 
     /// Replace the AVAudioEngine with a fresh instance.
     /// Call when format stabilization fails and a full rebuild is needed.
-    func rebuildEngine() {
+    public func rebuildEngine() {
         if engine.isRunning { engine.stop() }
         engine.inputNode.removeTap(onBus: 0)
         engine.reset()
@@ -402,7 +404,7 @@ final class AudioCaptureManager {
     /// Must be called before `startEnginePhase()`. Any existing engine is torn down first.
     /// Configures anti-ducking when voice processing is enabled to prevent the engine
     /// from lowering other apps' audio volume during recording.
-    func buildEngine(noiseSuppression: Bool) {
+    public func buildEngine(noiseSuppression: Bool) {
         if engine.isRunning { engine.stop() }
         engine.inputNode.removeTap(onBus: 0)
         engine = AVAudioEngine()
@@ -435,7 +437,7 @@ final class AudioCaptureManager {
     /// Open the audio input to trigger any Bluetooth codec switch, then wait for
     /// format stabilization. Safe to call multiple times — no-op if engine is already running.
     /// Does NOT install a tap or begin capture.
-    func preWarm() async {
+    public func preWarm() async {
         guard !engine.isRunning else { return }
         do {
             try startEnginePhase()
@@ -453,7 +455,7 @@ final class AudioCaptureManager {
     /// Stop a pre-warmed engine that never started capturing.
     /// Called when PTT is released before recording began — cleans up the engine
     /// without the full capture teardown (no tap was installed).
-    func abortPreWarm() {
+    public func abortPreWarm() {
         guard engine.isRunning, !isCapturing else { return }
         engine.stop()
         try? engine.inputNode.setVoiceProcessingEnabled(false)
@@ -465,12 +467,12 @@ final class AudioCaptureManager {
 
     /// Inject pre-recorded samples directly into the capture buffer for benchmark/testing.
     /// Sets `capturedSamples` without starting the audio engine.
-    func injectSamples(_ samples: [Float]) {
+    public func injectSamples(_ samples: [Float]) {
         capturedSamples = samples
     }
 
     /// Stop capturing and return the accumulated samples.
-    func stopCapture() -> [Float] {
+    public func stopCapture() -> [Float] {
         // Cancel all tracked tasks (buffer forwarding, etc.)
         for task in activeTasks { task.cancel() }
         activeTasks.removeAll()
@@ -673,7 +675,7 @@ final class AudioCaptureManager {
     /// Poll the input node's output format until it stabilizes (two consecutive equal formats).
     /// Uses a fast initial check (10ms) for built-in mic where format is already stable,
     /// then falls back to slower polling (200ms) for Bluetooth codec switch scenarios.
-    func waitForFormatStabilization(
+    public func waitForFormatStabilization(
         maxWait: TimeInterval = 1.5,
         pollInterval: TimeInterval = 0.2
     ) async -> Bool {
@@ -742,7 +744,7 @@ final class AudioCaptureManager {
 
     /// Track a spawned Task so it can be cancelled during teardown.
     /// Tracked tasks are cancelled and cleared during teardown.
-    func trackTask(_ task: Task<Void, Never>) {
+    public func trackTask(_ task: Task<Void, Never>) {
         activeTasks.append(task)
     }
 

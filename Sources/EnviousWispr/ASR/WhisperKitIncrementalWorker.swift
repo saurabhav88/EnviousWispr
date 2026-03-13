@@ -1,5 +1,6 @@
 import Foundation
 import EnviousWisprCore
+import EnviousWisprAudio
 @preconcurrency import WhisperKit
 
 struct IncrementalResult: Sendable {
