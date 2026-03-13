@@ -1,4 +1,5 @@
 import AppKit
+import EnviousWisprCore
 
 @MainActor
 @Observable

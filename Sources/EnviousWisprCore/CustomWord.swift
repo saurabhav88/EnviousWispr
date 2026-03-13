@@ -1,19 +1,19 @@
 import Foundation
 
-enum WordCategory: String, Codable, CaseIterable, Sendable {
+public enum WordCategory: String, Codable, CaseIterable, Sendable {
     case general, person, brand, acronym, domain
 }
 
-struct CustomWord: Codable, Identifiable, Sendable, Hashable {
-    let id: UUID
-    var canonical: String
-    var aliases: [String]
-    var category: WordCategory
-    var priority: Int
-    var forceReplace: Bool
-    var caseSensitive: Bool
+public struct CustomWord: Codable, Identifiable, Sendable, Hashable {
+    public let id: UUID
+    public var canonical: String
+    public var aliases: [String]
+    public var category: WordCategory
+    public var priority: Int
+    public var forceReplace: Bool
+    public var caseSensitive: Bool
 
-    init(
+    public init(
         id: UUID = UUID(),
         canonical: String,
         aliases: [String] = [],
@@ -33,5 +33,5 @@ struct CustomWord: Codable, Identifiable, Sendable, Hashable {
 }
 
 extension Array where Element == CustomWord {
-    var canonicals: [String] { map(\.canonical) }
+    public var canonicals: [String] { map(\.canonical) }
 }

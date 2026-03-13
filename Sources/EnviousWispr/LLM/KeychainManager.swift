@@ -1,4 +1,5 @@
 import Foundation
+import EnviousWisprCore
 
 /// Manages API key storage and retrieval using secure file-based storage.
 ///

@@ -1,4 +1,5 @@
 import SwiftUI
+import EnviousWisprCore
 import AppKit
 
 /// LLM provider configuration, API keys, Ollama wizard, and prompt editing.

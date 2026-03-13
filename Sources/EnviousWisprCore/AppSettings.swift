@@ -1,11 +1,11 @@
 import Foundation
 
 /// Recording mode for dictation.
-enum RecordingMode: String, Codable, CaseIterable, Sendable {
+public enum RecordingMode: String, Codable, CaseIterable, Sendable {
     case pushToTalk
     case toggle
 
-    var shortLabel: String {
+    public var shortLabel: String {
         switch self {
         case .pushToTalk: return "PTT"
         case .toggle: return "Toggle"
@@ -14,7 +14,7 @@ enum RecordingMode: String, Codable, CaseIterable, Sendable {
 }
 
 /// Pipeline processing state.
-enum PipelineState: Equatable, Sendable {
+public enum PipelineState: Equatable, Sendable {
     case idle
     case recording
     case transcribing
@@ -22,7 +22,7 @@ enum PipelineState: Equatable, Sendable {
     case complete
     case error(String)
 
-    var isActive: Bool {
+    public var isActive: Bool {
         switch self {
         case .recording, .transcribing, .polishing:
             return true
@@ -31,7 +31,7 @@ enum PipelineState: Equatable, Sendable {
         }
     }
 
-    var statusText: String {
+    public var statusText: String {
         switch self {
         case .idle: return "Ready"
         case .recording: return "Recording..."
@@ -45,7 +45,7 @@ enum PipelineState: Equatable, Sendable {
 }
 
 /// Policy controlling when idle ASR models are unloaded from memory.
-enum ModelUnloadPolicy: String, Codable, CaseIterable, Sendable {
+public enum ModelUnloadPolicy: String, Codable, CaseIterable, Sendable {
     case never
     case immediately
     case twoMinutes
@@ -54,7 +54,7 @@ enum ModelUnloadPolicy: String, Codable, CaseIterable, Sendable {
     case fifteenMinutes
     case sixtyMinutes
 
-    var displayName: String {
+    public var displayName: String {
         switch self {
         case .never:          return "Never"
         case .immediately:    return "Immediately"
@@ -67,7 +67,7 @@ enum ModelUnloadPolicy: String, Codable, CaseIterable, Sendable {
     }
 
     /// Returns nil for .never and .immediately (timer-less policies).
-    var interval: TimeInterval? {
+    public var interval: TimeInterval? {
         switch self {
         case .never, .immediately: return nil
         case .twoMinutes:          return 120

@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import EnviousWisprCore
 import Foundation
 
 /// Measures ASR transcription performance across different audio durations.

@@ -1,4 +1,5 @@
 import SwiftUI
+import EnviousWisprCore
 
 /// Sidebar navigation sections for the unified window.
 enum SettingsSection: String, CaseIterable, Identifiable {

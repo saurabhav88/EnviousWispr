@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import EnviousWisprCore
 import CoreAudio
 import os
 

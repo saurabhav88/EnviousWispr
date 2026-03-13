@@ -1,4 +1,5 @@
 import SwiftUI
+import EnviousWisprCore
 
 // MARK: - Settings Color Palette
 

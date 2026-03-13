@@ -1,4 +1,5 @@
 import SwiftUI
+import EnviousWisprCore
 
 /// Status view when no transcript is active — handles all pipeline states.
 struct StatusView: View {

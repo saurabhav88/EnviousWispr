@@ -2,17 +2,17 @@ import AppKit
 
 /// Modifier key codes that can act as standalone hotkeys.
 /// These are the physical key codes reported by NSEvent / Carbon for each modifier key.
-enum ModifierKeyCodes {
-    static let leftCommand: UInt16  = 55
-    static let rightCommand: UInt16 = 54
-    static let leftOption: UInt16   = 58
-    static let rightOption: UInt16  = 61
-    static let leftShift: UInt16    = 56
-    static let rightShift: UInt16   = 60
-    static let leftControl: UInt16  = 59
-    static let rightControl: UInt16 = 62
+public enum ModifierKeyCodes {
+    public static let leftCommand: UInt16  = 55
+    public static let rightCommand: UInt16 = 54
+    public static let leftOption: UInt16   = 58
+    public static let rightOption: UInt16  = 61
+    public static let leftShift: UInt16    = 56
+    public static let rightShift: UInt16   = 60
+    public static let leftControl: UInt16  = 59
+    public static let rightControl: UInt16 = 62
 
-    static let all: Set<UInt16> = [
+    public static let all: Set<UInt16> = [
         leftCommand, rightCommand,
         leftOption, rightOption,
         leftShift, rightShift,
@@ -20,16 +20,16 @@ enum ModifierKeyCodes {
     ]
 
     /// Returns true if the given key code is a standalone modifier key.
-    static func isModifierOnly(_ keyCode: UInt16) -> Bool {
+    public static func isModifierOnly(_ keyCode: UInt16) -> Bool {
         all.contains(keyCode)
     }
 
 }
 
 /// Converts key codes and modifiers to human-readable symbols
-enum KeySymbols {
+public enum KeySymbols {
     /// Convert modifier flags to symbol string (e.g., "⌘⌥⇧⌃")
-    static func symbolsForModifiers(_ flags: NSEvent.ModifierFlags) -> String {
+    public static func symbolsForModifiers(_ flags: NSEvent.ModifierFlags) -> String {
         var symbols = ""
         if flags.contains(.control) { symbols += "⌃" }
         if flags.contains(.option) { symbols += "⌥" }
@@ -39,7 +39,7 @@ enum KeySymbols {
     }
 
     /// Convert key code to readable name
-    static func nameForKeyCode(_ keyCode: UInt16) -> String {
+    public static func nameForKeyCode(_ keyCode: UInt16) -> String {
         switch keyCode {
         case 0: return "A"
         case 1: return "S"
@@ -122,7 +122,7 @@ enum KeySymbols {
     ///
     /// When the keyCode is a modifier key and modifiers is empty the hotkey is
     /// treated as modifier-only and formatted via `formatModifierOnly`.
-    static func format(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> String {
+    public static func format(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> String {
         // Modifier-only hotkey: keyCode is itself a modifier key, no additional modifiers.
         if ModifierKeyCodes.isModifierOnly(keyCode) && modifiers.isEmpty {
             return formatModifierOnly(modifiers, keyCode: keyCode)
@@ -136,13 +136,13 @@ enum KeySymbols {
     }
 
     /// Alias for `format` — used by HotkeyService for display strings.
-    static func formatHotkey(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> String {
+    public static func formatHotkey(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> String {
         format(keyCode: keyCode, modifiers: modifiers)
     }
 
     /// Returns the single symbol glyph for a modifier key code (e.g. 58 → "⌥").
     /// Returns nil if the key code is not a modifier key.
-    static func symbolForModifierKeyCode(_ keyCode: UInt16) -> String? {
+    public static func symbolForModifierKeyCode(_ keyCode: UInt16) -> String? {
         switch keyCode {
         case 55, 54: return "⌘"
         case 58, 61: return "⌥"
@@ -154,7 +154,7 @@ enum KeySymbols {
 
     /// Format just modifiers for push-to-talk display.
     /// When a keyCode is provided the label distinguishes left vs. right physical keys.
-    static func formatModifierOnly(_ flags: NSEvent.ModifierFlags, keyCode: UInt16? = nil) -> String {
+    public static func formatModifierOnly(_ flags: NSEvent.ModifierFlags, keyCode: UInt16? = nil) -> String {
         if let kc = keyCode {
             switch kc {
             case 55: return "Left ⌘"

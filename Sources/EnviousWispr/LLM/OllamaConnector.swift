@@ -1,4 +1,5 @@
 import Foundation
+import EnviousWisprCore
 
 /// Ollama local LLM connector. Uses Ollama's OpenAI-compatible endpoint.
 /// Requires Ollama to be running: https://ollama.com

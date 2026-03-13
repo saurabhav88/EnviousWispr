@@ -1,11 +1,11 @@
 import Foundation
 
-enum DebugLogLevel: String, CaseIterable, Codable, Sendable, Comparable {
+public enum DebugLogLevel: String, CaseIterable, Codable, Sendable, Comparable {
     case info    = "info"
     case verbose = "verbose"
     case debug   = "debug"
 
-    var displayName: String {
+    public var displayName: String {
         switch self {
         case .info:    return "Info (default)"
         case .verbose: return "Verbose"
@@ -16,5 +16,5 @@ enum DebugLogLevel: String, CaseIterable, Codable, Sendable, Comparable {
     private var order: Int {
         switch self { case .info: return 0; case .verbose: return 1; case .debug: return 2 }
     }
-    static func < (lhs: Self, rhs: Self) -> Bool { lhs.order < rhs.order }
+    public static func < (lhs: Self, rhs: Self) -> Bool { lhs.order < rhs.order }
 }

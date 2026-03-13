@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import EnviousWisprCore
 import Foundation
 
 /// Unified protocol for all ASR backends.

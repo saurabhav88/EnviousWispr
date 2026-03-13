@@ -1,4 +1,5 @@
 import Foundation
+import EnviousWisprCore
 
 /// Shared retry infrastructure for LLM connectors.
 /// Centralizes retry-eligibility logic so all connectors use the same rules.

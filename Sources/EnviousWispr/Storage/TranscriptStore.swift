@@ -1,4 +1,5 @@
 import Foundation
+import EnviousWisprCore
 
 /// Persists transcripts as JSON files in Application Support.
 @MainActor

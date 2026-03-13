@@ -1,4 +1,5 @@
 import SwiftUI
+import EnviousWisprCore
 
 /// Unified single-window view: History + all settings tabs in one sidebar.
 struct UnifiedWindowView: View {

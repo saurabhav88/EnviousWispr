@@ -1,4 +1,5 @@
 import AppKit
+import EnviousWisprCore
 import SwiftUI
 
 // MARK: - Shared Lock State

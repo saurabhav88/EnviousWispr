@@ -1,4 +1,5 @@
 import Foundation
+import EnviousWisprCore
 
 /// Context passed through the text processing chain after ASR transcription.
 struct TextProcessingContext: Sendable {

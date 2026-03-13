@@ -1,4 +1,5 @@
 import Foundation
+import EnviousWisprCore
 
 /// Singleton URLSession for LLM API requests.
 /// Reuses a single session for HTTP/2 multiplexing and TLS session resumption.

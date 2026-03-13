@@ -1,4 +1,5 @@
 import SwiftUI
+import EnviousWisprCore
 
 /// Audio input device selection and noise processing settings.
 struct AudioSettingsView: View {

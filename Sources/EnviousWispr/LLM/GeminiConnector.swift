@@ -1,4 +1,5 @@
 import Foundation
+import EnviousWisprCore
 
 /// Google Gemini API connector for transcript polishing.
 /// Uses Server-Sent Events (SSE) streaming for lower perceived latency.

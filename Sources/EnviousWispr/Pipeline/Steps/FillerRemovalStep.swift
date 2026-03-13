@@ -1,4 +1,5 @@
 import Foundation
+import EnviousWisprCore
 import OSLog
 
 /// Removes common filler words (um, uh, hmm...) from ASR output using regex.

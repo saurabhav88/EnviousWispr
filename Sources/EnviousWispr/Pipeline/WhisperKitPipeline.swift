@@ -1,4 +1,5 @@
 import AppKit
+import EnviousWisprCore
 import Foundation
 @preconcurrency import WhisperKit
 

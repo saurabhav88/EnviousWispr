@@ -1,4 +1,5 @@
 import Foundation
+import EnviousWisprCore
 import AppKit
 
 /// States in the Ollama guided-setup flow.

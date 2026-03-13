@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import EnviousWisprCore
 import Foundation
 
 /// Manages ASR backend selection and delegates transcription calls.

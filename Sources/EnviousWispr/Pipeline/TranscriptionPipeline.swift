@@ -1,4 +1,5 @@
 import AppKit
+import EnviousWisprCore
 import Foundation
 
 /// Orchestrates the full dictation pipeline: record → transcribe → (correct) → (polish) → store → copy/paste.

@@ -1,4 +1,5 @@
 import Cocoa
+import EnviousWisprCore
 import Carbon.HIToolbox
 
 /// Manages global hotkey registration for dictation recording control.

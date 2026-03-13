@@ -1,7 +1,7 @@
 import Foundation
 
 /// LLM provider for post-processing.
-enum LLMProvider: String, Codable, CaseIterable, Sendable {
+public enum LLMProvider: String, Codable, CaseIterable, Sendable {
     case openAI
     case gemini
     case ollama
@@ -10,7 +10,7 @@ enum LLMProvider: String, Codable, CaseIterable, Sendable {
 }
 
 extension LLMProvider {
-    var displayName: String {
+    public var displayName: String {
         switch self {
         case .openAI:            return "OpenAI"
         case .gemini:            return "Gemini"
@@ -22,33 +22,57 @@ extension LLMProvider {
 }
 
 /// Result from LLM transcript polishing.
-struct LLMResult: Sendable {
-    let polishedText: String
+public struct LLMResult: Sendable {
+    public let polishedText: String
+
+    public init(polishedText: String) {
+        self.polishedText = polishedText
+    }
 }
 
 /// Configuration for an LLM provider.
-struct LLMProviderConfig: Codable, Sendable {
-    let model: String
-    let apiKeyKeychainId: String?
-    let maxTokens: Int
-    let temperature: Double
-    let thinkingBudget: Int?
-    let reasoningEffort: String?
+public struct LLMProviderConfig: Codable, Sendable {
+    public let model: String
+    public let apiKeyKeychainId: String?
+    public let maxTokens: Int
+    public let temperature: Double
+    public let thinkingBudget: Int?
+    public let reasoningEffort: String?
+
+    public init(model: String, apiKeyKeychainId: String?, maxTokens: Int, temperature: Double, thinkingBudget: Int?, reasoningEffort: String?) {
+        self.model = model
+        self.apiKeyKeychainId = apiKeyKeychainId
+        self.maxTokens = maxTokens
+        self.temperature = temperature
+        self.thinkingBudget = thinkingBudget
+        self.reasoningEffort = reasoningEffort
+    }
 }
 
 /// A discoverable LLM model with availability status.
-struct LLMModelInfo: Codable, Identifiable, Sendable {
-    let id: String
-    let displayName: String
-    let provider: LLMProvider
-    var isAvailable: Bool
+public struct LLMModelInfo: Codable, Identifiable, Sendable {
+    public let id: String
+    public let displayName: String
+    public let provider: LLMProvider
+    public var isAvailable: Bool
+
+    public init(id: String, displayName: String, provider: LLMProvider, isAvailable: Bool) {
+        self.id = id
+        self.displayName = displayName
+        self.provider = provider
+        self.isAvailable = isAvailable
+    }
 }
 
 /// Instructions for how the LLM should polish the transcript.
-struct PolishInstructions: Codable, Sendable {
-    let systemPrompt: String
+public struct PolishInstructions: Codable, Sendable {
+    public let systemPrompt: String
 
-    static let `default` = PolishInstructions(
+    public init(systemPrompt: String) {
+        self.systemPrompt = systemPrompt
+    }
+
+    public static let `default` = PolishInstructions(
         systemPrompt: """
             Clean up this speech-to-text transcript. Make minimal changes:
             - Fix punctuation, capitalization, and grammar
@@ -63,20 +87,20 @@ struct PolishInstructions: Codable, Sendable {
 
 extension PolishInstructions {
     /// Build a PolishInstructions using a user-supplied system prompt.
-    static func custom(systemPrompt: String) -> PolishInstructions {
+    public static func custom(systemPrompt: String) -> PolishInstructions {
         PolishInstructions(systemPrompt: systemPrompt)
     }
 }
 
 /// Built-in prompt presets the user can apply with one click.
-enum PromptPreset: String, CaseIterable, Identifiable, Sendable {
+public enum PromptPreset: String, CaseIterable, Identifiable, Sendable {
     case cleanUp = "Clean Up"
     case formal  = "Formal"
     case casual  = "Casual"
 
-    var id: String { rawValue }
+    public var id: String { rawValue }
 
-    var systemPrompt: String {
+    public var systemPrompt: String {
         switch self {
         case .cleanUp:
             return PolishInstructions.default.systemPrompt

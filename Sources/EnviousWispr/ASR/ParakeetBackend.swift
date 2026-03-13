@@ -1,5 +1,9 @@
 @preconcurrency import AVFoundation
+import EnviousWisprCore
 @preconcurrency import FluidAudio
+
+// Disambiguate from FluidAudio.ASRResult — we always mean our own type.
+typealias ASRResult = EnviousWisprCore.ASRResult
 
 /// Parakeet v3 ASR backend using FluidAudio/CoreML.
 ///

@@ -1,4 +1,5 @@
 import Foundation
+import EnviousWisprCore
 
 /// Pure, Sendable word correction engine.
 ///

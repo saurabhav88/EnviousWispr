@@ -1,20 +1,20 @@
 import Foundation
 
-enum AppConstants {
-    static let appName = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "EnviousWispr"
-    static let appVersion: String = {
+public enum AppConstants {
+    public static let appName = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "EnviousWispr"
+    public static let appVersion: String = {
         let raw = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
         // Strip leading "v" and git metadata (e.g. "v1.0.6-1-gabcdef-dev" → "1.0.6")
         let stripped = raw.hasPrefix("v") ? String(raw.dropFirst()) : raw
         return stripped.split(separator: "-").first.map(String.init) ?? stripped
     }()
-    static let appSupportDir = "EnviousWispr"
-    static let transcriptsDir = "transcripts"
-    static let onboardingWindowTitle = "Setup"
+    public static let appSupportDir = "EnviousWispr"
+    public static let transcriptsDir = "transcripts"
+    public static let onboardingWindowTitle = "Setup"
 
     /// Application Support directory for EnviousWispr.
     /// Falls back to a temporary directory if Application Support is unavailable.
-    static var appSupportURL: URL {
+    public static var appSupportURL: URL {
         if let appSupport = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
@@ -29,74 +29,74 @@ enum AppConstants {
 
 // MARK: - Audio Constants
 
-enum AudioConstants {
+public enum AudioConstants {
     /// Target sample rate for ASR processing (16kHz mono).
-    static let sampleRate: Double = 16000.0
+    public static let sampleRate: Double = 16000.0
 
     /// Audio channels for recording (mono).
-    static let channels: Int = 1
+    public static let channels: Int = 1
 
     /// Audio buffer size for capture tap (256ms at 16kHz).
-    static let captureBufferSize: Int = 4096
+    public static let captureBufferSize: Int = 4096
 
     /// Minimum samples required for valid transcription (1 second).
-    static let minimumTranscriptionSamples: Int = 16000
+    public static let minimumTranscriptionSamples: Int = 16000
 
 }
 
 // MARK: - Timing Constants
 
-enum TimingConstants {
+public enum TimingConstants {
     /// Delay before clipboard restoration after paste.
-    static let clipboardRestoreDelayMs: Int = 200
+    public static let clipboardRestoreDelayMs: Int = 200
 
     /// Delay after hiding the app before simulating paste (ms).
-    static let appHideBeforePasteDelayMs: Int = 300
+    public static let appHideBeforePasteDelayMs: Int = 300
 
     /// Interval between activation-check polls (ms).
-    static let activationPollIntervalMs: Int = 50
+    public static let activationPollIntervalMs: Int = 50
 
     /// Maximum time to wait for target app activation before pasting anyway (ms).
-    static let activationTimeoutMs: Int = 1000
+    public static let activationTimeoutMs: Int = 1000
 
     /// Accessibility permission polling interval (seconds).
-    static let accessibilityPollIntervalSec: Double = 5.0
+    public static let accessibilityPollIntervalSec: Double = 5.0
 
     /// Minimum recording duration before transcription (seconds).
     /// Recordings shorter than this are silently discarded (accidental taps).
-    static let minimumRecordingDuration: TimeInterval = 0.5
+    public static let minimumRecordingDuration: TimeInterval = 0.5
 
     /// Maximum recording duration before graceful auto-stop (seconds).
     /// Prevents runaway recordings from consuming unbounded memory/CPU.
     /// AudioCaptureManager has a hard emergency limit at 600s; this fires earlier and gracefully.
-    static let maxRecordingDuration: TimeInterval = 300
+    public static let maxRecordingDuration: TimeInterval = 300
 
     /// Double-press detection window for hands-free recording mode (milliseconds).
     /// Release within this window starts a debounce timer; second press within
     /// this window locks recording. Matches Wispr Flow's proven 500ms constant.
-    static let handsFreeDebounceDelayMs: UInt64 = 500
+    public static let handsFreeDebounceDelayMs: UInt64 = 500
 }
 
 // MARK: - LLM Constants
 
-enum LLMConstants {
+public enum LLMConstants {
     /// Maximum concurrent model probes to avoid rate limiting.
-    static let maxConcurrentProbes: Int = 5
+    public static let maxConcurrentProbes: Int = 5
 
     /// Default max tokens for cloud LLM providers (supports ~5 min dictations with safe headroom).
     /// Thinking models (Gemini 2.5) consume output tokens for reasoning, so this must be generous.
-    static let defaultMaxTokens: Int = 8192
+    public static let defaultMaxTokens: Int = 8192
 
     /// Max tokens for Ollama (local models).
-    static let ollamaMaxTokens: Int = 2048
+    public static let ollamaMaxTokens: Int = 2048
 
     /// Default thinking budget for extended thinking models (Gemini 2.5 Flash/Pro).
-    static let defaultThinkingBudget: Int = 8192
+    public static let defaultThinkingBudget: Int = 8192
 }
 
-enum FormattingConstants {
+public enum FormattingConstants {
     /// Format a duration in seconds as "m:ss".
-    static func formatDuration(_ seconds: TimeInterval) -> String {
+    public static func formatDuration(_ seconds: TimeInterval) -> String {
         let mins = Int(seconds) / 60
         let secs = Int(seconds) % 60
         return String(format: "%d:%02d", mins, secs)

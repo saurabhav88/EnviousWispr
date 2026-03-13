@@ -14,9 +14,14 @@ let package = Package(
         .package(url: "https://github.com/TelemetryDeck/SwiftSDK.git", from: "2.0.0"),
     ],
     targets: [
+        .target(
+            name: "EnviousWisprCore",
+            path: "Sources/EnviousWisprCore"
+        ),
         .executableTarget(
             name: "EnviousWispr",
             dependencies: [
+                "EnviousWisprCore",
                 "WhisperKit",
                 "FluidAudio",
                 "Sparkle",

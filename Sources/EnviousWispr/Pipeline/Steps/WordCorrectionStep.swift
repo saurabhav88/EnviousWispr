@@ -1,4 +1,5 @@
 import Foundation
+import EnviousWisprCore
 
 /// Applies custom word corrections to ASR output.
 @MainActor

@@ -1,4 +1,5 @@
 import SwiftUI
+import EnviousWisprCore
 
 /// Root observable state for the entire application.
 @MainActor

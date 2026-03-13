@@ -8,11 +8,11 @@ import OSLog
 /// - File logging to ~/Library/Logs/EnviousWispr/ is active only while
 ///   isDebugModeEnabled is true.
 /// - API keys and secrets are never logged — callers must redact before passing.
-actor AppLogger {
-    static let shared = AppLogger()
+public actor AppLogger {
+    public static let shared = AppLogger()
 
-    private(set) var isDebugModeEnabled: Bool = false
-    private(set) var logLevel: DebugLogLevel = .info
+    public private(set) var isDebugModeEnabled: Bool = false
+    public private(set) var logLevel: DebugLogLevel = .info
 
     private let oslog = Logger(subsystem: "com.enviouswispr.app", category: "pipeline")
 
@@ -32,7 +32,7 @@ actor AppLogger {
 
     private init() {}
 
-    func setDebugMode(_ enabled: Bool) {
+    public func setDebugMode(_ enabled: Bool) {
         isDebugModeEnabled = enabled
         if enabled {
             openFileHandleIfNeeded()
@@ -44,11 +44,11 @@ actor AppLogger {
         }
     }
 
-    func setLogLevel(_ level: DebugLogLevel) {
+    public func setLogLevel(_ level: DebugLogLevel) {
         logLevel = level
     }
 
-    func log(_ message: String, level: DebugLogLevel = .info, category: String = "App") {
+    public func log(_ message: String, level: DebugLogLevel = .info, category: String = "App") {
         switch level {
         case .info:    oslog.info("[\(category)] \(message)")
         case .verbose: oslog.debug("[\(category)] \(message)")
@@ -108,9 +108,9 @@ actor AppLogger {
 
     // MARK: - Utilities
 
-    func logDirectoryURL() -> URL { logDirectory }
+    public func logDirectoryURL() -> URL { logDirectory }
 
-    func clearLogs() throws {
+    public func clearLogs() throws {
         fileHandle?.closeFile()
         fileHandle = nil
         let dir = logDirectory

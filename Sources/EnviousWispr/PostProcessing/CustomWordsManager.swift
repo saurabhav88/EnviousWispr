@@ -1,4 +1,5 @@
 import Foundation
+import EnviousWisprCore
 
 /// Persists the user's custom word list to disk as JSON.
 /// Replaces CustomWordStore with richer CustomWord entries and migration from the old [String] format.

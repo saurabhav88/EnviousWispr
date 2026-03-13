@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import EnviousWisprCore
 
 /// Handles audio format conversion and buffer processing.
 enum AudioBufferProcessor {

@@ -1,4 +1,5 @@
 import SwiftUI
+import EnviousWisprCore
 
 /// Detail view for a single transcript with toolbar actions.
 struct TranscriptDetailView: View {

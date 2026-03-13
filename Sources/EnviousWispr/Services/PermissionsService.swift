@@ -1,4 +1,5 @@
 import ApplicationServices
+import EnviousWisprCore
 @preconcurrency import AVFoundation
 
 /// Manages microphone and accessibility permission checks.

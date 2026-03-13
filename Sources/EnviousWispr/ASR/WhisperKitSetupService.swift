@@ -1,4 +1,5 @@
 @preconcurrency import WhisperKit
+import EnviousWisprCore
 import Foundation
 
 /// Free function (nonisolated) that wraps WhisperKit.download() and relays progress

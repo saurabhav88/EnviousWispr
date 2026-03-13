@@ -1,4 +1,5 @@
 import Foundation
+import EnviousWisprCore
 
 #if canImport(FoundationModels)
 import FoundationModels

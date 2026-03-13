@@ -4,14 +4,18 @@ import Foundation
 ///
 /// Uses the standard edit-distance formula:
 ///   WER = (Substitutions + Insertions + Deletions) / ReferenceWordCount
-enum WERCalculator {
-    struct Result: Sendable {
-        let wer: Double
+public enum WERCalculator {
+    public struct Result: Sendable {
+        public let wer: Double
+
+        public init(wer: Double) {
+            self.wer = wer
+        }
     }
 
     /// Compute WER between reference and hypothesis text.
     /// Both strings are lowercased and split on whitespace before comparison.
-    static func calculate(reference: String, hypothesis: String) -> Result {
+    public static func calculate(reference: String, hypothesis: String) -> Result {
         let refWords = reference.lowercased().split(separator: " ").map(String.init)
         let hypWords = hypothesis.lowercased().split(separator: " ").map(String.init)
 

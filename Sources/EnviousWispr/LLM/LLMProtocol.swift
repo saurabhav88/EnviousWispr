@@ -1,4 +1,5 @@
 import Foundation
+import EnviousWisprCore
 
 /// Protocol for LLM-based transcript polishing.
 protocol TranscriptPolisher: Sendable {

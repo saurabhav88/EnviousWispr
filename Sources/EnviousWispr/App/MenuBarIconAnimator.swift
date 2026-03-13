@@ -1,4 +1,5 @@
 import AppKit
+import EnviousWisprCore
 
 /// Manages animated menu bar icon states using Core Graphics rendering.
 ///

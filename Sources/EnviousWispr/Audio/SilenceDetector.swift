@@ -1,4 +1,5 @@
 import Foundation
+import EnviousWisprCore
 @preconcurrency import FluidAudio
 
 struct SmoothedVADConfig: Sendable {

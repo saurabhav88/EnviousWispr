@@ -1,4 +1,5 @@
 import Foundation
+import EnviousWisprCore
 @preconcurrency import WhisperKit
 
 /// Hardcoded compute options optimized for Apple Silicon dictation.

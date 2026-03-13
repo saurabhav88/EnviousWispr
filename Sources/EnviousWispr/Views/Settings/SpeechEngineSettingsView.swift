@@ -1,4 +1,5 @@
 import SwiftUI
+import EnviousWisprCore
 
 /// Transcription engine, multi-language options, recording environment, and cleanup settings.
 struct SpeechEngineSettingsView: View {

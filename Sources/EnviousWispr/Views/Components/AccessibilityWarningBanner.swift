@@ -1,4 +1,5 @@
 import SwiftUI
+import EnviousWisprCore
 
 /// Compact amber banner shown when Accessibility permission is missing.
 ///

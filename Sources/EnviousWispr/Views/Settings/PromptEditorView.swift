@@ -1,4 +1,5 @@
 import SwiftUI
+import EnviousWisprCore
 
 /// Sheet for editing the LLM system prompt with presets and validation.
 struct PromptEditorView: View {

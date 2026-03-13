@@ -1,14 +1,18 @@
 import Foundation
 
 /// Thrown when a `withThrowingTimeout` call exceeds its deadline.
-struct TimeoutError: Error, CustomStringConvertible {
-    let seconds: Double
-    var description: String { "Task timed out after \(seconds)s" }
+public struct TimeoutError: Error, CustomStringConvertible {
+    public let seconds: Double
+    public var description: String { "Task timed out after \(seconds)s" }
+
+    public init(seconds: Double) {
+        self.seconds = seconds
+    }
 }
 
 /// Run an async operation with a timeout. If the operation doesn't complete
 /// within `seconds`, the child task is cancelled and `TimeoutError` is thrown.
-func withThrowingTimeout<T: Sendable>(
+public func withThrowingTimeout<T: Sendable>(
     seconds: Double,
     operation: @escaping @Sendable () async throws -> T
 ) async throws -> T {

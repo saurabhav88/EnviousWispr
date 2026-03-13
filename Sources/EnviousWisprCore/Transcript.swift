@@ -1,19 +1,19 @@
 import Foundation
 
 /// A completed transcript with metadata.
-struct Transcript: Codable, Identifiable, Sendable {
-    let id: UUID
-    let text: String
-    let polishedText: String?
-    let language: String?
-    let duration: TimeInterval
-    let processingTime: TimeInterval
-    let backendType: ASRBackendType
-    let createdAt: Date
-    let llmProvider: String?
-    let llmModel: String?
+public struct Transcript: Codable, Identifiable, Sendable {
+    public let id: UUID
+    public let text: String
+    public let polishedText: String?
+    public let language: String?
+    public let duration: TimeInterval
+    public let processingTime: TimeInterval
+    public let backendType: ASRBackendType
+    public let createdAt: Date
+    public let llmProvider: String?
+    public let llmModel: String?
 
-    init(
+    public init(
         id: UUID = UUID(),
         text: String,
         polishedText: String? = nil,
@@ -38,7 +38,7 @@ struct Transcript: Codable, Identifiable, Sendable {
     }
 
     /// The text to display — polished if available, otherwise raw.
-    var displayText: String {
+    public var displayText: String {
         polishedText ?? text
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import EnviousWisprCore
 
 /// OpenAI Chat Completions API connector for transcript polishing.
 struct OpenAIConnector: TranscriptPolisher {
