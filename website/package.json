@@ -11,6 +11,9 @@
     "preview": "astro preview",
     "astro": "astro"
   },
+  "overrides": {
+    "devalue": ">=5.6.4"
+  },
   "dependencies": {
     "@astrojs/cloudflare": "^13.0.2",
     "@astrojs/rss": "^4.0.17",
