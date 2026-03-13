@@ -1,5 +1,31 @@
 import AppKit
 
+/// Modifier key codes that can act as standalone hotkeys.
+/// These are the physical key codes reported by NSEvent / Carbon for each modifier key.
+enum ModifierKeyCodes {
+    static let leftCommand: UInt16  = 55
+    static let rightCommand: UInt16 = 54
+    static let leftOption: UInt16   = 58
+    static let rightOption: UInt16  = 61
+    static let leftShift: UInt16    = 56
+    static let rightShift: UInt16   = 60
+    static let leftControl: UInt16  = 59
+    static let rightControl: UInt16 = 62
+
+    static let all: Set<UInt16> = [
+        leftCommand, rightCommand,
+        leftOption, rightOption,
+        leftShift, rightShift,
+        leftControl, rightControl
+    ]
+
+    /// Returns true if the given key code is a standalone modifier key.
+    static func isModifierOnly(_ keyCode: UInt16) -> Bool {
+        all.contains(keyCode)
+    }
+
+}
+
 /// Converts key codes and modifiers to human-readable symbols
 enum KeySymbols {
     /// Convert modifier flags to symbol string (e.g., "⌘⌥⇧⌃")
