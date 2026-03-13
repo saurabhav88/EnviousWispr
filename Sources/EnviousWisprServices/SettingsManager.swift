@@ -3,8 +3,8 @@ import EnviousWisprCore
 
 @MainActor
 @Observable
-final class SettingsManager {
-    enum SettingKey {
+public final class SettingsManager {
+    public enum SettingKey {
         case selectedBackend
         case whisperKitModel
         case recordingMode
@@ -41,93 +41,93 @@ final class SettingsManager {
         case writingStylePreset
     }
 
-    var onChange: ((SettingKey) -> Void)?
+    public var onChange: ((SettingKey) -> Void)?
 
-    var selectedBackend: ASRBackendType {
+    public var selectedBackend: ASRBackendType {
         didSet {
             UserDefaults.standard.set(selectedBackend.rawValue, forKey: "selectedBackend")
             onChange?(.selectedBackend)
         }
     }
 
-    var whisperKitModel: String {
+    public var whisperKitModel: String {
         didSet {
             UserDefaults.standard.set(whisperKitModel, forKey: "whisperKitModel")
             onChange?(.whisperKitModel)
         }
     }
 
-    var recordingMode: RecordingMode {
+    public var recordingMode: RecordingMode {
         didSet {
             UserDefaults.standard.set(recordingMode.rawValue, forKey: "recordingMode")
             onChange?(.recordingMode)
         }
     }
 
-    var llmProvider: LLMProvider {
+    public var llmProvider: LLMProvider {
         didSet {
             UserDefaults.standard.set(llmProvider.rawValue, forKey: "llmProvider")
             onChange?(.llmProvider)
         }
     }
 
-    var llmModel: String {
+    public var llmModel: String {
         didSet {
             UserDefaults.standard.set(llmModel, forKey: "llmModel")
             onChange?(.llmModel)
         }
     }
 
-    var ollamaModel: String {
+    public var ollamaModel: String {
         didSet {
             UserDefaults.standard.set(ollamaModel, forKey: "ollamaModel")
             onChange?(.ollamaModel)
         }
     }
 
-    var autoCopyToClipboard: Bool {
+    public var autoCopyToClipboard: Bool {
         didSet {
             UserDefaults.standard.set(autoCopyToClipboard, forKey: "autoCopyToClipboard")
             onChange?(.autoCopyToClipboard)
         }
     }
 
-    var hotkeyEnabled: Bool {
+    public var hotkeyEnabled: Bool {
         didSet {
             UserDefaults.standard.set(hotkeyEnabled, forKey: "hotkeyEnabled")
             onChange?(.hotkeyEnabled)
         }
     }
 
-    var vadAutoStop: Bool {
+    public var vadAutoStop: Bool {
         didSet {
             UserDefaults.standard.set(vadAutoStop, forKey: "vadAutoStop")
             onChange?(.vadAutoStop)
         }
     }
 
-    var vadSilenceTimeout: Double {
+    public var vadSilenceTimeout: Double {
         didSet {
             UserDefaults.standard.set(vadSilenceTimeout, forKey: "vadSilenceTimeout")
             onChange?(.vadSilenceTimeout)
         }
     }
 
-    var vadSensitivity: Float {
+    public var vadSensitivity: Float {
         didSet {
             UserDefaults.standard.set(vadSensitivity, forKey: "vadSensitivity")
             onChange?(.vadSensitivity)
         }
     }
 
-    var vadEnergyGate: Bool {
+    public var vadEnergyGate: Bool {
         didSet {
             UserDefaults.standard.set(vadEnergyGate, forKey: "vadEnergyGate")
             onChange?(.vadEnergyGate)
         }
     }
 
-    var onboardingState: OnboardingState {
+    public var onboardingState: OnboardingState {
         didSet {
             UserDefaults.standard.set(onboardingState.rawValue, forKey: "onboardingState")
             // Keep legacy key in sync so any existing observers see the right value.
@@ -137,103 +137,103 @@ final class SettingsManager {
     }
 
     /// Backward-compat computed property — true when onboarding is fully complete.
-    var hasCompletedOnboarding: Bool {
+    public var hasCompletedOnboarding: Bool {
         get { onboardingState == .completed }
         set { onboardingState = newValue ? .completed : .notStarted }
     }
 
-    var cancelKeyCode: UInt16 {
+    public var cancelKeyCode: UInt16 {
         didSet {
             UserDefaults.standard.set(Int(cancelKeyCode), forKey: "cancelKeyCode")
             onChange?(.cancelKeyCode)
         }
     }
 
-    var cancelModifiers: NSEvent.ModifierFlags {
+    public var cancelModifiers: NSEvent.ModifierFlags {
         didSet {
             UserDefaults.standard.set(cancelModifiers.rawValue, forKey: "cancelModifiersRaw")
             onChange?(.cancelModifiers)
         }
     }
 
-    var toggleKeyCode: UInt16 {
+    public var toggleKeyCode: UInt16 {
         didSet {
             UserDefaults.standard.set(Int(toggleKeyCode), forKey: "toggleKeyCode")
             onChange?(.toggleKeyCode)
         }
     }
 
-    var toggleModifiers: NSEvent.ModifierFlags {
+    public var toggleModifiers: NSEvent.ModifierFlags {
         didSet {
             UserDefaults.standard.set(toggleModifiers.rawValue, forKey: "toggleModifiersRaw")
             onChange?(.toggleModifiers)
         }
     }
 
-    var pushToTalkKeyCode: UInt16 {
+    public var pushToTalkKeyCode: UInt16 {
         didSet {
             UserDefaults.standard.set(Int(pushToTalkKeyCode), forKey: "pushToTalkKeyCode")
             onChange?(.pushToTalkKeyCode)
         }
     }
 
-    var pushToTalkModifiers: NSEvent.ModifierFlags {
+    public var pushToTalkModifiers: NSEvent.ModifierFlags {
         didSet {
             UserDefaults.standard.set(pushToTalkModifiers.rawValue, forKey: "pushToTalkModifiersRaw")
             onChange?(.pushToTalkModifiers)
         }
     }
 
-    var modelUnloadPolicy: ModelUnloadPolicy {
+    public var modelUnloadPolicy: ModelUnloadPolicy {
         didSet {
             UserDefaults.standard.set(modelUnloadPolicy.rawValue, forKey: "modelUnloadPolicy")
             onChange?(.modelUnloadPolicy)
         }
     }
 
-    var restoreClipboardAfterPaste: Bool {
+    public var restoreClipboardAfterPaste: Bool {
         didSet {
             UserDefaults.standard.set(restoreClipboardAfterPaste, forKey: "restoreClipboardAfterPaste")
             onChange?(.restoreClipboardAfterPaste)
         }
     }
 
-    var customSystemPrompt: String {
+    public var customSystemPrompt: String {
         didSet {
             UserDefaults.standard.set(customSystemPrompt, forKey: "customSystemPrompt")
             onChange?(.customSystemPrompt)
         }
     }
 
-    var wordCorrectionEnabled: Bool {
+    public var wordCorrectionEnabled: Bool {
         didSet {
             UserDefaults.standard.set(wordCorrectionEnabled, forKey: "wordCorrectionEnabled")
             onChange?(.wordCorrectionEnabled)
         }
     }
 
-    var fillerRemovalEnabled: Bool {
+    public var fillerRemovalEnabled: Bool {
         didSet {
             UserDefaults.standard.set(fillerRemovalEnabled, forKey: "fillerRemovalEnabled")
             onChange?(.fillerRemovalEnabled)
         }
     }
 
-    var isDebugModeEnabled: Bool {
+    public var isDebugModeEnabled: Bool {
         didSet {
             UserDefaults.standard.set(isDebugModeEnabled, forKey: "isDebugModeEnabled")
             onChange?(.isDebugModeEnabled)
         }
     }
 
-    var debugLogLevel: DebugLogLevel {
+    public var debugLogLevel: DebugLogLevel {
         didSet {
             UserDefaults.standard.set(debugLogLevel.rawValue, forKey: "debugLogLevel")
             onChange?(.debugLogLevel)
         }
     }
 
-    var useExtendedThinking: Bool {
+    public var useExtendedThinking: Bool {
         didSet {
             UserDefaults.standard.set(useExtendedThinking, forKey: "useExtendedThinking")
             onChange?(.useExtendedThinking)
@@ -242,21 +242,21 @@ final class SettingsManager {
 
     /// WhisperKit language code (ISO 639-1). Manual selection, not auto-detect.
     /// EN, DE, TA supported. "en" is default.
-    var whisperKitLanguage: String {
+    public var whisperKitLanguage: String {
         didSet {
             UserDefaults.standard.set(whisperKitLanguage, forKey: "whisperKitLanguage")
             onChange?(.whisperKitLanguage)
         }
     }
 
-    var selectedInputDeviceUID: String {
+    public var selectedInputDeviceUID: String {
         didSet {
             UserDefaults.standard.set(selectedInputDeviceUID, forKey: "selectedInputDeviceUID")
             onChange?(.selectedInputDeviceUID)
         }
     }
 
-    var noiseSuppression: Bool {
+    public var noiseSuppression: Bool {
         didSet {
             UserDefaults.standard.set(noiseSuppression, forKey: "noiseSuppression")
             onChange?(.noiseSuppression)
@@ -264,28 +264,28 @@ final class SettingsManager {
     }
 
     /// User override for input device. Empty string means "Auto" (smart selection).
-    var preferredInputDeviceIDOverride: String {
+    public var preferredInputDeviceIDOverride: String {
         didSet {
             UserDefaults.standard.set(preferredInputDeviceIDOverride, forKey: "preferredInputDeviceIDOverride")
             onChange?(.preferredInputDeviceIDOverride)
         }
     }
 
-    var environmentPreset: EnvironmentPreset {
+    public var environmentPreset: EnvironmentPreset {
         didSet {
             UserDefaults.standard.set(environmentPreset.rawValue, forKey: "environmentPreset")
             onChange?(.environmentPreset)
         }
     }
 
-    var writingStylePreset: WritingStylePreset {
+    public var writingStylePreset: WritingStylePreset {
         didSet {
             UserDefaults.standard.set(writingStylePreset.rawValue, forKey: "writingStylePreset")
             onChange?(.writingStylePreset)
         }
     }
 
-    var activePolishInstructions: PolishInstructions {
+    public var activePolishInstructions: PolishInstructions {
         switch writingStylePreset {
         case .formal:
             return PolishInstructions(systemPrompt: PromptPreset.formal.systemPrompt)
@@ -300,12 +300,12 @@ final class SettingsManager {
         }
     }
 
-    var isPushToTalk: Bool {
+    public var isPushToTalk: Bool {
         get { recordingMode == .pushToTalk }
         set { recordingMode = newValue ? .pushToTalk : .toggle }
     }
 
-    init() {
+    public init() {
         let defaults = UserDefaults.standard
         selectedBackend = ASRBackendType(rawValue: defaults.string(forKey: "selectedBackend") ?? "") ?? .parakeet
         whisperKitModel = defaults.string(forKey: "whisperKitModel") ?? "openai_whisper-large-v3_turbo"

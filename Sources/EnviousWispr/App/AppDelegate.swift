@@ -1,5 +1,6 @@
 import AppKit
 import EnviousWisprCore
+import EnviousWisprServices
 @preconcurrency import Sparkle
 import SwiftUI
 

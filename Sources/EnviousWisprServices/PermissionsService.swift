@@ -5,43 +5,43 @@ import EnviousWisprCore
 /// Manages microphone and accessibility permission checks.
 @MainActor
 @Observable
-final class PermissionsService {
-    private(set) var microphoneStatus: AVAuthorizationStatus = .notDetermined
-    private(set) var accessibilityGranted: Bool = false
+public final class PermissionsService {
+    public private(set) var microphoneStatus: AVAuthorizationStatus = .notDetermined
+    public private(set) var accessibilityGranted: Bool = false
 
     /// Whether the user has explicitly dismissed the accessibility warning banner.
     /// Stored property so @Observable tracks changes and SwiftUI re-renders.
     /// Synced to UserDefaults in didSet so it survives restarts.
-    private(set) var accessibilityWarningDismissed: Bool = UserDefaults.standard.bool(forKey: "accessibilityWarningDismissed") {
+    public private(set) var accessibilityWarningDismissed: Bool = UserDefaults.standard.bool(forKey: "accessibilityWarningDismissed") {
         didSet { UserDefaults.standard.set(accessibilityWarningDismissed, forKey: "accessibilityWarningDismissed") }
     }
 
     /// True when the accessibility warning should be shown in the UI.
-    var shouldShowAccessibilityWarning: Bool {
+    public var shouldShowAccessibilityWarning: Bool {
         !accessibilityGranted && !accessibilityWarningDismissed
     }
 
-    init() {
+    public init() {
         microphoneStatus = AVCaptureDevice.authorizationStatus(for: .audio)
         accessibilityGranted = AXIsProcessTrusted()
     }
 
     /// Request microphone access. Returns true if granted.
-    func requestMicrophoneAccess() async -> Bool {
+    public func requestMicrophoneAccess() async -> Bool {
         let granted = await AVCaptureDevice.requestAccess(for: .audio)
         microphoneStatus = AVCaptureDevice.authorizationStatus(for: .audio)
         return granted
     }
 
     /// Whether microphone permission has been granted.
-    var hasMicrophonePermission: Bool {
+    public var hasMicrophonePermission: Bool {
         microphoneStatus == .authorized
     }
 
     /// Prompt the user to grant Accessibility permission in System Settings.
     /// Only called from explicit user action (e.g., Settings button). Never called automatically.
     /// Returns true if already granted; otherwise opens the System Settings prompt.
-    func requestAccessibilityAccess() -> Bool {
+    public func requestAccessibilityAccess() -> Bool {
         let options = [
             "AXTrustedCheckOptionPrompt" as CFString: true as CFBoolean
         ] as CFDictionary
@@ -52,7 +52,7 @@ final class PermissionsService {
 
     /// Re-check Accessibility permission using `AXIsProcessTrusted()` (no prompt).
     /// Detects revocation transitions (granted → revoked) and re-arms the warning.
-    func refreshAccessibilityStatus() {
+    public func refreshAccessibilityStatus() {
         let wasGranted = accessibilityGranted
         let nowGranted = AXIsProcessTrusted()
         accessibilityGranted = nowGranted
@@ -64,17 +64,17 @@ final class PermissionsService {
     }
 
     /// Mark the accessibility warning as dismissed by the user.
-    func dismissAccessibilityWarning() {
+    public func dismissAccessibilityWarning() {
         accessibilityWarningDismissed = true
     }
 
     /// Re-arm the accessibility warning (e.g., after permission is revoked).
-    func resetAccessibilityWarningDismissal() {
+    public func resetAccessibilityWarningDismissal() {
         accessibilityWarningDismissed = false
     }
 
     /// Whether Accessibility permission has been granted.
-    var hasAccessibilityPermission: Bool {
+    public var hasAccessibilityPermission: Bool {
         accessibilityGranted
     }
 }

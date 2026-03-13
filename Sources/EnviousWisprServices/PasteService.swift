@@ -4,15 +4,20 @@ import ApplicationServices
 import Carbon.HIToolbox
 
 /// Immutable snapshot of all pasteboard contents at a point in time.
-struct ClipboardSnapshot: Sendable {
+public struct ClipboardSnapshot: Sendable {
     /// Raw data keyed by pasteboard type, preserving every representation.
-    let items: [[NSPasteboard.PasteboardType: Data]]
+    public let items: [[NSPasteboard.PasteboardType: Data]]
     /// `NSPasteboard.changeCount` at the moment the snapshot was taken.
-    let changeCount: Int
+    public let changeCount: Int
+
+    public init(items: [[NSPasteboard.PasteboardType: Data]], changeCount: Int) {
+        self.items = items
+        self.changeCount = changeCount
+    }
 }
 
 /// Which paste tier succeeded — logged for compatibility analytics.
-enum PasteTier: String {
+public enum PasteTier: String {
     case axDirect = "ax_direct"
     case cgEvent = "cgevent"
     case appleScript = "applescript"
@@ -20,7 +25,7 @@ enum PasteTier: String {
 }
 
 /// Handles copying text to clipboard and pasting into the active app.
-enum PasteService {
+public enum PasteService {
 
     /// AX roles that accept text insertion.
     private static let textRoles: Set<String> = [
@@ -31,20 +36,20 @@ enum PasteService {
     ]
 
     /// Copy text to the system clipboard.
-    static func copyToClipboard(_ text: String) {
+    public static func copyToClipboard(_ text: String) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
     }
 
     /// Copy text to clipboard and return the resulting change count.
-    static func copyToClipboardReturningChangeCount(_ text: String) -> Int {
+    public static func copyToClipboardReturningChangeCount(_ text: String) -> Int {
         copyToClipboard(text)
         return NSPasteboard.general.changeCount
     }
 
     /// Capture the current pasteboard contents for later restoration.
-    static func saveClipboard() -> ClipboardSnapshot {
+    public static func saveClipboard() -> ClipboardSnapshot {
         let pasteboard = NSPasteboard.general
         var items: [[NSPasteboard.PasteboardType: Data]] = []
 
@@ -70,7 +75,7 @@ enum PasteService {
     ///   - changeCountAfterPaste: The `changeCount` observed immediately after
     ///     our own paste write. Pass this value so we can detect if a clipboard
     ///     manager has modified the board before the restore fires.
-    static func restoreClipboard(_ snapshot: ClipboardSnapshot, changeCountAfterPaste: Int) {
+    public static func restoreClipboard(_ snapshot: ClipboardSnapshot, changeCountAfterPaste: Int) {
         let pasteboard = NSPasteboard.general
 
         // If the change count has advanced beyond what we set, a third-party
@@ -102,7 +107,7 @@ enum PasteService {
     /// Capture the system-wide focused UI element (the specific text field, not just the app).
     /// Sets a 1-second AX timeout on the element to avoid hanging on misbehaving apps.
     /// Returns nil if no element is focused or accessibility is not trusted.
-    static func captureFocusedElement() -> AXUIElement? {
+    public static func captureFocusedElement() -> AXUIElement? {
         guard AXIsProcessTrusted() else { return nil }
         let systemWide = AXUIElementCreateSystemWide()
         var focusedRef: CFTypeRef?
@@ -126,7 +131,7 @@ enum PasteService {
     /// Insert text directly into an AX element at the cursor position.
     /// Uses kAXSelectedTextAttribute which inserts at cursor / replaces selection.
     /// Returns true only if the text verifiably appeared in the element.
-    static func insertViaAccessibility(_ text: String, element: AXUIElement) -> Bool {
+    public static func insertViaAccessibility(_ text: String, element: AXUIElement) -> Bool {
         // Verify the element is a text field or text area.
         var roleRef: CFTypeRef?
         let roleErr = AXUIElementCopyAttributeValue(
@@ -186,7 +191,7 @@ enum PasteService {
     /// Copy text to clipboard and simulate Cmd+V to paste into the frontmost app.
     /// - Returns: The pasteboard `changeCount` after our write, needed by `restoreClipboard`.
     @discardableResult
-    static func pasteToActiveApp(_ text: String) -> Int {
+    public static func pasteToActiveApp(_ text: String) -> Int {
         let pasteStart = CFAbsoluteTimeGetCurrent()
         let accessibilityTrusted = AXIsProcessTrusted()
 
@@ -219,7 +224,7 @@ enum PasteService {
 
     /// Paste via AppleScript by clicking the Edit > Paste menu item via process ID.
     /// Requires the target app to be frontmost. Returns true on success.
-    static func pasteViaAppleScript(pid: pid_t) -> Bool {
+    public static func pasteViaAppleScript(pid: pid_t) -> Bool {
         let script = """
         tell application "System Events"
             tell (first process whose unix id is \(pid))
@@ -234,7 +239,7 @@ enum PasteService {
     }
 
     /// Simulate Cmd+V keystroke to paste from clipboard into the active app.
-    static func simulatePaste() {
+    public static func simulatePaste() {
         dispatchCmdV()
     }
 

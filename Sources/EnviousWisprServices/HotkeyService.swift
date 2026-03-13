@@ -12,7 +12,7 @@ import Carbon.HIToolbox
 /// the background.
 @MainActor
 @Observable
-final class HotkeyService {
+public final class HotkeyService {
     // MARK: - Hotkey IDs
 
     private enum HotkeyID: UInt32 {
@@ -31,8 +31,8 @@ final class HotkeyService {
     private var globalModifierMonitor: Any?
     private var localModifierMonitor: Any?
 
-    private(set) var isEnabled = false
-    private(set) var isModifierHeld = false
+    public private(set) var isEnabled = false
+    public private(set) var isModifierHeld = false
 
     /// Tracks the in-flight recording Task so we can cancel zombie Tasks from
     /// previous press/release events before starting new ones. This serializes
@@ -44,7 +44,7 @@ final class HotkeyService {
     /// True when recording is locked into hands-free mode.
     /// When locked, key releases are suppressed and recording continues
     /// until the next key press or cancel.
-    private(set) var isRecordingLocked: Bool = false
+    public private(set) var isRecordingLocked: Bool = false
 
     /// Timestamp of the key-down that started the current recording session.
     /// Used for the 500ms double-press detection window.
@@ -68,39 +68,41 @@ final class HotkeyService {
 
     // MARK: - Callbacks (wired by AppState)
 
-    var onToggleRecording: (@MainActor () async -> Void)?
-    var onStartRecording: (@MainActor () async -> Void)?
-    var onStopRecording: (@MainActor () async -> Void)?
-    var onCancelRecording: (@MainActor () async -> Void)?
+    public var onToggleRecording: (@MainActor () async -> Void)?
+    public var onStartRecording: (@MainActor () async -> Void)?
+    public var onStopRecording: (@MainActor () async -> Void)?
+    public var onCancelRecording: (@MainActor () async -> Void)?
 
     /// Called when recording transitions to hands-free (locked) mode via double-press.
-    var onLocked: (@MainActor () async -> Void)?
+    public var onLocked: (@MainActor () async -> Void)?
 
     /// Returns true if the pipeline is in a processing state (transcribing, polishing, etc.).
     /// Used by the processing state gate to block new recordings during processing.
-    var onIsProcessing: (@MainActor () -> Bool)?
+    public var onIsProcessing: (@MainActor () -> Bool)?
 
     // MARK: - Configuration
 
-    var recordingMode: RecordingMode = .toggle
+    public var recordingMode: RecordingMode = .toggle
 
     /// Toggle-mode hotkey key code (default: Space = 49).
-    var toggleKeyCode: UInt16 = 49
+    public var toggleKeyCode: UInt16 = 49
 
     /// Toggle-mode required modifiers (default: Control).
-    var toggleModifiers: NSEvent.ModifierFlags = [.control]
+    public var toggleModifiers: NSEvent.ModifierFlags = [.control]
 
     /// Key code for the cancel hotkey. Default: Escape (53).
-    var cancelKeyCode: UInt16 = 53
+    public var cancelKeyCode: UInt16 = 53
 
     /// Required modifiers for cancel hotkey. Default: none (bare Escape).
-    var cancelModifiers: NSEvent.ModifierFlags = []
+    public var cancelModifiers: NSEvent.ModifierFlags = []
 
     // MARK: - Lifecycle
 
-    private(set) var isSuspended = false
+    public private(set) var isSuspended = false
 
-    func start() {
+    public init() {}
+
+    public func start() {
         guard !isEnabled else { return }
         installCarbonEventHandler()
         registerToggleHotkey()
@@ -109,7 +111,7 @@ final class HotkeyService {
         isEnabled = true
     }
 
-    func stop() {
+    public func stop() {
         unregisterCancelHotkey()
         unregisterToggleHotkey()
         removeCarbonEventHandler()
@@ -120,7 +122,7 @@ final class HotkeyService {
     }
 
     /// Temporarily unregister all hotkeys so the recorder can capture key combos.
-    func suspend() {
+    public func suspend() {
         guard isEnabled, !isSuspended else { return }
         unregisterCancelHotkey()
         unregisterToggleHotkey()
@@ -129,7 +131,7 @@ final class HotkeyService {
     }
 
     /// Re-register hotkeys after the recorder is done.
-    func resume() {
+    public func resume() {
         guard isEnabled, isSuspended else { return }
         isModifierHeld = false
         performCleanup()
@@ -139,7 +141,7 @@ final class HotkeyService {
     }
 
     /// Register the cancel hotkey. Call on `.recording` entry.
-    func registerCancelHotkey() {
+    public func registerCancelHotkey() {
         guard cancelHotkeyRef == nil else { return }
         cancelHotkeyRef = registerHotkey(
             id: HotkeyID.cancel.rawValue,
@@ -149,7 +151,7 @@ final class HotkeyService {
     }
 
     /// Remove the cancel hotkey. Call whenever recording ends.
-    func unregisterCancelHotkey() {
+    public func unregisterCancelHotkey() {
         if let ref = cancelHotkeyRef {
             UnregisterEventHotKey(ref)
             cancelHotkeyRef = nil
@@ -408,7 +410,7 @@ final class HotkeyService {
     // MARK: - Event Dispatch
 
     /// Called from the Carbon event handler on the main thread for RegisterEventHotKey events.
-    func handleCarbonHotkey(id: UInt32, isRelease: Bool) {
+    public func handleCarbonHotkey(id: UInt32, isRelease: Bool) {
         Task { await AppLogger.shared.log(
             "Carbon hotkey event: id=\(id), isRelease=\(isRelease), mode=\(recordingMode)",
             level: .info, category: "HotkeyService"
@@ -495,12 +497,12 @@ final class HotkeyService {
     // MARK: - Display
 
     /// Human-readable description of the current hotkey.
-    var hotkeyDescription: String {
+    public var hotkeyDescription: String {
         let formatted = KeySymbols.formatHotkey(keyCode: toggleKeyCode, modifiers: toggleModifiers)
         return recordingMode == .pushToTalk ? "Hold \(formatted)" : formatted
     }
 
-    var cancelHotkeyDescription: String {
+    public var cancelHotkeyDescription: String {
         KeySymbols.formatHotkey(keyCode: cancelKeyCode, modifiers: cancelModifiers)
     }
 }

@@ -36,6 +36,11 @@ let package = Package(
             ],
             path: "Sources/EnviousWisprAudio"
         ),
+        .target(
+            name: "EnviousWisprServices",
+            dependencies: ["EnviousWisprCore"],
+            path: "Sources/EnviousWisprServices"
+        ),
         .executableTarget(
             name: "EnviousWispr",
             dependencies: [
@@ -43,6 +48,7 @@ let package = Package(
                 "EnviousWisprStorage",
                 "EnviousWisprPostProcessing",
                 "EnviousWisprAudio",
+                "EnviousWisprServices",
                 "WhisperKit",
                 "FluidAudio",
                 "Sparkle",
