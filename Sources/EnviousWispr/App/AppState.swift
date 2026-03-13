@@ -25,6 +25,7 @@ final class AppState {
     let benchmark = BenchmarkSuite()
     let recordingOverlay = RecordingOverlayPanel()
     let customWordsManager = CustomWordsManager()
+    let wordSuggestionService = WordSuggestionService()
     let ollamaSetup = OllamaSetupService()
     let whisperKitSetup = WhisperKitSetupService()
 
@@ -116,6 +117,7 @@ final class AppState {
         pipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
         pipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
         pipeline.wordCorrection.customWords = customWords
+        pipeline.llmPolish.customWords = customWords
         pipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
         // Sync WhisperKit pipeline settings
         syncWhisperKitPipelineSettings()
@@ -476,6 +478,7 @@ final class AppState {
         whisperKitPipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
         whisperKitPipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
         whisperKitPipeline.wordCorrection.customWords = customWords
+        whisperKitPipeline.llmPolish.customWords = customWords
         whisperKitPipeline.vadAutoStop = settings.vadAutoStop
         whisperKitPipeline.vadSilenceTimeout = settings.vadSilenceTimeout
         whisperKitPipeline.vadSensitivity = settings.vadSensitivity
@@ -786,7 +789,9 @@ final class AppState {
 
     private func syncCustomWordsToPipelines() {
         pipeline.wordCorrection.customWords = customWords
+        pipeline.llmPolish.customWords = customWords
         whisperKitPipeline.wordCorrection.customWords = customWords
+        whisperKitPipeline.llmPolish.customWords = customWords
     }
 
     /// Validate an API key and discover available models for the given provider.

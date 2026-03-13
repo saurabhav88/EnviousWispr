@@ -1,5 +1,6 @@
 import SwiftUI
 import EnviousWisprCore
+import EnviousWisprPostProcessing
 
 struct WordFixSettingsView: View {
     @Environment(AppState.self) private var appState
@@ -87,7 +88,7 @@ struct WordFixSettingsView: View {
             }
         }
         .sheet(item: $editingWord) { word in
-            CustomWordEditSheet(word: word) { updated in
+            CustomWordEditSheet(word: word, wordSuggestionService: appState.wordSuggestionService) { updated in
                 appState.updateCustomWord(updated)
             }
         }
@@ -103,6 +104,15 @@ struct WordFixSettingsView: View {
         errorMessage = ""
         appState.addCustomWord(trimmed)
         newWord = ""
+        // Open edit sheet on next run loop tick — SwiftUI needs a
+        // layout pass to process the @Observable array mutation
+        // before the sheet binding can fire.
+        let wordToFind = trimmed
+        Task { @MainActor in
+            if let added = appState.customWords.first(where: { $0.canonical == wordToFind }) {
+                editingWord = added
+            }
+        }
     }
 }
 
@@ -137,6 +147,7 @@ private struct CustomWordChip: View {
                             .foregroundStyle(.stTextTertiary)
                     }
                 }
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
@@ -160,11 +171,15 @@ private struct CustomWordChip: View {
 private struct CustomWordEditSheet: View {
     @State private var word: CustomWord
     @State private var newAlias: String = ""
+    @State private var isLoadingSuggestions = false
+    @State private var suggestionsApplied = false
+    let wordSuggestionService: WordSuggestionService?
     let onSave: (CustomWord) -> Void
     @Environment(\.dismiss) private var dismiss
 
-    init(word: CustomWord, onSave: @escaping (CustomWord) -> Void) {
+    init(word: CustomWord, wordSuggestionService: WordSuggestionService? = nil, onSave: @escaping (CustomWord) -> Void) {
         _word = State(initialValue: word)
+        self.wordSuggestionService = wordSuggestionService
         self.onSave = onSave
     }
 
@@ -192,6 +207,7 @@ private struct CustomWordEditSheet: View {
                         Text(cat.rawValue.capitalized).tag(cat)
                     }
                 }
+                .labelsHidden()
                 .pickerStyle(.segmented)
             }
 
@@ -252,6 +268,33 @@ private struct CustomWordEditSheet: View {
         }
         .padding(20)
         .frame(width: 400, height: 420)
+        .overlay(alignment: .bottomLeading) {
+            if isLoadingSuggestions {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Getting AI suggestions...")
+                        .font(.stHelper)
+                        .foregroundStyle(.stTextTertiary)
+                }
+                .padding(.leading, 20)
+                .padding(.bottom, 28)
+            }
+        }
+        .task {
+            guard word.aliases.isEmpty, !suggestionsApplied else { return }
+            guard let service = wordSuggestionService, service.isAvailable else { return }
+            isLoadingSuggestions = true
+            if let suggestions = await service.suggest(for: word.canonical) {
+                if word.aliases.isEmpty {
+                    word.aliases = suggestions.suggestedAliases
+                }
+                if word.category == .general {
+                    word.category = suggestions.category
+                }
+                suggestionsApplied = true
+            }
+            isLoadingSuggestions = false
+        }
     }
 
     private func addAlias() {

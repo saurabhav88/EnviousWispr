@@ -11,6 +11,7 @@ public final class LLMPolishStep: TextProcessingStep {
     public var llmModel: String = "gpt-4o-mini"
     public var polishInstructions: PolishInstructions = .default
     public var useExtendedThinking: Bool = false
+    public var customWords: [CustomWord] = []
 
     /// Called before LLM processing starts (pipeline uses this to set .polishing state).
     public var onWillProcess: (() -> Void)?
@@ -161,7 +162,51 @@ public final class LLMPolishStep: TextProcessingStep {
                 """
         }
 
+        // Inject custom vocabulary so the LLM uses preferred spellings.
+        if !customWords.isEmpty {
+            systemPrompt += "\n\n" + renderCustomWordsForPrompt(customWords)
+        }
+
         return PolishInstructions(systemPrompt: systemPrompt)
+    }
+
+    // MARK: - Custom Words Prompt Injection
+
+    private static let maxWordsForPrompt = 50
+    private static let maxPromptChars = 2000
+
+    private static let customVocabHeader = "CUSTOM VOCABULARY: The following are the user's preferred spellings. " +
+        "When the transcript contains similar-sounding words, use these exact spellings:"
+
+    private func renderCustomWordsForPrompt(_ words: [CustomWord]) -> String {
+        let sorted = words.sorted { ($0.priority, $0.canonical) < ($1.priority, $1.canonical) }
+        let capped = Array(sorted.prefix(Self.maxWordsForPrompt))
+        var lines: [String] = []
+        var charCount = Self.customVocabHeader.count
+        for word in capped {
+            let clean = Self.sanitize(word.canonical)
+            let line: String
+            if word.aliases.isEmpty {
+                line = "- \(clean)"
+            } else {
+                let cleanAliases = word.aliases.map { Self.sanitize($0) }.joined(separator: ", ")
+                line = "- \(clean) (may be misheard as: \(cleanAliases))"
+            }
+            if charCount + line.count > Self.maxPromptChars { break }
+            lines.append(line)
+            charCount += line.count
+        }
+        return Self.customVocabHeader + "\n" + lines.joined(separator: "\n")
+    }
+
+    private static func sanitize(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "`", with: "'")
+            .replacingOccurrences(of: "<", with: "")
+            .replacingOccurrences(of: ">", with: "")
+            .replacingOccurrences(of: "\\s{2,}", with: " ", options: .regularExpression)
     }
 
     /// Resolve thinking/reasoning config based on provider, model, and user toggle.
