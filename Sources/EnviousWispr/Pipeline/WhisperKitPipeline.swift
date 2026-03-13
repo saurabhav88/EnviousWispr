@@ -98,6 +98,22 @@ final class WhisperKitPipeline: DictationPipeline {
         llmPolishStep.onWillProcess = { [weak self] in
             self?.state = .polishing
         }
+
+        // Handle audio engine interruption (device disconnect, max duration cap).
+        // Mirrors TranscriptionPipeline's handler — clean up VAD, reset state.
+        audioCapture.onEngineInterrupted = { [weak self] in
+            guard let self else { return }
+            self.vadMonitorTask?.cancel()
+            self.vadMonitorTask = nil
+            self.silenceDetector = nil
+            self.targetApp = nil
+            self.targetElement = nil
+            self.recordingStartTime = nil
+            self.isStopping = false
+            self.isPreWarmed = false
+            self.state = .error("Audio device disconnected")
+        }
+
         // Activate SSE streaming for Gemini
         llmPolishStep.onToken = { _ in }
         textProcessingSteps = [wordCorrectionStep, fillerRemovalStep, llmPolishStep]
@@ -615,7 +631,24 @@ final class WhisperKitPipeline: DictationPipeline {
             language: language
         )
         for step in textProcessingSteps where step.isEnabled {
-            context = try await step.process(context)
+            let stepName = String(describing: type(of: step))
+            let input = context
+            // nonisolated(unsafe) is safe: the task group inherits @MainActor isolation,
+            // so step.process() still runs on MainActor — no real isolation crossing.
+            nonisolated(unsafe) let unsafeStep = step
+            do {
+                context = try await withThrowingTimeout(seconds: 10) {
+                    try await unsafeStep.process(input)
+                }
+            } catch is TimeoutError {
+                Task {
+                    await AppLogger.shared.log(
+                        "\(stepName) timed out after 10s — skipping",
+                        level: .info, category: "TextProcessing"
+                    )
+                }
+                // Heart & Limbs: limb failed, continue with input text
+            }
         }
         return context
     }

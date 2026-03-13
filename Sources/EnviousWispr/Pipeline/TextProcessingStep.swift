@@ -1,8 +1,7 @@
 import Foundation
 
 /// Context passed through the text processing chain after ASR transcription.
-@MainActor
-struct TextProcessingContext {
+struct TextProcessingContext: Sendable {
     /// The current text being processed. Steps modify this.
     var text: String
     /// Optional polished/enhanced version of the text.

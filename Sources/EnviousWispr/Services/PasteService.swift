@@ -110,8 +110,9 @@ enum PasteService {
             kAXFocusedUIElementAttribute as CFString,
             &focusedRef
         )
-        guard err == .success else { return nil }
-        let element = (focusedRef as! AXUIElement)
+        guard err == .success, let ref = focusedRef else { return nil }
+        // AXUIElement is a CFTypeRef — cast is always valid after the success guard above.
+        let element = ref as! AXUIElement
         // Set timeout once at capture — persists for the element's lifetime.
         AXUIElementSetAttributeValue(
             element,

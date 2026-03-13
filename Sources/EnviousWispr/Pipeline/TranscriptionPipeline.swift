@@ -819,7 +819,24 @@ final class TranscriptionPipeline: DictationPipeline {
             language: language
         )
         for step in textProcessingSteps where step.isEnabled {
-            context = try await step.process(context)
+            let stepName = String(describing: type(of: step))
+            let input = context
+            // nonisolated(unsafe) is safe: the task group inherits @MainActor isolation,
+            // so step.process() still runs on MainActor — no real isolation crossing.
+            nonisolated(unsafe) let unsafeStep = step
+            do {
+                context = try await withThrowingTimeout(seconds: 10) {
+                    try await unsafeStep.process(input)
+                }
+            } catch is TimeoutError {
+                Task {
+                    await AppLogger.shared.log(
+                        "\(stepName) timed out after 10s — skipping",
+                        level: .info, category: "TextProcessing"
+                    )
+                }
+                // Heart & Limbs: limb failed, continue with input text
+            }
         }
         return context
     }

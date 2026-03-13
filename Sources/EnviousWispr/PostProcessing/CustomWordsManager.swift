@@ -14,9 +14,20 @@ final class CustomWordsManager {
         fileURL = appSupport.appendingPathComponent("custom-words.json")
     }
 
-    func load() -> [CustomWord] {
+    /// Load custom words from disk. Returns nil on I/O failure (as opposed to
+    /// empty array for a missing file) so callers can distinguish "no words yet"
+    /// from "couldn't read" and avoid overwriting real data.
+    func load() -> [CustomWord]? {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return [] }
-        guard let data = try? Data(contentsOf: fileURL) else { return [] }
+        guard let data = try? Data(contentsOf: fileURL) else {
+            Task {
+                await AppLogger.shared.log(
+                    "Failed to read custom words file — returning nil to prevent data loss",
+                    level: .info, category: "CustomWords"
+                )
+            }
+            return nil
+        }
 
         // Try new format first
         if let words = try? JSONDecoder().decode([CustomWord].self, from: data) {

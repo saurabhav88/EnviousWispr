@@ -75,8 +75,8 @@ final class AppState {
     }
 
     init() {
-        // Load custom words
-        customWords = customWordsManager.load()
+        // Load custom words (nil = I/O failure, keep default empty array to prevent data loss)
+        customWords = customWordsManager.load() ?? []
 
         // Both pipeline properties must be initialized before `self` can be used.
         // WhisperKitBackend default is large-v3-turbo; reconfigured from settings below.
