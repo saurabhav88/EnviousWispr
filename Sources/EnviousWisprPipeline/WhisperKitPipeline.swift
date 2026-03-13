@@ -637,19 +637,33 @@ public final class WhisperKitPipeline: DictationPipeline {
             language: language
         )
         for step in textProcessingSteps where step.isEnabled {
-            let stepName = String(describing: type(of: step))
+            let stepName = step.name
             let input = context
             // nonisolated(unsafe) is safe: the task group inherits @MainActor isolation,
             // so step.process() still runs on MainActor — no real isolation crossing.
             nonisolated(unsafe) let unsafeStep = step
+            let stepStart = CFAbsoluteTimeGetCurrent()
+            let budgetSeconds = Double(unsafeStep.maxDuration.components.seconds)
+                              + Double(unsafeStep.maxDuration.components.attoseconds) / 1e18
             do {
-                context = try await withThrowingTimeout(seconds: 10) {
+                context = try await withThrowingTimeout(seconds: budgetSeconds) {
                     try await unsafeStep.process(input)
                 }
-            } catch is TimeoutError {
+                let stepMs = (CFAbsoluteTimeGetCurrent() - stepStart) * 1000
                 Task {
                     await AppLogger.shared.log(
-                        "\(stepName) timed out after 10s — skipping",
+                        "\(stepName) completed in \(String(format: "%.1f", stepMs))ms (budget: \(String(format: "%.0f", budgetSeconds * 1000))ms)",
+                        level: .info, category: "PipelineTiming"
+                    )
+                }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                let stepMs = (CFAbsoluteTimeGetCurrent() - stepStart) * 1000
+                let reason = error is TimeoutError ? "timed out" : "failed: \(error.localizedDescription)"
+                Task {
+                    await AppLogger.shared.log(
+                        "\(stepName) \(reason) after \(String(format: "%.1f", stepMs))ms — skipping",
                         level: .info, category: "TextProcessing"
                     )
                 }

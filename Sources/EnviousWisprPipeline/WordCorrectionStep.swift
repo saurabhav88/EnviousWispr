@@ -14,6 +14,8 @@ public final class WordCorrectionStep: TextProcessingStep {
         wordCorrectionEnabled && !customWords.isEmpty
     }
 
+    public var maxDuration: Duration { .milliseconds(100) }
+
     public init() {}
 
     public func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {

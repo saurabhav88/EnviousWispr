@@ -33,6 +33,8 @@ public protocol TextProcessingStep {
     var name: String { get }
     /// Whether this step should run. Checked before each invocation.
     var isEnabled: Bool { get }
+    /// Maximum time this step may run before being skipped.
+    var maxDuration: Duration { get }
     /// Process the text and return an updated context.
     func process(_ context: TextProcessingContext) async throws -> TextProcessingContext
 }

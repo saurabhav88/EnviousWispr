@@ -11,6 +11,8 @@ public final class FillerRemovalStep: TextProcessingStep {
 
     public var isEnabled: Bool { fillerRemovalEnabled }
 
+    public var maxDuration: Duration { .milliseconds(50) }
+
     private static let logger = Logger(subsystem: "com.enviouswispr.app", category: "FillerRemoval")
 
     public static let fillerPattern: NSRegularExpression? = {

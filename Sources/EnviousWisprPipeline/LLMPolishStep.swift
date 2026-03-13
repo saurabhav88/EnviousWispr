@@ -24,6 +24,9 @@ public final class LLMPolishStep: TextProcessingStep {
         llmProvider != .none
     }
 
+    /// 5s initial budget — real-world LLM calls take 2-5s. Will tighten with telemetry data.
+    public var maxDuration: Duration { .seconds(5) }
+
     public init(keychainManager: KeychainManager) {
         self.keychainManager = keychainManager
     }
