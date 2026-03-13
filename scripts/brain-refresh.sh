@@ -127,7 +127,7 @@ generate_protocol_conformers() {
 # Auto-generate: WhisperKit defaults table for whisperkit-research.md
 # --------------------------------------------------------------------------
 generate_whisperkit_defaults() {
-    local wk_file="$SOURCES_DIR/EnviousWispr/ASR/WhisperKitBackend.swift"
+    local wk_file="$SOURCES_DIR/EnviousWisprASR/WhisperKitBackend.swift"
 
     if [[ ! -f "$wk_file" ]]; then
         echo "*(WhisperKitBackend.swift not found — skipping)*"
@@ -267,19 +267,19 @@ generate_pipeline_states() {
     echo "**PipelineState** (Parakeet highway — \`Models/AppSettings.swift\`):"
     echo "\`\`\`"
 
-    local ps_file="$SOURCES_DIR/EnviousWispr/Models/AppSettings.swift"
+    local ps_file="$SOURCES_DIR/EnviousWisprCore/AppSettings.swift"
     if [[ -f "$ps_file" ]]; then
         # Extract cases only from PipelineState enum (skip RecordingMode)
         local in_enum=false
         while IFS= read -r line; do
-            if echo "$line" | grep -q '^enum PipelineState'; then
+            if echo "$line" | grep -q 'enum PipelineState'; then
                 in_enum=true
                 continue
             fi
             if $in_enum; then
-                if echo "$line" | grep -qE '^\s*case '; then
+                if echo "$line" | grep -qE '^\s*case [a-z]'; then
                     echo "$line" | sed 's/^\s*//'
-                elif echo "$line" | grep -qE '^\s*(var |func |})'; then
+                elif echo "$line" | grep -qE '^\s*(public |private |internal )?(var |func )|^\s*}'; then
                     break
                 fi
             fi
@@ -291,18 +291,18 @@ generate_pipeline_states() {
     echo "**WhisperKitPipelineState** (WhisperKit highway — \`Pipeline/WhisperKitPipeline.swift\`):"
     echo "\`\`\`"
 
-    local wkps_file="$SOURCES_DIR/EnviousWispr/Pipeline/WhisperKitPipeline.swift"
+    local wkps_file="$SOURCES_DIR/EnviousWisprPipeline/WhisperKitPipeline.swift"
     if [[ -f "$wkps_file" ]]; then
         local in_enum=false
         while IFS= read -r line; do
-            if echo "$line" | grep -q '^enum WhisperKitPipelineState'; then
+            if echo "$line" | grep -q 'enum WhisperKitPipelineState'; then
                 in_enum=true
                 continue
             fi
             if $in_enum; then
-                if echo "$line" | grep -qE '^\s*case '; then
+                if echo "$line" | grep -qE '^\s*case [a-z]'; then
                     echo "$line" | sed 's/^\s*//'
-                elif echo "$line" | grep -qE '^\s*(var |func |})'; then
+                elif echo "$line" | grep -qE '^\s*(public |private |internal )?(var |func )|^\s*}'; then
                     break
                 fi
             fi
@@ -316,7 +316,7 @@ generate_pipeline_states() {
 # Auto-generate: LLM providers table
 # --------------------------------------------------------------------------
 generate_llm_providers() {
-    local llm_file="$SOURCES_DIR/EnviousWispr/Models/LLMResult.swift"
+    local llm_file="$SOURCES_DIR/EnviousWisprCore/LLMResult.swift"
 
     if [[ ! -f "$llm_file" ]]; then
         echo "*(LLMResult.swift not found — skipping)*"
@@ -328,7 +328,7 @@ generate_llm_providers() {
 
     # Extract case names from enum
     local cases
-    cases=$(sed -n '/^enum LLMProvider/,/^}/p' "$llm_file" | grep '^\s*case ' | awk '{print $2}')
+    cases=$(sed -n '/enum LLMProvider/,/^}/p' "$llm_file" | grep '^\s*case ' | awk '{print $2}')
 
     while IFS= read -r case_name; do
         local label
@@ -343,7 +343,7 @@ generate_llm_providers() {
 # Auto-generate: ASR backend types table
 # --------------------------------------------------------------------------
 generate_asr_backend_types() {
-    local asr_file="$SOURCES_DIR/EnviousWispr/Models/ASRResult.swift"
+    local asr_file="$SOURCES_DIR/EnviousWisprCore/ASRResult.swift"
 
     if [[ ! -f "$asr_file" ]]; then
         echo "*(ASRResult.swift not found — skipping)*"
@@ -354,7 +354,7 @@ generate_asr_backend_types() {
     echo "|------|-------------|"
 
     local cases
-    cases=$(sed -n '/^enum ASRBackendType/,/^}/p' "$asr_file" | grep '^\s*case ' | awk '{print $2}')
+    cases=$(sed -n '/enum ASRBackendType/,/^}/p' "$asr_file" | grep '^\s*case ' | awk '{print $2}')
 
     while IFS= read -r case_name; do
         local label
@@ -369,7 +369,7 @@ generate_asr_backend_types() {
 # Auto-generate: audio constants table
 # --------------------------------------------------------------------------
 generate_audio_constants() {
-    local const_file="$SOURCES_DIR/EnviousWispr/Utilities/Constants.swift"
+    local const_file="$SOURCES_DIR/EnviousWisprCore/Constants.swift"
 
     if [[ ! -f "$const_file" ]]; then
         echo "*(Constants.swift not found — skipping)*"
@@ -383,7 +383,7 @@ generate_audio_constants() {
     local in_enum=false
     local prev_comment=""
     while IFS= read -r line; do
-        if echo "$line" | grep -q '^enum AudioConstants'; then
+        if echo "$line" | grep -q 'enum AudioConstants'; then
             in_enum=true
             continue
         fi
@@ -489,7 +489,7 @@ echo "Generating file-index.md..."
 generate_file_index > "$FILE_INDEX"
 
 if [[ -z "$OUTPUT_DIR" ]]; then
-    _src_hash=$("$SCRIPT_DIR/brain-hash.sh" glob "Sources/EnviousWispr/**/*.swift")
+    _src_hash=$("$SCRIPT_DIR/brain-hash.sh" glob "Sources/**/*.swift")
     _content_hash=$("$SCRIPT_DIR/brain-hash.sh" file "$FILE_INDEX")
     manifest_ensure
     manifest_upsert_artifact ".claude/knowledge/file-index.md" "{
@@ -497,7 +497,7 @@ if [[ -z "$OUTPUT_DIR" ]]; then
         \"trust_state\": \"trusted\",
         \"owner\": \"brain-refresh.sh\",
         \"regenerate_cmd\": \"scripts/brain-refresh.sh\",
-        \"source_glob\": \"Sources/EnviousWispr/**/*.swift\",
+        \"source_glob\": \"Sources/**/*.swift\",
         \"source_hash\": \"$_src_hash\",
         \"content_hash\": \"$_content_hash\",
         \"last_generated\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
@@ -547,7 +547,7 @@ echo "Generating type-index.md..."
 generate_type_index > "$TYPE_INDEX"
 
 if [[ -z "$OUTPUT_DIR" ]]; then
-    _src_hash=$("$SCRIPT_DIR/brain-hash.sh" glob "Sources/EnviousWispr/**/*.swift")
+    _src_hash=$("$SCRIPT_DIR/brain-hash.sh" glob "Sources/**/*.swift")
     _content_hash=$("$SCRIPT_DIR/brain-hash.sh" file "$TYPE_INDEX")
     manifest_ensure
     manifest_upsert_artifact ".claude/knowledge/type-index.md" "{
@@ -555,7 +555,7 @@ if [[ -z "$OUTPUT_DIR" ]]; then
         \"trust_state\": \"trusted\",
         \"owner\": \"brain-refresh.sh\",
         \"regenerate_cmd\": \"scripts/brain-refresh.sh\",
-        \"source_glob\": \"Sources/EnviousWispr/**/*.swift\",
+        \"source_glob\": \"Sources/**/*.swift\",
         \"source_hash\": \"$_src_hash\",
         \"content_hash\": \"$_content_hash\",
         \"last_generated\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
@@ -620,7 +620,7 @@ TASK_ROUTER_MANUAL=$(get_manual_section "$KNOWLEDGE_DIR/task-router.md")
 } > "$TASK_ROUTER"
 
 if [[ -z "$OUTPUT_DIR" ]]; then
-    _src_hash=$("$SCRIPT_DIR/brain-hash.sh" glob "Sources/EnviousWispr/**/*.swift")
+    _src_hash=$("$SCRIPT_DIR/brain-hash.sh" glob "Sources/**/*.swift")
     _content_hash=$("$SCRIPT_DIR/brain-hash.sh" file "$TASK_ROUTER")
     manifest_ensure
     manifest_upsert_artifact ".claude/knowledge/task-router.md" "{
@@ -628,7 +628,7 @@ if [[ -z "$OUTPUT_DIR" ]]; then
         \"trust_state\": \"trusted\",
         \"owner\": \"brain-refresh.sh\",
         \"regenerate_cmd\": \"scripts/brain-refresh.sh\",
-        \"source_glob\": \"Sources/EnviousWispr/**/*.swift\",
+        \"source_glob\": \"Sources/**/*.swift\",
         \"source_hash\": \"$_src_hash\",
         \"content_hash\": \"$_content_hash\",
         \"last_generated\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
@@ -650,10 +650,10 @@ generate_feature_catalog_generated() {
     echo ""
 
     # Count SettingKey cases
-    local settings_file="$SOURCES_DIR/EnviousWispr/Services/SettingsManager.swift"
+    local settings_file="$SOURCES_DIR/EnviousWisprServices/SettingsManager.swift"
     local setting_count=0
     if [[ -f "$settings_file" ]]; then
-        setting_count=$(grep -c '^\s*case ' "$settings_file" || true)
+        setting_count=$(sed -n '/enum SettingKey/,/^    }/p' "$settings_file" | grep -c '^\s*case ' || true)
     fi
     echo "## Source Stats"
     echo ""
@@ -713,7 +713,7 @@ FEATURE_CATALOG_MANUAL=$(get_manual_section "$KNOWLEDGE_DIR/feature-catalog.md")
 } > "$FEATURE_CATALOG"
 
 if [[ -z "$OUTPUT_DIR" ]]; then
-    _src_hash=$("$SCRIPT_DIR/brain-hash.sh" glob "Sources/EnviousWispr/**/*.swift")
+    _src_hash=$("$SCRIPT_DIR/brain-hash.sh" glob "Sources/**/*.swift")
     _content_hash=$("$SCRIPT_DIR/brain-hash.sh" file "$FEATURE_CATALOG")
     manifest_ensure
     manifest_upsert_artifact ".claude/knowledge/feature-catalog.md" "{
@@ -721,7 +721,7 @@ if [[ -z "$OUTPUT_DIR" ]]; then
         \"trust_state\": \"trusted\",
         \"owner\": \"brain-refresh.sh\",
         \"regenerate_cmd\": \"scripts/brain-refresh.sh\",
-        \"source_glob\": \"Sources/EnviousWispr/**/*.swift\",
+        \"source_glob\": \"Sources/**/*.swift\",
         \"source_hash\": \"$_src_hash\",
         \"content_hash\": \"$_content_hash\",
         \"last_generated\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
@@ -827,13 +827,13 @@ if [[ -z "$OUTPUT_DIR" ]]; then
     echo "Writing auto-section hashes to manifest..."
 
     # Compute auto-section source hashes
-    _proto_hash=$("$SCRIPT_DIR/brain-hash.sh" glob "Sources/EnviousWispr/**/*.swift")
+    _proto_hash=$("$SCRIPT_DIR/brain-hash.sh" glob "Sources/**/*.swift")
     _settings_hash=$("$SCRIPT_DIR/brain-hash.sh" file "$SOURCES_DIR/EnviousWispr/Views/Settings/SettingsSection.swift")
-    _pipeline_hash=$("$SCRIPT_DIR/brain-hash.sh" files "$SOURCES_DIR/EnviousWispr/Models/AppSettings.swift" "$SOURCES_DIR/EnviousWispr/Pipeline/WhisperKitPipeline.swift")
-    _llm_hash=$("$SCRIPT_DIR/brain-hash.sh" file "$SOURCES_DIR/EnviousWispr/Models/LLMResult.swift")
-    _asr_hash=$("$SCRIPT_DIR/brain-hash.sh" file "$SOURCES_DIR/EnviousWispr/Models/ASRResult.swift")
-    _audio_hash=$("$SCRIPT_DIR/brain-hash.sh" file "$SOURCES_DIR/EnviousWispr/Utilities/Constants.swift")
-    _wk_hash=$("$SCRIPT_DIR/brain-hash.sh" file "$SOURCES_DIR/EnviousWispr/ASR/WhisperKitBackend.swift")
+    _pipeline_hash=$("$SCRIPT_DIR/brain-hash.sh" files "$SOURCES_DIR/EnviousWisprCore/AppSettings.swift" "$SOURCES_DIR/EnviousWisprPipeline/WhisperKitPipeline.swift")
+    _llm_hash=$("$SCRIPT_DIR/brain-hash.sh" file "$SOURCES_DIR/EnviousWisprCore/LLMResult.swift")
+    _asr_hash=$("$SCRIPT_DIR/brain-hash.sh" file "$SOURCES_DIR/EnviousWisprCore/ASRResult.swift")
+    _audio_hash=$("$SCRIPT_DIR/brain-hash.sh" file "$SOURCES_DIR/EnviousWisprCore/Constants.swift")
+    _wk_hash=$("$SCRIPT_DIR/brain-hash.sh" file "$SOURCES_DIR/EnviousWisprASR/WhisperKitBackend.swift")
     _dep_hash=$("$SCRIPT_DIR/brain-hash.sh" file "$PROJECT_ROOT/Package.swift")
 
     # Architecture.md auto-sections
@@ -847,12 +847,12 @@ if [[ -z "$OUTPUT_DIR" ]]; then
         \"expiry_policy\": \"manual_review\",
         \"review_interval_days\": 30,
         \"auto_sections\": {
-            \"protocol_conformers\": {\"source_glob\": \"Sources/EnviousWispr/**/*.swift\", \"source_hash\": \"$_proto_hash\"},
+            \"protocol_conformers\": {\"source_glob\": \"Sources/**/*.swift\", \"source_hash\": \"$_proto_hash\"},
             \"settings_sections\": {\"source_file\": \"Sources/EnviousWispr/Views/Settings/SettingsSection.swift\", \"source_hash\": \"$_settings_hash\"},
-            \"pipeline_states\": {\"source_files\": [\"Sources/EnviousWispr/Models/AppSettings.swift\", \"Sources/EnviousWispr/Pipeline/WhisperKitPipeline.swift\"], \"source_hash\": \"$_pipeline_hash\"},
-            \"llm_providers\": {\"source_file\": \"Sources/EnviousWispr/Models/LLMResult.swift\", \"source_hash\": \"$_llm_hash\"},
-            \"asr_backend_types\": {\"source_file\": \"Sources/EnviousWispr/Models/ASRResult.swift\", \"source_hash\": \"$_asr_hash\"},
-            \"audio_constants\": {\"source_file\": \"Sources/EnviousWispr/Utilities/Constants.swift\", \"source_hash\": \"$_audio_hash\"}
+            \"pipeline_states\": {\"source_files\": [\"Sources/EnviousWisprCore/AppSettings.swift\", \"Sources/EnviousWisprPipeline/WhisperKitPipeline.swift\"], \"source_hash\": \"$_pipeline_hash\"},
+            \"llm_providers\": {\"source_file\": \"Sources/EnviousWisprCore/LLMResult.swift\", \"source_hash\": \"$_llm_hash\"},
+            \"asr_backend_types\": {\"source_file\": \"Sources/EnviousWisprCore/ASRResult.swift\", \"source_hash\": \"$_asr_hash\"},
+            \"audio_constants\": {\"source_file\": \"Sources/EnviousWisprCore/Constants.swift\", \"source_hash\": \"$_audio_hash\"}
         }
     }"
 
@@ -867,7 +867,7 @@ if [[ -z "$OUTPUT_DIR" ]]; then
         \"expiry_policy\": \"manual_review\",
         \"review_interval_days\": 60,
         \"auto_sections\": {
-            \"whisperkit_defaults\": {\"source_file\": \"Sources/EnviousWispr/ASR/WhisperKitBackend.swift\", \"source_hash\": \"$_wk_hash\"}
+            \"whisperkit_defaults\": {\"source_file\": \"Sources/EnviousWisprASR/WhisperKitBackend.swift\", \"source_hash\": \"$_wk_hash\"}
         }
     }"
 
@@ -897,3 +897,16 @@ echo "  - $TYPE_INDEX"
 echo "  - $TASK_ROUTER"
 echo "  - $FEATURE_CATALOG"
 echo "  - Auto-sections in architecture.md, whisperkit-research.md, distribution.md, wispr-eyes.md"
+
+# --------------------------------------------------------------------------
+# 7. Post-refresh integrity check
+# --------------------------------------------------------------------------
+if [[ -z "$OUTPUT_DIR" ]]; then
+    echo ""
+    echo "Running post-refresh integrity check..."
+    if ! "$SCRIPT_DIR/brain-integrity-check.sh"; then
+        echo ""
+        echo "WARNING: Integrity check found issues. Review output above."
+        exit 1
+    fi
+fi
