@@ -215,6 +215,7 @@ struct BrandedSegmentedPicker<T: Hashable>: View {
                         .background(isSelected ? Color.stAccentLight : Color.clear)
                 }
                 .buttonStyle(.plain)
+                .accessibilityValue(isSelected ? "selected" : "")
 
                 if index < options.count - 1 {
                     Divider()

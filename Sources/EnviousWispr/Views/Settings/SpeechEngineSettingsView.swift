@@ -292,5 +292,6 @@ private struct PresetCard: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityValue(isSelected ? "selected" : "")
     }
 }

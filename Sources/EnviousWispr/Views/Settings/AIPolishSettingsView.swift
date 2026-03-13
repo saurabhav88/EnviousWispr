@@ -290,6 +290,7 @@ struct AIPolishSettingsView: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityValue(isSelected ? "selected" : "")
     }
 
     // MARK: - API Key Row
