@@ -1,0 +1,51 @@
+name: Deploy Blog
+
+on:
+  schedule:
+    # Daily at 14:07 UTC (~9:07 AM ET / 10:07 AM EDT)
+    - cron: '7 14 * * *'
+  workflow_dispatch: # Manual trigger
+
+concurrency:
+  group: deploy-blog
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install dependencies
+        working-directory: website
+        run: npm ci
+
+      - name: Build Astro site
+        working-directory: website
+        run: npm run build
+
+      - name: Verify build output
+        working-directory: website
+        run: |
+          if [ ! -d "dist/client" ]; then
+            echo "Build output directory dist/client/ does not exist"
+            exit 1
+          fi
+          echo "Build output verified"
+
+      - name: Deploy to Cloudflare Pages
+        working-directory: website
+        run: npx wrangler pages deploy dist/client/ --project-name=enviouswispr --branch=main
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

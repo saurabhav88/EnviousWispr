@@ -1,11 +1,8 @@
 ---
-import { getCollection } from 'astro:content';
+import { getPublishedPosts } from '../../utils/posts';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 
-const allPosts = await getCollection('blog', ({ data }) => !data.draft);
-const posts = allPosts.sort(
-  (a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf()
-);
+const posts = await getPublishedPosts();
 
 const allTags = [...new Set(posts.flatMap(p => p.data.tags))].sort();
 
