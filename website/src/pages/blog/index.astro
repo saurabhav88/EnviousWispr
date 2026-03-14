@@ -7,6 +7,8 @@ const posts = allPosts.sort(
   (a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf()
 );
 
+const allTags = [...new Set(posts.flatMap(p => p.data.tags))].sort();
+
 const formatDate = (d: Date) =>
   d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 ---
@@ -27,47 +29,135 @@ const formatDate = (d: Date) =>
         </p>
       </header>
 
+      <!-- Search + Filters -->
+      <div class="blog-toolbar reveal" style="--delay: 40ms">
+        <div class="blog-search-wrap">
+          <svg class="blog-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input
+            type="search"
+            id="blog-search"
+            class="blog-search"
+            placeholder="Search posts..."
+            autocomplete="off"
+          />
+        </div>
+        {allTags.length > 0 && (
+          <div class="blog-filters" role="group" aria-label="Filter by tag">
+            <button class="blog-filter-tag active" data-tag="all">All</button>
+            {allTags.map(tag => (
+              <button class="blog-filter-tag" data-tag={tag}>{tag}</button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <!-- No results -->
+      <div class="blog-no-results" id="blog-no-results" hidden>
+        <p>No posts match your search.</p>
+      </div>
+
       {posts.length === 0 ? (
         <div class="blog-empty reveal">
           <p>No posts yet — check back soon.</p>
         </div>
       ) : (
-        <ol class="blog-list" reversed>
-          {posts.map((post, i) => (
-            <li class="blog-card reveal" style={`--delay: ${i * 60}ms`}>
-              <a href={`/blog/${post.id}/`} class="blog-card-link" aria-label={post.data.title}>
-                <div class="blog-card-inner">
-                  <div class="blog-card-meta">
-                    <time datetime={post.data.pubDate.toISOString()} class="blog-card-date">
-                      {formatDate(post.data.pubDate)}
-                    </time>
-                    {post.data.tags.length > 0 && (
-                      <div class="blog-card-tags" role="list" aria-label="Tags">
-                        {post.data.tags.slice(0, 3).map(tag => (
-                          <span class="blog-card-tag" role="listitem">{tag}</span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <h2 class="blog-card-title">{post.data.title}</h2>
-                  <p class="blog-card-desc">{post.data.description}</p>
-
-                  <span class="blog-card-cta" aria-hidden="true">
-                    Read post
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="9 18 15 12 9 6"/></svg>
-                  </span>
+        <div class="blog-magazine" id="blog-magazine">
+          {posts.map((post, i) => {
+            const isLast = i === posts.length - 1;
+            const restCount = posts.length - 1;
+            const isOddOrphan = isLast && i > 0 && restCount % 2 === 1;
+            return (
+            <a
+              href={`/blog/${post.id}/`}
+              class:list={['blog-card', 'reveal', { 'blog-card-featured': i === 0, 'blog-card-wide': isOddOrphan }]}
+              style={`--delay: ${(i + 1) * 60}ms`}
+              aria-label={post.data.title}
+              data-title={post.data.title.toLowerCase()}
+              data-desc={post.data.description.toLowerCase()}
+              data-tags={post.data.tags.join(',')}
+            >
+              {i === 0 && <div class="blog-card-badge">Latest</div>}
+              <div class="blog-card-inner">
+                <div class="blog-card-meta">
+                  <time datetime={post.data.pubDate.toISOString()} class="blog-card-date">
+                    {formatDate(post.data.pubDate)}
+                  </time>
+                  {post.data.tags.length > 0 && (
+                    <div class="blog-card-tags" role="list" aria-label="Tags">
+                      {post.data.tags.slice(0, 3).map(tag => (
+                        <span class="blog-card-tag" role="listitem">{tag}</span>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <div class="blog-card-accent" aria-hidden="true"></div>
-              </a>
-            </li>
-          ))}
-        </ol>
+
+                <h2 class="blog-card-title">{post.data.title}</h2>
+                <p class="blog-card-desc">{post.data.description}</p>
+
+                <span class="blog-card-cta" aria-hidden="true">
+                  Read post
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="9 18 15 12 9 6"/></svg>
+                </span>
+              </div>
+              <div class="blog-card-accent" aria-hidden="true"></div>
+            </a>
+          )})}
+        </div>
       )}
 
     </div>
   </section>
 </BaseLayout>
+
+<script>
+  const search = document.getElementById('blog-search') as HTMLInputElement;
+  const filterBtns = document.querySelectorAll<HTMLButtonElement>('.blog-filter-tag');
+  const magazine = document.getElementById('blog-magazine');
+  const noResults = document.getElementById('blog-no-results');
+  const cards = magazine ? Array.from(magazine.querySelectorAll<HTMLAnchorElement>('.blog-card')) : [];
+
+  let activeTag = 'all';
+
+  function filterPosts() {
+    const query = search?.value.toLowerCase().trim() ?? '';
+    let visible = 0;
+
+    cards.forEach((card, i) => {
+      const title = card.dataset.title ?? '';
+      const desc = card.dataset.desc ?? '';
+      const tags = card.dataset.tags ?? '';
+
+      const matchesSearch = !query || title.includes(query) || desc.includes(query) || tags.includes(query);
+      const matchesTag = activeTag === 'all' || tags.split(',').includes(activeTag);
+      const show = matchesSearch && matchesTag;
+
+      card.style.display = show ? '' : 'none';
+      if (show) visible++;
+
+      // Update featured state: first visible card gets featured treatment
+      card.classList.toggle('blog-card-featured', show && visible === 1 && !query && activeTag === 'all');
+    });
+
+    // Show/hide badge on first card
+    const badge = cards[0]?.querySelector('.blog-card-badge') as HTMLElement | null;
+    if (badge) {
+      badge.style.display = (!query && activeTag === 'all') ? '' : 'none';
+    }
+
+    if (noResults) noResults.hidden = visible > 0;
+  }
+
+  search?.addEventListener('input', filterPosts);
+
+  filterBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      filterBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeTag = btn.dataset.tag ?? 'all';
+      filterPosts();
+    });
+  });
+</script>
 
 <style>
   .blog-page {
@@ -79,7 +169,8 @@ const formatDate = (d: Date) =>
   /* Header */
   .blog-page-header {
     max-width: 560px;
-    margin-bottom: 64px;
+    margin: 0 auto 48px;
+    text-align: center;
   }
 
   .blog-page-title {
@@ -97,6 +188,93 @@ const formatDate = (d: Date) =>
     line-height: 1.65;
   }
 
+  /* Toolbar: search + filters */
+  .blog-toolbar {
+    max-width: 900px;
+    margin: 0 auto 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .blog-search-wrap {
+    position: relative;
+    max-width: 360px;
+    width: 100%;
+  }
+
+  .blog-search-icon {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-3);
+    pointer-events: none;
+  }
+
+  .blog-search {
+    width: 100%;
+    padding: 10px 16px 10px 40px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-btn);
+    background: var(--surface);
+    font-family: var(--font-body);
+    font-size: 14px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  .blog-search::placeholder {
+    color: var(--text-3);
+  }
+
+  .blog-search:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  .blog-filters {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .blog-filter-tag {
+    padding: 5px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    background: transparent;
+    font-family: var(--font-body);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-3);
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: capitalize;
+  }
+
+  .blog-filter-tag:hover {
+    border-color: var(--border-hover);
+    color: var(--text-2);
+  }
+
+  .blog-filter-tag.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+
+  /* No results */
+  .blog-no-results {
+    text-align: center;
+    padding: 80px 0;
+    color: var(--text-3);
+    font-size: 16px;
+  }
+
   /* Empty state */
   .blog-empty {
     text-align: center;
@@ -105,20 +283,17 @@ const formatDate = (d: Date) =>
     font-size: 16px;
   }
 
-  /* Post list */
-  .blog-list {
-    list-style: none;
-    display: flex;
-    flex-direction: column;
+  /* Magazine grid */
+  .blog-magazine {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
     gap: 20px;
-    max-width: 760px;
+    max-width: 900px;
+    margin: 0 auto;
   }
 
+  /* Shared card styles */
   .blog-card {
-    transition-delay: var(--delay, 0ms);
-  }
-
-  .blog-card-link {
     display: block;
     text-decoration: none;
     position: relative;
@@ -127,20 +302,72 @@ const formatDate = (d: Date) =>
     background: var(--surface);
     overflow: hidden;
     transition: border-color 0.25s, box-shadow 0.25s, transform 0.25s;
+    transition-delay: var(--delay, 0ms);
   }
 
-  .blog-card-link:hover {
+  .blog-card:hover {
     border-color: var(--border-hover);
     box-shadow: 0 8px 40px rgba(124, 58, 237, 0.10);
     transform: translateY(-2px);
   }
 
-  .blog-card-link:hover .blog-card-accent {
+  .blog-card:hover .blog-card-accent {
     opacity: 1;
   }
 
-  .blog-card-link:hover .blog-card-cta {
+  .blog-card:hover .blog-card-cta {
     color: var(--accent);
+  }
+
+  .blog-card:hover .blog-card-title {
+    color: var(--accent);
+  }
+
+  /* Featured card spans full width */
+  .blog-card-featured {
+    grid-column: 1 / -1;
+  }
+
+  .blog-card-featured .blog-card-inner {
+    padding: 36px 40px 32px;
+  }
+
+  .blog-card-featured .blog-card-title {
+    font-size: 28px;
+    letter-spacing: -1px;
+  }
+
+  .blog-card-featured .blog-card-desc {
+    font-size: 16px;
+    max-width: 640px;
+  }
+
+  /* Orphan last card spans full width */
+  .blog-card-wide {
+    grid-column: 1 / -1;
+  }
+
+  /* Featured badge */
+  .blog-card-badge {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    padding: 3px 12px;
+    border-radius: var(--radius-pill);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    background: var(--accent);
+    color: #fff;
+    z-index: 2;
+  }
+
+  /* Rainbow accent on featured hover */
+  .blog-card-featured .blog-card-accent {
+    top: 0;
+    bottom: auto;
+    height: 3px;
   }
 
   .blog-card-inner {
@@ -193,10 +420,6 @@ const formatDate = (d: Date) =>
     transition: color 0.2s;
   }
 
-  .blog-card-link:hover .blog-card-title {
-    color: var(--accent);
-  }
-
   .blog-card-desc {
     font-size: 15px;
     color: var(--text-2);
@@ -214,7 +437,7 @@ const formatDate = (d: Date) =>
     transition: color 0.2s;
   }
 
-  /* Rainbow accent bar along the bottom edge */
+  /* Rainbow accent bar */
   .blog-card-accent {
     position: absolute;
     bottom: 0;
@@ -227,7 +450,7 @@ const formatDate = (d: Date) =>
   }
 
   /* Responsive */
-  @media (max-width: 600px) {
+  @media (max-width: 700px) {
     .blog-page {
       padding: 100px 0 64px;
     }
@@ -238,11 +461,24 @@ const formatDate = (d: Date) =>
     .blog-page-sub {
       font-size: 16px;
     }
+    .blog-magazine {
+      grid-template-columns: 1fr;
+    }
+    .blog-card-featured .blog-card-inner {
+      padding: 22px 20px 18px;
+    }
+    .blog-card-featured .blog-card-title {
+      font-size: 22px;
+      letter-spacing: -0.6px;
+    }
     .blog-card-inner {
       padding: 22px 20px 18px;
     }
     .blog-card-title {
       font-size: 19px;
+    }
+    .blog-search-wrap {
+      max-width: 100%;
     }
   }
 </style>
