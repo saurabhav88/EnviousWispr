@@ -40,12 +40,6 @@ final class AppState {
     /// Called when pipeline state changes — set by AppDelegate for icon updates.
     var onPipelineStateChange: ((PipelineState) -> Void)?
 
-    /// Called when accessibility permission status changes — set by AppDelegate for icon updates.
-    var onAccessibilityChange: (() -> Void)?
-
-    // Accessibility monitoring
-    private var accessibilityMonitorTask: Task<Void, Never>?
-
     // Transcript history
     var transcripts: [Transcript] = []
     private var loadTask: Task<Void, Never>?
@@ -221,7 +215,7 @@ final class AppState {
                 } else {
                     self.pipeline.autoPasteToActiveApp = false
                 }
-                self.restartAccessibilityMonitoringIfNeeded()
+                self.permissions.restartMonitoringIfNeeded()
             }
 
             // Show recording overlay IMMEDIATELY for instant visual feedback.
@@ -590,7 +584,7 @@ final class AppState {
                 permissions.refreshAccessibilityStatus()
                 if !permissions.hasAccessibilityPermission {
                     whisperKitPipeline.autoPasteToActiveApp = false
-                    restartAccessibilityMonitoringIfNeeded()
+                    permissions.restartMonitoringIfNeeded()
                 }
             default: break
             }
@@ -601,7 +595,7 @@ final class AppState {
                 permissions.refreshAccessibilityStatus()
                 if !permissions.hasAccessibilityPermission {
                     pipeline.autoPasteToActiveApp = false
-                    restartAccessibilityMonitoringIfNeeded()
+                    permissions.restartMonitoringIfNeeded()
                 }
             default: break
             }
@@ -617,56 +611,6 @@ final class AppState {
             if pipeline.state == .complete { pipeline.autoPasteToActiveApp = false }
             if case .error = pipeline.state { pipeline.autoPasteToActiveApp = false }
         }
-    }
-
-    /// Check Accessibility permission on launch (no prompt, no polling side-effects).
-    /// If Accessibility is denied on launch, reset any previous warning dismissal —
-    /// the binary may have been rebuilt, invalidating the previous TCC grant.
-    func refreshAccessibilityOnLaunch() {
-        permissions.refreshAccessibilityStatus()
-        if !permissions.accessibilityGranted {
-            permissions.resetAccessibilityWarningDismissal()
-        }
-    }
-
-    /// Start smart polling for Accessibility permission.
-    ///
-    /// Polls every `TimingConstants.accessibilityPollIntervalSec` seconds, but ONLY
-    /// while `accessibilityGranted == false`. Once the user grants access the loop
-    /// exits and the task completes. A new monitoring task is started automatically
-    /// if permission is later revoked (detected via `restartAccessibilityMonitoringIfNeeded`).
-    func startAccessibilityMonitoring() {
-        // Already monitoring or already granted — no work needed.
-        guard accessibilityMonitorTask == nil || accessibilityMonitorTask?.isCancelled == true else { return }
-        guard !permissions.accessibilityGranted else { return }
-
-        accessibilityMonitorTask = Task { [weak self] in
-            while true {
-                try? await Task.sleep(nanoseconds: UInt64(TimingConstants.accessibilityPollIntervalSec * 1_000_000_000))
-                guard let self, !Task.isCancelled else { return }
-                self.permissions.refreshAccessibilityStatus()
-                if self.permissions.accessibilityGranted {
-                    // Fire the callback first so observers see consistent state
-                    // (task still non-nil = monitoring was active). Nil it out
-                    // after so restartAccessibilityMonitoringIfNeeded cannot
-                    // observe the intermediate state where task is nil but
-                    // accessibilityGranted hasn't propagated yet.
-                    self.onAccessibilityChange?()
-                    self.accessibilityMonitorTask = nil
-                    return
-                }
-            }
-        }
-    }
-
-    /// Restart accessibility monitoring if not already running and permission is missing.
-    ///
-    /// Call this after a failed paste attempt or after detecting that permission may
-    /// have been revoked, to ensure the polling loop resumes.
-    func restartAccessibilityMonitoringIfNeeded() {
-        let taskDone = accessibilityMonitorTask == nil || accessibilityMonitorTask?.isCancelled == true
-        guard taskDone && !permissions.accessibilityGranted else { return }
-        startAccessibilityMonitoring()
     }
 
     /// Cancel an active recording, discarding all captured audio.

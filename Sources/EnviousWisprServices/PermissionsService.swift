@@ -9,6 +9,11 @@ public final class PermissionsService {
     public private(set) var microphoneStatus: AVAuthorizationStatus = .notDetermined
     public private(set) var accessibilityGranted: Bool = false
 
+    /// Called when accessibility permission status changes — set by AppDelegate for icon updates.
+    public var onAccessibilityChange: (() -> Void)?
+
+    private var accessibilityMonitorTask: Task<Void, Never>?
+
     /// Whether the user has explicitly dismissed the accessibility warning banner.
     /// Stored property so @Observable tracks changes and SwiftUI re-renders.
     /// Synced to UserDefaults in didSet so it survives restarts.
@@ -76,5 +81,42 @@ public final class PermissionsService {
     /// Whether Accessibility permission has been granted.
     public var hasAccessibilityPermission: Bool {
         accessibilityGranted
+    }
+
+    /// Check Accessibility permission on launch (no prompt, no polling side-effects).
+    /// If denied, reset warning dismissal (binary may have been rebuilt, invalidating TCC grant).
+    public func refreshOnLaunch() {
+        refreshAccessibilityStatus()
+        if !accessibilityGranted {
+            resetAccessibilityWarningDismissal()
+        }
+    }
+
+    /// Start smart polling for Accessibility permission.
+    /// Polls every TimingConstants.accessibilityPollIntervalSec seconds, but ONLY
+    /// while accessibilityGranted == false. Once granted, loop exits.
+    public func startMonitoring() {
+        guard accessibilityMonitorTask == nil || accessibilityMonitorTask?.isCancelled == true else { return }
+        guard !accessibilityGranted else { return }
+
+        accessibilityMonitorTask = Task { [weak self] in
+            while true {
+                try? await Task.sleep(nanoseconds: UInt64(TimingConstants.accessibilityPollIntervalSec * 1_000_000_000))
+                guard let self, !Task.isCancelled else { return }
+                self.refreshAccessibilityStatus()
+                if self.accessibilityGranted {
+                    self.onAccessibilityChange?()
+                    self.accessibilityMonitorTask = nil
+                    return
+                }
+            }
+        }
+    }
+
+    /// Restart monitoring if not running and permission is missing.
+    public func restartMonitoringIfNeeded() {
+        let taskDone = accessibilityMonitorTask == nil || accessibilityMonitorTask?.isCancelled == true
+        guard taskDone && !accessibilityGranted else { return }
+        startMonitoring()
     }
 }

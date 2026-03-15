@@ -76,7 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appState.onPipelineStateChange = { [weak self] _ in
             self?.updateIcon()
         }
-        appState.onAccessibilityChange = { [weak self] in
+        appState.permissions.onAccessibilityChange = { [weak self] in
             self?.updateIcon()
         }
 
@@ -85,11 +85,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appState.startHotkeyServiceIfEnabled()
 
         // Check Accessibility permission on launch (query only — never auto-prompt).
-        appState.refreshAccessibilityOnLaunch()
+        appState.permissions.refreshOnLaunch()
         updateIcon() // Reflect accessibility warning state in menu bar icon
 
         // Begin smart polling if Accessibility is not yet granted.
-        appState.startAccessibilityMonitoring()
+        appState.permissions.startMonitoring()
 
         // Pre-warm LLM network connection (TLS + HTTP/2 setup).
         LLMNetworkSession.shared.preWarmIfConfigured(
