@@ -214,14 +214,14 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     // MARK: - Config re-send after crash
 
     /// Replays configuration to the service after a crash/relaunch.
-    /// Only clears needsReinit after successful replay. If the replay fails
-    /// (e.g., service crashes during replay), needsReinit stays true so the
-    /// next attempt retries.
+    /// Clears needsReinit after the XPC call is dispatched. Note: buildEngine is fire-and-forget
+    /// (no reply handler), so we cannot detect if the service actually processed the config.
+    /// If the service crashes during replay, the next interruptionHandler will re-set needsReinit.
+    /// This is acceptable because buildEngine is idempotent — replay on next attempt is safe.
     private func resendConfigIfNeeded() {
         guard needsReinit else { return }
         serviceProxy { [self] proxy in
             proxy.buildEngine(noiseSuppression: noiseSuppressionEnabled)
-            // Device UIDs are passed inline to startEnginePhase — no separate replay needed.
             needsReinit = false
         }
     }
@@ -347,6 +347,8 @@ extension AudioCaptureProxy: AudioServiceClientProtocol {
     }
 
     /// Service's audio engine was interrupted (device disconnect, emergency teardown).
+    /// Matches interruptionHandler contract: only fires onEngineInterrupted during active capture.
+    /// Idle interruptions are transient — just set needsReinit.
     nonisolated public func engineInterrupted() {
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -356,8 +358,8 @@ extension AudioCaptureProxy: AudioServiceClientProtocol {
                 self.captureGeneration &+= 1
                 self.bufferContinuation?.finish()
                 self.bufferContinuation = nil
+                self.onEngineInterrupted?()
             }
-            self.onEngineInterrupted?()
             self.needsReinit = true
         }
     }

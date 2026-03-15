@@ -43,7 +43,7 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
             let count = Int(buffer.frameLength)
             guard count > 0 else { return }
 
-            // RMS: tight arithmetic loop — no allocation, RT-safe.
+            // RMS: tight arithmetic loop — no heap allocation, RT-safe.
             // Matches AudioBufferProcessor.calculateRMS formula: -60dB..0dB → 0..1
             var sum: Float = 0
             for i in 0..<count { sum += floatData[i] * floatData[i] }
@@ -51,11 +51,12 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
             let dBFS = 20 * log10(max(rms, 1e-6))
             let level = max(0, min(1, (dBFS + 60) / 60))
 
-            // Data(bytes:count:) = single malloc + memcpy. Bounded at ~16KB per buffer.
-            // Tolerable on the RT thread per Apple guidance (fixed-size, no realloc).
-            let data = Data(bytes: floatData, count: count * MemoryLayout<Float>.size)
-
+            // Capture buffer to keep its memory alive across the queue hop.
+            // Data(bytes:count:) does malloc — moved off RT thread to xpcSendQueue.
+            nonisolated(unsafe) let safeBuffer = buffer
             self?.xpcSendQueue.async { [weak self] in
+                guard let floats = safeBuffer.floatChannelData?[0] else { return }
+                let data = Data(bytes: floats, count: count * MemoryLayout<Float>.size)
                 self?.clientProxy?.audioBufferCaptured(data, frameCount: count, audioLevel: level)
             }
         }
