@@ -28,10 +28,7 @@ final class AppState {
     let wordSuggestionService = WordSuggestionService()
     let ollamaSetup = OllamaSetupService()
     let whisperKitSetup = WhisperKitSetupService()
-
-    // Audio device management
-    var availableInputDevices: [AudioInputDevice] = []
-    private var deviceMonitor: AudioDeviceMonitor?
+    let audioDeviceList = AudioDeviceList()
 
     /// Background task that observes WhisperKitSetupService.setupState and pre-loads the model when ready.
     private var whisperKitPreloadTask: Task<Void, Never>?
@@ -131,14 +128,6 @@ final class AppState {
         audioCapture.selectedInputDeviceUID = settings.selectedInputDeviceUID
         audioCapture.preferredInputDeviceIDOverride = settings.preferredInputDeviceIDOverride
         syncTranscriptionOptions()
-
-        // Enumerate input devices and monitor for changes
-        refreshInputDevices()
-        deviceMonitor = AudioDeviceMonitor { [weak self] in
-            Task { @MainActor in
-                self?.refreshInputDevices()
-            }
-        }
 
         // Initialize logger
         Task {
@@ -863,8 +852,4 @@ final class AppState {
         }
     }
 
-    /// Refresh the list of available audio input devices.
-    func refreshInputDevices() {
-        availableInputDevices = AudioDeviceEnumerator.allInputDevices()
-    }
 }

@@ -14,7 +14,7 @@ struct AudioSettingsView: View {
                 BrandedRow {
                     Picker("Input Device", selection: $state.settings.preferredInputDeviceIDOverride) {
                         Text("Auto").tag("")
-                        ForEach(appState.availableInputDevices) { device in
+                        ForEach(appState.audioDeviceList.availableInputDevices) { device in
                             Text(device.name).tag(device.uid)
                         }
                     }
