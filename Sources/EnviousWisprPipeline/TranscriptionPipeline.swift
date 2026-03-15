@@ -11,7 +11,7 @@ import Foundation
 @MainActor
 @Observable
 public final class TranscriptionPipeline: DictationPipeline {
-    private let audioCapture: AudioCaptureManager
+    private let audioCapture: any AudioCaptureInterface
     private let asrManager: ASRManager
     private let transcriptStore: TranscriptStore
     private let keychainManager: KeychainManager
@@ -71,7 +71,7 @@ public final class TranscriptionPipeline: DictationPipeline {
     private var isPreWarmed = false
 
     public init(
-        audioCapture: AudioCaptureManager,
+        audioCapture: any AudioCaptureInterface,
         asrManager: ASRManager,
         transcriptStore: TranscriptStore,
         keychainManager: KeychainManager = KeychainManager()

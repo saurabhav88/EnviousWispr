@@ -17,7 +17,7 @@ final class AppState {
 
     // Sub-systems
     let permissions = PermissionsService()
-    let audioCapture = AudioCaptureManager()
+    let audioCapture: any AudioCaptureInterface = AudioCaptureManager()
     let asrManager = ASRManager()
     let transcriptStore = TranscriptStore()
     let keychainManager = KeychainManager()

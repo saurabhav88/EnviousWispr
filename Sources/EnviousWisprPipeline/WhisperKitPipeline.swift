@@ -37,7 +37,7 @@ public enum WhisperKitPipelineState: Equatable, Sendable {
 @MainActor
 @Observable
 public final class WhisperKitPipeline: DictationPipeline {
-    private let audioCapture: AudioCaptureManager
+    private let audioCapture: any AudioCaptureInterface
     private let backend: WhisperKitBackend
     private let transcriptStore: TranscriptStore
     private let keychainManager: KeychainManager
@@ -90,7 +90,7 @@ public final class WhisperKitPipeline: DictationPipeline {
     private var modelUnloadTask: Task<Void, Never>?
 
     public init(
-        audioCapture: AudioCaptureManager,
+        audioCapture: any AudioCaptureInterface,
         backend: WhisperKitBackend,
         transcriptStore: TranscriptStore,
         keychainManager: KeychainManager

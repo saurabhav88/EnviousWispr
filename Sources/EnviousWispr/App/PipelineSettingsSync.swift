@@ -12,7 +12,7 @@ import EnviousWisprServices
 final class PipelineSettingsSync {
     private let pipeline: TranscriptionPipeline
     private let whisperKitPipeline: WhisperKitPipeline
-    private let audioCapture: AudioCaptureManager
+    private let audioCapture: any AudioCaptureInterface
     private let asrManager: ASRManager
     private let hotkeyService: HotkeyService
     private let whisperKitSetup: WhisperKitSetupService
@@ -24,7 +24,7 @@ final class PipelineSettingsSync {
     init(
         pipeline: TranscriptionPipeline,
         whisperKitPipeline: WhisperKitPipeline,
-        audioCapture: AudioCaptureManager,
+        audioCapture: any AudioCaptureInterface,
         asrManager: ASRManager,
         hotkeyService: HotkeyService,
         whisperKitSetup: WhisperKitSetupService

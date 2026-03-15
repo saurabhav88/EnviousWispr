@@ -64,7 +64,7 @@ private final class TapStoppedFlag: Sendable {
 /// full cleanup (tap removal, engine stop, continuation finish, state reset).
 @MainActor
 @Observable
-public final class AudioCaptureManager {
+public final class AudioCaptureManager: AudioCaptureInterface {
     /// Current recording state.
     public private(set) var isCapturing = false
 
