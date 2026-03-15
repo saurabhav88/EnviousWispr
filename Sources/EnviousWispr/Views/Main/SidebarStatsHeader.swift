@@ -10,7 +10,7 @@ struct SidebarStatsHeader: View {
     }
 
     var body: some View {
-        @Bindable var state = appState
+        @Bindable var tc = appState.transcriptCoordinator
 
         VStack(spacing: 10) {
             // Search bar + transcript count row
@@ -18,7 +18,7 @@ struct SidebarStatsHeader: View {
                 HStack(spacing: 4) {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(.secondary)
-                    TextField("Search transcripts", text: $state.searchQuery)
+                    TextField("Search transcripts", text: $tc.searchQuery)
                         .textFieldStyle(.plain)
                         .font(.caption)
                 }
@@ -26,7 +26,7 @@ struct SidebarStatsHeader: View {
                 .padding(.vertical, 5)
                 .background(.fill.quinary, in: RoundedRectangle(cornerRadius: 6))
 
-                Text("\(appState.transcriptCount)")
+                Text("\(appState.transcriptCoordinator.transcriptCount)")
                     .font(.caption.bold())
                     .foregroundStyle(.secondary)
                     .monospacedDigit()

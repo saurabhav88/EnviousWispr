@@ -53,7 +53,7 @@ struct TranscriptDetailView: View {
                 Spacer()
 
                 Button(role: .destructive) {
-                    appState.deleteTranscript(transcript)
+                    appState.transcriptCoordinator.delete(transcript)
                 } label: {
                     Image(systemName: "trash")
                 }

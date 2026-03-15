@@ -41,23 +41,13 @@ final class AppState {
     /// Called when pipeline state changes — set by AppDelegate for icon updates.
     var onPipelineStateChange: ((PipelineState) -> Void)?
 
-    // Transcript history
-    var transcripts: [Transcript] = []
-    private var loadTask: Task<Void, Never>?
-    var searchQuery: String = ""
-    var selectedTranscriptID: UUID?
+    // Transcript history — delegated to coordinator
+    let transcriptCoordinator: TranscriptCoordinator
     var pendingNavigationSection: SettingsSection?
 
     /// True when recording is in hands-free (locked) mode via double-press.
     /// Read by the overlay to switch to the expanded lips visual.
     var isRecordingLocked: Bool = false
-
-    var filteredTranscripts: [Transcript] {
-        guard !searchQuery.isEmpty else { return transcripts }
-        return transcripts.filter {
-            $0.displayText.localizedCaseInsensitiveContains(searchQuery)
-        }
-    }
 
     // Feature #8: custom word management — delegated to coordinator
     let customWordsCoordinator = CustomWordsCoordinator()
@@ -66,6 +56,7 @@ final class AppState {
     let llmDiscovery: LLMModelDiscoveryCoordinator
 
     init() {
+        transcriptCoordinator = TranscriptCoordinator(store: transcriptStore)
         llmDiscovery = LLMModelDiscoveryCoordinator(keychainManager: keychainManager)
 
         // Both pipeline properties must be initialized before `self` can be used.
@@ -145,7 +136,7 @@ final class AppState {
                 audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 },
                 isRecordingLocked: self.isRecordingLocked
             )
-            if newState == .complete { self.loadTranscripts() }
+            if newState == .complete { self.transcriptCoordinator.load() }
         }
 
         // Wire WhisperKit pipeline state changes to overlay and icon
@@ -165,7 +156,7 @@ final class AppState {
                 audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 },
                 isRecordingLocked: self.isRecordingLocked
             )
-            if newState == .complete { self.loadTranscripts() }
+            if newState == .complete { self.transcriptCoordinator.load() }
         }
 
         // Wire hotkey callbacks
@@ -330,8 +321,8 @@ final class AppState {
 
     /// Convenience: the transcript from the latest recording.
     var activeTranscript: Transcript? {
-        if let selected = selectedTranscriptID {
-            return transcripts.first { $0.id == selected }
+        if let selected = transcriptCoordinator.selectedTranscriptID {
+            return transcriptCoordinator.transcripts.first { $0.id == selected }
         }
         return pipeline.currentTranscript
     }
@@ -339,16 +330,6 @@ final class AppState {
     /// Convenience: audio level for UI visualization.
     var audioLevel: Float {
         audioCapture.audioLevel
-    }
-
-    /// Total transcript count for sidebar stats.
-    var transcriptCount: Int { transcripts.count }
-
-    /// Average processing speed across all transcripts (seconds).
-    var averageProcessingSpeed: Double {
-        let withTimes = transcripts.filter { $0.processingTime > 0 }
-        guard !withTimes.isEmpty else { return 0 }
-        return withTimes.map(\.processingTime).reduce(0, +) / Double(withTimes.count)
     }
 
     /// Human-readable model name for display.
@@ -444,55 +425,11 @@ final class AppState {
         }
     }
 
-    /// Polish an existing transcript with LLM.
+    /// Polish an existing transcript with LLM. Stays in AppState as pipeline coordination forwarding.
     func polishTranscript(_ transcript: Transcript) async {
         if let updated = await pipeline.polishExistingTranscript(transcript) {
-            if let idx = transcripts.firstIndex(where: { $0.id == updated.id }) {
-                transcripts[idx] = updated
-            }
-        }
-    }
-
-    /// Delete a transcript.
-    func deleteTranscript(_ transcript: Transcript) {
-        do {
-            try transcriptStore.delete(id: transcript.id)
-            transcripts.removeAll { $0.id == transcript.id }
-            if selectedTranscriptID == transcript.id {
-                selectedTranscriptID = nil
-            }
-        } catch {
-            Task { await AppLogger.shared.log(
-                "Failed to delete transcript: \(error)",
-                level: .info, category: "AppState"
-            ) }
-        }
-    }
-
-    func deleteAllTranscripts() {
-        do {
-            try transcriptStore.deleteAll()
-            transcripts.removeAll()
-            selectedTranscriptID = nil
-        } catch {
-            Task { await AppLogger.shared.log(
-                "Failed to delete all transcripts: \(error)",
-                level: .info, category: "AppState"
-            ) }
-        }
-    }
-
-    /// Load transcript history from disk asynchronously.
-    func loadTranscripts() {
-        loadTask?.cancel()
-        loadTask = Task {
-            do {
-                transcripts = try await transcriptStore.loadAll()
-            } catch {
-                await AppLogger.shared.log(
-                    "Failed to load transcripts: \(error)",
-                    level: .info, category: "AppState"
-                )
+            if let idx = transcriptCoordinator.transcripts.firstIndex(where: { $0.id == updated.id }) {
+                transcriptCoordinator.transcripts[idx] = updated
             }
         }
     }

@@ -11,21 +11,21 @@ struct TranscriptHistoryView: View {
     }
 
     var body: some View {
-        @Bindable var state = appState
+        @Bindable var tc = appState.transcriptCoordinator
 
         VStack(spacing: 0) {
             SidebarStatsHeader()
 
             Divider()
 
-            List(appState.filteredTranscripts, selection: $state.selectedTranscriptID) { transcript in
+            List(appState.transcriptCoordinator.filteredTranscripts, selection: $tc.selectedTranscriptID) { transcript in
                 TranscriptRowView(transcript: transcript)
                     .tag(transcript.id)
             }
             .opacity(isRecording ? 0.4 : 1.0)
             .animation(.easeInOut(duration: 0.3), value: isRecording)
             .overlay {
-                if appState.transcripts.isEmpty {
+                if appState.transcriptCoordinator.transcripts.isEmpty {
                     ContentUnavailableView(
                         "No Transcripts Yet",
                         systemImage: "doc.text",
@@ -34,7 +34,7 @@ struct TranscriptHistoryView: View {
                 }
             }
 
-            if !appState.transcripts.isEmpty {
+            if !appState.transcriptCoordinator.transcripts.isEmpty {
                 Divider()
                 Button(role: .destructive) {
                     showDeleteAllConfirmation = true
@@ -51,10 +51,10 @@ struct TranscriptHistoryView: View {
         .alert("Delete All Transcripts?", isPresented: $showDeleteAllConfirmation) {
             Button("Cancel", role: .cancel) { }
             Button("Delete All", role: .destructive) {
-                appState.deleteAllTranscripts()
+                appState.transcriptCoordinator.deleteAll()
             }
         } message: {
-            Text("This will permanently delete all \(appState.transcriptCount) transcripts. This action cannot be undone.")
+            Text("This will permanently delete all \(appState.transcriptCoordinator.transcriptCount) transcripts. This action cannot be undone.")
         }
     }
 }
