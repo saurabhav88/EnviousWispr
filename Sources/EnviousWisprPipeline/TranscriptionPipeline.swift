@@ -215,7 +215,7 @@ public final class TranscriptionPipeline: DictationPipeline {
         do {
             // Two-phase start: phase 1 triggers any Bluetooth codec switch
             if !isPreWarmed {
-                try audioCapture.startEnginePhase()
+                try await audioCapture.startEnginePhase()
 
                 // Wait for format to stabilize (Bluetooth) or pass immediately (built-in mic)
                 let stabilized = await audioCapture.waitForFormatStabilization(
@@ -227,13 +227,13 @@ public final class TranscriptionPipeline: DictationPipeline {
                 // If format never settled, rebuild engine once and retry
                 if !stabilized {
                     audioCapture.rebuildEngine()
-                    try audioCapture.startEnginePhase()
+                    try await audioCapture.startEnginePhase()
                 }
             }
             isPreWarmed = false
 
             // Phase 2: install tap and start capture
-            _ = try audioCapture.beginCapturePhase()
+            _ = try await audioCapture.beginCapturePhase()
             streamingSetupSucceeded = true
             state = .recording
             recordingStartTime = Date()
@@ -302,7 +302,7 @@ public final class TranscriptionPipeline: DictationPipeline {
                     await asrManager.cancelStreaming()
                 }
                 deactivateStreamingForwarding()
-                _ = audioCapture.stopCapture()
+                _ = await audioCapture.stopCapture()
                 recordingStartTime = nil
                 state = .idle
                 Task { await AppLogger.shared.log(
@@ -326,7 +326,7 @@ public final class TranscriptionPipeline: DictationPipeline {
         // to the Parakeet actor before we deactivate forwarding.
         // Without this reorder, deactivateStreamingForwarding() sets the flag to false
         // and all queued tasks drop their buffers — losing ~250-500ms of trailing audio.
-        let rawSamples = audioCapture.stopCapture()
+        let rawSamples = await audioCapture.stopCapture()
 
         if wasStreaming {
             await Task.yield()
@@ -660,7 +660,8 @@ public final class TranscriptionPipeline: DictationPipeline {
             }
         }
         if audioCapture.isCapturing {
-            _ = audioCapture.stopCapture()
+            let capture = audioCapture
+            Task { _ = await capture.stopCapture() }
         }
         silenceDetector = nil
         recordingStartTime = nil
@@ -689,7 +690,7 @@ public final class TranscriptionPipeline: DictationPipeline {
         // await cancelStreaming() first (which suspends), the audio engine continues
         // firing tap callbacks during the suspension, creating Tasks that race with
         // teardown and corrupt the heap.
-        _ = audioCapture.stopCapture()
+        _ = await audioCapture.stopCapture()
 
         // Now cancel streaming ASR session (safe to await — engine is stopped)
         if wasStreaming {

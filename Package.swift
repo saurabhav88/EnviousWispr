@@ -72,7 +72,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "EnviousWisprAudioService",
-            dependencies: ["EnviousWisprCore"],
+            dependencies: [
+                "EnviousWisprCore",
+                "EnviousWisprAudio",
+            ],
             path: "Sources/EnviousWisprAudioService",
             exclude: ["Resources"]
         ),

@@ -238,7 +238,7 @@ public final class WhisperKitPipeline: DictationPipeline {
 
         do {
             if !isPreWarmed {
-                try audioCapture.startEnginePhase()
+                try await audioCapture.startEnginePhase()
                 let stabilized = await audioCapture.waitForFormatStabilization(
                     maxWait: 1.5,
                     pollInterval: 0.2
@@ -246,12 +246,12 @@ public final class WhisperKitPipeline: DictationPipeline {
                 guard state == .startingUp else { return }  // cancelled during stabilization
                 if !stabilized {
                     audioCapture.rebuildEngine()
-                    try audioCapture.startEnginePhase()
+                    try await audioCapture.startEnginePhase()
                 }
             }
             isPreWarmed = false
 
-            _ = try audioCapture.beginCapturePhase()
+            _ = try await audioCapture.beginCapturePhase()
             state = .recording
             recordingStartTime = Date()
             currentTranscript = nil
@@ -301,7 +301,7 @@ public final class WhisperKitPipeline: DictationPipeline {
                 vadMonitorTask = nil
                 await incrementalWorker?.cancel()
                 incrementalWorker = nil
-                _ = audioCapture.stopCapture()
+                _ = await audioCapture.stopCapture()
                 recordingStartTime = nil
                 state = .idle
                 Task { await AppLogger.shared.log(
@@ -315,7 +315,7 @@ public final class WhisperKitPipeline: DictationPipeline {
         vadMonitorTask?.cancel()
         vadMonitorTask = nil
 
-        let rawSamples = audioCapture.stopCapture()
+        let rawSamples = await audioCapture.stopCapture()
 
         // Pre-warm LLM connection while ASR runs
         LLMNetworkSession.shared.preWarmIfConfigured(
@@ -493,7 +493,7 @@ public final class WhisperKitPipeline: DictationPipeline {
         await incrementalWorker?.cancel()
         incrementalWorker = nil
         silenceDetector = nil
-        _ = audioCapture.stopCapture()
+        _ = await audioCapture.stopCapture()
         targetApp = nil
         targetElement = nil
         recordingStartTime = nil
@@ -510,7 +510,8 @@ public final class WhisperKitPipeline: DictationPipeline {
         }
         silenceDetector = nil
         if audioCapture.isCapturing {
-            _ = audioCapture.stopCapture()
+            let capture = audioCapture
+            Task { _ = await capture.stopCapture() }
         }
         audioCapture.onBufferCaptured = nil
         recordingStartTime = nil

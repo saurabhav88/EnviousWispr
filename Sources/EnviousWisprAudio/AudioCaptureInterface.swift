@@ -19,10 +19,10 @@ public protocol AudioCaptureInterface: AnyObject {
     var preferredInputDeviceIDOverride: String { get set }
 
     // Core lifecycle
-    func startEnginePhase() throws
-    func beginCapturePhase() throws -> AsyncStream<AVAudioPCMBuffer>
-    func startCapture() throws -> AsyncStream<AVAudioPCMBuffer>
-    func stopCapture() -> [Float]
+    func startEnginePhase() async throws
+    func beginCapturePhase() async throws -> AsyncStream<AVAudioPCMBuffer>
+    func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer>
+    func stopCapture() async -> [Float]
     func rebuildEngine()
     func buildEngine(noiseSuppression: Bool)
     func preWarm() async

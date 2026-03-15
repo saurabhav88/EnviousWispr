@@ -168,7 +168,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     /// device, registers the config-change observer, and starts the engine.
     /// Does NOT install a tap or begin capture.
     /// Safe to call multiple times — no-op if the engine is already running.
-    public func startEnginePhase() throws {
+    public func startEnginePhase() async throws {
         guard !engine.isRunning else { return }
 
         // Pre-allocate for ~30 seconds of audio at 16kHz to reduce reallocations
@@ -284,7 +284,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     /// Phase 2: Install the tap and begin capture.
     /// Call only after `startEnginePhase()` and `waitForFormatStabilization()`.
     /// Returns an `AsyncStream` of converted audio buffers.
-    public func beginCapturePhase() throws -> AsyncStream<AVAudioPCMBuffer> {
+    public func beginCapturePhase() async throws -> AsyncStream<AVAudioPCMBuffer> {
         let inputNode = engine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
@@ -378,12 +378,12 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
     /// Backward-compatible wrapper: runs both phases sequentially.
     /// Resolves `selectedInputDeviceUID` to a device ID if set.
-    public func startCapture() throws -> AsyncStream<AVAudioPCMBuffer> {
+    public func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
         guard !isCapturing else {
             return AsyncStream { $0.finish() }
         }
-        try startEnginePhase()
-        return try beginCapturePhase()
+        try await startEnginePhase()
+        return try await beginCapturePhase()
     }
 
     /// Replace the AVAudioEngine with a fresh instance.
@@ -440,7 +440,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     public func preWarm() async {
         guard !engine.isRunning else { return }
         do {
-            try startEnginePhase()
+            try await startEnginePhase()
         } catch {
             Task { await AppLogger.shared.log(
                 "Audio pre-warm failed: \(error.localizedDescription)",
@@ -472,7 +472,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     }
 
     /// Stop capturing and return the accumulated samples.
-    public func stopCapture() -> [Float] {
+    public func stopCapture() async -> [Float] {
         // Cancel all tracked tasks (buffer forwarding, etc.)
         for task in activeTasks { task.cancel() }
         activeTasks.removeAll()
