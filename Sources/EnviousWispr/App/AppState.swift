@@ -17,7 +17,7 @@ final class AppState {
 
     // Sub-systems
     let permissions = PermissionsService()
-    let audioCapture: any AudioCaptureInterface = AudioCaptureManager()
+    let audioCapture: any AudioCaptureInterface
     let asrManager = ASRManager()
     let transcriptStore = TranscriptStore()
     let keychainManager = KeychainManager()
@@ -56,6 +56,15 @@ final class AppState {
     let llmDiscovery: LLMModelDiscoveryCoordinator
 
     init() {
+        // Feature flag: XPC audio service (cold — read at launch, requires restart to change).
+        // Read directly from UserDefaults because `settings` is not yet available (stored
+        // properties must all be initialized before `self` is accessible).
+        if UserDefaults.standard.bool(forKey: "useXPCAudioService") {
+            audioCapture = AudioCaptureProxy()
+        } else {
+            audioCapture = AudioCaptureManager()
+        }
+
         transcriptCoordinator = TranscriptCoordinator(store: transcriptStore)
         llmDiscovery = LLMModelDiscoveryCoordinator(keychainManager: keychainManager)
 

@@ -39,6 +39,7 @@ public final class SettingsManager {
         case preferredInputDeviceIDOverride
         case environmentPreset
         case writingStylePreset
+        case useXPCAudioService
     }
 
     public var onChange: ((SettingKey) -> Void)?
@@ -285,6 +286,16 @@ public final class SettingsManager {
         }
     }
 
+    /// Use XPC audio service instead of in-process AudioCaptureManager.
+    /// Cold flag — read at launch only. Changing requires app restart.
+    /// Toggle via: defaults write com.enviouswispr.app.dev useXPCAudioService -bool true
+    /// Does NOT fire onChange — this is not a live-switchable setting.
+    public var useXPCAudioService: Bool {
+        didSet {
+            UserDefaults.standard.set(useXPCAudioService, forKey: "useXPCAudioService")
+        }
+    }
+
     public var activePolishInstructions: PolishInstructions {
         switch writingStylePreset {
         case .formal:
@@ -378,5 +389,6 @@ public final class SettingsManager {
         preferredInputDeviceIDOverride = defaults.string(forKey: "preferredInputDeviceIDOverride") ?? ""
         environmentPreset = EnvironmentPreset(rawValue: defaults.string(forKey: "environmentPreset") ?? "") ?? .normal
         writingStylePreset = WritingStylePreset(rawValue: defaults.string(forKey: "writingStylePreset") ?? "") ?? .standard
+        useXPCAudioService = defaults.object(forKey: "useXPCAudioService") as? Bool ?? false
     }
 }

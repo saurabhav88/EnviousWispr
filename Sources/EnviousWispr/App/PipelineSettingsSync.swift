@@ -201,6 +201,9 @@ final class PipelineSettingsSync {
             }
         case .onboardingState, .hasCompletedOnboarding:
             break
+        case .useXPCAudioService:
+            // Cold flag — requires app restart. No live propagation needed.
+            break
         }
     }
 
