@@ -396,10 +396,17 @@ These are the proven truths from Steps 0–2. Future steps must not contradict t
 - `isCapturing` is never set to `true` — no false capture state
 - These stubs must be replaced with real XPC transport in Step 3
 
+**Step 3 findings (2026-03-15):**
+- Real audio capture through XPC service works end-to-end (record → transcribe)
+- Callback collision: both pipelines share one `audioCapture` instance. `onEngineInterrupted` must NOT be set from pipeline `init()` — the last init overwrites the previous. Fixed: unified handler in AppState routes to the active pipeline via `handleEngineInterruption()` public method.
+- `capturedSamples` returns `[]` on proxy (Step 5 will add `getSamplesSnapshot`)
+- `onPartialSamples` not bridged — samples in service lost on crash (acceptable)
+
 **Anti-patterns to avoid:**
 - Do not create a new god object by mixing transport, app state, pipeline logic, and service logic in one place
 - Do not smuggle startup responsibilities into random property setters to force service spawn
 - Do not treat empty stub returns as valid capture outcomes in any downstream code path
+- Do not set `audioCapture.onEngineInterrupted` from pipeline `init()` — use the unified AppState handler
 
 **Packaging gotchas:**
 - Full clean bundle required after XPC changes (quick rebundle leaves stale XPC binaries)
