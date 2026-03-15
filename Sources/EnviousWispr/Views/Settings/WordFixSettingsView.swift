@@ -26,7 +26,7 @@ struct WordFixSettingsView: View {
             }
 
             // ── Section 2: Custom Word List ───────────────────────────────────
-            BrandedSection(header: "Custom Word List (\(appState.customWords.count) words)") {
+            BrandedSection(header: "Custom Word List (\(appState.customWordsCoordinator.customWords.count) words)") {
                 BrandedRow {
                     HStack {
                         TextField("Add word (e.g. EnviousWispr)", text: $newWord)
@@ -45,7 +45,7 @@ struct WordFixSettingsView: View {
                             .foregroundStyle(.red)
                     }
                 }
-                if let storeError = appState.customWordError {
+                if let storeError = appState.customWordsCoordinator.customWordError {
                     BrandedRow {
                         Text(storeError)
                             .font(.stHelper)
@@ -53,7 +53,7 @@ struct WordFixSettingsView: View {
                     }
                 }
 
-                if appState.customWords.isEmpty {
+                if appState.customWordsCoordinator.customWords.isEmpty {
                     BrandedRow(showDivider: false) {
                         Text("No custom words yet. Add proper nouns, product names, or technical terms the ASR frequently misrecognizes.")
                             .font(.stHelper)
@@ -62,11 +62,11 @@ struct WordFixSettingsView: View {
                 } else {
                     BrandedRow(showDivider: false) {
                         WrappingHStack(spacing: 8) {
-                            ForEach(appState.customWords.sorted { $0.canonical.localizedCaseInsensitiveCompare($1.canonical) == .orderedAscending }) { word in
+                            ForEach(appState.customWordsCoordinator.customWords.sorted { $0.canonical.localizedCaseInsensitiveCompare($1.canonical) == .orderedAscending }) { word in
                                 CustomWordChip(word: word, onTap: {
                                     editingWord = word
                                 }, onRemove: {
-                                    appState.removeCustomWord(word.id)
+                                    appState.customWordsCoordinator.remove(id: word.id)
                                 })
                             }
                         }
@@ -88,8 +88,8 @@ struct WordFixSettingsView: View {
             }
         }
         .sheet(item: $editingWord) { word in
-            CustomWordEditSheet(word: word, wordSuggestionService: appState.wordSuggestionService) { updated in
-                appState.updateCustomWord(updated)
+            CustomWordEditSheet(word: word, wordSuggestionService: appState.customWordsCoordinator.suggestionService) { updated in
+                appState.customWordsCoordinator.update(updated)
             }
         }
     }
@@ -102,14 +102,14 @@ struct WordFixSettingsView: View {
             return
         }
         errorMessage = ""
-        appState.addCustomWord(trimmed)
+        appState.customWordsCoordinator.add(trimmed)
         newWord = ""
         // Open edit sheet on next run loop tick — SwiftUI needs a
         // layout pass to process the @Observable array mutation
         // before the sheet binding can fire.
         let wordToFind = trimmed
         Task { @MainActor in
-            if let added = appState.customWords.first(where: { $0.canonical == wordToFind }) {
+            if let added = appState.customWordsCoordinator.customWords.first(where: { $0.canonical == wordToFind }) {
                 editingWord = added
             }
         }

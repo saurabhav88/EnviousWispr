@@ -24,8 +24,6 @@ final class AppState {
     let hotkeyService = HotkeyService()
     let benchmark = BenchmarkSuite()
     let recordingOverlay = RecordingOverlayPanel()
-    let customWordsManager = CustomWordsManager()
-    let wordSuggestionService = WordSuggestionService()
     let ollamaSetup = OllamaSetupService()
     let whisperKitSetup = WhisperKitSetupService()
     let audioDeviceList = AudioDeviceList()
@@ -58,17 +56,14 @@ final class AppState {
         }
     }
 
-    // Feature #8: custom word correction
-    var customWords: [CustomWord] = []
-    var customWordError: String?
+    // Feature #8: custom word management — delegated to coordinator
+    let customWordsCoordinator = CustomWordsCoordinator()
 
     // Model discovery — delegated to coordinator
     let llmDiscovery: LLMModelDiscoveryCoordinator
 
     init() {
         llmDiscovery = LLMModelDiscoveryCoordinator(keychainManager: keychainManager)
-        // Load custom words (nil = I/O failure, keep default empty array to prevent data loss)
-        customWords = customWordsManager.load() ?? []
 
         // Both pipeline properties must be initialized before `self` can be used.
         // WhisperKitBackend default is large-v3-turbo; reconfigured from settings below.
@@ -99,11 +94,21 @@ final class AppState {
         pipeline.llmPolish.polishInstructions = settings.activePolishInstructions
         pipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
         pipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
-        pipeline.wordCorrection.customWords = customWords
-        pipeline.llmPolish.customWords = customWords
+        pipeline.wordCorrection.customWords = customWordsCoordinator.customWords
+        pipeline.llmPolish.customWords = customWordsCoordinator.customWords
         pipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
         // Sync WhisperKit pipeline settings
         syncWhisperKitPipelineSettings()
+
+        // Wire custom words changes to pipeline sync
+        customWordsCoordinator.onWordsChanged = { [weak self] words in
+            guard let self else { return }
+            self.pipeline.wordCorrection.customWords = words
+            self.pipeline.llmPolish.customWords = words
+            self.whisperKitPipeline.wordCorrection.customWords = words
+            self.whisperKitPipeline.llmPolish.customWords = words
+        }
+
         // Build engine with correct noise suppression config from the start.
         // This sets noiseSuppressionEnabled and configures anti-ducking if needed.
         if settings.noiseSuppression {
@@ -452,8 +457,8 @@ final class AppState {
         whisperKitPipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
         whisperKitPipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
         whisperKitPipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
-        whisperKitPipeline.wordCorrection.customWords = customWords
-        whisperKitPipeline.llmPolish.customWords = customWords
+        whisperKitPipeline.wordCorrection.customWords = customWordsCoordinator.customWords
+        whisperKitPipeline.llmPolish.customWords = customWordsCoordinator.customWords
         whisperKitPipeline.vadAutoStop = settings.vadAutoStop
         whisperKitPipeline.vadSilenceTimeout = settings.vadSilenceTimeout
         whisperKitPipeline.vadSensitivity = settings.vadSensitivity
@@ -673,50 +678,6 @@ final class AppState {
                 )
             }
         }
-    }
-
-    // Feature #8: custom word management
-    func addCustomWord(_ word: String) {
-        do {
-            try customWordsManager.add(canonical: word, to: &customWords)
-            syncCustomWordsToPipelines()
-            customWordError = nil
-        } catch {
-            customWordError = error.localizedDescription
-        }
-    }
-
-    func removeCustomWord(_ id: UUID) {
-        do {
-            try customWordsManager.remove(id: id, from: &customWords)
-            syncCustomWordsToPipelines()
-            customWordError = nil
-        } catch {
-            customWordError = error.localizedDescription
-        }
-    }
-
-    /// Convenience: remove by canonical string (used by legacy callers).
-    func removeCustomWord(_ word: String) {
-        guard let match = customWords.first(where: { $0.canonical == word }) else { return }
-        removeCustomWord(match.id)
-    }
-
-    func updateCustomWord(_ word: CustomWord) {
-        do {
-            try customWordsManager.update(word: word, in: &customWords)
-            syncCustomWordsToPipelines()
-            customWordError = nil
-        } catch {
-            customWordError = error.localizedDescription
-        }
-    }
-
-    private func syncCustomWordsToPipelines() {
-        pipeline.wordCorrection.customWords = customWords
-        pipeline.llmPolish.customWords = customWords
-        whisperKitPipeline.wordCorrection.customWords = customWords
-        whisperKitPipeline.llmPolish.customWords = customWords
     }
 
 }
