@@ -10,6 +10,9 @@ const blog = defineCollection({
     updatedDate: z.coerce.date().optional(),
     tags: z.array(z.string()).default([]),
     draft: z.boolean().default(false),
+    author: z.string().default('Envious Labs'),
+    image: z.string().optional(),
+    keywords: z.array(z.string()).optional(),
   }),
 });
 

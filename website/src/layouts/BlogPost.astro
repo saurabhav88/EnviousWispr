@@ -7,15 +7,87 @@ interface Props {
   pubDate: Date;
   updatedDate?: Date;
   tags?: string[];
+  author?: string;
+  image?: string;
+  keywords?: string[];
 }
 
-const { title, description, pubDate, updatedDate, tags = [] } = Astro.props;
+const { title, description, pubDate, updatedDate, tags = [], author = 'Envious Labs', image, keywords } = Astro.props;
 
 const formatDate = (d: Date) =>
   d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+const siteUrl = 'https://enviouswispr.com';
+const canonicalUrl = Astro.url.href;
+const ogImage = image || '/og-image.png';
+const ogImageAlt = `${title} — EnviousWispr Blog`;
+const metaKeywords = keywords?.length ? keywords.join(', ') : tags.join(', ');
+
+const articleJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": title,
+  "description": description,
+  "image": ogImage.startsWith('http') ? ogImage : `${siteUrl}${ogImage}`,
+  "datePublished": pubDate.toISOString(),
+  ...(updatedDate && { "dateModified": updatedDate.toISOString() }),
+  "author": {
+    "@type": "Organization",
+    "name": author,
+    "url": siteUrl,
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Envious Labs",
+    "url": siteUrl,
+    "logo": {
+      "@type": "ImageObject",
+      "url": `${siteUrl}/favicon.svg`,
+    },
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": canonicalUrl,
+  },
+  ...(tags.length > 0 && { "keywords": tags.join(', ') }),
+});
+
+const breadcrumbJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": siteUrl,
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Blog",
+      "item": `${siteUrl}/blog/`,
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": title,
+      "item": canonicalUrl,
+    },
+  ],
+});
 ---
 
-<BaseLayout title={`${title} — EnviousWispr Blog`} description={description} activePage="blog">
+<BaseLayout title={`${title} — EnviousWispr Blog`} description={description} activePage="blog" ogType="article" ogImage={ogImage} ogImageAlt={ogImageAlt}>
+  <Fragment slot="head">
+    {metaKeywords && <meta name="keywords" content={metaKeywords} />}
+    <meta property="article:published_time" content={pubDate.toISOString()} />
+    {updatedDate && <meta property="article:modified_time" content={updatedDate.toISOString()} />}
+    <meta property="article:author" content={author} />
+    {tags.map(tag => <meta property="article:tag" content={tag} />)}
+    <script type="application/ld+json" set:html={articleJsonLd}></script>
+    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
+  </Fragment>
   <div class="blog-post-page">
     <div class="blog-post-container">
 
