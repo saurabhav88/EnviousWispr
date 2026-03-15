@@ -62,19 +62,11 @@ final class AppState {
     var customWords: [CustomWord] = []
     var customWordError: String?
 
-    // Model discovery
-    var discoveredModels: [LLMModelInfo] = []
-    var isDiscoveringModels = false
-    var keyValidationState: KeyValidationState = .idle
-
-    enum KeyValidationState: Equatable {
-        case idle
-        case validating
-        case valid
-        case invalid(String)
-    }
+    // Model discovery — delegated to coordinator
+    let llmDiscovery: LLMModelDiscoveryCoordinator
 
     init() {
+        llmDiscovery = LLMModelDiscoveryCoordinator(keychainManager: keychainManager)
         // Load custom words (nil = I/O failure, keep default empty array to prevent data loss)
         customWords = customWordsManager.load() ?? []
 
@@ -547,7 +539,7 @@ final class AppState {
         let model = settings.llmProvider == .ollama ? settings.ollamaModel : settings.llmModel
         if model.isEmpty { return settings.llmProvider.displayName }
         // Use discoveredModels displayName if available, otherwise raw model ID
-        if let info = discoveredModels.first(where: { $0.id == model }) {
+        if let info = llmDiscovery.discoveredModels.first(where: { $0.id == model }) {
             return info.displayName
         }
         return model
@@ -725,75 +717,6 @@ final class AppState {
         pipeline.llmPolish.customWords = customWords
         whisperKitPipeline.wordCorrection.customWords = customWords
         whisperKitPipeline.llmPolish.customWords = customWords
-    }
-
-    /// Validate an API key and discover available models for the given provider.
-    func validateKeyAndDiscoverModels(provider: LLMProvider) async {
-        keyValidationState = .validating
-        isDiscoveringModels = true
-
-        let apiKey: String
-        if provider == .ollama || provider == .appleIntelligence {
-            apiKey = ""
-        } else {
-            let keychainId = provider == .openAI ? KeychainManager.openAIKeyID : KeychainManager.geminiKeyID
-            guard let key = try? keychainManager.retrieve(key: keychainId), !key.isEmpty else {
-                keyValidationState = .invalid("No API key found")
-                isDiscoveringModels = false
-                return
-            }
-            apiKey = key
-        }
-
-        let discovery = LLMModelDiscovery()
-        do {
-            let models = try await discovery.discoverModels(provider: provider, apiKey: apiKey)
-            discoveredModels = models
-            if provider != .appleIntelligence {
-                cacheModels(models, for: provider)
-            }
-            keyValidationState = .valid
-
-            if !models.contains(where: { $0.id == settings.llmModel && $0.isAvailable }) {
-                if let firstAvailable = models.first(where: { $0.isAvailable }) {
-                    settings.llmModel = firstAvailable.id
-                    if provider == .ollama { settings.ollamaModel = firstAvailable.id }
-                }
-            }
-        } catch LLMError.providerUnavailable {
-            keyValidationState = .invalid(
-                provider == .ollama
-                    ? "Ollama is not running. Start it with: ollama serve"
-                    : "Apple Intelligence not available on this system."
-            )
-            discoveredModels = []
-        } catch let error as LLMError where error == .invalidAPIKey {
-            keyValidationState = .invalid("Invalid API key")
-            discoveredModels = []
-        } catch {
-            keyValidationState = .invalid(error.localizedDescription)
-            discoveredModels = []
-        }
-
-        isDiscoveringModels = false
-    }
-
-    /// Load cached models from UserDefaults for the given provider.
-    func loadCachedModels(for provider: LLMProvider) {
-        let key = "cachedModels_\(provider.rawValue)"
-        guard let data = UserDefaults.standard.data(forKey: key),
-              let models = try? JSONDecoder().decode([LLMModelInfo].self, from: data) else {
-            discoveredModels = []
-            return
-        }
-        discoveredModels = models
-    }
-
-    private func cacheModels(_ models: [LLMModelInfo], for provider: LLMProvider) {
-        let key = "cachedModels_\(provider.rawValue)"
-        if let data = try? JSONEncoder().encode(models) {
-            UserDefaults.standard.set(data, forKey: key)
-        }
     }
 
 }

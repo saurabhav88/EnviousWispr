@@ -103,7 +103,7 @@ struct AIPolishSettingsView: View {
                     BrandedRow {
                         HStack {
                             Picker("Model", selection: $state.settings.llmModel) {
-                                if appState.discoveredModels.isEmpty && !appState.isDiscoveringModels {
+                                if appState.llmDiscovery.discoveredModels.isEmpty && !appState.llmDiscovery.isDiscoveringModels {
                                     Text(appState.settings.llmModel.isEmpty
                                          ? (appState.settings.llmProvider == .ollama
                                             ? "No models found"
@@ -112,7 +112,7 @@ struct AIPolishSettingsView: View {
                                         .tag(appState.settings.llmModel)
                                 }
 
-                                ForEach(appState.discoveredModels) { model in
+                                ForEach(appState.llmDiscovery.discoveredModels) { model in
                                     HStack {
                                         Text(model.displayName)
                                         if !model.isAvailable {
@@ -124,12 +124,12 @@ struct AIPolishSettingsView: View {
                                 }
                             }
 
-                            if appState.isDiscoveringModels {
+                            if appState.llmDiscovery.isDiscoveringModels {
                                 ProgressView()
                                     .controlSize(.small)
                             } else {
                                 Button {
-                                    Task { await appState.validateKeyAndDiscoverModels(provider: appState.settings.llmProvider) }
+                                    Task { await appState.llmDiscovery.validateKeyAndDiscoverModels(provider: appState.settings.llmProvider, settings: appState.settings) }
                                 } label: {
                                     Image(systemName: "arrow.clockwise")
                                 }
@@ -139,7 +139,7 @@ struct AIPolishSettingsView: View {
                         }
                     }
 
-                    if let selectedModel = appState.discoveredModels.first(where: { $0.id == appState.settings.llmModel }),
+                    if let selectedModel = appState.llmDiscovery.discoveredModels.first(where: { $0.id == appState.settings.llmModel }),
                        !selectedModel.isAvailable {
                         BrandedRow {
                             Text("This model requires a paid API plan.")
@@ -187,22 +187,21 @@ struct AIPolishSettingsView: View {
             openAIKey = (try? appState.keychainManager.retrieve(key: KeychainManager.openAIKeyID)) ?? ""
             geminiKey = (try? appState.keychainManager.retrieve(key: KeychainManager.geminiKeyID)) ?? ""
             if appState.settings.llmProvider == .ollama {
-                appState.loadCachedModels(for: .ollama)
+                appState.llmDiscovery.loadCachedModels(for: .ollama)
                 Task {
                     await appState.ollamaSetup.detectState()
                     if case .ready = appState.ollamaSetup.setupState {
-                        await appState.validateKeyAndDiscoverModels(provider: .ollama)
+                        await appState.llmDiscovery.validateKeyAndDiscoverModels(provider: .ollama, settings: appState.settings)
                     }
                 }
             } else if appState.settings.llmProvider == .appleIntelligence {
-                Task { await appState.validateKeyAndDiscoverModels(provider: appState.settings.llmProvider) }
+                Task { await appState.llmDiscovery.validateKeyAndDiscoverModels(provider: appState.settings.llmProvider, settings: appState.settings) }
             } else if appState.settings.llmProvider != .none {
-                appState.loadCachedModels(for: appState.settings.llmProvider)
+                appState.llmDiscovery.loadCachedModels(for: appState.settings.llmProvider)
             }
         }
         .onChange(of: appState.settings.llmProvider) { _, newProvider in
-            appState.discoveredModels = []
-            appState.keyValidationState = .idle
+            appState.llmDiscovery.reset()
             appState.settings.llmModel = ""
 
             switch newProvider {
@@ -212,21 +211,21 @@ struct AIPolishSettingsView: View {
                 Task {
                     await appState.ollamaSetup.detectState()
                     if case .ready = appState.ollamaSetup.setupState {
-                        await appState.validateKeyAndDiscoverModels(provider: .ollama)
+                        await appState.llmDiscovery.validateKeyAndDiscoverModels(provider: .ollama, settings: appState.settings)
                     }
                 }
             case .appleIntelligence:
                 appState.ollamaSetup.cancelPull()
-                Task { await appState.validateKeyAndDiscoverModels(provider: newProvider) }
+                Task { await appState.llmDiscovery.validateKeyAndDiscoverModels(provider: newProvider, settings: appState.settings) }
             default:
                 appState.ollamaSetup.cancelPull()
-                appState.loadCachedModels(for: newProvider)
-                Task { await appState.validateKeyAndDiscoverModels(provider: newProvider) }
+                appState.llmDiscovery.loadCachedModels(for: newProvider)
+                Task { await appState.llmDiscovery.validateKeyAndDiscoverModels(provider: newProvider, settings: appState.settings) }
             }
         }
         .onChange(of: appState.ollamaSetup.setupState) { _, newState in
             if case .ready = newState, appState.settings.llmProvider == .ollama {
-                Task { await appState.validateKeyAndDiscoverModels(provider: .ollama) }
+                Task { await appState.llmDiscovery.validateKeyAndDiscoverModels(provider: .ollama, settings: appState.settings) }
             }
         }
         .onChange(of: showManageModels) { _, isOpen in
@@ -318,10 +317,10 @@ struct AIPolishSettingsView: View {
                 Button("Save") {
                     if isOpenAI {
                         guard saveKey(key: openAIKey, keychainId: KeychainManager.openAIKeyID) else { return }
-                        Task { await appState.validateKeyAndDiscoverModels(provider: .openAI) }
+                        Task { await appState.llmDiscovery.validateKeyAndDiscoverModels(provider: .openAI, settings: appState.settings) }
                     } else {
                         guard saveKey(key: geminiKey, keychainId: KeychainManager.geminiKeyID) else { return }
-                        Task { await appState.validateKeyAndDiscoverModels(provider: .gemini) }
+                        Task { await appState.llmDiscovery.validateKeyAndDiscoverModels(provider: .gemini, settings: appState.settings) }
                     }
                 }
                 .disabled(isOpenAI ? openAIKey.isEmpty : geminiKey.isEmpty)
@@ -336,8 +335,7 @@ struct AIPolishSettingsView: View {
                         clearKey(keychainId: KeychainManager.geminiKeyID)
                         geminiKey = ""
                     }
-                    appState.discoveredModels = []
-                    appState.keyValidationState = .idle
+                    appState.llmDiscovery.reset()
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
@@ -350,7 +348,7 @@ struct AIPolishSettingsView: View {
 
     @ViewBuilder
     private var validationBadge: some View {
-        switch appState.keyValidationState {
+        switch appState.llmDiscovery.keyValidationState {
         case .idle:
             if !validationStatus.isEmpty {
                 Text(validationStatus)
@@ -617,7 +615,7 @@ struct AIPolishSettingsView: View {
                     Task {
                         await appState.ollamaSetup.detectState()
                         if case .ready = appState.ollamaSetup.setupState {
-                            await appState.validateKeyAndDiscoverModels(provider: .ollama)
+                            await appState.llmDiscovery.validateKeyAndDiscoverModels(provider: .ollama, settings: appState.settings)
                         }
                     }
                 }
@@ -638,7 +636,7 @@ struct AIPolishSettingsView: View {
             HStack {
                 Text("Status:")
                 Spacer()
-                switch appState.keyValidationState {
+                switch appState.llmDiscovery.keyValidationState {
                 case .valid:
                     Label("Available", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
@@ -653,7 +651,7 @@ struct AIPolishSettingsView: View {
                 }
 
                 Button {
-                    Task { await appState.validateKeyAndDiscoverModels(provider: .appleIntelligence) }
+                    Task { await appState.llmDiscovery.validateKeyAndDiscoverModels(provider: .appleIntelligence, settings: appState.settings) }
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
@@ -769,7 +767,7 @@ struct AIPolishSettingsView: View {
             Task {
                 await appState.ollamaSetup.detectState()
                 if case .ready = appState.ollamaSetup.setupState {
-                    await appState.validateKeyAndDiscoverModels(provider: .ollama)
+                    await appState.llmDiscovery.validateKeyAndDiscoverModels(provider: .ollama, settings: appState.settings)
                 }
             }
         } label: {
