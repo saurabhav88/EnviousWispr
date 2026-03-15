@@ -71,6 +71,12 @@ let package = Package(
             path: "Sources/EnviousWisprPipeline"
         ),
         .executableTarget(
+            name: "EnviousWisprAudioService",
+            dependencies: ["EnviousWisprCore"],
+            path: "Sources/EnviousWisprAudioService",
+            exclude: ["Resources"]
+        ),
+        .executableTarget(
             name: "EnviousWispr",
             dependencies: [
                 "EnviousWisprCore",
