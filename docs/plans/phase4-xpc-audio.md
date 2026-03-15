@@ -1,7 +1,7 @@
 # Phase 4: XPC Audio Service — Implementation Plan
 
 **Bead:** ew-8y3
-**Status:** Planning
+**Status:** In Progress (Steps 0-2 done)
 **Depends on:** Phase 3 (done)
 **Blocks:** Phase 5: XPC ASR Service (ew-mvx)
 
@@ -119,7 +119,7 @@ A thin proxy conforming to `AudioCaptureInterface`:
 - `@Observable` properties: `isCapturing`, `audioLevel` (updated by XPC callbacks)
 - Settings properties forwarded to XPC: `noiseSuppressionEnabled`, `selectedInputDeviceUID`, etc.
 - Same callbacks as AudioCaptureManager: `onBufferCaptured`, `onEngineInterrupted`, etc.
-- XPC connection management + crash recovery (`invalidationHandler` → reconnect)
+- XPC connection management + crash recovery (see Architecture Invariants for lifecycle rules)
 
 ### 2.3 VAD Decision
 
@@ -264,6 +264,15 @@ Each harness is a standalone Swift file compiled as part of a test executable ta
 - Flag off: app works identically to pre-Phase-4
 - Flag on: proxy connects to service (no audio yet)
 
+**Step 2 Results (2026-03-15):**
+- `AudioCaptureProxy` in `EnviousWisprAudio` — full `AudioCaptureInterface` conformance with documented stubs
+- `XPCServiceName` in `EnviousWisprCore` — derives dev/prod from host bundle ID at runtime
+- `useXPCAudioService` cold flag in `SettingsManager` (no `onChange`, UserDefaults-only)
+- `AppState.init()` reads flag from `UserDefaults.standard` and branches implementation
+- `ensureConnection()` creates + resumes connection + sends ping (ping triggers launchd spawn)
+- Verified: flag OFF = unchanged behavior; flag ON = proxy instantiated, XPC service spawns on first lifecycle call (buildEngine → ensureConnection → ping), no false capture state
+- Note: startup does NOT universally verify/spawn the service in every settings configuration. Lazy spawn happens on first actual XPC message, not connection creation alone.
+
 ### Step 3: Service-Side Capture (~2 sessions)
 
 **Goal:** Real audio capture runs in the XPC service.
@@ -351,6 +360,53 @@ Each harness is a standalone Swift file compiled as part of a test executable ta
 ### Rollback Plan
 
 Feature flag reverts to in-process audio at any step. `AudioCaptureInterface` protocol ensures both paths compile.
+
+## 4. Risk Analysis
+
+## Phase 4 Architecture Invariants (empirically established)
+
+These are the proven truths from Steps 0–2. Future steps must not contradict them.
+
+**Implementation model:**
+- `AudioCaptureManager` = in-process implementation (existing, unchanged)
+- `AudioCaptureProxy` = host-side XPC-backed stub (Step 2), becoming real transport in Step 3+
+- Both conform to `AudioCaptureInterface` — consumers are agnostic
+- App-level implementation selection happens in `AppState.init()` via cold feature flag
+- XPC service owns real audio engine/capture complexity as migration continues
+
+**XPC connection lifecycle (Step 1.5, empirically proven + council-validated):**
+- Interruption != invalidation. They are different signals requiring different handling.
+- `interruptionHandler` = transient. Do NOT invalidate. Keep the same `NSXPCConnection`. Next message auto-relaunches.
+- `invalidationHandler` = terminal. Nil the connection, recreate on next use.
+- Invalidating on interruption was the wrong recovery model — it breaks relaunch.
+- Service-side state is lost after crash/relaunch. Host must re-send config on next real use.
+- In-flight calls get error 4097 (`NSXPCConnectionInterrupted`) via `remoteObjectProxyWithErrorHandler`.
+- launchd applies ~10s crash throttle after abnormal termination.
+
+**Service spawn semantics:**
+- `ensureConnection()` creates + resumes `NSXPCConnection` + sends ping (liveness check).
+- The ping is the first XPC message — launchd spawns the service process in response.
+- Creating/resuming the connection object alone does NOT spawn the service.
+- Startup does not universally verify/spawn the service — lazy spawn on first lifecycle call.
+
+**Step 2 stub semantics (must not roll forward as real behavior):**
+- `capturedSamples` returns `[]` — not a valid recording result
+- `stopCapture()` returns `[]` — not a valid recording result
+- `onBufferCaptured` is stored but never called — no real buffers
+- `isCapturing` is never set to `true` — no false capture state
+- These stubs must be replaced with real XPC transport in Step 3
+
+**Anti-patterns to avoid:**
+- Do not create a new god object by mixing transport, app state, pipeline logic, and service logic in one place
+- Do not smuggle startup responsibilities into random property setters to force service spawn
+- Do not treat empty stub returns as valid capture outcomes in any downstream code path
+
+**Packaging gotchas:**
+- Full clean bundle required after XPC changes (quick rebundle leaves stale XPC binaries)
+- XPC service name must match `CFBundleIdentifier` in the `.xpc` bundle's Info.plist exactly
+- Inside-out codesigning: Sparkle → XPC services → main app. `xattr -cr` before signing.
+
+---
 
 ## 4. Risk Analysis
 
