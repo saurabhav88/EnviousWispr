@@ -105,20 +105,9 @@ public final class WhisperKitPipeline: DictationPipeline {
             self?.state = .polishing
         }
 
-        // Handle audio engine interruption (device disconnect, max duration cap).
-        // Mirrors TranscriptionPipeline's handler — clean up VAD, reset state.
-        audioCapture.onEngineInterrupted = { [weak self] in
-            guard let self else { return }
-            self.vadMonitorTask?.cancel()
-            self.vadMonitorTask = nil
-            self.silenceDetector = nil
-            self.targetApp = nil
-            self.targetElement = nil
-            self.recordingStartTime = nil
-            self.isStopping = false
-            self.isPreWarmed = false
-            self.state = .error("Audio device disconnected")
-        }
+        // Engine interruption cleanup is wired by AppState.onEngineInterrupted
+        // (unified handler that routes to the active pipeline). The pipeline exposes
+        // handleEngineInterruption() for AppState to call.
 
         // Activate SSE streaming for Gemini
         llmPolishStep.onToken = { _ in }
@@ -478,6 +467,20 @@ public final class WhisperKitPipeline: DictationPipeline {
         } catch {
             state = .error("Transcription failed: \(error.localizedDescription)")
         }
+    }
+
+    /// Handle audio engine interruption (device disconnect, service crash, max duration cap).
+    /// Called by AppState's unified interruption handler, not set directly on audioCapture.
+    public func handleEngineInterruption() {
+        vadMonitorTask?.cancel()
+        vadMonitorTask = nil
+        silenceDetector = nil
+        targetApp = nil
+        targetElement = nil
+        recordingStartTime = nil
+        isStopping = false
+        isPreWarmed = false
+        state = .error("Audio device disconnected")
     }
 
     public func cancelRecording() async {

@@ -92,6 +92,21 @@ final class AppState {
             whisperKitSetup: whisperKitSetup
         )
         settingsSync.applyInitialSettings(settings, customWords: customWordsCoordinator.customWords)
+
+        // Unified engine interruption handler — routes to whichever pipeline is actively recording.
+        // Both pipelines share the same audioCapture instance. When the audio engine/XPC service
+        // is interrupted, we must notify the pipeline that's currently recording, not the one
+        // that happened to set onEngineInterrupted last.
+        audioCapture.onEngineInterrupted = { [weak self] in
+            guard let self else { return }
+            if self.pipeline.state == .recording {
+                self.pipeline.handleEngineInterruption()
+            } else if self.whisperKitPipeline.state == .recording {
+                self.whisperKitPipeline.handleEngineInterruption()
+            }
+            // Dismiss recording overlay if showing
+            self.recordingOverlay.hide()
+        }
         settingsSync.onNeedsPreloadObservation = { [weak self] in
             self?.startWhisperKitPreloadObservation()
         }

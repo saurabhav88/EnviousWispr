@@ -85,23 +85,9 @@ public final class TranscriptionPipeline: DictationPipeline {
             self?.state = .polishing
         }
 
-        // Handle audio engine interruption (device disconnect, max duration cap).
-        // Perform full pipeline cleanup and transition to error state.
-        audioCapture.onEngineInterrupted = { [weak self] in
-            guard let self else { return }
-            self.vadMonitorTask?.cancel()
-            self.vadMonitorTask = nil
-            self.silenceDetector = nil
-            if self.streamingASRActive {
-                Task { [weak self] in
-                    await self?.asrManager.cancelStreaming()
-                }
-            }
-            self.deactivateStreamingForwarding()
-            self.targetApp = nil
-            self.recordingStartTime = nil
-            self.state = .error("Audio device disconnected")
-        }
+        // Engine interruption cleanup is wired by AppState.onEngineInterrupted
+        // (unified handler that routes to the active pipeline). The pipeline exposes
+        // handleEngineInterruption() for AppState to call.
         // Activate SSE streaming for Gemini — a non-nil onToken causes GeminiConnector
         // to use streamGenerateContent instead of batch generateContent.
         // No-op callback is correct; live token display in overlay is a future follow-up.
@@ -667,6 +653,23 @@ public final class TranscriptionPipeline: DictationPipeline {
         recordingStartTime = nil
         state = .idle
         currentTranscript = nil
+    }
+
+    /// Handle audio engine interruption (device disconnect, service crash, max duration cap).
+    /// Called by AppState's unified interruption handler, not set directly on audioCapture.
+    public func handleEngineInterruption() {
+        vadMonitorTask?.cancel()
+        vadMonitorTask = nil
+        silenceDetector = nil
+        if streamingASRActive {
+            Task { [weak self] in
+                await self?.asrManager.cancelStreaming()
+            }
+        }
+        deactivateStreamingForwarding()
+        targetApp = nil
+        recordingStartTime = nil
+        state = .error("Audio device disconnected")
     }
 
     /// Cancel an active recording immediately without transcribing.

@@ -246,6 +246,7 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 if self.isCapturing {
+                    // Active-capture interruption = user-visible failure.
                     self.isCapturing = false
                     self.audioLevel = 0
                     self.captureGeneration &+= 1
