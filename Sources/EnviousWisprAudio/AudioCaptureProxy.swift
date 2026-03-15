@@ -301,9 +301,10 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
 
     // MARK: - Data conversion
 
-    /// Convert [Float] to raw Data. Transport format: Float32 PCM, non-interleaved mono, 16kHz.
+    /// Convert raw Data to [Float]. Transport format: Float32 PCM, non-interleaved mono, 16kHz.
     /// Data is raw bytes — no header, no metadata.
-    private static func dataToFloats(_ data: Data) -> [Float] {
+    /// nonisolated: called from XPC reply callbacks which run on XPC dispatch queues, not MainActor.
+    nonisolated private static func dataToFloats(_ data: Data) -> [Float] {
         guard !data.isEmpty, data.count.isMultiple(of: MemoryLayout<Float>.size) else { return [] }
         return data.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
     }
