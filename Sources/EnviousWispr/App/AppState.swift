@@ -35,6 +35,9 @@ final class AppState {
     let pipeline: TranscriptionPipeline
     let whisperKitPipeline: WhisperKitPipeline
 
+    /// Forwards settings changes to pipelines and subsystems.
+    private let settingsSync: PipelineSettingsSync
+
     /// Called when pipeline state changes — set by AppDelegate for icon updates.
     var onPipelineStateChange: ((PipelineState) -> Void)?
 
@@ -79,26 +82,19 @@ final class AppState {
             transcriptStore: transcriptStore,
             keychainManager: keychainManager
         )
-        pipeline.autoCopyToClipboard = settings.autoCopyToClipboard
-        pipeline.llmPolish.llmProvider = settings.llmProvider
-        pipeline.llmPolish.llmModel = settings.llmModel
-        if settings.llmProvider == .ollama {
-            pipeline.llmPolish.llmModel = settings.ollamaModel
+        // Initialize settingsSync and apply initial settings to both pipelines and audio capture
+        settingsSync = PipelineSettingsSync(
+            pipeline: pipeline,
+            whisperKitPipeline: whisperKitPipeline,
+            audioCapture: audioCapture,
+            asrManager: asrManager,
+            hotkeyService: hotkeyService,
+            whisperKitSetup: whisperKitSetup
+        )
+        settingsSync.applyInitialSettings(settings, customWords: customWordsCoordinator.customWords)
+        settingsSync.onNeedsPreloadObservation = { [weak self] in
+            self?.startWhisperKitPreloadObservation()
         }
-        pipeline.vadAutoStop = settings.vadAutoStop
-        pipeline.vadSilenceTimeout = settings.vadSilenceTimeout
-        pipeline.vadSensitivity = settings.vadSensitivity
-        pipeline.vadEnergyGate = settings.vadEnergyGate
-        pipeline.modelUnloadPolicy = settings.modelUnloadPolicy
-        pipeline.restoreClipboardAfterPaste = settings.restoreClipboardAfterPaste
-        pipeline.llmPolish.polishInstructions = settings.activePolishInstructions
-        pipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
-        pipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
-        pipeline.wordCorrection.customWords = customWordsCoordinator.customWords
-        pipeline.llmPolish.customWords = customWordsCoordinator.customWords
-        pipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
-        // Sync WhisperKit pipeline settings
-        syncWhisperKitPipelineSettings()
 
         // Wire custom words changes to pipeline sync
         customWordsCoordinator.onWordsChanged = { [weak self] words in
@@ -108,17 +104,6 @@ final class AppState {
             self.whisperKitPipeline.wordCorrection.customWords = words
             self.whisperKitPipeline.llmPolish.customWords = words
         }
-
-        // Build engine with correct noise suppression config from the start.
-        // This sets noiseSuppressionEnabled and configures anti-ducking if needed.
-        if settings.noiseSuppression {
-            audioCapture.buildEngine(noiseSuppression: true)
-        } else {
-            audioCapture.noiseSuppressionEnabled = false
-        }
-        audioCapture.selectedInputDeviceUID = settings.selectedInputDeviceUID
-        audioCapture.preferredInputDeviceIDOverride = settings.preferredInputDeviceIDOverride
-        syncTranscriptionOptions()
 
         // Initialize logger
         Task {
@@ -137,7 +122,10 @@ final class AppState {
         }
 
         // Wire settings change handler
-        settings.onChange = { [weak self] key in self?.handleSettingChanged(key) }
+        settings.onChange = { [weak self] key in
+            guard let self else { return }
+            self.settingsSync.handleSettingChanged(key, settings: self.settings)
+        }
 
         // Wire pipeline state changes to overlay and icon
         pipeline.onStateChange = { [weak self] newState in
@@ -303,170 +291,6 @@ final class AppState {
         }
     }
 
-    private func handleSettingChanged(_ key: SettingsManager.SettingKey) {
-        switch key {
-        case .selectedBackend:
-            // Don't switch backends while a pipeline is actively recording/transcribing
-            let parakeetActive = pipelineState.isActive
-            let whisperKitActive = whisperKitPipeline.state.isActive
-            if parakeetActive || whisperKitActive {
-                Task { await AppLogger.shared.log(
-                    "Backend switch blocked — pipeline is active",
-                    level: .info, category: "AppState"
-                ) }
-                break
-            }
-            let backend = settings.selectedBackend
-            Task {
-                await asrManager.switchBackend(to: backend)
-                if backend == .whisperKit {
-                    await whisperKitSetup.detectState()
-                    // Re-observe setupState to pre-load model when ready
-                    startWhisperKitPreloadObservation()
-                }
-            }
-        case .whisperKitModel:
-            let model = settings.whisperKitModel
-            whisperKitSetup.modelVariant = model
-            Task {
-                await asrManager.updateWhisperKitModel(model)
-                await whisperKitSetup.forceDetectState()
-                // Re-observe setupState to pre-load new model variant when ready
-                startWhisperKitPreloadObservation()
-            }
-        case .recordingMode:
-            hotkeyService.recordingMode = settings.recordingMode
-        case .llmProvider:
-            pipeline.llmPolish.llmProvider = settings.llmProvider
-            whisperKitPipeline.llmPolish.llmProvider = settings.llmProvider
-        case .llmModel:
-            pipeline.llmPolish.llmModel = settings.llmModel
-            whisperKitPipeline.llmPolish.llmModel = settings.llmModel
-            if settings.llmProvider == .ollama {
-                settings.ollamaModel = settings.llmModel
-            }
-        case .ollamaModel:
-            if settings.llmProvider == .ollama {
-                pipeline.llmPolish.llmModel = settings.ollamaModel
-                whisperKitPipeline.llmPolish.llmModel = settings.ollamaModel
-            }
-        case .autoCopyToClipboard:
-            pipeline.autoCopyToClipboard = settings.autoCopyToClipboard
-            whisperKitPipeline.autoCopyToClipboard = settings.autoCopyToClipboard
-        case .hotkeyEnabled:
-            if settings.hotkeyEnabled { hotkeyService.start() } else { hotkeyService.stop() }
-        case .vadAutoStop:
-            pipeline.vadAutoStop = settings.vadAutoStop
-            whisperKitPipeline.vadAutoStop = settings.vadAutoStop
-        case .vadSilenceTimeout:
-            pipeline.vadSilenceTimeout = settings.vadSilenceTimeout
-            whisperKitPipeline.vadSilenceTimeout = settings.vadSilenceTimeout
-        case .environmentPreset:
-            let sensitivity = settings.environmentPreset.vadSensitivity
-            settings.vadSensitivity = sensitivity
-        case .writingStylePreset:
-            pipeline.llmPolish.polishInstructions = settings.activePolishInstructions
-            whisperKitPipeline.llmPolish.polishInstructions = settings.activePolishInstructions
-        case .vadSensitivity:
-            pipeline.vadSensitivity = settings.vadSensitivity
-            whisperKitPipeline.vadSensitivity = settings.vadSensitivity
-        case .vadEnergyGate:
-            pipeline.vadEnergyGate = settings.vadEnergyGate
-            whisperKitPipeline.vadEnergyGate = settings.vadEnergyGate
-        case .cancelKeyCode:
-            hotkeyService.cancelKeyCode = settings.cancelKeyCode
-        case .cancelModifiers:
-            hotkeyService.cancelModifiers = settings.cancelModifiers
-        case .toggleKeyCode:
-            hotkeyService.toggleKeyCode = settings.toggleKeyCode
-            reregisterHotkeys()
-        case .toggleModifiers:
-            hotkeyService.toggleModifiers = settings.toggleModifiers
-            reregisterHotkeys()
-        case .pushToTalkKeyCode, .pushToTalkModifiers:
-            // PTT mirrors toggle — single hotkey, mode determines behavior. No separate registration needed.
-            break
-        case .modelUnloadPolicy:
-            pipeline.modelUnloadPolicy = settings.modelUnloadPolicy
-            whisperKitPipeline.modelUnloadPolicy = settings.modelUnloadPolicy
-            if settings.modelUnloadPolicy == .never {
-                asrManager.cancelIdleTimer()
-            }
-        case .restoreClipboardAfterPaste:
-            pipeline.restoreClipboardAfterPaste = settings.restoreClipboardAfterPaste
-            whisperKitPipeline.restoreClipboardAfterPaste = settings.restoreClipboardAfterPaste
-        case .customSystemPrompt:
-            pipeline.llmPolish.polishInstructions = settings.activePolishInstructions
-            whisperKitPipeline.llmPolish.polishInstructions = settings.activePolishInstructions
-        case .wordCorrectionEnabled:
-            pipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
-            whisperKitPipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
-        case .fillerRemovalEnabled:
-            pipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
-            whisperKitPipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
-        case .isDebugModeEnabled:
-            Task { await AppLogger.shared.setDebugMode(settings.isDebugModeEnabled) }
-        case .debugLogLevel:
-            Task { await AppLogger.shared.setLogLevel(settings.debugLogLevel) }
-        case .useExtendedThinking:
-            pipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
-            whisperKitPipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
-        case .whisperKitLanguage:
-            syncTranscriptionOptions()
-        case .selectedInputDeviceUID:
-            audioCapture.selectedInputDeviceUID = settings.selectedInputDeviceUID
-        case .preferredInputDeviceIDOverride:
-            audioCapture.preferredInputDeviceIDOverride = settings.preferredInputDeviceIDOverride
-        case .noiseSuppression:
-            // Full engine rebuild — runtime toggling of voice processing is unreliable.
-            // Cancel any active recording first to avoid corrupted state.
-            if pipeline.state == .recording {
-                Task { [weak self] in
-                    await self?.pipeline.cancelRecording()
-                    self?.audioCapture.buildEngine(noiseSuppression: self?.settings.noiseSuppression ?? false)
-                }
-            } else {
-                audioCapture.buildEngine(noiseSuppression: settings.noiseSuppression)
-            }
-        case .onboardingState, .hasCompletedOnboarding:
-            break
-        }
-    }
-
-    /// Sync shared transcription options (language, timestamps) to both pipelines.
-    private func syncTranscriptionOptions() {
-        var opts = TranscriptionOptions()
-        // Parakeet is English-only; WhisperKit uses the user's selected language.
-        // Pass the language to both pipelines — Parakeet ignores it, WhisperKit
-        // passes it through to DecodingOptions.
-        opts.language = settings.whisperKitLanguage
-        pipeline.transcriptionOptions = opts
-        whisperKitPipeline.transcriptionOptions = opts
-    }
-
-    /// Sync all user-facing settings to the WhisperKit pipeline.
-    private func syncWhisperKitPipelineSettings() {
-        whisperKitPipeline.autoCopyToClipboard = settings.autoCopyToClipboard
-        whisperKitPipeline.restoreClipboardAfterPaste = settings.restoreClipboardAfterPaste
-        whisperKitPipeline.llmPolish.llmProvider = settings.llmProvider
-        whisperKitPipeline.llmPolish.llmModel = settings.llmModel
-        if settings.llmProvider == .ollama {
-            whisperKitPipeline.llmPolish.llmModel = settings.ollamaModel
-        }
-        whisperKitPipeline.llmPolish.polishInstructions = settings.activePolishInstructions
-        whisperKitPipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
-        whisperKitPipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
-        whisperKitPipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
-        whisperKitPipeline.wordCorrection.customWords = customWordsCoordinator.customWords
-        whisperKitPipeline.llmPolish.customWords = customWordsCoordinator.customWords
-        whisperKitPipeline.vadAutoStop = settings.vadAutoStop
-        whisperKitPipeline.vadSilenceTimeout = settings.vadSilenceTimeout
-        whisperKitPipeline.vadSensitivity = settings.vadSensitivity
-        whisperKitPipeline.vadEnergyGate = settings.vadEnergyGate
-        whisperKitPipeline.modelUnloadPolicy = settings.modelUnloadPolicy
-    }
-
-
     /// Observe WhisperKitSetupService.setupState and pre-load the model when it becomes .ready.
     /// Uses withObservationTracking to react to @Observable property changes outside SwiftUI.
     private func startWhisperKitPreloadObservation() {
@@ -492,13 +316,6 @@ final class AppState {
                 }
             }
         }
-    }
-
-    /// Re-register Carbon hotkeys after a config change.
-    private func reregisterHotkeys() {
-        guard hotkeyService.isEnabled else { return }
-        hotkeyService.stop()
-        hotkeyService.start()
     }
 
     /// Active dictation pipeline — routes based on selected backend.
