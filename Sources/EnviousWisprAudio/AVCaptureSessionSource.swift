@@ -142,10 +142,10 @@ final class AVCaptureSessionSource: AudioInputSource {
     }
 
     func stop() async -> [Float] {
-        // Clear delegate BEFORE stopping — prevents callbacks after stop.
-        audioOutput?.setSampleBufferDelegate(nil, queue: nil)
-
-        // Stop on the dedicated session queue (Apple recommends serial queue for lifecycle).
+        // Stop session FIRST — stopRunning() is synchronous per Apple docs, blocks until
+        // the session stops and no new frames are delivered to callbackQueue.
+        // RULE: Do NOT touch delegate, callback queue, or continuation state until
+        // stopRunning() has returned. No "cleanup optimization" before the session stops.
         if let captureSession = session {
             let sessionQ = sessionQueue
             await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
@@ -155,6 +155,9 @@ final class AVCaptureSessionSource: AudioInputSource {
                 }
             }
         }
+
+        // NOW safe to clear delegate — session is stopped, no more buffers arriving.
+        audioOutput?.setSampleBufferDelegate(nil, queue: nil)
 
         isCapturing = false
         removeInterruptionObservers()

@@ -315,8 +315,26 @@ public final class TranscriptionPipeline: DictationPipeline {
         let rawSamples = await audioCapture.stopCapture()
 
         if wasStreaming {
-            await Task.yield()
-            await Task.yield()
+            // Deterministic drain: freeze the dispatch count after stopCapture (no new buffers
+            // will be dispatched since the tap/session is stopped). Wait for all queued buffer-feed
+            // tasks to complete before deactivating forwarding. Bounded by 500ms deadline.
+            let targetDispatched = streamingBuffersDispatched
+            let drainDeadline = ContinuousClock.now + .milliseconds(500)
+            while streamingBuffersFed < targetDispatched,
+                  ContinuousClock.now < drainDeadline {
+                await Task.yield()
+            }
+            if streamingBuffersFed >= targetDispatched {
+                Task { await AppLogger.shared.log(
+                    "Streaming drain: clean (\(self.streamingBuffersFed)/\(targetDispatched) fed)",
+                    level: .info, category: "PipelineTiming"
+                ) }
+            } else {
+                Task { await AppLogger.shared.log(
+                    "Streaming drain: TIMEOUT (\(self.streamingBuffersFed)/\(targetDispatched) fed — \(targetDispatched - self.streamingBuffersFed) lost)",
+                    level: .info, category: "PipelineTiming"
+                ) }
+            }
         }
 
         deactivateStreamingForwarding()
