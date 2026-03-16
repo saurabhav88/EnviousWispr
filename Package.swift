@@ -83,10 +83,8 @@ let package = Package(
             name: "EnviousWisprASRService",
             dependencies: [
                 "EnviousWisprCore",
-                "EnviousWisprASR",
-                "EnviousWisprAudio",
-                "WhisperKit",
-                "FluidAudio",
+                // Stage B adds: EnviousWisprASR, EnviousWisprAudio, WhisperKit, FluidAudio
+                // Kept lean for Stage A — no unnecessary framework loading at XPC startup.
             ],
             path: "Sources/EnviousWisprASRService",
             exclude: ["Resources"]

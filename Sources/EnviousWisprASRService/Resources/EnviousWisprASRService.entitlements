@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Stage A: No special entitlements needed for non-sandboxed XPC service.
+         Model files in ~/Library/Application Support/ and ~/Documents/ are accessible.
+         Future: add com.apple.developer.kernel.increased-memory-limit when Apple approves
+         (requested for on-device ASR inference, WhisperKit models can spike to 2GB). -->
+</dict>
+</plist>
