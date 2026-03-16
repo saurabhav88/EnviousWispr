@@ -80,6 +80,18 @@ let package = Package(
             exclude: ["Resources"]
         ),
         .executableTarget(
+            name: "EnviousWisprASRService",
+            dependencies: [
+                "EnviousWisprCore",
+                "EnviousWisprASR",
+                "EnviousWisprAudio",
+                "WhisperKit",
+                "FluidAudio",
+            ],
+            path: "Sources/EnviousWisprASRService",
+            exclude: ["Resources"]
+        ),
+        .executableTarget(
             name: "EnviousWispr",
             dependencies: [
                 "EnviousWisprCore",

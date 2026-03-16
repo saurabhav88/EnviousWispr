@@ -14,7 +14,7 @@ public enum ASRBackendType: String, Codable, Sendable {
 }
 
 /// Result from an ASR transcription pass.
-public struct ASRResult: Sendable {
+public struct ASRResult: Sendable, Codable {
     public let text: String
     public let language: String?
     public let duration: TimeInterval
@@ -31,7 +31,7 @@ public struct ASRResult: Sendable {
 }
 
 /// Options controlling transcription behavior (shared across all backends).
-public struct TranscriptionOptions: Sendable {
+public struct TranscriptionOptions: Sendable, Codable {
     public var language: String?
     public var enableTimestamps: Bool = true
 
