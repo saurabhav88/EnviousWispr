@@ -156,7 +156,7 @@ public enum AudioDeviceEnumerator {
 
     // MARK: - Private Helpers
 
-    private static func transportType(for deviceID: AudioDeviceID) -> UInt32 {
+    static func transportType(for deviceID: AudioDeviceID) -> UInt32 {
         var transport: UInt32 = 0
         var size = UInt32(MemoryLayout<UInt32>.size)
         var addr = AudioObjectPropertyAddress(
