@@ -11,6 +11,7 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
 
     /// The active ASR backend — only one loaded at a time.
     private var parakeetBackend: ParakeetBackend?
+    private var whisperKitBackend: WhisperKitBackend?
     private var activeBackendType: String?
 
     // MARK: - Diagnostics
@@ -31,17 +32,27 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
         nonisolated(unsafe) let safeReply = reply
         Task { @MainActor in
             do {
+                // Unload previous backend before loading new one
+                self.parakeetBackend = nil
+                self.whisperKitBackend = nil
+
                 switch backendType {
                 case "parakeet":
                     let backend = ParakeetBackend()
                     try await backend.prepare()
                     self.parakeetBackend = backend
-                    self.activeBackendType = "parakeet"
-                    safeReply(nil)
+                case "whisperKit":
+                    let variant = modelVariant.isEmpty ? "openai_whisper-large-v3_turbo" : modelVariant
+                    let backend = WhisperKitBackend(modelVariant: variant)
+                    try await backend.prepare()
+                    self.whisperKitBackend = backend
                 default:
                     safeReply(NSError(domain: "ASRService", code: -1,
                         userInfo: [NSLocalizedDescriptionKey: "Unknown backend: \(backendType)"]))
+                    return
                 }
+                self.activeBackendType = backendType
+                safeReply(nil)
             } catch {
                 safeReply(error as NSError)
             }
@@ -51,9 +62,11 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
     func unloadModel(reply: @escaping () -> Void) {
         nonisolated(unsafe) let safeReply = reply
         Task { @MainActor in
-            // ParakeetBackend has no explicit unload — nil the reference to release the actor.
-            // In an XPC service, this drops the model from the service process's memory.
+            if let wk = self.whisperKitBackend {
+                await wk.unload()
+            }
             self.parakeetBackend = nil
+            self.whisperKitBackend = nil
             self.activeBackendType = nil
             safeReply()
         }
@@ -62,7 +75,7 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
     func getModelState(reply: @escaping (Bool, Bool) -> Void) {
         nonisolated(unsafe) let safeReply = reply
         Task { @MainActor in
-            let isLoaded = self.parakeetBackend != nil
+            let isLoaded = self.parakeetBackend != nil || self.whisperKitBackend != nil
             // Streaming state — Stage B streaming not yet implemented
             safeReply(isLoaded, false)
         }
@@ -81,12 +94,6 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
         }
 
         Task { @MainActor in
-            guard let backend = self.parakeetBackend else {
-                safeReply(nil, NSError(domain: "ASRService", code: -3,
-                    userInfo: [NSLocalizedDescriptionKey: "No model loaded"]))
-                return
-            }
-
             do {
                 // Convert Data → [Float]
                 let samples = data.withUnsafeBytes { raw -> [Float] in
@@ -98,7 +105,17 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
                 options.language = language.isEmpty ? nil : language
                 options.enableTimestamps = enableTimestamps
 
-                let result = try await backend.transcribe(audioSamples: samples, options: options)
+                // Route to the active backend
+                let result: EnviousWisprCore.ASRResult
+                if let parakeet = self.parakeetBackend {
+                    result = try await parakeet.transcribe(audioSamples: samples, options: options)
+                } else if let whisperKit = self.whisperKitBackend {
+                    result = try await whisperKit.transcribe(audioSamples: samples, options: options)
+                } else {
+                    safeReply(nil, NSError(domain: "ASRService", code: -3,
+                        userInfo: [NSLocalizedDescriptionKey: "No model loaded"]))
+                    return
+                }
 
                 // Encode ASRResult → Data via PropertyListEncoder
                 let encoded = try PropertyListEncoder().encode(result)
