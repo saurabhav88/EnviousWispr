@@ -57,22 +57,27 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     public nonisolated static let targetChannels: AVAudioChannelCount = 1
 
     /// The active capture source. Created on buildEngine/startEnginePhase.
-    private var activeSource: AVAudioEngineSource?
+    /// Either AVAudioEngineSource (no BT) or AVCaptureSessionSource (BT output active).
+    private var activeSource: (any AudioInputSource)?
 
-    /// AsyncStream continuation for buffer delivery to pipelines.
-    private var bufferContinuation: AsyncStream<AVAudioPCMBuffer>.Continuation?
+    /// Route resolver — decides which source to use based on BT state + user preference.
+    private var routeResolver = CaptureRouteResolver()
+
+    /// The last route decision — for telemetry and debugging.
+    private var lastRouteDecision: CaptureRouteDecision?
 
     public init() {}
 
     // MARK: - AudioCaptureInterface
 
     public func startEnginePhase() async throws {
-        let source = ensureSource()
+        // Re-evaluate route on every recording start — BT state may have changed.
+        let source = resolveSource()
         try await source.prepare()
     }
 
     public func beginCapturePhase() async throws -> AsyncStream<AVAudioPCMBuffer> {
-        guard let source = activeSource else {
+        guard var source = activeSource else {
             throw AudioError.formatCreationFailed
         }
 
@@ -81,11 +86,15 @@ public final class AudioCaptureManager: AudioCaptureInterface {
         capturedSamples.reserveCapacity(16000 * 30)
         audioLevel = 0.0
 
-        // Wire source callbacks → manager state
+        // Wire source callbacks → manager state.
+        // Source identity check prevents stale callbacks from a replaced source
+        // (e.g., pre-warm source replaced by startEnginePhase) from modifying state.
+        let sourceID = ObjectIdentifier(source)
         let maxSamples = Self.maxRecordingSamples
         source.onSamples = { [weak self] samples, level in
             Task { @MainActor in
-                guard let self, self.isCapturing else { return }
+                guard let self, self.isCapturing,
+                      self.activeSource.map({ ObjectIdentifier($0) }) == sourceID else { return }
                 self.audioLevel = level
                 self.capturedSamples.append(contentsOf: samples)
                 if self.capturedSamples.count >= maxSamples {
@@ -101,7 +110,8 @@ public final class AudioCaptureManager: AudioCaptureInterface {
         }
         source.onBufferCaptured = onBufferCaptured
         source.onInterrupted = { [weak self] in
-            guard let self else { return }
+            guard let self,
+                  self.activeSource.map({ ObjectIdentifier($0) }) == sourceID else { return }
             self.isCapturing = false
             self.audioLevel = 0.0
             self.onEngineInterrupted?()
@@ -129,10 +139,12 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
         isCapturing = false
         audioLevel = 0.0
-        let sourceSamples = await source.stop()
+        _ = await source.stop()
 
-        // Source accumulated samples internally — merge with any manager-side samples
-        // (in practice, samples come from the source's onSamples callback → manager.capturedSamples)
+        // Clear source so next recording re-evaluates BT state via resolver.
+        activeSource = nil
+
+        // Samples accumulated via onSamples callback → manager.capturedSamples
         let samples = capturedSamples
         capturedSamples = []
         return samples
@@ -143,13 +155,24 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     }
 
     public func buildEngine(noiseSuppression: Bool) {
-        let source = ensureSource()
-        source.buildEngine(noiseSuppression: noiseSuppression)
         noiseSuppressionEnabled = noiseSuppression
+        // buildEngine is called at app startup for VP config. Create an engine source
+        // for now — startEnginePhase will re-resolve if BT state requires capture session.
+        // If re-resolved to capture session, this engine source is discarded (no resources held —
+        // buildEngine only creates an AVAudioEngine object, doesn't start it or install taps).
+        if let engineSource = activeSource as? AVAudioEngineSource {
+            engineSource.buildEngine(noiseSuppression: noiseSuppression)
+        } else {
+            // Tear down any existing non-engine source before replacing
+            activeSource?.rebuild()
+            let engineSource = AVAudioEngineSource()
+            engineSource.buildEngine(noiseSuppression: noiseSuppression)
+            activeSource = engineSource
+        }
     }
 
     public func preWarm() async {
-        let source = ensureSource()
+        let source = resolveSource()
         guard !source.isRunning else { return }
         do {
             try await source.prepare()
@@ -179,19 +202,53 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
     /// Track a spawned Task so it can be cancelled during teardown.
     public func trackTask(_ task: Task<Void, Never>) {
-        activeSource?.trackTask(task)
+        (activeSource as? AVAudioEngineSource)?.trackTask(task)
     }
 
     // MARK: - Source Management
 
-    private func ensureSource() -> AVAudioEngineSource {
-        if let source = activeSource { return source }
-        let source = AVAudioEngineSource()
-        source.noiseSuppressionEnabled = noiseSuppressionEnabled
-        source.selectedInputDeviceUID = selectedInputDeviceUID
-        source.preferredInputDeviceIDOverride = preferredInputDeviceIDOverride
+    /// Resolve and create the appropriate capture source based on BT state and user preference.
+    /// Re-evaluates on every call — BT state may change between recordings.
+    private func resolveSource() -> any AudioInputSource {
+        // If a source is already running (e.g., pre-warmed), keep it.
+        if let existing = activeSource, existing.isRunning { return existing }
+
+        let decision = routeResolver.resolve(
+            preferredInputDeviceUID: preferredInputDeviceIDOverride,
+            noiseSuppression: noiseSuppressionEnabled
+        )
+        lastRouteDecision = decision
+
+        // Structured telemetry log
+        Self.btRouteLog("Route decision: source=\(decision.sourceType), reason=\(decision.reason.rawValue), vp=\(decision.vpAvailable), fallback=\(decision.fallbackAllowed) — \(decision.rationale)")
+        Task { await AppLogger.shared.log(
+            "Capture route: \(decision.reason.rawValue) → \(decision.sourceType == .captureSession ? "AVCaptureSession" : "AVAudioEngine"), VP=\(decision.vpAvailable)",
+            level: .info, category: "Audio"
+        ) }
+
+        let source: any AudioInputSource
+        switch decision.sourceType {
+        case .captureSession:
+            if decision.vpAvailable == false && noiseSuppressionEnabled {
+                Self.btRouteLog("Noise suppression unavailable on AVCaptureSession path — VP requires AVAudioEngine to own input")
+            }
+            source = AVCaptureSessionSource()
+        case .audioEngine:
+            let engineSource = AVAudioEngineSource()
+            engineSource.noiseSuppressionEnabled = noiseSuppressionEnabled
+            engineSource.selectedInputDeviceUID = selectedInputDeviceUID
+            engineSource.preferredInputDeviceIDOverride = preferredInputDeviceIDOverride
+            source = engineSource
+        }
+
         activeSource = source
         return source
+    }
+
+    /// Get the active source, creating via resolver if needed.
+    private func ensureSource() -> any AudioInputSource {
+        if let source = activeSource { return source }
+        return resolveSource()
     }
 
     // MARK: - BT Route Logging (Step 6 instrumentation)
