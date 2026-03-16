@@ -23,6 +23,8 @@ public actor ParakeetBackend: ASRBackend {
 
     public var supportsStreaming: Bool { true }
 
+    public init() {}
+
     public func prepare() async throws {
         let loadedModels = try await AsrModels.downloadAndLoad(version: .v3)
         self.fluidModels = loadedModels
