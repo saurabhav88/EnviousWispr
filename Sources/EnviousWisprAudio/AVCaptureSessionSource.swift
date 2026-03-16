@@ -34,7 +34,12 @@ final class AVCaptureSessionSource: AudioInputSource {
 
     /// Dedicated serial queue for AVCaptureSession start/stop operations.
     /// Apple recommends session lifecycle on a serial queue to avoid race conditions.
+    /// IMPORTANT: This is separate from callbackQueue to avoid ordering bugs — lifecycle
+    /// work (start/stop) and sample delivery (captureOutput) never share a queue.
     private let sessionQueue = DispatchQueue(label: "com.enviouswispr.capture-session-lifecycle")
+
+    /// Serial queue for sample buffer delivery. Separate from sessionQueue.
+    private let callbackQueue = DispatchQueue(label: "com.enviouswispr.capture-session-callback", qos: .userInteractive)
 
     /// 16kHz mono Float32 format — matches ASR backend requirements.
     private static let targetFormat = AVAudioFormat(
@@ -54,7 +59,7 @@ final class AVCaptureSessionSource: AudioInputSource {
         // which follows the system default and may return a BT device.
         let builtInMic = findBuiltInMicrophone()
         guard let mic = builtInMic else {
-            throw AudioError.formatCreationFailed
+            throw AudioError.noBuiltInMicrophoneFound
         }
 
         let captureSession = AVCaptureSession()
@@ -109,7 +114,7 @@ final class AVCaptureSessionSource: AudioInputSource {
 
     func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
         guard !isCapturing else {
-            return AsyncStream { $0.finish() }
+            throw AudioError.alreadyCapturing
         }
         guard let output = audioOutput else {
             throw AudioError.formatCreationFailed
@@ -126,8 +131,7 @@ final class AVCaptureSessionSource: AudioInputSource {
         )
         self.delegate = captureDelegate
 
-        let queue = DispatchQueue(label: "com.enviouswispr.capture-session", qos: .userInteractive)
-        output.setSampleBufferDelegate(captureDelegate, queue: queue)
+        output.setSampleBufferDelegate(captureDelegate, queue: callbackQueue)
 
         let stream = AsyncStream<AVAudioPCMBuffer> { continuation in
             captureDelegate.continuation = continuation
@@ -171,9 +175,11 @@ final class AVCaptureSessionSource: AudioInputSource {
 
     func abortPrepare() {
         guard session?.isRunning == true, !isCapturing else { return }
-        // Stop on session queue (synchronous — abortPrepare is not async)
-        sessionQueue.sync { [weak self] in
-            self?.session?.stopRunning()
+        // Fire-and-forget stop on session queue. abortPrepare is synchronous (protocol requirement)
+        // so we can't await. Using async avoids serial-queue self-deadlock risk.
+        let captureSession = session
+        sessionQueue.async {
+            captureSession?.stopRunning()
         }
         removeInterruptionObservers()
     }
@@ -182,10 +188,11 @@ final class AVCaptureSessionSource: AudioInputSource {
         audioOutput?.setSampleBufferDelegate(nil, queue: nil)
         delegate?.continuation?.finish()
         delegate = nil
-        if let captureSession = session {
-            sessionQueue.sync {
-                captureSession.stopRunning()
-            }
+        // Fire-and-forget stop — rebuild() is synchronous (protocol requirement).
+        // Using async avoids serial-queue self-deadlock risk.
+        let captureSession = session
+        sessionQueue.async {
+            captureSession?.stopRunning()
         }
         session = nil
         audioOutput = nil
