@@ -287,8 +287,9 @@ public final class SettingsManager {
     }
 
     /// Use XPC audio service instead of in-process AudioCaptureManager.
+    /// Default: true (Step 7 — XPC is the standard path).
     /// Cold flag — read at launch only. Changing requires app restart.
-    /// Toggle via: defaults write com.enviouswispr.app.dev useXPCAudioService -bool true
+    /// Escape hatch: defaults write com.enviouswispr.app.dev useXPCAudioService -bool false
     /// Does NOT fire onChange — this is not a live-switchable setting.
     public var useXPCAudioService: Bool {
         didSet {
@@ -389,6 +390,6 @@ public final class SettingsManager {
         preferredInputDeviceIDOverride = defaults.string(forKey: "preferredInputDeviceIDOverride") ?? ""
         environmentPreset = EnvironmentPreset(rawValue: defaults.string(forKey: "environmentPreset") ?? "") ?? .normal
         writingStylePreset = WritingStylePreset(rawValue: defaults.string(forKey: "writingStylePreset") ?? "") ?? .standard
-        useXPCAudioService = defaults.object(forKey: "useXPCAudioService") as? Bool ?? false
+        useXPCAudioService = defaults.object(forKey: "useXPCAudioService") as? Bool ?? true
     }
 }

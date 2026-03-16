@@ -56,10 +56,14 @@ final class AppState {
     let llmDiscovery: LLMModelDiscoveryCoordinator
 
     init() {
-        // Feature flag: XPC audio service (cold — read at launch, requires restart to change).
+        // XPC audio service — default ON (Step 7). Audio capture runs in a separate XPC
+        // service process for crash isolation. Escape hatch: `defaults write ... useXPCAudioService -bool false`
         // Read directly from UserDefaults because `settings` is not yet available (stored
         // properties must all be initialized before `self` is accessible).
-        if UserDefaults.standard.bool(forKey: "useXPCAudioService") {
+        // NOTE: .bool(forKey:) returns false for absent keys — use object() ?? true pattern
+        // so existing installs (no key written) get the new default.
+        let useXPC = UserDefaults.standard.object(forKey: "useXPCAudioService") as? Bool ?? true
+        if useXPC {
             audioCapture = AudioCaptureProxy()
         } else {
             audioCapture = AudioCaptureManager()
