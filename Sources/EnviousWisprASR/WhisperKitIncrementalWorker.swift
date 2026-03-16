@@ -92,9 +92,24 @@ public actor WhisperKitIncrementalWorker {
         }
 
         let baseMode = isLong ? "clipped" : "full"
-        let tailHasSpeech = speechSegments.contains { $0.endSample > lastResultSampleCount }
 
-        if !tailHasSpeech {
+        // Gate tail decode on uncovered sample count + energy, not VAD segments.
+        // In XPC mode, speechSegments is always [] (silenceDetector is nil in pipeline's
+        // XPC monitorVAD branch), so the old tailHasSpeech guard always returned false
+        // and the tail decode was permanently skipped — losing up to 3s of audio.
+        let uncoveredSamples = finalSamples.count - lastResultSampleCount
+        let needsTailDecode: Bool
+        if uncoveredSamples > 1600 {  // >100ms uncovered
+            // Quick RMS check — is there actual audio in the tail, not just silence?
+            let tailStart = max(0, lastResultSampleCount)
+            let tailSlice = Array(finalSamples[tailStart..<finalSamples.count])
+            let rms = tailSlice.isEmpty ? Float(0) : sqrt(tailSlice.reduce(Float(0)) { $0 + $1 * $1 } / Float(tailSlice.count))
+            needsTailDecode = rms > 0.001  // above noise floor
+        } else {
+            needsTailDecode = false
+        }
+
+        if !needsTailDecode {
             return IncrementalResult(
                 text: candidateText, samplesCovered: lastResultSampleCount,
                 decodeCount: decodeCount, totalDecodeTimeMs: totalDecodeTimeMs,
