@@ -13,7 +13,7 @@ final class PipelineSettingsSync {
     private let pipeline: TranscriptionPipeline
     private let whisperKitPipeline: WhisperKitPipeline
     private let audioCapture: any AudioCaptureInterface
-    private let asrManager: ASRManager
+    private let asrManager: any ASRManagerInterface
     private let hotkeyService: HotkeyService
     private let whisperKitSetup: WhisperKitSetupService
 
@@ -25,7 +25,7 @@ final class PipelineSettingsSync {
         pipeline: TranscriptionPipeline,
         whisperKitPipeline: WhisperKitPipeline,
         audioCapture: any AudioCaptureInterface,
-        asrManager: ASRManager,
+        asrManager: any ASRManagerInterface,
         hotkeyService: HotkeyService,
         whisperKitSetup: WhisperKitSetupService
     ) {

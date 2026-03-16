@@ -18,7 +18,7 @@ final class AppState {
     // Sub-systems
     let permissions = PermissionsService()
     let audioCapture: any AudioCaptureInterface
-    let asrManager = ASRManager()
+    let asrManager: any ASRManagerInterface
     let transcriptStore = TranscriptStore()
     let keychainManager = KeychainManager()
     let hotkeyService = HotkeyService()
@@ -67,6 +67,15 @@ final class AppState {
             audioCapture = AudioCaptureProxy()
         } else {
             audioCapture = AudioCaptureManager()
+        }
+
+        // Phase 5: XPC ASR service — default OFF during development.
+        // Escape hatch: `defaults write ... useXPCASRService -bool true` to enable.
+        let useXPCASR = UserDefaults.standard.object(forKey: "useXPCASRService") as? Bool ?? false
+        if useXPCASR {
+            asrManager = ASRManagerProxy()
+        } else {
+            asrManager = ASRManager()
         }
 
         transcriptCoordinator = TranscriptCoordinator(store: transcriptStore)

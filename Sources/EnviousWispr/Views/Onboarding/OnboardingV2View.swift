@@ -45,7 +45,7 @@ final class OnboardingV2ViewModel {
         }
     }
 
-    func startSetup(asrManager: ASRManager, settings: SettingsManager) async {
+    func startSetup(asrManager: any ASRManagerInterface, settings: SettingsManager) async {
         settings.onboardingState = .settingUp
         checklistStatuses[0] = .inProgress
         do {

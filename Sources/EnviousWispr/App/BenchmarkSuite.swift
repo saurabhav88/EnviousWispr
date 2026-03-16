@@ -35,7 +35,7 @@ final class BenchmarkSuite {
     private(set) var progress: String = ""
 
     /// Ensure model is loaded, returning false (and updating progress) if loading fails.
-    private func ensureModelLoaded(using asrManager: ASRManager) async -> Bool {
+    private func ensureModelLoaded(using asrManager: any ASRManagerInterface) async -> Bool {
         guard !asrManager.isModelLoaded else { return true }
         progress = "Loading model..."
         do {
@@ -48,7 +48,7 @@ final class BenchmarkSuite {
     }
 
     /// Run ASR benchmarks with the given ASR manager.
-    func run(using asrManager: ASRManager) async {
+    func run(using asrManager: any ASRManagerInterface) async {
         guard !isRunning else { return }
         isRunning = true
         results = []
@@ -66,7 +66,7 @@ final class BenchmarkSuite {
             let samples = generateTestAudio(duration: duration)
 
             let start = CFAbsoluteTimeGetCurrent()
-            _ = try? await asrManager.transcribe(audioSamples: samples)
+            _ = try? await asrManager.transcribe(audioSamples: samples, options: .default)
             let elapsed = CFAbsoluteTimeGetCurrent() - start
 
             results.append(Result(
@@ -83,7 +83,7 @@ final class BenchmarkSuite {
     }
 
     /// Run pipeline benchmark: batch ASR, streaming ASR (if supported), and WER comparison.
-    func runPipelineBenchmark(using asrManager: ASRManager) async {
+    func runPipelineBenchmark(using asrManager: any ASRManagerInterface) async {
         guard !isRunning else { return }
         isRunning = true
         pipelineResult = nil
@@ -126,7 +126,7 @@ final class BenchmarkSuite {
         // Step 1: Batch ASR
         progress = "Running batch ASR..."
         let batchStart = CFAbsoluteTimeGetCurrent()
-        let batchResult = try? await asrManager.transcribe(audioSamples: testSamples)
+        let batchResult = try? await asrManager.transcribe(audioSamples: testSamples, options: .default)
         let batchTime = CFAbsoluteTimeGetCurrent() - batchStart
         let batchTranscript = batchResult?.text ?? ""
 
@@ -139,7 +139,7 @@ final class BenchmarkSuite {
         if supportsStreaming {
             progress = "Running streaming ASR..."
             do {
-                try await asrManager.startStreaming()
+                try await asrManager.startStreaming(options: .default)
 
                 // Chunk the samples into AVAudioPCMBuffers and feed them
                 let chunkSize = AudioConstants.captureBufferSize
