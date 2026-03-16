@@ -229,9 +229,18 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
         let resolvedDeviceID: AudioDeviceID?
         if btOutputActive {
-            // BT output active — skip device switch to avoid CoreAudio memory corruption
+            // BT output active — skip device switch.
+            // Forcing built-in mic via setInputDevice(89) was tested extensively and ALWAYS
+            // crashes the XPC service. Root cause: CoreAudio creates a hidden aggregate device
+            // (CADefaultDeviceAggregate) to bridge BT and built-in clock domains, which
+            // corrupts the audio graph. Confirmed with and without audio-input entitlement.
+            // The format after setInputDevice shows 44100Hz (BT A2DP rate) instead of
+            // 48000Hz (built-in mic rate) — the device switch never actually takes effect.
+            //
+            // Path forward: AVCaptureSession for device selection (decouples from AVAudioEngine).
+            // For now, accept that macOS uses BT mic as input → A2DP→SCO degradation during recording.
             resolvedDeviceID = nil
-            btCrashLogger.info("BT output active — skipping setInputDevice (CoreAudio crash prevention)")
+            btCrashLogger.info("BT output active — skipping setInputDevice (aggregate device crash prevention)")
         } else if !preferredInputDeviceIDOverride.isEmpty {
             // User explicitly chose a device — respect it
             resolvedDeviceID = AudioDeviceEnumerator.deviceID(forUID: preferredInputDeviceIDOverride)
@@ -842,6 +851,30 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
             // Send buffer to stream consumers
             continuation?.yield(convertedBuffer)
+        }
+    }
+
+    // MARK: - BT Route Logging (Step 6 instrumentation)
+
+    /// Direct file write for BT route diagnostics. os_log info level is suppressed on macOS 26 beta,
+    /// and AppLogger.shared is process-local (XPC service has its own instance).
+    /// Writes to a shared file both processes can append to.
+    nonisolated static func btRouteLog(_ message: String) {
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let line = "[\(timestamp)] [BTRoute] \(message)\n"
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Logs/EnviousWispr/bt-route.log")
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let data = line.data(using: .utf8) {
+            if FileManager.default.fileExists(atPath: url.path) {
+                if let handle = try? FileHandle(forWritingTo: url) {
+                    handle.seekToEndOfFile()
+                    handle.write(data)
+                    handle.closeFile()
+                }
+            } else {
+                try? data.write(to: url)
+            }
         }
     }
 

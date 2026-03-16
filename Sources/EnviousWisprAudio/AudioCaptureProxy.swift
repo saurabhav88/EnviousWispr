@@ -248,38 +248,12 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
         // IMPORTANT(Step 3+): Step 1.5 proved kill -9 fires interruptionHandler for embedded
         // XPC services. During active capture, this IS the crash signal. The connection stays
         // valid — the next XPC call auto-relaunches the service via launchd.
-        conn.interruptionHandler = { [weak self] in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                if self.isCapturing {
-                    // Active-capture interruption = user-visible failure.
-                    self.isCapturing = false
-                    self.audioLevel = 0
-                    self.captureGeneration &+= 1
-                    self.bufferContinuation?.finish()
-                    self.bufferContinuation = nil
-                    self.onEngineInterrupted?()
-                }
-                self.needsReinit = true
-            }
-        }
-
-        // Terminal — only fires if we call invalidate() or service binary is missing.
-        conn.invalidationHandler = { [weak self] in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.connection = nil
-                if self.isCapturing {
-                    self.isCapturing = false
-                    self.audioLevel = 0
-                    self.captureGeneration &+= 1
-                    self.bufferContinuation?.finish()
-                    self.bufferContinuation = nil
-                    self.onEngineInterrupted?()
-                }
-                self.needsReinit = true
-            }
-        }
+        // CRITICAL: interruptionHandler and invalidationHandler run on XPC dispatch queues,
+        // NOT MainActor. Closures defined inside @MainActor methods inherit that isolation in
+        // Swift 6, causing dispatch_assert_queue_fail when XPC calls them. Extract to
+        // nonisolated static to break the isolation inheritance.
+        conn.interruptionHandler = Self.makeInterruptionHandler(proxy: self)
+        conn.invalidationHandler = Self.makeInvalidationHandler(proxy: self)
 
         conn.resume()
         connection = conn
@@ -289,20 +263,85 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     }
 
     /// Gets the remote proxy with error handling.
-    /// `onProxyError` is called if the proxy can't be obtained (connection nil or cast fails).
+    /// `onProxyError` is called if the proxy can't be obtained (connection nil or cast fails)
+    /// AND if the XPC framework delivers a per-call error (service crashed mid-call).
+    /// This is critical: when the service dies after a call is dispatched but before it replies,
+    /// the XPC error handler fires but the reply handler does NOT. Without routing the error
+    /// to `onProxyError`, any pending continuation hangs forever.
     private func serviceProxy(
         _ work: (any AudioServiceProtocol) -> Void,
         onProxyError: (() -> Void)? = nil
     ) {
         guard let conn = connection else { onProxyError?(); return }
-        let proxy = conn.remoteObjectProxyWithErrorHandler { error in
-            Task { await AppLogger.shared.log(
-                "[AudioCaptureProxy] XPC error: \(error.localizedDescription)",
-                level: .info, category: "XPC"
-            ) }
-        }
+        let proxy = conn.remoteObjectProxyWithErrorHandler(Self.makeXPCErrorHandler(onProxyError: onProxyError))
         guard let service = proxy as? AudioServiceProtocol else { onProxyError?(); return }
         work(service)
+    }
+
+    /// Build the XPC error handler in a nonisolated context.
+    /// Critical: closures defined inside @MainActor methods inherit that isolation.
+    /// When XPC calls the error handler on its dispatch queue, Swift 6 asserts
+    /// dispatch_assert_queue(main) and traps with EXC_BREAKPOINT. By constructing
+    /// the handler in a nonisolated static method, the closure is free of @MainActor.
+    /// Build the XPC per-call error handler in a nonisolated context.
+    /// This handler fires when the service crashes after a call is dispatched but before it replies.
+    /// It MUST call onProxyError to resume any pending continuation — otherwise the caller hangs forever.
+    /// The error handler is the primary recovery signal; interruption/invalidation are secondary cleanup.
+    nonisolated private static func makeXPCErrorHandler(onProxyError: (() -> Void)? = nil) -> @Sendable (any Error) -> Void {
+        // Capture onProxyError as nonisolated(unsafe) — it may reference @MainActor closures
+        // but we dispatch it via Task { @MainActor } so the actual call is safe.
+        nonisolated(unsafe) let proxyError = onProxyError
+        return { error in
+            Task { @MainActor in
+                await AppLogger.shared.log(
+                    "[AudioCaptureProxy] XPC error: \(error.localizedDescription)",
+                    level: .info, category: "XPC"
+                )
+                proxyError?()
+            }
+        }
+    }
+
+    /// Build the XPC interruptionHandler in a nonisolated context.
+    /// Same isolation-escape pattern as makeXPCErrorHandler.
+    nonisolated private static func makeInterruptionHandler(proxy: AudioCaptureProxy) -> @Sendable () -> Void {
+        return { [weak proxy] in
+
+            Task { @MainActor [weak proxy] in
+                guard let proxy else { return }
+                if proxy.isCapturing {
+                    proxy.isCapturing = false
+                    proxy.audioLevel = 0
+                    proxy.captureGeneration &+= 1
+                    proxy.bufferContinuation?.finish()
+                    proxy.bufferContinuation = nil
+                    proxy.onEngineInterrupted?()
+
+                }
+                proxy.needsReinit = true
+            }
+        }
+    }
+
+    /// Build the XPC invalidationHandler in a nonisolated context.
+    nonisolated private static func makeInvalidationHandler(proxy: AudioCaptureProxy) -> @Sendable () -> Void {
+        return { [weak proxy] in
+
+            Task { @MainActor [weak proxy] in
+                guard let proxy else { return }
+
+                proxy.connection = nil
+                if proxy.isCapturing {
+                    proxy.isCapturing = false
+                    proxy.audioLevel = 0
+                    proxy.captureGeneration &+= 1
+                    proxy.bufferContinuation?.finish()
+                    proxy.bufferContinuation = nil
+                    proxy.onEngineInterrupted?()
+                }
+                proxy.needsReinit = true
+            }
+        }
     }
 
     // MARK: - VAD Interface (Step 5)
