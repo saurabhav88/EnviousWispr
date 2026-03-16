@@ -10,7 +10,16 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
     // MARK: - Diagnostics
 
     func ping(reply: @escaping (String) -> Void) {
-        reply("pong")
+        // B.0 validation: check model file access from XPC service process.
+        let fluidAudioPath = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/FluidAudio/Models")
+        let whisperKitPath = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Documents/huggingface/models/argmaxinc/whisperkit-coreml")
+
+        let fluidAccess = FileManager.default.isReadableFile(atPath: fluidAudioPath.path)
+        let whisperAccess = FileManager.default.isReadableFile(atPath: whisperKitPath.path)
+
+        reply("pong — modelAccess: FluidAudio=\(fluidAccess), WhisperKit=\(whisperAccess)")
     }
 
     // MARK: - Model Lifecycle (Stage B)
