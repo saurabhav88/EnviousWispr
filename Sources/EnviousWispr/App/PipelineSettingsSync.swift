@@ -71,6 +71,14 @@ final class PipelineSettingsSync {
         audioCapture.selectedInputDeviceUID = settings.selectedInputDeviceUID
         audioCapture.preferredInputDeviceIDOverride = settings.preferredInputDeviceIDOverride
 
+        // VAD config to audio capture (used by XPC service-side VAD)
+        audioCapture.configureVAD(
+            autoStop: settings.vadAutoStop,
+            silenceTimeout: settings.vadSilenceTimeout,
+            sensitivity: settings.vadSensitivity,
+            energyGate: settings.vadEnergyGate
+        )
+
         // Transcription options (language)
         syncTranscriptionOptions(settings)
     }
@@ -129,9 +137,21 @@ final class PipelineSettingsSync {
         case .vadAutoStop:
             pipeline.vadAutoStop = settings.vadAutoStop
             whisperKitPipeline.vadAutoStop = settings.vadAutoStop
+            audioCapture.configureVAD(
+                autoStop: settings.vadAutoStop,
+                silenceTimeout: settings.vadSilenceTimeout,
+                sensitivity: settings.vadSensitivity,
+                energyGate: settings.vadEnergyGate
+            )
         case .vadSilenceTimeout:
             pipeline.vadSilenceTimeout = settings.vadSilenceTimeout
             whisperKitPipeline.vadSilenceTimeout = settings.vadSilenceTimeout
+            audioCapture.configureVAD(
+                autoStop: settings.vadAutoStop,
+                silenceTimeout: settings.vadSilenceTimeout,
+                sensitivity: settings.vadSensitivity,
+                energyGate: settings.vadEnergyGate
+            )
         case .environmentPreset:
             let sensitivity = settings.environmentPreset.vadSensitivity
             settings.vadSensitivity = sensitivity
@@ -141,9 +161,21 @@ final class PipelineSettingsSync {
         case .vadSensitivity:
             pipeline.vadSensitivity = settings.vadSensitivity
             whisperKitPipeline.vadSensitivity = settings.vadSensitivity
+            audioCapture.configureVAD(
+                autoStop: settings.vadAutoStop,
+                silenceTimeout: settings.vadSilenceTimeout,
+                sensitivity: settings.vadSensitivity,
+                energyGate: settings.vadEnergyGate
+            )
         case .vadEnergyGate:
             pipeline.vadEnergyGate = settings.vadEnergyGate
             whisperKitPipeline.vadEnergyGate = settings.vadEnergyGate
+            audioCapture.configureVAD(
+                autoStop: settings.vadAutoStop,
+                silenceTimeout: settings.vadSilenceTimeout,
+                sensitivity: settings.vadSensitivity,
+                energyGate: settings.vadEnergyGate
+            )
         case .cancelKeyCode:
             hotkeyService.cancelKeyCode = settings.cancelKeyCode
         case .cancelModifiers:

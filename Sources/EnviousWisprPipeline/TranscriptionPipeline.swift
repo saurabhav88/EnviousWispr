@@ -347,7 +347,16 @@ public final class TranscriptionPipeline: DictationPipeline {
 
         // Filter silence using VAD speech segments (used for batch fallback and logging).
         var samples: [Float]
-        if let detector = silenceDetector {
+        let isXPCMode = audioCapture is AudioCaptureProxy
+        if isXPCMode {
+            // XPC mode: get speech segments from service-side VAD.
+            let segments = await audioCapture.getVADSegments()
+            if !segments.isEmpty {
+                samples = Self.filterSamples(from: rawSamples, segments: segments)
+            } else {
+                samples = rawSamples
+            }
+        } else if let detector = silenceDetector {
             await detector.finalizeSegments(totalSampleCount: rawSamples.count)
             samples = await detector.filterSamples(from: rawSamples)
         } else {
@@ -723,69 +732,120 @@ public final class TranscriptionPipeline: DictationPipeline {
     }
 
     private func monitorVAD() async {
-        // Build SmoothedVAD config from sensitivity setting
-        var config = SmoothedVADConfig.fromSensitivity(vadSensitivity)
-        if vadEnergyGate {
-            config.energyGateThreshold = 0.005
-        }
+        // Max-duration enforcement runs regardless of backend mode.
+        // VAD chunk processing only runs for in-process capture.
+        // XPC-mode VAD runs in the service and fires vadAutoStopTriggered callback.
+        //
+        // TEMPORARY DEBT: `is AudioCaptureProxy` leaks a concrete type into pipeline code.
+        // Step 7 (flag removal) should replace this with a capability query on the interface
+        // (e.g. `var supportsServiceSideVAD: Bool`) so the pipeline stays implementation-agnostic.
+        let isXPCMode = audioCapture is AudioCaptureProxy
 
-        // Lazily create detector
-        if silenceDetector == nil {
-            silenceDetector = SilenceDetector(silenceTimeout: vadSilenceTimeout, vadConfig: config)
-        }
-        guard let detector = silenceDetector else { return }
-
-        await detector.reset()
-        await detector.updateConfig(config)
-
-        // Prepare VAD model if needed
-        if !(await detector.isReady) {
-            do {
-                try await detector.prepare()
-            } catch {
-                Task { await AppLogger.shared.log(
-                    "VAD preparation failed: \(error)",
-                    level: .info, category: "VAD"
-                ) }
-                return
-            }
-        }
-
-        var processedSampleCount = 0
-        let chunkSize = SilenceDetector.chunkSize
-
-        while state == .recording && !Task.isCancelled {
-            // Graceful max duration check — auto-stop before AudioCaptureManager's hard limit.
-            if let startTime = recordingStartTime,
-               Date().timeIntervalSince(startTime) >= TimingConstants.maxRecordingDuration {
-                Task { [weak self] in await self?.stopAndTranscribe() }
-                return
+        if !isXPCMode {
+            // Build SmoothedVAD config from sensitivity setting
+            var config = SmoothedVADConfig.fromSensitivity(vadSensitivity)
+            if vadEnergyGate {
+                config.energyGateThreshold = 0.005
             }
 
-            // Snapshot @MainActor-isolated data before any await suspension.
-            let currentCount = audioCapture.capturedSamples.count
+            // Lazily create detector
+            if silenceDetector == nil {
+                silenceDetector = SilenceDetector(silenceTimeout: vadSilenceTimeout, vadConfig: config)
+            }
+            guard let detector = silenceDetector else { return }
 
-            while processedSampleCount + chunkSize <= currentCount && !Task.isCancelled {
-                let endIdx = processedSampleCount + chunkSize
-                // Snapshot the chunk on @MainActor before crossing into the detector actor.
-                let chunk = Array(audioCapture.capturedSamples[processedSampleCount..<endIdx])
-                let autoStop = vadAutoStop
+            await detector.reset()
+            await detector.updateConfig(config)
 
-                let shouldStop = await detector.processChunk(chunk)
+            // Prepare VAD model if needed
+            if !(await detector.isReady) {
+                do {
+                    try await detector.prepare()
+                } catch {
+                    Task { await AppLogger.shared.log(
+                        "VAD preparation failed: \(error)",
+                        level: .info, category: "VAD"
+                    ) }
+                    return
+                }
+            }
 
-                if shouldStop && autoStop && state == .recording {
-                    // Run in a new Task so cancelling vadMonitorTask
-                    // doesn't propagate CancellationError into transcription.
+            var processedSampleCount = 0
+            let chunkSize = SilenceDetector.chunkSize
+
+            while state == .recording && !Task.isCancelled {
+                // Graceful max duration check — auto-stop before AudioCaptureManager's hard limit.
+                if let startTime = recordingStartTime,
+                   Date().timeIntervalSince(startTime) >= TimingConstants.maxRecordingDuration {
                     Task { [weak self] in await self?.stopAndTranscribe() }
                     return
                 }
 
-                processedSampleCount += chunkSize
-                await Task.yield()
-            }
+                // Snapshot @MainActor-isolated data before any await suspension.
+                let currentCount = audioCapture.capturedSamples.count
 
-            try? await Task.sleep(for: .milliseconds(100))
+                while processedSampleCount + chunkSize <= currentCount && !Task.isCancelled {
+                    let endIdx = processedSampleCount + chunkSize
+                    // Snapshot the chunk on @MainActor before crossing into the detector actor.
+                    let chunk = Array(audioCapture.capturedSamples[processedSampleCount..<endIdx])
+                    let autoStop = vadAutoStop
+
+                    let shouldStop = await detector.processChunk(chunk)
+
+                    if shouldStop && autoStop && state == .recording {
+                        // Run in a new Task so cancelling vadMonitorTask
+                        // doesn't propagate CancellationError into transcription.
+                        Task { [weak self] in await self?.stopAndTranscribe() }
+                        return
+                    }
+
+                    processedSampleCount += chunkSize
+                    await Task.yield()
+                }
+
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+        } else {
+            // XPC mode: service handles VAD, fires vadAutoStopTriggered callback.
+            // Only run max-duration enforcement here.
+            while state == .recording && !Task.isCancelled {
+                if let startTime = recordingStartTime,
+                   Date().timeIntervalSince(startTime) >= TimingConstants.maxRecordingDuration {
+                    Task { [weak self] in await self?.stopAndTranscribe() }
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(500))
+            }
         }
+    }
+
+    // MARK: - VAD Segment Filtering
+
+    /// Filter samples using speech segments from service-side VAD (XPC mode).
+    /// Mirrors SilenceDetector.filterSamples logic — pad segments, merge overlaps, extract voiced audio.
+    private static func filterSamples(from allSamples: [Float], segments: [SpeechSegment], padding: Int = 1600) -> [Float] {
+        guard !segments.isEmpty else { return allSamples }
+
+        let totalVoiced = segments.reduce(0) { $0 + ($1.endSample - $1.startSample) }
+        guard totalVoiced >= 4800 else { return allSamples }
+
+        var merged: [(start: Int, end: Int)] = []
+        for segment in segments {
+            let start = max(0, segment.startSample - padding)
+            let end = min(allSamples.count, segment.endSample + padding)
+            if let last = merged.last, start <= last.end {
+                merged[merged.count - 1].end = max(last.end, end)
+            } else {
+                merged.append((start, end))
+            }
+        }
+
+        var result: [Float] = []
+        for range in merged {
+            guard range.start < range.end else { continue }
+            result.append(contentsOf: allSamples[range.start..<range.end])
+        }
+        return result.isEmpty ? allSamples : result
     }
 
     // MARK: - Streaming Finalization

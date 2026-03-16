@@ -319,7 +319,21 @@ public final class WhisperKitPipeline: DictationPipeline {
 
         // Post-capture VAD filtering — remove silence segments
         var samples: [Float]
-        if let detector = silenceDetector {
+        let isXPCMode = audioCapture is AudioCaptureProxy
+        if isXPCMode {
+            // XPC mode: get speech segments from service-side VAD.
+            let segments = await audioCapture.getVADSegments()
+            if !segments.isEmpty {
+                samples = Self.filterSamples(from: rawSamples, segments: segments)
+                let pct = String(format: "%.1f", Double(samples.count) / Double(max(rawSamples.count, 1)) * 100)
+                Task { await AppLogger.shared.log(
+                    "WhisperKit VAD (XPC) filtered to \(samples.count) samples (\(pct)% voiced)",
+                    level: .info, category: "WhisperKitPipeline"
+                ) }
+            } else {
+                samples = rawSamples
+            }
+        } else if let detector = silenceDetector {
             await detector.finalizeSegments(totalSampleCount: rawSamples.count)
             samples = await detector.filterSamples(from: rawSamples)
             let pct = String(format: "%.1f", Double(samples.count) / Double(max(rawSamples.count, 1)) * 100)
@@ -534,12 +548,32 @@ public final class WhisperKitPipeline: DictationPipeline {
         let worker = WhisperKitIncrementalWorker(whisperKit: kit, decodingOptions: opts, tokenizer: tokenizer)
         self.incrementalWorker = worker
 
-        // Provide audio samples from MainActor-isolated audioCapture
+        let isXPCMode = audioCapture is AudioCaptureProxy
         let capture = audioCapture
-        await worker.start(audioSamplesProvider: { @MainActor in
-            let samples = capture.capturedSamples
-            return (samples: samples, count: samples.count)
-        })
+
+        if isXPCMode {
+            // XPC mode: use getSamplesSnapshot for incremental sample access.
+            // Tracks fromIndex locally — each call fetches only new samples since last snapshot.
+            //
+            // Memory: `accumulated` grows linearly with recording duration, mirroring the
+            // in-process path where capturedSamples grows the same way. The worker expects
+            // full audio history for re-transcription. At 16kHz Float32, 2 min = ~7.7MB,
+            // 5 min (max recording) = ~19MB. Bounded by TimingConstants.maxRecordingDuration.
+            var nextIndex = 0
+            var accumulated: [Float] = []
+            await worker.start(audioSamplesProvider: { @MainActor in
+                let (newSamples, totalCount) = await capture.getSamplesSnapshot(fromIndex: nextIndex)
+                accumulated.append(contentsOf: newSamples)
+                nextIndex = totalCount
+                return (samples: accumulated, count: accumulated.count)
+            })
+        } else {
+            // In-process mode: read directly from MainActor-isolated capturedSamples.
+            await worker.start(audioSamplesProvider: { @MainActor in
+                let samples = capture.capturedSamples
+                return (samples: samples, count: samples.count)
+            })
+        }
     }
 
     // MARK: - VAD Monitoring
@@ -551,62 +585,112 @@ public final class WhisperKitPipeline: DictationPipeline {
     }
 
     private func monitorVAD() async {
-        var config = SmoothedVADConfig.fromSensitivity(vadSensitivity)
-        if vadEnergyGate {
-            config.energyGateThreshold = 0.005
-        }
+        // Max-duration enforcement runs regardless of backend mode.
+        // VAD chunk processing only runs for in-process capture.
+        // XPC-mode VAD runs in the service and fires vadAutoStopTriggered callback.
+        //
+        // TEMPORARY DEBT: `is AudioCaptureProxy` — see TranscriptionPipeline.monitorVAD comment.
+        // Step 7 should replace with interface capability query.
+        let isXPCMode = audioCapture is AudioCaptureProxy
 
-        if silenceDetector == nil {
-            silenceDetector = SilenceDetector(silenceTimeout: vadSilenceTimeout, vadConfig: config)
-        }
-        guard let detector = silenceDetector else { return }
-
-        await detector.reset()
-        await detector.updateConfig(config)
-
-        if !(await detector.isReady) {
-            do {
-                try await detector.prepare()
-            } catch {
-                Task { await AppLogger.shared.log(
-                    "WhisperKit VAD preparation failed: \(error)",
-                    level: .info, category: "WhisperKitPipeline"
-                ) }
-                return
-            }
-        }
-
-        var processedSampleCount = 0
-        let chunkSize = SilenceDetector.chunkSize
-
-        while state == .recording && !Task.isCancelled {
-            // Graceful max duration check — auto-stop before AudioCaptureManager's hard limit.
-            if let startTime = recordingStartTime,
-               Date().timeIntervalSince(startTime) >= TimingConstants.maxRecordingDuration {
-                Task { [weak self] in await self?.stopAndTranscribe() }
-                return
+        if !isXPCMode {
+            var config = SmoothedVADConfig.fromSensitivity(vadSensitivity)
+            if vadEnergyGate {
+                config.energyGateThreshold = 0.005
             }
 
-            let currentCount = audioCapture.capturedSamples.count
+            if silenceDetector == nil {
+                silenceDetector = SilenceDetector(silenceTimeout: vadSilenceTimeout, vadConfig: config)
+            }
+            guard let detector = silenceDetector else { return }
 
-            while processedSampleCount + chunkSize <= currentCount && !Task.isCancelled {
-                let endIdx = processedSampleCount + chunkSize
-                let chunk = Array(audioCapture.capturedSamples[processedSampleCount..<endIdx])
-                let autoStop = vadAutoStop
+            await detector.reset()
+            await detector.updateConfig(config)
 
-                let shouldStop = await detector.processChunk(chunk)
+            if !(await detector.isReady) {
+                do {
+                    try await detector.prepare()
+                } catch {
+                    Task { await AppLogger.shared.log(
+                        "WhisperKit VAD preparation failed: \(error)",
+                        level: .info, category: "WhisperKitPipeline"
+                    ) }
+                    return
+                }
+            }
 
-                if shouldStop && autoStop && state == .recording {
+            var processedSampleCount = 0
+            let chunkSize = SilenceDetector.chunkSize
+
+            while state == .recording && !Task.isCancelled {
+                // Graceful max duration check — auto-stop before AudioCaptureManager's hard limit.
+                if let startTime = recordingStartTime,
+                   Date().timeIntervalSince(startTime) >= TimingConstants.maxRecordingDuration {
                     Task { [weak self] in await self?.stopAndTranscribe() }
                     return
                 }
 
-                processedSampleCount += chunkSize
-                await Task.yield()
-            }
+                let currentCount = audioCapture.capturedSamples.count
 
-            try? await Task.sleep(for: .milliseconds(100))
+                while processedSampleCount + chunkSize <= currentCount && !Task.isCancelled {
+                    let endIdx = processedSampleCount + chunkSize
+                    let chunk = Array(audioCapture.capturedSamples[processedSampleCount..<endIdx])
+                    let autoStop = vadAutoStop
+
+                    let shouldStop = await detector.processChunk(chunk)
+
+                    if shouldStop && autoStop && state == .recording {
+                        Task { [weak self] in await self?.stopAndTranscribe() }
+                        return
+                    }
+
+                    processedSampleCount += chunkSize
+                    await Task.yield()
+                }
+
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+        } else {
+            // XPC mode: service handles VAD, fires vadAutoStopTriggered callback.
+            // Only run max-duration enforcement here.
+            while state == .recording && !Task.isCancelled {
+                if let startTime = recordingStartTime,
+                   Date().timeIntervalSince(startTime) >= TimingConstants.maxRecordingDuration {
+                    Task { [weak self] in await self?.stopAndTranscribe() }
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(500))
+            }
         }
+    }
+
+    // MARK: - VAD Segment Filtering
+
+    /// Filter samples using speech segments from service-side VAD (XPC mode).
+    /// Mirrors SilenceDetector.filterSamples logic — pad segments, merge overlaps, extract voiced audio.
+    private static func filterSamples(from allSamples: [Float], segments: [SpeechSegment], padding: Int = 1600) -> [Float] {
+        guard !segments.isEmpty else { return allSamples }
+
+        let totalVoiced = segments.reduce(0) { $0 + ($1.endSample - $1.startSample) }
+        guard totalVoiced >= 4800 else { return allSamples }
+
+        var merged: [(start: Int, end: Int)] = []
+        for segment in segments {
+            let start = max(0, segment.startSample - padding)
+            let end = min(allSamples.count, segment.endSample + padding)
+            if let last = merged.last, start <= last.end {
+                merged[merged.count - 1].end = max(last.end, end)
+            } else {
+                merged.append((start, end))
+            }
+        }
+
+        var result: [Float] = []
+        for range in merged {
+            guard range.start < range.end else { continue }
+            result.append(contentsOf: allSamples[range.start..<range.end])
+        }
+        return result.isEmpty ? allSamples : result
     }
 
     // MARK: - Model Lifecycle

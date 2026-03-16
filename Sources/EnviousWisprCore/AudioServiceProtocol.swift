@@ -52,6 +52,19 @@ import Foundation
 
     /// Replace the audio engine with a fresh instance (lighter than buildEngine).
     func rebuildEngine()
+
+    // MARK: - VAD (Step 5)
+
+    /// Configure service-side VAD. Replayed by the proxy after service crash via resendConfigIfNeeded().
+    func configureVAD(autoStop: Bool, silenceTimeout: Double, sensitivity: Float, energyGate: Bool)
+
+    /// Return a snapshot of captured samples starting at `fromIndex`.
+    /// Reply carries raw Float32 Data slice + totalCount at snapshot moment.
+    func getSamplesSnapshot(fromIndex: Int, reply: @escaping (Data, Int) -> Void)
+
+    /// Return speech segments detected by service-side VAD.
+    /// Reply carries Data of packed [Int32 startIndex, Int32 endIndex] pairs.
+    func getVADSegments(reply: @escaping (Data) -> Void)
 }
 
 /// XPC protocol: callbacks from audio service to host app.
@@ -67,4 +80,7 @@ import Foundation
     /// The audio engine was interrupted (device disconnect, emergency teardown, max-duration cap).
     /// The proxy should transition pipelines to error state.
     func engineInterrupted()
+
+    /// Service-side VAD detected sustained silence after speech — auto-stop should trigger.
+    func vadAutoStopTriggered()
 }

@@ -22,6 +22,20 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
     /// Dedicated serial queue for XPC sends — keeps XPC messaging off the RT audio thread.
     private let xpcSendQueue = DispatchQueue(label: "com.enviouswispr.audioservice.xpc-send")
 
+    // MARK: - Service-side VAD state (Step 5)
+
+    /// Stored VAD configuration — applied when capture begins, replayed after crash.
+    private var vadAutoStop: Bool = false
+    private var vadSilenceTimeout: Double = 1.5
+    private var vadSensitivity: Float = 0.5
+    private var vadEnergyGate: Bool = false
+
+    /// Service-owned SilenceDetector — runs VAD in the service process where samples live.
+    private var silenceDetector: SilenceDetector?
+
+    /// VAD monitoring task — started after beginCapture, cancelled on stopCapture/abortPreWarm.
+    private var vadMonitorTask: Task<Void, Never>?
+
     /// Get or create the capture manager on MainActor, wiring callbacks on first creation.
     @MainActor
     private var captureManager: AudioCaptureManager {
@@ -153,7 +167,8 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
         nonisolated(unsafe) let safeReply = reply
         Task { @MainActor in
             do {
-                _ = try await captureManager.beginCapturePhase()
+                _ = try await self.captureManager.beginCapturePhase()
+                self.startVADMonitoring()
                 safeReply(nil)
             } catch {
                 safeReply(error as NSError)
@@ -164,7 +179,8 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
     func stopCapture(reply: @escaping (Data) -> Void) {
         nonisolated(unsafe) let safeReply = reply
         Task { @MainActor in
-            let samples = await captureManager.stopCapture()
+            self.cancelVADMonitoring()
+            let samples = await self.captureManager.stopCapture()
             // Transport format: raw Float32 bytes, non-interleaved mono, 16kHz.
             let data = samples.withUnsafeBytes { Data($0) }
             safeReply(data)
@@ -173,7 +189,8 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
 
     func abortPreWarm() {
         Task { @MainActor in
-            captureManager.abortPreWarm()
+            self.cancelVADMonitoring()
+            self.captureManager.abortPreWarm()
         }
     }
 
@@ -181,5 +198,115 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
         Task { @MainActor in
             captureManager.rebuildEngine()
         }
+    }
+
+    // MARK: - VAD (Step 5)
+
+    func configureVAD(autoStop: Bool, silenceTimeout: Double, sensitivity: Float, energyGate: Bool) {
+        self.vadAutoStop = autoStop
+        self.vadSilenceTimeout = silenceTimeout
+        self.vadSensitivity = sensitivity
+        self.vadEnergyGate = energyGate
+
+        // If VAD is already running mid-session, rebuild the detector with new config.
+        if let detector = silenceDetector {
+            var config = SmoothedVADConfig.fromSensitivity(sensitivity)
+            if energyGate { config.energyGateThreshold = 0.005 }
+            Task { await detector.updateConfig(config) }
+        }
+    }
+
+    func getSamplesSnapshot(fromIndex: Int, reply: @escaping (Data, Int) -> Void) {
+        nonisolated(unsafe) let safeReply = reply
+        Task { @MainActor in
+            let (samples, totalCount) = await self.captureManager.getSamplesSnapshot(fromIndex: fromIndex)
+            let data = samples.withUnsafeBytes { Data($0) }
+            safeReply(data, totalCount)
+        }
+    }
+
+    func getVADSegments(reply: @escaping (Data) -> Void) {
+        nonisolated(unsafe) let safeReply = reply
+        Task { @MainActor [weak self] in
+            guard let self, let detector = self.silenceDetector else {
+                safeReply(Data())
+                return
+            }
+            // Finalize any open segment before returning.
+            let totalCount = self.captureManager.capturedSamples.count
+            await detector.finalizeSegments(totalSampleCount: totalCount)
+            let segments = await detector.speechSegments
+
+            // Encode as packed [Int32 start, Int32 end] pairs.
+            var packed = Data(capacity: segments.count * MemoryLayout<Int32>.size * 2)
+            for seg in segments {
+                var start = Int32(seg.startSample)
+                var end = Int32(seg.endSample)
+                packed.append(Data(bytes: &start, count: MemoryLayout<Int32>.size))
+                packed.append(Data(bytes: &end, count: MemoryLayout<Int32>.size))
+            }
+            safeReply(packed)
+        }
+    }
+
+    // MARK: - Service-side VAD monitoring (Step 5)
+
+    /// Start the VAD monitoring task. Called after beginCapture succeeds.
+    @MainActor
+    private func startVADMonitoring() {
+        var config = SmoothedVADConfig.fromSensitivity(vadSensitivity)
+        if vadEnergyGate { config.energyGateThreshold = 0.005 }
+
+        let detector = SilenceDetector(silenceTimeout: vadSilenceTimeout, vadConfig: config)
+        self.silenceDetector = detector
+
+        vadMonitorTask = Task { @MainActor [weak self] in
+            // Prepare the VAD model
+            do {
+                try await detector.prepare()
+            } catch {
+                return
+            }
+
+            await detector.reset()
+
+            var processedSampleCount = 0
+            let chunkSize = SilenceDetector.chunkSize
+
+            while !Task.isCancelled {
+                guard let self else { return }
+                let manager = self.captureManager
+                guard manager.isCapturing else { return }
+
+                let currentCount = manager.capturedSamples.count
+
+                while processedSampleCount + chunkSize <= currentCount && !Task.isCancelled {
+                    let endIdx = processedSampleCount + chunkSize
+                    let chunk = Array(manager.capturedSamples[processedSampleCount..<endIdx])
+
+                    let shouldStop = await detector.processChunk(chunk)
+
+                    if shouldStop && self.vadAutoStop {
+                        // Fire vadAutoStopTriggered to the host app.
+                        self.xpcSendQueue.async { [weak self] in
+                            self?.clientProxy?.vadAutoStopTriggered()
+                        }
+                        return
+                    }
+
+                    processedSampleCount += chunkSize
+                    await Task.yield()
+                }
+
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+        }
+    }
+
+    /// Cancel VAD monitoring. Called on stopCapture and abortPreWarm.
+    @MainActor
+    private func cancelVADMonitoring() {
+        vadMonitorTask?.cancel()
+        vadMonitorTask = nil
     }
 }

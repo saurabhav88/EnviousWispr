@@ -29,6 +29,7 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
 
     public var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?
     public var onEngineInterrupted: (() -> Void)?
+    public var onVADAutoStop: (() -> Void)?
 
     // MARK: - Configuration (stored locally, forwarded to service)
 
@@ -222,6 +223,11 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
         guard needsReinit else { return }
         serviceProxy { [self] proxy in
             proxy.buildEngine(noiseSuppression: noiseSuppressionEnabled)
+            // Replay VAD config so service rebuilds its SilenceDetector after crash.
+            if let vad = vadConfig {
+                proxy.configureVAD(autoStop: vad.autoStop, silenceTimeout: vad.silenceTimeout,
+                                   sensitivity: vad.sensitivity, energyGate: vad.energyGate)
+            }
             needsReinit = false
         }
     }
@@ -299,6 +305,56 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
         work(service)
     }
 
+    // MARK: - VAD Interface (Step 5)
+
+    /// Stored VAD config — forwarded to service, replayed after crash via resendConfigIfNeeded().
+    private var vadConfig: (autoStop: Bool, silenceTimeout: Double, sensitivity: Float, energyGate: Bool)?
+
+    public func configureVAD(autoStop: Bool, silenceTimeout: Double, sensitivity: Float, energyGate: Bool) {
+        vadConfig = (autoStop, silenceTimeout, sensitivity, energyGate)
+        serviceProxy { proxy in
+            proxy.configureVAD(autoStop: autoStop, silenceTimeout: silenceTimeout, sensitivity: sensitivity, energyGate: energyGate)
+        }
+    }
+
+    public func getSamplesSnapshot(fromIndex: Int) async -> (samples: [Float], totalCount: Int) {
+        // Use OneShotContinuation to guarantee exactly one resume — XPC error handler and
+        // reply handler can race, and double-resume is undefined behavior.
+        do {
+            return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<(samples: [Float], totalCount: Int), any Error>) in
+                let guard_ = OneShotContinuation(cont)
+                serviceProxy { proxy in
+                    proxy.getSamplesSnapshot(fromIndex: fromIndex) { data, totalCount in
+                        let floats = Self.dataToFloats(data)
+                        guard_.resume(returning: (samples: floats, totalCount: totalCount))
+                    }
+                } onProxyError: {
+                    guard_.resume(returning: (samples: [], totalCount: 0))
+                }
+            }
+        } catch {
+            return (samples: [], totalCount: 0)
+        }
+    }
+
+    public func getVADSegments() async -> [SpeechSegment] {
+        // Use OneShotContinuation to guarantee exactly one resume.
+        do {
+            return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<[SpeechSegment], any Error>) in
+                let guard_ = OneShotContinuation(cont)
+                serviceProxy { proxy in
+                    proxy.getVADSegments { data in
+                        guard_.resume(returning: Self.decodeVADSegments(data))
+                    }
+                } onProxyError: {
+                    guard_.resume(returning: [])
+                }
+            }
+        } catch {
+            return []
+        }
+    }
+
     // MARK: - Data conversion
 
     /// Convert raw Data to [Float]. Transport format: Float32 PCM, non-interleaved mono, 16kHz.
@@ -307,6 +363,24 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     nonisolated private static func dataToFloats(_ data: Data) -> [Float] {
         guard !data.isEmpty, data.count.isMultiple(of: MemoryLayout<Float>.size) else { return [] }
         return data.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
+    }
+
+    /// Decode packed [Int32 start, Int32 end] pairs into SpeechSegment array.
+    nonisolated private static func decodeVADSegments(_ data: Data) -> [SpeechSegment] {
+        let pairSize = MemoryLayout<Int32>.size * 2
+        guard !data.isEmpty, data.count.isMultiple(of: pairSize) else { return [] }
+        return data.withUnsafeBytes { raw in
+            let int32s = raw.bindMemory(to: Int32.self)
+            var segments: [SpeechSegment] = []
+            segments.reserveCapacity(int32s.count / 2)
+            for i in stride(from: 0, to: int32s.count, by: 2) {
+                segments.append(SpeechSegment(
+                    startSample: Int(int32s[i]),
+                    endSample: Int(int32s[i + 1])
+                ))
+            }
+            return segments
+        }
     }
 }
 
@@ -362,6 +436,17 @@ extension AudioCaptureProxy: AudioServiceClientProtocol {
                 self.onEngineInterrupted?()
             }
             self.needsReinit = true
+        }
+    }
+
+    /// Service-side VAD detected sustained silence after speech — auto-stop should trigger.
+    /// Stale-fire protection: generation check + pipeline state guard (in AppState handler).
+    nonisolated public func vadAutoStopTriggered() {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            guard self.isCapturing,
+                  self.captureGeneration == self.activeCaptureGeneration else { return }
+            self.onVADAutoStop?()
         }
     }
 }

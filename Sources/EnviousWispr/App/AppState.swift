@@ -107,6 +107,17 @@ final class AppState {
             // Dismiss recording overlay if showing
             self.recordingOverlay.hide()
         }
+
+        // Unified VAD auto-stop handler — routes to whichever pipeline is actively recording.
+        // Fired by service-side VAD (XPC mode only). Same routing pattern as onEngineInterrupted.
+        audioCapture.onVADAutoStop = { [weak self] in
+            guard let self else { return }
+            if self.pipeline.state == .recording {
+                Task { await self.pipeline.stopAndTranscribe() }
+            } else if self.whisperKitPipeline.state == .recording {
+                Task { await self.whisperKitPipeline.stopAndTranscribe() }
+            }
+        }
         settingsSync.onNeedsPreloadObservation = { [weak self] in
             self?.startWhisperKitPreloadObservation()
         }

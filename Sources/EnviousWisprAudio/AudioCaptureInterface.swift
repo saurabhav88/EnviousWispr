@@ -12,6 +12,7 @@ public protocol AudioCaptureInterface: AnyObject {
     // Callback properties (read-write)
     var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)? { get set }
     var onEngineInterrupted: (() -> Void)? { get set }
+    var onVADAutoStop: (() -> Void)? { get set }
 
     // Configuration properties (read-write)
     var noiseSuppressionEnabled: Bool { get set }
@@ -28,4 +29,9 @@ public protocol AudioCaptureInterface: AnyObject {
     func preWarm() async
     func abortPreWarm()
     func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool
+
+    // VAD (Step 5)
+    func configureVAD(autoStop: Bool, silenceTimeout: Double, sensitivity: Float, energyGate: Bool)
+    func getSamplesSnapshot(fromIndex: Int) async -> (samples: [Float], totalCount: Int)
+    func getVADSegments() async -> [SpeechSegment]
 }

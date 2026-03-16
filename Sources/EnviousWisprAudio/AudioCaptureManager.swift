@@ -82,6 +82,10 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     /// The pipeline should transition to an error state when this fires.
     public var onEngineInterrupted: (() -> Void)?
 
+    /// Called when service-side VAD detects sustained silence after speech.
+    /// No-op for in-process capture — VAD runs in the pipeline's monitorVAD() loop instead.
+    public var onVADAutoStop: (() -> Void)?
+
     /// Called before emergency teardown discards captured samples.
     /// Allows the pipeline to salvage a partial transcript from an interrupted recording.
     public var onPartialSamples: (([Float]) -> Void)?
@@ -839,5 +843,33 @@ public final class AudioCaptureManager: AudioCaptureInterface {
             // Send buffer to stream consumers
             continuation?.yield(convertedBuffer)
         }
+    }
+
+    // MARK: - VAD Interface (Step 5)
+
+    /// No-op for in-process capture. The in-process path manages VAD entirely through
+    /// pipeline-owned properties (vadAutoStop, vadSensitivity, etc.) and the pipeline's
+    /// monitorVAD() loop. The capture manager never runs VAD itself.
+    /// Exists solely for AudioCaptureInterface protocol conformance.
+    public func configureVAD(autoStop: Bool, silenceTimeout: Double, sensitivity: Float, energyGate: Bool) {
+        // Intentional no-op — see comment above.
+    }
+
+    /// Returns a slice of capturedSamples starting at fromIndex plus the current total count.
+    /// Both values are from the same snapshot moment for consistency.
+    public func getSamplesSnapshot(fromIndex: Int) async -> (samples: [Float], totalCount: Int) {
+        let totalCount = capturedSamples.count
+        let clampedIndex = max(0, min(fromIndex, totalCount))
+        if clampedIndex >= totalCount {
+            return (samples: [], totalCount: totalCount)
+        }
+        let slice = Array(capturedSamples[clampedIndex..<totalCount])
+        return (samples: slice, totalCount: totalCount)
+    }
+
+    /// Returns empty — in-process VAD segments are owned by the pipeline's SilenceDetector,
+    /// not by the capture manager. Only meaningful for the XPC path.
+    public func getVADSegments() async -> [SpeechSegment] {
+        return []
     }
 }
