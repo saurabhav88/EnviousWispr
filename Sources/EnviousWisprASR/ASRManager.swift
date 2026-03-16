@@ -5,7 +5,7 @@ import Foundation
 /// Manages ASR backend selection and delegates transcription calls.
 @MainActor
 @Observable
-public final class ASRManager {
+public final class ASRManager: ASRManagerInterface {
     public private(set) var activeBackendType: ASRBackendType = .parakeet
     public private(set) var isModelLoaded = false
     public private(set) var isStreaming = false

@@ -12,7 +12,7 @@ import Foundation
 @Observable
 public final class TranscriptionPipeline: DictationPipeline {
     private let audioCapture: any AudioCaptureInterface
-    private let asrManager: ASRManager
+    private let asrManager: any ASRManagerInterface
     private let transcriptStore: TranscriptStore
     private let keychainManager: KeychainManager
 
@@ -72,7 +72,7 @@ public final class TranscriptionPipeline: DictationPipeline {
 
     public init(
         audioCapture: any AudioCaptureInterface,
-        asrManager: ASRManager,
+        asrManager: any ASRManagerInterface,
         transcriptStore: TranscriptStore,
         keychainManager: KeychainManager = KeychainManager()
     ) {
@@ -878,24 +878,36 @@ public final class TranscriptionPipeline: DictationPipeline {
         // Capture the manager reference on @MainActor before entering the task group.
         // addTask closures are @Sendable and cannot capture @MainActor-isolated self,
         // so we snapshot what we need here.
-        let manager = self.asrManager
         let timeout = Self.streamingFinalizeTimeoutSeconds
+        let manager = self.asrManager
 
-        return try await withThrowingTaskGroup(of: ASRResult.self) { group in
-            group.addTask {
-                try await manager.finalizeStreaming()
-            }
-            group.addTask {
-                try await Task.sleep(for: .seconds(timeout))
-                throw ASRError.streamingTimeout
-            }
-            // Whichever finishes first wins; cancel the other.
-            guard let result = try await group.next() else {
-                throw ASRError.streamingTimeout
-            }
-            group.cancelAll()
-            return result
+        // Race finalization against a deadline using Task + sleep.
+        // Cannot use withThrowingTaskGroup because `any ASRManagerInterface` is not
+        // Sendable (Swift 6 existential limitation). Instead, use two unstructured
+        // tasks on @MainActor and race them.
+        var didTimeout = false
+        let timeoutTask = Task { @MainActor in
+            try await Task.sleep(for: .seconds(timeout))
+            didTimeout = true
         }
+
+        let result: ASRResult
+        do {
+            result = try await manager.finalizeStreaming()
+            timeoutTask.cancel()
+        } catch {
+            timeoutTask.cancel()
+            if didTimeout {
+                throw ASRError.streamingTimeout
+            }
+            throw error
+        }
+
+        if didTimeout {
+            throw ASRError.streamingTimeout
+        }
+
+        return result
     }
 
     // MARK: - Text Processing
