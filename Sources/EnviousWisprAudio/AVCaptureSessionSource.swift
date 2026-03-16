@@ -32,6 +32,10 @@ final class AVCaptureSessionSource: AudioInputSource {
     private var delegate: CaptureDelegate?
     private var interruptionObservers: [NSObjectProtocol] = []
 
+    /// Dedicated serial queue for AVCaptureSession start/stop operations.
+    /// Apple recommends session lifecycle on a serial queue to avoid race conditions.
+    private let sessionQueue = DispatchQueue(label: "com.enviouswispr.capture-session-lifecycle")
+
     /// 16kHz mono Float32 format — matches ASR backend requirements.
     private static let targetFormat = AVAudioFormat(
         commonFormat: .pcmFormatFloat32,
@@ -43,6 +47,9 @@ final class AVCaptureSessionSource: AudioInputSource {
     // MARK: - Lifecycle
 
     func prepare() async throws {
+        // Double-start protection
+        guard session == nil || session?.isRunning == false else { return }
+
         // Find the built-in microphone by transport type — NOT AVCaptureDevice.default(for: .audio)
         // which follows the system default and may return a BT device.
         let builtInMic = findBuiltInMicrophone()
@@ -85,8 +92,9 @@ final class AVCaptureSessionSource: AudioInputSource {
         // Start the session — this does NOT trigger BT route changes on macOS.
         // IMPORTANT: startRunning() is a blocking call that Apple says must not run on main thread.
         // Dispatch to background and await completion.
+        let sessionQ = sessionQueue
         let started = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
-            DispatchQueue.global(qos: .userInteractive).async {
+            sessionQ.async {
                 captureSession.startRunning()
                 cont.resume(returning: captureSession.isRunning)
             }
@@ -100,6 +108,9 @@ final class AVCaptureSessionSource: AudioInputSource {
     }
 
     func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
+        guard !isCapturing else {
+            return AsyncStream { $0.finish() }
+        }
         guard let output = audioOutput else {
             throw AudioError.formatCreationFailed
         }
@@ -130,13 +141,26 @@ final class AVCaptureSessionSource: AudioInputSource {
         // Clear delegate BEFORE stopping — prevents callbacks after stop.
         audioOutput?.setSampleBufferDelegate(nil, queue: nil)
 
-        session?.stopRunning()
+        // Stop on the dedicated session queue (Apple recommends serial queue for lifecycle).
+        if let captureSession = session {
+            let sessionQ = sessionQueue
+            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                sessionQ.async {
+                    captureSession.stopRunning()
+                    cont.resume()
+                }
+            }
+        }
 
         isCapturing = false
         removeInterruptionObservers()
 
-        // Source does not own samples — manager accumulates via onSamples callback.
+        // Finish the continuation so stream consumers see termination.
+        delegate?.continuation?.finish()
+        delegate?.continuation = nil
         delegate = nil
+
+        // Source does not own samples — manager accumulates via onSamples callback.
         return []
     }
 
@@ -147,16 +171,24 @@ final class AVCaptureSessionSource: AudioInputSource {
 
     func abortPrepare() {
         guard session?.isRunning == true, !isCapturing else { return }
-        session?.stopRunning()
+        // Stop on session queue (synchronous — abortPrepare is not async)
+        sessionQueue.sync { [weak self] in
+            self?.session?.stopRunning()
+        }
         removeInterruptionObservers()
     }
 
     func rebuild() {
         audioOutput?.setSampleBufferDelegate(nil, queue: nil)
-        session?.stopRunning()
+        delegate?.continuation?.finish()
+        delegate = nil
+        if let captureSession = session {
+            sessionQueue.sync {
+                captureSession.stopRunning()
+            }
+        }
         session = nil
         audioOutput = nil
-        delegate = nil
         removeInterruptionObservers()
     }
 
