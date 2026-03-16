@@ -69,9 +69,10 @@ final class AppState {
             audioCapture = AudioCaptureManager()
         }
 
-        // Phase 5: XPC ASR service — default OFF during development.
-        // Escape hatch: `defaults write ... useXPCASRService -bool true` to enable.
-        let useXPCASR = UserDefaults.standard.object(forKey: "useXPCASRService") as? Bool ?? false
+        // Phase 5: XPC ASR service — default ON (Stage F). ASR inference runs in a separate
+        // XPC service process for memory isolation. Escape hatch: `defaults write ... useXPCASRService -bool false`
+        // NOTE: .bool(forKey:) returns false for absent keys — use object() ?? true pattern.
+        let useXPCASR = UserDefaults.standard.object(forKey: "useXPCASRService") as? Bool ?? true
         if useXPCASR {
             asrManager = ASRManagerProxy()
         } else {
