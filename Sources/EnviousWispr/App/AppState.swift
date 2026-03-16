@@ -473,4 +473,7 @@ final class AppState {
         }
     }
 
+    // Phase 5 B.1 validated 2026-03-16: batch round-trip 51-60ms across XPC.
+    // Cold model load: 13,966ms. 3 warm back-to-back runs stable.
+    // Test function in git history.
 }
