@@ -171,6 +171,7 @@ body::after {
   .container { padding: 0 20px; }
   .section-title,.section-title-left { font-size: 32px; letter-spacing: -1px; }
   .footer-links { flex-direction: column; gap: 14px; }
+  .nav-cta-group { display: none; }
 }
 @media(max-width:900px) {
   .footer-inner { flex-direction: column; }
