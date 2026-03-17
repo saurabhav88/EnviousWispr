@@ -87,4 +87,4 @@ This project uses conventional commits: `feat(scope):`, `fix(scope):`, `refactor
 
 EnviousWispr is source-available under the [Business Source License 1.1](LICENSE). You may view, fork, and modify the code for personal, non-commercial use. Commercial use requires a license from Envious Labs. The code converts to Apache 2.0 on March 10, 2030.
 
-For commercial licensing inquiries: saurabhav@gmail.com
+For commercial licensing inquiries: hello@enviouswispr.com

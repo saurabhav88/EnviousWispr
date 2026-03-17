@@ -42,7 +42,7 @@ public final class WordSuggestionService: Sendable {
         Do NOT suggest honorifics, suffixes, or cultural variants — only ASR errors.
         Examples:
         - "Kubernetes" → category: brand, aliases: ["kuber netties", "cube ernetes", "cooper nettys"]
-        - "Saurabh" → category: person, aliases: ["saw rob", "so rob", "soreub", "saw rab"]
+        - "Miyamoto" → category: person, aliases: ["me ya moto", "mia motto", "me amoto", "miyomoto"]
         - "Parvati" → category: person, aliases: ["par vati", "poor vati", "pavathi", "par vathy"]
         Always provide 3-5 realistic ASR misrecognitions.
         """
