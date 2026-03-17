@@ -1,8 +1,9 @@
 ---
 title: "Write Your Essay Outline by Talking It Out on Mac"
 description: "Use voice dictation to talk through your essay structure and get an organized outline with thesis and supporting points — free, private, no account needed."
-pubDate: 2026-03-18
+pubDate: 2026-03-17
 tags: ["students", "essays", "dictation", "writing-style", "study-hack"]
+keywords: ["essay outline voice dictation", "dictate essay outline mac", "voice to outline", "speech to text essay", "writing outline by speaking", "mac dictation students", "free dictation app essays"]
 draft: false
 ---
 
