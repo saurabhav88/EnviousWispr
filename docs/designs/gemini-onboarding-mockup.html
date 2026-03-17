@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EnviousWispr Onboarding</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --purple: #7c3aed;
+            --green: #00c880;
+            --bg-color: #f0f0f5;
+            --window-bg: #ffffff;
+            --text-primary: #1a1a1a;
+            --text-secondary: #6b7280;
+            --border-color: #e5e7eb;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+            background-color: var(--bg-color);
+            display: grid;
+            place-items: center;
+            height: 100vh;
+            margin: 0;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .macos-window {
+            width: 480px;
+            background-color: var(--window-bg);
+            border-radius: 12px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+        }
+
+        .window-chrome {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            background-color: #f6f6f6;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .traffic-lights { display: flex; gap: 8px; }
+        .dot { width: 12px; height: 12px; border-radius: 50%; }
+        .red { background-color: #ff5f57; }
+        .yellow { background-color: #ffbd2e; }
+        .green { background-color: #28c940; }
+
+        .content {
+            padding: 40px;
+            text-align: center;
+        }
+
+        .screen { display: none; }
+        .screen.active { display: block; }
+
+        .logo {
+            font-size: 48px;
+            margin-bottom: 24px;
+        }
+
+        h1 {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin: 0 0 8px 0;
+        }
+
+        p {
+            font-size: 16px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            margin: 0 0 32px 0;
+            max-width: 360px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .btn {
+            background-color: var(--purple);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            width: 100%;
+        }
+
+        .btn:hover { background-color: #6d28d9; }
+        .btn:disabled { background-color: #d1d5db; cursor: default; }
+
+        /* Screen 1 Specifics */
+        .feature-list {
+            list-style: none;
+            padding: 0;
+            margin: 0 0 32px 0;
+            text-align: left;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .feature-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 15px;
+            color: var(--text-primary);
+        }
+        .feature-item svg {
+            width: 20px;
+            height: 20px;
+            color: var(--purple);
+            flex-shrink: 0;
+        }
+
+        /* Screen 2 Specifics */
+        .checklist {
+            list-style: none;
+            padding: 0;
+            margin: 0 0 32px 0;
+            text-align: left;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .check-item {
+            background-color: #f9fafb;
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .check-item p { margin: 0; color: var(--text-primary); font-weight: 600; font-size: 14px; }
+        .check-item .micro-copy { font-size: 13px; font-weight: 400; color: var(--text-secondary); margin-top: 2px; }
+        .btn-grant {
+            background-color: #f3f4f6;
+            color: var(--text-primary);
+            padding: 6px 12px;
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: 6px;
+            border: 1px solid #d1d5db;
+            cursor: pointer;
+            width: auto;
+        }
+        .btn-grant:hover { background-color: #e5e7eb; }
+        .granted-check { color: var(--green); font-size: 24px; }
+
+        /* Screen 3 Specifics */
+        .hotkey-display {
+            background: #f3f4f6;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+        .hotkey-display p {
+            margin: 0 0 16px 0;
+        }
+        .keycap {
+            background: #ffffff;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            box-shadow: 0 2px 0 #d1d5db;
+            padding: 16px 48px;
+            font-size: 24px;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: inline-block;
+        }
+        .power-user-nudge {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-top: 40px;
+        }
+        .power-user-nudge a {
+            color: var(--purple);
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .power-user-nudge a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="macos-window">
+        <div class="window-chrome">
+            <div class="traffic-lights">
+                <div class="dot red"></div>
+                <div class="dot yellow"></div>
+                <div class="dot green"></div>
+            </div>
+        </div>
+        <div class="content">
+            <!-- Screen 1: Welcome -->
+            <div id="screen1" class="screen active">
+                <div class="logo">👄</div>
+                <h1>Your Voice, Instantly Captured.</h1>
+                <p>The privacy-first dictation app built for macOS.</p>
+                <ul class="feature-list">
+                    <li class="feature-item">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                        <span><strong>100% On-Device:</strong> Your recordings never leave your Mac.</span>
+                    </li>
+                    <li class="feature-item">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path><path d="M10.71 5.05A16 16 0 0 1 22.56 9"></path><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
+                        <span><strong>Works Offline:</strong> Transcribe from anywhere, anytime.</span>
+                    </li>
+                    <li class="feature-item">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                        <span><strong>Native Performance:</strong> Blazing-fast and light on resources.</span>
+                    </li>
+                     <li class="feature-item">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                        <span><strong>Free, No Account:</strong> Get started right away.</span>
+                    </li>
+                </ul>
+                <button class="btn" onclick="goToScreen(2)">Get Started</button>
+            </div>
+
+            <!-- Screen 2: Setup -->
+            <div id="screen2" class="screen">
+                <div class="logo">👄</div>
+                <div id="install-phase">
+                    <h1>Warming Up the AI...</h1>
+                    <p>Downloading the on-device speech model and configuring your settings. This should only take a moment.</p>
+                </div>
+                <div id="permission-phase" style="display: none;">
+                    <h1>Almost there. Just two permissions.</h1>
+                    <p>EnviousWispr needs these to capture audio and paste your text.</p>
+                    <ul class="checklist">
+                        <li class="check-item">
+                            <div>
+                                <p>Microphone</p>
+                                <div class="micro-copy">To hear your voice for transcription.</div>
+                            </div>
+                            <button id="mic-btn" class="btn btn-grant" onclick="grantPermission('mic')">Grant</button>
+                            <span id="mic-check" class="granted-check" style="display: none;">&#10004;</span>
+                        </li>
+                        <li class="check-item">
+                             <div>
+                                <p>Accessibility</p>
+                                <div class="micro-copy">To paste your transcribed text into any app.</div>
+                            </div>
+                            <button id="acc-btn" class="btn btn-grant" onclick="grantPermission('acc')">Grant</button>
+                            <span id="acc-check" class="granted-check" style="display: none;">&#10004;</span>
+                        </li>
+                    </ul>
+                </div>
+                <button class="btn" id="continue-btn" onclick="goToScreen(3)" disabled>Continue</button>
+            </div>
+
+            <!-- Screen 3: All Set -->
+            <div id="screen3" class="screen">
+                <div class="logo">👄</div>
+                <h1>Ready to Wispr!</h1>
+                <p>Press and hold the hotkey below to record your voice. Release to transcribe and paste it anywhere.</p>
+                <div class="hotkey-display">
+                    <kbd class="keycap">&#x2325; Option</kbd>
+                </div>
+                <button class="btn" onclick="finishOnboarding()">GET STARTED!</button>
+                <p class="power-user-nudge">
+                    Power user? You can change your AI model, hotkey, and more in <a href="#">Settings</a>.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let permissions = { mic: false, acc: false };
+
+        function goToScreen(screenNumber) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(`screen${screenNumber}`).classList.add('active');
+
+            if (screenNumber === 2) {
+                setTimeout(() => {
+                    document.getElementById('install-phase').style.display = 'none';
+                    document.getElementById('permission-phase').style.display = 'block';
+                }, 2500);
+            }
+        }
+
+        function grantPermission(type) {
+            permissions[type] = true;
+            document.getElementById(`${type}-btn`).style.display = 'none';
+            document.getElementById(`${type}-check`).style.display = 'block';
+
+            if (permissions.mic && permissions.acc) {
+                document.getElementById('continue-btn').disabled = false;
+            }
+        }
+
+        function finishOnboarding() {
+            alert("Onboarding Complete! Closing window...");
+            document.querySelector('.macos-window').style.display = 'none';
+        }
+    </script>
+</body>
+</html>

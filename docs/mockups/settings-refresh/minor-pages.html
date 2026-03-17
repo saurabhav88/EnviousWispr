@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EnviousWispr — Settings (Minor Pages)</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    /* ── Brand surfaces ── */
+    --page-bg: #f8f5ff;
+    --section-bg: #ffffff;
+    --divider: rgba(138,43,226,0.08);
+    /* ── Brand text ── */
+    --text-primary: #0f0a1a;
+    --text-secondary: #4a3d60;
+    --text-tertiary: #7d6f96;
+    /* ── Brand accent ── */
+    --accent: #7c3aed;
+    --accent-hover: #6d28d9;
+    --accent-light: rgba(124,58,237,0.09);
+    --accent-border: rgba(124,58,237,0.35);
+    /* ── Semantic ── */
+    --green: #00c880;
+    --green-bg: rgba(0,200,128,0.10);
+    --green-border: rgba(0,200,128,0.30);
+    --red: #e6253a;
+    /* ── Toggle ── */
+    --toggle-off: #c4b8d8;
+    --toggle-on: #00c880;
+    /* ── Window chrome ── */
+    --chrome: #ede8f8;
+    --chrome-divider: rgba(138,43,226,0.12);
+    --sidebar-bg: #e8e2f5;
+    --sidebar-active-bg: rgba(124,58,237,0.09);
+    --sidebar-active-text: #5b21b6;
+    /* ── Misc ── */
+    --radius-section: 12px;
+    --font: system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  body {
+    font-family: var(--font);
+    background: var(--page-bg);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 24px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ─── Window shell ─── */
+  .window {
+    width: 680px;
+    height: 580px;
+    background: var(--page-bg);
+    border-radius: 14px;
+    box-shadow:
+      0 0 0 0.5px rgba(124,58,237,0.20),
+      0 20px 60px rgba(80,30,160,0.18),
+      0 4px 16px rgba(80,30,160,0.10);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ─── Title bar ─── */
+  .titlebar {
+    height: 52px;
+    background: var(--chrome);
+    border-bottom: 1px solid var(--chrome-divider);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .traffic-lights { display: flex; gap: 8px; }
+  .tl {
+    width: 12px; height: 12px; border-radius: 50%;
+    border: 0.5px solid rgba(0,0,0,0.12);
+  }
+  .tl-r { background: #ff5f57; }
+  .tl-y { background: #febc2e; }
+  .tl-g { background: #28c840; }
+  .titlebar-title {
+    position: absolute;
+    left: 50%; transform: translateX(-50%);
+    font-size: 13px; font-weight: 600;
+    color: var(--text-primary); letter-spacing: -0.1px;
+  }
+
+  /* ─── Body: sidebar + content ─── */
+  .window-body {
+    display: flex; flex: 1; overflow: hidden;
+  }
+
+  /* ─── Sidebar ─── */
+  .sidebar {
+    width: 160px;
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--chrome-divider);
+    padding: 12px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex-shrink: 0;
+    overflow-y: auto;
+  }
+
+  .sidebar-group-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    padding: 6px 8px 3px;
+    margin-top: 6px;
+  }
+  .sidebar-group-label:first-child { margin-top: 0; }
+
+  .sidebar-item {
+    padding: 6px 10px;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.12s, color 0.12s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .sidebar-item:hover {
+    background: rgba(124,58,237,0.05);
+    color: var(--text-primary);
+  }
+  .sidebar-item.active {
+    background: var(--sidebar-active-bg);
+    color: var(--sidebar-active-text);
+    font-weight: 600;
+  }
+
+  /* ─── Content area ─── */
+  .content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px 32px;
+  }
+
+  /* Page: hidden by default, shown when active */
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* ─── Form sections ─── */
+  .section {
+    background: var(--section-bg);
+    border-radius: var(--radius-section);
+    border: 1px solid var(--divider);
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+
+  .section-header {
+    padding: 9px 14px 8px;
+    border-bottom: 1px solid var(--divider);
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    background: rgba(124,58,237,0.03);
+  }
+
+  /* Rows */
+  .row {
+    display: flex;
+    align-items: center;
+    padding: 10px 14px;
+    gap: 12px;
+  }
+  .row + .row {
+    border-top: 1px solid var(--divider);
+  }
+
+  .row-label {
+    flex: 1;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--text-primary);
+    line-height: 1.3;
+  }
+  .row-label .sublabel {
+    display: block;
+    font-size: 11.5px;
+    font-weight: 400;
+    color: var(--text-tertiary);
+    margin-top: 1px;
+  }
+
+  /* ─── Helper text ─── */
+  .helper {
+    padding: 8px 14px 11px;
+    font-size: 11.5px;
+    color: var(--text-tertiary);
+    line-height: 1.5;
+    border-top: 1px solid var(--divider);
+    background: rgba(124,58,237,0.02);
+  }
+
+  /* ─── Toggle ─── */
+  .toggle {
+    width: 38px; height: 22px;
+    background: var(--toggle-off);
+    border-radius: 11px;
+    position: relative;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.18s;
+  }
+  .toggle::after {
+    content: '';
+    position: absolute;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    top: 2px; left: 2px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.20);
+    transition: transform 0.18s;
+  }
+  .toggle.on {
+    background: var(--toggle-on);
+  }
+  .toggle.on::after {
+    transform: translateX(16px);
+  }
+
+  /* ─── Select / Picker ─── */
+  .picker {
+    appearance: none;
+    -webkit-appearance: none;
+    background: var(--page-bg);
+    border: 1px solid rgba(124,58,237,0.18);
+    border-radius: 7px;
+    padding: 4px 28px 4px 9px;
+    font-family: var(--font);
+    font-size: 12.5px;
+    color: var(--text-primary);
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%237d6f96' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 9px center;
+    min-width: 180px;
+    outline: none;
+  }
+  .picker:focus {
+    border-color: var(--accent-border);
+    box-shadow: 0 0 0 3px var(--accent-light);
+  }
+
+  /* ─── Hotkey box ─── */
+  .hotkey-box {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    background: var(--page-bg);
+    border: 1px solid rgba(124,58,237,0.20);
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.04);
+  }
+  .hotkey-box kbd {
+    font-family: var(--font);
+    font-size: 12px;
+  }
+
+  /* ─── TextField + add button ─── */
+  .text-field-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .text-field {
+    flex: 1;
+    background: var(--page-bg);
+    border: 1px solid rgba(124,58,237,0.18);
+    border-radius: 7px;
+    padding: 5px 10px;
+    font-family: var(--font);
+    font-size: 12.5px;
+    color: var(--text-tertiary);
+    outline: none;
+  }
+  .text-field:focus {
+    border-color: var(--accent-border);
+    box-shadow: 0 0 0 3px var(--accent-light);
+    color: var(--text-primary);
+  }
+  .btn-add {
+    padding: 5px 12px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 7px;
+    font-family: var(--font);
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+  }
+  .btn-add:hover { background: var(--accent-hover); }
+
+  /* ─── Word chips ─── */
+  .word-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px 14px 12px;
+    border-top: 1px solid var(--divider);
+  }
+  .word-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px 3px 11px;
+    background: var(--accent-light);
+    border: 1px solid rgba(124,58,237,0.18);
+    border-radius: 100px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--sidebar-active-text);
+  }
+  .word-chip-x {
+    font-size: 14px;
+    line-height: 1;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    margin-left: 1px;
+  }
+  .word-chip-x:hover { color: var(--red); }
+
+  /* ─── Status badge ─── */
+  .status-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+  }
+  .status-row + .status-row {
+    border-top: 1px solid var(--divider);
+  }
+  .status-icon {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+  .status-icon.ok {
+    background: var(--green-bg);
+    border: 1px solid var(--green-border);
+    color: var(--green);
+  }
+  .status-label {
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+  .status-sub {
+    font-size: 11.5px;
+    color: var(--green);
+    font-weight: 500;
+  }
+
+  /* ─── Advanced hint (Diagnostics) ─── */
+  .hint-collapsed {
+    margin: 0 14px 14px;
+    padding: 9px 12px;
+    background: rgba(124,58,237,0.04);
+    border: 1px dashed rgba(124,58,237,0.18);
+    border-radius: 8px;
+    font-size: 11.5px;
+    color: var(--text-tertiary);
+    text-align: center;
+    opacity: 0.75;
+    font-style: italic;
+  }
+</style>
+</head>
+<body>
+
+<div class="window">
+
+  <!-- Title bar -->
+  <div class="titlebar">
+    <div class="traffic-lights">
+      <div class="tl tl-r"></div>
+      <div class="tl tl-y"></div>
+      <div class="tl tl-g"></div>
+    </div>
+    <span class="titlebar-title">Settings</span>
+  </div>
+
+  <!-- Body -->
+  <div class="window-body">
+
+    <!-- Sidebar -->
+    <nav class="sidebar">
+      <div class="sidebar-group-label">Record</div>
+      <div class="sidebar-item active" data-page="microphone">Microphone</div>
+      <div class="sidebar-item" data-page="shortcuts">Shortcuts</div>
+
+      <div class="sidebar-group-label">Process</div>
+      <div class="sidebar-item" data-page="your-words">Your Words</div>
+
+      <div class="sidebar-group-label">Output</div>
+      <div class="sidebar-item" data-page="clipboard">Clipboard</div>
+
+      <div class="sidebar-group-label">System</div>
+      <div class="sidebar-item" data-page="performance">Performance</div>
+      <div class="sidebar-item" data-page="permissions">Permissions</div>
+      <div class="sidebar-item" data-page="diagnostics">Diagnostics</div>
+    </nav>
+
+    <!-- Content -->
+    <div class="content">
+
+      <!-- ═══ Microphone ═══ -->
+      <div class="page active" id="page-microphone">
+
+        <div class="section">
+          <div class="section-header">Microphone</div>
+          <div class="row">
+            <span class="row-label">Input Device</span>
+            <select class="picker">
+              <option selected>Auto (recommended)</option>
+              <option>MacBook Pro Microphone</option>
+              <option>AirPods Pro</option>
+            </select>
+          </div>
+          <div class="helper">Auto prefers the built-in mic when Bluetooth headphones are connected, avoiding audio quality issues.</div>
+        </div>
+
+        <div class="section">
+          <div class="section-header">Audio Processing</div>
+          <div class="row">
+            <span class="row-label">Reduce background noise</span>
+            <div class="toggle on"></div>
+          </div>
+          <div class="helper">Uses Apple's noise reduction to filter background sounds during recording.</div>
+        </div>
+
+      </div>
+
+      <!-- ═══ Shortcuts ═══ -->
+      <div class="page" id="page-shortcuts">
+
+        <div class="section">
+          <div class="section-header">Record Shortcut</div>
+
+          <div class="row">
+            <span class="row-label">Start / stop recording</span>
+            <span class="hotkey-box"><kbd>⌃</kbd><kbd>Space</kbd></span>
+          </div>
+
+          <div class="row">
+            <span class="row-label">
+              Hold to record
+              <span class="sublabel">Hold the shortcut while speaking — release to finish.</span>
+            </span>
+            <div class="toggle"></div>
+          </div>
+
+          <div class="row" style="padding-bottom: 4px;">
+            <span class="row-label">
+              Cancel recording
+              <span class="sublabel">Press to discard the current recording.</span>
+            </span>
+            <span class="hotkey-box"><kbd>Esc</kbd></span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ═══ Your Words ═══ -->
+      <div class="page" id="page-your-words">
+
+        <div class="section">
+          <div class="section-header">Your Words</div>
+          <div class="row">
+            <span class="row-label">Enable word corrections</span>
+            <div class="toggle on"></div>
+          </div>
+          <div class="helper">Automatically fixes words the speech engine gets wrong using your list below.</div>
+        </div>
+
+        <div class="section">
+          <div class="section-header">Word List (3 words)</div>
+          <div class="row">
+            <div class="text-field-row" style="flex:1;">
+              <input class="text-field" type="text" placeholder="Add a word or phrase…">
+              <button class="btn-add">Add</button>
+            </div>
+          </div>
+          <div class="word-list">
+            <div class="word-chip">EnviousWispr <span class="word-chip-x">×</span></div>
+            <div class="word-chip">macOS <span class="word-chip-x">×</span></div>
+            <div class="word-chip">Parakeet <span class="word-chip-x">×</span></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ═══ Clipboard ═══ -->
+      <div class="page" id="page-clipboard">
+
+        <div class="section">
+          <div class="section-header">Clipboard</div>
+          <div class="row">
+            <span class="row-label">Auto-copy to clipboard</span>
+            <div class="toggle on"></div>
+          </div>
+          <div class="row">
+            <span class="row-label">Keep your clipboard intact</span>
+            <div class="toggle on"></div>
+          </div>
+          <div class="helper">Saves your clipboard before pasting, then restores it afterward.</div>
+        </div>
+
+      </div>
+
+      <!-- ═══ Performance ═══ -->
+      <div class="page" id="page-performance">
+
+        <div class="section">
+          <div class="section-header">Performance</div>
+          <div class="row">
+            <span class="row-label">Free memory when idle</span>
+            <select class="picker">
+              <option selected>Keep loaded (fastest)</option>
+              <option>After 5 minutes</option>
+              <option>After each recording</option>
+            </select>
+          </div>
+          <div class="helper">The speech model uses ~200–500 MB of RAM. Unloading frees memory but reloading takes a few seconds.</div>
+        </div>
+
+      </div>
+
+      <!-- ═══ Permissions ═══ -->
+      <div class="page" id="page-permissions">
+
+        <div class="section">
+          <div class="section-header">Microphone</div>
+          <div class="status-row">
+            <div class="status-icon ok">✓</div>
+            <div>
+              <div class="status-label">Microphone access granted</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-header">Accessibility</div>
+          <div class="status-row">
+            <div class="status-icon ok">✓</div>
+            <div>
+              <div class="status-label">Accessibility access granted</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ═══ Diagnostics ═══ -->
+      <div class="page" id="page-diagnostics">
+
+        <div class="section">
+          <div class="section-header">Troubleshooting</div>
+          <div class="row">
+            <span class="row-label">Enable debug mode</span>
+            <div class="toggle" id="debug-toggle"></div>
+          </div>
+          <div class="helper">Shows advanced diagnostic tools and detailed logging.</div>
+        </div>
+
+        <div class="hint-collapsed" id="debug-hint">
+          Advanced diagnostics available when debug mode is on.
+        </div>
+
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /window-body -->
+</div><!-- /window -->
+
+<script>
+  // ── Tab switching ──
+  const items = document.querySelectorAll('.sidebar-item');
+  const pages = document.querySelectorAll('.page');
+
+  items.forEach(item => {
+    item.addEventListener('click', () => {
+      items.forEach(i => i.classList.remove('active'));
+      pages.forEach(p => p.classList.remove('active'));
+      item.classList.add('active');
+      const target = document.getElementById('page-' + item.dataset.page);
+      if (target) target.classList.add('active');
+    });
+  });
+
+  // ── Toggle click ──
+  document.querySelectorAll('.toggle').forEach(toggle => {
+    toggle.addEventListener('click', () => {
+      toggle.classList.toggle('on');
+    });
+  });
+
+  // ── Debug toggle shows/hides hint ──
+  const debugToggle = document.getElementById('debug-toggle');
+  const debugHint = document.getElementById('debug-hint');
+  debugToggle.addEventListener('click', () => {
+    // hint already updated by toggle handler above
+    if (debugToggle.classList.contains('on')) {
+      debugHint.style.opacity = '0.35';
+      debugHint.textContent = 'Advanced diagnostics visible below when debug mode is on.';
+    } else {
+      debugHint.style.opacity = '0.75';
+      debugHint.textContent = 'Advanced diagnostics available when debug mode is on.';
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+.rainbow {
+  background: var(--rainbow);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 4s linear infinite;
+  filter:
+    drop-shadow(0 2px 6px rgba(0, 0, 0, 1))
+    drop-shadow(0 0 12px rgba(0, 0, 0, 0.95))
+    drop-shadow(0 0 30px rgba(0, 0, 0, 0.8));
+}
+
+@keyframes shimmer {
+  to {
+    background-position: 200% center;
+  }
+}

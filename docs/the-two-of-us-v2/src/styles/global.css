@@ -1,0 +1,49 @@
+:root {
+  /* Core brand */
+  --bg-dark: #0f0a1a;
+  --surface-dark: #1a1425;
+  --text-light: #f8f5ff;
+  --text-2-light: #b0a3c8;
+  --text-3-light: #7d6f96;
+  --accent: #7c3aed;
+  --accent-glow: rgba(124, 58, 237, 0.30);
+  --amber: #e6c200;
+  --amber-glow: rgba(230, 194, 0, 0.20);
+  --cyan: #00ffff;
+  --cyan-glow: rgba(0, 255, 255, 0.20);
+  --font-body: 'Plus Jakarta Sans', -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Rainbow gradient */
+  --rainbow: linear-gradient(90deg, #7c3aed, #a855f7, #ec4899, #f59e0b, #10b981, #06b6d4, #7c3aed);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-dark);
+  color: var(--text-light);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  width: 100%;
+  overflow-x: hidden;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}

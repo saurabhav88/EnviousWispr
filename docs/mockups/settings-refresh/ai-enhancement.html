@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Polish — Settings Mockup</title>
+  <style>
+    /* ── Brand tokens (macOS context) ─────────────────────────────── */
+    :root {
+      --accent:         #7c3aed;
+      --accent-hover:   #6d28d9;
+      --accent-soft:    rgba(124, 58, 237, 0.08);
+      --accent-glow:    rgba(124, 58, 237, 0.20);
+      --green:          #00c880;
+      --cyan:           #00ccdd;
+      --red:            #e6253a;
+      --text:           #0f0a1a;
+      --text-2:         #4a3d60;
+      --text-3:         #7d6f96;
+      --bg:             #f5f5f7;
+      --surface:        #ffffff;
+      --border:         rgba(0,0,0,0.08);
+      --border-hover:   rgba(0,0,0,0.14);
+      --font:           system-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+      --radius-sm:      6px;
+      --radius-md:      10px;
+      --radius-lg:      12px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.4;
+      display: flex;
+      justify-content: center;
+      padding: 24px 16px 48px;
+      min-height: 100vh;
+    }
+
+    .settings-panel {
+      width: 480px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .page-title {
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: -0.2px;
+      margin-bottom: 16px;
+      padding: 0 4px;
+    }
+
+    /* ── Section ─────────────────────────────────────────────────── */
+    .section {
+      margin-bottom: 20px;
+    }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-3);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 6px;
+      padding: 0 16px;
+    }
+
+    /* ── Form group card ─────────────────────────────────────────── */
+    .form-group {
+      background: var(--surface);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    /* ── Form row ────────────────────────────────────────────────── */
+    .form-row {
+      display: flex;
+      align-items: center;
+      min-height: 40px;
+      padding: 0 14px;
+      gap: 10px;
+    }
+
+    .form-row + .form-row {
+      border-top: 1px solid var(--border);
+    }
+
+    .form-row.tall {
+      align-items: flex-start;
+      padding-top: 10px;
+      padding-bottom: 10px;
+    }
+
+    .row-label {
+      font-size: 13px;
+      color: var(--text);
+      flex: 1;
+      min-width: 0;
+    }
+
+    .row-label strong { font-weight: 500; }
+
+    .row-value {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .row-helper {
+      font-size: 11.5px;
+      color: var(--text-3);
+      margin-top: 2px;
+      line-height: 1.4;
+    }
+
+    .section-footer {
+      font-size: 11.5px;
+      color: var(--text-3);
+      padding: 7px 16px 0;
+      line-height: 1.45;
+    }
+
+    .off-helper-banner {
+      margin-top: -10px;
+      margin-bottom: 4px;
+      background: var(--accent-soft);
+      border-radius: var(--radius-md);
+      border: 1px solid rgba(124, 58, 237, 0.12);
+      padding: 10px 14px;
+      font-size: 12px;
+      color: var(--text-2);
+      line-height: 1.45;
+    }
+
+    /* ── Picker ──────────────────────────────────────────────────── */
+    .picker {
+      appearance: none;
+      -webkit-appearance: none;
+      background: rgba(0,0,0,0.04);
+      border: 1px solid rgba(0,0,0,0.12);
+      border-radius: var(--radius-sm);
+      font-family: var(--font);
+      font-size: 12.5px;
+      color: var(--text);
+      padding: 3px 22px 3px 8px;
+      cursor: pointer;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23888' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 7px center;
+      min-width: 140px;
+      transition: border-color 0.15s;
+    }
+
+    .picker:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2.5px var(--accent-glow);
+    }
+
+    .picker:hover { border-color: var(--border-hover); }
+
+    /* ── Toggle ──────────────────────────────────────────────────── */
+    .toggle {
+      position: relative;
+      width: 36px;
+      height: 20px;
+      flex-shrink: 0;
+      display: inline-block;
+    }
+
+    .toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+      position: absolute;
+    }
+
+    .toggle-track {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.15);
+      border-radius: 100px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .toggle input:checked + .toggle-track { background: var(--accent); }
+
+    .toggle-thumb {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 16px;
+      height: 16px;
+      background: white;
+      border-radius: 50%;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+      transition: transform 0.2s;
+      pointer-events: none;
+    }
+
+    .toggle input:checked ~ .toggle-thumb { transform: translateX(16px); }
+
+    /* ── Buttons ─────────────────────────────────────────────────── */
+    .btn {
+      font-family: var(--font);
+      font-size: 12.5px;
+      font-weight: 500;
+      padding: 4px 12px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: background 0.15s, box-shadow 0.15s;
+      border: none;
+      white-space: nowrap;
+    }
+
+    .btn-default {
+      background: rgba(0,0,0,0.07);
+      color: var(--text);
+      border: 1px solid rgba(0,0,0,0.12);
+    }
+
+    .btn-default:hover { background: rgba(0,0,0,0.11); }
+
+    .btn-accent {
+      background: var(--accent);
+      color: white;
+      border: 1px solid transparent;
+    }
+
+    .btn-accent:hover {
+      background: var(--accent-hover);
+      box-shadow: 0 2px 8px var(--accent-glow);
+    }
+
+    .btn-destructive {
+      background: rgba(230, 37, 58, 0.08);
+      color: var(--red);
+      border: 1px solid rgba(230, 37, 58, 0.15);
+    }
+
+    .btn-destructive:hover { background: rgba(230, 37, 58, 0.13); }
+
+    /* ── API Key field ───────────────────────────────────────────── */
+    .secure-field {
+      font-family: var(--font);
+      font-size: 12.5px;
+      color: var(--text);
+      background: rgba(0,0,0,0.04);
+      border: 1px solid rgba(0,0,0,0.12);
+      border-radius: var(--radius-sm);
+      padding: 3px 8px;
+      width: 175px;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    .secure-field:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2.5px var(--accent-glow);
+    }
+
+    /* ── Validation badge ────────────────────────────────────────── */
+    .validation-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 100px;
+    }
+
+    .badge-valid {
+      background: rgba(0, 200, 128, 0.12);
+      color: #007a4d;
+      border: 1px solid rgba(0, 200, 128, 0.25);
+    }
+
+    .badge-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    /* ── Link ────────────────────────────────────────────────────── */
+    .link {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 12px;
+    }
+
+    .link:hover {
+      color: var(--accent-hover);
+      text-decoration: underline;
+    }
+
+    /* ── Model recommendation cards ──────────────────────────────── */
+    .model-card {
+      display: flex;
+      align-items: center;
+      padding: 8px 14px;
+      gap: 10px;
+      border-top: 1px solid var(--border);
+    }
+
+    .model-card-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+
+    .model-card-body {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .model-card-name {
+      font-size: 12.5px;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .model-card-desc {
+      font-size: 11px;
+      color: var(--text-3);
+      margin-top: 1px;
+    }
+
+    .model-badge {
+      font-size: 10.5px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 100px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .badge-green {
+      background: rgba(0, 200, 128, 0.12);
+      color: #007a4d;
+      border: 1px solid rgba(0, 200, 128, 0.22);
+    }
+
+    .badge-blue {
+      background: rgba(0, 204, 221, 0.12);
+      color: #006f7a;
+      border: 1px solid rgba(0, 204, 221, 0.22);
+    }
+
+    .badge-gray {
+      background: rgba(0,0,0,0.05);
+      color: var(--text-3);
+      border: 1px solid rgba(0,0,0,0.09);
+    }
+
+    .instructions-hint {
+      font-size: 12px;
+      color: var(--text-3);
+      font-style: italic;
+    }
+
+    /* ── Conditional section visibility ──────────────────────────── */
+    .conditional-section { display: none; }
+    .conditional-section.visible { display: block; }
+
+    /* ── Preset Cards (Writing Style) ────────────────────────────── */
+    .preset-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      padding: 14px 14px 12px;
+    }
+
+    .preset-card {
+      border: 1.5px solid rgba(0,0,0,0.10);
+      border-radius: 9px;
+      padding: 12px 10px 11px;
+      cursor: pointer;
+      background: var(--surface);
+      text-align: center;
+      transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+      position: relative;
+      user-select: none;
+    }
+
+    .preset-card:hover {
+      border-color: rgba(0,0,0,0.18);
+      background: #fafafa;
+    }
+
+    .preset-card.selected {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      box-shadow: 0 0 0 1px var(--accent), 0 2px 8px var(--accent-glow);
+    }
+
+    .preset-emoji {
+      font-size: 22px;
+      line-height: 1;
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .preset-name {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text);
+      display: block;
+      margin-bottom: 3px;
+      letter-spacing: -0.1px;
+    }
+
+    .preset-desc {
+      font-size: 10.5px;
+      color: var(--text-3);
+      line-height: 1.35;
+    }
+
+    .preset-check {
+      position: absolute;
+      top: 6px;
+      right: 7px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .preset-card.selected .preset-check {
+      display: flex;
+    }
+
+    .preset-check svg {
+      width: 8px;
+      height: 8px;
+      fill: none;
+      stroke: white;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* Custom instructions row within Writing Style section */
+    .custom-hint {
+      font-size: 12px;
+      color: var(--text-3);
+      font-style: italic;
+    }
+
+    .custom-hint.active {
+      font-style: normal;
+      color: var(--accent);
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+
+<div class="settings-panel">
+
+  <h1 class="page-title">AI Polish</h1>
+
+  <!-- ── Section 1: Writing Style ──────────────────────────────── -->
+  <div class="section conditional-section" id="section-style">
+    <div class="section-label">Writing Style</div>
+    <div class="form-group">
+
+      <!-- Preset cards grid -->
+      <div class="preset-grid" id="style-preset-grid">
+
+        <div class="preset-card" tabindex="0" data-style="formal"
+             onclick="selectStyle('formal')"
+             onkeydown="if(event.key==='Enter'||event.key===' ')selectStyle('formal')">
+          <span class="preset-check">
+            <svg viewBox="0 0 10 10"><polyline points="1.5,5 4,7.5 8.5,2.5"/></svg>
+          </span>
+          <span class="preset-emoji">👔</span>
+          <span class="preset-name">Formal</span>
+          <span class="preset-desc">Professional tone, proper grammar</span>
+        </div>
+
+        <div class="preset-card selected" tabindex="0" data-style="standard"
+             onclick="selectStyle('standard')"
+             onkeydown="if(event.key==='Enter'||event.key===' ')selectStyle('standard')">
+          <span class="preset-check">
+            <svg viewBox="0 0 10 10"><polyline points="1.5,5 4,7.5 8.5,2.5"/></svg>
+          </span>
+          <span class="preset-emoji">✨</span>
+          <span class="preset-name">Standard</span>
+          <span class="preset-desc">Clean up grammar and punctuation</span>
+        </div>
+
+        <div class="preset-card" tabindex="0" data-style="friendly"
+             onclick="selectStyle('friendly')"
+             onkeydown="if(event.key==='Enter'||event.key===' ')selectStyle('friendly')">
+          <span class="preset-check">
+            <svg viewBox="0 0 10 10"><polyline points="1.5,5 4,7.5 8.5,2.5"/></svg>
+          </span>
+          <span class="preset-emoji">💬</span>
+          <span class="preset-name">Friendly</span>
+          <span class="preset-desc">Casual, conversational tone</span>
+        </div>
+
+      </div>
+
+      <!-- Custom instructions row -->
+      <div class="form-row" style="border-top: 1px solid var(--border); align-items:center;">
+        <div style="flex:1;">
+          <span class="custom-hint" id="custom-hint-text">Want more control?</span>
+        </div>
+        <div class="row-value">
+          <button class="btn btn-default">Edit Custom Instructions</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Section 2: LLM Provider ─────────────────────────────────── -->
+  <div class="section">
+    <div class="section-label">LLM Provider</div>
+    <div class="form-group">
+
+      <!-- Provider picker row -->
+      <div class="form-row">
+        <span class="row-label">LLM Provider</span>
+        <div class="row-value">
+          <select class="picker" id="provider-picker" onchange="onProviderChange(this.value)">
+            <option value="off">Off</option>
+            <option value="openai" selected>OpenAI</option>
+            <option value="gemini">Google Gemini</option>
+            <option value="ollama">Local (Ollama)</option>
+            <option value="apple">Apple Intelligence</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Nested API key row — shown only for cloud providers (openai/gemini) -->
+      <div class="form-row tall conditional-section" id="apikey-row" style="display:none;">
+        <div style="flex:1; min-width:0;">
+          <div class="row-label" style="margin-bottom:6px;"><strong id="apikey-label">OpenAI API Key</strong></div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <input type="password" class="secure-field" id="api-key-field"
+                   value="sk-proj-••••••••••••••••••••" placeholder="sk-proj-…" />
+            <span class="validation-badge badge-valid">
+              <span class="badge-dot"></span>
+              Valid
+            </span>
+          </div>
+        </div>
+        <div class="row-value" style="align-self:flex-end;">
+          <button class="btn btn-accent">Save</button>
+          <button class="btn btn-destructive" style="margin-left:6px;">Clear</button>
+        </div>
+      </div>
+
+    </div>
+
+    <div id="off-helper" class="off-helper-banner" style="display:none; margin-top:8px;">
+      Turn on AI polish to automatically fix grammar, punctuation, and formatting.
+    </div>
+
+    <div class="section-footer conditional-section" id="apikey-footer" style="display:none;">
+      <a href="#" class="link">Get your free API key</a><span id="apikey-link-suffix"> at platform.openai.com</span>
+    </div>
+  </div>
+
+  <!-- ── Section 3: Model ────────────────────────────────────────── -->
+  <div class="section conditional-section" id="section-model">
+    <div class="section-label">Model</div>
+    <div class="form-group" id="model-form-group">
+
+      <!-- Model picker row -->
+      <div class="form-row">
+        <span class="row-label">Model</span>
+        <div class="row-value">
+          <select class="picker" id="model-picker" onchange="onModelChange(this.value)">
+            <option value="gpt-4o-mini" selected>GPT-4o Mini</option>
+            <option value="gpt-41-mini">GPT-4.1 Mini</option>
+            <option value="gpt-4o">GPT-4o</option>
+            <option value="gpt-35-turbo">GPT-3.5 Turbo</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Model recommendation cards — rendered by JS -->
+      <div id="model-cards-container"></div>
+
+    </div>
+    <div class="section-footer" id="model-footer">
+      Transcript cleanup is straightforward — smaller models handle it well at a fraction of the cost.
+    </div>
+  </div>
+
+  <!-- ── Section 4: Advanced ────────────────────────────────────── -->
+  <div class="section conditional-section" id="section-advanced">
+    <div class="section-label">Advanced</div>
+    <div class="form-group">
+      <div class="form-row tall" style="align-items:center;">
+        <div style="flex:1;">
+          <div class="row-label"><strong>Deep reasoning</strong></div>
+          <div class="row-helper">Takes longer but handles complex formatting instructions better.</div>
+        </div>
+        <div class="row-value" style="padding-top:1px;">
+          <label class="toggle" aria-label="Deep reasoning">
+            <input type="checkbox" id="deep-reasoning-toggle">
+            <div class="toggle-track"></div>
+            <div class="toggle-thumb"></div>
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- .settings-panel -->
+
+<script>
+  // ── Model definitions per provider ──────────────────────────────
+  var MODELS = {
+    openai: [
+      { value: 'gpt-4o-mini',   label: 'GPT-4o Mini',    desc: 'Fast · Affordable · Great quality', badge: 'Best value',  badgeClass: 'badge-green', iconBg: 'rgba(0,200,128,0.10)', icon: '⚡' },
+      { value: 'gpt-41-mini',   label: 'GPT-4.1 Mini',   desc: 'Fast · Affordable · Newer',         badge: 'Also great',  badgeClass: 'badge-blue',  iconBg: 'rgba(0,204,221,0.10)', icon: '✦' },
+      { value: 'gpt-4o',        label: 'GPT-4o / 4.1',   desc: 'Slower · Higher cost',              badge: 'Premium',     badgeClass: 'badge-gray',  iconBg: 'rgba(0,0,0,0.05)',    icon: '◈' },
+      { value: 'gpt-35-turbo',  label: 'GPT-3.5 Turbo',  desc: 'Cheapest · Lower quality',          badge: 'Budget',      badgeClass: 'badge-gray',  iconBg: 'rgba(0,0,0,0.05)',    icon: '◇' }
+    ],
+    gemini: [
+      { value: 'gemini-2-flash', label: 'Gemini 2.0 Flash', desc: 'Fast · Affordable · Great quality', badge: 'Best value',  badgeClass: 'badge-green', iconBg: 'rgba(0,200,128,0.10)', icon: '⚡' },
+      { value: 'gemini-15-flash',label: 'Gemini 1.5 Flash', desc: 'Fast · Stable · Proven',            badge: 'Also great',  badgeClass: 'badge-blue',  iconBg: 'rgba(0,204,221,0.10)', icon: '✦' },
+      { value: 'gemini-2-pro',   label: 'Gemini 2.0 Pro',   desc: 'Slower · Higher cost',              badge: 'Premium',     badgeClass: 'badge-gray',  iconBg: 'rgba(0,0,0,0.05)',    icon: '◈' }
+    ],
+    ollama: [
+      { value: 'llama3.2', label: 'Llama 3.2',  desc: 'Fast · Private · No internet needed',  badge: 'Recommended', badgeClass: 'badge-green', iconBg: 'rgba(0,200,128,0.10)', icon: '⚡' },
+      { value: 'llama3.1', label: 'Llama 3.1',  desc: 'Stable · Well tested',                 badge: 'Also great',  badgeClass: 'badge-blue',  iconBg: 'rgba(0,204,221,0.10)', icon: '✦' },
+      { value: 'phi3',     label: 'Phi-3 Mini', desc: 'Smallest · Fastest on older Macs',     badge: 'Lightweight', badgeClass: 'badge-gray',  iconBg: 'rgba(0,0,0,0.05)',    icon: '◇' }
+    ]
+  };
+
+  var API_KEY_META = {
+    openai: { label: 'OpenAI API Key',        suffix: ' at platform.openai.com' },
+    gemini: { label: 'Google Gemini API Key', suffix: ' at aistudio.google.com' }
+  };
+
+  // ── Rebuild model picker options ─────────────────────────────────
+  function rebuildModelPicker(provider) {
+    var picker = document.getElementById('model-picker');
+    var models = MODELS[provider] || [];
+    while (picker.options.length > 0) { picker.remove(0); }
+    models.forEach(function(m, i) {
+      var opt = document.createElement('option');
+      opt.value = m.value;
+      opt.textContent = m.label;
+      if (i === 0) { opt.selected = true; }
+      picker.appendChild(opt);
+    });
+  }
+
+  // ── Rebuild model recommendation cards ──────────────────────────
+  function rebuildModelCards(provider) {
+    var container = document.getElementById('model-cards-container');
+    while (container.firstChild) { container.removeChild(container.firstChild); }
+
+    var models = MODELS[provider] || [];
+    models.forEach(function(m) {
+      var card = document.createElement('div');
+      card.className = 'model-card';
+
+      var iconEl = document.createElement('div');
+      iconEl.className = 'model-card-icon';
+      iconEl.style.background = m.iconBg;
+      iconEl.textContent = m.icon;
+
+      var body = document.createElement('div');
+      body.className = 'model-card-body';
+
+      var nameEl = document.createElement('div');
+      nameEl.className = 'model-card-name';
+      nameEl.textContent = m.label;
+
+      var descEl = document.createElement('div');
+      descEl.className = 'model-card-desc';
+      descEl.textContent = m.desc;
+
+      body.appendChild(nameEl);
+      body.appendChild(descEl);
+
+      var badge = document.createElement('span');
+      badge.className = 'model-badge ' + m.badgeClass;
+      badge.textContent = m.badge;
+
+      card.appendChild(iconEl);
+      card.appendChild(body);
+      card.appendChild(badge);
+      container.appendChild(card);
+    });
+  }
+
+  // ── Show/hide nested API key row ─────────────────────────────────
+  function setApikeyRowVisible(visible, provider) {
+    var apikeyRow    = document.getElementById('apikey-row');
+    var apikeyFooter = document.getElementById('apikey-footer');
+    var apikeyLabel  = document.getElementById('apikey-label');
+    var linkSuffix   = document.getElementById('apikey-link-suffix');
+
+    apikeyRow.style.display    = visible ? 'flex' : 'none';
+    apikeyFooter.style.display = visible ? 'block' : 'none';
+
+    if (visible) {
+      var meta = API_KEY_META[provider] || API_KEY_META['openai'];
+      if (apikeyLabel) { apikeyLabel.textContent = meta.label; }
+      if (linkSuffix)  { linkSuffix.textContent  = meta.suffix; }
+    }
+  }
+
+  // ── Provider change handler ──────────────────────────────────────
+  function onProviderChange(provider) {
+    var sectionModel    = document.getElementById('section-model');
+    var sectionStyle    = document.getElementById('section-style');
+    var sectionAdvanced = document.getElementById('section-advanced');
+    var offHelper       = document.getElementById('off-helper');
+
+    // Reset all conditional visibility
+    sectionModel.classList.remove('visible');
+    sectionStyle.classList.remove('visible');
+    sectionAdvanced.classList.remove('visible');
+    setApikeyRowVisible(false, provider);
+    offHelper.style.display = 'none';
+
+    if (provider === 'off') {
+      offHelper.style.display = 'block';
+      return;
+    }
+
+    // All active providers show Writing Style
+    sectionStyle.classList.add('visible');
+
+    if (provider === 'apple') {
+      // Apple Intelligence: no model or API key sections needed
+      return;
+    }
+
+    // All active non-apple providers get Model section
+    sectionModel.classList.add('visible');
+    rebuildModelPicker(provider);
+    rebuildModelCards(provider);
+
+    if (provider === 'ollama') {
+      // Local: no API key, no advanced (privacy-first, no cloud config)
+      return;
+    }
+
+    // Cloud providers (openai, gemini): show nested API key row and Advanced
+    setApikeyRowVisible(true, provider);
+    sectionAdvanced.classList.add('visible');
+  }
+
+  // ── Model change handler ─────────────────────────────────────────
+  function onModelChange(value) {
+    var cards = document.querySelectorAll('#model-cards-container .model-card');
+    var models = MODELS[document.getElementById('provider-picker').value] || [];
+    var i;
+    for (i = 0; i < cards.length; i++) {
+      var isSelected = (models[i] && models[i].value === value);
+      cards[i].style.background  = isSelected ? 'rgba(124,58,237,0.04)' : '';
+      cards[i].style.borderLeft  = isSelected ? '3px solid var(--accent)' : '';
+    }
+  }
+
+  // ── Writing Style preset selector ────────────────────────────────
+  var customStyleActive = false;
+
+  function selectStyle(style) {
+    var cards = document.querySelectorAll('#style-preset-grid .preset-card');
+    var i;
+    for (i = 0; i < cards.length; i++) {
+      cards[i].classList.toggle('selected', cards[i].getAttribute('data-style') === style);
+    }
+    customStyleActive = false;
+    var hintEl = document.getElementById('custom-hint-text');
+    if (hintEl) {
+      hintEl.textContent = 'Want more control?';
+      hintEl.classList.remove('active');
+    }
+  }
+
+  // ── Init on load (default: openai selected) ──────────────────────
+  onProviderChange('openai');
+</script>
+
+</body>
+</html>

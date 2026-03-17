@@ -1,0 +1,54 @@
+.sceneInner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.artContainer {
+  position: relative;
+  width: 100%;
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.bgIllustration {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+  mask-image: linear-gradient(to bottom, transparent 0%, black 5%, black 95%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 5%, black 95%, transparent 100%);
+}
+
+.headerWrap {
+  position: absolute;
+  top: 1%;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  z-index: 2;
+}
+
+.title {
+  font-family: var(--font-body);
+  font-size: 1.5rem;
+  font-weight: 700;
+  text-align: center;
+  margin: 0;
+  color: #ffffff;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,1);
+}
+
+.captionWrap {
+  position: absolute;
+  bottom: 3%;
+  right: 3%;
+  z-index: 2;
+}
+
+.captionWrap p {
+  text-align: right;
+  white-space: pre-line;
+}

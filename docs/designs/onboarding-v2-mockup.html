@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EnviousWispr — Onboarding v2 Mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f8f5ff; --surface: #f0ecf9; --card-bg: #ffffff;
+    --text-primary: #0f0a1a; --text-secondary: #4a3d60; --text-tertiary: #7d6f96;
+    --accent: #7c3aed; --accent-hover: #6d28d9;
+    --accent-soft: rgba(124,58,237,0.1); --accent-glow: rgba(124,58,237,0.15);
+    --success: #00c880; --success-soft: rgba(0,200,128,0.1);
+    --error: #e6253a; --error-soft: rgba(230,37,58,0.1);
+    --border: rgba(138,43,226,0.06); --border-hover: rgba(138,43,226,0.12);
+    --btn-dark: #0f0a1a;
+    --window-shadow: 0 22px 70px rgba(15,10,26,0.12), 0 0 0 1px rgba(138,43,226,0.06);
+    --card-shadow: 0 1px 3px rgba(15,10,26,0.04), 0 0 0 1px rgba(138,43,226,0.04);
+    --rainbow: linear-gradient(90deg, #ff2a40, #ff8c00, #ffd700, #adff2f, #00fa9a, #00ffff, #1e90ff, #4169e1, #8a2be2);
+    --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: 'JetBrains Mono', 'SF Mono', 'Menlo', monospace;
+  }
+
+  body {
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    background: var(--bg); color: var(--text-primary);
+    display: flex; flex-direction: column; align-items: center;
+    padding: 40px 20px 60px; min-height: 100vh; position: relative;
+  }
+  body::before {
+    content: ''; position: fixed; top: -20%; right: -10%;
+    width: 600px; height: 600px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(124,58,237,0.06) 0%, transparent 70%);
+    pointer-events: none; z-index: 0;
+  }
+  body::after {
+    content: ''; position: fixed; bottom: -15%; left: -10%;
+    width: 500px; height: 500px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(0,255,255,0.04) 0%, transparent 70%);
+    pointer-events: none; z-index: 0;
+  }
+
+  /* PAGE LABEL */
+  .page-label {
+    font-size: 11px; font-weight: 700; color: var(--text-tertiary);
+    text-transform: uppercase; letter-spacing: 1px; margin-bottom: 20px;
+    position: relative; z-index: 1;
+  }
+
+  /* WINDOW */
+  .macos-window {
+    width: 460px; background: var(--card-bg); border-radius: 12px;
+    box-shadow: var(--window-shadow); overflow: hidden;
+    position: relative; z-index: 1; border: 1px solid var(--border);
+  }
+  .titlebar {
+    height: 42px; background: linear-gradient(180deg, #faf8ff 0%, #f0ecf9 100%);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; padding: 0 14px; position: relative;
+    -webkit-user-select: none; user-select: none;
+  }
+  .traffic-lights { display: flex; gap: 8px; z-index: 1; }
+  .traffic-light { width: 12px; height: 12px; border-radius: 50%; position: relative; }
+  .traffic-light.close    { background: #ff5f57; border: 0.5px solid rgba(0,0,0,0.12); }
+  .traffic-light.minimize { background: #ffbd2e; border: 0.5px solid rgba(0,0,0,0.12); }
+  .traffic-light.maximize { background: #28c840; border: 0.5px solid rgba(0,0,0,0.12); }
+  .titlebar-text {
+    position: absolute; left: 0; right: 0; text-align: center;
+    font-size: 13px; font-weight: 700; color: var(--text-primary);
+    pointer-events: none; letter-spacing: -0.2px;
+  }
+
+  /* WINDOW CONTENT */
+  .window-content {
+    padding: 28px 28px 28px;
+    display: flex; flex-direction: column; position: relative; overflow: hidden;
+    min-height: 520px;
+  }
+
+  /* SCREEN PANELS */
+  .screen-panel {
+    display: none; flex-direction: column; align-items: center;
+    animation: screenFadeIn 0.35s cubic-bezier(0.16,1,0.3,1); flex: 1;
+  }
+  .screen-panel.active { display: flex; }
+  @keyframes screenFadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* LIPS */
+  .lips-wrap {
+    width: 72px; height: 72px; display: flex; align-items: center;
+    justify-content: center; margin-bottom: 20px; flex-shrink: 0;
+  }
+  .lips-icon { width: 72px; height: 72px; overflow: visible; }
+
+  /* Idle animation */
+  @keyframes lipsBreath {
+    0%, 100% { transform: scaleY(1); }
+    50%       { transform: scaleY(0.88); }
+  }
+  .lips-idle .upper-bar { animation: lipsBreath 2.8s ease-in-out infinite; transform-origin: bottom center; }
+  .lips-idle .lower-bar { animation: lipsBreath 2.8s ease-in-out infinite; transform-origin: top center; }
+  .lips-idle .u0,.lips-idle .l0 { animation-delay:0s; }
+  .lips-idle .u1,.lips-idle .l1 { animation-delay:0.1s; }
+  .lips-idle .u2,.lips-idle .l2 { animation-delay:0.2s; }
+  .lips-idle .u3,.lips-idle .l3 { animation-delay:0.15s; }
+  .lips-idle .u4,.lips-idle .l4 { animation-delay:0.05s; }
+  .lips-idle .u5,.lips-idle .l5 { animation-delay:0.25s; }
+  .lips-idle .u6,.lips-idle .l6 { animation-delay:0.3s; }
+  .lips-idle .u7,.lips-idle .l7 { animation-delay:0.1s; }
+  .lips-idle .u8,.lips-idle .l8 { animation-delay:0.2s; }
+
+  /* Triumph animation */
+  @keyframes lipsTriumph {
+    0%{transform:scaleY(0.5)} 40%{transform:scaleY(1.35)} 65%{transform:scaleY(1.05)} 80%{transform:scaleY(1.2)} 100%{transform:scaleY(1.1)}
+  }
+  @keyframes lipsTriumphGlow {
+    0%,100%{filter:brightness(1) drop-shadow(0 0 4px rgba(124,58,237,0.2))}
+    50%{filter:brightness(1.2) drop-shadow(0 0 12px rgba(124,58,237,0.4))}
+  }
+  .lips-triumph .upper-bar { animation: lipsTriumph 0.9s cubic-bezier(0.34,1.56,0.64,1) forwards; transform-origin: bottom center; }
+  .lips-triumph .lower-bar { animation: lipsTriumph 0.9s cubic-bezier(0.34,1.56,0.64,1) forwards; transform-origin: top center; }
+  .lips-triumph .u0,.lips-triumph .l0{animation-delay:0s}
+  .lips-triumph .u1,.lips-triumph .l1{animation-delay:0.05s}
+  .lips-triumph .u2,.lips-triumph .l2{animation-delay:0.1s}
+  .lips-triumph .u3,.lips-triumph .l3{animation-delay:0.15s}
+  .lips-triumph .u4,.lips-triumph .l4{animation-delay:0.18s}
+  .lips-triumph .u5,.lips-triumph .l5{animation-delay:0.15s}
+  .lips-triumph .u6,.lips-triumph .l6{animation-delay:0.1s}
+  .lips-triumph .u7,.lips-triumph .l7{animation-delay:0.05s}
+  .lips-triumph .u8,.lips-triumph .l8{animation-delay:0s}
+  .lips-triumph g{animation:lipsTriumphGlow 1.6s ease-in-out 0.9s infinite}
+
+  /* Equalizer animation */
+  @keyframes eqBar0{0%,100%{transform:scaleY(0.5)}50%{transform:scaleY(1.1)}}
+  @keyframes eqBar1{0%,100%{transform:scaleY(1.0)}50%{transform:scaleY(0.4)}}
+  @keyframes eqBar2{0%,100%{transform:scaleY(0.7)}50%{transform:scaleY(1.2)}}
+  @keyframes eqBar3{0%,100%{transform:scaleY(1.1)}50%{transform:scaleY(0.5)}}
+  @keyframes eqBar4{0%,100%{transform:scaleY(0.6)}50%{transform:scaleY(1.15)}}
+  @keyframes eqBar5{0%,100%{transform:scaleY(1.0)}50%{transform:scaleY(0.55)}}
+  @keyframes eqBar6{0%,100%{transform:scaleY(0.75)}50%{transform:scaleY(1.05)}}
+  @keyframes eqBar7{0%,100%{transform:scaleY(1.1)}50%{transform:scaleY(0.45)}}
+  @keyframes eqBar8{0%,100%{transform:scaleY(0.55)}50%{transform:scaleY(1.1)}}
+  .lips-equalizer .upper-bar{transform-origin:bottom center}
+  .lips-equalizer .lower-bar{transform-origin:top center}
+  .lips-equalizer .u0,.lips-equalizer .l0{animation:eqBar0 0.45s ease-in-out infinite}
+  .lips-equalizer .u1,.lips-equalizer .l1{animation:eqBar1 0.52s ease-in-out infinite;animation-delay:0.07s}
+  .lips-equalizer .u2,.lips-equalizer .l2{animation:eqBar2 0.38s ease-in-out infinite;animation-delay:0.14s}
+  .lips-equalizer .u3,.lips-equalizer .l3{animation:eqBar3 0.61s ease-in-out infinite;animation-delay:0.05s}
+  .lips-equalizer .u4,.lips-equalizer .l4{animation:eqBar4 0.44s ease-in-out infinite;animation-delay:0.11s}
+  .lips-equalizer .u5,.lips-equalizer .l5{animation:eqBar5 0.57s ease-in-out infinite;animation-delay:0.03s}
+  .lips-equalizer .u6,.lips-equalizer .l6{animation:eqBar6 0.41s ease-in-out infinite;animation-delay:0.18s}
+  .lips-equalizer .u7,.lips-equalizer .l7{animation:eqBar7 0.49s ease-in-out infinite;animation-delay:0.08s}
+  .lips-equalizer .u8,.lips-equalizer .l8{animation:eqBar8 0.55s ease-in-out infinite;animation-delay:0.13s}
+
+  /* TYPOGRAPHY */
+  .screen-title {
+    font-size: 22px; font-weight: 800; color: var(--text-primary);
+    margin-bottom: 6px; text-align: center; letter-spacing: -0.5px; line-height: 1.2;
+    transition: all 0.3s ease; text-wrap: balance;
+  }
+  .screen-title.hero { font-size: 26px; letter-spacing: -0.7px; }
+  .screen-subtitle {
+    font-size: 14px; line-height: 1.55; color: var(--text-secondary);
+    text-align: center; margin-bottom: 22px; max-width: 340px; font-weight: 400;
+    transition: all 0.3s ease; text-wrap: balance;
+  }
+
+  /* BUTTONS */
+  .btn {
+    font-family: var(--font-body); font-size: 14px; font-weight: 700;
+    border: none; border-radius: 12px; padding: 13px 28px; cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16,1,0.3,1);
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: 6px; letter-spacing: -0.1px; width: 100%;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn-primary {
+    background: var(--btn-dark); color: #fff;
+    box-shadow: 0 2px 8px rgba(15,10,26,0.16);
+  }
+  .btn-primary:hover {
+    background: #1a1230; box-shadow: 0 4px 16px rgba(15,10,26,0.22); transform: translateY(-1px);
+  }
+  .btn-primary:disabled {
+    background: var(--surface); color: var(--text-tertiary); cursor: default;
+    transform: none; box-shadow: none;
+  }
+  .btn-get-started {
+    background: var(--btn-dark); color: #fff;
+    font-size: 15px; font-weight: 800;
+    letter-spacing: 0.3px;
+  }
+  .btn-get-started:hover {
+    background: #1a1230;
+    box-shadow: 0 4px 16px rgba(15,10,26,0.2);
+    transform: translateY(-1px);
+  }
+
+  /* FEATURE LIST (Screen 1) */
+  .feature-list {
+    width: 100%; max-width: 360px;
+    display: flex; flex-direction: column; gap: 10px;
+    margin-bottom: 24px;
+  }
+  .feature-row {
+    display: flex; align-items: center; gap: 13px;
+    padding: 10px 13px; border-radius: 12px;
+    background: var(--card-bg); border: 1px solid var(--border);
+    transition: border-color 0.2s ease;
+  }
+  .feature-row:hover { border-color: var(--border-hover); }
+  .feature-icon-wrap {
+    width: 32px; height: 32px; border-radius: 9px;
+    background: var(--accent-soft); display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .feature-icon-wrap svg { color: var(--accent); }
+  .feature-text { flex: 1; }
+  .feature-label { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+  .feature-desc  { font-size: 11.5px; color: var(--text-tertiary); margin-top: 1px; line-height: 1.35; }
+
+  /* SETUP CHECKLIST (Screen 2) */
+  .setup-checklist {
+    width: 100%; max-width: 360px; display: flex; flex-direction: column;
+    gap: 0; margin-bottom: 18px; border: 1px solid var(--border);
+    border-radius: 14px; overflow: hidden; background: var(--card-bg);
+  }
+  .setup-item {
+    display: flex; align-items: center; gap: 12px; padding: 13px 15px;
+    border-bottom: 1px solid var(--surface); transition: background 0.3s ease;
+  }
+  .setup-item:last-child { border-bottom: none; }
+  .setup-item.done { background: rgba(0,200,128,0.03); }
+  .setup-item-icon {
+    width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; font-size: 13px; font-weight: 700;
+  }
+  .setup-item-icon.pending { background: var(--surface); color: var(--text-tertiary); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .setup-item-icon.spinning {
+    background: transparent; border: 2px solid var(--surface);
+    border-top-color: var(--accent); animation: spin 0.8s linear infinite;
+  }
+  .setup-item-icon.complete { background: var(--success); color: #fff; font-size: 14px; }
+  .setup-item-text { flex: 1; }
+  .setup-item-label { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+  .setup-item-sub   { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
+
+  /* INLINE PROGRESS BAR */
+  .progress-inline {
+    display: inline-block; width: 80px; height: 3px; background: var(--surface);
+    border-radius: 2px; vertical-align: middle; margin-left: 6px;
+    position: relative; overflow: hidden;
+  }
+  .progress-inline::after {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px;
+    background: var(--rainbow); background-size: 200% 100%;
+    animation: shimmer 2s linear infinite, progressGrow 3s ease-out forwards;
+  }
+  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+  @keyframes progressGrow { from{width:5%} to{width:100%} }
+
+  /* PERMISSIONS SECTION (Screen 2, phase 2) */
+  .permissions-section {
+    width: 100%; max-width: 360px;
+    overflow: hidden; max-height: 0; opacity: 0;
+    transition: max-height 0.5s cubic-bezier(0.16,1,0.3,1), opacity 0.4s ease;
+    margin-bottom: 0;
+  }
+  .permissions-section.visible { max-height: 300px; opacity: 1; margin-bottom: 16px; }
+  .permission-row {
+    display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 13px; margin-bottom: 8px; transition: all 0.25s ease;
+  }
+  .permission-row:last-child { margin-bottom: 0; }
+  .permission-row.granted { border-color: rgba(0,200,128,0.3); background: rgba(0,200,128,0.03); }
+  .permission-icon {
+    width: 36px; height: 36px; border-radius: 10px; background: var(--surface);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: all 0.3s ease;
+  }
+  .permission-row.granted .permission-icon { background: var(--success-soft); }
+  .permission-text { flex: 1; }
+  .permission-name { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+  .permission-desc { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
+  .permission-btn {
+    font-family: var(--font-body); font-size: 12px; font-weight: 700;
+    border: none; border-radius: 9px; padding: 7px 14px; cursor: pointer;
+    transition: all 0.2s ease; flex-shrink: 0; white-space: nowrap;
+  }
+  .permission-btn.grant { background: var(--accent); color: #fff; }
+  .permission-btn.grant:hover { background: var(--accent-hover); box-shadow: 0 3px 10px rgba(124,58,237,0.25); }
+  .permission-btn.granted-state {
+    background: var(--success-soft); color: #008a56;
+    border: 1px solid rgba(0,200,128,0.2); cursor: default;
+  }
+
+  /* Permission icon granted state — shown via CSS class swap */
+  .perm-icon-granted { display: none; }
+  .permission-row.granted .perm-icon-default { display: none; }
+  .permission-row.granted .perm-icon-granted { display: block; }
+
+  /* KEYCAP — hero size (Screen 3) */
+  .keycap-hero-wrap {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 10px; margin-bottom: 24px;
+  }
+  .keycap-hero {
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: 10px; padding: 18px 36px;
+    background: linear-gradient(180deg, #ffffff 0%, #f2edff 100%);
+    border: 1.5px solid var(--border-hover); border-bottom-width: 4px;
+    border-bottom-color: rgba(138,43,226,0.2); border-radius: 16px;
+    font-size: 22px; font-weight: 700; color: var(--text-primary);
+    box-shadow: 0 2px 8px rgba(15,10,26,0.07), 0 0 0 3px rgba(124,58,237,0.06);
+    letter-spacing: 0.3px; font-family: var(--font-body);
+    transition: all 0.2s ease;
+  }
+  .keycap-hero:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(15,10,26,0.10), 0 0 0 3px rgba(124,58,237,0.10);
+  }
+  .keycap-symbol { font-size: 26px; opacity: 0.7; }
+  .keycap-change-link {
+    font-size: 12px; font-weight: 600; color: var(--accent);
+    background: none; border: none; cursor: pointer;
+    padding: 0; font-family: var(--font-body);
+    text-decoration: none; opacity: 0.8; transition: opacity 0.15s ease;
+  }
+  .keycap-change-link:hover { opacity: 1; text-decoration: underline; }
+
+  /* POWER USER NUDGE */
+  .power-user-nudge {
+    width: 100%; max-width: 360px;
+    text-align: center; margin-top: 16px; padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+  .power-user-nudge-title {
+    font-size: 14px; font-weight: 700; color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+  .power-user-nudge-body {
+    font-size: 13px; color: var(--text-secondary); line-height: 1.5;
+  }
+  .power-user-nudge a {
+    color: var(--accent); text-decoration: none; font-weight: 700;
+  }
+  .power-user-nudge a:hover { text-decoration: underline; }
+
+  /* BUTTON ROW */
+  .btn-row {
+    width: 100%; max-width: 360px;
+    display: flex; flex-direction: column; gap: 8px;
+    margin-top: auto; padding-top: 8px;
+  }
+
+  /* ========================================
+     REVIEWER CONTROLS PANEL
+     ======================================== */
+  .controls {
+    margin-top: 24px; width: 460px; background: var(--card-bg);
+    border-radius: 14px; padding: 16px 18px; box-shadow: var(--card-shadow);
+    border: 1px solid var(--border); position: relative; z-index: 1;
+  }
+  .controls-title {
+    font-size: 10px; font-weight: 700; color: var(--text-tertiary);
+    text-transform: uppercase; letter-spacing: 0.9px; margin-bottom: 13px;
+  }
+  .controls-row {
+    display: flex; align-items: center; gap: 7px; margin-bottom: 9px; flex-wrap: wrap;
+  }
+  .controls-row:last-child { margin-bottom: 0; }
+  .controls-label {
+    font-size: 11px; color: var(--text-secondary); min-width: 52px; font-weight: 600;
+  }
+  .ctrl-btn {
+    font-family: var(--font-body); font-size: 11.5px; font-weight: 600;
+    border: 1px solid var(--border-hover); background: var(--card-bg); color: var(--text-primary);
+    padding: 5px 12px; border-radius: 8px; cursor: pointer; transition: all 0.15s ease;
+  }
+  .ctrl-btn:hover { background: var(--surface); border-color: rgba(138,43,226,0.2); }
+  .ctrl-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .controls-divider { height: 1px; background: var(--surface); margin: 10px 0; }
+  .ctrl-row-screen2 { display: none; }
+  .ctrl-row-screen2.visible { display: flex; }
+</style>
+</head>
+<body>
+
+<div class="page-label">EnviousWispr — Onboarding v2 Mockup</div>
+
+<!-- macOS Window -->
+<div class="macos-window" id="mainWindow">
+  <div class="titlebar">
+    <div class="traffic-lights">
+      <div class="traffic-light close"></div>
+      <div class="traffic-light minimize"></div>
+      <div class="traffic-light maximize"></div>
+    </div>
+    <div class="titlebar-text">EnviousWispr Setup</div>
+  </div>
+  <div class="window-content">
+
+    <!-- ============================================================
+         SCREEN 1: Welcome / Brand Pitch
+         ============================================================ -->
+    <div class="screen-panel active" id="screen1">
+
+      <!-- Lips: idle animation -->
+      <div class="lips-wrap">
+        <svg class="lips-icon lips-idle" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+          <defs><filter id="lip-glow-s1" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter></defs>
+          <g transform="translate(8,13)" filter="url(#lip-glow-s1)">
+            <rect class="upper-bar u0" x="16"  y="84.2"  width="14" height="20" rx="5" fill="#ff2a40" opacity="0.92"/>
+            <rect class="upper-bar u1" x="40"  y="65.75" width="14" height="32" rx="5" fill="#ff8c00" opacity="0.92"/>
+            <rect class="upper-bar u2" x="64"  y="43.36" width="14" height="48" rx="5" fill="#ffd700" opacity="0.92"/>
+            <rect class="upper-bar u3" x="88"  y="63.04" width="14" height="36" rx="5" fill="#adff2f" opacity="0.92"/>
+            <rect class="upper-bar u4" x="112" y="81.43" width="14" height="24" rx="5" fill="#00fa9a" opacity="0.92"/>
+            <rect class="upper-bar u5" x="136" y="63.04" width="14" height="36" rx="5" fill="#00ffff" opacity="0.92"/>
+            <rect class="upper-bar u6" x="160" y="43.36" width="14" height="48" rx="5" fill="#1e90ff" opacity="0.92"/>
+            <rect class="upper-bar u7" x="184" y="65.75" width="14" height="32" rx="5" fill="#4169e1" opacity="0.92"/>
+            <rect class="upper-bar u8" x="208" y="84.2"  width="14" height="20" rx="5" fill="#8a2be2" opacity="0.92"/>
+            <rect class="lower-bar l0" x="16"  y="125.8"  width="14" height="20" rx="5" fill="#4169e1" opacity="0.88"/>
+            <rect class="lower-bar l1" x="40"  y="119.35" width="14" height="36" rx="5" fill="#1e90ff" opacity="0.88"/>
+            <rect class="lower-bar l2" x="64"  y="112.96" width="14" height="48" rx="5" fill="#00ffff" opacity="0.88"/>
+            <rect class="lower-bar l3" x="88"  y="120.64" width="14" height="60" rx="5" fill="#00fa9a" opacity="0.88"/>
+            <rect class="lower-bar l4" x="112" y="127.03" width="14" height="68" rx="5" fill="#adff2f" opacity="0.88"/>
+            <rect class="lower-bar l5" x="136" y="120.64" width="14" height="60" rx="5" fill="#ffd700" opacity="0.88"/>
+            <rect class="lower-bar l6" x="160" y="112.96" width="14" height="48" rx="5" fill="#ff8c00" opacity="0.88"/>
+            <rect class="lower-bar l7" x="184" y="119.35" width="14" height="36" rx="5" fill="#ff2a40" opacity="0.88"/>
+            <rect class="lower-bar l8" x="208" y="125.8"  width="14" height="20" rx="5" fill="#8a2be2" opacity="0.88"/>
+          </g>
+        </svg>
+      </div>
+
+      <div class="screen-title">Your Voice, Instantly Captured.</div>
+      <div class="screen-subtitle">The privacy-first dictation app built for macOS.</div>
+
+      <!-- Feature badges -->
+      <div class="feature-list">
+        <!-- Shield: On-Device -->
+        <div class="feature-row">
+          <div class="feature-icon-wrap">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+          </div>
+          <div class="feature-text">
+            <div class="feature-label">100% On-Device</div>
+            <div class="feature-desc">Your recordings never leave your Mac.</div>
+          </div>
+        </div>
+        <!-- Wifi-off: Works Offline -->
+        <div class="feature-row">
+          <div class="feature-icon-wrap">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="1" y1="1" x2="23" y2="23"/>
+              <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/>
+              <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/>
+              <path d="M10.71 5.05A16 16 0 0 1 22.56 9"/>
+              <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/>
+              <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+              <line x1="12" y1="20" x2="12.01" y2="20"/>
+            </svg>
+          </div>
+          <div class="feature-text">
+            <div class="feature-label">Works Offline</div>
+            <div class="feature-desc">Transcribe from anywhere, anytime.</div>
+          </div>
+        </div>
+        <!-- Lightning: Native Performance -->
+        <div class="feature-row">
+          <div class="feature-icon-wrap">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+          </div>
+          <div class="feature-text">
+            <div class="feature-label">Native Performance</div>
+            <div class="feature-desc">Blazing-fast and light on resources.</div>
+          </div>
+        </div>
+        <!-- User: Free, No Account -->
+        <div class="feature-row">
+          <div class="feature-icon-wrap">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+          </div>
+          <div class="feature-text">
+            <div class="feature-label">Free, No Account</div>
+            <div class="feature-desc">Get started right away.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="goToScreen(2)">Get Started</button>
+      </div>
+
+    </div><!-- /screen1 -->
+
+
+    <!-- ============================================================
+         SCREEN 2: Setting Up (install phase + permissions phase)
+         ============================================================ -->
+    <div class="screen-panel" id="screen2">
+
+      <!-- Lips: starts as equalizer, changes to triumph after checklist -->
+      <div class="lips-wrap" id="s2LipsWrap">
+        <svg class="lips-icon lips-equalizer" id="s2LipsSvg" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+          <defs><filter id="lip-glow-s2" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter></defs>
+          <g transform="translate(8,13)" filter="url(#lip-glow-s2)">
+            <rect class="upper-bar u0" x="16"  y="84.2"  width="14" height="20" rx="5" fill="#ff2a40" opacity="0.92"/>
+            <rect class="upper-bar u1" x="40"  y="65.75" width="14" height="32" rx="5" fill="#ff8c00" opacity="0.92"/>
+            <rect class="upper-bar u2" x="64"  y="43.36" width="14" height="48" rx="5" fill="#ffd700" opacity="0.92"/>
+            <rect class="upper-bar u3" x="88"  y="63.04" width="14" height="36" rx="5" fill="#adff2f" opacity="0.92"/>
+            <rect class="upper-bar u4" x="112" y="81.43" width="14" height="24" rx="5" fill="#00fa9a" opacity="0.92"/>
+            <rect class="upper-bar u5" x="136" y="63.04" width="14" height="36" rx="5" fill="#00ffff" opacity="0.92"/>
+            <rect class="upper-bar u6" x="160" y="43.36" width="14" height="48" rx="5" fill="#1e90ff" opacity="0.92"/>
+            <rect class="upper-bar u7" x="184" y="65.75" width="14" height="32" rx="5" fill="#4169e1" opacity="0.92"/>
+            <rect class="upper-bar u8" x="208" y="84.2"  width="14" height="20" rx="5" fill="#8a2be2" opacity="0.92"/>
+            <rect class="lower-bar l0" x="16"  y="125.8"  width="14" height="20" rx="5" fill="#4169e1" opacity="0.88"/>
+            <rect class="lower-bar l1" x="40"  y="119.35" width="14" height="36" rx="5" fill="#1e90ff" opacity="0.88"/>
+            <rect class="lower-bar l2" x="64"  y="112.96" width="14" height="48" rx="5" fill="#00ffff" opacity="0.88"/>
+            <rect class="lower-bar l3" x="88"  y="120.64" width="14" height="60" rx="5" fill="#00fa9a" opacity="0.88"/>
+            <rect class="lower-bar l4" x="112" y="127.03" width="14" height="68" rx="5" fill="#adff2f" opacity="0.88"/>
+            <rect class="lower-bar l5" x="136" y="120.64" width="14" height="60" rx="5" fill="#ffd700" opacity="0.88"/>
+            <rect class="lower-bar l6" x="160" y="112.96" width="14" height="48" rx="5" fill="#ff8c00" opacity="0.88"/>
+            <rect class="lower-bar l7" x="184" y="119.35" width="14" height="36" rx="5" fill="#ff2a40" opacity="0.88"/>
+            <rect class="lower-bar l8" x="208" y="125.8"  width="14" height="20" rx="5" fill="#8a2be2" opacity="0.88"/>
+          </g>
+        </svg>
+      </div>
+
+      <div class="screen-title" id="s2Title">Warming Up the AI...</div>
+      <div class="screen-subtitle" id="s2Subtitle">Downloading the on-device speech model. This should only take a moment.</div>
+
+      <!-- Setup checklist -->
+      <div class="setup-checklist" id="s2Checklist">
+        <div class="setup-item" id="s2Item0">
+          <div class="setup-item-icon spinning" id="s2Icon0"></div>
+          <div class="setup-item-text">
+            <div class="setup-item-label">Downloading speech model (~100 MB)</div>
+            <div class="setup-item-sub">
+              <span id="s2SubText0">Downloading...</span>
+              <span class="progress-inline" id="s2Progress0"></span>
+            </div>
+          </div>
+        </div>
+        <div class="setup-item" id="s2Item1">
+          <div class="setup-item-icon pending" id="s2Icon1">2</div>
+          <div class="setup-item-text">
+            <div class="setup-item-label">Configuring on-device AI</div>
+            <div class="setup-item-sub">Apple Intelligence</div>
+          </div>
+        </div>
+        <div class="setup-item" id="s2Item2">
+          <div class="setup-item-icon pending" id="s2Icon2">3</div>
+          <div class="setup-item-text">
+            <div class="setup-item-label">Setting your hotkey</div>
+            <div class="setup-item-sub">Default: &#x2325; Option</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Permissions section — revealed after checklist completes -->
+      <div class="permissions-section" id="s2Perms">
+
+        <!-- Microphone permission row -->
+        <div class="permission-row" id="permMicRow">
+          <div class="permission-icon" id="permMicIcon">
+            <!-- Default icon (mic) -->
+            <svg class="perm-icon-default" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-secondary)">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/>
+              <line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+            <!-- Granted icon (checkmark) — shown via CSS when row has .granted -->
+            <svg class="perm-icon-granted" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--success)">
+              <path d="M20 6L9 17l-5-5"/>
+            </svg>
+          </div>
+          <div class="permission-text">
+            <div class="permission-name">Microphone</div>
+            <div class="permission-desc">To hear your voice for transcription.</div>
+          </div>
+          <button class="permission-btn grant" id="permMicBtn" onclick="grantPerm('mic')">Grant</button>
+        </div>
+
+        <!-- Accessibility permission row -->
+        <div class="permission-row" id="permAccRow">
+          <div class="permission-icon" id="permAccIcon">
+            <!-- Default icon (shield) -->
+            <svg class="perm-icon-default" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-secondary)">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+            <!-- Granted icon (checkmark) — shown via CSS when row has .granted -->
+            <svg class="perm-icon-granted" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--success)">
+              <path d="M20 6L9 17l-5-5"/>
+            </svg>
+          </div>
+          <div class="permission-text">
+            <div class="permission-name">Accessibility</div>
+            <div class="permission-desc">To paste your transcribed text into any app.</div>
+          </div>
+          <button class="permission-btn grant" id="permAccBtn" onclick="grantPerm('acc')">Grant</button>
+        </div>
+
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" id="s2ContinueBtn" disabled onclick="goToScreen(3)">Continue</button>
+      </div>
+
+    </div><!-- /screen2 -->
+
+
+    <!-- ============================================================
+         SCREEN 3: Ready to Wispr!
+         ============================================================ -->
+    <div class="screen-panel" id="screen3">
+
+      <!-- Lips: triumph with glow -->
+      <div class="lips-wrap">
+        <svg class="lips-icon lips-triumph" id="s3LipsSvg" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+          <defs><filter id="lip-glow-s3" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter></defs>
+          <g transform="translate(8,13)" filter="url(#lip-glow-s3)">
+            <rect class="upper-bar u0" x="16"  y="84.2"  width="14" height="20" rx="5" fill="#ff2a40" opacity="0.92"/>
+            <rect class="upper-bar u1" x="40"  y="65.75" width="14" height="32" rx="5" fill="#ff8c00" opacity="0.92"/>
+            <rect class="upper-bar u2" x="64"  y="43.36" width="14" height="48" rx="5" fill="#ffd700" opacity="0.92"/>
+            <rect class="upper-bar u3" x="88"  y="63.04" width="14" height="36" rx="5" fill="#adff2f" opacity="0.92"/>
+            <rect class="upper-bar u4" x="112" y="81.43" width="14" height="24" rx="5" fill="#00fa9a" opacity="0.92"/>
+            <rect class="upper-bar u5" x="136" y="63.04" width="14" height="36" rx="5" fill="#00ffff" opacity="0.92"/>
+            <rect class="upper-bar u6" x="160" y="43.36" width="14" height="48" rx="5" fill="#1e90ff" opacity="0.92"/>
+            <rect class="upper-bar u7" x="184" y="65.75" width="14" height="32" rx="5" fill="#4169e1" opacity="0.92"/>
+            <rect class="upper-bar u8" x="208" y="84.2"  width="14" height="20" rx="5" fill="#8a2be2" opacity="0.92"/>
+            <rect class="lower-bar l0" x="16"  y="125.8"  width="14" height="20" rx="5" fill="#4169e1" opacity="0.88"/>
+            <rect class="lower-bar l1" x="40"  y="119.35" width="14" height="36" rx="5" fill="#1e90ff" opacity="0.88"/>
+            <rect class="lower-bar l2" x="64"  y="112.96" width="14" height="48" rx="5" fill="#00ffff" opacity="0.88"/>
+            <rect class="lower-bar l3" x="88"  y="120.64" width="14" height="60" rx="5" fill="#00fa9a" opacity="0.88"/>
+            <rect class="lower-bar l4" x="112" y="127.03" width="14" height="68" rx="5" fill="#adff2f" opacity="0.88"/>
+            <rect class="lower-bar l5" x="136" y="120.64" width="14" height="60" rx="5" fill="#ffd700" opacity="0.88"/>
+            <rect class="lower-bar l6" x="160" y="112.96" width="14" height="48" rx="5" fill="#ff8c00" opacity="0.88"/>
+            <rect class="lower-bar l7" x="184" y="119.35" width="14" height="36" rx="5" fill="#ff2a40" opacity="0.88"/>
+            <rect class="lower-bar l8" x="208" y="125.8"  width="14" height="20" rx="5" fill="#8a2be2" opacity="0.88"/>
+          </g>
+        </svg>
+      </div>
+
+      <div class="screen-title hero">Ready to Wispr!</div>
+      <div class="screen-subtitle">Press and hold the hotkey below to record your voice. Release to transcribe and paste it anywhere.</div>
+
+      <!-- Hero keycap -->
+      <div class="keycap-hero-wrap">
+        <div class="keycap-hero">
+          <span class="keycap-symbol">&#x2325;</span>
+          <span>Option</span>
+        </div>
+        <button class="keycap-change-link" onclick="alert('Hotkey picker coming soon!')">Change hotkey</button>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-get-started" onclick="finishOnboarding()">GET STARTED!</button>
+      </div>
+
+      <div class="power-user-nudge">
+        <div class="power-user-nudge-title">Power User?</div>
+        <div class="power-user-nudge-body">Change your AI model, hotkey, and more in <a href="#">Settings</a>.</div>
+      </div>
+
+    </div><!-- /screen3 -->
+
+  </div><!-- /window-content -->
+</div><!-- /macos-window -->
+
+
+<!-- ============================================================
+     REVIEWER CONTROLS PANEL
+     ============================================================ -->
+<div class="controls">
+  <div class="controls-title">Reviewer Controls</div>
+
+  <!-- Screen nav -->
+  <div class="controls-row">
+    <span class="controls-label">Screen</span>
+    <button class="ctrl-btn active" id="ctrlS1" onclick="goToScreen(1)">1 &mdash; Welcome</button>
+    <button class="ctrl-btn" id="ctrlS2" onclick="goToScreen(2)">2 &mdash; Setup</button>
+    <button class="ctrl-btn" id="ctrlS3" onclick="goToScreen(3)">3 &mdash; Ready</button>
+  </div>
+
+  <div class="controls-divider"></div>
+
+  <!-- Screen 2 state controls -->
+  <div class="controls-row ctrl-row-screen2" id="ctrlRowS2">
+    <span class="controls-label">Screen 2</span>
+    <button class="ctrl-btn" onclick="resetScreen2()">Reset Animation</button>
+    <button class="ctrl-btn" onclick="skipToPermissions()">Skip to Permissions</button>
+    <button class="ctrl-btn" onclick="grantPerm('mic')">Grant Mic</button>
+    <button class="ctrl-btn" onclick="grantPerm('acc')">Grant Accessibility</button>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// STATE
+// ============================================================
+var currentScreen = 1;
+var setupPhase = 'install';    // 'install' | 'permissions'
+var setupTimers = [];
+var permMicGranted  = false;
+var permAccGranted  = false;
+var autoPaste = false;
+
+// ============================================================
+// SCREEN NAVIGATION
+// ============================================================
+function goToScreen(n) {
+  currentScreen = n;
+
+  // Hide all panels
+  document.querySelectorAll('.screen-panel').forEach(function(p) {
+    p.classList.remove('active');
+  });
+
+  // Show target
+  var panel = document.getElementById('screen' + n);
+  if (panel) {
+    panel.classList.add('active');
+    // Force reflow to re-trigger animation
+    panel.style.animation = 'none';
+    void panel.offsetHeight;
+    panel.style.animation = 'screenFadeIn 0.35s cubic-bezier(0.16,1,0.3,1)';
+  }
+
+  // Update control buttons
+  [1,2,3].forEach(function(i) {
+    var btn = document.getElementById('ctrlS' + i);
+    if (btn) btn.classList.toggle('active', i === n);
+  });
+
+  // Show/hide screen 2 controls
+  var s2row = document.getElementById('ctrlRowS2');
+  if (s2row) s2row.classList.toggle('visible', n === 2);
+
+  // Auto-start setup when entering screen 2 for the first time
+  if (n === 2 && setupPhase === 'install') {
+    setTimeout(startSetupAnimation, 150);
+  }
+
+  // Re-trigger lips triumph animation on screen 3
+  if (n === 3) {
+    var svg = document.getElementById('s3LipsSvg');
+    if (svg) {
+      svg.className = 'lips-icon';
+      void svg.offsetHeight;
+      svg.className = 'lips-icon lips-triumph';
+    }
+  }
+}
+
+// ============================================================
+// SETUP ANIMATION (Screen 2, install phase)
+// ============================================================
+function startSetupAnimation() {
+  // Clear any existing timers
+  setupTimers.forEach(function(t) { clearTimeout(t); });
+  setupTimers = [];
+
+  setupPhase = 'install';
+
+  // Reset checklist UI
+  var icon0 = document.getElementById('s2Icon0');
+  var icon1 = document.getElementById('s2Icon1');
+  var icon2 = document.getElementById('s2Icon2');
+  if (icon0) { icon0.className = 'setup-item-icon spinning'; icon0.textContent = ''; }
+  if (icon1) { icon1.className = 'setup-item-icon pending'; icon1.textContent = '2'; }
+  if (icon2) { icon2.className = 'setup-item-icon pending'; icon2.textContent = '3'; }
+
+  [0,1,2].forEach(function(i) {
+    var item = document.getElementById('s2Item' + i);
+    if (item) item.classList.remove('done');
+  });
+
+  // Reset title/subtitle
+  var title = document.getElementById('s2Title');
+  var sub   = document.getElementById('s2Subtitle');
+  if (title) title.textContent = 'Warming Up the AI...';
+  if (sub)   sub.textContent   = 'Downloading the on-device speech model. This should only take a moment.';
+
+  // Reset progress bar visibility
+  var prog = document.getElementById('s2Progress0');
+  if (prog) prog.style.display = 'inline-block';
+
+  var subText = document.getElementById('s2SubText0');
+  if (subText) subText.textContent = 'Downloading...';
+
+  // Reset lips to equalizer
+  var lipsSvg = document.getElementById('s2LipsSvg');
+  if (lipsSvg) {
+    lipsSvg.className = 'lips-icon';
+    void lipsSvg.offsetHeight;
+    lipsSvg.className = 'lips-icon lips-equalizer';
+  }
+
+  // Reset permissions section
+  var permsSection = document.getElementById('s2Perms');
+  if (permsSection) permsSection.classList.remove('visible');
+
+  // Hide continue btn
+  var contBtn = document.getElementById('s2ContinueBtn');
+  if (contBtn) contBtn.disabled = true;
+
+  // Step 0 completes at 2s
+  setupTimers.push(setTimeout(function() {
+    completeSetupItem(0);
+    var t0 = document.getElementById('s2SubText0');
+    if (t0) t0.textContent = 'Done';
+    var p0 = document.getElementById('s2Progress0');
+    if (p0) p0.style.display = 'none';
+
+    // Start step 1 spinner
+    var ic1 = document.getElementById('s2Icon1');
+    if (ic1) { ic1.className = 'setup-item-icon spinning'; ic1.textContent = ''; }
+  }, 2000));
+
+  // Step 1 completes at 3.5s
+  setupTimers.push(setTimeout(function() {
+    completeSetupItem(1);
+
+    // Start step 2 spinner
+    var ic2 = document.getElementById('s2Icon2');
+    if (ic2) { ic2.className = 'setup-item-icon spinning'; ic2.textContent = ''; }
+  }, 3500));
+
+  // Step 2 completes at 5s — transition to permissions
+  setupTimers.push(setTimeout(function() {
+    completeSetupItem(2);
+    setupTimers.push(setTimeout(transitionToPermissions, 400));
+  }, 5000));
+}
+
+function completeSetupItem(index) {
+  var icon = document.getElementById('s2Icon' + index);
+  var item = document.getElementById('s2Item' + index);
+  if (icon) {
+    icon.className = 'setup-item-icon complete';
+    icon.textContent = '\u2713';
+  }
+  if (item) item.classList.add('done');
+}
+
+// ============================================================
+// TRANSITION TO PERMISSIONS (Screen 2, phase 2)
+// ============================================================
+function transitionToPermissions() {
+  setupPhase = 'permissions';
+
+  // Switch lips to triumph
+  var lipsSvg = document.getElementById('s2LipsSvg');
+  if (lipsSvg) {
+    lipsSvg.className = 'lips-icon';
+    void lipsSvg.offsetHeight;
+    lipsSvg.className = 'lips-icon lips-triumph';
+  }
+
+  // Update title and subtitle
+  var title = document.getElementById('s2Title');
+  var sub   = document.getElementById('s2Subtitle');
+  if (title) title.textContent = 'Almost there. Just two permissions.';
+  if (sub)   sub.textContent   = 'EnviousWispr needs these to capture audio and paste your text.';
+
+  // Reveal permissions section
+  var permsSection = document.getElementById('s2Perms');
+  if (permsSection) permsSection.classList.add('visible');
+}
+
+// ============================================================
+// GRANT PERMISSIONS
+// ============================================================
+function grantPerm(type) {
+  if (type === 'mic' && !permMicGranted) {
+    permMicGranted = true;
+    var btn = document.getElementById('permMicBtn');
+    var row = document.getElementById('permMicRow');
+    if (btn) { btn.className = 'permission-btn granted-state'; btn.textContent = 'Granted'; }
+    if (row) row.classList.add('granted');
+    // Icon swaps automatically via CSS .perm-icon-default / .perm-icon-granted selectors
+  }
+
+  if (type === 'acc' && !permAccGranted) {
+    permAccGranted = true;
+    autoPaste = true;
+    var btn = document.getElementById('permAccBtn');
+    var row = document.getElementById('permAccRow');
+    if (btn) { btn.className = 'permission-btn granted-state'; btn.textContent = 'Granted'; }
+    if (row) row.classList.add('granted');
+  }
+
+  // Enable continue if both granted
+  if (permMicGranted && permAccGranted) {
+    var contBtn = document.getElementById('s2ContinueBtn');
+    if (contBtn) contBtn.disabled = false;
+  }
+}
+
+// ============================================================
+// CONTROL HELPERS
+// ============================================================
+function skipToPermissions() {
+  // Clear running timers
+  setupTimers.forEach(function(t) { clearTimeout(t); });
+  setupTimers = [];
+
+  // Complete all checklist items instantly
+  [0,1,2].forEach(function(i) { completeSetupItem(i); });
+
+  var t0 = document.getElementById('s2SubText0');
+  if (t0) t0.textContent = 'Done';
+  var p0 = document.getElementById('s2Progress0');
+  if (p0) p0.style.display = 'none';
+
+  transitionToPermissions();
+}
+
+function resetScreen2() {
+  // Reset permission state flags
+  permMicGranted = false;
+  permAccGranted = false;
+  autoPaste = false;
+
+  // Reset mic permission UI
+  var micBtn = document.getElementById('permMicBtn');
+  var micRow = document.getElementById('permMicRow');
+  if (micBtn) { micBtn.className = 'permission-btn grant'; micBtn.textContent = 'Grant'; }
+  if (micRow) micRow.classList.remove('granted');
+
+  // Reset accessibility permission UI
+  var accBtn = document.getElementById('permAccBtn');
+  var accRow = document.getElementById('permAccRow');
+  if (accBtn) { accBtn.className = 'permission-btn grant'; accBtn.textContent = 'Grant'; }
+  if (accRow) accRow.classList.remove('granted');
+
+  setupPhase = 'install';
+  startSetupAnimation();
+}
+
+// ============================================================
+// FINISH
+// ============================================================
+function finishOnboarding() {
+  var msg = 'Onboarding complete!\nAuto-paste enabled: ' + autoPaste + '\n\nClosing window...';
+  if (window.confirm(msg)) {
+    document.getElementById('mainWindow').style.display = 'none';
+  }
+}
+</script>
+</body>
+</html>

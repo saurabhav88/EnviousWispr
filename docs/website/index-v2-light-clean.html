@@ -1,0 +1,2538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EnviousWispr — AI Dictation for macOS (Clean White)</title>
+<meta name="description" content="On-device AI dictation for macOS. Record your voice, get polished text — grammar-fixed, filler-free, pasted into any app in under 2 seconds.">
+<meta property="og:title" content="EnviousWispr — Talk naturally. Paste perfectly.">
+<meta property="og:description" content="On-device AI dictation for macOS. Open source. Streaming ASR at 110x real-time. Polished text auto-pasted in under 2 seconds.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://github.com/saurabhav88/EnviousWispr">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200;300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════
+   EnviousWispr Homepage — V2 Design System
+   ═══════════════════════════════════════════════════════ */
+:root {
+  --v2-red: #ff2a40;
+  --v2-orange: #ff8c00;
+  --v2-gold: #ffd700;
+  --v2-lime: #adff2f;
+  --v2-spring: #00fa9a;
+  --v2-cyan: #00ffff;
+  --v2-blue: #1e90ff;
+  --v2-royal: #4169e1;
+  --v2-violet: #8a2be2;
+  --v2-red-soft: rgba(255, 42, 64, 0.10);
+  --v2-orange-soft: rgba(255, 140, 0, 0.10);
+  --v2-gold-soft: rgba(255, 215, 0, 0.10);
+  --v2-lime-soft: rgba(173, 255, 47, 0.10);
+  --v2-spring-soft: rgba(0, 250, 154, 0.10);
+  --v2-cyan-soft: rgba(0, 255, 255, 0.10);
+  --v2-blue-soft: rgba(30, 144, 255, 0.10);
+  --v2-royal-soft: rgba(65, 105, 225, 0.10);
+  --v2-violet-soft: rgba(138, 43, 226, 0.10);
+  --v2-red-glow: rgba(255, 42, 64, 0.25);
+  --v2-orange-glow: rgba(255, 140, 0, 0.25);
+  --v2-gold-glow: rgba(255, 215, 0, 0.25);
+  --v2-cyan-glow: rgba(0, 255, 255, 0.25);
+  --v2-violet-glow: rgba(138, 43, 226, 0.25);
+  --v2-violet-border: rgba(138, 43, 226, 0.20);
+  --v2-spring-border: rgba(0, 250, 154, 0.20);
+  --v2-cyan-border: rgba(0, 255, 255, 0.20);
+  --v2-gold-border: rgba(255, 215, 0, 0.20);
+  --rainbow-full: linear-gradient(90deg, #ff2a40, #ff8c00, #ffd700, #adff2f, #00fa9a, #00ffff, #1e90ff, #4169e1, #8a2be2);
+  --rainbow-135: linear-gradient(135deg, #ff2a40, #ff8c00, #ffd700, #adff2f, #00fa9a, #00ffff, #1e90ff, #4169e1, #8a2be2);
+  --rainbow-hero: linear-gradient(135deg, #8a2be2 0%, #00ffff 100%);
+  --rainbow-warm: linear-gradient(90deg, #ff2a40, #ff8c00, #ffd700);
+  --rainbow-cool: linear-gradient(90deg, #00ffff, #1e90ff, #4169e1, #8a2be2);
+  --bg: #ffffff;
+  --surface: #f5f5f7;
+  --border: rgba(0, 0, 0, 0.06);
+  --border-hover: rgba(0, 0, 0, 0.12);
+  --text: #1d1d1f;
+  --text-2: #6e6e73;
+  --text-3: #aeaeb2;
+  --idle: rgba(0, 0, 0, 0.45);
+  --accent: #8a2be2;
+  --accent-soft: rgba(138, 43, 226, 0.08);
+  --accent-glow: rgba(138, 43, 226, 0.20);
+  --accent-hover: #7b25cc;
+  --cyan: #00ccdd;
+  --green: #00c880;
+  --amber: #e6c200;
+  --red: #e6253a;
+  --orange: #e67e00;
+  --pink: #e066a0;
+  --gradient-center: #f0e6ff;
+  --font-body: 'Plus Jakarta Sans', -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --radius-card: 16px;
+  --radius-btn: 12px;
+  --radius-pill: 100px;
+  --max-width: 1200px;
+  --section-pad: 120px;
+}
+
+/* V2 Utility Classes */
+.rainbow-text {
+  background: var(--rainbow-full);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.rainbow-border {
+  border: 1px solid transparent;
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  background-image: linear-gradient(var(--surface), var(--surface)), var(--rainbow-full);
+}
+.rainbow-glow {
+  box-shadow: 0 0 15px rgba(138,43,226,0.15), 0 0 30px rgba(0,255,255,0.08), 0 0 45px rgba(255,42,64,0.05);
+}
+.rainbow-glow-hover:hover {
+  box-shadow: 0 0 20px rgba(138,43,226,0.25), 0 0 40px rgba(0,255,255,0.12), 0 0 60px rgba(255,42,64,0.08);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+
+/* ── Ambient Background ── */
+body::before {
+  content: '';
+  position: fixed;
+  top: -200px;
+  right: -200px;
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(138,43,226,0.02), transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+body::after {
+  content: '';
+  position: fixed;
+  bottom: -200px;
+  left: -200px;
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(0,204,221,0.02), transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Dot grid */
+.dot-grid {
+  position: fixed;
+  inset: 0;
+  background-image: radial-gradient(circle, rgba(0,0,0,0.03) 1px, transparent 1px);
+  background-size: 24px 24px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Container ── */
+.container {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 0 32px;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Scroll Animation Base ── */
+.reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.65s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.reveal-stagger > .reveal {
+  transition-delay: calc(var(--i, 0) * 100ms);
+}
+
+/* ═══════════════════════════════════════════════════════
+   Navigation
+   ═══════════════════════════════════════════════════════ */
+.nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  background: rgba(255,255,255,0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  transition: background 0.3s;
+}
+.nav-inner {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 0 32px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.nav-logo {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: var(--text);
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.nav-logo svg {
+  width: 22px;
+  height: 22px;
+}
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  list-style: none;
+}
+.nav-links a {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-2);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.nav-links a:hover {
+  color: var(--text);
+}
+.nav-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: var(--radius-btn);
+  text-decoration: none;
+  transition: background 0.2s, transform 0.2s;
+}
+.nav-cta:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+}
+.nav-cta svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Mobile nav toggle */
+.nav-toggle {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  padding: 4px;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Hero Section
+   ═══════════════════════════════════════════════════════ */
+.hero {
+  padding: 160px 0 var(--section-pad);
+  text-align: center;
+  position: relative;
+  z-index: 1;
+}
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 18px;
+  background: var(--accent-soft);
+  border: 1px solid rgba(138,43,226,0.2);
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 32px;
+}
+.hero-badge .dot {
+  width: 7px;
+  height: 7px;
+  background: var(--green);
+  border-radius: 50%;
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.hero h1 {
+  font-size: 72px;
+  font-weight: 800;
+  letter-spacing: -3px;
+  line-height: 1.05;
+  background: linear-gradient(135deg, #1d1d1f 0%, #00ccdd 50%, #8a2be2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 24px;
+  max-width: 800px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.hero-sub {
+  font-size: 20px;
+  font-weight: 300;
+  color: var(--text-2);
+  line-height: 1.6;
+  max-width: 620px;
+  margin: 0 auto 40px;
+}
+
+.hero-ctas {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 48px;
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 32px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: var(--radius-btn);
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+.btn-primary:hover {
+  background: var(--accent-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(138,43,226,0.3);
+}
+.btn-primary svg {
+  width: 18px;
+  height: 18px;
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 32px;
+  background: transparent;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: var(--radius-btn);
+  text-decoration: none;
+  border: 1px solid var(--border-hover);
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, transform 0.2s;
+}
+.btn-secondary:hover {
+  background: rgba(0,0,0,0.03);
+  border-color: rgba(0,0,0,0.15);
+  transform: translateY(-2px);
+}
+.btn-secondary svg {
+  width: 18px;
+  height: 18px;
+}
+
+.hero-stats {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.hero-stats .sep {
+  color: var(--text-3);
+  opacity: 0.4;
+}
+.hero-stats .hl {
+  color: var(--green);
+}
+
+/* ── Hero Lips Animation ── */
+.hero-lips {
+  display: block;
+  margin: 0 auto 32px;
+  width: 400px;
+  height: 300px;
+  filter: drop-shadow(0 0 40px rgba(138,43,226,0.15));
+}
+.hero-lips .upper-bar { transform-origin: center bottom; }
+.hero-lips .lower-bar { transform-origin: center top; }
+@keyframes rec-bounce-0 { 0%,100%{transform:scaleY(1)} 30%{transform:scaleY(1.5)} 60%{transform:scaleY(0.7)} }
+@keyframes rec-bounce-1 { 0%,100%{transform:scaleY(1)} 25%{transform:scaleY(1.6)} 55%{transform:scaleY(0.6)} }
+@keyframes rec-bounce-2 { 0%,100%{transform:scaleY(1)} 35%{transform:scaleY(1.4)} 65%{transform:scaleY(0.75)} }
+@keyframes rec-bounce-3 { 0%,100%{transform:scaleY(1)} 20%{transform:scaleY(1.55)} 50%{transform:scaleY(0.65)} }
+@keyframes rec-bounce-4 { 0%,100%{transform:scaleY(1)} 40%{transform:scaleY(1.45)} 70%{transform:scaleY(0.7)} }
+@keyframes rec-bounce-5 { 0%,100%{transform:scaleY(1)} 28%{transform:scaleY(1.5)} 58%{transform:scaleY(0.68)} }
+@keyframes rec-bounce-6 { 0%,100%{transform:scaleY(1)} 33%{transform:scaleY(1.55)} 63%{transform:scaleY(0.72)} }
+@keyframes rec-bounce-7 { 0%,100%{transform:scaleY(1)} 22%{transform:scaleY(1.45)} 52%{transform:scaleY(0.65)} }
+@keyframes rec-bounce-8 { 0%,100%{transform:scaleY(1)} 38%{transform:scaleY(1.5)} 68%{transform:scaleY(0.7)} }
+@keyframes rec-dot-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+@keyframes glow-pulse { 0%, 100% { opacity: 0.88; } 50% { opacity: 1; } }
+.hero-lips .u0 { animation: rec-bounce-0 0.50s ease-in-out 0.00s infinite; }
+.hero-lips .u1 { animation: rec-bounce-1 0.57s ease-in-out 0.06s infinite; }
+.hero-lips .u2 { animation: rec-bounce-2 0.64s ease-in-out 0.12s infinite; }
+.hero-lips .u3 { animation: rec-bounce-3 0.71s ease-in-out 0.18s infinite; }
+.hero-lips .u4 { animation: rec-bounce-4 0.78s ease-in-out 0.24s infinite; }
+.hero-lips .u5 { animation: rec-bounce-5 0.85s ease-in-out 0.30s infinite; }
+.hero-lips .u6 { animation: rec-bounce-6 0.92s ease-in-out 0.36s infinite; }
+.hero-lips .u7 { animation: rec-bounce-7 0.99s ease-in-out 0.42s infinite; }
+.hero-lips .u8 { animation: rec-bounce-8 1.06s ease-in-out 0.48s infinite; }
+.hero-lips .l0 { animation: rec-bounce-0 0.550s ease-in-out 0.05s infinite; }
+.hero-lips .l1 { animation: rec-bounce-1 0.615s ease-in-out 0.12s infinite; }
+.hero-lips .l2 { animation: rec-bounce-2 0.680s ease-in-out 0.19s infinite; }
+.hero-lips .l3 { animation: rec-bounce-3 0.745s ease-in-out 0.26s infinite; }
+.hero-lips .l4 { animation: rec-bounce-4 0.810s ease-in-out 0.33s infinite; }
+.hero-lips .l5 { animation: rec-bounce-5 0.875s ease-in-out 0.40s infinite; }
+.hero-lips .l6 { animation: rec-bounce-6 0.940s ease-in-out 0.47s infinite; }
+.hero-lips .l7 { animation: rec-bounce-7 1.005s ease-in-out 0.54s infinite; }
+.hero-lips .l8 { animation: rec-bounce-8 1.070s ease-in-out 0.61s infinite; }
+.hero-lips .lip-glow-group { animation: glow-pulse 4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .hero-lips .upper-bar, .hero-lips .lower-bar, .hero-lips .lip-glow-group { animation: none !important; }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Section Shared Styles
+   ═══════════════════════════════════════════════════════ */
+.section {
+  padding: var(--section-pad) 0;
+  position: relative;
+  z-index: 1;
+}
+
+.section-label {
+  display: inline-block;
+  padding: 4px 14px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 16px;
+}
+.section-label.accent {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid rgba(138,43,226,0.2);
+}
+.section-label.green {
+  background: rgba(0,250,154,0.1);
+  color: var(--green);
+  border: 1px solid rgba(0,250,154,0.2);
+}
+.section-label.cyan {
+  background: rgba(0,255,255,0.1);
+  color: var(--cyan);
+  border: 1px solid rgba(0,255,255,0.2);
+}
+.section-label.amber {
+  background: rgba(255,215,0,0.1);
+  color: var(--amber);
+  border: 1px solid rgba(255,215,0,0.2);
+}
+
+.section-head {
+  text-align: center;
+  margin-bottom: 64px;
+}
+.section-title {
+  font-size: 48px;
+  font-weight: 800;
+  letter-spacing: -2px;
+  line-height: 1.1;
+  margin-bottom: 16px;
+}
+.section-sub {
+  font-size: 18px;
+  color: var(--text-2);
+  max-width: 640px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Pipeline Demo Section (How It Works)
+   ═══════════════════════════════════════════════════════ */
+.pipeline-section {
+  padding: var(--section-pad) 0;
+  position: relative;
+  z-index: 1;
+}
+
+/* Steps row above the demo */
+.pipeline-steps {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 56px;
+}
+.pipe-step {
+  text-align: center;
+  padding: 28px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  transition: border-color 0.3s;
+  position: relative;
+}
+.pipe-step:hover {
+  border-color: var(--border-hover);
+}
+.pipe-step-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 14px;
+  font-size: 22px;
+}
+.pipe-step-icon.red { background: rgba(255,42,64,0.1); color: var(--red); }
+.pipe-step-icon.amber { background: rgba(255,215,0,0.1); color: var(--amber); }
+.pipe-step-icon.cyan { background: rgba(0,255,255,0.1); color: var(--cyan); }
+.pipe-step-icon.green { background: rgba(0,250,154,0.1); color: var(--green); }
+
+.pipe-step h3 {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.pipe-step p {
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+/* Arrow between steps */
+.pipe-step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  right: -12px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-top: 2px solid var(--text-3);
+  border-right: 2px solid var(--text-3);
+  transform: translateY(-50%) rotate(45deg);
+  opacity: 0.4;
+}
+
+/* ── Demo Stage ── */
+.demo-wrapper {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 32px;
+  position: relative;
+  overflow: hidden;
+}
+.demo-wrapper::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, rgba(255,255,255,0.02) 1px, transparent 1px);
+  background-size: 20px 20px;
+  pointer-events: none;
+}
+
+.demo-header {
+  text-align: center;
+  margin-bottom: 28px;
+}
+.demo-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  border-radius: var(--radius-pill);
+  background: rgba(138,43,226,0.12);
+  border: 1px solid rgba(138,43,226,0.25);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+.demo-tag::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+.demo-title {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  background: linear-gradient(135deg, var(--text) 0%, var(--text-2) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.demo-stage {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  height: 340px;
+}
+
+/* ── Demo Panels ── */
+.demo-panel {
+  background: rgba(255,255,255,0.7);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.7s ease, transform 0.7s ease, border-color 0.5s ease, box-shadow 0.5s ease;
+  position: relative;
+  overflow: hidden;
+}
+.demo-panel.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.demo-panel-left { flex: 0 0 38%; }
+.demo-panel-right { flex: 0 0 38%; }
+.demo-panel-right.glow-green {
+  border-color: rgba(0,250,154,0.35);
+  box-shadow: 0 0 30px rgba(0,250,154,0.08), inset 0 0 30px rgba(0,250,154,0.03);
+}
+
+.panel-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.panel-label.tertiary { color: var(--text-3); }
+.panel-label.green-label { color: var(--green); }
+
+.live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.live-badge.active { opacity: 1; }
+.live-badge.asr {
+  background: rgba(255,215,0,0.15);
+  color: var(--amber);
+  border: 1px solid rgba(255,215,0,0.3);
+}
+.live-badge.asr::before {
+  content: '';
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--amber);
+  animation: pulse-dot 0.8s ease-in-out infinite;
+}
+.live-badge.sse {
+  background: rgba(0,255,255,0.15);
+  color: var(--cyan);
+  border: 1px solid rgba(0,255,255,0.3);
+}
+.live-badge.sse::before {
+  content: '';
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--cyan);
+  animation: pulse-dot 0.6s ease-in-out infinite;
+}
+
+/* ── Waveform ── */
+.waveform {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2.5px;
+  height: 48px;
+  margin-bottom: 12px;
+  padding: 0 4px;
+}
+.waveform .bar {
+  width: 3px;
+  border-radius: 2px;
+  height: 8px;
+  transition: height 0.12s ease;
+  will-change: height;
+}
+
+/* ── Text areas in demo ── */
+.demo-text {
+  flex: 1;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.demo-text::-webkit-scrollbar { width: 3px; }
+.demo-text::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+.filler {
+  color: var(--red);
+  background: rgba(255,42,64,0.1);
+  padding: 1px 4px;
+  border-radius: 3px;
+  transition: all 0.4s ease;
+  display: inline;
+  text-decoration: none;
+}
+.filler.struck {
+  text-decoration: line-through;
+  opacity: 0.35;
+  background: rgba(255,42,64,0.04);
+}
+
+.sse-word {
+  display: inline;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.sse-word.visible { opacity: 1; }
+
+.cursor-blink {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  background: var(--green);
+  vertical-align: text-bottom;
+  animation: blink-cursor 0.6s step-end infinite;
+  margin-left: 1px;
+}
+@keyframes blink-cursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* ── Pipeline Gantt ── */
+.demo-pipeline {
+  flex: 0 0 24%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 12px;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+  position: relative;
+}
+.demo-pipeline.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.pipeline-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-3);
+  margin-bottom: 14px;
+}
+
+.gantt {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.gantt-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+}
+.gantt-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--text-3);
+  width: 68px;
+  text-align: right;
+  flex-shrink: 0;
+  white-space: nowrap;
+  transition: color 0.3s ease;
+}
+.gantt-label.active { color: var(--text-2); }
+.gantt-track {
+  flex: 1;
+  height: 100%;
+  background: rgba(255,255,255,0.02);
+  border-radius: 4px;
+  position: relative;
+  overflow: hidden;
+}
+.gantt-bar {
+  position: absolute;
+  top: 2px; bottom: 2px; left: 0;
+  width: 0%;
+  border-radius: 3px;
+  transition: width 0.3s linear;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.gantt-bar .bar-text {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.7);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.gantt-bar.active .bar-text { opacity: 1; }
+
+.gantt-bar.recording {
+  background: rgba(255,42,64,0.25);
+  border: 1px solid rgba(255,42,64,0.4);
+}
+.gantt-bar.recording.active {
+  background: rgba(255,42,64,0.3);
+  box-shadow: 0 0 12px rgba(255,42,64,0.2);
+}
+.gantt-bar.streaming-asr {
+  background: rgba(255,215,0,0.25);
+  border: 1px solid rgba(255,215,0,0.4);
+}
+.gantt-bar.streaming-asr.active {
+  background: rgba(255,215,0,0.3);
+  box-shadow: 0 0 12px rgba(255,215,0,0.2);
+}
+.gantt-bar.finalize {
+  background: rgba(255,140,0,0.35);
+  border: 1px solid rgba(255,140,0,0.5);
+}
+.gantt-bar.finalize.active {
+  box-shadow: 0 0 12px rgba(255,140,0,0.3);
+}
+.gantt-bar.prewarm {
+  background: rgba(138,43,226,0.25);
+  border: 1px solid rgba(138,43,226,0.4);
+}
+.gantt-bar.prewarm.active {
+  box-shadow: 0 0 12px rgba(138,43,226,0.3);
+}
+.gantt-bar.sse-polish {
+  background: rgba(0,255,255,0.25);
+  border: 1px solid rgba(0,255,255,0.4);
+}
+.gantt-bar.sse-polish.active {
+  background: rgba(0,255,255,0.3);
+  box-shadow: 0 0 12px rgba(0,255,255,0.2);
+}
+.gantt-bar.paste-bar {
+  background: rgba(0,250,154,0.35);
+  border: 1px solid rgba(0,250,154,0.5);
+}
+.gantt-bar.paste-bar.active {
+  box-shadow: 0 0 12px rgba(0,250,154,0.3);
+}
+.gantt-bar.done {
+  opacity: 0.4;
+  box-shadow: none;
+}
+
+.overlap-bracket {
+  position: absolute;
+  right: -14px; top: 0;
+  height: calc(200% + 6px);
+  width: 10px;
+  border: 2px solid rgba(138,43,226,0.4);
+  border-left: none;
+  border-radius: 0 6px 6px 0;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+.overlap-bracket.visible { opacity: 1; }
+.overlap-label {
+  position: absolute;
+  right: -68px; top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--accent);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+.overlap-label.visible { opacity: 1; }
+
+.concurrent-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 10px;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+.concurrent-badge.visible { opacity: 1; }
+.concurrent-badge .cb-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.concurrent-badge .cb-text {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--accent);
+  letter-spacing: 0.3px;
+}
+
+/* ── Demo replay ── */
+.demo-replay {
+  display: flex;
+  justify-content: center;
+  margin-top: 20px;
+}
+.replay-btn {
+  padding: 8px 18px;
+  border-radius: 10px;
+  border: 1px solid rgba(138,43,226,0.3);
+  background: rgba(138,43,226,0.08);
+  color: var(--accent);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s ease, background 0.2s ease, transform 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.replay-btn:hover {
+  background: rgba(138,43,226,0.15);
+  transform: translateY(-1px);
+}
+.replay-btn.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ── Paste particle ── */
+.paste-particle {
+  position: absolute;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 12px var(--green), 0 0 24px rgba(0,250,154,0.4);
+  opacity: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Features Grid
+   ═══════════════════════════════════════════════════════ */
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+.feature-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 32px 28px;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.3s,
+              box-shadow 0.3s;
+}
+.feature-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--border-hover);
+  box-shadow: 0 16px 48px rgba(0,0,0,0.08);
+}
+.feature-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+  font-size: 22px;
+}
+.feature-icon.accent { background: var(--accent-soft); }
+.feature-icon.cyan { background: rgba(0,255,255,0.1); }
+.feature-icon.green { background: rgba(0,250,154,0.1); }
+.feature-icon.amber { background: rgba(255,215,0,0.1); }
+.feature-icon.red { background: rgba(255,42,64,0.1); }
+.feature-icon.pink { background: rgba(244,114,182,0.1); }
+.feature-icon.orange { background: rgba(255,140,0,0.1); }
+
+.feature-card h3 {
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.feature-card p {
+  font-size: 14px;
+  color: var(--text-2);
+  line-height: 1.6;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Stats Section
+   ═══════════════════════════════════════════════════════ */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+.stat-card {
+  text-align: center;
+  padding: 40px 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  transition: border-color 0.3s;
+}
+.stat-card:hover {
+  border-color: var(--border-hover);
+}
+.stat-number {
+  font-size: 56px;
+  font-weight: 900;
+  letter-spacing: -2px;
+  background: var(--rainbow-hero);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  line-height: 1;
+  margin-bottom: 8px;
+}
+.stat-label {
+  font-size: 14px;
+  color: var(--text-2);
+}
+.stat-sublabel {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-3);
+  margin-top: 4px;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Privacy Section
+   ═══════════════════════════════════════════════════════ */
+.privacy-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 64px;
+  align-items: center;
+}
+.privacy-points {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.privacy-point {
+  display: flex;
+  gap: 16px;
+}
+.privacy-check {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(0,250,154,0.1);
+  border: 1px solid rgba(0,250,154,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.privacy-check svg {
+  width: 14px;
+  height: 14px;
+  color: var(--green);
+}
+.privacy-point h4 {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.privacy-point p {
+  font-size: 14px;
+  color: var(--text-2);
+  line-height: 1.6;
+}
+
+/* Mac illustration */
+.mac-illustration {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mac-frame {
+  width: 100%;
+  max-width: 400px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.10);
+}
+.mac-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: rgba(255,255,255,0.03);
+  border-bottom: 1px solid var(--border);
+}
+.mac-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.mac-dot.r { background: #ff5f57; }
+.mac-dot.y { background: #febc2e; }
+.mac-dot.g { background: #28c840; }
+.mac-titlebar-text {
+  margin-left: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-3);
+}
+.mac-body {
+  padding: 24px;
+}
+.mac-body .shield-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.shield-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: rgba(0,250,154,0.1);
+  border: 1px solid rgba(0,250,154,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+}
+.shield-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--green);
+}
+.mac-body .data-flows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.data-flow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.data-flow .flow-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.data-flow .flow-label {
+  color: var(--text-2);
+  flex: 1;
+}
+.data-flow .flow-status {
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.data-flow .flow-status.local { color: var(--green); }
+.data-flow .flow-status.optional { color: var(--amber); }
+.data-flow .flow-status.never { color: var(--red); }
+
+/* ═══════════════════════════════════════════════════════
+   Open Source Section
+   ═══════════════════════════════════════════════════════ */
+.oss-section {
+  text-align: center;
+}
+.terminal {
+  max-width: 680px;
+  width: 100%;
+  background: #0d0d14;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.12), 0 0 0 1px rgba(255,255,255,0.03);
+  margin: 40px auto;
+  text-align: left;
+}
+.terminal-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 20px;
+  background: rgba(255,255,255,0.03);
+  border-bottom: 1px solid var(--border);
+}
+.terminal-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+.terminal-dot.r { background: #ff5f57; }
+.terminal-dot.y { background: #febc2e; }
+.terminal-dot.g { background: #28c840; }
+.terminal-title {
+  margin-left: 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-3);
+}
+.terminal-body {
+  padding: 24px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 2;
+}
+.term-line {
+  opacity: 0;
+  transform: translateY(8px);
+}
+.terminal-body.animated .term-line {
+  animation: term-appear 0.3s forwards;
+}
+.terminal-body.animated .term-line:nth-child(1) { animation-delay: 0.1s; }
+.terminal-body.animated .term-line:nth-child(2) { animation-delay: 0.5s; }
+.terminal-body.animated .term-line:nth-child(3) { animation-delay: 0.9s; }
+.terminal-body.animated .term-line:nth-child(4) { animation-delay: 1.3s; }
+.terminal-body.animated .term-line:nth-child(5) { animation-delay: 1.7s; }
+@keyframes term-appear { to { opacity: 1; transform: translateY(0); } }
+
+.term-prompt { color: var(--green); }
+.term-cmd { color: var(--text); }
+.term-comment { color: var(--text-3); font-style: italic; }
+.term-output { color: var(--text-2); }
+.term-success { color: var(--green); }
+
+.oss-supporting {
+  font-size: 14px;
+  color: var(--text-3);
+  margin-top: 8px;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Download / Getting Started Section
+   ═══════════════════════════════════════════════════════ */
+.steps-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  margin: 56px 0 48px;
+}
+.step-card {
+  text-align: center;
+  padding: 36px 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  position: relative;
+}
+.step-num {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  border: 1px solid rgba(138,43,226,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+  margin: 0 auto 16px;
+}
+.step-card h3 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.step-card p {
+  font-size: 14px;
+  color: var(--text-2);
+  line-height: 1.6;
+}
+
+.download-cta {
+  text-align: center;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Footer
+   ═══════════════════════════════════════════════════════ */
+.footer {
+  border-top: 1px solid var(--border);
+  padding: 64px 0 32px;
+  position: relative;
+  z-index: 1;
+}
+.footer-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 48px;
+  margin-bottom: 48px;
+}
+.footer-brand h3 {
+  font-size: 18px;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+.footer-brand p {
+  font-size: 14px;
+  color: var(--text-2);
+  line-height: 1.6;
+}
+.footer-col h4 {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-3);
+  margin-bottom: 16px;
+}
+.footer-col ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.footer-col a {
+  font-size: 14px;
+  color: var(--text-2);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.footer-col a:hover {
+  color: var(--text);
+}
+.footer-bottom {
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text-3);
+  text-align: center;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Responsive
+   ═══════════════════════════════════════════════════════ */
+@media (max-width: 1024px) {
+  :root {
+    --section-pad: 80px;
+  }
+  .hero h1 {
+    font-size: 56px;
+    letter-spacing: -2px;
+  }
+  .hero-lips {
+    width: 280px;
+    height: 210px;
+  }
+  .section-title {
+    font-size: 40px;
+  }
+  .features-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .stats-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .privacy-grid {
+    gap: 40px;
+  }
+  .pipeline-steps {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .pipe-step:not(:last-child)::after {
+    display: none;
+  }
+  .nav-links {
+    display: none;
+  }
+  .nav-links.nav-open {
+    display: flex;
+    flex-direction: column;
+    position: absolute;
+    top: 64px;
+    left: 0;
+    right: 0;
+    background: rgba(255,255,255,0.95);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    padding: 16px 32px;
+    border-bottom: 1px solid var(--border);
+    gap: 16px;
+  }
+  .nav-toggle {
+    display: block;
+  }
+}
+
+@media (max-width: 768px) {
+  :root {
+    --section-pad: 64px;
+  }
+  .container {
+    padding: 0 20px;
+  }
+  .hero {
+    padding: 120px 0 80px;
+  }
+  .hero h1 {
+    font-size: 40px;
+    letter-spacing: -1.5px;
+  }
+  .hero-lips {
+    width: 220px;
+    height: 165px;
+  }
+  .hero-sub {
+    font-size: 17px;
+  }
+  .hero-ctas {
+    flex-direction: column;
+  }
+  .hero-stats {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .section-title {
+    font-size: 32px;
+    letter-spacing: -1px;
+  }
+  .section-sub {
+    font-size: 16px;
+  }
+  .features-grid {
+    grid-template-columns: 1fr;
+  }
+  .stats-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .stat-card {
+    padding: 28px 20px;
+  }
+  .stat-number {
+    font-size: 44px;
+  }
+  .privacy-grid {
+    grid-template-columns: 1fr;
+    gap: 40px;
+  }
+  .steps-row {
+    grid-template-columns: 1fr;
+  }
+  .footer-grid {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+  .pipeline-steps {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  /* Demo stacks vertically */
+  .demo-stage {
+    flex-direction: column;
+    height: auto;
+  }
+  .demo-panel-left,
+  .demo-panel-right {
+    flex: none;
+  }
+  .demo-pipeline {
+    flex: none;
+    padding: 20px 12px;
+  }
+  .demo-wrapper {
+    padding: 20px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Reduced Motion
+   ═══════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal {
+    opacity: 1;
+    transform: none;
+  }
+}
+</style>
+</head>
+<body>
+
+<div class="dot-grid"></div>
+
+<!-- ═══════════════════════════════════════════════════════
+     Navigation
+     ═══════════════════════════════════════════════════════ -->
+<nav class="nav" role="navigation" aria-label="Main navigation">
+  <div class="nav-inner">
+    <a href="#" class="nav-logo" aria-label="EnviousWispr home">
+      <svg width="22" height="22" viewBox="0 0 64 64" fill="none">
+        <rect x="4" y="22.25" width="4.5" height="5" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+        <rect x="10" y="17.64" width="4.5" height="8" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+        <rect x="16" y="12.04" width="4.5" height="12" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+        <rect x="22" y="16.96" width="4.5" height="9" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+        <rect x="28" y="21.56" width="4.5" height="6" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+        <rect x="34" y="16.96" width="4.5" height="9" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+        <rect x="40" y="12.04" width="4.5" height="12" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+        <rect x="46" y="17.64" width="4.5" height="8" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+        <rect x="52" y="22.25" width="4.5" height="5" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+        <rect x="4" y="30.25" width="4.5" height="5" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+        <rect x="10" y="28.64" width="4.5" height="9" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+        <rect x="16" y="27.04" width="4.5" height="12" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+        <rect x="22" y="28.96" width="4.5" height="15" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+        <rect x="28" y="30.56" width="4.5" height="17" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+        <rect x="34" y="28.96" width="4.5" height="15" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+        <rect x="40" y="27.04" width="4.5" height="12" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+        <rect x="46" y="28.64" width="4.5" height="9" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+        <rect x="52" y="30.25" width="4.5" height="5" rx="1.5" fill="rgba(255,255,255,0.65)"/>
+      </svg>
+      EnviousWispr
+    </a>
+    <ul class="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#open-source">Open Source</a></li>
+    </ul>
+    <a href="https://github.com/saurabhav88/EnviousWispr/releases" class="nav-cta">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download
+    </a>
+    <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+  </div>
+</nav>
+
+<main>
+<!-- ═══════════════════════════════════════════════════════
+     Hero
+     ═══════════════════════════════════════════════════════ -->
+<section class="hero" id="hero">
+  <div class="container">
+    <div class="hero-badge reveal" style="--i:0">
+      <span class="dot"></span>
+      Open Source macOS App
+    </div>
+
+    <!-- V2 Animated Lip Hero -->
+    <svg class="hero-lips reveal" style="--i:0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" aria-label="EnviousWispr animated lip icon" role="img">
+      <defs>
+        <radialGradient id="hero-bg-glow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#e8d5ff" stop-opacity="0.25"/>
+          <stop offset="100%" stop-color="transparent"/>
+        </radialGradient>
+        <filter id="hero-glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      <circle cx="128" cy="128" r="120" fill="url(#hero-bg-glow)"/>
+      <g transform="translate(8,13)" filter="url(#hero-glow)" class="lip-glow-group">
+        <rect class="upper-bar u0" x="16" y="84.2" width="14" height="20" rx="5" fill="#ff2a40" opacity="0.92"/>
+        <rect class="upper-bar u1" x="40" y="65.75" width="14" height="32" rx="5" fill="#ff8c00" opacity="0.92"/>
+        <rect class="upper-bar u2" x="64" y="43.36" width="14" height="48" rx="5" fill="#ffd700" opacity="0.92"/>
+        <rect class="upper-bar u3" x="88" y="63.04" width="14" height="36" rx="5" fill="#adff2f" opacity="0.92"/>
+        <rect class="upper-bar u4" x="112" y="81.43" width="14" height="24" rx="5" fill="#00fa9a" opacity="0.92"/>
+        <rect class="upper-bar u5" x="136" y="63.04" width="14" height="36" rx="5" fill="#00ffff" opacity="0.92"/>
+        <rect class="upper-bar u6" x="160" y="43.36" width="14" height="48" rx="5" fill="#1e90ff" opacity="0.92"/>
+        <rect class="upper-bar u7" x="184" y="65.75" width="14" height="32" rx="5" fill="#4169e1" opacity="0.92"/>
+        <rect class="upper-bar u8" x="208" y="84.2" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.92"/>
+        <rect class="lower-bar l0" x="16" y="125.8" width="14" height="20" rx="5" fill="#4169e1" opacity="0.88"/>
+        <rect class="lower-bar l1" x="40" y="119.35" width="14" height="36" rx="5" fill="#1e90ff" opacity="0.88"/>
+        <rect class="lower-bar l2" x="64" y="112.96" width="14" height="48" rx="5" fill="#00ffff" opacity="0.88"/>
+        <rect class="lower-bar l3" x="88" y="120.64" width="14" height="60" rx="5" fill="#00fa9a" opacity="0.88"/>
+        <rect class="lower-bar l4" x="112" y="127.03" width="14" height="68" rx="5" fill="#adff2f" opacity="0.88"/>
+        <rect class="lower-bar l5" x="136" y="120.64" width="14" height="60" rx="5" fill="#ffd700" opacity="0.88"/>
+        <rect class="lower-bar l6" x="160" y="112.96" width="14" height="48" rx="5" fill="#ff8c00" opacity="0.88"/>
+        <rect class="lower-bar l7" x="184" y="119.35" width="14" height="36" rx="5" fill="#ff2a40" opacity="0.88"/>
+        <rect class="lower-bar l8" x="208" y="125.8" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.88"/>
+      </g>
+    </svg>
+
+    <h1 class="reveal" style="--i:1">Talk naturally.<br>Paste perfectly.</h1>
+    <p class="hero-sub reveal" style="--i:2">On-device AI dictation for macOS. Record your voice, get polished text &mdash; grammar-fixed, filler-free, pasted into any app in under 2 seconds.</p>
+    <div class="hero-ctas reveal" style="--i:3">
+      <a href="https://github.com/saurabhav88/EnviousWispr/releases" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download for macOS
+      </a>
+      <a href="https://github.com/saurabhav88/EnviousWispr" class="btn-secondary" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+        View on GitHub
+      </a>
+    </div>
+    <div class="hero-stats reveal" style="--i:4">
+      <span class="hl">110x</span> real-time ASR
+      <span class="sep">|</span>
+      <span class="hl">&lt;2s</span> to paste
+      <span class="sep">|</span>
+      <span class="hl">0</span> audio bytes uploaded
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     Pipeline / How It Works
+     ═══════════════════════════════════════════════════════ -->
+<section class="pipeline-section section" id="how-it-works">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label accent">How It Works</div>
+      <h2 class="section-title">Four steps. Under two seconds.</h2>
+      <p class="section-sub">A streaming pipeline that starts transcribing while you're still talking.</p>
+    </div>
+
+    <!-- Step cards -->
+    <div class="pipeline-steps reveal-stagger">
+      <div class="pipe-step reveal" style="--i:0">
+        <div class="pipe-step-icon red">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        </div>
+        <h3>Record</h3>
+        <p>Press your hotkey. Talk naturally. Push-to-talk or toggle &mdash; your choice.</p>
+      </div>
+      <div class="pipe-step reveal" style="--i:1">
+        <div class="pipe-step-icon amber">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 12h2l3-9 4 18 4-18 3 9h2"/></svg>
+        </div>
+        <h3>Transcribe</h3>
+        <p>Parakeet v3 on Apple Neural Engine at 110x speed. Streaming while you speak.</p>
+      </div>
+      <div class="pipe-step reveal" style="--i:2">
+        <div class="pipe-step-icon cyan">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2z"/></svg>
+        </div>
+        <h3>Polish</h3>
+        <p>LLM removes filler words, fixes grammar. OpenAI, Gemini, Ollama, or Apple Intelligence.</p>
+      </div>
+      <div class="pipe-step reveal" style="--i:3">
+        <div class="pipe-step-icon green">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 14l2 2 4-4"/></svg>
+        </div>
+        <h3>Paste</h3>
+        <p>Polished text auto-pastes into any app. Previous clipboard preserved.</p>
+      </div>
+    </div>
+
+    <!-- Interactive Demo -->
+    <div class="demo-wrapper reveal" id="demoWrapper">
+      <div class="demo-header" id="demoHeader">
+        <div class="demo-tag">Live Demo</div>
+        <div class="demo-title">Streaming Pipeline In Action</div>
+      </div>
+
+      <div class="demo-stage">
+        <!-- Left: What You Said -->
+        <div class="demo-panel demo-panel-left" id="demoPanelLeft">
+          <div class="panel-label tertiary">
+            What you said
+            <span class="live-badge asr" id="demoAsrBadge">Streaming ASR</span>
+          </div>
+          <div class="waveform" id="demoWaveform"></div>
+          <div class="demo-text" id="demoRawText"></div>
+        </div>
+
+        <!-- Center: Pipeline Gantt -->
+        <div class="demo-pipeline" id="demoPipeline">
+          <div class="pipeline-title">Pipeline</div>
+          <div class="gantt">
+            <div class="gantt-row">
+              <div class="gantt-label" id="gRecLabel">Record</div>
+              <div class="gantt-track">
+                <div class="gantt-bar recording" id="gRecBar"><span class="bar-text">5.0s</span></div>
+              </div>
+            </div>
+            <div class="gantt-row">
+              <div class="gantt-label" id="gAsrLabel">Stream ASR</div>
+              <div class="gantt-track" style="position:relative;">
+                <div class="gantt-bar streaming-asr" id="gAsrBar"><span class="bar-text">real-time</span></div>
+                <div class="overlap-bracket" id="gOverlapBracket"></div>
+                <div class="overlap-label" id="gOverlapLabel">parallel</div>
+              </div>
+            </div>
+            <div class="gantt-row">
+              <div class="gantt-label" id="gFinLabel">Finalize</div>
+              <div class="gantt-track">
+                <div class="gantt-bar finalize" id="gFinBar"><span class="bar-text">~80ms</span></div>
+              </div>
+            </div>
+            <div class="gantt-row">
+              <div class="gantt-label" id="gPreLabel">Pre-warm</div>
+              <div class="gantt-track">
+                <div class="gantt-bar prewarm" id="gPreBar"><span class="bar-text">TLS</span></div>
+              </div>
+            </div>
+            <div class="gantt-row">
+              <div class="gantt-label" id="gPolLabel">SSE Polish</div>
+              <div class="gantt-track">
+                <div class="gantt-bar sse-polish" id="gPolBar"><span class="bar-text">~1.5s</span></div>
+              </div>
+            </div>
+            <div class="gantt-row">
+              <div class="gantt-label" id="gPasteLabel">Paste</div>
+              <div class="gantt-track">
+                <div class="gantt-bar paste-bar" id="gPasteBar"><span class="bar-text">&lt;5ms</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="concurrent-badge" id="gConcBadge">
+            <div class="cb-dot"></div>
+            <div class="cb-text" id="gConcText"></div>
+          </div>
+        </div>
+
+        <!-- Right: What Got Pasted -->
+        <div class="demo-panel demo-panel-right" id="demoPanelRight">
+          <div class="panel-label green-label">
+            What got pasted
+            <span class="live-badge sse" id="demoSseBadge">SSE Streaming</span>
+          </div>
+          <div class="demo-text" id="demoPolishedText" style="font-size:14px;line-height:1.75;"></div>
+        </div>
+      </div>
+
+      <div class="paste-particle" id="demoPasteParticle"></div>
+
+      <div class="demo-replay">
+        <button class="replay-btn" id="demoReplayBtn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+          Replay
+        </button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     Features Grid
+     ═══════════════════════════════════════════════════════ -->
+<section class="section" id="features">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label cyan">Features</div>
+      <h2 class="section-title">Everything you need. Nothing you don't.</h2>
+      <p class="section-sub">Built for people who think faster than they type.</p>
+    </div>
+
+    <div class="features-grid reveal-stagger">
+      <div class="feature-card reveal" style="--i:0">
+        <div class="feature-icon accent">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8a2be2" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 15h3M1 9h3M1 15h3"/></svg>
+        </div>
+        <h3>On-device transcription</h3>
+        <p>Parakeet v3 and WhisperKit run entirely on your Mac. No internet required. No audio uploaded. Ever.</p>
+      </div>
+      <div class="feature-card reveal" style="--i:1">
+        <div class="feature-icon cyan">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00ffff" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2z"/></svg>
+        </div>
+        <h3>Smart polish</h3>
+        <p>LLM-powered cleanup removes filler words, fixes grammar, and formats your text. Editable prompts with presets for Clean Up, Formal, and Casual styles.</p>
+      </div>
+      <div class="feature-card reveal" style="--i:2">
+        <div class="feature-icon amber">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffd700" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M2 12h2l3-9 4 18 4-18 3 9h2"/></svg>
+        </div>
+        <h3>Voice activity detection</h3>
+        <p>Silero VAD with smoothed probability tracking, 512ms prebuffer for word onset capture, and configurable silence timeout.</p>
+      </div>
+      <div class="feature-card reveal" style="--i:3">
+        <div class="feature-icon green">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00fa9a" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </div>
+        <h3>Works in any app</h3>
+        <p>Auto-pastes into whatever app you were using &mdash; Slack, VS Code, Gmail, Notes, Terminal. Previous clipboard contents preserved.</p>
+      </div>
+      <div class="feature-card reveal" style="--i:4">
+        <div class="feature-icon red">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ff2a40" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M6 16h8"/></svg>
+        </div>
+        <h3>Push-to-talk &amp; toggle</h3>
+        <p>Hold a key to record, or press once to start and again to stop. Customizable hotkeys. Cancel anytime with Escape.</p>
+      </div>
+      <div class="feature-card reveal" style="--i:5">
+        <div class="feature-icon pink">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f472b6" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+        </div>
+        <h3>Four LLM providers</h3>
+        <p>OpenAI, Google Gemini, Ollama (local), and Apple Intelligence. API keys stored in macOS Keychain. Switch without losing credentials.</p>
+      </div>
+      <div class="feature-card reveal" style="--i:6">
+        <div class="feature-icon orange">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ff8c00" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M8 7h8M8 11h6"/></svg>
+        </div>
+        <h3>Custom word correction</h3>
+        <p>Teach it your jargon. Add names, acronyms, and technical terms. Phonetic and edit-distance matching handles misheard words.</p>
+      </div>
+      <div class="feature-card reveal" style="--i:7">
+        <div class="feature-icon accent">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8a2be2" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+        </div>
+        <h3>Native macOS app</h3>
+        <p>Built in Swift 6 with SwiftUI. Lives in your menu bar. No Electron. No WebView. Feels like it belongs on your Mac because it does.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     Stats Section
+     ═══════════════════════════════════════════════════════ -->
+<section class="section" id="stats">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label amber">By the Numbers</div>
+      <h2 class="section-title">Built different.</h2>
+    </div>
+
+    <div class="stats-grid reveal-stagger">
+      <div class="stat-card reveal" style="--i:0">
+        <div class="stat-number" data-count="110" data-suffix="x">0x</div>
+        <div class="stat-label">Real-time transcription speed</div>
+        <div class="stat-sublabel">Parakeet v3 on Neural Engine</div>
+      </div>
+      <div class="stat-card reveal" style="--i:1">
+        <div class="stat-number" data-count="1.6" data-suffix="s" data-decimal="true">0s</div>
+        <div class="stat-label">Silence to paste</div>
+        <div class="stat-sublabel">Overlapped streaming pipeline</div>
+      </div>
+      <div class="stat-card reveal" style="--i:2">
+        <div class="stat-number" data-count="0" data-suffix=" bytes">0 bytes</div>
+        <div class="stat-label">Audio uploaded</div>
+        <div class="stat-sublabel">On-device transcription</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     Privacy Section
+     ═══════════════════════════════════════════════════════ -->
+<section class="section" id="privacy">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label green">Privacy</div>
+      <h2 class="section-title">Your voice never leaves your Mac.</h2>
+      <p class="section-sub">On-device transcription means your audio stays on your hardware. No cloud ASR. No recordings stored on remote servers. No telemetry.</p>
+    </div>
+
+    <div class="privacy-grid">
+      <div class="privacy-points reveal-stagger">
+        <div class="privacy-point reveal" style="--i:0">
+          <div class="privacy-check">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div>
+            <h4>On-device ASR</h4>
+            <p>Both speech engines &mdash; Parakeet v3 and WhisperKit &mdash; run locally on Apple Silicon. Audio is processed in-memory and never written to disk.</p>
+          </div>
+        </div>
+        <div class="privacy-point reveal" style="--i:1">
+          <div class="privacy-check">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div>
+            <h4>Keychain-secured credentials</h4>
+            <p>API keys for LLM providers are stored in macOS Keychain, not config files. The same security that protects your passwords protects your keys.</p>
+          </div>
+        </div>
+        <div class="privacy-point reveal" style="--i:2">
+          <div class="privacy-check">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div>
+            <h4>Optional LLM polish</h4>
+            <p>The only network call is the optional LLM polish step &mdash; and you control the provider. Use Ollama for fully offline operation.</p>
+          </div>
+        </div>
+        <div class="privacy-point reveal" style="--i:3">
+          <div class="privacy-check">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div>
+            <h4>Open source</h4>
+            <p>Every line of code is on GitHub. Audit the source. Verify the claims. No trust required.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="mac-illustration reveal" style="--i:2">
+        <div class="mac-frame">
+          <div class="mac-titlebar">
+            <div class="mac-dot r"></div>
+            <div class="mac-dot y"></div>
+            <div class="mac-dot g"></div>
+            <span class="mac-titlebar-text">EnviousWispr &mdash; Privacy</span>
+          </div>
+          <div class="mac-body">
+            <div class="shield-row">
+              <div class="shield-icon">&#x1f6e1;</div>
+              <div class="shield-text">All audio stays on-device</div>
+            </div>
+            <div class="data-flows">
+              <div class="data-flow">
+                <span class="flow-icon">&#x1f3a4;</span>
+                <span class="flow-label">Audio capture</span>
+                <span class="flow-status local">Local</span>
+              </div>
+              <div class="data-flow">
+                <span class="flow-icon">&#x1f9e0;</span>
+                <span class="flow-label">Speech-to-text</span>
+                <span class="flow-status local">Local</span>
+              </div>
+              <div class="data-flow">
+                <span class="flow-icon">&#x2728;</span>
+                <span class="flow-label">LLM polish</span>
+                <span class="flow-status optional">Optional</span>
+              </div>
+              <div class="data-flow">
+                <span class="flow-icon">&#x1f4e4;</span>
+                <span class="flow-label">Audio upload</span>
+                <span class="flow-status never">Never</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     Open Source
+     ═══════════════════════════════════════════════════════ -->
+<section class="section oss-section" id="open-source">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label accent">Open Source</div>
+      <h2 class="section-title">Open source. Open roadmap.</h2>
+      <p class="section-sub">EnviousWispr is built in the open. Read the code, file issues, suggest features, or contribute directly.</p>
+    </div>
+
+    <div class="terminal reveal" id="ossTerminal">
+      <div class="terminal-bar">
+        <div class="terminal-dot r"></div>
+        <div class="terminal-dot y"></div>
+        <div class="terminal-dot g"></div>
+        <span class="terminal-title">Terminal &mdash; EnviousWispr</span>
+      </div>
+      <div class="terminal-body" id="ossTerminalBody">
+        <div class="term-line"><span class="term-prompt">$</span> <span class="term-cmd">git clone https://github.com/saurabhav88/EnviousWispr.git</span></div>
+        <div class="term-line"><span class="term-output">Cloning into 'EnviousWispr'...</span></div>
+        <div class="term-line"><span class="term-prompt">$</span> <span class="term-cmd">cd EnviousWispr && swift build</span></div>
+        <div class="term-line"><span class="term-output">Building for debugging...</span></div>
+        <div class="term-line"><span class="term-success">Build complete! (62 sources compiled)</span></div>
+      </div>
+    </div>
+
+    <a href="https://github.com/saurabhav88/EnviousWispr" class="btn-primary reveal" target="_blank" rel="noopener" style="margin-top: 32px;">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+      View on GitHub
+    </a>
+    <p class="oss-supporting reveal">Contributions welcome. Built with Swift 6, SwiftUI, and Apple's Neural Engine APIs.</p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     Download / Getting Started
+     ═══════════════════════════════════════════════════════ -->
+<section class="section" id="download">
+  <div class="container">
+    <div class="section-head reveal">
+      <h2 class="section-title">Start dictating in 30 seconds.</h2>
+    </div>
+
+    <div class="steps-row reveal-stagger">
+      <div class="step-card reveal" style="--i:0">
+        <div class="step-num">1</div>
+        <h3>Download</h3>
+        <p>Grab the latest DMG from GitHub Releases. Drag to Applications.</p>
+      </div>
+      <div class="step-card reveal" style="--i:1">
+        <div class="step-num">2</div>
+        <h3>Grant permissions</h3>
+        <p>Microphone access for recording. Accessibility for auto-paste. A guided setup walks you through both.</p>
+      </div>
+      <div class="step-card reveal" style="--i:2">
+        <div class="step-num">3</div>
+        <h3>Press your hotkey</h3>
+        <p>Control+Space to toggle. Option+Space to push-to-talk. Talk naturally. Release. Done.</p>
+      </div>
+    </div>
+
+    <div class="download-cta reveal">
+      <a href="https://github.com/saurabhav88/EnviousWispr/releases" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download for macOS
+      </a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ═══════════════════════════════════════════════════════
+     Footer
+     ═══════════════════════════════════════════════════════ -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <h3>EnviousWispr</h3>
+        <p>Open-source AI dictation for macOS.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Product</h4>
+        <ul>
+          <li><a href="https://github.com/saurabhav88/EnviousWispr/releases" target="_blank" rel="noopener">Download</a></li>
+          <li><a href="https://github.com/saurabhav88/EnviousWispr" target="_blank" rel="noopener">GitHub</a></li>
+          <li><a href="https://github.com/saurabhav88/EnviousWispr/releases" target="_blank" rel="noopener">Releases</a></li>
+          <li><a href="https://github.com/saurabhav88/EnviousWispr/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Resources</h4>
+        <ul>
+          <li><a href="https://github.com/saurabhav88/EnviousWispr#readme" target="_blank" rel="noopener">Documentation</a></li>
+          <li><a href="https://github.com/saurabhav88/EnviousWispr/issues/new?labels=feature-request" target="_blank" rel="noopener">Feature Requests</a></li>
+          <li><a href="https://github.com/saurabhav88/EnviousWispr/issues/new?labels=bug" target="_blank" rel="noopener">Report a Bug</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      Built with Swift and SwiftUI on macOS. Open source on GitHub.
+    </div>
+  </div>
+</footer>
+
+<!-- ═══════════════════════════════════════════════════════
+     JavaScript
+     ═══════════════════════════════════════════════════════ -->
+<script>
+(function() {
+  'use strict';
+
+  /* ─── Scroll Reveal (IntersectionObserver) ─── */
+  var revealObserver = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        revealObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
+
+  document.querySelectorAll('.reveal').forEach(function(el) {
+    revealObserver.observe(el);
+  });
+
+  /* ─── Stat Count-Up Animation ─── */
+  var statObserver = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        var el = entry.target;
+        var target = parseFloat(el.getAttribute('data-count'));
+        var suffix = el.getAttribute('data-suffix') || '';
+        var isDecimal = el.getAttribute('data-decimal') === 'true';
+        var duration = 1200;
+        var start = performance.now();
+
+        function tick(now) {
+          var elapsed = now - start;
+          var progress = Math.min(elapsed / duration, 1);
+          // ease out cubic
+          var eased = 1 - Math.pow(1 - progress, 3);
+          var current = target * eased;
+          if (isDecimal) {
+            el.textContent = current.toFixed(1) + suffix;
+          } else {
+            el.textContent = Math.round(current) + suffix;
+          }
+          if (progress < 1) requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+        statObserver.unobserve(el);
+      }
+    });
+  }, { threshold: 0.5 });
+
+  document.querySelectorAll('.stat-number[data-count]').forEach(function(el) {
+    statObserver.observe(el);
+  });
+
+  /* ─── Terminal Line Animation ─── */
+  var termObserver = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('animated');
+        termObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.3 });
+
+  var ossBody = document.getElementById('ossTerminalBody');
+  if (ossBody) termObserver.observe(ossBody);
+
+  /* ═══════════════════════════════════════════════════════
+     Pipeline Demo
+     ═══════════════════════════════════════════════════════ */
+  var BAR_COUNT = 40;
+
+  // V2 rainbow spectrum colors for waveform bars
+  var V2_COLORS = ['#ff2a40','#ff8c00','#ffd700','#adff2f','#00fa9a','#00ffff','#1e90ff','#4169e1','#8a2be2'];
+
+  var rawSegments = [
+    { text: 'um ', filler: true },
+    { text: 'so ' },
+    { text: 'I I ', filler: true },
+    { text: 'wanted to ' },
+    { text: 'uh ', filler: true },
+    { text: 'circle back on, on our Q3 planning, ' },
+    { text: 'uh, ', filler: true },
+    { text: 'discussion from ' },
+    { text: 'like, ', filler: true },
+    { text: 'last Tuesday... I think ' },
+    { text: 'um ', filler: true },
+    { text: 'the timeline is ' },
+    { text: 'like ', filler: true },
+    { text: 'realistic but we should ' },
+    { text: 'uh ', filler: true },
+    { text: 'probably add a buffer week for the ' },
+    { text: 'um ', filler: true },
+    { text: 'integration phase' }
+  ];
+
+  var polishedStr = 'I wanted to circle back on our Q3 planning discussion from last Tuesday. I think the timeline is realistic, but we should probably add a buffer week for the integration phase.';
+  var polishedWords = polishedStr.split(' ');
+
+  // DOM refs
+  var demoWrapper     = document.getElementById('demoWrapper');
+  var demoHeader      = document.getElementById('demoHeader');
+  var demoPanelLeft   = document.getElementById('demoPanelLeft');
+  var demoPipeline    = document.getElementById('demoPipeline');
+  var demoPanelRight  = document.getElementById('demoPanelRight');
+  var demoWaveform    = document.getElementById('demoWaveform');
+  var demoRawText     = document.getElementById('demoRawText');
+  var demoPolishedText = document.getElementById('demoPolishedText');
+  var demoAsrBadge    = document.getElementById('demoAsrBadge');
+  var demoSseBadge    = document.getElementById('demoSseBadge');
+  var demoPasteParticle = document.getElementById('demoPasteParticle');
+  var demoReplayBtn   = document.getElementById('demoReplayBtn');
+
+  // Gantt
+  var gRecBar   = document.getElementById('gRecBar');
+  var gAsrBar   = document.getElementById('gAsrBar');
+  var gFinBar   = document.getElementById('gFinBar');
+  var gPreBar   = document.getElementById('gPreBar');
+  var gPolBar   = document.getElementById('gPolBar');
+  var gPasteBar = document.getElementById('gPasteBar');
+  var gRecLabel   = document.getElementById('gRecLabel');
+  var gAsrLabel   = document.getElementById('gAsrLabel');
+  var gFinLabel   = document.getElementById('gFinLabel');
+  var gPreLabel   = document.getElementById('gPreLabel');
+  var gPolLabel   = document.getElementById('gPolLabel');
+  var gPasteLabel = document.getElementById('gPasteLabel');
+  var gOverlapBracket = document.getElementById('gOverlapBracket');
+  var gOverlapLabel   = document.getElementById('gOverlapLabel');
+  var gConcBadge = document.getElementById('gConcBadge');
+  var gConcText  = document.getElementById('gConcText');
+
+  // Timers
+  var dTimers = [];
+  var dIntervals = [];
+  var dRafId = null;
+
+  function dLater(fn, ms) { var t = setTimeout(fn, ms); dTimers.push(t); return t; }
+  function dClearAll() {
+    dTimers.forEach(clearTimeout);
+    dIntervals.forEach(clearInterval);
+    dTimers = [];
+    dIntervals = [];
+    if (dRafId) cancelAnimationFrame(dRafId);
+    dRafId = null;
+  }
+
+  // Waveform — V2 rainbow spectrum
+  function createDemoBars() {
+    while (demoWaveform.firstChild) demoWaveform.removeChild(demoWaveform.firstChild);
+    for (var i = 0; i < BAR_COUNT; i++) {
+      var bar = document.createElement('div');
+      bar.className = 'bar';
+      // Cycle through the 9 V2 rainbow colors
+      bar.style.background = V2_COLORS[i % V2_COLORS.length];
+      bar.style.height = '8px';
+      demoWaveform.appendChild(bar);
+    }
+  }
+
+  var dWaveActive = false;
+  function tickDemoWave() {
+    if (!dWaveActive) return;
+    var bars = demoWaveform.children;
+    var now = performance.now();
+    for (var i = 0; i < bars.length; i++) {
+      var phase = i * 0.35 + now * 0.004;
+      var h = 8 + Math.abs(Math.sin(phase)) * 30 + Math.abs(Math.sin(phase * 0.7 + i)) * 10;
+      bars[i].style.height = h + 'px';
+    }
+    dRafId = requestAnimationFrame(tickDemoWave);
+  }
+  function startDemoWave() { dWaveActive = true; tickDemoWave(); }
+  function stopDemoWave() {
+    dWaveActive = false;
+    if (dRafId) { cancelAnimationFrame(dRafId); dRafId = null; }
+    var bars = demoWaveform.children;
+    for (var i = 0; i < bars.length; i++) bars[i].style.height = '8px';
+  }
+
+  // Gantt helpers
+  function animateGantt(bar, targetWidth, durMs, cb) {
+    bar.classList.add('active');
+    bar.style.transition = 'width ' + durMs + 'ms linear';
+    requestAnimationFrame(function() { bar.style.width = targetWidth; });
+    if (cb) dLater(cb, durMs);
+  }
+  function doneGantt(bar) {
+    bar.classList.remove('active');
+    bar.classList.add('done');
+  }
+
+  // Type raw text
+  function typeRaw(cb) {
+    while (demoRawText.firstChild) demoRawText.removeChild(demoRawText.firstChild);
+    var spans = [];
+    rawSegments.forEach(function(seg) {
+      var sp = document.createElement('span');
+      if (seg.filler) sp.className = 'filler';
+      demoRawText.appendChild(sp);
+      spans.push({ el: sp, text: seg.text, pos: 0 });
+    });
+    var segIdx = 0;
+    var totalChars = rawSegments.reduce(function(a, s) { return a + s.text.length; }, 0);
+    var avgDelay = 4800 / (totalChars / 3);
+    function tick() {
+      if (segIdx >= spans.length) { if (cb) cb(); return; }
+      var cur = spans[segIdx];
+      var chunk = 2 + Math.floor(Math.random() * 3);
+      var end = Math.min(cur.pos + chunk, cur.text.length);
+      cur.el.textContent = cur.text.slice(0, end);
+      cur.pos = end;
+      if (cur.pos >= cur.text.length) segIdx++;
+      if (segIdx < spans.length) {
+        dLater(tick, avgDelay * (0.6 + Math.random() * 0.8));
+      } else {
+        if (cb) cb();
+      }
+    }
+    tick();
+  }
+
+  // Strikethrough fillers
+  function strikeFillers(cb) {
+    var fillers = demoRawText.querySelectorAll('.filler');
+    fillers.forEach(function(f, i) {
+      dLater(function() { f.classList.add('struck'); }, i * 200);
+    });
+    dLater(cb, fillers.length * 200 + 200);
+  }
+
+  // SSE streaming polished text
+  function streamPolished(cb) {
+    demoPolishedText.textContent = '';
+    var cursor = document.createElement('span');
+    cursor.className = 'cursor-blink';
+    demoPolishedText.appendChild(cursor);
+    var wordIdx = 0;
+    function emitBurst() {
+      if (wordIdx >= polishedWords.length) {
+        if (cursor.parentNode) cursor.parentNode.removeChild(cursor);
+        if (cb) cb();
+        return;
+      }
+      if (cursor.parentNode) cursor.parentNode.removeChild(cursor);
+      var burstSize = 1 + Math.floor(Math.random() * 3);
+      burstSize = Math.min(burstSize, polishedWords.length - wordIdx);
+      for (var i = 0; i < burstSize; i++) {
+        var ws = document.createElement('span');
+        ws.className = 'sse-word';
+        ws.textContent = (wordIdx > 0 ? ' ' : '') + polishedWords[wordIdx];
+        demoPolishedText.appendChild(ws);
+        (function(span, delay) {
+          dLater(function() { span.classList.add('visible'); }, delay);
+        })(ws, i * 30);
+        wordIdx++;
+      }
+      demoPolishedText.appendChild(cursor);
+      demoPolishedText.scrollTop = demoPolishedText.scrollHeight;
+      var nextDelay = 40 + Math.random() * 60;
+      if (Math.random() < 0.1) nextDelay += 60;
+      dLater(emitBurst, nextDelay);
+    }
+    emitBurst();
+  }
+
+  // Concurrency badge
+  function setConcBadge(text) {
+    gConcText.textContent = text;
+    gConcBadge.classList.add('visible');
+  }
+  function hideConcBadge() { gConcBadge.classList.remove('visible'); }
+
+  // Reset demo
+  function resetDemo() {
+    dClearAll();
+    stopDemoWave();
+    [demoPanelLeft, demoPipeline, demoPanelRight].forEach(function(e) { e.classList.remove('visible'); });
+    demoPanelRight.classList.remove('glow-green');
+    demoReplayBtn.classList.remove('visible');
+    demoAsrBadge.classList.remove('active');
+    demoSseBadge.classList.remove('active');
+    hideConcBadge();
+    [gRecBar, gAsrBar, gFinBar, gPreBar, gPolBar, gPasteBar].forEach(function(b) {
+      b.style.transition = 'none';
+      b.style.width = '0%';
+      b.className = b.className.replace(/\s*(active|done)\b/g, '');
+    });
+    [gRecLabel, gAsrLabel, gFinLabel, gPreLabel, gPolLabel, gPasteLabel].forEach(function(l) {
+      l.classList.remove('active');
+    });
+    gOverlapBracket.classList.remove('visible');
+    gOverlapLabel.classList.remove('visible');
+    demoRawText.textContent = '';
+    demoPolishedText.textContent = '';
+    demoPasteParticle.style.transition = 'none';
+    demoPasteParticle.style.opacity = '0';
+    createDemoBars();
+  }
+
+  // Run demo sequence
+  function runDemo() {
+    resetDemo();
+
+    // Phase 1: Entrance
+    dLater(function() { demoPanelLeft.classList.add('visible'); }, 100);
+    dLater(function() { demoPipeline.classList.add('visible'); }, 400);
+    dLater(function() { demoPanelRight.classList.add('visible'); }, 700);
+
+    // Phase 2: Recording + Streaming ASR (parallel)
+    dLater(function() {
+      startDemoWave();
+      demoAsrBadge.classList.add('active');
+      gRecLabel.classList.add('active');
+      animateGantt(gRecBar, '100%', 5000);
+      gAsrLabel.classList.add('active');
+      animateGantt(gAsrBar, '100%', 5000);
+      dLater(function() {
+        gOverlapBracket.classList.add('visible');
+        gOverlapLabel.classList.add('visible');
+      }, 800);
+      setConcBadge('Recording + ASR parallel');
+      typeRaw(function() {});
+    }, 1000);
+
+    // Phase 3: Release + Finalize + Pre-warm
+    dLater(function() {
+      stopDemoWave();
+      demoAsrBadge.classList.remove('active');
+      doneGantt(gRecBar);
+      doneGantt(gAsrBar);
+      gRecLabel.classList.remove('active');
+      gAsrLabel.classList.remove('active');
+      gOverlapBracket.classList.remove('visible');
+      gOverlapLabel.classList.remove('visible');
+
+      gFinLabel.classList.add('active');
+      animateGantt(gFinBar, '15%', 500, function() {
+        doneGantt(gFinBar);
+        gFinLabel.classList.remove('active');
+      });
+      gPreLabel.classList.add('active');
+      animateGantt(gPreBar, '15%', 500, function() {
+        doneGantt(gPreBar);
+        gPreLabel.classList.remove('active');
+      });
+      setConcBadge('Finalize + pre-warm concurrent');
+      strikeFillers(function() {});
+    }, 6000);
+
+    // Phase 4: SSE Polish
+    dLater(function() {
+      gPolLabel.classList.add('active');
+      animateGantt(gPolBar, '100%', 1500, function() {
+        doneGantt(gPolBar);
+        gPolLabel.classList.remove('active');
+      });
+      demoSseBadge.classList.add('active');
+      setConcBadge('SSE tokens streaming');
+      demoPanelRight.classList.add('glow-green');
+      dLater(function() {
+        streamPolished(function() {
+          demoSseBadge.classList.remove('active');
+        });
+      }, 100);
+    }, 7500);
+
+    // Phase 5: Paste + Done
+    dLater(function() {
+      gPasteLabel.classList.add('active');
+      animateGantt(gPasteBar, '100%', 200, function() {
+        doneGantt(gPasteBar);
+        gPasteLabel.classList.remove('active');
+      });
+      hideConcBadge();
+    }, 9200);
+
+    // Show replay
+    dLater(function() {
+      demoReplayBtn.classList.add('visible');
+    }, 10000);
+  }
+
+  // Replay button
+  demoReplayBtn.addEventListener('click', function() {
+    runDemo();
+  });
+
+  // Scroll-triggered auto-play (once)
+  var demoPlayed = false;
+  var demoObserver = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (entry.isIntersecting && !demoPlayed) {
+        demoPlayed = true;
+        runDemo();
+      }
+    });
+  }, { threshold: 0.3 });
+
+  demoObserver.observe(demoWrapper);
+
+  // Initialize waveform bars
+  createDemoBars();
+
+  /* ─── Smooth scroll for nav links ─── */
+  document.querySelectorAll('a[href^="#"]').forEach(function(a) {
+    a.addEventListener('click', function(e) {
+      var target = document.querySelector(a.getAttribute('href'));
+      if (target) {
+        e.preventDefault();
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  });
+
+  /* ─── Nav scroll effect ─── */
+  var nav = document.querySelector('.nav');
+  window.addEventListener('scroll', function() {
+    var st = window.pageYOffset;
+    if (st > 100) {
+      nav.style.background = 'rgba(255,255,255,0.95)';
+    } else {
+      nav.style.background = 'rgba(255,255,255,0.85)';
+    }
+  }, { passive: true });
+
+  /* ─── Mobile nav toggle ─── */
+  var navToggle = document.querySelector('.nav-toggle');
+  var navLinks = document.querySelector('.nav-links');
+  if (navToggle && navLinks) {
+    navToggle.addEventListener('click', function() {
+      var expanded = navLinks.classList.toggle('nav-open');
+      navToggle.setAttribute('aria-expanded', String(expanded));
+    });
+  }
+
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,36 @@
+.sceneInner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.artContainer {
+  position: relative;
+  width: 100%;
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+.bgIllustration {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+  mask-image: linear-gradient(to bottom, transparent 0%, black 5%, black 95%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 5%, black 95%, transparent 100%);
+}
+
+.headerWrap {
+  position: absolute;
+  top: 4%;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  z-index: 2;
+}
+
+.headerWrap p {
+  white-space: pre-line;
+}

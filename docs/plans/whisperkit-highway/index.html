@@ -1,0 +1,2144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WhisperKit Highway — Planning Council Report</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200;300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0612;
+    --surface: #110d1e;
+    --surface-2: #1a1430;
+    --surface-3: #221b3c;
+    --border: rgba(124,58,237,0.12);
+    --border-bright: rgba(124,58,237,0.25);
+    --accent: #7c3aed;
+    --accent-soft: rgba(124,58,237,0.15);
+    --text: #f0ecfa;
+    --text-2: #b0a3c8;
+    --text-3: #6d5f88;
+    --green: #00c880;
+    --cyan: #00ccdd;
+    --amber: #e6c200;
+    --red: #e6253a;
+    --orange: #e67e00;
+    --pink: #d45a90;
+
+    --rainbow-full: linear-gradient(90deg, #ff2a40, #ff8c00, #ffd700, #adff2f, #00fa9a, #00ffff, #1e90ff, #4169e1, #8a2be2);
+    --rainbow-hero: linear-gradient(135deg, #8a2be2 0%, #00ffff 100%);
+    --rainbow-cool: linear-gradient(90deg, #00ffff, #1e90ff, #4169e1, #8a2be2);
+
+    --font-body: 'Plus Jakarta Sans', -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+
+    --radius-card: 16px;
+    --radius-sm: 8px;
+    --radius-pill: 100px;
+    --max-width: 1100px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { scroll-behavior: smooth; font-size: 16px; }
+
+  body {
+    font-family: var(--font-body);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  /* ---- NAV ---- */
+  nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 32px;
+    height: 56px;
+    background: rgba(10,6,18,0.85);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .nav-brand {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-2);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .nav-links {
+    display: flex;
+    gap: 24px;
+    list-style: none;
+  }
+
+  .nav-links a {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-3);
+    text-decoration: none;
+    letter-spacing: 0.02em;
+    transition: color 0.2s;
+  }
+
+  .nav-links a:hover { color: var(--text); }
+
+  /* ---- SECTIONS ---- */
+  section {
+    min-height: 100vh;
+    padding: 120px 32px 80px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+  }
+
+  .section-inner {
+    width: 100%;
+    max-width: var(--max-width);
+  }
+
+  /* ---- TYPOGRAPHY ---- */
+  .overline {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    margin-bottom: 12px;
+    display: block;
+  }
+
+  h1 {
+    font-size: clamp(44px, 6vw, 80px);
+    font-weight: 800;
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+    margin-bottom: 24px;
+  }
+
+  h2 {
+    font-size: clamp(28px, 4vw, 44px);
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    margin-bottom: 12px;
+  }
+
+  h3 {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin-bottom: 8px;
+  }
+
+  p {
+    color: var(--text-2);
+    font-size: 15px;
+    line-height: 1.7;
+    max-width: 680px;
+  }
+
+  .large-p {
+    font-size: 18px;
+    line-height: 1.65;
+    font-weight: 400;
+    color: var(--text-2);
+    max-width: 700px;
+    margin-bottom: 32px;
+  }
+
+  .rainbow-text {
+    background: var(--rainbow-full);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .accent-text { color: var(--accent); }
+
+  /* ---- RAINBOW BAR ---- */
+  .rainbow-bar {
+    height: 3px;
+    background: var(--rainbow-full);
+    border-radius: 2px;
+    margin-bottom: 32px;
+  }
+
+  /* ---- CARDS ---- */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: 24px;
+  }
+
+  .card-accent {
+    background: var(--surface);
+    border: 1px solid var(--border-bright);
+    border-radius: var(--radius-card);
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card-accent::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--rainbow-full);
+  }
+
+  /* ---- GRID LAYOUTS ---- */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+
+  @media (max-width: 800px) {
+    .grid-2 { grid-template-columns: 1fr; }
+    .grid-3 { grid-template-columns: 1fr; }
+    .grid-4 { grid-template-columns: 1fr 1fr; }
+    nav { padding: 0 16px; }
+    .nav-links { display: none; }
+    section { padding: 100px 20px 60px; }
+  }
+
+  /* ---- PILLS / TAGS ---- */
+  .pill {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: var(--radius-pill);
+    letter-spacing: 0.04em;
+  }
+
+  .pill-green { background: rgba(0,200,128,0.12); color: var(--green); }
+  .pill-amber { background: rgba(230,194,0,0.12); color: var(--amber); }
+  .pill-red { background: rgba(230,37,58,0.12); color: var(--red); }
+  .pill-cyan { background: rgba(0,204,221,0.12); color: var(--cyan); }
+  .pill-purple { background: rgba(124,58,237,0.15); color: #a78bfa; }
+
+  /* ---- MONO CODE ---- */
+  code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    background: rgba(124,58,237,0.1);
+    color: #c4b5fd;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+
+  /* ---- DIVIDER ---- */
+  .section-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 48px 0;
+  }
+
+  /* ======================== SECTION 1: HERO ======================== */
+  #hero {
+    min-height: 100vh;
+    align-items: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  #hero::before {
+    content: '';
+    position: absolute;
+    top: -200px; right: -200px;
+    width: 700px; height: 700px;
+    background: radial-gradient(circle, rgba(124,58,237,0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  #hero::after {
+    content: '';
+    position: absolute;
+    bottom: -100px; left: -100px;
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(0,255,255,0.04) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .hero-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+
+  .hero-stat {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-3);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .hero-stat-dot {
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: var(--text-3);
+  }
+
+  .hero-stat-value {
+    color: var(--text-2);
+    font-weight: 600;
+  }
+
+  .hero-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-top: 48px;
+  }
+
+  @media (max-width: 800px) {
+    .hero-summary-grid { grid-template-columns: 1fr 1fr; }
+  }
+
+  .hero-stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+
+  .hero-stat-card .num {
+    font-family: var(--font-mono);
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+
+  .hero-stat-card .label {
+    font-size: 12px;
+    color: var(--text-3);
+    line-height: 1.4;
+  }
+
+  /* ======================== SECTION 2: WHY WE RESET ======================== */
+  .failure-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 24px;
+  }
+
+  .failure-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--red);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    padding: 16px 20px;
+  }
+
+  .failure-item h4 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--text);
+  }
+
+  .failure-item p {
+    font-size: 13px;
+    color: var(--text-3);
+    max-width: none;
+    line-height: 1.5;
+  }
+
+  .lesson-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 32px;
+  }
+
+  @media (max-width: 800px) {
+    .lesson-grid { grid-template-columns: 1fr; }
+  }
+
+  .lesson-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 16px;
+  }
+
+  .lesson-num {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-3);
+    letter-spacing: 0.08em;
+    margin-bottom: 6px;
+    display: block;
+  }
+
+  .lesson-card h4 {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--text);
+  }
+
+  .lesson-card p {
+    font-size: 12px;
+    color: var(--text-3);
+    line-height: 1.5;
+    max-width: none;
+  }
+
+  /* ======================== SECTION 3: OLD VS NEW ======================== */
+  .compare-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    overflow: hidden;
+    margin-top: 32px;
+  }
+
+  @media (max-width: 700px) {
+    .compare-grid { grid-template-columns: 1fr; }
+  }
+
+  .compare-col {
+    padding: 28px;
+  }
+
+  .compare-col.old-col {
+    background: rgba(230,37,58,0.04);
+    border-right: 1px solid var(--border);
+  }
+
+  .compare-col.new-col {
+    background: rgba(0,200,128,0.04);
+  }
+
+  .compare-col h3 {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .old-col h3 { color: var(--red); }
+  .new-col h3 { color: var(--green); }
+
+  .compare-row {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+
+  .compare-row:last-child { border-bottom: none; }
+
+  .compare-row .label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-3);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+
+  .compare-row .value {
+    color: var(--text-2);
+    line-height: 1.4;
+  }
+
+  .old-col .value { color: rgba(230,37,58,0.9); }
+  .new-col .value { color: rgba(0,200,128,0.9); }
+
+  .advisor-quote {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    padding: 16px 20px;
+    margin-top: 16px;
+  }
+
+  .advisor-quote p {
+    font-size: 13px;
+    color: var(--text-2);
+    font-style: italic;
+    max-width: none;
+    line-height: 1.5;
+    margin-bottom: 6px;
+  }
+
+  .advisor-quote .attribution {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--text-3);
+  }
+
+  /* ======================== SECTION 4: TWO-HIGHWAY ======================== */
+  .swimlane-container {
+    margin-top: 32px;
+    overflow-x: auto;
+  }
+
+  .swimlane-svg-wrapper {
+    min-width: 700px;
+  }
+
+  /* ======================== SECTION 5: BOUNDARIES ======================== */
+  .boundary-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 24px;
+    font-size: 13px;
+  }
+
+  .boundary-table th {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .boundary-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-2);
+    vertical-align: top;
+    line-height: 1.5;
+  }
+
+  .boundary-table tr:last-child td { border-bottom: none; }
+
+  .boundary-table td:first-child {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: #a78bfa;
+    white-space: nowrap;
+  }
+
+  .boundary-table tr:hover td { background: rgba(124,58,237,0.04); }
+
+  /* ======================== SECTION 6: PHASES ======================== */
+  .phase-track {
+    display: flex;
+    gap: 0;
+    margin-top: 40px;
+    position: relative;
+  }
+
+  .phase-track::before {
+    content: '';
+    position: absolute;
+    top: 44px;
+    left: 36px; right: 36px;
+    height: 2px;
+    background: var(--surface-3);
+    z-index: 0;
+  }
+
+  .phase-card {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    position: relative;
+    z-index: 1;
+    padding: 0 8px;
+  }
+
+  .phase-dot {
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 12px;
+    font-family: var(--font-mono);
+    font-size: 16px;
+    font-weight: 700;
+    border: 2px solid transparent;
+    position: relative;
+  }
+
+  .phase-dot::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    background: var(--rainbow-full);
+    z-index: -1;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .phase-dot:hover::after { opacity: 1; }
+
+  .phase-dot-0 { background: var(--surface-2); color: var(--cyan); border-color: var(--cyan); }
+  .phase-dot-1 { background: var(--surface-2); color: var(--accent); border-color: var(--accent); }
+  .phase-dot-2 { background: var(--surface-2); color: var(--green); border-color: var(--green); }
+  .phase-dot-3 { background: var(--surface-2); color: var(--amber); border-color: var(--amber); }
+  .phase-dot-4 { background: var(--surface-2); color: var(--pink); border-color: var(--pink); }
+
+  .phase-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+    line-height: 1.3;
+  }
+
+  .phase-sub {
+    font-size: 11px;
+    color: var(--text-3);
+    line-height: 1.4;
+  }
+
+  .phase-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    margin-top: 40px;
+  }
+
+  @media (max-width: 900px) {
+    .phase-track { flex-direction: column; gap: 16px; }
+    .phase-track::before { display: none; }
+    .phase-card { flex-direction: row; align-items: flex-start; text-align: left; gap: 16px; }
+    .phase-dot { flex-shrink: 0; margin-bottom: 0; }
+    .phase-detail-grid { grid-template-columns: 1fr; }
+  }
+
+  .phase-detail-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .phase-detail-card .phase-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+
+  .phase-badge {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+  }
+
+  .p0-badge { background: rgba(0,204,221,0.1); color: var(--cyan); }
+  .p1-badge { background: rgba(124,58,237,0.15); color: #a78bfa; }
+  .p2-badge { background: rgba(0,200,128,0.1); color: var(--green); }
+  .p3-badge { background: rgba(230,194,0,0.1); color: var(--amber); }
+  .p4-badge { background: rgba(212,90,144,0.1); color: var(--pink); }
+
+  .phase-detail-card h4 {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    margin: 0;
+    flex: 1;
+  }
+
+  .deliverable-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .deliverable-list li {
+    font-size: 12px;
+    color: var(--text-3);
+    display: flex;
+    gap: 8px;
+    line-height: 1.4;
+  }
+
+  .deliverable-list li::before {
+    content: '→';
+    color: var(--text-3);
+    flex-shrink: 0;
+    opacity: 0.5;
+  }
+
+  /* ======================== SECTION 7: RISKS ======================== */
+  .guardrail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 10px;
+    margin-top: 24px;
+  }
+
+  .guardrail-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .guardrail-id {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    flex-shrink: 0;
+    padding-top: 1px;
+    min-width: 28px;
+  }
+
+  .guardrail-text {
+    font-size: 12px;
+    color: var(--text-2);
+    line-height: 1.5;
+  }
+
+  .risk-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+    margin-top: 24px;
+  }
+
+  @media (max-width: 800px) {
+    .risk-cards { grid-template-columns: 1fr; }
+  }
+
+  .risk-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: 18px;
+    border-top: 2px solid;
+  }
+
+  .risk-card.critical { border-top-color: var(--red); }
+  .risk-card.medium { border-top-color: var(--amber); }
+  .risk-card.managed { border-top-color: var(--green); }
+
+  .risk-card h4 {
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+
+  .risk-card p {
+    font-size: 12px;
+    color: var(--text-3);
+    line-height: 1.5;
+    max-width: none;
+  }
+
+  .antipattern-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 20px;
+  }
+
+  .antipattern-item {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 10px 14px;
+    background: rgba(230,37,58,0.04);
+    border: 1px solid rgba(230,37,58,0.1);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    color: var(--text-2);
+    line-height: 1.5;
+  }
+
+  .antipattern-item .x {
+    color: var(--red);
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  /* ======================== SECTION 8: DISCOVERY ======================== */
+  .discovery-box {
+    background: rgba(230,194,0,0.04);
+    border: 1px solid rgba(230,194,0,0.2);
+    border-radius: var(--radius-card);
+    padding: 32px;
+    margin-top: 32px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .discovery-box::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--amber), transparent);
+  }
+
+  .discovery-box h3 {
+    font-size: 20px;
+    color: var(--amber);
+    margin-bottom: 12px;
+  }
+
+  .discovery-box p {
+    font-size: 14px;
+    color: var(--text-2);
+    max-width: 700px;
+    line-height: 1.7;
+    margin-bottom: 16px;
+  }
+
+  .discovery-detail {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 20px;
+  }
+
+  @media (max-width: 700px) {
+    .discovery-detail { grid-template-columns: 1fr; }
+  }
+
+  .discovery-detail-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 16px;
+  }
+
+  .discovery-detail-card h5 {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    margin-bottom: 8px;
+  }
+
+  .discovery-detail-card p {
+    font-size: 12px;
+    color: var(--text-2);
+    max-width: none;
+    line-height: 1.5;
+    margin: 0;
+  }
+
+  /* ======================== SECTION 9: READINESS ======================== */
+  .artifact-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-top: 32px;
+  }
+
+  @media (max-width: 800px) {
+    .artifact-grid { grid-template-columns: 1fr 1fr; }
+  }
+
+  .artifact-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: 20px;
+    text-align: center;
+  }
+
+  .artifact-card .big-num {
+    font-family: var(--font-mono);
+    font-size: 36px;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+
+  .artifact-card .label {
+    font-size: 12px;
+    color: var(--text-3);
+    line-height: 1.4;
+  }
+
+  .skills-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 24px;
+  }
+
+  @media (max-width: 700px) {
+    .skills-grid { grid-template-columns: 1fr; }
+  }
+
+  .skill-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+  }
+
+  .skill-item .skill-name {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: #a78bfa;
+    margin-bottom: 4px;
+  }
+
+  .skill-item .skill-desc {
+    font-size: 12px;
+    color: var(--text-3);
+    line-height: 1.4;
+  }
+
+  .agent-map {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-top: 24px;
+  }
+
+  @media (max-width: 700px) {
+    .agent-map { grid-template-columns: 1fr; }
+  }
+
+  .agent-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+  }
+
+  .agent-item .agent-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  .agent-item .agent-role {
+    font-size: 11px;
+    color: var(--text-3);
+    line-height: 1.4;
+  }
+
+  /* ======================== SECTION 10: NEXT STEPS ======================== */
+  .next-steps-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin-top: 32px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    overflow: hidden;
+  }
+
+  .next-step {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .next-step:last-child { border-bottom: none; }
+
+  .next-step-phase {
+    background: var(--surface);
+    padding: 20px 24px;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 6px;
+  }
+
+  .next-step-phase .phase-num {
+    font-family: var(--font-mono);
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .next-step-phase .phase-name {
+    font-size: 11px;
+    color: var(--text-3);
+    line-height: 1.4;
+  }
+
+  .next-step-body {
+    padding: 20px 24px;
+  }
+
+  .next-step-body h4 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--text);
+  }
+
+  .next-step-body p {
+    font-size: 13px;
+    color: var(--text-3);
+    max-width: none;
+    line-height: 1.5;
+  }
+
+  .gate-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+  }
+
+  .gate-chip {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 3px 8px;
+    background: rgba(124,58,237,0.1);
+    color: #a78bfa;
+    border-radius: var(--radius-pill);
+    letter-spacing: 0.03em;
+  }
+
+  @media (max-width: 700px) {
+    .next-step { grid-template-columns: 1fr; }
+    .next-step-phase { border-right: none; border-bottom: 1px solid var(--border); }
+  }
+
+  /* ======================== FOOTER ======================== */
+  footer {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 32px;
+    text-align: center;
+  }
+
+  footer p {
+    font-size: 12px;
+    color: var(--text-3);
+    max-width: none;
+    line-height: 1.6;
+  }
+
+  /* ======================== SWIMLANE SVG ======================== */
+  .swimlane-label {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    fill: var(--text-3);
+  }
+
+  /* ======================== SECTION HEADER STRIP ======================== */
+  .section-header {
+    margin-bottom: 48px;
+  }
+
+  .section-number {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-3);
+    letter-spacing: 0.1em;
+    margin-bottom: 10px;
+    display: block;
+  }
+
+  /* scroll fade in */
+  .fade-in {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+  }
+  .fade-in.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* model perf table */
+  .model-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin-top: 20px;
+  }
+
+  .model-table th {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .model-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-2);
+  }
+
+  .model-table tr.default-row td { background: rgba(124,58,237,0.06); }
+  .model-table tr.warn-row td { background: rgba(230,37,58,0.04); color: var(--text-3); }
+  .model-table tr:last-child td { border-bottom: none; }
+
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <span class="nav-brand">WhisperKit Highway — Planning Report</span>
+  <ul class="nav-links">
+    <li><a href="#hero">Overview</a></li>
+    <li><a href="#why-reset">Why We Reset</a></li>
+    <li><a href="#old-vs-new">Old vs New</a></li>
+    <li><a href="#architecture">Architecture</a></li>
+    <li><a href="#phases">Phases</a></li>
+    <li><a href="#risks">Risks</a></li>
+    <li><a href="#discovery">Discovery</a></li>
+    <li><a href="#readiness">Readiness</a></li>
+    <li><a href="#next">What's Next</a></li>
+  </ul>
+</nav>
+
+<!-- ======================== SECTION 1: HERO ======================== -->
+<section id="hero">
+  <div class="section-inner">
+    <div class="hero-meta">
+      <span class="pill pill-green">Planning Complete</span>
+      <span class="pill pill-cyan">External Sign-off: GPT-4.1</span>
+      <span class="pill pill-purple">7 Agents</span>
+    </div>
+
+    <span class="overline">EnviousWispr — March 2026</span>
+
+    <h1>The<br><span class="rainbow-text">WhisperKit Highway</span></h1>
+
+    <p class="large-p">
+      A planning council of 7 specialist agents spent a full session designing the right way to add WhisperKit — multilingual batch transcription — to EnviousWispr without breaking the Parakeet pipeline that already works perfectly. This is the outcome: a two-highway architecture, a phased rollout plan, and an honest accounting of everything that went wrong before.
+    </p>
+
+    <div class="hero-summary-grid">
+      <div class="hero-stat-card fade-in">
+        <div class="num rainbow-text">17</div>
+        <div class="label">Planning files committed to main</div>
+      </div>
+      <div class="hero-stat-card fade-in">
+        <div class="num" style="color:var(--cyan)">3,591</div>
+        <div class="label">Lines of planning documentation</div>
+      </div>
+      <div class="hero-stat-card fade-in">
+        <div class="num" style="color:var(--green)">5</div>
+        <div class="label">New implementation skills created</div>
+      </div>
+      <div class="hero-stat-card fade-in">
+        <div class="num" style="color:var(--amber)">13</div>
+        <div class="label">Oracle guardrails (G1–G13) mapped to phases</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================== SECTION 2: WHY WE RESET ======================== -->
+<section id="why-reset" style="background: var(--surface);">
+  <div class="section-inner">
+    <div class="section-header fade-in">
+      <span class="section-number">01 — WHY WE RESET</span>
+      <div class="rainbow-bar"></div>
+      <h2>Three hours of patches. Five new bugs. One clean answer.</h2>
+      <p class="large-p" style="margin-bottom: 0;">
+        The original WhisperKit integration tried to bolt batch transcription into Parakeet's streaming-first pipeline. Every patch revealed two more edge cases. After consulting GPT-4o and Gemini 2.5, the unanimous verdict was: revert and split.
+      </p>
+    </div>
+
+    <div class="failure-list fade-in">
+      <div class="failure-item">
+        <h4>Failure 1: The Overloaded State</h4>
+        <p>The <code>.transcribing</code> state was used both for model loading and for actual speech-to-text. Users saw a spinner during model load when they expected to be recording. Same enum case, two completely different meanings.</p>
+      </div>
+      <div class="failure-item">
+        <h4>Failure 2: The Race Condition</h4>
+        <p>Press PTT → model starts loading (up to 5 seconds) → release PTT → <code>stopRequested = true</code> → model finishes → recording timer reads 0.00s → recording silently discarded. The user never knew it happened.</p>
+      </div>
+      <div class="failure-item">
+        <h4>Failure 3: Wrong Timer During Batch ASR</h4>
+        <p>After PTT release, the recording timer kept running during WhisperKit's 1–5 second batch transcription phase. Users thought they were still recording when they weren't.</p>
+      </div>
+      <div class="failure-item">
+        <h4>Failure 4: Frozen Overlay on Model Load</h4>
+        <p>A patch attempted to transition from "Loading model…" to recording lips when load completed. The overlay's generation counter treated this as a stale operation and discarded it, leaving users staring at a frozen spinner.</p>
+      </div>
+      <div class="failure-item">
+        <h4>Failure 5: Every Fix Broke Something Else</h4>
+        <p>The pipeline mixed state management, audio capture, ASR dispatch, streaming forwarding, VAD monitoring, text processing, and clipboard — all in one 758-line class. Changing model load behavior rippled through everything else.</p>
+      </div>
+    </div>
+
+    <div class="lesson-grid fade-in" style="margin-top: 32px;">
+      <div class="lesson-card">
+        <span class="lesson-num">Lesson 1</span>
+        <h4>Streaming and batch are fundamentally different animals</h4>
+        <p>Parakeet transcribes while you talk. WhisperKit transcribes after you stop. No amount of patching can make one feel like the other.</p>
+      </div>
+      <div class="lesson-card">
+        <span class="lesson-num">Lesson 2</span>
+        <h4>Five boolean flags = 32 possible states you can't reason about</h4>
+        <p><code>stopRequested</code>, <code>startRequestCancelled</code>, <code>isStopping</code>, <code>streamingASRActive</code>, <code>isPreWarmed</code> — each one interacts with every other one.</p>
+      </div>
+      <div class="lesson-card">
+        <span class="lesson-num">Lesson 3</span>
+        <h4>External consensus was unanimous</h4>
+        <p>GPT-4o: "You've hit that classic point where adding features to a single pipeline creates more complexity than it's worth." Gemini: "Crafting distinct state machines will minimize the risk of state management bugs."</p>
+      </div>
+      <div class="lesson-card">
+        <span class="lesson-num">Lesson 4</span>
+        <h4>"Ship patches now, refactor later" never works</h4>
+        <p>From the buddies session: "The pipeline split is going to be exactly as hard in 2 weeks as it is today, but the patches will have calcified and you'll have more code depending on them."</p>
+      </div>
+    </div>
+
+    <div class="advisor-quote fade-in" style="margin-top: 24px;">
+      <p>"Reusing the stopRequested flag is exactly the kind of 'clever' solution that leads to bugs later. Its meaning becomes conditional on the state of the machine when it was set."</p>
+      <span class="attribution">— Gemini 2.5 Flash, whisperkit-ux-parity session</span>
+    </div>
+  </div>
+</section>
+
+<!-- ======================== SECTION 3: OLD VS NEW ======================== -->
+<section id="old-vs-new">
+  <div class="section-inner">
+    <div class="section-header fade-in">
+      <span class="section-number">02 — OLD VS NEW</span>
+      <div class="rainbow-bar"></div>
+      <h2>What changed and why</h2>
+      <p>The old approach tried to wedge two different paradigms into one class. The new approach gives each paradigm its own lane.</p>
+    </div>
+
+    <div class="compare-grid fade-in">
+      <div class="compare-col old-col">
+        <h3>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="6" stroke="#e6253a" stroke-width="1.5"/><path d="M4.5 9.5L9.5 4.5M4.5 4.5L9.5 9.5" stroke="#e6253a" stroke-width="1.5" stroke-linecap="round"/></svg>
+          The Old Way
+        </h3>
+        <div class="compare-row">
+          <div class="label">Architecture</div>
+          <div class="value">WhisperKit shoehorned into <code>TranscriptionPipeline</code>, the Parakeet pipeline</div>
+        </div>
+        <div class="compare-row">
+          <div class="label">State machine</div>
+          <div class="value"><code>.transcribing</code> meant model load AND actual ASR — two meanings, same case</div>
+        </div>
+        <div class="compare-row">
+          <div class="label">PTT cancel</div>
+          <div class="value"><code>stopRequested</code> boolean flag — race condition during model load</div>
+        </div>
+        <div class="compare-row">
+          <div class="label">Overlay</div>
+          <div class="value">Overlay reads <code>PipelineState</code> directly — wrong behavior for WhisperKit batch</div>
+        </div>
+        <div class="compare-row">
+          <div class="label">Model load state</div>
+          <div class="value">No distinct loading state — borrowed <code>.transcribing</code></div>
+        </div>
+        <div class="compare-row">
+          <div class="label">Parakeet risk</div>
+          <div class="value">Every WhisperKit patch could destabilize Parakeet</div>
+        </div>
+        <div class="compare-row">
+          <div class="label">Backend switching</div>
+          <div class="value"><code>if backend == .whisperKit</code> branches scattered through shared code</div>
+        </div>
+        <div class="compare-row">
+          <div class="label">Outcome</div>
+          <div class="value">3 hours of patches. Reverted. Nothing shipped.</div>
+        </div>
+      </div>
+
+      <div class="compare-col new-col">
+        <h3>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="6" stroke="#00c880" stroke-width="1.5"/><path d="M4.5 7L6.5 9L9.5 5" stroke="#00c880" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          The New Way
+        </h3>
+        <div class="compare-row">
+          <div class="label">Architecture</div>
+          <div class="value">Two separate pipelines conforming to a shared <code>DictationPipeline</code> protocol</div>
+        </div>
+        <div class="compare-row">
+          <div class="label">State machine</div>
+          <div class="value"><code>WhisperKitPipelineState</code>: 8 distinct cases, each with exactly one meaning</div>
+        </div>
+        <div class="compare-row">
+          <div class="label">PTT cancel</div>
+          <div class="value"><code>.loadingModel</code> is a first-class state — cancel transitions cleanly to <code>.idle</code></div>
+        </div>
+        <div class="compare-row">
+          <div class="label">Overlay</div>
+          <div class="value">Overlay reads <code>OverlayIntent</code> enum — pipeline decides what to show</div>
+        </div>
+        <div class="compare-row">
+          <div class="label">Model load state</div>
+          <div class="value"><code>.loadingModel</code> — first-class state, shows "Loading model…" overlay</div>
+        </div>
+        <div class="compare-row">
+          <div class="label">Parakeet risk</div>
+          <div class="value">Zero — <code>TranscriptionPipeline</code> is untouched except a one-line conformance declaration</div>
+        </div>
+        <div class="compare-row">
+          <div class="label">Backend switching</div>
+          <div class="value">Polymorphism — <code>AppState.activePipeline</code> switches the reference, nothing else changes</div>
+        </div>
+        <div class="compare-row">
+          <div class="label">Outcome</div>
+          <div class="value">Ready to implement. Phase 0 can start immediately.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================== SECTION 4: TWO-HIGHWAY ARCHITECTURE ======================== -->
+<section id="architecture" style="background: var(--surface);">
+  <div class="section-inner">
+    <div class="section-header fade-in">
+      <span class="section-number">03 — TWO-HIGHWAY ARCHITECTURE</span>
+      <div class="rainbow-bar"></div>
+      <h2>One merge point. Everything else is separate.</h2>
+      <p>Both highways start at the same hotkey and end at the same LLM polish step. In between, they are completely independent — different state machines, different transcription logic, different model lifecycles.</p>
+    </div>
+
+    <div class="swimlane-container fade-in">
+      <div class="swimlane-svg-wrapper">
+        <svg viewBox="0 0 860 400" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;">
+          <defs>
+            <marker id="arr-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+              <path d="M0 1.5L8 5L0 8.5z" fill="#7c3aed"/>
+            </marker>
+            <marker id="arr-cyan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+              <path d="M0 1.5L8 5L0 8.5z" fill="#00ccdd"/>
+            </marker>
+            <marker id="arr-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+              <path d="M0 1.5L8 5L0 8.5z" fill="#00c880"/>
+            </marker>
+            <marker id="arr-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+              <path d="M0 1.5L8 5L0 8.5z" fill="#6d5f88"/>
+            </marker>
+          </defs>
+
+          <!-- Lane backgrounds -->
+          <rect x="0" y="0" width="860" height="130" fill="rgba(0,204,221,0.03)" rx="0"/>
+          <rect x="0" y="130" width="860" height="4" fill="rgba(255,255,255,0.03)"/>
+          <rect x="0" y="134" width="860" height="130" fill="rgba(124,58,237,0.03)" rx="0"/>
+          <rect x="0" y="264" width="860" height="136" fill="rgba(0,200,128,0.05)" rx="0"/>
+
+          <!-- Lane labels -->
+          <text x="14" y="68" class="swimlane-label" fill="#00ccdd">PARAKEET LANE</text>
+          <text x="14" y="204" class="swimlane-label" fill="#a78bfa">WHISPERKIT LANE</text>
+          <text x="14" y="338" class="swimlane-label" fill="#00c880">SHARED POLISH</text>
+
+          <!-- SHARED: Hotkey -->
+          <rect x="68" y="152" width="90" height="44" rx="8" fill="#1a1430" stroke="rgba(124,58,237,0.4)" stroke-width="1.5"/>
+          <text x="113" y="170" text-anchor="middle" font-family="'Plus Jakarta Sans',sans-serif" font-size="11" font-weight="700" fill="#f0ecfa">Hotkey</text>
+          <text x="113" y="185" text-anchor="middle" font-family="'Plus Jakarta Sans',sans-serif" font-size="10" fill="#6d5f88">PTT / toggle</text>
+
+          <!-- SHARED: AudioCapture -->
+          <rect x="198" y="152" width="90" height="44" rx="8" fill="#1a1430" stroke="rgba(124,58,237,0.3)" stroke-width="1.5"/>
+          <text x="243" y="170" text-anchor="middle" font-family="'Plus Jakarta Sans',sans-serif" font-size="11" font-weight="700" fill="#f0ecfa">Audio</text>
+          <text x="243" y="185" text-anchor="middle" font-family="'Plus Jakarta Sans',sans-serif" font-size="10" fill="#6d5f88">Capture (shared)</text>
+
+          <!-- Arrow: Hotkey → AudioCapture -->
+          <path d="M158 174 H198" stroke="#6d5f88" stroke-width="1.5" fill="none" marker-end="url(#arr-gray)"/>
+
+          <!-- PARAKEET: streaming ASR -->
+          <rect x="340" y="42" width="112" height="44" rx="8" fill="#0d1a24" stroke="rgba(0,204,221,0.35)" stroke-width="1.5"/>
+          <text x="396" y="60" text-anchor="middle" font-family="'Plus Jakarta Sans',sans-serif" font-size="11" font-weight="700" fill="#00ccdd">Stream ASR</text>
+          <text x="396" y="75" text-anchor="middle" font-family="'Plus Jakarta Sans',sans-serif" font-size="10" fill="#6d5f88">FluidAudio/Parakeet</text>
+
+          <!-- PARAKEET: finalize -->
+          <rect x="504" y="42" width="90" height="44" rx="8" fill="#0d1a24" stroke="rgba(0,204,221,0.25)" stroke-width="1.5"/>
+          <text x="549" y="60" text-anchor="middle" font-family="'Plus Jakarta Sans',sans-serif" font-size="11" font-weight="700" fill="#00ccdd">Finalize</text>
+          <text x="549" y="75" text-anchor="middle" font-family="'Plus Jakarta Sans',sans-serif" font-size="10" fill="#6d5f88">&lt;100ms</text>
+
+          <!-- WHISPERKIT: batch accumulate -->
+          <rect x="340" y="152" width="112" height="44" rx="8" fill="#1a0d2e" stroke="rgba(124,58,237,0.35)" stroke-width="1.5"/>
+          <text x="396" y="170" text-anchor="middle" font-family="'Plus Jakarta Sans',sans-serif" font-size="11" font-weight="700" fill="#a78bfa">Record &amp; Buffer</text>
+          <text x="396" y="185" text-anchor="middle" font-family="'Plus Jakarta Sans',sans-serif" font-size="10" fill="#6d5f88">accumulate samples</text>
+
+          <!-- WHISPERKIT: batch transcribe -->
+          <rect x="504" y="152" width="100" height="44" rx="8" fill="#1a0d2e" stroke="rgba(124,58,237,0.35)" stroke-width="1.5"/>
+          <text x="554" y="170" text-anchor="middle" font-family="'Plus Jakarta Sans',sans-serif" font-size="11" font-weight="700" fill="#a78bfa">Batch ASR</text>
+          <text x="554" y="185" text-anchor="middle" font-family="'Plus Jakarta Sans',sans-serif" font-size="10" fill="#6d5f88">WhisperKit 1–5s</text>
+
+          <!-- Arrow: Audio → Parakeet (branch up) -->
+          <path d="M243 152 V64 H340" stroke="#00ccdd" stroke-width="1.5" fill="none" marker-end="url(#arr-cyan)" stroke-dasharray="5 3"/>
+          <!-- Arrow: Audio → WhisperKit (stay same lane) -->
+          <path d="M288 174 H340" stroke="#7c3aed" stroke-width="1.5" fill="none" marker-end="url(#arr-purple)"/>
+
+          <!-- Arrow: Parakeet stream → finalize -->
+          <path d="M452 64 H504" stroke="#00ccdd" stroke-width="1.5" fill="none" marker-end="url(#arr-cyan)"/>
+          <!-- Arrow: WK record → batch -->
+          <path d="M452 174 H504" stroke="#7c3aed" stroke-width="1.5" fill="none" marker-end="url(#arr-purple)"/>
+
+          <!-- MERGE: LLM Polish -->
+          <rect x="660" y="282" width="110" height="50" rx="8" fill="#0a1f18" stroke="rgba(0,200,128,0.5)" stroke-width="2"/>
+          <text x="715" y="303" text-anchor="middle" font-family="'Plus Jakarta Sans',sans-serif" font-size="12" font-weight="700" fill="#00c880">LLM Polish</text>
+          <text x="715" y="320" text-anchor="middle" font-family="'Plus Jakarta Sans',sans-serif" font-size="10" fill="#6d5f88">shared merge point</text>
+
+          <!-- Parakeet → LLM (path down) -->
+          <path d="M549 86 V307 H660" stroke="#00ccdd" stroke-width="1.5" fill="none" marker-end="url(#arr-green)" stroke-dasharray="4 3"/>
+
+          <!-- WK → LLM (path down) -->
+          <path d="M604 174 V307 H660" stroke="#7c3aed" stroke-width="1.5" fill="none" marker-end="url(#arr-green)"/>
+
+          <!-- LLM → Output -->
+          <rect x="790" y="282" width="56" height="50" rx="8" fill="#0a1f18" stroke="rgba(0,200,128,0.3)" stroke-width="1.5"/>
+          <text x="818" y="303" text-anchor="middle" font-family="'Plus Jakarta Sans',sans-serif" font-size="11" font-weight="700" fill="#00c880">Store</text>
+          <text x="818" y="318" text-anchor="middle" font-family="'Plus Jakarta Sans',sans-serif" font-size="10" fill="#6d5f88">+ paste</text>
+          <path d="M770 307 H790" stroke="#00c880" stroke-width="1.5" fill="none" marker-end="url(#arr-green)"/>
+
+          <!-- State machine labels on WK lane -->
+          <text x="396" y="136" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" fill="rgba(167,139,250,0.6)">.loadingModel → .recording</text>
+          <text x="554" y="246" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" fill="rgba(167,139,250,0.6)">.transcribing (visible)</text>
+
+          <!-- Convergence label -->
+          <text x="715" y="268" text-anchor="middle" font-family="'JetBrains Mono',monospace" font-size="9" fill="rgba(0,200,128,0.7)">CONVERGENCE POINT</text>
+
+          <!-- Divider lines -->
+          <line x1="330" y1="0" x2="330" y2="270" stroke="rgba(255,255,255,0.04)" stroke-width="1"/>
+
+          <!-- "same route" annotation -->
+          <text x="113" y="250" text-anchor="middle" font-family="'Plus Jakarta Sans',sans-serif" font-size="10" fill="#6d5f88">both highways use</text>
+          <text x="113" y="263" text-anchor="middle" font-family="'Plus Jakarta Sans',sans-serif" font-size="10" fill="#6d5f88">same hotkey → audio</text>
+        </svg>
+      </div>
+    </div>
+
+    <div style="margin-top: 24px;" class="fade-in">
+      <div class="grid-3">
+        <div class="card">
+          <h3 style="font-size: 14px; margin-bottom: 6px; color: var(--cyan);">Parakeet Lane</h3>
+          <p style="font-size: 12px; max-width: none;">Streams audio to FluidAudio during recording. ASR finishes in under 100ms after PTT release. The "Transcribing" phase is invisible to users.</p>
+        </div>
+        <div class="card">
+          <h3 style="font-size: 14px; margin-bottom: 6px; color: #a78bfa;">WhisperKit Lane</h3>
+          <p style="font-size: 12px; max-width: none;">Accumulates audio samples during recording. Sends everything to WhisperKit's batch decoder after PTT release. Users see a visible "Transcribing…" overlay (1–5 seconds).</p>
+        </div>
+        <div class="card" style="border-color: rgba(0,200,128,0.25);">
+          <h3 style="font-size: 14px; margin-bottom: 6px; color: var(--green);">Single Merge Point</h3>
+          <p style="font-size: 12px; max-width: none;">Both highways converge only at the LLM Polish step. The contract is simple: pass a text string and an optional language code. Everything downstream — store, clipboard, paste — is shared.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================== SECTION 5: SYSTEM BOUNDARIES ======================== -->
+<section id="boundaries">
+  <div class="section-inner">
+    <div class="section-header fade-in">
+      <span class="section-number">04 — SYSTEM BOUNDARIES</span>
+      <div class="rainbow-bar"></div>
+      <h2>What WhisperKit owns vs what's shared</h2>
+      <p>The architecture draws hard lines. WhisperKit gets its own state machine and pipeline class. Everything else stays shared and backend-agnostic.</p>
+    </div>
+
+    <div class="grid-2 fade-in" style="gap: 24px; margin-top: 32px;">
+      <div>
+        <h3 style="font-size: 14px; margin-bottom: 16px; color: #a78bfa;">WhisperKit Owns</h3>
+        <div class="failure-list" style="gap: 8px;">
+          <div class="failure-item" style="border-left-color: #7c3aed;">
+            <h4>WhisperKitPipeline</h4>
+            <p>New class, new file. Conforms to <code>DictationPipeline</code>. Full 8-state machine: idle → loadingModel → ready → recording → transcribing → polishing → complete → error.</p>
+          </div>
+          <div class="failure-item" style="border-left-color: #7c3aed;">
+            <h4>WhisperKitPipelineState</h4>
+            <p>Separate enum from Parakeet's <code>PipelineState</code>. Each case has exactly one meaning. <code>.loadingModel</code> and <code>.transcribing</code> are never confused.</p>
+          </div>
+          <div class="failure-item" style="border-left-color: #7c3aed;">
+            <h4>Its own LLMPolishStep instance</h4>
+            <p>Configured from the same <code>SettingsManager</code>, but each pipeline holds its own copy. No shared mutable state between pipelines.</p>
+          </div>
+          <div class="failure-item" style="border-left-color: #7c3aed;">
+            <h4>Its own SilenceDetector</h4>
+            <p>Silero VAD state persists across chunks — sharing it would cause cross-contamination. WhisperKit creates its own instance.</p>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h3 style="font-size: 14px; margin-bottom: 16px; color: var(--green);">Shared Infrastructure (No Changes)</h3>
+        <table class="boundary-table">
+          <thead>
+            <tr>
+              <th>Component</th>
+              <th>Why it stays shared</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>AudioCaptureManager</td>
+              <td>Mic, engine, BT codec switch — all backend-agnostic. Only buffer routing differs.</td>
+            </tr>
+            <tr>
+              <td>HotkeyService</td>
+              <td>Sends PipelineEvent to active pipeline. Never knows which backend is active.</td>
+            </tr>
+            <tr>
+              <td>RecordingOverlayPanel</td>
+              <td>Reads OverlayIntent enum only. Zero knowledge of pipeline state internals.</td>
+            </tr>
+            <tr>
+              <td>PasteService</td>
+              <td>Called after polish completes. Same for both pipelines.</td>
+            </tr>
+            <tr>
+              <td>TranscriptStore</td>
+              <td>UUID-keyed, append-only. Thread-safe. Both pipelines write to it.</td>
+            </tr>
+            <tr>
+              <td>KeychainManager</td>
+              <td>Read-only for API keys. No per-pipeline state.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="fade-in" style="margin-top: 32px;">
+      <h3 style="font-size: 14px; margin-bottom: 16px;">The Event-Driven Interface</h3>
+      <p style="max-width: 700px; margin-bottom: 20px;">Both pipelines receive input through a single entry point — <code>handle(event:)</code> — which eliminates scattered <code>if backend == .whisperKit</code> branches in shared code.</p>
+      <div class="grid-2">
+        <div class="card" style="font-family: var(--font-mono); font-size: 12px; color: #c4b5fd; line-height: 1.8;">
+          <div style="color: var(--text-3); font-size: 10px; margin-bottom: 8px; font-family: var(--font-body); text-transform: uppercase; letter-spacing: 0.06em;">Events</div>
+          .preWarm &nbsp;&nbsp;&nbsp;// PTT key-down<br>
+          .toggleRecording &nbsp;// PTT key-up<br>
+          .requestStop &nbsp;&nbsp;// stop during toggle mode<br>
+          .cancelRecording &nbsp;// ESC key<br>
+          .reset &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// clear to idle
+        </div>
+        <div class="card" style="font-family: var(--font-mono); font-size: 12px; color: #c4b5fd; line-height: 1.8;">
+          <div style="color: var(--text-3); font-size: 10px; margin-bottom: 8px; font-family: var(--font-body); text-transform: uppercase; letter-spacing: 0.06em;">OverlayIntent (what the UI sees)</div>
+          .hidden<br>
+          .recording(audioLevel: Float)<br>
+          .processing("Loading model...")<br>
+          .processing("Transcribing...")<br>
+          .processing("Polishing...")
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================== SECTION 6: PHASES ======================== -->
+<section id="phases" style="background: var(--surface);">
+  <div class="section-inner">
+    <div class="section-header fade-in">
+      <span class="section-number">05 — PHASED ROLLOUT</span>
+      <div class="rainbow-bar"></div>
+      <h2>Five phases, strictly sequential</h2>
+      <p>Each phase is a gate for the next. Phase 1 is the minimum shippable highway — a full end-to-end flow. Later phases add quality, streaming, and hardening.</p>
+    </div>
+
+    <div class="phase-track fade-in">
+      <div class="phase-card">
+        <div class="phase-dot phase-dot-0">0</div>
+        <div class="phase-label">Foundation</div>
+        <div class="phase-sub">Protocol + OverlayIntent</div>
+      </div>
+      <div class="phase-card">
+        <div class="phase-dot phase-dot-1">1</div>
+        <div class="phase-label">WK Pipeline</div>
+        <div class="phase-sub">Full batch flow, min shippable</div>
+      </div>
+      <div class="phase-card">
+        <div class="phase-dot phase-dot-2">2</div>
+        <div class="phase-label">VAD Quality</div>
+        <div class="phase-sub">No hallucinations on long audio</div>
+      </div>
+      <div class="phase-card">
+        <div class="phase-dot phase-dot-3">3</div>
+        <div class="phase-label">Streaming</div>
+        <div class="phase-sub">Live partial transcripts</div>
+      </div>
+      <div class="phase-card">
+        <div class="phase-dot phase-dot-4">4</div>
+        <div class="phase-label">Polish Hardening</div>
+        <div class="phase-sub">All LLM providers verified</div>
+      </div>
+    </div>
+
+    <div class="phase-detail-grid fade-in">
+
+      <div class="phase-detail-card">
+        <div class="phase-header">
+          <span class="phase-badge p0-badge">P0</span>
+          <h4>Foundation Protocol</h4>
+        </div>
+        <p style="font-size: 12px; color: var(--text-3); max-width: none; line-height: 1.5; margin: 0;">Creates the structural groundwork. No behavior change for users or Parakeet.</p>
+        <ul class="deliverable-list">
+          <li><code>DictationPipeline</code> protocol defined</li>
+          <li><code>OverlayIntent</code> enum created</li>
+          <li>TranscriptionPipeline gains conformance</li>
+          <li>AppState routing via <code>activePipeline</code></li>
+          <li>Parakeet: zero regression verified</li>
+        </ul>
+        <div style="margin-top: auto; padding-top: 12px;">
+          <span class="pill pill-cyan">1 new file</span>
+          <span class="pill pill-green" style="margin-left: 4px;">Low risk</span>
+        </div>
+      </div>
+
+      <div class="phase-detail-card">
+        <div class="phase-header">
+          <span class="phase-badge p1-badge">P1</span>
+          <h4>WhisperKit Pipeline</h4>
+        </div>
+        <p style="font-size: 12px; color: var(--text-3); max-width: none; line-height: 1.5; margin: 0;">The minimum shippable highway. Full end-to-end recording with WhisperKit.</p>
+        <ul class="deliverable-list">
+          <li>WhisperKitPipeline class created</li>
+          <li>8-state machine with .loadingModel</li>
+          <li>"Loading model…" overlay on cold start</li>
+          <li>"Transcribing…" visible during batch ASR</li>
+          <li>PTT cancel during load: clean idle</li>
+          <li>Language picker (EN / DE / TA)</li>
+        </ul>
+        <div style="margin-top: auto; padding-top: 12px;">
+          <span class="pill pill-purple">1 new file</span>
+          <span class="pill pill-amber" style="margin-left: 4px;">Medium risk</span>
+        </div>
+      </div>
+
+      <div class="phase-detail-card">
+        <div class="phase-header">
+          <span class="phase-badge p2-badge">P2</span>
+          <h4>VAD + Quality</h4>
+        </div>
+        <p style="font-size: 12px; color: var(--text-3); max-width: none; line-height: 1.5; margin: 0;">Quality gate before streaming. Eliminates hallucination bugs on long recordings.</p>
+        <ul class="deliverable-list">
+          <li>EnergyVAD silence filtering post-capture</li>
+          <li>chunkingStrategy: .vad for recordings >30s</li>
+          <li>Own SilenceDetector for VAD auto-stop</li>
+          <li>Verified: 45s recording, no repetitions</li>
+        </ul>
+        <div style="margin-top: auto; padding-top: 12px;">
+          <span class="pill pill-green">0 new files</span>
+          <span class="pill pill-green" style="margin-left: 4px;">Low risk</span>
+        </div>
+      </div>
+
+      <div class="phase-detail-card">
+        <div class="phase-header">
+          <span class="phase-badge p3-badge">P3</span>
+          <h4>Streaming</h4>
+        </div>
+        <p style="font-size: 12px; color: var(--text-3); max-width: none; line-height: 1.5; margin: 0;">Live partial transcripts. Reduces perceived latency during WhisperKit recordings.</p>
+        <ul class="deliverable-list">
+          <li>WhisperKitStreamingCoordinator actor</li>
+          <li>Buffer forwarding via onBufferCaptured</li>
+          <li>10-second timeout + batch fallback</li>
+          <li>Partial transcript in overlay (Phase 3+)</li>
+        </ul>
+        <div style="margin-top: auto; padding-top: 12px;">
+          <span class="pill pill-amber">1 new file</span>
+          <span class="pill pill-red" style="margin-left: 4px;">High risk</span>
+        </div>
+      </div>
+
+      <div class="phase-detail-card">
+        <div class="phase-header">
+          <span class="phase-badge p4-badge">P4</span>
+          <h4>Polish Hardening</h4>
+        </div>
+        <p style="font-size: 12px; color: var(--text-3); max-width: none; line-height: 1.5; margin: 0;">Verifies every LLM provider works via the WhisperKit highway and fixes language awareness.</p>
+        <ul class="deliverable-list">
+          <li>All 5 LLM providers tested end-to-end</li>
+          <li>Transcript.backendType = .whisperKit everywhere</li>
+          <li>LLMPolishStep language fix (ew-9bd)</li>
+          <li>Model unload policy wired</li>
+        </ul>
+        <div style="margin-top: auto; padding-top: 12px;">
+          <span class="pill pill-green">0 new files</span>
+          <span class="pill pill-green" style="margin-left: 4px;">Low risk</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Model variants -->
+    <div class="fade-in" style="margin-top: 40px;">
+      <h3 style="font-size: 16px; margin-bottom: 8px;">Model Variants — Default Changed to <code>small.en</code></h3>
+      <p style="margin-bottom: 0;">The previous default was <code>large-v3</code>, which takes 2–5 minutes to transcribe a 30-second recording. That's not a dictation tool.</p>
+      <table class="model-table" style="margin-top: 16px;">
+        <thead>
+          <tr><th>Model</th><th>Size</th><th>30s audio → transcribe time</th><th>Use case</th></tr>
+        </thead>
+        <tbody>
+          <tr class="default-row">
+            <td><code>small.en</code> <span class="pill pill-green" style="margin-left: 6px;">Default</span></td>
+            <td>244 MB</td>
+            <td>15–24 seconds</td>
+            <td>English dictation — the right choice for most users</td>
+          </tr>
+          <tr>
+            <td><code>small</code></td>
+            <td>244 MB</td>
+            <td>15–24 seconds</td>
+            <td>German + Tamil (multilingual model required)</td>
+          </tr>
+          <tr>
+            <td><code>medium.en</code></td>
+            <td>769 MB</td>
+            <td>60–90 seconds</td>
+            <td>Accuracy priority — warn users in Settings</td>
+          </tr>
+          <tr class="warn-row">
+            <td><code>large-v3</code> <span class="pill pill-red" style="margin-left: 6px;">Warn</span></td>
+            <td>2.9 GB</td>
+            <td>2.5–5 minutes</td>
+            <td>Not for real-time dictation. Post-processing only.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ======================== SECTION 7: RISKS & GUARDRAILS ======================== -->
+<section id="risks">
+  <div class="section-inner">
+    <div class="section-header fade-in">
+      <span class="section-number">06 — RISKS AND GUARDRAILS</span>
+      <div class="rainbow-bar"></div>
+      <h2>13 guardrails. All mapped to specific phases.</h2>
+      <p>The Oracle agent compiled these from real failures in the git history. Violating any of them risks repeating the same bugs that caused the original revert.</p>
+    </div>
+
+    <div class="guardrail-grid fade-in">
+      <div class="guardrail-item">
+        <span class="guardrail-id">G1</span>
+        <span class="guardrail-text">Never overload state cases — <code>.loadingModel</code> and <code>.transcribing</code> must be distinct, always</span>
+      </div>
+      <div class="guardrail-item">
+        <span class="guardrail-id">G2</span>
+        <span class="guardrail-text">No boolean flags as shadow state machines — if you need a flag, you're missing a state</span>
+      </div>
+      <div class="guardrail-item">
+        <span class="guardrail-id">G3</span>
+        <span class="guardrail-text">Each backend gets its own pipeline class — no shared <code>TranscriptionPipeline</code> with branching logic</span>
+      </div>
+      <div class="guardrail-item">
+        <span class="guardrail-id">G4</span>
+        <span class="guardrail-text">Shared infrastructure stays backend-agnostic — if it grows <code>if whisperKit</code> branches, something is wrong</span>
+      </div>
+      <div class="guardrail-item">
+        <span class="guardrail-id">G5</span>
+        <span class="guardrail-text">Overlay communicates via OverlayIntent, never PipelineState — UI never knows which pipeline is running</span>
+      </div>
+      <div class="guardrail-item">
+        <span class="guardrail-id">G6</span>
+        <span class="guardrail-text">Model load must not block PTT cleanly — user can cancel during load, gets clean idle state</span>
+      </div>
+      <div class="guardrail-item">
+        <span class="guardrail-id">G7</span>
+        <span class="guardrail-text">WhisperKit model path is <code>~/Documents/huggingface/</code> — already fixed in WhisperKitSetupService</span>
+      </div>
+      <div class="guardrail-item">
+        <span class="guardrail-id">G8</span>
+        <span class="guardrail-text">Hardcode decode defaults — no user-facing temperature/threshold sliders. These were removed once already.</span>
+      </div>
+      <div class="guardrail-item">
+        <span class="guardrail-id">G9</span>
+        <span class="guardrail-text">Preserve Parakeet's perfect flow — <code>TranscriptionPipeline</code> unchanged except one conformance line</span>
+      </div>
+      <div class="guardrail-item">
+        <span class="guardrail-id">G10</span>
+        <span class="guardrail-text">WhisperKit batch ASR phase must be visibly distinct — show "Transcribing…" for 1–5s, not a frozen app</span>
+      </div>
+      <div class="guardrail-item">
+        <span class="guardrail-id">G11</span>
+        <span class="guardrail-text">Build on the two kept commits — model path fix and decode defaults are solid; don't rework them</span>
+      </div>
+      <div class="guardrail-item">
+        <span class="guardrail-id">G12</span>
+        <span class="guardrail-text">Tune before you stream — Phase 2 (batch quality) is mandatory before Phase 3 (streaming)</span>
+      </div>
+      <div class="guardrail-item">
+        <span class="guardrail-id">G13</span>
+        <span class="guardrail-text">Each pipeline independently testable — removing WhisperKit files must never break Parakeet compilation</span>
+      </div>
+    </div>
+
+    <div style="margin-top: 40px;" class="fade-in">
+      <h3 style="font-size: 16px; margin-bottom: 16px;">Anti-Patterns to Never Repeat</h3>
+      <div class="antipattern-list">
+        <div class="antipattern-item"><span class="x">AP1</span>Using the same enum case for two different things — overloaded state enums are a bug factory</div>
+        <div class="antipattern-item"><span class="x">AP2</span>Adding boolean flags instead of explicit states — five flags = 32 combinations you can't reason about</div>
+        <div class="antipattern-item"><span class="x">AP3</span>Scattering <code>if backend == .whisperKit</code> through shared code — use protocol polymorphism</div>
+        <div class="antipattern-item"><span class="x">AP4</span>Patching a streaming-first pipeline to support batch — the foundational assumptions are wrong</div>
+        <div class="antipattern-item"><span class="x">AP5</span>Exposing temperature/threshold sliders to users — they don't understand these; optimal values are known</div>
+        <div class="antipattern-item"><span class="x">AP7</span>Shipping architectural debt with "refactor it later" — it never happens, and more code gets built on top</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================== SECTION 8: KEY DISCOVERY ======================== -->
+<section id="discovery" style="background: var(--surface);">
+  <div class="section-inner">
+    <div class="section-header fade-in">
+      <span class="section-number">07 — KEY DISCOVERY</span>
+      <div class="rainbow-bar"></div>
+      <h2>The language bug hiding in the polish step</h2>
+    </div>
+
+    <div class="discovery-box fade-in">
+      <h3>ew-9bd: LLMPolishStep ignores the language field</h3>
+      <p>
+        WhisperKit's biggest selling point over Parakeet is multilingual support — English, German, and Tamil. But the shared LLM Polish step, which both highways converge on, currently <strong>ignores</strong> the <code>language</code> field in <code>TextProcessingContext</code>.
+      </p>
+      <p>
+        This means a German dictation gets polished with an English-only prompt. The LLM may correct perfectly valid German grammar into something wrong, or produce output that reads awkwardly because the model is applying English conventions to German text.
+      </p>
+      <p style="margin-bottom: 0;">
+        The fix is scoped to Phase 4 and is mandatory — not optional. The prompt must include language context: <em>"Polish the following German transcript…"</em> For Tamil, a lighter-touch prompt may be needed given weaker LLM coverage of that language.
+      </p>
+    </div>
+
+    <div class="discovery-detail fade-in">
+      <div class="discovery-detail-card">
+        <h5>Where the bug lives</h5>
+        <p><code>Pipeline/Steps/LLMPolishStep.swift</code> — the <code>process(context:)</code> method receives a <code>TextProcessingContext</code> that includes a <code>language: String?</code> field, but constructs its prompt without using it.</p>
+      </div>
+      <div class="discovery-detail-card">
+        <h5>What Parakeet gets away with</h5>
+        <p>Parakeet is English-only. For English dictation, an English-assumed polish prompt works fine. The bug was always there; WhisperKit's multilingual support is the first time it actually matters.</p>
+      </div>
+      <div class="discovery-detail-card">
+        <h5>Why it's scoped to Phase 4</h5>
+        <p>The bug doesn't block the core WhisperKit flow — transcription and basic polish still work. Phase 4 (Polish Convergence Hardening) is the right moment to address all merge-point contracts at once.</p>
+      </div>
+      <div class="discovery-detail-card">
+        <h5>Why it can't slip further</h5>
+        <p>If WhisperKit ships to German and Tamil users with this bug, every polished transcript in those languages is potentially degraded. The Definition of Done for Phase 4 explicitly requires this fixed.</p>
+      </div>
+    </div>
+
+    <div style="margin-top: 32px;" class="fade-in">
+      <h3 style="font-size: 16px; margin-bottom: 16px;">Language Support: Manual Selection, Not Auto-Detect</h3>
+      <div class="grid-3">
+        <div class="card">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+            <span class="pill pill-green">EN</span>
+            <span style="font-size: 13px; font-weight: 600;">English</span>
+          </div>
+          <p style="font-size: 12px; max-width: none; line-height: 1.5;">Model: <code>small.en</code> (English-optimized). Default. Best accuracy and speed combination.</p>
+        </div>
+        <div class="card">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+            <span class="pill pill-cyan">DE</span>
+            <span style="font-size: 13px; font-weight: 600;">German</span>
+          </div>
+          <p style="font-size: 12px; max-width: none; line-height: 1.5;">Model: <code>small</code> (multilingual). Auto-switching on language change — may trigger model re-download.</p>
+        </div>
+        <div class="card">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+            <span class="pill pill-purple">TA</span>
+            <span style="font-size: 13px; font-weight: 600;">Tamil</span>
+          </div>
+          <p style="font-size: 12px; max-width: none; line-height: 1.5;">Model: <code>small</code> (multilingual). Lower-resource language — auto-detect would underperform, so manual selection is required.</p>
+        </div>
+      </div>
+      <p style="font-size: 12px; color: var(--text-3); margin-top: 12px;">Why manual selection? Auto-detect adds latency and is unreliable for short utterances in underrepresented languages. Users know what language they're about to speak.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ======================== SECTION 9: EXECUTION READINESS ======================== -->
+<section id="readiness">
+  <div class="section-inner">
+    <div class="section-header fade-in">
+      <span class="section-number">08 — EXECUTION READINESS</span>
+      <div class="rainbow-bar"></div>
+      <h2>Everything ready before a line of code is written</h2>
+      <p>The council didn't just produce a plan — it produced the implementation artifacts needed to execute it. Five new skills, a full agent map, and external sign-off.</p>
+    </div>
+
+    <div class="artifact-grid fade-in">
+      <div class="artifact-card">
+        <div class="big-num rainbow-text">17</div>
+        <div class="label">Planning files committed and pushed to main</div>
+      </div>
+      <div class="artifact-card">
+        <div class="big-num" style="color: var(--cyan);">3,591</div>
+        <div class="label">Lines across all documents</div>
+      </div>
+      <div class="artifact-card">
+        <div class="big-num" style="color: var(--green);">5</div>
+        <div class="label">New implementation skills created</div>
+      </div>
+      <div class="artifact-card">
+        <div class="big-num" style="color: var(--amber);">7</div>
+        <div class="label">Specialist agents in the planning council</div>
+      </div>
+    </div>
+
+    <div style="margin-top: 40px;" class="fade-in">
+      <h3 style="font-size: 16px; margin-bottom: 16px;">5 New Skills — Implementation-Ready Templates</h3>
+      <div class="skills-grid">
+        <div class="skill-item">
+          <div class="skill-name">wispr-scaffold-independent-pipeline</div>
+          <div class="skill-desc">Template for WhisperKitPipeline: state machine, DictationPipeline conformance, method signatures, AppState wiring, text processing chain</div>
+        </div>
+        <div class="skill-item">
+          <div class="skill-name">wispr-scaffold-whisperkit-capture</div>
+          <div class="skill-desc">Batch-mode audio capture pattern: no onBufferCaptured wiring, PTT pre-warm integration, two-phase start, emergency teardown</div>
+        </div>
+        <div class="skill-item">
+          <div class="skill-name">wispr-configure-whisperkit-vad</div>
+          <div class="skill-desc">EnergyVAD post-capture silence filtering, chunkingStrategy selection for Phase 2, integration with shared SilenceDetector for auto-stop</div>
+        </div>
+        <div class="skill-item">
+          <div class="skill-name">wispr-configure-whisperkit-streaming</div>
+          <div class="skill-desc">AudioStreamTranscriber lifecycle, buffer feeding with nonisolated(unsafe), finalize timeout + batch fallback, exactly-once guard</div>
+        </div>
+        <div class="skill-item" style="grid-column: 1 / -1;">
+          <div class="skill-name">wispr-test-dual-pipeline</div>
+          <div class="skill-desc">Dual-pipeline test matrix, regression verification for both backends, Wispr Eyes patterns for overlay state verification, backend switching UAT scenarios</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top: 40px;" class="fade-in">
+      <h3 style="font-size: 16px; margin-bottom: 16px;">The Planning Council — 7 Agents</h3>
+      <div class="agent-map">
+        <div class="agent-item">
+          <div class="agent-name">Oracle</div>
+          <div class="agent-role">Analyzed git history, buddies sessions, and source code. Produced 13 guardrails from confirmed past failures.</div>
+        </div>
+        <div class="agent-item">
+          <div class="agent-name">Architect</div>
+          <div class="agent-role">Designed the two-highway architecture, state machines, and phased plan. Primary author of the master plan.</div>
+        </div>
+        <div class="agent-item">
+          <div class="agent-name">ChatterBox</div>
+          <div class="agent-role">Coordinated external LLM consultations via Buddies. Ran GPT-4.1 session, managed new risk identification.</div>
+        </div>
+        <div class="agent-item">
+          <div class="agent-name">Talent Team</div>
+          <div class="agent-role">Identified gaps in existing skills, specified 5 new skills required, created execution agent map by phase.</div>
+        </div>
+        <div class="agent-item">
+          <div class="agent-name">Talent Team 2</div>
+          <div class="agent-role">Built all 5 new implementation skills, verified skill coverage against phase requirements.</div>
+        </div>
+        <div class="agent-item">
+          <div class="agent-name">Simplifier</div>
+          <div class="agent-role">Reviewed all docs for internal consistency. Flagged contradictions and ambiguities (25 gaps catalogued).</div>
+        </div>
+        <div class="agent-item">
+          <div class="agent-name">Gap Finder</div>
+          <div class="agent-role">Deep-dive gap analysis against source code. Found implementation-blocking issues before code was written.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="advisor-quote fade-in" style="margin-top: 32px;">
+      <p>GPT-4.1 confirmed all three core design decisions: <code>.loadingModel</code> as a mandatory first-class state, shared <code>AudioCaptureManager</code> with configurable modes, and <code>DictationPipeline</code> protocol as worth defining even with only two backends. The architecture was validated externally before a line of implementation code was written.</p>
+      <span class="attribution">— External feedback digest, GPT-4.1 via Buddies session, 2026-03-06</span>
+    </div>
+  </div>
+</section>
+
+<!-- ======================== SECTION 10: WHAT'S NEXT ======================== -->
+<section id="next" style="background: var(--surface);">
+  <div class="section-inner">
+    <div class="section-header fade-in">
+      <span class="section-number">09 — WHAT HAPPENS NEXT</span>
+      <div class="rainbow-bar"></div>
+      <h2>Phase-by-phase execution. Ready to start.</h2>
+      <p>Phase 0 has no dependencies — it can start immediately. Each subsequent phase has clear entry gates and rollback plans.</p>
+    </div>
+
+    <div class="next-steps-list fade-in">
+
+      <div class="next-step">
+        <div class="next-step-phase">
+          <div class="phase-num" style="color: var(--cyan);">P0</div>
+          <div class="phase-name">Foundation Protocol<br>Low risk · 1 new file</div>
+        </div>
+        <div class="next-step-body">
+          <h4>Create the protocol backbone. Zero user impact.</h4>
+          <p>feature-scaffolding agent creates <code>DictationPipeline.swift</code> and <code>OverlayIntent</code>. TranscriptionPipeline gets a conformance declaration. AppState switches from holding a concrete <code>TranscriptionPipeline</code> to an <code>any DictationPipeline</code>. Parakeet must pass a full Wispr Eyes verification before proceeding.</p>
+          <div class="gate-chips">
+            <span class="gate-chip">G3: protocol groundwork</span>
+            <span class="gate-chip">G5: OverlayIntent introduced</span>
+            <span class="gate-chip">G9: Parakeet untouched</span>
+            <span class="gate-chip">Gate: Parakeet VERIFIED</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="next-step">
+        <div class="next-step-phase">
+          <div class="phase-num" style="color: #a78bfa;">P1</div>
+          <div class="phase-name">WhisperKit Pipeline<br>Medium risk · 1 new file</div>
+        </div>
+        <div class="next-step-body">
+          <h4>The minimum shippable highway. First full WhisperKit recording.</h4>
+          <p>audio-pipeline agent creates <code>WhisperKitPipeline.swift</code> — the full 8-state machine. The cold start shows "Loading model…" and waits; subsequent recordings skip model load because the model stays warm. The "Transcribing…" overlay makes the batch ASR phase visible. Language picker in Settings chooses EN/DE/TA and auto-switches model variants.</p>
+          <div class="gate-chips">
+            <span class="gate-chip">G1: distinct states</span>
+            <span class="gate-chip">G2: no boolean flags</span>
+            <span class="gate-chip">G6: model load handled</span>
+            <span class="gate-chip">G10: transcribing overlay</span>
+            <span class="gate-chip">Gate: full flow + Parakeet zero regression</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="next-step">
+        <div class="next-step-phase">
+          <div class="phase-num" style="color: var(--green);">P2</div>
+          <div class="phase-name">VAD + Quality<br>Low risk · 0 new files</div>
+        </div>
+        <div class="next-step-body">
+          <h4>Mandatory quality gate before adding streaming complexity.</h4>
+          <p>Add EnergyVAD silence filtering after capture — reduces WhisperKit's batch input, cuts transcription time. Enable <code>chunkingStrategy: .vad</code> for recordings over 30 seconds to prevent hallucinated repetitions on long audio. Wire WhisperKit's own VAD auto-stop via a dedicated <code>SilenceDetector</code> instance.</p>
+          <div class="gate-chips">
+            <span class="gate-chip">G12: tune before stream</span>
+            <span class="gate-chip">Gate: 45s recording, no hallucinations</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="next-step">
+        <div class="next-step-phase">
+          <div class="phase-num" style="color: var(--amber);">P3</div>
+          <div class="phase-name">Streaming<br>High risk · 1 new file</div>
+        </div>
+        <div class="next-step-body">
+          <h4>Live partial transcripts. Reduce perceived latency.</h4>
+          <p>PREREQUISITE: Read the actual <code>AudioStreamTranscriber</code> source in <code>.build/checkouts/WhisperKit/</code> before writing a line — the documented API may not match the real one. Create <code>WhiskerKitStreamingCoordinator</code> actor. Wire buffer forwarding. 10-second timeout falls back to batch on already-captured samples — no user-visible failure.</p>
+          <div class="gate-chips">
+            <span class="gate-chip">R5: verify API source first</span>
+            <span class="gate-chip">G12: phases 0-2 must be complete</span>
+            <span class="gate-chip">Gate: streaming matches batch WER</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="next-step">
+        <div class="next-step-phase">
+          <div class="phase-num" style="color: var(--pink);">P4</div>
+          <div class="phase-name">Polish Hardening<br>Low risk · 0 new files</div>
+        </div>
+        <div class="next-step-body">
+          <h4>Lock down the merge point. Fix the language bug. Verify all LLM providers.</h4>
+          <p>Fix <code>LLMPolishStep</code> to inject language context into polish prompts (ew-9bd). Verify all 5 LLM providers — OpenAI, Gemini, Ollama, Apple Intelligence, and none — produce correct results via the WhisperKit highway. Confirm transcript history shows correct backend and LLM metadata. Wire model unload policy so idle timeout transitions to <code>.idle</code> (model unloaded), not lingering in <code>.ready</code>.</p>
+          <div class="gate-chips">
+            <span class="gate-chip">ew-9bd: language bug fixed</span>
+            <span class="gate-chip">Gate: all providers verified</span>
+            <span class="gate-chip">Gate: history metadata correct</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="card-accent fade-in" style="margin-top: 40px; padding: 32px;">
+      <h3 style="font-size: 18px; margin-bottom: 12px;">Definition of Done — Full Highway</h3>
+      <div class="grid-2" style="gap: 20px; margin-top: 16px;">
+        <div>
+          <ul class="deliverable-list" style="gap: 8px;">
+            <li><code>swift build -c release</code> exits 0</li>
+            <li>Parakeet highway: zero regression from start to finish</li>
+            <li>Oracle guardrails G1–G13: all satisfied</li>
+            <li>First cold start: "Loading model…" overlay visible</li>
+            <li>Batch ASR phase: "Transcribing…" overlay visible 1–5s</li>
+            <li>PTT cancel during model load: clean idle, no race</li>
+          </ul>
+        </div>
+        <div>
+          <ul class="deliverable-list" style="gap: 8px;">
+            <li>Long recording (>30s): no hallucinated repetitions</li>
+            <li>Streaming + batch fallback both functional</li>
+            <li>All LLM providers: polish completes via WhisperKit highway</li>
+            <li>LLMPolishStep uses language context (ew-9bd fixed)</li>
+            <li>History view: correct backendType and llmProvider metadata</li>
+            <li>Wispr Eyes VERIFIED for all phases</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div style="margin: 0 auto; max-width: var(--max-width);">
+    <div class="rainbow-bar" style="margin-bottom: 20px;"></div>
+    <p>WhisperKit Highway Planning Report · EnviousWispr · 2026-03-06<br>
+    Planning council: Oracle · Architect · ChatterBox · Talent Team · Talent Team 2 · Simplifier · Gap Finder<br>
+    External sign-off: GPT-4.1 via Buddies session · 17 files, 3,591 lines committed to main</p>
+  </div>
+</footer>
+
+<script>
+  // Scroll-based fade-in
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry, i) => {
+      if (entry.isIntersecting) {
+        const delay = entry.target.dataset.delay || 0;
+        setTimeout(() => {
+          entry.target.classList.add('visible');
+        }, delay);
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.08 });
+
+  document.querySelectorAll('.fade-in').forEach((el, i) => {
+    el.dataset.delay = (i % 4) * 80;
+    observer.observe(el);
+  });
+</script>
+</body>
+</html>

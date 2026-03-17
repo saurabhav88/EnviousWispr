@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EnviousWispr — Living Desktop Demo</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200..800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #08080c;
+    --surface: #111116;
+    --border: rgba(255,255,255,0.06);
+    --border-strong: rgba(255,255,255,0.1);
+    --text: #ededf0;
+    --text-2: #8e8ea0;
+    --text-3: #5a5a6e;
+    --accent: #8b7cf6;
+    --accent-soft: rgba(139,124,246,0.1);
+    --accent-glow: rgba(139,124,246,0.25);
+    --green: #34d399;
+    --amber: #fbbf24;
+    --red: #f87171;
+    --cyan: #22d3ee;
+    --pink: #f472b6;
+    --orange: #fb923c;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Desktop */
+  .desktop {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    background: var(--bg);
+    opacity: 0;
+    transition: opacity 0.8s ease;
+  }
+  .desktop.visible { opacity: 1; }
+
+  /* Ambient gradient */
+  .desktop::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 30% 60%, rgba(139,124,246,0.03) 0%, transparent 60%),
+                radial-gradient(ellipse at 70% 30%, rgba(34,211,238,0.02) 0%, transparent 50%);
+    pointer-events: none;
+  }
+
+  /* macOS Menu Bar */
+  .menubar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 28px;
+    background: rgba(12, 12, 16, 0.95);
+    backdrop-filter: blur(30px);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    z-index: 100;
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: opacity 0.5s ease 0.1s, transform 0.5s ease 0.1s;
+  }
+  .desktop.visible .menubar {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .menubar-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .apple-logo {
+    width: 13px;
+    height: 16px;
+    opacity: 0.85;
+  }
+
+  .menu-items {
+    display: flex;
+    gap: 14px;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--text);
+    opacity: 0.85;
+  }
+  .menu-items span:first-child { font-weight: 700; }
+
+  .menubar-right {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 11.5px;
+    color: var(--text-2);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .mic-icon {
+    position: relative;
+    width: 14px;
+    height: 14px;
+    cursor: default;
+    transition: all 0.3s ease;
+  }
+  .mic-icon svg {
+    width: 14px;
+    height: 14px;
+    fill: var(--text-3);
+    transition: fill 0.3s ease, filter 0.3s ease;
+  }
+  .mic-icon.recording svg {
+    fill: var(--red);
+    filter: drop-shadow(0 0 6px rgba(248,113,113,0.5));
+  }
+  .mic-icon.done svg { fill: var(--text-3); }
+
+  /* Notes Window */
+  .notes-window {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 620px;
+    background: rgba(20, 20, 26, 0.96);
+    border-radius: 10px;
+    border: 1px solid var(--border-strong);
+    box-shadow:
+      0 25px 60px rgba(0,0,0,0.5),
+      0 8px 20px rgba(0,0,0,0.3),
+      inset 0 1px 0 rgba(255,255,255,0.04);
+    overflow: hidden;
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.96) translateY(12px);
+    transition: opacity 0.6s ease 0.3s, transform 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.3s;
+  }
+  .desktop.visible .notes-window {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1) translateY(0);
+  }
+
+  .window-titlebar {
+    height: 38px;
+    background: rgba(30, 30, 38, 0.9);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    gap: 8px;
+  }
+
+  .traffic-lights {
+    display: flex;
+    gap: 7px;
+    margin-right: 6px;
+  }
+  .traffic-light {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 0.5px solid rgba(0,0,0,0.15);
+  }
+  .traffic-light.close { background: #ff5f57; }
+  .traffic-light.minimize { background: #febc2e; }
+  .traffic-light.maximize { background: #28c840; }
+
+  .window-title {
+    flex: 1;
+    text-align: center;
+    font-size: 12.5px;
+    color: var(--text-2);
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    margin-right: 72px;
+  }
+
+  .notes-body {
+    padding: 28px 30px 36px;
+    min-height: 260px;
+    line-height: 1.75;
+    font-size: 14.5px;
+  }
+
+  .existing-text {
+    color: var(--text-2);
+    white-space: pre-wrap;
+  }
+
+  .typed-text {
+    color: var(--text);
+    white-space: pre-wrap;
+    position: relative;
+  }
+
+  .typed-char {
+    opacity: 0;
+    transition: opacity 0.05s ease;
+    position: relative;
+  }
+  .typed-char.visible { opacity: 1; }
+  .typed-char.glow {
+    text-shadow: 0 0 8px rgba(52,211,153,0.6), 0 0 20px rgba(52,211,153,0.2);
+  }
+
+  .cursor {
+    display: inline-block;
+    width: 2px;
+    height: 1.15em;
+    background: var(--text);
+    vertical-align: text-bottom;
+    margin-left: 1px;
+    animation: blink 1s step-end infinite;
+  }
+  .cursor.typing { animation: none; opacity: 1; }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  /* Hotkey Badge */
+  .hotkey-badge {
+    position: fixed;
+    bottom: 120px;
+    left: 50%;
+    transform: translateX(-50%) scale(0.6);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 20px;
+    background: rgba(17, 17, 22, 0.95);
+    border-radius: 14px;
+    border: 1px solid var(--accent-glow);
+    box-shadow:
+      0 0 30px rgba(139,124,246,0.15),
+      0 0 60px rgba(139,124,246,0.08),
+      0 8px 24px rgba(0,0,0,0.4);
+    opacity: 0;
+    z-index: 200;
+    transition: opacity 0.25s ease, transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+    pointer-events: none;
+  }
+  .hotkey-badge.show {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
+  .hotkey-badge.hide {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.9);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+  }
+
+  .key {
+    padding: 6px 12px;
+    background: rgba(139, 124, 246, 0.12);
+    border: 1px solid rgba(139, 124, 246, 0.25);
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 0.02em;
+    font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+    white-space: nowrap;
+  }
+
+  .key-plus {
+    font-size: 14px;
+    color: var(--text-3);
+    font-weight: 400;
+  }
+
+  /* Recording Capsule */
+  .capsule {
+    position: fixed;
+    top: 42px;
+    left: 50%;
+    transform: translateX(-50%) scale(0.8);
+    width: 280px;
+    height: 48px;
+    background: rgba(17, 17, 22, 0.92);
+    border-radius: 100px;
+    border: 1px solid rgba(248, 113, 113, 0.2);
+    display: flex;
+    align-items: center;
+    padding: 0 18px;
+    gap: 12px;
+    z-index: 150;
+    opacity: 0;
+    transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+                border-color 0.4s ease, box-shadow 0.4s ease;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4), 0 0 20px rgba(248,113,113,0.08);
+    pointer-events: none;
+  }
+  .capsule.show {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
+  .capsule.hide {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.85);
+    transition: opacity 0.35s ease, transform 0.35s ease;
+  }
+  .capsule.transcribing {
+    border-color: rgba(251, 191, 36, 0.2);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4), 0 0 20px rgba(251,191,36,0.08);
+  }
+  .capsule.polishing {
+    border-color: rgba(34, 211, 238, 0.2);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4), 0 0 20px rgba(34,211,238,0.08);
+  }
+
+  .capsule-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--red);
+    flex-shrink: 0;
+    transition: background 0.4s ease, box-shadow 0.4s ease;
+  }
+  .capsule-dot.recording {
+    animation: pulse-dot 1.5s ease-in-out infinite;
+    box-shadow: 0 0 8px rgba(248,113,113,0.5);
+  }
+  .capsule-dot.transcribing {
+    background: var(--amber);
+    box-shadow: 0 0 8px rgba(251,191,36,0.5);
+    animation: pulse-dot-amber 2s ease-in-out infinite;
+  }
+  .capsule-dot.polishing {
+    background: var(--cyan);
+    box-shadow: 0 0 8px rgba(34,211,238,0.5);
+    animation: pulse-dot-cyan 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.85); }
+  }
+  @keyframes pulse-dot-amber {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(0.9); }
+  }
+  @keyframes pulse-dot-cyan {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(0.9); }
+  }
+
+  /* Waveform */
+  .waveform {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    height: 24px;
+    flex-shrink: 0;
+  }
+
+  .waveform-bar {
+    width: 3px;
+    border-radius: 2px;
+    background: var(--red);
+    transition: background 0.4s ease;
+  }
+  .waveform-bar.recording {
+    animation: wave 0.6s ease-in-out infinite alternate;
+  }
+  .waveform-bar:nth-child(1) { animation-delay: 0s; }
+  .waveform-bar:nth-child(2) { animation-delay: 0.08s; }
+  .waveform-bar:nth-child(3) { animation-delay: 0.16s; }
+  .waveform-bar:nth-child(4) { animation-delay: 0.24s; }
+  .waveform-bar:nth-child(5) { animation-delay: 0.32s; }
+
+  .waveform-bar.slowing {
+    animation: wave-slow 1.2s ease-in-out infinite alternate;
+  }
+  .waveform-bar.slowing:nth-child(1) { animation-delay: 0s; }
+  .waveform-bar.slowing:nth-child(2) { animation-delay: 0.12s; }
+  .waveform-bar.slowing:nth-child(3) { animation-delay: 0.24s; }
+  .waveform-bar.slowing:nth-child(4) { animation-delay: 0.36s; }
+  .waveform-bar.slowing:nth-child(5) { animation-delay: 0.48s; }
+
+  .waveform-bar.transcribing { background: var(--amber); }
+  .waveform-bar.polishing { background: var(--cyan); }
+
+  @keyframes wave {
+    from { height: 4px; }
+    to { height: 20px; }
+  }
+  @keyframes wave-slow {
+    from { height: 3px; }
+    to { height: 10px; }
+  }
+
+  .capsule-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--text-2);
+    flex: 1;
+    text-align: center;
+    transition: color 0.4s ease;
+    white-space: nowrap;
+  }
+  .capsule-text.amber { color: var(--amber); }
+  .capsule-text.cyan { color: var(--cyan); }
+
+  .capsule-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-3);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    flex-shrink: 0;
+  }
+
+  /* Progress bar inside capsule */
+  .capsule-progress {
+    position: absolute;
+    bottom: 0;
+    left: 18px;
+    right: 18px;
+    height: 2px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 1px;
+    overflow: hidden;
+  }
+  .capsule-progress-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 1px;
+    transition: width linear, background 0.4s ease;
+  }
+  .capsule-progress-fill.amber { background: var(--amber); }
+  .capsule-progress-fill.cyan { background: var(--cyan); }
+
+  /* Stage Indicator Pill */
+  .stage-pill {
+    position: fixed;
+    bottom: 24px;
+    left: 24px;
+    padding: 7px 16px;
+    background: rgba(17, 17, 22, 0.85);
+    backdrop-filter: blur(20px);
+    border-radius: 100px;
+    border: 1px solid var(--border-strong);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-3);
+    z-index: 200;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.4s ease 0.6s, transform 0.4s ease 0.6s, color 0.3s ease, border-color 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .desktop.visible .stage-pill {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .stage-pill .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text-3);
+    transition: background 0.3s ease;
+  }
+  .stage-pill.recording { color: var(--red); border-color: rgba(248,113,113,0.15); }
+  .stage-pill.recording .dot { background: var(--red); }
+  .stage-pill.transcribing { color: var(--amber); border-color: rgba(251,191,36,0.15); }
+  .stage-pill.transcribing .dot { background: var(--amber); }
+  .stage-pill.polishing { color: var(--cyan); border-color: rgba(34,211,238,0.15); }
+  .stage-pill.polishing .dot { background: var(--cyan); }
+  .stage-pill.typing { color: var(--green); border-color: rgba(52,211,153,0.15); }
+  .stage-pill.typing .dot { background: var(--green); }
+  .stage-pill.done { color: var(--green); border-color: rgba(52,211,153,0.2); }
+  .stage-pill.done .dot { background: var(--green); }
+
+  /* Done Checkmark */
+  .done-check {
+    position: fixed;
+    top: 58px;
+    left: 50%;
+    transform: translateX(-50%) scale(0.5);
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(52, 211, 153, 0.12);
+    border: 1px solid rgba(52, 211, 153, 0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    z-index: 200;
+    transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    pointer-events: none;
+  }
+  .done-check.show {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
+  .done-check.fade {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.8);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+  .done-check svg {
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: var(--green);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* Replay Button */
+  .replay-btn {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    padding: 8px 18px;
+    background: rgba(17, 17, 22, 0.85);
+    backdrop-filter: blur(20px);
+    border-radius: 100px;
+    border: 1px solid var(--border-strong);
+    color: var(--text-2);
+    font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    z-index: 200;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.4s ease, transform 0.4s ease, color 0.2s ease, border-color 0.2s ease;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .replay-btn.show {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+  .replay-btn:hover {
+    color: var(--text);
+    border-color: rgba(255,255,255,0.2);
+  }
+  .replay-btn svg {
+    width: 13px;
+    height: 13px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* Dock */
+  .dock {
+    position: fixed;
+    bottom: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 4px;
+    padding: 4px 8px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.04);
+    z-index: 50;
+    opacity: 0;
+    transition: opacity 0.6s ease 0.5s;
+  }
+  .desktop.visible .dock { opacity: 0.5; }
+  .dock-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.05);
+  }
+  .dock-icon:nth-child(1) { background: rgba(52,211,153,0.12); }
+  .dock-icon:nth-child(2) { background: rgba(139,124,246,0.12); }
+  .dock-icon:nth-child(3) { background: rgba(34,211,238,0.12); }
+  .dock-icon:nth-child(4) { background: rgba(251,191,36,0.12); }
+  .dock-icon:nth-child(5) { background: rgba(244,114,182,0.12); }
+  .dock-divider {
+    width: 1px;
+    height: 28px;
+    background: rgba(255,255,255,0.06);
+    align-self: center;
+    margin: 0 2px;
+  }
+  .dock-icon:nth-child(7) { background: rgba(248,113,113,0.12); }
+  .dock-icon:nth-child(8) { background: rgba(255,255,255,0.05); }
+</style>
+</head>
+<body>
+
+<div class="desktop" id="desktop">
+  <!-- macOS Menu Bar -->
+  <div class="menubar">
+    <div class="menubar-left">
+      <svg class="apple-logo" viewBox="0 0 17 20" fill="currentColor" style="color: var(--text); opacity: 0.85;">
+        <path d="M14.94 10.57c-.03-2.77 2.26-4.1 2.36-4.17-1.28-1.88-3.28-2.13-3.99-2.16-1.7-.17-3.32 1-4.18 1-.86 0-2.19-.98-3.6-.95-1.85.03-3.56 1.08-4.51 2.74-1.92 3.33-.49 8.27 1.38 10.97.92 1.33 2.01 2.82 3.44 2.76 1.38-.05 1.9-.89 3.57-.89 1.67 0 2.14.89 3.6.87 1.49-.03 2.43-1.35 3.34-2.69 1.05-1.54 1.48-3.03 1.51-3.11-.03-.01-2.9-1.11-2.93-4.42zm-2.74-8.12C13.12 1.37 13.72.01 13.58 0c-1.14.05-2.52.76-3.33 1.72-.73.85-1.37 2.2-1.2 3.49 1.27.1 2.57-.65 3.49-1.72z"/>
+      </svg>
+      <div class="menu-items">
+        <span>Finder</span>
+        <span>File</span>
+        <span>Edit</span>
+        <span>View</span>
+        <span>Go</span>
+      </div>
+    </div>
+    <div class="menubar-right">
+      <span id="menuTime"></span>
+      <div class="mic-icon" id="micIcon">
+        <svg viewBox="0 0 24 24">
+          <path d="M12 1a4 4 0 0 0-4 4v6a4 4 0 0 0 8 0V5a4 4 0 0 0-4-4zM6 10a1 1 0 0 0-2 0 8 8 0 0 0 7 7.93V21H8.5a1 1 0 1 0 0 2h7a1 1 0 1 0 0-2H13v-3.07A8 8 0 0 0 20 10a1 1 0 0 0-2 0 6 6 0 0 1-12 0z"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notes Window -->
+  <div class="notes-window">
+    <div class="window-titlebar">
+      <div class="traffic-lights">
+        <div class="traffic-light close"></div>
+        <div class="traffic-light minimize"></div>
+        <div class="traffic-light maximize"></div>
+      </div>
+      <div class="window-title">Notes — Meeting Follow-up</div>
+    </div>
+    <div class="notes-body">
+      <span class="existing-text">Hi Sarah,
+
+Just wanted to follow up on the</span><span class="typed-text" id="typedText"></span><span class="cursor" id="cursor"></span>
+    </div>
+  </div>
+
+  <!-- Hotkey Badge -->
+  <div class="hotkey-badge" id="hotkeyBadge">
+    <div class="key">&#x2325; Option</div>
+    <span class="key-plus">+</span>
+    <div class="key">Space</div>
+  </div>
+
+  <!-- Recording Capsule -->
+  <div class="capsule" id="capsule">
+    <div class="capsule-dot" id="capsuleDot"></div>
+    <div class="waveform" id="waveform">
+      <div class="waveform-bar" style="height: 4px;"></div>
+      <div class="waveform-bar" style="height: 4px;"></div>
+      <div class="waveform-bar" style="height: 4px;"></div>
+      <div class="waveform-bar" style="height: 4px;"></div>
+      <div class="waveform-bar" style="height: 4px;"></div>
+    </div>
+    <div class="capsule-text" id="capsuleText">00:00</div>
+    <div class="capsule-label">PTT</div>
+    <div class="capsule-progress">
+      <div class="capsule-progress-fill" id="progressFill"></div>
+    </div>
+  </div>
+
+  <!-- Done Checkmark -->
+  <div class="done-check" id="doneCheck">
+    <svg viewBox="0 0 24 24">
+      <polyline points="20 6 9 17 4 12"></polyline>
+    </svg>
+  </div>
+
+  <!-- Stage Pill -->
+  <div class="stage-pill" id="stagePill">
+    <div class="dot"></div>
+    <span id="stageText">Idle</span>
+  </div>
+
+  <!-- Dock -->
+  <div class="dock">
+    <div class="dock-icon"></div>
+    <div class="dock-icon"></div>
+    <div class="dock-icon"></div>
+    <div class="dock-icon"></div>
+    <div class="dock-icon"></div>
+    <div class="dock-divider"></div>
+    <div class="dock-icon"></div>
+    <div class="dock-icon"></div>
+  </div>
+</div>
+
+<!-- Replay Button -->
+<button class="replay-btn" id="replayBtn">
+  <svg viewBox="0 0 24 24">
+    <polyline points="1 4 1 10 7 10"></polyline>
+    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+  </svg>
+  Replay
+</button>
+
+<script>
+(function() {
+  'use strict';
+
+  // Clock
+  function updateClock() {
+    var now = new Date();
+    var h = now.getHours();
+    var m = String(now.getMinutes()).padStart(2, '0');
+    var ampm = h >= 12 ? 'PM' : 'AM';
+    var h12 = h % 12 || 12;
+    document.getElementById('menuTime').textContent = h12 + ':' + m + ' ' + ampm;
+  }
+  updateClock();
+  setInterval(updateClock, 30000);
+
+  // Elements
+  var desktop = document.getElementById('desktop');
+  var micIcon = document.getElementById('micIcon');
+  var hotkeyBadge = document.getElementById('hotkeyBadge');
+  var capsule = document.getElementById('capsule');
+  var capsuleDot = document.getElementById('capsuleDot');
+  var waveform = document.getElementById('waveform');
+  var capsuleText = document.getElementById('capsuleText');
+  var progressFill = document.getElementById('progressFill');
+  var typedText = document.getElementById('typedText');
+  var cursorEl = document.getElementById('cursor');
+  var doneCheck = document.getElementById('doneCheck');
+  var stagePill = document.getElementById('stagePill');
+  var stageTextEl = document.getElementById('stageText');
+  var replayBtn = document.getElementById('replayBtn');
+
+  var bars = waveform.querySelectorAll('.waveform-bar');
+
+  var fullText = 'I think the timeline we proposed for Q3 is realistic, but we should probably add a buffer week for the integration testing phase. Can we sync tomorrow to finalize?';
+
+  var timerInterval = null;
+  var animTimeouts = [];
+
+  function clearAllTimeouts() {
+    for (var i = 0; i < animTimeouts.length; i++) {
+      clearTimeout(animTimeouts[i]);
+    }
+    animTimeouts = [];
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  }
+
+  function schedule(fn, delay) {
+    var t = setTimeout(fn, delay);
+    animTimeouts.push(t);
+    return t;
+  }
+
+  function setStage(text, cls) {
+    stageTextEl.textContent = text;
+    stagePill.className = 'stage-pill' + (cls ? ' ' + cls : '');
+  }
+
+  function setBarsClass(cls) {
+    for (var i = 0; i < bars.length; i++) {
+      bars[i].className = 'waveform-bar' + (cls ? ' ' + cls : '');
+    }
+  }
+
+  function resetState() {
+    clearAllTimeouts();
+
+    desktop.classList.remove('visible');
+    micIcon.classList.remove('recording', 'done');
+    hotkeyBadge.classList.remove('show', 'hide');
+    capsule.classList.remove('show', 'hide', 'transcribing', 'polishing');
+    capsuleDot.classList.remove('recording', 'transcribing', 'polishing');
+    setBarsClass('');
+    for (var i = 0; i < bars.length; i++) { bars[i].style.height = '4px'; }
+    capsuleText.textContent = '00:00';
+    capsuleText.classList.remove('amber', 'cyan');
+    progressFill.style.width = '0%';
+    progressFill.style.transition = 'none';
+    progressFill.classList.remove('amber', 'cyan');
+    // Clear typed text safely
+    while (typedText.firstChild) { typedText.removeChild(typedText.firstChild); }
+    cursorEl.classList.remove('typing');
+    doneCheck.classList.remove('show', 'fade');
+    stagePill.className = 'stage-pill';
+    stageTextEl.textContent = 'Idle';
+    replayBtn.classList.remove('show');
+  }
+
+  function createCharSpan(ch, index) {
+    var span = document.createElement('span');
+    span.className = 'typed-char';
+    span.setAttribute('data-index', index);
+    span.textContent = ch;
+    return span;
+  }
+
+  function startSequence() {
+    resetState();
+
+    // Force reflow
+    void desktop.offsetWidth;
+
+    // Phase 1 -- Idle (0-2s): fade in
+    schedule(function() {
+      desktop.classList.add('visible');
+    }, 50);
+
+    // Phase 2 -- Hotkey (2-3s)
+    schedule(function() {
+      setStage('Hotkey', '');
+      hotkeyBadge.classList.add('show');
+    }, 2000);
+
+    schedule(function() {
+      hotkeyBadge.classList.remove('show');
+      hotkeyBadge.classList.add('hide');
+    }, 2700);
+
+    // Phase 3 -- Recording (3-8s)
+    schedule(function() {
+      setStage('Recording', 'recording');
+      micIcon.classList.add('recording');
+      capsuleDot.classList.add('recording');
+      setBarsClass('recording');
+      capsule.classList.add('show');
+      capsuleText.textContent = '00:00';
+
+      var seconds = 0;
+      timerInterval = setInterval(function() {
+        seconds++;
+        if (seconds <= 5) {
+          capsuleText.textContent = '00:0' + seconds;
+        }
+      }, 1000);
+    }, 3000);
+
+    // Phase 4 -- Transcribing (8-11s)
+    schedule(function() {
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+      setStage('Transcribing', 'transcribing');
+      micIcon.classList.remove('recording');
+      capsule.classList.add('transcribing');
+      capsuleDot.classList.remove('recording');
+      capsuleDot.classList.add('transcribing');
+      setBarsClass('slowing transcribing');
+      capsuleText.textContent = 'Transcribing\u2026';
+      capsuleText.classList.add('amber');
+      progressFill.classList.add('amber');
+      void progressFill.offsetWidth;
+      progressFill.style.transition = 'width 3s linear';
+      progressFill.style.width = '100%';
+    }, 8000);
+
+    // Phase 5 -- Polishing (11-14s)
+    schedule(function() {
+      setStage('Polishing', 'polishing');
+      capsule.classList.remove('transcribing');
+      capsule.classList.add('polishing');
+      capsuleDot.classList.remove('transcribing');
+      capsuleDot.classList.add('polishing');
+      setBarsClass('slowing polishing');
+      capsuleText.textContent = 'Polishing\u2026';
+      capsuleText.classList.remove('amber');
+      capsuleText.classList.add('cyan');
+      progressFill.classList.remove('amber');
+      progressFill.classList.add('cyan');
+      progressFill.style.transition = 'none';
+      progressFill.style.width = '0%';
+      void progressFill.offsetWidth;
+      progressFill.style.transition = 'width 3s linear';
+      progressFill.style.width = '100%';
+    }, 11000);
+
+    // Phase 6 -- Text Appears (14-17s)
+    schedule(function() {
+      setStage('Typing', 'typing');
+      capsule.classList.remove('show');
+      capsule.classList.add('hide');
+      setBarsClass('');
+
+      cursorEl.classList.add('typing');
+
+      // Build character spans using DOM API
+      var fragment = document.createDocumentFragment();
+      for (var i = 0; i < fullText.length; i++) {
+        fragment.appendChild(createCharSpan(fullText[i], i));
+      }
+      typedText.appendChild(fragment);
+
+      // Reveal characters one by one
+      var charDelay = 30;
+      for (var j = 0; j < fullText.length; j++) {
+        (function(idx) {
+          schedule(function() {
+            var el = typedText.querySelector('[data-index="' + idx + '"]');
+            if (el) {
+              el.classList.add('visible', 'glow');
+              schedule(function() {
+                if (el) el.classList.remove('glow');
+              }, 120);
+            }
+          }, idx * charDelay);
+        })(j);
+      }
+    }, 14000);
+
+    // Phase 7 -- Done
+    var typingDuration = fullText.length * 30;
+    var doneTime = 14000 + typingDuration + 200;
+
+    schedule(function() {
+      cursorEl.classList.remove('typing');
+      setStage('Done \u2713', 'done');
+      micIcon.classList.add('done');
+
+      doneCheck.classList.add('show');
+      schedule(function() {
+        doneCheck.classList.remove('show');
+        doneCheck.classList.add('fade');
+      }, 1200);
+
+      schedule(function() {
+        replayBtn.classList.add('show');
+      }, 800);
+    }, doneTime);
+  }
+
+  replayBtn.addEventListener('click', function() {
+    replayBtn.classList.remove('show');
+    schedule(function() { startSequence(); }, 300);
+  });
+
+  // Auto-start
+  startSequence();
+})();
+</script>
+
+</body>
+</html>

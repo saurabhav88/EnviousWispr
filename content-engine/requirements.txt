@@ -1,0 +1,21 @@
+# SEO-GEO Blog Writer - Python Dependencies
+# Install: pip install -r requirements.txt
+
+# Core API Integration
+requests>=2.31.0  # For DataForSEO API calls (SERP + OnPage)
+
+# Schema Validation
+jsonschema>=4.20.0  # Validate JSON-LD schema markup
+
+# Note: BeautifulSoup and lxml removed - now using DataForSEO OnPage API
+# Benefits: More reliable, readability scores, SEO metrics, no scraping failures
+
+# Optional: NLP for Advanced Features
+# Uncomment if using advanced content analysis features:
+# spacy>=3.7.0  # Natural language processing
+# textstat>=0.7.3  # Readability metrics (Flesch-Kincaid, etc.)
+
+# Development & Testing
+# pytest>=7.4.0  # Run test suite
+# black>=23.0.0  # Code formatting
+# flake8>=6.1.0  # Linting

@@ -1,0 +1,1443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EnviousWispr — Talk Naturally. Paste Perfectly.</title>
+<meta name="description" content="The fastest way to turn your voice into polished text on Mac. Private by design — your voice never leaves your device. Free download.">
+<meta name="robots" content="index, follow">
+<meta name="author" content="Envious Labs">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="theme-color" content="#f8f5ff">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200;300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════
+   EnviousWispr V5 — Wispr Flow Strategy
+   Design system: brand lavender, rainbow spectrum, Plus Jakarta Sans
+   ═══════════════════════════════════════════════════════ */
+:root {
+  --v2-red: #ff2a40; --v2-orange: #ff8c00; --v2-gold: #ffd700;
+  --v2-lime: #adff2f; --v2-spring: #00fa9a; --v2-cyan: #00ffff;
+  --v2-blue: #1e90ff; --v2-royal: #4169e1; --v2-violet: #8a2be2;
+  --rainbow-full: linear-gradient(90deg,#ff2a40,#ff8c00,#ffd700,#adff2f,#00fa9a,#00ffff,#1e90ff,#4169e1,#8a2be2);
+  --rainbow-135: linear-gradient(135deg,#ff2a40,#ff8c00,#ffd700,#adff2f,#00fa9a,#00ffff,#1e90ff,#4169e1,#8a2be2);
+  --rainbow-hero: linear-gradient(135deg,#8a2be2 0%,#00ffff 100%);
+  --rainbow-warm: linear-gradient(90deg,#ff2a40,#ff8c00,#ffd700);
+  --rainbow-cool: linear-gradient(90deg,#00ffff,#1e90ff,#4169e1,#8a2be2);
+  --bg: #f8f5ff; --surface: #f0ecf9;
+  --border: rgba(138,43,226,0.06); --border-hover: rgba(138,43,226,0.12);
+  --text: #0f0a1a; --text-2: #4a3d60; --text-3: #7d6f96;
+  --accent: #7c3aed; --accent-soft: rgba(124,58,237,0.08);
+  --accent-glow: rgba(124,58,237,0.20); --accent-hover: #6d28d9;
+  --cyan: #00ccdd; --green: #00c880; --amber: #e6c200;
+  --red: #e6253a; --orange: #e67e00; --pink: #d45a90;
+  --font-body: 'Plus Jakarta Sans', -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --radius-card: 16px; --radius-btn: 12px; --radius-pill: 100px;
+  --max-width: 1200px; --section-pad: 88px;
+}
+
+.rainbow-text {
+  background: var(--rainbow-full);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.rainbow-glow {
+  box-shadow: 0 0 15px rgba(124,58,237,0.15), 0 0 30px rgba(0,255,255,0.08), 0 0 45px rgba(255,42,64,0.05);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+body { font-family: var(--font-body); background: var(--bg); color: var(--text); line-height: 1.6; overflow-x: hidden; }
+
+body::before {
+  content: ''; position: fixed; top: -200px; right: -200px;
+  width: 600px; height: 600px;
+  background: radial-gradient(circle,rgba(124,58,237,0.06),transparent 70%);
+  pointer-events: none; z-index: 0;
+}
+body::after {
+  content: ''; position: fixed; bottom: -200px; left: -200px;
+  width: 600px; height: 600px;
+  background: radial-gradient(circle,rgba(109,40,217,0.05),transparent 70%);
+  pointer-events: none; z-index: 0;
+}
+.dot-grid {
+  position: fixed; inset: 0;
+  background-image: radial-gradient(circle,rgba(124,58,237,0.03) 1px,transparent 1px);
+  background-size: 24px 24px; pointer-events: none; z-index: 0;
+}
+.container { max-width: var(--max-width); margin: 0 auto; padding: 0 32px; position: relative; z-index: 1; }
+
+/* Scroll reveal */
+.reveal {
+  opacity: 0; transform: translateY(24px);
+  transition: opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1);
+}
+.reveal.visible { opacity: 1; transform: translateY(0); }
+.reveal-stagger > .reveal { transition-delay: calc(var(--i,0) * 80ms); }
+
+/* ═══════════════════════════════════════════════════════
+   Navigation
+   ═══════════════════════════════════════════════════════ */
+.nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+  background: rgba(248,245,255,0.88);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  transition: background 0.3s, box-shadow 0.3s;
+}
+.nav.scrolled { background: rgba(248,245,255,0.96); box-shadow: 0 1px 24px rgba(124,58,237,0.06); }
+.nav-inner {
+  max-width: var(--max-width); margin: 0 auto; padding: 0 32px;
+  height: 64px; display: flex; align-items: center; justify-content: space-between;
+}
+.nav-logo {
+  font-size: 18px; font-weight: 800; letter-spacing: -0.5px;
+  color: var(--text); text-decoration: none; display: flex; align-items: center; gap: 10px;
+}
+.nav-links-list { display: flex; align-items: center; gap: 28px; list-style: none; }
+.nav-links-list a { font-size: 14px; font-weight: 500; color: var(--text-2); text-decoration: none; transition: color 0.2s; }
+.nav-links-list a:hover { color: var(--text); }
+.nav-cta-group { display: flex; align-items: center; gap: 12px; }
+.nav-gh-link { font-size: 14px; font-weight: 500; color: var(--text-3); text-decoration: none; transition: color 0.2s; }
+.nav-gh-link:hover { color: var(--text-2); }
+.nav-cta {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 8px 20px; background: var(--text); color: #fff;
+  font-size: 14px; font-weight: 600; border-radius: var(--radius-btn);
+  text-decoration: none; transition: background 0.2s, transform 0.2s;
+}
+.nav-cta:hover { background: #2a2035; transform: translateY(-1px); }
+
+/* ═══════════════════════════════════════════════════════
+   Hero
+   ═══════════════════════════════════════════════════════ */
+.hero { padding: 120px 0 60px; text-align: center; position: relative; z-index: 1; }
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 8px; padding: 6px 18px;
+  background: var(--accent-soft); border: 1px solid rgba(124,58,237,0.2);
+  border-radius: var(--radius-pill); font-size: 13px; font-weight: 600; color: var(--accent);
+  margin-bottom: 28px;
+}
+.hero-badge .dot {
+  width: 7px; height: 7px; background: var(--green); border-radius: 50%;
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+@keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+.hero h1 {
+  font-size: 80px; font-weight: 800; letter-spacing: -4px; line-height: 1.02;
+  color: var(--text); margin: 0 auto 20px; max-width: 860px;
+}
+.hero-sub { font-size: 20px; font-weight: 400; color: var(--text-2); line-height: 1.65; max-width: 560px; margin: 0 auto 44px; }
+.hero-ctas { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 20px; flex-wrap: wrap; }
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 10px; padding: 15px 34px;
+  background: var(--text); color: #fff; font-size: 16px; font-weight: 600;
+  border-radius: var(--radius-btn); text-decoration: none; border: none; cursor: pointer;
+  transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+.btn-primary:hover { background: #2a2035; transform: translateY(-2px); box-shadow: 0 8px 32px rgba(15,10,26,0.25); }
+.btn-secondary {
+  display: inline-flex; align-items: center; gap: 10px; padding: 15px 34px;
+  background: transparent; color: var(--text); font-size: 16px; font-weight: 600;
+  border-radius: var(--radius-btn); text-decoration: none; border: 1px solid var(--border-hover); cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, transform 0.2s;
+}
+.btn-secondary:hover { background: rgba(124,58,237,0.05); border-color: rgba(124,58,237,0.2); transform: translateY(-2px); }
+.hero-trust { font-size: 13px; color: var(--text-3); display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 64px; }
+.hero-trust .sep { opacity: 0.35; }
+
+/* Lip icon animations */
+.hero-lips .upper-bar { transform-box: fill-box; transform-origin: center bottom; }
+.hero-lips .lower-bar { transform-box: fill-box; transform-origin: center top; }
+@keyframes rec-bounce-0 { 0%,100%{transform:scaleY(1)} 30%{transform:scaleY(1.5)} 60%{transform:scaleY(0.7)} }
+@keyframes rec-bounce-1 { 0%,100%{transform:scaleY(1)} 25%{transform:scaleY(1.6)} 55%{transform:scaleY(0.6)} }
+@keyframes rec-bounce-2 { 0%,100%{transform:scaleY(1)} 35%{transform:scaleY(1.4)} 65%{transform:scaleY(0.75)} }
+@keyframes rec-bounce-3 { 0%,100%{transform:scaleY(1)} 20%{transform:scaleY(1.55)} 50%{transform:scaleY(0.65)} }
+@keyframes rec-bounce-4 { 0%,100%{transform:scaleY(1)} 40%{transform:scaleY(1.45)} 70%{transform:scaleY(0.7)} }
+@keyframes rec-bounce-5 { 0%,100%{transform:scaleY(1)} 28%{transform:scaleY(1.5)} 58%{transform:scaleY(0.68)} }
+@keyframes rec-bounce-6 { 0%,100%{transform:scaleY(1)} 33%{transform:scaleY(1.55)} 63%{transform:scaleY(0.72)} }
+@keyframes rec-bounce-7 { 0%,100%{transform:scaleY(1)} 22%{transform:scaleY(1.45)} 52%{transform:scaleY(0.65)} }
+@keyframes rec-bounce-8 { 0%,100%{transform:scaleY(1)} 38%{transform:scaleY(1.5)} 68%{transform:scaleY(0.7)} }
+@keyframes glow-pulse { 0%,100%{opacity:0.88} 50%{opacity:1} }
+.hero-lips .u0{animation:rec-bounce-0 0.50s ease-in-out 0.00s infinite}
+.hero-lips .u1{animation:rec-bounce-1 0.57s ease-in-out 0.06s infinite}
+.hero-lips .u2{animation:rec-bounce-2 0.64s ease-in-out 0.12s infinite}
+.hero-lips .u3{animation:rec-bounce-3 0.71s ease-in-out 0.18s infinite}
+.hero-lips .u4{animation:rec-bounce-4 0.78s ease-in-out 0.24s infinite}
+.hero-lips .u5{animation:rec-bounce-5 0.85s ease-in-out 0.30s infinite}
+.hero-lips .u6{animation:rec-bounce-6 0.92s ease-in-out 0.36s infinite}
+.hero-lips .u7{animation:rec-bounce-7 0.99s ease-in-out 0.42s infinite}
+.hero-lips .u8{animation:rec-bounce-8 1.06s ease-in-out 0.48s infinite}
+.hero-lips .l0{animation:rec-bounce-0 0.550s ease-in-out 0.05s infinite}
+.hero-lips .l1{animation:rec-bounce-1 0.615s ease-in-out 0.12s infinite}
+.hero-lips .l2{animation:rec-bounce-2 0.680s ease-in-out 0.19s infinite}
+.hero-lips .l3{animation:rec-bounce-3 0.745s ease-in-out 0.26s infinite}
+.hero-lips .l4{animation:rec-bounce-4 0.810s ease-in-out 0.33s infinite}
+.hero-lips .l5{animation:rec-bounce-5 0.875s ease-in-out 0.40s infinite}
+.hero-lips .l6{animation:rec-bounce-6 0.940s ease-in-out 0.47s infinite}
+.hero-lips .l7{animation:rec-bounce-7 1.005s ease-in-out 0.54s infinite}
+.hero-lips .l8{animation:rec-bounce-8 1.070s ease-in-out 0.61s infinite}
+.hero-lips .lip-glow-group{animation:glow-pulse 4s ease-in-out infinite}
+@media(prefers-reduced-motion:reduce){
+  .hero-lips .upper-bar,.hero-lips .lower-bar,.hero-lips .lip-glow-group{animation:none!important}
+}
+
+/* ═══════════════════════════════════════════════════════
+   Transformation Demo Card
+   ═══════════════════════════════════════════════════════ */
+.transform-demo-outer { position: relative; z-index: 1; padding: 0 0 80px; }
+.transform-demo-card {
+  max-width: 760px; margin: 0 auto;
+  background: #fff; border: 1px solid var(--border-hover); border-radius: 20px;
+  box-shadow: 0 24px 80px rgba(124,58,237,0.10), 0 4px 16px rgba(0,0,0,0.04);
+  overflow: hidden; position: relative;
+}
+.transform-demo-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full);
+}
+.demo-chrome {
+  background: rgba(240,236,249,0.7); padding: 12px 16px;
+  display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border);
+}
+.chrome-dot { width: 12px; height: 12px; border-radius: 50%; }
+.chrome-dot.red{background:#ff5f57} .chrome-dot.yellow{background:#febc2e} .chrome-dot.green{background:#28c840}
+.chrome-title { flex: 1; text-align: center; font-family: var(--font-mono); font-size: 12px; color: var(--text-3); font-weight: 500; }
+.demo-body { padding: 28px 32px 32px; }
+.demo-label-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.demo-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+.demo-label.before{color:var(--red)} .demo-label.after{color:var(--green)}
+.demo-badge {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px;
+  border-radius: var(--radius-pill); font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+}
+.demo-badge.raw{ background:rgba(230,37,58,0.08); color:var(--red); border:1px solid rgba(230,37,58,0.15); }
+.demo-badge.polished{ background:rgba(0,200,128,0.08); color:var(--green); border:1px solid rgba(0,200,128,0.2); }
+.demo-badge::before{ content:''; width:5px; height:5px; border-radius:50%; background:currentColor; }
+.demo-text-before, .demo-text-after {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  padding: 18px 20px; font-size: 15px; line-height: 1.7; min-height: 80px; position: relative;
+}
+.demo-text-before { color: var(--text-2); border-color: rgba(230,37,58,0.12); }
+.demo-text-after { color: var(--text); border-color: rgba(0,200,128,0.2); }
+.type-cursor {
+  display: inline-block; width: 2px; height: 1.1em; background: var(--red);
+  vertical-align: text-bottom; animation: blink-cur 0.7s step-end infinite; margin-left: 1px;
+}
+.type-cursor.green-cur { background: var(--green); }
+@keyframes blink-cur { 0%,100%{opacity:1} 50%{opacity:0} }
+.demo-arrow-row { display: flex; align-items: center; gap: 16px; margin: 20px 0; }
+.demo-arrow-line { flex: 1; height: 1px; background: var(--border); }
+.demo-arrow-icon {
+  display: flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: 50%;
+  background: linear-gradient(135deg,#7c3aed,#00ccdd);
+  box-shadow: 0 4px 16px rgba(124,58,237,0.25); flex-shrink: 0;
+}
+.transform-label-text {
+  font-size: 12px; font-weight: 700; color: var(--text-3);
+  white-space: nowrap; letter-spacing: 0.5px; text-transform: uppercase;
+  opacity: 0; transition: opacity 0.4s;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Scrolling Logo Bar
+   ═══════════════════════════════════════════════════════ */
+.marquee-section { padding: 0 0 72px; position: relative; z-index: 1; overflow: hidden; }
+.marquee-label { text-align: center; font-size: 13px; font-weight: 500; color: var(--text-3); margin-bottom: 24px; letter-spacing: 0.5px; }
+.marquee-track { position: relative; overflow: hidden; }
+.marquee-track::before,.marquee-track::after {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 120px; z-index: 2; pointer-events: none;
+}
+.marquee-track::before { left: 0; background: linear-gradient(to right,var(--bg),transparent); }
+.marquee-track::after { right: 0; background: linear-gradient(to left,var(--bg),transparent); }
+.marquee-row { display: flex; gap: 12px; animation: marquee-scroll 30s linear infinite; width: max-content; }
+.marquee-row:hover { animation-play-state: paused; }
+@keyframes marquee-scroll { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
+.app-chip {
+  display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px;
+  background: #fff; border: 1px solid var(--border-hover); border-radius: var(--radius-pill);
+  font-size: 14px; font-weight: 600; color: var(--text-2); white-space: nowrap; flex-shrink: 0;
+  transition: border-color 0.2s, color 0.2s;
+}
+.app-chip:hover { border-color: var(--accent); color: var(--text); }
+.chip-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* ═══════════════════════════════════════════════════════
+   Shared Section Styles
+   ═══════════════════════════════════════════════════════ */
+.section { padding: var(--section-pad) 0; position: relative; z-index: 1; }
+.section-head { text-align: center; margin-bottom: 56px; }
+.section-label-pill {
+  display: inline-block; padding: 4px 14px; border-radius: var(--radius-pill);
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px;
+}
+.section-label-pill.accent{ background:var(--accent-soft); color:var(--accent); border:1px solid rgba(124,58,237,0.2); }
+.section-label-pill.green{ background:rgba(0,200,128,0.08); color:var(--green); border:1px solid rgba(0,200,128,0.2); }
+.section-label-pill.cyan{ background:rgba(0,255,255,0.08); color:var(--cyan); border:1px solid rgba(0,255,255,0.2); }
+.section-title { font-size: 52px; font-weight: 800; letter-spacing: -2.5px; line-height: 1.08; margin-bottom: 16px; }
+.section-sub { font-size: 18px; color: var(--text-2); max-width: 580px; margin: 0 auto; line-height: 1.65; }
+
+/* ═══════════════════════════════════════════════════════
+   Speed Comparison
+   ═══════════════════════════════════════════════════════ */
+.speed-compare { max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+.speed-row { display: flex; flex-direction: column; gap: 10px; }
+.speed-row-header { display: flex; align-items: center; justify-content: space-between; }
+.speed-label { font-size: 15px; font-weight: 700; color: var(--text); }
+.speed-wpm { font-family: var(--font-mono); font-size: 14px; font-weight: 600; color: var(--text-3); }
+.speed-wpm.fast { color: var(--green); }
+.speed-bar-track { height: 48px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; position: relative; }
+.speed-bar-fill {
+  height: 100%; width: 0%; border-radius: 12px;
+  display: flex; align-items: center; padding-left: 16px;
+  transition: width 1.2s cubic-bezier(0.16,1,0.3,1);
+  position: relative; overflow: hidden;
+}
+.speed-bar-fill::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg,transparent,rgba(255,255,255,0.15),transparent);
+  animation: shimmer 2.5s ease-in-out infinite;
+}
+@keyframes shimmer { 0%{transform:translateX(-100%)} 100%{transform:translateX(100%)} }
+.speed-bar-fill.typing { background: rgba(74,61,96,0.28); }
+.speed-bar-fill.wispr { background: var(--rainbow-full); }
+.speed-bar-text { font-size: 13px; font-weight: 700; color: #fff; white-space: nowrap; z-index: 1; position: relative; text-shadow: 0 1px 4px rgba(0,0,0,0.35); }
+.speed-callout {
+  text-align: center; margin-top: 12px; padding: 28px 32px;
+  background: linear-gradient(135deg,rgba(124,58,237,0.06),rgba(0,204,221,0.06));
+  border: 1px solid rgba(124,58,237,0.12); border-radius: 16px;
+}
+.speed-big-num {
+  font-size: 72px; font-weight: 800; letter-spacing: -4px; line-height: 1;
+  background: var(--rainbow-full);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  margin-bottom: 8px;
+}
+.speed-callout p { font-size: 16px; color: var(--text-2); }
+
+/* ═══════════════════════════════════════════════════════
+   Use Cases — Tabbed
+   ═══════════════════════════════════════════════════════ */
+.usecases-tabs { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 40px; }
+.tab-btn {
+  display: inline-flex; align-items: center; gap: 7px; padding: 10px 22px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-pill);
+  font-size: 14px; font-weight: 600; color: var(--text-2); cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.15s;
+  font-family: var(--font-body);
+}
+.tab-btn:hover { border-color: var(--border-hover); color: var(--text); transform: translateY(-1px); }
+.tab-btn.active { background: var(--text); color: #fff; border-color: var(--text); box-shadow: 0 4px 16px rgba(15,10,26,0.2); }
+.tab-panel-wrap { position: relative; min-height: 340px; }
+.tab-panel { display: none; animation: fadeInPanel 0.35s ease; }
+.tab-panel.active { display: block; }
+@keyframes fadeInPanel { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+.usecase-card {
+  background: #fff; border: 1px solid var(--border-hover); border-radius: 20px;
+  overflow: hidden; box-shadow: 0 12px 48px rgba(124,58,237,0.06);
+  display: grid; grid-template-columns: 1fr 1fr; min-height: 320px;
+}
+.usecase-info {
+  padding: 48px 44px; display: flex; flex-direction: column; justify-content: center;
+  border-right: 1px solid var(--border);
+}
+.usecase-icon { width: 56px; height: 56px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 26px; margin-bottom: 24px; }
+.usecase-info h3 { font-size: 28px; font-weight: 800; letter-spacing: -1px; margin-bottom: 12px; }
+.usecase-info p { font-size: 16px; color: var(--text-2); line-height: 1.65; margin-bottom: 24px; }
+.usecase-tag { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: var(--radius-pill); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+.usecase-preview { background: var(--surface); padding: 32px 36px; display: flex; flex-direction: column; justify-content: center; position: relative; overflow: hidden; }
+.usecase-preview::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+/* Tab color tokens */
+.tab-emails .usecase-icon{ background:rgba(30,144,255,0.1); }
+.tab-emails .usecase-tag{ background:rgba(30,144,255,0.1); color:var(--v2-blue); border:1px solid rgba(30,144,255,0.2); }
+.tab-emails .usecase-preview::before{ background:var(--rainbow-cool); }
+.tab-slack .usecase-icon{ background:rgba(255,140,0,0.1); }
+.tab-slack .usecase-tag{ background:rgba(255,140,0,0.1); color:var(--orange); border:1px solid rgba(255,140,0,0.2); }
+.tab-slack .usecase-preview::before{ background:var(--rainbow-warm); }
+.tab-docs .usecase-icon{ background:rgba(124,58,237,0.1); }
+.tab-docs .usecase-tag{ background:rgba(124,58,237,0.08); color:var(--accent); border:1px solid rgba(124,58,237,0.2); }
+.tab-docs .usecase-preview::before{ background:linear-gradient(90deg,#7c3aed,#d45a90); }
+.tab-code .usecase-icon{ background:rgba(0,200,128,0.1); }
+.tab-code .usecase-tag{ background:rgba(0,200,128,0.08); color:var(--green); border:1px solid rgba(0,200,128,0.2); }
+.tab-code .usecase-preview::before{ background:var(--rainbow-cool); }
+.tab-notes .usecase-icon{ background:rgba(230,194,0,0.1); }
+.tab-notes .usecase-tag{ background:rgba(230,194,0,0.08); color:var(--amber); border:1px solid rgba(230,194,0,0.2); }
+.tab-notes .usecase-preview::before{ background:var(--rainbow-full); }
+/* Preview mock */
+.preview-mock { background: #fff; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.preview-mock-header { background: var(--surface); padding: 10px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+.preview-mock-title { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.preview-mock-body { padding: 14px 16px; font-size: 13px; color: var(--text); line-height: 1.65; }
+.preview-meta { font-size: 11px; color: var(--text-3); margin-top: 8px; }
+.preview-success { font-size: 12px; font-weight: 600; color: var(--green); margin-top: 10px; }
+.preview-name { font-weight: 700; color: var(--accent); }
+.preview-ts { font-size: 11px; color: var(--text-3); }
+/* Code preview */
+.code-preview { background: #1a1425; border-radius: 12px; overflow: hidden; }
+.code-preview-header { background: #2a2035; padding: 10px 14px; display: flex; align-items: center; gap: 8px; }
+.code-preview-body { padding: 14px 16px; font-family: var(--font-mono); font-size: 12px; line-height: 1.7; }
+.code-comment{ color:#7d6f96 } .code-keyword{color:#00ccdd} .code-string{color:#00fa9a} .code-fn{color:#ffd700}
+
+/* ═══════════════════════════════════════════════════════
+   Two Modes
+   ═══════════════════════════════════════════════════════ */
+.modes-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 48px; }
+.mode-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+  padding: 40px 36px; position: relative; overflow: hidden;
+  transition: transform 0.3s cubic-bezier(0.16,1,0.3,1), border-color 0.3s, box-shadow 0.3s;
+}
+.mode-card:hover { transform: translateY(-5px); border-color: var(--border-hover); box-shadow: 0 20px 60px rgba(124,58,237,0.08); }
+.mode-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+.mode-card.push-card::before{ background: var(--rainbow-warm); }
+.mode-card.hands-card::before{ background: var(--rainbow-cool); }
+.mode-icon-wrap { width: 72px; height: 72px; border-radius: 18px; display: flex; align-items: center; justify-content: center; margin-bottom: 28px; }
+.push-card .mode-icon-wrap{ background:rgba(255,140,0,0.1); border:1px solid rgba(255,140,0,0.2); }
+.hands-card .mode-icon-wrap{ background:rgba(30,144,255,0.1); border:1px solid rgba(30,144,255,0.2); }
+.mode-tag { display: inline-block; padding: 4px 12px; border-radius: var(--radius-pill); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; }
+.push-card .mode-tag{ background:rgba(255,140,0,0.12); color:var(--orange); }
+.hands-card .mode-tag{ background:rgba(30,144,255,0.12); color:#1e90ff; }
+.mode-card h3 { font-size: 28px; font-weight: 800; letter-spacing: -0.8px; margin-bottom: 12px; }
+.mode-card p { font-size: 16px; color: var(--text-2); line-height: 1.65; margin-bottom: 28px; }
+.mode-hint { display: flex; align-items: center; gap: 12px; padding: 14px 18px; background: rgba(255,255,255,0.6); border: 1px solid var(--border); border-radius: 12px; }
+.key-cap {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 4px 10px; min-width: 36px; height: 32px;
+  background: #fff; border: 1px solid rgba(124,58,237,0.15); border-bottom: 3px solid rgba(124,58,237,0.2);
+  border-radius: 7px; font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--text-2);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.04);
+}
+.key-row { display: flex; align-items: center; gap: 5px; }
+.mode-hint-text { font-size: 13px; color: var(--text-3); }
+
+/* ═══════════════════════════════════════════════════════
+   Pipeline / How It Works
+   ═══════════════════════════════════════════════════════ */
+.pipeline-steps { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 48px; }
+.pipe-step {
+  text-align: center; padding: 24px 16px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius-card);
+  transition: border-color 0.3s; position: relative;
+}
+.pipe-step:hover{ border-color: var(--border-hover); }
+.pipe-step-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; }
+.pipe-step-icon.red{background:rgba(255,42,64,0.1);color:var(--red)}
+.pipe-step-icon.amber{background:rgba(255,215,0,0.1);color:var(--amber)}
+.pipe-step-icon.cyan{background:rgba(0,255,255,0.1);color:var(--cyan)}
+.pipe-step-icon.green{background:rgba(0,250,154,0.1);color:var(--green)}
+.pipe-step h3 { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+.pipe-step p { font-size: 13px; color: var(--text-2); line-height: 1.55; }
+.pipe-step:not(:last-child)::after {
+  content: ''; position: absolute; right: -12px; top: 50%;
+  width: 8px; height: 8px;
+  border-top: 2px solid var(--text-3); border-right: 2px solid var(--text-3);
+  transform: translateY(-50%) rotate(45deg); opacity: 0.4;
+}
+.pipeline-timeline {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+  padding: 36px 40px; position: relative;
+}
+.pipeline-timeline::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full); border-radius: 20px 20px 0 0;
+}
+.timeline-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+.timeline-title { font-size: 15px; font-weight: 700; color: var(--text); }
+.timeline-badge {
+  display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px;
+  border-radius: var(--radius-pill); font-size: 12px; font-weight: 600;
+  background: rgba(0,200,128,0.1); color: var(--green); border: 1px solid rgba(0,200,128,0.2);
+  transition: background 0.3s, color 0.3s, border-color 0.3s;
+}
+.timeline-badge::before{ content:''; width:6px; height:6px; border-radius:50%; background:currentColor; animation:pulse-dot 1.5s ease-in-out infinite; }
+.gantt { display: flex; flex-direction: column; gap: 10px; }
+.gantt-row { display: flex; align-items: center; gap: 12px; height: 28px; }
+.gantt-label { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--text-2); width: 80px; text-align: right; flex-shrink: 0; white-space: nowrap; }
+.gantt-track { flex: 1; height: 100%; background: rgba(124,58,237,0.04); border-radius: 6px; position: relative; overflow: hidden; }
+.gantt-bar { position: absolute; top: 3px; bottom: 3px; left: 0; border-radius: 4px; transition: width 0s linear; }
+.gantt-bar.recording{ background: rgba(230,37,58,0.55); }
+.gantt-bar.asr{ background: rgba(230,194,0,0.55); }
+.gantt-bar.llm{ background: rgba(0,204,221,0.55); }
+.gantt-bar.paste{ background: rgba(0,200,128,0.55); }
+.gantt-time { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); width: 36px; text-align: right; flex-shrink: 0; }
+.replay-btn {
+  padding: 8px 18px; border-radius: 10px; border: 1px solid rgba(124,58,237,0.3);
+  background: rgba(124,58,237,0.08); color: var(--accent);
+  font-family: var(--font-body); font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: background 0.2s; display: inline-flex; align-items: center; gap: 6px;
+}
+.replay-btn:hover{ background: rgba(124,58,237,0.15); }
+
+/* ═══════════════════════════════════════════════════════
+   Privacy
+   ═══════════════════════════════════════════════════════ */
+.privacy-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 24px; margin-top: 56px; }
+.privacy-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card);
+  padding: 32px 28px; transition: transform 0.3s cubic-bezier(0.16,1,0.3,1), border-color 0.3s;
+}
+.privacy-card:hover{ transform: translateY(-4px); border-color: var(--border-hover); }
+.privacy-icon { width: 52px; height: 52px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-bottom: 20px; font-size: 24px; }
+.privacy-card h3 { font-size: 19px; font-weight: 700; margin-bottom: 10px; }
+.privacy-card p { font-size: 14px; color: var(--text-2); line-height: 1.65; }
+
+/* ═══════════════════════════════════════════════════════
+   CTA
+   ═══════════════════════════════════════════════════════ */
+.cta-section { padding: var(--section-pad) 0 120px; position: relative; z-index: 1; }
+.cta-inner {
+  max-width: 760px; margin: 0 auto; text-align: center;
+  padding: 72px 48px; background: #fff; border: 1px solid var(--border-hover);
+  border-radius: 28px; box-shadow: 0 32px 96px rgba(124,58,237,0.08); position: relative; overflow: hidden;
+}
+.cta-inner::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: var(--rainbow-full); }
+.cta-glow {
+  position: absolute; top: -80px; left: 50%; transform: translateX(-50%);
+  width: 500px; height: 300px;
+  background: radial-gradient(ellipse,rgba(124,58,237,0.08),transparent 70%); pointer-events: none;
+}
+.cta-inner h2 { font-size: 56px; font-weight: 800; letter-spacing: -3px; line-height: 1.06; margin-bottom: 20px; }
+.cta-inner > p { font-size: 18px; color: var(--text-2); margin-bottom: 40px; line-height: 1.6; }
+.cta-btns { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 24px; flex-wrap: wrap; }
+.btn-cta-primary {
+  display: inline-flex; align-items: center; gap: 10px; padding: 17px 38px;
+  font-size: 17px; font-weight: 700; background: var(--text); color: #fff;
+  border-radius: var(--radius-btn); text-decoration: none; border: none; cursor: pointer;
+  transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 8px 24px rgba(15,10,26,0.2);
+}
+.btn-cta-primary:hover{ background: #2a2035; transform: translateY(-2px); box-shadow: 0 12px 36px rgba(15,10,26,0.3); }
+.cta-trust { font-family: var(--font-mono); font-size: 12px; color: var(--text-3); display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.cta-trust .cdot{ opacity:0.35; }
+
+/* ═══════════════════════════════════════════════════════
+   Footer
+   ═══════════════════════════════════════════════════════ */
+.footer { padding: 40px 0; border-top: 1px solid var(--border); position: relative; z-index: 1; }
+.footer-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+.footer-logo { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; color: var(--text); text-decoration: none; }
+.footer-links { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+.footer-links a { font-size: 13px; color: var(--text-3); text-decoration: none; transition: color 0.2s; }
+.footer-links a:hover { color: var(--text-2); }
+.footer-copy { font-size: 12px; color: var(--text-3); }
+
+/* ═══════════════════════════════════════════════════════
+   Responsive
+   ═══════════════════════════════════════════════════════ */
+@media(max-width:900px){
+  .hero h1{font-size:52px;letter-spacing:-2.5px}
+  .section-title{font-size:38px;letter-spacing:-1.5px}
+  .usecase-card{grid-template-columns:1fr}
+  .usecase-info{border-right:none;border-bottom:1px solid var(--border);padding:36px 28px}
+  .usecase-preview{padding:28px}
+  .modes-grid{grid-template-columns:1fr}
+  .privacy-grid{grid-template-columns:1fr}
+  .pipeline-steps{grid-template-columns:1fr 1fr}
+  .speed-big-num{font-size:52px}
+  .cta-inner h2{font-size:40px}
+  .cta-inner{padding:48px 28px}
+  .footer-inner{flex-direction:column;text-align:center}
+}
+@media(max-width:600px){
+  .container{padding:0 20px}
+  .hero h1{font-size:40px;letter-spacing:-1.5px}
+  .hero-ctas{flex-direction:column;align-items:stretch}
+  .btn-primary,.btn-secondary,.btn-cta-primary{justify-content:center}
+  .nav-links-list{display:none}
+  .pipeline-steps{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="dot-grid" aria-hidden="true"></div>
+
+<!-- ═══════════════════════════════════════════════════════
+     Navigation
+     ═══════════════════════════════════════════════════════ -->
+<nav class="nav" id="nav" aria-label="Main Navigation">
+  <div class="nav-inner">
+    <a href="#" class="nav-logo" aria-label="EnviousWispr Home">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" aria-hidden="true" style="width:28px;height:21px;">
+        <defs>
+          <filter id="nav-glow" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <g transform="translate(8,13)" filter="url(#nav-glow)">
+          <rect x="16" y="84.2" width="14" height="20" rx="5" fill="#ff2a40" opacity="0.9"/>
+          <rect x="40" y="65.75" width="14" height="32" rx="5" fill="#ff8c00" opacity="0.9"/>
+          <rect x="64" y="43.36" width="14" height="48" rx="5" fill="#ffd700" opacity="0.9"/>
+          <rect x="88" y="63.04" width="14" height="36" rx="5" fill="#adff2f" opacity="0.9"/>
+          <rect x="112" y="81.43" width="14" height="24" rx="5" fill="#00fa9a" opacity="0.9"/>
+          <rect x="136" y="63.04" width="14" height="36" rx="5" fill="#00ffff" opacity="0.9"/>
+          <rect x="160" y="43.36" width="14" height="48" rx="5" fill="#1e90ff" opacity="0.9"/>
+          <rect x="184" y="65.75" width="14" height="32" rx="5" fill="#4169e1" opacity="0.9"/>
+          <rect x="208" y="84.2" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.9"/>
+          <rect x="16" y="125.8" width="14" height="20" rx="5" fill="#4169e1" opacity="0.85"/>
+          <rect x="40" y="119.35" width="14" height="36" rx="5" fill="#1e90ff" opacity="0.85"/>
+          <rect x="64" y="112.96" width="14" height="48" rx="5" fill="#00ffff" opacity="0.85"/>
+          <rect x="88" y="120.64" width="14" height="60" rx="5" fill="#00fa9a" opacity="0.85"/>
+          <rect x="112" y="127.03" width="14" height="68" rx="5" fill="#adff2f" opacity="0.85"/>
+          <rect x="136" y="120.64" width="14" height="60" rx="5" fill="#ffd700" opacity="0.85"/>
+          <rect x="160" y="112.96" width="14" height="48" rx="5" fill="#ff8c00" opacity="0.85"/>
+          <rect x="184" y="119.35" width="14" height="36" rx="5" fill="#ff2a40" opacity="0.85"/>
+          <rect x="208" y="125.8" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.85"/>
+        </g>
+      </svg>
+      EnviousWispr
+    </a>
+    <ul class="nav-links-list" role="list">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#use-cases">Use Cases</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#privacy">Privacy</a></li>
+    </ul>
+    <div class="nav-cta-group">
+      <a href="https://github.com/saurabhav88/EnviousWispr" class="nav-gh-link" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="nav-cta">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+    </div>
+  </div>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════════
+     Hero
+     ═══════════════════════════════════════════════════════ -->
+<section class="hero" id="hero" aria-label="Hero">
+  <div class="container">
+    <div class="hero-badge reveal" style="--i:0">
+      <span class="dot" aria-hidden="true"></span>
+      Private &amp; On-Device — macOS 14+
+    </div>
+
+    <h1 class="reveal" style="--i:1">
+      Talk naturally.<br>
+      <span class="rainbow-text">Paste perfectly.</span>
+    </h1>
+
+    <p class="hero-sub reveal" style="--i:2">
+      Private AI dictation for macOS. Speak once, get grammar-fixed polished text in any app — under 2 seconds. Your voice never leaves your Mac.
+    </p>
+
+    <div class="hero-ctas reveal" style="--i:3">
+      <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download for macOS — Free
+      </a>
+      <a href="https://github.com/saurabhav88/EnviousWispr" class="btn-secondary" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18" aria-hidden="true"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+        View on GitHub
+      </a>
+    </div>
+
+    <p class="hero-trust reveal" style="--i:4">
+      macOS 14+ <span class="sep" aria-hidden="true">·</span> Apple Silicon <span class="sep" aria-hidden="true">·</span> No account required <span class="sep" aria-hidden="true">·</span> 100% private
+    </p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     Transformation Demo Card
+     ═══════════════════════════════════════════════════════ -->
+<section class="transform-demo-outer" aria-label="Live Transformation Demo">
+  <div class="container">
+    <div class="transform-demo-card reveal rainbow-glow" id="transformCard">
+      <div class="demo-chrome">
+        <span class="chrome-dot red" aria-hidden="true"></span>
+        <span class="chrome-dot yellow" aria-hidden="true"></span>
+        <span class="chrome-dot green" aria-hidden="true"></span>
+        <span class="chrome-title">EnviousWispr — Live Transform</span>
+      </div>
+      <div class="demo-body">
+        <div class="demo-label-row">
+          <span class="demo-label before">Raw Voice</span>
+          <span class="demo-badge raw" aria-hidden="true">Unpolished</span>
+        </div>
+        <div class="demo-text-before" id="demoTextBefore" aria-live="polite" aria-atomic="false">
+          <span id="beforeContent"></span><span class="type-cursor" id="beforeCursor" style="display:none" aria-hidden="true"></span>
+        </div>
+
+        <div class="demo-arrow-row" aria-hidden="true">
+          <div class="demo-arrow-line"></div>
+          <div class="demo-arrow-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="color:#fff"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="demo-arrow-line"></div>
+          <span class="transform-label-text" id="transformLabel">AI Polishing…</span>
+          <div class="demo-arrow-line"></div>
+        </div>
+
+        <div class="demo-label-row">
+          <span class="demo-label after">Polished Text</span>
+          <span class="demo-badge polished" aria-hidden="true">Ready to Paste</span>
+        </div>
+        <div class="demo-text-after" id="demoTextAfter" aria-live="polite" aria-atomic="false">
+          <span id="afterContent"></span><span class="type-cursor green-cur" id="afterCursor" style="display:none" aria-hidden="true"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     Scrolling Logo Bar (pure CSS — built via DOM)
+     ═══════════════════════════════════════════════════════ -->
+<section class="marquee-section" aria-label="Compatible Apps">
+  <p class="marquee-label">Works everywhere you type</p>
+  <div class="marquee-track" role="presentation">
+    <div class="marquee-row" id="marqueeRow" aria-hidden="true">
+      <!-- Populated by JS with safe DOM methods -->
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     Speed Comparison
+     ═══════════════════════════════════════════════════════ -->
+<section class="section" id="features" aria-labelledby="speed-heading">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill accent">Speed</div>
+      <h2 class="section-title" id="speed-heading">Words at the speed<br>of thought.</h2>
+      <p class="section-sub">The average person types 40 words per minute. You speak 130. EnviousWispr bridges that gap.</p>
+    </div>
+
+    <div class="speed-compare reveal" style="--i:1">
+      <div class="speed-row">
+        <div class="speed-row-header">
+          <span class="speed-label">Typing</span>
+          <span class="speed-wpm">~40 WPM</span>
+        </div>
+        <div class="speed-bar-track" role="progressbar" aria-label="Typing speed" aria-valuenow="40" aria-valuemax="160">
+          <div class="speed-bar-fill typing" id="speedTyping">
+            <span class="speed-bar-text">Keyboard</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="speed-row">
+        <div class="speed-row-header">
+          <span class="speed-label">EnviousWispr</span>
+          <span class="speed-wpm fast">~160 WPM effective</span>
+        </div>
+        <div class="speed-bar-track" role="progressbar" aria-label="EnviousWispr dictation speed" aria-valuenow="160" aria-valuemax="160">
+          <div class="speed-bar-fill wispr" id="speedWispr">
+            <span class="speed-bar-text">Speak + Polish</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="speed-callout">
+        <div class="speed-big-num" aria-label="4 times faster">4×</div>
+        <p>faster than typing — for the same polished, professional output.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     Use Cases — Tabbed Section
+     ═══════════════════════════════════════════════════════ -->
+<section class="section" id="use-cases" aria-labelledby="usecases-heading">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill accent">Use Cases</div>
+      <h2 class="section-title" id="usecases-heading">Works wherever<br>you write.</h2>
+      <p class="section-sub">From quick Slack replies to long-form documents — your voice, your tone, instantly polished.</p>
+    </div>
+
+    <div class="usecases-tabs reveal" style="--i:1" role="tablist" aria-label="Use case categories">
+      <button class="tab-btn active" data-tab="emails" role="tab" id="tab-emails" aria-selected="true" aria-controls="panel-emails">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+        Emails
+      </button>
+      <button class="tab-btn" data-tab="slack" role="tab" id="tab-slack" aria-selected="false" aria-controls="panel-slack">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Slack &amp; Chat
+      </button>
+      <button class="tab-btn" data-tab="docs" role="tab" id="tab-docs" aria-selected="false" aria-controls="panel-docs">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Documents
+      </button>
+      <button class="tab-btn" data-tab="code" role="tab" id="tab-code" aria-selected="false" aria-controls="panel-code">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        Code Comments
+      </button>
+      <button class="tab-btn" data-tab="notes" role="tab" id="tab-notes" aria-selected="false" aria-controls="panel-notes">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        Notes
+      </button>
+    </div>
+
+    <div class="tab-panel-wrap reveal" style="--i:2">
+
+      <!-- Emails -->
+      <div class="tab-panel active tab-emails" id="panel-emails" role="tabpanel" aria-labelledby="tab-emails">
+        <div class="usecase-card">
+          <div class="usecase-info">
+            <div class="usecase-icon" aria-hidden="true">📧</div>
+            <h3>Emails</h3>
+            <p>Draft replies in seconds. Your voice, your tone, automatically formatted. No more staring at the blank compose window.</p>
+            <span class="usecase-tag">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              Saves ~30 min/day
+            </span>
+          </div>
+          <div class="usecase-preview">
+            <div class="preview-mock">
+              <div class="preview-mock-header">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                <span class="preview-mock-title">Re: Q3 Budget Review</span>
+              </div>
+              <div class="preview-mock-body">
+                <p>Hi Sarah,</p>
+                <p style="margin-top:6px;">Thanks for flagging this. I reviewed the Q3 projections and agree we need to finalize the budget numbers before Friday.</p>
+                <p style="margin-top:6px;">Can we schedule a sync tomorrow at 2pm?</p>
+                <p class="preview-success">&#10003; Drafted in 8 seconds</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Slack -->
+      <div class="tab-panel tab-slack" id="panel-slack" role="tabpanel" aria-labelledby="tab-slack">
+        <div class="usecase-card">
+          <div class="usecase-info">
+            <div class="usecase-icon" aria-hidden="true">💬</div>
+            <h3>Slack &amp; Chat</h3>
+            <p>Quick messages without breaking your flow. Respond to threads in seconds — no more switching context to type.</p>
+            <span class="usecase-tag">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              Stay in the zone
+            </span>
+          </div>
+          <div class="usecase-preview">
+            <div class="preview-mock">
+              <div class="preview-mock-header">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                <span class="preview-mock-title">#engineering</span>
+              </div>
+              <div class="preview-mock-body">
+                <p><span class="preview-name">you</span> <span class="preview-ts">just now</span></p>
+                <p style="margin-top:4px;">The deployment looks good on staging. I've verified all the edge cases we discussed. Ready to ship to prod when the team gives the green light.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Documents -->
+      <div class="tab-panel tab-docs" id="panel-docs" role="tabpanel" aria-labelledby="tab-docs">
+        <div class="usecase-card">
+          <div class="usecase-info">
+            <div class="usecase-icon" aria-hidden="true">📄</div>
+            <h3>Documents</h3>
+            <p>Long-form writing at the speed of thought. Dictate a full paragraph, get structured prose. Ideal for reports, proposals, and specs.</p>
+            <span class="usecase-tag">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              Long-form in minutes
+            </span>
+          </div>
+          <div class="usecase-preview">
+            <div class="preview-mock">
+              <div class="preview-mock-header">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg>
+                <span class="preview-mock-title">Product Spec — Q4</span>
+              </div>
+              <div class="preview-mock-body">
+                <p><strong>Executive Summary</strong></p>
+                <p style="margin-top:6px;">This document outlines the proposed feature set for Q4. The primary objective is to improve retention by addressing the top three pain points identified in user research.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Code Comments -->
+      <div class="tab-panel tab-code" id="panel-code" role="tabpanel" aria-labelledby="tab-code">
+        <div class="usecase-card">
+          <div class="usecase-info">
+            <div class="usecase-icon" aria-hidden="true">💻</div>
+            <h3>Code Comments</h3>
+            <p>Document your code by talking through it. Explain complex logic as you go — EnviousWispr formats it cleanly for code comments.</p>
+            <span class="usecase-tag">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              Better docs, naturally
+            </span>
+          </div>
+          <div class="usecase-preview">
+            <div class="code-preview" aria-label="Code example with dictated comments">
+              <div class="code-preview-header">
+                <span class="chrome-dot red" aria-hidden="true"></span>
+                <span class="chrome-dot yellow" aria-hidden="true"></span>
+                <span class="chrome-dot green" aria-hidden="true"></span>
+              </div>
+              <div class="code-preview-body" aria-hidden="true">
+                <div class="code-comment">// Fetches the user's transcription history and filters</div>
+                <div class="code-comment">// out entries older than 30 days to reduce memory usage.</div>
+                <div class="code-comment">// Returns a sorted array, newest first.</div>
+                <div style="margin-top:6px;color:#f8f5ff;"><span class="code-keyword">func</span> <span class="code-fn">loadRecentHistory</span>() <span class="code-keyword">async throws</span> {</div>
+                <div style="color:#f8f5ff;padding-left:16px;"><span class="code-keyword">let</span> cutoff = Date().addingTimeInterval(<span class="code-string">-2592000</span>)</div>
+                <div style="color:#f8f5ff;">}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Notes -->
+      <div class="tab-panel tab-notes" id="panel-notes" role="tabpanel" aria-labelledby="tab-notes">
+        <div class="usecase-card">
+          <div class="usecase-info">
+            <div class="usecase-icon" aria-hidden="true">📝</div>
+            <h3>Notes</h3>
+            <p>Capture ideas before they disappear. Speak a stream of consciousness, get organized bullet points or a structured note.</p>
+            <span class="usecase-tag">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              Never lose an idea
+            </span>
+          </div>
+          <div class="usecase-preview">
+            <div class="preview-mock">
+              <div class="preview-mock-header">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/></svg>
+                <span class="preview-mock-title">Meeting Notes — Monday</span>
+              </div>
+              <div class="preview-mock-body">
+                <p>&#8226; Finalize Q3 budget before Friday</p>
+                <p>&#8226; Sarah to review projection models</p>
+                <p>&#8226; Schedule follow-up sync for Wednesday</p>
+                <p>&#8226; Check in with design team on onboarding flow</p>
+                <p class="preview-meta">Captured in one take</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     Two Modes
+     ═══════════════════════════════════════════════════════ -->
+<section class="section" id="modes" aria-labelledby="modes-heading">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill accent">Modes</div>
+      <h2 class="section-title" id="modes-heading">Two modes.<br>One shortcut.</h2>
+      <p class="section-sub">Pick the style that fits your workflow. Switch anytime in Settings.</p>
+    </div>
+    <div class="modes-grid reveal-stagger">
+      <div class="mode-card push-card reveal" style="--i:0">
+        <div class="mode-icon-wrap" aria-hidden="true">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#e67e00" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        </div>
+        <div class="mode-tag">Push-to-Talk</div>
+        <h3>Hold &amp; release.</h3>
+        <p>Hold the hotkey while you speak. Release to transcribe. Polished text pastes instantly. Precision control for quick bursts.</p>
+        <div class="mode-hint">
+          <div class="key-row" aria-label="Keyboard shortcut: Command Option Space">
+            <span class="key-cap" aria-hidden="true">&#8984;</span>
+            <span class="key-cap" aria-hidden="true">&#8997;</span>
+            <span class="key-cap" aria-hidden="true">Space</span>
+          </div>
+          <span class="mode-hint-text">Hold to record, release to paste</span>
+        </div>
+      </div>
+      <div class="mode-card hands-card reveal" style="--i:1">
+        <div class="mode-icon-wrap" aria-hidden="true">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#1e90ff" stroke-width="2" stroke-linecap="round"><path d="M2 12h2l3-9 4 18 4-18 3 9h2"/></svg>
+        </div>
+        <div class="mode-tag">Hands-Free</div>
+        <h3>Double-tap. Walk away.</h3>
+        <p>Double-tap the hotkey to lock recording. Keep dictating freely — both hands on your coffee. Tap again to stop.</p>
+        <div class="mode-hint">
+          <div class="key-row" aria-label="Double-tap Command Option Space">
+            <span class="key-cap" aria-hidden="true">&#8984;</span>
+            <span class="key-cap" aria-hidden="true">&#8997;</span>
+            <span class="key-cap" aria-hidden="true">Space</span>
+            <span class="key-cap" aria-hidden="true">&#215;2</span>
+          </div>
+          <span class="mode-hint-text">Double-tap to lock, tap to stop</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     Pipeline / How It Works
+     ═══════════════════════════════════════════════════════ -->
+<section class="section" id="how-it-works" aria-labelledby="pipeline-heading">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill cyan">How It Works</div>
+      <h2 class="section-title" id="pipeline-heading">Four steps.<br>Under two seconds.</h2>
+      <p class="section-sub">A streaming pipeline that starts transcribing while you're still talking — no waiting after you stop.</p>
+    </div>
+
+    <div class="pipeline-steps reveal-stagger">
+      <div class="pipe-step reveal" style="--i:0">
+        <div class="pipe-step-icon red" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        </div>
+        <h3>Record</h3>
+        <p>Push-to-talk or toggle hands-free. Talk naturally.</p>
+      </div>
+      <div class="pipe-step reveal" style="--i:1">
+        <div class="pipe-step-icon amber" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 12h2l3-9 4 18 4-18 3 9h2"/></svg>
+        </div>
+        <h3>Transcribe</h3>
+        <p>Parakeet v3 on Apple Neural Engine at 110&#215; speed. Streams as you speak.</p>
+      </div>
+      <div class="pipe-step reveal" style="--i:2">
+        <div class="pipe-step-icon cyan" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2z"/></svg>
+        </div>
+        <h3>Polish</h3>
+        <p>LLM removes fillers, fixes grammar. Works with OpenAI, Gemini, Ollama, or Apple Intelligence.</p>
+      </div>
+      <div class="pipe-step reveal" style="--i:3">
+        <div class="pipe-step-icon green" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 14l2 2 4-4"/></svg>
+        </div>
+        <h3>Paste</h3>
+        <p>Polished text auto-pastes into any app. Previous clipboard preserved.</p>
+      </div>
+    </div>
+
+    <!-- Gantt timeline -->
+    <div class="pipeline-timeline reveal" style="--i:4" id="pipelineTimeline">
+      <div class="timeline-header">
+        <span class="timeline-title">Streaming Pipeline — Live Timing</span>
+        <span class="timeline-badge" id="timelineBadge" aria-live="polite">Ready</span>
+      </div>
+      <div class="gantt" role="list" aria-label="Pipeline timing chart">
+        <div class="gantt-row" role="listitem">
+          <span class="gantt-label">Record</span>
+          <div class="gantt-track"><div class="gantt-bar recording" id="gRecord"></div></div>
+          <span class="gantt-time" id="gtRecord" aria-label="Recording duration">0.0s</span>
+        </div>
+        <div class="gantt-row" role="listitem">
+          <span class="gantt-label">ASR</span>
+          <div class="gantt-track"><div class="gantt-bar asr" id="gAsr"></div></div>
+          <span class="gantt-time" id="gtAsr" aria-label="ASR duration">0.0s</span>
+        </div>
+        <div class="gantt-row" role="listitem">
+          <span class="gantt-label">LLM Polish</span>
+          <div class="gantt-track"><div class="gantt-bar llm" id="gLlm"></div></div>
+          <span class="gantt-time" id="gtLlm" aria-label="LLM polish duration">0.0s</span>
+        </div>
+        <div class="gantt-row" role="listitem">
+          <span class="gantt-label">Paste</span>
+          <div class="gantt-track"><div class="gantt-bar paste" id="gPaste"></div></div>
+          <span class="gantt-time" id="gtPaste" aria-label="Paste duration">0.0s</span>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:center;margin-top:20px;">
+        <button class="replay-btn" id="replayBtn" type="button">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+          Replay animation
+        </button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     Privacy Section
+     ═══════════════════════════════════════════════════════ -->
+<section class="section" id="privacy" aria-labelledby="privacy-heading">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill green">Privacy</div>
+      <h2 class="section-title" id="privacy-heading">Your voice stays<br>on your Mac.</h2>
+      <p class="section-sub">No cloud ASR. No voice data servers. No account required. What you say is yours alone.</p>
+    </div>
+
+    <div class="privacy-grid reveal-stagger">
+      <div class="privacy-card reveal" style="--i:0">
+        <div class="privacy-icon" style="background:rgba(0,200,128,0.1);" aria-hidden="true">&#128274;</div>
+        <h3>On-Device by Default</h3>
+        <p>Speech recognition runs entirely on your Mac using Apple Neural Engine. Audio bytes never leave your device — not even in transit.</p>
+      </div>
+      <div class="privacy-card reveal" style="--i:1">
+        <div class="privacy-icon" style="background:rgba(30,144,255,0.1);" aria-hidden="true">&#128584;</div>
+        <h3>Zero Data Collection</h3>
+        <p>We don't log transcripts, usage patterns, or voice data. There's no analytics SDK. No telemetry. We literally cannot see your data.</p>
+      </div>
+      <div class="privacy-card reveal" style="--i:2">
+        <div class="privacy-icon" style="background:rgba(124,58,237,0.1);" aria-hidden="true">&#128230;</div>
+        <h3>Open Source</h3>
+        <p>The full codebase is on GitHub. Audit it yourself. Every privacy claim is verifiable — no trust required, only code.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     CTA Section
+     ═══════════════════════════════════════════════════════ -->
+<section class="cta-section" id="download" aria-labelledby="cta-heading">
+  <div class="container">
+    <div class="cta-inner reveal">
+      <div class="cta-glow" aria-hidden="true"></div>
+
+      <!-- Animated lip icon -->
+      <div style="display:flex;justify-content:center;margin-bottom:28px;" aria-hidden="true">
+        <svg class="hero-lips" style="width:80px;height:60px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+          <defs>
+            <filter id="cta-glow-f" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+          <g transform="translate(8,13)" filter="url(#cta-glow-f)" class="lip-glow-group">
+            <rect class="upper-bar u0" x="16" y="84.2" width="14" height="20" rx="5" fill="#ff2a40" opacity="0.92"/>
+            <rect class="upper-bar u1" x="40" y="65.75" width="14" height="32" rx="5" fill="#ff8c00" opacity="0.92"/>
+            <rect class="upper-bar u2" x="64" y="43.36" width="14" height="48" rx="5" fill="#ffd700" opacity="0.92"/>
+            <rect class="upper-bar u3" x="88" y="63.04" width="14" height="36" rx="5" fill="#adff2f" opacity="0.92"/>
+            <rect class="upper-bar u4" x="112" y="81.43" width="14" height="24" rx="5" fill="#00fa9a" opacity="0.92"/>
+            <rect class="upper-bar u5" x="136" y="63.04" width="14" height="36" rx="5" fill="#00ffff" opacity="0.92"/>
+            <rect class="upper-bar u6" x="160" y="43.36" width="14" height="48" rx="5" fill="#1e90ff" opacity="0.92"/>
+            <rect class="upper-bar u7" x="184" y="65.75" width="14" height="32" rx="5" fill="#4169e1" opacity="0.92"/>
+            <rect class="upper-bar u8" x="208" y="84.2" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.92"/>
+            <rect class="lower-bar l0" x="16" y="125.8" width="14" height="20" rx="5" fill="#4169e1" opacity="0.88"/>
+            <rect class="lower-bar l1" x="40" y="119.35" width="14" height="36" rx="5" fill="#1e90ff" opacity="0.88"/>
+            <rect class="lower-bar l2" x="64" y="112.96" width="14" height="48" rx="5" fill="#00ffff" opacity="0.88"/>
+            <rect class="lower-bar l3" x="88" y="120.64" width="14" height="60" rx="5" fill="#00fa9a" opacity="0.88"/>
+            <rect class="lower-bar l4" x="112" y="127.03" width="14" height="68" rx="5" fill="#adff2f" opacity="0.88"/>
+            <rect class="lower-bar l5" x="136" y="120.64" width="14" height="60" rx="5" fill="#ffd700" opacity="0.88"/>
+            <rect class="lower-bar l6" x="160" y="112.96" width="14" height="48" rx="5" fill="#ff8c00" opacity="0.88"/>
+            <rect class="lower-bar l7" x="184" y="119.35" width="14" height="36" rx="5" fill="#ff2a40" opacity="0.88"/>
+            <rect class="lower-bar l8" x="208" y="125.8" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.88"/>
+          </g>
+        </svg>
+      </div>
+
+      <h2 id="cta-heading">Start dictating<br>in 30 seconds.</h2>
+      <p>Free download. No account required. No credit card.</p>
+
+      <div class="cta-btns">
+        <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="btn-cta-primary">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download EnviousWispr
+        </a>
+      </div>
+
+      <p class="cta-trust">
+        macOS 14+ <span class="cdot" aria-hidden="true">&#183;</span> Apple Silicon <span class="cdot" aria-hidden="true">&#183;</span> 100% Private
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     Footer
+     ═══════════════════════════════════════════════════════ -->
+<footer class="footer" aria-label="Footer">
+  <div class="container">
+    <div class="footer-inner">
+      <a href="#" class="footer-logo" aria-label="EnviousWispr">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" aria-hidden="true" style="width:22px;height:16px;">
+          <g transform="translate(8,13)">
+            <rect x="16" y="84.2" width="14" height="20" rx="5" fill="#ff2a40" opacity="0.9"/>
+            <rect x="64" y="43.36" width="14" height="48" rx="5" fill="#ffd700" opacity="0.9"/>
+            <rect x="112" y="81.43" width="14" height="24" rx="5" fill="#00fa9a" opacity="0.9"/>
+            <rect x="160" y="43.36" width="14" height="48" rx="5" fill="#1e90ff" opacity="0.9"/>
+            <rect x="208" y="84.2" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.9"/>
+            <rect x="16" y="125.8" width="14" height="20" rx="5" fill="#4169e1" opacity="0.85"/>
+            <rect x="64" y="112.96" width="14" height="48" rx="5" fill="#00ffff" opacity="0.85"/>
+            <rect x="112" y="127.03" width="14" height="68" rx="5" fill="#adff2f" opacity="0.85"/>
+            <rect x="160" y="112.96" width="14" height="48" rx="5" fill="#ff8c00" opacity="0.85"/>
+            <rect x="208" y="125.8" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.85"/>
+          </g>
+        </svg>
+        EnviousWispr
+      </a>
+      <div class="footer-links">
+        <a href="#how-it-works">How It Works</a>
+        <a href="#privacy">Privacy</a>
+        <a href="https://github.com/saurabhav88/EnviousWispr" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/saurabhav88/EnviousWispr/releases" target="_blank" rel="noopener">Releases</a>
+      </div>
+      <span class="footer-copy">&#169; 2025 Envious Labs. BSL Licensed.</span>
+    </div>
+  </div>
+</footer>
+
+<!-- ═══════════════════════════════════════════════════════
+     JavaScript — safe DOM manipulation, no innerHTML
+     ═══════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+/* ── Nav scroll state ── */
+const nav = document.getElementById('nav');
+window.addEventListener('scroll', function() {
+  nav.classList.toggle('scrolled', window.scrollY > 20);
+}, { passive: true });
+
+/* ── Scroll reveal (IntersectionObserver) ── */
+const revealObserver = new IntersectionObserver(function(entries) {
+  entries.forEach(function(entry) {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+      revealObserver.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+document.querySelectorAll('.reveal').forEach(function(el) { revealObserver.observe(el); });
+
+/* ═══════════════════════════════════════════════════════
+   Transformation Demo Animation
+   Uses textContent only — no innerHTML / no unsafe string insertion
+   ═══════════════════════════════════════════════════════ */
+var BEFORE_TEXT = "So umm I wanted to like follow up on yesterday's meeting, basically the budget numbers need to be finalized before Friday I think, and also Sarah mentioned something about the Q3 projections being off";
+var AFTER_TEXT = "I'm following up on yesterday's meeting. We need to finalize the budget numbers before Friday. Sarah also flagged that the Q3 projections may need revision.";
+
+var demoRunning = false;
+
+function sleep(ms) {
+  return new Promise(function(resolve) { setTimeout(resolve, ms); });
+}
+
+async function typeText(contentEl, cursorEl, text, speed) {
+  contentEl.textContent = '';
+  cursorEl.style.display = 'inline-block';
+  for (var i = 0; i < text.length; i++) {
+    contentEl.textContent = text.slice(0, i + 1);
+    await sleep(speed + Math.random() * 18);
+  }
+  cursorEl.style.display = 'none';
+}
+
+async function runTransformDemo() {
+  if (demoRunning) return;
+  demoRunning = true;
+
+  var beforeContent = document.getElementById('beforeContent');
+  var beforeCursor  = document.getElementById('beforeCursor');
+  var afterContent  = document.getElementById('afterContent');
+  var afterCursor   = document.getElementById('afterCursor');
+  var transformLabel = document.getElementById('transformLabel');
+
+  // Reset
+  beforeContent.textContent = '';
+  afterContent.textContent = '';
+  transformLabel.style.opacity = '0';
+  transformLabel.style.color = '';
+  transformLabel.textContent = 'AI Polishing\u2026';
+
+  await sleep(700);
+
+  // Phase 1: type raw voice text
+  await typeText(beforeContent, beforeCursor, BEFORE_TEXT, 21);
+  await sleep(450);
+
+  // Show transform label
+  transformLabel.style.opacity = '1';
+  await sleep(950);
+
+  // Phase 2: type polished output
+  await typeText(afterContent, afterCursor, AFTER_TEXT, 28);
+  await sleep(600);
+
+  // Show success state
+  transformLabel.textContent = 'Pasted. \u2713';
+  transformLabel.style.color = 'var(--green)';
+  await sleep(2200);
+
+  // Reset and loop
+  transformLabel.style.opacity = '0';
+  await sleep(1000);
+  demoRunning = false;
+  runTransformDemo();
+}
+
+setTimeout(runTransformDemo, 900);
+
+/* ═══════════════════════════════════════════════════════
+   Marquee — safe DOM construction
+   ═══════════════════════════════════════════════════════ */
+var APPS = [
+  { name: 'Slack',      color: '#E01E5A' },
+  { name: 'Gmail',      color: '#EA4335' },
+  { name: 'VS Code',    color: '#007ACC' },
+  { name: 'Notes',      color: '#FFD60A' },
+  { name: 'Pages',      color: '#F05A30' },
+  { name: 'Terminal',   color: '#00C880' },
+  { name: 'Discord',    color: '#5865F2' },
+  { name: 'Notion',     color: '#000000' },
+  { name: 'Arc',        color: '#FF5A2D' },
+  { name: 'Safari',     color: '#006FFF' },
+  { name: 'Obsidian',   color: '#7C3AED' },
+  { name: 'Linear',     color: '#5E6AD2' },
+  { name: 'Figma',      color: '#F24E1E' },
+  { name: 'Superhuman', color: '#EC4899' },
+  { name: 'Bear',       color: '#D94F37' },
+  { name: 'Craft',      color: '#1C1C1E' },
+  { name: 'TextEdit',   color: '#4A3D60' },
+  { name: 'Xcode',      color: '#147EFB' },
+];
+
+(function buildMarquee() {
+  var row = document.getElementById('marqueeRow');
+  // Triple the list for seamless infinite scroll
+  var items = APPS.concat(APPS).concat(APPS);
+  items.forEach(function(app) {
+    var chip = document.createElement('div');
+    chip.className = 'app-chip';
+
+    var dot = document.createElement('span');
+    dot.className = 'chip-dot';
+    dot.style.background = app.color;
+
+    var label = document.createTextNode(app.name);
+
+    chip.appendChild(dot);
+    chip.appendChild(label);
+    row.appendChild(chip);
+  });
+})();
+
+/* ═══════════════════════════════════════════════════════
+   Speed bars — animate on scroll
+   ═══════════════════════════════════════════════════════ */
+var speedTypingEl = document.getElementById('speedTyping');
+var speedWisprEl  = document.getElementById('speedWispr');
+var speedAnimated = false;
+
+var speedObserver = new IntersectionObserver(function(entries) {
+  if (entries[0].isIntersecting && !speedAnimated) {
+    speedAnimated = true;
+    setTimeout(function() { speedTypingEl.style.width = '25%'; }, 120);
+    setTimeout(function() { speedWisprEl.style.width = '100%'; }, 420);
+  }
+}, { threshold: 0.4 });
+speedObserver.observe(document.getElementById('features'));
+
+/* ═══════════════════════════════════════════════════════
+   Use case tabs
+   ═══════════════════════════════════════════════════════ */
+var tabBtns   = document.querySelectorAll('.tab-btn');
+var tabPanels = document.querySelectorAll('.tab-panel');
+
+tabBtns.forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    var target = btn.getAttribute('data-tab');
+    tabBtns.forEach(function(b) {
+      b.classList.remove('active');
+      b.setAttribute('aria-selected', 'false');
+    });
+    tabPanels.forEach(function(p) { p.classList.remove('active'); });
+    btn.classList.add('active');
+    btn.setAttribute('aria-selected', 'true');
+    document.getElementById('panel-' + target).classList.add('active');
+  });
+});
+
+/* ═══════════════════════════════════════════════════════
+   Pipeline Gantt animation
+   ═══════════════════════════════════════════════════════ */
+function animateGantt() {
+  var gRecord = document.getElementById('gRecord');
+  var gAsr    = document.getElementById('gAsr');
+  var gLlm    = document.getElementById('gLlm');
+  var gPaste  = document.getElementById('gPaste');
+  var gtRecord = document.getElementById('gtRecord');
+  var gtAsr    = document.getElementById('gtAsr');
+  var gtLlm    = document.getElementById('gtLlm');
+  var gtPaste  = document.getElementById('gtPaste');
+  var badge    = document.getElementById('timelineBadge');
+
+  // Reset bars
+  [gRecord, gAsr, gLlm, gPaste].forEach(function(el) {
+    el.style.transition = 'none';
+    el.style.width = '0%';
+    el.style.left = '0%';
+  });
+  [gtRecord, gtAsr, gtLlm, gtPaste].forEach(function(el) { el.textContent = '0.0s'; });
+
+  badge.textContent = 'Running\u2026';
+  badge.style.background = 'rgba(230,194,0,0.1)';
+  badge.style.color = 'var(--amber)';
+  badge.style.borderColor = 'rgba(230,194,0,0.2)';
+
+  function countUp(el, target, duration) {
+    var start = Date.now();
+    function tick() {
+      var t = Math.min((Date.now() - start) / duration, 1);
+      el.textContent = (target * t).toFixed(1) + 's';
+      if (t < 1) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }
+
+  // Record: 0–60%, 1.4s
+  setTimeout(function() {
+    gRecord.style.transition = 'width 1.4s linear';
+    gRecord.style.width = '60%';
+    countUp(gtRecord, 1.4, 1400);
+  }, 100);
+
+  // ASR: starts shortly after, 0–75%, overlaps record
+  setTimeout(function() {
+    gAsr.style.left = '0%';
+    gAsr.style.transition = 'width 1.8s linear';
+    gAsr.style.width = '75%';
+    countUp(gtAsr, 1.2, 1800);
+  }, 300);
+
+  // LLM: starts at 60% mark
+  setTimeout(function() {
+    gLlm.style.left = '60%';
+    gLlm.style.transition = 'width 0.7s linear';
+    gLlm.style.width = '30%';
+    countUp(gtLlm, 0.7, 700);
+  }, 1700);
+
+  // Paste: 90% mark
+  setTimeout(function() {
+    gPaste.style.left = '90%';
+    gPaste.style.transition = 'width 0.25s linear';
+    gPaste.style.width = '10%';
+    countUp(gtPaste, 0.25, 250);
+  }, 2400);
+
+  // Done
+  setTimeout(function() {
+    badge.textContent = '\u2713 1.9s total';
+    badge.style.background = 'rgba(0,200,128,0.1)';
+    badge.style.color = 'var(--green)';
+    badge.style.borderColor = 'rgba(0,200,128,0.2)';
+  }, 2700);
+}
+
+var ganttAnimated = false;
+var ganttObserver = new IntersectionObserver(function(entries) {
+  if (entries[0].isIntersecting && !ganttAnimated) {
+    ganttAnimated = true;
+    setTimeout(animateGantt, 400);
+  }
+}, { threshold: 0.3 });
+ganttObserver.observe(document.getElementById('pipelineTimeline'));
+
+document.getElementById('replayBtn').addEventListener('click', function() {
+  animateGantt();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,1207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EnviousWispr — Talk naturally. Paste perfectly.</title>
+<meta name="description" content="AI dictation for Mac. Speak casually, get polished prose. Private by design — your voice never leaves your device.">
+<meta name="robots" content="index, follow">
+<meta name="author" content="Envious Labs">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="theme-color" content="#f8f5ff">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200;300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════
+   EnviousWispr V4 — SuperWhisper-Inspired Consumer Page
+   ═══════════════════════════════════════════════════════ */
+:root {
+  --v2-red: #ff2a40;
+  --v2-orange: #ff8c00;
+  --v2-gold: #ffd700;
+  --v2-lime: #adff2f;
+  --v2-spring: #00fa9a;
+  --v2-cyan: #00ffff;
+  --v2-blue: #1e90ff;
+  --v2-royal: #4169e1;
+  --v2-violet: #8a2be2;
+  --rainbow-full: linear-gradient(90deg, #ff2a40, #ff8c00, #ffd700, #adff2f, #00fa9a, #00ffff, #1e90ff, #4169e1, #8a2be2);
+  --rainbow-135: linear-gradient(135deg, #ff2a40, #ff8c00, #ffd700, #adff2f, #00fa9a, #00ffff, #1e90ff, #4169e1, #8a2be2);
+  --rainbow-hero: linear-gradient(135deg, #8a2be2 0%, #00ffff 100%);
+  --rainbow-warm: linear-gradient(90deg, #ff2a40, #ff8c00, #ffd700);
+  --rainbow-cool: linear-gradient(90deg, #00ffff, #1e90ff, #4169e1, #8a2be2);
+  --bg: #f8f5ff;
+  --surface: #f0ecf9;
+  --border: rgba(138, 43, 226, 0.06);
+  --border-hover: rgba(138, 43, 226, 0.12);
+  --text: #0f0a1a;
+  --text-2: #4a3d60;
+  --text-3: #7d6f96;
+  --accent: #7c3aed;
+  --accent-soft: rgba(124, 58, 237, 0.08);
+  --accent-glow: rgba(124, 58, 237, 0.20);
+  --accent-hover: #6d28d9;
+  --cyan: #00ccdd;
+  --green: #00c880;
+  --amber: #e6c200;
+  --red: #e6253a;
+  --orange: #e67e00;
+  --font-body: 'Plus Jakarta Sans', -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --radius-card: 16px;
+  --radius-btn: 12px;
+  --radius-pill: 100px;
+  --max-width: 1200px;
+  --section-pad: 88px;
+}
+
+.rainbow-text {
+  background: var(--rainbow-full);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.rainbow-border-card {
+  border: 1.5px solid transparent;
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+  background-image: linear-gradient(var(--surface), var(--surface)), var(--rainbow-full);
+}
+.rainbow-glow {
+  box-shadow: 0 0 20px rgba(124,58,237,0.18), 0 0 40px rgba(0,255,255,0.09), 0 0 60px rgba(255,42,64,0.05);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+body { font-family: var(--font-body); background: var(--bg); color: var(--text); line-height: 1.6; overflow-x: hidden; }
+
+body::before {
+  content: '';
+  position: fixed;
+  top: -250px; right: -250px;
+  width: 700px; height: 700px;
+  background: radial-gradient(circle, rgba(124,58,237,0.06), transparent 70%);
+  pointer-events: none; z-index: 0;
+}
+body::after {
+  content: '';
+  position: fixed;
+  bottom: -250px; left: -250px;
+  width: 700px; height: 700px;
+  background: radial-gradient(circle, rgba(0,255,255,0.04), transparent 70%);
+  pointer-events: none; z-index: 0;
+}
+.dot-grid {
+  position: fixed; inset: 0;
+  background-image: radial-gradient(circle, rgba(124,58,237,0.025) 1px, transparent 1px);
+  background-size: 24px 24px;
+  pointer-events: none; z-index: 0;
+}
+.container {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 0 32px;
+  position: relative;
+  z-index: 1;
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1), transform 0.65s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.reveal.visible { opacity: 1; transform: translateY(0); }
+.reveal-stagger > .reveal { transition-delay: calc(var(--i, 0) * 110ms); }
+
+/* ═══════════════════════════════════════════════════════
+   Navigation
+   ═══════════════════════════════════════════════════════ */
+.nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+  background: rgba(248,245,255,0.88);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  transition: background 0.3s, box-shadow 0.3s;
+}
+.nav.scrolled { box-shadow: 0 2px 20px rgba(124,58,237,0.08); }
+.nav-inner {
+  max-width: var(--max-width); margin: 0 auto; padding: 0 32px;
+  height: 64px; display: flex; align-items: center; justify-content: space-between;
+}
+.nav-logo {
+  font-size: 17px; font-weight: 800; letter-spacing: -0.5px;
+  color: var(--text); text-decoration: none;
+  display: flex; align-items: center; gap: 10px;
+}
+.nav-links { display: flex; align-items: center; gap: 28px; list-style: none; }
+.nav-links a {
+  font-size: 14px; font-weight: 500; color: var(--text-2);
+  text-decoration: none; transition: color 0.2s;
+}
+.nav-links a:hover { color: var(--text); }
+.nav-gh {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 500; color: var(--text-3);
+  text-decoration: none; transition: color 0.2s;
+}
+.nav-gh:hover { color: var(--text-2); }
+.nav-gh svg { width: 16px; height: 16px; }
+.nav-cta {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 20px; background: var(--text); color: #fff;
+  font-size: 14px; font-weight: 600; border-radius: var(--radius-btn);
+  text-decoration: none; transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+.nav-cta:hover { background: #2a2035; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(15,10,26,0.2); }
+.nav-right { display: flex; align-items: center; gap: 20px; }
+.nav-toggle { display: none; background: none; border: none; color: var(--text); cursor: pointer; padding: 4px; }
+
+/* ═══════════════════════════════════════════════════════
+   Hero
+   ═══════════════════════════════════════════════════════ */
+.hero {
+  padding: 128px 0 96px;
+  text-align: center;
+  position: relative; z-index: 1;
+}
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 18px;
+  background: var(--accent-soft);
+  border: 1px solid rgba(124,58,237,0.18);
+  border-radius: var(--radius-pill);
+  font-size: 13px; font-weight: 600; color: var(--accent);
+  margin-bottom: 36px;
+  letter-spacing: 0.01em;
+}
+.hero-badge .dot {
+  width: 7px; height: 7px;
+  background: var(--green);
+  border-radius: 50%;
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+@keyframes pulse-dot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.8); } }
+
+.hero-icon {
+  width: 80px; height: 80px;
+  margin: 0 auto 32px;
+  display: block;
+}
+.hero h1 {
+  font-size: 80px; font-weight: 800;
+  letter-spacing: -4px; line-height: 1.02;
+  color: var(--text);
+  margin-bottom: 28px;
+  max-width: 900px; margin-left: auto; margin-right: auto;
+}
+.hero h1 em {
+  font-style: normal;
+  background: var(--rainbow-hero);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.hero-sub {
+  font-size: 20px; font-weight: 400;
+  color: var(--text-2); line-height: 1.65;
+  max-width: 540px; margin: 0 auto 48px;
+}
+.hero-ctas {
+  display: flex; align-items: center; justify-content: center;
+  gap: 14px; margin-bottom: 44px;
+  flex-wrap: wrap;
+}
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 15px 34px; background: var(--text); color: #fff;
+  font-size: 16px; font-weight: 600; border-radius: var(--radius-btn);
+  text-decoration: none; border: none; cursor: pointer;
+  transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+  font-family: var(--font-body);
+}
+.btn-primary:hover { background: #2a2035; transform: translateY(-2px); box-shadow: 0 10px 36px rgba(15,10,26,0.28); }
+.btn-secondary {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 15px 34px; background: transparent; color: var(--text);
+  font-size: 16px; font-weight: 600; border-radius: var(--radius-btn);
+  text-decoration: none; border: 1.5px solid var(--border-hover); cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, transform 0.2s;
+  font-family: var(--font-body);
+}
+.btn-secondary:hover { background: rgba(124,58,237,0.05); border-color: rgba(124,58,237,0.22); transform: translateY(-2px); }
+.hero-trust {
+  font-size: 13px; color: var(--text-3);
+  display: flex; align-items: center; justify-content: center; gap: 24px;
+  flex-wrap: wrap;
+}
+.trust-item { display: flex; align-items: center; gap: 7px; }
+.trust-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+
+/* ═══════════════════════════════════════════════════════
+   Section Common
+   ═══════════════════════════════════════════════════════ */
+.section { padding: var(--section-pad) 0; position: relative; z-index: 1; }
+.section-label {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--accent); margin-bottom: 16px;
+}
+.section-label::before {
+  content: ''; width: 20px; height: 2px;
+  background: var(--accent); border-radius: 1px;
+}
+.section-title {
+  font-size: 46px; font-weight: 800; letter-spacing: -2px; line-height: 1.1;
+  color: var(--text); margin-bottom: 16px;
+}
+.section-sub {
+  font-size: 18px; font-weight: 400; color: var(--text-2); line-height: 1.6;
+  max-width: 520px;
+}
+.section-header { margin-bottom: 56px; }
+.section-header.center { text-align: center; }
+.section-header.center .section-label { justify-content: center; }
+.section-header.center .section-label::before { display: none; }
+.section-header.center .section-label::after { content: ''; width: 20px; height: 2px; background: var(--accent); border-radius: 1px; }
+.section-header.center .section-sub { margin: 0 auto; }
+
+.rainbow-rule {
+  height: 2px;
+  background: var(--rainbow-full);
+  border: none;
+  border-radius: 1px;
+  opacity: 0.5;
+  margin: 0;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Tone Showcase — STAR SECTION
+   ═══════════════════════════════════════════════════════ */
+.tone-section { padding: var(--section-pad) 0; position: relative; z-index: 1; }
+.tone-section::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, transparent, rgba(124,58,237,0.03) 40%, rgba(0,255,255,0.02) 80%, transparent);
+  pointer-events: none;
+}
+.tone-card {
+  background: var(--surface);
+  border-radius: 24px;
+  padding: 52px 52px 48px;
+  border: 1.5px solid var(--border-hover);
+  box-shadow: 0 4px 48px rgba(124,58,237,0.1), 0 1px 4px rgba(124,58,237,0.06);
+  max-width: 860px;
+  margin: 0 auto;
+  position: relative;
+  overflow: hidden;
+}
+.tone-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--rainbow-full);
+}
+.voice-input-label {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--text-3); margin-bottom: 12px;
+  display: flex; align-items: center; gap: 8px;
+}
+.voice-input-label .mic-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--red); opacity: 0.85;
+  animation: pulse-dot 1.8s ease-in-out infinite;
+}
+.voice-input-box {
+  background: rgba(15,10,26,0.04);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card);
+  padding: 20px 24px 20px 44px;
+  font-family: var(--font-mono);
+  font-size: 15px; line-height: 1.7;
+  color: var(--text-2);
+  margin-bottom: 36px;
+  position: relative;
+}
+.voice-input-box .open-quote {
+  font-size: 52px; line-height: 1;
+  color: rgba(124,58,237,0.15);
+  position: absolute; top: 4px; left: 12px;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  pointer-events: none;
+}
+
+.tone-arrow {
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 28px;
+  gap: 12px;
+  color: var(--text-3);
+  font-size: 13px; font-weight: 600; letter-spacing: 0.04em;
+}
+.tone-arrow-line {
+  flex: 1; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border-hover), transparent);
+}
+.tone-arrow-icon { font-size: 18px; color: var(--accent); }
+
+.tone-tabs {
+  display: flex; gap: 8px; margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+.tone-tab {
+  padding: 9px 24px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--border-hover);
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: 14px; font-weight: 600;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.tone-tab:hover { border-color: rgba(124,58,237,0.25); color: var(--text); }
+.tone-tab.active {
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 4px 16px rgba(124,58,237,0.3);
+}
+.tone-tab[data-tone="clean"].active { background: linear-gradient(135deg, #7c3aed, #4169e1); }
+.tone-tab[data-tone="formal"].active { background: linear-gradient(135deg, #0f0a1a, #4a3d60); }
+.tone-tab[data-tone="casual"].active { background: linear-gradient(135deg, #ff8c00, #ff2a40); }
+
+.tone-output-wrap { position: relative; min-height: 110px; }
+.tone-output {
+  background: white;
+  border: 1.5px solid var(--border-hover);
+  border-radius: var(--radius-card);
+  padding: 24px 28px;
+  font-size: 18px; font-weight: 500; line-height: 1.65;
+  color: var(--text);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  position: absolute; top: 0; left: 0; right: 0;
+  pointer-events: none;
+  box-shadow: 0 2px 16px rgba(124,58,237,0.06);
+}
+.tone-output.active {
+  opacity: 1; transform: translateY(0);
+  position: relative; pointer-events: auto;
+}
+.tone-output-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 12px; border-radius: var(--radius-pill);
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  margin-bottom: 12px;
+}
+.badge-clean { background: rgba(65,105,225,0.1); color: #4169e1; }
+.badge-formal { background: rgba(15,10,26,0.08); color: var(--text-2); }
+.badge-casual { background: rgba(255,140,0,0.12); color: var(--orange); }
+
+/* ═══════════════════════════════════════════════════════
+   Two Modes
+   ═══════════════════════════════════════════════════════ */
+.modes-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
+}
+.mode-card {
+  background: var(--surface);
+  border-radius: 20px;
+  padding: 40px 40px 36px;
+  border: 1.5px solid var(--border);
+  transition: border-color 0.25s, box-shadow 0.25s, transform 0.25s;
+  position: relative; overflow: hidden;
+}
+.mode-card:hover { border-color: var(--border-hover); box-shadow: 0 8px 40px rgba(124,58,237,0.1); transform: translateY(-3px); }
+.mode-card.featured { border-color: rgba(124,58,237,0.2); }
+.mode-card.featured::after {
+  content: 'NEW';
+  position: absolute; top: 16px; right: 16px;
+  padding: 3px 10px; border-radius: var(--radius-pill);
+  background: var(--accent); color: #fff;
+  font-size: 10px; font-weight: 800; letter-spacing: 0.1em;
+}
+.mode-icon {
+  width: 52px; height: 52px; border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 24px; font-size: 24px;
+}
+.mode-icon.push { background: rgba(0,200,128,0.12); }
+.mode-icon.hands { background: rgba(124,58,237,0.1); }
+.mode-card h3 { font-size: 24px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 10px; }
+.mode-card p { font-size: 15px; color: var(--text-2); line-height: 1.65; margin-bottom: 24px; }
+.mode-key {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 8px;
+  background: rgba(15,10,26,0.06); border: 1px solid var(--border-hover);
+  font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--text-2);
+}
+
+/* ═══════════════════════════════════════════════════════
+   Works Everywhere
+   ═══════════════════════════════════════════════════════ */
+.apps-section { padding: var(--section-pad) 0; position: relative; z-index: 1; }
+.apps-grid {
+  display: flex; flex-wrap: wrap; gap: 10px;
+  justify-content: center;
+  max-width: 780px; margin: 0 auto;
+}
+.app-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 20px;
+  background: white;
+  border: 1.5px solid var(--border-hover);
+  border-radius: var(--radius-pill);
+  font-size: 14px; font-weight: 600; color: var(--text-2);
+  transition: all 0.2s;
+  cursor: default;
+}
+.app-pill:hover { border-color: rgba(124,58,237,0.25); color: var(--text); box-shadow: 0 4px 16px rgba(124,58,237,0.1); transform: translateY(-2px); }
+.app-pill-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════════
+   How It Works
+   ═══════════════════════════════════════════════════════ */
+.steps-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px;
+}
+.step-card {
+  background: white;
+  border-radius: var(--radius-card);
+  padding: 32px 28px 28px;
+  border: 1.5px solid var(--border);
+  position: relative;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.25s;
+}
+.step-card:hover { border-color: var(--border-hover); box-shadow: 0 8px 32px rgba(124,58,237,0.09); transform: translateY(-3px); }
+.step-number {
+  width: 36px; height: 36px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: 14px; font-weight: 700;
+  margin-bottom: 20px; color: #fff;
+}
+.step-num-1 { background: linear-gradient(135deg, #ff2a40, #ff8c00); }
+.step-num-2 { background: linear-gradient(135deg, #ffd700, #adff2f); color: rgba(15,10,26,0.8); }
+.step-num-3 { background: linear-gradient(135deg, #00fa9a, #00ffff); color: rgba(15,10,26,0.8); }
+.step-num-4 { background: linear-gradient(135deg, #1e90ff, #8a2be2); }
+.step-card h3 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; margin-bottom: 8px; }
+.step-card p { font-size: 14px; color: var(--text-2); line-height: 1.65; }
+.step-connector {
+  position: absolute; top: 50px; right: -11px;
+  width: 22px; height: 2px;
+  background: linear-gradient(90deg, var(--border-hover), transparent);
+  z-index: 2;
+}
+.step-card:last-child .step-connector { display: none; }
+
+/* ═══════════════════════════════════════════════════════
+   Privacy
+   ═══════════════════════════════════════════════════════ */
+.privacy-section { padding: var(--section-pad) 0; position: relative; z-index: 1; }
+.privacy-section::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, transparent, rgba(124,58,237,0.025) 50%, transparent);
+  pointer-events: none;
+}
+.privacy-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 64px; align-items: center;
+}
+.privacy-visual {
+  background: var(--surface);
+  border-radius: 24px;
+  padding: 52px 44px;
+  border: 1.5px solid var(--border-hover);
+  text-align: center;
+  position: relative; overflow: hidden;
+}
+.privacy-visual::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-cool);
+}
+.privacy-lock {
+  font-size: 64px; margin-bottom: 20px; display: block;
+  filter: drop-shadow(0 4px 12px rgba(124,58,237,0.2));
+}
+.privacy-visual h3 {
+  font-size: 20px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 10px;
+}
+.privacy-visual p { font-size: 14px; color: var(--text-2); line-height: 1.65; }
+.privacy-points { list-style: none; display: flex; flex-direction: column; gap: 28px; }
+.privacy-point { display: flex; gap: 20px; align-items: flex-start; }
+.privacy-point-icon {
+  width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px;
+}
+.pp-icon-1 { background: rgba(0,200,128,0.12); }
+.pp-icon-2 { background: rgba(124,58,237,0.1); }
+.pp-icon-3 { background: rgba(30,144,255,0.1); }
+.privacy-point h4 { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+.privacy-point p { font-size: 14px; color: var(--text-2); line-height: 1.65; }
+
+/* ═══════════════════════════════════════════════════════
+   Testimonials
+   ═══════════════════════════════════════════════════════ */
+.testimonials-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;
+}
+.testimonial-card {
+  background: white;
+  border-radius: var(--radius-card);
+  padding: 32px 28px;
+  border: 1.5px solid var(--border);
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.25s;
+}
+.testimonial-card:hover { border-color: var(--border-hover); box-shadow: 0 8px 32px rgba(124,58,237,0.09); transform: translateY(-3px); }
+.testimonial-stars {
+  display: flex; gap: 3px; margin-bottom: 16px;
+}
+.star { color: var(--amber); font-size: 15px; }
+.testimonial-quote {
+  font-size: 15px; line-height: 1.75; color: var(--text-2);
+  margin-bottom: 24px; font-style: italic;
+}
+.testimonial-author { display: flex; align-items: center; gap: 14px; }
+.author-avatar {
+  width: 40px; height: 40px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 800; color: white; flex-shrink: 0;
+}
+.av-1 { background: linear-gradient(135deg, #7c3aed, #4169e1); }
+.av-2 { background: linear-gradient(135deg, #00c880, #1e90ff); }
+.av-3 { background: linear-gradient(135deg, #ff8c00, #ff2a40); }
+.author-name { font-size: 14px; font-weight: 700; color: var(--text); }
+.author-title { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+
+/* ═══════════════════════════════════════════════════════
+   Video Demo Placeholder
+   ═══════════════════════════════════════════════════════ */
+.video-placeholder {
+  background: var(--surface);
+  border-radius: 24px;
+  aspect-ratio: 16 / 9;
+  max-width: 800px; margin: 0 auto;
+  border: 1.5px solid var(--border-hover);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 20px;
+  position: relative; overflow: hidden;
+  cursor: pointer;
+}
+.video-placeholder::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse at center, rgba(124,58,237,0.08) 0%, transparent 70%);
+}
+.play-btn {
+  width: 72px; height: 72px; border-radius: 50%;
+  background: var(--text); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 26px;
+  transition: transform 0.2s, box-shadow 0.2s;
+  position: relative; z-index: 1;
+  padding-left: 5px;
+}
+.video-placeholder:hover .play-btn { transform: scale(1.1); box-shadow: 0 8px 32px rgba(15,10,26,0.3); }
+.video-caption {
+  font-size: 15px; font-weight: 600; color: var(--text-3);
+  position: relative; z-index: 1;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Getting Started
+   ═══════════════════════════════════════════════════════ */
+.getting-started-section { padding: var(--section-pad) 0 48px; position: relative; z-index: 1; }
+.start-steps {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+  margin-bottom: 56px;
+}
+.start-step {
+  background: white; border-radius: var(--radius-card);
+  padding: 28px 24px 24px;
+  border: 1.5px solid var(--border);
+  text-align: center;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.start-step:hover { border-color: var(--border-hover); box-shadow: 0 6px 24px rgba(124,58,237,0.08); }
+.start-step-num {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 16px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 16px;
+}
+.start-step h4 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+.start-step p { font-size: 13px; color: var(--text-2); line-height: 1.6; }
+.download-cta-box {
+  text-align: center;
+  padding: 72px 40px;
+  background: linear-gradient(135deg, rgba(124,58,237,0.05), rgba(0,255,255,0.03));
+  border-radius: 24px;
+  border: 1.5px solid var(--border-hover);
+  position: relative; overflow: hidden;
+}
+.download-cta-box::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full);
+}
+.download-cta-box h2 {
+  font-size: 42px; font-weight: 800; letter-spacing: -1.5px;
+  margin-bottom: 16px;
+}
+.download-cta-box .cta-sub {
+  font-size: 17px; color: var(--text-2);
+  margin-bottom: 36px;
+  max-width: 400px; margin-left: auto; margin-right: auto;
+}
+.cta-disclaimer {
+  margin-top: 20px;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+/* ═══════════════════════════════════════════════════════
+   Footer
+   ═══════════════════════════════════════════════════════ */
+.footer {
+  border-top: 1px solid var(--border);
+  padding: 48px 0 36px;
+  position: relative; z-index: 1;
+}
+.footer-inner {
+  display: grid; grid-template-columns: 1fr auto; gap: 48px;
+  align-items: start;
+}
+.footer-brand { max-width: 280px; }
+.footer-logo {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 16px; font-weight: 800; letter-spacing: -0.5px;
+  color: var(--text); text-decoration: none; margin-bottom: 10px;
+}
+.footer-tagline { font-size: 13px; color: var(--text-3); line-height: 1.65; margin-bottom: 16px; }
+.footer-copy { font-size: 12px; color: var(--text-3); }
+.footer-links { display: flex; gap: 48px; }
+.footer-col h5 {
+  font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--text-2); margin-bottom: 16px;
+}
+.footer-col a {
+  display: block; font-size: 14px; color: var(--text-3);
+  text-decoration: none; margin-bottom: 10px; transition: color 0.2s;
+}
+.footer-col a:hover { color: var(--text-2); }
+
+/* ═══════════════════════════════════════════════════════
+   Mobile Responsive
+   ═══════════════════════════════════════════════════════ */
+@media (max-width: 900px) {
+  .hero h1 { font-size: 52px; letter-spacing: -2.5px; }
+  .nav-links { display: none; }
+  .nav-toggle { display: block; }
+  .modes-grid { grid-template-columns: 1fr; }
+  .steps-grid { grid-template-columns: 1fr 1fr; }
+  .step-connector { display: none; }
+  .privacy-grid { grid-template-columns: 1fr; }
+  .testimonials-grid { grid-template-columns: 1fr; }
+  .footer-inner { grid-template-columns: 1fr; }
+  .footer-links { gap: 32px; }
+  .section-title { font-size: 34px; letter-spacing: -1px; }
+  .tone-card { padding: 36px 28px; }
+  .start-steps { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  .hero { padding: 100px 0 72px; }
+  .hero h1 { font-size: 38px; letter-spacing: -1.5px; }
+  .hero-sub { font-size: 17px; }
+  .container { padding: 0 20px; }
+  .steps-grid { grid-template-columns: 1fr; }
+  .section-title { font-size: 28px; }
+  .download-cta-box h2 { font-size: 28px; }
+  .footer-links { flex-direction: column; gap: 24px; }
+}
+</style>
+</head>
+<body>
+<div class="dot-grid"></div>
+
+<!-- ═══ NAV ═══ -->
+<nav class="nav" id="main-nav">
+  <div class="nav-inner">
+    <a href="#" class="nav-logo">
+      <svg width="30" height="30" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="nav-lip-grad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#8a2be2"/>
+            <stop offset="100%" stop-color="#00ffff"/>
+          </linearGradient>
+        </defs>
+        <rect width="32" height="32" rx="8" fill="url(#nav-lip-grad)"/>
+        <path d="M8 14 C10 12, 13 11, 16 13 C19 11, 22 12, 24 14" stroke="white" stroke-width="2" stroke-linecap="round" fill="none"/>
+        <path d="M8 14 C9 17, 12 20, 16 20 C20 20, 23 17, 24 14" stroke="white" stroke-width="2" stroke-linecap="round" fill="none"/>
+        <path d="M11 15.5 C13 17, 19 17, 21 15.5" stroke="rgba(255,255,255,0.5)" stroke-width="1.2" stroke-linecap="round" fill="none"/>
+      </svg>
+      EnviousWispr
+    </a>
+    <ul class="nav-links">
+      <li><a href="#tone-showcase">Features</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="#privacy">Privacy</a></li>
+    </ul>
+    <div class="nav-right">
+      <a href="https://github.com/saurabhav88/EnviousWispr" class="nav-gh" target="_blank" rel="noopener">
+        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+      <a href="#download" class="nav-cta">Download Free</a>
+    </div>
+    <button class="nav-toggle" aria-label="Toggle menu" onclick="toggleMobileNav()">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+  </div>
+</nav>
+
+<!-- ═══ HERO ═══ -->
+<section class="hero">
+  <div class="container">
+    <div class="hero-badge reveal">
+      <span class="dot"></span>
+      Now available — free download
+    </div>
+
+    <!-- Lip SVG Hero Icon -->
+    <svg class="hero-icon reveal" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="hero-lip-grad" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stop-color="#8a2be2"/>
+          <stop offset="50%" stop-color="#1e90ff"/>
+          <stop offset="100%" stop-color="#00ffff"/>
+        </linearGradient>
+      </defs>
+      <rect width="80" height="80" rx="20" fill="url(#hero-lip-grad)"/>
+      <path d="M18 34 C24 28, 31 26, 40 30 C49 26, 56 28, 62 34" stroke="white" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+      <path d="M18 34 C21 44, 29 52, 40 52 C51 52, 59 44, 62 34" stroke="white" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+      <path d="M26 37 C31 41, 49 41, 54 37" stroke="rgba(255,255,255,0.55)" stroke-width="2" stroke-linecap="round" fill="none"/>
+      <ellipse cx="40" cy="44" rx="8" ry="3" fill="rgba(255,255,255,0.16)"/>
+    </svg>
+
+    <h1 class="reveal" style="--i:1">Talk naturally.<br><em>Paste perfectly.</em></h1>
+    <p class="hero-sub reveal" style="--i:2">AI dictation for Mac that cleans up your words in real time — on your device, never in the cloud. Just speak, and get polished prose.</p>
+    <div class="hero-ctas reveal" style="--i:3">
+      <a href="#download" class="btn-primary">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+      <a href="#video-demo" class="btn-secondary">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+        Watch Demo
+      </a>
+    </div>
+    <div class="hero-trust reveal" style="--i:4">
+      <span class="trust-item"><span class="trust-dot"></span>Runs on-device</span>
+      <span class="trust-item"><span class="trust-dot"></span>No account needed</span>
+      <span class="trust-item"><span class="trust-dot"></span>Works in any app</span>
+      <span class="trust-item"><span class="trust-dot"></span>Free to download</span>
+    </div>
+  </div>
+</section>
+
+<hr class="rainbow-rule">
+
+<!-- ═══ TONE SHOWCASE ═══ -->
+<section class="tone-section" id="tone-showcase">
+  <div class="container">
+    <div class="section-header center reveal">
+      <div class="section-label">Tone Intelligence</div>
+      <h2 class="section-title">One voice. Any tone.</h2>
+      <p class="section-sub">Speak once, and EnviousWispr rewrites your words to match exactly the register you need — automatically.</p>
+    </div>
+    <div class="tone-card reveal rainbow-glow">
+      <div class="voice-input-label">
+        <span class="mic-dot"></span>
+        What you said
+      </div>
+      <div class="voice-input-box">
+        <span class="open-quote">"</span>
+        So umm I wanted to follow up on the meeting from yesterday, basically we need to like finalize the budget numbers before Friday I think
+      </div>
+      <div class="tone-arrow">
+        <div class="tone-arrow-line"></div>
+        <div class="tone-arrow-icon">↓</div>
+        <div class="tone-arrow-line"></div>
+      </div>
+      <div class="tone-tabs">
+        <button class="tone-tab active" data-tone="clean" onclick="switchTone('clean')">Clean</button>
+        <button class="tone-tab" data-tone="formal" onclick="switchTone('formal')">Formal</button>
+        <button class="tone-tab" data-tone="casual" onclick="switchTone('casual')">Casual</button>
+      </div>
+      <div class="tone-output-wrap">
+        <div class="tone-output active" id="tone-clean">
+          <div class="tone-output-badge badge-clean">Clean</div>
+          <div>I wanted to follow up on yesterday's meeting. We need to finalize the budget numbers before Friday.</div>
+        </div>
+        <div class="tone-output" id="tone-formal">
+          <div class="tone-output-badge badge-formal">Formal</div>
+          <div>I am writing to follow up on our meeting yesterday. The budget figures require finalization by end of day Friday.</div>
+        </div>
+        <div class="tone-output" id="tone-casual">
+          <div class="tone-output-badge badge-casual">Casual</div>
+          <div>Hey! Quick follow-up from yesterday — we gotta lock down those budget numbers before Friday.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="rainbow-rule">
+
+<!-- ═══ VIDEO DEMO ═══ -->
+<section class="section" id="video-demo">
+  <div class="container">
+    <div class="section-header center reveal">
+      <div class="section-label">See It Live</div>
+      <h2 class="section-title">Watch EnviousWispr in action</h2>
+      <p class="section-sub">From messy thoughts to polished output in under two seconds.</p>
+    </div>
+    <div class="video-placeholder reveal">
+      <div class="play-btn">&#9654;</div>
+      <div class="video-caption">Demo video coming soon</div>
+    </div>
+  </div>
+</section>
+
+<hr class="rainbow-rule">
+
+<!-- ═══ TWO MODES ═══ -->
+<section class="section" id="modes">
+  <div class="container">
+    <div class="section-header reveal">
+      <div class="section-label">Recording Modes</div>
+      <h2 class="section-title">Your hands, your choice.</h2>
+      <p class="section-sub">Whether you want precise control or total freedom, EnviousWispr has a mode that fits your flow.</p>
+    </div>
+    <div class="modes-grid reveal-stagger">
+      <div class="mode-card reveal" style="--i:0">
+        <div class="mode-icon push">🎙</div>
+        <h3>Push to Talk</h3>
+        <p>Hold your shortcut, speak, release. Instant transcription right where your cursor is. Perfect for short bursts of text — messages, search queries, quick notes.</p>
+        <div class="mode-key">Hold ⌥ Option</div>
+      </div>
+      <div class="mode-card featured reveal" style="--i:1">
+        <div class="mode-icon hands">🔓</div>
+        <h3>Hands-Free</h3>
+        <p>Double-tap your shortcut to lock recording on. Keep dictating freely without holding anything down — ideal for long emails, documents, and deep focus sessions.</p>
+        <div class="mode-key">Double-tap ⌥⌥</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="rainbow-rule">
+
+<!-- ═══ WORKS EVERYWHERE ═══ -->
+<section class="apps-section" id="apps">
+  <div class="container">
+    <div class="section-header center reveal">
+      <div class="section-label">Universal</div>
+      <h2 class="section-title">Works in every app.</h2>
+      <p class="section-sub">EnviousWispr pastes directly into your focused window. No copy-paste required.</p>
+    </div>
+    <div class="apps-grid reveal">
+      <div class="app-pill"><span class="app-pill-dot" style="background:#4a154b"></span>Slack</div>
+      <div class="app-pill"><span class="app-pill-dot" style="background:#ea4335"></span>Gmail</div>
+      <div class="app-pill"><span class="app-pill-dot" style="background:#007acc"></span>VS Code</div>
+      <div class="app-pill"><span class="app-pill-dot" style="background:#1c1c1e"></span>Notes</div>
+      <div class="app-pill"><span class="app-pill-dot" style="background:#0d7aff"></span>Pages</div>
+      <div class="app-pill"><span class="app-pill-dot" style="background:#1c1c1e"></span>Terminal</div>
+      <div class="app-pill"><span class="app-pill-dot" style="background:#5865f2"></span>Discord</div>
+      <div class="app-pill"><span class="app-pill-dot" style="background:#000000"></span>Notion</div>
+      <div class="app-pill"><span class="app-pill-dot" style="background:#ff6400"></span>Arc</div>
+      <div class="app-pill"><span class="app-pill-dot" style="background:#0070c9"></span>Safari</div>
+      <div class="app-pill"><span class="app-pill-dot" style="background:#7c3aed"></span>Obsidian</div>
+      <div class="app-pill"><span class="app-pill-dot" style="background:#f04438"></span>Linear</div>
+      <div class="app-pill"><span class="app-pill-dot" style="background:#a259ff"></span>Figma</div>
+      <div class="app-pill"><span class="app-pill-dot" style="background:#d4562a"></span>Bear</div>
+      <div class="app-pill"><span class="app-pill-dot" style="background:#2196f3"></span>Craft</div>
+      <div class="app-pill"><span class="app-pill-dot" style="background:#2b579a"></span>Word</div>
+    </div>
+  </div>
+</section>
+
+<hr class="rainbow-rule">
+
+<!-- ═══ HOW IT WORKS ═══ -->
+<section class="section" id="how-it-works">
+  <div class="container">
+    <div class="section-header center reveal">
+      <div class="section-label">Process</div>
+      <h2 class="section-title">Four steps, zero friction.</h2>
+      <p class="section-sub">The whole pipeline runs locally on your Mac, invisible and instant.</p>
+    </div>
+    <div class="steps-grid reveal-stagger">
+      <div class="step-card reveal" style="--i:0">
+        <div class="step-connector"></div>
+        <div class="step-number step-num-1">01</div>
+        <h3>Record</h3>
+        <p>Hold your hotkey and speak naturally. EnviousWispr captures your audio in real time with near-zero latency.</p>
+      </div>
+      <div class="step-card reveal" style="--i:1">
+        <div class="step-connector"></div>
+        <div class="step-number step-num-2">02</div>
+        <h3>Transcribe</h3>
+        <p>WhisperKit converts your speech to text on-device. No internet needed — your voice never leaves your Mac.</p>
+      </div>
+      <div class="step-card reveal" style="--i:2">
+        <div class="step-connector"></div>
+        <div class="step-number step-num-3">03</div>
+        <h3>Polish</h3>
+        <p>An LLM cleans up filler words, fixes grammar, and applies your chosen tone — Clean, Formal, or Casual.</p>
+      </div>
+      <div class="step-card reveal" style="--i:3">
+        <div class="step-number step-num-4">04</div>
+        <h3>Paste</h3>
+        <p>The polished text lands exactly where your cursor is. No clipboard juggling, no app switching required.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="rainbow-rule">
+
+<!-- ═══ PRIVACY ═══ -->
+<section class="privacy-section" id="privacy">
+  <div class="container">
+    <div class="privacy-grid reveal">
+      <div>
+        <div class="section-label" style="margin-bottom:16px">Privacy First</div>
+        <h2 class="section-title" style="margin-bottom:16px">Your voice stays<br><span class="rainbow-text">on your Mac.</span></h2>
+        <p class="section-sub" style="margin-bottom:40px">EnviousWispr processes everything locally using Apple Silicon and WhisperKit. No servers, no accounts, no data leaving your device — ever.</p>
+        <ul class="privacy-points">
+          <li class="privacy-point">
+            <div class="privacy-point-icon pp-icon-1">🔒</div>
+            <div>
+              <h4>On-device processing</h4>
+              <p>Speech recognition and text polishing both run locally. Your audio is never transmitted anywhere.</p>
+            </div>
+          </li>
+          <li class="privacy-point">
+            <div class="privacy-point-icon pp-icon-2">🚫</div>
+            <div>
+              <h4>No account required</h4>
+              <p>Download, open, and start dictating. No sign-up, no subscription, no email — nothing to track you.</p>
+            </div>
+          </li>
+          <li class="privacy-point">
+            <div class="privacy-point-icon pp-icon-3">⚡</div>
+            <div>
+              <h4>Apple Silicon optimized</h4>
+              <p>Built for the M-series Neural Engine. Fast enough that privacy costs you nothing in performance.</p>
+            </div>
+          </li>
+        </ul>
+      </div>
+      <div class="privacy-visual">
+        <span class="privacy-lock">🔐</span>
+        <h3>Zero data leaves your Mac</h3>
+        <p>We literally cannot read your voice notes.<br>We don't have a server to send them to.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="rainbow-rule">
+
+<!-- ═══ TESTIMONIALS ═══ -->
+<section class="section" id="testimonials">
+  <div class="container">
+    <div class="section-header center reveal">
+      <div class="section-label">Early Users</div>
+      <h2 class="section-title">What people are saying</h2>
+      <p class="section-sub">From professionals to students — EnviousWispr fits every workflow.</p>
+    </div>
+    <div class="testimonials-grid reveal-stagger">
+      <div class="testimonial-card reveal" style="--i:0">
+        <div class="testimonial-stars">
+          <span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span>
+        </div>
+        <p class="testimonial-quote">"I use it for every email now. I just ramble out loud and it gives me something clean I can actually send. I've cut my inbox time in half."</p>
+        <div class="testimonial-author">
+          <div class="author-avatar av-1">SM</div>
+          <div>
+            <div class="author-name">Sarah M.</div>
+            <div class="author-title">Product Manager, San Francisco</div>
+          </div>
+        </div>
+      </div>
+      <div class="testimonial-card reveal" style="--i:1">
+        <div class="testimonial-stars">
+          <span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span>
+        </div>
+        <p class="testimonial-quote">"As a developer, I dictate commit messages and code comments. The formal tone option is shockingly good at technical phrasing."</p>
+        <div class="testimonial-author">
+          <div class="author-avatar av-2">JR</div>
+          <div>
+            <div class="author-name">James R.</div>
+            <div class="author-title">Senior Engineer, Remote</div>
+          </div>
+        </div>
+      </div>
+      <div class="testimonial-card reveal" style="--i:2">
+        <div class="testimonial-stars">
+          <span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span>
+        </div>
+        <p class="testimonial-quote">"I write all my essays by talking first. EnviousWispr turns my stream-of-consciousness into paragraphs I can actually use."</p>
+        <div class="testimonial-author">
+          <div class="author-avatar av-3">AP</div>
+          <div>
+            <div class="author-name">Anika P.</div>
+            <div class="author-title">Graduate Student, Chicago</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="rainbow-rule">
+
+<!-- ═══ GETTING STARTED ═══ -->
+<section class="getting-started-section" id="download">
+  <div class="container">
+    <div class="section-header center reveal">
+      <div class="section-label">Get Started</div>
+      <h2 class="section-title">Up and running in minutes.</h2>
+      <p class="section-sub">No configuration required. No cloud setup. Just download and speak.</p>
+    </div>
+    <div class="start-steps reveal-stagger">
+      <div class="start-step reveal" style="--i:0">
+        <div class="start-step-num">1</div>
+        <h4>Download the app</h4>
+        <p>Free download for macOS 14+. Requires Apple Silicon (M1 or later) for on-device AI processing.</p>
+      </div>
+      <div class="start-step reveal" style="--i:1">
+        <div class="start-step-num">2</div>
+        <h4>Grant microphone access</h4>
+        <p>macOS will prompt you once. Your audio is processed locally — we never receive it.</p>
+      </div>
+      <div class="start-step reveal" style="--i:2">
+        <div class="start-step-num">3</div>
+        <h4>Hold and speak anywhere</h4>
+        <p>Press your hotkey in any app. Release to paste polished text right where your cursor is.</p>
+      </div>
+    </div>
+    <div class="download-cta-box reveal">
+      <h2>Start dictating today.</h2>
+      <p class="cta-sub">Free forever. Private by design. Built for Mac.</p>
+      <a href="#" class="btn-primary" style="font-size:17px;padding:17px 42px">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free for Mac
+      </a>
+      <p class="cta-disclaimer">macOS 14 Sonoma or later required &middot; Apple Silicon recommended</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ FOOTER ═══ -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <a href="#" class="footer-logo">
+          <svg width="24" height="24" viewBox="0 0 32 32" fill="none">
+            <defs>
+              <linearGradient id="footer-grad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#8a2be2"/><stop offset="100%" stop-color="#00ffff"/>
+              </linearGradient>
+            </defs>
+            <rect width="32" height="32" rx="8" fill="url(#footer-grad)"/>
+            <path d="M8 14 C10 12, 13 11, 16 13 C19 11, 22 12, 24 14" stroke="white" stroke-width="2" stroke-linecap="round" fill="none"/>
+            <path d="M8 14 C9 17, 12 20, 16 20 C20 20, 23 17, 24 14" stroke="white" stroke-width="2" stroke-linecap="round" fill="none"/>
+          </svg>
+          EnviousWispr
+        </a>
+        <p class="footer-tagline">AI dictation for Mac. Private by design. Your voice never leaves your device.</p>
+        <p class="footer-copy">&copy; 2025 Envious Labs. All rights reserved.</p>
+      </div>
+      <div class="footer-links">
+        <div class="footer-col">
+          <h5>Product</h5>
+          <a href="#tone-showcase">Features</a>
+          <a href="#how-it-works">How It Works</a>
+          <a href="#download">Download</a>
+          <a href="#">Changelog</a>
+        </div>
+        <div class="footer-col">
+          <h5>Company</h5>
+          <a href="#privacy">Privacy</a>
+          <a href="#">Blog</a>
+          <a href="https://github.com/saurabhav88/EnviousWispr" target="_blank" rel="noopener">GitHub</a>
+          <a href="#">Contact</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* ═══ Nav scroll shadow ═══ */
+window.addEventListener('scroll', function() {
+  document.getElementById('main-nav').classList.toggle('scrolled', window.scrollY > 20);
+}, { passive: true });
+
+/* ═══ Mobile nav toggle ═══ */
+function toggleMobileNav() {
+  var links = document.querySelector('.nav-links');
+  var open = links.style.display === 'flex';
+  links.style.display = open ? 'none' : 'flex';
+  if (!open) {
+    links.style.flexDirection = 'column';
+    links.style.position = 'absolute';
+    links.style.top = '64px';
+    links.style.left = '0';
+    links.style.right = '0';
+    links.style.background = 'rgba(248,245,255,0.97)';
+    links.style.padding = '20px 32px 24px';
+    links.style.borderBottom = '1px solid rgba(138,43,226,0.08)';
+    links.style.gap = '16px';
+    links.style.backdropFilter = 'blur(20px)';
+  }
+}
+
+/* ═══ IntersectionObserver scroll reveal ═══ */
+var revealEls = document.querySelectorAll('.reveal');
+var observer = new IntersectionObserver(function(entries) {
+  entries.forEach(function(entry) {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+      observer.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+revealEls.forEach(function(el) { observer.observe(el); });
+
+/* ═══ Tone Showcase Tab Switcher ═══ */
+function switchTone(tone) {
+  document.querySelectorAll('.tone-tab').forEach(function(tab) {
+    tab.classList.toggle('active', tab.dataset.tone === tone);
+  });
+  document.querySelectorAll('.tone-output').forEach(function(output) {
+    if (output.id === 'tone-' + tone) {
+      output.classList.add('active');
+    } else {
+      output.classList.remove('active');
+    }
+  });
+}
+</script>
+</body>
+</html>
