@@ -16,6 +16,7 @@ public enum RecordingMode: String, Codable, CaseIterable, Sendable {
 /// Pipeline processing state.
 public enum PipelineState: Equatable, Sendable {
     case idle
+    case loadingModel
     case recording
     case transcribing
     case polishing
@@ -24,7 +25,7 @@ public enum PipelineState: Equatable, Sendable {
 
     public var isActive: Bool {
         switch self {
-        case .recording, .transcribing, .polishing:
+        case .loadingModel, .recording, .transcribing, .polishing:
             return true
         default:
             return false
@@ -34,6 +35,7 @@ public enum PipelineState: Equatable, Sendable {
     public var statusText: String {
         switch self {
         case .idle: return "Ready"
+        case .loadingModel: return "Loading model..."
         case .recording: return "Recording..."
         case .transcribing: return "Transcribing..."
         case .polishing: return "Polishing..."

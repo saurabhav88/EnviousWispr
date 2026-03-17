@@ -113,7 +113,7 @@ public final class TranscriptionPipeline: DictationPipeline {
             await startRecording()
         case .recording:
             await stopAndTranscribe()
-        case .transcribing, .polishing:
+        case .loadingModel, .transcribing, .polishing:
             break // Don't interrupt processing
         }
     }
@@ -134,7 +134,7 @@ public final class TranscriptionPipeline: DictationPipeline {
 
         // Ensure model is loaded (model should already be cached by WhisperKitSetupService)
         if !asrManager.isModelLoaded {
-            state = .transcribing
+            state = .loadingModel
             do {
                 try await asrManager.loadModel()
             } catch {
@@ -255,9 +255,9 @@ public final class TranscriptionPipeline: DictationPipeline {
         switch state {
         case .recording:
             await stopAndTranscribe()
-        case .idle, .transcribing:
+        case .idle, .loadingModel, .transcribing:
             // .idle: startRecording is in-flight (pre-warm/engine setup) → will check after entering .recording.
-            // .transcribing: model load in progress → startRecording will check and stop.
+            // .loadingModel/.transcribing: model load or ASR in progress → startRecording will check and stop.
             stopRequested = true
             // PTT release before recording started — clean up pre-warmed audio engine
             if state == .idle, isPreWarmed {
@@ -505,7 +505,8 @@ public final class TranscriptionPipeline: DictationPipeline {
             // Auto-copy/paste + auto-submit — tiered cascade
             let pasteStart = CFAbsoluteTimeGetCurrent()
             if autoPasteToActiveApp {
-                let text = transcript.displayText
+                // Append trailing space so consecutive dictations are separated
+                let text = PasteService.appendTrailingSpace(transcript.displayText)
                 let bundleId = targetApp?.bundleIdentifier ?? "unknown"
                 var tier: PasteTier = .clipboardOnly
 
@@ -697,6 +698,25 @@ public final class TranscriptionPipeline: DictationPipeline {
         targetApp = nil
         recordingStartTime = nil
         state = .error("Audio device disconnected")
+    }
+
+    /// Handle ASR XPC service crash during active session.
+    /// Called by AppState's unified ASR interruption handler when this pipeline is active.
+    /// Must stop audio capture (still running — only ASR died) and clean up fully.
+    public func handleASRServiceInterruption() {
+        vadMonitorTask?.cancel()
+        vadMonitorTask = nil
+        silenceDetector = nil
+        if streamingASRActive {
+            deactivateStreamingForwarding()
+        }
+        // Stop audio capture — it's still running since only the ASR service died
+        Task { [weak self] in
+            await self?.audioCapture.stopCapture()
+        }
+        targetApp = nil
+        recordingStartTime = nil
+        state = .error("Transcription service crashed — please try again")
     }
 
     /// Cancel an active recording immediately without transcribing.
@@ -959,6 +979,8 @@ public final class TranscriptionPipeline: DictationPipeline {
 
     public var overlayIntent: OverlayIntent {
         switch state {
+        case .loadingModel:
+            return .processing(label: "Loading model...")
         case .recording:
             return .recording(audioLevel: 0) // actual level provided by AudioCaptureManager
         case .transcribing:

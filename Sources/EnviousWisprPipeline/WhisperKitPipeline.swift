@@ -460,7 +460,8 @@ public final class WhisperKitPipeline: DictationPipeline {
             // Paste cascade (same tiered approach as TranscriptionPipeline)
             let pasteStart = CFAbsoluteTimeGetCurrent()
             if autoPasteToActiveApp {
-                await performPaste(text: transcript.displayText, pasteStart: pasteStart)
+                let text = PasteService.appendTrailingSpace(transcript.displayText)
+                await performPaste(text: text, pasteStart: pasteStart)
             } else if autoCopyToClipboard {
                 PasteService.copyToClipboard(transcript.displayText)
             }
@@ -495,6 +496,24 @@ public final class WhisperKitPipeline: DictationPipeline {
         isStopping = false
         isPreWarmed = false
         state = .error("Audio device disconnected")
+    }
+
+    /// Handle ASR XPC service crash during active session.
+    /// Called by AppState's unified ASR interruption handler when this pipeline is active.
+    /// Must stop audio capture (still running — only ASR died) and clean up fully.
+    public func handleASRServiceInterruption() {
+        vadMonitorTask?.cancel()
+        vadMonitorTask = nil
+        silenceDetector = nil
+        Task { [weak self] in
+            await self?.audioCapture.stopCapture()
+        }
+        targetApp = nil
+        targetElement = nil
+        recordingStartTime = nil
+        isStopping = false
+        isPreWarmed = false
+        state = .error("Transcription service crashed — please try again")
     }
 
     public func cancelRecording() async {

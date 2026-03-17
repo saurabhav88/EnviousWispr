@@ -123,6 +123,7 @@ public actor WhisperKitIncrementalWorker {
         let tailStart = CFAbsoluteTimeGetCurrent()
         do {
             let overlapStartSeconds = max(0, Float(lastResultSampleCount) / 16000.0 - 1.0)
+            let tailDurationSeconds = Float(finalSamples.count - lastResultSampleCount) / 16000.0
             var opts = baseDecodingOptions
             opts.clipTimestamps = [overlapStartSeconds]
             opts.windowClipTime = 0
@@ -139,6 +140,16 @@ public actor WhisperKitIncrementalWorker {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
 
             let tailMs = Int((CFAbsoluteTimeGetCurrent() - tailStart) * 1000)
+
+            // Diagnostic: log worker text, tail-only text, overlap window, and uncovered duration
+            await AppLogger.shared.log(
+                "TAIL_DIAG: workerText=[\(candidateText?.suffix(60) ?? "nil")] " +
+                "tailText=[\(tailText.suffix(60))] " +
+                "overlapStart=\(String(format: "%.1f", overlapStartSeconds))s " +
+                "uncoveredDuration=\(String(format: "%.1f", tailDurationSeconds))s " +
+                "tailDecodeMs=\(tailMs)",
+                level: .info, category: "WhisperKitWorker"
+            )
 
             let finalText: String
             if tailText.isEmpty {

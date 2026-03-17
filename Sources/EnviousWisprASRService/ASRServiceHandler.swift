@@ -1,3 +1,4 @@
+@preconcurrency import AVFoundation
 import Foundation
 import EnviousWisprCore
 import EnviousWisprASR
@@ -13,6 +14,14 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
     private var parakeetBackend: ParakeetBackend?
     private var whisperKitBackend: WhisperKitBackend?
     private var activeBackendType: String?
+
+    /// Streaming state flag — only Parakeet supports streaming.
+    private var isStreamingActive = false
+
+    /// Reusable audio format for buffer reconstruction in feedAudioBuffer.
+    private let pcmFormat = AVAudioFormat(
+        commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false
+    )!
 
     // MARK: - Diagnostics
 
@@ -76,8 +85,7 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
         nonisolated(unsafe) let safeReply = reply
         Task { @MainActor in
             let isLoaded = self.parakeetBackend != nil || self.whisperKitBackend != nil
-            // Streaming state — Stage B streaming not yet implemented
-            safeReply(isLoaded, false)
+            safeReply(isLoaded, self.isStreamingActive)
         }
     }
 
@@ -126,22 +134,71 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
         }
     }
 
-    // MARK: - Streaming (Stage B.2 — stubs for now)
+    // MARK: - Streaming
 
     func startStreaming(language: String, enableTimestamps: Bool, reply: @escaping (NSError?) -> Void) {
-        reply(NSError(domain: "ASRService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Streaming not yet implemented"]))
+        guard let parakeet = parakeetBackend else {
+            reply(NSError(domain: "ASRService", code: -3,
+                userInfo: [NSLocalizedDescriptionKey: "No Parakeet model loaded for streaming"]))
+            return
+        }
+
+        nonisolated(unsafe) let safeReply = reply
+        Task { @MainActor in
+            do {
+                var options = TranscriptionOptions()
+                options.language = language.isEmpty ? nil : language
+                options.enableTimestamps = enableTimestamps
+                try await parakeet.startStreaming(options: options)
+                self.isStreamingActive = true
+                safeReply(nil)
+            } catch {
+                safeReply(error as NSError)
+            }
+        }
     }
 
     func feedAudioBuffer(_ data: Data, frameCount: Int) {
-        // Stub — Stage B.2
+        guard isStreamingActive, let parakeet = parakeetBackend else { return }
+        guard data.count == frameCount * MemoryLayout<Float>.size else { return }
+
+        // Reconstruct AVAudioPCMBuffer from raw Float32 data
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: pcmFormat, frameCapacity: AVAudioFrameCount(frameCount)) else { return }
+        buffer.frameLength = AVAudioFrameCount(frameCount)
+        data.withUnsafeBytes { raw in
+            guard let src = raw.baseAddress?.assumingMemoryBound(to: Float.self) else { return }
+            buffer.floatChannelData![0].update(from: src, count: frameCount)
+        }
+
+        nonisolated(unsafe) let unsafeBuffer = buffer
+        Task { try? await parakeet.feedAudio(unsafeBuffer) }
     }
 
     func finalizeStreaming(reply: @escaping (Data?, NSError?) -> Void) {
-        reply(nil, NSError(domain: "ASRService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Streaming not yet implemented"]))
+        guard isStreamingActive, let parakeet = parakeetBackend else {
+            reply(nil, NSError(domain: "ASRService", code: -3,
+                userInfo: [NSLocalizedDescriptionKey: "No active streaming session"]))
+            return
+        }
+
+        nonisolated(unsafe) let safeReply = reply
+        Task { @MainActor in
+            do {
+                let result = try await parakeet.finalizeStreaming()
+                self.isStreamingActive = false
+                let encoded = try PropertyListEncoder().encode(result)
+                safeReply(encoded, nil)
+            } catch {
+                self.isStreamingActive = false
+                safeReply(nil, error as NSError)
+            }
+        }
     }
 
     func cancelStreaming() {
-        // Stub
+        guard isStreamingActive, let parakeet = parakeetBackend else { return }
+        isStreamingActive = false
+        Task { await parakeet.cancelStreaming() }
     }
 
     // MARK: - Capability

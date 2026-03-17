@@ -26,6 +26,11 @@ public final class ASRManagerProxy: ASRManagerInterface {
     /// Stored config for crash recovery replay.
     private var lastModelVariant: String = ""
 
+    // MARK: - Crash notification
+
+    /// Fires when the ASR XPC service crashes during an active session (streaming or batch in-flight).
+    public var onServiceInterrupted: (() -> Void)?
+
     // MARK: - Idle timer (stays in proxy — same as ASRManager)
 
     private var idleTimer: Timer?
@@ -265,11 +270,21 @@ public final class ASRManagerProxy: ASRManagerInterface {
         return { [weak proxy] in
             Task { @MainActor [weak proxy] in
                 guard let proxy else { return }
+                let wasStreaming = proxy.isStreaming
+                let wasLoaded = proxy.isModelLoaded
                 if proxy.isModelLoaded {
                     proxy.isModelLoaded = false
                     proxy.isStreaming = false
                 }
                 proxy.needsReinit = true
+                await AppLogger.shared.log(
+                    "[ASRManagerProxy] XPC interruptionHandler fired — wasStreaming=\(wasStreaming), wasLoaded=\(wasLoaded)",
+                    level: .info, category: "XPC"
+                )
+                // Surface crash to pipeline if ASR was active (streaming or batch in-flight)
+                if wasStreaming || wasLoaded {
+                    proxy.onServiceInterrupted?()
+                }
             }
         }
     }
@@ -278,12 +293,16 @@ public final class ASRManagerProxy: ASRManagerInterface {
         return { [weak proxy] in
             Task { @MainActor [weak proxy] in
                 guard let proxy else { return }
+                let wasActive = proxy.isStreaming || proxy.isModelLoaded
                 proxy.connection = nil
                 if proxy.isModelLoaded {
                     proxy.isModelLoaded = false
                     proxy.isStreaming = false
                 }
                 proxy.needsReinit = true
+                if wasActive {
+                    proxy.onServiceInterrupted?()
+                }
             }
         }
     }

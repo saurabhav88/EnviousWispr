@@ -33,4 +33,8 @@ public protocol ASRManagerInterface: AnyObject {
     // Pipeline lifecycle hooks
     func noteTranscriptionComplete(policy: ModelUnloadPolicy)
     func cancelIdleTimer()
+
+    // Crash notification — fires when XPC ASR service dies during an active session.
+    // Wired by AppState to route to the active pipeline (same pattern as AudioCaptureProxy.onEngineInterrupted).
+    var onServiceInterrupted: (() -> Void)? { get set }
 }

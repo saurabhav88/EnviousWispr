@@ -24,6 +24,17 @@ struct StatusView: View {
                     }
                 }
 
+            case .loadingModel:
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .controlSize(.large)
+                    Text("Loading model...")
+                        .font(.title2)
+                    Text("This may take a moment on first run.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
             case .recording:
                 VStack(spacing: 20) {
                     // Pulsing rings + mic icon + timer
@@ -266,6 +277,9 @@ struct StatusBadge: View {
                         .foregroundStyle(.secondary)
                 }
                 .font(.caption)
+
+            case .loadingModel:
+                progressLabel("Loading model\u{2026}")
 
             case .transcribing:
                 progressLabel("Transcribing\u{2026}")

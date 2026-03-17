@@ -122,6 +122,24 @@ final class AppState {
             self.recordingOverlay.hide()
         }
 
+        // Unified ASR service crash handler — routes to whichever pipeline is active.
+        // Fires when the XPC ASR service dies mid-session (streaming or batch).
+        asrManager.onServiceInterrupted = { [weak self] in
+            guard let self else { return }
+            let pState = self.pipeline.state
+            let wkState = self.whisperKitPipeline.state
+            Task { await AppLogger.shared.log(
+                "[AppState] ASR onServiceInterrupted — parakeet=\(pState), whisperKit=\(wkState)",
+                level: .info, category: "XPC"
+            ) }
+            if pState == .loadingModel || pState == .recording || pState == .transcribing {
+                self.pipeline.handleASRServiceInterruption()
+            } else if wkState == .recording || wkState == .transcribing {
+                self.whisperKitPipeline.handleASRServiceInterruption()
+            }
+            self.recordingOverlay.hide()
+        }
+
         // Unified VAD auto-stop handler — routes to whichever pipeline is actively recording.
         // Fired by service-side VAD (XPC mode only). Same routing pattern as onEngineInterrupted.
         audioCapture.onVADAutoStop = { [weak self] in
@@ -175,7 +193,7 @@ final class AppState {
             switch newState {
             case .recording:
                 self.hotkeyService.registerCancelHotkey()
-            case .transcribing, .polishing, .error, .idle, .complete:
+            case .loadingModel, .transcribing, .polishing, .error, .idle, .complete:
                 self.isRecordingLocked = false
                 self.hotkeyService.unregisterCancelHotkey()
             }

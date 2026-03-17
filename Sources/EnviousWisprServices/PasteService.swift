@@ -102,6 +102,12 @@ public enum PasteService {
         pasteboard.writeObjects(pbItems)
     }
 
+    /// Append a trailing space to text so consecutive dictations are naturally separated.
+    /// Same approach as WisprFlow — simpler and more reliable than reading cursor context via AX.
+    public static func appendTrailingSpace(_ text: String) -> String {
+        text.hasSuffix(" ") ? text : text + " "
+    }
+
     // MARK: - Tier 1: AX Direct Insertion
 
     /// Capture the system-wide focused UI element (the specific text field, not just the app).

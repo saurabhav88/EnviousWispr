@@ -9,6 +9,7 @@ public final class ASRManager: ASRManagerInterface {
     public private(set) var activeBackendType: ASRBackendType = .parakeet
     public private(set) var isModelLoaded = false
     public private(set) var isStreaming = false
+    public var onServiceInterrupted: (() -> Void)?  // No-op for in-process — no XPC crash path
     private var idleTimer: Timer?
     private var lastTranscriptionTime: Date?
 
