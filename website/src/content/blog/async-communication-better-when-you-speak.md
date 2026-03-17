@@ -64,7 +64,7 @@ EnviousWispr runs transcription locally on your Mac using WhisperKit, which exec
 
 No sign-up required. No subscription. No API keys. No audio uploaded to a vendor's server. If you're dictating a sensitive personnel update or a client contract revision, that content stays exactly where it should: on your machine.
 
-This isn't a premium feature or a paid privacy tier. It's how the app works by default. For the full breakdown, see [On-Device vs Cloud Dictation: What Stays Private](/blog/on-device-vs-cloud-dictation-privacy/).
+This isn't a premium feature or a paid privacy tier. It's how the app works by default. For the full breakdown, see [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/).
 
 <!-- TODO: Screenshot — Recording state: the app showing it's actively recording a Slack message with the transcription in progress -->
 

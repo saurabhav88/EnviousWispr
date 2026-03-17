@@ -110,6 +110,6 @@ Dictation with on-device post-processing removes that friction. You speak your s
 
 - [Dictating Episode Scripts Without Losing Flow](/blog/dictating-episode-scripts-without-losing-flow/) — dictate your podcast scripts in your natural speaking voice
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/) — from download to first dictation
-- [On-Device vs Cloud Dictation: What Stays Private](/blog/on-device-vs-cloud-dictation-privacy/) — why on-device matters for pre-release and embargoed podcast content
+- [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/) — why on-device matters for pre-release and embargoed podcast content
 
 EnviousWispr is [free and open source](https://github.com/saurabhav88/EnviousWispr/releases). Download it, pick a Whisper model, choose a writing style preset, and start turning episodes into written content the same day. You don't need an account, a subscription, or an API key.

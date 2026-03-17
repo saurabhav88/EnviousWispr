@@ -63,7 +63,7 @@ Here's where this gets practical for anyone handling sensitive discussions. Boar
 
 EnviousWispr processes everything locally. Your audio is transcribed on your Mac via WhisperKit and Core ML. The post-processing runs through your local LLM. Your recordings never leave your device unless you explicitly configure an external API. No cloud backend, no telemetry, no data leaving the building.
 
-For an exec who regularly discusses confidential business matters, this isn't a nice-to-have. It's a requirement. You shouldn't have to choose between capturing meeting outcomes efficiently and keeping sensitive information off someone else's servers. We break this down in detail in [On-Device vs Cloud Dictation: What Stays Private](/blog/on-device-vs-cloud-dictation-privacy/).
+For an exec who regularly discusses confidential business matters, this isn't a nice-to-have. It's a requirement. You shouldn't have to choose between capturing meeting outcomes efficiently and keeping sensitive information off someone else's servers. We break this down in detail in [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/).
 
 <!-- TODO: Screenshot — Per-app presets: the UI showing different presets for Slack (brief), email (greeting/sign-off), and writing app (full prose) -->
 

@@ -94,7 +94,7 @@ Developer conversations are sensitive. PR descriptions mention internal architec
 
 EnviousWispr processes everything on-device. Your audio is transcribed locally using either Parakeet or WhisperKit, both running natively via Core ML. Post-processing runs through your local LLM. From microphone to clipboard, nothing leaves your Mac unless you explicitly configure an external API.
 
-This isn't a privacy policy — it's architecture. There's no server to send data to. For a detailed breakdown of how on-device processing differs from cloud alternatives, see [On-Device vs Cloud Dictation: What Stays Private](/blog/on-device-vs-cloud-dictation-privacy/). The processing happens on your hardware, using models that run on your Apple Silicon Neural Engine. You can verify this yourself — the project is [open source on GitHub](https://github.com/saurabhav88/EnviousWispr).
+This isn't a privacy policy — it's architecture. There's no server to send data to. For a detailed breakdown of how on-device processing differs from cloud alternatives, see [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/). The processing happens on your hardware, using models that run on your Apple Silicon Neural Engine. You can verify this yourself — the project is [open source on GitHub](https://github.com/saurabhav88/EnviousWispr).
 
 For developers working on proprietary codebases, under NDA, or at companies with strict data handling policies, this is the difference between "tool I can actually use at work" and "tool that's blocked by security review."
 

@@ -105,7 +105,7 @@ If you're dictating early drafts, unpublished ideas, or sensitive client work, w
 
 EnviousWispr runs entirely on your Mac. Transcription happens locally using either Parakeet or WhisperKit, both running natively via Core ML. Post-processing runs through your local LLM. Your recordings never leave your device unless you explicitly configure an external API. For writers working on anything unpublished or confidential, that's not a minor detail.
 
-You can read more about [how the pipeline works](/how-it-works/) -- from microphone input through transcription and LLM cleanup to final output. For a detailed comparison of on-device and cloud-based dictation, see [On-Device vs Cloud Dictation: What Stays Private](/blog/on-device-vs-cloud-dictation-privacy/).
+You can read more about [how the pipeline works](/how-it-works/) -- from microphone input through transcription and LLM cleanup to final output. For a detailed comparison of on-device and cloud-based dictation, see [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/).
 
 ## Related Posts
 

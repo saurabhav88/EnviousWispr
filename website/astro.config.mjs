@@ -10,6 +10,12 @@ export default defineConfig({
   output: 'static',
   adapter: isDevServer ? undefined : cloudflare(),
   integrations: [
-    sitemap(),
+    sitemap({
+      serialize(item) {
+        // Add lastmod to all pages so Google knows when to re-crawl
+        item.lastmod = new Date().toISOString();
+        return item;
+      },
+    }),
   ],
 });

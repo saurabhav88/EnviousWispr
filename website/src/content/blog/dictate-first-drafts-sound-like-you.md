@@ -111,7 +111,7 @@ Writers dictate sensitive material. Unpublished manuscripts. Client work under N
 
 EnviousWispr processes everything on-device. Your recordings never leave your Mac. Transcription runs locally via WhisperKit and Core ML. Post-processing runs through your local LLM. There's no server receiving your audio, no vendor storing your transcripts, no account tied to your creative output.
 
-For a detailed look at how on-device processing compares to cloud alternatives, see our [on-device vs cloud dictation comparison](/blog/on-device-vs-cloud-dictation-privacy/).
+For a detailed look at how on-device processing compares to cloud alternatives, see our [on-device vs cloud dictation comparison](/blog/macos-dictation-offline-private/).
 
 ## Getting Past the "Dictation Doesn't Work for Me" Wall
 
@@ -135,6 +135,6 @@ EnviousWispr is free, open source, and yours to keep -- no strings.
 
 - [Dictation for Writers: Skip the Blank Page](/blog/dictation-for-writers-skip-blank-page/) — how speaking your first draft bypasses writer's block entirely
 - [Voice to Prose: A Realistic Writing Workflow](/blog/voice-to-prose-writing-workflow/) — a practical guide to building a full voice-to-prose session
-- [On-Device vs Cloud Dictation: What Stays Private](/blog/on-device-vs-cloud-dictation-privacy/) — a fair comparison of where your recordings go
+- [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/) — a fair comparison of where your recordings go
 
 Your words, your style, your Mac. Nothing leaves the building.

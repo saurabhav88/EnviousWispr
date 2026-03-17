@@ -132,7 +132,7 @@ Now that you're set up, explore what EnviousWispr can do for your specific workf
 
 - [Dictation for Writers: Skip the Blank Page](/blog/dictation-for-writers-skip-blank-page/) — how speaking your first draft bypasses writer's block
 - [Dictation for Developers: Code Reviews and PRs](/blog/dictation-for-developers-code-reviews/) — faster PR descriptions and review comments by voice
-- [On-Device vs Cloud Dictation: What Stays Private](/blog/on-device-vs-cloud-dictation-privacy/) — understand why your recordings stay on your Mac
+- [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/) — understand why your recordings stay on your Mac
 
 ## You're Up and Running
 

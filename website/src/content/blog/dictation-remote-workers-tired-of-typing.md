@@ -114,7 +114,7 @@ Then get comfortable switching between Friendly (for Slack) and Formal (for emai
 ## Related Posts
 
 - [Async Communication Is Better When You Speak It](/blog/async-communication-better-when-you-speak/) — why dictated Slack messages carry more context and better tone
-- [On-Device vs Cloud Dictation: What Stays Private](/blog/on-device-vs-cloud-dictation-privacy/) — a detailed comparison for privacy-conscious remote workers
+- [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/) — a detailed comparison for privacy-conscious remote workers
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/) — from download to first dictation
 
 The typing load of remote work isn't going to shrink. Slack channels multiply. Async communication grows. The volume of text you're expected to produce only goes up. You can either type all of it, or you can start talking some of it. Your wrists will thank you.

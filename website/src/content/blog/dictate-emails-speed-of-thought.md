@@ -54,7 +54,7 @@ When you dictate an email about a pending acquisition, a personnel decision, or 
 
 EnviousWispr runs transcription on-device using either Parakeet (streaming English) or WhisperKit (multi-language via Apple's Whisper model), both executing natively via Core ML on the Neural Engine in every M-series chip. Post-processing — the LLM step that cleans up your text — also runs locally using your local LLM of choice. Your recordings never leave your Mac unless you explicitly configure an external API.
 
-No audio uploaded. No transcripts stored on someone else's server. This isn't a privacy feature bolted onto a cloud product. It's how the entire system works by default. For a detailed comparison of on-device and cloud dictation approaches, see [On-Device vs Cloud Dictation: What Stays Private](/blog/on-device-vs-cloud-dictation-privacy/).
+No audio uploaded. No transcripts stored on someone else's server. This isn't a privacy feature bolted onto a cloud product. It's how the entire system works by default. For a detailed comparison of on-device and cloud dictation approaches, see [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/).
 
 For executives handling material nonpublic information, attorney-client privileged communications, or board-level strategy discussions, this is the difference between a tool you can actually use and one that legal would flag on review.
 

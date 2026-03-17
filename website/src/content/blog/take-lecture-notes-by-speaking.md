@@ -100,6 +100,6 @@ If you're ready to try voice notes for students, the setup takes less than five 
 
 - [Write Your Essay Outline by Talking It Out](/blog/essay-outline-by-talking-it-out/) — use dictation to turn a one-minute ramble into a structured essay outline
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/) — full setup walkthrough from download to first dictation
-- [On-Device vs Cloud Dictation: What Stays Private](/blog/on-device-vs-cloud-dictation-privacy/) — why your academic work stays safer with on-device processing
+- [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/) — why your academic work stays safer with on-device processing
 
 That's it. No sign-up, no credit card, no trial period. Just a dictation tool that runs on your Mac — macOS Sonoma or later — and stays out of your way. Your notes will thank you.

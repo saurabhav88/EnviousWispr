@@ -100,7 +100,7 @@ EnviousWispr doesn't try to be a personal assistant or a voice-activated everyth
 
 - [Dictation for Parents Who Type One-Handed](/blog/dictation-parents-type-one-handed/) — more daily scenarios where voice typing saves parents time
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/) — full setup walkthrough from download to first dictation
-- [On-Device vs Cloud Dictation: What Stays Private](/blog/on-device-vs-cloud-dictation-privacy/) — why on-device matters when your mic picks up the whole household
+- [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/) — why on-device matters when your mic picks up the whole household
 
 If you want to understand more about how the transcription pipeline works under the hood, the [how it works page](/how-it-works/) walks through the full process. But honestly, you don't need to know any of that to use it. Download it, turn on hands-free mode, and start getting your emails done while your toddler treats you like playground equipment.
 

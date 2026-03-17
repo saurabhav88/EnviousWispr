@@ -97,6 +97,6 @@ The first model download takes a few minutes. After that, you're set. Download i
 
 - [Hands-Free Typing While Your Toddler Climbs You](/blog/hands-free-typing-toddler-climbs-you/) — hands-free mode for when you can't touch the keyboard at all
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/) — step-by-step setup guide
-- [On-Device vs Cloud Dictation: What Stays Private](/blog/on-device-vs-cloud-dictation-privacy/) — why your family's background audio should stay on your Mac
+- [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/) — why your family's background audio should stay on your Mac
 
 Hold the hotkey. Say what you need to say. Let go. That's the whole workflow — and it works just as well with one hand as it does with two.

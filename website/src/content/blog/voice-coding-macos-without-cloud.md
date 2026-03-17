@@ -105,7 +105,7 @@ It's worth being direct about the trade-offs.
 - **Customization.** Writing style presets, choice of Whisper model size, and choice of LLM provider — you control the pipeline. Per-app presets and custom prompts are on the roadmap. Cloud APIs give you an endpoint and a response format.
 - **Works offline.** Airplane, coffee shop with bad WiFi on your M2 MacBook Air, or just a network outage — local transcription doesn't care.
 
-We cover this comparison in much more depth in [On-Device vs Cloud Dictation: What Stays Private](/blog/on-device-vs-cloud-dictation-privacy/). For developers specifically, the privacy argument usually closes the discussion. If you're dictating anywhere near proprietary code, internal discussions, or sensitive project details, sending that audio to an external API is a risk most security-conscious teams won't accept.
+We cover this comparison in much more depth in [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/). For developers specifically, the privacy argument usually closes the discussion. If you're dictating anywhere near proprietary code, internal discussions, or sensitive project details, sending that audio to an external API is a risk most security-conscious teams won't accept.
 
 ## Getting started
 
@@ -117,6 +117,6 @@ If you want to understand the full transcription and post-processing pipeline be
 
 - [Dictation for Developers: Code Reviews and PRs](/blog/dictation-for-developers-code-reviews/) — how to use writing style presets for PR descriptions, review comments, and docs
 - [Why I Switched from Typing to Dictating Git Commits](/blog/switched-typing-to-dictating-git-commits/) — a real before-and-after comparison of typed vs. dictated commit messages
-- [On-Device vs Cloud Dictation: What Stays Private](/blog/on-device-vs-cloud-dictation-privacy/) — a fair comparison of where your recordings go
+- [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/) — a fair comparison of where your recordings go
 
 And if you run into issues or have ideas for developer-specific features, open an issue on [GitHub](https://github.com/saurabhav88/EnviousWispr). We read everything.
