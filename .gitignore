@@ -24,6 +24,7 @@ xcuserdata/
 # Claude Code
 .claude/
 CLAUDE.md
+AGENTS.md
 .mcp.json
 
 # Test automation (local tooling, not shipped)
@@ -57,8 +58,8 @@ venv/
 # UI test screenshots (captured at runtime)
 Tests/UITests/screenshots/
 
-# Third-party test audio (binary, sourced from WhisperKit checkout at setup time)
-Tests/Resources/jfk.wav
+# Test resources (local audio fixtures, binary files)
+Tests/Resources/
 
 # Node (if applicable later)
 node_modules/
@@ -70,7 +71,7 @@ build/
 /*.png
 
 # Allow PNGs in tracked asset directories
-# (Brand Assets/, Sources/Resources/ are auto-tracked)
+# (Sources/Resources/ is auto-tracked)
 
 # App bundle (build artifact)
 EnviousWispr.app/
@@ -93,7 +94,9 @@ EnviousType/
 *.db
 .notebooklm/
 
-# Content Engine
-content-engine/scripts/__pycache__/
-content-engine/.seo-geo-config.json
-content-engine/generated_images/
+# Local-only directories (not shipped, not needed for builds)
+scripts/
+docs/
+content-engine/
+Brand Assets/
+.beads/
