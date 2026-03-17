@@ -35,47 +35,67 @@ public struct KeychainManager: Sendable {
     }
 
     /// Ensure the storage directory exists with restrictive permissions.
+    /// Always enforces 0700 — even if the directory was loosened by a backup restore.
     private func ensureDirectoryExists() throws {
         let fm = FileManager.default
         let dir = storageDirectory
-        if !fm.fileExists(atPath: dir.path) {
-            do {
-                try fm.createDirectory(at: dir, withIntermediateDirectories: true)
-                try fm.setAttributes(
-                    [.posixPermissions: 0o700],
-                    ofItemAtPath: dir.path
-                )
-            } catch {
-                throw KeyStoreError.storeFailed(-1)
-            }
-        }
-    }
-
-    /// Store a value securely to a file.
-    public func store(key: String, value: String) throws {
-        guard let data = value.data(using: .utf8) else { return }
-
-        try ensureDirectoryExists()
-
-        let url = fileURL(for: key)
         do {
-            try data.write(to: url, options: [.atomic])
-            try FileManager.default.setAttributes(
-                [.posixPermissions: 0o600],
-                ofItemAtPath: url.path
+            if !fm.fileExists(atPath: dir.path) {
+                try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            }
+            try fm.setAttributes(
+                [.posixPermissions: 0o700],
+                ofItemAtPath: dir.path
             )
         } catch {
             throw KeyStoreError.storeFailed(-1)
         }
     }
 
-    /// Retrieve a value from a file.
-    public func retrieve(key: String) throws -> String {
-        let url = fileURL(for: key)
+    /// Store a value securely to a file.
+    /// Writes to a temp file at 0600 first, then renames — avoids a TOCTOU window
+    /// where the file is briefly world-readable.
+    public func store(key: String, value: String) throws {
+        guard let data = value.data(using: .utf8) else { return }
 
-        guard FileManager.default.fileExists(atPath: url.path) else {
+        try ensureDirectoryExists()
+
+        let url = fileURL(for: key)
+        let tmpURL = storageDirectory.appendingPathComponent(".\(key).tmp")
+        let fm = FileManager.default
+        do {
+            // Create temp file at 0600 from the start — no world-readable window
+            let fd = Foundation.open(tmpURL.path, O_CREAT | O_WRONLY | O_TRUNC, 0o600)
+            guard fd >= 0 else { throw KeyStoreError.storeFailed(-1) }
+            let fh = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+            fh.write(data)
+            try fh.close()
+            // Replace target atomically (overwrite if exists)
+            if fm.fileExists(atPath: url.path) {
+                _ = try fm.replaceItemAt(url, withItemAt: tmpURL)
+            } else {
+                try fm.moveItem(at: tmpURL, to: url)
+            }
+        } catch {
+            try? fm.removeItem(at: tmpURL)
+            throw KeyStoreError.storeFailed(-1)
+        }
+    }
+
+    /// Retrieve a value from a file.
+    /// Re-enforces directory and file permissions on every read.
+    public func retrieve(key: String) throws -> String {
+        try ensureDirectoryExists()
+
+        let url = fileURL(for: key)
+        let fm = FileManager.default
+
+        guard fm.fileExists(atPath: url.path) else {
             throw KeyStoreError.retrieveFailed(-1)
         }
+
+        // Re-enforce file permissions on read
+        try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
 
         do {
             let data = try Data(contentsOf: url)

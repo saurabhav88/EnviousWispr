@@ -194,11 +194,18 @@ public struct GeminiConnector: TranscriptPolisher {
     }
 
     private func handleHTTPError(statusCode: Int, body: String) throws -> Never {
+        #if DEBUG
         let truncated = String(body.prefix(200))
         Task { await AppLogger.shared.log(
             "Gemini HTTP \(statusCode): \(truncated)",
             level: .verbose, category: "LLM"
         ) }
+        #else
+        Task { await AppLogger.shared.log(
+            "Gemini HTTP \(statusCode)",
+            level: .verbose, category: "LLM"
+        ) }
+        #endif
         switch statusCode {
         case 400:
             if body.contains("API_KEY_INVALID") { throw LLMError.invalidAPIKey }

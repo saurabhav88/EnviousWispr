@@ -52,7 +52,11 @@ public actor AppLogger {
         switch level {
         case .info:    oslog.info("[\(category)] \(message)")
         case .verbose: oslog.debug("[\(category)] \(message)")
+        #if DEBUG
         case .debug:   oslog.debug("[\(category, privacy: .public)] \(message, privacy: .public)")
+        #else
+        case .debug:   oslog.debug("[\(category)] \(message)")
+        #endif
         }
 
         guard isDebugModeEnabled, level <= logLevel else { return }

@@ -6,12 +6,14 @@ on:
       - 'v*'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-and-release:
     runs-on: macos-15
     timeout-minutes: 330
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
@@ -53,14 +55,15 @@ jobs:
         run: |
           CERT_PATH="$RUNNER_TEMP/certificate.p12"
           KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          KEYCHAIN_PASS="$(openssl rand -base64 32)"
           echo -n "$DEVELOPER_ID_CERT_BASE64" | base64 --decode -o "$CERT_PATH"
-          security create-keychain -p "temppassword" "$KEYCHAIN_PATH"
+          security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "temppassword" "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
           security import "$CERT_PATH" -P "$DEVELOPER_ID_CERT_PASSWORD" \
             -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: \
-            -k "temppassword" "$KEYCHAIN_PATH"
+            -k "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
           security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
 
       - name: Package and sign DMG
@@ -68,7 +71,12 @@ jobs:
           CODESIGN_IDENTITY: "Developer ID Application: ${{ secrets.APPLE_TEAM_NAME }} (${{ secrets.APPLE_TEAM_ID }})"
           SPARKLE_FEED_URL: "https://enviouswispr.com/appcast.xml"
           SPARKLE_EDDSA_PUBLIC_KEY: ${{ secrets.SPARKLE_EDDSA_PUBLIC_KEY }}
-        run: ./scripts/build-dmg.sh "${{ steps.version.outputs.version }}"
+        run: |
+          if [[ -z "${SPARKLE_EDDSA_PUBLIC_KEY}" ]]; then
+            echo "::error::SPARKLE_EDDSA_PUBLIC_KEY secret is not set"
+            exit 1
+          fi
+          ./scripts/build-dmg.sh "${{ steps.version.outputs.version }}"
 
       - name: Notarize DMG
         env:
@@ -124,9 +132,15 @@ jobs:
           DMG_SIZE=$(stat -f%z "$DMG_PATH")
           DATE=$(date -R)
 
-          # Sign the DMG with Sparkle's EdDSA key
-          if [[ -n "${SPARKLE_PRIVATE_KEY}" ]]; then
-            EDDSA_SIG=$(echo "${SPARKLE_PRIVATE_KEY}" | .build/artifacts/sparkle/Sparkle/bin/sign_update -p "${DMG_PATH}" --ed-key-file /dev/stdin 2>/dev/null || echo "")
+          # Sign the DMG with Sparkle's EdDSA key — fail if signature is empty
+          if [[ -z "${SPARKLE_PRIVATE_KEY}" ]]; then
+            echo "::error::SPARKLE_PRIVATE_KEY secret is not set — cannot sign update"
+            exit 1
+          fi
+          EDDSA_SIG=$(echo "${SPARKLE_PRIVATE_KEY}" | .build/artifacts/sparkle/Sparkle/bin/sign_update -p "${DMG_PATH}" --ed-key-file /dev/stdin 2>/dev/null || echo "")
+          if [[ -z "${EDDSA_SIG}" ]]; then
+            echo "::error::Sparkle EdDSA signature is empty — sign_update failed"
+            exit 1
           fi
 
           mkdir -p build
@@ -140,7 +154,7 @@ jobs:
                   url="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/EnviousWispr-${VERSION}.dmg"
                   length="${DMG_SIZE}"
                   type="application/octet-stream"
-                  sparkle:edSignature="${EDDSA_SIG:-}"
+                  sparkle:edSignature="${EDDSA_SIG}"
                 />
               </item>
           ENTRY

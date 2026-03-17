@@ -118,12 +118,19 @@ public struct OllamaConnector: TranscriptPolisher {
                 case 404:
                     throw LLMError.modelNotFound(config.model)
                 default:
+                    #if DEBUG
                     let body = String(data: data, encoding: .utf8) ?? ""
                     let truncated = String(body.prefix(200))
                     Task { await AppLogger.shared.log(
                         "Ollama HTTP \(httpResponse.statusCode): \(truncated)",
                         level: .verbose, category: "LLM"
                     ) }
+                    #else
+                    Task { await AppLogger.shared.log(
+                        "Ollama HTTP \(httpResponse.statusCode)",
+                        level: .verbose, category: "LLM"
+                    ) }
+                    #endif
                     throw LLMError.requestFailed(Self.friendlyMessage(for: httpResponse.statusCode))
                 }
             } catch {
