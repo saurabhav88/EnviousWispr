@@ -45,7 +45,7 @@ struct StatusView: View {
 
                             Image(systemName: "mic.fill")
                                 .font(.system(size: 32))
-                                .foregroundStyle(.red)
+                                .foregroundStyle(.stError)
                         }
 
                         Text(FormattingConstants.formatDuration(elapsed))
@@ -71,7 +71,7 @@ struct StatusView: View {
                         if appState.settings.vadAutoStop {
                             Text("VAD: Active")
                                 .font(.caption2)
-                                .foregroundStyle(.green)
+                                .foregroundStyle(.stSuccess)
                         }
                     }
 
@@ -90,11 +90,11 @@ struct StatusView: View {
                             .contentShape(Rectangle())
                             .background(
                                 RoundedRectangle(cornerRadius: 8)
-                                    .stroke(.red, lineWidth: 1.5)
+                                    .stroke(.stError, lineWidth: 1.5)
                             )
                         }
                         .buttonStyle(.plain)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(.stError)
 
                         Button {
                             Task { await appState.cancelRecording() }
@@ -142,13 +142,13 @@ struct StatusView: View {
                     if let polishError = appState.pipeline.lastPolishError {
                         HStack(spacing: 6) {
                             Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(.stWarning)
                             Text("AI polish failed: \(polishError)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
                         .padding(8)
-                        .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                        .background(Color.stWarningSoft, in: RoundedRectangle(cornerRadius: 8))
                     }
                 }
 
@@ -192,7 +192,7 @@ struct PulsingRingsView: View {
         ZStack {
             ForEach(0..<3, id: \.self) { i in
                 Circle()
-                    .stroke(.red.opacity(0.3), lineWidth: 2)
+                    .stroke(Color.stError.opacity(0.3), lineWidth: 2)
                     .scaleEffect(animate ? 1.5 + CGFloat(i) * 0.3 : 1.0)
                     .opacity(animate ? 0 : 0.6)
                     .animation(
@@ -227,9 +227,9 @@ struct WaveformView: View {
     }
 
     private var barColor: Color {
-        if level > 0.7 { return .red }
-        if level > 0.4 { return .orange }
-        return .green
+        if level > 0.7 { return .stError }
+        if level > 0.4 { return .stWarning }
+        return .stSuccess
     }
 
     private func barHeight(for index: Int) -> CGFloat {
@@ -253,7 +253,7 @@ struct AudioLevelBar: View {
                     .fill(.secondary.opacity(0.2))
 
                 RoundedRectangle(cornerRadius: 3)
-                    .fill(level > 0.7 ? .red : level > 0.4 ? .orange : .green)
+                    .fill(level > 0.7 ? Color.stError : level > 0.4 ? Color.stWarning : Color.stSuccess)
                     .frame(width: geo.size.width * CGFloat(level))
                     .animation(.easeOut(duration: 0.05), value: level)
             }
@@ -271,7 +271,7 @@ struct StatusBadge: View {
             case .recording:
                 HStack(spacing: 4) {
                     Image(systemName: "mic.fill")
-                        .foregroundStyle(.red)
+                        .foregroundStyle(.stError)
                         .symbolEffect(.pulse)
                     Text("Recording")
                         .foregroundStyle(.secondary)
@@ -317,7 +317,7 @@ struct RecordButton: View {
                 appState.pipelineState == .recording ? "Stop" : "Record",
                 systemImage: appState.pipelineState == .recording ? "stop.circle.fill" : "mic.circle.fill"
             )
-            .foregroundStyle(appState.pipelineState == .recording ? .red : .accentColor)
+            .foregroundStyle(appState.pipelineState == .recording ? Color.stError : Color.stAccent)
         }
         .labelStyle(.titleAndIcon)
         .disabled(appState.pipelineState.isActive && appState.pipelineState != .recording)

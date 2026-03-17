@@ -53,7 +53,7 @@ struct PromptEditorView: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .foregroundStyle(selectedPreset == preset ? Color.accentColor : Color.primary)
+                    .foregroundStyle(selectedPreset == preset ? Color.stAccent : Color.primary)
                 }
 
                 Spacer()
@@ -97,11 +97,11 @@ struct PromptEditorView: View {
                         systemImage: "lightbulb"
                     )
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(.stWarning)
                 } else {
                     Label("Custom prompt active.", systemImage: "checkmark.circle")
                         .font(.caption)
-                        .foregroundStyle(.green)
+                        .foregroundStyle(.stSuccess)
                 }
 
                 Spacer()

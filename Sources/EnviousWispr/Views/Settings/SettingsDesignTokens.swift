@@ -13,7 +13,7 @@ extension Color {
     // Text
     static let stTextPrimary   = Color(red: 0.059, green: 0.039, blue: 0.102)  // #0f0a1a
     static let stTextSecondary = Color(red: 0.290, green: 0.239, blue: 0.376)  // #4a3d60
-    static let stTextTertiary  = Color(red: 0.490, green: 0.435, blue: 0.588)  // #7d6f96
+    static let stTextTertiary  = Color(red: 0.420, green: 0.369, blue: 0.525)  // #6b5e86
 
     // Accent
     static let stAccent        = Color(red: 0.486, green: 0.227, blue: 0.929)  // #7c3aed
@@ -21,8 +21,16 @@ extension Color {
     static let stAccentBorder  = Color(red: 0.486, green: 0.227, blue: 0.929).opacity(0.35)
 
     // Toggle
-    static let stToggleOn      = Color(red: 0.0, green: 0.784, blue: 0.502)    // #00c880
-    static let stToggleOff     = Color(red: 0.769, green: 0.722, blue: 0.847)  // #c4b8d8
+    static let stToggleOn      = Color(red: 0.0, green: 0.639, blue: 0.400)    // #00a366
+    static let stToggleOff     = Color(red: 0.608, green: 0.557, blue: 0.722)  // #9b8eb8
+
+    // Status (semantic — use these, not raw .red/.green/.orange)
+    static let stSuccess       = Color(red: 0.0, green: 0.639, blue: 0.400)    // #00a366
+    static let stSuccessSoft   = Color(red: 0.0, green: 0.639, blue: 0.400).opacity(0.10)
+    static let stWarning       = Color(red: 0.800, green: 0.439, blue: 0.0)    // #cc7000
+    static let stWarningSoft   = Color(red: 0.800, green: 0.439, blue: 0.0).opacity(0.10)
+    static let stError         = Color(red: 0.753, green: 0.224, blue: 0.169)  // #c0392b
+    static let stErrorSoft     = Color(red: 0.753, green: 0.224, blue: 0.169).opacity(0.10)
 
     // Dividers
     static let stDivider       = Color(red: 0.541, green: 0.169, blue: 0.886).opacity(0.08)
@@ -52,6 +60,12 @@ extension ShapeStyle where Self == Color {
     static var stChromeDivider: Color { Color.stChromeDivider }
     static var stSidebarActiveBg: Color { Color.stSidebarActiveBg }
     static var stSidebarActiveText: Color { Color.stSidebarActiveText }
+    static var stSuccess: Color { Color.stSuccess }
+    static var stSuccessSoft: Color { Color.stSuccessSoft }
+    static var stWarning: Color { Color.stWarning }
+    static var stWarningSoft: Color { Color.stWarningSoft }
+    static var stError: Color { Color.stError }
+    static var stErrorSoft: Color { Color.stErrorSoft }
 }
 
 // MARK: - Settings Font Tokens

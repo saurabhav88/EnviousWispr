@@ -42,14 +42,14 @@ struct WordFixSettingsView: View {
                     BrandedRow {
                         Text(errorMessage)
                             .font(.stHelper)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(.stError)
                     }
                 }
                 if let storeError = appState.customWordsCoordinator.customWordError {
                     BrandedRow {
                         Text(storeError)
                             .font(.stHelper)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(.stError)
                     }
                 }
 
@@ -250,7 +250,7 @@ private struct CustomWordEditSheet: View {
 
             // Force replace toggle
             Toggle("Force replace (always apply, skip scoring)", isOn: $word.forceReplace)
-                .toggleStyle(.switch)
+                .toggleStyle(BrandedToggleStyle())
 
             Spacer()
 

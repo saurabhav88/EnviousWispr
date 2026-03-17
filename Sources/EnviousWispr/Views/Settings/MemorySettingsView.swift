@@ -28,7 +28,7 @@ struct MemorySettingsView: View {
                     BrandedRow(showDivider: false) {
                         Text("Model is freed after every transcription. Expect a reload delay on each recording.")
                             .font(.stHelper)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(.stWarning)
                     }
                 }
             }

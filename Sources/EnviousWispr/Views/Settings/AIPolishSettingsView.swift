@@ -28,21 +28,7 @@ struct AIPolishSettingsView: View {
         @Bindable var state = appState
 
         SettingsContentView {
-            // ── Section 1: Writing Style ──────────────────────────────
-            if showWritingStyleSection {
-                BrandedSection(header: "Writing Style") {
-                    BrandedRow {
-                        writingStylePresetCards
-                    }
-                    BrandedRow(showDivider: false) {
-                        Text("Controls how your dictation is cleaned up and formatted.")
-                            .font(.stHelper)
-                            .foregroundStyle(Color.stTextTertiary)
-                    }
-                }
-            }
-
-            // ── Section 2: LLM Provider ───────────────────────────────
+            // ── Section 1: LLM Provider ───────────────────────────────
             BrandedSection(header: "LLM Provider", content: {
                 BrandedRow {
                     Picker("LLM Provider", selection: $state.settings.llmProvider) {
@@ -97,6 +83,20 @@ struct AIPolishSettingsView: View {
                 }
             })
 
+            // ── Section 2: Writing Style ──────────────────────────────
+            if showWritingStyleSection {
+                BrandedSection(header: "Writing Style") {
+                    BrandedRow {
+                        writingStylePresetCards
+                    }
+                    BrandedRow(showDivider: false) {
+                        Text("Controls how your dictation is cleaned up and formatted.")
+                            .font(.stHelper)
+                            .foregroundStyle(Color.stTextTertiary)
+                    }
+                }
+            }
+
             // ── Section 3: Model ──────────────────────────────────────
             if showModelSection {
                 BrandedSection(header: "Model") {
@@ -144,7 +144,7 @@ struct AIPolishSettingsView: View {
                         BrandedRow {
                             Text("This model requires a paid API plan.")
                                 .font(.stHelper)
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(.stWarning)
                         }
                     }
 
@@ -291,6 +291,7 @@ struct AIPolishSettingsView: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("\(name) — \(desc)")
         .accessibilityValue(isSelected ? "selected" : "")
     }
 
@@ -307,9 +308,11 @@ struct AIPolishSettingsView: View {
                 if isOpenAI {
                     SecureField("sk-proj-…", text: $openAIKey)
                         .textFieldStyle(.roundedBorder)
+                        .accessibilityLabel("OpenAI API Key")
                 } else {
                     SecureField("AI…", text: $geminiKey)
                         .textFieldStyle(.roundedBorder)
+                        .accessibilityLabel("Google Gemini API Key")
                 }
 
                 validationBadge
@@ -339,7 +342,7 @@ struct AIPolishSettingsView: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                .foregroundStyle(.red)
+                .foregroundStyle(.stError)
             }
         }
     }
@@ -353,7 +356,7 @@ struct AIPolishSettingsView: View {
             if !validationStatus.isEmpty {
                 Text(validationStatus)
                     .font(.caption)
-                    .foregroundStyle(validationStatus.contains("Saved") ? .green : .red)
+                    .foregroundStyle(validationStatus.contains("Saved") ? .stSuccess : .stError)
             }
         case .validating:
             HStack(spacing: 4) {
@@ -366,18 +369,18 @@ struct AIPolishSettingsView: View {
         case .valid:
             HStack(spacing: 4) {
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(.stSuccess)
                 Text("Valid")
                     .font(.caption)
-                    .foregroundStyle(.green)
+                    .foregroundStyle(.stSuccess)
             }
         case .invalid(let message):
             HStack(spacing: 4) {
                 Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.red)
+                    .foregroundStyle(.stError)
                 Text(message)
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(.stError)
             }
         }
     }
@@ -454,20 +457,20 @@ struct AIPolishSettingsView: View {
         switch provider {
         case .openAI:
             return [
-                ModelCardInfo(name: "GPT-4o Mini",    desc: "Fast · Affordable · Great quality", badge: "Best value", icon: "⚡", iconBg: Color.green.opacity(0.10),   badgeBg: Color.green.opacity(0.12),  badgeBorder: Color.green.opacity(0.22),  badgeFg: Color(hex: "007a4d")),
+                ModelCardInfo(name: "GPT-4o Mini",    desc: "Fast · Affordable · Great quality", badge: "Best value", icon: "⚡", iconBg: Color.stSuccess.opacity(0.10),   badgeBg: Color.stSuccess.opacity(0.12),  badgeBorder: Color.stSuccess.opacity(0.22),  badgeFg: Color(hex: "007a4d")),
                 ModelCardInfo(name: "GPT-4.1 Mini",   desc: "Fast · Affordable · Newer",         badge: "Also great", icon: "✦", iconBg: Color.cyan.opacity(0.10),    badgeBg: Color.cyan.opacity(0.12),   badgeBorder: Color.cyan.opacity(0.22),   badgeFg: Color(hex: "006f7a")),
                 ModelCardInfo(name: "GPT-4o / 4.1",   desc: "Slower · Higher cost",              badge: "Premium",    icon: "◈", iconBg: Color.primary.opacity(0.05), badgeBg: Color.primary.opacity(0.05), badgeBorder: Color.primary.opacity(0.09), badgeFg: Color.secondary),
                 ModelCardInfo(name: "GPT-3.5 Turbo",  desc: "Cheapest · Lower quality",          badge: "Budget",     icon: "◇", iconBg: Color.primary.opacity(0.05), badgeBg: Color.primary.opacity(0.05), badgeBorder: Color.primary.opacity(0.09), badgeFg: Color.secondary),
             ]
         case .gemini:
             return [
-                ModelCardInfo(name: "Gemini 2.0 Flash", desc: "Fast · Affordable · Great quality", badge: "Best value", icon: "⚡", iconBg: Color.green.opacity(0.10),   badgeBg: Color.green.opacity(0.12),  badgeBorder: Color.green.opacity(0.22),  badgeFg: Color(hex: "007a4d")),
+                ModelCardInfo(name: "Gemini 2.0 Flash", desc: "Fast · Affordable · Great quality", badge: "Best value", icon: "⚡", iconBg: Color.stSuccess.opacity(0.10),   badgeBg: Color.stSuccess.opacity(0.12),  badgeBorder: Color.stSuccess.opacity(0.22),  badgeFg: Color(hex: "007a4d")),
                 ModelCardInfo(name: "Gemini 1.5 Flash", desc: "Fast · Stable · Proven",            badge: "Also great", icon: "✦", iconBg: Color.cyan.opacity(0.10),    badgeBg: Color.cyan.opacity(0.12),   badgeBorder: Color.cyan.opacity(0.22),   badgeFg: Color(hex: "006f7a")),
                 ModelCardInfo(name: "Gemini 2.0 Pro",   desc: "Slower · Higher cost",              badge: "Premium",    icon: "◈", iconBg: Color.primary.opacity(0.05), badgeBg: Color.primary.opacity(0.05), badgeBorder: Color.primary.opacity(0.09), badgeFg: Color.secondary),
             ]
         case .ollama:
             return [
-                ModelCardInfo(name: "Llama 3.2",  desc: "Fast · Private · No internet needed",  badge: "Recommended", icon: "⚡", iconBg: Color.green.opacity(0.10),   badgeBg: Color.green.opacity(0.12),  badgeBorder: Color.green.opacity(0.22),  badgeFg: Color(hex: "007a4d")),
+                ModelCardInfo(name: "Llama 3.2",  desc: "Fast · Private · No internet needed",  badge: "Recommended", icon: "⚡", iconBg: Color.stSuccess.opacity(0.10),   badgeBg: Color.stSuccess.opacity(0.12),  badgeBorder: Color.stSuccess.opacity(0.22),  badgeFg: Color(hex: "007a4d")),
                 ModelCardInfo(name: "Llama 3.1",  desc: "Stable · Well tested",                 badge: "Also great",  icon: "✦", iconBg: Color.cyan.opacity(0.10),    badgeBg: Color.cyan.opacity(0.12),   badgeBorder: Color.cyan.opacity(0.22),   badgeFg: Color(hex: "006f7a")),
                 ModelCardInfo(name: "Phi-3 Mini", desc: "Smallest · Fastest on older Macs",     badge: "Lightweight", icon: "◇", iconBg: Color.primary.opacity(0.05), badgeBg: Color.primary.opacity(0.05), badgeBorder: Color.primary.opacity(0.09), badgeFg: Color.secondary),
             ]
@@ -584,7 +587,7 @@ struct AIPolishSettingsView: View {
                     }
                     .controlSize(.small)
                     .buttonStyle(.borderless)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(.stError)
                 }
             }
 
@@ -593,7 +596,7 @@ struct AIPolishSettingsView: View {
                 Text("Status:")
                 Spacer()
                 Label("Running", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(.stSuccess)
 
                 ollamaRefreshButton()
             }
@@ -605,7 +608,7 @@ struct AIPolishSettingsView: View {
         case .error(let message):
             VStack(alignment: .leading, spacing: 8) {
                 Label("Something went wrong", systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(.stWarning)
 
                 Text(message)
                     .font(.stHelper)
@@ -639,10 +642,10 @@ struct AIPolishSettingsView: View {
                 switch appState.llmDiscovery.keyValidationState {
                 case .valid:
                     Label("Available", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
+                        .foregroundStyle(.stSuccess)
                 case .invalid(let msg):
                     Label(msg, systemImage: "xmark.circle.fill")
-                        .foregroundStyle(.red)
+                        .foregroundStyle(.stError)
                         .font(.caption)
                 case .validating:
                     ProgressView().controlSize(.small)
@@ -660,7 +663,7 @@ struct AIPolishSettingsView: View {
             }
         } else {
             Label("Requires macOS 26 or later.", systemImage: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
+                .foregroundStyle(.stWarning)
                 .font(.stHelper)
         }
     }
@@ -678,7 +681,7 @@ struct AIPolishSettingsView: View {
                                 .font(.caption)
                             Text("(\(entry.qualityTier.label))")
                                 .font(.caption)
-                                .foregroundStyle(entry.qualityTier == .best ? Color.accentColor : (entry.qualityTier == .medium ? Color.secondary : Color.orange))
+                                .foregroundStyle(entry.qualityTier == .best ? Color.stAccent : (entry.qualityTier == .medium ? Color.secondary : Color.stWarning))
                         }
                         Text("\(entry.parameterCount) · \(entry.downloadSize)")
                             .font(.caption2)
@@ -692,7 +695,7 @@ struct AIPolishSettingsView: View {
                             appState.ollamaSetup.deleteModel(name: entry.name)
                         } label: {
                             Text("Delete")
-                                .foregroundStyle(.red)
+                                .foregroundStyle(.stError)
                         }
                         .controlSize(.small)
                         .buttonStyle(.borderless)
@@ -744,19 +747,19 @@ struct AIPolishSettingsView: View {
         HStack(spacing: 12) {
             if current > 1 {
                 Label("Installed", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(.stSuccess)
                     .font(.caption)
             }
             if current > 2 {
                 Label("Running", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(.stSuccess)
                     .font(.caption)
             }
 
             let stepLabels = ["Install Ollama", "Start Ollama", "Download a Model"]
             let label = currentLabel ?? stepLabels[current - 1]
             Label(label, systemImage: "\(current).circle.fill")
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(Color.stAccent)
                 .font(.caption.bold())
         }
     }

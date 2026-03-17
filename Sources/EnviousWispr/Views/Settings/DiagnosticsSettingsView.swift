@@ -68,7 +68,7 @@ struct DiagnosticsSettingsView: View {
                                 try? await AppLogger.shared.clearLogs()
                             }
                         }
-                        .foregroundStyle(.red)
+                        .foregroundStyle(.stError)
                     }
                 }
                 BrandedRow(showDivider: false) {
@@ -162,7 +162,7 @@ struct DiagnosticsSettingsView: View {
                                     Spacer()
                                     Text(String(format: "%.1f%%", wer * 100))
                                         .monospacedDigit()
-                                        .foregroundStyle(wer <= 0.02 ? .green : .orange)
+                                        .foregroundStyle(wer <= 0.02 ? .stSuccess : .stWarning)
                                 }.font(.caption)
                             }
 
@@ -181,7 +181,7 @@ struct DiagnosticsSettingsView: View {
                         Text("Model status:")
                         Spacer()
                         Text(appState.asrManager.isModelLoaded ? "Loaded" : "Unloaded")
-                            .foregroundStyle(appState.asrManager.isModelLoaded ? .green : .secondary)
+                            .foregroundStyle(appState.asrManager.isModelLoaded ? .stSuccess : .secondary)
                     }
                 }
             }

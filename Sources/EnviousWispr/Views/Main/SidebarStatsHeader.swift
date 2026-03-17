@@ -83,13 +83,13 @@ struct ModelStatusBar: View {
         .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(isRecording ? AnyShapeStyle(.red.opacity(0.1)) : AnyShapeStyle(.fill.quinary))
+                .fill(isRecording ? AnyShapeStyle(Color.stError.opacity(0.1)) : AnyShapeStyle(.fill.quinary))
         )
     }
 
     private var dotColor: Color {
-        if isRecording { return .red }
-        if hasError { return .red }
-        return isLoaded ? .green : .secondary
+        if isRecording { return .stError }
+        if hasError { return .stError }
+        return isLoaded ? .stSuccess : .secondary
     }
 }

@@ -57,10 +57,25 @@ final class RecordingOverlayPanel {
         currentIntent = intent
         switch intent {
         case .hidden:
+            NSAccessibility.post(
+                element: NSApp.mainWindow as Any,
+                notification: .announcementRequested,
+                userInfo: [.announcement: "Recording complete",
+                           .priority: NSAccessibilityPriorityLevel.medium.rawValue as NSNumber])
             hide()
         case .recording:
+            NSAccessibility.post(
+                element: NSApp.mainWindow as Any,
+                notification: .announcementRequested,
+                userInfo: [.announcement: "Recording started",
+                           .priority: NSAccessibilityPriorityLevel.high.rawValue as NSNumber])
             show(audioLevelProvider: audioLevelProvider, isRecordingLocked: isRecordingLocked)
         case .processing(let label):
+            NSAccessibility.post(
+                element: NSApp.mainWindow as Any,
+                notification: .announcementRequested,
+                userInfo: [.announcement: "Processing transcription",
+                           .priority: NSAccessibilityPriorityLevel.medium.rawValue as NSNumber])
             showPolishing(label: label)
         }
     }

@@ -166,14 +166,14 @@ struct SpeechEngineSettingsView: View {
                     }
                     .controlSize(.small)
                     .buttonStyle(.borderless)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(.stError)
                 }
             }
 
         case .ready:
             HStack {
                 Label("Model Ready", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(.stSuccess)
                 Spacer()
                 whisperKitRefreshButton
             }
@@ -181,7 +181,7 @@ struct SpeechEngineSettingsView: View {
         case .error(let message):
             VStack(alignment: .leading, spacing: 8) {
                 Label("Something went wrong", systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(.stWarning)
 
                 Text(message)
                     .font(.stHelper)
@@ -199,7 +199,7 @@ struct SpeechEngineSettingsView: View {
     @ViewBuilder
     private func whisperKitStepIndicator(_ title: String) -> some View {
         Label(title, systemImage: "1.circle.fill")
-            .foregroundStyle(Color.accentColor)
+            .foregroundStyle(Color.stAccent)
             .font(.caption.bold())
     }
 
@@ -293,6 +293,7 @@ private struct PresetCard: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("\(info.name) — \(info.description)")
         .accessibilityValue(isSelected ? "selected" : "")
     }
 }

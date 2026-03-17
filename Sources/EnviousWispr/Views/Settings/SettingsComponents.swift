@@ -112,12 +112,17 @@ struct BrandedRow<Content: View>: View {
 /// Green ON / lavender OFF toggle matching the brand mockups, 38x22 px.
 struct BrandedToggleStyle: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {
-        HStack {
-            configuration.label
-            Spacer()
-            toggleTrack(isOn: configuration.isOn)
-                .onTapGesture { configuration.isOn.toggle() }
+        Button {
+            configuration.isOn.toggle()
+        } label: {
+            HStack {
+                configuration.label
+                Spacer()
+                toggleTrack(isOn: configuration.isOn)
+            }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
     }
 
     private func toggleTrack(isOn: Bool) -> some View {
@@ -248,7 +253,7 @@ struct BrandedStatusRow: View {
     var body: some View {
         HStack {
             Image(systemName: isGranted ? "checkmark.circle.fill" : "xmark.circle.fill")
-                .foregroundStyle(isGranted ? Color.stToggleOn : .red)
+                .foregroundStyle(isGranted ? Color.stToggleOn : .stError)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(isGranted ? grantedText : deniedText)
