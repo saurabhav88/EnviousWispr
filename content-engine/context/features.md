@@ -20,9 +20,9 @@ Reference document for content generation. These are the actual product capabili
 
 - **LLM post-processing** — automatically clean up filler words ("um", "uh", "like"), fix punctuation, and produce polished text
 - **Writing style presets** — three built-in tones: Formal (professional), Standard (clean grammar), Friendly (casual conversational)
+- **Custom prompts** — user-editable prompt text via PromptEditorView in Settings. Users can write their own LLM instructions for post-processing.
 
 > **Content note — NOT YET SHIPPED:**
-> - **Custom prompts** (user-editable prompt text) — legacy code exists but no active UI. Do NOT present as a current feature.
 > - **Per-app presets** (different rules per app) — not implemented. Do NOT reference in content.
 > - **Privacy toggle** (pause processing) — not implemented. Do NOT reference in content.
 

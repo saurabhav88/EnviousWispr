@@ -1,7 +1,7 @@
 # Modular Architecture Plan — Heart & Limbs
 
 **Date:** 2026-03-12
-**Status:** Approved
+**Status:** Phases 1-5 Complete (2026-03-16)
 **Motivation:** Build WisprFlow-level feature completeness at better speed. Protect the working core while making it safe to add features without regression — one step forward, zero steps back.
 
 ## Principles
@@ -101,39 +101,50 @@ for step in enabledSteps {
 **Risk:** LOW-MEDIUM — new feature behind graceful fallback
 **Win:** Custom Words v2 ships safely. Pattern established for all future features.
 
-### Phase 3: Break AppState God Object (Week 5-7)
-**Goal:** AppState reduced from 857 lines / 5 responsibilities to thin coordinator.
+### Phase 3: Break AppState God Object — DONE (2026-03-14)
+**Result:** AppState reduced from 870 → 437 lines (50% reduction). 6 extraction steps, 6 commits.
 
-- Extract view state → ViewState observable
-- Extract DI container → ServiceContainer
-- Extract callback wiring → separate setup methods
-- Target: AppState < 300 lines, < 15 files depend on it
+**Actual extractions (differed from original plan — coordinators instead of ViewState/ServiceContainer):**
+1. `AudioDeviceList` — device enumeration + hardware monitoring
+2. `PermissionsService` extended — accessibility monitoring moved from AppState
+3. `LLMModelDiscoveryCoordinator` — model discovery, API key validation, caching
+4. `CustomWordsCoordinator` — custom word CRUD, persistence, suggestion service
+5. `PipelineSettingsSync` — settings forwarding to pipelines/subsystems (30+ keys)
+6. `TranscriptCoordinator` — transcript history state, search, persistence
 
-**Risk:** MEDIUM — touching the hub, but module boundaries from Phase 1 contain blast radius
-**Win:** Views testable in isolation. Changes to settings don't recompile views.
+**What remains in AppState (437 lines, accepted):** pipeline init + wiring, hotkey closures (~100 lines), pipeline state change handlers (~40 lines), `toggleRecording`, `cancelRecording`, computed display properties, WhisperKit preload observation.
 
-### Phase 4: XPC Audio Service (Week 7-10)
-**Goal:** CoreAudio crashes can't kill the app.
+**437 > 300 target:** Remaining code is legitimate coordination, not unfinished extraction. Hotkey closures could theoretically move but would add indirection without benefit.
 
-- New SPM executable target: EnviousWisprAudioService
-- Move AVAudioEngine, device management, codec switch recovery to XPC service
-- AudioCaptureManager becomes thin XPC proxy in main app
-- Shared-memory ring buffer for audio samples (speed-critical, ~64KB/sec)
-- Crash recovery: invalidationHandler → restart service, notify pipeline
+### Phase 4: XPC Audio Service — COMPLETE (2026-03-16)
+**Result:** Audio capture runs in XPC service process (default path). BT audio degradation solved via dual-backend architecture.
 
-**Risk:** HIGH — process boundary, IPC, microphone permissions
-**Win:** BT crashes isolated. Hot-swap crashes survivable. Permanent fix for ew-8y3.
+**Steps completed:** 1 (service skeleton) → 2 (mic permission) → 3 (service-side capture) → 4 (crash recovery) → 5 (service-side VAD) → 6 (BT chaos testing, 3 isolation bugs fixed) → 6b (AVCaptureSession capture backend) → 7 (XPC default ON).
 
-### Phase 5: XPC ASR Service (Week 10-12)
-**Goal:** 500MB-2GB ASR models don't bloat main app memory.
+**Architecture shipped:**
+- `AudioCaptureProxy` — XPC bridge (default audio path, crash-isolated)
+- `CaptureRouteResolver` — picks capture source per recording based on BT state
+- `AVCaptureSessionSource` — built-in mic via AVCaptureSession (BT output active, no A2DP→SCO)
+- `AVAudioEngineSource` — AVAudioEngine tap + VP + codec switch recovery (non-BT)
+- `AudioCaptureManager` — thin coordinator (~300 lines, down from 843)
+- Escape hatch: `defaults write ... useXPCAudioService -bool false`
 
-- New SPM executable target: EnviousWisprASRService
-- Move ParakeetBackend + WhisperKitBackend to XPC service
-- ASRManager becomes XPC proxy
-- Model load/unload frees memory to OS immediately
+**Key finding:** `setInputDevice(built-in-mic)` while BT output active creates corrupted `CADefaultDeviceAggregate` — permanently abandoned in favor of AVCaptureSession which bypasses CoreAudio device routing entirely.
 
-**Risk:** HIGH — latency-sensitive, model lifecycle complexity
-**Win:** Memory isolation. Model crashes survivable. Foundation for iOS shared code.
+### Phase 5: XPC ASR Service — COMPLETE (2026-03-16)
+**Result:** ASR inference runs in dedicated XPC service process (default path). Both backends validated.
+
+**Architecture shipped:**
+- `ASRServiceProtocol` — @objc XPC protocol (load/unload/transcribe/streaming stubs)
+- `ASRManagerProxy` — XPC bridge in main app (mirrors AudioCaptureProxy pattern)
+- `ASRManagerInterface` — protocol extracted from ASRManager
+- `ASRServiceHandler` — service-side handler wrapping ParakeetBackend + WhisperKitBackend
+- Crash recovery: interruptionHandler/invalidationHandler, auto-relaunch on next call
+- Escape hatch: `defaults write ... useXPCASRService -bool false`
+
+**Validated:** Parakeet batch 83ms, WhisperKit batch 792ms across XPC. Crash recovery proven (kill -9 → app survives, next recording succeeds).
+**Known gap:** ew-3wxc (silent failure on mid-recording crash — no user-visible error).
+**Deferred:** Incremental worker (Phase 5b), streaming through XPC (batch fallback works).
 
 ## What We're NOT Doing
 

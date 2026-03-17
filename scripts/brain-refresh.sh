@@ -69,6 +69,7 @@ inject_auto_section() {
 
     # Check if markers exist
     if ! grep -qF "$begin_marker" "$target_file" || ! grep -qF "$end_marker" "$target_file"; then
+        echo "  WARNING: Missing AUTO markers for '${section_name}' in $target_file" >&2
         return
     fi
 
@@ -77,7 +78,14 @@ inject_auto_section() {
     end_line=$(grep -nF "$end_marker" "$target_file" | head -1 | cut -d: -f1)
 
     if [[ -z "$begin_line" || -z "$end_line" || "$begin_line" -ge "$end_line" ]]; then
+        echo "  WARNING: Malformed AUTO markers for '${section_name}' in $target_file" >&2
         return
+    fi
+
+    # If content is empty or whitespace-only, inject a STALE warning instead
+    if [[ -z "${content// /}" ]]; then
+        echo "  WARNING: Empty generated content for '${section_name}' — injecting STALE marker" >&2
+        content="**STALE — generation produced empty output. Run \`scripts/brain-refresh.sh\` after fixing the source.**"
     fi
 
     # Build new file: head (up to begin marker) + content + tail (from end marker)

@@ -18,6 +18,7 @@
     "@astrojs/cloudflare": "^13.0.2",
     "@astrojs/rss": "^4.0.17",
     "@astrojs/sitemap": "^3.7.1",
-    "astro": "^6.0.2"
+    "astro": "^6.0.2",
+    "wrangler": "^4.73.0"
   }
 }

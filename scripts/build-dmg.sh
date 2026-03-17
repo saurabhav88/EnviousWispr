@@ -122,6 +122,41 @@ else
     printf '\x69\x63\x6e\x73\x00\x00\x00\x08' > "${DEST_ICNS}"
 fi
 
+# Embed XPC Audio Service
+AUDIO_XPC_BINARY="${PROJECT_ROOT}/.build/arm64-apple-macosx/release/EnviousWisprAudioService"
+AUDIO_XPC_BUNDLE="${CONTENTS}/XPCServices/com.enviouswispr.audioservice.xpc"
+AUDIO_XPC_RESOURCES="${PROJECT_ROOT}/Sources/EnviousWisprAudioService/Resources"
+if [[ -f "${AUDIO_XPC_BINARY}" ]]; then
+    echo "    Embedding XPC Audio Service ..."
+    mkdir -p "${AUDIO_XPC_BUNDLE}/Contents/MacOS"
+    cp "${AUDIO_XPC_BINARY}" "${AUDIO_XPC_BUNDLE}/Contents/MacOS/EnviousWisprAudioService"
+    chmod +x "${AUDIO_XPC_BUNDLE}/Contents/MacOS/EnviousWisprAudioService"
+    cp "${AUDIO_XPC_RESOURCES}/Info.plist" "${AUDIO_XPC_BUNDLE}/Contents/Info.plist"
+    plutil -replace CFBundleVersion -string "${VERSION}" "${AUDIO_XPC_BUNDLE}/Contents/Info.plist"
+    plutil -replace CFBundleShortVersionString -string "${VERSION}" "${AUDIO_XPC_BUNDLE}/Contents/Info.plist"
+else
+    echo "WARNING: XPC Audio Service binary not found — skipping." >&2
+fi
+
+# Embed XPC ASR Service
+ASR_XPC_BINARY="${PROJECT_ROOT}/.build/arm64-apple-macosx/release/EnviousWisprASRService"
+ASR_XPC_BUNDLE="${CONTENTS}/XPCServices/com.enviouswispr.asrservice.xpc"
+ASR_XPC_RESOURCES="${PROJECT_ROOT}/Sources/EnviousWisprASRService/Resources"
+if [[ -f "${ASR_XPC_BINARY}" ]]; then
+    echo "    Embedding XPC ASR Service ..."
+    mkdir -p "${ASR_XPC_BUNDLE}/Contents/MacOS"
+    cp "${ASR_XPC_BINARY}" "${ASR_XPC_BUNDLE}/Contents/MacOS/EnviousWisprASRService"
+    chmod +x "${ASR_XPC_BUNDLE}/Contents/MacOS/EnviousWisprASRService"
+    cp "${ASR_XPC_RESOURCES}/Info.plist" "${ASR_XPC_BUNDLE}/Contents/Info.plist"
+    plutil -replace CFBundleVersion -string "${VERSION}" "${ASR_XPC_BUNDLE}/Contents/Info.plist"
+    plutil -replace CFBundleShortVersionString -string "${VERSION}" "${ASR_XPC_BUNDLE}/Contents/Info.plist"
+else
+    echo "WARNING: XPC ASR Service binary not found — skipping." >&2
+fi
+
+# PkgInfo
+printf 'APPL\x3f\x3f\x3f\x3f' > "${CONTENTS}/PkgInfo"
+
 # Copy entitlements for signing
 ENTITLEMENTS_SRC="${PROJECT_ROOT}/Sources/EnviousWispr/Resources/EnviousWispr.entitlements"
 ENTITLEMENTS_DEST="${BUILD_DIR}/EnviousWispr.entitlements"
@@ -212,7 +247,29 @@ if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
         --sign "${CODESIGN_IDENTITY}" \
         "${SIGN_SPARKLE}"
 
-    # 4. Sign the main app bundle
+    # 5. Sign XPC Audio Service
+    SIGN_AUDIO_XPC="${SIGN_APP}/Contents/XPCServices/com.enviouswispr.audioservice.xpc"
+    SIGN_AUDIO_ENTITLEMENTS="${PROJECT_ROOT}/Sources/EnviousWisprAudioService/Resources/EnviousWisprAudioService.entitlements"
+    if [[ -d "${SIGN_AUDIO_XPC}" ]]; then
+        echo "    Signing XPC Audio Service ..."
+        codesign --force --options runtime --timestamp \
+            --sign "${CODESIGN_IDENTITY}" \
+            --entitlements "${SIGN_AUDIO_ENTITLEMENTS}" \
+            "${SIGN_AUDIO_XPC}"
+    fi
+
+    # 6. Sign XPC ASR Service
+    SIGN_ASR_XPC="${SIGN_APP}/Contents/XPCServices/com.enviouswispr.asrservice.xpc"
+    SIGN_ASR_ENTITLEMENTS="${PROJECT_ROOT}/Sources/EnviousWisprASRService/Resources/EnviousWisprASRService.entitlements"
+    if [[ -d "${SIGN_ASR_XPC}" ]]; then
+        echo "    Signing XPC ASR Service ..."
+        codesign --force --options runtime --timestamp \
+            --sign "${CODESIGN_IDENTITY}" \
+            --entitlements "${SIGN_ASR_ENTITLEMENTS}" \
+            "${SIGN_ASR_XPC}"
+    fi
+
+    # 7. Sign the main app bundle
     echo "    Signing main app bundle ..."
     codesign --force --options runtime --timestamp \
         --sign "${CODESIGN_IDENTITY}" \
