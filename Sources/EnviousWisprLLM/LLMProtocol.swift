@@ -83,6 +83,13 @@ extension String {
             }
         }
 
+        // Step 3: Strip <transcript> wrapper if echoed back (may be truncated at token limit).
+        result = result.replacingOccurrences(
+            of: "</?transcript>",
+            with: "",
+            options: .regularExpression
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+
         return result
     }
 }

@@ -92,6 +92,9 @@ public enum LLMConstants {
 
     /// Default thinking budget for extended thinking models (Gemini 2.5 Flash/Pro).
     public static let defaultThinkingBudget: Int = 8192
+
+    /// Floor for dynamic output token cap. Ensures short transcripts have room to expand.
+    public static let polishMaxTokensFloor: Int = 512
 }
 
 public enum FormattingConstants {
