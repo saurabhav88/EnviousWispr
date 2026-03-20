@@ -3,6 +3,18 @@
   <channel>
     <title>EnviousWispr Updates</title>
     <item>
+      <title>Version 1.4.0</title>
+      <pubDate>Thu, 20 Mar 2026 07:20:00 +0000</pubDate>
+      <sparkle:version>1.4.0</sparkle:version>
+      <sparkle:shortVersionString>1.4.0</sparkle:shortVersionString>
+      <enclosure
+        url="https://enviouswispr.com/downloads/EnviousWispr-1.4.0.dmg"
+        length="12827172"
+        type="application/octet-stream"
+        sparkle:edSignature="xZXqxFdBzpvrkes66tVt3r5unfFFtbE6jzXuCYknygGOlh0E1Hie9cQdT5fnAJpqIIPbSl3Hu7AczjTWxuRmBw=="
+      />
+    </item>
+    <item>
       <title>Version 1.3.0</title>
       <pubDate>Tue, 17 Mar 2026 00:37:26 +0000</pubDate>
       <sparkle:version>1.3.0</sparkle:version>
