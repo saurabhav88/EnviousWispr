@@ -1,8 +1,8 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 
-const title = 'EnviousWispr — Talk naturally. Paste perfectly.';
-const description = 'Private AI dictation for macOS. Speak casually, get polished prose in any tone — on your device, never in the cloud. Free download.';
+const title = 'EnviousWispr — Private AI Dictation for Mac';
+const description = 'On-device voice-to-text for macOS. Speak naturally, get polished prose in seconds — powered by Apple Silicon, free to download, your audio never leaves your Mac.';
 
 const jsonLd = JSON.stringify({
   "@context": "https://schema.org",
@@ -19,7 +19,6 @@ const jsonLd = JSON.stringify({
 
 <BaseLayout title={title} description={description} activePage="home" canonicalPath="/">
   <Fragment slot="head">
-    <meta name="keywords" content="private dictation mac, on-device speech to text, AI dictation macOS, voice to text privacy, offline dictation mac, macOS speech recognition, local transcription, macos dictation alternative, whisper mac app" />
     <script type="application/ld+json" set:html={jsonLd}></script>
   </Fragment>
 

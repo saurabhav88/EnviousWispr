@@ -1,13 +1,51 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+
+const siteUrl = 'https://enviouswispr.com';
+
+const webPageJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "name": "How EnviousWispr Works — Voice to Text in Under Two Seconds",
+  "description": "See how EnviousWispr turns speech into polished text in four steps: record, transcribe on-device, AI polish, and paste — all in under two seconds on your Mac.",
+  "url": `${siteUrl}/how-it-works/`,
+  "isPartOf": {
+    "@type": "WebSite",
+    "url": siteUrl,
+    "name": "EnviousWispr",
+  },
+});
+
+const breadcrumbJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": siteUrl,
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "How It Works",
+      "item": `${siteUrl}/how-it-works/`,
+    },
+  ],
+});
 ---
 
 <BaseLayout
-  title="How It Works — EnviousWispr"
-  description="How EnviousWispr works: four steps, under two seconds. Record, transcribe, polish, paste — all on your Mac."
+  title="How EnviousWispr Works — Voice to Text in Under Two Seconds"
+  description="See how EnviousWispr turns speech into polished text in four steps: record, transcribe on-device with Apple Silicon, AI polish, and paste — all in under two seconds on your Mac."
   activePage="how-it-works"
   canonicalPath="/how-it-works/"
 >
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={webPageJsonLd}></script>
+    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
+  </Fragment>
 
 <style>
 /* ── Page Header ── */

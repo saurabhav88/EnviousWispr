@@ -1,9 +1,9 @@
 ---
 title: "On-Device vs Cloud Dictation on macOS: What's Private"
-description: "A fair comparison of on-device and cloud dictation — how each handles your voice data, where recordings go, and what that means for privacy."
+description: "A fair comparison of on-device and cloud dictation — how each handles your voice data, where recordings go, and what that means for your privacy on macOS."
 pubDate: 2026-03-20
 tags: ["privacy", "dictation", "comparison", "on-device", "speech-to-text"]
-draft: false
+draft: true
 ---
 
 "Your data is processed securely." Every cloud dictation service says some version of this. Almost none of them tell you what it actually means -- where your audio goes, who can access it, how long it persists, or what happens to it after transcription. The assumption is that you won't ask.
@@ -19,7 +19,7 @@ The appeal is obvious: the provider handles all the heavy computation, so even a
 But there are trade-offs you should understand:
 
 - **Your audio travels over the network.** Even with encryption in transit, the recording exists on someone else's infrastructure during processing.
-- **Retention policies vary.** Some providers delete audio immediately after transcription. Others retain recordings for model improvement unless you explicitly opt out. Google's Speech-to-Text API, for example, has a separate data logging opt-in that many developers leave at the default setting without checking.
+- **Retention policies vary.** Some providers delete audio immediately after transcription. Others retain recordings for model improvement unless you explicitly opt out. Google's Speech-to-Text API, for example, has a separate data logging opt-in that many developers leave at the default setting without checking (source: Google Cloud Speech-to-Text documentation, accessed March 2026).
 - **Third-party subprocessors are common.** Your audio may pass through multiple services before the text comes back.
 - **Internet dependency.** No connection means no transcription. Latency depends on server load and your network quality.
 
@@ -33,7 +33,7 @@ This used to mean serious compromises on accuracy. The models that could run on 
 
 In 2022, OpenAI released Whisper, an open-source automatic speech recognition model trained on 680,000 hours of multilingual data. Whisper's accuracy matches or exceeds many commercial cloud APIs, and because the model weights are openly available, it can run locally on capable hardware. Independent benchmarks on LibriSpeech test-clean show Whisper large-v3 achieving word error rates competitive with leading cloud services — the accuracy gap that once justified cloud-only workflows has largely closed.
 
-On Apple Silicon specifically, Apple's Core ML framework compiles neural networks to run natively on the Mac's Neural Engine, GPU, and CPU. [WhisperKit](https://github.com/argmaxinc/WhisperKit), developed by Argmax, wraps Whisper models for Core ML execution. The result is fast, accurate transcription that runs entirely on your Mac — no server required.
+On Apple Silicon specifically, Apple's Core ML framework compiles neural networks to run natively on the Mac's Neural Engine, GPU, and CPU. [WhisperKit](https://github.com/argmaxinc/WhisperKit), developed by Argmax, wraps Whisper models for Core ML execution. The result is fast, accurate transcription that runs entirely on your Mac — no server required. You can see [how the on-device pipeline works end-to-end](/how-it-works/) if you want to understand where each step happens.
 
 The practical experience: on an M-series Mac — whether it's an M2 MacBook Air or an M4 Pro Mac Mini — a typical dictation segment transcribes in one to two seconds. That's end-to-end, from the moment you stop speaking to the moment text appears.
 
@@ -73,7 +73,7 @@ On-device dictation is the stronger choice when:
 
 - **You're dictating anything sensitive.** Legal memos, medical notes, financial discussions, proprietary code reviews, internal company communications — anything where the content of the recording matters if it were exposed.
 - **You want predictable performance.** No network variability, no server outages, no API rate limits. It works the same whether you're on a plane or in a coffee shop.
-- **You care about cost at scale.** Cloud speech APIs typically charge $0.006 to $0.024 per 15 seconds of audio (as of 2025, based on published pricing from Google Cloud Speech-to-Text and AWS Transcribe). For heavy users dictating hours per day, local processing costs nothing beyond the hardware you already own.
+- **You care about cost at scale.** Cloud speech APIs typically charge $0.006 to $0.024 per 15 seconds of audio (source: Google Cloud Speech-to-Text and AWS Transcribe published pricing pages, accessed March 2026). For heavy users dictating hours per day, local processing costs nothing beyond the hardware you already own.
 - **You prefer zero friction.** On-device tools can work with no sign-up, no API key, and no recurring payment.
 - **You want control over your tooling.** Local models don't change unless you change them. No surprise API deprecations, no terms-of-service updates, no forced model swaps.
 
@@ -125,13 +125,13 @@ The distinction isn't philosophical. It's architectural.
 
 If you want to try on-device dictation on your Mac:
 
-1. Download EnviousWispr from the [releases page](https://github.com/saurabhav88/EnviousWispr/releases)
+1. [Download EnviousWispr free](https://enviouswispr.com/#download) — no account required
 2. Open the `.dmg` and drag the app to Applications
 3. Grant microphone access when prompted on first launch
 4. Choose a Whisper model — `large-v3-turbo` offers the best balance of speed and accuracy on Apple Silicon
 5. Hold the hotkey, speak, release
 
-The first model download takes a few minutes. After that, you're dictating privately, offline, with nothing standing between you and your text. If you run into issues or want to contribute, [open an issue on GitHub](https://github.com/saurabhav88/EnviousWispr).
+The first model download takes a few minutes. After that, you're dictating privately, offline, with nothing standing between you and your text. The [getting started guide](/blog/getting-started-enviouswispr-under-2-minutes/) walks through the full first-run setup in under two minutes if you want a step-by-step walkthrough. If you run into issues or want to contribute, [open an issue on GitHub](https://github.com/saurabhav88/EnviousWispr).
 
 ## Frequently asked questions
 

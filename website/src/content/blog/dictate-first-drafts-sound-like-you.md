@@ -1,6 +1,6 @@
 ---
 title: "Dictate First Drafts That Sound Like You"
-description: "Most dictation tools strip your voice. Here's how to dictate first drafts that keep your writing style intact using writing style presets and LLM post-processing."
+description: "Most dictation tools strip your voice. Here's how to dictate first drafts that keep your writing style intact using presets and LLM post-processing."
 pubDate: 2026-03-14
 tags: ["writing", "dictation", "workflow", "writing-style"]
 draft: false
@@ -51,7 +51,7 @@ No account. No API key. No subscription. It's free and open source.
 
 Open EnviousWispr's settings and pick a model size. For writing, accuracy matters more than raw speed, so `large-v3-turbo` is a solid default. The first model download takes a few minutes. After that, you're done.
 
-On Apple Silicon, even the larger models transcribe in a second or two — I've tested this on both an M2 MacBook Air and an M3 MacBook Pro with near-identical speed. The Neural Engine handles the heavy lifting.
+On Apple Silicon, even the large-v3-turbo model transcribes in one to two seconds regardless of Mac model. The Neural Engine handles the heavy lifting.
 
 ### Step 3: Pick Your Writing Style Preset
 
@@ -127,7 +127,7 @@ The first few sessions feel awkward. You'll over-explain, stumble, repeat yourse
 
 EnviousWispr is free, open source, and yours to keep -- no strings.
 
-1. Download the latest release from [GitHub](https://github.com/saurabhav88/EnviousWispr/releases)
+1. [Download EnviousWispr free](/#download) — or grab the latest release from [GitHub](https://github.com/saurabhav88/EnviousWispr/releases)
 2. Pick the writing style preset that matches your voice -- Friendly, Standard, or Formal
 3. Dictate your next first draft
 

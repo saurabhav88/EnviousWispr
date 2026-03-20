@@ -1,20 +1,20 @@
 ---
 title: "Dictate Emails on macOS at the Speed of Thought"
-description: "Stop typing emails between meetings. Dictate them in seconds with on-device speech to text that keeps sensitive company data on your MacBook."
+description: "Stop typing emails between meetings. Dictate on-device with speech to text that keeps sensitive company data on your MacBook — no cloud uploads."
 pubDate: 2026-03-13
 tags: ["dictation", "email", "productivity", "executive", "privacy"]
 draft: false
 ---
 
-The average executive types around 40 words per minute. They speak 150. That's not a marginal improvement -- it's nearly 4x throughput on the single activity that dominates their day: writing emails.
+The average executive types around 40 words per minute. They speak 130 to 150. That's roughly 3-4x throughput on the single activity that dominates their day: writing emails — and that's a rough estimate, not a measured fact, but the gap is real and it compounds across dozens of messages a day.
 
 Between meetings, most leaders face a growing backlog of follow-up messages -- updates, decisions, delegation, context for people who weren't in the room. The decisions happen fast. Writing them down doesn't. And dictating into a cloud tool that routes every word through someone else's servers isn't an option when you're handling sensitive strategy, personnel decisions, or M&A discussions.
 
 There's a faster, more private way.
 
-## Speaking Is 3x Faster Than Typing
+## Speaking Is 3-4x Faster Than Typing
 
-The average professional types around 40 words per minute. Speaking comfortably — not rushing — produces 120 to 150 words per minute. That's a 3x difference on raw throughput alone.
+The average professional types around 40 words per minute. Speaking comfortably — not rushing — produces 120 to 150 words per minute. That's roughly a 3-4x difference on raw throughput alone.
 
 A 200-word email takes five minutes to type. It takes about 90 seconds to dictate. Multiply that across the 30 to 50 emails a day that many executives send, and the math stops being incremental. You're reclaiming hours.
 
@@ -87,7 +87,7 @@ Do that ten times a day and you've replaced 45 minutes of typing with 15 minutes
 
 ## Get Started in Five Minutes
 
-EnviousWispr is free and open source. Download the `.dmg` from the [releases page](https://github.com/saurabhav88/EnviousWispr/releases), drag it to Applications, and grant microphone access on first launch. That's the whole setup — no account, no subscription.
+EnviousWispr is free and open source. [Download EnviousWispr free](/#download) and drag it to Applications — or grab the `.dmg` directly from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases). Grant microphone access on first launch. That's the whole setup — no account, no subscription.
 
 Choose the `large-v3-turbo` Whisper model for the best balance of speed and accuracy on Apple Silicon. The model downloads and compiles locally once — a few minutes — and never needs to phone home again.
 

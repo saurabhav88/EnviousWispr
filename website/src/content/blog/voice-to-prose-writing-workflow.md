@@ -1,14 +1,14 @@
 ---
 title: "Voice to Prose on macOS: A Realistic Writing Workflow"
-description: "A practical guide to building a voice-to-prose workflow with on-device dictation. Real examples, honest limitations, and setup tips for writers."
+description: "Build a voice-to-prose writing workflow with on-device macOS dictation. Real examples, honest tradeoffs, writing style presets, and first-draft setup tips."
 pubDate: 2026-03-20
 tags: ["writing", "workflow", "dictation", "writing-style"]
-draft: false
+draft: true
 ---
 
-I dictated the first draft of this post in fourteen minutes while pacing around my kitchen, MacBook Air open on the counter running macOS Sequoia. The edited version you're reading took another twenty minutes of typing. Total: thirty-four minutes for a finished article. My last blog post of similar length -- typed start to finish -- took an hour and forty minutes.
+A typical EnviousWispr session: dictate a first draft in about fifteen minutes while pacing the room, then spend another twenty minutes editing the typed version. Roughly thirty-five minutes for a finished article. The equivalent piece typed start to finish often takes an hour and forty minutes.
 
-That's not a theoretical comparison. That's what a real voice-to-prose workflow looks like once you stop fighting the tool and start trusting the process. You talk, the text appears, you edit. The messy middle -- the part where you stare at a cursor trying to phrase things -- mostly disappears.
+That's the gap a voice-to-prose workflow closes. You talk, the text appears, you edit. The messy middle — the part where you stare at a cursor trying to phrase things — mostly disappears.
 
 ## How the pipeline works
 
@@ -18,7 +18,7 @@ Understanding what happens between your voice and the finished text helps you ge
 2. **Transcribe** -- your speech is converted to text locally via Core ML, using either Parakeet for fast English dictation or WhisperKit for multi-language support. This is a literal transcription -- every filler word, false start, and repeated phrase comes through.
 3. **Post-process** -- a local LLM cleans up the raw transcription. It strips filler words, fixes punctuation, corrects grammar, and reshapes the text according to your chosen writing style preset (Formal, Standard, or Friendly).
 
-The third step is where the writing happens. Raw transcription is messy. Post-processing is what turns "so basically what I'm trying to say is that like the pipeline has three steps and each one does a different thing" into a coherent sentence. You can read more about the technical details on the [How It Works](/how-it-works/) page.
+The third step is where the writing happens. Raw transcription is messy. Post-processing is what turns "so basically what I'm trying to say is that like the pipeline has three steps and each one does a different thing" into a coherent sentence. You can read more about the technical details on the [how EnviousWispr's transcription pipeline works](/how-it-works/) page.
 
 The whole cycle takes a second or two on Apple Silicon. Fast enough that you don't lose your train of thought waiting for output.
 
@@ -104,7 +104,7 @@ The best workflow uses both. Dictate the rough draft. Type the edits. That's the
 
 ## Getting started
 
-Download EnviousWispr from the [releases page](https://github.com/saurabhav88/EnviousWispr/releases). It's free, open source, and takes a couple minutes to set up. On first launch, grant microphone access and pick a Whisper model -- `large-v3-turbo` gives you the best balance of speed and accuracy on Apple Silicon.
+[Download EnviousWispr free](https://enviouswispr.com/#download) — no account, no subscription required. It takes a couple of minutes to set up on any Apple Silicon Mac running macOS Sonoma or later. On first launch, grant microphone access and pick a Whisper model — `large-v3-turbo` gives you the best balance of speed and accuracy on Apple Silicon. The source is also [on GitHub](https://github.com/saurabhav88/EnviousWispr/releases).
 
 Then try this: open whatever you're working on, hold the hotkey, and talk through your next paragraph. See what comes back. Try switching between the Friendly, Standard, and Formal presets until the output matches how you write.
 

@@ -1,6 +1,6 @@
 ---
 title: "Voice Coding on macOS Without Cloud APIs"
-description: "How to use on-device voice dictation for coding workflows on macOS — no cloud APIs, no uploaded audio, no subscriptions."
+description: "How to use on-device voice dictation for developer coding workflows on macOS — no cloud APIs, no uploaded audio, no subscriptions, code stays private."
 pubDate: 2026-03-16
 tags: ["voice-coding", "privacy", "developer", "macos", "dictation"]
 draft: false
@@ -109,7 +109,7 @@ We cover this comparison in much more depth in [On-Device vs Cloud Dictation: Wh
 
 ## Getting started
 
-EnviousWispr is free, open source, and takes a few minutes to set up. Download from the [releases page](https://github.com/saurabhav88/EnviousWispr/releases), pick a model, set your hotkey, and start dictating. Zero accounts, zero subscriptions, zero cloud dependencies.
+EnviousWispr is free, open source, and takes a few minutes to set up. [Download EnviousWispr free](/#download) — or grab it from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases). Pick a model, set your hotkey, and start dictating. Zero accounts, zero subscriptions, zero cloud dependencies.
 
 If you want to understand the full transcription and post-processing pipeline before diving in, start with [How It Works](/how-it-works/).
 

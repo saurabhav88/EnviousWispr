@@ -6,7 +6,7 @@ tags: ["accessibility", "rsi", "voice-input", "workflow", "hands-free"]
 draft: false
 ---
 
-Most knowledge workers produce somewhere between 5,000 and 10,000 words per day across emails, messages, documents, and tickets. That's roughly 125,000 to 250,000 keystrokes -- every single workday, five days a week, for years. The human wrist was not designed for this.
+By some estimates, knowledge workers produce somewhere between 5,000 and 10,000 words per day across emails, messages, documents, and tickets. That's roughly 125,000 to 250,000 keystrokes -- every single workday, five days a week, for years. The human wrist was not designed for this.
 
 Repetitive strain injury doesn't announce itself with a single dramatic moment. It builds quietly -- one email, one Slack thread, one commit message at a time -- until typing becomes something you ration instead of something you do without thinking. You start making calculations: can I afford to type this reply, or should I save my keystrokes for the report due at five?
 
@@ -80,7 +80,7 @@ Some work is genuinely better typed. Code editing, spreadsheet formulas, keyboar
 
 ### Track your ratio
 
-Pay attention to how much of your day is voice versus keyboard after a week. Most people find that 60-70% of their daily text input can move to voice without any loss in speed or quality. That's a dramatic reduction in repetitive strain -- not by typing differently, but by typing less.
+Pay attention to how much of your day is voice versus keyboard after a week. Most people find that a significant portion of their daily text input can move to voice without any loss in speed or quality. That's a dramatic reduction in repetitive strain -- not by typing differently, but by typing less.
 
 ## Privacy When It Matters Most
 
@@ -96,7 +96,7 @@ Dictation is also entirely on-demand — it only records when you actively initi
 
 If you're dealing with RSI, the last thing you need is a setup process that involves extensive typing and configuration. EnviousWispr is designed to work with minimal setup:
 
-1. **Download the app** from [GitHub releases](https://github.com/saurabhav88/EnviousWispr/releases) and open the .dmg
+1. **Download the app** — [get EnviousWispr free](/#download) or grab it from [GitHub releases](https://github.com/saurabhav88/EnviousWispr/releases) and open the .dmg
 2. **Grant permissions** -- macOS will ask for microphone and accessibility access on first launch
 3. **Choose a Whisper model** -- the app downloads it once, then everything runs locally
 4. **Start speaking** -- hold the hotkey and talk, or switch to hands-free mode for extended dictation

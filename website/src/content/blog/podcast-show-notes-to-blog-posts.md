@@ -1,14 +1,14 @@
 ---
 title: "Turn Podcast Show Notes Into Blog Posts with Dictation"
-description: "Learn how to repurpose podcast content into show notes and blog posts using on-device dictation. A practical workflow for podcasters on macOS."
+description: "Repurpose podcast episodes into show notes and blog posts using on-device dictation. Speak your recap — polished text lands in your CMS in seconds on macOS."
 pubDate: 2026-03-19
 tags: ["podcasting", "workflow", "dictation", "content-creation"]
-draft: false
+draft: true
 ---
 
-I used to spend forty-five minutes writing show notes for a forty-five minute episode. Same amount of time producing the write-up as recording the conversation. After three months of that, I had a backlog of twenty episodes with no written counterpart -- no blog posts, no detailed descriptions, no newsletter recaps. The content existed, locked in audio form, because the writing step felt like doing the same job twice.
+Imagine spending forty-five minutes writing show notes for a forty-five minute episode. Same amount of time producing the write-up as recording the conversation. After three months of that, a podcaster might have a backlog of twenty episodes with no written counterpart — no blog posts, no detailed descriptions, no newsletter recaps. The content exists, locked in audio form, because the writing step feels like doing the same job twice.
 
-Then I started dictating the show notes immediately after recording, while the episode was still fresh. Two minutes of speaking, a few seconds of on-device processing, and the notes were done. The blog post version took another three minutes. Same approach -- just a different writing style.
+The fix: dictate show notes immediately after recording, while the episode is still fresh. Two minutes of speaking, a few seconds of on-device processing, and the notes are done. The blog post version takes another three minutes. Same approach — just a different writing style.
 
 Here's how that workflow actually works.
 
@@ -110,6 +110,6 @@ Dictation with on-device post-processing removes that friction. You speak your s
 
 - [Dictating Episode Scripts Without Losing Flow](/blog/dictating-episode-scripts-without-losing-flow/) — dictate your podcast scripts in your natural speaking voice
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/) — from download to first dictation
-- [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/) — why on-device matters for pre-release and embargoed podcast content
+- [On-device vs. cloud dictation: what's private](/blog/on-device-vs-cloud-dictation-privacy/) — why on-device matters for pre-release and embargoed podcast content
 
-EnviousWispr is [free and open source](https://github.com/saurabhav88/EnviousWispr/releases). Download it, pick a Whisper model, choose a writing style preset, and start turning episodes into written content the same day. You don't need an account, a subscription, or an API key.
+[Download EnviousWispr free](https://enviouswispr.com/#download) — no account, no subscription, no API key required. Pick a Whisper model, choose a writing style preset, and start turning episodes into written content the same day. The source is [on GitHub](https://github.com/saurabhav88/EnviousWispr/releases) if you want to inspect it first.

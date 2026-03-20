@@ -88,7 +88,7 @@ You don't need to be technical for this. Here's the whole process:
 
 5. **Start talking.** Open the app you want text to go into — Mail.app, Notes.app, Messages, Slack, whatever — and speak normally. EnviousWispr transcribes, cleans up, and pastes. That's it.
 
-The entire setup is a one-time thing. After that, you launch the app and start dictating whenever you need to. Install it and start dictating. No registration, no payment. It's [free and open source](https://github.com/saurabhav88/EnviousWispr).
+The entire setup is a one-time thing. After that, you launch the app and start dictating whenever you need to. [Download EnviousWispr free](/#download) — or get it from [GitHub](https://github.com/saurabhav88/EnviousWispr/releases). No registration, no payment. It's [free and open source](https://github.com/saurabhav88/EnviousWispr).
 
 ## Small tool, big difference
 

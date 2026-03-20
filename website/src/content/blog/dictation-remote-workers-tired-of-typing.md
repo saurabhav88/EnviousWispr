@@ -1,6 +1,6 @@
 ---
 title: "macOS Dictation for Remote Workers Tired of Typing"
-description: "Remote work means typing all day — Slack, email, docs, tickets. Dictation with on-device transcription cuts the load without sending your words to the cloud."
+description: "Remote work means typing all day — Slack, email, docs, tickets. Dictation with on-device transcription cuts the load without sending words to the cloud."
 pubDate: 2026-03-17
 tags: ["dictation", "remote-work", "productivity", "voice-typing", "privacy"]
 draft: false
@@ -105,7 +105,7 @@ And since EnviousWispr only records when you're actively holding the hotkey, the
 
 ## Getting Started
 
-EnviousWispr is [free and open source](https://github.com/saurabhav88/EnviousWispr). Works out of the box. No account creation, no payment. [Download it from the releases page](https://github.com/saurabhav88/EnviousWispr/releases), grant microphone and accessibility permissions, and you're dictating within a couple of minutes.
+EnviousWispr is [free and open source](https://github.com/saurabhav88/EnviousWispr). Works out of the box. No account creation, no payment. [Download EnviousWispr free](/#download) — or grab it from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases). Grant microphone and accessibility permissions, and you're dictating within a couple of minutes.
 
 Start small. Pick one high-volume context — Slack replies or email — and commit to dictating instead of typing for a full day. You'll feel awkward for the first hour. By the end of the day, you'll notice how much less your hands hurt.
 

@@ -1,6 +1,6 @@
 ---
 title: "Dictate Meeting Notes to Polished Summaries on Mac"
-description: "Turn post-meeting chaos into structured summaries with action items. Dictate meeting notes on your Mac — privately, in seconds."
+description: "Turn post-meeting chaos into structured summaries with action items. Dictate meeting notes on your Mac — privately, on-device, in seconds, no cloud."
 pubDate: 2026-03-13
 tags: ["meetings", "dictation", "productivity", "writing-styles"]
 draft: false
@@ -88,7 +88,7 @@ A few tips for getting started:
 
 ## Get started
 
-Download EnviousWispr from the [releases page](https://github.com/saurabhav88/EnviousWispr/releases). It's free and open source — install it and start dictating. No registration, no payment. Choose a Whisper model (we recommend large-v3-turbo for Apple Silicon) and pick a writing style preset that fits your workflow.
+[Download EnviousWispr free](/#download) — or grab it from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases). It's free and open source — install it and start dictating. No registration, no payment. Choose a Whisper model (we recommend large-v3-turbo for Apple Silicon) and pick a writing style preset that fits your workflow.
 
 ## Related Posts
 

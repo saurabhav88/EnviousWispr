@@ -1,0 +1,105 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+  title="Page Not Found — EnviousWispr"
+  description="This page doesn't exist. Head back to EnviousWispr to download the app or read the blog."
+  canonicalPath="/404/"
+>
+
+<style>
+.notfound-section {
+  padding: 160px 0 120px;
+  text-align: center;
+  position: relative;
+  z-index: 1;
+}
+
+.notfound-code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 20px;
+}
+
+.notfound-heading {
+  font-size: 64px;
+  font-weight: 800;
+  letter-spacing: -3px;
+  line-height: 1.05;
+  color: var(--text);
+  margin-bottom: 20px;
+}
+
+.notfound-sub {
+  font-size: 18px;
+  color: var(--text-2);
+  line-height: 1.65;
+  max-width: 440px;
+  margin: 0 auto 48px;
+}
+
+.notfound-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.notfound-link {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-3);
+  text-decoration: none;
+  transition: color 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.notfound-link:hover {
+  color: var(--accent);
+}
+
+@media (max-width: 600px) {
+  .notfound-heading {
+    font-size: 44px;
+    letter-spacing: -2px;
+  }
+  .notfound-links {
+    flex-direction: column;
+    gap: 14px;
+  }
+}
+</style>
+
+<section class="notfound-section">
+  <div class="container">
+    <div class="notfound-code">404</div>
+    <h1 class="notfound-heading">Page not found</h1>
+    <p class="notfound-sub">
+      This page doesn't exist or was moved. Here are some places to go instead.
+    </p>
+    <nav class="notfound-links" aria-label="Helpful links">
+      <a href="/" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Home
+      </a>
+      <a href="/blog/" class="notfound-link">
+        Blog
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+      </a>
+      <a href="/how-it-works/" class="notfound-link">
+        How it works
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+      </a>
+    </nav>
+  </div>
+</section>
+
+</BaseLayout>

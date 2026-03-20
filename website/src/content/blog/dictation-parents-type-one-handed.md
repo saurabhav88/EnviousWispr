@@ -89,7 +89,7 @@ Kids are finally asleep. You have twenty things rattling around your head — ap
 
 ## Getting started
 
-Download EnviousWispr from the [releases page](https://github.com/saurabhav88/EnviousWispr/releases). Open the `.dmg`, drag it to Applications, and launch. You'll grant microphone access and pick a Whisper model — `large-v3-turbo` gives you the best balance of speed and accuracy on Apple Silicon.
+[Download EnviousWispr free](/#download) — or grab it from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases). Open the `.dmg`, drag it to Applications, and launch. You'll grant microphone access and pick a Whisper model — `large-v3-turbo` gives you the best balance of speed and accuracy on Apple Silicon.
 
 The first model download takes a few minutes. After that, you're set. Download it, grant permissions, dictate. That's the whole setup — no cloud service to trust with your family's audio.
 

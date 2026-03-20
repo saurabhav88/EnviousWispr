@@ -91,7 +91,7 @@ Some cloud tools offer excellent accuracy. If privacy and offline reliability ar
 
 ### Wispr Flow and SuperWhisper
 
-These are paid macOS dictation apps that also focus on quality and speed. Both use cloud processing for at least some features. Wispr Flow in particular routes audio through external servers for transcription.
+These are paid macOS dictation apps that also focus on quality and speed. Both use cloud processing for at least some features. Wispr Flow in particular routes audio through external servers for transcription (based on architecture analysis, March 2026 — see competitive research).
 
 EnviousWispr differs on three axes:
 
@@ -106,11 +106,13 @@ EnviousWispr differs on three axes:
 | On-device transcription | Yes | Partial | No | No |
 | Post-processing | Local LLM | None | Cloud | Cloud |
 | Hands-free mode | Yes | No | Varies | No |
-| Custom prompts | Coming soon | No | Varies | Yes |
-| Per-app presets | Coming soon | No | No | Yes |
+| Custom prompts | Coming soon† | No | Varies | Yes |
+| Per-app presets | Coming soon† | No | No | Yes |
 | Internet required | No | No | Yes | Yes |
 | Cost | Free | Free | Subscription | Subscription |
 | Open source | Yes | No | No | No |
+
+† Roadmap feature — not yet shipped.
 
 No tool wins on every axis. Cloud tools often have the easiest setup. Built-in dictation requires zero installation. EnviousWispr wins on privacy, offline capability, customization, and cost -- the axes that matter most when voice input is something you depend on every day.
 
@@ -162,7 +164,7 @@ For people who rely on voice input as their primary way of writing, those aren't
 ## Related Posts
 
 - [Voice Input for RSI: A Keyboard-Free Workflow](/blog/voice-input-rsi-keyboard-free-workflow/) — a practical guide for people whose hands need a break from typing
-- [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/) — a detailed comparison of where your recordings go with different tools
+- [On-Device vs Cloud Dictation: What Stays Private](/blog/on-device-vs-cloud-dictation-privacy/) — a detailed comparison of where your recordings go with different tools
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/) — from download to first dictation
 
-If you want to try it, [download EnviousWispr](https://github.com/saurabhav88/EnviousWispr/releases) and start dictating. Skip the sign-up form -- there isn't one. Just the app and your voice, with no audio leaving your Mac.
+If you want to try it, [download EnviousWispr free](/#download) and start dictating — or grab it from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases). Skip the sign-up form -- there isn't one. Just the app and your voice, with no audio leaving your Mac.

@@ -1,6 +1,6 @@
 ---
 title: "Async Communication Is Better When You Speak It"
-description: "Why dictating your Slack messages, emails, and async updates beats typing them. Faster, more context, better tone — all on-device."
+description: "Why dictating Slack messages, emails, and async updates beats typing. Speak faster, include more context, hit a better tone — all processed on-device."
 pubDate: 2026-03-17
 tags: ["remote-work", "async-communication", "dictation", "productivity", "slack"]
 draft: false
@@ -98,7 +98,7 @@ That's the kind of reply that, when typed, often gets shortened to "New endpoint
 
 ## Getting started
 
-EnviousWispr is [free and open source](https://github.com/saurabhav88/EnviousWispr) — just download and go. Grab it from the [latest release](https://github.com/saurabhav88/EnviousWispr/releases), set up your hotkey, and start dictating.
+EnviousWispr is [free and open source](https://github.com/saurabhav88/EnviousWispr) — just download and go. [Download EnviousWispr free](/#download) and set up your hotkey in minutes, or grab it directly from the [latest release on GitHub](https://github.com/saurabhav88/EnviousWispr/releases).
 
 ## Related Posts
 

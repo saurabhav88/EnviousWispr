@@ -1,6 +1,6 @@
 ---
 title: "How to Take Lecture Notes by Speaking on Mac"
-description: "Stop missing key points while typing. Use voice notes for students to capture lecture notes by speaking — free, private, and on-device."
+description: "Stop missing key points while typing. Voice notes for students: capture lecture notes by speaking — free, private, on-device, and no subscription needed."
 pubDate: 2026-03-17
 tags: ["students", "lecture-notes", "dictation", "how-to"]
 keywords: ["lecture notes by speaking", "voice notes for students", "dictate lecture notes mac", "speech to text lecture", "take notes without typing", "mac dictation students free", "hands-free note taking"]
@@ -90,7 +90,7 @@ And unlike cloud-based dictation tools, EnviousWispr processes everything on-dev
 
 If you're ready to try voice notes for students, the setup takes less than five minutes:
 
-1. Download EnviousWispr from the [releases page](https://github.com/saurabhav88/EnviousWispr/releases)
+1. [Download EnviousWispr free](/#download) — or grab it from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases)
 2. Grant microphone access on first launch
 3. Choose the `large-v3-turbo` model
 4. Turn on hands-free mode

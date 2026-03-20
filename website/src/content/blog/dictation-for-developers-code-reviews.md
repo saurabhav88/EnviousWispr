@@ -1,12 +1,12 @@
 ---
 title: "macOS Dictation for Developers: Code Reviews and PRs"
-description: "How developers use voice dictation to write PR descriptions, code review comments, and documentation without breaking flow state."
+description: "How developers use macOS voice dictation to write PR descriptions, code review comments, and documentation — faster and without breaking flow state."
 pubDate: 2026-03-12
 tags: ["developers", "dictation", "productivity", "code-review"]
 draft: false
 ---
 
-Studies on developer productivity consistently find the same thing: the biggest time sink isn't writing code -- it's everything around the code. PR descriptions, review comments, Slack threads, postmortems, design docs, README updates. One analysis of engineering time found that developers spend roughly 30% of their workday writing prose, not code. And most of that prose gets typed in the cracks between implementation work, breaking flow state every time.
+The biggest time sink in software development isn't writing code — it's everything around the code. PR descriptions, review comments, Slack threads, postmortems, design docs, README updates. Developers often spend a surprising share of their workday writing prose, not code — and most of that prose gets typed in the cracks between implementation work, breaking flow state every time.
 
 That context-switch cost is what makes voice input valuable for developers. Hold a hotkey, speak, release. Your words get transcribed on-device, cleaned up by a local LLM, and pasted into whatever app has focus. The whole cycle takes a second or two on Apple Silicon. No cloud API, no uploaded audio.
 
@@ -100,7 +100,7 @@ For developers working on proprietary codebases, under NDA, or at companies with
 
 ## Getting started
 
-Download EnviousWispr from the [releases page](https://github.com/saurabhav88/EnviousWispr/releases). On first launch, grant microphone access and pick a Whisper model — `large-v3-turbo` gives the best balance of speed and accuracy on Apple Silicon.
+[Download EnviousWispr free](/#download) — or grab it from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases). On first launch, grant microphone access and pick a Whisper model — `large-v3-turbo` gives the best balance of speed and accuracy on Apple Silicon.
 
 To set up for developer use:
 

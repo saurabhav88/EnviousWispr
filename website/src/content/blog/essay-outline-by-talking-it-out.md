@@ -95,7 +95,7 @@ A few things make this approach a good fit for the student workflow.
 
 ## Get started
 
-If you've got a paper due and the outline isn't cooperating, try talking it out. Download EnviousWispr from the [releases page](https://github.com/saurabhav88/EnviousWispr/releases), set the writing style to Formal, and spend one minute speaking your argument out loud.
+If you've got a paper due and the outline isn't cooperating, try talking it out. [Get EnviousWispr free](/#download) — or download it from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases). Set the writing style to Formal, and spend one minute speaking your argument out loud.
 
 ## Related Posts
 

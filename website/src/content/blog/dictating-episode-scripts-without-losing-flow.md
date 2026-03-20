@@ -1,9 +1,9 @@
 ---
 title: "Dictating Podcast Scripts on macOS Without Losing Flow"
-description: "Stop wrestling with blank pages. Learn how to dictate podcast scripts that capture your natural speaking voice using on-device post-processing and hands-free mode."
+description: "Stop wrestling with blank pages. Dictate podcast scripts in your natural speaking voice using on-device post-processing and hands-free mode on macOS."
 pubDate: 2026-03-19
 tags: ["podcasting", "dictation", "workflow", "post-processing", "hands-free"]
-draft: false
+draft: true
 ---
 
 You will never write a better podcast script than the one you speak out loud. That's not motivational fluff -- it's the fundamental mismatch that makes typed scripts sound wrong on mic. You type in "writing voice." You record in "speaking voice." They're different registers, and the gap between them is where your show's energy goes to die.
@@ -66,7 +66,7 @@ This is where voice to script dictation gets genuinely useful for podcasters. Yo
 - **Do a full episode run-through.** Talk through the entire episode as if you're recording. The transcript becomes your first draft, already cleaned up by the post-processing pipeline.
 - **Capture ideas between sessions.** When an idea hits between recordings, flip into hands-free mode and talk it out. You'll have a written version waiting when you sit down to plan the next episode.
 
-Because everything runs on-device, you don't need to worry about recording sensitive pre-release content or unreleased guest details being sent to someone else's servers. Your recordings stay on your Mac unless you explicitly configure an external API.
+Because everything runs on-device, you don't need to worry about recording sensitive pre-release content or unreleased guest details being sent to someone else's servers. Your recordings stay on your Mac unless you explicitly configure an external API. For a deeper look at [how on-device dictation protects your privacy](/blog/on-device-vs-cloud-dictation-privacy/), including what cloud services actually do with your audio, that post covers the comparison in full.
 
 ## Tips for Scripts That Still Sound Natural on Mic
 
@@ -101,7 +101,7 @@ If you already have EnviousWispr installed, you can start dictating episode scri
 3. Hold the hotkey and talk through your next episode's cold open
 4. Look at the output. Adjust the prompt. Try again
 
-If you don't have EnviousWispr yet, [grab it from GitHub](https://github.com/saurabhav88/EnviousWispr/releases) -- it's free, open source, runs on macOS Sonoma or later, and doesn't require an account or subscription. For longer scripts, switch to hands-free mode and talk through the whole episode without touching the keyboard.
+If you don't have EnviousWispr yet, [download it free](https://enviouswispr.com/#download) -- no account, no subscription, runs on macOS Sonoma or later on any Apple Silicon Mac. The source is also [on GitHub](https://github.com/saurabhav88/EnviousWispr/releases) if you want to inspect it first. For longer scripts, switch to hands-free mode and talk through the whole episode without touching the keyboard.
 
 ## Related Posts
 

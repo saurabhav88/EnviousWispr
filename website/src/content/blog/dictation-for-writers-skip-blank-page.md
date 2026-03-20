@@ -117,6 +117,6 @@ You can read more about [how the pipeline works](/how-it-works/) -- from microph
 
 EnviousWispr is free and open source. You don't need an account, a subscription, or an API key.
 
-Download the latest release from [GitHub](https://github.com/saurabhav88/EnviousWispr/releases), install it, grant microphone and accessibility permissions, and you're dictating within a few minutes. Pick a Whisper model that fits your Mac — on Apple Silicon, even the larger models run fast thanks to the Neural Engine. Pick a writing style preset that matches your voice, and try dictating your next first draft instead of typing it.
+[Download EnviousWispr free](/#download) — or grab the latest release from [GitHub](https://github.com/saurabhav88/EnviousWispr/releases). Install it, grant microphone and accessibility permissions, and you're dictating within a few minutes. Pick a Whisper model that fits your Mac — on Apple Silicon, even the larger models run fast thanks to the Neural Engine. Pick a writing style preset that matches your voice, and try dictating your next first draft instead of typing it.
 
 The blank page problem doesn't go away. But when you can speak your way past it, it stops being the thing that kills your morning.
