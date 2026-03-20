@@ -1,7 +1,7 @@
 ---
 title: "Voice to Prose on macOS: A Realistic Writing Workflow"
 description: "Build a voice-to-prose writing workflow with on-device macOS dictation. Real examples, honest tradeoffs, writing style presets, and first-draft setup tips."
-pubDate: 2026-03-20
+pubDate: 2026-03-24
 tags: ["writing", "workflow", "dictation", "writing-style"]
 draft: true
 ---

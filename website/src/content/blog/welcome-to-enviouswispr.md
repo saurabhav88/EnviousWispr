@@ -1,7 +1,7 @@
 ---
 title: "EnviousWispr: Free Private AI Dictation for macOS"
 description: "EnviousWispr is free on-device AI dictation for macOS. No cloud, no account — hold a hotkey, speak, and polished text lands on your clipboard in ~2 seconds."
-pubDate: 2026-03-21
+pubDate: 2026-03-25
 tags: ["announcement", "privacy", "dictation"]
 draft: true
 ---

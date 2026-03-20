@@ -1,7 +1,7 @@
 ---
 title: "On-Device vs Cloud Dictation on macOS: What's Private"
 description: "A fair comparison of on-device and cloud dictation — how each handles your voice data, where recordings go, and what that means for your privacy on macOS."
-pubDate: 2026-03-20
+pubDate: 2026-03-23
 tags: ["privacy", "dictation", "comparison", "on-device", "speech-to-text"]
 draft: true
 ---

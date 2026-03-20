@@ -1,8 +1,12 @@
-name: Deploy Blog
+name: Deploy Website
 
 on:
+  push:
+    branches: [main]
+    paths: ['website/**']
   schedule:
     # Daily at 14:07 UTC (~9:07 AM ET / 10:07 AM EDT)
+    # Publishes scheduled blog posts whose pubDate has arrived
     - cron: '7 14 * * *'
   workflow_dispatch: # Manual trigger
 
