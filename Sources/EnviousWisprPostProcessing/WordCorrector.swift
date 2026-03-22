@@ -54,7 +54,6 @@ public struct WordCorrector: Sendable {
             let maxSpan = multiAliasMap.keys.reduce(0) { max($0, $1.components(separatedBy: " ").count) }
             var i = 0
             while i < tokens.count {
-                var matched = false
                 // Try longest spans first for greedy matching
                 for span in stride(from: min(maxSpan, tokens.count - i), through: 2, by: -1) {
                     let slice = tokens[i..<(i + span)]
@@ -65,11 +64,10 @@ public struct WordCorrector: Sendable {
                         let (_, _, lastSuffix) = splitPunctuation(tokens[i + span - 1])
                         tokens.replaceSubrange(i..<(i + span), with: [firstPrefix + canonical + lastSuffix])
                         replacements += 1
-                        matched = true
                         break
                     }
                 }
-                if !matched { i += 1 } else { i += 1 }
+                i += 1
             }
         }
 

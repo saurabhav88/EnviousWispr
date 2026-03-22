@@ -139,7 +139,7 @@ struct StatusView: View {
                         Text("Select a transcript from the sidebar to view it.")
                     }
 
-                    if let polishError = appState.pipeline.lastPolishError {
+                    if let polishError = appState.lastPolishError {
                         HStack(spacing: 6) {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundStyle(.stWarning)
@@ -159,7 +159,7 @@ struct StatusView: View {
                     Text(msg)
                 } actions: {
                     Button("Try Again") {
-                        appState.pipeline.reset()
+                        appState.resetActivePipeline()
                     }
                 }
             }

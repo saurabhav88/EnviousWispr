@@ -209,6 +209,7 @@ final class AppState {
         // Wire WhisperKit pipeline state changes to overlay and icon
         whisperKitPipeline.onStateChange = { [weak self] newState in
             guard let self else { return }
+            self.onPipelineStateChange?(self.pipelineState)
             // Hotkey management
             switch newState {
             case .recording:
@@ -381,9 +382,20 @@ final class AppState {
         asrManager.activeBackendType == .whisperKit ? whisperKitPipeline : pipeline
     }
 
-    /// Convenience: current pipeline state.
+    /// Convenience: current pipeline state — routes through active backend.
     var pipelineState: PipelineState {
-        pipeline.state
+        if asrManager.activeBackendType == .whisperKit {
+            return whisperKitPipeline.state.asPipelineState
+        }
+        return pipeline.state
+    }
+
+    /// Last polish error from the active pipeline.
+    var lastPolishError: String? {
+        if asrManager.activeBackendType == .whisperKit {
+            return whisperKitPipeline.lastPolishError
+        }
+        return pipeline.lastPolishError
     }
 
     /// Convenience: the transcript from the latest recording.
@@ -391,7 +403,19 @@ final class AppState {
         if let selected = transcriptCoordinator.selectedTranscriptID {
             return transcriptCoordinator.transcripts.first { $0.id == selected }
         }
+        if asrManager.activeBackendType == .whisperKit {
+            return whisperKitPipeline.currentTranscript
+        }
         return pipeline.currentTranscript
+    }
+
+    /// Reset the currently active pipeline to idle. Used by UI "dismiss" actions.
+    func resetActivePipeline() {
+        if asrManager.activeBackendType == .whisperKit {
+            whisperKitPipeline.reset()
+        } else {
+            pipeline.reset()
+        }
     }
 
     /// Convenience: audio level for UI visualization.
@@ -504,4 +528,19 @@ final class AppState {
     // Phase 5 B.1 validated 2026-03-16: batch round-trip 51-60ms across XPC.
     // Cold model load: 13,966ms. 3 warm back-to-back runs stable.
     // Test function in git history.
+}
+
+extension WhisperKitPipelineState {
+    /// One authoritative mapping from WhisperKit's 9-state enum to unified PipelineState.
+    var asPipelineState: PipelineState {
+        switch self {
+        case .idle, .ready:              return .idle
+        case .startingUp, .loadingModel: return .loadingModel
+        case .recording:                 return .recording
+        case .transcribing:              return .transcribing
+        case .polishing:                 return .polishing
+        case .complete:                  return .complete
+        case .error(let msg):            return .error(msg)
+        }
+    }
 }

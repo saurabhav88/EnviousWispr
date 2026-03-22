@@ -696,6 +696,7 @@ public final class TranscriptionPipeline: DictationPipeline {
         }
         deactivateStreamingForwarding()
         targetApp = nil
+        targetElement = nil
         recordingStartTime = nil
         state = .error("Audio device disconnected")
     }
@@ -715,6 +716,7 @@ public final class TranscriptionPipeline: DictationPipeline {
             await self?.audioCapture.stopCapture()
         }
         targetApp = nil
+        targetElement = nil
         recordingStartTime = nil
         state = .error("Transcription service crashed — please try again")
     }
@@ -747,8 +749,9 @@ public final class TranscriptionPipeline: DictationPipeline {
             await asrManager.cancelStreaming()
         }
 
-        // Clear target app reference — nothing will be pasted
+        // Clear target app/element reference — nothing will be pasted
         targetApp = nil
+        targetElement = nil
         recordingStartTime = nil
 
         // Transition to idle without saving any transcript

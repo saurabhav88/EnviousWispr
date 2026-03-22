@@ -96,7 +96,7 @@ struct TranscriptDetailView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
-                    if let polishError = appState.pipeline.lastPolishError {
+                    if let polishError = appState.lastPolishError {
                         HStack(spacing: 6) {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundStyle(.orange)
