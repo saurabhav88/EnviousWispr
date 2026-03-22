@@ -35,6 +35,7 @@ public final class PermissionsService {
     public func requestMicrophoneAccess() async -> Bool {
         let granted = await AVCaptureDevice.requestAccess(for: .audio)
         microphoneStatus = AVCaptureDevice.authorizationStatus(for: .audio)
+        TelemetryService.shared.permissionStatus(permission: "microphone", status: granted ? "granted" : "denied", context: "request")
         return granted
     }
 
@@ -52,6 +53,7 @@ public final class PermissionsService {
         ] as CFDictionary
         let trusted = AXIsProcessTrustedWithOptions(options)
         accessibilityGranted = trusted
+        TelemetryService.shared.permissionStatus(permission: "accessibility", status: trusted ? "granted" : "denied", context: "request")
         return trusted
     }
 

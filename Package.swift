@@ -38,7 +38,10 @@ let package = Package(
         ),
         .target(
             name: "EnviousWisprServices",
-            dependencies: ["EnviousWisprCore"],
+            dependencies: [
+                "EnviousWisprCore",
+                .product(name: "TelemetryDeck", package: "SwiftSDK"),
+            ],
             path: "Sources/EnviousWisprServices"
         ),
         .target(

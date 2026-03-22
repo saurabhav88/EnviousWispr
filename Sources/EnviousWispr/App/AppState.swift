@@ -203,7 +203,15 @@ final class AppState {
                 audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 },
                 isRecordingLocked: self.isRecordingLocked
             )
-            if newState == .complete { self.transcriptCoordinator.load() }
+            if newState == .complete {
+                self.transcriptCoordinator.load()
+                if let t = self.pipeline.currentTranscript {
+                    TelemetryService.shared.reportDictationCompleted(transcript: t, inputMode: self.settings.recordingMode.rawValue)
+                }
+            }
+            if case .error(let msg) = newState {
+                TelemetryService.shared.pipelineFailed(stage: "transcription", errorCategory: "pipeline_error", errorCode: msg, recoverable: false, backend: "parakeet")
+            }
         }
 
         // Wire WhisperKit pipeline state changes to overlay and icon
@@ -224,7 +232,15 @@ final class AppState {
                 audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 },
                 isRecordingLocked: self.isRecordingLocked
             )
-            if newState == .complete { self.transcriptCoordinator.load() }
+            if newState == .complete {
+                self.transcriptCoordinator.load()
+                if let t = self.whisperKitPipeline.currentTranscript {
+                    TelemetryService.shared.reportDictationCompleted(transcript: t, inputMode: self.settings.recordingMode.rawValue)
+                }
+            }
+            if case .error(let msg) = newState {
+                TelemetryService.shared.pipelineFailed(stage: "transcription", errorCategory: "pipeline_error", errorCode: msg, recoverable: false, backend: "whisperKit")
+            }
         }
 
         // Wire hotkey callbacks
@@ -501,6 +517,7 @@ final class AppState {
 
     /// Cancel an active recording, discarding all captured audio.
     func cancelRecording() async {
+        TelemetryService.shared.dictationCanceled(stage: "recording", reason: "user_cancel", durationSeconds: nil)
         isRecordingLocked = false
         recordingOverlay.hide()
         let isWhisperKit = asrManager.activeBackendType == .whisperKit

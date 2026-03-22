@@ -84,6 +84,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Carbon RegisterEventHotKey requires an active run loop for event delivery.
         appState.startHotkeyServiceIfEnabled()
 
+        if appState.settings.onboardingState == .completed {
+            let s = appState.settings
+            let hasKeys = (try? appState.keychainManager.retrieve(key: KeychainManager.openAIKeyID)) != nil
+                || (try? appState.keychainManager.retrieve(key: KeychainManager.geminiKeyID)) != nil
+            TelemetryService.shared.settingsSnapshot(
+                asrBackend: s.selectedBackend.rawValue,
+                llmProvider: s.llmProvider.rawValue,
+                recordingMode: s.recordingMode.rawValue,
+                writingStyle: s.writingStylePreset.rawValue,
+                fillerRemoval: s.fillerRemovalEnabled,
+                customWordsCount: appState.customWordsCoordinator.customWords.count,
+                hasApiKeys: hasKeys,
+                noiseSuppression: s.noiseSuppression
+            )
+        }
+
         // Check Accessibility permission on launch (query only — never auto-prompt).
         appState.permissions.refreshOnLaunch()
         updateIcon() // Reflect accessibility warning state in menu bar icon

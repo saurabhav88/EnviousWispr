@@ -444,7 +444,7 @@ public final class WhisperKitPipeline: DictationPipeline {
             }
 
             let recordingDuration = Double(rawSamples.count) / 16000.0
-            let transcript = Transcript(
+            var transcript = Transcript(
                 text: context.text,
                 polishedText: context.polishedText,
                 language: asrLanguage,
@@ -459,9 +459,14 @@ public final class WhisperKitPipeline: DictationPipeline {
 
             // Paste cascade (same tiered approach as TranscriptionPipeline)
             let pasteStart = CFAbsoluteTimeGetCurrent()
+            let pasteTargetApp = targetApp?.bundleIdentifier
+            var pasteTier: PasteTier?
+            var pasteMs: Int?
             if autoPasteToActiveApp {
                 let text = PasteService.appendTrailingSpace(transcript.displayText)
-                await performPaste(text: text, pasteStart: pasteStart)
+                let result = await performPaste(text: text, pasteStart: pasteStart)
+                pasteTier = result.tier
+                pasteMs = result.durationMs
             } else if autoCopyToClipboard {
                 PasteService.copyToClipboard(transcript.displayText)
             }
@@ -476,6 +481,16 @@ public final class WhisperKitPipeline: DictationPipeline {
                 level: .info, category: "WhisperKitPipeline"
             ) }
 
+            transcript.metrics = ExecutionMetrics(
+                asrLatencySeconds: asrEnd - asrStart,
+                llmLatencySeconds: polishEnd - polishStart,
+                pasteTier: pasteTier?.rawValue,
+                pasteLatencyMs: pasteMs,
+                targetApp: pasteTargetApp,
+                coldStart: false,
+                streamingMode: false,
+                e2eSeconds: pipelineEnd - pipelineStart
+            )
             currentTranscript = transcript
             state = .complete
             scheduleModelUnloadIfNeeded()
@@ -782,7 +797,7 @@ public final class WhisperKitPipeline: DictationPipeline {
 
     // MARK: - Paste Cascade
 
-    private func performPaste(text: String, pasteStart: CFAbsoluteTime) async {
+    private func performPaste(text: String, pasteStart: CFAbsoluteTime) async -> (tier: PasteTier, durationMs: Int) {
         let bundleId = targetApp?.bundleIdentifier ?? "unknown"
         var tier: PasteTier = .clipboardOnly
 
@@ -850,5 +865,6 @@ public final class WhisperKitPipeline: DictationPipeline {
             "WhisperKit paste: tier=\(tier.rawValue), app=\(bundleId), duration=\(durationMs)ms",
             level: .info, category: "WhisperKitPipeline"
         ) }
+        return (tier, durationMs)
     }
 }

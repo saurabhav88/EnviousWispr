@@ -485,7 +485,7 @@ public final class TranscriptionPipeline: DictationPipeline {
                 return
             }
 
-            let transcript = Transcript(
+            var transcript = Transcript(
                 text: context.text,
                 polishedText: context.polishedText,
                 language: result.language,
@@ -504,10 +504,13 @@ public final class TranscriptionPipeline: DictationPipeline {
 
             // Auto-copy/paste + auto-submit — tiered cascade
             let pasteStart = CFAbsoluteTimeGetCurrent()
+            var pasteTier: PasteTier?
+            var pasteMs: Int?
+            let pasteTargetApp = targetApp?.bundleIdentifier
             if autoPasteToActiveApp {
                 // Append trailing space so consecutive dictations are separated
                 let text = PasteService.appendTrailingSpace(transcript.displayText)
-                let bundleId = targetApp?.bundleIdentifier ?? "unknown"
+                let bundleId = pasteTargetApp ?? "unknown"
                 var tier: PasteTier = .clipboardOnly
 
                 // Tier 1: AX direct insertion — zero disruption, no clipboard, no focus change.
@@ -577,6 +580,8 @@ public final class TranscriptionPipeline: DictationPipeline {
                 }
 
                 let durationMs = Int((CFAbsoluteTimeGetCurrent() - pasteStart) * 1000)
+                pasteTier = tier
+                pasteMs = durationMs
                 Task { await AppLogger.shared.log(
                     "Pipeline paste: tier=\(tier.rawValue), app=\(bundleId), duration=\(durationMs)ms",
                     level: .info, category: "PipelineTiming"
@@ -598,6 +603,16 @@ public final class TranscriptionPipeline: DictationPipeline {
                 level: .info, category: "PipelineTiming"
             ) }
 
+            transcript.metrics = ExecutionMetrics(
+                asrLatencySeconds: asrEnd - asrStart,
+                llmLatencySeconds: polishEnd - polishStart,
+                pasteTier: pasteTier?.rawValue,
+                pasteLatencyMs: pasteMs,
+                targetApp: pasteTargetApp,
+                coldStart: false,
+                streamingMode: wasStreaming,
+                e2eSeconds: pipelineEnd - pipelineStart
+            )
             currentTranscript = transcript
             state = .complete
         } catch {

@@ -3,6 +3,7 @@ import EnviousWisprCore
 import EnviousWisprServices
 import EnviousWisprASR
 import EnviousWisprLLM
+import TelemetryDeck
 
 // MARK: - ViewModel
 
@@ -53,15 +54,18 @@ final class OnboardingV2ViewModel {
             // Check cancellation before advancing — window may have closed during download.
             try Task.checkCancellation()
             checklistStatuses[0] = .completed
+            TelemetryService.shared.onboardingStepCompleted(step: "model_download", result: "completed")
 
             checklistStatuses[1] = .inProgress
             try await Task.sleep(nanoseconds: 1_500_000_000)
             settings.llmProvider = .appleIntelligence
             checklistStatuses[1] = .completed
+            TelemetryService.shared.onboardingStepCompleted(step: "ai_config", result: "completed")
 
             checklistStatuses[2] = .inProgress
             try await Task.sleep(nanoseconds: 1_500_000_000)
             checklistStatuses[2] = .completed
+            TelemetryService.shared.onboardingStepCompleted(step: "hotkey_config", result: "completed")
 
             try await Task.sleep(nanoseconds: 400_000_000)
             settings.onboardingState = .needsPermissions
@@ -92,6 +96,11 @@ final class OnboardingV2ViewModel {
 
     func finishOnboarding(settings: SettingsManager) {
         settings.onboardingState = .completed
+        // Initialize TelemetryDeck now — the app init() skipped it because
+        // onboarding wasn't complete at launch time.
+        let config = TelemetryDeck.Config(appID: "30801A60-9339-4313-8ACE-CC294B2A3EEA")
+        TelemetryDeck.initialize(config: config)
+        TelemetryService.shared.onboardingCompleted(asrBackend: settings.selectedBackend.rawValue, recordingMode: settings.recordingMode.rawValue)
     }
 }
 
@@ -231,6 +240,7 @@ private struct WelcomeScreenV2: View {
             Spacer()
 
             Button("Get Started") {
+                TelemetryService.shared.onboardingStarted()
                 viewModel.currentScreen = .settingUp
             }
             .buttonStyle(OnboardingButtonStyle())
