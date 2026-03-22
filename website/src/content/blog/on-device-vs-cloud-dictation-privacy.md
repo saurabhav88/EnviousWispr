@@ -3,7 +3,6 @@ title: "On-Device vs Cloud Dictation on macOS: What's Private"
 description: "A fair comparison of on-device and cloud dictation — how each handles your voice data, where recordings go, and what that means for your privacy on macOS."
 pubDate: 2026-03-23
 tags: ["privacy", "dictation", "comparison", "on-device", "speech-to-text"]
-draft: true
 ---
 
 "Your data is processed securely." Every cloud dictation service says some version of this. Almost none of them tell you what it actually means -- where your audio goes, who can access it, how long it persists, or what happens to it after transcription. The assumption is that you won't ask.

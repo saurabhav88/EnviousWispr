@@ -3,7 +3,6 @@ title: "Dictating Podcast Scripts on macOS Without Losing Flow"
 description: "Stop wrestling with blank pages. Dictate podcast scripts in your natural speaking voice using on-device post-processing and hands-free mode on macOS."
 pubDate: 2026-03-21
 tags: ["podcasting", "dictation", "workflow", "post-processing", "hands-free"]
-draft: true
 ---
 
 You will never write a better podcast script than the one you speak out loud. That's not motivational fluff -- it's the fundamental mismatch that makes typed scripts sound wrong on mic. You type in "writing voice." You record in "speaking voice." They're different registers, and the gap between them is where your show's energy goes to die.

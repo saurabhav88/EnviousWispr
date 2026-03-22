@@ -3,7 +3,6 @@ title: "Turn Podcast Show Notes Into Blog Posts with Dictation"
 description: "Repurpose podcast episodes into show notes and blog posts using on-device dictation. Speak your recap — polished text lands in your CMS in seconds on macOS."
 pubDate: 2026-03-22
 tags: ["podcasting", "workflow", "dictation", "content-creation"]
-draft: true
 ---
 
 Imagine spending forty-five minutes writing show notes for a forty-five minute episode. Same amount of time producing the write-up as recording the conversation. After three months of that, a podcaster might have a backlog of twenty episodes with no written counterpart — no blog posts, no detailed descriptions, no newsletter recaps. The content exists, locked in audio form, because the writing step feels like doing the same job twice.

@@ -3,7 +3,6 @@ title: "Voice to Prose on macOS: A Realistic Writing Workflow"
 description: "Build a voice-to-prose writing workflow with on-device macOS dictation. Real examples, honest tradeoffs, writing style presets, and first-draft setup tips."
 pubDate: 2026-03-24
 tags: ["writing", "workflow", "dictation", "writing-style"]
-draft: true
 ---
 
 A typical EnviousWispr session: dictate a first draft in about fifteen minutes while pacing the room, then spend another twenty minutes editing the typed version. Roughly thirty-five minutes for a finished article. The equivalent piece typed start to finish often takes an hour and forty minutes.
