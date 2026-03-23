@@ -77,41 +77,75 @@ cp "$ASR_RESOURCES/Info.plist" "$ASR_XPC_BUNDLE/Contents/Info.plist"
 plutil -replace CFBundleVersion -string "$VERSION" "$ASR_XPC_BUNDLE/Contents/Info.plist"
 plutil -replace CFBundleShortVersionString -string "$VERSION" "$ASR_XPC_BUNDLE/Contents/Info.plist"
 
-# Codesign — inside-out: nested apps → Sparkle framework → XPC services → main app
-# Notarization requires every binary signed with Developer ID + hardened runtime.
+# Codesign — inside-out, explicit per-binary.
+# Notarization requires EVERY Mach-O signed with Developer ID + hardened runtime + secure timestamp.
+# Signing order: deepest nested code → enclosing bundles → framework → app XPCs → main app.
 if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
     echo "==> Signing with: $CODESIGN_IDENTITY"
     xattr -cr "$BUNDLE"
 
-    # Sign Sparkle's nested Updater.app and Installer.app first (deepest binaries)
     SPARKLE_CONTENTS="$BUNDLE/Contents/Frameworks/Sparkle.framework/Versions/B"
+    SIGN_FLAGS=(--force --options runtime --sign "$CODESIGN_IDENTITY")
+
+    # 1. Sparkle nested apps (Updater.app)
     for NESTED_APP in "$SPARKLE_CONTENTS"/*.app; do
-        if [[ -d "$NESTED_APP" ]]; then
-            echo "    Signing nested: $(basename "$NESTED_APP")"
-            codesign --force --options runtime --sign "$CODESIGN_IDENTITY" "$NESTED_APP"
-        fi
+        [[ -d "$NESTED_APP" ]] || continue
+        echo "    [1/5] Signing nested app: $(basename "$NESTED_APP")"
+        codesign "${SIGN_FLAGS[@]}" "$NESTED_APP"
     done
 
-    # Sign XPC services inside Sparkle framework
+    # 2. Sparkle nested XPC services (Downloader.xpc, Installer.xpc)
     if [[ -d "$SPARKLE_CONTENTS/XPCServices" ]]; then
         for XPC_SVC in "$SPARKLE_CONTENTS/XPCServices"/*.xpc; do
-            if [[ -d "$XPC_SVC" ]]; then
-                echo "    Signing nested XPC: $(basename "$XPC_SVC")"
-                codesign --force --options runtime --sign "$CODESIGN_IDENTITY" "$XPC_SVC"
-            fi
+            [[ -d "$XPC_SVC" ]] || continue
+            echo "    [2/5] Signing nested XPC: $(basename "$XPC_SVC")"
+            codesign "${SIGN_FLAGS[@]}" "$XPC_SVC"
         done
     fi
 
-    # Sign the Sparkle framework itself
-    codesign --force --options runtime --sign "$CODESIGN_IDENTITY" "$SPARKLE_CONTENTS"
-    codesign --force --options runtime --sign "$CODESIGN_IDENTITY" \
-        --entitlements "$XPC_ENTITLEMENTS" "$XPC_BUNDLE"
-    codesign --force --options runtime --sign "$CODESIGN_IDENTITY" \
-        --entitlements "$ASR_ENTITLEMENTS" "$ASR_XPC_BUNDLE"
-    codesign --force --options runtime --sign "$CODESIGN_IDENTITY" \
-        --entitlements "$ENTITLEMENTS" "$BUNDLE"
-    echo "==> Verifying signature ..."
-    codesign --verify --strict --verbose=2 "$BUNDLE"
+    # 3. Sparkle bare Mach-O binaries (Autoupdate — not in a bundle, must be signed explicitly)
+    for BARE_BIN in "$SPARKLE_CONTENTS"/Autoupdate; do
+        [[ -f "$BARE_BIN" ]] || continue
+        echo "    [3/5] Signing bare binary: $(basename "$BARE_BIN")"
+        codesign "${SIGN_FLAGS[@]}" "$BARE_BIN"
+    done
+
+    # 4. Sparkle framework itself
+    echo "    [4/5] Signing Sparkle.framework"
+    codesign "${SIGN_FLAGS[@]}" "$SPARKLE_CONTENTS"
+
+    # 5. App XPC services
+    echo "    [5/5] Signing app XPC services"
+    codesign "${SIGN_FLAGS[@]}" --entitlements "$XPC_ENTITLEMENTS" "$XPC_BUNDLE"
+    codesign "${SIGN_FLAGS[@]}" --entitlements "$ASR_ENTITLEMENTS" "$ASR_XPC_BUNDLE"
+
+    # 6. Main app bundle (outermost — signed last)
+    # Re-clear xattrs: FileProvider (iCloud) can re-add detritus between sign steps
+    xattr -cr "$BUNDLE"
+    echo "    [6/6] Signing main app"
+    codesign "${SIGN_FLAGS[@]}" --entitlements "$ENTITLEMENTS" "$BUNDLE"
+
+    # Verify: deep + strict catches any unsigned nested code
+    echo "==> Verifying signatures ..."
+    codesign --verify --deep --strict --verbose=2 "$BUNDLE"
+
+    # Enumerate all Mach-O binaries and confirm each is signed
+    echo "==> Signed binary inventory:"
+    SIGN_FAIL=0
+    while IFS= read -r -d '' BIN; do
+        if file "$BIN" | grep -q "Mach-O"; then
+            if codesign --verify "$BIN" 2>/dev/null; then
+                echo "  OK   $BIN"
+            else
+                echo "  FAIL $BIN"
+                SIGN_FAIL=1
+            fi
+        fi
+    done < <(find "$BUNDLE" -type f -perm +111 -print0)
+    if [[ "$SIGN_FAIL" -ne 0 ]]; then
+        echo "::error::One or more binaries failed signature verification"
+        exit 1
+    fi
 else
     echo "==> CODESIGN_IDENTITY not set — skipping code signing"
 fi
