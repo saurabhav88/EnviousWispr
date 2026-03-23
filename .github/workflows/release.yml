@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build-and-release:
-    runs-on: macos-15
+    runs-on: [self-hosted, enviouswispr-release]
     timeout-minutes: 330
     permissions:
       contents: write
@@ -19,13 +19,47 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Verify Swift version
+      - name: Verify SDK supports FoundationModels
         run: |
+          set -euo pipefail
+
+          echo "==> Environment diagnostics"
           swift --version
-          if ! swift --version 2>&1 | grep -q "Swift version 6"; then
-            echo "::error::Swift 6.0+ required but not found"
+          SDK_VER="$(xcrun --sdk macosx --show-sdk-version)"
+          SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
+          echo "macOS SDK: $SDK_VER"
+          echo "SDK path: $SDK_PATH"
+
+          # Xcode check — optional (CLT shim exists but fails without full Xcode)
+          XCODE_VER="$(xcodebuild -version 2>/dev/null | head -n1 || true)"
+          if [ -n "$XCODE_VER" ]; then
+            echo "Xcode: $XCODE_VER"
+          else
+            echo "Xcode: not installed (Command Line Tools only)"
+          fi
+
+          if [ "$(printf '%s\n' "26.0" "$SDK_VER" | sort -V | head -n1)" != "26.0" ]; then
+            echo "::error::macOS SDK 26.0+ required for FoundationModels (found: $SDK_VER)"
             exit 1
           fi
+
+          cat > foundation_models_probe.swift <<'PROBE'
+          import Foundation
+          import FoundationModels
+
+          // Minimal type reference so this is a real compile gate, not just syntax.
+          func _probe() {
+            _ = SystemLanguageModel.default
+          }
+          PROBE
+
+          xcrun swiftc \
+            -sdk "$SDK_PATH" \
+            -target arm64-apple-macos26.0 \
+            foundation_models_probe.swift \
+            -o /tmp/foundation_models_probe
+
+          echo "==> FoundationModels compile probe PASSED"
 
       - name: Extract version from tag
         id: version
