@@ -95,7 +95,8 @@ EnviousType/
 .notebooklm/
 
 # Local-only directories (not shipped, not needed for builds)
-scripts/
+scripts/*
+!scripts/build-dmg.sh
 docs/
 content-engine/
 Brand Assets/
