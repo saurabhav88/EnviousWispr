@@ -244,7 +244,9 @@ final class AVCaptureSessionSource: AudioInputSource {
             object: session,
             queue: .main
         ) { [weak self] _ in
-            self?.onInterrupted?()
+            MainActor.assumeIsolated {
+                self?.onInterrupted?()
+            }
         }
 
         let runtimeError = NotificationCenter.default.addObserver(
@@ -252,7 +254,9 @@ final class AVCaptureSessionSource: AudioInputSource {
             object: session,
             queue: .main
         ) { [weak self] _ in
-            self?.onInterrupted?()
+            MainActor.assumeIsolated {
+                self?.onInterrupted?()
+            }
         }
 
         interruptionObservers = [wasInterrupted, runtimeError]
