@@ -10,8 +10,41 @@ concurrency:
 
 jobs:
   build-check:
-    runs-on: macos-26-large
+    runs-on: macos-15
     timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Verify Swift version
+        run: |
+          swift --version
+          if ! swift --version 2>&1 | grep -q "Swift version 6"; then
+            echo "::error::Swift 6.0+ required"
+            exit 1
+          fi
+
+      - name: Cache SPM dependencies
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: .build
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      - name: Build (debug)
+        run: swift build
+
+      - name: Build (release)
+        run: swift build -c release --arch arm64
+
+      - name: Verify test target compiles
+        run: swift build --build-tests
+
+  ai-compile-gate:
+    runs-on: [self-hosted, enviouswispr-release]
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -42,6 +75,7 @@ jobs:
           import Foundation
           import FoundationModels
 
+          // Minimal type reference so this is a real compile gate, not just syntax.
           func _probe() {
             _ = SystemLanguageModel.default
           }
@@ -54,20 +88,3 @@ jobs:
             -o /tmp/foundation_models_probe
 
           echo "==> FoundationModels compile probe PASSED"
-
-      - name: Cache SPM dependencies
-        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
-        with:
-          path: .build
-          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-spm-
-
-      - name: Build (debug)
-        run: swift build
-
-      - name: Build (release)
-        run: swift build -c release --arch arm64
-
-      - name: Verify test target compiles
-        run: swift build --build-tests

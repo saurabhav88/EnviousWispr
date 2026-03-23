@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build-and-release:
-    runs-on: macos-26-large
+    runs-on: [self-hosted, enviouswispr-release]
     timeout-minutes: 330
     permissions:
       contents: write
