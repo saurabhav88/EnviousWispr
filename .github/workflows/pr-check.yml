@@ -50,20 +50,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Verify Xcode/SDK supports FoundationModels
+      - name: Verify SDK supports FoundationModels
         run: |
           set -euo pipefail
 
           swift --version
-          XCODE_VER="$(xcodebuild -version | head -n1)"
           SDK_VER="$(xcrun --sdk macosx --show-sdk-version)"
           SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
-          echo "$XCODE_VER — SDK $SDK_VER"
+          echo "macOS SDK: $SDK_VER ($SDK_PATH)"
 
-          XCODE_MAJOR=$(echo "$XCODE_VER" | grep -oE '[0-9]+' | head -1)
-          if [ "${XCODE_MAJOR:-0}" -lt 26 ]; then
-            echo "::error::Xcode 26+ required for FoundationModels (found: $XCODE_VER)"
-            exit 1
+          # Xcode check — optional (CLT-only machines don't have xcodebuild)
+          if command -v xcodebuild &>/dev/null; then
+            XCODE_VER="$(xcodebuild -version | head -n1)"
+            echo "Xcode: $XCODE_VER"
+          else
+            echo "Xcode: not installed (Command Line Tools only)"
           fi
 
           if [ "$(printf '%s\n' "26.0" "$SDK_VER" | sort -V | head -n1)" != "26.0" ]; then
