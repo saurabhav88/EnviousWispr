@@ -1,0 +1,70 @@
+name: CI Drift Check
+
+on:
+  schedule:
+    - cron: '0 12 * * 1'  # Every Monday at noon UTC
+  workflow_dispatch:
+
+jobs:
+  drift-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Check action refs are SHA-pinned
+        run: |
+          echo "==> Checking for floating action refs ..."
+          FAIL=0
+          for WF in .github/workflows/*.yml .github/workflows/*.yaml; do
+            [ -f "$WF" ] || continue
+            # Match 'uses: org/repo@<ref>' where ref is NOT a 40-char hex SHA
+            if grep -nE 'uses:\s+[^#]+@(?![0-9a-f]{40})' "$WF" | grep -vE '@[0-9a-f]{40}'; then
+              echo "::error file=$WF::Floating action ref found — pin to full SHA"
+              FAIL=1
+            fi
+          done
+          if [ "$FAIL" -eq 0 ]; then
+            echo "All action refs are SHA-pinned."
+          else
+            exit 1
+          fi
+
+      - name: Check referenced scripts exist
+        run: |
+          echo "==> Checking script references ..."
+          FAIL=0
+          for WF in .github/workflows/*.yml .github/workflows/*.yaml; do
+            [ -f "$WF" ] || continue
+            for SCRIPT in $(grep -oE '\./scripts/[a-zA-Z0-9_-]+\.sh' "$WF" | sort -u); do
+              if [ ! -f "$SCRIPT" ]; then
+                echo "::error file=$WF::Referenced script $SCRIPT does not exist"
+                FAIL=1
+              else
+                echo "  OK  $SCRIPT"
+              fi
+            done
+          done
+          if [ "$FAIL" -eq 0 ]; then
+            echo "All referenced scripts exist."
+          else
+            exit 1
+          fi
+
+      - name: Validate workflow YAML syntax
+        run: |
+          echo "==> Validating workflow YAML ..."
+          pip install --quiet yamllint
+          yamllint -d "{extends: default, rules: {line-length: disable, truthy: disable, document-start: disable}}" \
+            .github/workflows/*.yml
+          echo "All workflows pass YAML validation."
+
+      - name: Drift check summary
+        if: always()
+        run: |
+          echo "## CI Drift Check Complete"
+          echo "- Action SHA pinning: checked"
+          echo "- Script existence: checked"
+          echo "- YAML validity: checked"

@@ -97,6 +97,7 @@ EnviousType/
 # Local-only directories (not shipped, not needed for builds)
 scripts/*
 !scripts/build-dmg.sh
+!scripts/release-preflight.sh
 docs/
 content-engine/
 Brand Assets/
