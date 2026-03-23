@@ -26,10 +26,12 @@ Actions updates are grouped into a single PR per week to reduce noise.
 
 ## Required checks
 
-`main` is protected with required status checks:
+`main` is protected via the `main-protection` ruleset (active) with required status checks:
 
 - `build-check` (from `pr-check.yml`) — debug build, release build, test compilation
 - `drift-check` (from `ci-drift-check.yml`) — SHA pinning, script existence, YAML validity
+- Branches must be up to date before merging
+- Restrict deletions and block force pushes enabled
 
 Direct pushes to `main` are allowed for the release bot (appcast updates) but
 human changes should go through PRs.
