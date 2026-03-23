@@ -59,9 +59,9 @@ jobs:
           SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
           echo "macOS SDK: $SDK_VER ($SDK_PATH)"
 
-          # Xcode check — optional (CLT-only machines don't have xcodebuild)
-          if command -v xcodebuild &>/dev/null; then
-            XCODE_VER="$(xcodebuild -version | head -n1)"
+          # Xcode check — optional (CLT shim exists but fails without full Xcode)
+          XCODE_VER="$(xcodebuild -version 2>/dev/null | head -n1 || true)"
+          if [ -n "$XCODE_VER" ]; then
             echo "Xcode: $XCODE_VER"
           else
             echo "Xcode: not installed (Command Line Tools only)"

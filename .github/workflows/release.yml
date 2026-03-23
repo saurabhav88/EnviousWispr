@@ -30,9 +30,10 @@ jobs:
           echo "macOS SDK: $SDK_VER"
           echo "SDK path: $SDK_PATH"
 
-          # Xcode check — optional (CLT-only machines don't have xcodebuild)
-          if command -v xcodebuild &>/dev/null; then
-            echo "Xcode: $(xcodebuild -version | head -n1)"
+          # Xcode check — optional (CLT shim exists but fails without full Xcode)
+          XCODE_VER="$(xcodebuild -version 2>/dev/null | head -n1 || true)"
+          if [ -n "$XCODE_VER" ]; then
+            echo "Xcode: $XCODE_VER"
           else
             echo "Xcode: not installed (Command Line Tools only)"
           fi
