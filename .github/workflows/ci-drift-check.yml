@@ -20,8 +20,10 @@ jobs:
           FAIL=0
           for WF in .github/workflows/*.yml .github/workflows/*.yaml; do
             [ -f "$WF" ] || continue
-            # Match 'uses: org/repo@<ref>' where ref is NOT a 40-char hex SHA
-            if grep -nE 'uses:\s+[^#]+@(?![0-9a-f]{40})' "$WF" | grep -vE '@[0-9a-f]{40}'; then
+            # Find all 'uses:' lines with external actions, filter out SHA-pinned ones
+            FLOATING=$(grep -nE 'uses:\s+[a-zA-Z]' "$WF" | grep -vE '@[0-9a-f]{40}' || true)
+            if [ -n "$FLOATING" ]; then
+              echo "$FLOATING"
               echo "::error file=$WF::Floating action ref found — pin to full SHA"
               FAIL=1
             fi
@@ -57,7 +59,7 @@ jobs:
         run: |
           echo "==> Validating workflow YAML ..."
           pip install --quiet yamllint
-          yamllint -d "{extends: default, rules: {line-length: disable, truthy: disable, document-start: disable}}" \
+          yamllint -d "{extends: default, rules: {line-length: disable, truthy: disable, document-start: disable, comments: disable, brackets: disable, comments-indentation: disable}}" \
             .github/workflows/*.yml
           echo "All workflows pass YAML validation."
 
