@@ -214,24 +214,6 @@ jobs:
           "
           cp appcast.xml website/public/appcast.xml
 
-      - name: Push appcast update to main
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}"
-          git fetch origin main
-          git checkout main
-          git add -f appcast.xml website/public/appcast.xml
-          if git diff --staged --quiet; then
-            echo "==> appcast.xml unchanged, skipping."
-          else
-            git commit -m "chore(release): update appcast for v${VERSION}"
-            git pull --rebase origin main
-            git push origin main
-          fi
-
       - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -245,6 +227,32 @@ jobs:
             --generate-notes \
             "build/EnviousWispr-${VERSION}.dmg" \
             "build/EnviousWispr.dmg"
+
+      - name: Open appcast PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}"
+          git fetch origin main
+          git checkout main
+
+          BRANCH="chore/appcast-v${VERSION}"
+          git checkout -b "$BRANCH"
+          git add -f appcast.xml website/public/appcast.xml
+          if git diff --staged --quiet; then
+            echo "==> appcast.xml unchanged, skipping."
+          else
+            git commit -m "chore(release): update appcast for v${VERSION}"
+            git push -u origin "$BRANCH"
+            gh pr create \
+              --title "chore(release): update appcast for v${VERSION}" \
+              --body "Automated appcast update for v${VERSION}. Merge to push Sparkle update to users." \
+              --base main \
+              --head "$BRANCH"
+          fi
 
       - name: Cleanup keychain
         if: always()
