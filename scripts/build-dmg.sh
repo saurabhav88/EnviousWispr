@@ -77,12 +77,33 @@ cp "$ASR_RESOURCES/Info.plist" "$ASR_XPC_BUNDLE/Contents/Info.plist"
 plutil -replace CFBundleVersion -string "$VERSION" "$ASR_XPC_BUNDLE/Contents/Info.plist"
 plutil -replace CFBundleShortVersionString -string "$VERSION" "$ASR_XPC_BUNDLE/Contents/Info.plist"
 
-# Codesign — inside-out: Sparkle → XPC services → main app
+# Codesign — inside-out: nested apps → Sparkle framework → XPC services → main app
+# Notarization requires every binary signed with Developer ID + hardened runtime.
 if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
     echo "==> Signing with: $CODESIGN_IDENTITY"
     xattr -cr "$BUNDLE"
-    codesign --force --options runtime --sign "$CODESIGN_IDENTITY" \
-        "$BUNDLE/Contents/Frameworks/Sparkle.framework/Versions/B"
+
+    # Sign Sparkle's nested Updater.app and Installer.app first (deepest binaries)
+    SPARKLE_CONTENTS="$BUNDLE/Contents/Frameworks/Sparkle.framework/Versions/B"
+    for NESTED_APP in "$SPARKLE_CONTENTS"/*.app; do
+        if [[ -d "$NESTED_APP" ]]; then
+            echo "    Signing nested: $(basename "$NESTED_APP")"
+            codesign --force --options runtime --sign "$CODESIGN_IDENTITY" "$NESTED_APP"
+        fi
+    done
+
+    # Sign XPC services inside Sparkle framework
+    if [[ -d "$SPARKLE_CONTENTS/XPCServices" ]]; then
+        for XPC_SVC in "$SPARKLE_CONTENTS/XPCServices"/*.xpc; do
+            if [[ -d "$XPC_SVC" ]]; then
+                echo "    Signing nested XPC: $(basename "$XPC_SVC")"
+                codesign --force --options runtime --sign "$CODESIGN_IDENTITY" "$XPC_SVC"
+            fi
+        done
+    fi
+
+    # Sign the Sparkle framework itself
+    codesign --force --options runtime --sign "$CODESIGN_IDENTITY" "$SPARKLE_CONTENTS"
     codesign --force --options runtime --sign "$CODESIGN_IDENTITY" \
         --entitlements "$XPC_ENTITLEMENTS" "$XPC_BUNDLE"
     codesign --force --options runtime --sign "$CODESIGN_IDENTITY" \
