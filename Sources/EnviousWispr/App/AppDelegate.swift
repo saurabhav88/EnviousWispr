@@ -112,6 +112,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             level: .info, category: "Diagnostics"
         ) }
 
+        // Fire structured app.launched event — unconditional, before onboarding guard.
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+        let osVer = ProcessInfo.processInfo.operatingSystemVersion
+        TelemetryService.shared.appLaunched(
+            version: version,
+            build: build,
+            osVersion: "\(osVer.majorVersion).\(osVer.minorVersion).\(osVer.patchVersion)",
+            hardware: aiReport.hardwareClass,
+            isFreshInstall: appState.settings.onboardingState != .completed,
+            aiAvailable: aiReport.overallStatus == .available
+        )
+
         // Check Accessibility permission on launch (query only — never auto-prompt).
         appState.permissions.refreshOnLaunch()
         updateIcon() // Reflect accessibility warning state in menu bar icon
