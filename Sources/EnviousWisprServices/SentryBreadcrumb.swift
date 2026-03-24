@@ -59,30 +59,6 @@ public enum SentryBreadcrumb {
         }
     }
 
-    /// Update audio route context. Called at recording start and on route changes.
-    /// - Parameters:
-    ///   - inputType: Generic device type ("built-in-mic", "bluetooth-hfp", "usb-audio") — never a device name.
-    ///   - sampleRate: Current sample rate from the audio engine.
-    ///   - isBluetooth: Whether a Bluetooth audio device is involved.
-    ///   - captureBackend: "avaudiosession" or "avcapturesession".
-    public static func updateAudioRoute(
-        inputType: String,
-        sampleRate: Double,
-        isBluetooth: Bool,
-        captureBackend: String
-    ) {
-        let routeTag = isBluetooth ? "bluetooth" : (inputType.contains("usb") ? "usb" : "built-in")
-        SentrySDK.configureScope { scope in
-            scope.setTag(value: routeTag, key: "audio.route")
-            scope.setContext(value: [
-                "input_device_type": inputType,
-                "sample_rate": sampleRate,
-                "is_bluetooth": isBluetooth,
-                "capture_backend": captureBackend,
-            ], key: "audio_session")
-        }
-    }
-
     /// Update recording state on global scope. Present on fatal crashes.
     /// - Parameters:
     ///   - active: Whether recording is in progress.
