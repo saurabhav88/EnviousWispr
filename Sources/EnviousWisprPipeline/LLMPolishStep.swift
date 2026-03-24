@@ -1,6 +1,7 @@
 import Foundation
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprServices
 
 /// Polishes transcribed text using an LLM provider.
 @MainActor
@@ -39,6 +40,10 @@ public final class LLMPolishStep: TextProcessingStep {
 
     public func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
         onWillProcess?()
+        SentryBreadcrumb.add(stage: "polish", message: "LLM polish started", data: [
+            "provider": llmProvider.rawValue,
+            "model": llmModel,
+        ])
 
         // Short-circuit: ultra-short transcripts get passed through verbatim.
         // LLMs treat 1-3 word inputs as prompts to respond to, not text to clean.
@@ -63,7 +68,9 @@ public final class LLMPolishStep: TextProcessingStep {
         case .gemini: GeminiConnector(keychainManager: keychainManager)
         case .ollama: OllamaConnector()
         case .appleIntelligence: AppleIntelligenceConnector()
-        case .none: throw LLMError.providerUnavailable
+        case .none:
+            SentryBreadcrumb.captureError(LLMError.providerUnavailable, category: .providerInitFailed, stage: "polish")
+            throw LLMError.providerUnavailable
         }
 
         let keychainId: String? = switch llmProvider {
@@ -122,6 +129,12 @@ public final class LLMPolishStep: TextProcessingStep {
         )
         let llmEnd = CFAbsoluteTimeGetCurrent()
 
+        SentryBreadcrumb.add(stage: "polish", message: "LLM polish completed", data: [
+            "provider": llmProvider.rawValue,
+            "model": llmModel,
+            "duration_s": String(format: "%.3f", llmEnd - llmStart),
+            "char_count": result.polishedText.count,
+        ])
         Task { await AppLogger.shared.log(
             "LLM polish complete: \(result.polishedText.count) chars in \(String(format: "%.3f", llmEnd - llmStart))s " +
             "(provider=\(llmProvider.rawValue), model=\(llmModel))",

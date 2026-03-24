@@ -201,6 +201,7 @@ public final class WhisperKitPipeline: DictationPipeline {
 
         state = .startingUp
         lastPolishError = nil
+        SentryBreadcrumb.add(stage: "whisperkit", message: "Pipeline starting up")
 
         // Load model if not ready
         let isBackendReady = await backend.isReady
@@ -208,9 +209,11 @@ public final class WhisperKitPipeline: DictationPipeline {
 
         if !isBackendReady {
             state = .loadingModel
+            SentryBreadcrumb.add(stage: "asr", message: "WhisperKit model loading")
             do {
                 try await backend.prepare()
             } catch {
+                SentryBreadcrumb.captureError(error, category: .modelLoadFailed, stage: "asr", extra: ["backend": "whisperKit"])
                 state = .error("Model load failed: \(error.localizedDescription)")
                 return
             }
@@ -244,6 +247,7 @@ public final class WhisperKitPipeline: DictationPipeline {
             state = .recording
             recordingStartTime = Date()
             currentTranscript = nil
+            SentryBreadcrumb.add(stage: "recording", message: "WhisperKit recording started", data: ["backend": "whisperKit"])
             startVADMonitoring()
             await startIncrementalWorker()
 
@@ -252,6 +256,7 @@ public final class WhisperKitPipeline: DictationPipeline {
                 level: .info, category: "WhisperKitPipeline"
             ) }
         } catch {
+            SentryBreadcrumb.captureError(error, category: .audioCaptureFailed, stage: "recording", extra: ["backend": "whisperKit"])
             state = .error("Recording failed: \(error.localizedDescription)")
         }
     }
@@ -305,6 +310,7 @@ public final class WhisperKitPipeline: DictationPipeline {
         vadMonitorTask = nil
 
         let rawSamples = await audioCapture.stopCapture()
+        SentryBreadcrumb.add(stage: "recording", message: "WhisperKit recording stopped", data: ["sample_count": rawSamples.count])
 
         // Pre-warm LLM connection while ASR runs
         LLMNetworkSession.shared.preWarmIfConfigured(
@@ -313,6 +319,7 @@ public final class WhisperKitPipeline: DictationPipeline {
         )
 
         guard !rawSamples.isEmpty else {
+            SentryBreadcrumb.add(stage: "recording", message: "No audio captured (WhisperKit)", level: .warning)
             state = .error("No audio captured")
             return
         }
@@ -357,6 +364,7 @@ public final class WhisperKitPipeline: DictationPipeline {
         }
 
         state = .transcribing
+        SentryBreadcrumb.add(stage: "asr", message: "WhisperKit transcription started", data: ["backend": "whisperKit"])
 
         do {
             let asrStart = CFAbsoluteTimeGetCurrent()
@@ -416,10 +424,20 @@ public final class WhisperKitPipeline: DictationPipeline {
             let asrEnd = CFAbsoluteTimeGetCurrent()
 
             guard !asrText.isEmpty else {
+                SentryBreadcrumb.captureError(
+                    NSError(domain: "EnviousWispr", code: -1, userInfo: [NSLocalizedDescriptionKey: "WhisperKit ASR returned empty text"]),
+                    category: .asrEmptyResult, stage: "asr",
+                    extra: ["backend": "whisperKit", "incremental": usedIncremental]
+                )
                 state = .error("No speech detected — try speaking closer to the microphone")
                 return
             }
 
+            SentryBreadcrumb.add(stage: "asr", message: "WhisperKit ASR completed", data: [
+                "duration_s": String(format: "%.3f", asrEnd - asrStart),
+                "char_count": asrText.count,
+                "incremental": usedIncremental,
+            ])
             Task { await AppLogger.shared.log(
                 "WhisperKit ASR completed in \(String(format: "%.3f", asrEnd - asrStart))s " +
                 "(\(asrText.count) chars, lang=\(asrLanguage ?? "?"), incremental=\(usedIncremental))",
@@ -432,6 +450,10 @@ public final class WhisperKitPipeline: DictationPipeline {
             do {
                 context = try await runTextProcessing(asrText: asrText, language: asrLanguage)
             } catch {
+                SentryBreadcrumb.captureError(error, category: .generationFailed, stage: "polish", extra: [
+                    "provider": llmPolishStep.llmProvider.rawValue,
+                    "model": llmPolishStep.llmModel,
+                ])
                 lastPolishError = error.localizedDescription
                 context = TextProcessingContext(text: asrText, originalASRText: asrText, language: asrLanguage)
             }
@@ -492,9 +514,16 @@ public final class WhisperKitPipeline: DictationPipeline {
                 e2eSeconds: pipelineEnd - pipelineStart
             )
             currentTranscript = transcript
+            SentryBreadcrumb.add(stage: "pipeline", message: "WhisperKit pipeline complete", data: [
+                "e2e_s": String(format: "%.3f", pipelineEnd - pipelineStart),
+                "asr_s": String(format: "%.3f", asrEnd - asrStart),
+                "polish_s": String(format: "%.3f", polishEnd - polishStart),
+                "paste_tier": pasteTier?.rawValue ?? "none",
+            ])
             state = .complete
             scheduleModelUnloadIfNeeded()
         } catch {
+            SentryBreadcrumb.captureError(error, category: .asrFailed, stage: "transcription", extra: ["backend": "whisperKit"])
             state = .error("Transcription failed: \(error.localizedDescription)")
         }
     }
@@ -502,6 +531,11 @@ public final class WhisperKitPipeline: DictationPipeline {
     /// Handle audio engine interruption (device disconnect, service crash, max duration cap).
     /// Called by AppState's unified interruption handler, not set directly on audioCapture.
     public func handleEngineInterruption() {
+        SentryBreadcrumb.captureError(
+            NSError(domain: "EnviousWispr", code: -2, userInfo: [NSLocalizedDescriptionKey: "Audio engine interrupted (WhisperKit)"]),
+            category: .xpcServiceError, stage: "audio",
+            extra: ["was_recording": state == .recording, "backend": "whisperKit"]
+        )
         vadMonitorTask?.cancel()
         vadMonitorTask = nil
         silenceDetector = nil
@@ -517,6 +551,11 @@ public final class WhisperKitPipeline: DictationPipeline {
     /// Called by AppState's unified ASR interruption handler when this pipeline is active.
     /// Must stop audio capture (still running — only ASR died) and clean up fully.
     public func handleASRServiceInterruption() {
+        SentryBreadcrumb.captureError(
+            NSError(domain: "EnviousWispr", code: -3, userInfo: [NSLocalizedDescriptionKey: "ASR XPC service crashed (WhisperKit)"]),
+            category: .xpcServiceError, stage: "asr",
+            extra: ["was_recording": state == .recording, "backend": "whisperKit"]
+        )
         vadMonitorTask?.cancel()
         vadMonitorTask = nil
         silenceDetector = nil
