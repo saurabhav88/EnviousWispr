@@ -7,6 +7,17 @@ import Sentry
 /// Limb: missing keys log a warning and skip initialization — never crashes the app.
 public enum ObservabilityBootstrap {
 
+    /// Detect environment from bundle ID: dev builds use `.dev` suffix.
+    private static var environment: String {
+        let bundleID = Bundle.main.bundleIdentifier ?? ""
+        return bundleID.hasSuffix(".dev") ? "development" : "production"
+    }
+
+    /// App version from bundle (e.g. "1.6.2" for release, "v1.6.1-14-g...-dev" for dev)
+    private static var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+    }
+
     public static func initialize() {
         initializePostHog()
         initializeSentry()
@@ -44,6 +55,9 @@ public enum ObservabilityBootstrap {
         }
 
         PostHogSDK.shared.setup(config)
+
+        // Tag environment so dev dogfooding doesn't muddy production dashboards
+        PostHogSDK.shared.register(["environment": environment, "app_version": appVersion])
     }
 
     private static func initializeSentry() {
@@ -54,6 +68,8 @@ public enum ObservabilityBootstrap {
 
         SentrySDK.start { options in
             options.dsn = dsn
+            options.releaseName = "com.enviouswispr.app@\(appVersion)"
+            options.environment = environment
 
             // Privacy: no PII, no default data collection
             options.sendDefaultPii = false
