@@ -18,6 +18,11 @@ public final class ASRManagerProxy: ASRManagerInterface {
     public private(set) var isModelLoaded = false
     public private(set) var isStreaming = false
 
+    // Download progress — updated via XPC callback from ASR service.
+    public private(set) var downloadProgress: Double = 0
+    public private(set) var downloadPhase: String = ""
+    public private(set) var downloadDetail: String = ""
+
     // MARK: - XPC connection
 
     private var connection: NSXPCConnection?
@@ -40,6 +45,11 @@ public final class ASRManagerProxy: ASRManagerInterface {
     // MARK: - ASRManagerInterface: Model lifecycle
 
     public func loadModel() async throws {
+        // Reset progress state before starting
+        downloadProgress = 0
+        downloadPhase = "Preparing download..."
+        downloadDetail = ""
+
         ensureConnection()
         resendConfigIfNeeded()
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
@@ -56,6 +66,10 @@ public final class ASRManagerProxy: ASRManagerInterface {
                 guard_.resume(throwing: XPCASRTransportError.serviceUnreachable)
             }
         }
+        // Clear progress on completion
+        downloadProgress = 1.0
+        downloadPhase = ""
+        downloadDetail = ""
         isModelLoaded = true
     }
 
@@ -225,6 +239,8 @@ public final class ASRManagerProxy: ASRManagerInterface {
         conn.remoteObjectInterface = NSXPCInterface(with: ASRServiceProtocol.self)
         conn.exportedInterface = NSXPCInterface(with: ASRServiceClientProtocol.self)
 
+        conn.exportedObject = self
+
         conn.interruptionHandler = Self.makeInterruptionHandler(proxy: self)
         conn.invalidationHandler = Self.makeInvalidationHandler(proxy: self)
 
@@ -304,6 +320,21 @@ public final class ASRManagerProxy: ASRManagerInterface {
                     proxy.onServiceInterrupted?()
                 }
             }
+        }
+    }
+}
+
+// MARK: - ASRServiceClientProtocol (XPC callbacks from service → app)
+
+extension ASRManagerProxy: ASRServiceClientProtocol {
+    /// Receives download progress from the ASR XPC service.
+    /// Called on an XPC dispatch queue — must marshal to MainActor for UI state updates.
+    nonisolated public func reportDownloadProgress(_ fractionCompleted: Double, phase: String, detail: String) {
+        Task { @MainActor [weak self] in
+            guard let self, !self.isModelLoaded else { return }
+            self.downloadProgress = fractionCompleted
+            self.downloadPhase = phase
+            self.downloadDetail = detail
         }
     }
 }

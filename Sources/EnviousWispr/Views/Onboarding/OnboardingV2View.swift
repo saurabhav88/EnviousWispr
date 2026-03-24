@@ -45,8 +45,23 @@ final class OnboardingV2ViewModel {
         }
     }
 
+    /// Minimum free disk space required for model download + compilation (1 GB).
+    private static let requiredDiskSpaceBytes: Int64 = 1_073_741_824
+
     func startSetup(asrManager: any ASRManagerInterface, settings: SettingsManager) async {
         settings.onboardingState = .settingUp
+
+        // Disk space preflight — fail early with a friendly message instead of failing at 80%.
+        if let attrs = try? FileManager.default.attributesOfFileSystem(
+            forPath: NSHomeDirectory()
+        ), let freeSpace = attrs[.systemFreeSize] as? Int64,
+           freeSpace < Self.requiredDiskSpaceBytes {
+            let freeMB = freeSpace / 1_048_576
+            downloadError = "Not enough disk space (\(freeMB) MB free). EnviousWispr needs about 1 GB to download and install the speech model."
+            checklistStatuses[0] = .error(downloadError!)
+            return
+        }
+
         checklistStatuses[0] = .inProgress
         do {
             try await asrManager.loadModel()
@@ -269,9 +284,10 @@ private struct SettingUpScreenV2: View {
 
 private struct ChecklistPhaseView: View {
     var viewModel: OnboardingV2ViewModel
+    @Environment(AppState.self) private var appState
 
     private static let items: [(title: String, subtitle: String)] = [
-        ("Downloading speech model", "~100 MB, one-time setup"),
+        ("Downloading speech model", "~460 MB, one-time setup"),
         ("Configuring on-device AI", "Apple Intelligence"),
         ("Setting your hotkey",      "Default: ⌥ Option"),
     ]
@@ -287,7 +303,7 @@ private struct ChecklistPhaseView: View {
                 .kerning(-0.4)
                 .padding(.bottom, 6)
 
-            Text("Setting up your private, on-device transcription.")
+            Text("Downloading the local speech model so EnviousWispr can run privately on your Mac.")
                 .font(.obBody)
                 .foregroundStyle(Color.obTextSecondary)
                 .multilineTextAlignment(.center)
@@ -299,8 +315,9 @@ private struct ChecklistPhaseView: View {
                         index: index,
                         status: viewModel.checklistStatuses[index],
                         title: item.title,
-                        subtitle: item.subtitle,
-                        showProgressBar: index == 0 && viewModel.checklistStatuses[0].isInProgress
+                        subtitle: downloadSubtitle(for: index, fallback: item.subtitle),
+                        showProgressBar: index == 0 && viewModel.checklistStatuses[0].isInProgress,
+                        progress: index == 0 ? appState.asrManager.downloadProgress : nil
                     )
                     if index < Self.items.count - 1 {
                         Divider().padding(.horizontal, 14)
@@ -331,6 +348,16 @@ private struct ChecklistPhaseView: View {
             Spacer()
         }
     }
+
+    /// Returns live download status text for the model download row, or the static subtitle otherwise.
+    private func downloadSubtitle(for index: Int, fallback: String) -> String {
+        guard index == 0, viewModel.checklistStatuses[0].isInProgress else { return fallback }
+        let phase = appState.asrManager.downloadPhase
+        let detail = appState.asrManager.downloadDetail
+        if phase.isEmpty { return fallback }
+        if detail.isEmpty { return phase }
+        return "\(phase) \(detail)"
+    }
 }
 
 private struct ChecklistItemRow: View {
@@ -339,8 +366,16 @@ private struct ChecklistItemRow: View {
     let title: String
     let subtitle: String
     let showProgressBar: Bool
+    /// Live download progress (0.0–1.0). Nil means indeterminate/not applicable.
+    var progress: Double?
 
     @State private var spinAngle: Double = 0
+
+    /// Clamped progress value for the bar width. Shows a minimum sliver (2%) so the bar is never invisible.
+    private var barFraction: CGFloat {
+        guard let progress else { return 0.02 }
+        return max(CGFloat(progress), 0.02)
+    }
 
     var body: some View {
         VStack(spacing: 6) {
@@ -370,7 +405,8 @@ private struct ChecklistItemRow: View {
                             .frame(height: 3)
                         RoundedRectangle(cornerRadius: 2)
                             .fill(Color.obRainbow)
-                            .frame(width: geo.size.width * 0.65, height: 3)
+                            .frame(width: geo.size.width * barFraction, height: 3)
+                            .animation(.easeInOut(duration: 0.3), value: barFraction)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: 3)

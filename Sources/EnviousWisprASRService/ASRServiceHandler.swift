@@ -37,6 +37,14 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
 
     // MARK: - Model Lifecycle
 
+    /// Get the client proxy for sending progress callbacks to the host app.
+    /// Uses remoteObjectProxyWithErrorHandler for non-blocking fire-and-forget delivery.
+    /// The synchronous remoteObjectProxy blocks the caller thread on XPC round-trip,
+    /// which stalls FluidAudio's download delegate when used from progress callbacks.
+    private var clientProxy: ASRServiceClientProtocol? {
+        connection?.remoteObjectProxyWithErrorHandler({ _ in }) as? ASRServiceClientProtocol
+    }
+
     func loadModel(backendType: String, modelVariant: String, reply: @escaping (NSError?) -> Void) {
         nonisolated(unsafe) let safeReply = reply
         Task { @MainActor in
@@ -48,7 +56,15 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
                 switch backendType {
                 case "parakeet":
                     let backend = ParakeetBackend()
-                    try await backend.prepare()
+                    // Relay download progress to host app via XPC client callback.
+                    // Throttle to max ~4 updates/sec — the URLSession delegate fires per-chunk
+                    // which can be hundreds/sec. Unthrottled XPC calls stall the download thread.
+                    nonisolated(unsafe) let client = self.clientProxy
+                    let throttle = ProgressThrottle(interval: 0.25)
+                    try await backend.prepare { fraction, phase, detail in
+                        guard throttle.shouldFire() || fraction >= 0.99 || fraction < 0.01 else { return }
+                        client?.reportDownloadProgress(fraction, phase: phase, detail: detail)
+                    }
                     self.parakeetBackend = backend
                 case "whisperKit":
                     let variant = modelVariant.isEmpty ? "openai_whisper-large-v3_turbo" : modelVariant
@@ -205,5 +221,30 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
 
     func checkStreamingSupport(backendType: String, reply: @escaping (Bool) -> Void) {
         reply(backendType == "parakeet")
+    }
+}
+
+// MARK: - Progress Throttle
+
+/// Thread-safe time-based throttle for progress callbacks.
+/// Prevents XPC round-trips from stalling the download delegate thread.
+private final class ProgressThrottle: @unchecked Sendable {
+    private let interval: CFAbsoluteTime
+    private var lastFireTime: CFAbsoluteTime = 0
+    private let lock = NSLock()
+
+    init(interval: CFAbsoluteTime) {
+        self.interval = interval
+    }
+
+    func shouldFire() -> Bool {
+        let now = CFAbsoluteTimeGetCurrent()
+        lock.lock()
+        defer { lock.unlock() }
+        if now - lastFireTime >= interval {
+            lastFireTime = now
+            return true
+        }
+        return false
     }
 }

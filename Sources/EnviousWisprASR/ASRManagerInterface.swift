@@ -12,6 +12,12 @@ public protocol ASRManagerInterface: AnyObject {
     var isModelLoaded: Bool { get }
     var isStreaming: Bool { get }
 
+    // Download progress (0.0–1.0), phase description, and detail string.
+    // Updated during loadModel() when model download is in progress.
+    var downloadProgress: Double { get }
+    var downloadPhase: String { get }
+    var downloadDetail: String { get }
+
     // Model lifecycle
     func loadModel() async throws
     func unloadModel() async

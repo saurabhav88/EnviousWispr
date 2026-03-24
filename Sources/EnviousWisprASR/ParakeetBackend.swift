@@ -25,8 +25,48 @@ public actor ParakeetBackend: ASRBackend {
 
     public init() {}
 
+    /// Progress callback type: (fractionCompleted, phaseString, detailString)
+    public typealias ProgressCallback = @Sendable (Double, String, String) -> Void
+
     public func prepare() async throws {
-        let loadedModels = try await AsrModels.downloadAndLoad(version: .v3)
+        try await prepare(progressCallback: nil)
+    }
+
+    /// Prepare with optional progress reporting.
+    /// The callback is called from FluidAudio's download thread — caller must marshal to MainActor.
+    ///
+    /// FluidAudio's progress system:
+    /// - `downloadRepo()` downloads ALL model files in one pass with byte-weighted progress.
+    /// - `fractionCompleted` range: [0.0, 0.5] = download, [0.5, 1.0] = CoreML compilation.
+    /// - `downloadRepo()` only fires on the first `loadModels()` call — subsequent calls find
+    ///   files cached and skip. We map directly from FluidAudio's fraction.
+    public func prepare(progressCallback: ProgressCallback?) async throws {
+        let handler: DownloadUtils.ProgressHandler? = progressCallback.map { callback -> DownloadUtils.ProgressHandler in
+            { progress in
+                let phase: String
+                let detail: String
+
+                switch progress.phase {
+                case .listing:
+                    phase = "Preparing download..."
+                    detail = ""
+                case .downloading:
+                    phase = "Downloading speech model..."
+                    // fractionCompleted is byte-weighted across all files in [0.0, 0.5].
+                    // Map to [0%, 100%] for the download-only portion.
+                    let downloadPct = min(progress.fractionCompleted * 2.0, 1.0)
+                    let downloadedMB = Int(downloadPct * 460)
+                    let pct = Int(downloadPct * 100)
+                    detail = "\(downloadedMB) MB of 460 MB (\(pct)%)"
+                case .compiling(let modelName):
+                    phase = "Installing model..."
+                    detail = modelName
+                }
+                callback(progress.fractionCompleted, phase, detail)
+            }
+        }
+
+        let loadedModels = try await AsrModels.downloadAndLoad(version: .v3, progressHandler: handler)
         self.fluidModels = loadedModels
 
         let manager = AsrManager(config: .default)
