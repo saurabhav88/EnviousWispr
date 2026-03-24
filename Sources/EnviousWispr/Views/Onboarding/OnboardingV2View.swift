@@ -518,10 +518,12 @@ private struct PermissionsPhaseView: View {
             if appState.permissions.accessibilityGranted && !viewModel.accessibilityGranted {
                 viewModel.accessibilityGranted = true
                 appState.settings.autoCopyToClipboard = true
+                TelemetryService.shared.onboardingStepCompleted(step: "accessibility_permission", result: "granted")
             }
 
             if appState.permissions.hasMicrophonePermission && !viewModel.micGranted {
                 viewModel.micGranted = true
+                TelemetryService.shared.onboardingStepCompleted(step: "mic_permission", result: "granted")
             }
 
             if elapsed >= 10 && !viewModel.showSkipLink {
