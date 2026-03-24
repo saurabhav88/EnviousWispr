@@ -44,18 +44,28 @@ public enum ObservabilityBootstrap {
 
         SentrySDK.start { options in
             options.dsn = dsn
+
+            // Privacy: no PII, no default data collection
             options.sendDefaultPii = false
+
+            // Crash reporting: the core reason Sentry exists here
             #if os(macOS)
             options.enableUncaughtNSExceptionReporting = true
             #endif
             options.enableAutoSessionTracking = true
-            options.enableAutoBreadcrumbTracking = true
+
+            // Manual-only instrumentation: we add our own breadcrumbs via SentryBreadcrumb.
+            // Disable all auto-collection to avoid surprise data, noise, and hidden swizzling.
+            options.enableAutoBreadcrumbTracking = false
             options.enableNetworkBreadcrumbs = false
+            options.enableCaptureFailedRequests = false
+            options.enableSwizzling = false
             options.enableFileIOTracing = false
             options.enableCoreDataTracing = false
+            options.enableAppHangTracking = false
             options.tracesSampleRate = NSNumber(value: 0)
+
             options.beforeSend = { event in
-                print("[ObservabilityBootstrap] Sentry beforeSend")
                 return event
             }
         }

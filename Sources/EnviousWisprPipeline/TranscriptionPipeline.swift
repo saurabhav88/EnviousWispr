@@ -135,9 +135,11 @@ public final class TranscriptionPipeline: DictationPipeline {
         // Ensure model is loaded (model should already be cached by WhisperKitSetupService)
         if !asrManager.isModelLoaded {
             state = .loadingModel
+            SentryBreadcrumb.add(stage: "asr", message: "Model loading", data: ["backend": asrManager.activeBackendType.rawValue])
             do {
                 try await asrManager.loadModel()
             } catch {
+                SentryBreadcrumb.captureError(error, category: .modelLoadFailed, stage: "asr", extra: ["backend": asrManager.activeBackendType.rawValue])
                 stopRequested = false
                 state = .error("Model load failed: \(error.localizedDescription)")
                 return
@@ -163,6 +165,7 @@ public final class TranscriptionPipeline: DictationPipeline {
                 streamingASRActive = true
                 streamingBuffersDispatched = 0
                 streamingBuffersFed = 0
+                SentryBreadcrumb.add(stage: "asr", message: "Streaming ASR started", data: ["backend": asrManager.activeBackendType.rawValue])
 
                 // Wire audio buffer forwarding: each converted buffer goes to streaming ASR.
                 // The streamingASRActive flag gates delivery — deactivateStreamingForwarding()
@@ -191,6 +194,7 @@ public final class TranscriptionPipeline: DictationPipeline {
             } catch {
                 // Streaming init failed — fall back to batch after recording
                 deactivateStreamingForwarding()
+                SentryBreadcrumb.add(stage: "asr", message: "Streaming start failed, will use batch", level: .warning)
                 Task { await AppLogger.shared.log(
                     "Streaming ASR failed to start, will use batch: \(error.localizedDescription)",
                     level: .info, category: "Pipeline"
@@ -224,6 +228,10 @@ public final class TranscriptionPipeline: DictationPipeline {
             state = .recording
             recordingStartTime = Date()
             currentTranscript = nil
+            SentryBreadcrumb.add(stage: "recording", message: "Recording started", data: [
+                "backend": asrManager.activeBackendType.rawValue,
+                "streaming": streamingASRActive,
+            ])
 
             if stopRequested {
                 stopRequested = false
@@ -244,6 +252,7 @@ public final class TranscriptionPipeline: DictationPipeline {
                 await asrManager.cancelStreaming()
             }
             deactivateStreamingForwarding()
+            SentryBreadcrumb.captureError(error, category: .audioCaptureFailed, stage: "recording")
             stopRequested = false
             state = .error("Recording failed: \(error.localizedDescription)")
         }
@@ -313,6 +322,7 @@ public final class TranscriptionPipeline: DictationPipeline {
         // Without this reorder, deactivateStreamingForwarding() sets the flag to false
         // and all queued tasks drop their buffers — losing ~250-500ms of trailing audio.
         let rawSamples = await audioCapture.stopCapture()
+        SentryBreadcrumb.add(stage: "recording", message: "Recording stopped", data: ["sample_count": rawSamples.count])
 
         if wasStreaming {
             // Deterministic drain: freeze the dispatch count after stopCapture (no new buffers
@@ -354,6 +364,7 @@ public final class TranscriptionPipeline: DictationPipeline {
             if wasStreaming {
                 await asrManager.cancelStreaming()
             }
+            SentryBreadcrumb.add(stage: "recording", message: "No audio captured", level: .warning)
             state = .error("No audio captured")
             return
         }
@@ -399,6 +410,10 @@ public final class TranscriptionPipeline: DictationPipeline {
         }
 
         state = .transcribing
+        SentryBreadcrumb.add(stage: "asr", message: "Transcription started", data: [
+            "mode": wasStreaming ? "streaming" : "batch",
+            "backend": asrManager.activeBackendType.rawValue,
+        ])
 
         do {
             let asrStart = CFAbsoluteTimeGetCurrent()
@@ -431,6 +446,7 @@ public final class TranscriptionPipeline: DictationPipeline {
                 } catch {
                     // Streaming finalization failed or timed out — cancel and fall back to batch
                     await asrManager.cancelStreaming()
+                    SentryBreadcrumb.add(stage: "asr", message: "Streaming finalize failed, falling back to batch", level: .warning)
                     Task { await AppLogger.shared.log(
                         "Streaming ASR finalize failed, falling back to batch: \(error.localizedDescription)",
                         level: .info, category: "Pipeline"
@@ -445,6 +461,11 @@ public final class TranscriptionPipeline: DictationPipeline {
 
             let asrText = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !asrText.isEmpty else {
+                SentryBreadcrumb.captureError(
+                    NSError(domain: "EnviousWispr", code: -1, userInfo: [NSLocalizedDescriptionKey: "ASR returned empty text"]),
+                    category: .asrEmptyResult, stage: "asr",
+                    extra: ["backend": asrManager.activeBackendType.rawValue, "mode": wasStreaming ? "streaming" : "batch"]
+                )
                 state = .error("No speech detected — try speaking closer to the microphone")
                 Task { await AppLogger.shared.log(
                     "ASR returned empty text, showing error to user",
@@ -453,6 +474,12 @@ public final class TranscriptionPipeline: DictationPipeline {
                 return
             }
 
+            SentryBreadcrumb.add(stage: "asr", message: "ASR completed", data: [
+                "mode": wasStreaming ? "streaming" : "batch",
+                "backend": asrManager.activeBackendType.rawValue,
+                "duration_s": String(format: "%.3f", asrEnd - asrStart),
+                "char_count": asrText.count,
+            ])
             Task { await AppLogger.shared.log(
                 "Pipeline timing: ASR completed in \(String(format: "%.3f", asrEnd - asrStart))s " +
                 "(mode=\(wasStreaming ? "streaming" : "batch"), \(asrText.count) chars, lang=\(result.language ?? "?"))",
@@ -465,6 +492,10 @@ public final class TranscriptionPipeline: DictationPipeline {
             do {
                 context = try await runTextProcessing(asrText: asrText, language: result.language)
             } catch {
+                SentryBreadcrumb.captureError(error, category: .generationFailed, stage: "polish", extra: [
+                    "provider": llmPolishStep.llmProvider.rawValue,
+                    "model": llmPolishStep.llmModel,
+                ])
                 Task { await AppLogger.shared.log(
                     "Text processing failed: \(error.localizedDescription)",
                     level: .info, category: "Pipeline"
@@ -614,8 +645,18 @@ public final class TranscriptionPipeline: DictationPipeline {
                 e2eSeconds: pipelineEnd - pipelineStart
             )
             currentTranscript = transcript
+            SentryBreadcrumb.add(stage: "pipeline", message: "Pipeline complete", data: [
+                "e2e_s": String(format: "%.3f", pipelineEnd - pipelineStart),
+                "asr_s": String(format: "%.3f", asrEnd - asrStart),
+                "polish_s": String(format: "%.3f", polishEnd - polishStart),
+                "paste_tier": pasteTier?.rawValue ?? "none",
+                "backend": asrManager.activeBackendType.rawValue,
+            ])
             state = .complete
         } catch {
+            SentryBreadcrumb.captureError(error, category: .asrFailed, stage: "transcription", extra: [
+                "backend": asrManager.activeBackendType.rawValue,
+            ])
             state = .error("Transcription failed: \(error.localizedDescription)")
         }
     }
@@ -626,6 +667,10 @@ public final class TranscriptionPipeline: DictationPipeline {
         guard !state.isActive || state == .complete else { return nil }
 
         state = .polishing
+        SentryBreadcrumb.add(stage: "polish", message: "Re-polish requested", data: [
+            "provider": llmPolishStep.llmProvider.rawValue,
+            "model": llmPolishStep.llmModel,
+        ])
         let polishedText: String
         do {
             var context = TextProcessingContext(
@@ -701,6 +746,11 @@ public final class TranscriptionPipeline: DictationPipeline {
     /// Handle audio engine interruption (device disconnect, service crash, max duration cap).
     /// Called by AppState's unified interruption handler, not set directly on audioCapture.
     public func handleEngineInterruption() {
+        SentryBreadcrumb.captureError(
+            NSError(domain: "EnviousWispr", code: -2, userInfo: [NSLocalizedDescriptionKey: "Audio engine interrupted"]),
+            category: .xpcServiceError, stage: "audio",
+            extra: ["was_recording": state == .recording]
+        )
         vadMonitorTask?.cancel()
         vadMonitorTask = nil
         silenceDetector = nil
@@ -720,6 +770,11 @@ public final class TranscriptionPipeline: DictationPipeline {
     /// Called by AppState's unified ASR interruption handler when this pipeline is active.
     /// Must stop audio capture (still running — only ASR died) and clean up fully.
     public func handleASRServiceInterruption() {
+        SentryBreadcrumb.captureError(
+            NSError(domain: "EnviousWispr", code: -3, userInfo: [NSLocalizedDescriptionKey: "ASR XPC service crashed"]),
+            category: .xpcServiceError, stage: "asr",
+            extra: ["was_recording": state == .recording]
+        )
         vadMonitorTask?.cancel()
         vadMonitorTask = nil
         silenceDetector = nil
