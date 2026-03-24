@@ -31,6 +31,8 @@ final class OnboardingV2ViewModel {
     var showSkipLink = false
 
     var downloadError: String?
+    /// Raw error details for support diagnostics (hidden behind "Copy error details" button).
+    var rawErrorDetails: String?
     var retryCount = 0
 
     /// Coarse ETA text, shown only when download rate is stable. Empty = hidden.
@@ -108,12 +110,14 @@ final class OnboardingV2ViewModel {
             allowSleep()
             let friendly = Self.friendlyError(error)
             downloadError = friendly
+            rawErrorDetails = "\(error)"
             checklistStatuses[0] = .error(friendly)
         }
     }
 
     func retryDownload() {
         downloadError = nil
+        rawErrorDetails = nil
         downloadETA = ""
         etaSamples = []
         checklistStatuses = [.pending, .pending, .pending]
@@ -474,8 +478,22 @@ private struct ChecklistPhaseView: View {
                         .foregroundStyle(Color.obError)
                         .multilineTextAlignment(.center)
 
-                    Button("Retry") { viewModel.retryDownload() }
-                        .buttonStyle(OnboardingButtonStyle(color: .obError))
+                    HStack(spacing: 12) {
+                        Button("Retry") { viewModel.retryDownload() }
+                            .buttonStyle(OnboardingButtonStyle(color: .obError))
+
+                        if viewModel.rawErrorDetails != nil {
+                            Button("Copy error details") {
+                                if let details = viewModel.rawErrorDetails {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(details, forType: .string)
+                                }
+                            }
+                            .font(.obCaption)
+                            .foregroundStyle(Color.obTextTertiary)
+                            .buttonStyle(.plain)
+                        }
+                    }
                 }
                 .padding(.top, 4)
             }
