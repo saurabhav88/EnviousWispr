@@ -3,6 +3,7 @@ import EnviousWisprCore
 import EnviousWisprServices
 import EnviousWisprASR
 import EnviousWisprLLM
+import IOKit.pwr_mgt
 
 // MARK: - ViewModel
 
@@ -31,6 +32,18 @@ final class OnboardingV2ViewModel {
 
     var downloadError: String?
     var retryCount = 0
+
+    /// Coarse ETA text, shown only when download rate is stable. Empty = hidden.
+    var downloadETA: String = ""
+
+    // ETA computation state — rolling window of (timestamp, fraction) samples.
+    private var etaSamples: [(time: CFAbsoluteTime, fraction: Double)] = []
+    private static let etaWindowSeconds: CFAbsoluteTime = 10
+    private static let etaMinSamples = 3
+
+    // Sleep prevention — holds a power assertion during download to prevent macOS sleep.
+    private var sleepAssertionID: IOPMAssertionID = 0
+    private var isSleepPrevented = false
 
     var lipsState: LipsAnimationState {
         switch currentScreen {
@@ -63,11 +76,14 @@ final class OnboardingV2ViewModel {
         }
 
         checklistStatuses[0] = .inProgress
+        preventSleep()
         do {
             try await asrManager.loadModel()
+            allowSleep()
             // Check cancellation before advancing — window may have closed during download.
             try Task.checkCancellation()
             checklistStatuses[0] = .completed
+            downloadETA = ""
             TelemetryService.shared.onboardingStepCompleted(step: "model_download", result: "completed")
 
             checklistStatuses[1] = .inProgress
@@ -85,18 +101,137 @@ final class OnboardingV2ViewModel {
             settings.onboardingState = .needsPermissions
             setupPhase = .permissions
         } catch is CancellationError {
+            allowSleep()
             // Task was cancelled (window closed mid-setup). Leave onboardingState as .settingUp
             // so the next launch re-runs the checklist from scratch.
         } catch {
-            downloadError = error.localizedDescription
-            checklistStatuses[0] = .error(error.localizedDescription)
+            allowSleep()
+            let friendly = Self.friendlyError(error)
+            downloadError = friendly
+            checklistStatuses[0] = .error(friendly)
         }
     }
 
     func retryDownload() {
         downloadError = nil
+        downloadETA = ""
+        etaSamples = []
         checklistStatuses = [.pending, .pending, .pending]
         retryCount += 1
+    }
+
+    /// Update ETA from current download progress. Called by the view's onChange handler.
+    /// Only shows ETA during the download phase (fraction < 0.5) when the rate is stable.
+    func updateETA(fraction: Double) {
+        // Only compute ETA during download phase (0.0–0.5 in FluidAudio's range)
+        guard fraction > 0 && fraction < 0.5 else {
+            downloadETA = ""
+            return
+        }
+
+        let now = CFAbsoluteTimeGetCurrent()
+        etaSamples.append((time: now, fraction: fraction))
+
+        // Trim samples outside the rolling window
+        let cutoff = now - Self.etaWindowSeconds
+        etaSamples.removeAll { $0.time < cutoff }
+
+        guard etaSamples.count >= Self.etaMinSamples,
+              let first = etaSamples.first, let last = etaSamples.last else {
+            downloadETA = ""
+            return
+        }
+
+        let dt = last.time - first.time
+        let df = last.fraction - first.fraction
+        guard dt > 1.0, df > 0.001 else {
+            downloadETA = ""
+            return
+        }
+
+        // Rate = fraction-per-second. Remaining fraction to 0.5 (end of download).
+        let rate = df / dt
+        let remaining = (0.5 - fraction) / rate
+
+        // Stability check: coefficient of variation of inter-sample rates.
+        // If too noisy, hide ETA rather than show a jumpy number.
+        if etaSamples.count >= 4 {
+            var rates: [Double] = []
+            for i in 1..<etaSamples.count {
+                let sdt = etaSamples[i].time - etaSamples[i-1].time
+                let sdf = etaSamples[i].fraction - etaSamples[i-1].fraction
+                if sdt > 0.1 && sdf > 0 { rates.append(sdf / sdt) }
+            }
+            if rates.count >= 3 {
+                let mean = rates.reduce(0, +) / Double(rates.count)
+                let variance = rates.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(rates.count)
+                let cv = mean > 0 ? sqrt(variance) / mean : 1.0
+                if cv > 0.5 {
+                    downloadETA = ""
+                    return
+                }
+            }
+        }
+
+        // Bucket into coarse text
+        switch remaining {
+        case ..<30:
+            downloadETA = "Almost done"
+        case 30..<90:
+            downloadETA = "About a minute remaining"
+        case 90..<180:
+            downloadETA = "About 2 minutes remaining"
+        case 180..<300:
+            downloadETA = "A few minutes remaining"
+        default:
+            downloadETA = "This may take several minutes"
+        }
+    }
+
+    // MARK: - Sleep Prevention
+
+    private func preventSleep() {
+        guard !isSleepPrevented else { return }
+        let reason = "EnviousWispr is downloading the speech model" as CFString
+        let success = IOPMAssertionCreateWithName(
+            kIOPMAssertionTypePreventUserIdleSystemSleep as CFString,
+            IOPMAssertionLevel(kIOPMAssertionLevelOn),
+            reason,
+            &sleepAssertionID
+        )
+        isSleepPrevented = (success == kIOReturnSuccess)
+    }
+
+    private func allowSleep() {
+        guard isSleepPrevented else { return }
+        IOPMAssertionRelease(sleepAssertionID)
+        isSleepPrevented = false
+    }
+
+    // MARK: - Friendly Error Messages
+
+    /// Maps raw error descriptions to user-friendly messages.
+    private static func friendlyError(_ error: any Error) -> String {
+        let desc = error.localizedDescription.lowercased()
+
+        if desc.contains("timed out") || desc.contains("timeout") {
+            return "The download timed out. Please check your internet connection and try again."
+        }
+        if desc.contains("not connected") || desc.contains("network") || desc.contains("offline") {
+            return "No internet connection. Please connect to the internet and try again."
+        }
+        if desc.contains("could not connect") || desc.contains("cannot connect") {
+            return "Couldn't reach the download server. Please check your internet connection and try again."
+        }
+        if desc.contains("rate limit") {
+            return "The download server is busy. Please wait a moment and try again."
+        }
+        if desc.contains("disk") || desc.contains("space") || desc.contains("no space") {
+            return "Not enough disk space. Please free up space and try again."
+        }
+
+        // Fallback: use the original description but trim technical prefixes
+        return "Download failed: \(error.localizedDescription)"
     }
 
     func requestMicPermission(permissions: PermissionsService) async {
@@ -347,6 +482,9 @@ private struct ChecklistPhaseView: View {
 
             Spacer()
         }
+        .onChange(of: appState.asrManager.downloadProgress) { _, newValue in
+            viewModel.updateETA(fraction: newValue)
+        }
     }
 
     /// Returns live download status text for the model download row, or the static subtitle otherwise.
@@ -355,8 +493,12 @@ private struct ChecklistPhaseView: View {
         let phase = appState.asrManager.downloadPhase
         let detail = appState.asrManager.downloadDetail
         if phase.isEmpty { return fallback }
-        if detail.isEmpty { return phase }
-        return "\(phase) \(detail)"
+        // Build subtitle: phase + detail + optional ETA
+        var text = detail.isEmpty ? phase : "\(phase) \(detail)"
+        if !viewModel.downloadETA.isEmpty {
+            text += " · \(viewModel.downloadETA)"
+        }
+        return text
     }
 }
 
