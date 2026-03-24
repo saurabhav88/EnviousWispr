@@ -7,6 +7,82 @@ import EnviousWisprCore
 @MainActor
 public enum SentryBreadcrumb {
 
+    // MARK: - Recording Snapshot (for handled errors)
+
+    /// Point-in-time snapshot of recording state, attached to handled errors via scope clone.
+    /// For fatal crashes, use the persistent global scope instead (always pre-populated).
+    public struct RecordingSnapshot: Sendable {
+        public let durationMs: Int
+        public let chunksProcessed: Int
+        public let wasStreaming: Bool
+        public let targetAppBundleID: String?
+        public let sessionDictationCount: Int
+        public let appUptimeSeconds: Int
+
+        public init(
+            durationMs: Int,
+            chunksProcessed: Int,
+            wasStreaming: Bool,
+            targetAppBundleID: String?,
+            sessionDictationCount: Int,
+            appUptimeSeconds: Int
+        ) {
+            self.durationMs = durationMs
+            self.chunksProcessed = chunksProcessed
+            self.wasStreaming = wasStreaming
+            self.targetAppBundleID = targetAppBundleID
+            self.sessionDictationCount = sessionDictationCount
+            self.appUptimeSeconds = appUptimeSeconds
+        }
+
+        var sentryContext: [String: Any] {
+            var ctx: [String: Any] = [
+                "duration_ms": durationMs,
+                "chunks_processed": chunksProcessed,
+                "was_streaming": wasStreaming,
+                "session_dictation_count": sessionDictationCount,
+                "app_uptime_seconds": appUptimeSeconds,
+            ]
+            if let targetAppBundleID {
+                ctx["target_app_bundle_id"] = targetAppBundleID
+            }
+            return ctx
+        }
+    }
+
+    // MARK: - Persistent Global Scope (crash-relevant state)
+
+    /// Update the active ASR backend tag. Called when user switches backend or at pipeline start.
+    public static func updateASRBackend(_ backend: String) {
+        SentrySDK.configureScope { scope in
+            scope.setTag(value: backend, key: "asr.backend")
+        }
+    }
+
+    /// Update recording state on global scope. Present on fatal crashes.
+    /// - Parameters:
+    ///   - active: Whether recording is in progress.
+    ///   - backend: "parakeet" or "whisperkit" (nil when stopping).
+    ///   - isStreaming: Whether streaming ASR is active (nil when stopping).
+    public static func updateRecordingState(
+        active: Bool,
+        backend: String? = nil,
+        isStreaming: Bool? = nil
+    ) {
+        SentrySDK.configureScope { scope in
+            scope.setTag(value: active ? "true" : "false", key: "recording.active")
+            if active, let backend {
+                scope.setContext(value: [
+                    "backend": backend,
+                    "start_time": ISO8601DateFormatter().string(from: Date()),
+                    "is_streaming": isStreaming ?? false,
+                ], key: "recording_state")
+            } else {
+                scope.removeContext(key: "recording_state")
+            }
+        }
+    }
+
     // MARK: - Breadcrumbs
 
     /// Add a structured breadcrumb at a pipeline stage boundary.
@@ -34,11 +110,18 @@ public enum SentryBreadcrumb {
 
     /// Capture a handled error with pipeline context tags.
     /// Use for failures that don't crash the app but should be diagnosable in Sentry.
+    /// - Parameters:
+    ///   - error: The error that occurred.
+    ///   - category: Structured error category for filtering.
+    ///   - stage: Pipeline stage where the error occurred.
+    ///   - extra: Additional key-value pairs for this specific event.
+    ///   - snapshot: Optional point-in-time recording state (attached via scope clone).
     public static func captureError(
         _ error: any Error,
         category: ErrorCategory,
         stage: String,
-        extra: [String: Any]? = nil
+        extra: [String: Any]? = nil,
+        snapshot: RecordingSnapshot? = nil
     ) {
         let event = Event(level: .error)
         event.message = SentryMessage(formatted: "\(category.rawValue): \(error.localizedDescription)")
@@ -58,7 +141,13 @@ public enum SentryBreadcrumb {
             data: extra
         )
 
-        SentrySDK.capture(event: event)
+        if let snapshot {
+            SentrySDK.capture(event: event) { scope in
+                scope.setContext(value: snapshot.sentryContext, key: "recording_snapshot")
+            }
+        } else {
+            SentrySDK.capture(event: event)
+        }
     }
 
     // MARK: - Apple Intelligence Diagnostics

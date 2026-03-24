@@ -122,6 +122,16 @@ final class AppState {
             self.recordingOverlay.hide()
         }
 
+        // Observe audio route changes for Sentry context enrichment.
+        // AVAudioEngineSource fires AVAudioEngineConfigurationChange internally and handles
+        // recovery, but breadcrumbs live in EnviousWisprServices (unavailable in the audio module).
+        // AppState observes here to stay within module boundary rules.
+        NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: nil, queue: nil) { _ in
+            Task { @MainActor in
+                SentryBreadcrumb.add(stage: "audio", message: "Audio route changed", level: .warning)
+            }
+        }
+
         // Unified ASR service crash handler — routes to whichever pipeline is active.
         // Fires when the XPC ASR service dies mid-session (streaming or batch).
         asrManager.onServiceInterrupted = { [weak self] in
@@ -176,7 +186,10 @@ final class AppState {
         if settings.selectedBackend != .parakeet {
             Task {
                 await asrManager.switchBackend(to: settings.selectedBackend)
+                SentryBreadcrumb.updateASRBackend(settings.selectedBackend == .whisperKit ? "whisperkit" : "parakeet")
             }
+        } else {
+            SentryBreadcrumb.updateASRBackend("parakeet")
         }
 
         // Wire settings change handler
