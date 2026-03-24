@@ -127,8 +127,10 @@ final class OnboardingV2ViewModel {
     /// Update ETA from current download progress. Called by the view's onChange handler.
     /// Only shows ETA during the download phase (fraction < 0.5) when the rate is stable.
     func updateETA(fraction: Double) {
-        // Only compute ETA during download phase (0.0–0.5 in FluidAudio's range)
-        guard fraction > 0 && fraction < 0.5 else {
+        // Only compute ETA during download phase (0.0–0.5 in FluidAudio's range).
+        // Require at least 5% progress (fraction > 0.025) to avoid misleading ETAs
+        // from the initial burst of small model files downloading instantly.
+        guard fraction > 0.025 && fraction < 0.5 else {
             downloadETA = ""
             return
         }
@@ -531,10 +533,16 @@ private struct ChecklistItemRow: View {
 
     @State private var spinAngle: Double = 0
 
-    /// Clamped progress value for the bar width. Shows a minimum sliver (2%) so the bar is never invisible.
+    /// Maps FluidAudio's raw progress to a bar that fills 0–100% during download,
+    /// then stays full during installation. FluidAudio uses [0.0, 0.5] for download
+    /// and [0.5, 1.0] for CoreML compilation.
     private var barFraction: CGFloat {
         guard let progress else { return 0.02 }
-        return max(CGFloat(progress), 0.02)
+        if progress >= 0.5 {
+            return 1.0 // Installation phase — bar stays full
+        }
+        // Download phase: map [0.0, 0.5] → [0.0, 1.0]
+        return max(CGFloat(progress * 2.0), 0.02)
     }
 
     var body: some View {
