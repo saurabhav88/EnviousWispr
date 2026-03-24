@@ -1,9 +1,9 @@
 import Foundation
-import TelemetryDeck
+import PostHog
 import EnviousWisprCore
 
-/// Thin wrapper — type-safe signal names, no business logic.
-/// Limb: observes facts from domain objects, publishes to TelemetryDeck.
+/// Thin wrapper — type-safe event names, no business logic.
+/// Limb: observes facts from domain objects, publishes to PostHog.
 @MainActor
 public final class TelemetryService {
     public static let shared = TelemetryService()
@@ -41,29 +41,52 @@ public final class TelemetryService {
         }
     }
 
+    // MARK: - App Lifecycle
+
+    public func appLaunched(version: String, build: String, osVersion: String, hardware: String, isFreshInstall: Bool, aiAvailable: Bool) {
+        PostHogSDK.shared.capture("app.launched", properties: [
+            "version": version,
+            "build": build,
+            "os_version": osVersion,
+            "hardware": hardware,
+            "is_fresh_install": isFreshInstall,
+            "ai_available": aiAvailable,
+        ])
+    }
+
+    public func providerChanged(from: String, to: String) {
+        PostHogSDK.shared.capture("provider.changed", properties: [
+            "from": from,
+            "to": to,
+        ])
+    }
+
     // MARK: - Onboarding
 
     public func onboardingStarted() {
-        TelemetryDeck.signal("Onboarding.started")
+        PostHogSDK.shared.capture("onboarding.started")
     }
 
     public func onboardingStepCompleted(step: String, result: String, durationSeconds: Double? = nil) {
-        var params: [String: String] = ["step": step, "result": result]
-        if let d = durationSeconds { params["durationSeconds"] = String(format: "%.3f", d) }
-        TelemetryDeck.signal("Onboarding.stepCompleted", parameters: params, floatValue: durationSeconds ?? 0)
+        var props: [String: Any] = ["step": step, "result": result]
+        if let d = durationSeconds {
+            props["duration_seconds"] = String(format: "%.3f", d)
+            props["$value"] = d
+        }
+        PostHogSDK.shared.capture("onboarding.step_completed", properties: props)
     }
 
     public func onboardingCompleted(asrBackend: String, recordingMode: String) {
-        TelemetryDeck.signal("Onboarding.completed", parameters: [
-            "asrBackend": asrBackend,
-            "recordingMode": recordingMode,
+        PostHogSDK.shared.capture("onboarding.completed", properties: [
+            "asr_backend": asrBackend,
+            "recording_mode": recordingMode,
         ])
     }
 
     // MARK: - Permissions
 
     public func permissionStatus(permission: String, status: String, context: String) {
-        TelemetryDeck.signal("Permission.status", parameters: [
+        PostHogSDK.shared.capture("permission.status", properties: [
             "permission": permission,
             "status": status,
             "context": context,
@@ -73,83 +96,90 @@ public final class TelemetryService {
     // MARK: - Dictation Lifecycle
 
     public func dictationInvoked(triggerSource: String, inputMode: String, targetApp: String?) {
-        var params: [String: String] = ["triggerSource": triggerSource, "inputMode": inputMode]
-        if let app = targetApp { params["targetApp"] = app }
-        TelemetryDeck.signal("Dictation.invoked", parameters: params)
+        var props: [String: Any] = ["trigger_source": triggerSource, "input_mode": inputMode]
+        if let app = targetApp { props["target_app"] = app }
+        PostHogSDK.shared.capture("dictation.invoked", properties: props)
     }
 
     public func dictationCompleted(result: String, inputMode: String, asrBackend: String,
                                     llmProvider: String?, stylePreset: String?, fillerRemoval: Bool,
                                     targetApp: String?, pasteResult: String?,
                                     e2eSeconds: Double, asrSeconds: Double?, llmSeconds: Double?) {
-        var params: [String: String] = [
+        var props: [String: Any] = [
             "result": result,
-            "inputMode": inputMode,
-            "asrBackend": asrBackend,
-            "fillerRemoval": String(fillerRemoval),
-            "e2eSeconds": String(format: "%.3f", e2eSeconds),
+            "input_mode": inputMode,
+            "asr_backend": asrBackend,
+            "filler_removal": fillerRemoval,
+            "e2e_seconds": String(format: "%.3f", e2eSeconds),
+            "$value": e2eSeconds,
         ]
-        if let p = llmProvider { params["llmProvider"] = p }
-        if let s = stylePreset { params["stylePreset"] = s }
-        if let a = targetApp { params["targetApp"] = a }
-        if let pr = pasteResult { params["pasteResult"] = pr }
-        if let asr = asrSeconds { params["asrSeconds"] = String(format: "%.3f", asr) }
-        if let llm = llmSeconds { params["llmSeconds"] = String(format: "%.3f", llm) }
-        TelemetryDeck.signal("Dictation.completed", parameters: params, floatValue: e2eSeconds)
+        if let p = llmProvider { props["llm_provider"] = p }
+        if let s = stylePreset { props["style_preset"] = s }
+        if let a = targetApp { props["target_app"] = a }
+        if let pr = pasteResult { props["paste_result"] = pr }
+        if let asr = asrSeconds { props["asr_seconds"] = String(format: "%.3f", asr) }
+        if let llm = llmSeconds { props["llm_seconds"] = String(format: "%.3f", llm) }
+        PostHogSDK.shared.capture("dictation.completed", properties: props)
     }
 
     public func dictationCanceled(stage: String, reason: String, durationSeconds: Double?) {
-        var params: [String: String] = ["stage": stage, "reason": reason]
-        if let d = durationSeconds { params["durationSeconds"] = String(format: "%.3f", d) }
-        TelemetryDeck.signal("Dictation.canceled", parameters: params, floatValue: durationSeconds ?? 0)
+        var props: [String: Any] = ["stage": stage, "reason": reason]
+        if let d = durationSeconds {
+            props["duration_seconds"] = String(format: "%.3f", d)
+            props["$value"] = d
+        }
+        PostHogSDK.shared.capture("dictation.canceled", properties: props)
     }
 
     // MARK: - Pipeline Steps
 
     public func asrCompleted(backend: String, result: String, coldStart: Bool, latencySeconds: Double, charCount: Int) {
-        TelemetryDeck.signal("ASR.completed", parameters: [
+        PostHogSDK.shared.capture("asr.completed", properties: [
             "backend": backend,
             "result": result,
-            "coldStart": String(coldStart),
-            "latencySeconds": String(format: "%.3f", latencySeconds),
-            "charCount": String(charCount),
-        ], floatValue: latencySeconds)
+            "cold_start": coldStart,
+            "latency_seconds": String(format: "%.3f", latencySeconds),
+            "char_count": charCount,
+            "$value": latencySeconds,
+        ])
     }
 
     public func llmPolishCompleted(provider: String, model: String?, stylePreset: String?,
                                     result: String, latencySeconds: Double) {
-        var params: [String: String] = [
+        var props: [String: Any] = [
             "provider": provider,
             "result": result,
-            "latencySeconds": String(format: "%.3f", latencySeconds),
+            "latency_seconds": String(format: "%.3f", latencySeconds),
+            "$value": latencySeconds,
         ]
-        if let m = model { params["model"] = m }
-        if let s = stylePreset { params["stylePreset"] = s }
-        TelemetryDeck.signal("LLM.polishCompleted", parameters: params, floatValue: latencySeconds)
+        if let m = model { props["model"] = m }
+        if let s = stylePreset { props["style_preset"] = s }
+        PostHogSDK.shared.capture("llm.polish_completed", properties: props)
     }
 
     public func pasteCompleted(tier: String, targetApp: String?, result: String, latencyMs: Int) {
-        var params: [String: String] = [
+        var props: [String: Any] = [
             "tier": tier,
             "result": result,
-            "latencyMs": String(latencyMs),
+            "latency_ms": latencyMs,
+            "$value": Double(latencyMs),
         ]
-        if let a = targetApp { params["targetApp"] = a }
-        TelemetryDeck.signal("Paste.completed", parameters: params, floatValue: Double(latencyMs))
+        if let a = targetApp { props["target_app"] = a }
+        PostHogSDK.shared.capture("paste.completed", properties: props)
     }
 
     // MARK: - Errors
 
     public func pipelineFailed(stage: String, errorCategory: String, errorCode: String,
                                 recoverable: Bool, backend: String?) {
-        var params: [String: String] = [
+        var props: [String: Any] = [
             "stage": stage,
-            "errorCategory": errorCategory,
-            "errorCode": errorCode,
-            "recoverable": String(recoverable),
+            "error_category": errorCategory,
+            "error_code": errorCode,
+            "recoverable": recoverable,
         ]
-        if let b = backend { params["backend"] = b }
-        TelemetryDeck.signal("Pipeline.failed", parameters: params)
+        if let b = backend { props["backend"] = b }
+        PostHogSDK.shared.capture("pipeline.failed", properties: props)
     }
 
     // MARK: - Settings Snapshot
@@ -157,15 +187,15 @@ public final class TelemetryService {
     public func settingsSnapshot(asrBackend: String, llmProvider: String, recordingMode: String,
                                   writingStyle: String, fillerRemoval: Bool, customWordsCount: Int,
                                   hasApiKeys: Bool, noiseSuppression: Bool) {
-        TelemetryDeck.signal("Settings.snapshot", parameters: [
-            "asrBackend": asrBackend,
-            "llmProvider": llmProvider,
-            "recordingMode": recordingMode,
-            "writingStyle": writingStyle,
-            "fillerRemoval": String(fillerRemoval),
-            "customWordsCount": String(customWordsCount),
-            "hasApiKeys": String(hasApiKeys),
-            "noiseSuppression": String(noiseSuppression),
+        PostHogSDK.shared.capture("settings.snapshot", properties: [
+            "asr_backend": asrBackend,
+            "llm_provider": llmProvider,
+            "recording_mode": recordingMode,
+            "writing_style": writingStyle,
+            "filler_removal": fillerRemoval,
+            "custom_words_count": customWordsCount,
+            "has_api_keys": hasApiKeys,
+            "noise_suppression": noiseSuppression,
         ])
     }
 
@@ -173,12 +203,13 @@ public final class TelemetryService {
 
     public func metricPipelineE2E(seconds: Double, inputMode: String, asrBackend: String,
                                    llmProvider: String?, result: String) {
-        var params: [String: String] = [
-            "inputMode": inputMode,
-            "asrBackend": asrBackend,
+        var props: [String: Any] = [
+            "input_mode": inputMode,
+            "asr_backend": asrBackend,
             "result": result,
+            "$value": seconds,
         ]
-        if let p = llmProvider { params["llmProvider"] = p }
-        TelemetryDeck.signal("Metric.pipeline.e2eSeconds", parameters: params, floatValue: seconds)
+        if let p = llmProvider { props["llm_provider"] = p }
+        PostHogSDK.shared.capture("metric.pipeline.e2e_seconds", properties: props)
     }
 }
