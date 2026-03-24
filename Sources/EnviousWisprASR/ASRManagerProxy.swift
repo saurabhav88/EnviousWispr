@@ -84,17 +84,15 @@ public final class ASRManagerProxy: ASRManagerInterface {
 
     private func startProgressPolling() {
         stopProgressPolling()
-        let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            self.serviceProxy { proxy in
-                proxy.getDownloadProgress { fraction, phase, detail in
-                    Task { @MainActor [weak self] in
-                        guard let self, !self.isModelLoaded else { return }
-                        self.downloadProgress = fraction
-                        self.downloadPhase = phase
-                        self.downloadDetail = detail
-                    }
-                }
+        // Read progress from shared file — bypasses XPC entirely.
+        // XPC serializes replies, so polling via XPC is blocked behind loadModel's pending reply.
+        let progressFile = ProgressFile.shared
+        let timer = Timer(timeInterval: 0.125, repeats: true) { [weak self] _ in
+            guard let self, !self.isModelLoaded else { return }
+            if let state = progressFile.read() {
+                self.downloadProgress = state.fraction
+                self.downloadPhase = state.phase
+                self.downloadDetail = state.detail
             }
         }
         RunLoop.main.add(timer, forMode: .common)

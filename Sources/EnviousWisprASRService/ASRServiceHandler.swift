@@ -59,25 +59,19 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
                     // Mach port queue exhaustion blocks the delegate thread, stalling the download.
                     // Instead: callback writes to a thread-safe snapshot, a DispatchSource timer
                     // samples it at 4 Hz and sends XPC messages from its own thread.
-                    let snapshot = ProgressSnapshot()
-                    nonisolated(unsafe) let client = self.clientProxy
-                    let pollable = self.pollableProgress
-
-                    // Start publisher timer — samples snapshot and sends XPC messages at 4 Hz
-                    let publisher = ProgressPublisher(snapshot: snapshot, client: client)
-                    publisher.start()
+                    // Progress via shared file — bypasses XPC entirely.
+                    // XPC serializes replies, so getDownloadProgress replies are blocked
+                    // behind the pending loadModel reply. Writing to a file that the app
+                    // reads on a timer is the only reliable cross-process progress path.
+                    let progressFile = ProgressFile.shared
+                    progressFile.clear()
 
                     try await backend.prepare { fraction, phase, detail in
-                        // Hot path — runs on URLSession delegate thread. Must be instant.
-                        snapshot.update(fraction: fraction, phase: phase, detail: detail)
-                        // Also update the pollable snapshot for request-response polling
-                        pollable.update(fraction: fraction, phase: phase, detail: detail)
+                        // Hot path — runs on URLSession delegate thread. File write is fast.
+                        progressFile.write(fraction: fraction, phase: phase, detail: detail)
                     }
 
-                    // Flush final state and tear down timer
-                    publisher.stop()
-                    pollable.update(fraction: 1.0, phase: "", detail: "")
-                    client?.reportDownloadProgress(1.0, phase: "", detail: "")
+                    progressFile.write(fraction: 1.0, phase: "", detail: "")
 
                     self.parakeetBackend = backend
                 case "whisperKit":
