@@ -1,5 +1,6 @@
 import Foundation
 import Sentry
+import EnviousWisprCore
 
 /// Thin, type-safe Sentry breadcrumb + error helper for pipeline instrumentation.
 /// Limb: all methods are fire-and-forget — a Sentry call failure never blocks the pipeline.
@@ -57,6 +58,45 @@ public enum SentryBreadcrumb {
             data: extra
         )
 
+        SentrySDK.capture(event: event)
+    }
+
+    // MARK: - Apple Intelligence Diagnostics
+
+    /// Attach an AI diagnostics report as persistent Sentry context + breadcrumb.
+    /// Use at app launch — logs the state but does NOT fire a warning event.
+    /// The report is included in every future crash/error event automatically.
+    public static func attachAIDiagnostics(_ report: AppleIntelligenceAvailabilityReport) {
+        add(stage: "ai_diagnostics", message: "AI availability check completed", data: [
+            "overall_status": report.overallStatus.rawValue,
+            "build_compiled_in": report.buildCompiledIn,
+            "runtime_framework_present": report.runtimeFrameworkPresent,
+            "device_eligibility": report.deviceEligibility.rawValue,
+            "model_accessible": report.modelAccessible.rawValue,
+            "failure_reasons": report.failureReasons.map(\.rawValue),
+            "check_duration_ms": report.checkDurationMs,
+        ])
+
+        SentrySDK.configureScope { scope in
+            scope.setContext(value: report.sentryContext, key: "apple_intelligence")
+        }
+    }
+
+    /// Report an AI failure that the user actually hit during dictation.
+    /// Attaches a fresh diagnostics report AND fires a Sentry warning event
+    /// so we can alert on real user-facing Apple Intelligence failures.
+    public static func reportAIFailure(_ report: AppleIntelligenceAvailabilityReport) {
+        // Update the persistent context with the fresh report
+        attachAIDiagnostics(report)
+
+        // Fire a warning event — this is a real user-facing failure, not just launch state
+        let event = Event(level: .warning)
+        event.message = SentryMessage(formatted: "Apple Intelligence failed during dictation: \(report.failureReasons.map(\.rawValue).joined(separator: ", "))")
+        event.tags = [
+            "ai.overall_status": report.overallStatus.rawValue,
+            "ai.failure_reasons": report.failureReasons.map(\.rawValue).joined(separator: ","),
+        ]
+        event.extra = report.sentryContext
         SentrySDK.capture(event: event)
     }
 

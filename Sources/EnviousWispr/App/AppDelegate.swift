@@ -100,6 +100,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
         }
 
+        // Run Apple Intelligence diagnostics and attach report to Sentry context.
+        // Fire-and-forget — report is logged as breadcrumb and persisted in Sentry scope
+        // so any future crash includes the AI availability state.
+        let aiReport = AppleIntelligenceDiagnosticsService.runDiagnostics()
+        SentryBreadcrumb.attachAIDiagnostics(aiReport)
+        Task { await AppLogger.shared.log(
+            "AI diagnostics: status=\(aiReport.overallStatus.rawValue), " +
+            "reasons=\(aiReport.failureReasons.map(\.rawValue)), " +
+            "duration=\(aiReport.checkDurationMs)ms",
+            level: .info, category: "Diagnostics"
+        ) }
+
         // Check Accessibility permission on launch (query only — never auto-prompt).
         appState.permissions.refreshOnLaunch()
         updateIcon() // Reflect accessibility warning state in menu bar icon
