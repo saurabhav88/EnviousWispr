@@ -496,6 +496,11 @@ public final class TranscriptionPipeline: DictationPipeline {
                     "provider": llmPolishStep.llmProvider.rawValue,
                     "model": llmPolishStep.llmModel,
                 ])
+                // If Apple Intelligence failed, run a fresh diagnostics check and attach it
+                if llmPolishStep.llmProvider == .appleIntelligence {
+                    let aiReport = AppleIntelligenceDiagnosticsService.runDiagnostics()
+                    SentryBreadcrumb.reportAIDiagnostics(aiReport)
+                }
                 Task { await AppLogger.shared.log(
                     "Text processing failed: \(error.localizedDescription)",
                     level: .info, category: "Pipeline"
