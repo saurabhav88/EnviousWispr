@@ -1,9 +1,6 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import sitemap from '@astrojs/sitemap';
-import cloudflare from '@astrojs/cloudflare';
-
-const isDevServer = process.argv.includes('dev');
 
 // Static lastmod dates for core pages (update when content changes significantly)
 const CORE_PAGE_DATES = {
@@ -15,7 +12,6 @@ const CORE_PAGE_DATES = {
 export default defineConfig({
   site: 'https://enviouswispr.com',
   output: 'static',
-  adapter: isDevServer ? undefined : cloudflare(),
   integrations: [
     sitemap({
       serialize(item) {

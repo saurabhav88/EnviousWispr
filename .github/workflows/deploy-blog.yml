@@ -41,15 +41,15 @@ jobs:
       - name: Verify build output
         working-directory: website
         run: |
-          if [ ! -d "dist/client" ]; then
-            echo "Build output directory dist/client/ does not exist"
+          if [ ! -d "dist" ]; then
+            echo "Build output directory dist/ does not exist"
             exit 1
           fi
           echo "Build output verified"
 
       - name: Deploy to Cloudflare Pages
         working-directory: website
-        run: npx wrangler pages deploy dist/client/ --project-name=enviouswispr --branch=main
+        run: npx wrangler pages deploy dist/ --project-name=enviouswispr --branch=main
         env:
           CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
           CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}

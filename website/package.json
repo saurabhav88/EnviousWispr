@@ -16,7 +16,6 @@
     "undici": ">=7.24.0"
   },
   "dependencies": {
-    "@astrojs/cloudflare": "^13.0.2",
     "@astrojs/rss": "^4.0.17",
     "@astrojs/sitemap": "^3.7.1",
     "astro": "^6.0.2",
