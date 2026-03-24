@@ -104,7 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Fire-and-forget — report is logged as breadcrumb and persisted in Sentry scope
         // so any future crash includes the AI availability state.
         let aiReport = AppleIntelligenceDiagnosticsService.runDiagnostics()
-        SentryBreadcrumb.reportAIDiagnostics(aiReport)
+        SentryBreadcrumb.attachAIDiagnostics(aiReport)
         Task { await AppLogger.shared.log(
             "AI diagnostics: status=\(aiReport.overallStatus.rawValue), " +
             "reasons=\(aiReport.failureReasons.map(\.rawValue)), " +

@@ -457,7 +457,7 @@ public final class WhisperKitPipeline: DictationPipeline {
                 // If Apple Intelligence failed, run a fresh diagnostics check and attach it
                 if llmPolishStep.llmProvider == .appleIntelligence {
                     let aiReport = AppleIntelligenceDiagnosticsService.runDiagnostics()
-                    SentryBreadcrumb.reportAIDiagnostics(aiReport)
+                    SentryBreadcrumb.reportAIFailure(aiReport)
                 }
                 lastPolishError = error.localizedDescription
                 context = TextProcessingContext(text: asrText, originalASRText: asrText, language: asrLanguage)
