@@ -1,5 +1,5 @@
 {
-  "originHash" : "6254dbf0ea7db11520451a2c2cbfa2fd8df8b0a49df6da2b6622fad6e804643c",
+  "originHash" : "6e305dba3639bb0c074ca6202541c9d6cbf04f06f1481800048c2e3217a9ee52",
   "pins" : [
     {
       "identity" : "fluidaudio",
@@ -8,6 +8,33 @@
       "state" : {
         "revision" : "9830ce835881c0d0d40f90aabfaae3a6da5bebfb",
         "version" : "0.12.4"
+      }
+    },
+    {
+      "identity" : "plcrashreporter",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/microsoft/plcrashreporter.git",
+      "state" : {
+        "revision" : "0254f941c646b1ed17b243654723d0f071e990d0",
+        "version" : "1.12.2"
+      }
+    },
+    {
+      "identity" : "posthog-ios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/PostHog/posthog-ios.git",
+      "state" : {
+        "revision" : "573b68562fb03438b1f535d3326b00a731233f4f",
+        "version" : "3.48.0"
+      }
+    },
+    {
+      "identity" : "sentry-cocoa",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/getsentry/sentry-cocoa.git",
+      "state" : {
+        "revision" : "05d3ce8332097ff0b2347231ac66476fd7d2f4d8",
+        "version" : "9.8.0"
       }
     },
     {
@@ -71,15 +98,6 @@
       "state" : {
         "revision" : "150169bfba0889c229a2ce7494cf8949f18e6906",
         "version" : "1.1.9"
-      }
-    },
-    {
-      "identity" : "swiftsdk",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/TelemetryDeck/SwiftSDK.git",
-      "state" : {
-        "revision" : "d41d6e86265dc182ba4474f9ef53ecddbbe052b8",
-        "version" : "2.12.0"
       }
     },
     {

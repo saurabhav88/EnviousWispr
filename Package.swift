@@ -11,7 +11,8 @@ let package = Package(
         .package(url: "https://github.com/argmaxinc/WhisperKit.git", from: "0.12.0"),
         .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.12.0"),
         .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.6.0"),
-        .package(url: "https://github.com/TelemetryDeck/SwiftSDK.git", from: "2.0.0"),
+        .package(url: "https://github.com/PostHog/posthog-ios.git", from: "3.0.0"),
+        .package(url: "https://github.com/getsentry/sentry-cocoa.git", from: "9.8.0"),
     ],
     targets: [
         .target(
@@ -40,7 +41,8 @@ let package = Package(
             name: "EnviousWisprServices",
             dependencies: [
                 "EnviousWisprCore",
-                .product(name: "TelemetryDeck", package: "SwiftSDK"),
+                .product(name: "PostHog", package: "posthog-ios"),
+                .product(name: "Sentry", package: "sentry-cocoa"),
             ],
             path: "Sources/EnviousWisprServices"
         ),
@@ -108,7 +110,6 @@ let package = Package(
                 "WhisperKit",
                 "FluidAudio",
                 "Sparkle",
-                .product(name: "TelemetryDeck", package: "SwiftSDK"),
             ],
             path: "Sources/EnviousWispr",
             exclude: ["Resources"]

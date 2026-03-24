@@ -3,7 +3,6 @@ import EnviousWisprCore
 import EnviousWisprServices
 import EnviousWisprASR
 import EnviousWisprLLM
-import TelemetryDeck
 
 // MARK: - ViewModel
 
@@ -96,10 +95,6 @@ final class OnboardingV2ViewModel {
 
     func finishOnboarding(settings: SettingsManager) {
         settings.onboardingState = .completed
-        // Initialize TelemetryDeck now — the app init() skipped it because
-        // onboarding wasn't complete at launch time.
-        let config = TelemetryDeck.Config(appID: "30801A60-9339-4313-8ACE-CC294B2A3EEA")
-        TelemetryDeck.initialize(config: config)
         TelemetryService.shared.onboardingCompleted(asrBackend: settings.selectedBackend.rawValue, recordingMode: settings.recordingMode.rawValue)
     }
 }
@@ -184,7 +179,7 @@ private struct WelcomeScreenV2: View {
         ("shield.fill",  "On-Device",     "Your voice never leaves your Mac."),
         ("wifi.slash",   "Offline-Ready",  "Works without internet."),
         ("bolt.fill",    "Native Speed",   "Built for Apple Silicon."),
-        ("person.fill",  "Free & Private", "No account, no tracking."),
+        ("person.fill",  "Free & Private", "No account required. Anonymous analytics only."),
     ]
 
     @State private var appeared = false

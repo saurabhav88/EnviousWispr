@@ -1,6 +1,6 @@
 import SwiftUI
 import EnviousWisprCore
-import TelemetryDeck
+import EnviousWisprServices
 
 @main
 struct EnviousWisprApp: App {
@@ -9,12 +9,10 @@ struct EnviousWisprApp: App {
         !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
 
     init() {
-        // Only initialize TelemetryDeck if the user has completed onboarding.
-        // Onboarding says "No account, no tracking" — honour that promise.
-        if UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {
-            let config = TelemetryDeck.Config(appID: "30801A60-9339-4313-8ACE-CC294B2A3EEA")
-            TelemetryDeck.initialize(config: config)
-        }
+        // Initialize observability (PostHog + Sentry) unconditionally at launch —
+        // captures install/open/update lifecycle events, startup crashes, and the
+        // full onboarding funnel. Anonymous from first launch.
+        ObservabilityBootstrap.initialize()
     }
 
     var body: some Scene {
