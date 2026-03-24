@@ -101,6 +101,25 @@ jobs:
             -k "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
           security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
 
+      - name: Stamp observability keys into Info.plist
+        env:
+          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: |
+          PLIST="Sources/EnviousWispr/Resources/Info.plist"
+          if [[ -n "${POSTHOG_API_KEY}" ]]; then
+            plutil -replace PostHogAPIKey -string "${POSTHOG_API_KEY}" "$PLIST"
+            echo "==> PostHog API key stamped into Info.plist"
+          else
+            echo "::warning::POSTHOG_API_KEY secret not set — PostHog will be disabled in this release"
+          fi
+          if [[ -n "${SENTRY_DSN}" ]]; then
+            plutil -replace SentryDSN -string "${SENTRY_DSN}" "$PLIST"
+            echo "==> Sentry DSN stamped into Info.plist"
+          else
+            echo "::warning::SENTRY_DSN secret not set — Sentry will be disabled in this release"
+          fi
+
       - name: Package and sign DMG
         env:
           CODESIGN_IDENTITY: "Developer ID Application: ${{ secrets.APPLE_TEAM_NAME }} (${{ secrets.APPLE_TEAM_ID }})"
