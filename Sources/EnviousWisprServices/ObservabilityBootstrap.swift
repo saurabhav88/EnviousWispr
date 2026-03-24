@@ -29,7 +29,17 @@ public enum ObservabilityBootstrap {
         config.flushIntervalSeconds = 30
         config.maxQueueSize = 1000
         config.setBeforeSend { event in
-            // Placeholder for future PII redaction — drop or modify events here
+            // PII redaction: strip transcript content, API keys, and emails from event properties.
+            // This is a limb — must never throw or crash. Heart is unaffected if this fails.
+            var redactedProperties: [String: Any] = [:]
+            for (key, value) in event.properties {
+                if let str = value as? String {
+                    redactedProperties[key] = ObservabilityBootstrap.redactString(str)
+                } else {
+                    redactedProperties[key] = value
+                }
+            }
+            event.properties = redactedProperties
             return event
         }
 
@@ -66,9 +76,91 @@ public enum ObservabilityBootstrap {
             options.tracesSampleRate = NSNumber(value: 0)
 
             options.beforeSend = { event in
+                // PII redaction: strip transcript content, API keys, and emails.
+                // This is a limb — must never throw or crash. Heart is unaffected if this fails.
+
+                // Redact event message (SentryMessage wraps formatted + raw strings)
+                if let sentryMsg = event.message {
+                    let redacted = ObservabilityBootstrap.redactString(sentryMsg.formatted)
+                    if redacted != sentryMsg.formatted {
+                        event.message = SentryMessage(formatted: redacted)
+                    }
+                }
+
+                // Redact extra context values
+                if let extra = event.extra {
+                    var redactedExtra: [String: Any] = [:]
+                    for (key, value) in extra {
+                        if let str = value as? String {
+                            redactedExtra[key] = ObservabilityBootstrap.redactString(str)
+                        } else {
+                            redactedExtra[key] = value
+                        }
+                    }
+                    event.extra = redactedExtra
+                }
+
+                // Redact breadcrumb messages
+                if let crumbs = event.breadcrumbs {
+                    for crumb in crumbs {
+                        if let msg = crumb.message {
+                            crumb.message = ObservabilityBootstrap.redactString(msg)
+                        }
+                        if let data = crumb.data {
+                            var redactedData: [String: Any] = [:]
+                            for (key, value) in data {
+                                if let str = value as? String {
+                                    redactedData[key] = ObservabilityBootstrap.redactString(str)
+                                } else {
+                                    redactedData[key] = value
+                                }
+                            }
+                            crumb.data = redactedData
+                        }
+                    }
+                }
+
                 return event
             }
         }
+    }
+
+    /// Redacts a string if it matches known PII patterns:
+    /// - Long strings (> 100 chars) that are not URLs (likely transcript content)
+    /// - API key patterns: sk-*, phc_*, sntrys_*, key_*, or >= 32 contiguous hex chars
+    /// - Email-like patterns
+    /// Returns the original string if it matches no pattern, or `[REDACTED]` if it does.
+    /// Never throws — any regex failure is silently ignored and the original value returned.
+    static func redactString(_ input: String) -> String {
+        // Long non-URL strings (transcript content heuristic)
+        if input.count > 100 {
+            let lower = input.lowercased()
+            if !lower.hasPrefix("http://") && !lower.hasPrefix("https://") {
+                return "[REDACTED]"
+            }
+        }
+
+        // API key patterns
+        let apiKeyPrefixes = ["sk-", "phc_", "sntrys_", "key_"]
+        for prefix in apiKeyPrefixes {
+            if input.lowercased().hasPrefix(prefix) && input.count >= 20 {
+                return "[REDACTED]"
+            }
+        }
+
+        // 32+ contiguous hex characters (generic secret/token heuristic)
+        if let hexRange = input.range(of: "[0-9a-fA-F]{32,}", options: .regularExpression),
+           hexRange == input.startIndex..<input.endIndex || input.count <= input[hexRange].count + 8 {
+            return "[REDACTED]"
+        }
+
+        // Email pattern: something@something.something
+        if let _ = input.range(of: #"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"#,
+                                options: .regularExpression) {
+            return "[REDACTED]"
+        }
+
+        return input
     }
 
     /// Resolves a key by checking Info.plist first, then falling back to the file system.

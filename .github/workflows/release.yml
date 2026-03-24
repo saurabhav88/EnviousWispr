@@ -157,6 +157,34 @@ jobs:
             exit 1
           fi
 
+      - name: Upload dSYMs to Sentry
+        continue-on-error: true
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Install sentry-cli (pinned version, explicit install dir for self-hosted runner)
+          export INSTALL_DIR="$HOME/.local/bin"
+          mkdir -p "$INSTALL_DIR"
+          curl -sL https://sentry.io/get-cli/ | SENTRY_CLI_VERSION=2.39.1 bash
+          export PATH="$INSTALL_DIR:$PATH"
+
+          # Create release and associate commits
+          sentry-cli releases new "v${VERSION}"
+          sentry-cli releases set-commits "v${VERSION}" --auto
+
+          # Upload debug symbols — --arch arm64 puts artifacts in arch-specific dir
+          echo "==> Uploading dSYMs ..."
+          sentry-cli debug-files upload --include-sources .build/arm64-apple-macosx/release/
+
+          # Finalize release
+          sentry-cli releases finalize "v${VERSION}"
+          echo "==> Sentry release v${VERSION} finalized with dSYMs."
+
       - name: Generate Sparkle appcast entry
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
