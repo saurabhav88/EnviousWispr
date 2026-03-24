@@ -43,13 +43,6 @@ public actor ModelDownloadManager {
         return appSupport.appendingPathComponent("parakeet-tdt-0.6b-v3-coreml")
     }()
 
-    // MARK: - Stall Detection State
-
-    private var lastProgressTime: CFAbsoluteTime = 0
-    private var lastFraction: Double = 0
-    private var isStalled = false
-    private var stallCheckTask: Task<Void, Never>?
-
     public init() {}
 
     // MARK: - Public API
@@ -57,20 +50,14 @@ public actor ModelDownloadManager {
     /// Download and load Parakeet v3 models with stall detection and optional R2 fallback.
     /// Returns loaded AsrModels ready for transcription.
     public func downloadAndLoad(progressCallback: ProgressCallback?) async throws -> AsrModels {
-        lastProgressTime = CFAbsoluteTimeGetCurrent()
-        lastFraction = 0
-        isStalled = false
-
-        // Start stall monitor
-        stallCheckTask = Task.detached { [weak self] in
-            await self?.monitorForStalls()
-        }
-
-        defer { stallCheckTask?.cancel() }
+        let stallTracker = StallTracker(timeout: Self.stallTimeout)
 
         do {
             // Primary path: FluidAudio's HuggingFace download
-            let models = try await downloadViaFluidAudio(progressCallback: progressCallback)
+            let models = try await downloadViaFluidAudio(
+                progressCallback: progressCallback,
+                stallTracker: stallTracker
+            )
 
             // Verify checksum if configured
             verifyChecksum()
@@ -78,7 +65,7 @@ public actor ModelDownloadManager {
             return models
         } catch {
             // If we stalled and R2 is configured, try the fallback
-            if isStalled && !Self.r2BaseURL.isEmpty {
+            if stallTracker.isStalled && !Self.r2BaseURL.isEmpty {
                 progressCallback?(0.01, "Trying alternate download source...", "")
 
                 do {
@@ -96,11 +83,14 @@ public actor ModelDownloadManager {
 
     // MARK: - Primary Download (FluidAudio / HuggingFace)
 
-    private func downloadViaFluidAudio(progressCallback: ProgressCallback?) async throws -> AsrModels {
+    private func downloadViaFluidAudio(
+        progressCallback: ProgressCallback?,
+        stallTracker: StallTracker
+    ) async throws -> AsrModels {
         let handler: DownloadUtils.ProgressHandler? = progressCallback.map { callback -> DownloadUtils.ProgressHandler in
-            { [weak self] progress in
-                // Update stall detection timestamp
-                Task { await self?.recordProgress(fraction: progress.fractionCompleted) }
+            { progress in
+                // Update stall tracker — lock-based, no actor hop, zero overhead on download thread
+                stallTracker.recordProgress(fraction: progress.fractionCompleted)
 
                 let phase: String
                 let detail: String
@@ -205,29 +195,6 @@ public actor ModelDownloadManager {
         )
     }
 
-    // MARK: - Stall Detection
-
-    private func recordProgress(fraction: Double) {
-        if fraction > lastFraction + 0.001 {
-            lastProgressTime = CFAbsoluteTimeGetCurrent()
-            lastFraction = fraction
-        }
-    }
-
-    private func monitorForStalls() async {
-        while !Task.isCancelled {
-            try? await Task.sleep(nanoseconds: 5_000_000_000) // Check every 5 seconds
-            guard !Task.isCancelled else { return }
-
-            let elapsed = CFAbsoluteTimeGetCurrent() - lastProgressTime
-            // Only stall-detect during download phase (fraction < 0.5)
-            if elapsed >= Self.stallTimeout && lastFraction < 0.5 && lastFraction > 0 {
-                isStalled = true
-                return
-            }
-        }
-    }
-
     // MARK: - Checksum Verification
 
     /// Verify the SHA-256 checksum of the encoder model file.
@@ -277,5 +244,44 @@ public enum ModelDownloadError: LocalizedError {
         case .fallbackFailed(let error):
             return "Both download sources failed: \(error.localizedDescription)"
         }
+    }
+}
+
+// MARK: - Stall Tracker
+
+/// Thread-safe stall detector. Uses NSLock — zero actor overhead on the download thread.
+/// Called from FluidAudio's URLSession delegate thread; must not block or create Tasks.
+final class StallTracker: @unchecked Sendable {
+    private let timeout: TimeInterval
+    private let lock = NSLock()
+    private var lastProgressTime: CFAbsoluteTime
+    private var lastFraction: Double = 0
+    private var _isStalled = false
+
+    init(timeout: TimeInterval) {
+        self.timeout = timeout
+        self.lastProgressTime = CFAbsoluteTimeGetCurrent()
+    }
+
+    /// Record a progress update. Called from the download delegate thread — must be fast.
+    func recordProgress(fraction: Double) {
+        lock.lock()
+        if fraction > lastFraction + 0.001 {
+            lastProgressTime = CFAbsoluteTimeGetCurrent()
+            lastFraction = fraction
+        }
+        // Check for stall inline — no separate monitor task needed
+        let elapsed = CFAbsoluteTimeGetCurrent() - lastProgressTime
+        if elapsed >= timeout && lastFraction < 0.5 && lastFraction > 0 {
+            _isStalled = true
+        }
+        lock.unlock()
+    }
+
+    /// Whether a stall has been detected.
+    var isStalled: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return _isStalled
     }
 }

@@ -59,11 +59,16 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
                     // Relay download progress to host app via XPC client callback.
                     // Throttle to max ~4 updates/sec — the URLSession delegate fires per-chunk
                     // which can be hundreds/sec. Unthrottled XPC calls stall the download thread.
+                    // Dispatch XPC callbacks off the download thread entirely.
+                    // Even with remoteObjectProxyWithErrorHandler, XPC method calls serialize
+                    // on the caller thread and can stall FluidAudio's URLSession delegate.
                     nonisolated(unsafe) let client = self.clientProxy
                     let throttle = ProgressThrottle(interval: 0.25)
+                    let progressQueue = DispatchQueue(label: "com.enviouswispr.asr.progress", qos: .userInteractive)
                     try await backend.prepare { fraction, phase, detail in
                         guard throttle.shouldFire() || fraction >= 0.99 || fraction < 0.01 else { return }
-                        client?.reportDownloadProgress(fraction, phase: phase, detail: detail)
+                        let f = fraction; let p = phase; let d = detail
+                        progressQueue.async { client?.reportDownloadProgress(f, phase: p, detail: d) }
                     }
                     self.parakeetBackend = backend
                 case "whisperKit":
