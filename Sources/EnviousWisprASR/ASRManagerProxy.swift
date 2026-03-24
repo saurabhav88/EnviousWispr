@@ -39,6 +39,7 @@ public final class ASRManagerProxy: ASRManagerInterface {
     // MARK: - Idle timer (stays in proxy — same as ASRManager)
 
     private var idleTimer: Timer?
+    private var progressPollTimer: Timer?
 
     public init() {}
 
@@ -52,6 +53,13 @@ public final class ASRManagerProxy: ASRManagerInterface {
 
         ensureConnection()
         resendConfigIfNeeded()
+
+        // Start polling the XPC service for progress at 4 Hz.
+        // This is the reliable path — request/response, no Mach port backpressure,
+        // no bidirectional callback issues. The XPC push callback is kept as a
+        // supplementary fast path but polling is the primary progress source.
+        startProgressPolling()
+
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
             let guard_ = OneShotContinuationASR(cont)
             serviceProxy { proxy in
@@ -66,11 +74,36 @@ public final class ASRManagerProxy: ASRManagerInterface {
                 guard_.resume(throwing: XPCASRTransportError.serviceUnreachable)
             }
         }
-        // Clear progress on completion
+        // Stop polling and clear progress on completion
+        stopProgressPolling()
         downloadProgress = 1.0
         downloadPhase = ""
         downloadDetail = ""
         isModelLoaded = true
+    }
+
+    private func startProgressPolling() {
+        stopProgressPolling()
+        let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.serviceProxy { proxy in
+                proxy.getDownloadProgress { fraction, phase, detail in
+                    Task { @MainActor [weak self] in
+                        guard let self, !self.isModelLoaded else { return }
+                        self.downloadProgress = fraction
+                        self.downloadPhase = phase
+                        self.downloadDetail = detail
+                    }
+                }
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        progressPollTimer = timer
+    }
+
+    private func stopProgressPolling() {
+        progressPollTimer?.invalidate()
+        progressPollTimer = nil
     }
 
     public func unloadModel() async {

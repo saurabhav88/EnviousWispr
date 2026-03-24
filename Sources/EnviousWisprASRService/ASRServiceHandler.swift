@@ -61,6 +61,7 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
                     // samples it at 4 Hz and sends XPC messages from its own thread.
                     let snapshot = ProgressSnapshot()
                     nonisolated(unsafe) let client = self.clientProxy
+                    let pollable = self.pollableProgress
 
                     // Start publisher timer — samples snapshot and sends XPC messages at 4 Hz
                     let publisher = ProgressPublisher(snapshot: snapshot, client: client)
@@ -69,10 +70,13 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
                     try await backend.prepare { fraction, phase, detail in
                         // Hot path — runs on URLSession delegate thread. Must be instant.
                         snapshot.update(fraction: fraction, phase: phase, detail: detail)
+                        // Also update the pollable snapshot for request-response polling
+                        pollable.update(fraction: fraction, phase: phase, detail: detail)
                     }
 
                     // Flush final state and tear down timer
                     publisher.stop()
+                    pollable.update(fraction: 1.0, phase: "", detail: "")
                     client?.reportDownloadProgress(1.0, phase: "", detail: "")
 
                     self.parakeetBackend = backend
@@ -227,6 +231,20 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
         Task { await parakeet.cancelStreaming() }
     }
 
+    // MARK: - Download Progress Polling
+
+    /// Thread-safe snapshot of current download progress, written by the download callback,
+    /// read by the host app via getDownloadProgress polling.
+    private let pollableProgress = ProgressSnapshot()
+
+    func getDownloadProgress(reply: @escaping (Double, String, String) -> Void) {
+        if let state = pollableProgress.peek() {
+            reply(state.fraction, state.phase, state.detail)
+        } else {
+            reply(0, "", "")
+        }
+    }
+
     // MARK: - Capability
 
     func checkStreamingSupport(backendType: String, reply: @escaping (Bool) -> Void) {
@@ -261,6 +279,15 @@ private final class ProgressSnapshot: @unchecked Sendable {
         defer { lock.unlock() }
         guard _changed else { return nil }
         _changed = false
+        return (_fraction, _phase, _detail)
+    }
+
+    /// Read latest snapshot WITHOUT clearing the changed flag.
+    /// Used by the polling path (getDownloadProgress) to return current state.
+    func peek() -> (fraction: Double, phase: String, detail: String)? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard _fraction > 0 || !_phase.isEmpty else { return nil }
         return (_fraction, _phase, _detail)
     }
 }

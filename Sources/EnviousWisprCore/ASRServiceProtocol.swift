@@ -29,6 +29,10 @@ import Foundation
     /// Query current model state: (isLoaded, isStreaming).
     func getModelState(reply: @escaping (Bool, Bool) -> Void)
 
+    /// Poll current download progress. Returns (fractionCompleted, phase, detail).
+    /// Called by the host app on a timer during model download.
+    func getDownloadProgress(reply: @escaping (Double, String, String) -> Void)
+
     // MARK: - Batch Transcription
 
     /// Transcribe audio samples in batch mode.

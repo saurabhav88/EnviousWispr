@@ -38,6 +38,14 @@ final class OnboardingV2ViewModel {
     /// Coarse ETA text, shown only when download rate is stable. Empty = hidden.
     var downloadETA: String = ""
 
+    /// ViewModel-owned progress state, polled from ASR manager.
+    /// SwiftUI can't observe @Observable properties through protocol existentials
+    /// (asrManager is typed as `any ASRManagerInterface`), so we poll and copy.
+    var downloadProgress: Double = 0
+    var downloadPhase: String = ""
+    var downloadDetail: String = ""
+    private var progressPollTimer: Timer?
+
     // ETA computation state — rolling window of (timestamp, fraction) samples.
     private var etaSamples: [(time: CFAbsoluteTime, fraction: Double)] = []
     private static let etaWindowSeconds: CFAbsoluteTime = 10
@@ -79,8 +87,10 @@ final class OnboardingV2ViewModel {
 
         checklistStatuses[0] = .inProgress
         preventSleep()
+        startProgressPolling(asrManager: asrManager)
         do {
             try await asrManager.loadModel()
+            stopProgressPolling()
             allowSleep()
             // Check cancellation before advancing — window may have closed during download.
             try Task.checkCancellation()
@@ -103,10 +113,12 @@ final class OnboardingV2ViewModel {
             settings.onboardingState = .needsPermissions
             setupPhase = .permissions
         } catch is CancellationError {
+            stopProgressPolling()
             allowSleep()
             // Task was cancelled (window closed mid-setup). Leave onboardingState as .settingUp
             // so the next launch re-runs the checklist from scratch.
         } catch {
+            stopProgressPolling()
             allowSleep()
             let friendly = Self.friendlyError(error)
             downloadError = friendly
@@ -192,6 +204,35 @@ final class OnboardingV2ViewModel {
         default:
             downloadETA = "This may take several minutes"
         }
+    }
+
+    // MARK: - Progress Polling
+
+    /// Start polling the ASR manager for download progress at ~8 Hz.
+    /// Copies values into ViewModel-owned properties that SwiftUI can observe.
+    /// Uses .common run loop mode so polling continues during UI tracking interactions.
+    func startProgressPolling(asrManager: any ASRManagerInterface) {
+        stopProgressPolling()
+        let timer = Timer(timeInterval: 0.125, repeats: true) { [weak self] _ in
+            // Timer fires on main run loop — ViewModel is @MainActor, safe to access.
+            guard let self else { return }
+            let newProgress = asrManager.downloadProgress
+            let newPhase = asrManager.downloadPhase
+            let newDetail = asrManager.downloadDetail
+            if newProgress != self.downloadProgress || newPhase != self.downloadPhase || newDetail != self.downloadDetail {
+                self.downloadProgress = newProgress
+                self.downloadPhase = newPhase
+                self.downloadDetail = newDetail
+                self.updateETA(fraction: newProgress)
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        progressPollTimer = timer
+    }
+
+    func stopProgressPolling() {
+        progressPollTimer?.invalidate()
+        progressPollTimer = nil
     }
 
     // MARK: - Sleep Prevention
@@ -425,7 +466,6 @@ private struct SettingUpScreenV2: View {
 
 private struct ChecklistPhaseView: View {
     var viewModel: OnboardingV2ViewModel
-    @Environment(AppState.self) private var appState
 
     private static let items: [(title: String, subtitle: String)] = [
         ("Downloading speech model", "~460 MB, one-time setup"),
@@ -458,7 +498,7 @@ private struct ChecklistPhaseView: View {
                         title: item.title,
                         subtitle: downloadSubtitle(for: index, fallback: item.subtitle),
                         showProgressBar: index == 0 && viewModel.checklistStatuses[0].isInProgress,
-                        progress: index == 0 ? appState.asrManager.downloadProgress : nil
+                        progress: index == 0 ? viewModel.downloadProgress : nil
                     )
                     if index < Self.items.count - 1 {
                         Divider().padding(.horizontal, 14)
@@ -502,16 +542,13 @@ private struct ChecklistPhaseView: View {
 
             Spacer()
         }
-        .onChange(of: appState.asrManager.downloadProgress) { _, newValue in
-            viewModel.updateETA(fraction: newValue)
-        }
     }
 
     /// Returns live download status text for the model download row, or the static subtitle otherwise.
     private func downloadSubtitle(for index: Int, fallback: String) -> String {
         guard index == 0, viewModel.checklistStatuses[0].isInProgress else { return fallback }
-        let phase = appState.asrManager.downloadPhase
-        let detail = appState.asrManager.downloadDetail
+        let phase = viewModel.downloadPhase
+        let detail = viewModel.downloadDetail
         if phase.isEmpty { return fallback }
         // Build subtitle: phase + detail + optional ETA
         var text = detail.isEmpty ? phase : "\(phase) \(detail)"
