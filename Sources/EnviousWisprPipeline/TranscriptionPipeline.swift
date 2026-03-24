@@ -232,6 +232,9 @@ public final class TranscriptionPipeline: DictationPipeline {
                 "backend": asrManager.activeBackendType.rawValue,
                 "streaming": streamingASRActive,
             ])
+            Task { @MainActor in
+                SentryBreadcrumb.updateRecordingState(active: true, backend: "parakeet", isStreaming: streamingASRActive)
+            }
 
             if stopRequested {
                 stopRequested = false
@@ -323,6 +326,9 @@ public final class TranscriptionPipeline: DictationPipeline {
         // and all queued tasks drop their buffers — losing ~250-500ms of trailing audio.
         let rawSamples = await audioCapture.stopCapture()
         SentryBreadcrumb.add(stage: "recording", message: "Recording stopped", data: ["sample_count": rawSamples.count])
+        Task { @MainActor in
+            SentryBreadcrumb.updateRecordingState(active: false)
+        }
 
         if wasStreaming {
             // Deterministic drain: freeze the dispatch count after stopCapture (no new buffers

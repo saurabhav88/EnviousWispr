@@ -139,6 +139,11 @@ public enum ObservabilityBootstrap {
                 return event
             }
         }
+
+        // Set stable tags that rarely change — available on every event including fatal crashes
+        SentrySDK.configureScope { scope in
+            scope.setTag(value: environment == "development" ? "debug" : "release", key: "app.build_type")
+        }
     }
 
     /// Redacts a string if it matches known PII patterns:

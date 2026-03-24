@@ -248,6 +248,9 @@ public final class WhisperKitPipeline: DictationPipeline {
             recordingStartTime = Date()
             currentTranscript = nil
             SentryBreadcrumb.add(stage: "recording", message: "WhisperKit recording started", data: ["backend": "whisperKit"])
+            Task { @MainActor in
+                SentryBreadcrumb.updateRecordingState(active: true, backend: "whisperkit")
+            }
             startVADMonitoring()
             await startIncrementalWorker()
 
@@ -311,6 +314,9 @@ public final class WhisperKitPipeline: DictationPipeline {
 
         let rawSamples = await audioCapture.stopCapture()
         SentryBreadcrumb.add(stage: "recording", message: "WhisperKit recording stopped", data: ["sample_count": rawSamples.count])
+        Task { @MainActor in
+            SentryBreadcrumb.updateRecordingState(active: false)
+        }
 
         // Pre-warm LLM connection while ASR runs
         LLMNetworkSession.shared.preWarmIfConfigured(

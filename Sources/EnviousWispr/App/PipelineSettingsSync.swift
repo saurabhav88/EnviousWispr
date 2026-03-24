@@ -100,6 +100,7 @@ final class PipelineSettingsSync {
             let backend = settings.selectedBackend
             Task { [weak self] in
                 await self?.asrManager.switchBackend(to: backend)
+                SentryBreadcrumb.updateASRBackend(backend == .whisperKit ? "whisperkit" : "parakeet")
                 if backend == .whisperKit {
                     await self?.whisperKitSetup.detectState()
                     self?.onNeedsPreloadObservation?()
