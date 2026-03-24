@@ -276,7 +276,7 @@ jobs:
             "build/EnviousWispr-${VERSION}.dmg" \
             "build/EnviousWispr.dmg"
 
-      - name: Open appcast PR
+      - name: Push appcast to main
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
@@ -287,19 +287,12 @@ jobs:
           git fetch origin main
           git checkout main
 
-          BRANCH="chore/appcast-v${VERSION}"
-          git checkout -b "$BRANCH"
           git add -f appcast.xml website/public/appcast.xml
           if git diff --staged --quiet; then
             echo "==> appcast.xml unchanged, skipping."
           else
             git commit -m "chore(release): update appcast for v${VERSION}"
-            git push -u origin "$BRANCH"
-            gh pr create \
-              --title "chore(release): update appcast for v${VERSION}" \
-              --body "Automated appcast update for v${VERSION}. Merge to push Sparkle update to users." \
-              --base main \
-              --head "$BRANCH"
+            git push origin main
           fi
 
       - name: Cleanup keychain
