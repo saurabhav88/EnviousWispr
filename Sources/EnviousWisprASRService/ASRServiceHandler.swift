@@ -38,9 +38,6 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
     // MARK: - Model Lifecycle
 
     /// Get the client proxy for sending progress callbacks to the host app.
-    /// Uses remoteObjectProxyWithErrorHandler for non-blocking fire-and-forget delivery.
-    /// The synchronous remoteObjectProxy blocks the caller thread on XPC round-trip,
-    /// which stalls FluidAudio's download delegate when used from progress callbacks.
     private var clientProxy: ASRServiceClientProtocol? {
         connection?.remoteObjectProxyWithErrorHandler({ _ in }) as? ASRServiceClientProtocol
     }
@@ -56,20 +53,28 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
                 switch backendType {
                 case "parakeet":
                     let backend = ParakeetBackend()
-                    // Relay download progress to host app via XPC client callback.
-                    // Throttle to max ~4 updates/sec — the URLSession delegate fires per-chunk
-                    // which can be hundreds/sec. Unthrottled XPC calls stall the download thread.
-                    // Dispatch XPC callbacks off the download thread entirely.
-                    // Even with remoteObjectProxyWithErrorHandler, XPC method calls serialize
-                    // on the caller thread and can stall FluidAudio's URLSession delegate.
+
+                    // Decoupled push model for progress reporting:
+                    // The URLSession delegate callback (from FluidAudio) must NEVER call XPC directly —
+                    // Mach port queue exhaustion blocks the delegate thread, stalling the download.
+                    // Instead: callback writes to a thread-safe snapshot, a DispatchSource timer
+                    // samples it at 4 Hz and sends XPC messages from its own thread.
+                    let snapshot = ProgressSnapshot()
                     nonisolated(unsafe) let client = self.clientProxy
-                    let throttle = ProgressThrottle(interval: 0.25)
-                    let progressQueue = DispatchQueue(label: "com.enviouswispr.asr.progress", qos: .userInteractive)
+
+                    // Start publisher timer — samples snapshot and sends XPC messages at 4 Hz
+                    let publisher = ProgressPublisher(snapshot: snapshot, client: client)
+                    publisher.start()
+
                     try await backend.prepare { fraction, phase, detail in
-                        guard throttle.shouldFire() || fraction >= 0.99 || fraction < 0.01 else { return }
-                        let f = fraction; let p = phase; let d = detail
-                        progressQueue.async { client?.reportDownloadProgress(f, phase: p, detail: d) }
+                        // Hot path — runs on URLSession delegate thread. Must be instant.
+                        snapshot.update(fraction: fraction, phase: phase, detail: detail)
                     }
+
+                    // Flush final state and tear down timer
+                    publisher.stop()
+                    client?.reportDownloadProgress(1.0, phase: "", detail: "")
+
                     self.parakeetBackend = backend
                 case "whisperKit":
                     let variant = modelVariant.isEmpty ? "openai_whisper-large-v3_turbo" : modelVariant
@@ -229,27 +234,66 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
     }
 }
 
-// MARK: - Progress Throttle
+// MARK: - Decoupled Progress Publisher
 
-/// Thread-safe time-based throttle for progress callbacks.
-/// Prevents XPC round-trips from stalling the download delegate thread.
-private final class ProgressThrottle: @unchecked Sendable {
-    private let interval: CFAbsoluteTime
-    private var lastFireTime: CFAbsoluteTime = 0
+/// Thread-safe progress snapshot. Written by FluidAudio's URLSession delegate thread,
+/// read by the ProgressPublisher timer. Lock-based — zero overhead on the hot path.
+private final class ProgressSnapshot: @unchecked Sendable {
     private let lock = NSLock()
+    private var _fraction: Double = 0
+    private var _phase: String = ""
+    private var _detail: String = ""
+    private var _changed = false
 
-    init(interval: CFAbsoluteTime) {
-        self.interval = interval
+    func update(fraction: Double, phase: String, detail: String) {
+        lock.lock()
+        _fraction = fraction
+        _phase = phase
+        _detail = detail
+        _changed = true
+        lock.unlock()
     }
 
-    func shouldFire() -> Bool {
-        let now = CFAbsoluteTimeGetCurrent()
+    /// Read latest snapshot and clear the changed flag.
+    /// Returns nil if nothing changed since last read.
+    func consume() -> (fraction: Double, phase: String, detail: String)? {
         lock.lock()
         defer { lock.unlock() }
-        if now - lastFireTime >= interval {
-            lastFireTime = now
-            return true
+        guard _changed else { return nil }
+        _changed = false
+        return (_fraction, _phase, _detail)
+    }
+}
+
+/// Samples ProgressSnapshot at 4 Hz and sends XPC messages to the host app.
+/// Runs on its own DispatchSource timer — completely decoupled from the download thread.
+/// The URLSession delegate thread never pays XPC Mach port backpressure costs.
+private final class ProgressPublisher: @unchecked Sendable {
+    private let snapshot: ProgressSnapshot
+    private let client: ASRServiceClientProtocol?
+    private let timer: DispatchSourceTimer
+    private let queue = DispatchQueue(label: "com.enviouswispr.asr.progress-publisher", qos: .userInteractive)
+
+    init(snapshot: ProgressSnapshot, client: ASRServiceClientProtocol?) {
+        self.snapshot = snapshot
+        self.client = client
+        self.timer = DispatchSource.makeTimerSource(queue: queue)
+    }
+
+    func start() {
+        timer.schedule(deadline: .now(), repeating: 0.25) // 4 Hz
+        timer.setEventHandler { [weak self] in
+            guard let self, let state = self.snapshot.consume() else { return }
+            self.client?.reportDownloadProgress(state.fraction, phase: state.phase, detail: state.detail)
         }
-        return false
+        timer.resume()
+    }
+
+    func stop() {
+        timer.cancel()
+        // Flush any remaining state
+        if let state = snapshot.consume() {
+            client?.reportDownloadProgress(state.fraction, phase: state.phase, detail: state.detail)
+        }
     }
 }

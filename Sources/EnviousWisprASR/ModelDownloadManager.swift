@@ -60,7 +60,7 @@ public actor ModelDownloadManager {
             )
 
             // Verify checksum if configured
-            verifyChecksum()
+            Self.verifyChecksum()
 
             return models
         } catch {
@@ -71,7 +71,7 @@ public actor ModelDownloadManager {
                 do {
                     try await downloadViaR2(progressCallback: progressCallback)
                     let models = try await loadOnly(progressCallback: progressCallback)
-                    verifyChecksum()
+                    Self.verifyChecksum()
                     return models
                 } catch {
                     throw ModelDownloadError.fallbackFailed(underlying: error)
@@ -200,7 +200,8 @@ public actor ModelDownloadManager {
     /// Verify the SHA-256 checksum of the encoder model file.
     /// Logs a warning if verification fails but does NOT block — the model may still work.
     /// This is a defense-in-depth measure, not a hard gate.
-    private func verifyChecksum() {
+    /// Static because it only reads from disk — no actor state needed.
+    public static func verifyChecksum() {
         guard !Self.encoderChecksum.isEmpty else { return }
 
         let encoderModel = Self.modelCacheDir

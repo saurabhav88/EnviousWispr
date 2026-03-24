@@ -35,14 +35,48 @@ public actor ParakeetBackend: ASRBackend {
     /// Prepare with optional progress reporting.
     /// The callback is called from FluidAudio's download thread — caller must marshal to MainActor.
     ///
-    /// Uses ModelDownloadManager which wraps FluidAudio's download with:
-    /// - Stall detection (20s no progress → fallback)
-    /// - Cloudflare R2 fallback (if configured)
-    /// - SHA-256 checksum verification
+    /// FluidAudio's progress system:
+    /// - `downloadRepo()` downloads ALL model files in one pass with byte-weighted progress.
+    /// - `fractionCompleted` range: [0.0, 0.5] = download, [0.5, 1.0] = CoreML compilation.
+    /// - `downloadRepo()` only fires on the first `loadModels()` call — subsequent calls find
+    ///   files cached and skip. We map directly from FluidAudio's fraction.
+    ///
+    /// Stall detection and checksum verification are handled by StallTracker (lock-based,
+    /// zero overhead on the download thread) and ModelDownloadManager.verifyChecksum().
     public func prepare(progressCallback: ProgressCallback?) async throws {
-        let downloadManager = ModelDownloadManager()
-        let loadedModels = try await downloadManager.downloadAndLoad(progressCallback: progressCallback)
+        let stallTracker = StallTracker(timeout: 20)
+
+        let handler: DownloadUtils.ProgressHandler? = progressCallback.map { callback -> DownloadUtils.ProgressHandler in
+            { progress in
+                // Update stall tracker — lock-based, zero overhead on download thread
+                stallTracker.recordProgress(fraction: progress.fractionCompleted)
+
+                let phase: String
+                let detail: String
+
+                switch progress.phase {
+                case .listing:
+                    phase = "Preparing download..."
+                    detail = ""
+                case .downloading:
+                    phase = "Downloading speech model..."
+                    let downloadPct = min(progress.fractionCompleted * 2.0, 1.0)
+                    let downloadedMB = Int(downloadPct * 460)
+                    let pct = Int(downloadPct * 100)
+                    detail = "\(downloadedMB) MB of 460 MB (\(pct)%)"
+                case .compiling(let modelName):
+                    phase = "Installing model..."
+                    detail = modelName
+                }
+                callback(progress.fractionCompleted, phase, detail)
+            }
+        }
+
+        let loadedModels = try await AsrModels.downloadAndLoad(version: .v3, progressHandler: handler)
         self.fluidModels = loadedModels
+
+        // Verify checksum if configured
+        ModelDownloadManager.verifyChecksum()
 
         let manager = AsrManager(config: .default)
         try await manager.initialize(models: loadedModels)
