@@ -8,6 +8,8 @@ public protocol AudioCaptureInterface: AnyObject {
     var isCapturing: Bool { get }
     var audioLevel: Float { get }
     var capturedSamples: [Float] { get }
+    /// Low-cardinality audio route label for Sentry. Set after route resolution.
+    var currentAudioRoute: String { get }
 
     // Callback properties (read-write)
     var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)? { get set }

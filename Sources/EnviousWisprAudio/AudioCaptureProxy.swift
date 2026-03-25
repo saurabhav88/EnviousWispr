@@ -63,11 +63,22 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
         interleaved: false
     )!
 
+    /// Derived at startEnginePhase time from the same BT detection logic as CaptureRouteResolver.
+    public private(set) var currentAudioRoute: String = "unknown"
+
     public init() {}
 
     // MARK: - Core lifecycle
 
     public func startEnginePhase() async throws {
+        // Derive route label app-side (same BT check as CaptureRouteResolver).
+        if let outID = AudioDeviceEnumerator.defaultOutputDeviceID(),
+           AudioDeviceEnumerator.isBluetoothDevice(outID) {
+            currentAudioRoute = "capture_session_bt"
+        } else {
+            currentAudioRoute = "built_in_mic"
+        }
+
         ensureConnection()
         resendConfigIfNeeded()
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
@@ -309,14 +320,18 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
 
             Task { @MainActor [weak proxy] in
                 guard let proxy else { return }
-                if proxy.isCapturing {
+                let wasCapturing = proxy.isCapturing
+                await AppLogger.shared.log(
+                    "[AudioCaptureProxy] XPC interruptionHandler fired — wasCapturing=\(wasCapturing)",
+                    level: .info, category: "XPC"
+                )
+                if wasCapturing {
                     proxy.isCapturing = false
                     proxy.audioLevel = 0
                     proxy.captureGeneration &+= 1
                     proxy.bufferContinuation?.finish()
                     proxy.bufferContinuation = nil
                     proxy.onEngineInterrupted?()
-
                 }
                 proxy.needsReinit = true
             }

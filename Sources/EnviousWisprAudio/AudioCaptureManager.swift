@@ -66,6 +66,24 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     /// The last route decision — for telemetry and debugging.
     private var lastRouteDecision: CaptureRouteDecision?
 
+    /// Low-cardinality audio route label derived from the last route decision.
+    public var currentAudioRoute: String {
+        guard let decision = lastRouteDecision else { return "unknown" }
+        switch decision.reason {
+        case .noBTAutoInput, .noBTUserSelectedDevice:
+            return "built_in_mic"
+        case .btOutputAutoInput, .btOutputUserSelectedBuiltIn,
+             .btOutputUserSelectedBTMic, .btOutputUserSelectedWired:
+            return "capture_session_bt"
+        case .forcedEngine, .fallbackToEngine:
+            return "audio_engine"
+        case .forcedCaptureSession:
+            return "capture_session"
+        case .failedNoFallback:
+            return "failed"
+        }
+    }
+
     public init() {}
 
     // MARK: - AudioCaptureInterface
