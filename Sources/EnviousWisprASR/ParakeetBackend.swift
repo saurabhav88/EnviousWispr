@@ -59,11 +59,12 @@ public actor ParakeetBackend: ASRBackend {
                     phase = "Preparing download..."
                     detail = ""
                 case .downloading:
-                    phase = "Downloading speech model..."
+                    phase = "Downloading model files..."
+                    // Raw download is ~23MB (CoreML source files). The 460MB on disk
+                    // is from CoreML compilation which happens in the .compiling phase.
                     let downloadPct = min(progress.fractionCompleted * 2.0, 1.0)
-                    let downloadedMB = Int(downloadPct * 460)
-                    let pct = Int(downloadPct * 100)
-                    detail = "\(downloadedMB) MB of 460 MB (\(pct)%)"
+                    let downloadedMB = Int(downloadPct * 23)
+                    detail = "\(downloadedMB) MB of 23 MB (\(Int(downloadPct * 100))%)"
                 case .compiling(let modelName):
                     phase = "Installing model..."
                     detail = modelName

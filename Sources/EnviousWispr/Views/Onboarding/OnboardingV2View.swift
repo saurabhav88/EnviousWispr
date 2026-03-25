@@ -35,9 +35,6 @@ final class OnboardingV2ViewModel {
     var rawErrorDetails: String?
     var retryCount = 0
 
-    /// Coarse ETA text, shown only when download rate is stable. Empty = hidden.
-    var downloadETA: String = ""
-
     /// ViewModel-owned progress state, polled from ASR manager.
     /// SwiftUI can't observe @Observable properties through protocol existentials
     /// (asrManager is typed as `any ASRManagerInterface`), so we poll and copy.
@@ -46,10 +43,26 @@ final class OnboardingV2ViewModel {
     var downloadDetail: String = ""
     private var progressPollTimer: Timer?
 
-    // ETA computation state — rolling window of (timestamp, fraction) samples.
-    private var etaSamples: [(time: CFAbsoluteTime, fraction: Double)] = []
-    private static let etaWindowSeconds: CFAbsoluteTime = 10
-    private static let etaMinSamples = 3
+    /// Quirky installation message, cycled during the compilation phase.
+    var installQuip: String = ""
+    private var quipTimer: Timer?
+    private var quipIndex: Int = 0
+
+    /// Fun status messages shown during model compilation (~20-30s wait).
+    private static let installQuips = [
+        "Tuning the neural ears...",
+        "Teaching AI to listen politely...",
+        "Loading all 50,000 words...",
+        "Installing 'um' and 'uh' filters...",
+        "Calibrating whisper detection...",
+        "Warming up Apple Silicon...",
+        "Polishing the speech engine...",
+        "Training patience module...",
+        "Preparing to ignore background noise...",
+        "Sharpening neural networks...",
+        "Convincing AI that you said 'duck'...",
+        "Almost there... pinky promise",
+    ]
 
     // Sleep prevention — holds a power assertion during download to prevent macOS sleep.
     private var sleepAssertionID: IOPMAssertionID = 0
@@ -95,7 +108,8 @@ final class OnboardingV2ViewModel {
             // Check cancellation before advancing — window may have closed during download.
             try Task.checkCancellation()
             checklistStatuses[0] = .completed
-            downloadETA = ""
+            installQuip = ""
+            stopQuipTimer()
             TelemetryService.shared.onboardingStepCompleted(step: "model_download", result: "completed")
 
             checklistStatuses[1] = .inProgress
@@ -130,100 +144,31 @@ final class OnboardingV2ViewModel {
     func retryDownload() {
         downloadError = nil
         rawErrorDetails = nil
-        downloadETA = ""
-        etaSamples = []
+        installQuip = ""
+        stopQuipTimer()
         checklistStatuses = [.pending, .pending, .pending]
         retryCount += 1
     }
 
-    /// Update ETA from current download progress. Called by the view's onChange handler.
-    /// Only shows ETA during the download phase (fraction < 0.5) when the rate is stable.
-    func updateETA(fraction: Double) {
-        // Only compute ETA during download phase (0.0–0.5 in FluidAudio's range).
-        // Require at least 5% progress (fraction > 0.025) to avoid misleading ETAs
-        // from the initial burst of small model files downloading instantly.
-        guard fraction > 0.025 && fraction < 0.5 else {
-            downloadETA = ""
-            return
-        }
-
-        let now = CFAbsoluteTimeGetCurrent()
-        etaSamples.append((time: now, fraction: fraction))
-
-        // Trim samples outside the rolling window
-        let cutoff = now - Self.etaWindowSeconds
-        etaSamples.removeAll { $0.time < cutoff }
-
-        guard etaSamples.count >= Self.etaMinSamples,
-              let first = etaSamples.first, let last = etaSamples.last else {
-            downloadETA = ""
-            return
-        }
-
-        let dt = last.time - first.time
-        let df = last.fraction - first.fraction
-        guard dt > 1.0, df > 0.001 else {
-            downloadETA = ""
-            return
-        }
-
-        // Rate = fraction-per-second. Remaining fraction to 0.5 (end of download).
-        let rate = df / dt
-        let remaining = (0.5 - fraction) / rate
-
-        // Stability check: coefficient of variation of inter-sample rates.
-        // If too noisy, hide ETA rather than show a jumpy number.
-        if etaSamples.count >= 4 {
-            var rates: [Double] = []
-            for i in 1..<etaSamples.count {
-                let sdt = etaSamples[i].time - etaSamples[i-1].time
-                let sdf = etaSamples[i].fraction - etaSamples[i-1].fraction
-                if sdt > 0.1 && sdf > 0 { rates.append(sdf / sdt) }
-            }
-            if rates.count >= 3 {
-                let mean = rates.reduce(0, +) / Double(rates.count)
-                let variance = rates.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(rates.count)
-                let cv = mean > 0 ? sqrt(variance) / mean : 1.0
-                if cv > 0.5 {
-                    downloadETA = ""
-                    return
-                }
-            }
-        }
-
-        // Bucket into coarse text
-        switch remaining {
-        case ..<30:
-            downloadETA = "Almost done"
-        case 30..<90:
-            downloadETA = "About a minute remaining"
-        case 90..<180:
-            downloadETA = "About 2 minutes remaining"
-        case 180..<300:
-            downloadETA = "A few minutes remaining"
-        default:
-            downloadETA = "This may take several minutes"
-        }
-    }
-
     // MARK: - Progress Polling
 
-    /// Start polling the ASR manager for download progress at ~8 Hz.
-    /// Copies values into ViewModel-owned properties that SwiftUI can observe.
-    /// Uses .common run loop mode so polling continues during UI tracking interactions.
+    /// Start polling the shared progress file at ~8 Hz.
+    /// The XPC ASR service writes progress to a temp file; we read it here.
+    /// This bypasses all XPC serialization issues.
     func startProgressPolling(asrManager: any ASRManagerInterface) {
         stopProgressPolling()
+        let progressFile = ProgressFile.shared
         let timer = Timer(timeInterval: 0.125, repeats: true) { [weak self] _ in
-            // Timer fires on main run loop — ViewModel is @MainActor, safe to access.
             guard let self else { return }
-            let newProgress = asrManager.downloadProgress
-            let newPhase = asrManager.downloadPhase
-            let newDetail = asrManager.downloadDetail
-            if newProgress != self.downloadProgress || newPhase != self.downloadPhase || newDetail != self.downloadDetail {
-                self.downloadProgress = newProgress
-                self.downloadPhase = newPhase
-                self.downloadDetail = newDetail
-                self.updateETA(fraction: newProgress)
+            if let state = progressFile.read() {
+                self.downloadProgress = state.fraction
+                self.downloadPhase = state.phase
+                self.downloadDetail = state.detail
+
+                // Start quip timer when compilation begins (fraction >= 0.5)
+                if state.fraction >= 0.5 && self.quipTimer == nil {
+                    self.startQuipTimer()
+                }
             }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -233,6 +178,27 @@ final class OnboardingV2ViewModel {
     func stopProgressPolling() {
         progressPollTimer?.invalidate()
         progressPollTimer = nil
+        stopQuipTimer()
+    }
+
+    // MARK: - Installation Quips
+
+    private func startQuipTimer() {
+        quipIndex = 0
+        installQuip = Self.installQuips[0]
+        let timer = Timer(timeInterval: 2.5, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.quipIndex = (self.quipIndex + 1) % Self.installQuips.count
+            self.installQuip = Self.installQuips[self.quipIndex]
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        quipTimer = timer
+    }
+
+    private func stopQuipTimer() {
+        quipTimer?.invalidate()
+        quipTimer = nil
+        installQuip = ""
     }
 
     // MARK: - Sleep Prevention
@@ -468,7 +434,7 @@ private struct ChecklistPhaseView: View {
     var viewModel: OnboardingV2ViewModel
 
     private static let items: [(title: String, subtitle: String)] = [
-        ("Downloading speech model", "~460 MB, one-time setup"),
+        ("Setting up speech model", "One-time setup"),
         ("Configuring on-device AI", "Apple Intelligence"),
         ("Setting your hotkey",      "Default: ⌥ Option"),
     ]
@@ -544,18 +510,21 @@ private struct ChecklistPhaseView: View {
         }
     }
 
-    /// Returns live download status text for the model download row, or the static subtitle otherwise.
+    /// Returns live status text for the model setup row.
+    /// During download: "Downloading... X MB of 23 MB"
+    /// During compilation: cycles through quirky installation quips
     private func downloadSubtitle(for index: Int, fallback: String) -> String {
         guard index == 0, viewModel.checklistStatuses[0].isInProgress else { return fallback }
+
+        // During compilation phase — show quips
+        if viewModel.downloadProgress >= 0.5 && !viewModel.installQuip.isEmpty {
+            return viewModel.installQuip
+        }
+
         let phase = viewModel.downloadPhase
         let detail = viewModel.downloadDetail
         if phase.isEmpty { return fallback }
-        // Build subtitle: phase + detail + optional ETA
-        var text = detail.isEmpty ? phase : "\(phase) \(detail)"
-        if !viewModel.downloadETA.isEmpty {
-            text += " · \(viewModel.downloadETA)"
-        }
-        return text
+        return detail.isEmpty ? phase : "\(phase) \(detail)"
     }
 }
 
