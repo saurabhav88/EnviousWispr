@@ -9,39 +9,48 @@ public enum SentryBreadcrumb {
 
     // MARK: - Recording Snapshot (for handled errors)
 
-    /// Point-in-time snapshot of recording state, attached to handled errors via scope clone.
-    /// For fatal crashes, use the persistent global scope instead (always pre-populated).
+    /// Immutable point-in-time snapshot frozen before recording teardown.
+    /// Attached directly to handled errors so post-recording events carry full context
+    /// even after the global scope's recording_state is cleared.
     public struct RecordingSnapshot: Sendable {
-        public let durationMs: Int
-        public let chunksProcessed: Int
+        public let backend: String
+        public let audioRoute: String
         public let wasStreaming: Bool
+        public let startTime: Date
+        public let durationMs: Int
         public let targetAppBundleID: String?
-        public let sessionDictationCount: Int
-        public let appUptimeSeconds: Int
+        public let transcriptCharCount: Int
+        public let transcriptWordCount: Int
 
         public init(
-            durationMs: Int,
-            chunksProcessed: Int,
+            backend: String,
+            audioRoute: String,
             wasStreaming: Bool,
+            startTime: Date,
+            durationMs: Int,
             targetAppBundleID: String?,
-            sessionDictationCount: Int,
-            appUptimeSeconds: Int
+            transcriptCharCount: Int = 0,
+            transcriptWordCount: Int = 0
         ) {
-            self.durationMs = durationMs
-            self.chunksProcessed = chunksProcessed
+            self.backend = backend
+            self.audioRoute = audioRoute
             self.wasStreaming = wasStreaming
+            self.startTime = startTime
+            self.durationMs = durationMs
             self.targetAppBundleID = targetAppBundleID
-            self.sessionDictationCount = sessionDictationCount
-            self.appUptimeSeconds = appUptimeSeconds
+            self.transcriptCharCount = transcriptCharCount
+            self.transcriptWordCount = transcriptWordCount
         }
 
         var sentryContext: [String: Any] {
             var ctx: [String: Any] = [
-                "duration_ms": durationMs,
-                "chunks_processed": chunksProcessed,
+                "backend": backend,
+                "audio_route": audioRoute,
                 "was_streaming": wasStreaming,
-                "session_dictation_count": sessionDictationCount,
-                "app_uptime_seconds": appUptimeSeconds,
+                "start_time": ISO8601DateFormatter().string(from: startTime),
+                "duration_ms": durationMs,
+                "transcript_char_count": transcriptCharCount,
+                "transcript_word_count": transcriptWordCount,
             ]
             if let targetAppBundleID {
                 ctx["target_app_bundle_id"] = targetAppBundleID
@@ -56,6 +65,14 @@ public enum SentryBreadcrumb {
     public static func updateASRBackend(_ backend: String) {
         SentrySDK.configureScope { scope in
             scope.setTag(value: backend, key: "asr.backend")
+        }
+    }
+
+    /// Update the audio route tag. Called when capture route is resolved or changes.
+    /// Values are low-cardinality: built_in_mic, bt_headset, capture_session, audio_engine, unknown.
+    public static func updateAudioRoute(_ route: String) {
+        SentrySDK.configureScope { scope in
+            scope.setTag(value: route, key: "audio.route")
         }
     }
 

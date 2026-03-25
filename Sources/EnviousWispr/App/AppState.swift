@@ -113,9 +113,19 @@ final class AppState {
         // that happened to set onEngineInterrupted last.
         audioCapture.onEngineInterrupted = { [weak self] in
             guard let self else { return }
-            if self.pipeline.state == .recording {
+            let pState = self.pipeline.state
+            let wkState = self.whisperKitPipeline.state
+            Task { await AppLogger.shared.log(
+                "[AppState] Audio onEngineInterrupted — parakeet=\(pState), whisperKit=\(wkState)",
+                level: .info, category: "XPC"
+            ) }
+            SentryBreadcrumb.add(stage: "audio", message: "Audio XPC interrupted", level: .error, data: [
+                "parakeet_state": "\(pState)",
+                "whisperkit_state": "\(wkState)",
+            ])
+            if pState == .recording {
                 self.pipeline.handleEngineInterruption()
-            } else if self.whisperKitPipeline.state == .recording {
+            } else if wkState == .recording {
                 self.whisperKitPipeline.handleEngineInterruption()
             }
             // Dismiss recording overlay if showing
@@ -126,9 +136,13 @@ final class AppState {
         // AVAudioEngineSource fires AVAudioEngineConfigurationChange internally and handles
         // recovery, but breadcrumbs live in EnviousWisprServices (unavailable in the audio module).
         // AppState observes here to stay within module boundary rules.
-        NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: nil, queue: nil) { _ in
+        NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: nil, queue: nil) { [weak self] _ in
             Task { @MainActor in
-                SentryBreadcrumb.add(stage: "audio", message: "Audio route changed", level: .warning)
+                let route = self?.audioCapture.currentAudioRoute ?? "unknown"
+                SentryBreadcrumb.add(stage: "audio", message: "Audio route changed", level: .warning, data: [
+                    "audio_route": route,
+                ])
+                SentryBreadcrumb.updateAudioRoute(route)
             }
         }
 

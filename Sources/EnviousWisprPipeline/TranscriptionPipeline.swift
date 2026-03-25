@@ -69,6 +69,8 @@ public final class TranscriptionPipeline: DictationPipeline {
     private var stopRequested = false
     /// Whether audio input has been pre-warmed (engine started) by PTT key-down.
     private var isPreWarmed = false
+    /// Frozen snapshot of recording state, built before teardown for post-recording error enrichment.
+    private var frozenSnapshot: SentryBreadcrumb.RecordingSnapshot?
 
     public init(
         audioCapture: any AudioCaptureInterface,
@@ -233,6 +235,7 @@ public final class TranscriptionPipeline: DictationPipeline {
                 "streaming": streamingASRActive,
             ])
             SentryBreadcrumb.updateRecordingState(active: true, backend: "parakeet", isStreaming: streamingASRActive)
+            SentryBreadcrumb.updateAudioRoute(audioCapture.currentAudioRoute)
 
             if stopRequested {
                 stopRequested = false
@@ -308,6 +311,18 @@ public final class TranscriptionPipeline: DictationPipeline {
                 return
             }
         }
+        // Freeze snapshot BEFORE teardown — post-recording errors use this instead of live scope.
+        let snapshotStartTime = recordingStartTime ?? Date()
+        let durationMs = Int(Date().timeIntervalSince(snapshotStartTime) * 1000)
+        frozenSnapshot = SentryBreadcrumb.RecordingSnapshot(
+            backend: "parakeet",
+            audioRoute: audioCapture.currentAudioRoute,
+            wasStreaming: streamingASRActive,
+            startTime: snapshotStartTime,
+            durationMs: durationMs,
+            targetAppBundleID: targetApp?.bundleIdentifier
+        )
+
         recordingStartTime = nil
 
         // Cancel VAD monitoring
@@ -466,8 +481,10 @@ public final class TranscriptionPipeline: DictationPipeline {
                 SentryBreadcrumb.captureError(
                     NSError(domain: "EnviousWispr", code: -1, userInfo: [NSLocalizedDescriptionKey: "ASR returned empty text"]),
                     category: .asrEmptyResult, stage: "asr",
-                    extra: ["backend": asrManager.activeBackendType.rawValue, "mode": wasStreaming ? "streaming" : "batch"]
+                    extra: ["backend": asrManager.activeBackendType.rawValue, "mode": wasStreaming ? "streaming" : "batch"],
+                    snapshot: frozenSnapshot
                 )
+                frozenSnapshot = nil
                 state = .error("No speech detected — try speaking closer to the microphone")
                 Task { await AppLogger.shared.log(
                     "ASR returned empty text, showing error to user",
@@ -659,11 +676,13 @@ public final class TranscriptionPipeline: DictationPipeline {
                 "paste_tier": pasteTier?.rawValue ?? "none",
                 "backend": asrManager.activeBackendType.rawValue,
             ])
+            frozenSnapshot = nil
             state = .complete
         } catch {
             SentryBreadcrumb.captureError(error, category: .asrFailed, stage: "transcription", extra: [
                 "backend": asrManager.activeBackendType.rawValue,
-            ])
+            ], snapshot: frozenSnapshot)
+            frozenSnapshot = nil
             state = .error("Transcription failed: \(error.localizedDescription)")
         }
     }
@@ -753,11 +772,16 @@ public final class TranscriptionPipeline: DictationPipeline {
     /// Handle audio engine interruption (device disconnect, service crash, max duration cap).
     /// Called by AppState's unified interruption handler, not set directly on audioCapture.
     public func handleEngineInterruption() {
+        // Build snapshot at interruption time — recording_state may be cleared before captureError runs.
+        let snapshot = buildInterruptionSnapshot()
         SentryBreadcrumb.captureError(
             NSError(domain: "EnviousWispr", code: -2, userInfo: [NSLocalizedDescriptionKey: "Audio engine interrupted"]),
             category: .xpcServiceError, stage: "audio",
-            extra: ["was_recording": state == .recording]
+            extra: ["was_recording": state == .recording],
+            snapshot: snapshot
         )
+        SentryBreadcrumb.updateRecordingState(active: false)
+        frozenSnapshot = nil
         vadMonitorTask?.cancel()
         vadMonitorTask = nil
         silenceDetector = nil
@@ -777,11 +801,15 @@ public final class TranscriptionPipeline: DictationPipeline {
     /// Called by AppState's unified ASR interruption handler when this pipeline is active.
     /// Must stop audio capture (still running — only ASR died) and clean up fully.
     public func handleASRServiceInterruption() {
+        let snapshot = buildInterruptionSnapshot()
         SentryBreadcrumb.captureError(
             NSError(domain: "EnviousWispr", code: -3, userInfo: [NSLocalizedDescriptionKey: "ASR XPC service crashed"]),
             category: .xpcServiceError, stage: "asr",
-            extra: ["was_recording": state == .recording]
+            extra: ["was_recording": state == .recording],
+            snapshot: snapshot
         )
+        SentryBreadcrumb.updateRecordingState(active: false)
+        frozenSnapshot = nil
         vadMonitorTask?.cancel()
         vadMonitorTask = nil
         silenceDetector = nil
@@ -796,6 +824,21 @@ public final class TranscriptionPipeline: DictationPipeline {
         targetElement = nil
         recordingStartTime = nil
         state = .error("Transcription service crashed — please try again")
+    }
+
+    /// Build a snapshot at interruption time when no frozen snapshot exists yet
+    /// (e.g., XPC crash during recording before stopAndTranscribe is reached).
+    private func buildInterruptionSnapshot() -> SentryBreadcrumb.RecordingSnapshot {
+        if let existing = frozenSnapshot { return existing }
+        let start = recordingStartTime ?? Date()
+        return SentryBreadcrumb.RecordingSnapshot(
+            backend: "parakeet",
+            audioRoute: audioCapture.currentAudioRoute,
+            wasStreaming: streamingASRActive,
+            startTime: start,
+            durationMs: Int(Date().timeIntervalSince(start) * 1000),
+            targetAppBundleID: targetApp?.bundleIdentifier
+        )
     }
 
     /// Cancel an active recording immediately without transcribing.
