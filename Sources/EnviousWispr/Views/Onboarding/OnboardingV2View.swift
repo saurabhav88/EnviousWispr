@@ -3,6 +3,7 @@ import EnviousWisprCore
 import EnviousWisprServices
 import EnviousWisprASR
 import EnviousWisprLLM
+import IOKit.pwr_mgt
 
 // MARK: - ViewModel
 
@@ -30,7 +31,42 @@ final class OnboardingV2ViewModel {
     var showSkipLink = false
 
     var downloadError: String?
+    /// Raw error details for support diagnostics (hidden behind "Copy error details" button).
+    var rawErrorDetails: String?
     var retryCount = 0
+
+    /// ViewModel-owned progress state, polled from ASR manager.
+    /// SwiftUI can't observe @Observable properties through protocol existentials
+    /// (asrManager is typed as `any ASRManagerInterface`), so we poll and copy.
+    var downloadProgress: Double = 0
+    var downloadPhase: String = ""
+    var downloadDetail: String = ""
+    private var progressPollTimer: Timer?
+
+    /// Quirky installation message, cycled during the compilation phase.
+    var installQuip: String = ""
+    private var quipTimer: Timer?
+    private var quipIndex: Int = 0
+
+    /// Fun status messages shown during model compilation (~20-30s wait).
+    private static let installQuips = [
+        "Tuning the neural ears...",
+        "Teaching AI to listen politely...",
+        "Loading all 50,000 words...",
+        "Installing 'um' and 'uh' filters...",
+        "Calibrating whisper detection...",
+        "Warming up Apple Silicon...",
+        "Polishing the speech engine...",
+        "Training patience module...",
+        "Preparing to ignore background noise...",
+        "Sharpening neural networks...",
+        "Convincing AI that you said 'duck'...",
+        "Almost there... pinky promise",
+    ]
+
+    // Sleep prevention — holds a power assertion during download to prevent macOS sleep.
+    private var sleepAssertionID: IOPMAssertionID = 0
+    private var isSleepPrevented = false
 
     var lipsState: LipsAnimationState {
         switch currentScreen {
@@ -45,14 +81,35 @@ final class OnboardingV2ViewModel {
         }
     }
 
+    /// Minimum free disk space required for model download + compilation (1 GB).
+    private static let requiredDiskSpaceBytes: Int64 = 1_073_741_824
+
     func startSetup(asrManager: any ASRManagerInterface, settings: SettingsManager) async {
         settings.onboardingState = .settingUp
+
+        // Disk space preflight — fail early with a friendly message instead of failing at 80%.
+        if let attrs = try? FileManager.default.attributesOfFileSystem(
+            forPath: NSHomeDirectory()
+        ), let freeSpace = attrs[.systemFreeSize] as? Int64,
+           freeSpace < Self.requiredDiskSpaceBytes {
+            let freeMB = freeSpace / 1_048_576
+            downloadError = "Not enough disk space (\(freeMB) MB free). EnviousWispr needs about 1 GB to download and install the speech model."
+            checklistStatuses[0] = .error(downloadError!)
+            return
+        }
+
         checklistStatuses[0] = .inProgress
+        preventSleep()
+        startProgressPolling(asrManager: asrManager)
         do {
             try await asrManager.loadModel()
+            stopProgressPolling()
+            allowSleep()
             // Check cancellation before advancing — window may have closed during download.
             try Task.checkCancellation()
             checklistStatuses[0] = .completed
+            installQuip = ""
+            stopQuipTimer()
             TelemetryService.shared.onboardingStepCompleted(step: "model_download", result: "completed")
 
             checklistStatuses[1] = .inProgress
@@ -70,18 +127,124 @@ final class OnboardingV2ViewModel {
             settings.onboardingState = .needsPermissions
             setupPhase = .permissions
         } catch is CancellationError {
+            stopProgressPolling()
+            allowSleep()
             // Task was cancelled (window closed mid-setup). Leave onboardingState as .settingUp
             // so the next launch re-runs the checklist from scratch.
         } catch {
-            downloadError = error.localizedDescription
-            checklistStatuses[0] = .error(error.localizedDescription)
+            stopProgressPolling()
+            allowSleep()
+            let friendly = Self.friendlyError(error)
+            downloadError = friendly
+            rawErrorDetails = "\(error)"
+            checklistStatuses[0] = .error(friendly)
         }
     }
 
     func retryDownload() {
         downloadError = nil
+        rawErrorDetails = nil
+        installQuip = ""
+        stopQuipTimer()
         checklistStatuses = [.pending, .pending, .pending]
         retryCount += 1
+    }
+
+    // MARK: - Progress Polling
+
+    /// Start polling the shared progress file at ~8 Hz.
+    /// The XPC ASR service writes progress to a temp file; we read it here.
+    /// This bypasses all XPC serialization issues.
+    func startProgressPolling(asrManager: any ASRManagerInterface) {
+        stopProgressPolling()
+        let progressFile = ProgressFile.shared
+        let timer = Timer(timeInterval: 0.125, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            if let state = progressFile.read() {
+                self.downloadProgress = state.fraction
+                self.downloadPhase = state.phase
+                self.downloadDetail = state.detail
+
+                // Start quip timer when compilation begins (fraction >= 0.5)
+                if state.fraction >= 0.5 && self.quipTimer == nil {
+                    self.startQuipTimer()
+                }
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        progressPollTimer = timer
+    }
+
+    func stopProgressPolling() {
+        progressPollTimer?.invalidate()
+        progressPollTimer = nil
+        stopQuipTimer()
+    }
+
+    // MARK: - Installation Quips
+
+    private func startQuipTimer() {
+        quipIndex = 0
+        installQuip = Self.installQuips[0]
+        let timer = Timer(timeInterval: 2.5, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.quipIndex = (self.quipIndex + 1) % Self.installQuips.count
+            self.installQuip = Self.installQuips[self.quipIndex]
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        quipTimer = timer
+    }
+
+    private func stopQuipTimer() {
+        quipTimer?.invalidate()
+        quipTimer = nil
+        installQuip = ""
+    }
+
+    // MARK: - Sleep Prevention
+
+    private func preventSleep() {
+        guard !isSleepPrevented else { return }
+        let reason = "EnviousWispr is downloading the speech model" as CFString
+        let success = IOPMAssertionCreateWithName(
+            kIOPMAssertionTypePreventUserIdleSystemSleep as CFString,
+            IOPMAssertionLevel(kIOPMAssertionLevelOn),
+            reason,
+            &sleepAssertionID
+        )
+        isSleepPrevented = (success == kIOReturnSuccess)
+    }
+
+    private func allowSleep() {
+        guard isSleepPrevented else { return }
+        IOPMAssertionRelease(sleepAssertionID)
+        isSleepPrevented = false
+    }
+
+    // MARK: - Friendly Error Messages
+
+    /// Maps raw error descriptions to user-friendly messages.
+    private static func friendlyError(_ error: any Error) -> String {
+        let desc = error.localizedDescription.lowercased()
+
+        if desc.contains("timed out") || desc.contains("timeout") {
+            return "The download timed out. Please check your internet connection and try again."
+        }
+        if desc.contains("not connected") || desc.contains("network") || desc.contains("offline") {
+            return "No internet connection. Please connect to the internet and try again."
+        }
+        if desc.contains("could not connect") || desc.contains("cannot connect") {
+            return "Couldn't reach the download server. Please check your internet connection and try again."
+        }
+        if desc.contains("rate limit") {
+            return "The download server is busy. Please wait a moment and try again."
+        }
+        if desc.contains("disk") || desc.contains("space") || desc.contains("no space") {
+            return "Not enough disk space. Please free up space and try again."
+        }
+
+        // Fallback: use the original description but trim technical prefixes
+        return "Download failed: \(error.localizedDescription)"
     }
 
     func requestMicPermission(permissions: PermissionsService) async {
@@ -271,7 +434,7 @@ private struct ChecklistPhaseView: View {
     var viewModel: OnboardingV2ViewModel
 
     private static let items: [(title: String, subtitle: String)] = [
-        ("Downloading speech model", "~100 MB, one-time setup"),
+        ("Setting up speech model", "One-time setup"),
         ("Configuring on-device AI", "Apple Intelligence"),
         ("Setting your hotkey",      "Default: ⌥ Option"),
     ]
@@ -287,7 +450,7 @@ private struct ChecklistPhaseView: View {
                 .kerning(-0.4)
                 .padding(.bottom, 6)
 
-            Text("Setting up your private, on-device transcription.")
+            Text("Downloading the local speech model so EnviousWispr can run privately on your Mac.")
                 .font(.obBody)
                 .foregroundStyle(Color.obTextSecondary)
                 .multilineTextAlignment(.center)
@@ -299,8 +462,9 @@ private struct ChecklistPhaseView: View {
                         index: index,
                         status: viewModel.checklistStatuses[index],
                         title: item.title,
-                        subtitle: item.subtitle,
-                        showProgressBar: index == 0 && viewModel.checklistStatuses[0].isInProgress
+                        subtitle: downloadSubtitle(for: index, fallback: item.subtitle),
+                        showProgressBar: index == 0 && viewModel.checklistStatuses[0].isInProgress,
+                        progress: index == 0 ? viewModel.downloadProgress : nil
                     )
                     if index < Self.items.count - 1 {
                         Divider().padding(.horizontal, 14)
@@ -322,14 +486,45 @@ private struct ChecklistPhaseView: View {
                         .foregroundStyle(Color.obError)
                         .multilineTextAlignment(.center)
 
-                    Button("Retry") { viewModel.retryDownload() }
-                        .buttonStyle(OnboardingButtonStyle(color: .obError))
+                    HStack(spacing: 12) {
+                        Button("Retry") { viewModel.retryDownload() }
+                            .buttonStyle(OnboardingButtonStyle(color: .obError))
+
+                        if viewModel.rawErrorDetails != nil {
+                            Button("Copy error details") {
+                                if let details = viewModel.rawErrorDetails {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(details, forType: .string)
+                                }
+                            }
+                            .font(.obCaption)
+                            .foregroundStyle(Color.obTextTertiary)
+                            .buttonStyle(.plain)
+                        }
+                    }
                 }
                 .padding(.top, 4)
             }
 
             Spacer()
         }
+    }
+
+    /// Returns live status text for the model setup row.
+    /// During download: "Downloading... X MB of 23 MB"
+    /// During compilation: cycles through quirky installation quips
+    private func downloadSubtitle(for index: Int, fallback: String) -> String {
+        guard index == 0, viewModel.checklistStatuses[0].isInProgress else { return fallback }
+
+        // During compilation phase — show quips
+        if viewModel.downloadProgress >= 0.5 && !viewModel.installQuip.isEmpty {
+            return viewModel.installQuip
+        }
+
+        let phase = viewModel.downloadPhase
+        let detail = viewModel.downloadDetail
+        if phase.isEmpty { return fallback }
+        return detail.isEmpty ? phase : "\(phase) \(detail)"
     }
 }
 
@@ -339,8 +534,22 @@ private struct ChecklistItemRow: View {
     let title: String
     let subtitle: String
     let showProgressBar: Bool
+    /// Live download progress (0.0–1.0). Nil means indeterminate/not applicable.
+    var progress: Double?
 
     @State private var spinAngle: Double = 0
+
+    /// Maps FluidAudio's raw progress to a bar that fills 0–100% during download,
+    /// then stays full during installation. FluidAudio uses [0.0, 0.5] for download
+    /// and [0.5, 1.0] for CoreML compilation.
+    private var barFraction: CGFloat {
+        guard let progress else { return 0.02 }
+        if progress >= 0.5 {
+            return 1.0 // Installation phase — bar stays full
+        }
+        // Download phase: map [0.0, 0.5] → [0.0, 1.0]
+        return max(CGFloat(progress * 2.0), 0.02)
+    }
 
     var body: some View {
         VStack(spacing: 6) {
@@ -370,7 +579,8 @@ private struct ChecklistItemRow: View {
                             .frame(height: 3)
                         RoundedRectangle(cornerRadius: 2)
                             .fill(Color.obRainbow)
-                            .frame(width: geo.size.width * 0.65, height: 3)
+                            .frame(width: geo.size.width * barFraction, height: 3)
+                            .animation(.easeInOut(duration: 0.3), value: barFraction)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: 3)

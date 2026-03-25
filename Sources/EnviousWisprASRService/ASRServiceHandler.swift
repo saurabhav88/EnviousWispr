@@ -37,6 +37,11 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
 
     // MARK: - Model Lifecycle
 
+    /// Get the client proxy for sending progress callbacks to the host app.
+    private var clientProxy: ASRServiceClientProtocol? {
+        connection?.remoteObjectProxyWithErrorHandler({ _ in }) as? ASRServiceClientProtocol
+    }
+
     func loadModel(backendType: String, modelVariant: String, reply: @escaping (NSError?) -> Void) {
         nonisolated(unsafe) let safeReply = reply
         Task { @MainActor in
@@ -48,7 +53,26 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
                 switch backendType {
                 case "parakeet":
                     let backend = ParakeetBackend()
-                    try await backend.prepare()
+
+                    // Decoupled push model for progress reporting:
+                    // The URLSession delegate callback (from FluidAudio) must NEVER call XPC directly —
+                    // Mach port queue exhaustion blocks the delegate thread, stalling the download.
+                    // Instead: callback writes to a thread-safe snapshot, a DispatchSource timer
+                    // samples it at 4 Hz and sends XPC messages from its own thread.
+                    // Progress via shared file — bypasses XPC entirely.
+                    // XPC serializes replies, so getDownloadProgress replies are blocked
+                    // behind the pending loadModel reply. Writing to a file that the app
+                    // reads on a timer is the only reliable cross-process progress path.
+                    let progressFile = ProgressFile.shared
+                    progressFile.clear()
+
+                    try await backend.prepare { fraction, phase, detail in
+                        // Hot path — runs on URLSession delegate thread. File write is fast.
+                        progressFile.write(fraction: fraction, phase: phase, detail: detail)
+                    }
+
+                    progressFile.write(fraction: 1.0, phase: "", detail: "")
+
                     self.parakeetBackend = backend
                 case "whisperKit":
                     let variant = modelVariant.isEmpty ? "openai_whisper-large-v3_turbo" : modelVariant
@@ -201,9 +225,96 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
         Task { await parakeet.cancelStreaming() }
     }
 
+    // MARK: - Download Progress Polling
+
+    /// Thread-safe snapshot of current download progress, written by the download callback,
+    /// read by the host app via getDownloadProgress polling.
+    private let pollableProgress = ProgressSnapshot()
+
+    func getDownloadProgress(reply: @escaping (Double, String, String) -> Void) {
+        if let state = pollableProgress.peek() {
+            reply(state.fraction, state.phase, state.detail)
+        } else {
+            reply(0, "", "")
+        }
+    }
+
     // MARK: - Capability
 
     func checkStreamingSupport(backendType: String, reply: @escaping (Bool) -> Void) {
         reply(backendType == "parakeet")
+    }
+}
+
+// MARK: - Decoupled Progress Publisher
+
+/// Thread-safe progress snapshot. Written by FluidAudio's URLSession delegate thread,
+/// read by the ProgressPublisher timer. Lock-based — zero overhead on the hot path.
+private final class ProgressSnapshot: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _fraction: Double = 0
+    private var _phase: String = ""
+    private var _detail: String = ""
+    private var _changed = false
+
+    func update(fraction: Double, phase: String, detail: String) {
+        lock.lock()
+        _fraction = fraction
+        _phase = phase
+        _detail = detail
+        _changed = true
+        lock.unlock()
+    }
+
+    /// Read latest snapshot and clear the changed flag.
+    /// Returns nil if nothing changed since last read.
+    func consume() -> (fraction: Double, phase: String, detail: String)? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard _changed else { return nil }
+        _changed = false
+        return (_fraction, _phase, _detail)
+    }
+
+    /// Read latest snapshot WITHOUT clearing the changed flag.
+    /// Used by the polling path (getDownloadProgress) to return current state.
+    func peek() -> (fraction: Double, phase: String, detail: String)? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard _fraction > 0 || !_phase.isEmpty else { return nil }
+        return (_fraction, _phase, _detail)
+    }
+}
+
+/// Samples ProgressSnapshot at 4 Hz and sends XPC messages to the host app.
+/// Runs on its own DispatchSource timer — completely decoupled from the download thread.
+/// The URLSession delegate thread never pays XPC Mach port backpressure costs.
+private final class ProgressPublisher: @unchecked Sendable {
+    private let snapshot: ProgressSnapshot
+    private let client: ASRServiceClientProtocol?
+    private let timer: DispatchSourceTimer
+    private let queue = DispatchQueue(label: "com.enviouswispr.asr.progress-publisher", qos: .userInteractive)
+
+    init(snapshot: ProgressSnapshot, client: ASRServiceClientProtocol?) {
+        self.snapshot = snapshot
+        self.client = client
+        self.timer = DispatchSource.makeTimerSource(queue: queue)
+    }
+
+    func start() {
+        timer.schedule(deadline: .now(), repeating: 0.25) // 4 Hz
+        timer.setEventHandler { [weak self] in
+            guard let self, let state = self.snapshot.consume() else { return }
+            self.client?.reportDownloadProgress(state.fraction, phase: state.phase, detail: state.detail)
+        }
+        timer.resume()
+    }
+
+    func stop() {
+        timer.cancel()
+        // Flush any remaining state
+        if let state = snapshot.consume() {
+            client?.reportDownloadProgress(state.fraction, phase: state.phase, detail: state.detail)
+        }
     }
 }

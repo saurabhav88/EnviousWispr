@@ -9,6 +9,11 @@ public final class ASRManager: ASRManagerInterface {
     public private(set) var activeBackendType: ASRBackendType = .parakeet
     public private(set) var isModelLoaded = false
     public private(set) var isStreaming = false
+
+    // Download progress — updated in-process during loadModel().
+    public private(set) var downloadProgress: Double = 0
+    public private(set) var downloadPhase: String = ""
+    public private(set) var downloadDetail: String = ""
     public var onServiceInterrupted: (() -> Void)?  // No-op for in-process — no XPC crash path
     private var idleTimer: Timer?
     private var lastTranscriptionTime: Date?
@@ -54,7 +59,26 @@ public final class ASRManager: ASRManagerInterface {
 
     /// Load the active backend's model.
     public func loadModel() async throws {
-        try await activeBackend.prepare()
+        downloadProgress = 0
+        downloadPhase = "Preparing download..."
+        downloadDetail = ""
+
+        // For Parakeet, use the progress-reporting variant so in-process path also reports progress.
+        if activeBackendType == .parakeet {
+            try await parakeetBackend.prepare { [weak self] fraction, phase, detail in
+                Task { @MainActor [weak self] in
+                    guard let self, !self.isModelLoaded else { return }
+                    self.downloadProgress = fraction
+                    self.downloadPhase = phase
+                    self.downloadDetail = detail
+                }
+            }
+        } else {
+            try await activeBackend.prepare()
+        }
+        downloadProgress = 1.0
+        downloadPhase = ""
+        downloadDetail = ""
         isModelLoaded = await activeBackend.isReady
     }
 

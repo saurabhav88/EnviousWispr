@@ -29,6 +29,10 @@ import Foundation
     /// Query current model state: (isLoaded, isStreaming).
     func getModelState(reply: @escaping (Bool, Bool) -> Void)
 
+    /// Poll current download progress. Returns (fractionCompleted, phase, detail).
+    /// Called by the host app on a timer during model download.
+    func getDownloadProgress(reply: @escaping (Double, String, String) -> Void)
+
     // MARK: - Batch Transcription
 
     /// Transcribe audio samples in batch mode.
@@ -65,8 +69,12 @@ import Foundation
 ///
 /// The ASR service is primarily request/response — crash detection is handled
 /// via NSXPCConnection's interruptionHandler/invalidationHandler, not callbacks.
-/// This protocol is reserved for future push notifications (e.g., model download progress).
+/// Used for push notifications from service → app (e.g., model download progress).
 @objc public protocol ASRServiceClientProtocol {
-    // Currently empty — crash detection via connection handlers.
-    // Future: model download progress, background task notifications.
+    /// Reports model download progress from the ASR service to the host app.
+    /// - Parameters:
+    ///   - fractionCompleted: Overall progress in [0, 1].
+    ///   - phase: Human-readable phase string (e.g., "listing", "downloading", "compiling").
+    ///   - detail: Optional detail string (e.g., "150 MB of 460 MB" during downloading phase).
+    func reportDownloadProgress(_ fractionCompleted: Double, phase: String, detail: String)
 }

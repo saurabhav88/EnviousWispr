@@ -18,6 +18,11 @@ public final class ASRManagerProxy: ASRManagerInterface {
     public private(set) var isModelLoaded = false
     public private(set) var isStreaming = false
 
+    // Download progress — updated via XPC callback from ASR service.
+    public private(set) var downloadProgress: Double = 0
+    public private(set) var downloadPhase: String = ""
+    public private(set) var downloadDetail: String = ""
+
     // MARK: - XPC connection
 
     private var connection: NSXPCConnection?
@@ -34,14 +39,27 @@ public final class ASRManagerProxy: ASRManagerInterface {
     // MARK: - Idle timer (stays in proxy — same as ASRManager)
 
     private var idleTimer: Timer?
+    private var progressPollTimer: Timer?
 
     public init() {}
 
     // MARK: - ASRManagerInterface: Model lifecycle
 
     public func loadModel() async throws {
+        // Reset progress state before starting
+        downloadProgress = 0
+        downloadPhase = "Preparing download..."
+        downloadDetail = ""
+
         ensureConnection()
         resendConfigIfNeeded()
+
+        // Start polling the XPC service for progress at 4 Hz.
+        // This is the reliable path — request/response, no Mach port backpressure,
+        // no bidirectional callback issues. The XPC push callback is kept as a
+        // supplementary fast path but polling is the primary progress source.
+        startProgressPolling()
+
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
             let guard_ = OneShotContinuationASR(cont)
             serviceProxy { proxy in
@@ -56,7 +74,34 @@ public final class ASRManagerProxy: ASRManagerInterface {
                 guard_.resume(throwing: XPCASRTransportError.serviceUnreachable)
             }
         }
+        // Stop polling and clear progress on completion
+        stopProgressPolling()
+        downloadProgress = 1.0
+        downloadPhase = ""
+        downloadDetail = ""
         isModelLoaded = true
+    }
+
+    private func startProgressPolling() {
+        stopProgressPolling()
+        // Read progress from shared file — bypasses XPC entirely.
+        // XPC serializes replies, so polling via XPC is blocked behind loadModel's pending reply.
+        let progressFile = ProgressFile.shared
+        let timer = Timer(timeInterval: 0.125, repeats: true) { [weak self] _ in
+            guard let self, !self.isModelLoaded else { return }
+            if let state = progressFile.read() {
+                self.downloadProgress = state.fraction
+                self.downloadPhase = state.phase
+                self.downloadDetail = state.detail
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        progressPollTimer = timer
+    }
+
+    private func stopProgressPolling() {
+        progressPollTimer?.invalidate()
+        progressPollTimer = nil
     }
 
     public func unloadModel() async {
@@ -225,6 +270,8 @@ public final class ASRManagerProxy: ASRManagerInterface {
         conn.remoteObjectInterface = NSXPCInterface(with: ASRServiceProtocol.self)
         conn.exportedInterface = NSXPCInterface(with: ASRServiceClientProtocol.self)
 
+        conn.exportedObject = self
+
         conn.interruptionHandler = Self.makeInterruptionHandler(proxy: self)
         conn.invalidationHandler = Self.makeInvalidationHandler(proxy: self)
 
@@ -304,6 +351,21 @@ public final class ASRManagerProxy: ASRManagerInterface {
                     proxy.onServiceInterrupted?()
                 }
             }
+        }
+    }
+}
+
+// MARK: - ASRServiceClientProtocol (XPC callbacks from service → app)
+
+extension ASRManagerProxy: ASRServiceClientProtocol {
+    /// Receives download progress from the ASR XPC service.
+    /// Called on an XPC dispatch queue — must marshal to MainActor for UI state updates.
+    nonisolated public func reportDownloadProgress(_ fractionCompleted: Double, phase: String, detail: String) {
+        Task { @MainActor [weak self] in
+            guard let self, !self.isModelLoaded else { return }
+            self.downloadProgress = fractionCompleted
+            self.downloadPhase = phase
+            self.downloadDetail = detail
         }
     }
 }

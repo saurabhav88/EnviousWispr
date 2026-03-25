@@ -22,19 +22,12 @@ struct UnifiedWindowView: View {
             .scrollContentBackground(.hidden)
             .background(Color.stSidebarBg)
             .navigationSplitViewColumnWidth(min: 160, ideal: 180, max: 200)
-            .safeAreaInset(edge: .bottom) {
-                Text("v\(AppConstants.appVersion)")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.bottom, 8)
-            }
         } detail: {
             detailContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .accentColor(.stAccent)
-        .navigationTitle(AppConstants.appName)
+        .navigationTitle("\(AppConstants.appName) v\(AppConstants.appVersion)")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 RecordButton()
