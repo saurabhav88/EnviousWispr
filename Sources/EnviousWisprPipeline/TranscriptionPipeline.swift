@@ -526,6 +526,8 @@ public final class TranscriptionPipeline: DictationPipeline {
                 ) }
                 lastPolishError = error.localizedDescription
                 context = TextProcessingContext(text: asrText, originalASRText: asrText, language: result.language)
+                context.targetAppBundleID = targetApp?.bundleIdentifier
+                context.targetAppName = targetApp?.localizedName
             }
             let polishEnd = CFAbsoluteTimeGetCurrent()
 
@@ -1061,6 +1063,8 @@ public final class TranscriptionPipeline: DictationPipeline {
             originalASRText: asrText,
             language: language
         )
+        context.targetAppBundleID = targetApp?.bundleIdentifier
+        context.targetAppName = targetApp?.localizedName
         for step in textProcessingSteps where step.isEnabled {
             let stepName = step.name
             let input = context
