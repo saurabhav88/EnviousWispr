@@ -4,6 +4,22 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Recovery mode'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - release-only
+          - appcast-only
+          - assets-only
+      tag:
+        description: 'Tag (e.g. v1.7.1) — required for dispatch modes'
+        required: false
+        type: string
 
 concurrency:
   group: release
@@ -12,13 +28,151 @@ concurrency:
 permissions:
   contents: read
 
+# ===========================================================================
+# Job 1 — Preflight
+# Fail fast before expensive build/sign/notarize work.
+# ===========================================================================
 jobs:
-  build-and-release:
+  preflight:
+    runs-on: [self-hosted, enviouswispr-release]
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      release-exists: ${{ steps.probe.outputs.release-exists }}
+      appcast-exists: ${{ steps.probe.outputs.appcast-exists }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Resolve version
+        id: version
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG="${{ inputs.tag }}"
+            if [[ -z "$TAG" ]]; then
+              echo "::error::inputs.tag is required for workflow_dispatch"
+              exit 1
+            fi
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "==> Tag: $TAG | Version: $VERSION"
+
+      - name: Validate tag format
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Tag must be semver (v1.2.3), got: v${VERSION}"
+            exit 1
+          fi
+
+      - name: Validate dispatch inputs
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          MODE="${{ inputs.mode }}"
+          case "$MODE" in
+            full|release-only|appcast-only|assets-only) ;;
+            *) echo "::error::Invalid mode: $MODE"; exit 1 ;;
+          esac
+
+      - name: Check required secrets
+        env:
+          HAS_SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY != '' }}
+          HAS_DEVELOPER_ID_CERT: ${{ secrets.DEVELOPER_ID_CERT_BASE64 != '' }}
+          HAS_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_BASE64 != '' }}
+          HAS_APP_ID: ${{ secrets.APP_ID != '' }}
+          HAS_APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY != '' }}
+        run: |
+          set -euo pipefail
+          MODE="${{ inputs.mode || 'full' }}"
+          FAIL=0
+
+          # Build secrets — required for full and assets-only
+          if [[ "$MODE" == "full" || "$MODE" == "assets-only" ]]; then
+            [[ "$HAS_SPARKLE_PRIVATE_KEY" == "true" ]] || { echo "::error::SPARKLE_PRIVATE_KEY missing"; FAIL=1; }
+            [[ "$HAS_DEVELOPER_ID_CERT" == "true" ]]    || { echo "::error::DEVELOPER_ID_CERT_BASE64 missing"; FAIL=1; }
+            [[ "$HAS_APPLE_API_KEY" == "true" ]]         || { echo "::error::APPLE_API_KEY_BASE64 missing"; FAIL=1; }
+          fi
+
+          # App token — required for appcast push
+          if [[ "$MODE" == "full" || "$MODE" == "appcast-only" ]]; then
+            [[ "$HAS_APP_ID" == "true" ]]          || { echo "::error::APP_ID missing"; FAIL=1; }
+            [[ "$HAS_APP_PRIVATE_KEY" == "true" ]]  || { echo "::error::APP_PRIVATE_KEY missing"; FAIL=1; }
+          fi
+
+          [[ $FAIL -eq 0 ]] || exit 1
+          echo "==> All required secrets present"
+
+      - name: Probe existing state
+        id: probe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.version.outputs.tag }}"
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Check GitHub Release
+          if gh release view "$TAG" --repo "${{ github.repository }}" &>/dev/null; then
+            echo "release-exists=true" >> "$GITHUB_OUTPUT"
+            echo "==> GitHub Release $TAG already exists"
+          else
+            echo "release-exists=false" >> "$GITHUB_OUTPUT"
+            echo "==> GitHub Release $TAG does not exist"
+          fi
+
+          # Check appcast entry
+          APPCAST="website/public/appcast.xml"
+          if [ -f "$APPCAST" ] && grep -qF "<sparkle:version>${VERSION}</sparkle:version>" "$APPCAST"; then
+            echo "appcast-exists=true" >> "$GITHUB_OUTPUT"
+            echo "==> Appcast entry for v${VERSION} already present"
+          else
+            echo "appcast-exists=false" >> "$GITHUB_OUTPUT"
+            echo "==> No appcast entry for v${VERSION}"
+          fi
+
+      - name: Write job summary
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG="${{ steps.version.outputs.tag }}"
+          MODE="${{ inputs.mode || 'full' }}"
+          cat >> "$GITHUB_STEP_SUMMARY" << SUMMARY
+          ## Release Preflight — v${VERSION}
+
+          | Check | Result |
+          |---|---|
+          | Tag | \`${TAG}\` |
+          | Mode | \`${MODE}\` |
+          | Run ID | \`${{ github.run_id }}\` |
+          | GitHub Release exists | \`${{ steps.probe.outputs.release-exists }}\` |
+          | Appcast entry exists | \`${{ steps.probe.outputs.appcast-exists }}\` |
+          SUMMARY
+
+  # ===========================================================================
+  # Job 2 — Build Release Artifacts
+  # Pure build: no side effects, no releases, no pushes.
+  # ===========================================================================
+  build-release-artifacts:
+    needs: [preflight]
+    if: >
+      github.event_name == 'push' ||
+      inputs.mode == 'full' ||
+      inputs.mode == 'assets-only'
     runs-on: [self-hosted, enviouswispr-release]
     timeout-minutes: 330
-    permissions:
-      contents: write
-
+    outputs:
+      version: ${{ needs.preflight.outputs.version }}
+      tag: ${{ needs.preflight.outputs.tag }}
+      run-id: ${{ github.run_id }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -34,7 +188,6 @@ jobs:
           echo "macOS SDK: $SDK_VER"
           echo "SDK path: $SDK_PATH"
 
-          # Xcode check — optional (CLT shim exists but fails without full Xcode)
           XCODE_VER="$(xcodebuild -version 2>/dev/null | head -n1 || true)"
           if [ -n "$XCODE_VER" ]; then
             echo "Xcode: $XCODE_VER"
@@ -51,7 +204,6 @@ jobs:
           import Foundation
           import FoundationModels
 
-          // Minimal type reference so this is a real compile gate, not just syntax.
           func _probe() {
             _ = SystemLanguageModel.default
           }
@@ -64,10 +216,6 @@ jobs:
             -o /tmp/foundation_models_probe
 
           echo "==> FoundationModels compile probe PASSED"
-
-      - name: Extract version from tag
-        id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       - name: Cache SPM dependencies
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
@@ -133,7 +281,7 @@ jobs:
             echo "::error::SPARKLE_EDDSA_PUBLIC_KEY secret is not set"
             exit 1
           fi
-          ./scripts/build-dmg.sh "${{ steps.version.outputs.version }}"
+          ./scripts/build-dmg.sh "${{ needs.preflight.outputs.version }}"
 
       - name: Notarize DMG
         env:
@@ -142,16 +290,13 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
         run: |
           set -euo pipefail
-          VERSION="${{ steps.version.outputs.version }}"
+          VERSION="${{ needs.preflight.outputs.version }}"
           DMG_PATH="build/EnviousWispr-${VERSION}.dmg"
 
-          # Write API key from base64 secret to temp file
           KEY_PATH="${RUNNER_TEMP}/AuthKey_${APPLE_API_KEY_ID}.p8"
           echo -n "${APPLE_API_KEY_BASE64}" | base64 --decode -o "${KEY_PATH}"
 
           echo "==> Submitting ${DMG_PATH} for notarization (--wait, 5h timeout) ..."
-          # Use --wait so notarytool handles polling internally (exponential backoff).
-          # Timeout 18000s = 5h, safely under GitHub's 6h job limit.
           SUBMIT_OUTPUT=$(xcrun notarytool submit "${DMG_PATH}" \
             --key "${KEY_PATH}" \
             --key-id "${APPLE_API_KEY_ID}" \
@@ -180,44 +325,15 @@ jobs:
             exit 1
           fi
 
-      - name: Upload dSYMs to Sentry
-        continue-on-error: true
-        env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-        run: |
-          set -euo pipefail
-          VERSION="${{ steps.version.outputs.version }}"
-
-          # Install sentry-cli (pinned version, explicit install dir for self-hosted runner)
-          export INSTALL_DIR="$HOME/.local/bin"
-          mkdir -p "$INSTALL_DIR"
-          curl -sL https://sentry.io/get-cli/ | SENTRY_CLI_VERSION=2.39.1 bash
-          export PATH="$INSTALL_DIR:$PATH"
-
-          # Create release and associate commits
-          sentry-cli releases new "v${VERSION}"
-          sentry-cli releases set-commits "v${VERSION}" --auto
-
-          # Upload debug symbols — --arch arm64 puts artifacts in arch-specific dir
-          echo "==> Uploading dSYMs ..."
-          sentry-cli debug-files upload --include-sources .build/arm64-apple-macosx/release/
-
-          # Finalize release
-          sentry-cli releases finalize "v${VERSION}"
-          echo "==> Sentry release v${VERSION} finalized with dSYMs."
-
       - name: Generate Sparkle appcast entry
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
+          VERSION="${{ needs.preflight.outputs.version }}"
           DMG_PATH="build/EnviousWispr-${VERSION}.dmg"
           DMG_SIZE=$(stat -f%z "$DMG_PATH")
           DATE=$(date -R)
 
-          # Sign the DMG with Sparkle's EdDSA key — fail if signature is empty
           if [[ -z "${SPARKLE_PRIVATE_KEY}" ]]; then
             echo "::error::SPARKLE_PRIVATE_KEY secret is not set — cannot sign update"
             exit 1
@@ -244,7 +360,224 @@ jobs:
               </item>
           ENTRY
 
-      - name: Update appcast.xml
+      - name: Copy DMG alias
+        run: |
+          VERSION="${{ needs.preflight.outputs.version }}"
+          cp "build/EnviousWispr-${VERSION}.dmg" "build/EnviousWispr.dmg"
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-artifacts-${{ needs.preflight.outputs.version }}
+          retention-days: 30
+          path: |
+            build/EnviousWispr-*.dmg
+            build/EnviousWispr.dmg
+            build/appcast-entry.xml
+
+      - name: Upload dSYM artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dsym-artifacts-${{ needs.preflight.outputs.version }}
+          retention-days: 30
+          path: .build/arm64-apple-macosx/release/
+
+      - name: Cleanup keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/build.keychain-db" 2>/dev/null || true
+
+      - name: Write job summary
+        if: always()
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" << SUMMARY
+          ## Build Artifacts — v${{ needs.preflight.outputs.version }}
+
+          | Detail | Value |
+          |---|---|
+          | Run ID | \`${{ github.run_id }}\` |
+          | Artifact name | \`release-artifacts-${{ needs.preflight.outputs.version }}\` |
+          | dSYM artifact | \`dsym-artifacts-${{ needs.preflight.outputs.version }}\` |
+          SUMMARY
+
+  # ===========================================================================
+  # Job 3 — Publish GitHub Release
+  # Idempotent: probes first, only clobbers in explicit recovery mode.
+  # ===========================================================================
+  publish-github-release:
+    needs: [preflight, build-release-artifacts]
+    if: |
+      always() && (
+        github.event_name == 'push' ||
+        inputs.mode == 'full' ||
+        inputs.mode == 'release-only'
+      ) && (
+        needs.preflight.result == 'success'
+      ) && (
+        needs.build-release-artifacts.result == 'success' ||
+        needs.build-release-artifacts.result == 'skipped'
+      )
+    runs-on: [self-hosted, enviouswispr-release]
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-artifacts-${{ needs.preflight.outputs.version }}
+          path: build/
+
+      - name: Check if GitHub Release exists
+        id: check-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ needs.preflight.outputs.tag }}"
+          if gh release view "$TAG" --repo "${{ github.repository }}" &>/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "==> Release $TAG already exists"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "==> Release $TAG does not exist — will create"
+          fi
+
+      - name: Create GitHub Release
+        if: steps.check-release.outputs.exists == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ needs.preflight.outputs.version }}"
+          TAG="${{ needs.preflight.outputs.tag }}"
+          gh release create "$TAG" \
+            --title "EnviousWispr v${VERSION}" \
+            --generate-notes \
+            "build/EnviousWispr-${VERSION}.dmg" \
+            "build/EnviousWispr.dmg"
+
+      - name: Upload assets to existing release (recovery only)
+        if: steps.check-release.outputs.exists == 'true' && inputs.mode == 'release-only'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ needs.preflight.outputs.version }}"
+          TAG="${{ needs.preflight.outputs.tag }}"
+          echo "==> Recovery mode: overwriting assets on existing release $TAG"
+          gh release upload "$TAG" --clobber \
+            "build/EnviousWispr-${VERSION}.dmg" \
+            "build/EnviousWispr.dmg"
+
+      - name: Skip asset upload (release already exists, not recovery)
+        if: steps.check-release.outputs.exists == 'true' && inputs.mode != 'release-only'
+        run: echo "==> Release already exists and mode is not release-only — skipping asset upload"
+
+      - name: Download dSYM artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        continue-on-error: true
+        with:
+          name: dsym-artifacts-${{ needs.preflight.outputs.version }}
+          path: .build/arm64-apple-macosx/release/
+
+      - name: Upload dSYMs to Sentry
+        continue-on-error: true
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.preflight.outputs.version }}"
+
+          export INSTALL_DIR="$HOME/.local/bin"
+          mkdir -p "$INSTALL_DIR"
+          curl -sL https://sentry.io/get-cli/ | SENTRY_CLI_VERSION=2.39.1 bash
+          export PATH="$INSTALL_DIR:$PATH"
+
+          sentry-cli releases new "v${VERSION}"
+          sentry-cli releases set-commits "v${VERSION}" --auto
+
+          echo "==> Uploading dSYMs ..."
+          sentry-cli debug-files upload --include-sources .build/arm64-apple-macosx/release/
+
+          sentry-cli releases finalize "v${VERSION}"
+          echo "==> Sentry release v${VERSION} finalized with dSYMs."
+
+      - name: Write job summary
+        if: always()
+        run: |
+          VERSION="${{ needs.preflight.outputs.version }}"
+          TAG="${{ needs.preflight.outputs.tag }}"
+          RELEASE_EXISTS="${{ steps.check-release.outputs.exists }}"
+          MODE="${{ inputs.mode || 'full' }}"
+          if [[ "$RELEASE_EXISTS" == "false" ]]; then
+            ACTION="Created new release"
+          elif [[ "$MODE" == "release-only" ]]; then
+            ACTION="Clobbered assets (recovery)"
+          else
+            ACTION="Skipped (already exists)"
+          fi
+          cat >> "$GITHUB_STEP_SUMMARY" << SUMMARY
+          ## Publish GitHub Release — v${VERSION}
+
+          | Detail | Value |
+          |---|---|
+          | Release exists (pre-run) | \`${RELEASE_EXISTS}\` |
+          | Action taken | ${ACTION} |
+          | Source run ID | \`${{ github.run_id }}\` |
+          SUMMARY
+
+  # ===========================================================================
+  # Job 4 — Publish Appcast
+  # Tries direct push via App bypass; falls back to PR if push fails.
+  # ===========================================================================
+  publish-appcast:
+    needs: [preflight, build-release-artifacts, publish-github-release]
+    if: |
+      always() && (
+        github.event_name == 'push' ||
+        inputs.mode == 'full' ||
+        inputs.mode == 'appcast-only'
+      ) && (
+        needs.preflight.result == 'success'
+      ) && (
+        needs.build-release-artifacts.result == 'success' ||
+        needs.build-release-artifacts.result == 'skipped'
+      ) && (
+        needs.publish-github-release.result == 'success' ||
+        needs.publish-github-release.result == 'skipped'
+      )
+    runs-on: [self-hosted, enviouswispr-release]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-artifacts-${{ needs.preflight.outputs.version }}
+          path: build/
+
+      - name: Check if appcast entry exists
+        id: check-appcast
+        run: |
+          VERSION="${{ needs.preflight.outputs.version }}"
+          APPCAST="website/public/appcast.xml"
+          if [ -f "$APPCAST" ] && grep -qF "<sparkle:version>${VERSION}</sparkle:version>" "$APPCAST"; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "==> Appcast entry for v${VERSION} already present — skipping"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "==> No appcast entry for v${VERSION} — will inject"
+          fi
+
+      - name: Inject appcast entry
+        if: steps.check-appcast.outputs.exists == 'false'
         run: |
           APPCAST="website/public/appcast.xml"
           if [ ! -f "$APPCAST" ]; then
@@ -257,7 +590,6 @@ jobs:
           </rss>
           FEED
           fi
-          # Insert new entry before closing </channel>
           python3 -c "
           content = open('website/public/appcast.xml').read()
           entry = open('build/appcast-entry.xml').read()
@@ -266,36 +598,19 @@ jobs:
           "
 
       - name: Validate appcast
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
+        if: steps.check-appcast.outputs.exists == 'false'
         run: |
           set -euo pipefail
+          VERSION="${{ needs.preflight.outputs.version }}"
           APPCAST="website/public/appcast.xml"
-          # XML well-formedness
           xmllint --noout "$APPCAST"
-          # Contains expected version
           grep -q "<sparkle:version>${VERSION}</sparkle:version>" "$APPCAST"
-          # Has EdDSA signature
           grep -q "sparkle:edSignature" "$APPCAST"
-          # Enclosure URL points to GitHub Releases
           grep -q "github.com/${{ github.repository }}/releases" "$APPCAST"
           echo "==> Appcast validation passed for v${VERSION}"
 
-      - name: Create GitHub Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          # Copy versioned DMG to a fixed-name asset for direct download links.
-          # Website uses: /releases/latest/download/EnviousWispr.dmg
-          cp "build/EnviousWispr-${VERSION}.dmg" "build/EnviousWispr.dmg"
-          gh release create "v${VERSION}" \
-            --title "EnviousWispr v${VERSION}" \
-            --generate-notes \
-            "build/EnviousWispr-${VERSION}.dmg" \
-            "build/EnviousWispr.dmg"
-
       - name: Generate GitHub App token
+        if: steps.check-appcast.outputs.exists == 'false'
         id: app-token
         uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1.12.0
         with:
@@ -303,23 +618,63 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Push appcast to main
+        id: push-appcast
+        if: steps.check-appcast.outputs.exists == 'false'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           git config user.name "enviouswispr-release-bot[bot]"
           git config user.email "enviouswispr-release-bot[bot]@users.noreply.github.com"
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}"
-          git fetch origin main
-          git checkout -B main origin/main
           git add website/public/appcast.xml
           if git diff --staged --quiet; then
             echo "==> appcast.xml unchanged, skipping."
           else
             git commit -m "chore(release): update appcast for v${VERSION}"
             git push origin main
+            echo "==> Appcast pushed to main"
           fi
 
-      - name: Cleanup keychain
+      - name: Fallback — open appcast PR
+        id: fallback-pr
+        if: steps.check-appcast.outputs.exists == 'false' && steps.push-appcast.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          BRANCH="chore/appcast-v${VERSION}"
+          git checkout -b "$BRANCH"
+          git push origin "$BRANCH"
+          gh pr create \
+            --title "chore(release): update appcast for v${VERSION}" \
+            --body "Automated appcast update for v${VERSION}. Direct push to main failed — manual merge required." \
+            --base main \
+            --head "$BRANCH"
+          echo "::warning::Direct push to main failed. Appcast PR opened on branch ${BRANCH}."
+
+      - name: Fail if both push and PR failed
+        if: >
+          steps.check-appcast.outputs.exists == 'false' &&
+          steps.push-appcast.outcome == 'failure' &&
+          steps.fallback-pr.outcome == 'failure'
+        run: |
+          echo "::error::Both direct push and PR fallback failed for appcast"
+          exit 1
+
+      - name: Write job summary
         if: always()
-        run: security delete-keychain "$RUNNER_TEMP/build.keychain-db" 2>/dev/null || true
+        run: |
+          VERSION="${{ needs.preflight.outputs.version }}"
+          APPCAST_EXISTS="${{ steps.check-appcast.outputs.exists }}"
+          PUSH_OUTCOME="${{ steps.push-appcast.outcome || 'skipped' }}"
+          cat >> "$GITHUB_STEP_SUMMARY" << SUMMARY
+          ## Publish Appcast — v${VERSION}
+
+          | Detail | Value |
+          |---|---|
+          | Entry existed (pre-run) | \`${APPCAST_EXISTS}\` |
+          | Push outcome | \`${PUSH_OUTCOME}\` |
+          | Source run ID | \`${{ github.run_id }}\` |
+          SUMMARY

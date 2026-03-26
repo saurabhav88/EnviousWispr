@@ -49,10 +49,15 @@ human changes should go through PRs.
 1. `./scripts/release-preflight.sh` — validates branch, clean state, release build, tests
 2. Version bump + commit
 3. Annotated tag + push (triggers `release.yml`)
-4. CI builds, signs, notarizes, creates DMG, updates appcast, creates GitHub Release
+4. `release.yml` runs a 4-job idempotent pipeline:
+   - **Preflight** — validates tag format (semver), required secrets, probes existing release/appcast state
+   - **Build** — SDK probe → build → sign → notarize → DMG → Sparkle sign → upload artifacts (30-day retention)
+   - **Publish Release** — idempotent: probes if release exists, creates or skips (clobber only in explicit `release-only` recovery mode)
+   - **Publish Appcast** — inject entry → validate XML → push to main via App bypass token (falls back to PR if push fails)
+5. Recovery via `workflow_dispatch` with modes: `full`, `release-only`, `appcast-only`, `assets-only`
 
 Published releases are immutable. Never retag or force-push a release tag.
-If a release is broken, cut a new patch version.
+If a release is broken, use recovery modes or cut a new patch version.
 
 ## When drift check fails
 

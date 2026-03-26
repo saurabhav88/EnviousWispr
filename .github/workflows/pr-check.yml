@@ -16,8 +16,29 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Detect code changes
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          echo "==> Changed files:"
+          echo "$CHANGED"
+          # Check if ANY file outside website/, docs/, .github/, content-engine/ changed
+          if echo "$CHANGED" | grep -qvE '^(website/|docs/|\.github/|content-engine/|\.claude/|CLAUDE\.md)'; then
+            echo "needs_build=true" >> "$GITHUB_OUTPUT"
+            echo "==> Swift source changes detected — full build required"
+          else
+            echo "needs_build=false" >> "$GITHUB_OUTPUT"
+            echo "==> No Swift source changes — skipping build"
+          fi
 
       - name: Verify environment
+        if: steps.changes.outputs.needs_build == 'true'
         run: |
           set -euo pipefail
           swift --version
@@ -35,6 +56,7 @@ jobs:
           fi
 
       - name: Cache SPM dependencies
+        if: steps.changes.outputs.needs_build == 'true'
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
         with:
           path: .build
@@ -43,15 +65,19 @@ jobs:
             ${{ runner.os }}-spm-
 
       - name: Build (debug)
+        if: steps.changes.outputs.needs_build == 'true'
         run: swift build
 
       - name: Build (release)
+        if: steps.changes.outputs.needs_build == 'true'
         run: swift build -c release --arch arm64
 
       - name: Verify test target compiles
+        if: steps.changes.outputs.needs_build == 'true'
         run: swift build --build-tests
 
       - name: Verify FoundationModels compile probe
+        if: steps.changes.outputs.needs_build == 'true'
         run: |
           set -euo pipefail
           SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
