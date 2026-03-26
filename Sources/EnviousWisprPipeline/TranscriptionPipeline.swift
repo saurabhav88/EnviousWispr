@@ -515,10 +515,14 @@ public final class TranscriptionPipeline: DictationPipeline {
                     "provider": llmPolishStep.llmProvider.rawValue,
                     "model": llmPolishStep.llmModel,
                 ])
-                // If Apple Intelligence failed, run a fresh diagnostics check and attach it
+                // Fire-and-forget: AI diagnostics must not block paste path (up to 10s timeout)
                 if llmPolishStep.llmProvider == .appleIntelligence {
-                    let aiReport = await AppleIntelligenceDiagnosticsService.runDiagnostics()
-                    SentryBreadcrumb.reportAIFailure(aiReport)
+                    let capturedStartTime = self.recordingStartTime
+                    Task { [weak self] in
+                        let aiReport = await AppleIntelligenceDiagnosticsService.runDiagnostics()
+                        guard self?.recordingStartTime == capturedStartTime else { return }
+                        SentryBreadcrumb.reportAIFailure(aiReport)
+                    }
                 }
                 Task { await AppLogger.shared.log(
                     "Text processing failed: \(error.localizedDescription)",

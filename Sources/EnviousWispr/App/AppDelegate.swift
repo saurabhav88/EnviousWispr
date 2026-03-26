@@ -67,7 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updaterController = SPUStandardUpdaterController(
             startingUpdater: true,
             updaterDelegate: nil,
-            userDriverDelegate: nil
+            userDriverDelegate: self
         )
 
         setupStatusItem()
@@ -420,5 +420,20 @@ extension AppDelegate: NSMenuDelegate {
             }
             self.updateIcon()
         }
+    }
+}
+
+// MARK: - SPUStandardUserDriverDelegate
+
+extension AppDelegate: @preconcurrency SPUStandardUserDriverDelegate {
+    /// Bring app to front when Sparkle shows an update dialog (LSUIElement fix).
+    func standardUserDriverWillShowModalAlert() {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate()
+    }
+
+    /// Return to accessory mode when the entire update session ends.
+    func standardUserDriverWillFinishUpdateSession() {
+        NSApp.setActivationPolicy(.accessory)
     }
 }
