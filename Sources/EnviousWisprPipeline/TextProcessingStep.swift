@@ -15,6 +15,10 @@ public struct TextProcessingContext: Sendable {
     public var llmProvider: String?
     /// LLM model used for polishing (e.g. "gpt-4o-mini").
     public var llmModel: String?
+    /// Target app bundle ID (e.g. "com.apple.Terminal"). Nil if unknown or re-polish path.
+    public var targetAppBundleID: String?
+    /// Target app display name (e.g. "Terminal"). Nil if unknown or re-polish path.
+    public var targetAppName: String?
 
     public init(text: String, originalASRText: String, language: String?) {
         self.text = text

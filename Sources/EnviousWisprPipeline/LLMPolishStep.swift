@@ -14,6 +14,10 @@ public final class LLMPolishStep: TextProcessingStep {
     public var useExtendedThinking: Bool = false
     public var customWords: [CustomWord] = []
 
+    /// Prompt enrichment version — bump when changing enrichment logic.
+    /// Set to 1 to revert to pre-Smart-Polish-v2 behavior.
+    private static let enrichmentVersion = 2
+
     /// Called before LLM processing starts (pipeline uses this to set .polishing state).
     public var onWillProcess: (() -> Void)?
 
@@ -98,9 +102,15 @@ public final class LLMPolishStep: TextProcessingStep {
             reasoningEffort: reasoningEffort
         )
 
-        // Enrich instructions with pipeline context (language, etc.)
-        // then resolve ${transcript} placeholder if present.
-        let enriched = enrichedInstructions(polishInstructions, context: context)
+        // Enrich instructions with pipeline context (language, ASR awareness, app context, etc.)
+        // Apple Intelligence handles its own simplified prompt internally — skip enrichment
+        // to preserve the string-equality check in AppleIntelligenceConnector.makeSession().
+        let enriched: PolishInstructions
+        if llmProvider == .appleIntelligence {
+            enriched = polishInstructions
+        } else {
+            enriched = enrichedInstructions(polishInstructions, context: context)
+        }
         var resolvedInstructions = enriched
         var userText = context.text
         if enriched.systemPrompt.contains("${transcript}") {
@@ -198,6 +208,26 @@ public final class LLMPolishStep: TextProcessingStep {
 
                 \(systemPrompt)
                 """
+        }
+
+        // Smart Polish v2: ASR-awareness clause + app context (enrichmentVersion >= 2).
+        // Teaches the LLM that input is from speech recognition and may contain
+        // phonetic errors. 3 generic examples teach the pattern without overfitting.
+        if Self.enrichmentVersion >= 2 {
+            systemPrompt += """
+
+                This text was produced by speech recognition and may contain \
+                phonetically similar but contextually incorrect words. When a \
+                similar-sounding alternative clearly better matches the intended \
+                meaning, replace only that mistaken word or phrase. Keep edits \
+                minimal. Preserve tone, style, and intent. If unsure, leave it \
+                unchanged. Examples: "their" misheard as "there", "cache" as \
+                "cash", "new" as "nude".
+                """
+
+            if let appName = context.targetAppName, !appName.isEmpty {
+                systemPrompt += "\nThe user is dictating in \(appName)."
+            }
         }
 
         // Guard against hallucination on short transcripts (4-10 words).
