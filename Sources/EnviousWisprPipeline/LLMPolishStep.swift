@@ -9,7 +9,7 @@ public final class LLMPolishStep: TextProcessingStep {
     public let name = "LLM Polish"
 
     public var llmProvider: LLMProvider = .none
-    public var llmModel: String = "gpt-4o-mini"
+    public var llmModel: String = LLMProvider.defaultModel(for: .openAI)
     public var polishInstructions: PolishInstructions = .default
     public var useExtendedThinking: Bool = false
     public var customWords: [CustomWord] = []
@@ -293,14 +293,11 @@ public final class LLMPolishStep: TextProcessingStep {
 
     /// Resolve thinking/reasoning config based on provider, model, and user toggle.
     private func resolveThinkingConfig() -> (thinkingBudget: Int?, reasoningEffort: String?) {
+        guard llmProvider.supportsReasoning(model: llmModel) else { return (nil, nil) }
         switch llmProvider {
         case .gemini:
-            let isThinkingModel = llmModel.hasPrefix("gemini-2.5") || llmModel.hasPrefix("gemini-3")
-            guard isThinkingModel else { return (nil, nil) }
             return (useExtendedThinking ? LLMConstants.defaultThinkingBudget : 0, nil)
         case .openAI:
-            let isReasoningModel = llmModel.hasPrefix("o1") || llmModel.hasPrefix("o3") || llmModel.hasPrefix("o4")
-            guard isReasoningModel else { return (nil, nil) }
             return (nil, useExtendedThinking ? "medium" : "low")
         case .ollama, .appleIntelligence, .none:
             return (nil, nil)

@@ -19,6 +19,29 @@ extension LLMProvider {
         case .none:              return "None"
         }
     }
+
+    /// Default model for a provider. Used to restore a sensible model when switching providers.
+    public static func defaultModel(for provider: LLMProvider, ollamaModel: String = "llama3.2") -> String {
+        switch provider {
+        case .openAI:            return "gpt-4o-mini"
+        case .gemini:            return "gemini-2.0-flash"
+        case .ollama:            return ollamaModel
+        case .appleIntelligence: return "apple-intelligence"
+        case .none:              return ""
+        }
+    }
+
+    /// Whether this provider + model combination supports reasoning/thinking controls.
+    public func supportsReasoning(model: String) -> Bool {
+        switch self {
+        case .gemini:
+            return model.hasPrefix("gemini-2.5") || model.hasPrefix("gemini-3")
+        case .openAI:
+            return model.hasPrefix("o1") || model.hasPrefix("o3") || model.hasPrefix("o4")
+        case .ollama, .appleIntelligence, .none:
+            return false
+        }
+    }
 }
 
 /// Result from LLM transcript polishing.
