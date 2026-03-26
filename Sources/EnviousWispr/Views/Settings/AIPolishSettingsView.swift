@@ -202,7 +202,11 @@ struct AIPolishSettingsView: View {
         }
         .onChange(of: appState.settings.llmProvider) { _, newProvider in
             appState.llmDiscovery.reset()
-            appState.settings.llmModel = ""
+            // Don't blank the model for Apple Intelligence — SettingsManager canonicalizes it.
+            // For other providers, clear it so discovery can auto-select.
+            if newProvider != .appleIntelligence {
+                appState.settings.llmModel = ""
+            }
 
             switch newProvider {
             case .none:
@@ -216,6 +220,7 @@ struct AIPolishSettingsView: View {
                 }
             case .appleIntelligence:
                 appState.ollamaSetup.cancelPull()
+                // Model canonicalization handled by SettingsManager.llmProvider didSet
                 Task { await appState.aiAvailability.checkAvailability(trigger: "provider_switch") }
             default:
                 appState.ollamaSetup.cancelPull()

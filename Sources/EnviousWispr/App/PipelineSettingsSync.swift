@@ -42,10 +42,11 @@ final class PipelineSettingsSync {
         // Parakeet pipeline
         pipeline.autoCopyToClipboard = settings.autoCopyToClipboard
         pipeline.llmPolish.llmProvider = settings.llmProvider
-        pipeline.llmPolish.llmModel = settings.llmModel
-        if settings.llmProvider == .ollama {
-            pipeline.llmPolish.llmModel = settings.ollamaModel
-        }
+        // Defensive normalization: ensure model matches provider before syncing
+        let resolvedModel = settings.llmProvider == .appleIntelligence ? "apple-intelligence"
+            : settings.llmProvider == .ollama ? settings.ollamaModel
+            : settings.llmModel
+        pipeline.llmPolish.llmModel = resolvedModel
         pipeline.vadAutoStop = settings.vadAutoStop
         pipeline.vadSilenceTimeout = settings.vadSilenceTimeout
         pipeline.vadSensitivity = settings.vadSensitivity
@@ -119,9 +120,19 @@ final class PipelineSettingsSync {
         case .llmProvider:
             pipeline.llmPolish.llmProvider = settings.llmProvider
             whisperKitPipeline.llmPolish.llmProvider = settings.llmProvider
+            // Also sync model — provider change may canonicalize the model
+            let provSyncModel = settings.llmProvider == .appleIntelligence ? "apple-intelligence"
+                : settings.llmProvider == .ollama ? settings.ollamaModel
+                : settings.llmModel
+            pipeline.llmPolish.llmModel = provSyncModel
+            whisperKitPipeline.llmPolish.llmModel = provSyncModel
         case .llmModel:
-            pipeline.llmPolish.llmModel = settings.llmModel
-            whisperKitPipeline.llmPolish.llmModel = settings.llmModel
+            // Defensive: resolve model based on provider at the sync boundary
+            let syncModel = settings.llmProvider == .appleIntelligence ? "apple-intelligence"
+                : settings.llmProvider == .ollama ? settings.ollamaModel
+                : settings.llmModel
+            pipeline.llmPolish.llmModel = syncModel
+            whisperKitPipeline.llmPolish.llmModel = syncModel
             if settings.llmProvider == .ollama {
                 settings.ollamaModel = settings.llmModel
             }
@@ -256,10 +267,10 @@ final class PipelineSettingsSync {
         whisperKitPipeline.autoCopyToClipboard = settings.autoCopyToClipboard
         whisperKitPipeline.restoreClipboardAfterPaste = settings.restoreClipboardAfterPaste
         whisperKitPipeline.llmPolish.llmProvider = settings.llmProvider
-        whisperKitPipeline.llmPolish.llmModel = settings.llmModel
-        if settings.llmProvider == .ollama {
-            whisperKitPipeline.llmPolish.llmModel = settings.ollamaModel
-        }
+        let wkResolvedModel = settings.llmProvider == .appleIntelligence ? "apple-intelligence"
+            : settings.llmProvider == .ollama ? settings.ollamaModel
+            : settings.llmModel
+        whisperKitPipeline.llmPolish.llmModel = wkResolvedModel
         whisperKitPipeline.llmPolish.polishInstructions = settings.activePolishInstructions
         whisperKitPipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
         whisperKitPipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled

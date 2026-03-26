@@ -68,6 +68,10 @@ public final class SettingsManager {
     public var llmProvider: LLMProvider {
         didSet {
             UserDefaults.standard.set(llmProvider.rawValue, forKey: "llmProvider")
+            // Canonicalize: Apple Intelligence has a fixed model name
+            if llmProvider == .appleIntelligence && llmModel != "apple-intelligence" {
+                llmModel = "apple-intelligence"
+            }
             onChange?(.llmProvider)
         }
     }
@@ -391,5 +395,11 @@ public final class SettingsManager {
         environmentPreset = EnvironmentPreset(rawValue: defaults.string(forKey: "environmentPreset") ?? "") ?? .normal
         writingStylePreset = WritingStylePreset(rawValue: defaults.string(forKey: "writingStylePreset") ?? "") ?? .standard
         useXPCAudioService = defaults.object(forKey: "useXPCAudioService") as? Bool ?? true
+
+        // Canonicalize provider-coupled model names after all properties are loaded.
+        // Apple Intelligence has a fixed model — persisted values from other providers are stale.
+        if llmProvider == .appleIntelligence && llmModel != "apple-intelligence" {
+            llmModel = "apple-intelligence"
+        }
     }
 }
