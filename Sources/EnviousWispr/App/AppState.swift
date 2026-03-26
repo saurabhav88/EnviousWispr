@@ -55,6 +55,9 @@ final class AppState {
     // Model discovery — delegated to coordinator
     let llmDiscovery: LLMModelDiscoveryCoordinator
 
+    // Apple Intelligence availability — dedicated coordinator (replaces KeyValidationState proxy)
+    let aiAvailability = AIAvailabilityCoordinator()
+
     init() {
         // XPC audio service — default ON (Step 7). Audio capture runs in a separate XPC
         // service process for crash isolation. Escape hatch: `defaults write ... useXPCAudioService -bool false`

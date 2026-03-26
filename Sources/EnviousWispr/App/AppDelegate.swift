@@ -100,29 +100,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
         }
 
-        // Run Apple Intelligence diagnostics and attach report to Sentry context.
-        // Fire-and-forget — report is logged as breadcrumb and persisted in Sentry scope
-        // so any future crash includes the AI availability state.
-        let aiReport = AppleIntelligenceDiagnosticsService.runDiagnostics()
-        SentryBreadcrumb.attachAIDiagnostics(aiReport)
-        Task { await AppLogger.shared.log(
-            "AI diagnostics: status=\(aiReport.overallStatus.rawValue), " +
-            "reasons=\(aiReport.failureReasons.map(\.rawValue)), " +
-            "duration=\(aiReport.checkDurationMs)ms",
-            level: .info, category: "Diagnostics"
-        ) }
+        // Run Apple Intelligence diagnostics via coordinator.
+        // Handles: Sentry context, PostHog event, persistence, first-launch re-check.
+        let isFreshInstall = appState.settings.onboardingState != .completed
+        if isFreshInstall {
+            appState.aiAvailability.firstLaunchCheck()
+        } else {
+            Task { await appState.aiAvailability.checkAvailability(trigger: "app_launch") }
+        }
 
-        // Fire structured app.launched event — unconditional, before onboarding guard.
+        // Fire structured app.launched event — uses cached report (loaded from UserDefaults in coordinator init).
+        // No async wait needed — cached snapshot is available synchronously.
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
         let osVer = ProcessInfo.processInfo.operatingSystemVersion
+        let cachedReport = appState.aiAvailability.latestReport
         TelemetryService.shared.appLaunched(
             version: version,
             build: build,
             osVersion: "\(osVer.majorVersion).\(osVer.minorVersion).\(osVer.patchVersion)",
-            hardware: aiReport.hardwareClass,
-            isFreshInstall: appState.settings.onboardingState != .completed,
-            aiAvailable: aiReport.overallStatus == .available
+            hardware: cachedReport?.hardwareClass ?? "unknown",
+            isFreshInstall: isFreshInstall,
+            aiAvailable: cachedReport?.overallStatus == .available
         )
 
         // Check Accessibility permission on launch (query only — never auto-prompt).

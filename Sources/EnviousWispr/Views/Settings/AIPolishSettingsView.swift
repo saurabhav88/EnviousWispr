@@ -195,7 +195,7 @@ struct AIPolishSettingsView: View {
                     }
                 }
             } else if appState.settings.llmProvider == .appleIntelligence {
-                Task { await appState.llmDiscovery.validateKeyAndDiscoverModels(provider: appState.settings.llmProvider, settings: appState.settings) }
+                Task { await appState.aiAvailability.checkAvailability(trigger: "settings_open") }
             } else if appState.settings.llmProvider != .none {
                 appState.llmDiscovery.loadCachedModels(for: appState.settings.llmProvider)
             }
@@ -216,7 +216,7 @@ struct AIPolishSettingsView: View {
                 }
             case .appleIntelligence:
                 appState.ollamaSetup.cancelPull()
-                Task { await appState.llmDiscovery.validateKeyAndDiscoverModels(provider: newProvider, settings: appState.settings) }
+                Task { await appState.aiAvailability.checkAvailability(trigger: "provider_switch") }
             default:
                 appState.ollamaSetup.cancelPull()
                 appState.llmDiscovery.loadCachedModels(for: newProvider)
@@ -635,36 +635,126 @@ struct AIPolishSettingsView: View {
             .font(.stHelper)
             .foregroundStyle(Color.stTextTertiary)
 
-        if #available(macOS 26.0, *) {
-            HStack {
-                Text("Status:")
-                Spacer()
-                switch appState.llmDiscovery.keyValidationState {
-                case .valid:
-                    Label("Available", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.stSuccess)
-                case .invalid(let msg):
-                    Label(msg, systemImage: "xmark.circle.fill")
-                        .foregroundStyle(.stError)
-                        .font(.caption)
-                case .validating:
-                    ProgressView().controlSize(.small)
-                case .idle:
-                    Text("Not checked").foregroundStyle(Color.stTextTertiary)
-                }
+        // Status row
+        HStack {
+            Text("Status:")
+            Spacer()
+            aiStatusLabel
+            Button {
+                appState.aiAvailability.debouncedCheck()
+            } label: {
+                Image(systemName: "arrow.clockwise")
+            }
+            .buttonStyle(.borderless)
+            .disabled(appState.aiAvailability.isChecking)
+            .help("Check Apple Intelligence availability")
+        }
 
-                Button {
-                    Task { await appState.llmDiscovery.validateKeyAndDiscoverModels(provider: .appleIntelligence, settings: appState.settings) }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .buttonStyle(.borderless)
-                .help("Check Apple Intelligence availability")
+        // "Why?" detail text
+        if let report = appState.aiAvailability.latestReport,
+           report.overallStatus != .available {
+            Text(report.userVisibleMessage)
+                .font(.stHelper)
+                .foregroundStyle(Color.stTextTertiary)
+        }
+
+        // Debug section — dev builds only
+        if appState.settings.isDebugModeEnabled, let report = appState.aiAvailability.latestReport {
+            aiDebugSection(report: report)
+        }
+    }
+
+    @ViewBuilder
+    private var aiStatusLabel: some View {
+        if appState.aiAvailability.isChecking {
+            ProgressView().controlSize(.small)
+        } else if let report = appState.aiAvailability.latestReport {
+            switch report.overallStatus {
+            case .available:
+                Label("Available", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.stSuccess)
+            case .degraded:
+                Label("Degraded", systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.stWarning)
+            case .unavailable:
+                Label("Unavailable", systemImage: "xmark.circle.fill")
+                    .foregroundStyle(.stError)
+            case .unknown:
+                Label("Unknown", systemImage: "questionmark.circle")
+                    .foregroundStyle(Color.stTextTertiary)
             }
         } else {
-            Label("Requires macOS 26 or later.", systemImage: "exclamationmark.triangle.fill")
+            Text("Not checked")
+                .foregroundStyle(Color.stTextTertiary)
+        }
+    }
+
+    @ViewBuilder
+    private func aiDebugSection(report: AppleIntelligenceAvailabilityReport) -> some View {
+        DisclosureGroup("Diagnostics") {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(report.gates.allGates, id: \.name) { gate in
+                    HStack(spacing: 6) {
+                        gateStatusIcon(gate.result.status)
+                        Text(gate.name)
+                            .font(.caption)
+                            .fontWeight(.medium)
+                        Spacer()
+                        Text(gate.result.summary)
+                            .font(.caption2)
+                            .foregroundStyle(Color.stTextTertiary)
+                            .lineLimit(1)
+                        if let ms = gate.result.durationMs {
+                            Text("\(ms)ms")
+                                .font(.caption2)
+                                .foregroundStyle(Color.stTextTertiary)
+                        }
+                    }
+                }
+                HStack {
+                    Text("OS: \(report.osVersion)")
+                    Spacer()
+                    Text("HW: \(report.hardwareClass)")
+                    Spacer()
+                    Text("Total: \(report.checkDurationMs)ms")
+                }
+                .font(.caption2)
+                .foregroundStyle(Color.stTextTertiary)
+
+                Button("Copy Diagnostics") {
+                    appState.aiAvailability.copyDiagnosticsToClipboard()
+                }
+                .font(.caption)
+                .buttonStyle(.borderless)
+            }
+            .padding(.vertical, 4)
+        }
+        .font(.caption)
+    }
+
+    @ViewBuilder
+    private func gateStatusIcon(_ status: AIGateStatus) -> some View {
+        switch status {
+        case .passed:
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.stSuccess)
+                .font(.caption2)
+        case .failed:
+            Image(systemName: "xmark.circle.fill")
+                .foregroundStyle(.stError)
+                .font(.caption2)
+        case .skipped:
+            Image(systemName: "minus.circle")
+                .foregroundStyle(Color.stTextTertiary)
+                .font(.caption2)
+        case .timedOut:
+            Image(systemName: "clock.badge.exclamationmark")
                 .foregroundStyle(.stWarning)
-                .font(.stHelper)
+                .font(.caption2)
+        case .unknown:
+            Image(systemName: "questionmark.circle")
+                .foregroundStyle(Color.stTextTertiary)
+                .font(.caption2)
         }
     }
 
