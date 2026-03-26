@@ -12,6 +12,7 @@ interface Props {
   ogImageAlt?: string;
   ogType?: 'website' | 'article';
   canonicalPath?: string;
+  noindex?: boolean;
 }
 
 const {
@@ -22,6 +23,7 @@ const {
   ogImageAlt = 'EnviousWispr — Private AI dictation for macOS',
   ogType = 'website',
   canonicalPath,
+  noindex = false,
 } = Astro.props;
 
 const siteUrl = 'https://enviouswispr.com';
@@ -36,7 +38,7 @@ const ogImageUrl = ogImage.startsWith('http') ? ogImage : `${siteUrl}${ogImage}`
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{title}</title>
   <meta name="description" content={description} />
-  <meta name="robots" content="index, follow" />
+  <meta name="robots" content={noindex ? "noindex, nofollow" : "index, follow"} />
   <meta name="author" content="Envious Labs" />
   <link rel="canonical" href={canonical} />
   <meta property="og:title" content={title} />
