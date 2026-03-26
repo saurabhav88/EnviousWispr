@@ -68,9 +68,11 @@ public final class SettingsManager {
     public var llmProvider: LLMProvider {
         didSet {
             UserDefaults.standard.set(llmProvider.rawValue, forKey: "llmProvider")
-            // Canonicalize: Apple Intelligence has a fixed model name
-            if llmProvider == .appleIntelligence && llmModel != "apple-intelligence" {
+            // Canonicalize model for the new provider
+            if llmProvider == .appleIntelligence {
                 llmModel = "apple-intelligence"
+            } else if llmModel == "apple-intelligence" || llmModel.isEmpty {
+                llmModel = LLMProvider.defaultModel(for: llmProvider, ollamaModel: ollamaModel)
             }
             onChange?(.llmProvider)
         }
@@ -327,7 +329,7 @@ public final class SettingsManager {
         whisperKitModel = defaults.string(forKey: "whisperKitModel") ?? "openai_whisper-large-v3_turbo"
         recordingMode = RecordingMode(rawValue: defaults.string(forKey: "recordingMode") ?? "") ?? .pushToTalk
         llmProvider = LLMProvider(rawValue: defaults.string(forKey: "llmProvider") ?? "") ?? .none
-        llmModel = defaults.string(forKey: "llmModel") ?? "gpt-4o-mini"
+        llmModel = defaults.string(forKey: "llmModel") ?? LLMProvider.defaultModel(for: .openAI)
         ollamaModel = defaults.string(forKey: "ollamaModel") ?? "llama3.2"
         autoCopyToClipboard = defaults.object(forKey: "autoCopyToClipboard") as? Bool ?? true
         hotkeyEnabled = true  // toggle removed; always enabled
@@ -397,9 +399,28 @@ public final class SettingsManager {
         useXPCAudioService = defaults.object(forKey: "useXPCAudioService") as? Bool ?? true
 
         // Canonicalize provider-coupled model names after all properties are loaded.
-        // Apple Intelligence has a fixed model — persisted values from other providers are stale.
-        if llmProvider == .appleIntelligence && llmModel != "apple-intelligence" {
+        if llmProvider == .appleIntelligence {
             llmModel = "apple-intelligence"
+        } else if llmModel == "apple-intelligence" || llmModel.isEmpty {
+            llmModel = LLMProvider.defaultModel(for: llmProvider, ollamaModel: ollamaModel)
+        }
+    }
+
+    /// Apply discovered models from async discovery. SettingsManager decides whether to update.
+    /// - Parameters:
+    ///   - models: Models returned by the provider's API.
+    ///   - provider: The provider these models belong to. Stale results (user already switched) are dropped.
+    public func applyDiscoveredModels(_ models: [LLMModelInfo], for provider: LLMProvider) {
+        guard provider == llmProvider else { return }
+        if models.isEmpty {
+            llmModel = LLMProvider.defaultModel(for: llmProvider, ollamaModel: ollamaModel)
+            return
+        }
+        if !models.contains(where: { $0.id == llmModel && $0.isAvailable }) {
+            if let first = models.first(where: { $0.isAvailable }) {
+                llmModel = first.id
+                if provider == .ollama { ollamaModel = first.id }
+            }
         }
     }
 }

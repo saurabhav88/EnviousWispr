@@ -57,12 +57,7 @@ final class LLMModelDiscoveryCoordinator {
             }
             keyValidationState = .valid
 
-            if !models.contains(where: { $0.id == settings.llmModel && $0.isAvailable }) {
-                if let firstAvailable = models.first(where: { $0.isAvailable }) {
-                    settings.llmModel = firstAvailable.id
-                    if provider == .ollama { settings.ollamaModel = firstAvailable.id }
-                }
-            }
+            settings.applyDiscoveredModels(models, for: provider)
         } catch LLMError.providerUnavailable {
             keyValidationState = .invalid(
                 provider == .ollama

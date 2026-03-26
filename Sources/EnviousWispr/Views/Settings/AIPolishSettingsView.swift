@@ -16,6 +16,10 @@ struct AIPolishSettingsView: View {
         appState.settings.llmProvider == .openAI || appState.settings.llmProvider == .gemini
     }
 
+    private var isReasoningModel: Bool {
+        appState.settings.llmProvider.supportsReasoning(model: appState.settings.llmModel)
+    }
+
     private var showModelSection: Bool {
         appState.settings.llmProvider != .none && appState.settings.llmProvider != .appleIntelligence
     }
@@ -168,7 +172,7 @@ struct AIPolishSettingsView: View {
             }
 
             // ── Section 4: Advanced ───────────────────────────────────
-            if isCloudProvider {
+            if isReasoningModel {
                 BrandedSection(header: "Advanced") {
                     BrandedRow(showDivider: false) {
                         @Bindable var state2 = appState
@@ -202,11 +206,8 @@ struct AIPolishSettingsView: View {
         }
         .onChange(of: appState.settings.llmProvider) { _, newProvider in
             appState.llmDiscovery.reset()
-            // Don't blank the model for Apple Intelligence — SettingsManager canonicalizes it.
-            // For other providers, clear it so discovery can auto-select.
-            if newProvider != .appleIntelligence {
-                appState.settings.llmModel = ""
-            }
+            // Model canonicalization handled by SettingsManager.llmProvider didSet.
+            // Discovery will refine the model async if needed.
 
             switch newProvider {
             case .none:
