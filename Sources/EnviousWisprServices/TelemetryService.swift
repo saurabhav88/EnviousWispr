@@ -199,6 +199,27 @@ public final class TelemetryService {
         ])
     }
 
+    // MARK: - AI Diagnostics
+
+    /// One summary event per diagnostics check run.
+    /// Trigger: "app_launch", "delayed_recheck", "manual_refresh", "provider_switch"
+    public func aiDiagnosticsRunCompleted(report: AppleIntelligenceAvailabilityReport, trigger: String) {
+        var props: [String: Any] = [
+            "overall_status": report.overallStatus.rawValue,
+            "failure_reasons": report.failureReasons.map(\.rawValue).joined(separator: ","),
+            "check_duration_ms": report.checkDurationMs,
+            "os_version": report.osVersion,
+            "hardware_class": report.hardwareClass,
+            "trigger": trigger,
+        ]
+        for (name, result) in report.gates.allGates {
+            let key = name.lowercased().replacingOccurrences(of: " ", with: "_")
+            props["gate_\(key)_status"] = result.status.rawValue
+            if let ms = result.durationMs { props["gate_\(key)_ms"] = ms }
+        }
+        PostHogSDK.shared.capture("ai_diagnostics.run_completed", properties: props)
+    }
+
     // MARK: - Metrics
 
     public func metricPipelineE2E(seconds: Double, inputMode: String, asrBackend: String,

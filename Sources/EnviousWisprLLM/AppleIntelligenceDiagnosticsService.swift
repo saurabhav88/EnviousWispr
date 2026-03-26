@@ -6,169 +6,291 @@ import FoundationModels
 #endif
 
 /// Runs layered gate checks to produce a structured Apple Intelligence availability report.
-/// Each gate returns pass/fail/unknown with explicit failure reasons.
+/// Each gate returns an AIGateResult with explicit status and failure reasons.
 ///
 /// Gate stages:
 /// 1. Build/Binary — was FoundationModels compiled in?
-/// 2. OS/Runtime — is macOS version sufficient? Is the framework loadable?
-/// 3. Device Eligibility — is this device eligible for Apple Intelligence?
-/// 4. Model Access — can the system language model be accessed?
+/// 2. OS/Runtime Preconditions — is macOS version sufficient? (compile-time framework gate)
+/// 3. Device Eligibility — is this device eligible for Apple Intelligence? (locale deferred)
+/// 4. Model Access — can a LanguageModelSession be created?
+/// 5. Functional Probe — can a minimal generation succeed? (timeout-bounded)
 ///
-/// Limb: never throws, never blocks. Returns a report regardless of outcome.
+/// Limb: never throws, never blocks indefinitely. Returns a report regardless of outcome.
+/// Telemetry/breadcrumbs are NOT emitted here — the coordinator owns that responsibility.
 public enum AppleIntelligenceDiagnosticsService {
 
-    /// Run all gate checks and produce a structured report.
-    @MainActor
-    public static func runDiagnostics() -> AppleIntelligenceAvailabilityReport {
-        let start = CFAbsoluteTimeGetCurrent()
-        let osVersion = Self.currentOSVersion()
-        let hardwareClass = Self.currentHardwareClass()
+    /// Timeout budget for the functional probe (Stage 5).
+    private static let probeTimeoutSeconds: TimeInterval = 3.0
 
-        var failureReasons: [AIFailureReason] = []
-        var debugLines: [String] = []
+    /// Overall timeout budget for the entire diagnostics run (default 10s).
+    /// If elapsed time exceeds this, remaining gates get .timedOut status.
+    private static let totalTimeoutSeconds: TimeInterval = 10.0
+
+    /// Stage 4 timeout budget (session creation).
+    private static let sessionTimeoutSeconds: TimeInterval = 2.0
+
+    /// Run all gate checks and produce a structured report.
+    /// Async because stages 4-5 may need to create sessions / run generation.
+    public static func runDiagnostics() async -> AppleIntelligenceAvailabilityReport {
+        let start = CFAbsoluteTimeGetCurrent()
+        let osVersion = currentOSVersion()
+        let hardwareClass = currentHardwareClass()
 
         // Stage 1: Build / Binary Gate
-        let buildCompiledIn = Self.checkBuildGate()
-        debugLines.append("Stage 1 (Build): compiled_in=\(buildCompiledIn)")
-        if !buildCompiledIn {
-            failureReasons.append(.notCompiledIn)
-        }
+        let buildResult = checkBuildGate()
 
-        // Stage 2: OS / Runtime Environment Gate
-        let (runtimePresent, osGateReasons) = Self.checkOSRuntimeGate(osVersion: osVersion)
-        debugLines.append("Stage 2 (OS/Runtime): framework_present=\(runtimePresent)")
-        failureReasons.append(contentsOf: osGateReasons)
-
-        // Stage 3 + 4: Device Eligibility + Model Access Gates
-        // These require FoundationModels to be compiled in and macOS 26+
-        var deviceEligibility: AITriState = .unknown
-        var modelAccessible: AITriState = .unknown
-
-        if buildCompiledIn && runtimePresent {
-            let (eligibility, modelAccess, deviceReasons) = Self.checkDeviceAndModelGates()
-            deviceEligibility = eligibility
-            modelAccessible = modelAccess
-            debugLines.append("Stage 3 (Device): eligibility=\(eligibility.rawValue)")
-            debugLines.append("Stage 4 (Model): accessible=\(modelAccess.rawValue)")
-            failureReasons.append(contentsOf: deviceReasons)
+        // Stage 2: OS / Runtime Preconditions Gate
+        let runtimeResult: AIGateResult
+        if elapsedMs(since: start) < totalTimeoutMs() {
+            runtimeResult = checkOSRuntimeGate()
         } else {
-            debugLines.append("Stage 3 (Device): skipped (build/runtime gate failed)")
-            debugLines.append("Stage 4 (Model): skipped (build/runtime gate failed)")
+            runtimeResult = .timedOut(summary: "Not run — total budget expired")
         }
 
-        // Determine overall status
-        let overallStatus: AIAvailabilityStatus
-        let userMessage: String
-
-        if failureReasons.isEmpty {
-            overallStatus = .available
-            userMessage = "Apple Intelligence is available and ready to use."
-        } else if failureReasons.contains(.notCompiledIn) {
-            overallStatus = .unavailable
-            userMessage = "This build was compiled without Apple Intelligence support."
-        } else if failureReasons.contains(.unsupportedOS) {
-            overallStatus = .unavailable
-            userMessage = "Apple Intelligence requires macOS 26 or later."
-        } else if failureReasons.contains(.unsupportedHardware) || failureReasons.contains(.deviceNotEligible) {
-            overallStatus = .unavailable
-            userMessage = "This Mac does not support Apple Intelligence. Requires Apple Silicon (M1 or later)."
-        } else if failureReasons.contains(.appleIntelligenceDisabled) {
-            overallStatus = .unavailable
-            userMessage = "Apple Intelligence is not enabled. Turn it on in System Settings > Apple Intelligence & Siri."
-        } else if failureReasons.contains(.modelNotReady) {
-            overallStatus = .degraded
-            userMessage = "The on-device model is not ready — it may still be downloading. Try again later."
-        } else if failureReasons.contains(.modelAccessFailed) || failureReasons.contains(.sessionInitFailed) {
-            overallStatus = .degraded
-            userMessage = "Apple Intelligence is available but model initialization failed."
+        // Stage 3: Device Eligibility Gate
+        let eligibilityResult: AIGateResult
+        if buildResult.status == .passed && runtimeResult.status == .passed {
+            if elapsedMs(since: start) < totalTimeoutMs() {
+                eligibilityResult = checkEligibilityGate()
+            } else {
+                eligibilityResult = .timedOut(summary: "Not run — total budget expired")
+            }
         } else {
-            overallStatus = .unknown
-            userMessage = "Apple Intelligence availability could not be determined."
+            eligibilityResult = .skipped(summary: "Skipped — build or runtime gate failed")
         }
 
+        // Stage 4: Model Access Gate (with per-stage timeout)
+        let modelAccessResult: AIGateResult
+        if eligibilityResult.status == .passed {
+            if elapsedMs(since: start) < totalTimeoutMs() {
+                modelAccessResult = await checkModelAccessGateWithTimeout()
+            } else {
+                modelAccessResult = .timedOut(summary: "Not run — total budget expired")
+            }
+        } else {
+            modelAccessResult = .skipped(summary: "Skipped — eligibility gate did not pass")
+        }
+
+        // Stage 5: Functional Probe Gate (async, timeout-bounded)
+        let probeResult: AIGateResult
+        if modelAccessResult.status == .passed {
+            if elapsedMs(since: start) < totalTimeoutMs() {
+                probeResult = await checkFunctionalProbeGate()
+            } else {
+                probeResult = .timedOut(summary: "Not run — total budget expired")
+            }
+        } else {
+            probeResult = .skipped(summary: "Skipped — model access gate did not pass")
+        }
+
+        let gates = AIGateSet(
+            build: buildResult,
+            runtime: runtimeResult,
+            eligibility: eligibilityResult,
+            modelAccess: modelAccessResult,
+            functionalProbe: probeResult
+        )
+
+        // Dedupe while preserving order — prevents noisy telemetry from duplicate reasons
+        var seen = Set<AIFailureReason>()
+        let failureReasons = gates.allGates.flatMap { $0.result.reasons }.filter { seen.insert($0).inserted }
+
+        let overallStatus = AppleIntelligenceAvailabilityReport.deriveOverallStatus(from: gates)
         let durationMs = Int((CFAbsoluteTimeGetCurrent() - start) * 1000)
-        let debugSummary = debugLines.joined(separator: " | ")
 
         return AppleIntelligenceAvailabilityReport(
             overallStatus: overallStatus,
-            buildCompiledIn: buildCompiledIn,
+            gates: gates,
+            failureReasons: failureReasons,
             osVersion: osVersion,
             hardwareClass: hardwareClass,
-            runtimeFrameworkPresent: runtimePresent,
-            deviceEligibility: deviceEligibility,
-            modelAccessible: modelAccessible,
-            failureReasons: failureReasons,
-            userVisibleMessage: userMessage,
-            debugSummary: debugSummary,
             checkDurationMs: durationMs
         )
     }
 
+    // MARK: - Timeout Helpers
+
+    private static func totalTimeoutMs() -> Int {
+        Int(totalTimeoutSeconds * 1000)
+    }
+
+    private static func elapsedMs(since start: CFAbsoluteTime) -> Int {
+        Int((CFAbsoluteTimeGetCurrent() - start) * 1000)
+    }
+
     // MARK: - Stage 1: Build / Binary Gate
 
-    private static func checkBuildGate() -> Bool {
+    private static func checkBuildGate() -> AIGateResult {
+        let start = CFAbsoluteTimeGetCurrent()
 #if canImport(FoundationModels)
-        return true
+        let ms = Int((CFAbsoluteTimeGetCurrent() - start) * 1000)
+        return .passed(summary: "FoundationModels compiled in", durationMs: ms)
 #else
-        return false
+        let ms = Int((CFAbsoluteTimeGetCurrent() - start) * 1000)
+        return .failed(reasons: [.notCompiledIn], summary: "FoundationModels not compiled in", durationMs: ms)
 #endif
     }
 
-    // MARK: - Stage 2: OS / Runtime Environment Gate
+    // MARK: - Stage 2: OS / Runtime Preconditions Gate
 
-    private static func checkOSRuntimeGate(osVersion: String) -> (frameworkPresent: Bool, reasons: [AIFailureReason]) {
-        var reasons: [AIFailureReason] = []
-
+    private static func checkOSRuntimeGate() -> AIGateResult {
+        let start = CFAbsoluteTimeGetCurrent()
 #if canImport(FoundationModels)
         if #available(macOS 26.0, *) {
-            return (true, [])
+            let ms = Int((CFAbsoluteTimeGetCurrent() - start) * 1000)
+            return .passed(summary: "macOS 26+ runtime available", durationMs: ms)
         } else {
-            reasons.append(.unsupportedOS)
-            return (false, reasons)
+            let ms = Int((CFAbsoluteTimeGetCurrent() - start) * 1000)
+            return .failed(reasons: [.unsupportedOS], summary: "macOS 26+ required", durationMs: ms)
         }
 #else
-        reasons.append(.frameworkMissingAtRuntime)
-        return (false, reasons)
+        let ms = Int((CFAbsoluteTimeGetCurrent() - start) * 1000)
+        return .failed(reasons: [.frameworkMissingAtRuntime], summary: "FoundationModels framework missing at runtime", durationMs: ms)
 #endif
     }
 
-    // MARK: - Stage 3 + 4: Device Eligibility + Model Access
+    // MARK: - Stage 3: Device Eligibility Gate
 
-    private static func checkDeviceAndModelGates() -> (eligibility: AITriState, modelAccess: AITriState, reasons: [AIFailureReason]) {
+    private static func checkEligibilityGate() -> AIGateResult {
 #if canImport(FoundationModels)
         if #available(macOS 26.0, *) {
-            return checkDeviceAndModelGatesImpl()
+            return checkEligibilityGateImpl()
         }
 #endif
-        return (.unknown, .unknown, [.unknownError])
+        return .failed(reasons: [.unknownError], summary: "Unexpected: eligibility check reached without framework")
     }
 
 #if canImport(FoundationModels)
     @available(macOS 26.0, *)
-    private static func checkDeviceAndModelGatesImpl() -> (eligibility: AITriState, modelAccess: AITriState, reasons: [AIFailureReason]) {
+    private static func checkEligibilityGateImpl() -> AIGateResult {
+        let start = CFAbsoluteTimeGetCurrent()
         let model = SystemLanguageModel.default
 
         switch model.availability {
         case .available:
-            return (.yes, .yes, [])
+            let ms = Int((CFAbsoluteTimeGetCurrent() - start) * 1000)
+            return .passed(summary: "Device eligible, Apple Intelligence enabled", durationMs: ms)
 
         case .unavailable(let reason):
-            var reasons: [AIFailureReason] = []
-
+            let ms = Int((CFAbsoluteTimeGetCurrent() - start) * 1000)
             switch reason {
             case .deviceNotEligible:
-                reasons.append(.deviceNotEligible)
-                return (.no, .no, reasons)
+                return .failed(reasons: [.deviceNotEligible], summary: "Device not eligible for Apple Intelligence", durationMs: ms)
             case .appleIntelligenceNotEnabled:
-                reasons.append(.appleIntelligenceDisabled)
-                return (.yes, .no, reasons)
+                return .failed(reasons: [.appleIntelligenceDisabled], summary: "Apple Intelligence not enabled in System Settings", durationMs: ms)
             case .modelNotReady:
-                reasons.append(.modelNotReady)
-                return (.yes, .no, reasons)
+                return .failed(reasons: [.modelNotReady], summary: "Model not ready (may still be downloading)", durationMs: ms)
             @unknown default:
-                reasons.append(.unknownError)
-                return (.unknown, .unknown, reasons)
+                return .failed(reasons: [.unknownError], summary: "Unknown unavailability reason from system", durationMs: ms)
             }
+        }
+    }
+#endif
+
+    // MARK: - Stage 4: Model Access Gate
+
+    private static func checkModelAccessGateWithTimeout() async -> AIGateResult {
+#if canImport(FoundationModels)
+        if #available(macOS 26.0, *) {
+            return await checkModelAccessGateWithTimeoutImpl()
+        }
+#endif
+        return .failed(reasons: [.modelAccessFailed], summary: "Unexpected: model access check reached without framework")
+    }
+
+#if canImport(FoundationModels)
+    @available(macOS 26.0, *)
+    private static func checkModelAccessGateWithTimeoutImpl() async -> AIGateResult {
+        let start = CFAbsoluteTimeGetCurrent()
+
+        // Race session creation against a timeout
+        do {
+            let result = try await withThrowingTaskGroup(of: AIGateResult.self) { group in
+                group.addTask { @Sendable in
+                    _ = LanguageModelSession(
+                        model: .default,
+                        instructions: "You are a diagnostic probe."
+                    )
+                    let ms = Int((CFAbsoluteTimeGetCurrent() - start) * 1000)
+                    return .passed(summary: "Session created successfully", durationMs: ms)
+                }
+
+                group.addTask { @Sendable in
+                    try await Task.sleep(for: .seconds(sessionTimeoutSeconds))
+                    let ms = Int((CFAbsoluteTimeGetCurrent() - start) * 1000)
+                    return .timedOut(summary: "Session creation timed out after \(Int(sessionTimeoutSeconds))s", durationMs: ms)
+                }
+
+                let first = try await group.next()!
+                group.cancelAll()
+                return first
+            }
+            return result
+        } catch {
+            let ms = Int((CFAbsoluteTimeGetCurrent() - start) * 1000)
+            return .failed(reasons: [.sessionInitFailed], summary: "Session creation error: \(error.localizedDescription)", durationMs: ms)
+        }
+    }
+#endif
+
+    // MARK: - Stage 5: Functional Probe Gate
+
+    private static func checkFunctionalProbeGate() async -> AIGateResult {
+#if canImport(FoundationModels)
+        if #available(macOS 26.0, *) {
+            return await checkFunctionalProbeGateImpl()
+        }
+#endif
+        return .skipped(summary: "Functional probe not available without framework")
+    }
+
+#if canImport(FoundationModels)
+    @available(macOS 26.0, *)
+    private static func checkFunctionalProbeGateImpl() async -> AIGateResult {
+        let start = CFAbsoluteTimeGetCurrent()
+
+        // Race the probe against a timeout
+        do {
+            let result = try await withThrowingTaskGroup(of: AIGateResult.self) { group in
+                group.addTask { @Sendable in
+                    do {
+                        let session = LanguageModelSession(
+                            model: .default,
+                            instructions: "Respond with exactly the word OK."
+                        )
+                        let response = try await session.respond(to: "Probe")
+                        let text = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let ms = Int((CFAbsoluteTimeGetCurrent() - start) * 1000)
+                        if text.isEmpty {
+                            return .failed(reasons: [.generationFailed], summary: "Probe returned empty response", durationMs: ms)
+                        }
+                        let normalized = text.lowercased()
+                        let isValidProbe = normalized == "ok" || normalized == "ok." || normalized.hasPrefix("ok")
+                        if isValidProbe {
+                            return .passed(summary: "Probe succeeded", durationMs: ms)
+                        } else {
+                            return .passed(summary: "Probe returned unexpected content: \(text.prefix(30))", durationMs: ms)
+                        }
+                    } catch {
+                        let ms = Int((CFAbsoluteTimeGetCurrent() - start) * 1000)
+                        return .failed(reasons: [.generationFailed], summary: "Probe generation failed: \(error.localizedDescription)", durationMs: ms)
+                    }
+                }
+
+                group.addTask { @Sendable in
+                    try await Task.sleep(for: .seconds(probeTimeoutSeconds))
+                    let ms = Int((CFAbsoluteTimeGetCurrent() - start) * 1000)
+                    return .timedOut(summary: "Probe timed out after \(Int(probeTimeoutSeconds))s", durationMs: ms)
+                }
+
+                let first = try await group.next()!
+                group.cancelAll()
+                return first
+            }
+            return result
+        } catch {
+            let ms = Int((CFAbsoluteTimeGetCurrent() - start) * 1000)
+            return .failed(reasons: [.generationFailed], summary: "Probe task error: \(error.localizedDescription)", durationMs: ms)
         }
     }
 #endif
@@ -185,6 +307,6 @@ public enum AppleIntelligenceDiagnosticsService {
         sysctlbyname("hw.machine", nil, &size, nil, 0)
         var machine = [CChar](repeating: 0, count: size)
         sysctlbyname("hw.machine", &machine, &size, nil, 0)
-        return String(cString: machine)
+        return String(decoding: machine.prefix(while: { $0 != 0 }).map { UInt8(bitPattern: $0) }, as: UTF8.self)
     }
 }
