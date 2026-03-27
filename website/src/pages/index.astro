@@ -15,11 +15,72 @@ const jsonLd = JSON.stringify({
   "author": { "@type": "Organization", "name": "Envious Labs" },
   "url": "https://enviouswispr.com/"
 });
+
+const jsonLdOrg = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": "Envious Labs",
+  "url": "https://enviouslabs.com",
+  "logo": "https://enviouswispr.com/favicon.svg",
+  "sameAs": [
+    "https://x.com/EnviousLabs",
+    "https://github.com/saurabhav88/EnviousWispr"
+  ]
+});
+
+const jsonLdFaq = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is EnviousWispr free?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. EnviousWispr is completely free to download and use. No subscription, no account required."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does EnviousWispr work offline?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. All speech recognition runs on-device using Apple Silicon. Your audio never leaves your Mac."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What makes EnviousWispr different from WisprFlow?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "EnviousWispr is free and processes everything on-device. WisprFlow costs $15/month and sends audio to cloud servers. EnviousWispr requires no account signup."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Which macOS versions does EnviousWispr support?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "EnviousWispr requires macOS 14 (Sonoma) or later running on Apple Silicon (M1 or newer)."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does EnviousWispr support multiple languages?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "The default Parakeet engine handles English. The WhisperKit backend supports 90+ languages for multi-language dictation."
+      }
+    }
+  ]
+});
 ---
 
 <BaseLayout title={title} description={description} activePage="home" canonicalPath="/">
   <Fragment slot="head">
     <script type="application/ld+json" set:html={jsonLd}></script>
+    <script type="application/ld+json" set:html={jsonLdOrg}></script>
+    <script type="application/ld+json" set:html={jsonLdFaq}></script>
   </Fragment>
 
   <!-- ═══════════════════════════════════════════════════════

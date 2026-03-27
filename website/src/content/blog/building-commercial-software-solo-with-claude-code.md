@@ -1,9 +1,9 @@
 ---
 title: "Building Commercial Software Solo With Claude Code"
-description: "How I structured my .claude/ folder into a three-tier context system with scoped rules, specialist agents, and a quality workflow to ship a production macOS app as a solo developer."
+description: "How I structured Claude Code's .claude/ folder into a three-tier context system to ship a production macOS app as a solo developer."
 pubDate: 2026-03-26
 tags: ["claude-code", "vibe-coding", "solo-dev", "ai-tools", "productivity"]
-image: "/images/blog/claude-code-structure/three-pillars.png"
+image: "/images/blog/claude-code-structure/three-pillars.jpg"
 draft: false
 ---
 
@@ -13,7 +13,7 @@ What I'm sharing here is the system I landed on after months of iteration. It's 
 
 ## The Three Pillars
 
-![The Three Pillars](/images/blog/claude-code-structure/three-pillars.png)
+![The Three Pillars](/images/blog/claude-code-structure/three-pillars.jpg)
 
 When I started, I had two things: my code and a `CLAUDE.md` file. That worked fine for the first few weeks. Then the project grew, sessions got longer, and I kept re-explaining the same context. Lessons from last Tuesday's debugging session were gone by Thursday.
 
@@ -29,7 +29,7 @@ Each layer reinforces the others. Let me walk through how each one works in prac
 
 ## The Brain: Three-Tier Context Stack
 
-![Three-Tier Context Stack](/images/blog/claude-code-structure/three-tier-context-stack.png)
+![Three-Tier Context Stack](/images/blog/claude-code-structure/three-tier-context-stack.jpg)
 
 Your `.claude/` folder is Claude's brain. But here's something I learned the hard way: if you put everything into one `CLAUDE.md` file, it gets noisy. Claude's ability to follow instructions actually degrades as the file grows. More context isn't always better context.
 
@@ -90,7 +90,7 @@ The numbers today: 2 scoped rule files, 13 knowledge files (about 130KB total), 
 
 ## The Ship-It Loop
 
-![The Ship-It Loop](/images/blog/claude-code-structure/ship-it-loop.png)
+![The Ship-It Loop](/images/blog/claude-code-structure/ship-it-loop.jpg)
 
 This is the workflow I follow for every code change. Having a consistent loop has been one of the most valuable things for maintaining quality as a solo developer.
 
@@ -120,7 +120,7 @@ The way I think about it: **I'm the CEO. Claude is the engineering team. GPT is 
 
 ## Rules I Build By
 
-![Rules I Build By](/images/blog/claude-code-structure/rules-i-build-by.png)
+![Rules I Build By](/images/blog/claude-code-structure/rules-i-build-by.jpg)
 
 You don't need a 50-page engineering handbook. You need a handful of simple rules that you actually follow. These are the ones that have made the biggest difference for me:
 
@@ -140,7 +140,7 @@ I keep these in my `CLAUDE.md` and Claude follows them automatically. They're no
 
 ## Nothing Learned Is Ever Lost
 
-![Nothing Learned Is Ever Lost](/images/blog/claude-code-structure/nothing-learned-is-ever-lost.png)
+![Nothing Learned Is Ever Lost](/images/blog/claude-code-structure/nothing-learned-is-ever-lost.jpg)
 
 As vibe coders, most of us aren't coming from a traditional software engineering background. We don't always know the "right" way to do things. But Claude does notice patterns. It notices when you make the same mistake twice. It notices when something breaks for the same reason it broke last week.
 
