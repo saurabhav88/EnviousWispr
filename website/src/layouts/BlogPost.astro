@@ -1,6 +1,13 @@
 ---
 import BaseLayout from './BaseLayout.astro';
 
+interface RelatedPost {
+  slug: string;
+  title: string;
+  description: string;
+  pubDate: Date;
+}
+
 interface Props {
   title: string;
   description: string;
@@ -9,9 +16,10 @@ interface Props {
   tags?: string[];
   author?: string;
   image?: string;
+  relatedPosts?: RelatedPost[];
 }
 
-const { title, description, pubDate, updatedDate, tags = [], author = 'Envious Labs', image } = Astro.props;
+const { title, description, pubDate, updatedDate, tags = [], author = 'Envious Labs', image, relatedPosts = [] } = Astro.props;
 
 const formatDate = (d: Date) =>
   d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -125,6 +133,23 @@ const breadcrumbJsonLd = JSON.stringify({
           <slot />
         </div>
       </article>
+
+      {relatedPosts.length > 0 && (
+        <section class="related-posts" aria-label="Related posts">
+          <h2 class="related-posts-heading">You might also like</h2>
+          <div class="related-posts-grid">
+            {relatedPosts.map(related => (
+              <a href={`/blog/${related.slug}/`} class="related-post-card">
+                <p class="related-post-title">{related.title}</p>
+                <p class="related-post-description">{related.description.length > 120 ? related.description.slice(0, 120).trimEnd() + '…' : related.description}</p>
+                <time class="related-post-date" datetime={related.pubDate.toISOString()}>
+                  {related.pubDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                </time>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
 
       <nav class="blog-post-nav" aria-label="Post navigation">
         <a href="/blog/" class="back-link back-link-bottom">
@@ -363,6 +388,84 @@ const breadcrumbJsonLd = JSON.stringify({
     height: 1px;
     background: var(--border-hover);
     margin: 2.5em 0;
+  }
+
+  /* Related posts */
+  .related-posts {
+    margin-top: 64px;
+    padding-top: 48px;
+    border-top: 1px solid var(--border);
+  }
+
+  .related-posts-heading {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-3);
+    margin-bottom: 20px;
+  }
+
+  .related-posts-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+
+  .related-post-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    text-decoration: none;
+    transition: border-color 0.2s, background 0.2s;
+  }
+
+  .related-post-card:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .related-post-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1.35;
+    margin: 0;
+  }
+
+  .related-post-card:hover .related-post-title {
+    color: var(--accent);
+  }
+
+  .related-post-description {
+    font-size: 13px;
+    color: var(--text-2);
+    line-height: 1.55;
+    margin: 0;
+    flex: 1;
+  }
+
+  .related-post-date {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--text-3);
+    margin-top: 4px;
+  }
+
+  @media (max-width: 720px) {
+    .related-posts-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (min-width: 721px) and (max-width: 900px) {
+    .related-posts-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
   }
 
   /* Bottom nav */
