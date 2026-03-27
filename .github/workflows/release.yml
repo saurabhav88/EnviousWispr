@@ -492,8 +492,10 @@ jobs:
 
           export INSTALL_DIR="$HOME/.local/bin"
           mkdir -p "$INSTALL_DIR"
-          curl -sL https://sentry.io/get-cli/ | SENTRY_CLI_VERSION=2.39.1 bash
+          curl -sL https://sentry.io/get-cli/ | SENTRY_CLI_VERSION=2.39.1 bash || true
+          # Install script returns 1 if already installed on self-hosted runner
           export PATH="$INSTALL_DIR:$PATH"
+          sentry-cli --version
 
           sentry-cli releases new "v${VERSION}"
           sentry-cli releases set-commits "v${VERSION}" --auto
