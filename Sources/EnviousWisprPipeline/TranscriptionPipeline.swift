@@ -435,44 +435,15 @@ public final class TranscriptionPipeline: DictationPipeline {
         do {
             let asrStart = CFAbsoluteTimeGetCurrent()
 
-            // If streaming ASR was active, finalize it (fast — just the last chunk).
-            // Otherwise fall back to batch transcription on the VAD-filtered audio.
+            // Always use batch transcription for the authoritative final result.
+            // Streaming is kept active during recording for live partial preview only.
+            // Batch produces complete text even for 2-5 minute dictation, while streaming
+            // window assembly silently drops ~30% of content at longer durations.
             let result: ASRResult
             if wasStreaming {
-                do {
-                    result = try await finalizeStreamingWithTimeout(samples: samples)
-                    let audioDuration = Double(rawSamples.count) / AudioCaptureManager.targetSampleRate
-                    let wordCount = result.text.split(whereSeparator: \.isWhitespace).count
-                    let wps = Double(wordCount) / max(audioDuration, 0.1)
-                    Task { await AppLogger.shared.log(
-                        "Pipeline timing: streaming ASR finalized in \(String(format: "%.3f", CFAbsoluteTimeGetCurrent() - asrStart))s",
-                        level: .info, category: "PipelineTiming"
-                    ) }
-                    Task { await AppLogger.shared.log(
-                        "Streaming tail check: fed=\(self.streamingBuffersFed)/\(self.streamingBuffersDispatched), " +
-                        "streaming=\(wasStreaming), audio=\(String(format: "%.1f", audioDuration))s, " +
-                        "words=\(wordCount), wps=\(String(format: "%.1f", wps))",
-                        level: .info, category: "PipelineTiming"
-                    ) }
-                    if wasStreaming && audioDuration >= 2.0 && wps < 1.0 {
-                        Task { await AppLogger.shared.log(
-                            "TAIL_SUSPECT: low wps (\(String(format: "%.1f", wps))) for \(String(format: "%.1f", audioDuration))s recording",
-                            level: .info, category: "PipelineTiming"
-                        ) }
-                    }
-                } catch {
-                    // Streaming finalization failed or timed out — cancel and fall back to batch
-                    await asrManager.cancelStreaming()
-                    SentryBreadcrumb.add(stage: "asr", message: "Streaming finalize failed, falling back to batch", level: .warning)
-                    Task { await AppLogger.shared.log(
-                        "Streaming ASR finalize failed, falling back to batch: \(error.localizedDescription)",
-                        level: .info, category: "Pipeline"
-                    ) }
-                    result = try await asrManager.transcribe(audioSamples: samples, options: transcriptionOptions)
-                }
-            } else {
-                result = try await asrManager.transcribe(audioSamples: samples, options: transcriptionOptions)
+                await asrManager.cancelStreaming()
             }
+            result = try await asrManager.transcribe(audioSamples: samples, options: transcriptionOptions)
 
             let asrEnd = CFAbsoluteTimeGetCurrent()
 
@@ -1016,48 +987,6 @@ public final class TranscriptionPipeline: DictationPipeline {
     }
 
     // MARK: - Streaming Finalization
-
-    /// Maximum time to wait for streaming ASR finalization before falling back to batch.
-    private static let streamingFinalizeTimeoutSeconds: Int = 10
-
-    /// Finalize streaming ASR with a timeout.
-    /// Races finalization against a deadline using a task group. Whichever task
-    /// completes first wins; the loser is cancelled. No shared mutable state needed.
-    private func finalizeStreamingWithTimeout(samples: [Float]) async throws -> ASRResult {
-        // Capture the manager reference on @MainActor before entering the task group.
-        // addTask closures are @Sendable and cannot capture @MainActor-isolated self,
-        // so we snapshot what we need here.
-        let timeout = Self.streamingFinalizeTimeoutSeconds
-        let manager = self.asrManager
-
-        // Race finalization against a deadline using Task + sleep.
-        // Cannot use withThrowingTaskGroup because `any ASRManagerInterface` is not
-        // Sendable (Swift 6 existential limitation). Instead, use two unstructured
-        // tasks on @MainActor and race them.
-        var didTimeout = false
-        let timeoutTask = Task { @MainActor in
-            try await Task.sleep(for: .seconds(timeout))
-            didTimeout = true
-        }
-
-        let result: ASRResult
-        do {
-            result = try await manager.finalizeStreaming()
-            timeoutTask.cancel()
-        } catch {
-            timeoutTask.cancel()
-            if didTimeout {
-                throw ASRError.streamingTimeout
-            }
-            throw error
-        }
-
-        if didTimeout {
-            throw ASRError.streamingTimeout
-        }
-
-        return result
-    }
 
     // MARK: - Text Processing
 
