@@ -1,0 +1,11 @@
+name = "enviouswispr-weekly-digest"
+main = "src/index.js"
+compatibility_date = "2026-03-27"
+
+[triggers]
+crons = ["0 13 * * 1"]  # Every Monday at 1pm UTC = 9am ET
+
+[vars]
+CF_ZONE_ID = "b4416a0f0ebd699e96969a331c7ad7ff"
+GITHUB_REPO = "saurabhav88/EnviousWispr"
+POSTHOG_PROJECT_ID = "354235"

@@ -1,123 +1,260 @@
 import Foundation
+import os
 import EnviousWisprCore
 
 /// Pure, Sendable word correction engine.
 ///
-/// Two-pass replacement:
-/// 1. **Alias match** — exact case-insensitive lookup against user-defined aliases.
-///    Instant O(1) per token. Handles phonetic gaps the fuzzy scorer can't bridge
-///    (e.g. "cloud" → "Claude").
-/// 2. **Fuzzy match** — composite score of Levenshtein, bigram Dice, and Soundex
-///    against canonicals. Catches typos and minor ASR drift.
+/// Five-pass replacement:
+/// 1. **Exact multi-word alias** -- O(1) lookup for multi-word aliases (longest match first).
+/// 2. **Fuzzy multi-word alias** -- score phrase against same-token-count aliases when exact misses.
+/// 3. **Exact single-word alias** -- O(1) lookup including canonical self-entries for casing fixes.
+/// 4. **Fuzzy single-word alias** -- score token against all single-word aliases (error surfaces).
+/// 5. **Fuzzy canonical fallback** -- score token against canonicals for words with no aliases.
+///
+/// Replacement acceptance requires: score >= threshold, ambiguity margin over second-best,
+/// stricter threshold for short tokens (<= 4 chars).
 public struct WordCorrector: Sendable {
     public static let threshold: Double = 0.82
+    public static let multiWordThreshold: Double = 0.85
+    public static let shortTokenThreshold: Double = 0.90
+    public static let ambiguityMargin: Double = 0.05
+    public static let shortTokenMaxLength = 4
 
     private static let levenshteinWeight = 0.40
     private static let bigramWeight      = 0.40
     private static let soundexWeight     = 0.20
 
-    /// Alias-aware correction against full CustomWord entries.
-    ///
-    /// Three passes over the text:
-    /// 1. **Multi-word alias match** — scan for 2- and 3-word spans that match
-    ///    multi-word aliases (e.g. "envious whisper" → "EnviousWispr").
-    /// 2. **Single-word alias match** — exact case-insensitive lookup per token.
-    /// 3. **Fuzzy match** — composite scoring against canonicals.
+    private static let logger = Logger(subsystem: "com.enviouswispr", category: "WordCorrector")
+
     public init() {}
+
+    // MARK: - Main Correction
 
     public func correct(_ text: String, against words: [CustomWord]) -> (corrected: String, replacements: Int) {
         guard !words.isEmpty else { return (text, 0) }
 
-        // Build alias lookups, partitioned by word count
+        // --- Build lookup structures (once per call) ---
+
         var singleAliasMap: [String: String] = [:]
-        var multiAliasMap: [String: String] = [:]  // lowercased multi-word alias → canonical
+        var multiAliasMap: [String: String] = [:]
+        var collisionCount = 0
+
+        // 1. Build alias maps with collision detection
         for word in words {
             for alias in word.aliases {
                 let key = alias.lowercased()
                 if alias.contains(" ") {
+                    if let existing = multiAliasMap[key], existing != word.canonical {
+                        collisionCount += 1
+                        Self.logger.debug("Alias collision #\(collisionCount): '\(key)' claimed by '\(existing)' and '\(word.canonical)', using '\(word.canonical)'")
+                    }
                     multiAliasMap[key] = word.canonical
+                } else {
+                    if let existing = singleAliasMap[key], existing != word.canonical {
+                        collisionCount += 1
+                        Self.logger.debug("Alias collision #\(collisionCount): '\(key)' claimed by '\(existing)' and '\(word.canonical)', using '\(word.canonical)'")
+                    }
+                    singleAliasMap[key] = word.canonical
+                }
+            }
+        }
+
+        // 2. Add canonical self-entries (explicit aliases win)
+        for word in words {
+            let key = word.canonical.lowercased()
+            if !key.contains(" ") {
+                if let existing = singleAliasMap[key] {
+                    if existing != word.canonical {
+                        Self.logger.debug("Canonical '\(word.canonical)' skipped: key '\(key)' already maps to '\(existing)'")
+                    }
                 } else {
                     singleAliasMap[key] = word.canonical
                 }
             }
         }
 
-        // Pre-compute for fuzzy pass
+        // 3. Pre-index for fuzzy passes
         let canonicals = words.map(\.canonical)
         let lowercasedCanonicals = canonicals.map { $0.lowercased() }
+
+        // Single-word fuzzy candidates: all entries in singleAliasMap
+        let singleFuzzyCandidates = singleAliasMap.map { (surface: $0.key, canonical: $0.value) }
+
+        // Multi-word fuzzy candidates indexed by token count
+        var multiAliasByCount: [Int: [(alias: String, canonical: String)]] = [:]
+        for (alias, canonical) in multiAliasMap {
+            let count = alias.components(separatedBy: " ").count
+            multiAliasByCount[count, default: []].append((alias, canonical))
+        }
+
+        // --- Correction passes ---
 
         var replacements = 0
         var tokens = text.components(separatedBy: .whitespaces)
 
-        // Pass 1: multi-word alias matching (longest match first)
+        // Pass 1 + 2: multi-word (exact then fuzzy)
         if !multiAliasMap.isEmpty {
             let maxSpan = multiAliasMap.keys.reduce(0) { max($0, $1.components(separatedBy: " ").count) }
             var i = 0
             while i < tokens.count {
-                // Try longest spans first for greedy matching
+                var matched = false
+
                 for span in stride(from: min(maxSpan, tokens.count - i), through: 2, by: -1) {
                     let slice = tokens[i..<(i + span)]
                     let phrase = slice.map { stripPunctuation($0).lowercased() }.joined(separator: " ")
-                    if let canonical = multiAliasMap[phrase], phrase != canonical.lowercased() {
-                        // Preserve leading punctuation of first token and trailing punctuation of last
+                    let rawPhrase = slice.map { stripPunctuation($0) }.joined(separator: " ")
+
+                    // Pass 1: exact multi-word alias
+                    if let canonical = multiAliasMap[phrase], rawPhrase != canonical {
                         let (firstPrefix, _, _) = splitPunctuation(tokens[i])
                         let (_, _, lastSuffix) = splitPunctuation(tokens[i + span - 1])
                         tokens.replaceSubrange(i..<(i + span), with: [firstPrefix + canonical + lastSuffix])
                         replacements += 1
+                        matched = true
+                        Self.logger.debug("WordCorrector: type=multi-word-exact source='\(rawPhrase)' target='\(canonical)'")
                         break
                     }
                 }
+
+                // Pass 2: fuzzy multi-word fallback (only if exact missed for all spans)
+                if !matched {
+                    for span in stride(from: min(maxSpan, tokens.count - i), through: 2, by: -1) {
+                        let slice = tokens[i..<(i + span)]
+                        let phrase = slice.map { stripPunctuation($0).lowercased() }.joined(separator: " ")
+                        let rawPhrase = slice.map { stripPunctuation($0) }.joined(separator: " ")
+
+                        if let candidates = multiAliasByCount[span] {
+                            var bestScore = 0.0
+                            var secondBest = 0.0
+                            var bestCanonical = ""
+                            var bestAlias = ""
+
+                            for (alias, canonical) in candidates {
+                                let s = score(phrase, against: alias)
+                                if s > bestScore {
+                                    if bestCanonical != canonical { secondBest = bestScore }
+                                    bestScore = s
+                                    bestCanonical = canonical
+                                    bestAlias = alias
+                                } else if s > secondBest && canonical != bestCanonical {
+                                    secondBest = s
+                                }
+                            }
+
+                            let margin = bestScore - secondBest
+                            if bestScore >= Self.multiWordThreshold,
+                               margin >= Self.ambiguityMargin,
+                               rawPhrase != bestCanonical {
+                                let (firstPrefix, _, _) = splitPunctuation(tokens[i])
+                                let (_, _, lastSuffix) = splitPunctuation(tokens[i + span - 1])
+                                tokens.replaceSubrange(i..<(i + span), with: [firstPrefix + bestCanonical + lastSuffix])
+                                replacements += 1
+                                matched = true
+                                Self.logger.debug("WordCorrector: type=multi-word-fuzzy source='\(rawPhrase)' target='\(bestCanonical)' alias='\(bestAlias)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(margin, format: .fixed(precision: 3))")
+                                break
+                            }
+                        }
+                    }
+                }
+
                 i += 1
             }
         }
 
-        // Pass 2 & 3: single-word alias + fuzzy, per token
+        // Passes 3-5: single-word (per token)
         let corrected = tokens.map { token -> String in
             let (prefix, core, suffix) = splitPunctuation(token)
             guard !core.isEmpty, core.count >= 2 else { return token }
 
             let coreLower = core.lowercased()
 
-            // Pass 2: exact single-word alias match
-            if let canonical = singleAliasMap[coreLower], coreLower != canonical.lowercased() {
+            // Pass 3: exact single-word alias (includes canonical self-entries)
+            if let canonical = singleAliasMap[coreLower], core != canonical {
                 replacements += 1
+                Self.logger.debug("WordCorrector: type=alias source='\(core)' target='\(canonical)'")
                 return prefix + canonical + suffix
             }
 
-            // Pass 3: fuzzy match against canonicals (skip short tokens)
+            // Skip fuzzy for very short tokens
             guard core.count >= 3 else { return token }
 
+            // Determine threshold based on token length
+            let effectiveThreshold = core.count <= Self.shortTokenMaxLength
+                ? Self.shortTokenThreshold
+                : Self.threshold
+
+            // Pass 4: fuzzy single-word against aliases + canonical self-entries
+            let coreLen = coreLower.count
             var bestScore = 0.0
+            var secondBest = 0.0
             var bestMatch = ""
 
-            for (idx, targetLower) in lowercasedCanonicals.enumerated() {
-                let s = score(coreLower, against: targetLower)
+            for (surface, canonical) in singleFuzzyCandidates {
+                // Length-ratio pruning: skip if lengths differ too much for threshold
+                let surfLen = surface.count
+                let lenRatio = Double(min(coreLen, surfLen)) / Double(max(coreLen, surfLen))
+                if lenRatio < 0.5 { continue }
+
+                let s = score(coreLower, against: surface)
                 if s > bestScore {
+                    if bestMatch != canonical { secondBest = bestScore }
                     bestScore = s
-                    bestMatch = canonicals[idx]
-                    if bestScore >= 1.0 { break }
+                    bestMatch = canonical
+                } else if s > secondBest && canonical != bestMatch {
+                    secondBest = s
                 }
             }
 
-            if bestScore >= Self.threshold, coreLower != bestMatch.lowercased() {
+            if bestScore >= effectiveThreshold,
+               bestScore - secondBest >= Self.ambiguityMargin,
+               core != bestMatch {
                 replacements += 1
+                Self.logger.debug("WordCorrector: type=alias-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(bestScore - secondBest, format: .fixed(precision: 3))")
                 return prefix + bestMatch + suffix
             }
+
+            // Pass 5: fuzzy single-word against canonicals as fallback
+            bestScore = 0.0
+            secondBest = 0.0
+            bestMatch = ""
+
+            for (idx, targetLower) in lowercasedCanonicals.enumerated() {
+                let targetLen = targetLower.count
+                let lenRatio = Double(min(coreLen, targetLen)) / Double(max(coreLen, targetLen))
+                if lenRatio < 0.5 { continue }
+
+                let s = score(coreLower, against: targetLower)
+                if s > bestScore {
+                    secondBest = bestScore
+                    bestScore = s
+                    bestMatch = canonicals[idx]
+                } else if s > secondBest {
+                    secondBest = s
+                }
+            }
+
+            if bestScore >= effectiveThreshold,
+               bestScore - secondBest >= Self.ambiguityMargin,
+               core != bestMatch {
+                replacements += 1
+                Self.logger.debug("WordCorrector: type=canonical-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(bestScore - secondBest, format: .fixed(precision: 3))")
+                return prefix + bestMatch + suffix
+            }
+
             return token
         }
+
         return (corrected.joined(separator: " "), replacements)
     }
 
-    /// Strip punctuation and return just the core text, lowercased.
-    private func stripPunctuation(_ token: String) -> String {
-        splitPunctuation(token).core
-    }
+    // MARK: - Legacy Bridge
 
-    /// Legacy bridge: correct against plain string list (no alias support).
     public func correct(_ text: String, against wordList: [String]) -> (corrected: String, replacements: Int) {
         let words = wordList.map { CustomWord(canonical: $0) }
         return correct(text, against: words)
     }
+
+    // MARK: - Scoring
 
     public func score(_ candidate: String, against target: String) -> Double {
         let lev    = levenshteinSimilarity(candidate, target) * Self.levenshteinWeight
@@ -194,6 +331,10 @@ public struct WordCorrector: Sendable {
     }
 
     // MARK: - Helpers
+
+    private func stripPunctuation(_ token: String) -> String {
+        splitPunctuation(token).core
+    }
 
     private func splitPunctuation(_ token: String) -> (prefix: String, core: String, suffix: String) {
         var prefix = "", core = token, suffix = ""

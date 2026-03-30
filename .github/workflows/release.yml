@@ -15,9 +15,13 @@ on:
           - full
           - release-only
           - appcast-only
-          - assets-only
+          - sentry-only
       tag:
-        description: 'Tag (e.g. v1.7.1) — required for dispatch modes'
+        description: 'Tag (e.g. v1.7.1) — required for all modes'
+        required: false
+        type: string
+      source_run_id:
+        description: 'Run ID that produced build artifacts — required for recovery modes'
         required: false
         type: string
 
@@ -28,19 +32,35 @@ concurrency:
 permissions:
   contents: read
 
-# ===========================================================================
-# Job 1 — Preflight
-# Fail fast before expensive build/sign/notarize work.
-# ===========================================================================
+# ==========================================================================
+# Architecture: Heart & Limbs
+#
+# HEART (must succeed for release to ship):
+#   Job A: build-release-artifacts — build, sign, notarize, package
+#   Job B: publish-github-release  — create GitHub Release with DMGs
+#
+# LIMBS (report failure, never block shipping):
+#   Job C: publish-appcast         — push appcast entry to main
+#   Job D: upload-sentry-dsyms     — upload debug symbols to Sentry
+#   Job E: release-summary         — single truth source for release status
+#
+# Auth strategy:
+#   - GITHUB_TOKEN for read-only ops and GitHub Release creation
+#   - GitHub App token (enviouswispr-release-bot) for protected-branch writes
+#   - persist-credentials: false on any checkout before explicit push/PR
+# ==========================================================================
+
 jobs:
+  # ==========================================================================
+  # Preflight — fail fast before expensive work
+  # ==========================================================================
   preflight:
     runs-on: [self-hosted, enviouswispr-release]
     timeout-minutes: 5
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
-      release-exists: ${{ steps.probe.outputs.release-exists }}
-      appcast-exists: ${{ steps.probe.outputs.appcast-exists }}
+      source-run-id: ${{ steps.resolve-run.outputs.run-id }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -50,10 +70,13 @@ jobs:
 
       - name: Resolve version
         id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            TAG="${{ inputs.tag }}"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            TAG="$INPUT_TAG"
             if [[ -z "$TAG" ]]; then
               echo "::error::inputs.tag is required for workflow_dispatch"
               exit 1
@@ -67,9 +90,9 @@ jobs:
           echo "==> Tag: $TAG | Version: $VERSION"
 
       - name: Validate tag format
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          set -euo pipefail
-          VERSION="${{ steps.version.outputs.version }}"
           if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "::error::Tag must be semver (v1.2.3), got: v${VERSION}"
             exit 1
@@ -77,12 +100,34 @@ jobs:
 
       - name: Validate dispatch inputs
         if: github.event_name == 'workflow_dispatch'
+        env:
+          MODE: ${{ inputs.mode }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
         run: |
-          MODE="${{ inputs.mode }}"
           case "$MODE" in
-            full|release-only|appcast-only|assets-only) ;;
+            full) ;;
+            release-only|appcast-only|sentry-only)
+              if [[ -z "$SOURCE_RUN_ID" ]]; then
+                echo "::error::source_run_id is required for ${MODE} recovery mode"
+                exit 1
+              fi
+              ;;
             *) echo "::error::Invalid mode: $MODE"; exit 1 ;;
           esac
+
+      - name: Resolve source run ID
+        id: resolve-run
+        env:
+          MODE: ${{ inputs.mode || 'full' }}
+          INPUT_RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          if [[ "$MODE" == "full" ]] || [[ -z "$INPUT_RUN_ID" ]]; then
+            echo "run-id=${{ github.run_id }}" >> "$GITHUB_OUTPUT"
+            echo "==> Source run: current (${{ github.run_id }})"
+          else
+            echo "run-id=$INPUT_RUN_ID" >> "$GITHUB_OUTPUT"
+            echo "==> Source run: $INPUT_RUN_ID (from input)"
+          fi
 
       - name: Check required secrets
         env:
@@ -91,13 +136,13 @@ jobs:
           HAS_APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_BASE64 != '' }}
           HAS_APP_ID: ${{ secrets.APP_ID != '' }}
           HAS_APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY != '' }}
+          MODE: ${{ inputs.mode || 'full' }}
         run: |
           set -euo pipefail
-          MODE="${{ inputs.mode || 'full' }}"
           FAIL=0
 
-          # Build secrets — required for full and assets-only
-          if [[ "$MODE" == "full" || "$MODE" == "assets-only" ]]; then
+          # Build secrets — required for full and release-only
+          if [[ "$MODE" == "full" || "$MODE" == "release-only" ]]; then
             [[ "$HAS_SPARKLE_PRIVATE_KEY" == "true" ]] || { echo "::error::SPARKLE_PRIVATE_KEY missing"; FAIL=1; }
             [[ "$HAS_DEVELOPER_ID_CERT" == "true" ]]    || { echo "::error::DEVELOPER_ID_CERT_BASE64 missing"; FAIL=1; }
             [[ "$HAS_APPLE_API_KEY" == "true" ]]         || { echo "::error::APPLE_API_KEY_BASE64 missing"; FAIL=1; }
@@ -112,39 +157,13 @@ jobs:
           [[ $FAIL -eq 0 ]] || exit 1
           echo "==> All required secrets present"
 
-      - name: Probe existing state
-        id: probe
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          TAG="${{ steps.version.outputs.tag }}"
-          VERSION="${{ steps.version.outputs.version }}"
-
-          # Check GitHub Release
-          if gh release view "$TAG" --repo "${{ github.repository }}" &>/dev/null; then
-            echo "release-exists=true" >> "$GITHUB_OUTPUT"
-            echo "==> GitHub Release $TAG already exists"
-          else
-            echo "release-exists=false" >> "$GITHUB_OUTPUT"
-            echo "==> GitHub Release $TAG does not exist"
-          fi
-
-          # Check appcast entry
-          APPCAST="website/public/appcast.xml"
-          if [ -f "$APPCAST" ] && grep -qF "<sparkle:version>${VERSION}</sparkle:version>" "$APPCAST"; then
-            echo "appcast-exists=true" >> "$GITHUB_OUTPUT"
-            echo "==> Appcast entry for v${VERSION} already present"
-          else
-            echo "appcast-exists=false" >> "$GITHUB_OUTPUT"
-            echo "==> No appcast entry for v${VERSION}"
-          fi
-
       - name: Write job summary
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+          MODE: ${{ inputs.mode || 'full' }}
+          SOURCE_RUN: ${{ steps.resolve-run.outputs.run-id }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          TAG="${{ steps.version.outputs.tag }}"
-          MODE="${{ inputs.mode || 'full' }}"
           cat >> "$GITHUB_STEP_SUMMARY" << SUMMARY
           ## Release Preflight — v${VERSION}
 
@@ -153,26 +172,20 @@ jobs:
           | Tag | \`${TAG}\` |
           | Mode | \`${MODE}\` |
           | Run ID | \`${{ github.run_id }}\` |
-          | GitHub Release exists | \`${{ steps.probe.outputs.release-exists }}\` |
-          | Appcast entry exists | \`${{ steps.probe.outputs.appcast-exists }}\` |
+          | Source run ID | \`${SOURCE_RUN}\` |
           SUMMARY
 
-  # ===========================================================================
-  # Job 2 — Build Release Artifacts
+  # ==========================================================================
+  # HEART Job A — Build Release Artifacts
   # Pure build: no side effects, no releases, no pushes.
-  # ===========================================================================
+  # ==========================================================================
   build-release-artifacts:
     needs: [preflight]
     if: >
       github.event_name == 'push' ||
-      inputs.mode == 'full' ||
-      inputs.mode == 'assets-only'
+      inputs.mode == 'full'
     runs-on: [self-hosted, enviouswispr-release]
     timeout-minutes: 330
-    outputs:
-      version: ${{ needs.preflight.outputs.version }}
-      tag: ${{ needs.preflight.outputs.tag }}
-      run-id: ${{ github.run_id }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -276,21 +289,22 @@ jobs:
           CODESIGN_IDENTITY: "Developer ID Application: ${{ secrets.APPLE_TEAM_NAME }} (${{ secrets.APPLE_TEAM_ID }})"
           SPARKLE_FEED_URL: "https://enviouswispr.com/appcast.xml"
           SPARKLE_EDDSA_PUBLIC_KEY: ${{ secrets.SPARKLE_EDDSA_PUBLIC_KEY }}
+          VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           if [[ -z "${SPARKLE_EDDSA_PUBLIC_KEY}" ]]; then
             echo "::error::SPARKLE_EDDSA_PUBLIC_KEY secret is not set"
             exit 1
           fi
-          ./scripts/build-dmg.sh "${{ needs.preflight.outputs.version }}"
+          ./scripts/build-dmg.sh "$VERSION"
 
       - name: Notarize DMG
         env:
           APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           set -euo pipefail
-          VERSION="${{ needs.preflight.outputs.version }}"
           DMG_PATH="build/EnviousWispr-${VERSION}.dmg"
 
           KEY_PATH="${RUNNER_TEMP}/AuthKey_${APPLE_API_KEY_ID}.p8"
@@ -328,8 +342,8 @@ jobs:
       - name: Generate Sparkle appcast entry
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          VERSION: ${{ needs.preflight.outputs.version }}
         run: |
-          VERSION="${{ needs.preflight.outputs.version }}"
           DMG_PATH="build/EnviousWispr-${VERSION}.dmg"
           DMG_SIZE=$(stat -f%z "$DMG_PATH")
           DATE=$(date -R)
@@ -361,9 +375,9 @@ jobs:
           ENTRY
 
       - name: Copy DMG alias
-        run: |
-          VERSION="${{ needs.preflight.outputs.version }}"
-          cp "build/EnviousWispr-${VERSION}.dmg" "build/EnviousWispr.dmg"
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: cp "build/EnviousWispr-${VERSION}.dmg" "build/EnviousWispr.dmg"
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -388,21 +402,23 @@ jobs:
 
       - name: Write job summary
         if: always()
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" << SUMMARY
-          ## Build Artifacts — v${{ needs.preflight.outputs.version }}
+          ## Build Artifacts — v${VERSION}
 
           | Detail | Value |
           |---|---|
           | Run ID | \`${{ github.run_id }}\` |
-          | Artifact name | \`release-artifacts-${{ needs.preflight.outputs.version }}\` |
-          | dSYM artifact | \`dsym-artifacts-${{ needs.preflight.outputs.version }}\` |
+          | Artifact name | \`release-artifacts-${VERSION}\` |
+          | dSYM artifact | \`dsym-artifacts-${VERSION}\` |
           SUMMARY
 
-  # ===========================================================================
-  # Job 3 — Publish GitHub Release
+  # ==========================================================================
+  # HEART Job B — Publish GitHub Release
   # Idempotent: probes first, only clobbers in explicit recovery mode.
-  # ===========================================================================
+  # ==========================================================================
   publish-github-release:
     needs: [preflight, build-release-artifacts]
     if: |
@@ -421,21 +437,20 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
       - name: Download release artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: release-artifacts-${{ needs.preflight.outputs.version }}
           path: build/
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ needs.preflight.outputs.source-run-id }}
 
       - name: Check if GitHub Release exists
         id: check-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.preflight.outputs.tag }}
         run: |
-          TAG="${{ needs.preflight.outputs.tag }}"
           if gh release view "$TAG" --repo "${{ github.repository }}" &>/dev/null; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
             echo "==> Release $TAG already exists"
@@ -448,9 +463,9 @@ jobs:
         if: steps.check-release.outputs.exists == 'false'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+          TAG: ${{ needs.preflight.outputs.tag }}
         run: |
-          VERSION="${{ needs.preflight.outputs.version }}"
-          TAG="${{ needs.preflight.outputs.tag }}"
           gh release create "$TAG" \
             --title "EnviousWispr v${VERSION}" \
             --generate-notes \
@@ -461,9 +476,9 @@ jobs:
         if: steps.check-release.outputs.exists == 'true' && inputs.mode == 'release-only'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+          TAG: ${{ needs.preflight.outputs.tag }}
         run: |
-          VERSION="${{ needs.preflight.outputs.version }}"
-          TAG="${{ needs.preflight.outputs.tag }}"
           echo "==> Recovery mode: overwriting assets on existing release $TAG"
           gh release upload "$TAG" --clobber \
             "build/EnviousWispr-${VERSION}.dmg" \
@@ -473,65 +488,11 @@ jobs:
         if: steps.check-release.outputs.exists == 'true' && inputs.mode != 'release-only'
         run: echo "==> Release already exists and mode is not release-only — skipping asset upload"
 
-      - name: Download dSYM artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        continue-on-error: true
-        with:
-          name: dsym-artifacts-${{ needs.preflight.outputs.version }}
-          path: .build/arm64-apple-macosx/release/
-
-      - name: Upload dSYMs to Sentry
-        continue-on-error: true
-        env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-        run: |
-          set -euo pipefail
-          VERSION="${{ needs.preflight.outputs.version }}"
-
-          export INSTALL_DIR="$HOME/.local/bin"
-          mkdir -p "$INSTALL_DIR"
-          curl -sL https://sentry.io/get-cli/ | SENTRY_CLI_VERSION=2.39.1 bash
-          export PATH="$INSTALL_DIR:$PATH"
-
-          sentry-cli releases new "v${VERSION}"
-          sentry-cli releases set-commits "v${VERSION}" --auto
-
-          echo "==> Uploading dSYMs ..."
-          sentry-cli debug-files upload --include-sources .build/arm64-apple-macosx/release/
-
-          sentry-cli releases finalize "v${VERSION}"
-          echo "==> Sentry release v${VERSION} finalized with dSYMs."
-
-      - name: Write job summary
-        if: always()
-        run: |
-          VERSION="${{ needs.preflight.outputs.version }}"
-          TAG="${{ needs.preflight.outputs.tag }}"
-          RELEASE_EXISTS="${{ steps.check-release.outputs.exists }}"
-          MODE="${{ inputs.mode || 'full' }}"
-          if [[ "$RELEASE_EXISTS" == "false" ]]; then
-            ACTION="Created new release"
-          elif [[ "$MODE" == "release-only" ]]; then
-            ACTION="Clobbered assets (recovery)"
-          else
-            ACTION="Skipped (already exists)"
-          fi
-          cat >> "$GITHUB_STEP_SUMMARY" << SUMMARY
-          ## Publish GitHub Release — v${VERSION}
-
-          | Detail | Value |
-          |---|---|
-          | Release exists (pre-run) | \`${RELEASE_EXISTS}\` |
-          | Action taken | ${ACTION} |
-          | Source run ID | \`${{ github.run_id }}\` |
-          SUMMARY
-
-  # ===========================================================================
-  # Job 4 — Publish Appcast
-  # Tries direct push via App bypass; falls back to PR if push fails.
-  # ===========================================================================
+  # ==========================================================================
+  # LIMB Job C — Publish Appcast
+  # Cannot block shipping. Uses App token exclusively for writes.
+  # persist-credentials: false prevents checkout from leaking GITHUB_TOKEN.
+  # ==========================================================================
   publish-appcast:
     needs: [preflight, build-release-artifacts, publish-github-release]
     if: |
@@ -544,9 +505,6 @@ jobs:
       ) && (
         needs.build-release-artifacts.result == 'success' ||
         needs.build-release-artifacts.result == 'skipped'
-      ) && (
-        needs.publish-github-release.result == 'success' ||
-        needs.publish-github-release.result == 'skipped'
       )
     runs-on: [self-hosted, enviouswispr-release]
     timeout-minutes: 10
@@ -556,17 +514,21 @@ jobs:
         with:
           ref: main
           fetch-depth: 1
+          persist-credentials: false
 
       - name: Download release artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: release-artifacts-${{ needs.preflight.outputs.version }}
           path: build/
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ needs.preflight.outputs.source-run-id }}
 
       - name: Check if appcast entry exists
         id: check-appcast
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
         run: |
-          VERSION="${{ needs.preflight.outputs.version }}"
           APPCAST="website/public/appcast.xml"
           if [ -f "$APPCAST" ] && grep -qF "<sparkle:version>${VERSION}</sparkle:version>" "$APPCAST"; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
@@ -599,9 +561,10 @@ jobs:
 
       - name: Validate appcast
         if: steps.check-appcast.outputs.exists == 'false'
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           set -euo pipefail
-          VERSION="${{ needs.preflight.outputs.version }}"
           APPCAST="website/public/appcast.xml"
           xmllint --noout "$APPCAST"
           grep -q "<sparkle:version>${VERSION}</sparkle:version>" "$APPCAST"
@@ -622,12 +585,12 @@ jobs:
         if: steps.check-appcast.outputs.exists == 'false'
         continue-on-error: true
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
           VERSION: ${{ needs.preflight.outputs.version }}
         run: |
           git config user.name "enviouswispr-release-bot[bot]"
           git config user.email "enviouswispr-release-bot[bot]@users.noreply.github.com"
-          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}"
+          git remote set-url origin "https://x-access-token:${APP_TOKEN}@github.com/${{ github.repository }}"
           git add website/public/appcast.xml
           if git diff --staged --quiet; then
             echo "==> appcast.xml unchanged, skipping."
@@ -654,27 +617,156 @@ jobs:
             --head "$BRANCH"
           echo "::warning::Direct push to main failed. Appcast PR opened on branch ${BRANCH}."
 
-      - name: Fail if both push and PR failed
+      - name: Report appcast failure
         if: >
           steps.check-appcast.outputs.exists == 'false' &&
           steps.push-appcast.outcome == 'failure' &&
           steps.fallback-pr.outcome == 'failure'
         run: |
-          echo "::error::Both direct push and PR fallback failed for appcast"
+          echo "::error::Both direct push and PR fallback failed for appcast. Manual intervention required."
+          echo "::error::Run: gh workflow run release.yml -f mode=appcast-only -f tag=${{ needs.preflight.outputs.tag }} -f source_run_id=${{ needs.preflight.outputs.source-run-id }}"
           exit 1
 
-      - name: Write job summary
-        if: always()
+  # ==========================================================================
+  # LIMB Job D — Upload Sentry dSYMs
+  # Cannot block shipping. Uses pre-installed sentry-cli on runner.
+  # ==========================================================================
+  upload-sentry-dsyms:
+    needs: [preflight, build-release-artifacts, publish-github-release]
+    if: |
+      always() && (
+        github.event_name == 'push' ||
+        inputs.mode == 'full' ||
+        inputs.mode == 'sentry-only'
+      ) && (
+        needs.preflight.result == 'success'
+      ) && (
+        needs.build-release-artifacts.result == 'success' ||
+        needs.build-release-artifacts.result == 'skipped'
+      )
+    runs-on: [self-hosted, enviouswispr-release]
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Download dSYM artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: dsym-artifacts-${{ needs.preflight.outputs.version }}
+          path: .build/arm64-apple-macosx/release/
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ needs.preflight.outputs.source-run-id }}
+
+      - name: Upload dSYMs to Sentry
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          VERSION: ${{ needs.preflight.outputs.version }}
         run: |
-          VERSION="${{ needs.preflight.outputs.version }}"
-          APPCAST_EXISTS="${{ steps.check-appcast.outputs.exists }}"
-          PUSH_OUTCOME="${{ steps.push-appcast.outcome || 'skipped' }}"
+          set -euo pipefail
+
+          # Expect sentry-cli pre-installed on self-hosted runner
+          if ! command -v sentry-cli &>/dev/null; then
+            echo "::error::sentry-cli not found. Install it on the runner: curl -sL https://sentry.io/get-cli/ | bash"
+            exit 1
+          fi
+          sentry-cli --version
+
+          sentry-cli releases new "v${VERSION}"
+          sentry-cli releases set-commits "v${VERSION}" --auto
+
+          echo "==> Uploading dSYMs ..."
+          sentry-cli debug-files upload --include-sources .build/arm64-apple-macosx/release/
+
+          sentry-cli releases finalize "v${VERSION}"
+          echo "==> Sentry release v${VERSION} finalized with dSYMs."
+
+  # ==========================================================================
+  # Job E — Release Summary
+  # Always runs. Single truth source for what shipped and what didn't.
+  # ==========================================================================
+  release-summary:
+    needs: [preflight, build-release-artifacts, publish-github-release, publish-appcast, upload-sentry-dsyms]
+    if: always() && needs.preflight.result == 'success'
+    runs-on: [self-hosted, enviouswispr-release]
+    timeout-minutes: 5
+    steps:
+      - name: Write release summary
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+          TAG: ${{ needs.preflight.outputs.tag }}
+          SOURCE_RUN: ${{ needs.preflight.outputs.source-run-id }}
+          MODE: ${{ inputs.mode || 'full' }}
+          BUILD_RESULT: ${{ needs.build-release-artifacts.result }}
+          RELEASE_RESULT: ${{ needs.publish-github-release.result }}
+          APPCAST_RESULT: ${{ needs.publish-appcast.result }}
+          SENTRY_RESULT: ${{ needs.upload-sentry-dsyms.result }}
+        run: |
+          set -euo pipefail
+
+          status_emoji() {
+            case "$1" in
+              success) echo "✅" ;;
+              skipped) echo "⏭️" ;;
+              *)       echo "❌" ;;
+            esac
+          }
+
+          BUILD_STATUS=$(status_emoji "$BUILD_RESULT")
+          RELEASE_STATUS=$(status_emoji "$RELEASE_RESULT")
+          APPCAST_STATUS=$(status_emoji "$APPCAST_RESULT")
+          SENTRY_STATUS=$(status_emoji "$SENTRY_RESULT")
+
+          # Determine if manual follow-up is needed
+          NEEDS_FOLLOWUP="No"
+          FOLLOWUP_ITEMS=""
+          if [[ "$APPCAST_RESULT" != "success" && "$APPCAST_RESULT" != "skipped" ]]; then
+            NEEDS_FOLLOWUP="Yes"
+            FOLLOWUP_ITEMS="${FOLLOWUP_ITEMS}\n- Appcast: \`gh workflow run release.yml -f mode=appcast-only -f tag=${TAG} -f source_run_id=${SOURCE_RUN}\`"
+          fi
+          if [[ "$SENTRY_RESULT" != "success" && "$SENTRY_RESULT" != "skipped" ]]; then
+            NEEDS_FOLLOWUP="Yes"
+            FOLLOWUP_ITEMS="${FOLLOWUP_ITEMS}\n- Sentry: \`gh workflow run release.yml -f mode=sentry-only -f tag=${TAG} -f source_run_id=${SOURCE_RUN}\`"
+          fi
+
           cat >> "$GITHUB_STEP_SUMMARY" << SUMMARY
-          ## Publish Appcast — v${VERSION}
+          ## Release Summary — v${VERSION}
+
+          | Component | Status | Type |
+          |---|---|---|
+          | Build/Package | ${BUILD_STATUS} \`${BUILD_RESULT}\` | **HEART** |
+          | GitHub Release | ${RELEASE_STATUS} \`${RELEASE_RESULT}\` | **HEART** |
+          | Appcast | ${APPCAST_STATUS} \`${APPCAST_RESULT}\` | limb |
+          | Sentry dSYMs | ${SENTRY_STATUS} \`${SENTRY_RESULT}\` | limb |
 
           | Detail | Value |
           |---|---|
-          | Entry existed (pre-run) | \`${APPCAST_EXISTS}\` |
-          | Push outcome | \`${PUSH_OUTCOME}\` |
-          | Source run ID | \`${{ github.run_id }}\` |
+          | Mode | \`${MODE}\` |
+          | Source run ID | \`${SOURCE_RUN}\` |
+          | Manual follow-up needed | **${NEEDS_FOLLOWUP}** |
           SUMMARY
+
+          if [[ "$NEEDS_FOLLOWUP" == "Yes" ]]; then
+            echo -e "\n### Recovery commands\n${FOLLOWUP_ITEMS}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          # Fail the summary job only if HEART jobs failed
+          if [[ "$BUILD_RESULT" != "success" && "$BUILD_RESULT" != "skipped" ]]; then
+            echo "::error::HEART FAILURE: Build failed — release did not ship"
+            exit 1
+          fi
+          if [[ "$RELEASE_RESULT" != "success" && "$RELEASE_RESULT" != "skipped" ]]; then
+            echo "::error::HEART FAILURE: GitHub Release failed — release did not ship"
+            exit 1
+          fi
+
+          # Limb failures are warnings, not errors
+          if [[ "$NEEDS_FOLLOWUP" == "Yes" ]]; then
+            echo "::warning::Limb failures detected — release shipped but follow-up needed. See summary for recovery commands."
+          else
+            echo "==> Release v${VERSION} fully shipped. All components successful."
+          fi

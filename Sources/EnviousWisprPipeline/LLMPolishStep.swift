@@ -103,11 +103,11 @@ public final class LLMPolishStep: TextProcessingStep {
         )
 
         // Enrich instructions with pipeline context (language, ASR awareness, app context, etc.)
-        // Apple Intelligence handles its own simplified prompt internally — skip enrichment
-        // to preserve the string-equality check in AppleIntelligenceConnector.makeSession().
+        // Apple Intelligence uses its own simplified prompt in makeSession(), so we only
+        // append custom vocabulary (not full enrichment) to avoid overriding the on-device prompt.
         let enriched: PolishInstructions
         if llmProvider == .appleIntelligence {
-            enriched = polishInstructions
+            enriched = appleIntelligenceInstructions(polishInstructions)
         } else {
             enriched = enrichedInstructions(polishInstructions, context: context)
         }
@@ -250,6 +250,21 @@ public final class LLMPolishStep: TextProcessingStep {
         }
 
         return PolishInstructions(systemPrompt: systemPrompt)
+    }
+
+    // MARK: - Apple Intelligence Prompt (Custom Vocab Only)
+
+    /// Apple Intelligence uses a simplified on-device prompt (set in makeSession()).
+    /// We only append custom vocabulary here -- the connector replaces the base prompt
+    /// with its own optimized instructions, keeping the vocab suffix intact.
+    private func appleIntelligenceInstructions(
+        _ base: PolishInstructions
+    ) -> PolishInstructions {
+        guard !customWords.isEmpty else { return base }
+        let vocab = renderCustomWordsForPrompt(customWords)
+        return PolishInstructions(
+            systemPrompt: base.systemPrompt + "\n\n" + vocab
+        )
     }
 
     // MARK: - Custom Words Prompt Injection
