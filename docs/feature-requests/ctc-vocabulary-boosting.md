@@ -2,8 +2,8 @@
 
 **Bead:** ew-8a4.1 (wiring), ew-8a4.3 (calibration)
 **Epic:** ew-8a4 (Custom Words v2)
-**Status:** Planning (v2, post-GPT review)
-**Council:** GPT-5.4 (ctc-wiring-plan-gpt-v2, 2 rounds) + Gemini 3.1 Pro (ctc-wiring-plan-gemini)
+**Status:** Planning (v3, post-GPT Phase 1 validation)
+**Council:** GPT-5.4 (ctc-wiring-plan-gpt-v2, 3 rounds) + Gemini 3.1 Pro (ctc-wiring-plan-gemini)
 
 ## Goal
 
@@ -32,6 +32,14 @@ Wire FluidAudio's CTC-based vocabulary boosting into the Parakeet pipeline so cu
 - **Preparation must be fire-and-forget.** `prepareVocabularyBoosting` returns immediately; service spawns background prep task. `rescoreWithVocabulary` fails fast with `.notReady` if prep incomplete. Prevents long CTC download from blocking XPC.
 - **CTC manager operations must be explicitly serialized.** Actor reentrancy around `await` means `configureVocabularyBoosting` and `transcribe` can interleave on the non-actor `AsrManager`. Internal operation gate required.
 - **Batch mode must be heart-first.** Heart manager transcribes, then optional async CTC rescore. Not CTC-first with fallback.
+
+### GPT Round 3 corrections (Phase 1 validation, incorporated)
+
+- **Actor gate does NOT serialize async work.** An actor's `run()` method suspends at `await`, allowing reentrancy. Replace with a true async mutex (serial DispatchQueue or task-chaining pattern). This is the #1 implementation risk.
+- **Config key must hash the full vocabulary payload.** Hash canonicals AND aliases (sorted, normalized), not just canonicals. Otherwise alias-only changes silently reuse stale preparation.
+- **Prep supersession needs generation check.** When a prep task completes, it must verify it is still the current request before setting `.ready`. Stale tasks must not overwrite newer config.
+- **Richer error info in NSError.** Carry underlying cause, transient/permanent hint, and retryAfter in `NSError.userInfo` so Phase 2 coordinator can make smart retry decisions.
+- **AsrManager.initialize(models:) cost is unknown.** Must verify empirically whether it re-compiles CoreML models or just references already-loaded instances. If it re-compiles, that's 30+ seconds on first CTC rescore.
 
 ## Infrastructure Constraints
 
@@ -75,31 +83,52 @@ enum VocabularyBoostingState: Sendable {
 
 This prevents nil-checks-and-booleans spread. All state transitions are explicit. Rescore checks state: only `.ready` proceeds; `.preparing` can optionally await the task; all others fail fast.
 
-### Configuration key (not just revision)
+### Configuration key (content-based identity)
 
 ```swift
 struct VocabularyConfigurationKey: Hashable, Sendable {
     let revision: Int
-    let termsHash: String
+    let termsHash: String        // SHA256 of full normalized payload (canonicals + aliases)
     let backendModelID: String
 }
 ```
 
-Prevents stale-config bugs after model swaps or backend switches.
+The `termsHash` is computed from the full vocabulary payload: sorted canonicals with their sorted aliases, whitespace-trimmed, joined deterministically. NOT just canonicals. This ensures alias-only changes trigger re-preparation. Prevents stale-config bugs after model swaps or backend switches.
 
-### Operation serialization gate
+### Operation serialization (async mutex)
+
+**WARNING: A simple actor wrapper does NOT serialize async work.** Actor methods are reentrant across `await` suspension points. If `run(op)` suspends inside `op()`, the actor accepts another `run()` call, allowing `configure` and `transcribe` to interleave.
+
+Use a true non-reentrant serial execution primitive:
 
 ```swift
-/// Serializes all operations on the non-actor AsrManager to prevent
-/// reentrancy between configureVocabularyBoosting and transcribe.
-actor VocabularyManagerGate {
-    func run<T: Sendable>(_ op: @Sendable () async throws -> T) async throws -> T {
-        try await op()
+/// True async mutex for serializing all operations on the non-actor AsrManager.
+/// Unlike an actor wrapper, this guarantees no interleaving across await points.
+final class AsrManagerMutex: @unchecked Sendable {
+    private let queue = DispatchQueue(label: "com.enviouswispr.ctc-manager-mutex")
+
+    func run<T: Sendable>(_ op: @Sendable @escaping () async throws -> T) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            queue.async {
+                let semaphore = DispatchSemaphore(value: 0)
+                var result: Result<T, Error>!
+                Task {
+                    do {
+                        result = .success(try await op())
+                    } catch {
+                        result = .failure(error)
+                    }
+                    semaphore.signal()
+                }
+                semaphore.wait()
+                continuation.resume(with: result)
+            }
+        }
     }
 }
 ```
 
-All CTC manager calls (configure + transcribe) go through this gate. Actor isolation ensures only one runs at a time across suspension points.
+All CTC manager calls (configure + transcribe) go through this mutex. Only one operation runs at a time, even across `await` suspension points. This is the correct replacement for the actor-based gate that GPT identified as insufficient.
 
 ### CTC resource bundle
 
@@ -175,6 +204,12 @@ public enum VocabularyBoostingError: String, Codable, Sendable {
     case notReady        // prep not complete
     case notConfigured   // no vocab set
     case unsupported     // wrong backend
+    case preparationFailed // download/tokenize/configure failed
+
+    /// Convert to NSError for XPC transport.
+    /// Carries underlying cause + transient hint + retryAfter in userInfo
+    /// so Phase 2 coordinator can make smart retry decisions.
+    func toNSError(underlying: String? = nil, transient: Bool = false, retryAfter: Date? = nil) -> NSError
 }
 ```
 
@@ -209,14 +244,32 @@ actor ParakeetVocabularyBoostingLimb {
 ```
 
 Internal flow for `requestPreparation`:
-1. Compute target `VocabularyConfigurationKey`
+1. Compute target `VocabularyConfigurationKey` (hash includes canonicals AND aliases)
 2. If already `.ready` with same key, no-op
-3. Cancel any in-flight `.preparing` task
-4. Set state to `.preparing(revision:task:)`
-5. Task body: download CtcModels if needed -> load tokenizer -> tokenize terms -> create/configure AsrManager -> set state to `.ready`
-6. On failure: set state to `.failed` with retry backoff
+3. If already `.preparing` with same key, no-op (let existing task finish)
+4. If different key: cancel any in-flight `.preparing` task
+5. Assign a `preparationGeneration` counter (monotonically increasing)
+6. Set state to `.preparing(revision:task:)`
+7. Task body:
+   a. Download CtcModels if not cached
+   b. Load CtcTokenizer
+   c. Tokenize all terms (canonical + aliases) with CTC tokenizer
+   d. Create new AsrManager, call initialize(models:) with shared AsrModels
+   e. Configure CTC via mutex: `configureVocabularyBoosting(vocabulary:ctcModels:)`
+   f. **Generation check:** verify `preparationGeneration` still matches before committing
+   g. If still current: set state to `.ready(key:)`
+   h. If superseded: discard work, do not overwrite state
+   i. Check `Task.isCancelled` at each step boundary
+8. On failure: set state to `.failed(revision:error:retryAfter:)`
 
-All AsrManager operations (configure + transcribe) go through `operationGate`.
+All AsrManager operations (configure + transcribe) go through `AsrManagerMutex`.
+
+State transition rules:
+- Same key while `.preparing` -> no-op
+- Same key while `.ready` -> no-op
+- New key while `.preparing` -> cancel old, start new
+- New key while `.ready` -> start new (replaces on completion)
+- Empty terms -> `clear()`
 
 #### 1.3 Wire into ParakeetBackend
 
@@ -237,7 +290,40 @@ Limb created lazily on first `requestVocabularyBoostingPreparation` call with no
 
 Handle the 3 new XPC methods, deserialize Data, forward to ParakeetBackend.
 
-**Validation:** Can create second AsrManager sharing AsrModels, configure CTC, transcribe with CTC terms detected. XPC round-trip: request prep, wait, rescore. Verify rescore fails fast when not ready.
+**Validation (3 gates, all must pass before moving to Phase 2):**
+
+**Gate 0: AsrManager.initialize() cost (run FIRST, before building anything)**
+- Create a second `AsrManager(config: .default)`, call `initialize(models:)` with the already-loaded `AsrModels` from the heart manager
+- Time the call. Expected: <1s (reference copy). Blocker: >5s (re-compilation)
+- If re-compilation detected: investigate whether we can skip `initialize()` or cache the second manager across vocab updates
+- This is 5 minutes of work and answers the #1 risk
+
+**Gate 1: CTC rescore produces results (service-side, no XPC)**
+- In-process test inside the ASR service: prep vocab with 3 test terms (EnviousWispr, Saurabh, ChatGPT), feed a known audio sample, verify rescore returns without crash
+- Check `ctcDetectedTerms` and `ctcAppliedTerms` are populated
+- Verify state machine transitions: idle -> preparing -> ready
+- Verify rescore on `.notReady` state fails fast with correct error
+- Verify `clear()` returns state to `.idle` and frees resources
+
+**Gate 2: XPC round-trip works end-to-end**
+- Call `requestVocabularyBoostingPreparation` from app process, verify immediate reply
+- Wait for prep to complete (poll or delay)
+- Call `rescoreWithVocabulary` with test audio, verify result crosses XPC correctly
+- Call without prep first: verify `.notConfigured` error
+- Call during prep: verify `.notReady` error
+
+**Gate 3: Heart path regression check**
+- Time a normal `transcribeSamples` call with NO CTC configured: record baseline
+- Prep CTC vocabulary, then time `transcribeSamples` on heart manager again
+- Verify zero latency regression (CTC prep must not affect heart manager)
+- Time `rescoreWithVocabulary` to establish CTC latency budget
+
+**Gate 4: Live test (with Saurabh)**
+- Rebuild and relaunch app
+- Record dictation containing custom vocabulary terms
+- Verify heart path transcription works normally
+- Check logs for CTC prep status and rescore results
+- Test edge cases: empty vocab, backend switch, rapid dictation
 
 ### Phase 2: App-Side Proxy + Coordinator
 
@@ -434,7 +520,7 @@ Coordinator queries backend capabilities and chooses. No pipeline changes needed
 | `VocabularyBoostingError` | EnviousWisprCore | Error type for XPC |
 | `VocabularyConfigurationKey` | EnviousWisprCore | Shared identity type |
 | `ParakeetVocabularyBoostingLimb` | EnviousWisprASR | XPC service, owns CTC models |
-| `VocabularyManagerGate` | EnviousWisprASR | Serialization for non-actor manager |
+| `AsrManagerMutex` | EnviousWisprASR | True async mutex for non-actor AsrManager |
 | `LoadedCtcResources` | EnviousWisprASR | CTC model + tokenizer bundle |
 | `VocabularyBoostingCoordinator` | EnviousWisprPipeline | Orchestrates limb from pipeline |
 | `VocabularyBoostingPolicy` | EnviousWisprPipeline | Rescore/accept decisions |
@@ -472,8 +558,11 @@ Clean. No circular dependencies. No upward imports.
 | CTC false positives | Calibration phase before enabling visible corrections. |
 | Stale refinement arrives late | Utterance ID validation. Cancelled utterances rejected. |
 | Download blocks XPC | Fire-and-forget prep. Rescore fails fast if not ready. |
-| AsrManager reentrancy | VocabularyManagerGate serializes all CTC manager calls. |
+| AsrManager reentrancy | AsrManagerMutex (true async mutex, not actor) serializes all CTC manager calls. |
+| Stale prep task overwrites newer config | Generation counter checked before committing .ready state. |
+| Alias-only vocab change missed | Config key hashes full payload (canonicals + aliases), not just canonicals. |
 | Backend/model switch invalidation | Composite VocabularyConfigurationKey includes backendModelID. |
+| AsrManager.initialize() re-compiles models | Must verify empirically. If expensive, cache second manager across vocab updates. |
 | iOS memory constraints | Capability abstraction. CTC can be disabled per-platform. |
 
 ## Open Decisions
