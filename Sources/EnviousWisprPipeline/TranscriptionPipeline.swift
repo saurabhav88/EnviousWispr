@@ -152,7 +152,8 @@ public final class TranscriptionPipeline: DictationPipeline {
             guard !Task.isCancelled else { return }
         }
 
-        // Sync CTC vocabulary if custom words exist (fire-and-forget, non-blocking)
+        // CTC: cancel any stale rescore from prior utterance, then sync vocab
+        vocabularyBoostingCoordinator?.cancelCurrentUtterance()
         vocabularyBoostingCoordinator?.syncVocabularyIfNeeded()
 
         // Remember the frontmost app and focused text field so we can paste back
@@ -692,22 +693,21 @@ public final class TranscriptionPipeline: DictationPipeline {
             state = .complete
 
             // CTC vocabulary boosting: async rescore after heart result is pasted (limb)
+            // Coordinator owns the Task lifecycle (max 1 concurrent, stale-apply protection)
             if let coordinator = vocabularyBoostingCoordinator {
                 let utteranceID = coordinator.beginUtterance()
-                Task { [samples, result] in
-                    if let ctcResult = await coordinator.rescoreIfEligible(
-                        utteranceID: utteranceID,
-                        audioSamples: samples,
-                        baseResult: result,
-                        language: transcriptionOptions.language ?? "en"
-                    ) {
-                        // v1: log only. v2: safe replacement.
-                        Task {
-                            await AppLogger.shared.log(
-                                "CTC rescore improved text: \"\(ctcResult.text.prefix(80))\"",
-                                level: .info, category: "CTC"
-                            )
-                        }
+                coordinator.scheduleRescore(
+                    utteranceID: utteranceID,
+                    audioSamples: samples,
+                    baseResult: result,
+                    language: transcriptionOptions.language ?? "en"
+                ) { ctcResult in
+                    // v1: log only. v2: safe replacement.
+                    Task {
+                        await AppLogger.shared.log(
+                            "CTC rescore accepted: \"\(ctcResult.text.prefix(80))\"",
+                            level: .info, category: "CTC"
+                        )
                     }
                 }
             }
@@ -805,6 +805,7 @@ public final class TranscriptionPipeline: DictationPipeline {
     /// Handle audio engine interruption (device disconnect, service crash, max duration cap).
     /// Called by AppState's unified interruption handler, not set directly on audioCapture.
     public func handleEngineInterruption() {
+        vocabularyBoostingCoordinator?.cancelCurrentUtterance()
         // Build snapshot at interruption time — recording_state may be cleared before captureError runs.
         let snapshot = buildInterruptionSnapshot()
         SentryBreadcrumb.captureError(
@@ -877,6 +878,7 @@ public final class TranscriptionPipeline: DictationPipeline {
     /// Cancel an active recording immediately without transcribing.
     /// Guards on `.recording` state — safe to call from any other state.
     public func cancelRecording() async {
+        vocabularyBoostingCoordinator?.cancelCurrentUtterance()
         stopRequested = false
         guard state == .recording else { return }
 

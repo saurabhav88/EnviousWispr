@@ -15,8 +15,10 @@ public final class VocabularyBoostingCoordinator {
     private let asrProxy: ASRManagerProxy
     private let customWordsManager = CustomWordsManager()
     private var lastSyncedRevision: Int = 0
-    private var vocabRevision: Int = 0
+    private var currentRevision: Int = 0
+    private var currentTermsHash: String = ""
     private var currentUtteranceID: UUID?
+    private var activeRescoreTask: Task<Void, Never>?
 
     /// Track whether we have a non-empty vocabulary configured.
     private var hasActiveVocabulary: Bool = false
@@ -74,16 +76,44 @@ public final class VocabularyBoostingCoordinator {
         return id
     }
 
-    /// Call on cancellation/teardown.
+    /// Call on cancellation/teardown. Also cancels any in-flight rescore.
     public func cancelCurrentUtterance() {
         currentUtteranceID = nil
+        activeRescoreTask?.cancel()
+        activeRescoreTask = nil
     }
 
     // MARK: - Rescore
 
-    /// Call after heart result is pasted. Attempts CTC rescore.
+    /// Schedule an async CTC rescore after heart result is pasted.
+    /// Cancels any previous in-flight rescore (max 1 concurrent).
+    /// The pipeline calls this instead of managing its own Task.
+    public func scheduleRescore(
+        utteranceID: UUID,
+        audioSamples: [Float],
+        baseResult: ASRResult,
+        language: String,
+        onAccepted: @escaping @MainActor (ASRResult) -> Void
+    ) {
+        // Backpressure: cancel previous rescore if still running
+        activeRescoreTask?.cancel()
+
+        activeRescoreTask = Task { [weak self] in
+            guard let self else { return }
+            if let ctcResult = await self.rescoreIfEligible(
+                utteranceID: utteranceID,
+                audioSamples: audioSamples,
+                baseResult: baseResult,
+                language: language
+            ) {
+                onAccepted(ctcResult)
+            }
+        }
+    }
+
+    /// Internal: attempts CTC rescore with timeout and acceptance gate.
     /// Returns improved result or nil (timeout, not ready, not applicable).
-    public func rescoreIfEligible(
+    private func rescoreIfEligible(
         utteranceID: UUID,
         audioSamples: [Float],
         baseResult: ASRResult,
@@ -184,9 +214,13 @@ public final class VocabularyBoostingCoordinator {
             )
         }
 
-        // Revision: use a hash-based approach so it changes when content changes
-        vocabRevision += 1
+        // Content-based revision: only increment when vocab actually changes
+        let hash = VocabularyConfigurationKey.computeTermsHash(terms)
+        if hash != currentTermsHash {
+            currentRevision += 1
+            currentTermsHash = hash
+        }
 
-        return VocabularyBoostingConfig(terms: terms, revision: vocabRevision)
+        return VocabularyBoostingConfig(terms: terms, revision: currentRevision)
     }
 }

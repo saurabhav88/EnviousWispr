@@ -55,7 +55,8 @@ public struct VocabularyConfigurationKey: Hashable, Sendable {
     }
 
     /// SHA256 hash of the full vocabulary payload: sorted canonicals with their sorted aliases.
-    private static func computeTermsHash(_ terms: [VocabularyBoostingConfig.VocabularyBoostingTerm]) -> String {
+    /// Public so VocabularyBoostingCoordinator can reuse for content-based revision.
+    public static func computeTermsHash(_ terms: [VocabularyBoostingConfig.VocabularyBoostingTerm]) -> String {
         var payload = ""
         let sorted = terms.sorted { $0.canonical.lowercased() < $1.canonical.lowercased() }
         for term in sorted {
