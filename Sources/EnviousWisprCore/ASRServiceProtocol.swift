@@ -59,6 +59,26 @@ import Foundation
 
     /// Check whether the specified backend supports streaming transcription.
     func checkStreamingSupport(backendType: String, reply: @escaping (Bool) -> Void)
+
+    // MARK: - Vocabulary Boosting (Parakeet CTC limb)
+
+    /// Request CTC vocabulary boosting preparation. Fire-and-forget: returns immediately
+    /// after validating config. CTC model download and configuration happen in the background.
+    /// - Parameter configData: PropertyListEncoder-encoded `VocabularyBoostingConfig`.
+    /// - Parameter reply: nil on accepted, NSError on validation failure only.
+    func requestVocabularyBoostingPreparation(_ configData: Data, reply: @escaping (NSError?) -> Void)
+
+    /// Clear vocabulary boosting configuration and free CTC resources.
+    func clearVocabularyBoosting(reply: @escaping () -> Void)
+
+    /// Rescore audio samples using CTC vocabulary boosting.
+    /// Fails fast with VocabularyBoostingError if preparation is not complete.
+    /// - Parameters:
+    ///   - audioData: Raw Float32 PCM bytes (16kHz mono).
+    ///   - sampleCount: Number of Float32 samples in audioData.
+    ///   - language: ISO 639-1 language code.
+    ///   - reply: (PropertyListEncoder-encoded ASRResult, or nil) + (NSError or nil).
+    func rescoreWithVocabulary(_ audioData: Data, sampleCount: Int, language: String, reply: @escaping (Data?, NSError?) -> Void)
 }
 
 /// XPC protocol: callbacks from ASR service to host app.

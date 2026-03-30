@@ -261,6 +261,64 @@ public final class ASRManagerProxy: ASRManagerInterface {
         }
     }
 
+    // MARK: - Vocabulary Boosting (CTC limb)
+
+    /// Fire-and-forget: request CTC vocabulary boosting preparation.
+    public func requestVocabularyBoostingPreparation(_ config: VocabularyBoostingConfig) {
+        guard isModelLoaded else { return }
+        let configData: Data
+        do {
+            configData = try PropertyListEncoder().encode(config)
+        } catch {
+            Task {
+                await AppLogger.shared.log(
+                    "[ASRManagerProxy] Failed to encode VocabularyBoostingConfig: \(error)",
+                    level: .info, category: "CTC"
+                )
+            }
+            return
+        }
+        serviceProxy { proxy in
+            proxy.requestVocabularyBoostingPreparation(configData) { _ in }
+        }
+    }
+
+    /// Clear vocabulary boosting configuration.
+    public func clearVocabularyBoosting() {
+        serviceProxy { proxy in
+            proxy.clearVocabularyBoosting { }
+        }
+    }
+
+    /// Rescore audio samples with CTC vocabulary boosting.
+    public func rescoreWithVocabulary(
+        audioSamples: [Float],
+        language: String
+    ) async throws -> ASRResult {
+        let data = audioSamples.withUnsafeBytes { Data($0) }
+
+        let (resultData, error): (Data?, NSError?) = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<(Data?, NSError?), any Error>) in
+            let guard_ = OneShotContinuationASR(cont)
+            serviceProxy { proxy in
+                proxy.rescoreWithVocabulary(
+                    data, sampleCount: audioSamples.count, language: language
+                ) { resultData, nsError in
+                    guard_.resume(returning: (resultData, nsError))
+                }
+            } onProxyError: {
+                guard_.resume(throwing: XPCASRTransportError.serviceUnreachable)
+            }
+        }
+
+        if let error {
+            throw error
+        }
+        guard let resultData, let result = try? PropertyListDecoder().decode(ASRResult.self, from: resultData) else {
+            throw ASRError.transcriptionFailed("Failed to decode CTC rescore result from XPC service")
+        }
+        return result
+    }
+
     // MARK: - XPC Connection
 
     private func ensureConnection() {
