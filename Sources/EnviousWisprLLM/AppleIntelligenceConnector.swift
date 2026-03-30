@@ -150,12 +150,23 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
             }
         }
 
-        // Use simplified instructions for Apple's on-device model when using
-        // the default prompt. If the user set a custom prompt, respect it.
-        let systemPrompt =
-            instructions.systemPrompt == PolishInstructions.default.systemPrompt
-            ? Self.onDeviceInstructions
-            : instructions.systemPrompt
+        // Use simplified instructions for Apple's on-device model when the
+        // base prompt is the default. If the pipeline appended custom vocabulary,
+        // keep the vocab suffix and replace only the default prefix with the
+        // optimized on-device instructions.
+        let defaultPrompt = PolishInstructions.default.systemPrompt
+        let systemPrompt: String
+        if instructions.systemPrompt == defaultPrompt {
+            // Default prompt, no custom vocab
+            systemPrompt = Self.onDeviceInstructions
+        } else if instructions.systemPrompt.hasPrefix(defaultPrompt) {
+            // Default prompt + custom vocab suffix -- replace prefix, keep suffix
+            let suffix = String(instructions.systemPrompt.dropFirst(defaultPrompt.count))
+            systemPrompt = Self.onDeviceInstructions + suffix
+        } else {
+            // User set a fully custom prompt -- respect it as-is
+            systemPrompt = instructions.systemPrompt
+        }
 
         return LanguageModelSession(
             model: model,

@@ -360,12 +360,43 @@ const breadcrumbJsonLd = JSON.stringify({
   }
 
   .blog-body :global(pre) {
+    position: relative;
     background: #0f0a1a;
     border-radius: var(--radius-card);
     padding: 24px;
     overflow-x: auto;
     margin: 1.8em 0;
     border: 1px solid rgba(124, 58, 237, 0.15);
+  }
+
+  .blog-body :global(.copy-btn) {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(124, 58, 237, 0.15);
+    border: 1px solid rgba(124, 58, 237, 0.25);
+    border-radius: 6px;
+    color: #a78bda;
+    font-size: 12px;
+    font-family: var(--font-mono);
+    padding: 4px 10px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s, background 0.2s;
+  }
+
+  .blog-body :global(pre:hover .copy-btn) {
+    opacity: 1;
+  }
+
+  .blog-body :global(.copy-btn:hover) {
+    background: rgba(124, 58, 237, 0.3);
+  }
+
+  .blog-body :global(.copy-btn.copied) {
+    color: #6ee7b7;
+    border-color: rgba(110, 231, 183, 0.3);
+    background: rgba(110, 231, 183, 0.1);
   }
 
   .blog-body :global(pre code) {
@@ -499,3 +530,22 @@ const breadcrumbJsonLd = JSON.stringify({
     }
   }
 </style>
+
+<script>
+  document.querySelectorAll('.blog-body pre').forEach((pre) => {
+    const btn = document.createElement('button');
+    btn.className = 'copy-btn';
+    btn.textContent = 'Copy';
+    btn.addEventListener('click', async () => {
+      const code = pre.querySelector('code');
+      await navigator.clipboard.writeText(code ? code.textContent || '' : pre.textContent || '');
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = 'Copy';
+        btn.classList.remove('copied');
+      }, 2000);
+    });
+    pre.appendChild(btn);
+  });
+</script>

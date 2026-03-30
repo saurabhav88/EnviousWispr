@@ -233,5 +233,18 @@
       />
     </item>
 
+        <item>
+      <title>Version 1.7.1</title>
+      <pubDate>Fri, 27 Mar 2026 01:19:27 -0400</pubDate>
+      <sparkle:version>1.7.1</sparkle:version>
+      <sparkle:shortVersionString>1.7.1</sparkle:shortVersionString>
+      <enclosure
+        url="https://github.com/saurabhav88/EnviousWispr/releases/download/v1.7.1/EnviousWispr-1.7.1.dmg"
+        length="13060197"
+        type="application/octet-stream"
+        sparkle:edSignature="45yLu1MEfG6ar7evGpCWvZdGJ8L2XX0H8gitCe+T5ymFCYLShse6thZuUWL6/MiK72FTkjIN2bQpqCCtLDsHDw=="
+      />
+    </item>
+
     </channel>
 </rss>

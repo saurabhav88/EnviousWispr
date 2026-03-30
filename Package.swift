@@ -9,7 +9,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/argmaxinc/WhisperKit.git", from: "0.12.0"),
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.12.0"),
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", from: "0.13.4"),
         .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.6.0"),
         .package(url: "https://github.com/PostHog/posthog-ios.git", from: "3.0.0"),
         .package(url: "https://github.com/getsentry/sentry-cocoa.git", from: "9.8.0"),
