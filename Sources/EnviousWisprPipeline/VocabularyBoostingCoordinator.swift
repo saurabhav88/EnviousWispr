@@ -143,8 +143,29 @@ public final class VocabularyBoostingCoordinator {
                 return nil
             }
 
-            DebugTrace.log("rescore: improved text: \"\(result.text.prefix(80))\"")
-            return result
+            // Acceptance gate: only accept narrow, vocabulary-related corrections
+            let vocabTerms = (customWordsManager.load() ?? []).flatMap { word in
+                [word.canonical] + word.aliases
+            }
+            let decision = CTCAcceptanceGate.evaluate(
+                heartText: baseResult.text,
+                ctcText: result.text,
+                vocabularyTerms: vocabTerms
+            )
+
+            DebugTrace.log(
+                "rescore gate: \(decision.accepted ? "ACCEPT" : "REJECT") " +
+                "reason=\(decision.reason) " +
+                "spans=\(decision.changedSpans) tokens=\(decision.changedTokens)/\(decision.totalTokens)"
+            )
+
+            if decision.accepted {
+                DebugTrace.log("rescore: accepted correction: \"\(result.text.prefix(80))\"")
+                return result
+            } else {
+                DebugTrace.log("rescore: heart=\"\(baseResult.text.prefix(60))\" ctc=\"\(result.text.prefix(60))\"")
+                return nil
+            }
 
         } catch {
             let errorDesc = (error as? ASRError)?.errorDescription ?? error.localizedDescription
