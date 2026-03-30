@@ -225,5 +225,78 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
     func checkStreamingSupport(backendType: String, reply: @escaping (Bool) -> Void) {
         reply(backendType == "parakeet")
     }
+
+    // MARK: - Vocabulary Boosting (Parakeet CTC limb)
+
+    func requestVocabularyBoostingPreparation(_ configData: Data, reply: @escaping (NSError?) -> Void) {
+        // Decode config
+        let config: VocabularyBoostingConfig
+        do {
+            config = try PropertyListDecoder().decode(VocabularyBoostingConfig.self, from: configData)
+        } catch {
+            reply(NSError(
+                domain: "ASRService", code: -4,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to decode VocabularyBoostingConfig: \(error.localizedDescription)"]
+            ))
+            return
+        }
+
+        // Parakeet-only
+        guard parakeetBackend != nil else {
+            reply(VocabularyBoostingError.unsupported.toNSError())
+            return
+        }
+
+        // Fire-and-forget: spawn prep task, reply immediately
+        nonisolated(unsafe) let safeReply = reply
+        Task { @MainActor in
+            await self.parakeetBackend?.requestVocabularyBoostingPreparation(config)
+            safeReply(nil)
+        }
+    }
+
+    func clearVocabularyBoosting(reply: @escaping () -> Void) {
+        nonisolated(unsafe) let safeReply = reply
+        Task { @MainActor in
+            await self.parakeetBackend?.clearVocabularyBoosting()
+            safeReply()
+        }
+    }
+
+    func rescoreWithVocabulary(_ audioData: Data, sampleCount: Int, language: String, reply: @escaping (Data?, NSError?) -> Void) {
+        // Validate input
+        guard audioData.count == sampleCount * MemoryLayout<Float>.size else {
+            reply(nil, NSError(
+                domain: "ASRService", code: -2,
+                userInfo: [NSLocalizedDescriptionKey: "Data size mismatch: expected \(sampleCount * MemoryLayout<Float>.size), got \(audioData.count)"]
+            ))
+            return
+        }
+
+        // Parakeet-only
+        guard parakeetBackend != nil else {
+            reply(nil, VocabularyBoostingError.unsupported.toNSError())
+            return
+        }
+
+        nonisolated(unsafe) let safeReply = reply
+        Task { @MainActor in
+            do {
+                let samples = audioData.withUnsafeBytes { raw -> [Float] in
+                    guard raw.count > 0 else { return [] }
+                    return Array(raw.bindMemory(to: Float.self))
+                }
+
+                let result = try await self.parakeetBackend!.rescoreWithVocabulary(
+                    audioSamples: samples,
+                    language: language
+                )
+                let encoded = try PropertyListEncoder().encode(result)
+                safeReply(encoded, nil)
+            } catch {
+                safeReply(nil, error as NSError)
+            }
+        }
+    }
 }
 
