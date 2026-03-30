@@ -42,9 +42,6 @@ public final class TranscriptionPipeline: DictationPipeline {
     private let llmPolishStep: LLMPolishStep
     private var textProcessingSteps: [any TextProcessingStep] = []
 
-    /// CTC vocabulary boosting coordinator. Set by AppState after init.
-    public var vocabularyBoostingCoordinator: VocabularyBoostingCoordinator?
-
     /// Access word correction step for configuration.
     public var wordCorrection: WordCorrectionStep { wordCorrectionStep }
     /// Access filler removal step for configuration.
@@ -151,10 +148,6 @@ public final class TranscriptionPipeline: DictationPipeline {
             }
             guard !Task.isCancelled else { return }
         }
-
-        // CTC: cancel any stale rescore from prior utterance, then sync vocab
-        vocabularyBoostingCoordinator?.cancelCurrentUtterance()
-        vocabularyBoostingCoordinator?.syncVocabularyIfNeeded()
 
         // Remember the frontmost app and focused text field so we can paste back
         // (LLM polishing can take seconds, during which focus may shift)
@@ -442,44 +435,15 @@ public final class TranscriptionPipeline: DictationPipeline {
         do {
             let asrStart = CFAbsoluteTimeGetCurrent()
 
-            // If streaming ASR was active, finalize it (fast — just the last chunk).
-            // Otherwise fall back to batch transcription on the VAD-filtered audio.
+            // Always use batch transcription for the authoritative final result.
+            // Streaming is kept active during recording for live partial preview only.
+            // Batch produces complete text even for 2-5 minute dictation, while streaming
+            // window assembly silently drops ~30% of content at longer durations.
             let result: ASRResult
             if wasStreaming {
-                do {
-                    result = try await finalizeStreamingWithTimeout(samples: samples)
-                    let audioDuration = Double(rawSamples.count) / AudioCaptureManager.targetSampleRate
-                    let wordCount = result.text.split(whereSeparator: \.isWhitespace).count
-                    let wps = Double(wordCount) / max(audioDuration, 0.1)
-                    Task { await AppLogger.shared.log(
-                        "Pipeline timing: streaming ASR finalized in \(String(format: "%.3f", CFAbsoluteTimeGetCurrent() - asrStart))s",
-                        level: .info, category: "PipelineTiming"
-                    ) }
-                    Task { await AppLogger.shared.log(
-                        "Streaming tail check: fed=\(self.streamingBuffersFed)/\(self.streamingBuffersDispatched), " +
-                        "streaming=\(wasStreaming), audio=\(String(format: "%.1f", audioDuration))s, " +
-                        "words=\(wordCount), wps=\(String(format: "%.1f", wps))",
-                        level: .info, category: "PipelineTiming"
-                    ) }
-                    if wasStreaming && audioDuration >= 2.0 && wps < 1.0 {
-                        Task { await AppLogger.shared.log(
-                            "TAIL_SUSPECT: low wps (\(String(format: "%.1f", wps))) for \(String(format: "%.1f", audioDuration))s recording",
-                            level: .info, category: "PipelineTiming"
-                        ) }
-                    }
-                } catch {
-                    // Streaming finalization failed or timed out — cancel and fall back to batch
-                    await asrManager.cancelStreaming()
-                    SentryBreadcrumb.add(stage: "asr", message: "Streaming finalize failed, falling back to batch", level: .warning)
-                    Task { await AppLogger.shared.log(
-                        "Streaming ASR finalize failed, falling back to batch: \(error.localizedDescription)",
-                        level: .info, category: "Pipeline"
-                    ) }
-                    result = try await asrManager.transcribe(audioSamples: samples, options: transcriptionOptions)
-                }
-            } else {
-                result = try await asrManager.transcribe(audioSamples: samples, options: transcriptionOptions)
+                await asrManager.cancelStreaming()
             }
+            result = try await asrManager.transcribe(audioSamples: samples, options: transcriptionOptions)
 
             let asrEnd = CFAbsoluteTimeGetCurrent()
 
@@ -691,26 +655,6 @@ public final class TranscriptionPipeline: DictationPipeline {
             ])
             frozenSnapshot = nil
             state = .complete
-
-            // CTC vocabulary boosting: async rescore after heart result is pasted (limb)
-            // Coordinator owns the Task lifecycle (max 1 concurrent, stale-apply protection)
-            if let coordinator = vocabularyBoostingCoordinator {
-                let utteranceID = coordinator.beginUtterance()
-                coordinator.scheduleRescore(
-                    utteranceID: utteranceID,
-                    audioSamples: samples,
-                    baseResult: result,
-                    language: transcriptionOptions.language ?? "en"
-                ) { ctcResult in
-                    // v1: log only. v2: safe replacement.
-                    Task {
-                        await AppLogger.shared.log(
-                            "CTC rescore accepted: \"\(ctcResult.text.prefix(80))\"",
-                            level: .info, category: "CTC"
-                        )
-                    }
-                }
-            }
         } catch {
             SentryBreadcrumb.captureError(error, category: .asrFailed, stage: "transcription", extra: [
                 "backend": asrManager.activeBackendType.rawValue,
@@ -805,7 +749,6 @@ public final class TranscriptionPipeline: DictationPipeline {
     /// Handle audio engine interruption (device disconnect, service crash, max duration cap).
     /// Called by AppState's unified interruption handler, not set directly on audioCapture.
     public func handleEngineInterruption() {
-        vocabularyBoostingCoordinator?.cancelCurrentUtterance()
         // Build snapshot at interruption time — recording_state may be cleared before captureError runs.
         let snapshot = buildInterruptionSnapshot()
         SentryBreadcrumb.captureError(
@@ -878,7 +821,6 @@ public final class TranscriptionPipeline: DictationPipeline {
     /// Cancel an active recording immediately without transcribing.
     /// Guards on `.recording` state — safe to call from any other state.
     public func cancelRecording() async {
-        vocabularyBoostingCoordinator?.cancelCurrentUtterance()
         stopRequested = false
         guard state == .recording else { return }
 
@@ -1045,48 +987,6 @@ public final class TranscriptionPipeline: DictationPipeline {
     }
 
     // MARK: - Streaming Finalization
-
-    /// Maximum time to wait for streaming ASR finalization before falling back to batch.
-    private static let streamingFinalizeTimeoutSeconds: Int = 10
-
-    /// Finalize streaming ASR with a timeout.
-    /// Races finalization against a deadline using a task group. Whichever task
-    /// completes first wins; the loser is cancelled. No shared mutable state needed.
-    private func finalizeStreamingWithTimeout(samples: [Float]) async throws -> ASRResult {
-        // Capture the manager reference on @MainActor before entering the task group.
-        // addTask closures are @Sendable and cannot capture @MainActor-isolated self,
-        // so we snapshot what we need here.
-        let timeout = Self.streamingFinalizeTimeoutSeconds
-        let manager = self.asrManager
-
-        // Race finalization against a deadline using Task + sleep.
-        // Cannot use withThrowingTaskGroup because `any ASRManagerInterface` is not
-        // Sendable (Swift 6 existential limitation). Instead, use two unstructured
-        // tasks on @MainActor and race them.
-        var didTimeout = false
-        let timeoutTask = Task { @MainActor in
-            try await Task.sleep(for: .seconds(timeout))
-            didTimeout = true
-        }
-
-        let result: ASRResult
-        do {
-            result = try await manager.finalizeStreaming()
-            timeoutTask.cancel()
-        } catch {
-            timeoutTask.cancel()
-            if didTimeout {
-                throw ASRError.streamingTimeout
-            }
-            throw error
-        }
-
-        if didTimeout {
-            throw ASRError.streamingTimeout
-        }
-
-        return result
-    }
 
     // MARK: - Text Processing
 
