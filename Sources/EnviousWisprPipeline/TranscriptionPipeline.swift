@@ -42,6 +42,9 @@ public final class TranscriptionPipeline: DictationPipeline {
     private let llmPolishStep: LLMPolishStep
     private var textProcessingSteps: [any TextProcessingStep] = []
 
+    /// CTC vocabulary boosting coordinator. Set by AppState after init.
+    public var vocabularyBoostingCoordinator: VocabularyBoostingCoordinator?
+
     /// Access word correction step for configuration.
     public var wordCorrection: WordCorrectionStep { wordCorrectionStep }
     /// Access filler removal step for configuration.
@@ -148,6 +151,9 @@ public final class TranscriptionPipeline: DictationPipeline {
             }
             guard !Task.isCancelled else { return }
         }
+
+        // Sync CTC vocabulary if custom words exist (fire-and-forget, non-blocking)
+        vocabularyBoostingCoordinator?.syncVocabularyIfNeeded()
 
         // Remember the frontmost app and focused text field so we can paste back
         // (LLM polishing can take seconds, during which focus may shift)
@@ -684,6 +690,27 @@ public final class TranscriptionPipeline: DictationPipeline {
             ])
             frozenSnapshot = nil
             state = .complete
+
+            // CTC vocabulary boosting: async rescore after heart result is pasted (limb)
+            if let coordinator = vocabularyBoostingCoordinator {
+                let utteranceID = coordinator.beginUtterance()
+                Task { [samples, result] in
+                    if let ctcResult = await coordinator.rescoreIfEligible(
+                        utteranceID: utteranceID,
+                        audioSamples: samples,
+                        baseResult: result,
+                        language: transcriptionOptions.language ?? "en"
+                    ) {
+                        // v1: log only. v2: safe replacement.
+                        Task {
+                            await AppLogger.shared.log(
+                                "CTC rescore improved text: \"\(ctcResult.text.prefix(80))\"",
+                                level: .info, category: "CTC"
+                            )
+                        }
+                    }
+                }
+            }
         } catch {
             SentryBreadcrumb.captureError(error, category: .asrFailed, stage: "transcription", extra: [
                 "backend": asrManager.activeBackendType.rawValue,

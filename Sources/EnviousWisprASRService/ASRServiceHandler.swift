@@ -229,6 +229,7 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
     // MARK: - Vocabulary Boosting (Parakeet CTC limb)
 
     func requestVocabularyBoostingPreparation(_ configData: Data, reply: @escaping (NSError?) -> Void) {
+        DebugTrace.log("XPC requestVocabularyBoostingPreparation received (\(configData.count) bytes)")
         // Decode config
         let config: VocabularyBoostingConfig
         do {
@@ -248,9 +249,11 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
         }
 
         // Fire-and-forget: spawn prep task, reply immediately
+        DebugTrace.log("XPC prep: decoded \(config.terms.count) terms, rev=\(config.revision)")
         nonisolated(unsafe) let safeReply = reply
         Task { @MainActor in
             await self.parakeetBackend?.requestVocabularyBoostingPreparation(config)
+            DebugTrace.log("XPC prep: forwarded to backend")
             safeReply(nil)
         }
     }
@@ -264,6 +267,7 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
     }
 
     func rescoreWithVocabulary(_ audioData: Data, sampleCount: Int, language: String, reply: @escaping (Data?, NSError?) -> Void) {
+        DebugTrace.log("XPC rescoreWithVocabulary received (\(sampleCount) samples)")
         // Validate input
         guard audioData.count == sampleCount * MemoryLayout<Float>.size else {
             reply(nil, NSError(
@@ -291,9 +295,11 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
                     audioSamples: samples,
                     language: language
                 )
+                DebugTrace.log("XPC rescore: success, text=\"\(result.text.prefix(60))\"")
                 let encoded = try PropertyListEncoder().encode(result)
                 safeReply(encoded, nil)
             } catch {
+                DebugTrace.log("XPC rescore: error=\(error.localizedDescription)")
                 safeReply(nil, error as NSError)
             }
         }

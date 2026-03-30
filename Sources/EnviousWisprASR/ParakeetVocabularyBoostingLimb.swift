@@ -1,9 +1,12 @@
 import EnviousWisprCore
 @preconcurrency import FluidAudio
 import Foundation
+import os.log
 
 // Use our own ASRResult, not FluidAudio's.
 typealias CTCASRResult = EnviousWisprCore.ASRResult
+
+private let ctcLog = Logger(subsystem: "com.enviouswispr", category: "CTC")
 
 /// CTC vocabulary boosting limb for the Parakeet backend.
 ///
@@ -59,6 +62,7 @@ actor ParakeetVocabularyBoostingLimb {
         primaryModels: AsrModels
     ) {
         guard !config.terms.isEmpty else {
+            ctcLog.notice("Prep requested with empty terms, clearing")
             clear()
             return
         }
@@ -71,11 +75,10 @@ actor ParakeetVocabularyBoostingLimb {
         // No-op if already ready or preparing with same key
         switch state {
         case .ready(let currentKey) where currentKey == targetKey:
+            ctcLog.notice("Prep requested but already ready with same key (rev=\(config.revision))")
             return
         case .preparing(let rev, _) where rev == config.revision:
-            // Same revision already preparing. Check if key would match.
-            // Since we can't compute the key cheaply in preparing state,
-            // let it continue. Worst case: redundant prep that no-ops on completion.
+            ctcLog.notice("Prep requested but already preparing same revision (\(rev))")
             return
         default:
             break
@@ -83,23 +86,29 @@ actor ParakeetVocabularyBoostingLimb {
 
         // Cancel any in-flight preparation
         if case .preparing(_, let task) = state {
+            ctcLog.notice("Cancelling in-flight preparation for new config")
             task.cancel()
         }
 
         preparationGeneration += 1
         let generation = preparationGeneration
         let terms = config.terms
+        ctcLog.notice("Prep requested: \(terms.count) terms, rev=\(config.revision), gen=\(generation)")
 
         let task = Task<Void, any Error> { [weak self] in
             guard let self else { return }
 
             do {
                 // Step 1: Download/load CTC models if not cached
+                ctcLog.notice("[gen=\(generation)] Loading CTC resources...")
+                let prepStart = CFAbsoluteTimeGetCurrent()
                 let resources = try await self.ensureCtcResources()
+                ctcLog.notice("[gen=\(generation)] CTC resources loaded in \(String(format: "%.2f", CFAbsoluteTimeGetCurrent() - prepStart))s")
                 try Task.checkCancellation()
 
                 // Step 2: Tokenize all terms
                 let tokenizedTerms = Self.tokenizeTerms(terms, tokenizer: resources.tokenizer)
+                ctcLog.notice("[gen=\(generation)] Tokenized \(tokenizedTerms.count)/\(terms.count) terms")
                 try Task.checkCancellation()
 
                 // Step 3: Build CustomVocabularyContext
@@ -107,6 +116,7 @@ actor ParakeetVocabularyBoostingLimb {
                 try Task.checkCancellation()
 
                 // Step 4: Create or reuse AsrManager, configure CTC
+                ctcLog.notice("[gen=\(generation)] Configuring CTC on AsrManager...")
                 try await self.configureCtcManager(
                     primaryModels: primaryModels,
                     vocabulary: vocab,
@@ -114,10 +124,13 @@ actor ParakeetVocabularyBoostingLimb {
                     generation: generation,
                     targetKey: targetKey
                 )
+                let totalPrep = CFAbsoluteTimeGetCurrent() - prepStart
+                ctcLog.notice("[gen=\(generation)] Prep complete in \(String(format: "%.2f", totalPrep))s")
             } catch is CancellationError {
-                // Cancelled by newer request, don't update state
+                ctcLog.notice("[gen=\(generation)] Prep cancelled (superseded)")
                 return
             } catch {
+                ctcLog.error("[gen=\(generation)] Prep failed: \(error.localizedDescription)")
                 await self.handlePreparationFailure(
                     generation: generation,
                     revision: config.revision,
@@ -132,6 +145,7 @@ actor ParakeetVocabularyBoostingLimb {
     /// Clear all CTC state and free resources.
     func clear() {
         if case .preparing(_, let task) = state {
+            ctcLog.notice("Clear: cancelling in-flight preparation")
             task.cancel()
         }
         ctcAsrManager?.cleanup()
@@ -139,6 +153,7 @@ actor ParakeetVocabularyBoostingLimb {
         // Keep ctcResources cached (models + tokenizer are expensive to reload).
         // They'll be reused if vocab is re-configured.
         state = .idle
+        ctcLog.notice("Clear: state reset to idle, manager freed")
     }
 
     /// Rescore audio samples using CTC-configured manager.
@@ -149,20 +164,35 @@ actor ParakeetVocabularyBoostingLimb {
     ) async throws -> CTCASRResult {
         guard case .ready = state else {
             if case .preparing = state {
+                ctcLog.warning("Rescore rejected: still preparing")
                 throw ASRError.vocabularyBoostingNotReady
             }
+            ctcLog.warning("Rescore rejected: not configured")
             throw ASRError.vocabularyBoostingNotConfigured
         }
 
         guard let manager = ctcAsrManager else {
+            ctcLog.error("Rescore rejected: manager nil despite ready state")
             throw ASRError.vocabularyBoostingNotConfigured
         }
+
+        let sampleCount = audioSamples.count
+        let audioDuration = Double(sampleCount) / 16000.0
+        ctcLog.notice("Rescore starting: \(sampleCount) samples (\(String(format: "%.1f", audioDuration))s audio)")
 
         let startTime = CFAbsoluteTimeGetCurrent()
         let fluidResult = try await mutex.run { [manager] in
             try await manager.transcribe(audioSamples, source: .microphone)
         }
         let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+
+        ctcLog.notice("Rescore complete in \(String(format: "%.3f", elapsed))s: \"\(fluidResult.text.prefix(80))\"")
+        if let detected = fluidResult.ctcDetectedTerms, !detected.isEmpty {
+            ctcLog.notice("CTC detected: \(detected.joined(separator: ", "))")
+        }
+        if let applied = fluidResult.ctcAppliedTerms, !applied.isEmpty {
+            ctcLog.notice("CTC applied: \(applied.joined(separator: ", "))")
+        }
 
         return CTCASRResult(
             text: fluidResult.text,
@@ -241,9 +271,13 @@ actor ParakeetVocabularyBoostingLimb {
         }
 
         // Generation check: only commit if we're still the current request
-        guard generation == preparationGeneration else { return }
+        guard generation == preparationGeneration else {
+            ctcLog.notice("[gen=\(generation)] Discarding: superseded by gen=\(self.preparationGeneration)")
+            return
+        }
 
         state = .ready(key: targetKey)
+        ctcLog.notice("[gen=\(generation)] State -> ready (rev=\(targetKey.revision))")
     }
 
     /// Handle preparation failure with state update.
