@@ -65,9 +65,6 @@ public enum ASRError: LocalizedError, Sendable {
     case streamingNotSupported
     case streamingTimeout
     case transcriptionFailed(String)
-    case vocabularyBoostingNotReady
-    case vocabularyBoostingNotConfigured
-    case vocabularyBoostingUnsupported
 
     public var errorDescription: String? {
         switch self {
@@ -75,9 +72,6 @@ public enum ASRError: LocalizedError, Sendable {
         case .streamingNotSupported: return "This ASR backend does not support streaming transcription."
         case .streamingTimeout: return "Streaming ASR finalization timed out."
         case .transcriptionFailed(let message): return "Transcription failed: \(message)"
-        case .vocabularyBoostingNotReady: return "Vocabulary boosting preparation not complete."
-        case .vocabularyBoostingNotConfigured: return "No vocabulary configured for boosting."
-        case .vocabularyBoostingUnsupported: return "Vocabulary boosting not supported on this backend."
         }
     }
 }

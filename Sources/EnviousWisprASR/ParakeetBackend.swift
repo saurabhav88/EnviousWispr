@@ -18,7 +18,7 @@ public actor ParakeetBackend: ASRBackend {
     private var fluidModels: AsrModels?
 
     // Streaming ASR state
-    private var streamingManager: StreamingAsrManager?
+    private var streamingManager: SlidingWindowAsrManager?
     private var streamingStartTime: CFAbsoluteTime = 0
 
     public var supportsStreaming: Bool { true }
@@ -132,8 +132,8 @@ public actor ParakeetBackend: ASRBackend {
             streamingManager = nil
         }
 
-        let config = StreamingAsrConfig.streaming
-        let manager = StreamingAsrManager(config: config)
+        let config = SlidingWindowAsrConfig.streaming
+        let manager = SlidingWindowAsrManager(config: config)
         try await manager.start(models: models, source: .microphone)
         self.streamingManager = manager
         self.streamingStartTime = CFAbsoluteTimeGetCurrent()
@@ -177,50 +177,9 @@ public actor ParakeetBackend: ASRBackend {
             await streaming.cancel()
             streamingManager = nil
         }
-        await vocabularyBoostingLimb?.clear()
-        vocabularyBoostingLimb = nil
-        fluidAsrManager?.cleanup()
+        await fluidAsrManager?.cleanup()
         fluidAsrManager = nil
         fluidModels = nil
         isReady = false
-    }
-
-    // MARK: - Vocabulary Boosting (CTC limb)
-
-    private var vocabularyBoostingLimb: ParakeetVocabularyBoostingLimb?
-
-    /// Fire-and-forget: enqueues CTC preparation in background.
-    public func requestVocabularyBoostingPreparation(_ config: VocabularyBoostingConfig) async {
-        guard isReady, let models = fluidModels else { return }
-
-        if config.terms.isEmpty {
-            await clearVocabularyBoosting()
-            return
-        }
-
-        if vocabularyBoostingLimb == nil {
-            vocabularyBoostingLimb = ParakeetVocabularyBoostingLimb()
-        }
-
-        await vocabularyBoostingLimb?.requestPreparation(
-            config: config,
-            primaryModels: models
-        )
-    }
-
-    /// Clear CTC vocabulary boosting and free resources.
-    public func clearVocabularyBoosting() async {
-        await vocabularyBoostingLimb?.clear()
-    }
-
-    /// Rescore audio with CTC vocabulary boosting. Fails fast if not ready.
-    public func rescoreWithVocabulary(
-        audioSamples: [Float],
-        language: String
-    ) async throws -> ASRResult {
-        guard let limb = vocabularyBoostingLimb else {
-            throw ASRError.vocabularyBoostingNotConfigured
-        }
-        return try await limb.rescore(audioSamples: audioSamples, language: language)
     }
 }

@@ -110,11 +110,6 @@ final class AppState {
         )
         settingsSync.applyInitialSettings(settings, customWords: customWordsCoordinator.customWords)
 
-        // Wire CTC vocabulary boosting coordinator (Parakeet-only, requires ASRManagerProxy)
-        if let proxy = asrManager as? ASRManagerProxy {
-            pipeline.vocabularyBoostingCoordinator = VocabularyBoostingCoordinator(asrProxy: proxy)
-        }
-
         // Unified engine interruption handler — routes to whichever pipeline is actively recording.
         // Both pipelines share the same audioCapture instance. When the audio engine/XPC service
         // is interrupted, we must notify the pipeline that's currently recording, not the one

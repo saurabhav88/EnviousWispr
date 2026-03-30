@@ -573,70 +573,17 @@ Clean. No circular dependencies. No upward imports.
 4. **Vocabulary normalization policy:** Case folding, phrase length caps, max vocab size, dangerous single-letter terms. Define before user-facing ship.
 5. **Concurrent vs serialized inference:** Default serialized. Test concurrent on macOS. Gate behind execution policy enum.
 
-## Phase 4B Exit Criteria (GPT-validated, ALL must pass before Phase 5)
+## Definition of Done
 
-### Engineering Hardening (7 items, order: 7 -> 1 -> 2+3 -> 4 -> 5 -> 6)
-
-**Item 7: DebugTrace release guard**
-- [ ] `DebugTrace.log()` body compiled only under `#if DEBUG`
-- [ ] Message parameter is `@autoclosure` (no string construction in release)
-- [ ] Release build writes no `/tmp` debug file
-- [ ] No raw transcript text persisted anywhere in release
-
-**Item 1: Content-based revision**
-- [ ] Revision derived from content hash, not call count
-- [ ] Two consecutive syncs with identical vocab = prep sent once
-- [ ] Adding/removing/changing alias = new prep triggered
-- [ ] Reordering terms = no new prep
-
-**Items 2+3: Utterance tracking + Backpressure**
-- [ ] Coordinator owns active rescore Task
-- [ ] `cancelCurrentUtterance()` wired to both `cancelRecording()` and `startRecording()`
-- [ ] Max 1 concurrent rescore by policy
-- [ ] Starting recording B cancels A's in-flight rescore
-- [ ] Stale utterance ID = result ignored (identity check, not just cancellation)
-- [ ] 5 rapid recordings = only last rescore active, no crash, no stale apply
-
-**Item 4: Acceptance gate improvements**
-- [ ] Multi-token terms accepted: "This code" -> "VS Code" = ACCEPT
-- [ ] Compound merges accepted: "chat GPT" -> "ChatGPT" = ACCEPT
-- [ ] Casing canonicalization accepted: "code" -> "Code" (when matches vocab) = ACCEPT
-- [ ] Existing confusers still rejected: "Open the" -> "OpenAI" = REJECT
-- [ ] Existing confusers still rejected: "I use" -> "IOS" = REJECT
-
-**Item 5: Test set (30-50 cases)**
-- [ ] Categories: corrections, confirmations, confusers, short, multi-term, broad rewrites, no-vocab, casing, split/merge
-- [ ] Every test has: heart text, CTC text, active vocab, expected decision, expected reason
-- [ ] `swift build --build-tests` passes
-- [ ] Zero failures across 3 repeated runs
-
-**Item 6: Lifecycle/failure testing**
-- [ ] Vocab change during prep: old cancelled, new proceeds, old cannot publish .ready
-- [ ] Clear during prep: state returns to idle
-- [ ] Rescore during prep: .notReady returned
-- [ ] Rapid PTT: no crash, no stale data, heart path works
-- [ ] XPC crash: error propagates cleanly, app usable after, next request succeeds
-
-### Final Shipping Gate (live evaluation, run AFTER all 7 items pass)
-- [ ] 30-50 spoken utterances evaluated (confuser-heavy)
-- [ ] **0 accepted false positives** on confuser set
-- [ ] **0 stale applies** across rapid multi-utterance testing
-- [ ] **0 accepted broad rewrites** that alter non-vocab meaning
-- [ ] No heart-path regression in repeated use
-- [ ] Release build has no transcript debug leak
-- [ ] Precision: 100% on accepted corrections
-- [ ] Recall: >=50% on genuine corrections (conservative acceptable for v1)
-- [ ] 20-50 rapid utterances: no memory/task growth, no heart-path slowdown
-
-## Definition of Done (overall CTC feature)
-
-- [ ] Phase 4B exit criteria ALL passed
 - [ ] CTC rescore works end-to-end: prep + rescore over XPC
 - [ ] Heart path unaffected in all modes (streaming and batch)
-- [ ] CTC model downloads lazily
+- [ ] CTC model downloads lazily, with progress indicator
 - [ ] Preparation is fire-and-forget, rescore fails fast if not ready
-- [ ] All CTC manager operations serialized via mutex
+- [ ] All CTC manager operations serialized via gate
 - [ ] Timeout + fallback to heart result on any CTC failure
 - [ ] Utterance identity validated on rescore results
 - [ ] No changes to WhisperKit pipeline
+- [ ] TranscriptionPipeline grows by < 20 lines
+- [ ] Telemetry for all CTC operations (prep, rescore, acceptance)
 - [ ] Architecture DoD checklist passes
+- [ ] Calibration data collected (ew-8a4.3) before enabling visible corrections
