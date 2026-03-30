@@ -158,51 +158,69 @@ enum CTCAcceptanceGate {
     // MARK: - Vocab Term Detection
 
     /// Find vocabulary terms in or adjacent to changed spans.
-    /// Checks: span text, individual tokens, and a context window around each span.
+    /// Only counts a term as "corrected" if the heart text at that span is plausibly
+    /// a mangled version of the term (similarity check). This prevents hallucinations
+    /// like "Open" -> "OpenAI" from being accepted just because OpenAI is in the vocab.
     private static func findVocabTermsInChanges(
         diff: DiffResult,
         ctcTokens: [String],
         vocabularyTerms: [String]
     ) -> [String] {
         var found: [String] = []
-        let lowerVocab = Set(vocabularyTerms.map { $0.lowercased() })
 
         for span in diff.spans {
+            let heartJoined = span.heartTokens.joined(separator: " ")
+            let ctcJoined = span.ctcTokens.joined(separator: " ")
+
             // Build a context window: span tokens + 1 adjacent token on each side
             let windowStart = max(0, span.ctcRange.lowerBound - 1)
             let windowEnd = min(ctcTokens.count, span.ctcRange.upperBound + 1)
             let windowTokens = Array(ctcTokens[windowStart..<windowEnd])
             let windowText = windowTokens.joined(separator: " ").lowercased()
 
-            // Check multi-token terms against the window
             for term in vocabularyTerms {
                 let lowerTerm = term.lowercased()
-                if windowText.contains(lowerTerm) {
-                    if !found.contains(where: { $0.lowercased() == lowerTerm }) {
-                        found.append(term)
-                    }
-                }
-            }
+                let termInCTC = windowText.contains(lowerTerm)
+                    || ctcJoined.lowercased().contains(lowerTerm)
+                    || span.ctcTokens.joined().lowercased().contains(lowerTerm)
 
-            // Check individual CTC span tokens
-            for token in span.ctcTokens {
-                let stripped = stripPunctuation(token).lowercased()
-                if lowerVocab.contains(stripped) {
-                    if !found.contains(where: { $0.lowercased() == stripped }) {
-                        found.append(token)
-                    }
-                }
-            }
+                guard termInCTC else { continue }
+                guard !found.contains(where: { $0.lowercased() == lowerTerm }) else { continue }
 
-            // Check concatenated span tokens (handles compound merges like ChatGPT)
-            let concatenated = span.ctcTokens.joined().lowercased()
-            for term in vocabularyTerms {
-                let lowerTerm = term.lowercased()
-                if concatenated == lowerTerm || concatenated.contains(lowerTerm) {
-                    if !found.contains(where: { $0.lowercased() == lowerTerm }) {
-                        found.append(term)
+                // Anti-hallucination check: prevent CTC from inserting vocab terms
+                // that weren't spoken. Checks both single-token and merge cases.
+                //
+                // Pattern: heart text is a prefix/subset of the vocab term, meaning
+                // CTC "extended" a common word into a vocab term.
+                // "Open" -> "OpenAI", "I" -> "iOS", "Open the" -> "OpenAI"
+                let heartNorm = stripPunctuation(heartJoined).lowercased()
+                let ctcNorm = stripPunctuation(ctcJoined).lowercased()
+
+                // Also check with spaces removed (handles "Open the" -> "OpenAI")
+                let heartCompact = heartNorm.replacingOccurrences(of: " ", with: "")
+                let ctcCompact = ctcNorm.replacingOccurrences(of: " ", with: "")
+
+                // Prefix hallucination: any heart token is a prefix of the CTC term
+                let isPrefix = ctcCompact.hasPrefix(heartCompact) && heartCompact.count < ctcCompact.count
+                // Also check if first heart token alone is a prefix
+                let firstHeartToken = stripPunctuation(span.heartTokens.first ?? "").lowercased()
+                let firstTokenIsPrefix = !firstHeartToken.isEmpty
+                    && ctcCompact.hasPrefix(firstHeartToken)
+                    && firstHeartToken.count < ctcCompact.count
+                    && firstHeartToken.count <= 5
+
+                if isPrefix || firstTokenIsPrefix {
+                    // Heart text is a prefix of what CTC produced.
+                    // This is the hallucination pattern. Skip unless the
+                    // similarity is very high (>0.85), indicating a genuine
+                    // near-match, not an extension.
+                    let sim = stringSimilarity(heartCompact, ctcCompact)
+                    if sim < 0.85 {
+                        continue
                     }
                 }
+
+                found.append(term)
             }
         }
 
@@ -375,6 +393,36 @@ enum CTCAcceptanceGate {
         let start = max(0, index - size / 2)
         let end = min(tokens.count, index + size / 2 + 1)
         return tokens[start..<end].joined(separator: " ")
+    }
+
+    // MARK: - String Similarity
+
+    /// Normalized Levenshtein similarity: 1.0 = identical, 0.0 = completely different.
+    private static func stringSimilarity(_ a: String, _ b: String) -> Double {
+        guard !a.isEmpty || !b.isEmpty else { return 1.0 }
+        let maxLen = max(a.count, b.count)
+        let dist = levenshteinDistance(Array(a), Array(b))
+        return 1.0 - Double(dist) / Double(maxLen)
+    }
+
+    /// Standard Levenshtein edit distance.
+    private static func levenshteinDistance(_ a: [Character], _ b: [Character]) -> Int {
+        if a.isEmpty { return b.count }
+        if b.isEmpty { return a.count }
+        var prev = Array(0...b.count)
+        var curr = [Int](repeating: 0, count: b.count + 1)
+        for i in 1...a.count {
+            curr[0] = i
+            for j in 1...b.count {
+                if a[i - 1] == b[j - 1] {
+                    curr[j] = prev[j - 1]
+                } else {
+                    curr[j] = min(prev[j - 1], prev[j], curr[j - 1]) + 1
+                }
+            }
+            prev = curr
+        }
+        return prev[b.count]
     }
 
     // MARK: - Helpers
