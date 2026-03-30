@@ -18,7 +18,7 @@ public actor ParakeetBackend: ASRBackend {
     private var fluidModels: AsrModels?
 
     // Streaming ASR state
-    private var streamingManager: StreamingAsrManager?
+    private var streamingManager: SlidingWindowAsrManager?
     private var streamingStartTime: CFAbsoluteTime = 0
 
     public var supportsStreaming: Bool { true }
@@ -132,8 +132,8 @@ public actor ParakeetBackend: ASRBackend {
             streamingManager = nil
         }
 
-        let config = StreamingAsrConfig.streaming
-        let manager = StreamingAsrManager(config: config)
+        let config = SlidingWindowAsrConfig.streaming
+        let manager = SlidingWindowAsrManager(config: config)
         try await manager.start(models: models, source: .microphone)
         self.streamingManager = manager
         self.streamingStartTime = CFAbsoluteTimeGetCurrent()
@@ -177,7 +177,7 @@ public actor ParakeetBackend: ASRBackend {
             await streaming.cancel()
             streamingManager = nil
         }
-        fluidAsrManager?.cleanup()
+        await fluidAsrManager?.cleanup()
         fluidAsrManager = nil
         fluidModels = nil
         isReady = false
