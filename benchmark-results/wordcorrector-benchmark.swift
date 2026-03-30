@@ -475,10 +475,10 @@ func correctV2(_ text: String, against words: [CustomWord]) -> String {
                         for (alias, canonical) in candidates {
                             let s = compositeScore(phrase, against: alias)
                             if s > bestScore {
-                                secondBest = bestScore
+                                if bestCanonical != canonical { secondBest = bestScore }
                                 bestScore = s
                                 bestCanonical = canonical
-                            } else if s > secondBest {
+                            } else if s > secondBest && canonical != bestCanonical {
                                 secondBest = s
                             }
                         }
@@ -531,10 +531,10 @@ func correctV2(_ text: String, against words: [CustomWord]) -> String {
 
             let s = compositeScore(coreLower, against: surface)
             if s > bestScore {
-                secondBest = bestScore
+                if bestMatch != canonical { secondBest = bestScore }
                 bestScore = s
                 bestMatch = canonical
-            } else if s > secondBest {
+            } else if s > secondBest && canonical != bestMatch {
                 secondBest = s
             }
         }
@@ -576,4 +576,4 @@ func correctV2(_ text: String, against words: [CustomWord]) -> String {
     return corrected.joined(separator: " ")
 }
 
-runBenchmark(name: "V2 (new code)", corrector: correctV2)
+runBenchmark(name: "V2 + AMBIGUITY FIX", corrector: correctV2)

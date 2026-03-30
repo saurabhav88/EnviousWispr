@@ -132,11 +132,11 @@ public struct WordCorrector: Sendable {
                             for (alias, canonical) in candidates {
                                 let s = score(phrase, against: alias)
                                 if s > bestScore {
-                                    secondBest = bestScore
+                                    if bestCanonical != canonical { secondBest = bestScore }
                                     bestScore = s
                                     bestCanonical = canonical
                                     bestAlias = alias
-                                } else if s > secondBest {
+                                } else if s > secondBest && canonical != bestCanonical {
                                     secondBest = s
                                 }
                             }
@@ -197,10 +197,10 @@ public struct WordCorrector: Sendable {
 
                 let s = score(coreLower, against: surface)
                 if s > bestScore {
-                    secondBest = bestScore
+                    if bestMatch != canonical { secondBest = bestScore }
                     bestScore = s
                     bestMatch = canonical
-                } else if s > secondBest {
+                } else if s > secondBest && canonical != bestMatch {
                     secondBest = s
                 }
             }
