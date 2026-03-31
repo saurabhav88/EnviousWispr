@@ -111,15 +111,15 @@ public struct WordCorrector: Sendable {
         }
 
         // Pass 0: N-gram compound matching
-        // Concatenate 1-3 adjacent words (stripped of punctuation, lowercased, spaces removed)
+        // Concatenate 1-4 adjacent words (stripped of punctuation, lowercased, spaces removed)
         // and check against nospace canonical/alias map.
-        // "Chat G P T" -> "chatgpt" matches "ChatGPT"
+        // "Chat G P T" (4 tokens) -> "chatgpt" matches "ChatGPT"
         if !nospaceCanonicalMap.isEmpty {
             var i = 0
             while i < tokens.count {
                 var matched = false
 
-                for n in (1...min(3, tokens.count - i)).reversed() {
+                for n in (1...min(4, tokens.count - i)).reversed() {
                     let slice = tokens[i..<(i + n)]
                     let ngram = slice
                         .map { stripPunctuation($0).lowercased() }

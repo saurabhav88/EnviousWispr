@@ -43,4 +43,10 @@ public protocol ASRManagerInterface: AnyObject {
     // Crash notification — fires when XPC ASR service dies during an active session.
     // Wired by AppState to route to the active pipeline (same pattern as AudioCaptureProxy.onEngineInterrupted).
     var onServiceInterrupted: (() -> Void)? { get set }
+
+    // CTC vocabulary boosting (Parakeet limb)
+    var isVocabularyBoostingReady: Bool { get }
+    func prepareVocabularyBoosting(_ config: VocabularyBoostingConfig) async
+    func clearVocabularyBoosting() async
+    func rescoreWithVocabulary(audioSamples: [Float], language: String) async -> ASRResult?
 }

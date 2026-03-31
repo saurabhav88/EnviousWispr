@@ -36,8 +36,8 @@ public enum AudioConstants {
     /// Audio channels for recording (mono).
     public static let channels: Int = 1
 
-    /// Audio buffer size for capture tap (256ms at 16kHz).
-    public static let captureBufferSize: Int = 4096
+    /// Audio buffer size for capture tap (128ms at 16kHz).
+    public static let captureBufferSize: Int = 2048
 
     /// Minimum samples required for valid transcription (1 second).
     public static let minimumTranscriptionSamples: Int = 16000

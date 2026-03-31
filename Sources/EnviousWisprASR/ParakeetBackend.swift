@@ -21,6 +21,9 @@ public actor ParakeetBackend: ASRBackend {
     private var streamingManager: SlidingWindowAsrManager?
     private var streamingStartTime: CFAbsoluteTime = 0
 
+    // CTC vocabulary boosting limb (lazy, created on first prep request)
+    private var vocabularyBoostingLimb: ParakeetVocabularyBoostingLimb?
+
     public var supportsStreaming: Bool { true }
 
     public init() {}
@@ -177,9 +180,51 @@ public actor ParakeetBackend: ASRBackend {
             await streaming.cancel()
             streamingManager = nil
         }
+        if let limb = vocabularyBoostingLimb {
+            await limb.clear()
+            vocabularyBoostingLimb = nil
+        }
         await fluidAsrManager?.cleanup()
         fluidAsrManager = nil
         fluidModels = nil
         isReady = false
+    }
+
+    // MARK: - CTC Vocabulary Boosting (Limb)
+
+    /// Fire-and-forget: prepare CTC vocabulary boosting with the given config.
+    /// Creates the limb lazily on first call. No-ops if already ready with same config.
+    public func prepareVocabularyBoosting(_ config: VocabularyBoostingConfig) async {
+        guard isReady, let models = fluidModels else { return }
+
+        if vocabularyBoostingLimb == nil {
+            vocabularyBoostingLimb = ParakeetVocabularyBoostingLimb()
+        }
+        await vocabularyBoostingLimb!.requestPreparation(config: config, primaryModels: models)
+    }
+
+    /// Clear CTC vocabulary configuration and free CTC resources.
+    public func clearVocabularyBoosting() async {
+        await vocabularyBoostingLimb?.clear()
+    }
+
+    /// Re-transcribe audio through the CTC-boosted manager.
+    /// Returns nil if CTC is not ready or on any failure.
+    public func rescoreWithVocabulary(audioSamples: [Float], language: String) async -> ASRResult? {
+        guard let limb = vocabularyBoostingLimb else { return nil }
+
+        let startTime = CFAbsoluteTimeGetCurrent()
+        guard let text = await limb.rescore(audioSamples: audioSamples, language: language) else {
+            return nil
+        }
+        let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+
+        return ASRResult(
+            text: text,
+            language: language,
+            duration: 0,
+            processingTime: elapsed,
+            backendType: .parakeet
+        )
     }
 }

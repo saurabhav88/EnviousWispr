@@ -1,12 +1,13 @@
 {
-  "originHash" : "94d3683633a7d46753f342e9f3a88aa4b34f5ee59ddd23f33784d978e46073e5",
+  "originHash" : "dd5b4dbe9936745d5301fc8796844af5b53b406b252774be1ab58576358da707",
   "pins" : [
     {
       "identity" : "fluidaudio",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/saurabhav88/FluidAudio.git",
       "state" : {
-        "revision" : "ab05466c6f0a52fd4f2a5acc94eabed9194a9f95"
+        "branch" : "35a1df1",
+        "revision" : "35a1df1efde4ad4e9aa7e8fdb94e385da2cb37b7"
       }
     },
     {

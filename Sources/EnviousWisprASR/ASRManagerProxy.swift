@@ -261,6 +261,85 @@ public final class ASRManagerProxy: ASRManagerInterface {
         }
     }
 
+    // MARK: - CTC Vocabulary Boosting
+
+    /// Tracks whether vocabulary boosting has been prepared (app-side best-effort).
+    /// True after a successful prep call, false after clear or XPC crash.
+    private var vocabularyBoostingPrepared = false
+
+    public var isVocabularyBoostingReady: Bool { vocabularyBoostingPrepared }
+
+    public func prepareVocabularyBoosting(_ config: VocabularyBoostingConfig) async {
+        guard let configData = try? PropertyListEncoder().encode(config) else {
+            Task { await AppLogger.shared.log(
+                "[CTC] Failed to encode VocabularyBoostingConfig", level: .info, category: "CTC"
+            ) }
+            return
+        }
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            serviceProxy { proxy in
+                proxy.prepareVocabularyBoosting(configData) { [weak self] error in
+                    if let error {
+                        Task { await AppLogger.shared.log(
+                            "[CTC] prepareVocabularyBoosting failed: \(error.localizedDescription)",
+                            level: .info, category: "CTC"
+                        ) }
+                    } else {
+                        self?.vocabularyBoostingPrepared = true
+                    }
+                    cont.resume()
+                }
+            } onProxyError: {
+                Task { await AppLogger.shared.log(
+                    "[CTC] prepareVocabularyBoosting: XPC service unreachable", level: .info, category: "CTC"
+                ) }
+                cont.resume()
+            }
+        }
+    }
+
+    public func clearVocabularyBoosting() async {
+        vocabularyBoostingPrepared = false
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            serviceProxy { proxy in
+                proxy.clearVocabularyBoosting {
+                    cont.resume()
+                }
+            } onProxyError: {
+                cont.resume()
+            }
+        }
+    }
+
+    public func rescoreWithVocabulary(audioSamples: [Float], language: String) async -> ASRResult? {
+        let data = audioSamples.withUnsafeBytes { Data($0) }
+
+        let result: (Data?, NSError?) = await withCheckedContinuation { (cont: CheckedContinuation<(Data?, NSError?), Never>) in
+            serviceProxy { proxy in
+                proxy.rescoreWithVocabulary(data, sampleCount: audioSamples.count, language: language) { resultData, error in
+                    cont.resume(returning: (resultData, error))
+                }
+            } onProxyError: {
+                Task { await AppLogger.shared.log(
+                    "[CTC] rescoreWithVocabulary: XPC service unreachable", level: .info, category: "CTC"
+                ) }
+                cont.resume(returning: (nil, nil))
+            }
+        }
+
+        if let error = result.1 {
+            Task { await AppLogger.shared.log(
+                "[CTC] rescoreWithVocabulary failed: \(error.localizedDescription)", level: .info, category: "CTC"
+            ) }
+            return nil
+        }
+        guard let resultData = result.0,
+              let decoded = try? PropertyListDecoder().decode(ASRResult.self, from: resultData) else {
+            return nil
+        }
+        return decoded
+    }
+
     // MARK: - XPC Connection
 
     private func ensureConnection() {
@@ -320,6 +399,7 @@ public final class ASRManagerProxy: ASRManagerInterface {
                 if proxy.isModelLoaded {
                     proxy.isModelLoaded = false
                     proxy.isStreaming = false
+                    proxy.vocabularyBoostingPrepared = false
                 }
                 proxy.needsReinit = true
                 await AppLogger.shared.log(

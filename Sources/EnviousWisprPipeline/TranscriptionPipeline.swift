@@ -149,6 +149,11 @@ public final class TranscriptionPipeline: DictationPipeline {
             guard !Task.isCancelled else { return }
         }
 
+        // Fire-and-forget: sync CTC vocabulary config to ASR service.
+        // Runs in background; CTC prep may still be in progress when recording starts.
+        // If not ready by rescore time, limb returns nil and heart result is used.
+        syncVocabularyBoostingIfNeeded()
+
         // Remember the frontmost app and focused text field so we can paste back
         // (LLM polishing can take seconds, during which focus may shift)
         targetApp = NSWorkspace.shared.frontmostApplication
@@ -421,6 +426,9 @@ public final class TranscriptionPipeline: DictationPipeline {
             samples = rawSamples
         }
 
+        // Capture real speech length before padding (used for streaming fallback decision).
+        let prePaddingSampleCount = samples.count
+
         // Pad short recordings with silence so single-word inputs ("hey", "hi") work.
         if samples.count > 0 && samples.count < minimumSamples {
             samples.append(contentsOf: [Float](repeating: 0, count: minimumSamples - samples.count))
@@ -438,11 +446,19 @@ public final class TranscriptionPipeline: DictationPipeline {
             // Use streaming finalize when available for lowest latency.
             // FluidAudio fork uses fresh decoder state per chunk + chunk-aware text assembly
             // to eliminate the ~12% text loss that affected upstream SlidingWindowAsrManager.
-            // Falls back to batch transcription when streaming was not active.
+            // Falls back to batch transcription when streaming was not active or audio is too short.
+            //
+            // Short-audio fallback: streaming mode has no minimum-duration safeguard
+            // (the padding at line 430 only applies to the batch samples variable).
+            // Sub-1s streaming produces hallucinations ("testing four" -> "testing for the U.S.").
+            // Cancel streaming and use the padded batch path instead.
             let result: ASRResult
-            if wasStreaming {
+            if wasStreaming, prePaddingSampleCount >= minimumSamples {
                 result = try await asrManager.finalizeStreaming()
             } else {
+                if wasStreaming {
+                    await asrManager.cancelStreaming()
+                }
                 result = try await asrManager.transcribe(audioSamples: samples, options: transcriptionOptions)
             }
 
@@ -477,11 +493,32 @@ public final class TranscriptionPipeline: DictationPipeline {
                 level: .info, category: "PipelineTiming"
             ) }
 
+            // CTC vocabulary boosting limb: re-transcribe with CTC-boosted manager.
+            // Only attempt if vocabulary boosting is prepared (avoids sending the full
+            // audio buffer over XPC when there's nothing to rescore).
+            // Limb: returns nil on any failure, heart result is always the fallback.
+            var effectiveAsrText = asrText
+            if asrManager.isVocabularyBoostingReady,
+               let ctcResult = await asrManager.rescoreWithVocabulary(
+                audioSamples: samples,
+                language: result.language ?? "en"
+            ) {
+                let ctcText = ctcResult.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !ctcText.isEmpty {
+                    Task { await AppLogger.shared.log(
+                        "CTC rescore changed text (\(String(format: "%.3f", ctcResult.processingTime))s): " +
+                        "[\(asrText.prefix(60))] -> [\(ctcText.prefix(60))]",
+                        level: .info, category: "CTC"
+                    ) }
+                    effectiveAsrText = ctcText
+                }
+            }
+
             // Run pluggable text processing steps (word correction, LLM polish, etc.)
             let polishStart = CFAbsoluteTimeGetCurrent()
             var context: TextProcessingContext
             do {
-                context = try await runTextProcessing(asrText: asrText, language: result.language)
+                context = try await runTextProcessing(asrText: effectiveAsrText, language: result.language)
             } catch {
                 SentryBreadcrumb.captureError(error, category: .generationFailed, stage: "polish", extra: [
                     "provider": llmPolishStep.llmProvider.rawValue,
@@ -501,7 +538,7 @@ public final class TranscriptionPipeline: DictationPipeline {
                     level: .info, category: "Pipeline"
                 ) }
                 lastPolishError = error.localizedDescription
-                context = TextProcessingContext(text: asrText, originalASRText: asrText, language: result.language)
+                context = TextProcessingContext(text: effectiveAsrText, originalASRText: effectiveAsrText, language: result.language)
                 context.targetAppBundleID = targetApp?.bundleIdentifier
                 context.targetAppName = targetApp?.localizedName
             }
@@ -991,6 +1028,39 @@ public final class TranscriptionPipeline: DictationPipeline {
 
     // MARK: - Text Processing
 
+    /// Sync current custom words to CTC vocabulary boosting in the ASR service.
+    /// Fire-and-forget: CTC prep runs in background. If not ready by rescore time,
+    /// the limb returns nil and heart result is used unchanged.
+    private func syncVocabularyBoostingIfNeeded() {
+        guard asrManager.activeBackendType == .parakeet else { return }
+
+        let words = wordCorrectionStep.customWords
+
+        // Filter to CTC-safe terms only: rare proper nouns with low confuser risk.
+        // Common English words with acoustic collisions (cloud/Claude, counsel/Council)
+        // stay on the WordCorrector + LLM hints path.
+        let safeTerms = words.compactMap { word -> VocabularyBoostingConfig.Term? in
+            guard word.isCTCSafe else { return nil }
+            return VocabularyBoostingConfig.Term(
+                canonical: word.canonical,
+                aliases: word.aliases
+            )
+        }
+
+        // Clear stale boosting when no safe terms remain (covers both
+        // "all words deleted" and "only CTC-unsafe words left" paths).
+        guard !safeTerms.isEmpty else {
+            Task { await asrManager.clearVocabularyBoosting() }
+            return
+        }
+
+        let config = VocabularyBoostingConfig(
+            terms: safeTerms,
+            revision: safeTerms.count // Simple revision; content hash handles change detection
+        )
+        Task { await asrManager.prepareVocabularyBoosting(config) }
+    }
+
     private func runTextProcessing(asrText: String, language: String?) async throws -> TextProcessingContext {
         var context = TextProcessingContext(
             text: asrText,
@@ -1002,7 +1072,7 @@ public final class TranscriptionPipeline: DictationPipeline {
         Task {
             await AppLogger.shared.log(
                 "CORRECTION_DEBUG [RAW ASR] \(asrText)",
-                level: .info, category: "CorrectionDebug"
+                level: .verbose, category: "CorrectionDebug"
             )
         }
         for step in textProcessingSteps where step.isEnabled {
@@ -1027,20 +1097,20 @@ public final class TranscriptionPipeline: DictationPipeline {
                         "\(stepName) completed in \(String(format: "%.1f", stepMs))ms (budget: \(String(format: "%.0f", budgetSeconds * 1000))ms)",
                         level: .info, category: "PipelineTiming"
                     )
-                    // Debug: log text at each correction layer
+                    // Debug: log text at each correction layer (verbose: contains user content)
                     if changed {
                         await AppLogger.shared.log(
                             "CORRECTION_DEBUG [\(stepName)] IN:  \(inputText)",
-                            level: .info, category: "CorrectionDebug"
+                            level: .verbose, category: "CorrectionDebug"
                         )
                         await AppLogger.shared.log(
                             "CORRECTION_DEBUG [\(stepName)] OUT: \(outputText)",
-                            level: .info, category: "CorrectionDebug"
+                            level: .verbose, category: "CorrectionDebug"
                         )
                     } else {
                         await AppLogger.shared.log(
                             "CORRECTION_DEBUG [\(stepName)] no change",
-                            level: .info, category: "CorrectionDebug"
+                            level: .verbose, category: "CorrectionDebug"
                         )
                     }
                 }
