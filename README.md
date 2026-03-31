@@ -25,12 +25,6 @@
 
 ## Demo
 
-### Dictating into X/Twitter
-
-https://github.com/user-attachments/assets/e63a5bf5-6e6b-409c-a50e-cbe30db10ceb
-
-### Dictating into LinkedIn
-
 https://github.com/user-attachments/assets/e636e1a0-a0d1-4f7c-be0a-b7c907c6d5ab
 
 ## What is this?
