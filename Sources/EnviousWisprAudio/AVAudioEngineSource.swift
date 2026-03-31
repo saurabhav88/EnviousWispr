@@ -94,6 +94,7 @@ final class AVAudioEngineSource: AudioInputSource {
     private var activeTasks: [Task<Void, Never>] = []
     private var tapStoppedFlag: TapStoppedFlag?
     private var isRecovering = false
+    private var forwarder: PreRollForwarder?
 
     /// Called when an audio device operation fails.
     var onDeviceError: ((String) -> Void)?
@@ -201,9 +202,11 @@ final class AVAudioEngineSource: AudioInputSource {
         btCrashLogger.info("Engine starting — stop token created, observer registered (queue: nil)")
         try engine.start()
         btCrashLogger.info("Engine started successfully")
-    }
 
-    func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
+        // Install pre-roll tap immediately after engine start.
+        // Format is stable for built-in mic (BT uses AVCaptureSessionSource).
+        // The tap routes through a PreRollForwarder that buffers audio until
+        // startCapture() activates live forwarding.
         let inputNode = engine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
@@ -213,71 +216,67 @@ final class AVAudioEngineSource: AudioInputSource {
             channels: Self.targetChannels,
             interleaved: false
         ) else {
-            throw AudioError.formatCreationFailed
+            btCrashLogger.error("Pre-roll: failed to create target format — tap not installed")
+            return
         }
 
         guard let audioConverter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
-            throw AudioError.formatCreationFailed
+            btCrashLogger.error("Pre-roll: failed to create converter from \(inputFormat) — tap not installed")
+            return
         }
         self.converter = audioConverter
+
+        let fwd = PreRollForwarder()
+        self.forwarder = fwd
+
+        let tapHandler = Self.makeTapHandler(
+            audioConverter: audioConverter,
+            targetFormat: targetFormat,
+            inputFormat: inputFormat,
+            forwarder: fwd,
+            stoppedFlag: stopToken
+        )
+        inputNode.installTap(onBus: 0, bufferSize: 2048, format: inputFormat, block: tapHandler)
+        AudioCaptureManager.btRouteLog("Pre-roll tap installed — capturing audio during setup latency")
+    }
+
+    func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
+        guard let fwd = forwarder else {
+            throw AudioError.formatCreationFailed
+        }
+
+        // Reset stoppedFlag in case a config change happened during pre-roll
+        tapStoppedFlag?.reset()
 
         let stream = AsyncStream<AVAudioPCMBuffer> { continuation in
             self.bufferContinuation = continuation
         }
 
-        guard let stoppedFlag = self.tapStoppedFlag else {
-            throw AudioError.formatCreationFailed
-        }
-        stoppedFlag.reset()
-        btCrashLogger.info("startCapture: stop token reset, installing tap")
-
-        // Forward samples to the manager via callback. The manager owns capturedSamples accumulation.
-        // The source does NOT accumulate samples — avoids double-storage.
-        let onSamplesCallback = self.onSamples
-        let onSamples: @Sendable (Float, [Float]) -> Void = { level, samples in
-            onSamplesCallback?(samples, level)
-        }
-
-        let tapContinuation = self.bufferContinuation
-        let bufferCallback = self.onBufferCaptured
-
-        let bufferSize: AVAudioFrameCount = 4096
-        let tapHandler = Self.makeTapHandler(
-            audioConverter: audioConverter,
-            targetFormat: targetFormat,
-            inputFormat: inputFormat,
-            continuation: tapContinuation,
-            onSamples: onSamples,
-            onBuffer: bufferCallback,
-            stoppedFlag: stoppedFlag
+        // Two-step activation: snapshot ring, feed pre-roll, commit, feed delta.
+        _ = fwd.activate(
+            onSamples: self.onSamples,
+            onBuffer: self.onBufferCaptured,
+            continuation: self.bufferContinuation,
+            logPrefix: "Pre-roll"
         )
-        inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat, block: tapHandler)
-
-        if !engine.isRunning {
-            do {
-                try engine.start()
-            } catch {
-                stoppedFlag.set()
-                tapStoppedFlag = nil
-                inputNode.removeTap(onBus: 0)
-                bufferContinuation?.finish()
-                bufferContinuation = nil
-                converter = nil
-                if let observer = configChangeObserver {
-                    NotificationCenter.default.removeObserver(observer)
-                    configChangeObserver = nil
-                }
-                throw error
-            }
-        }
 
         isCapturing = true
         return stream
     }
 
+    func deactivateCapture() {
+        forwarder?.returnToPreRoll()
+        isCapturing = false
+        bufferContinuation = nil
+        AudioCaptureManager.btRouteLog("Engine deactivated — tap stays warm, pre-roll capturing")
+    }
+
     func stop() async -> [Float] {
         for task in activeTasks { task.cancel() }
         activeTasks.removeAll()
+
+        forwarder?.stop()
+        forwarder = nil
 
         tapStoppedFlag?.set()
         tapStoppedFlag = nil
@@ -288,7 +287,6 @@ final class AVAudioEngineSource: AudioInputSource {
         isCapturing = false
         currentInputDeviceID = nil
         isRecovering = false
-        bufferContinuation?.finish()
         bufferContinuation = nil
         converter = nil
         if let observer = configChangeObserver {
@@ -320,34 +318,20 @@ final class AVAudioEngineSource: AudioInputSource {
 
     func abortPrepare() {
         guard engine.isRunning, !isCapturing else { return }
-        engine.stop()
+        teardownEngine()
         try? engine.inputNode.setVoiceProcessingEnabled(false)
-        if let observer = configChangeObserver {
-            NotificationCenter.default.removeObserver(observer)
-            configChangeObserver = nil
-        }
     }
 
     func rebuild() {
-        if engine.isRunning { engine.stop() }
-        engine.inputNode.removeTap(onBus: 0)
+        teardownEngine()
         engine.reset()
         engine = AVAudioEngine()
-        if let observer = configChangeObserver {
-            NotificationCenter.default.removeObserver(observer)
-            configChangeObserver = nil
-        }
     }
 
     /// Build (or rebuild) the AVAudioEngine with voice-processing configuration.
     func buildEngine(noiseSuppression: Bool) {
-        if engine.isRunning { engine.stop() }
-        engine.inputNode.removeTap(onBus: 0)
+        teardownEngine()
         engine = AVAudioEngine()
-        if let observer = configChangeObserver {
-            NotificationCenter.default.removeObserver(observer)
-            configChangeObserver = nil
-        }
 
         if noiseSuppression {
             do {
@@ -372,6 +356,21 @@ final class AVAudioEngineSource: AudioInputSource {
     /// Track a spawned Task so it can be cancelled during teardown.
     func trackTask(_ task: Task<Void, Never>) {
         activeTasks.append(task)
+    }
+
+    // MARK: - Private: Engine Teardown
+
+    /// Shared teardown: stop forwarder, stop engine, remove tap, remove config observer.
+    /// Does NOT reset or replace the engine (caller decides whether to do that).
+    private func teardownEngine() {
+        forwarder?.stop()
+        forwarder = nil
+        if engine.isRunning { engine.stop() }
+        engine.inputNode.removeTap(onBus: 0)
+        if let observer = configChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+            configChangeObserver = nil
+        }
     }
 
     // MARK: - Private: Input Device
@@ -494,22 +493,27 @@ final class AVAudioEngineSource: AudioInputSource {
             stoppedFlag.reset()
             btCrashLogger.info("Recovery: stop token reset for new tap")
 
-            let onSamplesCallback = self.onSamples
-            let onSamples: @Sendable (Float, [Float]) -> Void = { level, samples in
-                onSamplesCallback?(samples, level)
+            guard let fwd = forwarder else {
+                throw AudioError.formatCreationFailed
             }
 
-            let tapContinuation = self.bufferContinuation
-            let bufferCallback = self.onBufferCaptured
+            // Validate format before reinstalling tap.
+            // After codec switch, format may be zero/invalid.
+            guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
+                btCrashLogger.error("Recovery: invalid input format \(inputFormat.sampleRate)Hz/\(inputFormat.channelCount)ch — emergency teardown")
+                throw AudioError.formatCreationFailed
+            }
 
-            let bufferSize: AVAudioFrameCount = 4096
+            // Safety: remove tap again before reinstalling.
+            // AVAudioEngine may not fully clear tap state after engine.stop().
+            inputNode.removeTap(onBus: 0)
+
+            let bufferSize: AVAudioFrameCount = 2048
             let tapHandler = Self.makeTapHandler(
                 audioConverter: audioConverter,
                 targetFormat: targetFormat,
                 inputFormat: inputFormat,
-                continuation: tapContinuation,
-                onSamples: onSamples,
-                onBuffer: bufferCallback,
+                forwarder: fwd,
                 stoppedFlag: stoppedFlag
             )
             inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat, block: tapHandler)
@@ -538,6 +542,9 @@ final class AVAudioEngineSource: AudioInputSource {
         for task in activeTasks { task.cancel() }
         activeTasks.removeAll()
 
+        forwarder?.stop()
+        forwarder = nil
+
         tapStoppedFlag?.set()
         tapStoppedFlag = nil
 
@@ -548,7 +555,6 @@ final class AVAudioEngineSource: AudioInputSource {
         isCapturing = false
         currentInputDeviceID = nil
         isRecovering = false
-        bufferContinuation?.finish()
         bufferContinuation = nil
         converter = nil
 
@@ -566,9 +572,7 @@ final class AVAudioEngineSource: AudioInputSource {
         audioConverter: AVAudioConverter,
         targetFormat: AVAudioFormat,
         inputFormat: AVAudioFormat,
-        continuation: AsyncStream<AVAudioPCMBuffer>.Continuation?,
-        onSamples: @escaping @Sendable (Float, [Float]) -> Void,
-        onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)?,
+        forwarder: PreRollForwarder,
         stoppedFlag: TapStoppedFlag
     ) -> (AVAudioPCMBuffer, AVAudioTime) -> Void {
         return { buffer, _ in
@@ -619,11 +623,8 @@ final class AVAudioEngineSource: AudioInputSource {
                     start: channelData[0],
                     count: frameCount
                 ))
-                onSamples(level, samples)
+                forwarder.route(samples: samples, level: level, buffer: convertedBuffer)
             }
-
-            onBuffer?(convertedBuffer)
-            continuation?.yield(convertedBuffer)
         }
     }
 }

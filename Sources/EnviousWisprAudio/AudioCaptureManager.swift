@@ -7,8 +7,7 @@ import os
 ///
 /// Owns app-facing state (capturedSamples, audioLevel, isCapturing) and the
 /// `AudioCaptureInterface` contract. Delegates all hardware interaction to the
-/// active `AudioInputSource` (currently `AVAudioEngineSource`; `AVCaptureSessionSource`
-/// will be added in Step 6b.3).
+/// active `AudioInputSource` (`AVAudioEngineSource` or `AVCaptureSessionSource`).
 ///
 /// **Ownership boundaries:**
 /// - Sources own hardware/session/engine lifecycle, conversion, tap logic, recovery
@@ -63,6 +62,12 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     /// Route resolver — decides which source to use based on BT state + user preference.
     private var routeResolver = CaptureRouteResolver()
 
+    /// Idle teardown timer: shuts down the warm engine after inactivity.
+    private var warmEngineTeardownTask: Task<Void, Never>?
+
+    /// How long to keep the engine warm after recording stops (seconds).
+    private static let warmEngineIdleTimeout: TimeInterval = 30
+
     /// The last route decision — for telemetry and debugging.
     private var lastRouteDecision: CaptureRouteDecision?
 
@@ -95,7 +100,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     }
 
     public func beginCapturePhase() async throws -> AsyncStream<AVAudioPCMBuffer> {
-        guard var source = activeSource else {
+        guard let source = activeSource else {
             throw AudioError.formatCreationFailed
         }
 
@@ -157,10 +162,20 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
         isCapturing = false
         audioLevel = 0.0
-        _ = await source.stop()
 
-        // Clear source so next recording re-evaluates BT state via resolver.
-        activeSource = nil
+        // Deactivate capture but keep engine warm. The tap stays installed and the
+        // pre-roll ring buffer continues capturing audio. On the next recording,
+        // prepare() sees the engine is already running and skips startup.
+        // This eliminates first-word clipping by ensuring the ring buffer has
+        // audio from before the user pressed the key.
+        source.deactivateCapture()
+
+        // Keep activeSource alive — resolveSource() will reuse it if still running.
+        // BT state changes are handled by resolveSource() re-evaluating the route.
+
+        // Schedule full teardown after idle period. Engine stays warm for rapid-fire
+        // dictation but doesn't run indefinitely.
+        scheduleWarmEngineTeardown()
 
         // Samples accumulated via onSamples callback → manager.capturedSamples
         let samples = capturedSamples
@@ -223,13 +238,52 @@ public final class AudioCaptureManager: AudioCaptureInterface {
         (activeSource as? AVAudioEngineSource)?.trackTask(task)
     }
 
+    // MARK: - Warm Engine Management
+
+    /// Schedule full engine teardown after idle timeout.
+    /// Cancelled if a new recording starts before timeout fires.
+    private func scheduleWarmEngineTeardown() {
+        warmEngineTeardownTask?.cancel()
+        warmEngineTeardownTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.warmEngineIdleTimeout))
+            guard !Task.isCancelled, let self, !self.isCapturing else { return }
+            if let source = self.activeSource {
+                Self.btRouteLog("Warm engine idle timeout — full teardown")
+                _ = await source.stop()
+                self.activeSource = nil
+            }
+        }
+    }
+
     // MARK: - Source Management
 
     /// Resolve and create the appropriate capture source based on BT state and user preference.
     /// Re-evaluates on every call — BT state may change between recordings.
     private func resolveSource() -> any AudioInputSource {
-        // If a source is already running (e.g., pre-warmed), keep it.
-        if let existing = activeSource, existing.isRunning { return existing }
+        // Cancel idle teardown — we're about to record
+        warmEngineTeardownTask?.cancel()
+        warmEngineTeardownTask = nil
+
+        // If a source is already running (warm engine), check route compatibility
+        if let existing = activeSource, existing.isRunning {
+            let decision = routeResolver.resolve(
+                preferredInputDeviceUID: preferredInputDeviceIDOverride,
+                noiseSuppression: noiseSuppressionEnabled
+            )
+            let existingIsEngine = existing is AVAudioEngineSource
+            let wantsEngine = decision.sourceType == .audioEngine
+            if existingIsEngine == wantsEngine {
+                // Route unchanged — reuse warm source
+                lastRouteDecision = decision
+                Self.btRouteLog("Reusing warm \(wantsEngine ? "engine" : "capture session") source")
+                return existing
+            }
+            // Route changed (e.g., BT connected/disconnected) — synchronous teardown.
+            // Must be synchronous to avoid racing with new source's prepare() on same hardware.
+            Self.btRouteLog("Route changed while warm — tearing down old source")
+            existing.rebuild()
+            activeSource = nil
+        }
 
         let decision = routeResolver.resolve(
             preferredInputDeviceUID: preferredInputDeviceIDOverride,
@@ -261,12 +315,6 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
         activeSource = source
         return source
-    }
-
-    /// Get the active source, creating via resolver if needed.
-    private func ensureSource() -> any AudioInputSource {
-        if let source = activeSource { return source }
-        return resolveSource()
     }
 
     // MARK: - BT Route Logging (Step 6 instrumentation)

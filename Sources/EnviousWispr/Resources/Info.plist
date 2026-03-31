@@ -15,9 +15,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.7.1</string>
+	<string>1.7.5</string>
 	<key>CFBundleVersion</key>
-	<string>1.7.1</string>
+	<string>1.7.5</string>
 	<key>LSArchitecturePriority</key>
 	<array>
 		<string>arm64</string>
@@ -30,14 +30,14 @@
 	<string>EnviousWispr uses Accessibility APIs to paste transcribed text into the active application.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2025–2026 Envious Labs LLC. All rights reserved.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>EnviousWispr needs microphone access for speech-to-text dictation.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>SUFeedURL</key>
 	<string>https://enviouswispr.com/appcast.xml</string>
-	<key>NSHumanReadableCopyright</key>
-	<string>Copyright © 2025–2026 Envious Labs LLC. All rights reserved.</string>
 	<key>SUPublicEDKey</key>
 	<string>jHq1RIQKDmtO64qtCdZ6jNdHNFrfyScE16yuu+ufvDw=</string>
 </dict>

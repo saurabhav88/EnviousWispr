@@ -31,6 +31,7 @@ final class AVCaptureSessionSource: AudioInputSource {
     private var audioOutput: AVCaptureAudioDataOutput?
     private var delegate: CaptureDelegate?
     private var interruptionObservers: [NSObjectProtocol] = []
+    private var forwarder: PreRollForwarder?
 
     /// Dedicated serial queue for AVCaptureSession start/stop operations.
     /// Apple recommends session lifecycle on a serial queue to avoid race conditions.
@@ -91,6 +92,18 @@ final class AVCaptureSessionSource: AudioInputSource {
         self.session = captureSession
         self.audioOutput = output
 
+        // Install pre-roll delegate to capture audio during setup latency.
+        // CaptureDelegate routes through PreRollForwarder, which buffers until
+        // startCapture() activates live forwarding.
+        let fwd = PreRollForwarder()
+        self.forwarder = fwd
+        let preRollDelegate = CaptureDelegate(
+            targetFormat: Self.targetFormat,
+            forwarder: fwd
+        )
+        self.delegate = preRollDelegate
+        output.setSampleBufferDelegate(preRollDelegate, queue: callbackQueue)
+
         // Register interruption observers
         registerInterruptionObservers(for: captureSession)
 
@@ -116,32 +129,37 @@ final class AVCaptureSessionSource: AudioInputSource {
         guard !isCapturing else {
             throw AudioError.alreadyCapturing
         }
-        guard let output = audioOutput else {
+        guard let fwd = forwarder else {
             throw AudioError.formatCreationFailed
         }
 
-        // Capture callbacks on @MainActor before entering AsyncStream closure (which may not be isolated)
-        let samplesCallback = onSamples
-        let bufferCallback = onBufferCaptured
-
-        let captureDelegate = CaptureDelegate(
-            onSamples: samplesCallback,
-            onBufferCaptured: bufferCallback,
-            targetFormat: Self.targetFormat
-        )
-        self.delegate = captureDelegate
-
-        output.setSampleBufferDelegate(captureDelegate, queue: callbackQueue)
-
         let stream = AsyncStream<AVAudioPCMBuffer> { continuation in
-            captureDelegate.continuation = continuation
+            self.delegate?.continuation = continuation
         }
+
+        // Two-step activation: snapshot ring, feed pre-roll, commit, feed delta.
+        _ = fwd.activate(
+            onSamples: self.onSamples,
+            onBuffer: self.onBufferCaptured,
+            continuation: self.delegate?.continuation,
+            logPrefix: "AVCaptureSessionSource"
+        )
 
         isCapturing = true
         return stream
     }
 
+    func deactivateCapture() {
+        forwarder?.returnToPreRoll()
+        isCapturing = false
+        delegate?.continuation = nil
+        AudioCaptureManager.btRouteLog("AVCaptureSession deactivated — session stays warm, pre-roll capturing")
+    }
+
     func stop() async -> [Float] {
+        forwarder?.stop()
+        forwarder = nil
+
         // Stop session FIRST — stopRunning() is synchronous per Apple docs, blocks until
         // the session stops and no new frames are delivered to callbackQueue.
         // RULE: Do NOT touch delegate, callback queue, or continuation state until
@@ -162,8 +180,6 @@ final class AVCaptureSessionSource: AudioInputSource {
         isCapturing = false
         removeInterruptionObservers()
 
-        // Finish the continuation so stream consumers see termination.
-        delegate?.continuation?.finish()
         delegate?.continuation = nil
         delegate = nil
 
@@ -178,27 +194,32 @@ final class AVCaptureSessionSource: AudioInputSource {
 
     func abortPrepare() {
         guard session?.isRunning == true, !isCapturing else { return }
-        // Fire-and-forget stop on session queue. abortPrepare is synchronous (protocol requirement)
-        // so we can't await. Using async avoids serial-queue self-deadlock risk.
-        let captureSession = session
-        sessionQueue.async {
-            captureSession?.stopRunning()
-        }
-        removeInterruptionObservers()
+        teardownSession(clearDelegate: false)
     }
 
     func rebuild() {
-        audioOutput?.setSampleBufferDelegate(nil, queue: nil)
-        delegate?.continuation?.finish()
-        delegate = nil
-        // Fire-and-forget stop — rebuild() is synchronous (protocol requirement).
+        teardownSession(clearDelegate: true)
+        session = nil
+        audioOutput = nil
+    }
+
+    /// Shared teardown: stop forwarder, fire-and-forget session stop, remove observers.
+    /// `clearDelegate` controls whether delegate/continuation are nil'd (rebuild needs it,
+    /// abortPrepare does not because session stop handles it).
+    private func teardownSession(clearDelegate: Bool) {
+        forwarder?.stop()
+        forwarder = nil
+        if clearDelegate {
+            audioOutput?.setSampleBufferDelegate(nil, queue: nil)
+            delegate?.continuation?.finish()
+            delegate = nil
+        }
+        // Fire-and-forget stop — synchronous protocol methods can't await.
         // Using async avoids serial-queue self-deadlock risk.
         let captureSession = session
         sessionQueue.async {
             captureSession?.stopRunning()
         }
-        session = nil
-        audioOutput = nil
         removeInterruptionObservers()
     }
 
@@ -276,25 +297,19 @@ final class AVCaptureSessionSource: AudioInputSource {
 /// Extracts Float32 samples from CMSampleBuffer and forwards via callbacks.
 private final class CaptureDelegate: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate, @unchecked Sendable {
 
-    private let onSamples: (@Sendable (_ samples: [Float], _ audioLevel: Float) -> Void)?
-    private let onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?
     /// Set after init by the AsyncStream closure.
     var continuation: AsyncStream<AVAudioPCMBuffer>.Continuation?
     private let targetFormat: AVAudioFormat
+    private let forwarder: PreRollForwarder
 
     /// Track whether first buffer format has been validated.
     private var formatValidated = false
     /// If true, format was wrong — drop all subsequent buffers.
     private var formatMismatch = false
 
-    init(
-        onSamples: (@Sendable (_ samples: [Float], _ audioLevel: Float) -> Void)?,
-        onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?,
-        targetFormat: AVAudioFormat
-    ) {
-        self.onSamples = onSamples
-        self.onBufferCaptured = onBufferCaptured
+    init(targetFormat: AVAudioFormat, forwarder: PreRollForwarder) {
         self.targetFormat = targetFormat
+        self.forwarder = forwarder
     }
 
     func captureOutput(
@@ -350,19 +365,13 @@ private final class CaptureDelegate: NSObject, AVCaptureAudioDataOutputSampleBuf
         // Calculate audio level (RMS)
         let level = AudioBufferProcessor.calculateRMS(pcmBuffer)
 
-        // Extract [Float] samples
+        // Route through forwarder (pre-roll ring or live callbacks)
         if let channelData = pcmBuffer.floatChannelData {
             let samples = Array(UnsafeBufferPointer(
                 start: channelData[0],
                 count: frameCount
             ))
-            onSamples?(samples, level)
+            forwarder.route(samples: samples, level: level, buffer: pcmBuffer)
         }
-
-        // Forward buffer to streaming ASR
-        onBufferCaptured?(pcmBuffer)
-
-        // Yield to stream consumers
-        continuation?.yield(pcmBuffer)
     }
 }
