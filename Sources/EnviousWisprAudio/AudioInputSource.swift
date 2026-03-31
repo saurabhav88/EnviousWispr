@@ -21,6 +21,12 @@ protocol AudioInputSource: AnyObject {
     func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer>
     func stop() async -> [Float]
 
+    /// Deactivate live capture but keep engine/session and tap warm.
+    /// The forwarder returns to preRolling mode so the ring buffer continues
+    /// capturing audio for instant first-word capture on next recording.
+    /// Call stop() for full teardown.
+    func deactivateCapture()
+
     // State
     var isCapturing: Bool { get }
     var isRunning: Bool { get }
