@@ -64,8 +64,9 @@ Wire FluidAudio's CTC-based vocabulary boosting into the Parakeet pipeline so cu
 - `ASRManagerInterface` (@MainActor): app-side abstraction. Both ASRManager (in-process) and ASRManagerProxy (XPC) conform.
 
 ### Streaming CTC limitation
-- StreamingAsrManager has 10s minContextForConfirmation. Short dictation never confirms.
-- Correct pattern: stream for speed, batch post-rescore with CTC on accumulated audio.
+- SlidingWindowAsrManager has 10s minContextForConfirmation. Short dictation never confirms.
+- Per-chunk streaming CTC (configureVocabularyBoosting) has limited context and contributed to original 35% precision failure.
+- Correct pattern: streaming-final for base text, batch CTC rescore on full buffered audio as post-processing step.
 
 ## Key Design Patterns
 
@@ -423,7 +424,7 @@ Set at recording start. Used to validate rescore results are for current utteran
 // Heart path: always runs first, both streaming and batch
 let result: ASRResult
 if wasStreaming {
-    result = try await finalizeStreamingWithTimeout(samples: samples)
+    result = try await asrManager.finalizeStreaming()
 } else {
     result = try await asrManager.transcribe(audioSamples: samples, options: transcriptionOptions)
 }
