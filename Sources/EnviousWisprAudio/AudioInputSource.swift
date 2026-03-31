@@ -34,5 +34,5 @@ protocol AudioInputSource: AnyObject {
     // Engine-specific (no-op for AVCaptureSessionSource)
     func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool
     func abortPrepare()
-    func rebuild()
+    func rebuild() async
 }

@@ -239,13 +239,31 @@ final class PreRollForwarder: @unchecked Sendable {
 
     // MARK: - Private
 
-    /// Append samples to the circular ring buffer. MUST be called under lock.
+    /// Append samples to the circular ring buffer via bulk memcpy. MUST be called under lock.
+    /// Handles wrap-around (at most 2 copies) and overflow (keeps last `capacity` samples).
     private func appendToRing(_ samples: [Float], state: inout State) {
-        for sample in samples {
-            state.ring[state.writeIdx] = sample
-            state.writeIdx = (state.writeIdx + 1) % capacity
+        guard !samples.isEmpty, capacity > 0 else { return }
+
+        let n = samples.count
+        let retainedCount = min(n, capacity)
+        let srcStart = n - retainedCount
+        let dstStart = (n >= capacity) ? (state.writeIdx + n) % capacity : state.writeIdx
+        let finalWriteIdx = (state.writeIdx + n) % capacity
+
+        state.ring.withUnsafeMutableBufferPointer { dst in
+            samples.withUnsafeBufferPointer { src in
+                guard let dstBase = dst.baseAddress, let srcBase = src.baseAddress else { return }
+                let srcPtr = srcBase.advanced(by: srcStart)
+                let firstChunk = min(retainedCount, capacity - dstStart)
+                memcpy(dstBase.advanced(by: dstStart), srcPtr, firstChunk * MemoryLayout<Float>.size)
+                if retainedCount > firstChunk {
+                    memcpy(dstBase, srcPtr.advanced(by: firstChunk), (retainedCount - firstChunk) * MemoryLayout<Float>.size)
+                }
+            }
         }
-        state.count = min(state.count + samples.count, capacity)
+
+        state.writeIdx = finalWriteIdx
+        state.count = min(state.count + n, capacity)
     }
 
     /// Drain ring buffer contents in chronological order. Resets ring state.

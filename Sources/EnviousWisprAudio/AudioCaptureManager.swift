@@ -95,7 +95,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
     public func startEnginePhase() async throws {
         // Re-evaluate route on every recording start — BT state may have changed.
-        let source = resolveSource()
+        let source = await resolveSource()
         try await source.prepare()
     }
 
@@ -184,7 +184,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     }
 
     public func rebuildEngine() {
-        activeSource?.rebuild()
+        Task { await activeSource?.rebuild() }
     }
 
     public func buildEngine(noiseSuppression: Bool) {
@@ -196,8 +196,10 @@ public final class AudioCaptureManager: AudioCaptureInterface {
         if let engineSource = activeSource as? AVAudioEngineSource {
             engineSource.buildEngine(noiseSuppression: noiseSuppression)
         } else {
-            // Tear down any existing non-engine source before replacing
-            activeSource?.rebuild()
+            // Tear down any existing non-engine source before replacing.
+            // Fire-and-forget: buildEngine is called at startup, teardown can complete async.
+            let oldSource = activeSource
+            Task { await oldSource?.rebuild() }
             let engineSource = AVAudioEngineSource()
             engineSource.buildEngine(noiseSuppression: noiseSuppression)
             activeSource = engineSource
@@ -205,7 +207,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     }
 
     public func preWarm() async {
-        let source = resolveSource()
+        let source = await resolveSource()
         guard !source.isRunning else { return }
         do {
             try await source.prepare()
@@ -259,12 +261,12 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
     /// Resolve and create the appropriate capture source based on BT state and user preference.
     /// Re-evaluates on every call — BT state may change between recordings.
-    private func resolveSource() -> any AudioInputSource {
+    private func resolveSource() async -> any AudioInputSource {
         // Cancel idle teardown — we're about to record
         warmEngineTeardownTask?.cancel()
         warmEngineTeardownTask = nil
 
-        // If a source is already running (warm engine), check route compatibility
+        // If a source is already running (warm engine), check route + config compatibility
         if let existing = activeSource, existing.isRunning {
             let decision = routeResolver.resolve(
                 preferredInputDeviceUID: preferredInputDeviceIDOverride,
@@ -272,16 +274,26 @@ public final class AudioCaptureManager: AudioCaptureInterface {
             )
             let existingIsEngine = existing is AVAudioEngineSource
             let wantsEngine = decision.sourceType == .audioEngine
-            if existingIsEngine == wantsEngine {
-                // Route unchanged — reuse warm source
+
+            // Check full config signature, not just source type.
+            // Device/VP changes between recordings must trigger rebuild.
+            var configMatch = existingIsEngine == wantsEngine
+            if configMatch, let engineSource = existing as? AVAudioEngineSource {
+                let deviceMatch = engineSource.preferredInputDeviceIDOverride == preferredInputDeviceIDOverride
+                let vpMatch = engineSource.noiseSuppressionEnabled == noiseSuppressionEnabled
+                configMatch = deviceMatch && vpMatch
+            }
+
+            if configMatch {
+                // Route and config unchanged, reuse warm source
                 lastRouteDecision = decision
-                Self.btRouteLog("Reusing warm \(wantsEngine ? "engine" : "capture session") source")
+                Self.btRouteLog("Reusing warm \(wantsEngine ? "engine" : "capture session") source (config match)")
                 return existing
             }
             // Route changed (e.g., BT connected/disconnected) — synchronous teardown.
             // Must be synchronous to avoid racing with new source's prepare() on same hardware.
             Self.btRouteLog("Route changed while warm — tearing down old source")
-            existing.rebuild()
+            await existing.rebuild()
             activeSource = nil
         }
 

@@ -322,7 +322,7 @@ final class AVAudioEngineSource: AudioInputSource {
         try? engine.inputNode.setVoiceProcessingEnabled(false)
     }
 
-    func rebuild() {
+    func rebuild() async {
         teardownEngine()
         engine.reset()
         engine = AVAudioEngine()
