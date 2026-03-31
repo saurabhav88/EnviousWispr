@@ -197,15 +197,31 @@ final class AVCaptureSessionSource: AudioInputSource {
         teardownSession(clearDelegate: false)
     }
 
-    func rebuild() {
-        teardownSession(clearDelegate: true)
+    func rebuild() async {
+        forwarder?.stop()
+        forwarder = nil
+        audioOutput?.setSampleBufferDelegate(nil, queue: nil)
+        delegate?.continuation?.finish()
+        delegate = nil
+        // Await session stop completion to prevent overlap with new source on same hardware.
+        // Previous version was fire-and-forget which raced BT route changes.
+        if let captureSession = session {
+            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                sessionQueue.async {
+                    captureSession.stopRunning()
+                    cont.resume()
+                }
+            }
+        }
         session = nil
         audioOutput = nil
+        removeInterruptionObservers()
     }
 
     /// Shared teardown: stop forwarder, fire-and-forget session stop, remove observers.
     /// `clearDelegate` controls whether delegate/continuation are nil'd (rebuild needs it,
     /// abortPrepare does not because session stop handles it).
+    /// Note: this is fire-and-forget (used by abortPrepare). For awaitable teardown, use rebuild().
     private func teardownSession(clearDelegate: Bool) {
         forwarder?.stop()
         forwarder = nil
@@ -214,8 +230,6 @@ final class AVCaptureSessionSource: AudioInputSource {
             delegate?.continuation?.finish()
             delegate = nil
         }
-        // Fire-and-forget stop — synchronous protocol methods can't await.
-        // Using async avoids serial-queue self-deadlock risk.
         let captureSession = session
         sessionQueue.async {
             captureSession?.stopRunning()
