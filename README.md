@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/readme/hero.png" width="720" alt="EnviousWispr hero - Talk naturally, paste perfectly" />
+  <img src="assets/readme/hero.gif" width="720" alt="EnviousWispr hero - Talk naturally, paste perfectly" />
 </p>
 
 ---
