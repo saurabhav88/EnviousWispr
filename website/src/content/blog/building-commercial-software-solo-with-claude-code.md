@@ -5,6 +5,7 @@ pubDate: 2026-03-26
 tags: ["claude-code", "vibe-coding", "solo-dev", "ai-tools", "productivity"]
 image: "/images/blog/claude-code-structure/three-pillars.jpg"
 draft: false
+author: "Saurabh Vaish"
 ---
 
 I've been building EnviousWispr, a commercial macOS voice-to-text app, entirely by myself using Claude Code. Along the way I made a lot of mistakes, rewrote things I didn't need to, and lost context between sessions more times than I'd like to admit.

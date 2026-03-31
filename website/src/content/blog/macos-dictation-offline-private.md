@@ -4,6 +4,7 @@ description: "Fully private, on-device dictation for macOS that never sends your
 pubDate: 2026-03-11
 tags: ["accessibility", "privacy", "dictation", "offline"]
 draft: false
+author: "Saurabh Vaish"
 ---
 
 What happens to your primary input method when the Wi-Fi goes down? If voice input is how you write -- because typing hurts, or because it's simply not an option -- that's not a hypothetical question. It's the difference between a tool you can depend on and one that fails when you need it most.

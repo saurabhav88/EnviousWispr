@@ -5,6 +5,7 @@ pubDate: 2026-03-17
 tags: ["students", "lecture-notes", "dictation", "how-to"]
 keywords: ["lecture notes by speaking", "voice notes for students", "dictate lecture notes mac", "speech to text lecture", "take notes without typing", "mac dictation students free", "hands-free note taking"]
 draft: false
+author: "Saurabh Vaish"
 ---
 
 It's a 9 AM organic chemistry lecture. The professor is three slides ahead, rattling off the difference between SN1 and SN2 mechanisms while you're still trying to spell "nucleophilic." Your fingers are moving as fast as they can, but by the time you finish one sentence, you've missed the next two. You look at your notes after class and half of them are gibberish.

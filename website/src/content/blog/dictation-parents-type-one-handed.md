@@ -4,6 +4,7 @@ description: "Voice typing for parents who can't sit at a keyboard. EnviousWispr
 pubDate: 2026-03-15
 tags: ["parents", "dictation", "hands-free", "privacy"]
 draft: false
+author: "Saurabh Vaish"
 ---
 
 It's 7:15 AM. Your baby is asleep on your left arm. Your right thumb is pecking out a reply to a daycare email on your phone. You misspell three words, autocorrect turns "pickup at 3" into something unrecognizable, and you give up. The email sits in drafts until bedtime -- if you remember it at all.

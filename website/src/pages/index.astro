@@ -71,6 +71,30 @@ const jsonLdFaq = JSON.stringify({
         "@type": "Answer",
         "text": "The default Parakeet engine handles English. The WhisperKit backend supports 90+ languages for multi-language dictation."
       }
+    },
+    {
+      "@type": "Question",
+      "name": "Is EnviousWispr open source?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. EnviousWispr is fully open source and available on GitHub. You can inspect the code, contribute, or build from source."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Which apps does EnviousWispr work with?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "EnviousWispr works with any app that accepts text input. It pastes directly into your active text field, whether that is Slack, VS Code, Gmail, Notion, Google Docs, Terminal, or any other app."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does EnviousWispr run Whisper locally?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. The WhisperKit backend runs OpenAI Whisper models locally via Apple Core ML. The default Parakeet engine uses NVIDIA's Parakeet TDT model, also running on-device. Both use Apple Silicon's Neural Engine for fast inference."
+      }
     }
   ]
 });

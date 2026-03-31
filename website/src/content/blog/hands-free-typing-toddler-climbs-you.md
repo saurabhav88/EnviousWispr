@@ -4,6 +4,7 @@ description: "Hands-free typing for parents who never have both hands available.
 pubDate: 2026-03-15
 tags: ["parenting", "hands-free", "dictation", "privacy"]
 draft: false
+author: "Saurabh Vaish"
 ---
 
 It's 2 PM. Your toddler just woke up from a nap that was supposed to last another hour. You're three sentences into an email to your kid's teacher when a small human decides your lap is a climbing wall. One hand goes to the keyboard, the other goes to preventing a head injury. The email sits there, half-finished, for the next three hours.

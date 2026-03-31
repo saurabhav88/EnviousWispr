@@ -4,6 +4,7 @@ description: "Most dictation tools strip your voice. Here's how to dictate first
 pubDate: 2026-03-14
 tags: ["writing", "dictation", "workflow", "writing-style"]
 draft: false
+author: "Saurabh Vaish"
 ---
 
 Every dictation tool on the market is lying to you about the same thing. They promise "natural-sounding text" and then hand you output that reads like it was written by a corporate chatbot. The filler words are gone, sure -- but so is your voice, your rhythm, every stylistic choice that makes your writing yours.
