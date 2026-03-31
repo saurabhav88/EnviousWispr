@@ -4,6 +4,7 @@ description: "How to use on-device voice dictation for developer coding workflow
 pubDate: 2026-03-16
 tags: ["voice-coding", "privacy", "developer", "macos", "dictation"]
 draft: false
+author: "Saurabh Vaish"
 ---
 
 Most voice-to-text tools are solving the wrong problem for developers. They optimize for casual messages and emails while ignoring the actual pain point: you spend half your day writing prose -- PR descriptions, code reviews, docs, Slack threads, incident reports -- and every word of it breaks your flow state. Meanwhile, those same tools happily stream recordings of your terminal, your architecture discussions, and your credentials to someone else's infrastructure.

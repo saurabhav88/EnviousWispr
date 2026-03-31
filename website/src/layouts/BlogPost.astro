@@ -15,11 +15,12 @@ interface Props {
   updatedDate?: Date;
   tags?: string[];
   author?: string;
+  authorUrl?: string;
   image?: string;
   relatedPosts?: RelatedPost[];
 }
 
-const { title, description, pubDate, updatedDate, tags = [], author = 'Envious Labs', image, relatedPosts = [] } = Astro.props;
+const { title, description, pubDate, updatedDate, tags = [], author = 'Saurabh Vaish', authorUrl = 'https://enviouswispr.com/authors/saurabh-vaish/', image, relatedPosts = [] } = Astro.props;
 
 const formatDate = (d: Date) =>
   d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -38,9 +39,30 @@ const articleJsonLd = JSON.stringify({
   "datePublished": pubDate.toISOString(),
   ...(updatedDate && { "dateModified": updatedDate.toISOString() }),
   "author": {
-    "@type": "Organization",
+    "@type": "Person",
     "name": author,
-    "url": siteUrl,
+    "url": authorUrl,
+    "jobTitle": "Founder",
+    "worksFor": {
+      "@type": "Organization",
+      "name": "Envious Labs",
+      "url": "https://enviouslabs.com",
+    },
+    "sameAs": [
+      "https://github.com/saurabhav88",
+      "https://www.linkedin.com/in/saurabh-a-vaish-568253a6/",
+      "https://x.com/saborav",
+    ],
+    "knowsAbout": [
+      "AI dictation",
+      "speech-to-text",
+      "on-device AI",
+      "macOS development",
+      "Apple Silicon",
+      "accessibility",
+      "privacy-first software",
+      "open source software",
+    ],
   },
   "publisher": {
     "@type": "Organization",
@@ -133,6 +155,18 @@ const breadcrumbJsonLd = JSON.stringify({
           <slot />
         </div>
       </article>
+
+      <aside class="author-bio" aria-label="About the author">
+        <div class="author-bio-inner">
+          <div class="author-bio-text">
+            <p class="author-bio-label">Written by</p>
+            <p class="author-bio-name">
+              {authorUrl ? <a href={authorUrl} rel="author">{author}</a> : author}
+            </p>
+            <p class="author-bio-desc">Founder of Envious Labs and creator of EnviousWispr, a free open-source AI dictation app for macOS. He writes about on-device speech-to-text, privacy, Apple Silicon, and accessibility.</p>
+          </div>
+        </div>
+      </aside>
 
       {relatedPosts.length > 0 && (
         <section class="related-posts" aria-label="Related posts">
@@ -419,6 +453,54 @@ const breadcrumbJsonLd = JSON.stringify({
     height: 1px;
     background: var(--border-hover);
     margin: 2.5em 0;
+  }
+
+  /* Author bio */
+  .author-bio {
+    margin-top: 48px;
+    padding: 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+  }
+
+  .author-bio-inner {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .author-bio-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-3);
+    margin-bottom: 6px;
+  }
+
+  .author-bio-name {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 8px;
+  }
+
+  .author-bio-name a {
+    color: var(--text);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+
+  .author-bio-name a:hover {
+    color: var(--accent);
+  }
+
+  .author-bio-desc {
+    font-size: 14px;
+    color: var(--text-2);
+    line-height: 1.6;
+    margin: 0;
   }
 
   /* Related posts */

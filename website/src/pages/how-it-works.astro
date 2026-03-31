@@ -34,6 +34,52 @@ const breadcrumbJsonLd = JSON.stringify({
     },
   ],
 });
+
+const howToJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "name": "How to Dictate Text on macOS with EnviousWispr",
+  "description": "Use EnviousWispr to turn speech into polished, paste-ready text on your Mac. Everything runs on-device using Apple Silicon.",
+  "totalTime": "PT5M",
+  "tool": [
+    { "@type": "HowToTool", "name": "EnviousWispr for macOS" },
+    { "@type": "HowToTool", "name": "Microphone (built-in or external)" },
+  ],
+  "supply": [
+    { "@type": "HowToSupply", "name": "Mac with Apple Silicon (M1 or later)" },
+    { "@type": "HowToSupply", "name": "macOS 14 Sonoma or later" },
+  ],
+  "step": [
+    {
+      "@type": "HowToStep",
+      "position": 1,
+      "name": "Download and install EnviousWispr",
+      "text": "Download the free .dmg from the EnviousWispr website or GitHub releases page. Drag the app to Applications and launch it. Grant microphone access when macOS prompts you.",
+      "url": `${siteUrl}/how-it-works/#step-install`,
+    },
+    {
+      "@type": "HowToStep",
+      "position": 2,
+      "name": "Hold the hotkey and speak",
+      "text": "Press and hold your designated hotkey, then talk naturally. No need to slow down or speak formally. Just say what you mean.",
+      "url": `${siteUrl}/how-it-works/#step-record`,
+    },
+    {
+      "@type": "HowToStep",
+      "position": 3,
+      "name": "Release to transcribe",
+      "text": "When you release the hotkey, EnviousWispr transcribes your speech on-device using Apple Silicon. Your audio never leaves your Mac. AI polish cleans up grammar and filler words automatically.",
+      "url": `${siteUrl}/how-it-works/#step-transcribe`,
+    },
+    {
+      "@type": "HowToStep",
+      "position": 4,
+      "name": "Paste polished text",
+      "text": "Clean, polished text is pasted directly into whatever app you are using. Works in any text field, any app, without switching windows.",
+      "url": `${siteUrl}/how-it-works/#step-paste`,
+    },
+  ],
+});
 ---
 
 <BaseLayout
@@ -45,6 +91,7 @@ const breadcrumbJsonLd = JSON.stringify({
   <Fragment slot="head">
     <script type="application/ld+json" set:html={webPageJsonLd}></script>
     <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
+    <script type="application/ld+json" set:html={howToJsonLd}></script>
   </Fragment>
 
 <style>
@@ -200,25 +247,25 @@ const breadcrumbJsonLd = JSON.stringify({
 <section class="section" aria-label="Pipeline Steps">
   <div class="container">
     <div class="steps-grid">
-      <div class="step-card reveal">
+      <div class="step-card reveal" id="step-install">
         <div class="step-number">Step 01</div>
         <div class="step-icon">🎙</div>
         <div class="step-title">Record</div>
         <p class="step-desc">Press your hotkey and talk naturally. No need to slow down or speak formally — just say what you mean.</p>
       </div>
-      <div class="step-card reveal">
+      <div class="step-card reveal" id="step-record">
         <div class="step-number">Step 02</div>
         <div class="step-icon">⚡</div>
         <div class="step-title">Transcribe</div>
         <p class="step-desc">AI on your Mac converts speech to text instantly. Everything runs locally — your voice never leaves your device.</p>
       </div>
-      <div class="step-card reveal">
+      <div class="step-card reveal" id="step-transcribe">
         <div class="step-number">Step 03</div>
         <div class="step-icon">✨</div>
         <div class="step-title">Polish</div>
         <p class="step-desc">Grammar is fixed, filler words are removed, and your meaning is preserved — automatically, in the tone you choose.</p>
       </div>
-      <div class="step-card reveal">
+      <div class="step-card reveal" id="step-paste">
         <div class="step-number">Step 04</div>
         <div class="step-icon">📋</div>
         <div class="step-title">Paste</div>

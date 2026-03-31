@@ -4,6 +4,7 @@ description: "Stop typing emails between meetings. Dictate on-device with speech
 pubDate: 2026-03-13
 tags: ["dictation", "email", "productivity", "executive", "privacy"]
 draft: false
+author: "Saurabh Vaish"
 ---
 
 The average executive types around 40 words per minute. They speak 130 to 150. That's roughly 3-4x throughput on the single activity that dominates their day: writing emails — and that's a rough estimate, not a measured fact, but the gap is real and it compounds across dozens of messages a day.

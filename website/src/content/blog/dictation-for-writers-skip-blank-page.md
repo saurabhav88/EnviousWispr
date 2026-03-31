@@ -4,6 +4,7 @@ description: "Voice writing bypasses the blank page entirely. Learn how dictatio
 pubDate: 2026-03-14
 tags: ["writing", "dictation", "workflow", "creativity"]
 draft: false
+author: "Saurabh Vaish"
 ---
 
 What if the blank page wasn't the starting point? What if, instead of sitting down to type your first sentence, you could skip straight to having 800 words of rough prose on the screen -- words that sound like you, organized roughly the way you think, ready to edit?

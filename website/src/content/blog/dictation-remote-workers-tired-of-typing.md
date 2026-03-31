@@ -4,6 +4,7 @@ description: "Remote work means typing all day — Slack, email, docs, tickets. 
 pubDate: 2026-03-17
 tags: ["dictation", "remote-work", "productivity", "voice-typing", "privacy"]
 draft: false
+author: "Saurabh Vaish"
 ---
 
 It's 2:30 PM on a Wednesday. You've been in three video calls since 9 AM. Now you're staring at four Slack threads, two emails, a project brief, and a standup summary -- all due before end of day. All requiring typing. Your wrists ache from the morning's messages, and you haven't even started the real writing yet.

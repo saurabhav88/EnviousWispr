@@ -4,6 +4,7 @@ description: "Why dictating Slack messages, emails, and async updates beats typi
 pubDate: 2026-03-17
 tags: ["remote-work", "async-communication", "dictation", "productivity", "slack"]
 draft: false
+author: "Saurabh Vaish"
 ---
 
 Most people type at 40 words per minute but speak at 150. In async-heavy remote work, that gap costs you hours every week -- and worse, it degrades the quality of what you write. By 3 PM, your hands are tired and your messages have gotten shorter, vaguer, and harder for your teammates to act on.

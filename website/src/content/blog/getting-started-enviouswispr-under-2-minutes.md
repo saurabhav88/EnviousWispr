@@ -4,6 +4,7 @@ description: "Install EnviousWispr, grant two permissions, and start dictating i
 pubDate: 2026-03-11
 tags: ["getting-started", "tutorial", "setup", "dictation"]
 draft: false
+author: "Saurabh Vaish"
 ---
 
 You'll be dictating polished text into your apps before you finish your coffee. No account to create, no API key to find, no subscription to debate. Download, grant two permissions, talk. That's the entire setup, and it takes under two minutes.
