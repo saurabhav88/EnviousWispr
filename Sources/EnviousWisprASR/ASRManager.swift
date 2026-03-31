@@ -162,6 +162,27 @@ public final class ASRManager: ASRManagerInterface {
         idleTimer = nil
     }
 
+    // MARK: - CTC Vocabulary Boosting
+
+    public var isVocabularyBoostingReady: Bool {
+        // In-process: not currently tracked. Conservative: always attempt.
+        true
+    }
+
+    public func prepareVocabularyBoosting(_ config: VocabularyBoostingConfig) async {
+        guard activeBackendType == .parakeet else { return }
+        await parakeetBackend.prepareVocabularyBoosting(config)
+    }
+
+    public func clearVocabularyBoosting() async {
+        await parakeetBackend.clearVocabularyBoosting()
+    }
+
+    public func rescoreWithVocabulary(audioSamples: [Float], language: String) async -> ASRResult? {
+        guard activeBackendType == .parakeet else { return nil }
+        return await parakeetBackend.rescoreWithVocabulary(audioSamples: audioSamples, language: language)
+    }
+
     /// Schedule (or reset) the idle timer for timed policies.
     private func scheduleIdleTimer(policy: ModelUnloadPolicy) {
         guard let interval = policy.interval else { return }

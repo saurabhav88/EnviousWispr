@@ -225,5 +225,68 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
     func checkStreamingSupport(backendType: String, reply: @escaping (Bool) -> Void) {
         reply(backendType == "parakeet")
     }
+
+    // MARK: - CTC Vocabulary Boosting
+
+    func prepareVocabularyBoosting(_ configData: Data, reply: @escaping (NSError?) -> Void) {
+        nonisolated(unsafe) let safeReply = reply
+
+        guard let parakeet = parakeetBackend else {
+            safeReply(VocabularyBoostingError.unsupportedBackend.toNSError())
+            return
+        }
+
+        guard let config = try? PropertyListDecoder().decode(VocabularyBoostingConfig.self, from: configData) else {
+            safeReply(VocabularyBoostingError.preparationFailed.toNSError(message: "Invalid config data"))
+            return
+        }
+
+        Task { @MainActor in
+            await parakeet.prepareVocabularyBoosting(config)
+            safeReply(nil)
+        }
+    }
+
+    func clearVocabularyBoosting(reply: @escaping () -> Void) {
+        nonisolated(unsafe) let safeReply = reply
+        guard let parakeet = parakeetBackend else { safeReply(); return }
+        Task { @MainActor in
+            await parakeet.clearVocabularyBoosting()
+            safeReply()
+        }
+    }
+
+    func rescoreWithVocabulary(_ audioData: Data, sampleCount: Int, language: String, reply: @escaping (Data?, NSError?) -> Void) {
+        nonisolated(unsafe) let safeReply = reply
+
+        guard let parakeet = parakeetBackend else {
+            safeReply(nil, VocabularyBoostingError.unsupportedBackend.toNSError())
+            return
+        }
+
+        guard audioData.count == sampleCount * MemoryLayout<Float>.size else {
+            safeReply(nil, VocabularyBoostingError.preparationFailed.toNSError(message: "Audio data size mismatch"))
+            return
+        }
+
+        Task { @MainActor in
+            let samples = audioData.withUnsafeBytes { raw -> [Float] in
+                guard raw.count > 0 else { return [] }
+                return Array(raw.bindMemory(to: Float.self))
+            }
+
+            guard let result = await parakeet.rescoreWithVocabulary(audioSamples: samples, language: language) else {
+                safeReply(nil, VocabularyBoostingError.notReady.toNSError())
+                return
+            }
+
+            do {
+                let encoded = try PropertyListEncoder().encode(result)
+                safeReply(encoded, nil)
+            } catch {
+                safeReply(nil, error as NSError)
+            }
+        }
+    }
 }
 
