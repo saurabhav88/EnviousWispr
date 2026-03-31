@@ -435,15 +435,16 @@ public final class TranscriptionPipeline: DictationPipeline {
         do {
             let asrStart = CFAbsoluteTimeGetCurrent()
 
-            // Always use batch transcription for the authoritative final result.
-            // Streaming is kept active during recording for live partial preview only.
-            // Batch produces complete text even for 2-5 minute dictation, while streaming
-            // window assembly silently drops ~30% of content at longer durations.
+            // Use streaming finalize when available for lowest latency.
+            // FluidAudio fork uses fresh decoder state per chunk + chunk-aware text assembly
+            // to eliminate the ~12% text loss that affected upstream SlidingWindowAsrManager.
+            // Falls back to batch transcription when streaming was not active.
             let result: ASRResult
             if wasStreaming {
-                await asrManager.cancelStreaming()
+                result = try await asrManager.finalizeStreaming()
+            } else {
+                result = try await asrManager.transcribe(audioSamples: samples, options: transcriptionOptions)
             }
-            result = try await asrManager.transcribe(audioSamples: samples, options: transcriptionOptions)
 
             let asrEnd = CFAbsoluteTimeGetCurrent()
 
@@ -998,6 +999,12 @@ public final class TranscriptionPipeline: DictationPipeline {
         )
         context.targetAppBundleID = targetApp?.bundleIdentifier
         context.targetAppName = targetApp?.localizedName
+        Task {
+            await AppLogger.shared.log(
+                "CORRECTION_DEBUG [RAW ASR] \(asrText)",
+                level: .info, category: "CorrectionDebug"
+            )
+        }
         for step in textProcessingSteps where step.isEnabled {
             let stepName = step.name
             let input = context
@@ -1012,11 +1019,30 @@ public final class TranscriptionPipeline: DictationPipeline {
                     try await unsafeStep.process(input)
                 }
                 let stepMs = (CFAbsoluteTimeGetCurrent() - stepStart) * 1000
+                let inputText = input.polishedText ?? input.text
+                let outputText = context.polishedText ?? context.text
+                let changed = inputText != outputText
                 Task {
                     await AppLogger.shared.log(
                         "\(stepName) completed in \(String(format: "%.1f", stepMs))ms (budget: \(String(format: "%.0f", budgetSeconds * 1000))ms)",
                         level: .info, category: "PipelineTiming"
                     )
+                    // Debug: log text at each correction layer
+                    if changed {
+                        await AppLogger.shared.log(
+                            "CORRECTION_DEBUG [\(stepName)] IN:  \(inputText)",
+                            level: .info, category: "CorrectionDebug"
+                        )
+                        await AppLogger.shared.log(
+                            "CORRECTION_DEBUG [\(stepName)] OUT: \(outputText)",
+                            level: .info, category: "CorrectionDebug"
+                        )
+                    } else {
+                        await AppLogger.shared.log(
+                            "CORRECTION_DEBUG [\(stepName)] no change",
+                            level: .info, category: "CorrectionDebug"
+                        )
+                    }
                 }
             } catch is CancellationError {
                 throw CancellationError()

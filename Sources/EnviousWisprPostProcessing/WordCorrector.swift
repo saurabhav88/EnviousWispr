@@ -4,7 +4,9 @@ import EnviousWisprCore
 
 /// Pure, Sendable word correction engine.
 ///
-/// Five-pass replacement:
+/// Six-pass replacement:
+/// 0. **N-gram compound match** -- concatenate 1-3 adjacent words, match against canonicals
+///    with spaces removed. Catches "Chat G P T" -> "ChatGPT", "Open A I" -> "OpenAI".
 /// 1. **Exact multi-word alias** -- O(1) lookup for multi-word aliases (longest match first).
 /// 2. **Fuzzy multi-word alias** -- score phrase against same-token-count aliases when exact misses.
 /// 3. **Exact single-word alias** -- O(1) lookup including canonical self-entries for casing fixes.
@@ -91,6 +93,61 @@ public struct WordCorrector: Sendable {
 
         var replacements = 0
         var tokens = text.components(separatedBy: .whitespaces)
+
+        // Build nospace lookup for Pass 0 (n-gram compound matching)
+        // Maps lowercase-nospace canonical -> original canonical
+        // e.g., "chatgpt" -> "ChatGPT", "openai" -> "OpenAI", "vscode" -> "VS Code"
+        var nospaceCanonicalMap: [String: String] = [:]
+        for word in words {
+            let nospace = word.canonical.replacingOccurrences(of: " ", with: "").lowercased()
+            nospaceCanonicalMap[nospace] = word.canonical
+            // Also index aliases without spaces
+            for alias in word.aliases {
+                let aliasNospace = alias.replacingOccurrences(of: " ", with: "").lowercased()
+                if nospaceCanonicalMap[aliasNospace] == nil {
+                    nospaceCanonicalMap[aliasNospace] = word.canonical
+                }
+            }
+        }
+
+        // Pass 0: N-gram compound matching
+        // Concatenate 1-3 adjacent words (stripped of punctuation, lowercased, spaces removed)
+        // and check against nospace canonical/alias map.
+        // "Chat G P T" -> "chatgpt" matches "ChatGPT"
+        if !nospaceCanonicalMap.isEmpty {
+            var i = 0
+            while i < tokens.count {
+                var matched = false
+
+                for n in (1...min(3, tokens.count - i)).reversed() {
+                    let slice = tokens[i..<(i + n)]
+                    let ngram = slice
+                        .map { stripPunctuation($0).lowercased() }
+                        .joined()  // No separator: concatenate directly
+
+                    guard ngram.count >= 3 else { continue }
+
+                    // Length ratio check: ngram must be within 25% of candidate length
+                    if let canonical = nospaceCanonicalMap[ngram] {
+                        let canonicalNospace = canonical.replacingOccurrences(of: " ", with: "")
+                        // Check it's not already correct
+                        let rawConcat = slice.map { stripPunctuation($0) }.joined()
+                        if rawConcat == canonicalNospace { break }
+
+                        let (firstPrefix, _, _) = splitPunctuation(tokens[i])
+                        let (_, _, lastSuffix) = splitPunctuation(tokens[i + n - 1])
+                        tokens.replaceSubrange(i..<(i + n), with: [firstPrefix + canonical + lastSuffix])
+                        replacements += 1
+                        matched = true
+                        Self.logger.debug("WordCorrector: type=ngram-compound source='\(rawConcat)' target='\(canonical)' n=\(n)")
+                        break
+                    }
+                }
+
+                i += 1
+                if matched { continue }
+            }
+        }
 
         // Pass 1 + 2: multi-word (exact then fuzzy)
         if !multiAliasMap.isEmpty {
