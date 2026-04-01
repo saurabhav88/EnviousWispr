@@ -77,6 +77,13 @@ final class RecordingOverlayPanel {
                 userInfo: [.announcement: "Processing transcription",
                            .priority: NSAccessibilityPriorityLevel.medium.rawValue as NSNumber])
             showPolishing(label: label)
+        case .clipboardFallback:
+            NSAccessibility.post(
+                element: NSApp.mainWindow as Any,
+                notification: .announcementRequested,
+                userInfo: [.announcement: "Text copied to clipboard",
+                           .priority: NSAccessibilityPriorityLevel.high.rawValue as NSNumber])
+            showClipboardFallback()
         }
     }
 
@@ -150,6 +157,41 @@ final class RecordingOverlayPanel {
         // window frame on lock transitions.
         .frame(width: 185, height: 64)
         showPanel(content: overlayView, width: 185, height: 64, y: y)
+    }
+
+    /// Show a transient "Copied to clipboard" notice that auto-dismisses after 2.5s.
+    func showClipboardFallback() {
+        guard panel == nil else {
+            // Transition from existing panel (recording/polishing) to clipboard notice
+            transitionToPolishing(label: "Paste failed \u{2014} \u{2318}V to paste")
+            scheduleAutoDismiss()
+            return
+        }
+        pendingCreateWork?.cancel()
+        pendingCreateWork = nil
+        generation &+= 1
+        let token = generation
+
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.generation == token else { return }
+            self.pendingCreateWork = nil
+            self.createPolishingPanel(label: "Paste failed \u{2014} \u{2318}V to paste")
+            self.scheduleAutoDismiss()
+        }
+        pendingCreateWork = work
+        DispatchQueue.main.async(execute: work)
+    }
+
+    /// Auto-dismiss timer for transient notices (clipboard fallback).
+    private var autoDismissTask: Task<Void, Never>?
+
+    private func scheduleAutoDismiss() {
+        autoDismissTask?.cancel()
+        autoDismissTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2.5))
+            guard !Task.isCancelled, let self, self.panel != nil else { return }
+            self.hide()
+        }
     }
 
     private func createPolishingPanel(label: String = "Polishing...") {
@@ -260,6 +302,8 @@ final class RecordingOverlayPanel {
         currentIntent = .hidden
         isRecordingLocked = false
         lockState.isLocked = false
+        autoDismissTask?.cancel()
+        autoDismissTask = nil
         generation &+= 1
         // Cancel any pending deferred panel creation so it never fires.
         // This handles the rapid-ESC race: if hide() is called before the

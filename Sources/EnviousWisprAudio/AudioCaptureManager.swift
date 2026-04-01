@@ -272,8 +272,26 @@ public final class AudioCaptureManager: AudioCaptureInterface {
             )
             let existingIsEngine = existing is AVAudioEngineSource
             let wantsEngine = decision.sourceType == .audioEngine
-            if existingIsEngine == wantsEngine {
-                // Route unchanged — reuse warm source
+
+            // Check full config signature, not just source type.
+            // Device/VP changes between recordings must trigger rebuild.
+            var configMatch = existingIsEngine == wantsEngine
+            if configMatch, let engineSource = existing as? AVAudioEngineSource {
+                // Compare effective device selection: preferredInputDeviceIDOverride
+                // takes priority, fall back to selectedInputDeviceUID when empty.
+                let oldEffective = engineSource.preferredInputDeviceIDOverride.isEmpty
+                    ? engineSource.selectedInputDeviceUID
+                    : engineSource.preferredInputDeviceIDOverride
+                let newEffective = preferredInputDeviceIDOverride.isEmpty
+                    ? selectedInputDeviceUID
+                    : preferredInputDeviceIDOverride
+                let deviceMatch = oldEffective == newEffective
+                let vpMatch = engineSource.noiseSuppressionEnabled == noiseSuppressionEnabled
+                configMatch = deviceMatch && vpMatch
+            }
+
+            if configMatch {
+                // Route and config unchanged, reuse warm source
                 lastRouteDecision = decision
                 Self.btRouteLog("Reusing warm \(wantsEngine ? "engine" : "capture session") source")
                 return existing

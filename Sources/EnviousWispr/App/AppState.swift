@@ -227,9 +227,19 @@ final class AppState {
                 self.isRecordingLocked = false
                 self.hotkeyService.unregisterCancelHotkey()
             }
-            // Intent-driven overlay — pipeline.overlayIntent maps state to the correct label
+            // Intent-driven overlay — pipeline.overlayIntent maps state to the correct label.
+            // On completion, check if paste fell back to clipboard-only (Tier 3) and show
+            // a transient "Copied to clipboard" notice instead of silently hiding.
+            let overlayIntent: OverlayIntent
+            if newState == .complete,
+               let tier = self.pipeline.currentTranscript?.metrics?.pasteTier,
+               tier == "clipboard_only" {
+                overlayIntent = .clipboardFallback
+            } else {
+                overlayIntent = self.pipeline.overlayIntent
+            }
             self.recordingOverlay.show(
-                intent: self.pipeline.overlayIntent,
+                intent: overlayIntent,
                 audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 },
                 isRecordingLocked: self.isRecordingLocked
             )
@@ -256,9 +266,17 @@ final class AppState {
                 self.isRecordingLocked = false
                 self.hotkeyService.unregisterCancelHotkey()
             }
-            // Intent-driven overlay — pipeline.overlayIntent maps state to the correct label
+            // Intent-driven overlay — same clipboard fallback logic as Parakeet pipeline above.
+            let wkOverlayIntent: OverlayIntent
+            if newState == .complete,
+               let tier = self.whisperKitPipeline.currentTranscript?.metrics?.pasteTier,
+               tier == "clipboard_only" {
+                wkOverlayIntent = .clipboardFallback
+            } else {
+                wkOverlayIntent = self.whisperKitPipeline.overlayIntent
+            }
             self.recordingOverlay.show(
-                intent: self.whisperKitPipeline.overlayIntent,
+                intent: wkOverlayIntent,
                 audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 },
                 isRecordingLocked: self.isRecordingLocked
             )
@@ -531,6 +549,26 @@ final class AppState {
                 }
             default: break
             }
+        }
+
+        // Fire dictation.invoked telemetry when starting (not stopping).
+        // Intent event: captures user action before engine/ASR work begins.
+        // Check that the active pipeline is NOT already in a recording/processing state.
+        let alreadyActive: Bool
+        if active is WhisperKitPipeline {
+            let s = whisperKitPipeline.state
+            alreadyActive = s == .recording || s == .transcribing || s == .polishing || s == .loadingModel || s == .startingUp
+        } else {
+            let s = pipeline.state
+            alreadyActive = s == .recording || s == .transcribing || s == .polishing || s == .loadingModel
+        }
+        if !alreadyActive {
+            let targetApp = NSWorkspace.shared.frontmostApplication?.localizedName
+            TelemetryService.shared.dictationInvoked(
+                triggerSource: settings.recordingMode.rawValue,
+                inputMode: settings.recordingMode.rawValue,
+                targetApp: targetApp
+            )
         }
 
         await active.handle(event: .toggleRecording)
