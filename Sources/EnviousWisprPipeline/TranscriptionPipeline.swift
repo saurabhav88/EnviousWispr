@@ -56,6 +56,8 @@ public final class TranscriptionPipeline: DictationPipeline {
     private var silenceDetector: SilenceDetector?
     private var vadMonitorTask: Task<Void, Never>?
     private var recordingStartTime: Date?
+    /// User preference: use streaming ASR during recording (lower latency) or batch after stop (cleaner text).
+    public var useStreamingASR: Bool = true
     /// Whether streaming ASR was successfully started for the current recording.
     private var streamingASRActive = false
     /// Counters for diagnosing streaming buffer delivery (tail-cutoff instrumentation).
@@ -161,7 +163,7 @@ public final class TranscriptionPipeline: DictationPipeline {
         defer { if !streamingSetupSucceeded { deactivateStreamingForwarding() } }
 
         let supportsStreaming = await asrManager.activeBackendSupportsStreaming
-        if supportsStreaming {
+        if supportsStreaming && useStreamingASR {
             do {
                 try await asrManager.startStreaming(options: transcriptionOptions)
                 streamingASRActive = true

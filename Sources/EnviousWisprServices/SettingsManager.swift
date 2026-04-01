@@ -40,6 +40,7 @@ public final class SettingsManager {
         case environmentPreset
         case writingStylePreset
         case useXPCAudioService
+        case useStreamingASR
     }
 
     public var onChange: ((SettingKey) -> Void)?
@@ -229,6 +230,13 @@ public final class SettingsManager {
         }
     }
 
+    public var useStreamingASR: Bool {
+        didSet {
+            UserDefaults.standard.set(useStreamingASR, forKey: "useStreamingASR")
+            onChange?(.useStreamingASR)
+        }
+    }
+
     public var isDebugModeEnabled: Bool {
         didSet {
             UserDefaults.standard.set(isDebugModeEnabled, forKey: "isDebugModeEnabled")
@@ -384,7 +392,7 @@ public final class SettingsManager {
         modelUnloadPolicy = ModelUnloadPolicy(
             rawValue: defaults.string(forKey: "modelUnloadPolicy") ?? ""
         ) ?? .never
-        restoreClipboardAfterPaste = defaults.object(forKey: "restoreClipboardAfterPaste") as? Bool ?? false
+        restoreClipboardAfterPaste = defaults.object(forKey: "restoreClipboardAfterPaste") as? Bool ?? true
         customSystemPrompt = defaults.string(forKey: "customSystemPrompt") ?? ""
         wordCorrectionEnabled = defaults.object(forKey: "wordCorrectionEnabled") as? Bool ?? true
         fillerRemovalEnabled = defaults.object(forKey: "fillerRemovalEnabled") as? Bool ?? true
@@ -400,6 +408,7 @@ public final class SettingsManager {
         environmentPreset = EnvironmentPreset(rawValue: defaults.string(forKey: "environmentPreset") ?? "") ?? .normal
         writingStylePreset = WritingStylePreset(rawValue: defaults.string(forKey: "writingStylePreset") ?? "") ?? .standard
         useXPCAudioService = defaults.object(forKey: "useXPCAudioService") as? Bool ?? true
+        useStreamingASR = defaults.object(forKey: "useStreamingASR") as? Bool ?? false
 
         // Canonicalize provider-coupled model names after all properties are loaded.
         if llmProvider == .appleIntelligence {

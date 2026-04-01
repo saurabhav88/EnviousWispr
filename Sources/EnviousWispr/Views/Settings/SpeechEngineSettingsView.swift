@@ -84,7 +84,22 @@ struct SpeechEngineSettingsView: View {
                 }
             }
 
-            // ── Section 4: Cleanup ────────────────────────────────────────────
+            // ── Section 4: Transcription Mode ────────────────────────────────
+            if appState.settings.selectedBackend == .parakeet {
+                BrandedSection(header: "Transcription Mode") {
+                    BrandedRow(showDivider: false) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Toggle("Live transcription", isOn: $state.settings.useStreamingASR)
+                                .toggleStyle(BrandedToggleStyle())
+                            Text("Transcribes while you speak for faster results. Turn off for cleaner text on longer recordings.")
+                                .font(.stHelper)
+                                .foregroundStyle(.stTextTertiary)
+                        }
+                    }
+                }
+            }
+
+            // ── Section 5: Cleanup ────────────────────────────────────────────
             BrandedSection(header: "Cleanup") {
                 BrandedRow(showDivider: false) {
                     VStack(alignment: .leading, spacing: 4) {
