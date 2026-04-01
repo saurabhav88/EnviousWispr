@@ -414,10 +414,12 @@ public final class TranscriptionPipeline: DictationPipeline {
 
         // Filter silence using VAD speech segments (used for batch fallback and logging).
         var samples: [Float]
+        var hasSpeechEvidence = false
         let isXPCMode = audioCapture is AudioCaptureProxy
         if isXPCMode {
             // XPC mode: get speech segments from service-side VAD.
             let segments = await audioCapture.getVADSegments()
+            hasSpeechEvidence = !segments.isEmpty
             if !segments.isEmpty {
                 samples = Self.filterSamples(from: rawSamples, segments: segments)
             } else {
@@ -425,9 +427,14 @@ public final class TranscriptionPipeline: DictationPipeline {
             }
         } else if let detector = silenceDetector {
             await detector.finalizeSegments(totalSampleCount: rawSamples.count)
+            let segments = await detector.speechSegments
+            hasSpeechEvidence = !segments.isEmpty
             samples = await detector.filterSamples(from: rawSamples)
         } else {
             samples = rawSamples
+            // No VAD detector available -- cannot determine speech presence.
+            // Default to false to avoid misclassifying noise/silence as speech.
+            hasSpeechEvidence = false
         }
 
         Task { await AppLogger.shared.log(
@@ -459,10 +466,14 @@ public final class TranscriptionPipeline: DictationPipeline {
             // Use streaming finalize when available for lowest latency.
             // FluidAudio fork uses fresh decoder state per chunk + chunk-aware text assembly
             // to eliminate the ~12% text loss that affected upstream SlidingWindowAsrManager.
-            // Falls back to batch transcription when streaming was not active.
+            // Streaming mode includes batch rescue: if finalize fails or returns empty
+            // despite VAD speech evidence, retry with batch decode using captured samples.
             let result: ASRResult
             if wasStreaming {
-                result = try await asrManager.finalizeStreaming()
+                result = try await transcribeWithStreamingRescue(
+                    samples: samples,
+                    hasSpeechEvidence: hasSpeechEvidence
+                )
             } else {
                 result = try await asrManager.transcribe(audioSamples: samples, options: transcriptionOptions)
             }
@@ -478,11 +489,14 @@ public final class TranscriptionPipeline: DictationPipeline {
                     snapshot: frozenSnapshot
                 )
                 frozenSnapshot = nil
-                state = .error("No speech detected — try speaking closer to the microphone")
-                Task { await AppLogger.shared.log(
-                    "ASR returned empty text, showing error to user",
+                let errorMsg = hasSpeechEvidence
+                    ? "Transcription failed — could not decode speech"
+                    : "No speech detected — try speaking closer to the microphone"
+                state = .error(errorMsg)
+                await AppLogger.shared.log(
+                    "ASR returned empty text (speechEvidence=\(hasSpeechEvidence)), showing error",
                     level: .info, category: "Pipeline"
-                ) }
+                )
                 return
             }
 
@@ -1019,7 +1033,53 @@ public final class TranscriptionPipeline: DictationPipeline {
         return result.isEmpty ? allSamples : result
     }
 
-    // MARK: - Streaming Finalization
+    // MARK: - Streaming Rescue
+
+    /// Attempt streaming finalize, fall back to batch if streaming fails or returns empty
+    /// and VAD detected speech. Heart-level rescue: captured samples are already available,
+    /// and batch uses a separate AsrManager from streaming's SlidingWindowAsrManager.
+    private func transcribeWithStreamingRescue(
+        samples: [Float],
+        hasSpeechEvidence: Bool
+    ) async throws -> ASRResult {
+        // 1. Try streaming finalize (happy path)
+        do {
+            let result = try await asrManager.finalizeStreaming()
+            let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty {
+                return result
+            }
+            // Streaming returned empty -- check rescue eligibility below
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            await AppLogger.shared.log(
+                "Streaming finalize failed: \(error.localizedDescription), checking rescue eligibility",
+                level: .info, category: "Pipeline"
+            )
+        }
+
+        // 2. No speech evidence means genuine silence, not a rescue candidate.
+        // Return an empty result so the caller handles it with the appropriate message.
+        guard hasSpeechEvidence else {
+            return ASRResult(text: "", language: "en", duration: 0, processingTime: 0, backendType: .parakeet)
+        }
+
+        // 3. Batch rescue: speech was detected but streaming failed to decode it.
+        await AppLogger.shared.log(
+            "Streaming rescue: speech evidence found, retrying batch (\(samples.count) samples)",
+            level: .info, category: "Pipeline"
+        )
+
+        let result = try await asrManager.transcribe(audioSamples: samples, options: transcriptionOptions)
+
+        await AppLogger.shared.log(
+            "Streaming rescue: batch produced \(result.text.count) chars",
+            level: .info, category: "Pipeline"
+        )
+
+        return result
+    }
 
     // MARK: - Text Processing
 
