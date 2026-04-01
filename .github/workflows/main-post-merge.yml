@@ -1,0 +1,58 @@
+name: Main Post-Merge Check
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: main-post-merge
+  cancel-in-progress: true
+
+jobs:
+  main-post-merge-build:
+    runs-on: [self-hosted, enviouswispr-release]
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 2
+
+      - name: Detect code changes
+        id: changes
+        run: |
+          CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "unknown")
+          echo "==> Changed files:"
+          echo "$CHANGED"
+          if echo "$CHANGED" | grep -qvE '^(website/|docs/|\.github/|content-engine/|\.claude/|CLAUDE\.md)'; then
+            echo "needs_build=true" >> "$GITHUB_OUTPUT"
+            echo "==> Code changes detected — running post-merge build"
+          else
+            echo "needs_build=false" >> "$GITHUB_OUTPUT"
+            echo "==> Non-code changes only — skipping build"
+          fi
+
+      - name: Cache SPM dependencies
+        if: steps.changes.outputs.needs_build == 'true'
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: .build
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      - name: Build (release)
+        if: steps.changes.outputs.needs_build == 'true'
+        run: swift build -c release --arch arm64
+
+      - name: Post result
+        if: always()
+        env:
+          NEEDS_BUILD: ${{ steps.changes.outputs.needs_build }}
+        run: |
+          if [ "$NEEDS_BUILD" != "true" ]; then
+            echo "Non-code push (appcast, docs, etc.) — no build needed"
+          else
+            echo "Post-merge release build passed"
+          fi
