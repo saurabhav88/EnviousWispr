@@ -154,16 +154,24 @@ public final class WhisperKitPipeline: DictationPipeline {
 
     /// Silently load the WhisperKit model into RAM without changing pipeline state.
     /// Called after model download completes or on launch if model is already cached.
+    /// Uses prepareIfCached() to avoid triggering a silent network download.
     /// If user presses record before this finishes, startRecording() handles it with its own .loadingModel flow.
     public func prepareBackendSilently() async {
         let isBackendReady = await backend.isReady
         guard !isBackendReady else { return }
         do {
-            try await backend.prepare()
-            Task { await AppLogger.shared.log(
-                "WhisperKit model pre-loaded successfully (background)",
-                level: .info, category: "WhisperKitPipeline"
-            ) }
+            let loaded = try await backend.prepareIfCached()
+            if loaded {
+                Task { await AppLogger.shared.log(
+                    "WhisperKit model pre-loaded successfully (background)",
+                    level: .info, category: "WhisperKitPipeline"
+                ) }
+            } else {
+                Task { await AppLogger.shared.log(
+                    "WhisperKit model not cached, skipping silent pre-load",
+                    level: .info, category: "WhisperKitPipeline"
+                ) }
+            }
         } catch {
             Task { await AppLogger.shared.log(
                 "WhisperKit model pre-load failed: \(error.localizedDescription)",
@@ -179,8 +187,9 @@ public final class WhisperKitPipeline: DictationPipeline {
         await audioCapture.preWarm()
         guard !Task.isCancelled else { return }
         isPreWarmed = true
-        // Defense-in-depth: ensure model is loaded (idempotent, no-op if ready)
-        Task { try? await backend.prepare() }
+        // Defense-in-depth: ensure model is loaded from cache (no download).
+        // If not cached, startRecording() handles the full load with user-visible UI.
+        Task { _ = try? await backend.prepareIfCached() }
     }
 
     public func toggleRecording() async {

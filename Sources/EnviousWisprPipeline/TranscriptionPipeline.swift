@@ -73,6 +73,9 @@ public final class TranscriptionPipeline: DictationPipeline {
     private var isPreWarmed = false
     /// Frozen snapshot of recording state, built before teardown for post-recording error enrichment.
     private var frozenSnapshot: SentryBreadcrumb.RecordingSnapshot?
+    /// Cancellable model load task. Cancelled by cancelRecording() during .loadingModel.
+    /// Late completion after cancel is guarded by checking state == .loadingModel before proceeding.
+    private var modelLoadTask: Task<Void, any Error>?
 
     public init(
         audioCapture: any AudioCaptureInterface,
@@ -136,18 +139,34 @@ public final class TranscriptionPipeline: DictationPipeline {
         // Cancel idle timer so model stays loaded during recording.
         asrManager.cancelIdleTimer()
 
-        // Ensure model is loaded (model should already be cached by WhisperKitSetupService)
+        // Ensure model is loaded (model should already be warm from launch-time preload).
+        // Wrap in a cancellable task so cancelRecording() can abort a cold-start load.
         if !asrManager.isModelLoaded {
             state = .loadingModel
             SentryBreadcrumb.add(stage: "asr", message: "Model loading", data: ["backend": asrManager.activeBackendType.rawValue])
-            do {
+            let loadTask = Task {
                 try await asrManager.loadModel()
+            }
+            modelLoadTask = loadTask
+            do {
+                try await loadTask.value
+            } catch is CancellationError {
+                // User cancelled during model load. Return to idle.
+                stopRequested = false
+                modelLoadTask = nil
+                state = .idle
+                return
             } catch {
                 SentryBreadcrumb.captureError(error, category: .modelLoadFailed, stage: "asr", extra: ["backend": asrManager.activeBackendType.rawValue])
                 stopRequested = false
+                modelLoadTask = nil
                 state = .error("Model load failed: \(error.localizedDescription)")
                 return
             }
+            modelLoadTask = nil
+            // Late-completion guard: if state changed while we were loading (e.g., cancel),
+            // do not proceed. The cancel handler already set state to .idle.
+            guard state == .loadingModel else { return }
             guard !Task.isCancelled else { return }
         }
 
@@ -825,6 +844,17 @@ public final class TranscriptionPipeline: DictationPipeline {
     /// Guards on `.recording` state — safe to call from any other state.
     public func cancelRecording() async {
         stopRequested = false
+
+        // Cancel during model loading: abort the load task and return to idle.
+        if state == .loadingModel {
+            modelLoadTask?.cancel()
+            modelLoadTask = nil
+            targetApp = nil
+            targetElement = nil
+            state = .idle
+            return
+        }
+
         guard state == .recording else { return }
 
         // Stop VAD monitoring task immediately

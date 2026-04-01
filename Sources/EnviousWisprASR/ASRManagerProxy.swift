@@ -40,46 +40,78 @@ public final class ASRManagerProxy: ASRManagerInterface {
 
     private var idleTimer: Timer?
     private var progressPollTimer: Timer?
+    /// Single-flight guard: if a load is already in progress, callers await it instead of starting a new one.
+    private var inFlightLoadTask: Task<Void, any Error>?
 
     public init() {}
 
     // MARK: - ASRManagerInterface: Model lifecycle
 
+    /// Load the active backend's model. Single-flight: concurrent callers await the same task.
     public func loadModel() async throws {
-        // Reset progress state before starting
-        downloadProgress = 0
-        downloadPhase = "Preparing download..."
-        downloadDetail = ""
-
-        ensureConnection()
-        resendConfigIfNeeded()
-
-        // Start polling the XPC service for progress at 4 Hz.
-        // This is the reliable path — request/response, no Mach port backpressure,
-        // no bidirectional callback issues. The XPC push callback is kept as a
-        // supplementary fast path but polling is the primary progress source.
-        startProgressPolling()
-
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
-            let guard_ = OneShotContinuationASR(cont)
-            serviceProxy { proxy in
-                proxy.loadModel(
-                    backendType: self.activeBackendType.rawValue,
-                    modelVariant: self.lastModelVariant
-                ) { nsError in
-                    if let error = nsError { guard_.resume(throwing: error) }
-                    else { guard_.resume() }
-                }
-            } onProxyError: {
-                guard_.resume(throwing: XPCASRTransportError.serviceUnreachable)
-            }
+        // If a load is already in progress, await it instead of starting a new one.
+        if let existing = inFlightLoadTask {
+            try await existing.value
+            return
         }
-        // Stop polling and clear progress on completion
-        stopProgressPolling()
-        downloadProgress = 1.0
-        downloadPhase = ""
-        downloadDetail = ""
-        isModelLoaded = true
+
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            // Reset progress state before starting
+            self.downloadProgress = 0
+            self.downloadPhase = "Preparing download..."
+            self.downloadDetail = ""
+
+            self.ensureConnection()
+            self.resendConfigIfNeeded()
+
+            // Start polling the XPC service for progress at 4 Hz.
+            self.startProgressPolling()
+
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
+                let guard_ = OneShotContinuationASR(cont)
+                self.serviceProxy { proxy in
+                    proxy.loadModel(
+                        backendType: self.activeBackendType.rawValue,
+                        modelVariant: self.lastModelVariant
+                    ) { nsError in
+                        if let error = nsError { guard_.resume(throwing: error) }
+                        else { guard_.resume() }
+                    }
+                } onProxyError: {
+                    guard_.resume(throwing: XPCASRTransportError.serviceUnreachable)
+                }
+            }
+            // Stop polling and clear progress on completion
+            self.stopProgressPolling()
+            self.downloadProgress = 1.0
+            self.downloadPhase = ""
+            self.downloadDetail = ""
+            self.isModelLoaded = true
+        }
+        inFlightLoadTask = task
+        defer { inFlightLoadTask = nil }
+        try await task.value
+    }
+
+    /// Silent warmup: load the model in the background without mutating UI-visible download state.
+    /// Used at app launch. If a user-initiated load is already in progress, awaits it.
+    public func loadModelSilently() async {
+        guard !isModelLoaded else { return }
+        // If a load is already in progress, just await it silently.
+        if let existing = inFlightLoadTask {
+            try? await existing.value
+            return
+        }
+        do {
+            try await loadModel()
+        } catch {
+            // Silent warmup failure is non-fatal. Record button triggers lazy-load as fallback.
+            Task { await AppLogger.shared.log(
+                "Silent model warmup failed: \(error.localizedDescription)",
+                level: .info, category: "ASRManagerProxy"
+            ) }
+        }
     }
 
     private func startProgressPolling() {
@@ -116,6 +148,14 @@ public final class ASRManagerProxy: ASRManagerInterface {
             }
         }
         isModelLoaded = false
+    }
+
+    /// Set the backend type synchronously at app startup. No unload (nothing loaded yet).
+    /// Must be called before any loadModel() or warmup task.
+    public func setInitialBackendType(_ type: ASRBackendType) {
+        activeBackendType = type
+        isModelLoaded = false
+        isStreaming = false
     }
 
     public func switchBackend(to type: ASRBackendType) async {

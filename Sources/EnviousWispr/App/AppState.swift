@@ -199,15 +199,10 @@ final class AppState {
         // Sync WhisperKit setup service model variant
         whisperKitSetup.modelVariant = settings.whisperKitModel
 
-        // Restore persisted backend selection (ASRManager defaults to .parakeet)
-        if settings.selectedBackend != .parakeet {
-            Task {
-                await asrManager.switchBackend(to: settings.selectedBackend)
-                SentryBreadcrumb.updateASRBackend(settings.selectedBackend == .whisperKit ? "whisperkit" : "parakeet")
-            }
-        } else {
-            SentryBreadcrumb.updateASRBackend("parakeet")
-        }
+        // Restore persisted backend selection synchronously (no race with first record).
+        // setInitialBackendType is safe at startup: nothing loaded, no unload needed.
+        asrManager.setInitialBackendType(settings.selectedBackend)
+        SentryBreadcrumb.updateASRBackend(settings.selectedBackend == .whisperKit ? "whisperkit" : "parakeet")
 
         // Wire settings change handler
         settings.onChange = { [weak self] key in
@@ -393,8 +388,14 @@ final class AppState {
             ) }
         }
 
-        // Pre-load WhisperKit model in background to eliminate cold-start delay.
-        // Detect cached model state first (setupState starts as .checking), then observe for .ready.
+        // Pre-load the selected backend's model in the background to eliminate cold-start delay.
+        // Parakeet: direct silent load (model files already downloaded during onboarding).
+        // WhisperKit: observation-based (waits for setupState to become .ready first).
+        if settings.selectedBackend == .parakeet {
+            Task { [weak self] in
+                await self?.asrManager.loadModelSilently()
+            }
+        }
         Task { [weak self] in
             await self?.whisperKitSetup.detectState()
             self?.startWhisperKitPreloadObservation()
@@ -595,7 +596,7 @@ final class AppState {
             whisperKitPipeline.autoPasteToActiveApp = false
             await whisperKitPipeline.handle(event: .cancelRecording)
         } else {
-            guard pipelineState == .recording else { return }
+            guard pipelineState == .recording || pipelineState == .loadingModel else { return }
             pipeline.autoPasteToActiveApp = false
             await pipeline.cancelRecording()
         }
