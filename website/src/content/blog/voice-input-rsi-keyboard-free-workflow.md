@@ -4,6 +4,7 @@ description: "RSI makes every keystroke a trade-off. Voice input offers a practi
 pubDate: 2026-03-12
 tags: ["accessibility", "rsi", "voice-input", "workflow", "hands-free"]
 draft: false
+author: "Saurabh Vaish"
 ---
 
 By some estimates, knowledge workers produce somewhere between 5,000 and 10,000 words per day across emails, messages, documents, and tickets. That's roughly 125,000 to 250,000 keystrokes -- every single workday, five days a week, for years. The human wrist was not designed for this.

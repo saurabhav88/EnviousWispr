@@ -4,6 +4,7 @@ description: "Dictating git commits produces better messages than typing. Here's
 pubDate: 2026-03-16
 tags: ["developer", "git", "workflow", "dictation"]
 draft: false
+author: "Saurabh Vaish"
 ---
 
 Imagine going back through six months of git history. The first three months are the usual graveyard: "fix bug," "update stuff," "misc changes." The last three months? Every commit has a subject line, a body, and actual reasoning. The code didn't change between those two periods. What changed was the input method — the developer switched from typing commit messages to speaking them.

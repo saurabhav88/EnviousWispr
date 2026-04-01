@@ -5,6 +5,7 @@ pubDate: 2026-03-17
 tags: ["students", "essays", "dictation", "writing-style", "study-hack"]
 keywords: ["essay outline voice dictation", "dictate essay outline mac", "voice to outline", "speech to text essay", "writing outline by speaking", "mac dictation students", "free dictation app essays"]
 draft: false
+author: "Saurabh Vaish"
 ---
 
 What if your essay outline was already in your head -- and all you had to do was say it out loud?

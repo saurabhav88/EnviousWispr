@@ -1,0 +1,219 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getPublishedPosts } from '../../utils/posts';
+
+const siteUrl = 'https://enviouswispr.com';
+const authorName = 'Saurabh Vaish';
+const authorUrl = `${siteUrl}/authors/saurabh-vaish/`;
+
+const posts = await getPublishedPosts();
+const authorPosts = posts.filter(p => !p.data.author || p.data.author === authorName);
+
+const formatDate = (d: Date) =>
+  d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+const personJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "Person",
+  "name": authorName,
+  "url": authorUrl,
+  "jobTitle": "Founder",
+  "worksFor": {
+    "@type": "Organization",
+    "name": "Envious Labs",
+    "url": "https://enviouslabs.com",
+  },
+  "sameAs": [
+    "https://github.com/saurabhav88",
+    "https://www.linkedin.com/in/saurabh-a-vaish-568253a6/",
+    "https://x.com/saborav",
+  ],
+  "knowsAbout": [
+    "AI dictation",
+    "speech-to-text",
+    "on-device AI",
+    "macOS development",
+    "Apple Silicon",
+    "accessibility",
+    "privacy-first software",
+    "open source software",
+  ],
+  "description": "Founder of Envious Labs and creator of EnviousWispr, a free open-source AI dictation app for macOS.",
+});
+
+const breadcrumbJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Home", "item": siteUrl },
+    { "@type": "ListItem", "position": 2, "name": authorName, "item": authorUrl },
+  ],
+});
+---
+
+<BaseLayout
+  title={`${authorName} — EnviousWispr`}
+  description="Saurabh Vaish is the founder of Envious Labs and creator of EnviousWispr, a free open-source AI dictation app for macOS. He writes about on-device speech-to-text, privacy, Apple Silicon, and accessibility."
+  canonicalPath="/authors/saurabh-vaish/"
+>
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={personJsonLd}></script>
+    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
+  </Fragment>
+
+  <div class="author-page">
+    <div class="author-container">
+      <a href="/blog/" class="back-link">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+        Blog
+      </a>
+
+      <header class="author-header">
+        <h1 class="author-name">{authorName}</h1>
+        <p class="author-bio">Founder of Envious Labs and creator of EnviousWispr, a free open-source AI dictation app for macOS. He writes about on-device speech-to-text, privacy, Apple Silicon, and accessibility.</p>
+        <div class="author-links">
+          <a href="https://github.com/saurabhav88" rel="me noopener" target="_blank">GitHub</a>
+          <a href="https://www.linkedin.com/in/saurabh-a-vaish-568253a6/" rel="me noopener" target="_blank">LinkedIn</a>
+          <a href="https://x.com/saborav" rel="me noopener" target="_blank">X</a>
+        </div>
+      </header>
+
+      <section class="author-posts" aria-label="Posts by this author">
+        <h2 class="author-posts-heading">Posts</h2>
+        <div class="author-posts-list">
+          {authorPosts.map(post => (
+            <a href={`/blog/${post.id}/`} class="author-post-card">
+              <p class="author-post-title">{post.data.title}</p>
+              <p class="author-post-desc">{post.data.description.length > 140 ? post.data.description.slice(0, 140).trimEnd() + '...' : post.data.description}</p>
+              <time class="author-post-date" datetime={post.data.pubDate.toISOString()}>
+                {formatDate(post.data.pubDate)}
+              </time>
+            </a>
+          ))}
+        </div>
+      </section>
+    </div>
+  </div>
+</BaseLayout>
+
+<style>
+  .author-page {
+    padding: 120px 0 96px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .author-container {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 0 32px;
+  }
+
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-3);
+    text-decoration: none;
+    margin-bottom: 40px;
+    transition: color 0.2s;
+  }
+  .back-link:hover { color: var(--accent); }
+
+  .author-header {
+    margin-bottom: 48px;
+    padding-bottom: 32px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .author-name {
+    font-size: 36px;
+    font-weight: 800;
+    letter-spacing: -1.5px;
+    color: var(--text);
+    margin-bottom: 16px;
+  }
+
+  .author-bio {
+    font-size: 17px;
+    line-height: 1.7;
+    color: var(--text-2);
+    margin-bottom: 20px;
+  }
+
+  .author-links {
+    display: flex;
+    gap: 16px;
+  }
+
+  .author-links a {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--accent);
+    text-decoration: none;
+    transition: opacity 0.2s;
+  }
+  .author-links a:hover { opacity: 0.7; }
+
+  .author-posts-heading {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-3);
+    margin-bottom: 20px;
+  }
+
+  .author-posts-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .author-post-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    text-decoration: none;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .author-post-card:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .author-post-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1.35;
+    margin: 0;
+  }
+  .author-post-card:hover .author-post-title { color: var(--accent); }
+
+  .author-post-desc {
+    font-size: 14px;
+    color: var(--text-2);
+    line-height: 1.55;
+    margin: 0;
+  }
+
+  .author-post-date {
+    font-size: 12px;
+    font-family: var(--font-mono);
+    color: var(--text-3);
+    margin-top: 4px;
+  }
+
+  @media (max-width: 600px) {
+    .author-page { padding: 100px 0 64px; }
+    .author-container { padding: 0 20px; }
+    .author-name { font-size: 28px; }
+  }
+</style>

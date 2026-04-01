@@ -4,6 +4,7 @@ description: "How developers use macOS voice dictation to write PR descriptions,
 pubDate: 2026-03-12
 tags: ["developers", "dictation", "productivity", "code-review"]
 draft: false
+author: "Saurabh Vaish"
 ---
 
 The biggest time sink in software development isn't writing code — it's everything around the code. PR descriptions, review comments, Slack threads, postmortems, design docs, README updates. Developers often spend a surprising share of their workday writing prose, not code — and most of that prose gets typed in the cracks between implementation work, breaking flow state every time.

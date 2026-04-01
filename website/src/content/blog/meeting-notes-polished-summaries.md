@@ -4,6 +4,7 @@ description: "Turn post-meeting chaos into structured summaries with action item
 pubDate: 2026-03-13
 tags: ["meetings", "dictation", "productivity", "writing-styles"]
 draft: false
+author: "Saurabh Vaish"
 ---
 
 You'll never need to type meeting notes again. Not because some AI will attend your meetings for you -- but because a thirty-second voice dump into your Mac, right after the meeting ends, produces a better summary than ten minutes of careful typing ever did.
