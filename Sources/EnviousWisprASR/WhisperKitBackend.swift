@@ -39,7 +39,8 @@ public actor WhisperKitBackend: ASRBackend {
         guard !isReady else { return }  // Idempotent — skip if already loaded
 
         // Use cached model path from WhisperKitSetupService (no network call).
-        // Falls back to WhisperKit.download() if path not found (handles edge cases).
+        // Falls back to WhisperKit.download() if path not found (handles edge cases
+        // like user-initiated record when cache was cleared).
         let modelPath: String
         if let cached = WhisperKitSetupService.getLocalModelPath(variant: modelVariant) {
             modelPath = cached
@@ -48,6 +49,21 @@ public actor WhisperKitBackend: ASRBackend {
             modelPath = folder.path
         }
 
+        try await loadFromPath(modelPath)
+    }
+
+    /// Load model from local cache only. Returns false if model is not cached.
+    /// Used by silent/background warmup paths that must never trigger a network download.
+    public func prepareIfCached() async throws -> Bool {
+        guard !isReady else { return true }
+        guard let cached = WhisperKitSetupService.getLocalModelPath(variant: modelVariant) else {
+            return false  // Model not downloaded, skip silently
+        }
+        try await loadFromPath(cached)
+        return true
+    }
+
+    private func loadFromPath(_ modelPath: String) async throws {
         let config = WhisperKitConfig(
             model: modelVariant,
             modelFolder: modelPath,

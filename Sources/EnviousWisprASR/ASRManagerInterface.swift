@@ -20,7 +20,9 @@ public protocol ASRManagerInterface: AnyObject {
 
     // Model lifecycle
     func loadModel() async throws
+    func loadModelSilently() async
     func unloadModel() async
+    func setInitialBackendType(_ type: ASRBackendType)
     func switchBackend(to type: ASRBackendType) async
     func updateWhisperKitModel(_ variant: String) async
 

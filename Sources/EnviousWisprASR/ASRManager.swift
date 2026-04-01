@@ -17,6 +17,8 @@ public final class ASRManager: ASRManagerInterface {
     public var onServiceInterrupted: (() -> Void)?  // No-op for in-process — no XPC crash path
     private var idleTimer: Timer?
     private var lastTranscriptionTime: Date?
+    /// Single-flight guard: if a load is already in progress, callers await it instead of starting a new one.
+    private var inFlightLoadTask: Task<Void, any Error>?
 
     private var parakeetBackend = ParakeetBackend()
     private var whisperKitBackend = WhisperKitBackend()
@@ -38,6 +40,14 @@ public final class ASRManager: ASRManagerInterface {
         }
     }
 
+    /// Set the backend type synchronously at app startup. No unload (nothing loaded yet).
+    /// Must be called before any loadModel() or warmup task.
+    public func setInitialBackendType(_ type: ASRBackendType) {
+        activeBackendType = type
+        isModelLoaded = false
+        isStreaming = false
+    }
+
     /// Switch to a different backend. Unloads the previous one.
     public func switchBackend(to type: ASRBackendType) async {
         guard type != activeBackendType else { return }
@@ -57,29 +67,61 @@ public final class ASRManager: ASRManagerInterface {
     }
 
 
-    /// Load the active backend's model.
+    /// Load the active backend's model. Single-flight: concurrent callers await the same task.
     public func loadModel() async throws {
-        downloadProgress = 0
-        downloadPhase = "Preparing download..."
-        downloadDetail = ""
-
-        // For Parakeet, use the progress-reporting variant so in-process path also reports progress.
-        if activeBackendType == .parakeet {
-            try await parakeetBackend.prepare { [weak self] fraction, phase, detail in
-                Task { @MainActor [weak self] in
-                    guard let self, !self.isModelLoaded else { return }
-                    self.downloadProgress = fraction
-                    self.downloadPhase = phase
-                    self.downloadDetail = detail
-                }
-            }
-        } else {
-            try await activeBackend.prepare()
+        // If a load is already in progress, await it instead of starting a new one.
+        if let existing = inFlightLoadTask {
+            try await existing.value
+            return
         }
-        downloadProgress = 1.0
-        downloadPhase = ""
-        downloadDetail = ""
-        isModelLoaded = await activeBackend.isReady
+
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.downloadProgress = 0
+            self.downloadPhase = "Preparing download..."
+            self.downloadDetail = ""
+
+            // For Parakeet, use the progress-reporting variant so in-process path also reports progress.
+            if self.activeBackendType == .parakeet {
+                try await self.parakeetBackend.prepare { [weak self] fraction, phase, detail in
+                    Task { @MainActor [weak self] in
+                        guard let self, !self.isModelLoaded else { return }
+                        self.downloadProgress = fraction
+                        self.downloadPhase = phase
+                        self.downloadDetail = detail
+                    }
+                }
+            } else {
+                try await self.activeBackend.prepare()
+            }
+            self.downloadProgress = 1.0
+            self.downloadPhase = ""
+            self.downloadDetail = ""
+            self.isModelLoaded = await self.activeBackend.isReady
+        }
+        inFlightLoadTask = task
+        defer { inFlightLoadTask = nil }
+        try await task.value
+    }
+
+    /// Silent warmup: load the model in the background without mutating UI-visible download state.
+    /// Used at app launch. If a user-initiated load is already in progress, awaits it.
+    public func loadModelSilently() async {
+        guard !isModelLoaded else { return }
+        // If a load is already in progress, just await it silently.
+        if let existing = inFlightLoadTask {
+            try? await existing.value
+            return
+        }
+        do {
+            try await loadModel()
+        } catch {
+            // Silent warmup failure is non-fatal. Record button triggers lazy-load as fallback.
+            Task { await AppLogger.shared.log(
+                "Silent model warmup failed: \(error.localizedDescription)",
+                level: .info, category: "ASRManager"
+            ) }
+        }
     }
 
     /// Transcribe audio from a file URL.

@@ -340,7 +340,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             iconAnimator.transition(to: .error)
         } else if state == .recording {
             iconAnimator.transition(to: .recording)
-        } else if state == .transcribing || state == .polishing {
+        } else if state == .transcribing || state == .polishing || state == .loadingModel {
             iconAnimator.transition(to: .processing)
         } else {
             iconAnimator.transition(to: .idle)
