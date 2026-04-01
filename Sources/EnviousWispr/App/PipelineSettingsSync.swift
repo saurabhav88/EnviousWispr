@@ -59,6 +59,7 @@ final class PipelineSettingsSync {
         pipeline.wordCorrection.customWords = customWords
         pipeline.llmPolish.customWords = customWords
         pipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
+        pipeline.useStreamingASR = settings.useStreamingASR
 
         // WhisperKit pipeline
         syncWhisperKitPipelineSettings(settings, customWords: customWords)
@@ -248,6 +249,8 @@ final class PipelineSettingsSync {
         case .useXPCAudioService:
             // Cold flag — requires app restart. No live propagation needed.
             break
+        case .useStreamingASR:
+            pipeline.useStreamingASR = settings.useStreamingASR
         }
     }
 
