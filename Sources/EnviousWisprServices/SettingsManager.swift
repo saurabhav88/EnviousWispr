@@ -41,6 +41,7 @@ public final class SettingsManager {
         case writingStylePreset
         case useXPCAudioService
         case useStreamingASR
+        case warmEnginePolicy
     }
 
     public var onChange: ((SettingKey) -> Void)?
@@ -237,6 +238,13 @@ public final class SettingsManager {
         }
     }
 
+    public var warmEnginePolicy: WarmEnginePolicy {
+        didSet {
+            UserDefaults.standard.set(warmEnginePolicy.rawValue, forKey: "warmEnginePolicy")
+            onChange?(.warmEnginePolicy)
+        }
+    }
+
     public var isDebugModeEnabled: Bool {
         didSet {
             UserDefaults.standard.set(isDebugModeEnabled, forKey: "isDebugModeEnabled")
@@ -409,6 +417,9 @@ public final class SettingsManager {
         writingStylePreset = WritingStylePreset(rawValue: defaults.string(forKey: "writingStylePreset") ?? "") ?? .standard
         useXPCAudioService = defaults.object(forKey: "useXPCAudioService") as? Bool ?? true
         useStreamingASR = defaults.object(forKey: "useStreamingASR") as? Bool ?? false
+        warmEnginePolicy = WarmEnginePolicy(
+            rawValue: defaults.string(forKey: "warmEnginePolicy") ?? ""
+        ) ?? .seconds30
 
         // Canonicalize provider-coupled model names after all properties are loaded.
         if llmProvider == .appleIntelligence {

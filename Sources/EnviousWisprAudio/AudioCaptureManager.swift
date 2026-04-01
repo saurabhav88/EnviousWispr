@@ -65,8 +65,19 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     /// Idle teardown timer: shuts down the warm engine after inactivity.
     private var warmEngineTeardownTask: Task<Void, Never>?
 
-    /// How long to keep the engine warm after recording stops (seconds).
-    private static let warmEngineIdleTimeout: TimeInterval = 30
+    /// How long to keep the engine warm after recording stops.
+    /// Setting this property automatically reconciles with the current engine state.
+    public var warmEnginePolicy: WarmEnginePolicy = .seconds30 {
+        didSet {
+            guard oldValue != warmEnginePolicy else { return }
+            reconcileWarmEnginePolicy()
+        }
+    }
+
+    /// When the engine entered idle-warm state. Used to recalculate remaining
+    /// timeout when the policy changes mid-idle.
+    private var idleSince: ContinuousClock.Instant?
+    private let clock = ContinuousClock()
 
     /// The last route decision — for telemetry and debugging.
     private var lastRouteDecision: CaptureRouteDecision?
@@ -240,18 +251,90 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
     // MARK: - Warm Engine Management
 
-    /// Schedule full engine teardown after idle timeout.
-    /// Cancelled if a new recording starts before timeout fires.
+    /// Schedule engine teardown based on the current warm engine policy.
+    /// Called after every recording stops. Cancelled if a new recording starts.
     private func scheduleWarmEngineTeardown() {
         warmEngineTeardownTask?.cancel()
+        warmEngineTeardownTask = nil
+
+        switch warmEnginePolicy {
+        case .off:
+            performEngineTeardown()
+            return
+        case .always:
+            idleSince = clock.now
+            return
+        case .seconds10, .seconds30, .seconds60:
+            break
+        }
+
+        let timeout = policyTimeout(warmEnginePolicy)
+        idleSince = clock.now
         warmEngineTeardownTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(Self.warmEngineIdleTimeout))
+            try? await Task.sleep(for: timeout)
             guard !Task.isCancelled, let self, !self.isCapturing else { return }
-            if let source = self.activeSource {
-                Self.btRouteLog("Warm engine idle timeout — full teardown")
-                _ = await source.stop()
-                self.activeSource = nil
+            self.performEngineTeardown()
+        }
+    }
+
+    /// In-flight engine stop task. Stored so resolveSource() can cancel it
+    /// if a new recording starts before the stop completes, preventing two
+    /// engines from running simultaneously on the same hardware.
+    private var engineStopTask: Task<Void, Never>?
+
+    /// Tear down the warm engine. Clears activeSource synchronously before
+    /// awaiting stop to prevent stale async completions from clobbering new state.
+    private func performEngineTeardown() {
+        idleSince = nil
+        guard let source = activeSource else { return }
+        activeSource = nil
+        Self.btRouteLog("Warm engine teardown")
+        engineStopTask = Task { [weak self] in
+            _ = await source.stop()
+            self?.engineStopTask = nil
+        }
+    }
+
+    /// Reconcile engine state when the policy changes while idle.
+    /// Called automatically by the warmEnginePolicy setter.
+    private func reconcileWarmEnginePolicy() {
+        // If capturing, new policy applies on next stopCapture.
+        guard !isCapturing else { return }
+        // If engine is not warm, nothing to reconcile.
+        guard activeSource != nil else { return }
+
+        warmEngineTeardownTask?.cancel()
+        warmEngineTeardownTask = nil
+
+        switch warmEnginePolicy {
+        case .off:
+            performEngineTeardown()
+        case .always:
+            // Keep warm indefinitely, preserve idleSince.
+            break
+        case .seconds10, .seconds30, .seconds60:
+            let timeout = policyTimeout(warmEnginePolicy)
+            let elapsed = idleSince.map { clock.now - $0 } ?? .zero
+            if elapsed >= timeout {
+                performEngineTeardown()
+            } else {
+                let remaining = timeout - elapsed
+                warmEngineTeardownTask = Task { [weak self] in
+                    try? await Task.sleep(for: remaining)
+                    guard !Task.isCancelled, let self, !self.isCapturing else { return }
+                    self.performEngineTeardown()
+                }
             }
+        }
+    }
+
+    /// Map a timed policy case to a Duration.
+    private func policyTimeout(_ policy: WarmEnginePolicy) -> Duration {
+        switch policy {
+        case .seconds10: .seconds(10)
+        case .seconds30: .seconds(30)
+        case .seconds60: .seconds(60)
+        default: .seconds(30)
         }
     }
 
@@ -263,6 +346,9 @@ public final class AudioCaptureManager: AudioCaptureInterface {
         // Cancel idle teardown — we're about to record
         warmEngineTeardownTask?.cancel()
         warmEngineTeardownTask = nil
+        // Cancel any in-flight engine stop from a previous teardown.
+        engineStopTask?.cancel()
+        engineStopTask = nil
 
         // If a source is already running (warm engine), check route compatibility
         if let existing = activeSource, existing.isRunning {

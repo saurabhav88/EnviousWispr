@@ -32,6 +32,10 @@ import Foundation
     /// Set the selected input device UID (legacy path). Empty = system default.
     func setSelectedInputDeviceUID(_ uid: String)
 
+    /// Set the warm engine policy. Raw value of WarmEnginePolicy enum.
+    /// Replayed by the proxy after service crash via resendConfigIfNeeded().
+    func setWarmEnginePolicy(_ rawValue: String)
+
     // MARK: - Lifecycle (Step 3)
 
     /// Phase 1: start the audio engine, trigger BT codec switch, register config-change observer.
