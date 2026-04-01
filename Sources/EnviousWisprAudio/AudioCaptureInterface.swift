@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 import CoreAudio
+import EnviousWisprCore
 
 /// Abstraction over audio capture — enables swapping between in-process and XPC implementations.
 @MainActor
@@ -20,6 +21,7 @@ public protocol AudioCaptureInterface: AnyObject {
     var noiseSuppressionEnabled: Bool { get set }
     var selectedInputDeviceUID: String { get set }
     var preferredInputDeviceIDOverride: String { get set }
+    var warmEnginePolicy: WarmEnginePolicy { get set }
 
     // Core lifecycle
     func startEnginePhase() async throws

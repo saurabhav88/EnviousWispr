@@ -45,6 +45,30 @@ struct AudioSettingsView: View {
                     }
                 }
             }
+
+            BrandedSection(header: "Microphone Readiness") {
+                BrandedRow {
+                    Picker("Keep microphone ready", selection: $state.settings.warmEnginePolicy) {
+                        Text("Off").tag(WarmEnginePolicy.off)
+                        Text("10 seconds").tag(WarmEnginePolicy.seconds10)
+                        Text("30 seconds").tag(WarmEnginePolicy.seconds30)
+                        Text("60 seconds").tag(WarmEnginePolicy.seconds60)
+                        Text("Always").tag(WarmEnginePolicy.always)
+                    }
+                }
+                BrandedRow(showDivider: false) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Keeps the microphone engine active after dictation so the next recording starts instantly and captures your first words.")
+                            .font(.stHelper)
+                            .foregroundStyle(.stTextTertiary)
+                        if state.settings.warmEnginePolicy == .always {
+                            Text("Always keeps the microphone engine active. The macOS microphone indicator may remain visible and power usage may increase.")
+                                .font(.stHelper)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                }
+            }
         }
     }
 }

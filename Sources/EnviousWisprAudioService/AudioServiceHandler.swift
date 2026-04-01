@@ -128,6 +128,13 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
         }
     }
 
+    func setWarmEnginePolicy(_ rawValue: String) {
+        let policy = WarmEnginePolicy(rawValue: rawValue) ?? .seconds30
+        Task { @MainActor in
+            captureManager.warmEnginePolicy = policy
+        }
+    }
+
     // MARK: - Lifecycle
 
     func startEnginePhase(

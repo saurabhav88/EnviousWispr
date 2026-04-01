@@ -72,6 +72,7 @@ final class PipelineSettingsSync {
         }
         audioCapture.selectedInputDeviceUID = settings.selectedInputDeviceUID
         audioCapture.preferredInputDeviceIDOverride = settings.preferredInputDeviceIDOverride
+        audioCapture.warmEnginePolicy = settings.warmEnginePolicy
 
         // VAD config to audio capture (used by XPC service-side VAD)
         audioCapture.configureVAD(
@@ -251,6 +252,8 @@ final class PipelineSettingsSync {
             break
         case .useStreamingASR:
             pipeline.useStreamingASR = settings.useStreamingASR
+        case .warmEnginePolicy:
+            audioCapture.warmEnginePolicy = settings.warmEnginePolicy
         }
     }
 

@@ -37,6 +37,16 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     public var selectedInputDeviceUID: String = ""
     public var preferredInputDeviceIDOverride: String = ""
 
+    /// Cached warm engine policy -- forwarded to service, replayed after crash.
+    public var warmEnginePolicy: WarmEnginePolicy = .seconds30 {
+        didSet {
+            guard oldValue != warmEnginePolicy else { return }
+            serviceProxy { [self] proxy in
+                proxy.setWarmEnginePolicy(warmEnginePolicy.rawValue)
+            }
+        }
+    }
+
     // MARK: - XPC connection state
 
     private var connection: NSXPCConnection?
@@ -239,6 +249,8 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
                 proxy.configureVAD(autoStop: vad.autoStop, silenceTimeout: vad.silenceTimeout,
                                    sensitivity: vad.sensitivity, energyGate: vad.energyGate)
             }
+            // Replay warm engine policy so service uses correct idle timeout.
+            proxy.setWarmEnginePolicy(warmEnginePolicy.rawValue)
             needsReinit = false
         }
     }
