@@ -6,8 +6,8 @@
 
 <p align="center">
   <strong>Talk naturally. Paste perfectly.</strong><br/>
-  The fastest way to turn your voice into polished text on Mac.<br/>
-  Your voice never leaves your device.
+  Free, on-device AI dictation and speech-to-text for macOS.<br/>
+  Powered by Apple Silicon. No cloud, no account, your voice never leaves your Mac.
 </p>
 
 <p align="center">
@@ -29,9 +29,9 @@ https://github.com/user-attachments/assets/e636e1a0-a0d1-4f7c-be0a-b7c907c6d5ab
 
 ## What is this?
 
-EnviousWispr is a macOS menu bar app that records your voice, transcribes it locally using state-of-the-art neural models, optionally polishes it with an LLM, and pastes clean text into whatever app you're working in. The entire pipeline runs in under 2 seconds.
+EnviousWispr is a free AI dictation app for macOS that runs entirely on-device. It uses Whisper and Parakeet speech-to-text models on Apple Silicon to transcribe your voice locally, polishes the output with an optional LLM, and pastes clean text into whatever app you're working in. The entire pipeline runs in under 2 seconds.
 
-No cloud. No subscriptions for core features. No audio ever leaves your Mac.
+No cloud. No account required. No subscription. No audio ever leaves your Mac. Works fully offline.
 
 ## Why EnviousWispr?
 
