@@ -246,5 +246,18 @@
       />
     </item>
 
+        <item>
+      <title>Version 1.7.5</title>
+      <pubDate>Tue, 31 Mar 2026 21:30:10 -0400</pubDate>
+      <sparkle:version>1.7.5</sparkle:version>
+      <sparkle:shortVersionString>1.7.5</sparkle:shortVersionString>
+      <enclosure
+        url="https://github.com/saurabhav88/EnviousWispr/releases/download/v1.7.5/EnviousWispr-1.7.5.dmg"
+        length="12837063"
+        type="application/octet-stream"
+        sparkle:edSignature="qRIlzWnfYi2cWcmN0ADMEqZHHkbprUqi9eP+9STEpuYJnPN1o6HpngYRfUiwe3PLdo9tYxcqmNRt3datnvEQCg=="
+      />
+    </item>
+
     </channel>
 </rss>
