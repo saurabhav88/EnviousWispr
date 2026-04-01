@@ -146,6 +146,7 @@ public actor ParakeetBackend: ASRBackend {
 
     public func finalizeStreaming() async throws -> ASRResult {
         guard let manager = streamingManager else { throw ASRError.streamingNotSupported }
+        defer { streamingManager = nil }
 
         let finalizeStart = CFAbsoluteTimeGetCurrent()
         let text = try await manager.finish()
@@ -153,8 +154,6 @@ public actor ParakeetBackend: ASRBackend {
 
         let totalElapsed = finalizeEnd - streamingStartTime
         let finalizeElapsed = finalizeEnd - finalizeStart
-
-        self.streamingManager = nil
 
         return ASRResult(
             text: text,
