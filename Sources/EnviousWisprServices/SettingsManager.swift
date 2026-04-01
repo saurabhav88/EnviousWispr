@@ -67,6 +67,9 @@ public final class SettingsManager {
 
     public var llmProvider: LLMProvider {
         didSet {
+            if oldValue != llmProvider {
+                TelemetryService.shared.providerChanged(from: oldValue.rawValue, to: llmProvider.rawValue)
+            }
             UserDefaults.standard.set(llmProvider.rawValue, forKey: "llmProvider")
             // Canonicalize model for the new provider
             if llmProvider == .appleIntelligence {

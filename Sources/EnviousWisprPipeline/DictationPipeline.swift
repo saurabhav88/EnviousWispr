@@ -15,6 +15,9 @@ public enum OverlayIntent: Equatable, Sendable {
     case hidden
     case recording(audioLevel: Float)
     case processing(label: String)
+    /// Transient notice shown when paste fell back to clipboard-only (Tier 3).
+    /// Auto-dismissed by the overlay panel after a short delay.
+    case clipboardFallback
 }
 
 /// Abstraction over dictation pipelines (Parakeet streaming, WhisperKit batch, etc.).
