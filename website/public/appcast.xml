@@ -259,5 +259,18 @@
       />
     </item>
 
+        <item>
+      <title>Version 1.7.6</title>
+      <pubDate>Tue, 31 Mar 2026 23:56:34 -0400</pubDate>
+      <sparkle:version>1.7.6</sparkle:version>
+      <sparkle:shortVersionString>1.7.6</sparkle:shortVersionString>
+      <enclosure
+        url="https://github.com/saurabhav88/EnviousWispr/releases/download/v1.7.6/EnviousWispr-1.7.6.dmg"
+        length="12849410"
+        type="application/octet-stream"
+        sparkle:edSignature="4jXxcB+b+iQ/7H7hMEiqsdrCQ+AWyrG2UKWwArhEsYvVi3f/lCXOzMnCN4cKvlqYBueskoKgQNlgWAaVtv8EAA=="
+      />
+    </item>
+
     </channel>
 </rss>
