@@ -19,9 +19,16 @@ public final class CustomWordsManager {
     private let fileURL: URL
 
     public init() {
-        let appSupport = FileManager.default.urls(
+        guard let baseURL = FileManager.default.urls(
             for: .applicationSupportDirectory, in: .userDomainMask
-        ).first!.appendingPathComponent("EnviousWispr", isDirectory: true)
+        ).first else {
+            // Application Support is always available on macOS, but guard defensively.
+            let fallback = FileManager.default.temporaryDirectory.appendingPathComponent("EnviousWispr", isDirectory: true)
+            try? FileManager.default.createDirectory(at: fallback, withIntermediateDirectories: true)
+            fileURL = fallback.appendingPathComponent("custom-words.json")
+            return
+        }
+        let appSupport = baseURL.appendingPathComponent("EnviousWispr", isDirectory: true)
         try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
         fileURL = appSupport.appendingPathComponent("custom-words.json")
     }

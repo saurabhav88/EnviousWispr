@@ -84,6 +84,13 @@ final class RecordingOverlayPanel {
                 userInfo: [.announcement: "Text copied to clipboard",
                            .priority: NSAccessibilityPriorityLevel.high.rawValue as NSNumber])
             showClipboardFallback()
+        case .error(let message):
+            NSAccessibility.post(
+                element: NSApp.mainWindow as Any,
+                notification: .announcementRequested,
+                userInfo: [.announcement: "Error: \(message)",
+                           .priority: NSAccessibilityPriorityLevel.high.rawValue as NSNumber])
+            showError(message: message)
         }
     }
 
@@ -182,16 +189,68 @@ final class RecordingOverlayPanel {
         DispatchQueue.main.async(execute: work)
     }
 
-    /// Auto-dismiss timer for transient notices (clipboard fallback).
+    /// Auto-dismiss timer for transient notices (clipboard fallback, errors).
     private var autoDismissTask: Task<Void, Never>?
 
-    private func scheduleAutoDismiss() {
+    private func scheduleAutoDismiss(seconds: Double = 2.5) {
         autoDismissTask?.cancel()
         autoDismissTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(2.5))
+            try? await Task.sleep(for: .seconds(seconds))
             guard !Task.isCancelled, let self, self.panel != nil else { return }
             self.hide()
         }
+    }
+
+    /// Show a transient error notice that auto-dismisses after 3s.
+    func showError(message: String) {
+        guard panel == nil else {
+            transitionToError(message: message)
+            scheduleAutoDismiss(seconds: 3.0)
+            return
+        }
+        pendingCreateWork?.cancel()
+        pendingCreateWork = nil
+        generation &+= 1
+        let token = generation
+
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.generation == token else { return }
+            self.pendingCreateWork = nil
+            self.showPanel(
+                content: ErrorOverlayView(message: message).frame(width: 260, height: 44),
+                width: 260
+            )
+            self.scheduleAutoDismiss(seconds: 3.0)
+        }
+        pendingCreateWork = work
+        DispatchQueue.main.async(execute: work)
+    }
+
+    /// Transition an existing panel to an error display.
+    private func transitionToError(message: String) {
+        guard let existingPanel = panel else { return }
+        let y = existingPanel.frame.origin.y
+
+        panel = nil
+        pendingCreateWork?.cancel()
+        pendingCreateWork = nil
+        CATransaction.flush()
+        existingPanel.close()
+
+        generation &+= 1
+        let token = generation
+
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.generation == token else { return }
+            self.pendingCreateWork = nil
+            self.showPanel(
+                content: ErrorOverlayView(message: message).frame(width: 260, height: 44),
+                width: 260,
+                y: y
+            )
+        }
+        pendingCreateWork = work
+        DispatchQueue.main.async(execute: work)
     }
 
     private func createPolishingPanel(label: String = "Polishing...") {
@@ -612,6 +671,29 @@ struct PolishingOverlayView: View {
             Text(label)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.white)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(OverlayCapsuleBackground())
+    }
+}
+
+// MARK: - ErrorOverlayView
+
+/// Compact error indicator overlay shown when ASR fails despite speech evidence.
+struct ErrorOverlayView: View {
+    let message: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "xmark.circle.fill")
+                .foregroundStyle(.red)
+                .font(.system(size: 16))
+
+            Text(message)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.white)
+                .lineLimit(1)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
