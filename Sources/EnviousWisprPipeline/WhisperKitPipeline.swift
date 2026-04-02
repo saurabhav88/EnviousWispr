@@ -130,8 +130,10 @@ public final class WhisperKitPipeline: DictationPipeline {
             return .processing(label: "Transcribing...")
         case .polishing:
             return .processing(label: "Polishing...")
-        case .idle, .ready, .complete, .error:
+        case .idle, .ready, .complete:
             return .hidden
+        case .error(let msg):
+            return .error(message: msg)
         }
     }
 
@@ -352,10 +354,16 @@ public final class WhisperKitPipeline: DictationPipeline {
 
         // Post-capture VAD filtering — remove silence segments
         var samples: [Float]
+        var hasSpeechEvidence = false
+        var vadSegmentCount = 0
+        var vadSpeechDurationMs = 0
         let isXPCMode = audioCapture is AudioCaptureProxy
         if isXPCMode {
             // XPC mode: get speech segments from service-side VAD.
             let segments = await audioCapture.getVADSegments()
+            hasSpeechEvidence = !segments.isEmpty
+            vadSegmentCount = segments.count
+            vadSpeechDurationMs = segments.reduce(0) { $0 + ($1.endSample - $1.startSample) } * 1000 / 16000
             if !segments.isEmpty {
                 samples = Self.filterSamples(from: rawSamples, segments: segments)
                 let pct = String(format: "%.1f", Double(samples.count) / Double(max(rawSamples.count, 1)) * 100)
@@ -368,6 +376,10 @@ public final class WhisperKitPipeline: DictationPipeline {
             }
         } else if let detector = silenceDetector {
             await detector.finalizeSegments(totalSampleCount: rawSamples.count)
+            let segments = await detector.speechSegments
+            hasSpeechEvidence = !segments.isEmpty
+            vadSegmentCount = segments.count
+            vadSpeechDurationMs = segments.reduce(0) { $0 + ($1.endSample - $1.startSample) } * 1000 / 16000
             samples = await detector.filterSamples(from: rawSamples)
             let pct = String(format: "%.1f", Double(samples.count) / Double(max(rawSamples.count, 1)) * 100)
             Task { await AppLogger.shared.log(
@@ -376,6 +388,35 @@ public final class WhisperKitPipeline: DictationPipeline {
             ) }
         } else {
             samples = rawSamples
+            // No VAD detector available -- default to true so empty ASR results
+            // still fire Sentry errors (fail toward visibility).
+            hasSpeechEvidence = true
+        }
+        let peakAudioLevel = rawSamples.reduce(Float(0)) { max($0, abs($1)) }
+
+        // VAD gate: if no speech was detected, skip ASR entirely.
+        // Prevents noise-induced hallucinations from ambient sounds.
+        if !hasSpeechEvidence {
+            if let worker = incrementalWorker {
+                await worker.cancel()
+                incrementalWorker = nil
+            }
+            SentryBreadcrumb.add(
+                stage: "asr", message: "VAD gate: no speech detected, skipping WhisperKit ASR",
+                level: .info,
+                data: [
+                    "backend": "whisperKit",
+                    "raw_sample_count": rawSamples.count,
+                    "peak_audio_level": peakAudioLevel,
+                ]
+            )
+            frozenSnapshot = nil
+            state = .idle
+            Task { await AppLogger.shared.log(
+                "VAD gate: no speech, skipping WhisperKit ASR (samples=\(rawSamples.count), peak=\(String(format: "%.4f", peakAudioLevel)))",
+                level: .info, category: "WhisperKitPipeline"
+            ) }
+            return
         }
 
         // Fallback: if VAD was too aggressive, use raw
@@ -450,14 +491,41 @@ public final class WhisperKitPipeline: DictationPipeline {
             let asrEnd = CFAbsoluteTimeGetCurrent()
 
             guard !asrText.isEmpty else {
-                SentryBreadcrumb.captureError(
-                    NSError(domain: "EnviousWispr", code: -1, userInfo: [NSLocalizedDescriptionKey: "WhisperKit ASR returned empty text"]),
-                    category: .asrEmptyResult, stage: "asr",
-                    extra: ["backend": "whisperKit", "incremental": usedIncremental],
-                    snapshot: frozenSnapshot
-                )
+                if hasSpeechEvidence {
+                    // Real ASR failure: VAD detected speech but decoder returned nothing
+                    SentryBreadcrumb.captureError(
+                        NSError(domain: "EnviousWispr", code: -1, userInfo: [NSLocalizedDescriptionKey: "WhisperKit ASR returned empty text despite speech evidence"]),
+                        category: .asrEmptyResult, stage: "asr",
+                        extra: [
+                            "backend": "whisperKit",
+                            "incremental": usedIncremental,
+                            "has_speech_evidence": true,
+                            "raw_sample_count": rawSamples.count,
+                            "vad_segment_count": vadSegmentCount,
+                            "vad_speech_duration_ms": vadSpeechDurationMs,
+                            "peak_audio_level": peakAudioLevel,
+                        ],
+                        snapshot: frozenSnapshot
+                    )
+                    state = .error("Couldn't catch that -- try again")
+                    Task { await AppLogger.shared.log(
+                        "WhisperKit ASR empty despite speech evidence (segments=\(vadSegmentCount), speechMs=\(vadSpeechDurationMs), peak=\(peakAudioLevel))",
+                        level: .info, category: "WhisperKitPipeline"
+                    ) }
+                } else {
+                    // Expected: user held button without speaking
+                    SentryBreadcrumb.add(
+                        stage: "asr", message: "WhisperKit ASR empty (no speech detected)",
+                        level: .info,
+                        data: ["backend": "whisperKit", "incremental": usedIncremental]
+                    )
+                    state = .idle
+                    Task { await AppLogger.shared.log(
+                        "WhisperKit: no speech detected, returning to idle",
+                        level: .info, category: "WhisperKitPipeline"
+                    ) }
+                }
                 frozenSnapshot = nil
-                state = .error("No speech detected — try speaking closer to the microphone")
                 return
             }
 
