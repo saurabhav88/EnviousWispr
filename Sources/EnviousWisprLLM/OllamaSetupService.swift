@@ -212,7 +212,15 @@ public final class OllamaSetupService {
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
             let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
             guard let models = json?["models"] as? [[String: Any]] else { return }
-            downloadedModelNames = Set(models.compactMap { $0["name"] as? String })
+            downloadedModelNames = Set(models.compactMap { model -> String? in
+                guard let name = model["name"] as? String else { return nil }
+                // Ollama returns "llama3.2:latest" but catalog uses "llama3.2".
+                // Normalize by stripping the implicit ":latest" tag.
+                if name.hasSuffix(":latest") {
+                    return String(name.dropLast(":latest".count))
+                }
+                return name
+            })
         } catch {
             // Silently ignore — server may not be running
         }
