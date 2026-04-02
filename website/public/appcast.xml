@@ -285,5 +285,18 @@
       />
     </item>
 
+        <item>
+      <title>Version 1.7.8</title>
+      <pubDate>Wed, 01 Apr 2026 20:37:39 -0400</pubDate>
+      <sparkle:version>1.7.8</sparkle:version>
+      <sparkle:shortVersionString>1.7.8</sparkle:shortVersionString>
+      <enclosure
+        url="https://github.com/saurabhav88/EnviousWispr/releases/download/v1.7.8/EnviousWispr-1.7.8.dmg"
+        length="12903884"
+        type="application/octet-stream"
+        sparkle:edSignature="/pwhCD/uGkMKxMc1Vamf9JlCaKmUjGrwK8yR0DzrUpxgDT8mvK5Nn0X1kA+kU4zhMJEXx2/cDE0vnFqkMQAaCQ=="
+      />
+    </item>
+
     </channel>
 </rss>
