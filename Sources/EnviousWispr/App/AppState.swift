@@ -31,6 +31,10 @@ final class AppState {
     /// Background task that observes WhisperKitSetupService.setupState and pre-loads the model when ready.
     private var whisperKitPreloadTask: Task<Void, Never>?
 
+    /// Cancellable task for showing a deferred post-completion warning (e.g. polish failed).
+    /// Cancelled when a new recording starts or a higher-priority notification is shown.
+    private var postCompletionWarningTask: Task<Void, Never>?
+
     // Pipelines — initialized after sub-systems
     let pipeline: TranscriptionPipeline
     let whisperKitPipeline: WhisperKitPipeline
@@ -131,8 +135,10 @@ final class AppState {
             } else if wkState == .recording {
                 self.whisperKitPipeline.handleEngineInterruption()
             }
-            // Dismiss recording overlay if showing
-            self.recordingOverlay.hide()
+            // Do NOT hide the overlay here. The pipeline's handleEngineInterruption()
+            // sets state = .error(...), which fires onStateChange and shows the error
+            // overlay. Calling hide() immediately after would dismiss it before the
+            // user can read it. The error overlay auto-dismisses after 3 seconds.
         }
 
         // Observe audio route changes for Sentry context enrichment.
@@ -164,7 +170,9 @@ final class AppState {
             } else if wkState == .recording || wkState == .transcribing {
                 self.whisperKitPipeline.handleASRServiceInterruption()
             }
-            self.recordingOverlay.hide()
+            // Do NOT hide the overlay here. Same reasoning as onEngineInterrupted:
+            // the pipeline sets .error(...) state which shows the error overlay via
+            // onStateChange. The error overlay auto-dismisses after 3 seconds.
         }
 
         // Unified VAD auto-stop handler — routes to whichever pipeline is actively recording.
@@ -223,14 +231,26 @@ final class AppState {
                 self.hotkeyService.unregisterCancelHotkey()
             }
             // Intent-driven overlay — pipeline.overlayIntent maps state to the correct label.
-            // On completion, check if paste fell back to clipboard-only (Tier 3) and show
-            // a transient "Copied to clipboard" notice instead of silently hiding.
+            // On completion, compute a single post-completion notification by priority:
+            //   1. clipboardFallback (paste fell back to clipboard-only)
+            //   2. warning (polish failed but text was delivered)
+            //   3. hidden (success, no notification needed)
             let overlayIntent: OverlayIntent
-            if newState == .complete,
-               let tier = self.pipeline.currentTranscript?.metrics?.pasteTier,
-               tier == "clipboard_only" {
-                overlayIntent = .clipboardFallback
+            if newState == .complete {
+                let isClipboardFallback = self.pipeline.currentTranscript?.metrics?.pasteTier == "clipboard_only"
+                let polishFailed = self.pipeline.lastPolishError != nil
+                if isClipboardFallback {
+                    overlayIntent = .clipboardFallback
+                } else if polishFailed {
+                    // Show polish warning after a brief delay so the completion
+                    // transition feels natural. Cancellable if a new recording starts.
+                    overlayIntent = self.pipeline.overlayIntent
+                    self.schedulePostCompletionWarning(message: "Polish failed -- using raw text")
+                } else {
+                    overlayIntent = self.pipeline.overlayIntent
+                }
             } else {
+                self.postCompletionWarningTask?.cancel()
                 overlayIntent = self.pipeline.overlayIntent
             }
             self.recordingOverlay.show(
@@ -261,13 +281,21 @@ final class AppState {
                 self.isRecordingLocked = false
                 self.hotkeyService.unregisterCancelHotkey()
             }
-            // Intent-driven overlay — same clipboard fallback logic as Parakeet pipeline above.
+            // Intent-driven overlay — same post-completion priority logic as Parakeet above.
             let wkOverlayIntent: OverlayIntent
-            if newState == .complete,
-               let tier = self.whisperKitPipeline.currentTranscript?.metrics?.pasteTier,
-               tier == "clipboard_only" {
-                wkOverlayIntent = .clipboardFallback
+            if newState == .complete {
+                let isClipboardFallback = self.whisperKitPipeline.currentTranscript?.metrics?.pasteTier == "clipboard_only"
+                let polishFailed = self.whisperKitPipeline.lastPolishError != nil
+                if isClipboardFallback {
+                    wkOverlayIntent = .clipboardFallback
+                } else if polishFailed {
+                    wkOverlayIntent = self.whisperKitPipeline.overlayIntent
+                    self.schedulePostCompletionWarning(message: "Polish failed -- using raw text")
+                } else {
+                    wkOverlayIntent = self.whisperKitPipeline.overlayIntent
+                }
             } else {
+                self.postCompletionWarningTask?.cancel()
                 wkOverlayIntent = self.whisperKitPipeline.overlayIntent
             }
             self.recordingOverlay.show(
@@ -298,6 +326,9 @@ final class AppState {
         }
         hotkeyService.onStartRecording = { [weak self] in
             guard let self else { return }
+            // Cancel any pending post-completion warning from the previous session
+            // before showing the new recording overlay.
+            self.postCompletionWarningTask?.cancel()
             let isWhisperKit = self.asrManager.activeBackendType == .whisperKit
             let active = self.activePipeline
 
@@ -487,6 +518,22 @@ final class AppState {
         return pipeline.currentTranscript
     }
 
+    /// Schedule a deferred post-completion warning overlay. Cancellable and session-scoped:
+    /// cancelled if a new recording starts (any non-complete state change cancels it).
+    /// Uses the pipeline's current state as a guard to avoid showing stale warnings.
+    private func schedulePostCompletionWarning(message: String) {
+        postCompletionWarningTask?.cancel()
+        postCompletionWarningTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled, let self else { return }
+            // Only show if we're still in the completed state (no new recording started)
+            let parakeetComplete = self.pipeline.state == .complete
+            let whisperKitComplete = self.whisperKitPipeline.state == .complete || self.whisperKitPipeline.state == .ready
+            guard parakeetComplete || whisperKitComplete else { return }
+            self.recordingOverlay.show(intent: .warning(message: message))
+        }
+    }
+
     /// Reset the currently active pipeline to idle. Used by UI "dismiss" actions.
     func resetActivePipeline() {
         if asrManager.activeBackendType == .whisperKit {
@@ -539,6 +586,7 @@ final class AppState {
 
     /// Toggle recording on/off (plain, no forced LLM).
     func toggleRecording() async {
+        postCompletionWarningTask?.cancel()
         let active = activePipeline
         // Set auto-paste before toggle
         if active is WhisperKitPipeline {

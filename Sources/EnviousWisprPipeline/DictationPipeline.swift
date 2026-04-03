@@ -18,6 +18,9 @@ public enum OverlayIntent: Equatable, Sendable {
     /// Transient notice shown when paste fell back to clipboard-only (Tier 3).
     /// Auto-dismissed by the overlay panel after a short delay.
     case clipboardFallback
+    /// Transient warning notice for degraded-but-delivered results (e.g. polish failed).
+    /// Orange icon, auto-dismissed by the overlay panel after 2.5 seconds.
+    case warning(message: String)
     /// Transient error notice shown when ASR fails despite speech evidence.
     /// Auto-dismissed by the overlay panel after 3 seconds.
     case error(message: String)
