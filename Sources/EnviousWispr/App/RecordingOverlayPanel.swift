@@ -84,6 +84,13 @@ final class RecordingOverlayPanel {
                 userInfo: [.announcement: "Text copied to clipboard",
                            .priority: NSAccessibilityPriorityLevel.high.rawValue as NSNumber])
             showClipboardFallback()
+        case .warning(let message):
+            NSAccessibility.post(
+                element: NSApp.mainWindow as Any,
+                notification: .announcementRequested,
+                userInfo: [.announcement: "Warning: \(message)",
+                           .priority: NSAccessibilityPriorityLevel.medium.rawValue as NSNumber])
+            showWarning(message: message)
         case .error(let message):
             NSAccessibility.post(
                 element: NSApp.mainWindow as Any,
@@ -201,11 +208,21 @@ final class RecordingOverlayPanel {
         }
     }
 
+    /// Show a transient warning notice that auto-dismisses after 2.5s.
+    func showWarning(message: String) {
+        showNotification(message: message, style: .warning)
+    }
+
     /// Show a transient error notice that auto-dismisses after 3s.
     func showError(message: String) {
+        showNotification(message: message, style: .error)
+    }
+
+    /// Unified handler for transient notification overlays (errors and warnings).
+    private func showNotification(message: String, style: NotificationStyle) {
         guard panel == nil else {
-            transitionToError(message: message)
-            scheduleAutoDismiss(seconds: 3.0)
+            transitionToNotification(message: message, style: style)
+            scheduleAutoDismiss(seconds: style.autoDismissSeconds)
             return
         }
         pendingCreateWork?.cancel()
@@ -217,21 +234,23 @@ final class RecordingOverlayPanel {
             guard let self, self.generation == token else { return }
             self.pendingCreateWork = nil
             self.showPanel(
-                content: ErrorOverlayView(message: message).frame(width: 260, height: 44),
-                width: 260
+                content: NotificationOverlayView(message: message, style: style).frame(width: 280, height: 44),
+                width: 280
             )
-            self.scheduleAutoDismiss(seconds: 3.0)
+            self.scheduleAutoDismiss(seconds: style.autoDismissSeconds)
         }
         pendingCreateWork = work
         DispatchQueue.main.async(execute: work)
     }
 
-    /// Transition an existing panel to an error display.
-    private func transitionToError(message: String) {
+    /// Transition an existing panel to a notification display.
+    private func transitionToNotification(message: String, style: NotificationStyle) {
         guard let existingPanel = panel else { return }
         let y = existingPanel.frame.origin.y
 
         panel = nil
+        autoDismissTask?.cancel()
+        autoDismissTask = nil
         pendingCreateWork?.cancel()
         pendingCreateWork = nil
         CATransaction.flush()
@@ -244,8 +263,8 @@ final class RecordingOverlayPanel {
             guard let self, self.generation == token else { return }
             self.pendingCreateWork = nil
             self.showPanel(
-                content: ErrorOverlayView(message: message).frame(width: 260, height: 44),
-                width: 260,
+                content: NotificationOverlayView(message: message, style: style).frame(width: 280, height: 44),
+                width: 280,
                 y: y
             )
         }
@@ -265,6 +284,10 @@ final class RecordingOverlayPanel {
         let y = existingPanel.frame.origin.y
 
         panel = nil
+        // Cancel any stale auto-dismiss timer from a transient notification
+        // (error/warning/clipboard fallback) so it doesn't hide the new panel.
+        autoDismissTask?.cancel()
+        autoDismissTask = nil
         // Cancel any pre-existing deferred work before queuing new work. Without
         // this, a stale DispatchWorkItem could hold a reference that the new token
         // won't invalidate until it actually runs on the next drain cycle.
@@ -296,6 +319,8 @@ final class RecordingOverlayPanel {
         let y = existingPanel.frame.origin.y
 
         panel = nil
+        autoDismissTask?.cancel()
+        autoDismissTask = nil
         pendingCreateWork?.cancel()
         pendingCreateWork = nil
         CATransaction.flush()
@@ -678,16 +703,46 @@ struct PolishingOverlayView: View {
     }
 }
 
-// MARK: - ErrorOverlayView
+// MARK: - NotificationStyle
 
-/// Compact error indicator overlay shown when ASR fails despite speech evidence.
-struct ErrorOverlayView: View {
+/// Visual style for transient overlay notifications (errors and warnings).
+enum NotificationStyle {
+    case error
+    case warning
+
+    var iconName: String {
+        switch self {
+        case .error: "xmark.circle.fill"
+        case .warning: "exclamationmark.triangle.fill"
+        }
+    }
+
+    var iconColor: Color {
+        switch self {
+        case .error: .red
+        case .warning: .orange
+        }
+    }
+
+    var autoDismissSeconds: Double {
+        switch self {
+        case .error: 3.0
+        case .warning: 2.5
+        }
+    }
+}
+
+// MARK: - NotificationOverlayView
+
+/// Compact notification overlay for errors (red) and warnings (orange).
+struct NotificationOverlayView: View {
     let message: String
+    let style: NotificationStyle
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "xmark.circle.fill")
-                .foregroundStyle(.red)
+            Image(systemName: style.iconName)
+                .foregroundStyle(style.iconColor)
                 .font(.system(size: 16))
 
             Text(message)
