@@ -249,6 +249,22 @@ public enum PasteService {
         dispatchCmdV()
     }
 
+    // MARK: - App Activation via Accessibility
+
+    /// Force-activate an app by PID using the Accessibility API.
+    /// Bypasses macOS 14+ restrictions on background processes stealing focus.
+    /// Requires Accessibility permission (AXIsProcessTrusted).
+    public static func forceActivateApp(pid: pid_t) -> Bool {
+        guard AXIsProcessTrusted() else { return false }
+        let axApp = AXUIElementCreateApplication(pid)
+        let result = AXUIElementSetAttributeValue(
+            axApp,
+            "AXFrontmost" as CFString,
+            true as CFTypeRef
+        )
+        return result == .success
+    }
+
     // MARK: - Private
 
     /// Send Cmd+V keystroke via CGEvent. Returns true on success.

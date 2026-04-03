@@ -103,14 +103,26 @@ public final class TranscriptionPipeline: DictationPipeline {
     }
 
     /// Pre-warm the audio input to trigger any Bluetooth codec switch before recording.
-    /// Called on PTT key-down to hide the 0.5–2s Bluetooth negotiation latency.
+    /// Called on PTT key-down to hide the 0.5-2s Bluetooth negotiation latency.
     /// Sets `isPreWarmed` so `startRecording()` skips engine phase 1.
     public func preWarmAudioInput() async {
         guard !state.isActive, state != .recording else { return }
         stopRequested = false
+        let start = ContinuousClock.now
         await audioCapture.preWarm()
         guard !Task.isCancelled else { return }
         isPreWarmed = true
+        let totalMs = Self.durationMs(ContinuousClock.now - start)
+        Task { await AppLogger.shared.log(
+            "COLD-START [Parakeet] preWarmAudioInput total=\(totalMs)ms",
+            level: .info, category: "Pipeline"
+        ) }
+    }
+
+    /// Convert Duration to milliseconds for logging.
+    private static func durationMs(_ d: Duration) -> Int {
+        let (seconds, attoseconds) = d.components
+        return Int(seconds) * 1000 + Int(attoseconds / 1_000_000_000_000_000)
     }
 
     /// Toggle recording: start if idle, stop if recording.
@@ -644,11 +656,17 @@ public final class TranscriptionPipeline: DictationPipeline {
                 }
 
                 // Tier 2: Activate target app + CGEvent Cmd+V
+                // Uses AX force-activate (kAXFrontmostAttribute) to bypass macOS 14+
+                // restrictions on background processes stealing focus. The deprecated
+                // NSRunningApplication.activate(options: .activateIgnoringOtherApps)
+                // has no effect on macOS 14+.
                 if tier == .clipboardOnly, let app = targetApp, !app.isTerminated {
                     let pollInterval = TimingConstants.activationPollIntervalMs
                     let timeout = TimingConstants.activationTimeoutMs
-                    // Activate once, then poll. Retry activation at longer intervals.
-                    app.activate(options: .activateIgnoringOtherApps)
+
+                    // AX force-activate, then poll for frontmost confirmation.
+                    _ = PasteService.forceActivateApp(pid: app.processIdentifier)
+                    app.activate()
                     var elapsed = 0
                     while elapsed < timeout {
                         try? await Task.sleep(for: .milliseconds(pollInterval))
@@ -657,7 +675,8 @@ public final class TranscriptionPipeline: DictationPipeline {
                             break
                         }
                         if elapsed % 300 < pollInterval {
-                            app.activate(options: .activateIgnoringOtherApps)
+                            _ = PasteService.forceActivateApp(pid: app.processIdentifier)
+                            app.activate()
                         }
                     }
 
@@ -676,8 +695,9 @@ public final class TranscriptionPipeline: DictationPipeline {
                             PasteService.restoreClipboard(snapshot, changeCountAfterPaste: changeCountAfterPaste)
                         }
                     } else {
-                        // Tier 2b: AppleScript Edit > Paste (needs frontmost, try one more activation)
-                        app.activate(options: .activateIgnoringOtherApps)
+                        // Tier 2b: AppleScript Edit > Paste
+                        _ = PasteService.forceActivateApp(pid: app.processIdentifier)
+                        app.activate()
                         try? await Task.sleep(for: .milliseconds(TimingConstants.clipboardRestoreDelayMs))
 
                         let snapshot: ClipboardSnapshot? = restoreClipboardAfterPaste

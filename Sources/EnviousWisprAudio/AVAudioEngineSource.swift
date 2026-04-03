@@ -54,6 +54,12 @@ private final class TapStoppedFlag: Sendable {
     }
 }
 
+/// Convert a Swift Duration to milliseconds as an Int for logging.
+private func ms(_ d: Duration) -> Int {
+    let (seconds, attoseconds) = d.components
+    return Int(seconds) * 1000 + Int(attoseconds / 1_000_000_000_000_000)
+}
+
 /// AVAudioEngine-based audio capture source. Supports voice processing (noise suppression)
 /// and Bluetooth codec switch recovery.
 ///
@@ -112,6 +118,7 @@ final class AVAudioEngineSource: AudioInputSource {
 
     func prepare() async throws {
         guard !engine.isRunning else { return }
+        let prepareStart = ContinuousClock.now
 
         activeTasks.removeAll()
 
@@ -119,10 +126,11 @@ final class AVAudioEngineSource: AudioInputSource {
         // CRITICAL: Must happen before setInputDevice(). If setInputDevice() runs first, it
         // instantiates an AUHAL. Then setVoiceProcessingEnabled(true) DESTROYS that AUHAL and
         // creates an AUVPIO. CoreAudio's BT I/O thread still holds a reference to the destroyed
-        // AUHAL → use-after-free → heap corruption → EXC_BAD_ACCESS.
+        // AUHAL -> use-after-free -> heap corruption -> EXC_BAD_ACCESS.
         //
         // Split-route check: when input != output device (e.g., built-in mic + BT headphones),
         // CoreAudio's AEC can't sync different hardware clocks. Disable VP in this case.
+        let vpStart = ContinuousClock.now
         let inputDeviceID = AudioDeviceEnumerator.defaultInputDeviceID()
         let outputDeviceID = AudioDeviceEnumerator.defaultOutputDeviceID()
         let isSplitRoute = inputDeviceID != nil && outputDeviceID != nil && inputDeviceID != outputDeviceID
@@ -144,9 +152,11 @@ final class AVAudioEngineSource: AudioInputSource {
         } else {
             try? engine.inputNode.setVoiceProcessingEnabled(false)
         }
+        let vpMs = ms(ContinuousClock.now - vpStart)
 
         // Step 2: Resolve input device — smart selection when in Auto mode.
         // SAFETY: Skip setInputDevice() entirely when BT output is active.
+        let deviceStart = ContinuousClock.now
         let btOutputActive: Bool
         if let outID = AudioDeviceEnumerator.defaultOutputDeviceID() {
             btOutputActive = AudioDeviceEnumerator.isBluetoothDevice(outID)
@@ -177,6 +187,7 @@ final class AVAudioEngineSource: AudioInputSource {
         }
         try setInputDevice(resolvedDeviceID)
         currentInputDeviceID = resolvedDeviceID ?? AudioDeviceEnumerator.defaultInputDeviceID()
+        let deviceMs = ms(ContinuousClock.now - deviceStart)
 
         // Create the capture stop token for this session
         let stopToken = TapStoppedFlag()
@@ -199,14 +210,17 @@ final class AVAudioEngineSource: AudioInputSource {
             }
         }
 
+        let engineStartTime = ContinuousClock.now
         btCrashLogger.info("Engine starting — stop token created, observer registered (queue: nil)")
         try engine.start()
+        let engineMs = ms(ContinuousClock.now - engineStartTime)
         btCrashLogger.info("Engine started successfully")
 
         // Install pre-roll tap immediately after engine start.
         // Format is stable for built-in mic (BT uses AVCaptureSessionSource).
         // The tap routes through a PreRollForwarder that buffers audio until
         // startCapture() activates live forwarding.
+        let tapStart = ContinuousClock.now
         let inputNode = engine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
@@ -237,7 +251,9 @@ final class AVAudioEngineSource: AudioInputSource {
             stoppedFlag: stopToken
         )
         inputNode.installTap(onBus: 0, bufferSize: 2048, format: inputFormat, block: tapHandler)
-        AudioCaptureManager.btRouteLog("Pre-roll tap installed — capturing audio during setup latency")
+        let tapMs = ms(ContinuousClock.now - tapStart)
+        let totalMs = ms(ContinuousClock.now - prepareStart)
+        AudioCaptureManager.btRouteLog("COLD-START prepare(): total=\(totalMs)ms | vp=\(vpMs)ms device=\(deviceMs)ms engine.start=\(engineMs)ms tap=\(tapMs)ms | vp=\(effectiveNoiseSuppression) bt=\(btOutputActive)")
     }
 
     func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
@@ -301,18 +317,28 @@ final class AVAudioEngineSource: AudioInputSource {
         maxWait: TimeInterval = 1.5,
         pollInterval: TimeInterval = 0.2
     ) async -> Bool {
+        let stabStart = ContinuousClock.now
         let deadline = Date().addingTimeInterval(maxWait)
         var lastFormat = engine.inputNode.outputFormat(forBus: 0)
         try? await Task.sleep(for: .milliseconds(10))
         let recheck = engine.inputNode.outputFormat(forBus: 0)
-        if recheck == lastFormat { return true }
+        if recheck == lastFormat {
+            AudioCaptureManager.btRouteLog("COLD-START formatStab: stable on fast path (\(ms(ContinuousClock.now - stabStart))ms, 0 polls)")
+            return true
+        }
         lastFormat = recheck
+        var polls = 0
         while Date() < deadline {
             try? await Task.sleep(for: .seconds(pollInterval))
+            polls += 1
             let format = engine.inputNode.outputFormat(forBus: 0)
-            if format == lastFormat { return true }
+            if format == lastFormat {
+                AudioCaptureManager.btRouteLog("COLD-START formatStab: stable after \(polls) polls (\(ms(ContinuousClock.now - stabStart))ms)")
+                return true
+            }
             lastFormat = format
         }
+        AudioCaptureManager.btRouteLog("COLD-START formatStab: TIMED OUT after \(polls) polls (\(ms(ContinuousClock.now - stabStart))ms)")
         return false
     }
 
