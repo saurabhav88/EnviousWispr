@@ -216,8 +216,13 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     }
 
     public func preWarm() async {
+        let preWarmStart = ContinuousClock.now
         let source = resolveSource()
-        guard !source.isRunning else { return }
+        let resolveMs = Self.ms(ContinuousClock.now - preWarmStart)
+        guard !source.isRunning else {
+            Self.btRouteLog("COLD-START preWarm(): engine already running (warm hit) resolveSource=\(resolveMs)ms")
+            return
+        }
         do {
             try await source.prepare()
         } catch {
@@ -227,7 +232,18 @@ public final class AudioCaptureManager: AudioCaptureInterface {
             ) }
             return
         }
-        _ = await source.waitForFormatStabilization(maxWait: 1.5, pollInterval: 0.2)
+        let prepareMs = Self.ms(ContinuousClock.now - preWarmStart)
+        let stabStart = ContinuousClock.now
+        let stabilized = await source.waitForFormatStabilization(maxWait: 1.5, pollInterval: 0.2)
+        let stabMs = Self.ms(ContinuousClock.now - stabStart)
+        let totalMs = Self.ms(ContinuousClock.now - preWarmStart)
+        Self.btRouteLog("COLD-START preWarm(): total=\(totalMs)ms | resolve=\(resolveMs)ms prepare=\(prepareMs)ms formatStab=\(stabMs)ms stabilized=\(stabilized)")
+    }
+
+    /// Convert Duration to milliseconds for logging.
+    nonisolated private static func ms(_ d: Duration) -> Int {
+        let (seconds, attoseconds) = d.components
+        return Int(seconds) * 1000 + Int(attoseconds / 1_000_000_000_000_000)
     }
 
     public func abortPreWarm() {

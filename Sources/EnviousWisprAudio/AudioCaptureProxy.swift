@@ -188,9 +188,12 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     }
 
     public func preWarm() async {
+        let proxyStart = ContinuousClock.now
         ensureConnection()
         resendConfigIfNeeded()
+        let connMs = Self.ms(ContinuousClock.now - proxyStart)
         // Phase 1: start engine
+        let enginePhaseStart = ContinuousClock.now
         do {
             try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
                 let guard_ = OneShotContinuation(cont)
@@ -213,8 +216,22 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
             ) }
             return
         }
+        let enginePhaseMs = Self.ms(ContinuousClock.now - enginePhaseStart)
         // Phase 2: wait for format stabilization
+        let stabStart = ContinuousClock.now
         _ = await waitForFormatStabilization(maxWait: 1.5, pollInterval: 0.2)
+        let stabMs = Self.ms(ContinuousClock.now - stabStart)
+        let totalMs = Self.ms(ContinuousClock.now - proxyStart)
+        Task { await AppLogger.shared.log(
+            "COLD-START [XPC proxy] preWarm: total=\(totalMs)ms | conn=\(connMs)ms enginePhase=\(enginePhaseMs)ms formatStab=\(stabMs)ms",
+            level: .info, category: "XPC"
+        ) }
+    }
+
+    /// Convert Duration to milliseconds for logging.
+    private static func ms(_ d: Duration) -> Int {
+        let (seconds, attoseconds) = d.components
+        return Int(seconds) * 1000 + Int(attoseconds / 1_000_000_000_000_000)
     }
 
     public func abortPreWarm() {

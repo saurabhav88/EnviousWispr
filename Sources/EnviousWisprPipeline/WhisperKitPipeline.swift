@@ -186,12 +186,24 @@ public final class WhisperKitPipeline: DictationPipeline {
 
     public func preWarmAudioInput() async {
         guard !state.isActive, state != .recording else { return }
+        let start = ContinuousClock.now
         await audioCapture.preWarm()
         guard !Task.isCancelled else { return }
         isPreWarmed = true
+        let totalMs = Self.durationMs(ContinuousClock.now - start)
+        Task { await AppLogger.shared.log(
+            "COLD-START [WhisperKit] preWarmAudioInput total=\(totalMs)ms",
+            level: .info, category: "Pipeline"
+        ) }
         // Defense-in-depth: ensure model is loaded from cache (no download).
         // If not cached, startRecording() handles the full load with user-visible UI.
         Task { _ = try? await backend.prepareIfCached() }
+    }
+
+    /// Convert Duration to milliseconds for logging.
+    private static func durationMs(_ d: Duration) -> Int {
+        let (seconds, attoseconds) = d.components
+        return Int(seconds) * 1000 + Int(attoseconds / 1_000_000_000_000_000)
     }
 
     public func toggleRecording() async {
@@ -980,10 +992,14 @@ public final class WhisperKitPipeline: DictationPipeline {
         }
 
         // Tier 2: Activate target app + CGEvent Cmd+V
+        // Uses AX force-activate (kAXFrontmostAttribute) to bypass macOS 14+
+        // restrictions on background processes stealing focus.
         if tier == .clipboardOnly, let app = targetApp, !app.isTerminated {
             let pollInterval = TimingConstants.activationPollIntervalMs
             let timeout = TimingConstants.activationTimeoutMs
-            app.activate(options: .activateIgnoringOtherApps)
+
+            _ = PasteService.forceActivateApp(pid: app.processIdentifier)
+            app.activate()
             var elapsed = 0
             while elapsed < timeout {
                 try? await Task.sleep(for: .milliseconds(pollInterval))
@@ -992,7 +1008,8 @@ public final class WhisperKitPipeline: DictationPipeline {
                     break
                 }
                 if elapsed % 300 < pollInterval {
-                    app.activate(options: .activateIgnoringOtherApps)
+                    _ = PasteService.forceActivateApp(pid: app.processIdentifier)
+                    app.activate()
                 }
             }
 
@@ -1010,7 +1027,8 @@ public final class WhisperKitPipeline: DictationPipeline {
                 }
             } else {
                 // Tier 2b: AppleScript Edit > Paste
-                app.activate(options: .activateIgnoringOtherApps)
+                _ = PasteService.forceActivateApp(pid: app.processIdentifier)
+                app.activate()
                 try? await Task.sleep(for: .milliseconds(TimingConstants.clipboardRestoreDelayMs))
                 let snapshot: ClipboardSnapshot? = restoreClipboardAfterPaste
                     ? PasteService.saveClipboard()

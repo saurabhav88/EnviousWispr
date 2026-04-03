@@ -331,6 +331,7 @@ final class AppState {
                 isRecordingLocked: false
             )
 
+            let pttStart = ContinuousClock.now
             await active.handle(event: .preWarm)
             guard !Task.isCancelled else {
                 // PTT release arrived during preWarm — stop the engine that preWarm started
@@ -338,7 +339,19 @@ final class AppState {
                 self.recordingOverlay.show(intent: .hidden)
                 return
             }
+            let preWarmMs = {
+                let (s, a) = (ContinuousClock.now - pttStart).components
+                return Int(s) * 1000 + Int(a / 1_000_000_000_000_000)
+            }()
             await active.handle(event: .toggleRecording)
+            let totalMs = {
+                let (s, a) = (ContinuousClock.now - pttStart).components
+                return Int(s) * 1000 + Int(a / 1_000_000_000_000_000)
+            }()
+            Task { await AppLogger.shared.log(
+                "COLD-START [AppState] PTT-to-recording: total=\(totalMs)ms preWarm=\(preWarmMs)ms startRecording=\(totalMs - preWarmMs)ms backend=\(isWhisperKit ? "whisperkit" : "parakeet")",
+                level: .info, category: "Pipeline"
+            ) }
 
             if isWhisperKit {
                 if case .error = self.whisperKitPipeline.state {
