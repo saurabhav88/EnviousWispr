@@ -1,5 +1,6 @@
 import SwiftUI
 import EnviousWisprCore
+import EnviousWisprServices
 import AppKit
 
 // MARK: - KeyCaptureNSView
