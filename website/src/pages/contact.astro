@@ -1,0 +1,122 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+  title="Contact — EnviousWispr"
+  description="Send us feedback, report a bug, or ask a question about EnviousWispr."
+  activePage="contact"
+  canonicalPath="/contact/"
+>
+
+<style>
+.contact-header { padding: 120px 0 48px; text-align: center; position: relative; z-index: 1; }
+.contact-header h1 { font-size: 48px; font-weight: 800; letter-spacing: -2px; line-height: 1.1; color: var(--text); margin-bottom: 12px; }
+.contact-header p { font-size: 17px; color: var(--text-2); max-width: 480px; margin: 0 auto; }
+
+.contact-form-wrap {
+  max-width: 520px; margin: 0 auto; padding: 0 24px 96px; position: relative; z-index: 1;
+}
+
+.form-group { margin-bottom: 20px; }
+.form-label { display: block; font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+
+.form-input, .form-textarea {
+  width: 100%; padding: 12px 16px;
+  font-family: var(--font-body); font-size: 15px; color: var(--text);
+  background: #fff; border: 1px solid var(--border-hover); border-radius: var(--radius-btn);
+  outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+}
+.form-input:focus, .form-textarea:focus {
+  border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.form-input::placeholder, .form-textarea::placeholder { color: var(--text-3); }
+
+.form-textarea { min-height: 160px; resize: vertical; line-height: 1.6; }
+
+.form-submit {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 12px 28px; font-size: 15px; font-weight: 600;
+  color: #fff; background: var(--accent); border: none; border-radius: var(--radius-btn);
+  cursor: pointer; transition: background 0.2s, transform 0.1s;
+}
+.form-submit:hover { background: var(--accent-hover); }
+.form-submit:active { transform: scale(0.98); }
+.form-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.form-status {
+  margin-top: 16px; padding: 12px 16px; border-radius: var(--radius-btn);
+  font-size: 14px; display: none;
+}
+.form-status.success { display: block; background: rgba(0,200,128,0.1); color: #00804a; border: 1px solid rgba(0,200,128,0.2); }
+.form-status.error { display: block; background: rgba(230,37,58,0.08); color: #c0222e; border: 1px solid rgba(230,37,58,0.15); }
+
+@media (max-width: 640px) {
+  .contact-header h1 { font-size: 32px; letter-spacing: -1px; }
+}
+</style>
+
+<section class="contact-header">
+  <div class="container">
+    <h1>Get in touch</h1>
+    <p>Bug reports, feature requests, or just saying hi. We read everything.</p>
+  </div>
+</section>
+
+<div class="contact-form-wrap">
+  <form id="feedback-form">
+    <div class="form-group">
+      <label class="form-label" for="email">Your email</label>
+      <input class="form-input" type="email" id="email" name="email" placeholder="you@example.com" required />
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="message">Message</label>
+      <textarea class="form-textarea" id="message" name="message" placeholder="What's on your mind?" required></textarea>
+    </div>
+    <button class="form-submit" type="submit">Send feedback</button>
+    <div id="form-status" class="form-status"></div>
+  </form>
+</div>
+
+<script>
+  const form = document.getElementById('feedback-form');
+  const status = document.getElementById('form-status');
+  const btn = form.querySelector('.form-submit');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    status.className = 'form-status';
+    status.textContent = '';
+    btn.disabled = true;
+    btn.textContent = 'Sending...';
+
+    try {
+      const res = await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: form.email.value,
+          message: form.message.value,
+        }),
+      });
+
+      if (res.ok) {
+        status.className = 'form-status success';
+        status.textContent = 'Thanks! We\'ll get back to you soon.';
+        form.reset();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        status.className = 'form-status error';
+        status.textContent = data.error || 'Something went wrong. Try emailing hello@enviouswispr.com instead.';
+      }
+    } catch {
+      status.className = 'form-status error';
+      status.textContent = 'Network error. Try emailing hello@enviouswispr.com instead.';
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Send feedback';
+  });
+</script>
+
+</BaseLayout>
