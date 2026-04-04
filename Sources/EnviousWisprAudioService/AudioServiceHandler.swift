@@ -9,7 +9,6 @@ import EnviousWisprAudio
 final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Sendable {
     /// The XPC connection back to the host — set by AudioServiceDelegate.
     weak var connection: NSXPCConnection?
-
     /// Client proxy for sending callbacks to the host app.
     /// Resolved from connection.remoteObjectProxy — set by AudioServiceDelegate.
     var clientProxy: (any AudioServiceClientProtocol)?
@@ -217,8 +216,7 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
 
         // If VAD is already running mid-session, rebuild the detector with new config.
         if let detector = silenceDetector {
-            var config = SmoothedVADConfig.fromSensitivity(sensitivity)
-            if energyGate { config.energyGateThreshold = 0.005 }
+            let config = SmoothedVADConfig.fromSensitivity(sensitivity, energyGate: energyGate)
             Task { await detector.updateConfig(config) }
         }
     }
@@ -261,8 +259,7 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
     /// Start the VAD monitoring task. Called after beginCapture succeeds.
     @MainActor
     private func startVADMonitoring() {
-        var config = SmoothedVADConfig.fromSensitivity(vadSensitivity)
-        if vadEnergyGate { config.energyGateThreshold = 0.005 }
+        let config = SmoothedVADConfig.fromSensitivity(vadSensitivity, energyGate: vadEnergyGate)
 
         let detector = SilenceDetector(silenceTimeout: vadSilenceTimeout, vadConfig: config)
         self.silenceDetector = detector

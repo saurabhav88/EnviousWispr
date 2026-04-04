@@ -1003,10 +1003,7 @@ public final class TranscriptionPipeline: DictationPipeline {
 
         if !isXPCMode {
             // Build SmoothedVAD config from sensitivity setting
-            var config = SmoothedVADConfig.fromSensitivity(vadSensitivity)
-            if vadEnergyGate {
-                config.energyGateThreshold = 0.005
-            }
+            let config = SmoothedVADConfig.fromSensitivity(vadSensitivity, energyGate: vadEnergyGate)
 
             // Lazily create detector
             if silenceDetector == nil {
