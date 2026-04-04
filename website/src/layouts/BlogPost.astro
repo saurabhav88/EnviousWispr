@@ -195,25 +195,9 @@ const breadcrumbJsonLd = JSON.stringify({
         </section>
       )}
 
-      <section class="blog-comments" aria-label="Comments">
+      <section class="blog-comments" aria-label="Comments" id="remark42">
         <h2 class="comments-heading">Comments</h2>
-        <script
-          src="https://giscus.app/client.js"
-          data-repo="saurabhav88/EnviousWispr"
-          data-repo-id="R_kgDORTeikw"
-          data-category="General"
-          data-category-id="DIC_kwDORTeik84C5_6o"
-          data-mapping="pathname"
-          data-strict="0"
-          data-reactions-enabled="1"
-          data-emit-metadata="0"
-          data-input-position="top"
-          data-theme="preferred_color_scheme"
-          data-lang="en"
-          data-loading="lazy"
-          crossorigin="anonymous"
-          async>
-        </script>
+        <div id="remark42-comments"></div>
       </section>
 
       <nav class="blog-post-nav" aria-label="Post navigation">
@@ -682,6 +666,15 @@ const breadcrumbJsonLd = JSON.stringify({
     margin-bottom: 24px;
   }
 
+  /* Remark42 overrides */
+  :global(.remark42__comment) {
+    border-color: var(--border) !important;
+  }
+
+  :global(#remark42-comments) {
+    min-height: 100px;
+  }
+
   /* Bottom nav */
   .blog-post-nav {
     margin-top: 64px;
@@ -731,4 +724,26 @@ const breadcrumbJsonLd = JSON.stringify({
     });
     pre.appendChild(btn);
   });
+</script>
+
+<script>
+  // Remark42 comments - only load on production
+  if (window.location.hostname === 'enviouswispr.com') {
+    const remark_config = {
+      host: 'https://comments.enviouswispr.com',
+      site_id: 'enviouswispr',
+      url: window.location.origin + window.location.pathname,
+      components: ['embed'],
+      max_shown_comments: 15,
+      theme: 'dark',
+      page_title: document.title,
+    };
+    window.remark_config = remark_config;
+
+    const d = document;
+    const s = d.createElement('script');
+    s.src = remark_config.host + '/web/embed.es2015.js';
+    s.defer = true;
+    (d.head || d.body).appendChild(s);
+  }
 </script>
