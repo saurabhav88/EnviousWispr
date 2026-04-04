@@ -72,9 +72,25 @@ jobs:
         if: steps.changes.outputs.needs_build == 'true'
         run: swift build -c release --arch arm64
 
-      - name: Verify test target compiles
+      - name: Run logic tests
         if: steps.changes.outputs.needs_build == 'true'
-        run: swift build --build-tests
+        run: |
+          set -euo pipefail
+          OUTPUT=$(scripts/swift-test.sh 2>&1) || true
+          echo "$OUTPUT"
+          # Fail on actual test failures
+          if echo "$OUTPUT" | grep -q "✘"; then
+            echo "::error::Swift tests have failures"
+            exit 1
+          fi
+          # Verify tests actually started (guard against silent no-op)
+          STARTED=$(echo "$OUTPUT" | grep -c "started" || true)
+          if [ "$STARTED" -eq 0 ]; then
+            echo "::error::No tests started — possible compilation failure"
+            exit 1
+          fi
+          PASSED=$(echo "$OUTPUT" | grep -c "passed" || true)
+          echo "==> $STARTED test entries started, $PASSED reported passed, 0 failures"
 
       - name: Verify FoundationModels compile probe
         if: steps.changes.outputs.needs_build == 'true'
