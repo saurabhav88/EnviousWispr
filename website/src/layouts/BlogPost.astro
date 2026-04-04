@@ -667,12 +667,14 @@ const breadcrumbJsonLd = JSON.stringify({
   }
 
   /* Remark42 overrides */
-  :global(.remark42__comment) {
-    border-color: var(--border) !important;
+  #remark42 {
+    min-height: 100px;
   }
 
-  :global(#remark42-comments) {
-    min-height: 100px;
+  #remark42 iframe {
+    border-radius: var(--radius-card);
+    border: 1px solid var(--border);
+    background: var(--surface);
   }
 
   /* Bottom nav */
@@ -734,7 +736,7 @@ const breadcrumbJsonLd = JSON.stringify({
       site_id: 'enviouswispr',
       url: window.location.origin + window.location.pathname,
       max_shown_comments: 15,
-      theme: 'dark',
+      theme: 'light',
       page_title: document.title,
     };
 
