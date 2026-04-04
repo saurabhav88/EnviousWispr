@@ -7,6 +7,8 @@ import EnviousWisprAudio
 /// to the XPC protocol. All capture logic runs in the service process; the host app
 /// receives buffers and state changes via AudioServiceClientProtocol callbacks.
 final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Sendable {
+    /// The XPC connection back to the host — set by AudioServiceDelegate.
+    weak var connection: NSXPCConnection?
     /// Client proxy for sending callbacks to the host app.
     /// Resolved from connection.remoteObjectProxy — set by AudioServiceDelegate.
     var clientProxy: (any AudioServiceClientProtocol)?
