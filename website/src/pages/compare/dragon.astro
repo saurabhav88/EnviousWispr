@@ -1,0 +1,843 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const siteUrl = 'https://enviouswispr.com';
+
+const articleJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "EnviousWispr vs Dragon: Free Mac Dictation Alternative",
+  "description": "Compare EnviousWispr vs Dragon (Nuance) on price, privacy, platform support, and speed. Free on-device dictation for Apple Silicon Macs. No $700 license fee.",
+  "url": `${siteUrl}/compare/dragon/`,
+  "datePublished": "2026-04-04",
+  "dateModified": "2026-04-04",
+  "author": {
+    "@type": "Person",
+    "name": "Saurabh Vaish",
+    "url": `${siteUrl}/authors/saurabh-vaish/`,
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Envious Labs",
+    "url": siteUrl,
+  },
+  "isPartOf": {
+    "@type": "WebSite",
+    "url": siteUrl,
+    "name": "EnviousWispr",
+  },
+});
+
+const breadcrumbJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": siteUrl,
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "EnviousWispr vs Dragon",
+      "item": `${siteUrl}/compare/dragon/`,
+    },
+  ],
+});
+
+const faqJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is there a free Dragon alternative for Mac?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. EnviousWispr is free, runs natively on macOS with Apple Silicon, and processes speech on-device. Dragon discontinued its Mac version in 2018, so EnviousWispr fills that gap without costing $700."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Dragon still work on Mac?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. Nuance discontinued Dragon for Mac in 2018. The last Mac version does not run on modern macOS with Apple Silicon. If you need dictation on a Mac, EnviousWispr is a current, actively maintained option."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is Dragon dictation free?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. Dragon Professional Individual costs approximately $699 for a one-time license. The consumer version (Dragon Home) has been discontinued. EnviousWispr is completely free with no license fee or subscription."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Do I need to train EnviousWispr to recognize my voice?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. EnviousWispr uses modern neural speech models that work accurately from the first sentence. Dragon improves accuracy as you use it and make corrections."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does EnviousWispr work offline?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Transcription runs entirely on-device and works without internet after the initial model download. AI polish can also run offline using Apple Intelligence or a local Ollama model."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can EnviousWispr do voice commands like Dragon?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "EnviousWispr focuses on dictation: converting speech to text as fast as possible. It does not support macro commands or application control the way Dragon Professional does."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What happened to Dragon after Microsoft bought Nuance?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Microsoft completed its acquisition of Nuance in March 2022. Since then, Dragon consumer products have been effectively sidelined. The focus shifted to enterprise healthcare (DAX Copilot). Dragon Professional Individual is still sold but receives minimal updates."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is EnviousWispr open source?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Source-available under the Business Source License 1.1. You can read, build, and inspect every line of code on GitHub. It is not an OSI-approved open source license, but it gives you full transparency. Dragon is entirely closed source."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can EnviousWispr match Dragon's accuracy for medical or legal terms?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "For general dictation, EnviousWispr's neural models are highly accurate out of the box. For specialized medical or legal terminology, Dragon's purpose-built editions have purpose-trained vocabularies that EnviousWispr does not replicate. EnviousWispr's Custom Words feature lets you add terms manually."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "I used Dragon on Mac before 2018. Is EnviousWispr a replacement?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "For dictation, yes. EnviousWispr handles the core workflow Dragon Mac users relied on: speak, transcribe, paste into any app. It adds AI polish that Dragon never had. The main gap is voice commands."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does EnviousWispr work with external microphones?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. EnviousWispr uses whatever microphone macOS has selected as the input device. USB microphones, Bluetooth headsets, and audio interfaces all work."
+      }
+    }
+  ]
+});
+
+---
+
+<BaseLayout
+  title="EnviousWispr vs Dragon: Free Mac Dictation"
+  description="Dragon costs $700 and dropped Mac support. EnviousWispr is free on-device dictation for Apple Silicon Macs. No account required."
+  activePage="compare"
+  canonicalPath="/compare/dragon/"
+  ogType="article"
+>
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={articleJsonLd}></script>
+    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
+    <script type="application/ld+json" set:html={faqJsonLd}></script>
+  </Fragment>
+
+<style>
+/* ── Page Header ── */
+.page-header { padding: 100px 0 48px; text-align: center; position: relative; z-index: 1; }
+.vs-badge {
+  display: inline-flex; align-items: center; gap: 14px; margin-bottom: 20px;
+  font-size: 14px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-3);
+}
+.vs-brand { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; color: var(--text); }
+.vs-brand.accent { color: var(--accent); }
+.vs-circle {
+  width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--border-hover);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; color: var(--text-3); background: #fff;
+}
+.page-header h1 { font-size: 48px; font-weight: 800; letter-spacing: -2.5px; line-height: 1.1; color: var(--text); margin-bottom: 14px; max-width: 700px; margin-left: auto; margin-right: auto; }
+.page-header-sub { font-size: 18px; font-weight: 400; color: var(--text-2); max-width: 560px; margin: 0 auto; line-height: 1.6; }
+.hero-pills { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+.hero-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 100px; font-size: 13px; font-weight: 600;
+  background: rgba(124,58,237,0.06); color: var(--accent); border: 1px solid rgba(124,58,237,0.12);
+}
+.hero-pill svg { flex-shrink: 0; }
+.hero-cta { margin-top: 28px; }
+.hero-meta { font-size: 12px; color: var(--text-3); margin-top: 16px; }
+
+/* ── Comparison Table ── */
+.compare-table-wrap {
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-card); border: 1px solid var(--border-hover);
+  background: #fff;
+}
+.compare-table {
+  width: 100%; border-collapse: collapse; font-size: 15px;
+  min-width: 640px;
+}
+.compare-table thead th {
+  padding: 20px 24px; font-size: 16px; font-weight: 700;
+  text-align: left; border-bottom: 2px solid var(--border-hover);
+  background: rgba(248,245,255,0.5);
+}
+.compare-table thead th:first-child { width: 34%; }
+.compare-table thead th:nth-child(2) {
+  background: rgba(124,58,237,0.06);
+  color: var(--accent);
+}
+.compare-table tbody td {
+  padding: 16px 24px; border-bottom: 1px solid var(--border);
+  vertical-align: top; line-height: 1.55;
+}
+.compare-table tbody tr:last-child td { border-bottom: none; }
+.compare-table tbody td:first-child {
+  font-weight: 600; color: var(--text);
+}
+.compare-table tbody td:nth-child(2) {
+  background: rgba(124,58,237,0.02);
+}
+.compare-table tbody td:nth-child(3) {
+  color: var(--text-2);
+}
+.table-check { color: var(--green); font-weight: 700; }
+.table-cross { color: var(--text-3); }
+.table-highlight { color: var(--accent); font-weight: 600; }
+
+/* ── Advantage Cards ── */
+.advantages-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.advantage-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 28px 24px;
+  position: relative; overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.advantage-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(124,58,237,0.10); }
+.advantage-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full);
+}
+.advantage-icon { font-size: 28px; margin-bottom: 14px; line-height: 1; }
+.advantage-title { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 8px; color: var(--text); }
+.advantage-desc { font-size: 14px; color: var(--text-2); line-height: 1.65; }
+
+/* ── Privacy Section ── */
+.privacy-split { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.privacy-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 32px 28px;
+}
+.privacy-card.ew {
+  border-color: rgba(0,200,128,0.25);
+  background: linear-gradient(135deg, rgba(0,200,128,0.03), rgba(248,245,255,0.5));
+}
+.privacy-card.wf {
+  border-color: rgba(230,37,58,0.15);
+  background: linear-gradient(135deg, rgba(230,37,58,0.02), rgba(248,245,255,0.5));
+}
+.privacy-card-label {
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+}
+.privacy-card.ew .privacy-card-label { color: var(--green); }
+.privacy-card.wf .privacy-card-label { color: var(--red); }
+.privacy-step {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+  font-size: 14px; color: var(--text-2); line-height: 1.55;
+}
+.privacy-step:last-child { border-bottom: none; }
+.privacy-step-num {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+}
+.privacy-card.ew .privacy-step-num { background: rgba(0,200,128,0.12); color: var(--green); }
+.privacy-card.wf .privacy-step-num { background: rgba(230,37,58,0.08); color: var(--red); }
+
+/* ── Speed Stats ── */
+.speed-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.speed-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 28px 20px; text-align: center;
+}
+.speed-value {
+  font-size: 42px; font-weight: 800; letter-spacing: -2px; line-height: 1; margin-bottom: 6px;
+  background: var(--rainbow-full);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.speed-label { font-size: 14px; color: var(--text-2); font-weight: 500; }
+.speed-detail { font-size: 11px; color: var(--text-3); margin-top: 4px; }
+
+/* ── Deep Dive ── */
+.deep-dive-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+.deep-dive-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 36px 32px;
+  position: relative; overflow: hidden;
+}
+.deep-dive-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full);
+}
+.deep-dive-icon { font-size: 32px; margin-bottom: 16px; line-height: 1; }
+.deep-dive-title { font-size: 22px; font-weight: 800; letter-spacing: -0.8px; margin-bottom: 12px; color: var(--text); }
+.deep-dive-body { font-size: 15px; color: var(--text-2); line-height: 1.7; }
+.deep-dive-body p { margin-bottom: 12px; }
+.deep-dive-body p:last-child { margin-bottom: 0; }
+.deep-dive-detail {
+  margin-top: 16px; padding: 14px 18px; border-radius: 10px;
+  background: rgba(124,58,237,0.04); border: 1px solid rgba(124,58,237,0.08);
+  font-size: 13px; color: var(--text-2); line-height: 1.6;
+}
+.deep-dive-detail strong { color: var(--text); }
+@media (max-width: 900px) {
+  .deep-dive-grid { grid-template-columns: 1fr; }
+}
+
+/* ── FAQ ── */
+.faq-list { max-width: 720px; margin: 0 auto; }
+.faq-item {
+  border-bottom: 1px solid var(--border-hover); padding: 24px 0;
+}
+.faq-item:last-child { border-bottom: none; }
+.faq-q {
+  font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 8px; letter-spacing: -0.3px;
+}
+.faq-a { font-size: 15px; color: var(--text-2); line-height: 1.65; }
+
+/* ── CTA ── */
+.cta-section { padding: var(--section-pad) 0; text-align: center; position: relative; z-index: 1; }
+.cta-section h2 { font-size: 40px; font-weight: 800; letter-spacing: -2px; margin-bottom: 12px; }
+.cta-section p { font-size: 17px; color: var(--text-2); margin-bottom: 36px; }
+.cta-actions { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; }
+.back-link { font-size: 15px; font-weight: 500; color: var(--text-3); text-decoration: none; transition: color 0.2s; }
+.back-link:hover { color: var(--accent); }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .advantages-grid { grid-template-columns: repeat(2, 1fr); }
+  .privacy-split { grid-template-columns: 1fr; }
+  .speed-stats { grid-template-columns: repeat(3, 1fr); }
+  .page-header h1 { font-size: 42px; letter-spacing: -2px; }
+}
+@media (max-width: 600px) {
+  .advantages-grid { grid-template-columns: 1fr; }
+  .speed-stats { grid-template-columns: 1fr; }
+  .page-header h1 { font-size: 34px; letter-spacing: -1px; }
+  .compare-table-wrap { margin: 0 -20px; border-radius: 0; border-left: none; border-right: none; }
+}
+</style>
+
+<!-- Page Header -->
+<header class="page-header">
+  <div class="container">
+    <div class="vs-badge reveal">
+      <span class="vs-brand accent">EnviousWispr</span>
+      <span class="vs-circle">VS</span>
+      <span class="vs-brand">Dragon</span>
+    </div>
+    <h1 class="reveal">Dragon is $700, Windows-only, and discontinued on Mac</h1>
+    <p class="page-header-sub reveal">Dragon pioneered dictation. But it dropped Mac support, costs $700, and has no AI polish. EnviousWispr is free, runs on Apple Silicon, and works offline.</p>
+    <div class="hero-pills reveal">
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Free, not $700
+      </span>
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        Native macOS, not Windows
+      </span>
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        0.43s median latency
+      </span>
+    </div>
+    <div class="hero-cta reveal">
+      <a href="/#download" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+    </div>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: April 2026</p>
+  </div>
+</header>
+
+<!-- Side-by-Side Table -->
+<section class="section" aria-label="Feature Comparison">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Side by Side</div>
+      <h2 class="section-title">Feature comparison</h2>
+      <p class="section-sub">Dragon NaturallySpeaking set the standard for dictation software. Here is how it compares to EnviousWispr in 2026.</p>
+    </div>
+    <div class="compare-table-wrap reveal">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>EnviousWispr</th>
+            <th>Dragon (Nuance)</th>
+          </tr>
+        </thead>
+        <!-- Evidence: Dragon claims verified against nuance.com, Microsoft product pages, and archived documentation.
+             Confidence: source-verified from public websites and archived product listings.
+             Sources:
+               - Pricing: nuance.com/dragon.html (accessed 2026-04-03) - Dragon Professional ~$699 one-time
+               - Mac discontinuation: Nuance announcement (2018), confirmed no Mac version available (accessed 2026-04-03)
+               - Consumer version: Dragon Home discontinued; only Professional Individual remains (accessed 2026-04-03)
+               - Microsoft acquisition: Microsoft completed Nuance acquisition March 2022 (public record)
+               - On-device processing: Dragon processes locally after installation (product documentation)
+               - Custom vocabularies: Dragon Professional feature page (accessed 2026-04-03)
+               - Voice commands: Dragon Professional supports voice editing, formatting, navigation, and custom macros (product documentation)
+               - Auto-punctuation: Dragon Professional includes automatic punctuation (product documentation)
+               - Medical/legal editions: Dragon Medical One, Dragon Legal Individual exist as specialized products (nuance.com)
+               - Accuracy claim: Nuance markets "up to 99% recognition accuracy" (product page, accessed 2026-04-03)
+             Firsthand testing: Dragon was not tested firsthand for this comparison.
+             All claims are source-verified from official pages and public records. Last verified: 2026-04-04. -->
+        <tbody>
+          <tr>
+            <td>Price</td>
+            <td><span class="table-highlight">Free. No subscription, no license fee.</span></td>
+            <td>~$699 one-time (Professional)*</td>
+          </tr>
+          <tr>
+            <td>Account required</td>
+            <td><span class="table-check">No</span></td>
+            <td>Yes, Nuance account + product activation</td>
+          </tr>
+          <tr>
+            <td>Platform</td>
+            <td><span class="table-highlight">macOS</span> (Apple Silicon)</td>
+            <td>Windows only (Mac version discontinued 2018)</td>
+          </tr>
+          <tr>
+            <td>Audio processing</td>
+            <td><span class="table-highlight">On-device</span> (Neural Engine)</td>
+            <td>On-device (after installation)</td>
+          </tr>
+          <tr>
+            <td>Audio leaves your computer</td>
+            <td><span class="table-check">Never.</span> If you enable cloud AI polish, only the text transcript is sent.</td>
+            <td><span class="table-check">No</span> (local processing)</td>
+          </tr>
+          <tr>
+            <td>Offline transcription</td>
+            <td><span class="table-check">Yes</span> (after model download)</td>
+            <td><span class="table-check">Yes</span> (after installation)</td>
+          </tr>
+          <tr>
+            <td>Offline AI polish</td>
+            <td><span class="table-highlight">Yes.</span> Apple Intelligence or local Ollama models.</td>
+            <td><span class="table-cross">No AI polish at all</span></td>
+          </tr>
+          <tr>
+            <td>AI polish / LLM providers</td>
+            <td><span class="table-highlight">5 providers:</span> Apple Intelligence, Ollama, OpenAI, Gemini, Groq</td>
+            <td><span class="table-cross">None</span></td>
+          </tr>
+          <tr>
+            <td>Writing style control</td>
+            <td><span class="table-highlight">Context-aware Smart Polish</span> adjusts for target app</td>
+            <td><span class="table-cross">None.</span> Raw transcript only.</td>
+          </tr>
+          <tr>
+            <td>Speech engines</td>
+            <td><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> + <a href="https://github.com/argmaxinc/WhisperKit" style="color: var(--accent); text-decoration: underline;">WhisperKit</a></td>
+            <td>Proprietary Nuance engine (decades of refinement)</td>
+          </tr>
+          <tr>
+            <td>Voice training required</td>
+            <td><span class="table-check">No.</span> Works immediately.</td>
+            <td>Improves with use; Nuance claims 99% from first use</td>
+          </tr>
+          <tr>
+            <td>Custom vocabulary</td>
+            <td>Custom words for names and terms</td>
+            <td><span class="table-check">Custom vocabularies</span> + macro commands + auto-learning</td>
+          </tr>
+          <tr>
+            <td>Voice commands</td>
+            <td><span class="table-cross">Not supported</span></td>
+            <td><span class="table-check">Yes.</span> Edit by voice, navigate, format, custom macros.</td>
+          </tr>
+          <tr>
+            <td>First-word capture</td>
+            <td><span class="table-check">Yes.</span> VAD detects speech onset; no clipping.</td>
+            <td><span class="table-check">Yes.</span> Always-listening mode with wake word.</td>
+          </tr>
+          <tr>
+            <td>Starts listening instantly</td>
+            <td><span class="table-highlight">Hotkey press, immediate recording.</span></td>
+            <td>Always-listening or manual microphone toggle</td>
+          </tr>
+          <tr>
+            <td>Text lands in the right app</td>
+            <td><span class="table-check">Yes.</span> Three-tier paste with app reactivation.</td>
+            <td><span class="table-check">Yes.</span> Types into the active window cursor position.</td>
+          </tr>
+          <tr>
+            <td>Clipboard preservation</td>
+            <td><span class="table-check">Yes.</span> Clipboard saved and restored after paste.</td>
+            <td>Not applicable (types directly, does not use clipboard)</td>
+          </tr>
+          <tr>
+            <td>Auto-punctuation</td>
+            <td><span class="table-check">Yes.</span> Neural model + AI polish handle punctuation.</td>
+            <td><span class="table-check">Yes.</span> Built-in auto-punctuation.</td>
+          </tr>
+          <tr>
+            <td>Auto-stop on silence</td>
+            <td><span class="table-check">Yes.</span> Configurable silence timeout.</td>
+            <td><span class="table-check">Yes.</span> Configurable pause settings.</td>
+          </tr>
+          <tr>
+            <td>Accessibility</td>
+            <td>Menu bar app; global hotkey; works in any text field</td>
+            <td>Full accessibility suite; navigation by voice</td>
+          </tr>
+          <tr>
+            <td>Transcription latency</td>
+            <td><span class="table-highlight">0.43s median</span>; ~1.5s with AI polish</td>
+            <td>Near-instant (local processing, but older engine)</td>
+          </tr>
+          <tr>
+            <td>Source code</td>
+            <td><span class="table-highlight"><a href="https://github.com/AirSkye/EnviousWispr" style="color: var(--accent); text-decoration: underline;">Source-available</a></span> on GitHub (BSL 1.1)</td>
+            <td>Closed source</td>
+          </tr>
+          <tr>
+            <td>Active development</td>
+            <td><span class="table-check">Yes.</span> Shipping updates regularly.</td>
+            <td><span class="table-cross">Effectively abandoned.</span> Microsoft/Nuance focus shifted to enterprise and healthcare.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Dragon Professional Individual pricing from <a href="https://www.nuance.com/dragon.html" style="color: var(--text-3); text-decoration: underline;">nuance.com</a> as of April 2026. Consumer Dragon Home has been discontinued. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Dragon claims source-verified from official Nuance pages and product documentation; not firsthand-tested. Competitor claims last verified: 2026-04-04.</p>
+    <div style="text-align: center; margin-top: 28px;">
+      <a href="/#download" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- Why EnviousWispr -->
+<section class="section" aria-label="Advantages">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill green">Why EnviousWispr</div>
+      <h2 class="section-title">Why Mac users choose EnviousWispr over Dragon</h2>
+      <p class="section-sub">Dragon left the Mac behind. EnviousWispr was built for it.</p>
+    </div>
+    <div class="advantages-grid">
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">$0</div>
+        <div class="advantage-title">Free, not $700</div>
+        <p class="advantage-desc">Dragon Professional costs roughly $699 for a single license. EnviousWispr is free. No subscription, no license key, no activation server. Download and use it.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🍎</div>
+        <div class="advantage-title">Actually runs on Mac</div>
+        <p class="advantage-desc">Nuance discontinued Dragon for Mac in 2018. If you are on macOS, Dragon is not an option. EnviousWispr is built natively for Apple Silicon and takes full advantage of the Neural Engine. See <a href="/how-it-works/" style="color: var(--accent); text-decoration: underline;">how the pipeline works</a>.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">✨</div>
+        <div class="advantage-title">AI polish built in</div>
+        <p class="advantage-desc">Dragon gives you a raw transcript. EnviousWispr can clean up filler words, fix punctuation, and restructure sentences using Apple Intelligence or a local Ollama model. No extra software, no cloud dependency unless you choose it.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">⚡</div>
+        <div class="advantage-title">Works instantly</div>
+        <p class="advantage-desc">Dragon claims up to 99% accuracy from first use, improving further with corrections over time. EnviousWispr works immediately. Modern speech models like <a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> are accurate out of the box.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🔄</div>
+        <div class="advantage-title">Actively maintained</div>
+        <p class="advantage-desc">Dragon has not received meaningful updates since Microsoft acquired Nuance in 2022. Their focus shifted to enterprise healthcare. EnviousWispr ships updates regularly with new models, features, and performance improvements.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">📖</div>
+        <div class="advantage-title">Auditable code</div>
+        <p class="advantage-desc">Every line is <a href="https://github.com/AirSkye/EnviousWispr" style="color: var(--accent); text-decoration: underline;">on GitHub</a> under BSL 1.1. Verify what it does. Report issues directly. Dragon is closed source with no public bug tracker.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Architecture / Privacy Deep Dive -->
+<section class="section" aria-label="Architecture Comparison">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill cyan">Architecture</div>
+      <h2 class="section-title">Two generations of on-device dictation</h2>
+      <p class="section-sub">Both Dragon and EnviousWispr process speech locally. The difference is what happens after the transcript. For more on why on-device matters, read <a href="/blog/on-device-vs-cloud-dictation-privacy/" style="color: var(--accent); text-decoration: underline;">on-device vs cloud dictation privacy</a>.</p>
+    </div>
+    <div class="privacy-split">
+      <div class="privacy-card ew reveal">
+        <div class="privacy-card-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          EnviousWispr
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">1</div>
+          <div>You speak into your Mac's microphone.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">2</div>
+          <div>Audio is transcribed by the Neural Engine using Parakeet TDT or WhisperKit. Nothing uploaded.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">3</div>
+          <div>AI polish cleans up the transcript. Runs on-device with Apple Intelligence or Ollama, or with your own cloud API key if you choose.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">4</div>
+          <div>Polished text is pasted into your active app. Audio is discarded.</div>
+        </div>
+      </div>
+      <div class="privacy-card wf reveal">
+        <div class="privacy-card-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          Dragon (Nuance)
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">1</div>
+          <div>You speak into your Windows PC's microphone.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">2</div>
+          <div>Audio is transcribed locally by Dragon's proprietary engine. Processing stays on-device.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">3</div>
+          <div>Raw transcript is inserted. No AI polish, no cleanup, no sentence restructuring.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">4</div>
+          <div>You manually edit the text to fix filler words, punctuation, and phrasing.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Deep Dive -->
+<section class="section" aria-label="Deep Dive">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Deep Dive</div>
+      <h2 class="section-title">The details that matter for Mac users</h2>
+      <p class="section-sub">Dragon was the gold standard for Windows dictation. But two fundamental gaps make it irrelevant for Mac users in 2026.</p>
+    </div>
+    <div class="deep-dive-grid">
+      <div class="deep-dive-card reveal">
+        <div class="deep-dive-icon">🍎</div>
+        <div class="deep-dive-title">Actually runs on your Mac</div>
+        <div class="deep-dive-body">
+          <p>Nuance discontinued Dragon for Mac in 2018. The last Mac version (6.0.8) predates Apple Silicon entirely. It does not run on modern macOS, and Nuance has no plans to bring it back. If you search for "Dragon Mac," you will find forum posts from frustrated users and no download link.</p>
+          <p>EnviousWispr is built natively for Apple Silicon. It uses Core ML and the Neural Engine directly, meaning transcription runs on dedicated ML hardware rather than general-purpose CPU cores. The app is a lightweight menu bar utility that launches in seconds and uses minimal memory.</p>
+          <p>This is not a compatibility layer or a port. Every component, from audio capture to paste-back, uses native macOS APIs: AVFoundation for audio, Accessibility API for text insertion, and Core ML for model inference.</p>
+          <div class="deep-dive-detail">
+            <strong>Technical detail:</strong> EnviousWispr runs Parakeet TDT (600M parameters) and WhisperKit models through Core ML on Apple Silicon's Neural Engine. Dragon's proprietary engine was optimized for x86 Windows with no Apple Silicon path. The last Dragon Mac release cannot even launch on macOS 14+.
+          </div>
+        </div>
+      </div>
+      <div class="deep-dive-card reveal">
+        <div class="deep-dive-icon">✨</div>
+        <div class="deep-dive-title">Modern AI polish, not just raw transcript</div>
+        <div class="deep-dive-body">
+          <p>Dragon gives you a transcript and expects you to fix it. It has no concept of LLM-based post-processing. Dragon was built in an era before large language models existed, and Nuance has not retrofitted this capability.</p>
+          <p>EnviousWispr integrates five LLM providers for Smart Polish: Apple Intelligence (fully on-device), Ollama (local models like Llama or Mistral), and cloud options via OpenAI, Gemini, or Groq if you bring your own API key. The polish step removes filler words, fixes punctuation, restructures awkward phrasings, and adapts to the app you are dictating into.</p>
+          <p>The system is context-aware. Dictating into Slack? The polish keeps it conversational. Writing an email? It formalizes. And all cloud providers only receive the text transcript, never your audio.</p>
+          <div class="deep-dive-detail">
+            <strong>Technical detail:</strong> Smart Polish uses sandwich prompt framing with XML-tagged transcript boundaries to prevent hallucination. Output validation rejects responses longer than 3x the input. Short transcripts (3 words or fewer) bypass the LLM entirely. Preamble stripping removes "Certainly!" artifacts automatically.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Speed Section -->
+<section class="section" aria-label="Speed">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill amber">Speed</div>
+      <h2 class="section-title">Modern models, modern hardware</h2>
+      <p class="section-sub">EnviousWispr runs neural speech models on Apple Silicon's dedicated ML hardware. The result is sub-second transcription with no training needed.</p>
+    </div>
+    <div class="speed-stats">
+      <div class="speed-card reveal">
+        <div class="speed-value">0.43s</div>
+        <div class="speed-label">Median transcription</div>
+        <div class="speed-detail">From end of speech to raw text</div>
+      </div>
+      <div class="speed-card reveal">
+        <div class="speed-value">1.5s</div>
+        <div class="speed-label">With AI polish</div>
+        <div class="speed-detail">Apple Intelligence on-device</div>
+      </div>
+      <div class="speed-card reveal">
+        <div class="speed-value">0s</div>
+        <div class="speed-label">Training required</div>
+        <div class="speed-detail">Accurate from the first sentence</div>
+      </div>
+    </div>
+    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Based on production data from Apple Silicon Macs. Results vary by hardware and settings.</p>
+  </div>
+</section>
+
+<!-- Fair Acknowledgment -->
+<section class="section" aria-label="Where Dragon Wins">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Being Honest</div>
+      <h2 class="section-title">Where Dragon genuinely wins</h2>
+      <p class="section-sub">Dragon pioneered voice dictation and spent decades refining it. These are real strengths, not legacy talking points:</p>
+    </div>
+    <div class="advantages-grid">
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🎯</div>
+        <div class="advantage-title">Decades of accuracy refinement</div>
+        <p class="advantage-desc">Dragon has been tuning its speech engine since the 1990s. Nuance claims up to 99% accuracy from first use, improving further as you make corrections. The engine learns your voice, your vocabulary, and your correction patterns over time. That adaptive accuracy loop is genuinely impressive.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🗣️</div>
+        <div class="advantage-title">Voice command editing</div>
+        <p class="advantage-desc">Dragon lets you edit, format, and navigate entirely by voice. Say "select previous sentence" or "bold that" and it works. You can create custom voice macros for repetitive tasks. EnviousWispr is dictation-only; it does not support voice-driven editing or navigation.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🏥</div>
+        <div class="advantage-title">Medical and legal editions</div>
+        <p class="advantage-desc">Dragon Medical One and Dragon Legal Individual ship with specialized vocabularies for clinical notes, legal briefs, and industry-specific terminology. These are purpose-built products with EHR integrations. EnviousWispr targets general dictation, not regulated industry workflows.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🏢</div>
+        <div class="advantage-title">Enterprise deployments</div>
+        <p class="advantage-desc">Dragon has decades of enterprise deployment experience with IT admin tools, network licensing, and compliance certifications. Organizations with existing Dragon infrastructure have switching costs that go beyond the software itself.</p>
+      </div>
+    </div>
+    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you are on a Mac and want free, actively maintained dictation with AI polish, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>.</p>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="section" aria-label="Frequently Asked Questions">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">FAQ</div>
+      <h2 class="section-title">Common questions</h2>
+    </div>
+    <div class="faq-list">
+      <div class="faq-item reveal">
+        <div class="faq-q">Is there a free Dragon alternative for Mac?</div>
+        <p class="faq-a">Yes. EnviousWispr is free, runs natively on macOS with Apple Silicon, and processes speech on-device. Dragon discontinued its Mac version in 2018, so EnviousWispr fills that gap without costing $700.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Does Dragon still work on Mac?</div>
+        <p class="faq-a">No. Nuance discontinued Dragon for Mac in 2018. The last Mac version does not run on modern macOS with Apple Silicon. If you need dictation on a Mac, EnviousWispr is a current, actively maintained option.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Is Dragon dictation free?</div>
+        <p class="faq-a">No. Dragon Professional Individual costs approximately $699 for a one-time license. The consumer version (Dragon Home) has been discontinued. EnviousWispr is completely free with no license fee or subscription.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Do I need to train EnviousWispr to recognize my voice?</div>
+        <p class="faq-a">No. EnviousWispr uses modern neural speech models that work accurately from the first sentence. Dragon improves accuracy as you use it and make corrections, though Nuance claims 99% accuracy from first use. EnviousWispr skips that entirely.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Does EnviousWispr work offline?</div>
+        <p class="faq-a">Transcription runs entirely on-device and works without internet after the initial model download. AI polish can also run offline using Apple Intelligence or a local Ollama model. See the <a href="/blog/getting-started-enviouswispr-under-2-minutes/" style="color: var(--accent); text-decoration: underline;">getting started guide</a> for setup.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can EnviousWispr do voice commands like Dragon?</div>
+        <p class="faq-a">EnviousWispr focuses on dictation: converting speech to text as fast as possible. It does not support macro commands or application control the way Dragon Professional does. If you need voice-driven automation, Dragon's scripting features are more extensive.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">What happened to Dragon after Microsoft bought Nuance?</div>
+        <p class="faq-a">Microsoft completed its acquisition of Nuance in March 2022. Since then, Dragon consumer products have been effectively sidelined. The focus shifted to enterprise healthcare (DAX Copilot). Dragon Professional Individual is still sold but receives minimal updates.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Is EnviousWispr open source?</div>
+        <p class="faq-a">Source-available under the Business Source License 1.1. You can read, build, and inspect every line of code <a href="https://github.com/AirSkye/EnviousWispr" style="color: var(--accent); text-decoration: underline;">on GitHub</a>. It is not an OSI-approved open source license, but it gives you full transparency. Dragon is entirely closed source.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can EnviousWispr match Dragon's accuracy for medical or legal terms?</div>
+        <p class="faq-a">For general dictation, EnviousWispr's neural models are highly accurate out of the box. For specialized medical or legal terminology, Dragon's purpose-built editions (Dragon Medical One, Dragon Legal Individual) have purpose-trained vocabularies that EnviousWispr does not replicate. EnviousWispr's Custom Words feature lets you add names and terms manually, but it is not a substitute for a medical dictionary with tens of thousands of clinical terms.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">I used Dragon on Mac before 2018. Is EnviousWispr a replacement?</div>
+        <p class="faq-a">For dictation, yes. EnviousWispr handles the core workflow Dragon Mac users relied on: speak, transcribe, paste into any app. It adds AI polish that Dragon never had. The main gap is voice commands. Dragon let you edit and navigate by voice; EnviousWispr is focused purely on converting speech to polished text.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Does EnviousWispr work with external microphones?</div>
+        <p class="faq-a">Yes. EnviousWispr uses whatever microphone macOS has selected as the input device. USB microphones, Bluetooth headsets, and audio interfaces all work. Dragon similarly supports external microphones on Windows. You can select your preferred input device in System Settings before recording.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Related Comparisons -->
+<section class="section" aria-label="Related Comparisons" style="padding-top: 0;">
+  <div class="container">
+    <p style="font-size: 14px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px;">Compare with other tools</p>
+    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+      <a href="/compare/wisprflow/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs WisprFlow</a>
+      <a href="/compare/superwhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Superwhisper</a>
+      <a href="/compare/apple-dictation/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Apple Dictation</a>
+      <a href="/compare/otter-ai/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Otter.ai</a>
+      <a href="/compare/macwhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs MacWhisper</a>
+      <a href="/compare/voiceink/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs VoiceInk</a>
+      <a href="/compare/willow-voice/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Willow Voice</a>
+      <a href="/compare/google-docs-voice-typing/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Google Docs</a>
+      <a href="/compare/notta/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Notta</a>
+      <a href="/compare/whisper-cpp/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs whisper.cpp</a>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section" aria-label="Download CTA">
+  <div class="container">
+    <h2 class="reveal">Dragon left the Mac. We did not.</h2>
+    <p class="reveal">Free to download. No account required. No $700 license fee.</p>
+    <div class="cta-actions reveal">
+      <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="btn-primary" data-download-source="compare">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+      <a href="/" class="back-link">Back to Home</a>
+    </div>
+  </div>
+</section>
+
+<!-- Footnote -->
+<footer style="padding: 24px 0 48px; text-align: center;">
+  <div class="container">
+    <p style="font-size: 11px; color: var(--text-3); max-width: 640px; margin: 0 auto; line-height: 1.65;">
+      <strong>Methodology:</strong> Dragon claims were sourced from <a href="https://www.nuance.com/dragon.html" style="color: var(--text-3); text-decoration: underline;">nuance.com</a>, Microsoft product announcements, archived product pages, and official product documentation. Dragon was not firsthand-tested for this comparison. Where Dragon has genuine strengths (voice commands, medical/legal editions, adaptive accuracy), we say so. EnviousWispr performance data comes from production PostHog analytics on Apple Silicon Macs. All competitor claims were last verified on 2026-04-04. If you spot an error, please <a href="https://github.com/AirSkye/EnviousWispr/issues" style="color: var(--text-3); text-decoration: underline;">open an issue</a>.
+    </p>
+  </div>
+</footer>
+
+</BaseLayout>

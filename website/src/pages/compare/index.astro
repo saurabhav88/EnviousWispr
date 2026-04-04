@@ -1,0 +1,156 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const siteUrl = 'https://enviouswispr.com';
+
+const breadcrumbJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": siteUrl,
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Comparisons",
+      "item": `${siteUrl}/compare/`,
+    },
+  ],
+});
+
+const cloudTools = [
+  { name: "WisprFlow", slug: "wisprflow", angle: "Cloud subscription vs free on-device dictation" },
+  { name: "Otter.ai", slug: "otter-ai", angle: "Meeting transcription vs real-time dictation" },
+  { name: "Notta", slug: "notta", angle: "Cloud transcription vs private on-device speech-to-text" },
+  { name: "Google Docs Voice Typing", slug: "google-docs-voice-typing", angle: "Browser-only dictation vs system-wide on any Mac app" },
+];
+
+const onDeviceApps = [
+  { name: "Superwhisper", slug: "superwhisper", angle: "Two on-device Mac apps, different trade-offs on price and speed" },
+  { name: "MacWhisper", slug: "macwhisper", angle: "File transcription app vs live dictation tool" },
+  { name: "VoiceInk", slug: "voiceink", angle: "Two whisper-based Mac apps, head to head on features" },
+  { name: "Willow Voice", slug: "willow-voice", angle: "Cloud-first subscription vs free on-device alternative" },
+];
+
+const legacyDev = [
+  { name: "Dragon", slug: "dragon", angle: "Legacy enterprise dictation vs modern Apple Silicon native" },
+  { name: "Apple Dictation", slug: "apple-dictation", angle: "Built-in macOS dictation vs dedicated dictation app" },
+  { name: "whisper.cpp", slug: "whisper-cpp", angle: "Developer CLI vs ready-to-use Mac dictation app" },
+];
+---
+
+<BaseLayout
+  title="EnviousWispr Comparisons: Free Mac Dictation vs Alternatives"
+  description="See how EnviousWispr compares to WisprFlow, Dragon, Apple Dictation, Otter.ai, and more. Free on-device Mac dictation."
+  activePage="compare"
+  canonicalPath="/compare/"
+>
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
+  </Fragment>
+
+<style>
+.compare-hero { padding: 100px 0 48px; text-align: center; }
+.compare-hero h1 { font-size: 48px; font-weight: 800; letter-spacing: -2.5px; line-height: 1.1; color: var(--text); margin-bottom: 14px; }
+.compare-hero p { font-size: 18px; color: var(--text-2); max-width: 560px; margin: 0 auto; line-height: 1.6; }
+
+.compare-group { margin-bottom: 48px; }
+.compare-group-label {
+  font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px;
+  color: var(--text-3); margin-bottom: 16px;
+}
+.compare-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;
+}
+.compare-card {
+  display: block; padding: 24px; border-radius: var(--radius-card);
+  border: 1px solid var(--border-hover); background: #fff;
+  text-decoration: none; transition: border-color 0.15s, box-shadow 0.15s;
+}
+.compare-card:hover {
+  border-color: var(--accent); box-shadow: 0 2px 12px rgba(124,58,237,0.08);
+}
+.compare-card-name {
+  font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 6px;
+}
+.compare-card-angle {
+  font-size: 14px; color: var(--text-2); line-height: 1.5;
+}
+.compare-card-arrow {
+  display: inline-block; margin-top: 12px; font-size: 13px; font-weight: 600; color: var(--accent);
+}
+
+.compare-cta { text-align: center; padding: 48px 0 80px; }
+.compare-cta p { font-size: 16px; color: var(--text-2); margin-bottom: 20px; }
+.compare-cta .btn-primary {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 14px 28px; border-radius: 100px; font-size: 15px; font-weight: 700;
+  background: var(--accent); color: #fff; text-decoration: none;
+  transition: background 0.15s;
+}
+.compare-cta .btn-primary:hover { background: var(--accent-hover); }
+</style>
+
+<div class="compare-hero">
+  <div class="container">
+    <h1>How EnviousWispr compares</h1>
+    <p>Honest, side-by-side comparisons with every major dictation tool.</p>
+  </div>
+</div>
+
+<div class="container">
+  <div class="compare-group">
+    <div class="compare-group-label">Cloud dictation</div>
+    <div class="compare-grid">
+      {cloudTools.map(tool => (
+        <a href={`/compare/${tool.slug}/`} class="compare-card">
+          <div class="compare-card-name">vs {tool.name}</div>
+          <div class="compare-card-angle">{tool.angle}</div>
+          <span class="compare-card-arrow">Read comparison &rarr;</span>
+        </a>
+      ))}
+    </div>
+  </div>
+
+  <div class="compare-group">
+    <div class="compare-group-label">On-device Mac apps</div>
+    <div class="compare-grid">
+      {onDeviceApps.map(tool => (
+        <a href={`/compare/${tool.slug}/`} class="compare-card">
+          <div class="compare-card-name">vs {tool.name}</div>
+          <div class="compare-card-angle">{tool.angle}</div>
+          <span class="compare-card-arrow">Read comparison &rarr;</span>
+        </a>
+      ))}
+    </div>
+  </div>
+
+  <div class="compare-group">
+    <div class="compare-group-label">Legacy & developer tools</div>
+    <div class="compare-grid">
+      {legacyDev.map(tool => (
+        <a href={`/compare/${tool.slug}/`} class="compare-card">
+          <div class="compare-card-name">vs {tool.name}</div>
+          <div class="compare-card-angle">{tool.angle}</div>
+          <span class="compare-card-arrow">Read comparison &rarr;</span>
+        </a>
+      ))}
+    </div>
+  </div>
+</div>
+
+<div class="compare-cta">
+  <div class="container">
+    <p>Ready to try the fastest free dictation on Mac?</p>
+    <a href="/#download" class="btn-primary">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download Free
+    </a>
+  </div>
+</div>
+
+</BaseLayout>

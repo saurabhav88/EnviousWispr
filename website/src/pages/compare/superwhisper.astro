@@ -1,0 +1,829 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const siteUrl = 'https://enviouswispr.com';
+
+const articleJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "EnviousWispr vs Superwhisper: Free Mac Dictation",
+  "description": "Compare EnviousWispr and Superwhisper on price, speech engines, offline support, and speed. Free on-device dictation with Parakeet for Apple Silicon Macs.",
+  "url": `${siteUrl}/compare/superwhisper/`,
+  "datePublished": "2026-04-04",
+  "dateModified": "2026-04-04",
+  "author": {
+    "@type": "Person",
+    "name": "Saurabh Vaish",
+    "url": `${siteUrl}/authors/saurabh-vaish/`,
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Envious Labs",
+    "url": siteUrl,
+  },
+  "isPartOf": {
+    "@type": "WebSite",
+    "url": siteUrl,
+    "name": "EnviousWispr",
+  },
+});
+
+const breadcrumbJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": siteUrl,
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "EnviousWispr vs Superwhisper",
+      "item": `${siteUrl}/compare/superwhisper/`,
+    },
+  ],
+});
+
+const faqJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is there a free alternative to Superwhisper?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account or subscription required. It uses Parakeet TDT for English and WhisperKit for 90+ languages."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How is EnviousWispr different from Superwhisper?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Both are Mac-native and run on-device. The key differences: EnviousWispr is free (Superwhisper Pro costs ~$8.49/mo), uses dual ASR engines (Parakeet TDT for English accuracy, WhisperKit for multilingual), and is source-available on GitHub. Superwhisper has meeting transcription, an iOS app, Windows support, and more writing modes."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How does EnviousWispr compare to Superwhisper for accuracy?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "For English dictation, EnviousWispr uses NVIDIA Parakeet TDT v2, which benchmarks higher than Whisper large-v3 on standard English speech datasets. For other languages, both apps use Whisper-based engines with comparable accuracy."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I use EnviousWispr completely offline?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using Apple Intelligence (macOS 15+) or Ollama with a local model."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Superwhisper have offline AI polish?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Superwhisper's transcription works offline via Whisper. However, their AI polish features appear to require cloud connectivity. EnviousWispr's Apple Intelligence and Ollama integrations run entirely on your Mac."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is EnviousWispr really free?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. No subscription, no usage limits, no account required. Download and use it. The source code is available on GitHub under a BSL 1.1 license."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What is Parakeet TDT?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Parakeet TDT is an English speech recognition model from NVIDIA. It is purpose-built for accurate English transcription and runs on the Apple Neural Engine at ~110x real-time."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I switch from Superwhisper easily?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. Download EnviousWispr, set your hotkey, and start dictating. There is no data to migrate. Both apps work in any text field on macOS."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What Mac do I need?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine on Apple Silicon is what makes on-device transcription fast."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is EnviousWispr open source?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Source-available under the Business Source License 1.1. That means you can read, build, and inspect every line of code on GitHub. It is not an OSI-approved open source license, but it gives you full transparency into how the app works."
+      }
+    }
+  ]
+});
+
+---
+
+<BaseLayout
+  title="EnviousWispr vs Superwhisper: Free Mac Dictation"
+  description="Compare EnviousWispr vs Superwhisper: price, engines, offline, and speed. Free on-device dictation for Apple Silicon. No subscription."
+  activePage="compare"
+  canonicalPath="/compare/superwhisper/"
+  ogType="article"
+>
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={articleJsonLd}></script>
+    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
+    <script type="application/ld+json" set:html={faqJsonLd}></script>
+  </Fragment>
+
+<style>
+/* ── Page Header ── */
+.page-header { padding: 100px 0 48px; text-align: center; position: relative; z-index: 1; }
+.vs-badge {
+  display: inline-flex; align-items: center; gap: 14px; margin-bottom: 20px;
+  font-size: 14px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-3);
+}
+.vs-brand { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; color: var(--text); }
+.vs-brand.accent { color: var(--accent); }
+.vs-circle {
+  width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--border-hover);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; color: var(--text-3); background: #fff;
+}
+.page-header h1 { font-size: 48px; font-weight: 800; letter-spacing: -2.5px; line-height: 1.1; color: var(--text); margin-bottom: 14px; max-width: 700px; margin-left: auto; margin-right: auto; }
+.page-header-sub { font-size: 18px; font-weight: 400; color: var(--text-2); max-width: 560px; margin: 0 auto; line-height: 1.6; }
+.hero-pills { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+.hero-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 100px; font-size: 13px; font-weight: 600;
+  background: rgba(124,58,237,0.06); color: var(--accent); border: 1px solid rgba(124,58,237,0.12);
+}
+.hero-pill svg { flex-shrink: 0; }
+.hero-cta { margin-top: 28px; }
+.hero-meta { font-size: 12px; color: var(--text-3); margin-top: 16px; }
+
+/* ── Comparison Table ── */
+.compare-table-wrap {
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-card); border: 1px solid var(--border-hover);
+  background: #fff;
+}
+.compare-table {
+  width: 100%; border-collapse: collapse; font-size: 15px;
+  min-width: 640px;
+}
+.compare-table thead th {
+  padding: 20px 24px; font-size: 16px; font-weight: 700;
+  text-align: left; border-bottom: 2px solid var(--border-hover);
+  background: rgba(248,245,255,0.5);
+}
+.compare-table thead th:first-child { width: 34%; }
+.compare-table thead th:nth-child(2) {
+  background: rgba(124,58,237,0.06);
+  color: var(--accent);
+}
+.compare-table tbody td {
+  padding: 16px 24px; border-bottom: 1px solid var(--border);
+  vertical-align: top; line-height: 1.55;
+}
+.compare-table tbody tr:last-child td { border-bottom: none; }
+.compare-table tbody td:first-child {
+  font-weight: 600; color: var(--text);
+}
+.compare-table tbody td:nth-child(2) {
+  background: rgba(124,58,237,0.02);
+}
+.compare-table tbody td:nth-child(3) {
+  color: var(--text-2);
+}
+.table-check { color: var(--green); font-weight: 700; }
+.table-cross { color: var(--text-3); }
+.table-highlight { color: var(--accent); font-weight: 600; }
+
+/* ── Advantage Cards ── */
+.advantages-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.advantage-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 28px 24px;
+  position: relative; overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.advantage-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(124,58,237,0.10); }
+.advantage-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full);
+}
+.advantage-icon { font-size: 28px; margin-bottom: 14px; line-height: 1; }
+.advantage-title { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 8px; color: var(--text); }
+.advantage-desc { font-size: 14px; color: var(--text-2); line-height: 1.65; }
+
+/* ── Privacy Section ── */
+.privacy-split { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.privacy-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 32px 28px;
+}
+.privacy-card.ew {
+  border-color: rgba(0,200,128,0.25);
+  background: linear-gradient(135deg, rgba(0,200,128,0.03), rgba(248,245,255,0.5));
+}
+.privacy-card.wf {
+  border-color: rgba(230,37,58,0.15);
+  background: linear-gradient(135deg, rgba(230,37,58,0.02), rgba(248,245,255,0.5));
+}
+.privacy-card-label {
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+}
+.privacy-card.ew .privacy-card-label { color: var(--green); }
+.privacy-card.wf .privacy-card-label { color: var(--red); }
+.privacy-step {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+  font-size: 14px; color: var(--text-2); line-height: 1.55;
+}
+.privacy-step:last-child { border-bottom: none; }
+.privacy-step-num {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+}
+.privacy-card.ew .privacy-step-num { background: rgba(0,200,128,0.12); color: var(--green); }
+.privacy-card.wf .privacy-step-num { background: rgba(230,37,58,0.08); color: var(--red); }
+
+/* ── Speed Stats ── */
+.speed-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.speed-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 28px 20px; text-align: center;
+}
+.speed-value {
+  font-size: 42px; font-weight: 800; letter-spacing: -2px; line-height: 1; margin-bottom: 6px;
+  background: var(--rainbow-full);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.speed-label { font-size: 14px; color: var(--text-2); font-weight: 500; }
+.speed-detail { font-size: 11px; color: var(--text-3); margin-top: 4px; }
+
+/* ── Deep Dive ── */
+.deep-dive-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+.deep-dive-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 36px 32px;
+  position: relative; overflow: hidden;
+}
+.deep-dive-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full);
+}
+.deep-dive-icon { font-size: 32px; margin-bottom: 16px; line-height: 1; }
+.deep-dive-title { font-size: 22px; font-weight: 800; letter-spacing: -0.8px; margin-bottom: 12px; color: var(--text); }
+.deep-dive-body { font-size: 15px; color: var(--text-2); line-height: 1.7; }
+.deep-dive-body p { margin-bottom: 12px; }
+.deep-dive-body p:last-child { margin-bottom: 0; }
+.deep-dive-detail {
+  margin-top: 16px; padding: 14px 18px; border-radius: 10px;
+  background: rgba(124,58,237,0.04); border: 1px solid rgba(124,58,237,0.08);
+  font-size: 13px; color: var(--text-2); line-height: 1.6;
+}
+.deep-dive-detail strong { color: var(--text); }
+@media (max-width: 900px) {
+  .deep-dive-grid { grid-template-columns: 1fr; }
+}
+
+/* ── FAQ ── */
+.faq-list { max-width: 720px; margin: 0 auto; }
+.faq-item {
+  border-bottom: 1px solid var(--border-hover); padding: 24px 0;
+}
+.faq-item:last-child { border-bottom: none; }
+.faq-q {
+  font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 8px; letter-spacing: -0.3px;
+}
+.faq-a { font-size: 15px; color: var(--text-2); line-height: 1.65; }
+
+/* ── CTA ── */
+.cta-section { padding: var(--section-pad) 0; text-align: center; position: relative; z-index: 1; }
+.cta-section h2 { font-size: 40px; font-weight: 800; letter-spacing: -2px; margin-bottom: 12px; }
+.cta-section p { font-size: 17px; color: var(--text-2); margin-bottom: 36px; }
+.cta-actions { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; }
+.back-link { font-size: 15px; font-weight: 500; color: var(--text-3); text-decoration: none; transition: color 0.2s; }
+.back-link:hover { color: var(--accent); }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .advantages-grid { grid-template-columns: repeat(2, 1fr); }
+  .privacy-split { grid-template-columns: 1fr; }
+  .speed-stats { grid-template-columns: repeat(3, 1fr); }
+  .page-header h1 { font-size: 42px; letter-spacing: -2px; }
+}
+@media (max-width: 600px) {
+  .advantages-grid { grid-template-columns: 1fr; }
+  .speed-stats { grid-template-columns: 1fr; }
+  .page-header h1 { font-size: 34px; letter-spacing: -1px; }
+  .compare-table-wrap { margin: 0 -20px; border-radius: 0; border-left: none; border-right: none; }
+}
+</style>
+
+<!-- Page Header -->
+<header class="page-header">
+  <div class="container">
+    <div class="vs-badge reveal">
+      <span class="vs-brand accent">EnviousWispr</span>
+      <span class="vs-circle">VS</span>
+      <span class="vs-brand">Superwhisper</span>
+    </div>
+    <h1 class="reveal">The free Superwhisper alternative for Mac</h1>
+    <p class="page-header-sub reveal">Both are Mac-native and on-device. The difference: EnviousWispr is free, and uses Parakeet TDT for better English accuracy alongside WhisperKit.</p>
+    <div class="hero-pills reveal">
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Free, no subscription
+      </span>
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Parakeet TDT + WhisperKit
+      </span>
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        0.43s median latency
+      </span>
+    </div>
+    <div class="hero-cta reveal">
+      <a href="/#download" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+    </div>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: April 2026</p>
+  </div>
+</header>
+
+<!-- Side-by-Side Table -->
+<section class="section" aria-label="Feature Comparison">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Side by Side</div>
+      <h2 class="section-title">Feature comparison</h2>
+      <p class="section-sub">An honest look at how the two tools stack up across the dimensions that matter most.</p>
+    </div>
+    <div class="compare-table-wrap reveal">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>EnviousWispr</th>
+            <th>Superwhisper</th>
+          </tr>
+        </thead>
+        <!-- Evidence: Superwhisper claims verified against superwhisper.com on 2026-04-04.
+             Sources:
+               - superwhisper.com homepage (accessed 2026-04-04): features, pricing tiers, AI model list, writing modes, custom vocabulary, meeting transcription, iOS app, offline mode, 100+ languages
+               - superwhisper.com (accessed 2026-04-04): Pro ~$8.49/mo, Lifetime option available, free tier with 15-min trial
+             Confidence: source-verified from public website. Superwhisper was not tested firsthand.
+             Features marked "Not specified" were not found on superwhisper.com as of 2026-04-04.
+             Last verified: 2026-04-04. -->
+        <tbody>
+          <tr>
+            <td>Price</td>
+            <td><span class="table-highlight">Free to use. No subscription, no word limits.</span></td>
+            <td>Free tier (15-min trial); Pro ~$8.49/mo; Lifetime purchase available*</td>
+          </tr>
+          <tr>
+            <td>Account required</td>
+            <td><span class="table-check">No</span></td>
+            <td>Yes, for Pro features</td>
+          </tr>
+          <tr>
+            <td>Speech engines</td>
+            <td><span class="table-highlight"><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> + <a href="https://github.com/argmaxinc/WhisperKit" style="color: var(--accent); text-decoration: underline;">WhisperKit</a></span> (dual engines, on-device)</td>
+            <td>Whisper (on-device, multiple model sizes)</td>
+          </tr>
+          <tr>
+            <td>Audio processing</td>
+            <td><span class="table-highlight">On-device</span> (Apple Neural Engine)</td>
+            <td>On-device (Whisper); optional cloud AI for polish</td>
+          </tr>
+          <tr>
+            <td>Audio leaves your Mac</td>
+            <td><span class="table-check">Never.</span> Audio stays on your Mac. If you enable cloud AI polish, only the text transcript is sent.</td>
+            <td>Not for transcription. Cloud AI features send text to third-party APIs.</td>
+          </tr>
+          <tr>
+            <td>Works offline</td>
+            <td><span class="table-check">Yes</span> (after models download)</td>
+            <td><span class="table-check">Yes</span> (on-device Whisper mode)</td>
+          </tr>
+          <tr>
+            <td>AI polish</td>
+            <td><span class="table-highlight">Apple Intelligence or Ollama on-device;</span> OpenAI/Gemini with your own key</td>
+            <td>Cloud AI via GPT-5, Claude, Llama 4, Grok, Gemini, Ministral (requires Pro)</td>
+          </tr>
+          <tr>
+            <td>Offline AI polish</td>
+            <td><span class="table-check">Yes</span> (Apple Intelligence or Ollama, fully on-device)</td>
+            <td>Not specified (cloud AI models listed require internet)</td>
+          </tr>
+          <tr>
+            <td>Transcription latency</td>
+            <td><span class="table-highlight">0.43s median</span>; ~1.5s with AI polish</td>
+            <td>Not published</td>
+          </tr>
+          <tr>
+            <td>Custom vocabulary</td>
+            <td><span class="table-check">Yes</span> (names, terms, jargon; post-processing word replacement)</td>
+            <td><span class="table-check">Yes</span> (names, abbreviations, specialized terms)</td>
+          </tr>
+          <tr>
+            <td>Writing style control</td>
+            <td>Context-aware Smart Polish adapts to target app</td>
+            <td>Multiple modes: Formal, Casual, Legal, Chat, plus custom modes</td>
+          </tr>
+          <tr>
+            <td>Filler word removal</td>
+            <td><span class="table-check">Yes</span> (built-in, runs before AI polish)</td>
+            <td>Not specified</td>
+          </tr>
+          <tr>
+            <td>First-word capture</td>
+            <td><span class="table-highlight">Pre-roll buffer</span> captures audio before you press the hotkey</td>
+            <td>Not specified</td>
+          </tr>
+          <tr>
+            <td>Starts listening instantly</td>
+            <td><span class="table-check">Yes</span> (ASR engine pre-warmed at launch)</td>
+            <td>Push-to-talk (hold, speak, release)</td>
+          </tr>
+          <tr>
+            <td>Clipboard preservation</td>
+            <td><span class="table-check">Yes</span> (clipboard saved before paste, restored after)</td>
+            <td>Automatic pasting; clipboard preservation not specified</td>
+          </tr>
+          <tr>
+            <td>Text lands in the right app</td>
+            <td><span class="table-check">Yes</span> (target app reactivation via Accessibility API, three-tier paste fallback)</td>
+            <td>Pastes in active app at time of completion</td>
+          </tr>
+          <tr>
+            <td>AI hallucination safeguards</td>
+            <td><span class="table-highlight">3-layer defense:</span> short-circuit, length validation, sandwich framing</td>
+            <td>Not specified</td>
+          </tr>
+          <tr>
+            <td>Meeting transcription</td>
+            <td><span class="table-cross">No</span> (built for 1-2 minute dictation)</td>
+            <td><span class="table-check">Yes</span> (live meeting recording with automatic notes)</td>
+          </tr>
+          <tr>
+            <td>Multi-language</td>
+            <td>English (Parakeet), 90+ via WhisperKit</td>
+            <td>100+ languages with translation to English</td>
+          </tr>
+          <tr>
+            <td>File transcription</td>
+            <td><span class="table-cross">No</span></td>
+            <td><span class="table-check">Yes</span> (audio and video file transcription)</td>
+          </tr>
+          <tr>
+            <td>Source code</td>
+            <td><span class="table-highlight"><a href="https://github.com/AirSkye/EnviousWispr" style="color: var(--accent); text-decoration: underline;">Source-available</a></span> on GitHub (BSL 1.1)</td>
+            <td>Closed source</td>
+          </tr>
+          <tr>
+            <td>iOS app</td>
+            <td>macOS only today</td>
+            <td><span class="table-check">Yes</span> (iOS companion app)</td>
+          </tr>
+          <tr>
+            <td>Platform support</td>
+            <td>macOS (Apple Silicon)</td>
+            <td>macOS (Apple Silicon + Intel), iOS, Windows</td>
+          </tr>
+          <tr>
+            <td>Accessibility</td>
+            <td>VoiceOver-compatible settings, keyboard-navigable</td>
+            <td>Not specified</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on Superwhisper's public website (superwhisper.com) as of April 2026. Pricing: free tier, Pro ~$8.49/mo (yearly discount available), lifetime purchase option. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Superwhisper features source-verified from superwhisper.com; not firsthand-tested. Competitor claims last verified: 2026-04-04.</p>
+    <div style="text-align: center; margin-top: 28px;">
+      <a href="/#download" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- Why EnviousWispr -->
+<section class="section" aria-label="Advantages">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill green">Why EnviousWispr</div>
+      <h2 class="section-title">Why Mac users switch from Superwhisper</h2>
+      <p class="section-sub">Both apps run on-device. Here is what sets EnviousWispr apart.</p>
+    </div>
+    <div class="advantages-grid">
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">$0</div>
+        <div class="advantage-title">Free to use</div>
+        <p class="advantage-desc">No subscription, no usage caps, no freemium tiers. Superwhisper Pro costs ~$8.49/mo or a lifetime fee. EnviousWispr gives you on-device transcription and AI polish at no cost.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🧠</div>
+        <div class="advantage-title">Parakeet TDT, not just Whisper</div>
+        <p class="advantage-desc">Superwhisper uses Whisper for on-device transcription. EnviousWispr runs <a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2" style="color: var(--accent); text-decoration: underline;">NVIDIA Parakeet TDT</a> as its primary English engine, which delivers stronger accuracy on English dictation. WhisperKit is available as a fallback for 90+ languages. See <a href="/how-it-works/" style="color: var(--accent); text-decoration: underline;">how the pipeline works</a>.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">⚡</div>
+        <div class="advantage-title">0.43s median latency</div>
+        <p class="advantage-desc">Measured in production on Apple Silicon Macs. Text appears almost instantly after you stop speaking. No waiting for model warm-up or network round-trips.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🚫</div>
+        <div class="advantage-title">No account, no signup</div>
+        <p class="advantage-desc">Download, open, start dictating. EnviousWispr never asks for your email or payment information. No trial period that expires.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🔑</div>
+        <div class="advantage-title">Your choice of AI polish</div>
+        <p class="advantage-desc">Apple Intelligence and Ollama run entirely on-device. Want cloud speed? Bring your own OpenAI or Gemini key. You control which services touch your text. Superwhisper's cloud AI requires a Pro subscription.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">📖</div>
+        <div class="advantage-title">Auditable code</div>
+        <p class="advantage-desc">Every line is <a href="https://github.com/AirSkye/EnviousWispr" style="color: var(--accent); text-decoration: underline;">on GitHub</a> under BSL 1.1. Verify what it does. Report issues directly. Closed-source dictation tools ask you to trust their privacy claims on faith.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Privacy Deep Dive -->
+<section class="section" aria-label="Privacy Comparison">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill cyan">Privacy</div>
+      <h2 class="section-title">Where does your voice go?</h2>
+      <p class="section-sub">Both apps transcribe on-device. The difference is what happens next. For a deeper dive, read <a href="/blog/on-device-vs-cloud-dictation-privacy/" style="color: var(--accent); text-decoration: underline;">on-device vs cloud dictation privacy</a>.</p>
+    </div>
+    <div class="privacy-split">
+      <div class="privacy-card ew reveal">
+        <div class="privacy-card-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          EnviousWispr
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">1</div>
+          <div>You speak into your Mac's microphone.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">2</div>
+          <div>Audio is processed by the Neural Engine on your Apple Silicon chip. Nothing is uploaded.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">3</div>
+          <div>AI polish runs locally (Apple Intelligence or Ollama) or with your own API key. If you use a cloud provider, only the text transcript is sent; you control the key.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">4</div>
+          <div>Polished text is pasted. Audio is discarded. No logs, no telemetry on your content.</div>
+        </div>
+      </div>
+      <div class="privacy-card wf reveal">
+        <div class="privacy-card-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          Superwhisper
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">1</div>
+          <div>You speak into your Mac's microphone.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">2</div>
+          <div>Audio is transcribed on-device via Whisper. So far, similar to EnviousWispr.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">3</div>
+          <div>If you enable AI features, your transcript text is sent to third-party cloud APIs (GPT, Claude, or Llama hosted services).</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">4</div>
+          <div>Polished text is returned over the network and pasted on your device. Third-party data handling policies apply.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Speed Section -->
+<section class="section" aria-label="Speed">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill amber">Speed</div>
+      <h2 class="section-title">Parakeet TDT: built for speed</h2>
+      <p class="section-sub">EnviousWispr uses NVIDIA Parakeet TDT, a purpose-built English ASR model that runs natively on the Apple Neural Engine. No network dependency, no server queues.</p>
+    </div>
+    <div class="speed-stats">
+      <div class="speed-card reveal">
+        <div class="speed-value">0.43s</div>
+        <div class="speed-label">Median transcription</div>
+        <div class="speed-detail">From end of speech to raw text</div>
+      </div>
+      <div class="speed-card reveal">
+        <div class="speed-value">1.5s</div>
+        <div class="speed-label">With AI polish</div>
+        <div class="speed-detail">Apple Intelligence on-device</div>
+      </div>
+      <div class="speed-card reveal">
+        <div class="speed-value">0ms</div>
+        <div class="speed-label">Network overhead</div>
+        <div class="speed-detail">Immune to bad Wi-Fi</div>
+      </div>
+    </div>
+    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Based on production data from Apple Silicon Macs. Results vary by hardware and settings.</p>
+  </div>
+</section>
+
+<!-- Deep Dive: Technical Advantages -->
+<section class="section" aria-label="Technical Deep Dives">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Under the Hood</div>
+      <h2 class="section-title">What the feature table does not show</h2>
+      <p class="section-sub">Both apps do on-device Whisper transcription. The technical differences are in the engines and the post-processing pipeline.</p>
+    </div>
+    <div class="deep-dive-grid">
+      <div class="deep-dive-card reveal">
+        <div class="deep-dive-icon">🔀</div>
+        <div class="deep-dive-title">Dual ASR engines vs. Whisper alone</div>
+        <div class="deep-dive-body">
+          <p>Superwhisper uses OpenAI Whisper with multiple model sizes (likely tiny through large). It is a proven, broadly capable model that handles 100+ languages well. For multilingual dictation, it is excellent.</p>
+          <p>EnviousWispr takes a different approach for English: NVIDIA Parakeet TDT v2, a CTC/TDT hybrid model that runs at ~110x real-time on the Apple Neural Engine. It was trained specifically for English speech recognition and benchmarks higher on English dictation accuracy than Whisper large-v3. For non-English languages, EnviousWispr falls back to WhisperKit (an Apple Silicon-optimized Whisper implementation).</p>
+          <p>The result is two engines chosen for their strengths: Parakeet for English speed and accuracy, WhisperKit for language breadth. Superwhisper uses one engine for everything.</p>
+          <div class="deep-dive-detail">
+            <strong>Why it matters:</strong> Parakeet TDT's ~110x real-time factor means a 30-second dictation transcribes in under 300ms. Whisper large-v3 is accurate but slower. By using the right engine for the right language, EnviousWispr gets both speed and accuracy without compromise.
+          </div>
+        </div>
+      </div>
+      <div class="deep-dive-card reveal">
+        <div class="deep-dive-icon">🛡️</div>
+        <div class="deep-dive-title">AI polish that does not fabricate</div>
+        <div class="deep-dive-body">
+          <p>When you run speech through an LLM for cleanup, there is a real risk: the AI can hallucinate extra sentences, "answer" your dictation as if it were a question, or inject preamble like "Certainly! Here is the corrected text." These are not theoretical problems. They happen with basic LLM integrations.</p>
+          <p>EnviousWispr uses three layers of defense. Short transcripts (three words or fewer) bypass the LLM entirely because there is nothing to polish. Medium transcripts get aggressive prompt reinforcement to prevent creative expansion. All output is validated: if the response is more than three times longer than the input, it is rejected as probable hallucination and the raw transcript is used instead.</p>
+          <p>The LLM prompt itself is context-aware. It tells the model it is processing speech-to-text output, gives examples of phonetic misrecognition patterns, and adjusts for the app you were dictating into. Your dictated text is wrapped in XML tags with explicit instructions to polish, not answer or execute.</p>
+          <div class="deep-dive-detail">
+            <strong>How it works:</strong> Sandwich framing wraps transcript in &lt;transcript&gt; tags to prevent prompt injection. Preamble stripping removes "Certainly!" artifacts. Context-aware prompts include detected language, ASR error patterns, and target app name. Output length validation rejects fabricated responses. Superwhisper offers writing modes (Formal, Casual, Legal, Chat), but does not document hallucination-specific safeguards.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Fair Acknowledgment -->
+<section class="section" aria-label="Where Superwhisper Wins">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Being Honest</div>
+      <h2 class="section-title">Choose Superwhisper if you need its broader feature set</h2>
+      <p class="section-sub">Superwhisper is a more mature product with features EnviousWispr does not have yet. It may be a better fit in these situations:</p>
+    </div>
+    <div class="advantages-grid">
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🎙</div>
+        <div class="advantage-title">You need meeting transcription</div>
+        <p class="advantage-desc">Superwhisper supports live meeting recording and automatic note generation. EnviousWispr is built for short dictation (1-2 minutes), not meeting-length recording. If transcribing meetings is your primary use case, Superwhisper handles it today.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">📱</div>
+        <div class="advantage-title">You want cross-platform support</div>
+        <p class="advantage-desc">Superwhisper has an iOS companion app and Windows support. EnviousWispr is macOS-only on Apple Silicon. If you need dictation on your iPhone or a Windows machine, Superwhisper covers more ground.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">📅</div>
+        <div class="advantage-title">You want a longer track record</div>
+        <p class="advantage-desc">Superwhisper has been around longer, with more users, more community feedback, and integrations with 30+ applications. EnviousWispr is newer and shipping fast, but Superwhisper has the maturity advantage.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🎨</div>
+        <div class="advantage-title">You want more writing modes</div>
+        <p class="advantage-desc">Superwhisper offers predefined modes (Formal, Casual, Legal, Chat) and lets you create custom modes with fine control over formatting. EnviousWispr's Smart Polish adapts to your target app, but does not yet offer the same breadth of preset writing styles.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">💰</div>
+        <div class="advantage-title">You prefer a one-time purchase</div>
+        <p class="advantage-desc">Superwhisper offers a lifetime purchase option. EnviousWispr is free, so this is not about cost. But if you value the certainty of a one-time payment over a free product that could change, Superwhisper gives you that option.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🎧</div>
+        <div class="advantage-title">You need file transcription</div>
+        <p class="advantage-desc">Superwhisper can transcribe audio and video files, not just live speech. EnviousWispr is a real-time dictation tool and does not support file-based transcription.</p>
+      </div>
+    </div>
+    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you primarily dictate on Mac and care most about speed, cost, and English accuracy, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. You can always use both.</p>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="section" aria-label="Frequently Asked Questions">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">FAQ</div>
+      <h2 class="section-title">Common questions</h2>
+    </div>
+    <div class="faq-list">
+      <div class="faq-item reveal">
+        <div class="faq-q">Is there a free alternative to Superwhisper?</div>
+        <p class="faq-a">Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account or subscription required. It uses Parakeet TDT for English and WhisperKit for 90+ languages.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">How is EnviousWispr different from Superwhisper?</div>
+        <p class="faq-a">Both are Mac-native and run on-device. The key differences: EnviousWispr is free (Superwhisper Pro costs ~$8.49/mo), uses dual ASR engines (Parakeet TDT for English accuracy, WhisperKit for multilingual), and is source-available on GitHub. Superwhisper has meeting transcription, an iOS app, Windows support, and more writing modes that EnviousWispr does not offer yet.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">How does EnviousWispr compare to Superwhisper for accuracy?</div>
+        <p class="faq-a">For English dictation, EnviousWispr uses NVIDIA Parakeet TDT v2, which benchmarks higher than Whisper large-v3 on standard English speech datasets. For other languages, both apps use Whisper-based engines with comparable accuracy. Superwhisper offers more Whisper model size choices, which lets you trade speed for accuracy on older hardware.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can I use EnviousWispr completely offline?</div>
+        <p class="faq-a">Yes. After the one-time model download, transcription runs entirely on-device with no internet required. AI polish can also run offline using Apple Intelligence (macOS 15+) or Ollama with a local model. Cloud AI providers like OpenAI or Gemini are optional and require your own API key.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Does Superwhisper have offline AI polish?</div>
+        <p class="faq-a">Superwhisper's transcription works offline via Whisper. However, their AI polish features (writing modes powered by GPT, Claude, Llama, etc.) appear to require cloud connectivity. Their website does not specify an offline AI polish option. EnviousWispr's Apple Intelligence and Ollama integrations run entirely on your Mac.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Is EnviousWispr really free?</div>
+        <p class="faq-a">Yes. No subscription, no usage limits, no account required. Download and use it. The source code is available on GitHub under a BSL 1.1 license.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">What is Parakeet TDT?</div>
+        <p class="faq-a">Parakeet TDT is an English speech recognition model from NVIDIA. It is purpose-built for accurate English transcription and runs on the Apple Neural Engine at ~110x real-time. It delivers stronger English accuracy than Whisper for dictation use cases.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can I switch from Superwhisper easily?</div>
+        <p class="faq-a">Yes. Download EnviousWispr, set your hotkey, and start dictating. There is no data to migrate. Both apps work in any text field on macOS. See the <a href="/blog/getting-started-enviouswispr-under-2-minutes/" style="color: var(--accent); text-decoration: underline;">2-minute getting started guide</a>.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">What Mac do I need?</div>
+        <p class="faq-a">Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine on Apple Silicon is what makes on-device transcription fast.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Is EnviousWispr open source?</div>
+        <p class="faq-a">Source-available under the Business Source License 1.1. That means you can read, build, and inspect every line of code on GitHub. It is not an OSI-approved open source license, but it gives you full transparency into how the app works. Contributions are welcome.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Related Comparisons -->
+<section class="section" aria-label="Related Comparisons" style="padding-top: 0;">
+  <div class="container">
+    <p style="font-size: 14px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px;">Compare with other tools</p>
+    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+      <a href="/compare/wisprflow/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs WisprFlow</a>
+      <a href="/compare/dragon/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Dragon</a>
+      <a href="/compare/apple-dictation/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Apple Dictation</a>
+      <a href="/compare/otter-ai/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Otter.ai</a>
+      <a href="/compare/macwhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs MacWhisper</a>
+      <a href="/compare/voiceink/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs VoiceInk</a>
+      <a href="/compare/willow-voice/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Willow Voice</a>
+      <a href="/compare/google-docs-voice-typing/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Google Docs</a>
+      <a href="/compare/notta/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Notta</a>
+      <a href="/compare/whisper-cpp/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs whisper.cpp</a>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section" aria-label="Download CTA">
+  <div class="container">
+    <h2 class="reveal">Why pay for on-device dictation? Download free.</h2>
+    <p class="reveal">Free to download. No account required. Parakeet TDT for English accuracy.</p>
+    <div class="cta-actions reveal">
+      <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="btn-primary" data-download-source="compare">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+      <a href="/" class="back-link">Back to Home</a>
+    </div>
+  </div>
+</section>
+
+</BaseLayout>
