@@ -78,16 +78,19 @@ jobs:
           set -euo pipefail
           OUTPUT=$(scripts/swift-test.sh 2>&1) || true
           echo "$OUTPUT"
+          # Fail on actual test failures
           if echo "$OUTPUT" | grep -q "✘"; then
             echo "::error::Swift tests have failures"
             exit 1
           fi
-          PASSED=$(echo "$OUTPUT" | grep -c "passed" || true)
-          if [ "$PASSED" -eq 0 ]; then
-            echo "::error::No test results found"
+          # Verify tests actually started (guard against silent no-op)
+          STARTED=$(echo "$OUTPUT" | grep -c "started" || true)
+          if [ "$STARTED" -eq 0 ]; then
+            echo "::error::No tests started — possible compilation failure"
             exit 1
           fi
-          echo "==> $PASSED test entries passed, 0 failures"
+          PASSED=$(echo "$OUTPUT" | grep -c "passed" || true)
+          echo "==> $STARTED test entries started, $PASSED reported passed, 0 failures"
 
       - name: Verify FoundationModels compile probe
         if: steps.changes.outputs.needs_build == 'true'
