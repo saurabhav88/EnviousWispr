@@ -1,0 +1,564 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const siteUrl = 'https://enviouswispr.com';
+
+const webPageJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "name": "EnviousWispr vs WisprFlow — Honest Comparison",
+  "description": "See how EnviousWispr and WisprFlow compare on privacy, speed, pricing, and architecture. Free on-device dictation vs. cloud subscription.",
+  "url": `${siteUrl}/compare/wisprflow/`,
+  "isPartOf": {
+    "@type": "WebSite",
+    "url": siteUrl,
+    "name": "EnviousWispr",
+  },
+});
+
+const breadcrumbJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": siteUrl,
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "EnviousWispr vs WisprFlow",
+      "item": `${siteUrl}/compare/wisprflow/`,
+    },
+  ],
+});
+
+const faqJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is EnviousWispr really free?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. EnviousWispr is completely free to download and use. No subscription, no usage limits, no account required. The source code is available on GitHub under a BSL 1.1 license."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does EnviousWispr work offline?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Transcription runs entirely on-device using Apple Silicon and works offline. AI polish requires an LLM connection (local or cloud, your choice), but raw transcription always works without internet."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How does EnviousWispr handle privacy compared to WisprFlow?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "EnviousWispr processes all audio on your Mac. Your voice recordings never leave the device. WisprFlow sends audio to cloud servers for transcription and LLM processing."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I use my own API keys with EnviousWispr?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. EnviousWispr supports BYO (bring your own) API keys for OpenAI and Google Gemini. You can also run a fully local LLM for complete offline operation."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does EnviousWispr use the cloud at all?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Transcription is always on-device. If you choose to enable AI polish with a cloud provider, only the text transcript is sent using your own API key. You can also polish with a local model for fully offline operation."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is there a free alternative to WisprFlow?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account or subscription required."
+      }
+    },
+  ],
+});
+---
+
+<BaseLayout
+  title="EnviousWispr vs WisprFlow: Free Private Mac Dictation Alternative"
+  description="Looking for a WisprFlow alternative? Compare EnviousWispr vs WisprFlow on price, privacy, offline support, and latency. Free on-device dictation for Apple Silicon Macs."
+  activePage="compare"
+  canonicalPath="/compare/wisprflow/"
+>
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={webPageJsonLd}></script>
+    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
+    <script type="application/ld+json" set:html={faqJsonLd}></script>
+  </Fragment>
+
+<style>
+/* ── Page Header ── */
+.page-header { padding: 120px 0 64px; text-align: center; position: relative; z-index: 1; }
+.page-header h1 { font-size: 56px; font-weight: 800; letter-spacing: -3px; line-height: 1.05; color: var(--text); margin-bottom: 16px; }
+.page-header-sub { font-size: 20px; font-weight: 400; color: var(--text-2); max-width: 620px; margin: 0 auto; line-height: 1.6; }
+
+/* ── Comparison Table ── */
+.compare-table-wrap {
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-card); border: 1px solid var(--border-hover);
+  background: #fff;
+}
+.compare-table {
+  width: 100%; border-collapse: collapse; font-size: 15px;
+  min-width: 640px;
+}
+.compare-table thead th {
+  padding: 20px 24px; font-size: 16px; font-weight: 700;
+  text-align: left; border-bottom: 2px solid var(--border-hover);
+  background: rgba(248,245,255,0.5);
+}
+.compare-table thead th:first-child { width: 34%; }
+.compare-table thead th:nth-child(2) {
+  background: rgba(124,58,237,0.06);
+  color: var(--accent);
+}
+.compare-table tbody td {
+  padding: 16px 24px; border-bottom: 1px solid var(--border);
+  vertical-align: top; line-height: 1.55;
+}
+.compare-table tbody tr:last-child td { border-bottom: none; }
+.compare-table tbody td:first-child {
+  font-weight: 600; color: var(--text);
+}
+.compare-table tbody td:nth-child(2) {
+  background: rgba(124,58,237,0.02);
+}
+.compare-table tbody td:nth-child(3) {
+  color: var(--text-2);
+}
+.table-check { color: var(--green); font-weight: 700; }
+.table-cross { color: var(--text-3); }
+.table-highlight { color: var(--accent); font-weight: 600; }
+
+/* ── Advantage Cards ── */
+.advantages-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.advantage-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 28px 24px;
+  position: relative; overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.advantage-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(124,58,237,0.10); }
+.advantage-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full);
+}
+.advantage-icon { font-size: 28px; margin-bottom: 14px; line-height: 1; }
+.advantage-title { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 8px; color: var(--text); }
+.advantage-desc { font-size: 14px; color: var(--text-2); line-height: 1.65; }
+
+/* ── Privacy Section ── */
+.privacy-split { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.privacy-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 32px 28px;
+}
+.privacy-card.ew {
+  border-color: rgba(0,200,128,0.25);
+  background: linear-gradient(135deg, rgba(0,200,128,0.03), rgba(248,245,255,0.5));
+}
+.privacy-card.wf {
+  border-color: rgba(230,37,58,0.15);
+  background: linear-gradient(135deg, rgba(230,37,58,0.02), rgba(248,245,255,0.5));
+}
+.privacy-card-label {
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+}
+.privacy-card.ew .privacy-card-label { color: var(--green); }
+.privacy-card.wf .privacy-card-label { color: var(--red); }
+.privacy-step {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+  font-size: 14px; color: var(--text-2); line-height: 1.55;
+}
+.privacy-step:last-child { border-bottom: none; }
+.privacy-step-num {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+}
+.privacy-card.ew .privacy-step-num { background: rgba(0,200,128,0.12); color: var(--green); }
+.privacy-card.wf .privacy-step-num { background: rgba(230,37,58,0.08); color: var(--red); }
+
+/* ── Speed Stats ── */
+.speed-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.speed-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 28px 20px; text-align: center;
+}
+.speed-value {
+  font-size: 42px; font-weight: 800; letter-spacing: -2px; line-height: 1; margin-bottom: 6px;
+  background: var(--rainbow-full);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.speed-label { font-size: 14px; color: var(--text-2); font-weight: 500; }
+.speed-detail { font-size: 11px; color: var(--text-3); margin-top: 4px; }
+
+/* ── FAQ ── */
+.faq-list { max-width: 720px; margin: 0 auto; }
+.faq-item {
+  border-bottom: 1px solid var(--border-hover); padding: 24px 0;
+}
+.faq-item:last-child { border-bottom: none; }
+.faq-q {
+  font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 8px; letter-spacing: -0.3px;
+}
+.faq-a { font-size: 15px; color: var(--text-2); line-height: 1.65; }
+
+/* ── CTA ── */
+.cta-section { padding: var(--section-pad) 0; text-align: center; position: relative; z-index: 1; }
+.cta-section h2 { font-size: 40px; font-weight: 800; letter-spacing: -2px; margin-bottom: 12px; }
+.cta-section p { font-size: 17px; color: var(--text-2); margin-bottom: 36px; }
+.cta-actions { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; }
+.back-link { font-size: 15px; font-weight: 500; color: var(--text-3); text-decoration: none; transition: color 0.2s; }
+.back-link:hover { color: var(--accent); }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .advantages-grid { grid-template-columns: repeat(2, 1fr); }
+  .privacy-split { grid-template-columns: 1fr; }
+  .speed-stats { grid-template-columns: repeat(3, 1fr); }
+  .page-header h1 { font-size: 42px; letter-spacing: -2px; }
+}
+@media (max-width: 600px) {
+  .advantages-grid { grid-template-columns: 1fr; }
+  .speed-stats { grid-template-columns: 1fr; }
+  .page-header h1 { font-size: 34px; letter-spacing: -1px; }
+  .compare-table-wrap { margin: 0 -20px; border-radius: 0; border-left: none; border-right: none; }
+}
+</style>
+
+<!-- Page Header -->
+<header class="page-header">
+  <div class="container">
+    <h1 class="reveal">EnviousWispr vs WisprFlow</h1>
+    <p class="page-header-sub reveal">The free, local-first WisprFlow alternative for Mac. Both turn your voice into text. The difference is where your audio goes, what it costs, and who controls it.</p>
+  </div>
+</header>
+
+<!-- Side-by-Side Table -->
+<section class="section" aria-label="Feature Comparison">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Side by Side</div>
+      <h2 class="section-title">Feature comparison</h2>
+      <p class="section-sub">An honest look at how the two tools stack up across the dimensions that matter most.</p>
+    </div>
+    <div class="compare-table-wrap reveal">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>EnviousWispr</th>
+            <th>WisprFlow</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Price</td>
+            <td><span class="table-highlight">Free to use. No subscription.</span></td>
+            <td>$15/mo subscription*</td>
+          </tr>
+          <tr>
+            <td>Account required</td>
+            <td><span class="table-check">No</span></td>
+            <td>Yes, email signup</td>
+          </tr>
+          <tr>
+            <td>Audio processing</td>
+            <td><span class="table-highlight">On-device</span> (Apple Silicon)</td>
+            <td>Cloud servers</td>
+          </tr>
+          <tr>
+            <td>Audio leaves your Mac</td>
+            <td><span class="table-check">Not for transcription.</span> Optional only if you enable cloud polish.</td>
+            <td>Yes, uploaded for transcription</td>
+          </tr>
+          <tr>
+            <td>Works offline</td>
+            <td><span class="table-check">Yes</span> for transcription (after models are downloaded)</td>
+            <td><span class="table-cross">No</span></td>
+          </tr>
+          <tr>
+            <td>AI polish</td>
+            <td><span class="table-highlight">Apple Intelligence</span> or Ollama on-device; OpenAI/Gemini with BYO key</td>
+            <td>Cloud LLM (provider-managed)</td>
+          </tr>
+          <tr>
+            <td>Speech engines</td>
+            <td>Parakeet TDT + WhisperKit (on-device)</td>
+            <td>Cloud Whisper API</td>
+          </tr>
+          <tr>
+            <td>Multi-language</td>
+            <td>English (Parakeet), 90+ via WhisperKit</td>
+            <td>Multi-language</td>
+          </tr>
+          <tr>
+            <td>Source code</td>
+            <td><span class="table-highlight">Source-available</span> on GitHub (BSL 1.1)</td>
+            <td>Closed source</td>
+          </tr>
+          <tr>
+            <td>iOS app</td>
+            <td>Coming soon</td>
+            <td>Available</td>
+          </tr>
+          <tr>
+            <td>Transcription latency</td>
+            <td><span class="table-highlight">0.43s median</span>; ~1.5s with AI polish</td>
+            <td>Requires network + server processing</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on public pricing as of April 2026. Latency measured from production PostHog data on Apple Silicon Macs.</p>
+    <div style="text-align: center; margin-top: 28px;">
+      <a href="/#download" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- Why EnviousWispr -->
+<section class="section" aria-label="Advantages">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill green">Why EnviousWispr</div>
+      <h2 class="section-title">Why Mac users switch from WisprFlow</h2>
+      <p class="section-sub">EnviousWispr was built to give you everything a premium dictation tool offers, without the tradeoffs.</p>
+    </div>
+    <div class="advantages-grid">
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">$0</div>
+        <div class="advantage-title">Free to use</div>
+        <p class="advantage-desc">No subscription, no usage caps, no freemium tiers. Download it, use it, done. WisprFlow costs $15/mo at time of writing, which adds up to $180 per year.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🔒</div>
+        <div class="advantage-title">On-device transcription</div>
+        <p class="advantage-desc">Your audio does not leave your Mac for transcription. It is processed by the Neural Engine on Apple Silicon, never uploaded, never stored elsewhere. Private by architecture, not by promise.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">⚡</div>
+        <div class="advantage-title">Fast local transcription</div>
+        <p class="advantage-desc">Median time to text is 0.43s on Apple Silicon. With AI polish, 1.5s. No network round-trips, no server queues. Immune to bad Wi-Fi.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🚫</div>
+        <div class="advantage-title">No account, no signup</div>
+        <p class="advantage-desc">Download, open, start dictating. EnviousWispr never asks for your email, never requires a login, never phones home. WisprFlow requires account creation before you can use it.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🔑</div>
+        <div class="advantage-title">Your choice of AI polish</div>
+        <p class="advantage-desc">Apple Intelligence and Ollama run entirely on-device. Want cloud speed? Bring your own OpenAI or Gemini key. You control which services touch your text, if any.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">📖</div>
+        <div class="advantage-title">Auditable code</div>
+        <p class="advantage-desc">Every line is on GitHub under BSL 1.1. Verify what it does. Report issues directly. Contribute improvements. Closed-source dictation tools ask you to trust their privacy claims on faith.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Privacy Deep Dive -->
+<section class="section" aria-label="Privacy Comparison">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill cyan">Privacy</div>
+      <h2 class="section-title">Where does your voice go?</h2>
+      <p class="section-sub">The most important question for any dictation tool. Here is the data flow for each app.</p>
+    </div>
+    <div class="privacy-split">
+      <div class="privacy-card ew reveal">
+        <div class="privacy-card-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          EnviousWispr
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">1</div>
+          <div>You speak into your Mac's microphone.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">2</div>
+          <div>Audio is processed by the Neural Engine on your Apple Silicon chip. Nothing is uploaded.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">3</div>
+          <div>AI polish runs locally or with your own API key. If you use a cloud provider, only the text transcript is sent; you control the key.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">4</div>
+          <div>Polished text is pasted. Audio is discarded. No logs, no telemetry on your content.</div>
+        </div>
+      </div>
+      <div class="privacy-card wf reveal">
+        <div class="privacy-card-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          WisprFlow
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">1</div>
+          <div>You speak into your Mac's microphone.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">2</div>
+          <div>Audio is uploaded to cloud servers for transcription via a third-party API.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">3</div>
+          <div>Transcribed text is sent to a cloud LLM for polishing.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">4</div>
+          <div>Polished text is returned over the network and pasted on your device.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Speed Section -->
+<section class="section" aria-label="Speed">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill amber">Speed</div>
+      <h2 class="section-title">Fast because there is no upload step</h2>
+      <p class="section-sub">On Apple Silicon Macs, EnviousWispr transcribes speech locally. No network round-trip before text appears.</p>
+    </div>
+    <div class="speed-stats">
+      <div class="speed-card reveal">
+        <div class="speed-value">0.43s</div>
+        <div class="speed-label">Median transcription</div>
+        <div class="speed-detail">From end of speech to raw text</div>
+      </div>
+      <div class="speed-card reveal">
+        <div class="speed-value">1.5s</div>
+        <div class="speed-label">With AI polish</div>
+        <div class="speed-detail">Apple Intelligence on-device</div>
+      </div>
+      <div class="speed-card reveal">
+        <div class="speed-value">0ms</div>
+        <div class="speed-label">Network overhead</div>
+        <div class="speed-detail">Immune to bad Wi-Fi</div>
+      </div>
+    </div>
+    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Based on production data from Apple Silicon Macs. Results vary by hardware and settings.</p>
+  </div>
+</section>
+
+<!-- Fair Acknowledgment -->
+<section class="section" aria-label="Where WisprFlow Wins">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Being Honest</div>
+      <h2 class="section-title">When WisprFlow might be the better choice</h2>
+      <p class="section-sub">We respect WisprFlow as a product. It may be a better fit if:</p>
+    </div>
+    <div class="advantages-grid">
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">📱</div>
+        <div class="advantage-title">You need iPhone dictation today</div>
+        <p class="advantage-desc">WisprFlow has a shipping iOS app. EnviousWispr is macOS only today. Our iOS version is in development, built on the same Swift codebase.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🎨</div>
+        <div class="advantage-title">You want a mature cloud workflow out of the box</div>
+        <p class="advantage-desc">WisprFlow has been shipping longer with a more refined onboarding experience and managed cloud infrastructure. EnviousWispr prioritizes speed and privacy.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">📅</div>
+        <div class="advantage-title">You prefer an established product</div>
+        <p class="advantage-desc">WisprFlow has more users, more reviews, and more time in market. EnviousWispr is newer but moving fast.</p>
+      </div>
+    </div>
+    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you are Mac-first and care most about privacy, offline transcription, and price, EnviousWispr is the stronger fit.</p>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="section" aria-label="Frequently Asked Questions">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">FAQ</div>
+      <h2 class="section-title">Common questions</h2>
+    </div>
+    <div class="faq-list">
+      <div class="faq-item reveal">
+        <div class="faq-q">Is EnviousWispr really free?</div>
+        <p class="faq-a">Yes. No subscription, no usage limits, no account required. Download and use it. The source code is available on GitHub under a BSL 1.1 license.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Does EnviousWispr work offline?</div>
+        <p class="faq-a">Transcription runs entirely on-device and works without internet. AI polish requires an LLM; you can use a local model for fully offline operation or bring your own API key for a cloud provider.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Will my audio be used for training?</div>
+        <p class="faq-a">No. Your audio is processed on your Mac and discarded after transcription. It never leaves your device, so it cannot be used for anything else.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can I switch from WisprFlow easily?</div>
+        <p class="faq-a">Yes. Download EnviousWispr, set your hotkey, and start dictating. There is no data to migrate. Both apps work in any text field on macOS.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">What Mac do I need?</div>
+        <p class="faq-a">Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine on Apple Silicon is what makes on-device transcription fast.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Does EnviousWispr use the cloud at all?</div>
+        <p class="faq-a">Transcription is always on-device. If you choose to enable AI polish with a cloud provider (OpenAI, Gemini), only the text transcript is sent using your own API key. You can also polish with a local model for fully offline operation. The choice is yours.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Is there a free alternative to WisprFlow?</div>
+        <p class="faq-a">Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account or subscription required. It works offline and keeps your audio on your device.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Is source-available the same as open source?</div>
+        <p class="faq-a">Not exactly. EnviousWispr uses the Business Source License 1.1, which lets you read, build, and inspect all of the code on GitHub. It is not an OSI-approved open source license, but it provides full transparency into how the app works.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Is EnviousWispr open source?</div>
+        <p class="faq-a">Source-available under the Business Source License 1.1. You can read, build, and inspect every line of code on GitHub. Contributions are welcome.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section" aria-label="Download CTA">
+  <div class="container">
+    <h2 class="reveal">Ready to try private dictation?</h2>
+    <p class="reveal">Free to download. No account required. No cloud transcription.</p>
+    <div class="cta-actions reveal">
+      <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="btn-primary" data-download-source="compare">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+      <a href="/" class="back-link">Back to Home</a>
+    </div>
+  </div>
+</section>
+
+</BaseLayout>

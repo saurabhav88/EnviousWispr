@@ -156,6 +156,16 @@ const breadcrumbJsonLd = JSON.stringify({
         </div>
       </article>
 
+      <section class="blog-cta" aria-label="Download EnviousWispr">
+        <div class="blog-cta-inner">
+          <p class="blog-cta-text">Try EnviousWispr free. On-device dictation for Mac, no account required.</p>
+          <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="blog-cta-btn" data-download-source="blog-post">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download Free
+          </a>
+        </div>
+      </section>
+
       <aside class="author-bio" aria-label="About the author">
         <div class="author-bio-inner">
           <div class="author-bio-text">
@@ -184,6 +194,27 @@ const breadcrumbJsonLd = JSON.stringify({
           </div>
         </section>
       )}
+
+      <section class="blog-comments" aria-label="Comments">
+        <h2 class="comments-heading">Comments</h2>
+        <script
+          src="https://giscus.app/client.js"
+          data-repo="saurabhav88/EnviousWispr"
+          data-repo-id="R_kgDORTeikw"
+          data-category="General"
+          data-category-id="DIC_kwDORTeik84C5_6o"
+          data-mapping="pathname"
+          data-strict="0"
+          data-reactions-enabled="1"
+          data-emit-metadata="0"
+          data-input-position="top"
+          data-theme="preferred_color_scheme"
+          data-lang="en"
+          data-loading="lazy"
+          crossorigin="anonymous"
+          async>
+        </script>
+      </section>
 
       <nav class="blog-post-nav" aria-label="Post navigation">
         <a href="/blog/" class="back-link back-link-bottom">
@@ -579,6 +610,76 @@ const breadcrumbJsonLd = JSON.stringify({
     .related-posts-grid {
       grid-template-columns: repeat(2, 1fr);
     }
+  }
+
+  /* Blog CTA */
+  .blog-cta {
+    margin-top: 48px;
+  }
+
+  .blog-cta-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 20px 24px;
+    background: var(--accent-soft);
+    border: 1px solid rgba(124, 58, 237, 0.18);
+    border-radius: var(--radius-card);
+  }
+
+  .blog-cta-text {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text);
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  .blog-cta-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: var(--radius-pill);
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background 0.2s, transform 0.1s;
+  }
+
+  .blog-cta-btn:hover {
+    background: var(--accent-hover);
+  }
+
+  .blog-cta-btn:active {
+    transform: scale(0.98);
+  }
+
+  @media (max-width: 600px) {
+    .blog-cta-inner {
+      flex-direction: column;
+      text-align: center;
+    }
+  }
+
+  /* Comments */
+  .blog-comments {
+    margin-top: 64px;
+    padding-top: 48px;
+    border-top: 1px solid var(--border);
+  }
+
+  .comments-heading {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-3);
+    margin-bottom: 24px;
   }
 
   /* Bottom nav */

@@ -57,6 +57,8 @@ const ogImageUrl = ogImage.startsWith('http') ? ogImage : `${siteUrl}${ogImage}`
   <meta name="twitter:image" content={ogImageUrl} />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <meta name="theme-color" content="#f8f5ff" />
+  <!-- Google Search Console verification (replace content value after GSC setup) -->
+  <!-- <meta name="google-site-verification" content="VERIFICATION_CODE_HERE" /> -->
   <slot name="head" />
   <!-- PostHog Analytics -->
   <script>
@@ -78,5 +80,23 @@ const ogImageUrl = ogImage.startsWith('http') ? ogImage : `${siteUrl}${ogImage}`
   </main>
   <Footer />
   <ScrollReveal />
+  <!-- Download click tracking with source attribution -->
+  <script>
+    document.addEventListener('click', (e) => {
+      const link = e.target.closest('a[href*="EnviousWispr.dmg"]');
+      if (!link || typeof window.posthog === 'undefined') return;
+      const source = link.dataset.downloadSource
+        || link.closest('nav')?.classList.contains('nav-bar') && 'nav'
+        || link.closest('.hero-section') && 'hero'
+        || link.closest('.cta-section') && 'bottom-cta'
+        || link.closest('footer') && 'footer'
+        || link.closest('.blog-cta') && 'blog-post'
+        || 'unknown';
+      window.posthog.capture('download_clicked', {
+        source: source,
+        page: window.location.pathname,
+      });
+    });
+  </script>
 </body>
 </html>
