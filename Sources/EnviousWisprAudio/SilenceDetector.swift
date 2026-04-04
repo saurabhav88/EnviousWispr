@@ -33,16 +33,31 @@ public struct SmoothedVADConfig: Sendable {
         return fromSensitivity(preset.vadSensitivity)
     }
 
-    public static func fromSensitivity(_ sensitivity: Float) -> SmoothedVADConfig {
-        let onset = 0.7 - (sensitivity * 0.4)       // 0.3 at sens=1.0, 0.7 at sens=0.0
+    public static func fromSensitivity(_ sensitivity: Float, energyGate: Bool = false) -> SmoothedVADConfig {
+        let onset = 0.6 - (sensitivity * 0.375)     // 0.225 at sens=1.0, 0.6 at sens=0.0
         let offset = max(0.1, onset - 0.15)
+        let alpha = 0.3 + (sensitivity * 0.2)        // 0.32 at sens=0.1, 0.46 at sens=0.8
         let hangover = sensitivity > 0.7 ? 4 : 3
         let confirmation = sensitivity < 0.3 ? 2 : 1
+
+        // Energy gate scales with sensitivity. Disabled on high sensitivity (Quiet)
+        // to avoid blocking whispered speech before Silero can evaluate it.
+        let energy: Float
+        if !energyGate {
+            energy = 0.0
+        } else if sensitivity >= 0.7 {
+            energy = 0.0
+        } else {
+            energy = 0.005 * (1.0 - sensitivity * 0.6)
+        }
+
         return SmoothedVADConfig(
+            emaAlpha: alpha,
             onsetThreshold: onset,
             offsetThreshold: offset,
             onsetConfirmationChunks: confirmation,
-            hangoverChunks: hangover
+            hangoverChunks: hangover,
+            energyGateThreshold: energy
         )
     }
 }

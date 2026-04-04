@@ -809,10 +809,7 @@ public final class WhisperKitPipeline: DictationPipeline {
         let isXPCMode = audioCapture is AudioCaptureProxy
 
         if !isXPCMode {
-            var config = SmoothedVADConfig.fromSensitivity(vadSensitivity)
-            if vadEnergyGate {
-                config.energyGateThreshold = 0.005
-            }
+            let config = SmoothedVADConfig.fromSensitivity(vadSensitivity, energyGate: vadEnergyGate)
 
             if silenceDetector == nil {
                 silenceDetector = SilenceDetector(silenceTimeout: vadSilenceTimeout, vadConfig: config)
