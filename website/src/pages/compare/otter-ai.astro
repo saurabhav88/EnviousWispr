@@ -1,0 +1,841 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const siteUrl = 'https://enviouswispr.com';
+
+const articleJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "EnviousWispr vs Otter.ai: Dictation vs Meeting Transcription",
+  "description": "Compare EnviousWispr and Otter.ai. One is real-time dictation for typing by voice. The other is meeting transcription. See which fits your workflow.",
+  "url": `${siteUrl}/compare/otter-ai/`,
+  "datePublished": "2026-04-04",
+  "dateModified": "2026-04-04",
+  "author": {
+    "@type": "Person",
+    "name": "Saurabh Vaish",
+    "url": `${siteUrl}/authors/saurabh-vaish/`,
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Envious Labs",
+    "url": siteUrl,
+  },
+  "isPartOf": {
+    "@type": "WebSite",
+    "url": siteUrl,
+    "name": "EnviousWispr",
+  },
+});
+
+const breadcrumbJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": siteUrl,
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "EnviousWispr vs Otter.ai",
+      "item": `${siteUrl}/compare/otter-ai/`,
+    },
+  ],
+});
+
+const faqJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is EnviousWispr an Otter.ai alternative?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "They solve different problems. Otter.ai is for meeting transcription: recording calls, identifying speakers, generating summaries. EnviousWispr is for dictation: speaking text into any app on your Mac. If you are looking for an Otter alternative specifically for typing by voice, EnviousWispr is built for that."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I use EnviousWispr to transcribe meetings?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. EnviousWispr is a dictation tool, not a meeting recorder. It transcribes your voice in real time and pastes the text where your cursor is. For meeting transcription with speaker identification and summaries, Otter.ai is the better choice."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is there a free dictation alternative to Otter.ai?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. If what you actually need is dictation (typing by speaking into emails, Slack, documents), EnviousWispr does that for free with no account, no subscription, and no usage limits. Otter's free tier limits you to 300 minutes per month."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does EnviousWispr work offline?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Transcription runs entirely on-device and works without internet. AI polish requires an LLM; you can use a local model for fully offline operation or bring your own API key for a cloud provider."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Will my audio be used for training?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. Your audio is processed on your Mac and discarded after transcription. It never leaves your device, so it cannot be used for anything else."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I use both Otter.ai and EnviousWispr?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Absolutely. Many users run Otter for meeting transcription and EnviousWispr for day-to-day dictation. They do not conflict. Use Otter when you need to record and summarize a call, and EnviousWispr when you want to type by speaking."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What Mac do I need?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine on Apple Silicon is what makes on-device transcription fast."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is EnviousWispr open source?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Source-available under the Business Source License 1.1. That means you can read, build, and inspect every line of code on GitHub. It is not an OSI-approved open source license, but it gives you full transparency into how the app works. Contributions are welcome."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Otter.ai work as a dictation tool?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Otter.ai is designed for meeting transcription, not for typing by voice into other apps. It records conversations and produces transcripts inside its own interface. To get that text into an email or document, you need to copy and paste. EnviousWispr is the opposite: it pastes text directly into whatever app you are using, with no intermediate step."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can Otter.ai transcribe on-device?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. Otter.ai is cloud-only. All audio is uploaded to their servers for transcription, speaker identification, and AI processing. There is no offline or on-device mode. EnviousWispr runs entirely on your Mac's Apple Silicon chip and works without internet."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is Otter.ai free?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Otter has a free tier with 300 minutes per month and a 30-minute per-conversation limit. Beyond that, Pro is $8.49/month (billed annually) and Business is $19.99/month. EnviousWispr is completely free with no usage limits, no subscription tiers, and no account required."
+      }
+    },
+  ]
+});
+
+---
+
+<BaseLayout
+  title="EnviousWispr vs Otter.ai: Dictation vs Meeting Notes"
+  description="Compare EnviousWispr vs Otter.ai. Otter transcribes meetings. EnviousWispr lets you type by speaking. Free, on-device, no account. See the differences."
+  activePage="compare"
+  ogType="article"
+  canonicalPath="/compare/otter-ai/"
+>
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={articleJsonLd}></script>
+    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
+    <script type="application/ld+json" set:html={faqJsonLd}></script>
+  </Fragment>
+
+<style>
+/* ── Page Header ── */
+.page-header { padding: 100px 0 48px; text-align: center; position: relative; z-index: 1; }
+.vs-badge {
+  display: inline-flex; align-items: center; gap: 14px; margin-bottom: 20px;
+  font-size: 14px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-3);
+}
+.vs-brand { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; color: var(--text); }
+.vs-brand.accent { color: var(--accent); }
+.vs-circle {
+  width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--border-hover);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; color: var(--text-3); background: #fff;
+}
+.page-header h1 { font-size: 48px; font-weight: 800; letter-spacing: -2.5px; line-height: 1.1; color: var(--text); margin-bottom: 14px; max-width: 700px; margin-left: auto; margin-right: auto; }
+.page-header-sub { font-size: 18px; font-weight: 400; color: var(--text-2); max-width: 560px; margin: 0 auto; line-height: 1.6; }
+.hero-pills { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+.hero-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 100px; font-size: 13px; font-weight: 600;
+  background: rgba(124,58,237,0.06); color: var(--accent); border: 1px solid rgba(124,58,237,0.12);
+}
+.hero-pill svg { flex-shrink: 0; }
+.hero-cta { margin-top: 28px; }
+.hero-meta { font-size: 12px; color: var(--text-3); margin-top: 16px; }
+
+/* ── Comparison Table ── */
+.compare-table-wrap {
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-card); border: 1px solid var(--border-hover);
+  background: #fff;
+}
+.compare-table {
+  width: 100%; border-collapse: collapse; font-size: 15px;
+  min-width: 640px;
+}
+.compare-table thead th {
+  padding: 20px 24px; font-size: 16px; font-weight: 700;
+  text-align: left; border-bottom: 2px solid var(--border-hover);
+  background: rgba(248,245,255,0.5);
+}
+.compare-table thead th:first-child { width: 34%; }
+.compare-table thead th:nth-child(2) {
+  background: rgba(124,58,237,0.06);
+  color: var(--accent);
+}
+.compare-table tbody td {
+  padding: 16px 24px; border-bottom: 1px solid var(--border);
+  vertical-align: top; line-height: 1.55;
+}
+.compare-table tbody tr:last-child td { border-bottom: none; }
+.compare-table tbody td:first-child {
+  font-weight: 600; color: var(--text);
+}
+.compare-table tbody td:nth-child(2) {
+  background: rgba(124,58,237,0.02);
+}
+.compare-table tbody td:nth-child(3) {
+  color: var(--text-2);
+}
+.table-check { color: var(--green); font-weight: 700; }
+.table-cross { color: var(--text-3); }
+.table-highlight { color: var(--accent); font-weight: 600; }
+
+/* ── Advantage Cards ── */
+.advantages-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.advantage-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 28px 24px;
+  position: relative; overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.advantage-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(124,58,237,0.10); }
+.advantage-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full);
+}
+.advantage-icon { font-size: 28px; margin-bottom: 14px; line-height: 1; }
+.advantage-title { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 8px; color: var(--text); }
+.advantage-desc { font-size: 14px; color: var(--text-2); line-height: 1.65; }
+
+/* ── Privacy Section ── */
+.privacy-split { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.privacy-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 32px 28px;
+}
+.privacy-card.ew {
+  border-color: rgba(0,200,128,0.25);
+  background: linear-gradient(135deg, rgba(0,200,128,0.03), rgba(248,245,255,0.5));
+}
+.privacy-card.wf {
+  border-color: rgba(230,37,58,0.15);
+  background: linear-gradient(135deg, rgba(230,37,58,0.02), rgba(248,245,255,0.5));
+}
+.privacy-card-label {
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+}
+.privacy-card.ew .privacy-card-label { color: var(--green); }
+.privacy-card.wf .privacy-card-label { color: var(--red); }
+.privacy-step {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+  font-size: 14px; color: var(--text-2); line-height: 1.55;
+}
+.privacy-step:last-child { border-bottom: none; }
+.privacy-step-num {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+}
+.privacy-card.ew .privacy-step-num { background: rgba(0,200,128,0.12); color: var(--green); }
+.privacy-card.wf .privacy-step-num { background: rgba(230,37,58,0.08); color: var(--red); }
+
+/* ── Speed Stats ── */
+.speed-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.speed-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 28px 20px; text-align: center;
+}
+.speed-value {
+  font-size: 42px; font-weight: 800; letter-spacing: -2px; line-height: 1; margin-bottom: 6px;
+  background: var(--rainbow-full);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.speed-label { font-size: 14px; color: var(--text-2); font-weight: 500; }
+.speed-detail { font-size: 11px; color: var(--text-3); margin-top: 4px; }
+
+/* ── Deep Dive ── */
+.deep-dive-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+.deep-dive-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 36px 32px;
+  position: relative; overflow: hidden;
+}
+.deep-dive-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full);
+}
+.deep-dive-icon { font-size: 32px; margin-bottom: 16px; line-height: 1; }
+.deep-dive-title { font-size: 22px; font-weight: 800; letter-spacing: -0.8px; margin-bottom: 12px; color: var(--text); }
+.deep-dive-body { font-size: 15px; color: var(--text-2); line-height: 1.7; }
+.deep-dive-body p { margin-bottom: 12px; }
+.deep-dive-body p:last-child { margin-bottom: 0; }
+.deep-dive-detail {
+  margin-top: 16px; padding: 14px 18px; border-radius: 10px;
+  background: rgba(124,58,237,0.04); border: 1px solid rgba(124,58,237,0.08);
+  font-size: 13px; color: var(--text-2); line-height: 1.6;
+}
+.deep-dive-detail strong { color: var(--text); }
+
+/* ── FAQ ── */
+.faq-list { max-width: 720px; margin: 0 auto; }
+.faq-item {
+  border-bottom: 1px solid var(--border-hover); padding: 24px 0;
+}
+.faq-item:last-child { border-bottom: none; }
+.faq-q {
+  font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 8px; letter-spacing: -0.3px;
+}
+.faq-a { font-size: 15px; color: var(--text-2); line-height: 1.65; }
+
+/* ── CTA ── */
+.cta-section { padding: var(--section-pad) 0; text-align: center; position: relative; z-index: 1; }
+.cta-section h2 { font-size: 40px; font-weight: 800; letter-spacing: -2px; margin-bottom: 12px; }
+.cta-section p { font-size: 17px; color: var(--text-2); margin-bottom: 36px; }
+.cta-actions { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; }
+.back-link { font-size: 15px; font-weight: 500; color: var(--text-3); text-decoration: none; transition: color 0.2s; }
+.back-link:hover { color: var(--accent); }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .advantages-grid { grid-template-columns: repeat(2, 1fr); }
+  .privacy-split { grid-template-columns: 1fr; }
+  .speed-stats { grid-template-columns: repeat(3, 1fr); }
+  .deep-dive-grid { grid-template-columns: 1fr; }
+  .page-header h1 { font-size: 42px; letter-spacing: -2px; }
+}
+@media (max-width: 600px) {
+  .advantages-grid { grid-template-columns: 1fr; }
+  .speed-stats { grid-template-columns: 1fr; }
+  .page-header h1 { font-size: 34px; letter-spacing: -1px; }
+  .compare-table-wrap { margin: 0 -20px; border-radius: 0; border-left: none; border-right: none; }
+}
+</style>
+
+<!-- Page Header -->
+<header class="page-header">
+  <div class="container">
+    <div class="vs-badge reveal">
+      <span class="vs-brand accent">EnviousWispr</span>
+      <span class="vs-circle">VS</span>
+      <span class="vs-brand">Otter.ai</span>
+    </div>
+    <h1 class="reveal">Otter.ai summarizes meetings. EnviousWispr lets you dictate instantly.</h1>
+    <p class="page-header-sub reveal">Otter.ai transcribes meetings. EnviousWispr lets you type by speaking. Different tools for different jobs. If you want to dictate emails, Slack messages, and docs, EnviousWispr is purpose-built for that.</p>
+    <div class="hero-pills reveal">
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        On-device, not cloud
+      </span>
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Free, no subscription
+      </span>
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        0.43s median latency
+      </span>
+    </div>
+    <div class="hero-cta reveal">
+      <a href="/#download" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+    </div>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: April 2026</p>
+  </div>
+</header>
+
+<!-- Side-by-Side Table -->
+<section class="section" aria-label="Feature Comparison">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Side by Side</div>
+      <h2 class="section-title">Feature comparison</h2>
+      <p class="section-sub">Otter.ai and EnviousWispr solve fundamentally different problems. This table highlights where they overlap and where they diverge.</p>
+    </div>
+    <div class="compare-table-wrap reveal">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>EnviousWispr</th>
+            <th>Otter.ai</th>
+          </tr>
+        </thead>
+        <!-- Evidence: Otter.ai claims verified against otter.ai and otter.ai/pricing on 2026-04-03.
+             Confidence: source-verified from public website.
+             Sources:
+               - Pricing: otter.ai/pricing (accessed 2026-04-03)  -  Free 300 min/mo, Pro $8.49/mo annual, Business $19.99/mo
+               - Platforms: otter.ai  -  Web, iOS, Android, Chrome extension (accessed 2026-04-03)
+               - Processing: Cloud-only, no on-device option (accessed 2026-04-03)
+               - Features: Meeting transcription, speaker diarization, AI summaries, Zoom/Meet/Teams integration, search across transcripts, collaboration (accessed 2026-04-03)
+             Firsthand testing: Otter.ai was not tested firsthand for this comparison.
+             All claims are source-verified from official pages. Last verified: 2026-04-04. -->
+        <tbody>
+          <tr>
+            <td>Primary use case</td>
+            <td><span class="table-highlight">Real-time dictation</span> into any text field</td>
+            <td>Meeting transcription, recording, and summaries</td>
+          </tr>
+          <tr>
+            <td>Price</td>
+            <td><span class="table-highlight">Free. No subscription.</span></td>
+            <td>Free tier (300 min/mo, 30 min max); Pro $8.49/mo (annual); Business $19.99/mo*</td>
+          </tr>
+          <tr>
+            <td>Account required</td>
+            <td><span class="table-check">No</span></td>
+            <td>Yes, email or Google signup</td>
+          </tr>
+          <tr>
+            <td>Audio processing</td>
+            <td><span class="table-highlight">On-device</span> (Apple Silicon Neural Engine)</td>
+            <td>Cloud servers</td>
+          </tr>
+          <tr>
+            <td>Audio leaves your device</td>
+            <td><span class="table-check">Never.</span> If you enable cloud AI polish, only the text transcript is sent.</td>
+            <td>Yes, audio uploaded to Otter's servers for transcription and storage</td>
+          </tr>
+          <tr>
+            <td>Works offline</td>
+            <td><span class="table-check">Yes</span> (after initial model download)</td>
+            <td><span class="table-cross">No</span></td>
+          </tr>
+          <tr>
+            <td>Dictate into any app</td>
+            <td><span class="table-check">Yes</span> - text pastes directly into your active text field</td>
+            <td><span class="table-cross">No</span> - transcripts live inside Otter's app; copy-paste required</td>
+          </tr>
+          <tr>
+            <td>Meeting recording</td>
+            <td><span class="table-cross">No</span> - not a meeting tool</td>
+            <td><span class="table-check">Yes</span> - joins Zoom, Meet, and Teams automatically</td>
+          </tr>
+          <tr>
+            <td>Speaker identification</td>
+            <td><span class="table-cross">No</span> - single-speaker dictation</td>
+            <td><span class="table-check">Yes</span> - identifies who said what</td>
+          </tr>
+          <tr>
+            <td>Team collaboration</td>
+            <td><span class="table-cross">No</span> - personal dictation tool</td>
+            <td><span class="table-check">Yes</span> - shared transcripts, comments, highlights</td>
+          </tr>
+          <tr>
+            <td>Search across transcripts</td>
+            <td><span class="table-cross">No</span></td>
+            <td><span class="table-check">Yes</span> - search all past meeting transcripts</td>
+          </tr>
+          <tr>
+            <td>Native Mac desktop app</td>
+            <td><span class="table-check">Yes</span> - native macOS menu bar app</td>
+            <td><span class="table-cross">No</span> - web app and Chrome extension on desktop</td>
+          </tr>
+          <tr>
+            <td>AI polish / AI features</td>
+            <td><span class="table-highlight">Apple Intelligence</span> or Ollama on-device; OpenAI/Gemini with your key</td>
+            <td>AI summaries, action items, chat with transcripts (cloud)</td>
+          </tr>
+          <tr>
+            <td>First-word capture</td>
+            <td><span class="table-check">Yes</span> - voice activity detection starts recording instantly</td>
+            <td>N/A - meeting recording, not push-to-talk dictation</td>
+          </tr>
+          <tr>
+            <td>Clipboard preservation</td>
+            <td><span class="table-check">Yes</span> - saves and restores your clipboard after pasting</td>
+            <td>N/A - no paste-into-app workflow</td>
+          </tr>
+          <tr>
+            <td>Custom vocabulary</td>
+            <td><span class="table-check">Yes</span> - custom words for names, jargon, acronyms</td>
+            <td>Custom vocabulary on paid plans</td>
+          </tr>
+          <tr>
+            <td>Speech engines</td>
+            <td><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> + <a href="https://github.com/argmaxinc/WhisperKit" style="color: var(--accent); text-decoration: underline;">WhisperKit</a> (on-device)</td>
+            <td>Proprietary cloud ASR</td>
+          </tr>
+          <tr>
+            <td>Platforms</td>
+            <td>macOS (Apple Silicon)</td>
+            <td>Web, iOS, Android, Chrome extension</td>
+          </tr>
+          <tr>
+            <td>Source code</td>
+            <td><span class="table-highlight"><a href="https://github.com/AirSkye/EnviousWispr" style="color: var(--accent); text-decoration: underline;">Source-available</a></span> on GitHub (BSL 1.1)</td>
+            <td>Closed source</td>
+          </tr>
+          <tr>
+            <td>Transcription latency</td>
+            <td><span class="table-highlight">0.43s median</span>; ~1.5s with AI polish</td>
+            <td>Near real-time (depends on network and server load)</td>
+          </tr>
+          <tr>
+            <td>Hands-free dictation</td>
+            <td><span class="table-check">Yes</span> - configurable hotkey, hold-to-record or toggle mode</td>
+            <td><span class="table-cross">No</span> - designed for meeting recording, not hands-free typing</td>
+          </tr>
+          <tr>
+            <td>Accessibility</td>
+            <td>Built for users who need to type by voice; works with any macOS app including assistive tools</td>
+            <td>Focused on meeting productivity, not assistive typing</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on Otter.ai's public pricing and feature pages as of April 2026. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Otter.ai claims source-verified from otter.ai and otter.ai/pricing; not firsthand-tested. Competitor claims last verified: 2026-04-04.</p>
+    <div style="text-align: center; margin-top: 28px;">
+      <a href="/#download" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- Why EnviousWispr -->
+<section class="section" aria-label="Advantages">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill green">Why EnviousWispr</div>
+      <h2 class="section-title">Why dictation users choose EnviousWispr</h2>
+      <p class="section-sub">If your goal is to type by speaking, not to transcribe meetings, EnviousWispr was built specifically for that workflow.</p>
+    </div>
+    <div class="advantages-grid">
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">$0</div>
+        <div class="advantage-title">Free with no caps</div>
+        <p class="advantage-desc">No 300-minute monthly limit. No 30-minute session cap. No paid tiers. Download and dictate as much as you want. Otter's free plan limits you to 300 minutes per month, and Pro costs $8.49/mo billed annually.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🔒</div>
+        <div class="advantage-title">On-device transcription</div>
+        <p class="advantage-desc">Your audio is processed by the <a href="https://developer.apple.com/machine-learning/core-ml/" style="color: var(--accent); text-decoration: underline;">Neural Engine</a> on Apple Silicon, never uploaded, never stored elsewhere. Otter uploads audio to cloud servers and stores transcripts online. See <a href="/how-it-works/" style="color: var(--accent); text-decoration: underline;">how the pipeline works</a>.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">⚡</div>
+        <div class="advantage-title">Built for text fields</div>
+        <p class="advantage-desc">Hold your hotkey, speak, release. Text appears in whatever app you are using: email, Slack, your IDE, a Google Doc. No tab switching, no copy-pasting from a separate transcript window.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🚫</div>
+        <div class="advantage-title">No account, no signup</div>
+        <p class="advantage-desc">Download, open, start dictating. EnviousWispr never asks for your email, never requires a login, never phones home. Otter requires account creation before you can use any feature.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">✈️</div>
+        <div class="advantage-title">Works offline</div>
+        <p class="advantage-desc">After the initial model download, transcription works without internet. Dictate on a plane, in a coffee shop with bad Wi-Fi, or anywhere else. Otter requires an active internet connection for all transcription.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">📖</div>
+        <div class="advantage-title">Auditable code</div>
+        <p class="advantage-desc">Every line is <a href="https://github.com/AirSkye/EnviousWispr" style="color: var(--accent); text-decoration: underline;">on GitHub</a> under BSL 1.1. Verify what it does. Report issues directly. Closed-source tools ask you to trust their privacy claims on faith.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Privacy Deep Dive -->
+<section class="section" aria-label="Privacy Comparison">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill cyan">Privacy</div>
+      <h2 class="section-title">Where does your voice go?</h2>
+      <p class="section-sub">The most important question for any speech tool. Here is the data flow for each app. For a deeper dive, read <a href="/blog/on-device-vs-cloud-dictation-privacy/" style="color: var(--accent); text-decoration: underline;">on-device vs cloud dictation privacy</a>.</p>
+    </div>
+    <div class="privacy-split">
+      <div class="privacy-card ew reveal">
+        <div class="privacy-card-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          EnviousWispr
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">1</div>
+          <div>You speak into your Mac's microphone.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">2</div>
+          <div>Audio is processed by the Neural Engine on your Apple Silicon chip. Nothing is uploaded.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">3</div>
+          <div>AI polish runs locally or with your own API key. If you use a cloud provider, only the text transcript is sent; you control the key.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">4</div>
+          <div>Polished text is pasted into your active text field. Audio is discarded. No logs, no telemetry on your content.</div>
+        </div>
+      </div>
+      <div class="privacy-card wf reveal">
+        <div class="privacy-card-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          Otter.ai
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">1</div>
+          <div>You speak, or Otter joins your meeting as a bot.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">2</div>
+          <div>Audio is uploaded to Otter's cloud servers for transcription and speaker identification.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">3</div>
+          <div>Transcripts are stored in Otter's cloud. AI features (summaries, action items) process the text on their servers.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">4</div>
+          <div>You access transcripts through the web app or mobile app. Audio and text remain on Otter's servers.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Speed Section -->
+<section class="section" aria-label="Speed">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill amber">Speed</div>
+      <h2 class="section-title">Fast because there is no upload step</h2>
+      <p class="section-sub">On Apple Silicon Macs, EnviousWispr transcribes speech locally. No network round-trip before text appears in your active app.</p>
+    </div>
+    <div class="speed-stats">
+      <div class="speed-card reveal">
+        <div class="speed-value">0.43s</div>
+        <div class="speed-label">Median transcription</div>
+        <div class="speed-detail">From end of speech to raw text</div>
+      </div>
+      <div class="speed-card reveal">
+        <div class="speed-value">1.5s</div>
+        <div class="speed-label">With AI polish</div>
+        <div class="speed-detail">Apple Intelligence on-device</div>
+      </div>
+      <div class="speed-card reveal">
+        <div class="speed-value">0ms</div>
+        <div class="speed-label">Network overhead</div>
+        <div class="speed-detail">Immune to bad Wi-Fi</div>
+      </div>
+    </div>
+    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Based on production data from Apple Silicon Macs. Results vary by hardware and settings.</p>
+  </div>
+</section>
+
+<!-- Deep Dives -->
+<section class="section" aria-label="Deep Dive">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Deep Dive</div>
+      <h2 class="section-title">Different tools for different jobs</h2>
+      <p class="section-sub">Otter.ai and EnviousWispr look similar on the surface (both involve speech and text) but solve fundamentally different problems.</p>
+    </div>
+    <div class="deep-dive-grid">
+      <div class="deep-dive-card reveal">
+        <div class="deep-dive-icon">🎯</div>
+        <div class="deep-dive-title">Dictation vs transcription</div>
+        <div class="deep-dive-body">
+          <p>Otter.ai records meetings. It joins your Zoom, Meet, or Teams call, captures everything, identifies speakers, and produces a searchable transcript after the fact. The output lives inside Otter's app. It is a meeting productivity tool.</p>
+          <p>EnviousWispr puts text where you type, in real time. Hold a hotkey, speak, release. Text appears in your email draft, Slack message, code editor, or Google Doc. There is no separate transcript window, no copy-pasting, no switching tabs. It replaces your keyboard for moments when speaking is faster than typing.</p>
+          <p>If you sit in meetings all day and need transcripts, Otter is the right tool. If you write emails, Slack messages, and documents by voice, EnviousWispr is purpose-built for that workflow.</p>
+          <div class="deep-dive-detail">
+            <strong>Key difference:</strong> Otter produces transcripts you read later. EnviousWispr produces text you use right now, in whatever app has focus.
+          </div>
+        </div>
+      </div>
+      <div class="deep-dive-card reveal">
+        <div class="deep-dive-icon">🛡️</div>
+        <div class="deep-dive-title">Privacy: on-device vs cloud</div>
+        <div class="deep-dive-body">
+          <p>Otter.ai uploads all audio to its cloud servers. Transcripts are stored online and processed by Otter's AI for summaries, action items, and search indexing. Your voice data lives on their infrastructure.</p>
+          <p>EnviousWispr processes audio entirely on your Mac's Apple Silicon chip. Nothing is uploaded. The audio buffer is discarded after transcription. If you enable AI polish with a cloud provider, only the text transcript (not audio) is sent, using your own API key.</p>
+          <p>For meeting transcription, cloud processing is a reasonable tradeoff: you need speaker identification and long-form support that requires server-side models. For dictation of personal messages, medical notes, legal correspondence, or anything sensitive, on-device processing means your words never leave your control.</p>
+          <div class="deep-dive-detail">
+            <strong>The tradeoff:</strong> Otter's cloud approach enables features like speaker identification and cross-meeting search. EnviousWispr's local approach means zero data exposure but no multi-speaker capabilities.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Fair Acknowledgment -->
+<section class="section" aria-label="Where Otter.ai Wins">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Being Honest</div>
+      <h2 class="section-title">Choose Otter.ai if you need meeting transcription and team collaboration</h2>
+      <p class="section-sub">Otter.ai is excellent at what it does. If your primary need is recording, transcribing, and collaborating on meetings, it is the better tool:</p>
+    </div>
+    <div class="advantages-grid">
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🎙️</div>
+        <div class="advantage-title">Meeting transcription and recording</div>
+        <p class="advantage-desc">Otter is built for transcribing multi-person meetings. It joins Zoom, Google Meet, and Teams calls automatically, records, and generates searchable transcripts. EnviousWispr does not do meeting transcription at all.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">👥</div>
+        <div class="advantage-title">Speaker identification</div>
+        <p class="advantage-desc">Otter identifies who said what in a conversation with speaker diarization. EnviousWispr is single-speaker dictation only.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🤝</div>
+        <div class="advantage-title">Team collaboration</div>
+        <p class="advantage-desc">Otter lets teams share transcripts, comment, highlight key moments, and extract action items. It is a collaborative workspace for meeting notes. EnviousWispr is a personal dictation tool.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">📊</div>
+        <div class="advantage-title">AI meeting summaries</div>
+        <p class="advantage-desc">Otter generates automatic summaries, action items, and key takeaways from meetings. It can answer questions about past conversations. These are features EnviousWispr does not offer.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🔗</div>
+        <div class="advantage-title">Zoom, Teams, and Meet integration</div>
+        <p class="advantage-desc">Otter joins your video calls as a bot, records automatically, and produces transcripts without manual setup. EnviousWispr has no meeting integrations at all.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🔍</div>
+        <div class="advantage-title">Search across meetings</div>
+        <p class="advantage-desc">Otter indexes all your past transcripts and lets you search across them. Find what was said in any meeting, by any speaker. EnviousWispr has no transcript history or search.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">📱</div>
+        <div class="advantage-title">Cross-platform availability</div>
+        <p class="advantage-desc">Otter works on web, iOS, and Android. EnviousWispr is macOS only with Apple Silicon required.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">⏱️</div>
+        <div class="advantage-title">Long-form recording</div>
+        <p class="advantage-desc">Otter handles hour-long meetings and lectures. EnviousWispr is optimized for short dictation bursts of one to two minutes.</p>
+      </div>
+    </div>
+    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you need meeting transcription, use Otter. If you want to type by speaking into any text field on your Mac, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. Many people use both.</p>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="section" aria-label="Frequently Asked Questions">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">FAQ</div>
+      <h2 class="section-title">Common questions</h2>
+    </div>
+    <div class="faq-list">
+      <div class="faq-item reveal">
+        <div class="faq-q">Is EnviousWispr an Otter.ai alternative?</div>
+        <p class="faq-a">They solve different problems. Otter.ai is for meeting transcription: recording calls, identifying speakers, generating summaries. EnviousWispr is for dictation: speaking text into any app on your Mac. If you are looking for an Otter alternative specifically for typing by voice, EnviousWispr is built for that.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can I use EnviousWispr to transcribe meetings?</div>
+        <p class="faq-a">No. EnviousWispr is a dictation tool, not a meeting recorder. It transcribes your voice in real time and pastes the text where your cursor is. For meeting transcription with speaker identification and summaries, Otter.ai is the better choice.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Is there a free dictation alternative to Otter.ai?</div>
+        <p class="faq-a">Yes. If what you actually need is dictation (typing by speaking into emails, Slack, documents), EnviousWispr does that for free with no account, no subscription, and no usage limits. See the <a href="/blog/getting-started-enviouswispr-under-2-minutes/" style="color: var(--accent); text-decoration: underline;">getting started guide</a>. Otter's free tier limits you to 300 minutes per month.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Does EnviousWispr work offline?</div>
+        <p class="faq-a">Transcription runs entirely on-device and works without internet. AI polish requires an LLM; you can use a local model for fully offline operation or bring your own API key for a cloud provider.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Will my audio be used for training?</div>
+        <p class="faq-a">No. Your audio is processed on your Mac and discarded after transcription. It never leaves your device, so it cannot be used for anything else.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can I use both Otter.ai and EnviousWispr?</div>
+        <p class="faq-a">Absolutely. Many users run Otter for meeting transcription and EnviousWispr for day-to-day dictation. They do not conflict. Use Otter when you need to record and summarize a call, and EnviousWispr when you want to type by speaking.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">What Mac do I need?</div>
+        <p class="faq-a">Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine on Apple Silicon is what makes on-device transcription fast.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Is EnviousWispr open source?</div>
+        <p class="faq-a">Source-available under the Business Source License 1.1. That means you can read, build, and inspect every line of code on GitHub. It is not an OSI-approved open source license, but it gives you full transparency into how the app works. Contributions are welcome.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Does Otter.ai work as a dictation tool?</div>
+        <p class="faq-a">Otter.ai is designed for meeting transcription, not for typing by voice into other apps. It records conversations and produces transcripts inside its own interface. To get that text into an email or document, you need to copy and paste. EnviousWispr is the opposite: it pastes text directly into whatever app you are using, with no intermediate step.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can Otter.ai transcribe on-device?</div>
+        <p class="faq-a">No. Otter.ai is cloud-only. All audio is uploaded to their servers for transcription, speaker identification, and AI processing. There is no offline or on-device mode. EnviousWispr runs entirely on your Mac's Apple Silicon chip and works without internet.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Is Otter.ai free?</div>
+        <p class="faq-a">Otter has a free tier with 300 minutes per month and a 30-minute per-conversation limit. Beyond that, Pro is $8.49/month (billed annually) and Business is $19.99/month. EnviousWispr is completely free with no usage limits, no subscription tiers, and no account required.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Related Comparisons -->
+<section class="section" aria-label="Related Comparisons" style="padding-top: 0;">
+  <div class="container">
+    <p style="font-size: 14px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px;">Compare with other tools</p>
+    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+      <a href="/compare/wisprflow/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs WisprFlow</a>
+      <a href="/compare/superwhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs Superwhisper</a>
+      <a href="/compare/dragon/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs Dragon</a>
+      <a href="/compare/apple-dictation/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs Apple Dictation</a>
+      <a href="/compare/macwhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs MacWhisper</a>
+      <a href="/compare/voiceink/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs VoiceInk</a>
+      <a href="/compare/willow-voice/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs Willow Voice</a>
+      <a href="/compare/google-docs-voice-typing/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs Google Docs</a>
+      <a href="/compare/notta/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs Notta</a>
+      <a href="/compare/whisper-cpp/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs whisper.cpp</a>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section" aria-label="Download CTA">
+  <div class="container">
+    <h2 class="reveal">Want to type by speaking?</h2>
+    <p class="reveal">Free to download. No account required. On-device transcription.</p>
+    <div class="cta-actions reveal">
+      <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="btn-primary" data-download-source="compare">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+      <a href="/" class="back-link">Back to Home</a>
+    </div>
+  </div>
+</section>
+
+</BaseLayout>

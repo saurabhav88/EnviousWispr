@@ -1,0 +1,746 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const siteUrl = 'https://enviouswispr.com';
+
+const articleJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "EnviousWispr vs Google Docs Voice Typing: Dictation Beyond the Browser",
+  "description": "Compare EnviousWispr and Google Docs Voice Typing. Both free, but EnviousWispr works system-wide, offline, and on-device. No browser or Google account required.",
+  "url": `${siteUrl}/compare/google-docs-voice-typing/`,
+  "datePublished": "2026-04-04",
+  "dateModified": "2026-04-04",
+  "author": {
+    "@type": "Person",
+    "name": "Saurabh Vaish",
+    "url": `${siteUrl}/authors/saurabh-vaish/`,
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Envious Labs",
+    "url": siteUrl,
+  },
+  "isPartOf": {
+    "@type": "WebSite",
+    "url": siteUrl,
+    "name": "EnviousWispr",
+  },
+});
+
+const faqJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    { "@type": "Question", "name": "Is there a Google Docs voice typing alternative that works outside the browser?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. EnviousWispr is a native Mac app that works in any text field system-wide. Dictate into Slack, VS Code, email, Notes, or any other app. No browser required." } },
+    { "@type": "Question", "name": "Can I dictate outside Google Docs for free?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. EnviousWispr is free, with no subscription, no usage limits, and no account required. Download and start dictating in any app on your Mac." } },
+    { "@type": "Question", "name": "Does EnviousWispr work offline?", "acceptedAnswer": { "@type": "Answer", "text": "Transcription runs entirely on-device and works without internet. AI polish requires an LLM; you can use a local model for fully offline operation or bring your own API key for a cloud provider." } },
+    { "@type": "Question", "name": "Does Google Docs voice typing send my audio to the cloud?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. Google Docs voice typing requires an internet connection and processes your audio on Google's servers. EnviousWispr processes audio entirely on your Mac using the Apple Silicon Neural Engine." } },
+    { "@type": "Question", "name": "Does EnviousWispr have voice commands like Google Docs?", "acceptedAnswer": { "@type": "Answer", "text": "Not yet. Google Docs supports voice commands (select, format, navigate) in English. EnviousWispr focuses on fast, accurate transcription with AI polish. Voice commands may come in a future release." } },
+    { "@type": "Question", "name": "What Mac do I need?", "acceptedAnswer": { "@type": "Answer", "text": "Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine on Apple Silicon is what makes on-device transcription fast." } },
+    { "@type": "Question", "name": "Can EnviousWispr remove filler words?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. EnviousWispr automatically removes um, uh, like, and other filler words. Google Docs voice typing transcribes everything as spoken, including fillers." } },
+    { "@type": "Question", "name": "Is EnviousWispr open source?", "acceptedAnswer": { "@type": "Answer", "text": "Source-available under the Business Source License 1.1. You can read, build, and inspect every line of code on GitHub. Contributions are welcome." } },
+    { "@type": "Question", "name": "Can I use Google Docs voice typing in Slack, VS Code, or other apps?", "acceptedAnswer": { "@type": "Answer", "text": "No. Google Docs Voice Typing only works inside Google Docs and Google Slides in a supported browser. If you need to dictate into Slack, VS Code, email clients, terminals, or any other app, you need a system-wide tool like EnviousWispr." } },
+    { "@type": "Question", "name": "Does Google Docs voice typing add punctuation automatically?", "acceptedAnswer": { "@type": "Answer", "text": "Only to a limited extent. In most languages, you need to say period, comma, question mark, and other punctuation aloud. EnviousWispr handles punctuation automatically through its ASR engine and optional LLM polish." } },
+    { "@type": "Question", "name": "Can I teach Google Docs voice typing my company's terminology?", "acceptedAnswer": { "@type": "Answer", "text": "No. Google Docs Voice Typing has no custom vocabulary feature. EnviousWispr's Custom Words feature lets you define exact spellings for names, jargon, and domain-specific terms that get applied every time you dictate." } },
+  ]
+});
+
+const breadcrumbJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": siteUrl,
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "EnviousWispr vs Google Docs Voice Typing",
+      "item": `${siteUrl}/compare/google-docs-voice-typing/`,
+    },
+  ],
+});
+
+---
+
+<BaseLayout
+  title="EnviousWispr vs Google Docs Voice Typing"
+  description="Compare EnviousWispr vs Google Docs Voice Typing. Both free. EnviousWispr works in any app, offline, on-device. No Chrome required."
+  activePage="compare"
+  ogType="article"
+  canonicalPath="/compare/google-docs-voice-typing/"
+>
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={articleJsonLd}></script>
+    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
+    <script type="application/ld+json" set:html={faqJsonLd}></script>
+  </Fragment>
+
+<style>
+/* ── Page Header ── */
+.page-header { padding: 100px 0 48px; text-align: center; position: relative; z-index: 1; }
+.vs-badge {
+  display: inline-flex; align-items: center; gap: 14px; margin-bottom: 20px;
+  font-size: 14px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-3);
+}
+.vs-brand { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; color: var(--text); }
+.vs-brand.accent { color: var(--accent); }
+.vs-circle {
+  width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--border-hover);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; color: var(--text-3); background: #fff;
+}
+.page-header h1 { font-size: 48px; font-weight: 800; letter-spacing: -2.5px; line-height: 1.1; color: var(--text); margin-bottom: 14px; max-width: 700px; margin-left: auto; margin-right: auto; }
+.page-header-sub { font-size: 18px; font-weight: 400; color: var(--text-2); max-width: 560px; margin: 0 auto; line-height: 1.6; }
+.hero-pills { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+.hero-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 100px; font-size: 13px; font-weight: 600;
+  background: rgba(124,58,237,0.06); color: var(--accent); border: 1px solid rgba(124,58,237,0.12);
+}
+.hero-pill svg { flex-shrink: 0; }
+.hero-cta { margin-top: 28px; }
+.hero-meta { font-size: 12px; color: var(--text-3); margin-top: 16px; }
+
+/* ── Comparison Table ── */
+.compare-table-wrap {
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-card); border: 1px solid var(--border-hover);
+  background: #fff;
+}
+.compare-table {
+  width: 100%; border-collapse: collapse; font-size: 15px;
+  min-width: 640px;
+}
+.compare-table thead th {
+  padding: 20px 24px; font-size: 16px; font-weight: 700;
+  text-align: left; border-bottom: 2px solid var(--border-hover);
+  background: rgba(248,245,255,0.5);
+}
+.compare-table thead th:first-child { width: 34%; }
+.compare-table thead th:nth-child(2) {
+  background: rgba(124,58,237,0.06);
+  color: var(--accent);
+}
+.compare-table tbody td {
+  padding: 16px 24px; border-bottom: 1px solid var(--border);
+  vertical-align: top; line-height: 1.55;
+}
+.compare-table tbody tr:last-child td { border-bottom: none; }
+.compare-table tbody td:first-child {
+  font-weight: 600; color: var(--text);
+}
+.compare-table tbody td:nth-child(2) {
+  background: rgba(124,58,237,0.02);
+}
+.compare-table tbody td:nth-child(3) {
+  color: var(--text-2);
+}
+.table-check { color: var(--green); font-weight: 700; }
+.table-cross { color: var(--text-3); }
+.table-highlight { color: var(--accent); font-weight: 600; }
+
+/* ── Advantage Cards ── */
+.advantages-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.advantage-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 28px 24px;
+  position: relative; overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.advantage-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(124,58,237,0.10); }
+.advantage-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full);
+}
+.advantage-icon { font-size: 28px; margin-bottom: 14px; line-height: 1; }
+.advantage-title { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 8px; color: var(--text); }
+.advantage-desc { font-size: 14px; color: var(--text-2); line-height: 1.65; }
+
+/* ── Privacy Section ── */
+.privacy-split { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.privacy-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 32px 28px;
+}
+.privacy-card.ew {
+  border-color: rgba(0,200,128,0.25);
+  background: linear-gradient(135deg, rgba(0,200,128,0.03), rgba(248,245,255,0.5));
+}
+.privacy-card.wf {
+  border-color: rgba(230,37,58,0.15);
+  background: linear-gradient(135deg, rgba(230,37,58,0.02), rgba(248,245,255,0.5));
+}
+.privacy-card-label {
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+}
+.privacy-card.ew .privacy-card-label { color: var(--green); }
+.privacy-card.wf .privacy-card-label { color: var(--red); }
+.privacy-step {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+  font-size: 14px; color: var(--text-2); line-height: 1.55;
+}
+.privacy-step:last-child { border-bottom: none; }
+.privacy-step-num {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+}
+.privacy-card.ew .privacy-step-num { background: rgba(0,200,128,0.12); color: var(--green); }
+.privacy-card.wf .privacy-step-num { background: rgba(230,37,58,0.08); color: var(--red); }
+
+/* ── Speed Stats ── */
+.speed-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.speed-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 28px 20px; text-align: center;
+}
+.speed-value {
+  font-size: 42px; font-weight: 800; letter-spacing: -2px; line-height: 1; margin-bottom: 6px;
+  background: var(--rainbow-full);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.speed-label { font-size: 14px; color: var(--text-2); font-weight: 500; }
+.speed-detail { font-size: 11px; color: var(--text-3); margin-top: 4px; }
+
+/* ── Deep Dive ── */
+.deep-dive-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+.deep-dive-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 36px 32px;
+  position: relative; overflow: hidden;
+}
+.deep-dive-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full);
+}
+.deep-dive-icon { font-size: 32px; margin-bottom: 16px; line-height: 1; }
+.deep-dive-title { font-size: 22px; font-weight: 800; letter-spacing: -0.8px; margin-bottom: 12px; color: var(--text); }
+.deep-dive-body { font-size: 15px; color: var(--text-2); line-height: 1.7; }
+.deep-dive-body p { margin-bottom: 12px; }
+.deep-dive-body p:last-child { margin-bottom: 0; }
+.deep-dive-detail {
+  margin-top: 16px; padding: 14px 18px; border-radius: 10px;
+  background: rgba(124,58,237,0.04); border: 1px solid rgba(124,58,237,0.08);
+  font-size: 13px; color: var(--text-2); line-height: 1.6;
+}
+.deep-dive-detail strong { color: var(--text); }
+@media (max-width: 900px) {
+  .deep-dive-grid { grid-template-columns: 1fr; }
+}
+
+/* ── FAQ ── */
+.faq-list { max-width: 720px; margin: 0 auto; }
+.faq-item {
+  border-bottom: 1px solid var(--border-hover); padding: 24px 0;
+}
+.faq-item:last-child { border-bottom: none; }
+.faq-q {
+  font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 8px; letter-spacing: -0.3px;
+}
+.faq-a { font-size: 15px; color: var(--text-2); line-height: 1.65; }
+
+/* ── CTA ── */
+.cta-section { padding: var(--section-pad) 0; text-align: center; position: relative; z-index: 1; }
+.cta-section h2 { font-size: 40px; font-weight: 800; letter-spacing: -2px; margin-bottom: 12px; }
+.cta-section p { font-size: 17px; color: var(--text-2); margin-bottom: 36px; }
+.cta-actions { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; }
+.back-link { font-size: 15px; font-weight: 500; color: var(--text-3); text-decoration: none; transition: color 0.2s; }
+.back-link:hover { color: var(--accent); }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .advantages-grid { grid-template-columns: repeat(2, 1fr); }
+  .privacy-split { grid-template-columns: 1fr; }
+  .speed-stats { grid-template-columns: repeat(3, 1fr); }
+  .page-header h1 { font-size: 42px; letter-spacing: -2px; }
+}
+@media (max-width: 600px) {
+  .advantages-grid { grid-template-columns: 1fr; }
+  .speed-stats { grid-template-columns: 1fr; }
+  .page-header h1 { font-size: 34px; letter-spacing: -1px; }
+  .compare-table-wrap { margin: 0 -20px; border-radius: 0; border-left: none; border-right: none; }
+}
+</style>
+
+<!-- Page Header -->
+<header class="page-header">
+  <div class="container">
+    <div class="vs-badge reveal">
+      <span class="vs-brand accent">EnviousWispr</span>
+      <span class="vs-circle">VS</span>
+      <span class="vs-brand">Google Docs Voice Typing</span>
+    </div>
+    <h1 class="reveal">Dictation that works everywhere, not just Google Docs</h1>
+    <p class="page-header-sub reveal">Google's voice typing is locked to Chrome and Google Docs. EnviousWispr works in any text field on your Mac, on-device, with no account required. Both are free.</p>
+    <div class="hero-pills reveal">
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        System-wide, not browser-only
+      </span>
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        On-device, not cloud
+      </span>
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        0.43s median latency
+      </span>
+    </div>
+    <div class="hero-cta reveal">
+      <a href="/#download" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+    </div>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: April 2026</p>
+  </div>
+</header>
+
+<!-- Side-by-Side Table -->
+<section class="section" aria-label="Feature Comparison">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Side by Side</div>
+      <h2 class="section-title">Feature comparison</h2>
+      <p class="section-sub">An honest look at how the two tools stack up across the dimensions that matter most.</p>
+    </div>
+    <div class="compare-table-wrap reveal">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>EnviousWispr</th>
+            <th>Google Docs Voice Typing</th>
+          </tr>
+        </thead>
+        <!-- Evidence: Google Docs Voice Typing claims verified against support.google.com/docs/answer/4492226.
+             Confidence: source-verified from official Google support page.
+             Sources:
+               - Pricing: Free with Google account (support.google.com/docs/answer/4492226, accessed 2026-04-04)
+               - Browser: Chrome, Edge, and Safari on desktop (support.google.com/docs/answer/4492226, accessed 2026-04-04)
+               - Cloud processing: Requires internet, audio sent to Google servers (support.google.com/docs/answer/4492226, accessed 2026-04-04)
+               - App scope: Google Docs and Google Slides only (support.google.com/docs/answer/4492226, accessed 2026-04-04)
+               - Languages: ~100 languages supported (support.google.com/docs/answer/4492226, accessed 2026-04-04)
+               - Voice commands: English only, formatting and editing commands (support.google.com/docs/answer/4492226, accessed 2026-04-04)
+               - Auto-punctuation: limited; users must say most punctuation marks (support.google.com/docs/answer/4492226, accessed 2026-04-04)
+               - Custom vocabulary: not supported (support.google.com/docs/answer/4492226, accessed 2026-04-04)
+               - Accessibility: keyboard-free input within Google Docs (support.google.com/docs/answer/4492226, accessed 2026-04-04)
+             Firsthand testing: Google Docs Voice Typing was not tested firsthand for this comparison.
+             All claims are source-verified from official Google support pages. -->
+        <tbody>
+          <tr>
+            <td>Price</td>
+            <td><span class="table-highlight">Free. No account required.</span></td>
+            <td>Free (requires Google account)</td>
+          </tr>
+          <tr>
+            <td>Works in any app</td>
+            <td><span class="table-check">Yes.</span> <span class="table-highlight">Any text field</span> on macOS, system-wide</td>
+            <td><span class="table-cross">No.</span> Google Docs and Google Slides only, in Chrome</td>
+          </tr>
+          <tr>
+            <td>Browser requirement</td>
+            <td><span class="table-check">None.</span> Native Mac app.</td>
+            <td>Chrome, Edge, or Safari (desktop)</td>
+          </tr>
+          <tr>
+            <td>Audio processing</td>
+            <td><span class="table-highlight">On-device</span> (Apple Silicon Neural Engine)</td>
+            <td>Cloud (Google servers)</td>
+          </tr>
+          <tr>
+            <td>Internet required</td>
+            <td><span class="table-check">No</span> for transcription (after initial model download)</td>
+            <td>Yes, always</td>
+          </tr>
+          <tr>
+            <td>AI polish</td>
+            <td><span class="table-highlight">Apple Intelligence</span> or Ollama on-device; OpenAI/Gemini with your own key</td>
+            <td><span class="table-cross">None</span></td>
+          </tr>
+          <tr>
+            <td>Offline AI polish</td>
+            <td><span class="table-check">Yes</span> (Apple Intelligence or Ollama, fully local)</td>
+            <td><span class="table-cross">No.</span> Entire tool requires internet.</td>
+          </tr>
+          <tr>
+            <td>Custom vocabulary</td>
+            <td><span class="table-check">Yes</span> (Custom Words for names, jargon, acronyms)</td>
+            <td><span class="table-cross">No</span></td>
+          </tr>
+          <tr>
+            <td>Filler word removal</td>
+            <td><span class="table-check">Yes.</span> Automatic "um", "uh", "like" removal.</td>
+            <td><span class="table-cross">No.</span> Transcribes fillers as spoken.</td>
+          </tr>
+          <tr>
+            <td>Auto-punctuation</td>
+            <td><span class="table-check">Yes.</span> ASR + LLM handle punctuation automatically.</td>
+            <td>Limited. You must say "period", "comma", etc. for most punctuation.</td>
+          </tr>
+          <tr>
+            <td>First-word capture</td>
+            <td><span class="table-check">Yes.</span> VAD + buffered audio captures from the first syllable.</td>
+            <td>Can miss the first word if recognition takes a moment to start.</td>
+          </tr>
+          <tr>
+            <td>Clipboard preservation</td>
+            <td><span class="table-check">Yes.</span> Clipboard saved before paste and restored after.</td>
+            <td>N/A. Text is inserted directly into Google Docs.</td>
+          </tr>
+          <tr>
+            <td>Voice commands</td>
+            <td>Not yet</td>
+            <td><span class="table-highlight">Yes</span> (formatting, editing, navigation; English only)</td>
+          </tr>
+          <tr>
+            <td>Languages</td>
+            <td>English (Parakeet), 90+ via WhisperKit</td>
+            <td>~100 languages</td>
+          </tr>
+          <tr>
+            <td>Platform</td>
+            <td>macOS (Apple Silicon)</td>
+            <td>Any OS with Chrome (desktop)</td>
+          </tr>
+          <tr>
+            <td>Accessibility</td>
+            <td>System-wide keyboard-free input for any macOS app</td>
+            <td>Keyboard-free input within Google Docs only</td>
+          </tr>
+          <tr>
+            <td>Multi-language in one session</td>
+            <td>Switch engines per session (Parakeet for English, WhisperKit for others)</td>
+            <td>Select one language at a time in the voice typing menu</td>
+          </tr>
+          <tr>
+            <td>Speech engines</td>
+            <td><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> + <a href="https://github.com/argmaxinc/WhisperKit" style="color: var(--accent); text-decoration: underline;">WhisperKit</a> (on-device)</td>
+            <td>Google Cloud Speech API</td>
+          </tr>
+          <tr>
+            <td>Source code</td>
+            <td><span class="table-highlight"><a href="https://github.com/AirSkye/EnviousWispr" style="color: var(--accent); text-decoration: underline;">Source-available</a></span> on GitHub (BSL 1.1)</td>
+            <td>Closed source</td>
+          </tr>
+          <tr>
+            <td>Transcription latency</td>
+            <td><span class="table-highlight">0.43s median</span>; ~1.5s with AI polish</td>
+            <td>Depends on network + Google server load</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">Google Docs Voice Typing claims source-verified from <a href="https://support.google.com/docs/answer/4492226" style="color: var(--text-3); text-decoration: underline;">support.google.com/docs/answer/4492226</a> as of April 2026; not firsthand-tested. EnviousWispr latency from production PostHog data on Apple Silicon Macs. Table expanded with 18 comparison rows covering app scope, AI features, privacy, and platform differences. Competitor claims last verified: 2026-04-04.</p>
+    <div style="text-align: center; margin-top: 28px;">
+      <a href="/#download" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- Why EnviousWispr -->
+<section class="section" aria-label="Advantages">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill green">Why EnviousWispr</div>
+      <h2 class="section-title">Why dictate outside Google Docs</h2>
+      <p class="section-sub">Google's voice typing is convenient inside Docs. But dictation should not be limited to one app in one browser.</p>
+    </div>
+    <div class="advantages-grid">
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🖥️</div>
+        <div class="advantage-title">Works in any text field</div>
+        <p class="advantage-desc">Slack, VS Code, email, notes, terminal. EnviousWispr is a system-wide dictation tool. Google's voice typing only works inside Google Docs and Google Slides in Chrome.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🔒</div>
+        <div class="advantage-title">On-device transcription</div>
+        <p class="advantage-desc">Your audio never leaves your Mac. It is processed by the <a href="https://developer.apple.com/machine-learning/core-ml/" style="color: var(--accent); text-decoration: underline;">Neural Engine</a> on Apple Silicon. Google sends your audio to cloud servers for processing. Private by architecture, not by promise. See <a href="/how-it-works/" style="color: var(--accent); text-decoration: underline;">how the pipeline works</a>.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">✈️</div>
+        <div class="advantage-title">Works offline</div>
+        <p class="advantage-desc">On a plane, in a cafe with spotty Wi-Fi, or on a train. EnviousWispr transcribes without internet after the initial model download. Google's voice typing requires a constant connection.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">✨</div>
+        <div class="advantage-title">AI polish and cleanup</div>
+        <p class="advantage-desc">EnviousWispr removes filler words, fixes grammar, and polishes your text with AI. Use Apple Intelligence on-device or bring your own API key. Google's voice typing gives you raw dictation only.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">📝</div>
+        <div class="advantage-title">Custom vocabulary</div>
+        <p class="advantage-desc">Teach EnviousWispr your team names, product terms, and acronyms with Custom Words. Google's voice typing has no custom vocabulary support.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">⚡</div>
+        <div class="advantage-title">Fast local transcription</div>
+        <p class="advantage-desc">Median time to text is 0.43s on Apple Silicon. No network round-trips, no server queues. Immune to bad Wi-Fi, unlike cloud-dependent dictation.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Privacy Deep Dive -->
+<section class="section" aria-label="Privacy Comparison">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill cyan">Privacy</div>
+      <h2 class="section-title">Where does your voice go?</h2>
+      <p class="section-sub">The most important question for any dictation tool. Here is the data flow for each app. For a deeper dive, read <a href="/blog/on-device-vs-cloud-dictation-privacy/" style="color: var(--accent); text-decoration: underline;">on-device vs cloud dictation privacy</a>.</p>
+    </div>
+    <div class="privacy-split">
+      <div class="privacy-card ew reveal">
+        <div class="privacy-card-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          EnviousWispr
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">1</div>
+          <div>You speak into your Mac's microphone.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">2</div>
+          <div>Audio is processed by the Neural Engine on your Apple Silicon chip. Nothing is uploaded.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">3</div>
+          <div>AI polish runs locally or with your own API key. If you use a cloud provider, only the text transcript is sent; you control the key.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">4</div>
+          <div>Polished text is pasted into any app. Audio is discarded. No logs, no telemetry on your content.</div>
+        </div>
+      </div>
+      <div class="privacy-card wf reveal">
+        <div class="privacy-card-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          Google Docs Voice Typing
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">1</div>
+          <div>You speak into your microphone while in Google Docs on Chrome.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">2</div>
+          <div>Audio is sent to Google's cloud servers for speech recognition.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">3</div>
+          <div>Transcribed text is returned and inserted into your Google Doc.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">4</div>
+          <div>Audio processing is subject to <a href="https://policies.google.com/privacy" style="color: var(--text-2); text-decoration: underline;">Google's privacy policy</a>. You control your Google account settings, but the audio does leave your device.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Deep Dive -->
+<section class="section" aria-label="Deep Dive">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Deep Dive</div>
+      <h2 class="section-title">The details that matter</h2>
+      <p class="section-sub">Two areas where the architectural difference between EnviousWispr and Google Docs Voice Typing is most visible.</p>
+    </div>
+    <div class="deep-dive-grid">
+      <div class="deep-dive-card reveal">
+        <div class="deep-dive-icon">🖥️</div>
+        <div class="deep-dive-title">Works in every app, not just Google Docs</div>
+        <div class="deep-dive-body">
+          <p>Google Docs Voice Typing is a feature inside Google Docs. It works well there, but only there. If you switch to Slack, an email client, VS Code, a terminal, or any other app, you lose dictation entirely. You have to copy text out of a Google Doc and paste it where you actually need it.</p>
+          <p>EnviousWispr is a system-wide dictation tool. Hold a hotkey, speak, and the transcribed text is pasted directly into whatever text field has focus. It works in every macOS application: native apps, Electron apps, web browsers, terminals, IDEs, messaging tools. There is no copy-paste detour.</p>
+          <p>For people who write in many apps throughout the day, this is the core difference. Dictation should follow you across your workflow, not lock you into one browser tab.</p>
+          <div class="deep-dive-detail">
+            <strong>How it works:</strong> EnviousWispr captures the frontmost app and text field at recording start. After transcription, it re-activates that exact app and inserts text via the Accessibility API. If direct insertion fails, it falls back to simulated Cmd+V, then to AppleScript. Your clipboard is saved before the operation and restored after.
+          </div>
+        </div>
+      </div>
+      <div class="deep-dive-card reveal">
+        <div class="deep-dive-icon">🔒</div>
+        <div class="deep-dive-title">Privacy: on-device vs cloud</div>
+        <div class="deep-dive-body">
+          <p>Google Docs Voice Typing requires a constant internet connection. Your audio is streamed to Google's servers, processed by their speech recognition API, and the text result is sent back. Google's <a href="https://policies.google.com/privacy" style="color: var(--accent); text-decoration: underline;">privacy policy</a> governs how that audio data is handled.</p>
+          <p>EnviousWispr processes audio entirely on your Mac using the Apple Silicon Neural Engine. The audio buffer never leaves your device. After transcription, the audio is discarded. If you use on-device AI polish (Apple Intelligence or Ollama), the entire pipeline is local. No audio or text is uploaded anywhere.</p>
+          <p>If you opt into a cloud LLM for polish (OpenAI, Gemini), only the text transcript is sent, never the audio, and you provide your own API key. You control the relationship with the provider directly.</p>
+          <div class="deep-dive-detail">
+            <strong>Privacy by architecture:</strong> EnviousWispr does not have a server. There is no account system, no cloud backend, and no telemetry on your dictated content. The app sends anonymous usage analytics (PostHog) and crash reports (Sentry), but your actual text and audio never leave your machine.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Speed Section -->
+<section class="section" aria-label="Speed">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill amber">Speed</div>
+      <h2 class="section-title">Fast because there is no upload step</h2>
+      <p class="section-sub">On Apple Silicon Macs, EnviousWispr transcribes speech locally. No network round-trip before text appears.</p>
+    </div>
+    <div class="speed-stats">
+      <div class="speed-card reveal">
+        <div class="speed-value">0.43s</div>
+        <div class="speed-label">Median transcription</div>
+        <div class="speed-detail">From end of speech to raw text</div>
+      </div>
+      <div class="speed-card reveal">
+        <div class="speed-value">1.5s</div>
+        <div class="speed-label">With AI polish</div>
+        <div class="speed-detail">Apple Intelligence on-device</div>
+      </div>
+      <div class="speed-card reveal">
+        <div class="speed-value">0ms</div>
+        <div class="speed-label">Network overhead</div>
+        <div class="speed-detail">Immune to bad Wi-Fi</div>
+      </div>
+    </div>
+    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Based on production data from Apple Silicon Macs. Results vary by hardware and settings.</p>
+  </div>
+</section>
+
+<!-- Fair Acknowledgment -->
+<section class="section" aria-label="Where Google Docs Voice Typing Wins">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Being Honest</div>
+      <h2 class="section-title">Choose Google Voice Typing if you live entirely in Google Docs</h2>
+      <p class="section-sub">Google's voice typing has real advantages in specific workflows. It may be a better fit in these situations:</p>
+    </div>
+    <div class="advantages-grid">
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🚀</div>
+        <div class="advantage-title">Zero setup if you already use Docs</div>
+        <p class="advantage-desc">If you live in Google Docs and use Chrome, voice typing is built in. No download, no setup, no model to install. Just open a document and start talking. That is genuinely hard to beat for convenience.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">💸</div>
+        <div class="advantage-title">Free with no download</div>
+        <p class="advantage-desc">There is nothing to install. Voice typing is a feature of Google Docs, available to anyone with a Google account. No disk space, no model downloads, no configuration.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🌍</div>
+        <div class="advantage-title">Works on any OS with Chrome</div>
+        <p class="advantage-desc">Windows, Linux, ChromeOS, macOS. If Chrome runs, voice typing works. EnviousWispr is macOS only and requires Apple Silicon.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🗣️</div>
+        <div class="advantage-title">Voice commands for formatting</div>
+        <p class="advantage-desc">Say "bold", "italic", "new line", "select all", or "undo" while dictating in Google Docs. These formatting commands (English only) let you edit hands-free inside the document. EnviousWispr does not have voice commands yet.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🌐</div>
+        <div class="advantage-title">~100 languages out of the box</div>
+        <p class="advantage-desc">Google supports roughly 100 languages for voice typing with no extra configuration. EnviousWispr's primary engine (Parakeet) is English-focused; WhisperKit supports 90+ but with varying accuracy.</p>
+      </div>
+    </div>
+    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If your workflow lives entirely inside Google Docs, their voice typing is a solid choice. If you need dictation across your whole Mac, in any app, with AI polish and privacy, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>.</p>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="section" aria-label="Frequently Asked Questions">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">FAQ</div>
+      <h2 class="section-title">Common questions</h2>
+    </div>
+    <div class="faq-list">
+      <div class="faq-item reveal">
+        <div class="faq-q">Is there a Google Docs voice typing alternative that works outside the browser?</div>
+        <p class="faq-a">Yes. EnviousWispr is a native Mac app that works in any text field system-wide. Dictate into Slack, VS Code, email, Notes, or any other app. No browser required.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can I dictate outside Google Docs for free?</div>
+        <p class="faq-a">Yes. EnviousWispr is free, with no subscription, no usage limits, and no account required. Download and start dictating in any app on your Mac. See the <a href="/blog/getting-started-enviouswispr-under-2-minutes/" style="color: var(--accent); text-decoration: underline;">2-minute getting started guide</a>.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Does EnviousWispr work offline?</div>
+        <p class="faq-a">Transcription runs entirely on-device and works without internet. AI polish requires an LLM; you can use a local model for fully offline operation or bring your own API key for a cloud provider.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Does Google Docs voice typing send my audio to the cloud?</div>
+        <p class="faq-a">Yes. Google Docs voice typing requires an internet connection and processes your audio on Google's servers. EnviousWispr processes audio entirely on your Mac using the Apple Silicon Neural Engine.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Does EnviousWispr have voice commands like Google Docs?</div>
+        <p class="faq-a">Not yet. Google Docs supports voice commands (select, format, navigate) in English. EnviousWispr focuses on fast, accurate transcription with AI polish. Voice commands may come in a future release.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">What Mac do I need?</div>
+        <p class="faq-a">Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine on Apple Silicon is what makes on-device transcription fast.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can EnviousWispr remove filler words?</div>
+        <p class="faq-a">Yes. EnviousWispr automatically removes "um", "uh", "like", and other filler words. Google Docs voice typing transcribes everything as spoken, including fillers.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Is EnviousWispr open source?</div>
+        <p class="faq-a">Source-available under the Business Source License 1.1. That means you can read, build, and inspect every line of code on GitHub. It is not an OSI-approved open source license, but it gives you full transparency into how the app works. Contributions are welcome.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can I use Google Docs voice typing in Slack, VS Code, or other apps?</div>
+        <p class="faq-a">No. Google Docs Voice Typing only works inside Google Docs and Google Slides in a supported browser. If you need to dictate into Slack, VS Code, email clients, terminals, or any other app, you need a system-wide tool like EnviousWispr.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Does Google Docs voice typing add punctuation automatically?</div>
+        <p class="faq-a">Only to a limited extent. In most languages, you need to say "period", "comma", "question mark", and other punctuation aloud. EnviousWispr handles punctuation automatically through its ASR engine and optional LLM polish, so you can speak naturally without thinking about punctuation.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can I teach Google Docs voice typing my company's terminology?</div>
+        <p class="faq-a">No. Google Docs Voice Typing has no custom vocabulary feature. If it misrecognizes a product name, acronym, or technical term, there is no way to correct it. EnviousWispr's Custom Words feature lets you define exact spellings for names, jargon, and domain-specific terms that get applied every time you dictate.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Related Comparisons -->
+<section class="section" aria-label="Related Comparisons" style="padding-top: 0;">
+  <div class="container">
+    <p style="font-size: 14px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px;">Compare with other tools</p>
+    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+      <a href="/compare/wisprflow/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs WisprFlow</a>
+      <a href="/compare/superwhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs Superwhisper</a>
+      <a href="/compare/dragon/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs Dragon</a>
+      <a href="/compare/apple-dictation/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs Apple Dictation</a>
+      <a href="/compare/otter-ai/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs Otter.ai</a>
+      <a href="/compare/macwhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs MacWhisper</a>
+      <a href="/compare/voiceink/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs VoiceInk</a>
+      <a href="/compare/willow-voice/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs Willow Voice</a>
+      <a href="/compare/notta/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs Notta</a>
+      <a href="/compare/whisper-cpp/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs whisper.cpp</a>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section" aria-label="Download CTA">
+  <div class="container">
+    <h2 class="reveal">Try dictation that works outside Google Docs</h2>
+    <p class="reveal">Free to download. No account required. Works in every app on your Mac.</p>
+    <div class="cta-actions reveal">
+      <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="btn-primary" data-download-source="compare">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+      <a href="/" class="back-link">Back to Home</a>
+    </div>
+  </div>
+</section>
+
+</BaseLayout>

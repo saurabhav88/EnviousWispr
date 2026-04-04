@@ -1,0 +1,839 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const siteUrl = 'https://enviouswispr.com';
+
+const articleJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "EnviousWispr vs VoiceInk: Free Mac Dictation Compared",
+  "description": "Compare EnviousWispr and VoiceInk on speed, pricing, speech engines, and AI polish. Two on-device Mac dictation apps, one is free.",
+  "url": `${siteUrl}/compare/voiceink/`,
+  "datePublished": "2026-04-04",
+  "dateModified": "2026-04-04",
+  "author": {
+    "@type": "Person",
+    "name": "Saurabh Vaish",
+    "url": `${siteUrl}/authors/saurabh-vaish/`,
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Envious Labs",
+    "url": siteUrl,
+  },
+  "isPartOf": {
+    "@type": "WebSite",
+    "url": siteUrl,
+    "name": "EnviousWispr",
+  },
+});
+
+const breadcrumbJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": siteUrl,
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "EnviousWispr vs VoiceInk",
+      "item": `${siteUrl}/compare/voiceink/`,
+    },
+  ],
+});
+
+const faqJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is EnviousWispr really free compared to VoiceInk?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. EnviousWispr has no purchase price, no subscription, and no usage limits. VoiceInk charges a one-time fee starting at $39.99."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Both are on-device. Why does the speech engine matter?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Different engines have different speed and accuracy profiles. EnviousWispr uses Parakeet TDT, a CTC-Transducer model optimized for Apple's Neural Engine, which delivers 0.43s median latency for English. VoiceInk uses whisper.cpp, a solid engine, but Parakeet is purpose-built for fast English transcription."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does EnviousWispr support languages other than English?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. Parakeet TDT handles English. For other languages, EnviousWispr switches to WhisperKit, which supports 90+ languages. VoiceInk supports 100+ languages through whisper.cpp."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How does custom vocabulary compare between the two apps?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "EnviousWispr uses a 6-pass fuzzy matching system with Levenshtein distance, Soundex phonetic matching, and bigram similarity to catch misrecognized words even when the ASR output is phonetically close but spelled differently. VoiceInk offers a personal dictionary with find-and-replace rules."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I switch from VoiceInk to EnviousWispr easily?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. Download EnviousWispr, set your hotkey, and start dictating. There is no data to migrate. Both apps work in any text field on macOS."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Which app is better for non-English languages?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "VoiceInk supports 100+ languages through whisper.cpp and may have an edge in multilingual breadth. EnviousWispr supports 90+ languages via WhisperKit. For English specifically, EnviousWispr is faster thanks to Parakeet TDT."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What Mac do I need?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "EnviousWispr requires Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. VoiceInk also requires macOS 14+. Both apps target modern Macs."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is there a free alternative to VoiceInk?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. EnviousWispr is a free, on-device dictation app for Apple Silicon Macs. It uses Parakeet TDT for fast English transcription and includes an AI polish pipeline. No account or payment required."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is EnviousWispr open source?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Source-available under the Business Source License 1.1. You can read, build, and inspect every line of code on GitHub. VoiceInk uses GPL v3, an OSI-approved open source license."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does VoiceInk have AI text enhancement?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. VoiceInk offers AI formatting through system prompts with LLM providers. EnviousWispr supports 5 AI polish providers including Apple Intelligence (fully on-device), Ollama (on-device), and cloud providers with your own API key, plus built-in hallucination safeguards."
+      }
+    }
+  ]
+});
+
+---
+
+<BaseLayout
+  title="EnviousWispr vs VoiceInk: Free Mac Dictation Compared"
+  description="Compare EnviousWispr vs VoiceInk on price, speed, speech engines, and AI polish. Both are on-device Mac dictation apps. EnviousWispr is free."
+  activePage="compare"
+  ogType="article"
+  canonicalPath="/compare/voiceink/"
+>
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={articleJsonLd}></script>
+    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
+    <script type="application/ld+json" set:html={faqJsonLd}></script>
+  </Fragment>
+
+<style>
+/* ── Page Header ── */
+.page-header { padding: 100px 0 48px; text-align: center; position: relative; z-index: 1; }
+.vs-badge {
+  display: inline-flex; align-items: center; gap: 14px; margin-bottom: 20px;
+  font-size: 14px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-3);
+}
+.vs-brand { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; color: var(--text); }
+.vs-brand.accent { color: var(--accent); }
+.vs-circle {
+  width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--border-hover);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; color: var(--text-3); background: #fff;
+}
+.page-header h1 { font-size: 48px; font-weight: 800; letter-spacing: -2.5px; line-height: 1.1; color: var(--text); margin-bottom: 14px; max-width: 700px; margin-left: auto; margin-right: auto; }
+.page-header-sub { font-size: 18px; font-weight: 400; color: var(--text-2); max-width: 560px; margin: 0 auto; line-height: 1.6; }
+.hero-pills { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+.hero-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 100px; font-size: 13px; font-weight: 600;
+  background: rgba(124,58,237,0.06); color: var(--accent); border: 1px solid rgba(124,58,237,0.12);
+}
+.hero-pill svg { flex-shrink: 0; }
+.hero-cta { margin-top: 28px; }
+.hero-meta { font-size: 12px; color: var(--text-3); margin-top: 16px; }
+
+/* ── Comparison Table ── */
+.compare-table-wrap {
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-card); border: 1px solid var(--border-hover);
+  background: #fff;
+}
+.compare-table {
+  width: 100%; border-collapse: collapse; font-size: 15px;
+  min-width: 640px;
+}
+.compare-table thead th {
+  padding: 20px 24px; font-size: 16px; font-weight: 700;
+  text-align: left; border-bottom: 2px solid var(--border-hover);
+  background: rgba(248,245,255,0.5);
+}
+.compare-table thead th:first-child { width: 34%; }
+.compare-table thead th:nth-child(2) {
+  background: rgba(124,58,237,0.06);
+  color: var(--accent);
+}
+.compare-table tbody td {
+  padding: 16px 24px; border-bottom: 1px solid var(--border);
+  vertical-align: top; line-height: 1.55;
+}
+.compare-table tbody tr:last-child td { border-bottom: none; }
+.compare-table tbody td:first-child {
+  font-weight: 600; color: var(--text);
+}
+.compare-table tbody td:nth-child(2) {
+  background: rgba(124,58,237,0.02);
+}
+.compare-table tbody td:nth-child(3) {
+  color: var(--text-2);
+}
+.table-check { color: var(--green); font-weight: 700; }
+.table-cross { color: var(--text-3); }
+.table-highlight { color: var(--accent); font-weight: 600; }
+
+/* ── Advantage Cards ── */
+.advantages-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.advantage-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 28px 24px;
+  position: relative; overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.advantage-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(124,58,237,0.10); }
+.advantage-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full);
+}
+.advantage-icon { font-size: 28px; margin-bottom: 14px; line-height: 1; }
+.advantage-title { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 8px; color: var(--text); }
+.advantage-desc { font-size: 14px; color: var(--text-2); line-height: 1.65; }
+
+/* ── Privacy Section ── */
+.privacy-split { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.privacy-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 32px 28px;
+}
+.privacy-card.ew {
+  border-color: rgba(0,200,128,0.25);
+  background: linear-gradient(135deg, rgba(0,200,128,0.03), rgba(248,245,255,0.5));
+}
+.privacy-card.wf {
+  border-color: rgba(230,37,58,0.15);
+  background: linear-gradient(135deg, rgba(230,37,58,0.02), rgba(248,245,255,0.5));
+}
+.privacy-card-label {
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+}
+.privacy-card.ew .privacy-card-label { color: var(--green); }
+.privacy-card.wf .privacy-card-label { color: var(--red); }
+.privacy-step {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+  font-size: 14px; color: var(--text-2); line-height: 1.55;
+}
+.privacy-step:last-child { border-bottom: none; }
+.privacy-step-num {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+}
+.privacy-card.ew .privacy-step-num { background: rgba(0,200,128,0.12); color: var(--green); }
+.privacy-card.wf .privacy-step-num { background: rgba(230,37,58,0.08); color: var(--red); }
+
+/* ── Speed Stats ── */
+.speed-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.speed-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 28px 20px; text-align: center;
+}
+.speed-value {
+  font-size: 42px; font-weight: 800; letter-spacing: -2px; line-height: 1; margin-bottom: 6px;
+  background: var(--rainbow-full);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.speed-label { font-size: 14px; color: var(--text-2); font-weight: 500; }
+.speed-detail { font-size: 11px; color: var(--text-3); margin-top: 4px; }
+
+/* ── Deep Dive ── */
+.deep-dive-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+.deep-dive-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 36px 32px;
+  position: relative; overflow: hidden;
+}
+.deep-dive-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full);
+}
+.deep-dive-icon { font-size: 32px; margin-bottom: 16px; line-height: 1; }
+.deep-dive-title { font-size: 22px; font-weight: 800; letter-spacing: -0.8px; margin-bottom: 12px; color: var(--text); }
+.deep-dive-body { font-size: 15px; color: var(--text-2); line-height: 1.7; }
+.deep-dive-body p { margin-bottom: 12px; }
+.deep-dive-body p:last-child { margin-bottom: 0; }
+.deep-dive-detail {
+  margin-top: 16px; padding: 14px 18px; border-radius: 10px;
+  background: rgba(124,58,237,0.04); border: 1px solid rgba(124,58,237,0.08);
+  font-size: 13px; color: var(--text-2); line-height: 1.6;
+}
+.deep-dive-detail strong { color: var(--text); }
+
+/* ── FAQ ── */
+.faq-list { max-width: 720px; margin: 0 auto; }
+.faq-item {
+  border-bottom: 1px solid var(--border-hover); padding: 24px 0;
+}
+.faq-item:last-child { border-bottom: none; }
+.faq-q {
+  font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 8px; letter-spacing: -0.3px;
+}
+.faq-a { font-size: 15px; color: var(--text-2); line-height: 1.65; }
+
+/* ── CTA ── */
+.cta-section { padding: var(--section-pad) 0; text-align: center; position: relative; z-index: 1; }
+.cta-section h2 { font-size: 40px; font-weight: 800; letter-spacing: -2px; margin-bottom: 12px; }
+.cta-section p { font-size: 17px; color: var(--text-2); margin-bottom: 36px; }
+.cta-actions { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; }
+.back-link { font-size: 15px; font-weight: 500; color: var(--text-3); text-decoration: none; transition: color 0.2s; }
+.back-link:hover { color: var(--accent); }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .advantages-grid { grid-template-columns: repeat(2, 1fr); }
+  .privacy-split { grid-template-columns: 1fr; }
+  .speed-stats { grid-template-columns: repeat(3, 1fr); }
+  .deep-dive-grid { grid-template-columns: 1fr; }
+  .page-header h1 { font-size: 42px; letter-spacing: -2px; }
+}
+@media (max-width: 600px) {
+  .advantages-grid { grid-template-columns: 1fr; }
+  .speed-stats { grid-template-columns: 1fr; }
+  .page-header h1 { font-size: 34px; letter-spacing: -1px; }
+  .compare-table-wrap { margin: 0 -20px; border-radius: 0; border-left: none; border-right: none; }
+}
+</style>
+
+<!-- Page Header -->
+<header class="page-header">
+  <div class="container">
+    <div class="vs-badge reveal">
+      <span class="vs-brand accent">EnviousWispr</span>
+      <span class="vs-circle">VS</span>
+      <span class="vs-brand">VoiceInk</span>
+    </div>
+    <h1 class="reveal">EnviousWispr vs VoiceInk: free on-device Mac dictation</h1>
+    <p class="page-header-sub reveal">Both keep your audio on your Mac. EnviousWispr adds a faster speech engine, a deeper AI polish pipeline, and costs nothing.</p>
+    <div class="hero-pills reveal">
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Both on-device
+      </span>
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Free vs $39.99
+      </span>
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        0.43s median latency
+      </span>
+    </div>
+    <div class="hero-cta reveal">
+      <a href="/#download" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+    </div>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: April 2026</p>
+  </div>
+</header>
+
+<!-- Side-by-Side Table -->
+<section class="section" aria-label="Feature Comparison">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Side by Side</div>
+      <h2 class="section-title">Feature comparison</h2>
+      <p class="section-sub">An honest look at how the two on-device dictation apps compare across pricing, speed, engines, and features.</p>
+    </div>
+    <div class="compare-table-wrap reveal">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>EnviousWispr</th>
+            <th>VoiceInk</th>
+          </tr>
+        </thead>
+        <!-- Evidence: VoiceInk claims verified against tryvoiceink.com and github.com/Beingpax/VoiceInk on 2026-04-04.
+             Confidence: source-verified from public website and GitHub repository.
+             Sources:
+               - Pricing: tryvoiceink.com (accessed 2026-04-04) - Pro $39.99, one-time purchase
+               - On-device: tryvoiceink.com features page - fully on-device, no internet required
+               - Speech engine: whisper.cpp (stated on website and GitHub)
+               - Languages: 100+ languages (stated on website)
+               - Power Mode: per-app settings (stated on website)
+               - Screen context: captures screen content for contextual formatting
+               - AI formatting: system prompts with LLM providers
+               - Custom vocabulary: personal dictionary with replacements
+               - License: GPL v3, open source on GitHub
+             Firsthand testing: VoiceInk was not tested firsthand for this comparison.
+             All claims are source-verified from official pages.
+             Last verified: 2026-04-04. -->
+        <tbody>
+          <tr>
+            <td>Price</td>
+            <td><span class="table-highlight">Free. No payment ever.</span></td>
+            <td>$39.99 one-time*</td>
+          </tr>
+          <tr>
+            <td>Account required</td>
+            <td><span class="table-check">No</span></td>
+            <td>No</td>
+          </tr>
+          <tr>
+            <td>Audio processing</td>
+            <td><span class="table-highlight">On-device</span> (Apple Silicon)</td>
+            <td>On-device (whisper.cpp)</td>
+          </tr>
+          <tr>
+            <td>Audio leaves your Mac</td>
+            <td><span class="table-check">Never.</span> If you enable cloud AI polish, only the text transcript is sent.</td>
+            <td><span class="table-check">Never.</span> Fully offline capable.</td>
+          </tr>
+          <tr>
+            <td>Works offline</td>
+            <td><span class="table-check">Yes</span> (after model download)</td>
+            <td><span class="table-check">Yes</span> (after model download)</td>
+          </tr>
+          <tr>
+            <td>Speech engines</td>
+            <td><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> + <a href="https://github.com/argmaxinc/WhisperKit" style="color: var(--accent); text-decoration: underline;">WhisperKit</a></td>
+            <td><a href="https://github.com/ggerganov/whisper.cpp" style="color: var(--accent); text-decoration: underline;">whisper.cpp</a></td>
+          </tr>
+          <tr>
+            <td>AI polish</td>
+            <td><span class="table-highlight">5 providers:</span> Apple Intelligence, Ollama (both on-device), OpenAI, Gemini, Groq (BYO key)</td>
+            <td>AI formatting via system prompts with LLM providers</td>
+          </tr>
+          <tr>
+            <td>Offline AI polish</td>
+            <td><span class="table-check">Yes</span> (Apple Intelligence or Ollama, no API key needed)</td>
+            <td><span class="table-cross">Requires cloud LLM</span> for AI formatting</td>
+          </tr>
+          <tr>
+            <td>Filler word removal</td>
+            <td><span class="table-check">Yes</span> (built-in regex pass, runs before AI polish)</td>
+            <td>Via AI formatting prompts</td>
+          </tr>
+          <tr>
+            <td>Writing style control</td>
+            <td>Clean prose style via AI polish prompt</td>
+            <td><span class="table-highlight">Power Mode</span> with per-app custom prompts</td>
+          </tr>
+          <tr>
+            <td>Custom vocabulary</td>
+            <td><span class="table-highlight">6-pass fuzzy matching</span> (Levenshtein + Soundex + bigram)</td>
+            <td>Personal dictionary (find-and-replace)</td>
+          </tr>
+          <tr>
+            <td>AI hallucination safeguards</td>
+            <td><span class="table-check">Yes</span> (length validation, preamble stripping, short-text bypass)</td>
+            <td>Not documented</td>
+          </tr>
+          <tr>
+            <td>First-word capture</td>
+            <td><span class="table-check">Pre-roll buffer</span> captures audio before you finish pressing the hotkey</td>
+            <td>Standard recording start</td>
+          </tr>
+          <tr>
+            <td>Starts listening instantly</td>
+            <td><span class="table-check">Warm engine</span> (model stays loaded between recordings)</td>
+            <td>Model loaded at startup</td>
+          </tr>
+          <tr>
+            <td>Clipboard preservation</td>
+            <td><span class="table-check">Yes</span> (clipboard saved before paste, restored after)</td>
+            <td>Not documented</td>
+          </tr>
+          <tr>
+            <td>Text lands in the right app</td>
+            <td><span class="table-check">Yes</span> (three-tier paste with target app reactivation)</td>
+            <td>Pastes into active app</td>
+          </tr>
+          <tr>
+            <td>Auto-stop on silence</td>
+            <td><span class="table-check">Yes</span> (VAD-based silence detection)</td>
+            <td><span class="table-check">Yes</span></td>
+          </tr>
+          <tr>
+            <td>Multi-language</td>
+            <td>English (Parakeet), 90+ via WhisperKit</td>
+            <td>100+ languages</td>
+          </tr>
+          <tr>
+            <td>Per-app settings</td>
+            <td>Global hotkey and settings</td>
+            <td><span class="table-highlight">Power Mode</span> with per-app prompts</td>
+          </tr>
+          <tr>
+            <td>Screen context</td>
+            <td><span class="table-cross">No</span></td>
+            <td><span class="table-check">Yes</span></td>
+          </tr>
+          <tr>
+            <td>Accessibility</td>
+            <td>VoiceOver labels, keyboard-navigable settings</td>
+            <td>Standard macOS controls</td>
+          </tr>
+          <tr>
+            <td>Transcription latency</td>
+            <td><span class="table-highlight">0.43s median</span>; ~1.5s with AI polish</td>
+            <td>Depends on model size and hardware</td>
+          </tr>
+          <tr>
+            <td>Source code</td>
+            <td><a href="https://github.com/AirSkye/EnviousWispr" style="color: var(--accent); text-decoration: underline;">Source-available</a> (BSL 1.1)</td>
+            <td><a href="https://github.com/Beingpax/VoiceInk" style="color: var(--accent); text-decoration: underline;">Open source</a> (GPL v3)</td>
+          </tr>
+          <tr>
+            <td>Platform</td>
+            <td>macOS (Apple Silicon, 14+)</td>
+            <td>macOS (14+)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*VoiceInk pricing: $39.99 one-time (Pro). Based on tryvoiceink.com as of April 2026. EnviousWispr latency from production PostHog data on Apple Silicon Macs. VoiceInk claims source-verified from tryvoiceink.com and GitHub; not firsthand-tested. Competitor claims last verified: 2026-04-04.</p>
+    <div style="text-align: center; margin-top: 28px;">
+      <a href="/#download" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- Why EnviousWispr -->
+<section class="section" aria-label="Advantages">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill green">Why EnviousWispr</div>
+      <h2 class="section-title">Why choose EnviousWispr over VoiceInk</h2>
+      <p class="section-sub">Both apps keep your audio private. Here is where EnviousWispr pulls ahead.</p>
+    </div>
+    <div class="advantages-grid">
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">$0</div>
+        <div class="advantage-title">Completely free</div>
+        <p class="advantage-desc">No tiers, no license keys, no payment. VoiceInk charges $39.99 for a one-time purchase. EnviousWispr costs nothing.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">&#9889;</div>
+        <div class="advantage-title">Faster English transcription</div>
+        <p class="advantage-desc">Parakeet TDT is purpose-built for English and runs on Apple's Neural Engine. 0.43s median latency. WhisperKit handles 90+ other languages when you need them.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">&#129504;</div>
+        <div class="advantage-title">5 AI polish providers</div>
+        <p class="advantage-desc">Apple Intelligence and Ollama run fully on-device with no API key. Or bring your own OpenAI, Gemini, or Groq key. VoiceInk offers AI formatting through system prompts with cloud LLMs.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">&#128295;</div>
+        <div class="advantage-title">Dual speech engines</div>
+        <p class="advantage-desc">Parakeet TDT for speed on English. WhisperKit for multilingual coverage. Two engines, one app, automatic routing. See <a href="/how-it-works/" style="color: var(--accent); text-decoration: underline;">how the pipeline works</a>. VoiceInk uses whisper.cpp only.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">&#128218;</div>
+        <div class="advantage-title">Smarter word correction</div>
+        <p class="advantage-desc">A 6-pass fuzzy matching system catches misrecognized words that simple find-and-replace would miss. Levenshtein distance, Soundex phonetic matching, and bigram similarity work together to correct names, jargon, and technical terms.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">&#128736;</div>
+        <div class="advantage-title">Auditable code</div>
+        <p class="advantage-desc">Every line is <a href="https://github.com/AirSkye/EnviousWispr" style="color: var(--accent); text-decoration: underline;">on GitHub</a> under BSL 1.1. Verify privacy claims yourself. VoiceInk is also open source under GPL v3, so both apps offer transparency.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Privacy Deep Dive -->
+<section class="section" aria-label="Privacy Comparison">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill cyan">Privacy</div>
+      <h2 class="section-title">Where does your voice go?</h2>
+      <p class="section-sub">Both apps process audio on your Mac. The difference is in how polish and formatting work. For a deeper dive, read <a href="/blog/on-device-vs-cloud-dictation-privacy/" style="color: var(--accent); text-decoration: underline;">on-device vs cloud dictation privacy</a>.</p>
+    </div>
+    <div class="privacy-split">
+      <div class="privacy-card ew reveal">
+        <div class="privacy-card-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          EnviousWispr
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">1</div>
+          <div>You speak into your Mac's microphone.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">2</div>
+          <div>Audio is processed by Parakeet TDT or WhisperKit on the Neural Engine. Nothing is uploaded.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">3</div>
+          <div>AI polish runs locally (Apple Intelligence or Ollama) or with your own API key. If you use a cloud provider, only the text transcript is sent.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">4</div>
+          <div>Polished text is pasted. Audio is discarded. No logs, no telemetry on your content.</div>
+        </div>
+      </div>
+      <div class="privacy-card wf reveal">
+        <div class="privacy-card-label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          VoiceInk
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">1</div>
+          <div>You speak into your Mac's microphone.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">2</div>
+          <div>Audio is processed locally by whisper.cpp. Nothing is uploaded.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">3</div>
+          <div>AI formatting applies system prompts via cloud LLM to shape the output text.</div>
+        </div>
+        <div class="privacy-step">
+          <div class="privacy-step-num">4</div>
+          <div>Formatted text is pasted into the active app.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Speed Section -->
+<section class="section" aria-label="Speed">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill amber">Speed</div>
+      <h2 class="section-title">Parakeet TDT vs whisper.cpp</h2>
+      <p class="section-sub">Both run on-device, but the engine matters. Parakeet TDT is a CTC-Transducer model optimized for Apple's Neural Engine. It is measurably faster for English transcription.</p>
+    </div>
+    <div class="speed-stats">
+      <div class="speed-card reveal">
+        <div class="speed-value">0.43s</div>
+        <div class="speed-label">Median transcription</div>
+        <div class="speed-detail">Parakeet TDT on Apple Silicon</div>
+      </div>
+      <div class="speed-card reveal">
+        <div class="speed-value">1.5s</div>
+        <div class="speed-label">With AI polish</div>
+        <div class="speed-detail">Apple Intelligence on-device</div>
+      </div>
+      <div class="speed-card reveal">
+        <div class="speed-value">0ms</div>
+        <div class="speed-label">Network overhead</div>
+        <div class="speed-detail">Both apps work fully offline</div>
+      </div>
+    </div>
+    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">EnviousWispr latency based on production data from Apple Silicon Macs. VoiceInk latency depends on chosen Whisper model size and hardware. Results vary by settings.</p>
+  </div>
+</section>
+
+<!-- Deep Dive -->
+<section class="section" aria-label="Technical Deep Dives">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Under the Hood</div>
+      <h2 class="section-title">The details that make dictation reliable</h2>
+      <p class="section-sub">On-device transcription is only half the problem. What happens between speech and pasted text determines whether dictation feels trustworthy.</p>
+    </div>
+    <div class="deep-dive-grid">
+      <div class="deep-dive-card reveal">
+        <div class="deep-dive-icon">&#127919;</div>
+        <div class="deep-dive-title">Paste workflow that does not lose your text</div>
+        <div class="deep-dive-body">
+          <p>Dictation apps face a subtle problem: between when you stop recording and when text is pasted, you might switch apps, click a different field, or have something important on your clipboard. If the app does not account for this, your text ends up in the wrong place or overwrites what you had copied.</p>
+          <p>EnviousWispr captures which app had focus when you started recording. A pre-roll audio buffer ensures the very first word is never clipped, even if you start speaking before the hotkey is fully pressed. The ASR engine stays warm between recordings, so there is no cold-start delay.</p>
+          <p>After transcription, the app re-activates the original target app and uses a three-tier paste system: Accessibility API direct insertion first, then simulated Cmd+V, then AppleScript as a last resort. Your clipboard contents are saved before the operation and restored after, so nothing is lost.</p>
+          <div class="deep-dive-detail">
+            <strong>How it works:</strong> Pre-roll buffer captures ~200ms of audio before hotkey release. Warm engine keeps the ASR model loaded in memory. Three-tier paste (AX insertion, CGEvent Cmd+V, AppleScript) with clipboard snapshot and restoration. Target app reactivation uses Accessibility API force-activation to bypass macOS background process restrictions.
+          </div>
+        </div>
+      </div>
+      <div class="deep-dive-card reveal">
+        <div class="deep-dive-icon">&#128221;</div>
+        <div class="deep-dive-title">Custom vocabulary that catches phonetic mismatches</div>
+        <div class="deep-dive-body">
+          <p>Every speech-to-text engine struggles with names, acronyms, and domain-specific terms. Simple find-and-replace dictionaries only work when the ASR output exactly matches the expected error. But ASR errors are phonetic: "Envious Whisper" instead of "EnviousWispr," or "park it" instead of "Parakeet."</p>
+          <p>EnviousWispr runs custom vocabulary through a 6-pass fuzzy matching pipeline. First, exact matches are applied. Then Levenshtein distance catches close misspellings. Soundex phonetic encoding finds words that sound alike but are spelled differently. Bigram similarity catches partial matches. Case-insensitive and word-boundary passes handle the remaining edge cases.</p>
+          <p>The result: you add "EnviousWispr" to your custom words once, and it corrects "envious whisper," "envious wisper," and "envious whispr" automatically. VoiceInk's personal dictionary is useful for exact replacements, but phonetic misrecognitions require the fuzzy matching approach.</p>
+          <div class="deep-dive-detail">
+            <strong>How it works:</strong> 6-pass pipeline: exact match, Levenshtein distance (edit distance threshold), Soundex phonetic encoding, bigram character-pair similarity, case-insensitive match, word-boundary match. Each pass runs independently, so a word can be caught by any matching strategy. Custom words support both "correct this term" and "replace X with Y" modes.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Fair Acknowledgment -->
+<section class="section" aria-label="Where VoiceInk Wins">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Being Honest</div>
+      <h2 class="section-title">Choose VoiceInk if these matter more to you</h2>
+      <p class="section-sub">VoiceInk is a solid, lightweight dictation app. It may be a better fit in these situations:</p>
+    </div>
+    <div class="advantages-grid">
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">&#128176;</div>
+        <div class="advantage-title">One-time purchase, no updates to worry about</div>
+        <p class="advantage-desc">VoiceInk is a one-time $39.99 purchase. You pay once and own it. EnviousWispr is free today, but as a younger project its long-term model is still evolving. If you prefer the certainty of a single purchase, VoiceInk is straightforward.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">&#127919;</div>
+        <div class="advantage-title">Per-app settings and screen context</div>
+        <p class="advantage-desc">VoiceInk's Power Mode lets you configure different prompts and behaviors for each application, and can read what is on your screen to provide more relevant formatting. EnviousWispr uses global settings and does not have screen context awareness.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">&#129520;</div>
+        <div class="advantage-title">Simpler, lighter app</div>
+        <p class="advantage-desc">VoiceInk does one thing well with a clean interface and minimal setup. EnviousWispr has more moving parts (dual engines, multi-provider AI polish, fuzzy vocabulary). If you want the simplest possible dictation tool, VoiceInk may feel more focused.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">&#128220;</div>
+        <div class="advantage-title">GPL open source license</div>
+        <p class="advantage-desc">VoiceInk is licensed under GPL v3, an OSI-approved open source license. EnviousWispr uses BSL 1.1, which is source-available but not OSI-approved. If license type matters to you, VoiceInk has the edge.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">&#127758;</div>
+        <div class="advantage-title">Broader multilingual support</div>
+        <p class="advantage-desc">VoiceInk supports 100+ languages through whisper.cpp and has been tuned for multilingual workflows. EnviousWispr supports 90+ via WhisperKit, but Parakeet TDT (the fast engine) is English-only. If you dictate heavily in non-English languages, VoiceInk may be more polished for that use case.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">&#9201;</div>
+        <div class="advantage-title">Potentially faster setup</div>
+        <p class="advantage-desc">VoiceInk has a straightforward download-and-go experience. EnviousWispr requires granting Accessibility permissions and downloading an ASR model on first launch. Both are fast, but VoiceInk may feel quicker to get started with.</p>
+      </div>
+    </div>
+    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you primarily dictate in English and want the fastest transcription at zero cost, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. If VoiceInk's per-app settings or screen context awareness are important to your workflow, it is worth the $39.99.</p>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="section" aria-label="Frequently Asked Questions">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">FAQ</div>
+      <h2 class="section-title">Common questions</h2>
+    </div>
+    <div class="faq-list">
+      <div class="faq-item reveal">
+        <div class="faq-q">Is EnviousWispr really free compared to VoiceInk?</div>
+        <p class="faq-a">Yes. EnviousWispr has no purchase price, no subscription, and no usage limits. VoiceInk charges a one-time fee of $39.99.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Both are on-device. Why does the speech engine matter?</div>
+        <p class="faq-a">Different engines have different speed and accuracy profiles. EnviousWispr uses Parakeet TDT, a CTC-Transducer model optimized for Apple's Neural Engine, which delivers 0.43s median latency for English. VoiceInk uses whisper.cpp, a solid engine, but Parakeet is purpose-built for fast English transcription.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Does EnviousWispr support languages other than English?</div>
+        <p class="faq-a">Yes. Parakeet TDT handles English. For other languages, EnviousWispr switches to WhisperKit, which supports 90+ languages. VoiceInk supports 100+ languages through whisper.cpp.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">How does custom vocabulary compare between the two apps?</div>
+        <p class="faq-a">EnviousWispr uses a 6-pass fuzzy matching system with Levenshtein distance, Soundex phonetic matching, and bigram similarity to catch misrecognized words even when the ASR output is phonetically close but spelled differently. VoiceInk offers a personal dictionary with find-and-replace rules, which works well for exact substitutions but may miss phonetic errors.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">What is AI polish and does VoiceInk have it?</div>
+        <p class="faq-a">AI polish is a post-transcription step that fixes grammar, removes filler words, and formats your text using a language model. EnviousWispr supports Apple Intelligence, Ollama (both on-device), and cloud providers with your own API key. VoiceInk offers AI formatting through system prompts with cloud LLM providers.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Which app is better for non-English languages?</div>
+        <p class="faq-a">VoiceInk supports 100+ languages through whisper.cpp and has been optimized for multilingual use. EnviousWispr supports 90+ via WhisperKit but its fastest engine (Parakeet TDT) is English-only. For non-English dictation, VoiceInk may have an edge in language breadth and tuning.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Does VoiceInk have AI text enhancement?</div>
+        <p class="faq-a">Yes. VoiceInk offers AI formatting through system prompts with LLM providers. EnviousWispr supports 5 AI polish providers including Apple Intelligence (fully on-device), Ollama (on-device), OpenAI, Gemini, and Groq, plus built-in hallucination safeguards that reject fabricated output.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can I switch from VoiceInk easily?</div>
+        <p class="faq-a">Yes. Download EnviousWispr, set your hotkey, and start dictating. There is no data to migrate. Both apps work in any text field on macOS. See the <a href="/blog/getting-started-enviouswispr-under-2-minutes/" style="color: var(--accent); text-decoration: underline;">2-minute getting started guide</a>.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">What Mac do I need?</div>
+        <p class="faq-a">EnviousWispr requires Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. VoiceInk also requires macOS 14+. Both apps target modern Macs.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Is there a free alternative to VoiceInk?</div>
+        <p class="faq-a">Yes. EnviousWispr is a free, on-device dictation app for Apple Silicon Macs. It uses Parakeet TDT for fast English transcription and includes an AI polish pipeline with 5 providers. No account or payment required.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Is EnviousWispr open source?</div>
+        <p class="faq-a">Source-available under the Business Source License 1.1. You can read, build, and inspect every line of code on GitHub. It is not an OSI-approved open source license like VoiceInk's GPL v3, but it gives you full transparency into how the app works.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Related Comparisons -->
+<section class="section" aria-label="Related Comparisons" style="padding-top: 0;">
+  <div class="container">
+    <p style="font-size: 14px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px;">Compare with other tools</p>
+    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+      <a href="/compare/wisprflow/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs WisprFlow</a>
+      <a href="/compare/superwhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs Superwhisper</a>
+      <a href="/compare/dragon/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs Dragon</a>
+      <a href="/compare/apple-dictation/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs Apple Dictation</a>
+      <a href="/compare/otter-ai/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs Otter.ai</a>
+      <a href="/compare/macwhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs MacWhisper</a>
+      <a href="/compare/willow-voice/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs Willow Voice</a>
+      <a href="/compare/google-docs-voice-typing/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs Google Docs</a>
+      <a href="/compare/notta/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs Notta</a>
+      <a href="/compare/whisper-cpp/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none;">vs whisper.cpp</a>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section" aria-label="Download CTA">
+  <div class="container">
+    <h2 class="reveal">Ready to try free on-device dictation?</h2>
+    <p class="reveal">Free to download. No account required. Faster than whisper.cpp for English.</p>
+    <div class="cta-actions reveal">
+      <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="btn-primary" data-download-source="compare">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+      <a href="/" class="back-link">Back to Home</a>
+    </div>
+  </div>
+</section>
+
+</BaseLayout>

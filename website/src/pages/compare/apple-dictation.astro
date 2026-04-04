@@ -1,0 +1,775 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const siteUrl = 'https://enviouswispr.com';
+
+const articleJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "EnviousWispr vs Apple Dictation: Mac Voice-to-Text",
+  "description": "Compare EnviousWispr vs Apple Dictation on speed, AI polish, custom words, and timeout limits. Both free, both on-device, but EnviousWispr goes further.",
+  "url": `${siteUrl}/compare/apple-dictation/`,
+  "datePublished": "2026-04-04",
+  "dateModified": "2026-04-04",
+  "author": {
+    "@type": "Person",
+    "name": "Saurabh Vaish",
+    "url": `${siteUrl}/authors/saurabh-vaish/`,
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Envious Labs",
+    "url": siteUrl,
+  },
+  "isPartOf": {
+    "@type": "WebSite",
+    "url": siteUrl,
+    "name": "EnviousWispr",
+  },
+});
+
+const breadcrumbJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": siteUrl,
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "EnviousWispr vs Apple Dictation",
+      "item": `${siteUrl}/compare/apple-dictation/`,
+    },
+  ],
+});
+
+const faqJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is there a better alternative to Apple Dictation on Mac?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "EnviousWispr is a free, on-device alternative that adds AI polish, custom vocabulary, and no timeout limit. It runs alongside Apple Dictation without interfering. Both use Apple Silicon for local processing."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I add custom words to Mac dictation?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Apple Dictation does not support custom vocabulary. EnviousWispr lets you add custom words for names, brands, and technical terms. The app applies them during transcription so specialized words come out correctly."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Why does Apple Dictation stop listening after 30 seconds?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Apple Dictation has a built-in inactivity timeout. If you pause speaking for too long, it stops. EnviousWispr has no timeout, so you can pause to think and continue dictating without restarting."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does EnviousWispr replace Apple Dictation?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "It runs alongside Apple Dictation, not instead of it. You can keep Apple Dictation enabled for quick one-liners and use EnviousWispr for longer dictation where you want AI polish and custom words. They use different hotkeys and do not conflict."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is EnviousWispr really free?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. No subscription, no usage limits, no account required. Download and use it. The source code is available on GitHub under a BSL 1.1 license."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does EnviousWispr work offline?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Transcription runs entirely on-device after a one-time model download. AI polish can also run locally via Apple Intelligence or Ollama. No internet required for the full pipeline."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How accurate is EnviousWispr compared to Apple Dictation?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "EnviousWispr uses Parakeet TDT, a modern ASR model, combined with AI polish that fixes misrecognitions and grammar. Apple Dictation achieves ~90% in quiet conditions but degrades with background noise. EnviousWispr's AI polish layer provides an additional correction pass that Apple Dictation lacks."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can EnviousWispr remove filler words from dictation?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. When AI polish is enabled, filler words like um, uh, you know, and like are stripped automatically. Apple Dictation transcribes them as-is."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does EnviousWispr support voice commands like Apple Dictation?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. Apple Dictation supports voice commands such as new paragraph, comma, and emoji names. EnviousWispr does not process voice commands during recording. Instead, AI polish handles punctuation, paragraph breaks, and formatting automatically based on context."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What Mac do I need?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine on Apple Silicon is what makes on-device transcription fast."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I use both Apple Dictation and EnviousWispr at the same time?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. They use separate hotkeys and separate audio pipelines. Keep Apple Dictation for quick inline corrections and voice commands. Use EnviousWispr for longer dictation where you want AI polish, custom vocabulary, and transcript history."
+      }
+    }
+  ]
+});
+
+---
+
+<BaseLayout
+  title="EnviousWispr vs Apple Dictation: Mac Voice-to-Text"
+  description="Compare EnviousWispr vs Apple Dictation on speed, AI polish, and custom words. Both free, both on-device. See why a dedicated app goes further."
+  activePage="compare"
+  canonicalPath="/compare/apple-dictation/"
+  ogType="article"
+>
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={articleJsonLd}></script>
+    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
+    <script type="application/ld+json" set:html={faqJsonLd}></script>
+  </Fragment>
+
+<style>
+/* ── Page Header ── */
+.page-header { padding: 100px 0 48px; text-align: center; position: relative; z-index: 1; }
+.vs-badge {
+  display: inline-flex; align-items: center; gap: 14px; margin-bottom: 20px;
+  font-size: 14px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-3);
+}
+.vs-brand { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; color: var(--text); }
+.vs-brand.accent { color: var(--accent); }
+.vs-circle {
+  width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--border-hover);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; color: var(--text-3); background: #fff;
+}
+.page-header h1 { font-size: 48px; font-weight: 800; letter-spacing: -2.5px; line-height: 1.1; color: var(--text); margin-bottom: 14px; max-width: 700px; margin-left: auto; margin-right: auto; }
+.page-header-sub { font-size: 18px; font-weight: 400; color: var(--text-2); max-width: 560px; margin: 0 auto; line-height: 1.6; }
+.hero-pills { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+.hero-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 100px; font-size: 13px; font-weight: 600;
+  background: rgba(124,58,237,0.06); color: var(--accent); border: 1px solid rgba(124,58,237,0.12);
+}
+.hero-pill svg { flex-shrink: 0; }
+.hero-cta { margin-top: 28px; }
+.hero-meta { font-size: 12px; color: var(--text-3); margin-top: 16px; }
+
+/* ── Comparison Table ── */
+.compare-table-wrap {
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-card); border: 1px solid var(--border-hover);
+  background: #fff;
+}
+.compare-table {
+  width: 100%; border-collapse: collapse; font-size: 15px;
+  min-width: 640px;
+}
+.compare-table thead th {
+  padding: 20px 24px; font-size: 16px; font-weight: 700;
+  text-align: left; border-bottom: 2px solid var(--border-hover);
+  background: rgba(248,245,255,0.5);
+}
+.compare-table thead th:first-child { width: 34%; }
+.compare-table thead th:nth-child(2) {
+  background: rgba(124,58,237,0.06);
+  color: var(--accent);
+}
+.compare-table tbody td {
+  padding: 16px 24px; border-bottom: 1px solid var(--border);
+  vertical-align: top; line-height: 1.55;
+}
+.compare-table tbody tr:last-child td { border-bottom: none; }
+.compare-table tbody td:first-child {
+  font-weight: 600; color: var(--text);
+}
+.compare-table tbody td:nth-child(2) {
+  background: rgba(124,58,237,0.02);
+}
+.compare-table tbody td:nth-child(3) {
+  color: var(--text-2);
+}
+.table-check { color: var(--green); font-weight: 700; }
+.table-cross { color: var(--text-3); }
+.table-highlight { color: var(--accent); font-weight: 600; }
+
+/* ── Advantage Cards ── */
+.advantages-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.advantage-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 28px 24px;
+  position: relative; overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.advantage-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px rgba(124,58,237,0.10); }
+.advantage-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full);
+}
+.advantage-icon { font-size: 28px; margin-bottom: 14px; line-height: 1; }
+.advantage-title { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 8px; color: var(--text); }
+.advantage-desc { font-size: 14px; color: var(--text-2); line-height: 1.65; }
+
+/* ── Privacy Section ── */
+.privacy-split { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.privacy-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 32px 28px;
+}
+.privacy-card.ew {
+  border-color: rgba(0,200,128,0.25);
+  background: linear-gradient(135deg, rgba(0,200,128,0.03), rgba(248,245,255,0.5));
+}
+.privacy-card.wf {
+  border-color: rgba(230,37,58,0.15);
+  background: linear-gradient(135deg, rgba(230,37,58,0.02), rgba(248,245,255,0.5));
+}
+.privacy-card-label {
+  font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;
+  margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+}
+.privacy-card.ew .privacy-card-label { color: var(--green); }
+.privacy-card.wf .privacy-card-label { color: var(--red); }
+.privacy-step {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+  font-size: 14px; color: var(--text-2); line-height: 1.55;
+}
+.privacy-step:last-child { border-bottom: none; }
+.privacy-step-num {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700;
+}
+.privacy-card.ew .privacy-step-num { background: rgba(0,200,128,0.12); color: var(--green); }
+.privacy-card.wf .privacy-step-num { background: rgba(230,37,58,0.08); color: var(--red); }
+
+/* ── Speed Stats ── */
+.speed-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.speed-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 28px 20px; text-align: center;
+}
+.speed-value {
+  font-size: 42px; font-weight: 800; letter-spacing: -2px; line-height: 1; margin-bottom: 6px;
+  background: var(--rainbow-full);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.speed-label { font-size: 14px; color: var(--text-2); font-weight: 500; }
+.speed-detail { font-size: 11px; color: var(--text-3); margin-top: 4px; }
+
+/* ── Deep Dive ── */
+.deep-dive-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+.deep-dive-card {
+  background: #fff; border: 1px solid var(--border-hover);
+  border-radius: var(--radius-card); padding: 36px 32px;
+  position: relative; overflow: hidden;
+}
+.deep-dive-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--rainbow-full);
+}
+.deep-dive-icon { font-size: 32px; margin-bottom: 16px; line-height: 1; }
+.deep-dive-title { font-size: 22px; font-weight: 800; letter-spacing: -0.8px; margin-bottom: 12px; color: var(--text); }
+.deep-dive-body { font-size: 15px; color: var(--text-2); line-height: 1.7; }
+.deep-dive-body p { margin-bottom: 12px; }
+.deep-dive-body p:last-child { margin-bottom: 0; }
+.deep-dive-detail {
+  margin-top: 16px; padding: 14px 18px; border-radius: 10px;
+  background: rgba(124,58,237,0.04); border: 1px solid rgba(124,58,237,0.08);
+  font-size: 13px; color: var(--text-2); line-height: 1.6;
+}
+.deep-dive-detail strong { color: var(--text); }
+
+/* ── FAQ ── */
+.faq-list { max-width: 720px; margin: 0 auto; }
+.faq-item {
+  border-bottom: 1px solid var(--border-hover); padding: 24px 0;
+}
+.faq-item:last-child { border-bottom: none; }
+.faq-q {
+  font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 8px; letter-spacing: -0.3px;
+}
+.faq-a { font-size: 15px; color: var(--text-2); line-height: 1.65; }
+
+/* ── CTA ── */
+.cta-section { padding: var(--section-pad) 0; text-align: center; position: relative; z-index: 1; }
+.cta-section h2 { font-size: 40px; font-weight: 800; letter-spacing: -2px; margin-bottom: 12px; }
+.cta-section p { font-size: 17px; color: var(--text-2); margin-bottom: 36px; }
+.cta-actions { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; }
+.back-link { font-size: 15px; font-weight: 500; color: var(--text-3); text-decoration: none; transition: color 0.2s; }
+.back-link:hover { color: var(--accent); }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .advantages-grid { grid-template-columns: repeat(2, 1fr); }
+  .privacy-split { grid-template-columns: 1fr; }
+  .speed-stats { grid-template-columns: repeat(3, 1fr); }
+  .deep-dive-grid { grid-template-columns: 1fr; }
+  .page-header h1 { font-size: 42px; letter-spacing: -2px; }
+}
+@media (max-width: 600px) {
+  .advantages-grid { grid-template-columns: 1fr; }
+  .speed-stats { grid-template-columns: 1fr; }
+  .page-header h1 { font-size: 34px; letter-spacing: -1px; }
+  .compare-table-wrap { margin: 0 -20px; border-radius: 0; border-left: none; border-right: none; }
+}
+</style>
+
+<!-- Page Header -->
+<header class="page-header">
+  <div class="container">
+    <div class="vs-badge reveal">
+      <span class="vs-brand accent">EnviousWispr</span>
+      <span class="vs-circle">VS</span>
+      <span class="vs-brand">Apple Dictation</span>
+    </div>
+    <h1 class="reveal">Apple Dictation is fine. Here is what a dedicated app adds.</h1>
+    <p class="page-header-sub reveal">Both free. Both on-device. But EnviousWispr adds AI polish, custom vocabulary, and no timeout. A dedicated dictation app for people who dictate seriously.</p>
+    <div class="hero-pills reveal">
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        No timeout
+      </span>
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        AI polish
+      </span>
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        Custom words
+      </span>
+    </div>
+    <div class="hero-cta reveal">
+      <a href="/#download" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+    </div>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: April 2026</p>
+  </div>
+</header>
+
+<!-- Side-by-Side Table -->
+<section class="section" aria-label="Feature Comparison">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Side by Side</div>
+      <h2 class="section-title">Feature comparison</h2>
+      <p class="section-sub">Apple Dictation is a solid default. Here is where a dedicated dictation app pulls ahead.</p>
+    </div>
+    <div class="compare-table-wrap reveal">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>EnviousWispr</th>
+            <th>Apple Dictation</th>
+          </tr>
+        </thead>
+        <!-- Evidence: Apple Dictation claims verified against Apple support documentation and firsthand testing on macOS 15.
+             Confidence: source-verified from Apple's public support pages.
+             Sources:
+               - Timeout: Apple Support HT210539 - dictation stops after ~30s of silence or inactivity
+               - On-device processing: Apple Support - on-device on Apple Silicon, cloud fallback on Intel
+               - Accuracy: published third-party benchmarks (90-92% clean, degrades with noise)
+               - Custom vocabulary: not available in macOS Dictation settings
+               - AI polish / filler removal / writing style: not features of Apple Dictation
+               - Voice commands: Apple Support - "new paragraph", "comma", emoji dictation
+               - Mixed input: macOS 14+ allows keyboard + dictation simultaneously
+               - Transcript history: Apple Dictation does not store past transcriptions
+               - Locales: Apple Support - dozens of languages supported
+               - Hands-free: Apple Dictation requires manual activation per session
+             EnviousWispr claims from production PostHog data (environment=production). -->
+        <tbody>
+          <tr>
+            <td>Price</td>
+            <td><span class="table-highlight">Free. No subscription.</span></td>
+            <td><span class="table-highlight">Free, built into macOS</span></td>
+          </tr>
+          <tr>
+            <td>Setup required</td>
+            <td>One-time download + model install (~2 min)</td>
+            <td><span class="table-highlight">None. Already installed.</span></td>
+          </tr>
+          <tr>
+            <td>Account required</td>
+            <td><span class="table-check">No</span></td>
+            <td>Apple ID (for macOS itself)</td>
+          </tr>
+          <tr>
+            <td>Audio processing</td>
+            <td><span class="table-highlight">On-device</span> (<a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> + <a href="https://github.com/argmaxinc/WhisperKit" style="color: var(--accent); text-decoration: underline;">WhisperKit</a>)</td>
+            <td>On-device (Apple Silicon); cloud fallback on Intel</td>
+          </tr>
+          <tr>
+            <td>Timeout</td>
+            <td><span class="table-highlight">No timeout.</span> Handles 1-2 minute dictation bursts.</td>
+            <td>Stops after ~30s of silence</td>
+          </tr>
+          <tr>
+            <td>AI polish</td>
+            <td><span class="table-highlight">Apple Intelligence</span>, Ollama (on-device), or BYO OpenAI/Gemini key</td>
+            <td><span class="table-cross">None</span></td>
+          </tr>
+          <tr>
+            <td>Filler word removal</td>
+            <td><span class="table-check">Yes</span>, automatic via AI polish</td>
+            <td><span class="table-cross">No</span> (transcribes "um", "uh" faithfully)</td>
+          </tr>
+          <tr>
+            <td>Writing style control</td>
+            <td><span class="table-check">Yes</span> (casual, professional, concise via LLM prompt)</td>
+            <td><span class="table-cross">No</span></td>
+          </tr>
+          <tr>
+            <td>Custom vocabulary</td>
+            <td><span class="table-highlight">Custom words</span> with 6-pass fuzzy matching + AI alias suggestions</td>
+            <td><span class="table-cross">Not available</span></td>
+          </tr>
+          <tr>
+            <td>Transcription speed</td>
+            <td><span class="table-highlight">0.43s median</span>; ~1.5s with AI polish</td>
+            <td>Real-time streaming (words appear as you speak)</td>
+          </tr>
+          <tr>
+            <td>Accuracy (clean audio)</td>
+            <td>High (Parakeet TDT 0.6B + AI polish correction)</td>
+            <td>90-92% (degrades significantly with background noise)</td>
+          </tr>
+          <tr>
+            <td>First-word capture</td>
+            <td><span class="table-check">Yes</span> (always-listening VAD, no warm-up gap)</td>
+            <td>Can miss the first word while the mic activates</td>
+          </tr>
+          <tr>
+            <td>Punctuation</td>
+            <td>Auto-punctuation + AI polish reformats</td>
+            <td>Auto-punctuation, emoji dictation, voice commands</td>
+          </tr>
+          <tr>
+            <td>Voice commands</td>
+            <td><span class="table-cross">Not supported</span></td>
+            <td><span class="table-highlight">"New paragraph", "comma", "smiley face"</span></td>
+          </tr>
+          <tr>
+            <td>Clipboard preservation</td>
+            <td><span class="table-check">Yes</span> (saves and restores clipboard around paste)</td>
+            <td><span class="table-cross">No</span> (inserts directly at cursor)</td>
+          </tr>
+          <tr>
+            <td>Auto-stop on silence</td>
+            <td><span class="table-check">Yes</span> (configurable VAD sensitivity)</td>
+            <td>Stops listening entirely after ~30s silence</td>
+          </tr>
+          <tr>
+            <td>Transcript history</td>
+            <td><span class="table-check">Yes</span> (searchable transcript log)</td>
+            <td><span class="table-cross">No history</span></td>
+          </tr>
+          <tr>
+            <td>Language support</td>
+            <td>English (Parakeet), 90+ via WhisperKit</td>
+            <td>Dozens of locales</td>
+          </tr>
+          <tr>
+            <td>Accessibility</td>
+            <td>Keyboard-driven hotkey, menu bar app, VoiceOver compatible</td>
+            <td>Deep OS integration, mixed keyboard + dictation input</td>
+          </tr>
+          <tr>
+            <td>Works offline</td>
+            <td><span class="table-check">Yes</span> (after one-time model download)</td>
+            <td>Yes on Apple Silicon; No on Intel</td>
+          </tr>
+          <tr>
+            <td>Platform</td>
+            <td>macOS (Apple Silicon required)</td>
+            <td><span class="table-highlight">macOS, iOS, iPadOS, visionOS</span></td>
+          </tr>
+          <tr>
+            <td>Source code</td>
+            <td><span class="table-highlight"><a href="https://github.com/AirSkye/EnviousWispr" style="color: var(--accent); text-decoration: underline;">Source-available</a></span> on GitHub (BSL 1.1)</td>
+            <td>Closed source</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">EnviousWispr latency from production PostHog data (environment=production) on Apple Silicon Macs. Apple Dictation accuracy from published third-party benchmarks. Apple Dictation features verified against Apple Support documentation and firsthand testing on macOS 15. Last verified: April 2026.</p>
+    <div style="text-align: center; margin-top: 28px;">
+      <a href="/#download" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- Why EnviousWispr -->
+<section class="section" aria-label="Advantages">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill green">Why Upgrade</div>
+      <h2 class="section-title">What a dedicated dictation app gives you</h2>
+      <p class="section-sub">Apple Dictation works. EnviousWispr works harder. Here is what changes when you move beyond the built-in. For more on why on-device matters, read <a href="/blog/on-device-vs-cloud-dictation-privacy/" style="color: var(--accent); text-decoration: underline;">on-device vs cloud dictation privacy</a>.</p>
+    </div>
+    <div class="advantages-grid">
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🧠</div>
+        <div class="advantage-title">AI polish cleans your words</div>
+        <p class="advantage-desc">Apple Dictation gives you raw transcription. EnviousWispr pipes text through <a href="/how-it-works/" style="color: var(--accent); text-decoration: underline;">AI polish</a> to remove filler words, fix grammar, and format paragraphs. Choose Apple Intelligence, Ollama, or your own OpenAI/Gemini key.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">📖</div>
+        <div class="advantage-title">Custom words that stick</div>
+        <p class="advantage-desc">Names, product terms, technical jargon. Apple Dictation has no custom vocabulary feature. EnviousWispr lets you add <a href="/blog/getting-started-enviouswispr-under-2-minutes/" style="color: var(--accent); text-decoration: underline;">custom words</a> so "Parakeet TDT" and "Kubernetes" come out right every time.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">⏱️</div>
+        <div class="advantage-title">No 30-second timeout</div>
+        <p class="advantage-desc">Apple Dictation stops listening after roughly 30 seconds of inactivity. EnviousWispr has no timeout. Dictate a full paragraph, pause to think, keep going. Designed for 1-2 minute bursts without interruption.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">⚡</div>
+        <div class="advantage-title">0.43s to finished text</div>
+        <p class="advantage-desc">Median time from end of speech to text in clipboard: 0.43 seconds without polish, 1.5 seconds with AI polish. Processed locally on the <a href="https://developer.apple.com/machine-learning/core-ml/" style="color: var(--accent); text-decoration: underline;">Neural Engine</a>. No network dependency.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🔇</div>
+        <div class="advantage-title">Filler words removed</div>
+        <p class="advantage-desc">Uh, um, you know, like. Apple Dictation transcribes them faithfully. EnviousWispr's AI polish strips them out so your text reads like writing, not a transcript.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🔍</div>
+        <div class="advantage-title">Auditable source code</div>
+        <p class="advantage-desc">Every line is <a href="https://github.com/AirSkye/EnviousWispr" style="color: var(--accent); text-decoration: underline;">on GitHub</a> under BSL 1.1. See exactly how your audio is processed. Apple Dictation is a black box built into the OS.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Speed Section -->
+<section class="section" aria-label="Speed">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill amber">Speed</div>
+      <h2 class="section-title">Dedicated models, dedicated speed</h2>
+      <p class="section-sub">EnviousWispr uses purpose-built ASR models optimized for Apple Silicon. The result is fast, accurate transcription with optional AI refinement.</p>
+    </div>
+    <div class="speed-stats">
+      <div class="speed-card reveal">
+        <div class="speed-value">0.43s</div>
+        <div class="speed-label">Median transcription</div>
+        <div class="speed-detail">From end of speech to raw text</div>
+      </div>
+      <div class="speed-card reveal">
+        <div class="speed-value">1.5s</div>
+        <div class="speed-label">With AI polish</div>
+        <div class="speed-detail">Apple Intelligence on-device</div>
+      </div>
+      <div class="speed-card reveal">
+        <div class="speed-value">0s</div>
+        <div class="speed-label">Timeout limit</div>
+        <div class="speed-detail">No cutoff. Dictate as long as you need.</div>
+      </div>
+    </div>
+    <p style="font-size: 11px; color: var(--text-3); margin-top: 12px; text-align: center;">Based on production data from Apple Silicon Macs. Results vary by hardware and settings.</p>
+  </div>
+</section>
+
+<!-- Deep Dives -->
+<section class="section" aria-label="Under the Hood">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Under the Hood</div>
+      <h2 class="section-title">Where a dedicated app goes deeper</h2>
+      <p class="section-sub">Apple Dictation gives you raw speech-to-text. EnviousWispr adds layers that turn dictation into polished writing.</p>
+    </div>
+    <div class="deep-dive-grid">
+      <div class="deep-dive-card reveal">
+        <div class="deep-dive-icon">📖</div>
+        <div class="deep-dive-title">Custom vocabulary and smart correction</div>
+        <div class="deep-dive-body">
+          <p>Apple Dictation has no custom vocabulary feature. If you work with specialized terminology, product names, or technical jargon, you get whatever the built-in model guesses. "Parakeet TDT" might come out as "parakeet teddy." "Kubernetes" might become "Cooper Netties."</p>
+          <p>EnviousWispr lets you add custom words with a 6-pass fuzzy matching system. Each word can have aliases (phonetic variants the ASR model might produce), and the app suggests aliases automatically using AI analysis of likely misrecognitions. When the model outputs "envious whisper," the custom words system corrects it to "EnviousWispr" before the text reaches your clipboard.</p>
+          <p>This works at the post-processing layer, so it applies regardless of which ASR backend you use. Add a word once, and it corrects everywhere.</p>
+          <div class="deep-dive-detail">
+            <strong>How it works:</strong> Custom words are matched using Levenshtein distance, phonetic similarity, case-insensitive comparison, substring containment, and word-boundary-aware replacement. AI alias suggestions use the LLM to predict how speech recognition models typically mangle specific terms.
+          </div>
+        </div>
+      </div>
+      <div class="deep-dive-card reveal">
+        <div class="deep-dive-icon">🧠</div>
+        <div class="deep-dive-title">AI polish transforms raw speech</div>
+        <div class="deep-dive-body">
+          <p>Apple Dictation gives you exactly what you said, including every "um," "uh," "you know," and false start. For quick one-liners, that is fine. For anything longer, you end up editing the transcript to make it readable.</p>
+          <p>EnviousWispr pipes transcription through an AI polish step that removes filler words, fixes grammar, formats paragraphs, and adjusts tone. You can choose Apple Intelligence (fully on-device), Ollama (local open-source models), or bring your own OpenAI or Gemini API key.</p>
+          <p>The polish layer includes hallucination safeguards: short transcripts bypass the LLM entirely, output length is validated against input length, and preamble artifacts ("Certainly! Here is...") are stripped automatically. Your dictated text is wrapped in XML tags with explicit instructions to polish, not answer or rewrite.</p>
+          <div class="deep-dive-detail">
+            <strong>How it works:</strong> Context-aware prompts include the target app name, detected language, and ASR error patterns. Sandwich framing wraps the transcript in &lt;transcript&gt; tags to prevent prompt injection. Output exceeding 3x input length is rejected as probable hallucination, falling back to raw text.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Fair Acknowledgment -->
+<section class="section" aria-label="Where Apple Dictation Wins">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">Being Honest</div>
+      <h2 class="section-title">Choose Apple Dictation if you only need occasional built-in dictation</h2>
+      <p class="section-sub">Apple Dictation is built into the OS for a reason. It does some things that a third-party app cannot match:</p>
+    </div>
+    <div class="advantages-grid">
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🚀</div>
+        <div class="advantage-title">Zero setup required</div>
+        <p class="advantage-desc">Apple Dictation is already on your Mac. Turn it on in System Settings, press the microphone key, and start talking. No download, no model installation, no permissions to grant. It just works.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">📱</div>
+        <div class="advantage-title">Works on every Apple device</div>
+        <p class="advantage-desc">iPhone, iPad, Mac, Vision Pro. Apple Dictation follows you across the ecosystem with consistent behavior. EnviousWispr is macOS only and requires Apple Silicon.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🗣️</div>
+        <div class="advantage-title">Voice commands for formatting</div>
+        <p class="advantage-desc">Say "new paragraph," "comma," "exclamation mark," or even "smiley face" and Apple Dictation inserts the right character. EnviousWispr does not support voice commands for punctuation or formatting.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">🌍</div>
+        <div class="advantage-title">No separate app needed</div>
+        <p class="advantage-desc">Apple Dictation is part of the operating system. No menu bar icon, no extra process, no Accessibility permissions to approve. For light dictation use, the built-in option carries zero overhead.</p>
+      </div>
+      <div class="advantage-card reveal">
+        <div class="advantage-icon">⌨️</div>
+        <div class="advantage-title">Mixed keyboard and voice input</div>
+        <p class="advantage-desc">On macOS 14+, you can type on the keyboard while Dictation is active. Switch freely between voice and keys mid-sentence. EnviousWispr uses a record-then-paste model, so you speak first, then the text appears.</p>
+      </div>
+    </div>
+    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you dictate more than a few sentences at a time and want polished output with custom vocabulary, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>. It runs alongside Apple Dictation with no conflicts.</p>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="section" aria-label="Frequently Asked Questions">
+  <div class="container">
+    <div class="section-head reveal">
+      <div class="section-label-pill">FAQ</div>
+      <h2 class="section-title">Common questions</h2>
+    </div>
+    <div class="faq-list">
+      <div class="faq-item reveal">
+        <div class="faq-q">Is there a better alternative to Apple Dictation on Mac?</div>
+        <p class="faq-a">EnviousWispr is a free, on-device alternative that adds AI polish, custom vocabulary, and no timeout limit. It runs alongside Apple Dictation without interfering. Both use Apple Silicon for local processing.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can I add custom words to Mac dictation?</div>
+        <p class="faq-a">Apple Dictation does not support custom vocabulary. EnviousWispr lets you add custom words for names, brands, and technical terms. The app applies them during transcription so specialized words come out correctly.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Why does Apple Dictation stop listening after 30 seconds?</div>
+        <p class="faq-a">Apple Dictation has a built-in inactivity timeout. If you pause speaking for too long, it stops. EnviousWispr has no timeout, so you can pause to think and continue dictating without restarting.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Does EnviousWispr replace Apple Dictation?</div>
+        <p class="faq-a">It runs alongside Apple Dictation, not instead of it. You can keep Apple Dictation enabled for quick one-liners and use EnviousWispr for longer dictation where you want AI polish and custom words. They use different hotkeys and do not conflict.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Is EnviousWispr really free?</div>
+        <p class="faq-a">Yes. No subscription, no usage limits, no account required. Download and use it. The source code is available on <a href="https://github.com/AirSkye/EnviousWispr" style="color: var(--accent); text-decoration: underline;">GitHub</a> under a BSL 1.1 license.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Does EnviousWispr work offline?</div>
+        <p class="faq-a">Transcription runs entirely on-device after a one-time model download. AI polish can also run locally via Apple Intelligence or Ollama. No internet required for the full pipeline.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">How accurate is EnviousWispr compared to Apple Dictation?</div>
+        <p class="faq-a">EnviousWispr uses Parakeet TDT, a modern ASR model, combined with AI polish that fixes misrecognitions and grammar. Apple Dictation achieves ~90% in quiet conditions (third-party tests) in clean environments but degrades significantly with background noise. EnviousWispr's AI polish layer provides an additional correction pass that Apple Dictation lacks.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can EnviousWispr remove filler words from dictation?</div>
+        <p class="faq-a">Yes. When AI polish is enabled, filler words like "um," "uh," "you know," and "like" are stripped automatically. Apple Dictation transcribes them as-is. If you dictate longer passages, filler removal makes a noticeable difference in readability.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Does EnviousWispr support voice commands like Apple Dictation?</div>
+        <p class="faq-a">No. Apple Dictation supports voice commands such as "new paragraph," "comma," and emoji names. EnviousWispr does not process voice commands during recording. Instead, AI polish handles punctuation, paragraph breaks, and formatting automatically based on context.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">What Mac do I need?</div>
+        <p class="faq-a">Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine on Apple Silicon is what makes on-device transcription fast. See the <a href="/blog/getting-started-enviouswispr-under-2-minutes/" style="color: var(--accent); text-decoration: underline;">2-minute getting started guide</a>.</p>
+      </div>
+      <div class="faq-item reveal">
+        <div class="faq-q">Can I use both Apple Dictation and EnviousWispr at the same time?</div>
+        <p class="faq-a">Yes. They use separate hotkeys and separate audio pipelines. Keep Apple Dictation for quick inline corrections and voice commands. Use EnviousWispr for longer dictation where you want AI polish, custom vocabulary, and transcript history. They do not interfere with each other.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Related Comparisons -->
+<section class="section" aria-label="Related Comparisons" style="padding-top: 0;">
+  <div class="container">
+    <p style="font-size: 14px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px;">Compare with other tools</p>
+    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+      <a href="/compare/wisprflow/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs WisprFlow</a>
+      <a href="/compare/superwhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Superwhisper</a>
+      <a href="/compare/dragon/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Dragon</a>
+      <a href="/compare/otter-ai/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Otter.ai</a>
+      <a href="/compare/macwhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs MacWhisper</a>
+      <a href="/compare/voiceink/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs VoiceInk</a>
+      <a href="/compare/willow-voice/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Willow Voice</a>
+      <a href="/compare/google-docs-voice-typing/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Google Docs</a>
+      <a href="/compare/notta/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Notta</a>
+      <a href="/compare/whisper-cpp/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs whisper.cpp</a>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section" aria-label="Download CTA">
+  <div class="container">
+    <h2 class="reveal">Try free dictation that works in any Mac app</h2>
+    <p class="reveal">Free to download. No account required. Runs alongside Apple Dictation.</p>
+    <div class="cta-actions reveal">
+      <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="btn-primary" data-download-source="compare-apple-dictation">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+      <a href="/compare/" class="back-link">See all comparisons</a>
+      <a href="/" class="back-link">Back to Home</a>
+    </div>
+  </div>
+</section>
+
+</BaseLayout>
