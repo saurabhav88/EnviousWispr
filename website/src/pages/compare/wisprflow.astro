@@ -3,12 +3,24 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 
 const siteUrl = 'https://enviouswispr.com';
 
-const webPageJsonLd = JSON.stringify({
+const articleJsonLd = JSON.stringify({
   "@context": "https://schema.org",
-  "@type": "WebPage",
-  "name": "EnviousWispr vs WisprFlow — Honest Comparison",
+  "@type": "Article",
+  "headline": "EnviousWispr vs WisprFlow: Free Private Mac Dictation",
   "description": "See how EnviousWispr and WisprFlow compare on privacy, speed, pricing, and architecture. Free on-device dictation vs. cloud subscription.",
   "url": `${siteUrl}/compare/wisprflow/`,
+  "datePublished": "2026-04-03",
+  "dateModified": "2026-04-03",
+  "author": {
+    "@type": "Person",
+    "name": "Saurabh Vaish",
+    "url": `${siteUrl}/authors/saurabh-vaish/`,
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Envious Labs",
+    "url": siteUrl,
+  },
   "isPartOf": {
     "@type": "WebSite",
     "url": siteUrl,
@@ -35,79 +47,44 @@ const breadcrumbJsonLd = JSON.stringify({
   ],
 });
 
-const faqJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "mainEntity": [
-    {
-      "@type": "Question",
-      "name": "Is EnviousWispr really free?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. EnviousWispr is completely free to download and use. No subscription, no usage limits, no account required. The source code is available on GitHub under a BSL 1.1 license."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does EnviousWispr work offline?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Transcription runs entirely on-device using Apple Silicon and works offline. AI polish requires an LLM connection (local or cloud, your choice), but raw transcription always works without internet."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "How does EnviousWispr handle privacy compared to WisprFlow?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "EnviousWispr processes all audio on your Mac. Your voice recordings never leave the device. WisprFlow sends audio to cloud servers for transcription and LLM processing."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can I use my own API keys with EnviousWispr?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. EnviousWispr supports BYO (bring your own) API keys for OpenAI and Google Gemini. You can also run a fully local LLM for complete offline operation."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does EnviousWispr use the cloud at all?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Transcription is always on-device. If you choose to enable AI polish with a cloud provider, only the text transcript is sent using your own API key. You can also polish with a local model for fully offline operation."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Is there a free alternative to WisprFlow?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account or subscription required."
-      }
-    },
-  ],
-});
 ---
 
 <BaseLayout
-  title="EnviousWispr vs WisprFlow: Free Private Mac Dictation Alternative"
-  description="Looking for a WisprFlow alternative? Compare EnviousWispr vs WisprFlow on price, privacy, offline support, and latency. Free on-device dictation for Apple Silicon Macs."
+  title="EnviousWispr vs WisprFlow: Free Private Mac Dictation"
+  description="Compare EnviousWispr vs WisprFlow on price, privacy, offline support, and speed. Free on-device dictation for Apple Silicon Macs. No account required."
   activePage="compare"
   canonicalPath="/compare/wisprflow/"
 >
   <Fragment slot="head">
-    <script type="application/ld+json" set:html={webPageJsonLd}></script>
+    <script type="application/ld+json" set:html={articleJsonLd}></script>
     <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
-    <script type="application/ld+json" set:html={faqJsonLd}></script>
   </Fragment>
 
 <style>
 /* ── Page Header ── */
-.page-header { padding: 120px 0 64px; text-align: center; position: relative; z-index: 1; }
-.page-header h1 { font-size: 56px; font-weight: 800; letter-spacing: -3px; line-height: 1.05; color: var(--text); margin-bottom: 16px; }
-.page-header-sub { font-size: 20px; font-weight: 400; color: var(--text-2); max-width: 620px; margin: 0 auto; line-height: 1.6; }
+.page-header { padding: 100px 0 48px; text-align: center; position: relative; z-index: 1; }
+.vs-badge {
+  display: inline-flex; align-items: center; gap: 14px; margin-bottom: 20px;
+  font-size: 14px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-3);
+}
+.vs-brand { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; color: var(--text); }
+.vs-brand.accent { color: var(--accent); }
+.vs-circle {
+  width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--border-hover);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; color: var(--text-3); background: #fff;
+}
+.page-header h1 { font-size: 48px; font-weight: 800; letter-spacing: -2.5px; line-height: 1.1; color: var(--text); margin-bottom: 14px; max-width: 700px; margin-left: auto; margin-right: auto; }
+.page-header-sub { font-size: 18px; font-weight: 400; color: var(--text-2); max-width: 560px; margin: 0 auto; line-height: 1.6; }
+.hero-pills { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+.hero-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 100px; font-size: 13px; font-weight: 600;
+  background: rgba(124,58,237,0.06); color: var(--accent); border: 1px solid rgba(124,58,237,0.12);
+}
+.hero-pill svg { flex-shrink: 0; }
+.hero-cta { margin-top: 28px; }
+.hero-meta { font-size: 12px; color: var(--text-3); margin-top: 16px; }
 
 /* ── Comparison Table ── */
 .compare-table-wrap {
@@ -249,8 +226,34 @@ const faqJsonLd = JSON.stringify({
 <!-- Page Header -->
 <header class="page-header">
   <div class="container">
-    <h1 class="reveal">EnviousWispr vs WisprFlow</h1>
-    <p class="page-header-sub reveal">The free, local-first WisprFlow alternative for Mac. Both turn your voice into text. The difference is where your audio goes, what it costs, and who controls it.</p>
+    <div class="vs-badge reveal">
+      <span class="vs-brand accent">EnviousWispr</span>
+      <span class="vs-circle">VS</span>
+      <span class="vs-brand">WisprFlow</span>
+    </div>
+    <h1 class="reveal">The free, private WisprFlow alternative for Mac</h1>
+    <p class="page-header-sub reveal">Same idea: hold a key, speak, get polished text. The difference is your audio never leaves your Mac, and it costs nothing.</p>
+    <div class="hero-pills reveal">
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        On-device, not cloud
+      </span>
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Free, no subscription
+      </span>
+      <span class="hero-pill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        0.43s median latency
+      </span>
+    </div>
+    <div class="hero-cta reveal">
+      <a href="/#download" class="btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Free
+      </a>
+    </div>
+    <p class="hero-meta reveal">By <a href="/authors/saurabh-vaish/" style="color: var(--text-3); text-decoration: underline;">Saurabh Vaish</a> · Last reviewed: April 2026</p>
   </div>
 </header>
 
@@ -271,11 +274,21 @@ const faqJsonLd = JSON.stringify({
             <th>WisprFlow</th>
           </tr>
         </thead>
+        <!-- Evidence: WisprFlow claims verified against wisprflow.com on 2026-04-03.
+             Confidence: source-verified from public website and App Store listing.
+             Sources:
+               - Pricing: wisprflow.com/pricing (accessed 2026-04-03) — $14.99/mo billed monthly
+               - Account: wisprflow.com signup flow requires email (accessed 2026-04-03)
+               - Cloud processing: wisprflow.com/privacy — audio sent to cloud for transcription (accessed 2026-04-03)
+               - iOS app: Apple App Store listing (accessed 2026-04-03)
+               - Multi-language: wisprflow.com feature page (accessed 2026-04-03)
+             Firsthand testing: WisprFlow was not tested firsthand for this comparison.
+             All claims are source-verified from official pages. -->
         <tbody>
           <tr>
             <td>Price</td>
             <td><span class="table-highlight">Free to use. No subscription.</span></td>
-            <td>$15/mo subscription*</td>
+            <td>~$15/mo subscription*</td>
           </tr>
           <tr>
             <td>Account required</td>
@@ -289,23 +302,23 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Audio leaves your Mac</td>
-            <td><span class="table-check">Not for transcription.</span> Optional only if you enable cloud polish.</td>
-            <td>Yes, uploaded for transcription</td>
+            <td><span class="table-check">Never.</span> Audio stays on your Mac. If you enable cloud AI polish, only the text transcript is sent.</td>
+            <td>Yes, audio uploaded for transcription</td>
           </tr>
           <tr>
             <td>Works offline</td>
-            <td><span class="table-check">Yes</span> for transcription (after models are downloaded)</td>
+            <td><span class="table-check">Yes</span> for transcription (after models download)</td>
             <td><span class="table-cross">No</span></td>
           </tr>
           <tr>
             <td>AI polish</td>
-            <td><span class="table-highlight">Apple Intelligence</span> or Ollama on-device; OpenAI/Gemini with BYO key</td>
+            <td><span class="table-highlight">Apple Intelligence</span> or Ollama on-device; OpenAI/Gemini with your own key</td>
             <td>Cloud LLM (provider-managed)</td>
           </tr>
           <tr>
             <td>Speech engines</td>
-            <td>Parakeet TDT + WhisperKit (on-device)</td>
-            <td>Cloud Whisper API</td>
+            <td><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> + <a href="https://github.com/argmaxinc/WhisperKit" style="color: var(--accent); text-decoration: underline;">WhisperKit</a> (on-device)</td>
+            <td>Cloud speech API</td>
           </tr>
           <tr>
             <td>Multi-language</td>
@@ -314,23 +327,23 @@ const faqJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Source code</td>
-            <td><span class="table-highlight">Source-available</span> on GitHub (BSL 1.1)</td>
+            <td><span class="table-highlight"><a href="https://github.com/AirSkye/EnviousWispr" style="color: var(--accent); text-decoration: underline;">Source-available</a></span> on GitHub (BSL 1.1)</td>
             <td>Closed source</td>
           </tr>
           <tr>
             <td>iOS app</td>
-            <td>Coming soon</td>
+            <td>macOS only today</td>
             <td>Available</td>
           </tr>
           <tr>
             <td>Transcription latency</td>
             <td><span class="table-highlight">0.43s median</span>; ~1.5s with AI polish</td>
-            <td>Requires network + server processing</td>
+            <td>Depends on network + server load</td>
           </tr>
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on public pricing as of April 2026. Latency measured from production PostHog data on Apple Silicon Macs.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on WisprFlow's public pricing page as of April 2026. EnviousWispr latency from production PostHog data on Apple Silicon Macs. WisprFlow claims source-verified from wisprflow.com; not firsthand-tested. Competitor claims last verified: 2026-04-03.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -357,7 +370,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔒</div>
         <div class="advantage-title">On-device transcription</div>
-        <p class="advantage-desc">Your audio does not leave your Mac for transcription. It is processed by the Neural Engine on Apple Silicon, never uploaded, never stored elsewhere. Private by architecture, not by promise.</p>
+        <p class="advantage-desc">Your audio does not leave your Mac. It is processed by the <a href="https://developer.apple.com/machine-learning/core-ml/" style="color: var(--accent); text-decoration: underline;">Neural Engine</a> on Apple Silicon, never uploaded, never stored elsewhere. See <a href="/how-it-works/" style="color: var(--accent); text-decoration: underline;">how the pipeline works</a>. Private by architecture, not by promise.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>
@@ -377,7 +390,7 @@ const faqJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">📖</div>
         <div class="advantage-title">Auditable code</div>
-        <p class="advantage-desc">Every line is on GitHub under BSL 1.1. Verify what it does. Report issues directly. Contribute improvements. Closed-source dictation tools ask you to trust their privacy claims on faith.</p>
+        <p class="advantage-desc">Every line is <a href="https://github.com/AirSkye/EnviousWispr" style="color: var(--accent); text-decoration: underline;">on GitHub</a> under BSL 1.1. Verify what it does. Report issues directly. Contribute improvements. Closed-source dictation tools ask you to trust their privacy claims on faith.</p>
       </div>
     </div>
   </div>
@@ -389,7 +402,7 @@ const faqJsonLd = JSON.stringify({
     <div class="section-head reveal">
       <div class="section-label-pill cyan">Privacy</div>
       <h2 class="section-title">Where does your voice go?</h2>
-      <p class="section-sub">The most important question for any dictation tool. Here is the data flow for each app.</p>
+      <p class="section-sub">The most important question for any dictation tool. Here is the data flow for each app. For a deeper dive, read <a href="/blog/on-device-vs-cloud-dictation-privacy/" style="color: var(--accent); text-decoration: underline;">on-device vs cloud dictation privacy</a>.</p>
     </div>
     <div class="privacy-split">
       <div class="privacy-card ew reveal">
@@ -475,13 +488,13 @@ const faqJsonLd = JSON.stringify({
     <div class="section-head reveal">
       <div class="section-label-pill">Being Honest</div>
       <h2 class="section-title">When WisprFlow might be the better choice</h2>
-      <p class="section-sub">We respect WisprFlow as a product. It may be a better fit if:</p>
+      <p class="section-sub">WisprFlow is a solid product with a longer track record. It may be a better fit in these situations:</p>
     </div>
     <div class="advantages-grid">
       <div class="advantage-card reveal">
         <div class="advantage-icon">📱</div>
-        <div class="advantage-title">You need iPhone dictation today</div>
-        <p class="advantage-desc">WisprFlow has a shipping iOS app. EnviousWispr is macOS only today. Our iOS version is in development, built on the same Swift codebase.</p>
+        <div class="advantage-title">You need iPhone dictation</div>
+        <p class="advantage-desc">WisprFlow has a shipping iOS app. EnviousWispr is macOS only right now.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🎨</div>
@@ -490,11 +503,11 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">📅</div>
-        <div class="advantage-title">You prefer an established product</div>
-        <p class="advantage-desc">WisprFlow has more users, more reviews, and more time in market. EnviousWispr is newer but moving fast.</p>
+        <div class="advantage-title">You want a longer track record</div>
+        <p class="advantage-desc">WisprFlow has been around longer, with more users and more reviews. EnviousWispr is newer and shipping fast.</p>
       </div>
     </div>
-    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you are Mac-first and care most about privacy, offline transcription, and price, EnviousWispr is the stronger fit.</p>
+    <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you are Mac-first and care most about privacy, offline transcription, and price, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>.</p>
   </div>
 </section>
 
@@ -520,7 +533,7 @@ const faqJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I switch from WisprFlow easily?</div>
-        <p class="faq-a">Yes. Download EnviousWispr, set your hotkey, and start dictating. There is no data to migrate. Both apps work in any text field on macOS.</p>
+        <p class="faq-a">Yes. Download EnviousWispr, set your hotkey, and start dictating. There is no data to migrate. Both apps work in any text field on macOS. See the <a href="/blog/getting-started-enviouswispr-under-2-minutes/" style="color: var(--accent); text-decoration: underline;">2-minute getting started guide</a>.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">What Mac do I need?</div>
@@ -535,12 +548,8 @@ const faqJsonLd = JSON.stringify({
         <p class="faq-a">Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account or subscription required. It works offline and keeps your audio on your device.</p>
       </div>
       <div class="faq-item reveal">
-        <div class="faq-q">Is source-available the same as open source?</div>
-        <p class="faq-a">Not exactly. EnviousWispr uses the Business Source License 1.1, which lets you read, build, and inspect all of the code on GitHub. It is not an OSI-approved open source license, but it provides full transparency into how the app works.</p>
-      </div>
-      <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr open source?</div>
-        <p class="faq-a">Source-available under the Business Source License 1.1. You can read, build, and inspect every line of code on GitHub. Contributions are welcome.</p>
+        <p class="faq-a">Source-available under the Business Source License 1.1. That means you can read, build, and inspect every line of code on GitHub. It is not an OSI-approved open source license, but it gives you full transparency into how the app works. Contributions are welcome.</p>
       </div>
     </div>
   </div>
