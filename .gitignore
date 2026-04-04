@@ -99,6 +99,7 @@ scripts/*
 !scripts/build-dmg.sh
 !scripts/bundle-dev.sh
 !scripts/release-preflight.sh
+!scripts/swift-test.sh
 docs/
 content-engine/
 Brand Assets/

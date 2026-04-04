@@ -47,101 +47,6 @@ const breadcrumbJsonLd = JSON.stringify({
   ],
 });
 
-const faqJsonLd = JSON.stringify({
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "mainEntity": [
-    {
-      "@type": "Question",
-      "name": "Is EnviousWispr really free?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. No subscription, no usage limits, no account required. Download and use it. The source code is available on GitHub under a BSL 1.1 license."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does EnviousWispr work offline?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Transcription runs entirely on-device and works without internet. AI polish requires an LLM; you can use a local model for fully offline operation or bring your own API key for a cloud provider."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Will my audio be used for training?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "No. Your audio is processed on your Mac and discarded after transcription. It never leaves your device, so it cannot be used for anything else."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can I switch from WisprFlow easily?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. Download EnviousWispr, set your hotkey, and start dictating. There is no data to migrate. Both apps work in any text field on macOS."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "What Mac do I need?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Any Mac with Apple Silicon (M1 or later) running macOS 14 Sonoma or newer. The Neural Engine on Apple Silicon is what makes on-device transcription fast."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does EnviousWispr use the cloud at all?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Transcription is always on-device. If you choose to enable AI polish with a cloud provider (OpenAI, Gemini), only the text transcript is sent using your own API key. You can also polish with a local model for fully offline operation."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Is there a free alternative to WisprFlow?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. EnviousWispr offers on-device transcription on Apple Silicon Macs, completely free, with no account or subscription required. It works offline and keeps your audio on your device."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Is EnviousWispr open source?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Source-available under the Business Source License 1.1. That means you can read, build, and inspect every line of code on GitHub. It is not an OSI-approved open source license, but it gives you full transparency into how the app works."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Does EnviousWispr clip the first word like other dictation apps?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "No. EnviousWispr uses a continuous pre-roll audio buffer that captures the 500 milliseconds before you press the hotkey. Even if you start speaking the instant you press the key, the first word is captured."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "What happens to my clipboard when EnviousWispr pastes text?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Nothing. EnviousWispr saves your clipboard contents before pasting and restores them after. Whatever you had copied before dictating is still there when it finishes."
-      }
-    },
-    {
-      "@type": "Question",
-      "name": "Can I add custom words for names, brands, or jargon?",
-      "acceptedAnswer": {
-        "@type": "Answer",
-        "text": "Yes. EnviousWispr has a custom vocabulary system with fuzzy matching that catches pronunciation variants. You can add words with aliases, and the vocabulary is also fed into the AI polish prompt for double-layer correction."
-      }
-    }
-  ]
-});
-
 ---
 
 <BaseLayout
@@ -149,12 +54,10 @@ const faqJsonLd = JSON.stringify({
   description="Compare EnviousWispr vs WisprFlow on price, privacy, offline support, and speed. Free on-device dictation for Apple Silicon Macs. No account required."
   activePage="compare"
   canonicalPath="/compare/wisprflow/"
-  ogType="article"
 >
   <Fragment slot="head">
     <script type="application/ld+json" set:html={articleJsonLd}></script>
     <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
-    <script type="application/ld+json" set:html={faqJsonLd}></script>
   </Fragment>
 
 <style>
@@ -286,32 +189,6 @@ const faqJsonLd = JSON.stringify({
 .speed-label { font-size: 14px; color: var(--text-2); font-weight: 500; }
 .speed-detail { font-size: 11px; color: var(--text-3); margin-top: 4px; }
 
-/* ── Deep Dive ── */
-.deep-dive-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
-.deep-dive-card {
-  background: #fff; border: 1px solid var(--border-hover);
-  border-radius: var(--radius-card); padding: 36px 32px;
-  position: relative; overflow: hidden;
-}
-.deep-dive-card::before {
-  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
-  background: var(--rainbow-full);
-}
-.deep-dive-icon { font-size: 32px; margin-bottom: 16px; line-height: 1; }
-.deep-dive-title { font-size: 22px; font-weight: 800; letter-spacing: -0.8px; margin-bottom: 12px; color: var(--text); }
-.deep-dive-body { font-size: 15px; color: var(--text-2); line-height: 1.7; }
-.deep-dive-body p { margin-bottom: 12px; }
-.deep-dive-body p:last-child { margin-bottom: 0; }
-.deep-dive-detail {
-  margin-top: 16px; padding: 14px 18px; border-radius: 10px;
-  background: rgba(124,58,237,0.04); border: 1px solid rgba(124,58,237,0.08);
-  font-size: 13px; color: var(--text-2); line-height: 1.6;
-}
-.deep-dive-detail strong { color: var(--text); }
-@media (max-width: 900px) {
-  .deep-dive-grid { grid-template-columns: 1fr; }
-}
-
 /* ── FAQ ── */
 .faq-list { max-width: 720px; margin: 0 auto; }
 .faq-item {
@@ -397,22 +274,21 @@ const faqJsonLd = JSON.stringify({
             <th>WisprFlow</th>
           </tr>
         </thead>
-        <!-- Evidence: WisprFlow claims verified against wisprflow.ai on 2026-04-04.
-             Confidence: source-verified from public website pages.
+        <!-- Evidence: WisprFlow claims verified against wisprflow.com on 2026-04-03.
+             Confidence: source-verified from public website and App Store listing.
              Sources:
-               - Pricing: wisprflow.ai/pricing (accessed 2026-04-04) — Free basic (2,000 words/week), Pro $15/mo monthly or $12/mo annual
-               - Account: wisprflow.ai signup flow requires email (accessed 2026-04-04)
-               - Cloud processing: wisprflow.ai/privacy — "Transcription always happens in the cloud" (accessed 2026-04-04)
-               - Features: wisprflow.ai/features (accessed 2026-04-04) — dictionary, snippets, tones, filler removal, backtrack, auto-punctuation, whisper mode, 100+ languages, syntax awareness
-               - Accessibility: wisprflow.ai/accessibility (accessed 2026-04-04) — hands-free dictation focus
-               - Platforms: Mac, Windows, iPhone, Android (accessed 2026-04-04)
+               - Pricing: wisprflow.com/pricing (accessed 2026-04-03) — $14.99/mo billed monthly
+               - Account: wisprflow.com signup flow requires email (accessed 2026-04-03)
+               - Cloud processing: wisprflow.com/privacy — audio sent to cloud for transcription (accessed 2026-04-03)
+               - iOS app: Apple App Store listing (accessed 2026-04-03)
+               - Multi-language: wisprflow.com feature page (accessed 2026-04-03)
              Firsthand testing: WisprFlow was not tested firsthand for this comparison.
              All claims are source-verified from official pages. -->
         <tbody>
           <tr>
             <td>Price</td>
-            <td><span class="table-highlight">Free. No limits, no subscription.</span></td>
-            <td>Free tier (2,000 words/week); Pro $12-15/mo for unlimited*</td>
+            <td><span class="table-highlight">Free to use. No subscription.</span></td>
+            <td>~$15/mo subscription*</td>
           </tr>
           <tr>
             <td>Account required</td>
@@ -430,9 +306,14 @@ const faqJsonLd = JSON.stringify({
             <td>Yes, audio uploaded for transcription</td>
           </tr>
           <tr>
-            <td>Offline AI polish</td>
-            <td><span class="table-highlight">Yes.</span> Transcription + AI polish can both run fully offline via Apple Intelligence or Ollama. Cloud options (OpenAI, Gemini) available with your own key.</td>
-            <td><span class="table-cross">No.</span> Requires internet for both transcription and AI editing.</td>
+            <td>Works offline</td>
+            <td><span class="table-check">Yes</span> for transcription (after models download)</td>
+            <td><span class="table-cross">No</span></td>
+          </tr>
+          <tr>
+            <td>AI polish</td>
+            <td><span class="table-highlight">Apple Intelligence</span> or Ollama on-device; OpenAI/Gemini with your own key</td>
+            <td>Cloud LLM (provider-managed)</td>
           </tr>
           <tr>
             <td>Speech engines</td>
@@ -442,12 +323,7 @@ const faqJsonLd = JSON.stringify({
           <tr>
             <td>Multi-language</td>
             <td>English (Parakeet), 90+ via WhisperKit</td>
-            <td>100+ languages with auto-detection</td>
-          </tr>
-          <tr>
-            <td>Platforms</td>
-            <td>macOS only today</td>
-            <td>Mac, Windows, iPhone, Android</td>
+            <td>Multi-language</td>
           </tr>
           <tr>
             <td>Source code</td>
@@ -455,79 +331,19 @@ const faqJsonLd = JSON.stringify({
             <td>Closed source</td>
           </tr>
           <tr>
+            <td>iOS app</td>
+            <td>macOS only today</td>
+            <td>Available</td>
+          </tr>
+          <tr>
             <td>Transcription latency</td>
             <td><span class="table-highlight">0.43s median</span>; ~1.5s with AI polish</td>
             <td>Depends on network + server load</td>
           </tr>
-          <tr>
-            <td>Custom vocabulary</td>
-            <td>Add names, brands, jargon with fuzzy matching that catches pronunciation variants.</td>
-            <td>Personal dictionary; auto-learns from corrections. Shared dictionary for teams.</td>
-          </tr>
-          <tr>
-            <td>Filler word removal</td>
-            <td><span class="table-check">Yes</span></td>
-            <td><span class="table-check">Yes</span></td>
-          </tr>
-          <tr>
-            <td>Writing style control</td>
-            <td>Four presets (Standard, Formal, Friendly, Custom) or write your own system prompt.</td>
-            <td>Auto-adjusts tone per app (English, desktop only).</td>
-          </tr>
-          <tr>
-            <td>Snippets / shortcuts</td>
-            <td><span class="table-cross">Not yet</span></td>
-            <td><span class="table-check">Yes.</span> Voice-triggered text shortcuts with shared snippets for teams.</td>
-          </tr>
-          <tr>
-            <td>Command mode</td>
-            <td><span class="table-cross">Not yet</span></td>
-            <td><span class="table-check">Yes</span> (Pro only). Edit and rewrite with voice commands.</td>
-          </tr>
-          <tr>
-            <td>First-word capture</td>
-            <td><span class="table-check">Never clips.</span> A 500ms pre-roll buffer captures audio before recording officially starts.</td>
-            <td>Not specified</td>
-          </tr>
-          <tr>
-            <td>Starts listening instantly</td>
-            <td><span class="table-check">Yes.</span> Engine pre-warms on key-down, hiding cold-start and Bluetooth latency.</td>
-            <td>Not specified</td>
-          </tr>
-          <tr>
-            <td>Clipboard preservation</td>
-            <td><span class="table-check">Yes.</span> Saves and restores your clipboard after every paste.</td>
-            <td>Not specified</td>
-          </tr>
-          <tr>
-            <td>Text lands in the right app</td>
-            <td><span class="table-check">Yes.</span> Remembers which app and text field were focused, re-activates before pasting.</td>
-            <td>Not specified</td>
-          </tr>
-          <tr>
-            <td>AI hallucination safeguards</td>
-            <td><span class="table-check">Yes.</span> Three-layer defense: short-transcript bypass, reinforcement, output validation.</td>
-            <td>Not specified</td>
-          </tr>
-          <tr>
-            <td>Hands-free dictation</td>
-            <td><span class="table-check">Yes.</span> Double-press to lock recording. Triple-press to cancel.</td>
-            <td>Accessibility-focused hands-free support</td>
-          </tr>
-          <tr>
-            <td>Auto-stop on silence</td>
-            <td><span class="table-check">Yes.</span> Neural voice activity detection stops recording when you finish speaking.</td>
-            <td>Not specified</td>
-          </tr>
-          <tr>
-            <td>Accessibility</td>
-            <td>VoiceOver announcements for recording state changes.</td>
-            <td>Dedicated accessibility page; hands-free focus for mobility/pain/vision challenges.</td>
-          </tr>
         </tbody>
       </table>
     </div>
-    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*WisprFlow pricing and features verified from wisprflow.ai/pricing and wisprflow.ai/features as of April 2026. Pro is $15/mo billed monthly or $12/mo billed annually. EnviousWispr latency from production PostHog data on Apple Silicon Macs. WisprFlow was not firsthand-tested. "Not specified" means the feature is not documented on WisprFlow's public pages. Competitor claims last verified: 2026-04-04.</p>
+    <p style="font-size: 12px; color: var(--text-3); margin-top: 12px; text-align: center;">*Based on WisprFlow's public pricing page as of April 2026. EnviousWispr latency from production PostHog data on Apple Silicon Macs. WisprFlow claims source-verified from wisprflow.com; not firsthand-tested. Competitor claims last verified: 2026-04-03.</p>
     <div style="text-align: center; margin-top: 28px;">
       <a href="/#download" class="btn-primary">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -666,43 +482,6 @@ const faqJsonLd = JSON.stringify({
   </div>
 </section>
 
-<!-- Deep Dives -->
-<section class="section" aria-label="Under the Hood">
-  <div class="container">
-    <div class="section-head reveal">
-      <div class="section-label-pill">Under the Hood</div>
-      <h2 class="section-title">The details that make dictation reliable</h2>
-      <p class="section-sub">Cloud dictation tools outsource the hard problems to servers. EnviousWispr solves them locally, and the result is a more dependable workflow.</p>
-    </div>
-    <div class="deep-dive-grid">
-      <div class="deep-dive-card reveal">
-        <div class="deep-dive-icon">🎯</div>
-        <div class="deep-dive-title">Your text always lands where it should</div>
-        <div class="deep-dive-body">
-          <p>Cloud dictation has a timing problem. While your audio uploads, transcribes, and returns, you might switch apps, click a different field, or start reading something else. When the text finally arrives, it can paste into the wrong place or overwrite your clipboard.</p>
-          <p>EnviousWispr captures which app and which text field had focus when you started recording. After transcription, it re-activates that exact app and inserts text directly via the Accessibility API. If direct insertion fails, it falls back to simulated Cmd+V, then to AppleScript. Your clipboard is saved before the operation and restored after.</p>
-          <p>The result: text goes where you intended, every time, without trashing what you had copied.</p>
-          <div class="deep-dive-detail">
-            <strong>How it works:</strong> Three-tier paste system (AX direct insertion, CGEvent Cmd+V, AppleScript fallback) with full clipboard snapshot and restoration. Target app reactivation uses Accessibility API force-activation to bypass macOS background process restrictions.
-          </div>
-        </div>
-      </div>
-      <div class="deep-dive-card reveal">
-        <div class="deep-dive-icon">🛡️</div>
-        <div class="deep-dive-title">AI polish that does not fabricate</div>
-        <div class="deep-dive-body">
-          <p>When you run speech through an LLM for cleanup, there is a real risk: the AI can hallucinate extra sentences, "answer" your dictation as if it were a question, or inject preamble like "Certainly! Here is the corrected text." These are not theoretical problems. They happen with basic LLM integrations.</p>
-          <p>EnviousWispr uses three layers of defense. Short transcripts (three words or fewer) bypass the LLM entirely because there is nothing to polish. Medium transcripts get aggressive prompt reinforcement to prevent creative expansion. All output is validated: if the response is more than three times longer than the input, it is rejected as probable hallucination and the raw transcript is used instead.</p>
-          <p>The LLM prompt itself is context-aware. It tells the model it is processing speech-to-text output, gives examples of phonetic misrecognition patterns, and adjusts for the app you were dictating into. Your dictated text is wrapped in XML tags with explicit instructions to polish, not answer or execute.</p>
-          <div class="deep-dive-detail">
-            <strong>How it works:</strong> Sandwich framing wraps transcript in &lt;transcript&gt; tags to prevent prompt injection. Preamble stripping removes "Certainly!" artifacts. Context-aware prompts include detected language, ASR error patterns, and target app name. Output length validation rejects fabricated responses.
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
 <!-- Fair Acknowledgment -->
 <section class="section" aria-label="Where WisprFlow Wins">
   <div class="container">
@@ -714,18 +493,18 @@ const faqJsonLd = JSON.stringify({
     <div class="advantages-grid">
       <div class="advantage-card reveal">
         <div class="advantage-icon">📱</div>
-        <div class="advantage-title">You need cross-platform</div>
-        <p class="advantage-desc">WisprFlow runs on Mac, Windows, iPhone, and Android with settings synced across devices. EnviousWispr is macOS only right now.</p>
+        <div class="advantage-title">You need iPhone dictation</div>
+        <p class="advantage-desc">WisprFlow has a shipping iOS app. EnviousWispr is macOS only right now.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🎨</div>
-        <div class="advantage-title">You want more features today</div>
-        <p class="advantage-desc">WisprFlow has a broader feature set: voice command mode for editing, snippet shortcuts, per-app tone adjustment, whisper mode, backtrack correction, and team collaboration tools. EnviousWispr is catching up, but WisprFlow is ahead on features right now.</p>
+        <div class="advantage-title">You want a mature cloud workflow out of the box</div>
+        <p class="advantage-desc">WisprFlow has been shipping longer with a more refined onboarding experience and managed cloud infrastructure. EnviousWispr prioritizes speed and privacy.</p>
       </div>
       <div class="advantage-card reveal">
-        <div class="advantage-icon">🏢</div>
-        <div class="advantage-title">You need enterprise compliance</div>
-        <p class="advantage-desc">WisprFlow offers SOC 2 Type II, ISO 27001, enforced HIPAA compliance, SSO/SAML, and team admin controls. EnviousWispr is built for individual privacy, not enterprise compliance workflows.</p>
+        <div class="advantage-icon">📅</div>
+        <div class="advantage-title">You want a longer track record</div>
+        <p class="advantage-desc">WisprFlow has been around longer, with more users and more reviews. EnviousWispr is newer and shipping fast.</p>
       </div>
     </div>
     <p style="font-size: 15px; color: var(--text-2); text-align: center; margin-top: 24px;">If you are Mac-first and care most about privacy, offline transcription, and price, <a href="/#download" style="color: var(--accent); text-decoration: underline;">give EnviousWispr a try</a>.</p>
@@ -772,37 +551,6 @@ const faqJsonLd = JSON.stringify({
         <div class="faq-q">Is EnviousWispr open source?</div>
         <p class="faq-a">Source-available under the Business Source License 1.1. That means you can read, build, and inspect every line of code on GitHub. It is not an OSI-approved open source license, but it gives you full transparency into how the app works. Contributions are welcome.</p>
       </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Does EnviousWispr clip the first word like other dictation apps?</div>
-        <p class="faq-a">No. EnviousWispr uses a continuous pre-roll audio buffer that captures the 500 milliseconds before you press the hotkey. Even if you start speaking the instant you press the key, the first word is captured. This is a hardware-level solution, not a software workaround.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">What happens to my clipboard when EnviousWispr pastes text?</div>
-        <p class="faq-a">Nothing. EnviousWispr saves your clipboard contents before pasting and restores them after. Whatever you had copied before dictating is still there when it finishes. It also detects third-party clipboard managers and avoids interfering with them.</p>
-      </div>
-      <div class="faq-item reveal">
-        <div class="faq-q">Can I add custom words for names, brands, or jargon?</div>
-        <p class="faq-a">Yes. EnviousWispr has a custom vocabulary system with fuzzy matching that catches pronunciation variants. You can add words with aliases, and on macOS 26+, Apple Intelligence can automatically suggest how the speech engine might mishear your terms. The vocabulary is also fed into the AI polish prompt for double-layer correction.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- Related Comparisons -->
-<section class="section" aria-label="Related Comparisons" style="padding-top: 0;">
-  <div class="container">
-    <p style="font-size: 14px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px;">Compare with other tools</p>
-    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
-      <a href="/compare/superwhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Superwhisper</a>
-      <a href="/compare/dragon/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Dragon</a>
-      <a href="/compare/apple-dictation/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Apple Dictation</a>
-      <a href="/compare/otter-ai/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Otter.ai</a>
-      <a href="/compare/macwhisper/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs MacWhisper</a>
-      <a href="/compare/voiceink/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs VoiceInk</a>
-      <a href="/compare/willow-voice/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Willow Voice</a>
-      <a href="/compare/google-docs-voice-typing/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Google Docs</a>
-      <a href="/compare/notta/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs Notta</a>
-      <a href="/compare/whisper-cpp/" style="padding: 8px 16px; border-radius: 100px; font-size: 13px; font-weight: 600; color: var(--text-2); border: 1px solid var(--border-hover); text-decoration: none; transition: all 0.2s;">vs whisper.cpp</a>
     </div>
   </div>
 </section>
