@@ -103,6 +103,9 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       if (res.ok) {
         status.className = 'form-status success';
         status.textContent = 'Thanks! We\'ll get back to you soon.';
+        if (typeof window.posthog !== 'undefined') {
+          window.posthog.capture('contact_form_submitted');
+        }
         form.reset();
       } else {
         const data = await res.json().catch(() => ({}));
