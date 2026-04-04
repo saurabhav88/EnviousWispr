@@ -116,7 +116,11 @@ let package = Package(
         ),
         .testTarget(
             name: "EnviousWisprTests",
-            dependencies: ["EnviousWispr", "EnviousWisprCore"],
+            dependencies: [
+                "EnviousWisprCore",
+                "EnviousWisprPostProcessing",
+                "EnviousWisprLLM",
+            ],
             path: "Tests/EnviousWisprTests"
         ),
     ],
