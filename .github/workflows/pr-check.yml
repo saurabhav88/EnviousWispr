@@ -72,10 +72,6 @@ jobs:
         if: steps.changes.outputs.needs_build == 'true'
         run: swift build -c release --arch arm64
 
-      - name: Verify test target compiles
-        if: steps.changes.outputs.needs_build == 'true'
-        run: swift build --build-tests
-
       - name: Run logic tests
         if: steps.changes.outputs.needs_build == 'true'
         run: |
