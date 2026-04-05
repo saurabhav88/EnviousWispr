@@ -1,10 +1,9 @@
 @preconcurrency import AVFoundation
-import EnviousWisprCore
 
 /// Handles audio format conversion and buffer processing.
-public enum AudioBufferProcessor {
+enum AudioBufferProcessor {
     /// Calculate RMS audio level from a buffer (0.0 - 1.0).
-    public static func calculateRMS(_ buffer: AVAudioPCMBuffer) -> Float {
+    static func calculateRMS(_ buffer: AVAudioPCMBuffer) -> Float {
         guard let channelData = buffer.floatChannelData,
               buffer.frameLength > 0 else { return 0 }
 

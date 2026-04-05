@@ -60,13 +60,13 @@ public extension ASRBackend {
 }
 
 /// Errors that can occur during ASR operations.
-public enum ASRError: LocalizedError, Sendable {
+enum ASRError: LocalizedError, Sendable {
     case notReady
     case streamingNotSupported
     case streamingTimeout
     case transcriptionFailed(String)
 
-    public var errorDescription: String? {
+    var errorDescription: String? {
         switch self {
         case .notReady: return "ASR backend is not ready. Call prepare() first."
         case .streamingNotSupported: return "This ASR backend does not support streaming transcription."

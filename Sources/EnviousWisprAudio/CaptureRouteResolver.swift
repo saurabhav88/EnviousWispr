@@ -1,5 +1,4 @@
 import CoreAudio
-import EnviousWisprCore
 
 /// Policy for selecting the audio capture source.
 /// `.automatic` decides based on output route + input intent.

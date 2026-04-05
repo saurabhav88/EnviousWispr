@@ -1,5 +1,4 @@
 import SwiftUI
-import EnviousWisprCore
 
 /// Microphone and Accessibility permission status.
 struct PermissionsSettingsView: View {

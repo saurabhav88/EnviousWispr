@@ -1,5 +1,4 @@
 import Foundation
-import EnviousWisprCore
 
 /// Events that any dictation pipeline must handle.
 public enum PipelineEvent: Sendable {

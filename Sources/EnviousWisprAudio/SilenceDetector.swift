@@ -62,7 +62,7 @@ public struct SmoothedVADConfig: Sendable {
     }
 }
 
-public enum SmoothedVADPhase: Sendable {
+enum SmoothedVADPhase: Sendable {
     case idle
     case speech
     case hangover(chunksRemaining: Int)

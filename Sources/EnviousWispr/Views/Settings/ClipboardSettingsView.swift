@@ -1,5 +1,4 @@
 import SwiftUI
-import EnviousWisprCore
 
 /// Clipboard behavior settings.
 struct ClipboardSettingsView: View {

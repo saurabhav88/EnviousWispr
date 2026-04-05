@@ -1,5 +1,4 @@
 import Foundation
-import EnviousWisprCore
 
 /// Context passed through the text processing chain after ASR transcription.
 public struct TextProcessingContext: Sendable {
@@ -32,7 +31,7 @@ public struct TextProcessingContext: Sendable {
 /// Steps run in order after transcription. Each step receives the context
 /// from the previous step and returns a modified context.
 @MainActor
-public protocol TextProcessingStep {
+protocol TextProcessingStep {
     /// Human-readable name for logging.
     var name: String { get }
     /// Whether this step should run. Checked before each invocation.
