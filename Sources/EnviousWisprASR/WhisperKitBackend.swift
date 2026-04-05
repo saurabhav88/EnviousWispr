@@ -75,22 +75,6 @@ public actor WhisperKitBackend: ASRBackend {
         isReady = true
     }
 
-    public func transcribe(audioURL: URL, options: TranscriptionOptions) async throws -> ASRResult {
-        guard isReady, let kit = whisperKit else { throw ASRError.notReady }
-
-        let decodeOptions = makeDecodeOptions(from: options, sampleCount: 0)
-        let startTime = CFAbsoluteTimeGetCurrent()
-        let results: [TranscriptionResult]
-        do {
-            results = try await kit.transcribe(audioPath: audioURL.path, decodeOptions: decodeOptions)
-        } catch {
-            throw ASRError.transcriptionFailed(error.localizedDescription)
-        }
-        let elapsed = CFAbsoluteTimeGetCurrent() - startTime
-
-        return mapResults(results, processingTime: elapsed)
-    }
-
     public func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult {
         guard isReady, let kit = whisperKit else { throw ASRError.notReady }
 

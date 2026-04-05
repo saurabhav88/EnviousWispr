@@ -7,7 +7,7 @@ public struct IncrementalResult: Sendable {
     public let text: String?
     public let samplesCovered: Int
     public let decodeCount: Int
-    public let totalDecodeTimeMs: Int
+    public let totalDecodeTimeMs: Int // periphery:ignore - telemetry field, populated for diagnostics
     public let accepted: Bool
     public let mode: String
     public let strategy: String
@@ -59,6 +59,7 @@ public actor WhisperKitIncrementalWorker {
         }
     }
 
+    // periphery:ignore:parameters speechSegments - kept for API compatibility; energy-based gate replaced VAD segment check
     public func finalize(
         finalSamples: [Float],
         speechSegments: [SpeechSegment]

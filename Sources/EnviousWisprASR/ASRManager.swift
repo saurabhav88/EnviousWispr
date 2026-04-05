@@ -124,11 +124,6 @@ public final class ASRManager: ASRManagerInterface {
         }
     }
 
-    /// Transcribe audio from a file URL.
-    public func transcribe(audioURL: URL, options: TranscriptionOptions = .default) async throws -> ASRResult {
-        try await activeBackend.transcribe(audioURL: audioURL, options: options)
-    }
-
     /// Transcribe raw audio samples (16kHz mono Float32).
     public func transcribe(audioSamples: [Float], options: TranscriptionOptions = .default) async throws -> ASRResult {
         try await activeBackend.transcribe(audioSamples: audioSamples, options: options)

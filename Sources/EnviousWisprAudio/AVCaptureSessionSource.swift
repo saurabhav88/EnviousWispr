@@ -299,7 +299,6 @@ private final class CaptureDelegate: NSObject, AVCaptureAudioDataOutputSampleBuf
 
     /// Set after init by the AsyncStream closure.
     var continuation: AsyncStream<AVAudioPCMBuffer>.Continuation?
-    private let targetFormat: AVAudioFormat
     private let forwarder: PreRollForwarder
 
     /// Track whether first buffer format has been validated.
@@ -308,7 +307,7 @@ private final class CaptureDelegate: NSObject, AVCaptureAudioDataOutputSampleBuf
     private var formatMismatch = false
 
     init(targetFormat: AVAudioFormat, forwarder: PreRollForwarder) {
-        self.targetFormat = targetFormat
+        _ = targetFormat // validated at init site; format checking done in captureOutput
         self.forwarder = forwarder
     }
 

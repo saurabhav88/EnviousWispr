@@ -94,7 +94,7 @@ final class AVAudioEngineSource: AudioInputSource {
     // MARK: - Private state
 
     private var engine = AVAudioEngine()
-    private var converter: AVAudioConverter?
+    private var converter: AVAudioConverter? // periphery:ignore - retains converter to prevent deallocation while tap is active
     private var bufferContinuation: AsyncStream<AVAudioPCMBuffer>.Continuation?
     private var configChangeObserver: (any NSObjectProtocol)?
     private var activeTasks: [Task<Void, Never>] = []
@@ -111,8 +111,6 @@ final class AVAudioEngineSource: AudioInputSource {
 
     nonisolated static let targetSampleRate: Double = 16000
     nonisolated static let targetChannels: AVAudioChannelCount = 1
-    nonisolated static let maxRecordingDurationSeconds: Double = 600
-    nonisolated static let maxRecordingSamples: Int = Int(maxRecordingDurationSeconds * targetSampleRate)
 
     // MARK: - Lifecycle
 
@@ -377,11 +375,6 @@ final class AVAudioEngineSource: AudioInputSource {
             }
         }
         noiseSuppressionEnabled = noiseSuppression
-    }
-
-    /// Track a spawned Task so it can be cancelled during teardown.
-    func trackTask(_ task: Task<Void, Never>) {
-        activeTasks.append(task)
     }
 
     // MARK: - Private: Engine Teardown

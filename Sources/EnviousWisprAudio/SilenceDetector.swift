@@ -7,7 +7,7 @@ public struct SmoothedVADConfig: Sendable {
     public var onsetThreshold: Float = 0.5
     public var offsetThreshold: Float = 0.35
     public var onsetConfirmationChunks: Int = 1
-    public var hangoverChunks: Int = 3
+    public var hangoverChunks: Int = 3 // periphery:ignore - public config field; SilenceDetector uses effectiveHangoverChunks but callers may set this
     public var prebufferChunks: Int = 2
     public var energyGateThreshold: Float = 0.0
 
@@ -27,10 +27,6 @@ public struct SmoothedVADConfig: Sendable {
         self.hangoverChunks = hangoverChunks
         self.prebufferChunks = prebufferChunks
         self.energyGateThreshold = energyGateThreshold
-    }
-
-    public static func fromPreset(_ preset: EnvironmentPreset) -> SmoothedVADConfig {
-        return fromSensitivity(preset.vadSensitivity)
     }
 
     public static func fromSensitivity(_ sensitivity: Float, energyGate: Bool = false) -> SmoothedVADConfig {
@@ -276,13 +272,6 @@ public actor SilenceDetector {
             result.append(contentsOf: allSamples[range.start..<range.end])
         }
         return result.isEmpty ? allSamples : result
-    }
-
-    /// Release the VAD model from memory.
-    public func unload() {
-        vadManager = nil
-        isReady = false
-        reset()
     }
 
     // MARK: - Private Helpers

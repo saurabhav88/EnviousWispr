@@ -75,6 +75,7 @@ struct CaptureRouteResolver {
         }
     }
 
+    // periphery:ignore:parameters noiseSuppression - reserved for future VP-aware routing decisions
     private func resolveAutomatic(preferredInputDeviceUID: String, noiseSuppression: Bool) -> CaptureRouteDecision {
         let btOutputActive: Bool
         if let outID = AudioDeviceEnumerator.defaultOutputDeviceID() {

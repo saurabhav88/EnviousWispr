@@ -6,8 +6,6 @@ public struct AudioInputDevice: Sendable, Identifiable, Hashable {
     public let id: AudioDeviceID
     public let name: String
     public let uid: String
-    public let manufacturer: String
-    public let inputChannelCount: Int
 }
 
 /// Enumerates audio input devices using CoreAudio HAL.
@@ -49,14 +47,11 @@ public enum AudioDeviceEnumerator {
 
             let name = stringProperty(for: deviceID, selector: kAudioDevicePropertyDeviceNameCFString) ?? "Unknown"
             let uid = stringProperty(for: deviceID, selector: kAudioDevicePropertyDeviceUID) ?? ""
-            let manufacturer = stringProperty(for: deviceID, selector: kAudioDevicePropertyDeviceManufacturerCFString) ?? ""
 
             return AudioInputDevice(
                 id: deviceID,
                 name: name,
-                uid: uid,
-                manufacturer: manufacturer,
-                inputChannelCount: channelCount
+                uid: uid
             )
         }
     }

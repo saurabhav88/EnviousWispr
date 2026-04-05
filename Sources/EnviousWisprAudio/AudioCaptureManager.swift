@@ -53,7 +53,6 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
     /// Target format: 16kHz, mono, Float32 — required by both Parakeet and WhisperKit.
     public nonisolated static let targetSampleRate: Double = 16000
-    public nonisolated static let targetChannels: AVAudioChannelCount = 1
 
     /// The active capture source. Created on buildEngine/startEnginePhase.
     /// Either AVAudioEngineSource (no BT) or AVCaptureSessionSource (BT output active).
@@ -156,6 +155,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
         return stream
     }
 
+    // periphery:ignore - protocol conformance (AudioCaptureInterface); convenience for single-phase callers
     public func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
         guard !isCapturing else {
             return AsyncStream { $0.finish() }
@@ -253,16 +253,6 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     public func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool {
         guard let source = activeSource else { return true }
         return await source.waitForFormatStabilization(maxWait: maxWait, pollInterval: pollInterval)
-    }
-
-    /// Inject pre-recorded samples directly into the capture buffer for benchmark/testing.
-    public func injectSamples(_ samples: [Float]) {
-        capturedSamples = samples
-    }
-
-    /// Track a spawned Task so it can be cancelled during teardown.
-    public func trackTask(_ task: Task<Void, Never>) {
-        (activeSource as? AVAudioEngineSource)?.trackTask(task)
     }
 
     // MARK: - Warm Engine Management

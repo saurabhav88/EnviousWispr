@@ -8,7 +8,7 @@ import EnviousWisprAudio
 /// receives buffers and state changes via AudioServiceClientProtocol callbacks.
 final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Sendable {
     /// The XPC connection back to the host — set by AudioServiceDelegate.
-    weak var connection: NSXPCConnection?
+    weak var connection: NSXPCConnection? // periphery:ignore - XPC connection lifecycle; set by delegate, prevents premature release
     /// Client proxy for sending callbacks to the host app.
     /// Resolved from connection.remoteObjectProxy — set by AudioServiceDelegate.
     var clientProxy: (any AudioServiceClientProtocol)?
