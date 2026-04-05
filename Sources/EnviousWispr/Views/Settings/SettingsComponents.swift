@@ -274,33 +274,6 @@ struct BrandedStatusRow: View {
     }
 }
 
-// MARK: - Branded Word Chip
-
-/// Purple pill chip with an X remove button for word lists.
-struct BrandedWordChip: View {
-    let word: String
-    let onRemove: () -> Void
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Text(word)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.stAccent)
-
-            Button(action: onRemove) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.stTextTertiary)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(Color.stAccentLight)
-        .clipShape(Capsule())
-    }
-}
-
 // MARK: - Wrapping HStack (flow layout for chips)
 
 /// Layout that wraps items to the next line when they exceed the available width.
