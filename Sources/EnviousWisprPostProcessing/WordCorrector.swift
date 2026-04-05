@@ -304,13 +304,6 @@ public struct WordCorrector: Sendable {
         return (corrected.joined(separator: " "), replacements)
     }
 
-    // MARK: - Legacy Bridge
-
-    public func correct(_ text: String, against wordList: [String]) -> (corrected: String, replacements: Int) {
-        let words = wordList.map { CustomWord(canonical: $0) }
-        return correct(text, against: words)
-    }
-
     // MARK: - Scoring
 
     public func score(_ candidate: String, against target: String) -> Double {

@@ -22,12 +22,6 @@ final class TranscriptCoordinator {
 
     var transcriptCount: Int { transcripts.count }
 
-    var averageProcessingSpeed: Double {
-        let withTimes = transcripts.filter { $0.processingTime > 0 }
-        guard !withTimes.isEmpty else { return 0 }
-        return withTimes.map(\.processingTime).reduce(0, +) / Double(withTimes.count)
-    }
-
     init(store: TranscriptStore) {
         self.store = store
     }

@@ -502,9 +502,6 @@ public final class HotkeyService {
         return recordingMode == .pushToTalk ? "Hold \(formatted)" : formatted
     }
 
-    public var cancelHotkeyDescription: String {
-        KeySymbols.formatHotkey(keyCode: cancelKeyCode, modifiers: cancelModifiers)
-    }
 }
 
 // MARK: - Carbon Helpers
@@ -524,7 +521,7 @@ private let hotkeySignature: OSType = {
 /// via RegisterEventHotKey. Modifier-only hotkeys are handled separately via
 /// NSEvent flagsChanged monitors, which work globally regardless of app focus.
 private func carbonHotkeyHandler(
-    _ nextHandler: EventHandlerCallRef?,
+    _: EventHandlerCallRef?,
     _ event: EventRef?,
     _ userData: UnsafeMutableRawPointer?
 ) -> OSStatus {

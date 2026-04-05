@@ -603,8 +603,7 @@ public final class TranscriptionPipeline: DictationPipeline {
                     level: .info, category: "Pipeline"
                 ) }
                 lastPolishError = error.localizedDescription
-                context = TextProcessingContext(text: asrText, originalASRText: asrText, language: result.language)
-                context.targetAppBundleID = targetApp?.bundleIdentifier
+                context = TextProcessingContext(text: asrText, language: result.language)
                 context.targetAppName = targetApp?.localizedName
             }
             let polishEnd = CFAbsoluteTimeGetCurrent()
@@ -789,7 +788,6 @@ public final class TranscriptionPipeline: DictationPipeline {
         do {
             var context = TextProcessingContext(
                 text: transcript.text,
-                originalASRText: transcript.text,
                 language: transcript.language
             )
             context = try await llmPolishStep.process(context)
@@ -1158,10 +1156,8 @@ public final class TranscriptionPipeline: DictationPipeline {
     private func runTextProcessing(asrText: String, language: String?) async throws -> TextProcessingContext {
         var context = TextProcessingContext(
             text: asrText,
-            originalASRText: asrText,
             language: language
         )
-        context.targetAppBundleID = targetApp?.bundleIdentifier
         context.targetAppName = targetApp?.localizedName
         Task {
             await AppLogger.shared.log(

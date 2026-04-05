@@ -6,22 +6,17 @@ public struct TextProcessingContext: Sendable {
     public var text: String
     /// Optional polished/enhanced version of the text.
     public var polishedText: String?
-    /// The original unmodified ASR output (read-only reference).
-    public let originalASRText: String
     /// Detected language from ASR.
     public let language: String?
     /// LLM provider used for polishing (e.g. "openai", "ollama").
     public var llmProvider: String?
     /// LLM model used for polishing (e.g. "gpt-4o-mini").
     public var llmModel: String?
-    /// Target app bundle ID (e.g. "com.apple.Terminal"). Nil if unknown or re-polish path.
-    public var targetAppBundleID: String?
     /// Target app display name (e.g. "Terminal"). Nil if unknown or re-polish path.
     public var targetAppName: String?
 
-    public init(text: String, originalASRText: String, language: String?) {
+    public init(text: String, language: String?) {
         self.text = text
-        self.originalASRText = originalASRText
         self.language = language
     }
 }

@@ -112,15 +112,6 @@ public final class CustomWordsManager {
         return mergedWords(file: file)
     }
 
-    public func save(_ words: [CustomWord]) throws {
-        var file = loadFile() ?? CustomWordsFile()
-        let builtinCanonicals = Set(Self.builtinDefaults.map { $0.word.canonical.lowercased() })
-        file.words = words
-            .filter { !builtinCanonicals.contains($0.canonical.lowercased()) }
-            .sorted { $0.canonical.localizedCaseInsensitiveCompare($1.canonical) == .orderedAscending }
-        try saveFile(file)
-    }
-
     public func add(canonical: String, to words: inout [CustomWord]) throws {
         let trimmed = canonical.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -141,25 +132,6 @@ public final class CustomWordsManager {
         }
 
         file.words.append(CustomWord(canonical: trimmed))
-        try saveFile(file)
-        words = mergedWords(file: file)
-    }
-
-    public func add(word: CustomWord, to words: inout [CustomWord]) throws {
-        guard !words.contains(where: { $0.id == word.id }) else { return }
-        var file = loadFile() ?? CustomWordsFile()
-
-        // If this matches a deleted built-in, restore it
-        if let builtin = Self.builtinDefaults.first(where: {
-            $0.word.canonical.lowercased() == word.canonical.lowercased()
-        }) {
-            file.deletedBuiltinIds.removeAll { $0 == builtin.id }
-            try saveFile(file)
-            words = mergedWords(file: file)
-            return
-        }
-
-        file.words.append(word)
         try saveFile(file)
         words = mergedWords(file: file)
     }

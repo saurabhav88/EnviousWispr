@@ -19,13 +19,6 @@ public enum AIGateStatus: String, Sendable, Codable {
     case unknown
 }
 
-/// Three-state value for leaf observations that may not be deterministic.
-public enum AITriState: String, Sendable {
-    case yes
-    case no
-    case unknown
-}
-
 /// Explicit, stable failure reasons for Apple Intelligence availability.
 /// Each maps to a specific diagnostic condition — not freeform strings.
 public enum AIFailureReason: String, Sendable, CaseIterable, Codable {

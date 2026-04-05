@@ -11,22 +11,17 @@ final class BenchmarkSuite {
     struct Result: Identifiable, Sendable {
         let id = UUID()
         let label: String
-        let audioDuration: TimeInterval
         let processingTime: TimeInterval
         /// Real-time factor: how many seconds of audio are processed per second.
         let rtf: Double
-        let backend: ASRBackendType
     }
 
     /// Results from a full pipeline benchmark run.
     struct PipelineBenchmarkResult: Sendable {
         let batchASRTime: TimeInterval
-        let batchTranscript: String
         let streamingFinalizeTime: TimeInterval?
-        let streamingTranscript: String?
         let werDelta: Double?
         let audioDuration: TimeInterval
-        let backend: ASRBackendType
     }
 
     private(set) var results: [Result] = []
@@ -59,7 +54,6 @@ final class BenchmarkSuite {
         }
 
         let durations: [TimeInterval] = [5, 15, 30]
-        let backend = asrManager.activeBackendType
 
         for duration in durations {
             progress = "Testing \(Int(duration))s audio..."
@@ -71,10 +65,8 @@ final class BenchmarkSuite {
 
             results.append(Result(
                 label: "\(Int(duration))s",
-                audioDuration: duration,
                 processingTime: elapsed,
-                rtf: duration / elapsed,
-                backend: backend
+                rtf: duration / elapsed
             ))
         }
 
@@ -92,8 +84,6 @@ final class BenchmarkSuite {
             isRunning = false
             return
         }
-
-        let backend = asrManager.activeBackendType
 
         // Load test audio — try jfk.wav from WhisperKit test resources, fall back to synthetic
         let testAudioDuration: TimeInterval
@@ -185,12 +175,9 @@ final class BenchmarkSuite {
 
         pipelineResult = PipelineBenchmarkResult(
             batchASRTime: batchTime,
-            batchTranscript: batchTranscript,
             streamingFinalizeTime: streamingFinalizeTime,
-            streamingTranscript: streamingTranscript,
             werDelta: werDelta,
-            audioDuration: testAudioDuration,
-            backend: backend
+            audioDuration: testAudioDuration
         )
 
         progress = "Pipeline benchmark complete"

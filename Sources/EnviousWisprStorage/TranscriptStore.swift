@@ -58,30 +58,6 @@ public final class TranscriptStore {
         return transcripts
     }
 
-    /// Synchronous load for cases where async isn't suitable.
-    /// Prefer loadAll() async when possible to keep UI responsive.
-    public func loadAllSync() throws -> [Transcript] {
-        guard FileManager.default.fileExists(atPath: directory.path) else { return [] }
-
-        let files = try FileManager.default.contentsOfDirectory(
-            at: directory,
-            includingPropertiesForKeys: nil
-        )
-
-        let decoder = JSONDecoder()
-        let transcripts = files
-            .filter { $0.pathExtension == "json" }
-            .compactMap { url -> Transcript? in
-                do {
-                    let data = try Data(contentsOf: url)
-                    return try decoder.decode(Transcript.self, from: data)
-                } catch {
-                    return nil
-                }
-            }
-        return transcripts.sorted { $0.createdAt > $1.createdAt }
-    }
-
     /// Delete a transcript by ID.
     public func delete(id: UUID) throws {
         let url = directory.appendingPathComponent("\(id.uuidString).json")
