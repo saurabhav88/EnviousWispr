@@ -208,6 +208,9 @@ const howToJsonLd = JSON.stringify({
 .cta-actions { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; }
 .back-link { font-size: 15px; font-weight: 500; color: var(--text-3); text-decoration: none; transition: color 0.2s; }
 .back-link:hover { color: var(--accent); }
+.how-it-works-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 20px; margin-top: 28px; }
+.how-it-works-links a { font-size: 13px; font-weight: 600; color: var(--accent); text-decoration: none; padding: 6px 16px; border: 1px solid var(--border); border-radius: var(--radius-pill); transition: all 0.2s; }
+.how-it-works-links a:hover { border-color: var(--accent); background: var(--accent-soft); }
 
 /* ── JS-created DOM elements (scoped won't reach these) ── */
 :global(.filler) { color: var(--red); background: rgba(255,42,64,0.1); padding: 1px 4px; border-radius: 3px; transition: all 0.4s ease; display: inline; }
@@ -469,8 +472,14 @@ const howToJsonLd = JSON.stringify({
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Download Free
       </a>
-      <a href="/" class="back-link">Back to Home</a>
+      <a href="/compare/" class="back-link">Compare with alternatives</a>
     </div>
+    <nav class="how-it-works-links reveal" aria-label="Related content">
+      <a href="/blog/getting-started-enviouswispr-under-2-minutes/">Get started in under 2 minutes</a>
+      <a href="/blog/on-device-vs-cloud-dictation-privacy/">On-device vs cloud dictation</a>
+      <a href="/compare/wisprflow/">Compare with WisprFlow</a>
+      <a href="/compare/apple-dictation/">Compare with Apple Dictation</a>
+    </nav>
   </div>
 </section>
 

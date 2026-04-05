@@ -2,21 +2,22 @@
 title: "Voice to Prose on macOS: A Realistic Writing Workflow"
 description: "Build a voice-to-prose writing workflow with on-device macOS dictation. Real examples, honest tradeoffs, writing style presets, and first-draft setup tips."
 pubDate: 2026-03-24
+updatedDate: 2026-04-04
 tags: ["writing", "workflow", "dictation", "writing-style"]
 author: "Saurabh Vaish"
 ---
 
 A typical EnviousWispr session: dictate a first draft in about fifteen minutes while pacing the room, then spend another twenty minutes editing the typed version. Roughly thirty-five minutes for a finished article. The equivalent piece typed start to finish often takes an hour and forty minutes.
 
-That's the gap a voice-to-prose workflow closes. You talk, the text appears, you edit. The messy middle — the part where you stare at a cursor trying to phrase things — mostly disappears.
+That's the gap a voice-to-prose workflow closes. You talk, the text appears, you edit. The messy middle, the part where you stare at a cursor trying to phrase things, mostly disappears.
 
 ## How the pipeline works
 
 Understanding what happens between your voice and the finished text helps you get better results. EnviousWispr runs a three-stage pipeline, entirely on your Mac:
 
-1. **Record** -- hold the hotkey, speak, release. The app captures raw audio from your microphone.
-2. **Transcribe** -- your speech is converted to text locally via Core ML, using either Parakeet for fast English dictation or WhisperKit for multi-language support. This is a literal transcription -- every filler word, false start, and repeated phrase comes through.
-3. **Post-process** -- a local LLM cleans up the raw transcription. It strips filler words, fixes punctuation, corrects grammar, and reshapes the text according to your chosen writing style preset (Formal, Standard, or Friendly).
+1. **Record.** Hold the hotkey, speak, release. The app captures raw audio from your microphone.
+2. **Transcribe.** Your speech is converted to text locally via Core ML, using on-device speech recognition. This is a literal transcription; every filler word, false start, and repeated phrase comes through.
+3. **Post-process.** An LLM cleans up the raw transcription. It strips filler words, fixes punctuation, corrects grammar, and reshapes the text according to your chosen writing style preset (Formal, Standard, or Friendly).
 
 The third step is where the writing happens. Raw transcription is messy. Post-processing is what turns "so basically what I'm trying to say is that like the pipeline has three steps and each one does a different thing" into a coherent sentence. You can read more about the technical details on the [how EnviousWispr's transcription pipeline works](/how-it-works/) page.
 
@@ -24,23 +25,23 @@ The whole cycle takes a second or two on Apple Silicon. Fast enough that you don
 
 ## Choosing the right writing style preset
 
-The default post-processing does a solid job: it removes filler words, fixes punctuation, and produces clean sentences. But writers need to match the output to their context. That's what EnviousWispr's three writing style presets are for.
+The default post-processing does a solid job: it removes filler words, fixes punctuation, and produces clean sentences. But writers need to match the output to their context. That's what EnviousWispr's four writing style presets are for.
 
-### Friendly -- for blog drafts and freewriting
+### Friendly: for blog drafts and freewriting
 
-This is the preset most writers will reach for first. It cleans up filler words and fixes punctuation, but keeps your natural voice, contractions, and sentence rhythm intact. The output reads like you wrote it -- conversational, direct, human. Perfect for blog posts, journal entries, and first drafts of anything.
+This is the preset most writers will reach for first. It cleans up filler words and fixes punctuation, but keeps your natural voice, contractions, and sentence rhythm intact. The output reads like you wrote it: conversational, direct, human. Perfect for blog posts, journal entries, and first drafts of anything.
 
-### Standard -- the balanced middle ground
+### Standard: the balanced middle ground
 
 A bit more polished than Friendly, Standard smooths out rough edges while keeping your core voice. Good for newsletter drafts, articles, or anything where you want clean prose without sounding corporate.
 
-### Formal -- for professional and academic work
+### Formal: for professional and academic work
 
-When you need tighter, more structured output -- client deliverables, formal essays, professional correspondence -- Formal tightens sentence structure, removes casual phrasing, and produces polished prose.
+When you need tighter, more structured output (client deliverables, formal essays, professional correspondence), Formal tightens sentence structure, removes casual phrasing, and produces polished prose.
 
 The point is this: you dictate once, and the preset shapes how it reads. Switching between presets takes one click, so you can draft a blog post in Friendly mode, then switch to Formal for a client email, without changing how you speak.
 
-> **On the roadmap:** Custom prompts will let you write your own post-processing instructions for even more control -- things like "format as screenplay dialogue" or "keep this as raw stream of consciousness." And per-app presets will auto-detect which app has focus and apply different rules automatically, so dictation into Ulysses gets your prose style while a notes app gets minimal cleanup.
+With the Custom preset, you can write your own post-processing instructions for even more control: things like "format as screenplay dialogue" or "keep this as raw stream of consciousness."
 
 ## A realistic example: before and after
 
@@ -52,13 +53,13 @@ Here's what this actually looks like in practice. The following is a raw transcr
 
 ### After post-processing (what lands in your editor)
 
-> I've been thinking about morning routines and how most of the advice out there covers the same territory -- wake up early, meditate, journal, exercise. I'm not saying that's wrong. But what works for one person might not work for someone else.
+> I've been thinking about morning routines and how most of the advice out there covers the same territory: wake up early, meditate, journal, exercise. I'm not saying that's wrong. But what works for one person might not work for someone else.
 >
 > The real key is figuring out what makes you feel ready for the day, rather than copying what some CEO does. Their life is completely different from yours. People should experiment more and not feel bad if they don't want to wake up at 5am.
 
-That's roughly 500 words of dictation compressed into a tight, readable paragraph pair. The voice is preserved. The filler is gone. The structure is cleaner. And you didn't type a single character. It reads like you -- not like some algorithm's idea of what you should sound like.
+That's roughly 500 words of dictation compressed into a tight, readable paragraph pair. The voice is preserved. The filler is gone. The structure is cleaner. And you didn't type a single character. It reads like you, not like some algorithm's idea of what you should sound like.
 
-This is what makes dictation practical for real writing work -- the post-processing step bridges the gap between how people talk and how people write.
+This is what makes dictation practical for real writing work: the post-processing step bridges the gap between how people talk and how people write.
 
 ## Building a session rhythm
 
@@ -66,23 +67,21 @@ Once the pipeline feels natural, the real productivity comes from how you struct
 
 ### Think in chunks, not full articles
 
-Don't try to dictate an entire 1,500-word post in one take. Dictate a section at a time -- a single argument, one anecdote, a few related points. Review what the LLM gave you. Adjust if needed. Then dictate the next chunk.
+Don't try to dictate an entire 1,500-word post in one take. Dictate a section at a time: a single argument, one anecdote, a few related points. Review what the LLM gave you. Adjust if needed. Then dictate the next chunk.
 
 This mirrors how most writers actually work. The hotkey-based flow supports it naturally: hold, speak a section, release, review, repeat.
 
-<!-- TODO: Screenshot — Hands-free mode indicator: the recording overlay showing hands-free/locked mode active for continuous freewriting -->
-
 ### Use hands-free mode for freewriting
 
-When you're brainstorming or working through ideas, switch to hands-free mode. It transcribes continuously in the background without you holding any keys. Pace around the room, talk through your argument, let the ideas come without stopping to check output.
+When you're brainstorming or working through ideas, switch to hands-free mode by double-pressing your hotkey. This locks recording on without you holding any keys. Pace around the room, talk through your argument, let the ideas come without stopping to check output. Press the hotkey once to stop, or triple-press to cancel.
 
-Come back later and edit the transcript into something usable. This is especially good for working through writer's block -- it's harder to stare at a blank page when words are appearing on screen as you think out loud.
+Come back later and edit the transcript into something usable. This is especially good for working through writer's block. It's harder to stare at a blank page when words are appearing on screen as you think out loud.
 
 ### Edit after, not during
 
 Resist the urge to fix every sentence as it appears. Dictate your full section first, then go back and edit. The point of voice drafting is to separate generation from editing. If you stop to rephrase after every paragraph, you lose the speed advantage.
 
-## When dictation works -- and when it doesn't
+## When dictation works, and when it doesn't
 
 Honest take: dictation is not better than typing for everything. Here's where each one wins.
 
@@ -91,27 +90,27 @@ Honest take: dictation is not better than typing for everything. Here's where ea
 - **You're generating first drafts.** Getting ideas out of your head and onto the page is dramatically faster by voice. Most people speak 3-4x faster than they type.
 - **You're working through arguments.** Talking through a point helps clarify thinking in a way that staring at a cursor doesn't.
 - **Your hands hurt.** RSI is real. Dictation gives your wrists a break without stopping your output. We wrote a full guide on [voice input for RSI](/blog/voice-input-rsi-keyboard-free-workflow/) if that's your situation.
-- **You're away from the keyboard.** Pacing, standing, stretching -- you can keep working without being chained to a desk. Your Mac Studio or MacBook Air picks up the audio just fine from across the room.
+- **You're away from the keyboard.** Pacing, standing, stretching. You can keep working without being chained to a desk. Your Mac Studio or MacBook Air picks up the audio just fine from across the room.
 
 ### Typing wins when
 
-- **You're doing precise editing.** Moving sentences around, swapping individual words, adjusting formatting -- this is mouse-and-keyboard territory.
+- **You're doing precise editing.** Moving sentences around, swapping individual words, adjusting formatting. This is mouse-and-keyboard territory.
 - **You're writing code or technical syntax.** Dictating variable names and brackets is slower than typing them.
 - **You're in a noisy environment.** Background noise degrades transcription accuracy. A quiet room produces much better results.
-- **You need exact formatting.** Tables, nested lists, specific markdown structures -- speak the content, type the formatting.
+- **You need exact formatting.** Tables, nested lists, specific markdown structures. Speak the content, type the formatting.
 
 The best workflow uses both. Dictate the rough draft. Type the edits. That's the combination that saves the most time for most writers.
 
 ## Getting started
 
-[Download EnviousWispr free](https://enviouswispr.com/#download) — no account, no subscription required. It takes a couple of minutes to set up on any Apple Silicon Mac running macOS Sonoma or later. On first launch, grant microphone access and pick a Whisper model — `large-v3-turbo` gives you the best balance of speed and accuracy on Apple Silicon. The source is also [on GitHub](https://github.com/saurabhav88/EnviousWispr/releases).
+[Download EnviousWispr free](https://enviouswispr.com/#download), no account, no subscription required. It takes a couple of minutes to set up on any Apple Silicon Mac running macOS Sonoma or later. On first launch, grant microphone access and the speech model downloads automatically. No model selection needed. The source is also [on GitHub](https://github.com/saurabhav88/EnviousWispr/releases).
 
 Then try this: open whatever you're working on, hold the hotkey, and talk through your next paragraph. See what comes back. Try switching between the Friendly, Standard, and Formal presets until the output matches how you write.
 
 ## Related Posts
 
-- [Dictate First Drafts That Sound Like You](/blog/dictate-first-drafts-sound-like-you/) — how writing style presets preserve your voice during dictation
-- [Dictation for Writers: Skip the Blank Page](/blog/dictation-for-writers-skip-blank-page/) — why speaking bypasses writer's block
-- [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/) — full setup walkthrough from download to first dictation
+- [Dictate First Drafts That Sound Like You](/blog/dictate-first-drafts-sound-like-you/). How writing style presets preserve your voice during dictation.
+- [Dictation for Writers: Skip the Blank Page](/blog/dictation-for-writers-skip-blank-page/). Why speaking bypasses writer's block.
+- [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/). Full setup walkthrough from download to first dictation.
 
-You might be surprised how quickly it becomes part of how you draft. Not a replacement for typing -- just a faster way to get the first version out of your head and onto the page.
+You might be surprised how quickly it becomes part of how you draft. Not a replacement for typing. Just a faster way to get the first version out of your head and onto the page.
