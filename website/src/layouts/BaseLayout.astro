@@ -57,8 +57,7 @@ const ogImageUrl = ogImage.startsWith('http') ? ogImage : `${siteUrl}${ogImage}`
   <meta name="twitter:image" content={ogImageUrl} />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <meta name="theme-color" content="#f8f5ff" />
-  <!-- Google Search Console verification (replace content value after GSC setup) -->
-  <!-- <meta name="google-site-verification" content="VERIFICATION_CODE_HERE" /> -->
+  <link rel="alternate" type="application/rss+xml" title="EnviousWispr Blog" href="/rss.xml" />
   <slot name="head" />
   <!-- PostHog Analytics -->
   <script>

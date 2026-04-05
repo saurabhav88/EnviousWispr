@@ -139,4 +139,6 @@ Now that you're set up, explore what EnviousWispr can do for your specific workf
 
 That's the full EnviousWispr tutorial — from install to your first dictation in under two minutes, with optional customization whenever you're ready for it. Free and open source — just download and go. A hotkey, your voice, and polished text in whatever app you're working in.
 
-[Download EnviousWispr free](/#download) and start dictating — or grab it directly from [GitHub](https://github.com/saurabhav88/EnviousWispr/releases).
+[Download EnviousWispr free](/#download) and start dictating, or grab it directly from [GitHub](https://github.com/saurabhav88/EnviousWispr/releases).
+
+*Switching from another tool? See how EnviousWispr compares: [vs WisprFlow](/compare/wisprflow/), [vs Superwhisper](/compare/superwhisper/), [vs Apple Dictation](/compare/apple-dictation/), or [browse all comparisons](/compare/).*

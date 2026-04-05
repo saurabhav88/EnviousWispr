@@ -150,3 +150,7 @@ It depends on the provider. Some delete audio immediately after transcription. O
 ### Can I use on-device dictation on older Macs?
 
 On-device transcription with modern Whisper models works best on Apple Silicon (M1 and later). Older Intel Macs can run smaller models but with slower performance and reduced accuracy. For the best experience, an M-series Mac is recommended.
+
+---
+
+*Curious how specific tools compare? See our side-by-side breakdowns: [EnviousWispr vs WisprFlow](/compare/wisprflow/), [vs Apple Dictation](/compare/apple-dictation/), or [browse all comparisons](/compare/).*

@@ -8,6 +8,27 @@ const allTags = [...new Set(posts.flatMap(p => p.data.tags))].sort();
 
 const formatDate = (d: Date) =>
   d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+const siteUrl = 'https://enviouswispr.com';
+
+const collectionJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "CollectionPage",
+  "name": "EnviousWispr Blog",
+  "description": "Product updates, release notes, and deep dives on private AI dictation, on-device speech recognition, and fast Mac productivity tools.",
+  "url": `${siteUrl}/blog/`,
+  "isPartOf": { "@type": "WebSite", "url": siteUrl, "name": "EnviousWispr" },
+  "publisher": { "@type": "Organization", "name": "Envious Labs", "url": siteUrl },
+});
+
+const breadcrumbJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Home", "item": siteUrl },
+    { "@type": "ListItem", "position": 2, "name": "Blog", "item": `${siteUrl}/blog/` },
+  ],
+});
 ---
 
 <BaseLayout
@@ -15,6 +36,10 @@ const formatDate = (d: Date) =>
   description="The EnviousWispr blog: product updates, release notes, and deep dives on private AI dictation, on-device speech recognition, and fast Mac productivity tools."
   activePage="blog"
 >
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={collectionJsonLd}></script>
+    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
+  </Fragment>
   <section class="blog-page">
     <div class="container">
 
