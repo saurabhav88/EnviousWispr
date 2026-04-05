@@ -34,6 +34,7 @@ const BLOG_POST_DATES = (() => {
 export default defineConfig({
   site: 'https://enviouswispr.com',
   output: 'static',
+  trailingSlash: 'always',
   integrations: [
     sitemap({
       serialize(item) {
