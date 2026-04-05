@@ -5,7 +5,6 @@ import EnviousWisprCore
 
 extension Color {
     // Backgrounds
-    static let obBg           = Color(red: 0.973, green: 0.961, blue: 1.0)
     static let obSurface      = Color(red: 0.941, green: 0.925, blue: 0.976)
     static let obCardBg       = Color.white
 
@@ -28,7 +27,6 @@ extension Color {
 
     // Borders
     static let obBorder       = Color(red: 0.541, green: 0.169, blue: 0.886).opacity(0.06)
-    static let obBorderHover  = Color(red: 0.541, green: 0.169, blue: 0.886).opacity(0.12)
 
     // Rainbow gradient (static property — used as AnyShapeStyle)
     static let obRainbow = LinearGradient(

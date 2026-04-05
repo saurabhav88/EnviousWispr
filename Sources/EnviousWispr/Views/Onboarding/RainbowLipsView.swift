@@ -69,19 +69,6 @@ private enum LipsData {
     // Idle: per-bar delay
     static let idleDelays: [Double] = [0.0, 0.1, 0.2, 0.15, 0.05, 0.25, 0.3, 0.1, 0.2]
 
-    // Equalizer configs (energetic — wider range, faster cycles)
-    static let eqConfigs: [EqBarConfig] = [
-        EqBarConfig(minScale: 0.35, maxScale: 1.25, duration: 0.36, delay: 0.0),
-        EqBarConfig(minScale: 0.25, maxScale: 1.20, duration: 0.42, delay: 0.07),
-        EqBarConfig(minScale: 0.50, maxScale: 1.35, duration: 0.30, delay: 0.14),
-        EqBarConfig(minScale: 0.30, maxScale: 1.25, duration: 0.48, delay: 0.05),
-        EqBarConfig(minScale: 0.40, maxScale: 1.30, duration: 0.35, delay: 0.11),
-        EqBarConfig(minScale: 0.35, maxScale: 1.20, duration: 0.45, delay: 0.03),
-        EqBarConfig(minScale: 0.55, maxScale: 1.25, duration: 0.33, delay: 0.18),
-        EqBarConfig(minScale: 0.30, maxScale: 1.25, duration: 0.39, delay: 0.08),
-        EqBarConfig(minScale: 0.35, maxScale: 1.25, duration: 0.43, delay: 0.13),
-    ]
-
     // Recording configs (fast, wide range)
     static let recConfigs: [EqBarConfig] = [
         EqBarConfig(minScale: 0.4,  maxScale: 1.3,  duration: 0.22, delay: 0.0),
