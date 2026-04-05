@@ -1,5 +1,4 @@
 import SwiftUI
-import EnviousWisprCore
 
 /// Global hotkey configuration.
 struct ShortcutsSettingsView: View {

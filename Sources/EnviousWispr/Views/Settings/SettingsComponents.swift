@@ -1,5 +1,4 @@
 import SwiftUI
-import EnviousWisprCore
 
 // MARK: - Settings Content Container
 

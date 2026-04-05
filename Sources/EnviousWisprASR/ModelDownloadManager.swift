@@ -16,10 +16,10 @@ import CryptoKit
 /// 3. If stalled or failed, fall back to Cloudflare R2 direct download
 /// 4. Verify SHA-256 checksum of key model files
 /// 5. Load models via FluidAudio's compile path
-public actor ModelDownloadManager {
+actor ModelDownloadManager {
 
     /// Progress callback: (fractionCompleted, phaseString, detailString)
-    public typealias ProgressCallback = @Sendable (Double, String, String) -> Void
+    typealias ProgressCallback = @Sendable (Double, String, String) -> Void
 
     // MARK: - Configuration
 
@@ -43,13 +43,13 @@ public actor ModelDownloadManager {
         return appSupport.appendingPathComponent("parakeet-tdt-0.6b-v3-coreml")
     }()
 
-    public init() {}
+    init() {}
 
     // MARK: - Public API
 
     /// Download and load Parakeet v3 models with stall detection and optional R2 fallback.
     /// Returns loaded AsrModels ready for transcription.
-    public func downloadAndLoad(progressCallback: ProgressCallback?) async throws -> AsrModels {
+    func downloadAndLoad(progressCallback: ProgressCallback?) async throws -> AsrModels {
         let stallTracker = StallTracker(timeout: Self.stallTimeout)
 
         do {
@@ -201,7 +201,7 @@ public actor ModelDownloadManager {
     /// Logs a warning if verification fails but does NOT block — the model may still work.
     /// This is a defense-in-depth measure, not a hard gate.
     /// Static because it only reads from disk — no actor state needed.
-    public static func verifyChecksum() {
+    static func verifyChecksum() {
         guard !Self.encoderChecksum.isEmpty else { return }
 
         let encoderModel = Self.modelCacheDir

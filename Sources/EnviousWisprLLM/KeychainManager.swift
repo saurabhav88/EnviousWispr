@@ -1,5 +1,4 @@
 import Foundation
-import EnviousWisprCore
 
 /// Manages API key storage and retrieval using secure file-based storage.
 ///
@@ -127,12 +126,12 @@ public struct KeychainManager: Sendable {
     }
 }
 
-public enum KeyStoreError: LocalizedError, Sendable {
+enum KeyStoreError: LocalizedError, Sendable {
     case storeFailed(OSStatus)
     case retrieveFailed(OSStatus)
     case deleteFailed(OSStatus)
 
-    public var errorDescription: String? {
+    var errorDescription: String? {
         switch self {
         case .storeFailed(let s): return "Key store failed: \(s)"
         case .retrieveFailed(let s): return "Key retrieve failed: \(s)"
