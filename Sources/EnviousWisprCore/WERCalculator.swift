@@ -26,6 +26,11 @@ public enum WERCalculator {
         let n = refWords.count
         let m = hypWords.count
 
+        // Empty hypothesis: every reference word is a deletion
+        guard m > 0 else {
+            return Result(wer: 1.0)
+        }
+
         // DP table for edit distance
         var dp = Array(repeating: Array(repeating: 0, count: m + 1), count: n + 1)
 
