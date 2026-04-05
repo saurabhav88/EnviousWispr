@@ -8,12 +8,12 @@ import EnviousWisprASR
 /// Owns ParakeetBackend (and WhisperKitBackend in Stage D). All inference runs in this
 /// XPC service process — model memory is isolated from the main app.
 final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable {
-    weak var connection: NSXPCConnection?
+    weak var connection: NSXPCConnection? // periphery:ignore - XPC connection lifecycle; set by delegate, prevents premature release
 
     /// The active ASR backend — only one loaded at a time.
     private var parakeetBackend: ParakeetBackend?
     private var whisperKitBackend: WhisperKitBackend?
-    private var activeBackendType: String?
+    private var activeBackendType: String? // periphery:ignore - tracks loaded backend for diagnostics and unload routing
 
     /// Streaming state flag — only Parakeet supports streaming.
     private var isStreamingActive = false

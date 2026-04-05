@@ -137,6 +137,7 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
         return stream
     }
 
+    // periphery:ignore - protocol conformance (AudioCaptureInterface)
     public func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
         guard !isCapturing else { return AsyncStream { $0.finish() } }
         try await startEnginePhase()

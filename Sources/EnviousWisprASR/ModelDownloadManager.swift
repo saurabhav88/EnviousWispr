@@ -16,6 +16,7 @@ import CryptoKit
 /// 3. If stalled or failed, fall back to Cloudflare R2 direct download
 /// 4. Verify SHA-256 checksum of key model files
 /// 5. Load models via FluidAudio's compile path
+// periphery:ignore - verifyChecksum() and StallTracker are used by ParakeetBackend; actor instance methods are vestigial
 actor ModelDownloadManager {
 
     /// Progress callback: (fractionCompleted, phaseString, detailString)
@@ -225,6 +226,7 @@ actor ModelDownloadManager {
 
 // MARK: - Errors
 
+// periphery:ignore - used within ModelDownloadManager.downloadAndLoad()
 public enum ModelDownloadError: LocalizedError {
     case stallDetected
     case invalidFallbackURL

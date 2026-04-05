@@ -10,10 +10,11 @@ public protocol ASRManagerInterface: AnyObject {
     // Observable state
     var activeBackendType: ASRBackendType { get }
     var isModelLoaded: Bool { get }
-    var isStreaming: Bool { get }
+    var isStreaming: Bool { get } // periphery:ignore - read via existential type (ASRManagerProxy)
 
     // Download progress (0.0–1.0), phase description, and detail string.
     // Updated during loadModel() when model download is in progress.
+    // periphery:ignore:all - read via existential type in OnboardingV2View progress polling
     var downloadProgress: Double { get }
     var downloadPhase: String { get }
     var downloadDetail: String { get }
@@ -21,7 +22,7 @@ public protocol ASRManagerInterface: AnyObject {
     // Model lifecycle
     func loadModel() async throws
     func loadModelSilently() async
-    func unloadModel() async
+    func unloadModel() async // periphery:ignore - called via existential type (ASRManager idle timer)
     func setInitialBackendType(_ type: ASRBackendType)
     func switchBackend(to type: ASRBackendType) async
     func updateWhisperKitModel(_ variant: String) async

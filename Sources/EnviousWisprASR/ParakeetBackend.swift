@@ -86,24 +86,6 @@ public actor ParakeetBackend: ASRBackend {
         isReady = true
     }
 
-    public func transcribe(audioURL: URL, options: TranscriptionOptions) async throws -> ASRResult {
-        guard isReady, let manager = fluidAsrManager else { throw ASRError.notReady }
-
-        let startTime = CFAbsoluteTimeGetCurrent()
-        // fluidResult type is inferred from AsrManager.transcribe() return type
-        let fluidResult = try await manager.transcribe(audioURL, source: .system)
-        let elapsed = CFAbsoluteTimeGetCurrent() - startTime
-
-        // Unqualified ASRResult resolves to our module's type (has backendType parameter)
-        return ASRResult(
-            text: fluidResult.text,
-            language: "en",
-            duration: fluidResult.duration,
-            processingTime: elapsed,
-            backendType: .parakeet
-        )
-    }
-
     public func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult {
         guard isReady, let manager = fluidAsrManager else { throw ASRError.notReady }
 

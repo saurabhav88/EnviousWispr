@@ -28,7 +28,7 @@ protocol AudioInputSource: AnyObject {
     func deactivateCapture()
 
     // State
-    var isCapturing: Bool { get }
+    var isCapturing: Bool { get } // periphery:ignore - used by conformers for internal guards
     var isRunning: Bool { get }
 
     // Engine-specific (no-op for AVCaptureSessionSource)

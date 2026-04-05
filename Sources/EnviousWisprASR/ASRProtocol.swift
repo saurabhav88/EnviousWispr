@@ -13,9 +13,6 @@ public protocol ASRBackend: Actor {
     /// Load/initialize the model. Call once before transcription.
     func prepare() async throws
 
-    /// Batch transcription from a file URL.
-    func transcribe(audioURL: URL, options: TranscriptionOptions) async throws -> ASRResult
-
     /// Batch transcription from raw Float32 samples (16kHz mono).
     func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult
 
