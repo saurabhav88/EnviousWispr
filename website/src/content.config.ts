@@ -11,6 +11,7 @@ const blog = defineCollection({
     tags: z.array(z.string()).default([]),
     draft: z.boolean().default(false),
     author: z.string().default('Envious Labs'),
+    authorUrl: z.string().url().optional(),
     image: z.string().optional(),
     keywords: z.array(z.string()).optional(),
   }),
