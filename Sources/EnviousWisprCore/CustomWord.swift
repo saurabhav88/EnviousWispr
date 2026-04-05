@@ -32,6 +32,3 @@ public struct CustomWord: Codable, Identifiable, Sendable, Hashable {
     }
 }
 
-extension Array where Element == CustomWord {
-    public var canonicals: [String] { map(\.canonical) }
-}

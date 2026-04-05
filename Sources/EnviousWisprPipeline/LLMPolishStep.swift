@@ -107,7 +107,7 @@ public final class LLMPolishStep: TextProcessingStep {
         // append custom vocabulary (not full enrichment) to avoid overriding the on-device prompt.
         let enriched: PolishInstructions
         if llmProvider == .appleIntelligence {
-            enriched = appleIntelligenceInstructions(polishInstructions, context: context)
+            enriched = appleIntelligenceInstructions(polishInstructions)
         } else {
             enriched = enrichedInstructions(polishInstructions, context: context)
         }
@@ -340,8 +340,7 @@ public final class LLMPolishStep: TextProcessingStep {
     /// We append compressed enrichment (ASR awareness, tone preservation) and custom
     /// vocabulary. Full cloud-style enrichment is too verbose for the small on-device model.
     private func appleIntelligenceInstructions(
-        _ base: PolishInstructions,
-        context: TextProcessingContext
+        _ base: PolishInstructions
     ) -> PolishInstructions {
         var systemPrompt = base.systemPrompt
 

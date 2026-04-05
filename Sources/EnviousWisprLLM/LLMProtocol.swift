@@ -15,17 +15,6 @@ public protocol TranscriptPolisher: Sendable {
     ) async throws -> LLMResult
 }
 
-public extension TranscriptPolisher {
-    /// Convenience overload without streaming callback — preserves backward compatibility.
-    func polish(
-        text: String,
-        instructions: PolishInstructions,
-        config: LLMProviderConfig
-    ) async throws -> LLMResult {
-        try await polish(text: text, instructions: instructions, config: config, onToken: nil)
-    }
-}
-
 // MARK: - Preamble Stripping
 
 extension String {

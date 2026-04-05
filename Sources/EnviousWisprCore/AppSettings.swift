@@ -32,18 +32,6 @@ public enum PipelineState: Equatable, Sendable {
         }
     }
 
-    public var statusText: String {
-        switch self {
-        case .idle: return "Ready"
-        case .loadingModel: return "Loading model..."
-        case .recording: return "Recording..."
-        case .transcribing: return "Transcribing..."
-        case .polishing: return "Polishing..."
-        case .complete: return "Done"
-        case .error(let msg): return "Error: \(msg)"
-        }
-    }
-
 }
 
 /// Policy controlling when idle ASR models are unloaded from memory.

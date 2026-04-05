@@ -30,7 +30,7 @@ final class MenuBarIconAnimator {
     // MARK: - Configuration
 
     /// Call once from setupStatusItem() after creating the button.
-    func configure(button: NSStatusBarButton, idleImage: NSImage? = nil) {
+    func configure(button: NSStatusBarButton) {
         self.button = button
         self.idleImage = renderIdleLips()
         self.errorImage = renderErrorLips()

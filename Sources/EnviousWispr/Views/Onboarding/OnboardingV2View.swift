@@ -100,7 +100,7 @@ final class OnboardingV2ViewModel {
 
         checklistStatuses[0] = .inProgress
         preventSleep()
-        startProgressPolling(asrManager: asrManager)
+        startProgressPolling()
         do {
             try await asrManager.loadModel()
             stopProgressPolling()
@@ -155,7 +155,7 @@ final class OnboardingV2ViewModel {
     /// Start polling the shared progress file at ~8 Hz.
     /// The XPC ASR service writes progress to a temp file; we read it here.
     /// This bypasses all XPC serialization issues.
-    func startProgressPolling(asrManager: any ASRManagerInterface) {
+    func startProgressPolling() {
         stopProgressPolling()
         let progressFile = ProgressFile.shared
         let timer = Timer(timeInterval: 0.125, repeats: true) { [weak self] _ in
@@ -285,7 +285,7 @@ struct OnboardingV2View: View {
                 SettingUpScreenV2(viewModel: viewModel)
                     .transition(Self.screenTransition)
             case .ready:
-                ReadyScreenV2(viewModel: viewModel, onComplete: {
+                ReadyScreenV2(onComplete: {
                     viewModel.finishOnboarding(settings: appState.settings)
                     onComplete()
                 })
@@ -799,7 +799,6 @@ private struct PermissionRow: View {
 // MARK: - Screen 3: Ready
 
 private struct ReadyScreenV2: View {
-    var viewModel: OnboardingV2ViewModel
     @Environment(AppState.self) private var appState
     let onComplete: () -> Void
 

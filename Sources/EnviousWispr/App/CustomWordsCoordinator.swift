@@ -39,13 +39,6 @@ final class CustomWordsCoordinator {
         }
     }
 
-    /// Convenience: remove by canonical string.
-    func remove(canonical: String) {
-        guard let match = customWords.first(where: { $0.canonical == canonical }) else { return }
-        let matchID = match.id
-        remove(id: matchID)
-    }
-
     func update(_ word: CustomWord) {
         do {
             try manager.update(word: word, in: &customWords)
