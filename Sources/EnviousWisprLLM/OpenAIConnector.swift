@@ -119,7 +119,7 @@ public struct OpenAIConnector: TranscriptPolisher {
                 if !LLMRetryPolicy.isRetryable(error) { throw error }
             }
         }
-        throw lastError!
+        throw lastError ?? LLMError.requestFailed("All retries exhausted")
     }
 
     private static func friendlyMessage(for statusCode: Int) -> String {

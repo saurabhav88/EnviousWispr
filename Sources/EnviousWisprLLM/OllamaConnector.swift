@@ -99,12 +99,10 @@ public struct OllamaConnector: TranscriptPolisher {
                     (data, response) = try await LLMNetworkSession.shared.session.data(for: request)
                 } catch let urlError as URLError {
                     switch urlError.code {
-                    case .cannotConnectToHost, .cannotFindHost, .notConnectedToInternet:
-                        throw LLMError.providerUnavailable
-                    case .timedOut, .networkConnectionLost:
-                        throw urlError  // retryable — will be caught below
+                    case .notConnectedToInternet, .cannotFindHost:
+                        throw LLMError.providerUnavailable  // not transient, fail fast
                     default:
-                        throw LLMError.requestFailed("Network error: \(urlError.localizedDescription)")
+                        throw urlError  // let LLMRetryPolicy.isRetryable() decide
                     }
                 }
 
@@ -138,7 +136,11 @@ public struct OllamaConnector: TranscriptPolisher {
                 if !LLMRetryPolicy.isRetryable(error) { throw error }
             }
         }
-        throw lastError!
+        // Convert exhausted connection errors to domain error for UI
+        if let urlError = lastError as? URLError, urlError.code == .cannotConnectToHost {
+            throw LLMError.providerUnavailable
+        }
+        throw lastError ?? LLMError.requestFailed("All retries exhausted")
     }
 
     private static func friendlyMessage(for statusCode: Int) -> String {

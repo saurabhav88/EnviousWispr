@@ -252,7 +252,7 @@ public struct GeminiConnector: TranscriptPolisher {
                 if !LLMRetryPolicy.isRetryable(error) { throw error }
             }
         }
-        throw lastError!
+        throw lastError ?? LLMError.requestFailed("All retries exhausted")
     }
 
     private func getAPIKey(config: LLMProviderConfig) throws -> String {

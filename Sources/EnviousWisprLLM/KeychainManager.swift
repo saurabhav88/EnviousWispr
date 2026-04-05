@@ -55,7 +55,9 @@ public struct KeychainManager: Sendable {
     /// Writes to a temp file at 0600 first, then renames — avoids a TOCTOU window
     /// where the file is briefly world-readable.
     public func store(key: String, value: String) throws {
-        guard let data = value.data(using: .utf8) else { return }
+        guard let data = value.data(using: .utf8) else {
+            throw KeyStoreError.storeFailed(-1)
+        }
 
         try ensureDirectoryExists()
 
