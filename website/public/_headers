@@ -5,6 +5,12 @@
   Permissions-Policy: camera=(), microphone=(), geolocation=()
   Strict-Transport-Security: max-age=31536000; includeSubDomains
 
+/_astro/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/images/*
+  Cache-Control: public, max-age=2592000
+
 /appcast.xml
   Cache-Control: public, max-age=300
   X-Robots-Tag: noindex

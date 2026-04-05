@@ -12,6 +12,18 @@ const CORE_PAGE_DATES = {
   'https://enviouswispr.com/': '2026-03-18',
   'https://enviouswispr.com/how-it-works/': '2026-03-18',
   'https://enviouswispr.com/blog/': '2026-03-18',
+  'https://enviouswispr.com/compare/': '2026-04-03',
+  'https://enviouswispr.com/compare/wisprflow/': '2026-04-03',
+  'https://enviouswispr.com/compare/superwhisper/': '2026-04-04',
+  'https://enviouswispr.com/compare/macwhisper/': '2026-04-04',
+  'https://enviouswispr.com/compare/dragon/': '2026-04-04',
+  'https://enviouswispr.com/compare/apple-dictation/': '2026-04-04',
+  'https://enviouswispr.com/compare/voiceink/': '2026-04-04',
+  'https://enviouswispr.com/compare/willow-voice/': '2026-04-04',
+  'https://enviouswispr.com/compare/whisper-cpp/': '2026-04-04',
+  'https://enviouswispr.com/compare/notta/': '2026-04-04',
+  'https://enviouswispr.com/compare/google-docs-voice-typing/': '2026-04-04',
+  'https://enviouswispr.com/compare/otter-ai/': '2026-04-04',
 };
 
 // Build a URL→pubDate map by reading blog post frontmatter at config time.
