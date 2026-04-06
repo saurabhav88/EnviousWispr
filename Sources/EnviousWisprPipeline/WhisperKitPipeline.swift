@@ -58,6 +58,9 @@ public final class WhisperKitPipeline: DictationPipeline {
     public var lastPolishError: String?
     public var modelUnloadPolicy: ModelUnloadPolicy = .never
 
+    // Shared services
+    private let pasteExecutor = PasteCascadeExecutor()
+
     // Text processing steps (own instances — not shared with Parakeet)
     public let wordCorrectionStep = WordCorrectionStep()
     public let fillerRemovalStep = FillerRemovalStep()
@@ -975,79 +978,12 @@ public final class WhisperKitPipeline: DictationPipeline {
     // MARK: - Paste Cascade
 
     private func performPaste(text: String, pasteStart: CFAbsoluteTime) async -> (tier: PasteTier, durationMs: Int) {
-        let bundleId = targetApp?.bundleIdentifier ?? "unknown"
-        var tier: PasteTier = .clipboardOnly
-
-        // Tier 1: AX direct insertion
-        if let element = targetElement {
-            if PasteService.insertViaAccessibility(text, element: element) {
-                tier = .axDirect
-            }
-        }
-
-        // Tier 2: Activate target app + CGEvent Cmd+V
-        // Uses AX force-activate (kAXFrontmostAttribute) to bypass macOS 14+
-        // restrictions on background processes stealing focus.
-        if tier == .clipboardOnly, let app = targetApp, !app.isTerminated {
-            let pollInterval = TimingConstants.activationPollIntervalMs
-            let timeout = TimingConstants.activationTimeoutMs
-
-            _ = PasteService.forceActivateApp(pid: app.processIdentifier)
-            app.activate()
-            var elapsed = 0
-            while elapsed < timeout {
-                try? await Task.sleep(for: .milliseconds(pollInterval))
-                elapsed += pollInterval
-                if NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier {
-                    break
-                }
-                if elapsed % 300 < pollInterval {
-                    _ = PasteService.forceActivateApp(pid: app.processIdentifier)
-                    app.activate()
-                }
-            }
-
-            let activated = NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier
-
-            if activated {
-                let snapshot: ClipboardSnapshot? = restoreClipboardAfterPaste
-                    ? PasteService.saveClipboard()
-                    : nil
-                let changeCountAfterPaste = PasteService.pasteToActiveApp(text)
-                tier = .cgEvent
-                if let snapshot {
-                    try? await Task.sleep(for: .milliseconds(TimingConstants.clipboardRestoreDelayMs))
-                    PasteService.restoreClipboard(snapshot, changeCountAfterPaste: changeCountAfterPaste)
-                }
-            } else {
-                // Tier 2b: AppleScript Edit > Paste
-                _ = PasteService.forceActivateApp(pid: app.processIdentifier)
-                app.activate()
-                try? await Task.sleep(for: .milliseconds(TimingConstants.clipboardRestoreDelayMs))
-                let snapshot: ClipboardSnapshot? = restoreClipboardAfterPaste
-                    ? PasteService.saveClipboard()
-                    : nil
-                let changeCount = PasteService.copyToClipboardReturningChangeCount(text)
-                if PasteService.pasteViaAppleScript(pid: app.processIdentifier) {
-                    tier = .appleScript
-                }
-                if let snapshot {
-                    try? await Task.sleep(for: .milliseconds(TimingConstants.clipboardRestoreDelayMs))
-                    PasteService.restoreClipboard(snapshot, changeCountAfterPaste: changeCount)
-                }
-            }
-        }
-
-        // Tier 3: Clipboard fallback
-        if tier == .clipboardOnly {
-            PasteService.copyToClipboard(text)
-        }
-
-        let durationMs = Int((CFAbsoluteTimeGetCurrent() - pasteStart) * 1000)
-        Task { await AppLogger.shared.log(
-            "WhisperKit paste: tier=\(tier.rawValue), app=\(bundleId), duration=\(durationMs)ms",
-            level: .info, category: "WhisperKitPipeline"
-        ) }
-        return (tier, durationMs)
+        let result = await pasteExecutor.deliver(PasteDeliveryRequest(
+            text: text,
+            targetApp: targetApp,
+            targetElement: targetElement,
+            restoreClipboardAfterPaste: restoreClipboardAfterPaste
+        ))
+        return (result.tier, result.durationMs)
     }
 }
