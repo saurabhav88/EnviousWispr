@@ -36,6 +36,9 @@ public final class TranscriptionPipeline: DictationPipeline {
     public var transcriptionOptions: TranscriptionOptions = .default
     public var lastPolishError: String?
 
+    // Shared services
+    private let pasteExecutor = PasteCascadeExecutor()
+
     // Text processing steps
     private let wordCorrectionStep = WordCorrectionStep()
     private let fillerRemovalStep = FillerRemovalStep()
@@ -642,93 +645,10 @@ public final class TranscriptionPipeline: DictationPipeline {
             var pasteMs: Int?
             let pasteTargetApp = targetApp?.bundleIdentifier
             if autoPasteToActiveApp {
-                // Append trailing space so consecutive dictations are separated
                 let text = PasteService.appendTrailingSpace(transcript.displayText)
-                let bundleId = pasteTargetApp ?? "unknown"
-                var tier: PasteTier = .clipboardOnly
-
-                // Tier 1: AX direct insertion — zero disruption, no clipboard, no focus change.
-                if let element = targetElement {
-                    if PasteService.insertViaAccessibility(text, element: element) {
-                        tier = .axDirect
-                    }
-                }
-
-                // Tier 2: Activate target app + CGEvent Cmd+V
-                // Uses AX force-activate (kAXFrontmostAttribute) to bypass macOS 14+
-                // restrictions on background processes stealing focus. The deprecated
-                // NSRunningApplication.activate(options: .activateIgnoringOtherApps)
-                // has no effect on macOS 14+.
-                if tier == .clipboardOnly, let app = targetApp, !app.isTerminated {
-                    let pollInterval = TimingConstants.activationPollIntervalMs
-                    let timeout = TimingConstants.activationTimeoutMs
-
-                    // AX force-activate, then poll for frontmost confirmation.
-                    _ = PasteService.forceActivateApp(pid: app.processIdentifier)
-                    app.activate()
-                    var elapsed = 0
-                    while elapsed < timeout {
-                        try? await Task.sleep(for: .milliseconds(pollInterval))
-                        elapsed += pollInterval
-                        if NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier {
-                            break
-                        }
-                        if elapsed % 300 < pollInterval {
-                            _ = PasteService.forceActivateApp(pid: app.processIdentifier)
-                            app.activate()
-                        }
-                    }
-
-                    let activated = NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier
-
-                    if activated {
-                        let snapshot: ClipboardSnapshot? = restoreClipboardAfterPaste
-                            ? PasteService.saveClipboard()
-                            : nil
-
-                        let changeCountAfterPaste = PasteService.pasteToActiveApp(text)
-                        tier = .cgEvent
-
-                        if let snapshot {
-                            try? await Task.sleep(for: .milliseconds(TimingConstants.clipboardRestoreDelayMs))
-                            PasteService.restoreClipboard(snapshot, changeCountAfterPaste: changeCountAfterPaste)
-                        }
-                    } else {
-                        // Tier 2b: AppleScript Edit > Paste
-                        _ = PasteService.forceActivateApp(pid: app.processIdentifier)
-                        app.activate()
-                        try? await Task.sleep(for: .milliseconds(TimingConstants.clipboardRestoreDelayMs))
-
-                        let snapshot: ClipboardSnapshot? = restoreClipboardAfterPaste
-                            ? PasteService.saveClipboard()
-                            : nil
-
-                        let changeCount = PasteService.copyToClipboardReturningChangeCount(text)
-
-                        if PasteService.pasteViaAppleScript(pid: app.processIdentifier) {
-                            tier = .appleScript
-                        }
-
-                        if let snapshot {
-                            try? await Task.sleep(for: .milliseconds(TimingConstants.clipboardRestoreDelayMs))
-                            PasteService.restoreClipboard(snapshot, changeCountAfterPaste: changeCount)
-                        }
-                    }
-                }
-
-                // Tier 3: Clipboard + fallback — text is never lost
-                if tier == .clipboardOnly {
-                    PasteService.copyToClipboard(text)
-                }
-
-                let durationMs = Int((CFAbsoluteTimeGetCurrent() - pasteStart) * 1000)
-                pasteTier = tier
-                pasteMs = durationMs
-                Task { await AppLogger.shared.log(
-                    "Pipeline paste: tier=\(tier.rawValue), app=\(bundleId), duration=\(durationMs)ms",
-                    level: .info, category: "PipelineTiming"
-                ) }
-
+                let result = await performPaste(text: text, pasteStart: pasteStart)
+                pasteTier = result.tier
+                pasteMs = result.durationMs
             } else if autoCopyToClipboard {
                 PasteService.copyToClipboard(transcript.displayText)
             }
@@ -1149,6 +1069,18 @@ public final class TranscriptionPipeline: DictationPipeline {
         )
 
         return result
+    }
+
+    // MARK: - Paste Cascade
+
+    private func performPaste(text: String, pasteStart: CFAbsoluteTime) async -> (tier: PasteTier, durationMs: Int) {
+        let result = await pasteExecutor.deliver(PasteDeliveryRequest(
+            text: text,
+            targetApp: targetApp,
+            targetElement: targetElement,
+            restoreClipboardAfterPaste: restoreClipboardAfterPaste
+        ))
+        return (result.tier, result.durationMs)
     }
 
     // MARK: - Text Processing
