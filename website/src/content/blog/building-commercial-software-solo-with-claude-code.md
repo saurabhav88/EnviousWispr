@@ -22,7 +22,7 @@ The missing piece was a third pillar. Here's how I think about it now:
 
 - **Brain** (`.claude/`). This is everything that tells Claude *how* to work on your project. Process rules, specialist agents, domain knowledge, scoped instructions, quality gates. It's the institutional knowledge.
 - **Code** (`Sources/` or whatever your source layout is). This is the actual product you're building.
-- **Tracker** (`.beads/` or any persistent issue system). This is what's been done and what needs to be done next. It keeps you focused across sessions so nothing falls through the cracks.
+- **Tracker** (GitHub Issues, Linear, or any persistent issue system). This is what's been done and what needs to be done next. It keeps you focused across sessions so nothing falls through the cracks.
 
 The three pillars support each other. Brain tells Claude how to operate. Code gets built. The tracker keeps you oriented on what to work on next and what's already been shipped. When you learn something new during development, you update Brain directly, which makes the next session better than the last.
 
