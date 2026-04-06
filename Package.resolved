@@ -1,5 +1,5 @@
 {
-  "originHash" : "d2f70a69c9dd79e8e47835d6cf4dcc2e625ca0a9eab047077b34d5cdc7534112",
+  "originHash" : "7cb63c2c744c9ea6120af32891f3ecd6c2f5c9278140bef24c12cf83d9e0c159",
   "pins" : [
     {
       "identity" : "fluidaudio",
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/PostHog/posthog-ios.git",
       "state" : {
-        "revision" : "9199aa2a26c9f2ee12e68869fc28ec4a205edabc",
-        "version" : "3.48.3"
+        "revision" : "af5b8e4c1a8e68c1e99ccbb62521f35e3928eb8d",
+        "version" : "3.49.0"
       }
     },
     {
