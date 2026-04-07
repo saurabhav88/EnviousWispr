@@ -1,6 +1,4 @@
 import EnviousWisprAudio
-import EnviousWisprCore
-import EnviousWisprServices
 import Foundation
 
 /// Reason the VAD monitor loop requests a recording stop.
