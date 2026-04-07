@@ -12,7 +12,7 @@ internal struct TextProcessingRunResult {
 /// Runs the post-ASR text processing chain: word correction -> filler removal -> LLM polish.
 ///
 /// Does NOT own step instances. Steps are passed in by the pipeline, which retains
-/// ownership for PipelineSettingsSync mutation and polishExistingTranscript() access.
+/// ownership for PipelineSettingsSync mutation.
 /// The runner owns only the execution algorithm: ordering, timeout, cancellation,
 /// failure continuation (heart & limbs), and CORRECTION_DEBUG logging.
 @MainActor

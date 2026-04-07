@@ -661,62 +661,8 @@ public final class TranscriptionPipeline: DictationPipeline {
         }
     }
 
-    /// Polish a single transcript on demand (from detail view).
-    public func polishExistingTranscript(_ transcript: Transcript) async -> Transcript? {
-        guard llmPolishStep.isEnabled else { return nil }
-        guard !state.isActive || state == .complete else { return nil }
-
-        state = .polishing
-        SentryBreadcrumb.add(stage: "polish", message: "Re-polish requested", data: [
-            "provider": llmPolishStep.llmProvider.rawValue,
-            "model": llmPolishStep.llmModel,
-        ])
-        let polishedText: String
-        do {
-            var context = TextProcessingContext(
-                text: transcript.text,
-                language: transcript.language
-            )
-            context = try await llmPolishStep.process(context)
-            polishedText = context.polishedText ?? context.text
-        } catch {
-            Task { await AppLogger.shared.log(
-                "LLM polish failed: \(error.localizedDescription)",
-                level: .info, category: "Pipeline"
-            ) }
-            lastPolishError = error.localizedDescription
-            state = .complete
-            return nil
-        }
-
-        let updated = Transcript(
-            id: transcript.id,
-            text: transcript.text,
-            polishedText: polishedText,
-            language: transcript.language,
-            duration: transcript.duration,
-            processingTime: transcript.processingTime,
-            backendType: transcript.backendType,
-            createdAt: transcript.createdAt,
-            llmProvider: llmPolishStep.llmProvider.rawValue,
-            llmModel: llmPolishStep.llmModel
-        )
-
-        do {
-            try transcriptStore.save(updated)
-        } catch {
-            Task { await AppLogger.shared.log(
-                "Failed to save polished transcript: \(error)",
-                level: .info, category: "Pipeline"
-            ) }
-            lastPolishError = error.localizedDescription
-            state = .error("Failed to save: \(error.localizedDescription)")
-            return nil
-        }
-        currentTranscript = updated
-        state = .complete
-        return updated
-    }
+    // polishExistingTranscript() removed — re-polish is now handled by TranscriptPolishService,
+    // which is decoupled from pipeline state. See #206.
 
     /// Reset pipeline to idle state.
     public func reset() {
