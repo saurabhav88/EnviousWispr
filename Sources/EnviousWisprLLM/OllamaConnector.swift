@@ -42,7 +42,7 @@ public struct OllamaConnector: TranscriptPolisher {
             "messages": messages,
             "stream": false,
             "think": false,
-            "keep_alive": "15m",
+            "keep_alive": "60m",
             "options": [
                 "num_predict": config.maxTokens,
                 "temperature": config.temperature,

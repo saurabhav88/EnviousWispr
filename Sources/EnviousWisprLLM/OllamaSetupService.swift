@@ -12,6 +12,22 @@ public enum OllamaSetupState: Equatable {
     case error(String)
 }
 
+/// Warm-up state for the currently selected Ollama model.
+public enum OllamaWarmupState: Equatable {
+    case idle
+    case warming(model: String)
+    case warm(model: String, expiresAt: Date)
+    case failed(model: String)
+
+    /// Whether the given model is currently warm (not expired).
+    public func isWarm(for model: String) -> Bool {
+        if case .warm(let m, let expires) = self, m == model {
+            return Date() < expires
+        }
+        return false
+    }
+}
+
 /// Quality tier for Ollama catalog models.
 public enum OllamaQualityTier: String, Sendable {
     case best = "best"
@@ -76,6 +92,7 @@ public final class OllamaSetupService {
     public private(set) var pullProgress: Double = 0
     public private(set) var pullStatusText: String = ""
     public private(set) var downloadedModels: [OllamaDownloadedModel] = []
+    public private(set) var warmupState: OllamaWarmupState = .idle
 
     /// Canonical names of downloaded models. Backward-compatible with old Set<String> consumers.
     public var downloadedModelNames: Set<String> {
@@ -160,24 +177,19 @@ public final class OllamaSetupService {
 
         let upper = trimmed.uppercased()
         let multiplier: Double
-        let suffix: Character
 
         if upper.hasSuffix("B") {
             multiplier = 1.0
-            suffix = "B"
         } else if upper.hasSuffix("M") {
             multiplier = 0.001
-            suffix = "M"
         } else if upper.hasSuffix("T") {
             multiplier = 1000.0
-            suffix = "T"
         } else {
             return nil
         }
 
         let numberPart = String(upper.dropLast())
         guard let value = Double(numberPart), value > 0 else { return nil }
-        _ = suffix  // used for clarity in the if-else chain above
         return value * multiplier
     }
 
@@ -207,6 +219,7 @@ public final class OllamaSetupService {
 
     private var ollamaProcess: Process?
     private var pullTask: Task<Void, Never>?
+    private var warmupTask: Task<Void, Never>?
 
     private static let binaryPaths = ["/opt/homebrew/bin/ollama", "/usr/local/bin/ollama"]
     private static let baseURL = "http://localhost:11434"
@@ -391,6 +404,15 @@ public final class OllamaSetupService {
                 let (_, response) = try await URLSession.shared.data(for: request)
                 if let http = response as? HTTPURLResponse, http.statusCode == 200 {
                     downloadedModels.removeAll(where: { $0.exactName == name })
+                    // Reset warm-up if the deleted model was warmed or warming
+                    let canonical = Self.canonicalModelName(name)
+                    switch warmupState {
+                    case .warm(let m, _) where m == canonical,
+                         .warming(let m) where m == canonical:
+                        resetWarmup()
+                    default:
+                        break
+                    }
                     // If current model was deleted, update setup state
                     if downloadedModels.isEmpty {
                         setupState = .runningNoModels
@@ -521,6 +543,83 @@ public final class OllamaSetupService {
         } else {
             setupState = .ready
         }
+    }
+
+    // MARK: - Model Warm-up
+
+    /// Warm up a model by sending a minimal request to load it into GPU memory.
+    /// Cancels any in-flight warm-up for a different model.
+    public func warmUpModel(_ modelName: String) {
+        let canonical = Self.canonicalModelName(modelName)
+
+        // Skip if already warm for this model and not expired
+        if warmupState.isWarm(for: canonical) { return }
+
+        // Skip if already warming this model
+        if case .warming(let m) = warmupState, m == canonical { return }
+
+        // Cancel any in-flight warm-up for a different model
+        warmupTask?.cancel()
+        warmupTask = nil
+
+        warmupState = .warming(model: canonical)
+
+        warmupTask = Task { [weak self] in
+            defer { self?.warmupTask = nil }
+            do {
+                guard let url = URL(string: "\(Self.baseURL)/api/chat") else {
+                    self?.warmupState = .failed(model: canonical)
+                    return
+                }
+
+                let body: [String: Any] = [
+                    "model": modelName,
+                    "messages": [["role": "user", "content": "hi"]],
+                    "stream": false,
+                    "think": false,
+                    "keep_alive": "60m",
+                    "options": ["num_predict": 1],
+                ]
+
+                var request = URLRequest(url: url)
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = try JSONSerialization.data(withJSONObject: body)
+                request.timeoutInterval = 30
+
+                let (_, response) = try await URLSession.shared.data(for: request)
+
+                try Task.checkCancellation()
+
+                guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                    self?.warmupState = .failed(model: canonical)
+                    return
+                }
+
+                let expirySeconds: TimeInterval = 55 * 60  // conservative vs 60m keep_alive
+                self?.warmupState = .warm(model: canonical, expiresAt: Date().addingTimeInterval(expirySeconds))
+
+                // Schedule state reset at expiry so the UI doesn't show a stale checkmark
+                try? await Task.sleep(nanoseconds: UInt64(expirySeconds * 1_000_000_000))
+                // Only reset if still warm for this model (not replaced by a newer warm-up)
+                if case .warm(let m, _) = self?.warmupState, m == canonical {
+                    self?.warmupState = .idle
+                }
+            } catch is CancellationError {
+                // Cancelled by a newer warm-up request; don't overwrite state
+            } catch let error as URLError where error.code == .cancelled {
+                // URLSession cancellation; same as above
+            } catch {
+                self?.warmupState = .failed(model: canonical)
+            }
+        }
+    }
+
+    /// Reset warm-up state (e.g., when provider changes away from Ollama).
+    public func resetWarmup() {
+        warmupTask?.cancel()
+        warmupTask = nil
+        warmupState = .idle
     }
 
     // MARK: - Streaming Pull (Private)

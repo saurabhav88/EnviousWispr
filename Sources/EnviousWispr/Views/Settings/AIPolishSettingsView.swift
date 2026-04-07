@@ -10,7 +10,6 @@ struct AIPolishSettingsView: View {
     @State private var openAIKey: String = ""
     @State private var geminiKey: String = ""
     @State private var validationStatus: String = ""
-    @State private var showManageModels = false
 
     private var isCloudProvider: Bool {
         appState.settings.llmProvider == .openAI || appState.settings.llmProvider == .gemini
@@ -26,7 +25,7 @@ struct AIPolishSettingsView: View {
 
     private var ollamaShowsManageModels: Bool {
         switch appState.ollamaSetup.setupState {
-        case .ready, .pullingModel: return true
+        case .ready, .pullingModel, .runningNoModels: return true
         default: return false
         }
     }
@@ -135,7 +134,9 @@ struct AIPolishSettingsView: View {
                                 }
                             }
 
-                            if appState.llmDiscovery.isDiscoveringModels {
+                            if appState.settings.llmProvider == .ollama {
+                                ollamaWarmupIndicator
+                            } else if appState.llmDiscovery.isDiscoveringModels {
                                 ProgressView()
                                     .controlSize(.small)
                             } else {
@@ -159,21 +160,21 @@ struct AIPolishSettingsView: View {
                         }
                     }
 
-                    // Model recommendation cards
-                    BrandedRow(showDivider: false) {
-                        modelRecommendationCards
+                    // Model recommendation cards (cloud providers only)
+                    if appState.settings.llmProvider != .ollama {
+                        BrandedRow(showDivider: false) {
+                            modelRecommendationCards
+                        }
                     }
                 }
             }
 
-            // Manage Models for Ollama (when ready or pulling)
+            // Manage Models for Ollama (always expanded)
             if appState.settings.llmProvider == .ollama,
                ollamaShowsManageModels {
                 BrandedSection(header: "Manage Models") {
                     BrandedRow(showDivider: false) {
-                        DisclosureGroup("Download / Remove Models", isExpanded: $showManageModels) {
-                            ollamaModelCatalogView
-                        }
+                        ollamaModelCatalogView
                     }
                 }
             }
@@ -216,22 +217,22 @@ struct AIPolishSettingsView: View {
             // Model canonicalization handled by SettingsManager.llmProvider didSet.
             // Discovery will refine the model async if needed.
 
+            // Clean up Ollama state when switching away
+            if newProvider != .ollama {
+                appState.ollamaSetup.cancelPull()
+                appState.ollamaSetup.resetWarmup()
+            }
+
             switch newProvider {
             case .none:
-                appState.ollamaSetup.cancelPull()
+                break
             case .ollama:
-                Task {
-                    await appState.ollamaSetup.detectState()
-                    if case .ready = appState.ollamaSetup.setupState {
-                        await appState.llmDiscovery.validateKeyAndDiscoverModels(provider: .ollama, settings: appState.settings)
-                    }
-                }
+                // detectState() will set setupState, which triggers the onChange handler
+                // for discovery + warm-up. Don't duplicate that work here.
+                Task { await appState.ollamaSetup.detectState() }
             case .appleIntelligence:
-                appState.ollamaSetup.cancelPull()
-                // Model canonicalization handled by SettingsManager.llmProvider didSet
                 Task { await appState.aiAvailability.checkAvailability(trigger: "provider_switch") }
             default:
-                appState.ollamaSetup.cancelPull()
                 appState.llmDiscovery.loadCachedModels(for: newProvider)
                 Task { await appState.llmDiscovery.validateKeyAndDiscoverModels(provider: newProvider, settings: appState.settings) }
             }
@@ -239,11 +240,21 @@ struct AIPolishSettingsView: View {
         .onChange(of: appState.ollamaSetup.setupState) { _, newState in
             if case .ready = newState, appState.settings.llmProvider == .ollama {
                 Task { await appState.llmDiscovery.validateKeyAndDiscoverModels(provider: .ollama, settings: appState.settings) }
+                // Warm up the selected model when Ollama becomes ready
+                if !appState.settings.llmModel.isEmpty {
+                    appState.ollamaSetup.warmUpModel(appState.settings.llmModel)
+                }
+            } else if appState.settings.llmProvider == .ollama {
+                // Reset warmup when Ollama leaves .ready (server died, etc.)
+                appState.ollamaSetup.resetWarmup()
             }
         }
-        .onChange(of: showManageModels) { _, isOpen in
-            if isOpen {
-                Task { await appState.ollamaSetup.refreshDownloadedModels() }
+        .onChange(of: appState.settings.llmModel) { _, newModel in
+            // Warm up when user switches Ollama model
+            if appState.settings.llmProvider == .ollama,
+               case .ready = appState.ollamaSetup.setupState,
+               !newModel.isEmpty {
+                appState.ollamaSetup.warmUpModel(newModel)
             }
         }
     }
@@ -482,11 +493,7 @@ struct AIPolishSettingsView: View {
                 ModelCardInfo(name: "Gemini 2.0 Pro",   desc: "Slower · Higher cost",              badge: "Premium",    icon: "◈", iconBg: Color.primary.opacity(0.05), badgeBg: Color.primary.opacity(0.05), badgeBorder: Color.primary.opacity(0.09), badgeFg: Color.secondary),
             ]
         case .ollama:
-            return [
-                ModelCardInfo(name: "Llama 3.2",  desc: "Fast · Private · No internet needed",  badge: "Recommended", icon: "⚡", iconBg: Color.stSuccess.opacity(0.10),   badgeBg: Color.stSuccess.opacity(0.12),  badgeBorder: Color.stSuccess.opacity(0.22),  badgeFg: Color(hex: "007a4d")),
-                ModelCardInfo(name: "Llama 3.1",  desc: "Stable · Well tested",                 badge: "Also great",  icon: "✦", iconBg: Color.cyan.opacity(0.10),    badgeBg: Color.cyan.opacity(0.12),   badgeBorder: Color.cyan.opacity(0.22),   badgeFg: Color(hex: "006f7a")),
-                ModelCardInfo(name: "Phi-3 Mini", desc: "Smallest · Fastest on older Macs",     badge: "Lightweight", icon: "◇", iconBg: Color.primary.opacity(0.05), badgeBg: Color.primary.opacity(0.05), badgeBorder: Color.primary.opacity(0.09), badgeFg: Color.secondary),
-            ]
+            return []  // Ollama uses the dynamic Manage Models list instead
         default:
             return []
         }
@@ -889,5 +896,40 @@ struct AIPolishSettingsView: View {
         }
         .buttonStyle(.borderless)
         .help("Re-check Ollama status")
+    }
+
+    // MARK: - Ollama Warm-up Indicator
+
+    @ViewBuilder
+    private var ollamaWarmupIndicator: some View {
+        let currentModel = OllamaSetupService.canonicalModelName(appState.settings.llmModel)
+        switch appState.ollamaSetup.warmupState {
+        case .warming(let model) where model == currentModel:
+            ProgressView()
+                .controlSize(.small)
+                .help("Preparing model for faster responses...")
+        case .warm(let model, let expires) where model == currentModel && Date() < expires:
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.stSuccess)
+                .help("Model is ready")
+        case .failed(let model) where model == currentModel:
+            Button {
+                appState.ollamaSetup.warmUpModel(appState.settings.llmModel)
+            } label: {
+                Image(systemName: "exclamationmark.triangle")
+                    .foregroundStyle(.stWarning)
+            }
+            .buttonStyle(.borderless)
+            .help("Couldn't prepare model. Click to retry.")
+        default:
+            Button {
+                guard !appState.settings.llmModel.isEmpty else { return }
+                appState.ollamaSetup.warmUpModel(appState.settings.llmModel)
+            } label: {
+                Image(systemName: "arrow.clockwise")
+            }
+            .buttonStyle(.borderless)
+            .help("Prepare model")
+        }
     }
 }
