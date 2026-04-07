@@ -37,8 +37,7 @@ public final class TranscriptionPipeline: DictationPipeline {
     public var lastPolishError: String?
 
     // Shared services
-    private let pasteExecutor = PasteCascadeExecutor()
-    private let textProcessingRunner = TextProcessingRunner()
+    private let transcriptFinalizer: TranscriptFinalizer
 
     // Text processing steps
     private let wordCorrectionStep = WordCorrectionStep()
@@ -91,6 +90,7 @@ public final class TranscriptionPipeline: DictationPipeline {
         self.asrManager = asrManager
         self.transcriptStore = transcriptStore
         self.keychainManager = keychainManager
+        self.transcriptFinalizer = TranscriptFinalizer(transcriptStore: transcriptStore)
         self.llmPolishStep = LLMPolishStep(keychainManager: keychainManager)
         llmPolishStep.onWillProcess = { [weak self] in
             self?.state = .polishing
@@ -577,94 +577,66 @@ public final class TranscriptionPipeline: DictationPipeline {
                 level: .info, category: "PipelineTiming"
             ) }
 
-            // Run pluggable text processing steps (word correction, LLM polish, etc.)
-            let polishStart = CFAbsoluteTimeGetCurrent()
-            var context: TextProcessingContext
+            // Post-ASR finalization: text processing -> store -> paste
+            let finalizationResult: FinalizationResult
             do {
-                context = try await runTextProcessing(asrText: asrText, language: result.language)
-            } catch {
-                SentryBreadcrumb.captureError(error, category: .generationFailed, stage: "polish", extra: [
-                    "provider": llmPolishStep.llmProvider.rawValue,
-                    "model": llmPolishStep.llmModel,
-                ])
-                // Fire-and-forget: AI diagnostics must not block paste path (up to 10s timeout)
-                if llmPolishStep.llmProvider == .appleIntelligence {
-                    let capturedStartTime = self.recordingStartTime
-                    Task { [weak self] in
-                        let aiReport = await AppleIntelligenceDiagnosticsService.runDiagnostics()
-                        guard self?.recordingStartTime == capturedStartTime else { return }
-                        SentryBreadcrumb.reportAIFailure(aiReport)
-                    }
-                }
-                Task { await AppLogger.shared.log(
-                    "Text processing failed: \(error.localizedDescription)",
-                    level: .info, category: "Pipeline"
-                ) }
-                lastPolishError = error.localizedDescription
-                context = TextProcessingContext(text: asrText, language: result.language)
-                context.targetAppName = targetApp?.localizedName
-            }
-            let polishEnd = CFAbsoluteTimeGetCurrent()
-
-            Task { await AppLogger.shared.log(
-                "Pipeline timing: text processing completed in \(String(format: "%.3f", polishEnd - polishStart))s",
-                level: .info, category: "PipelineTiming"
-            ) }
-
-            let finalText = context.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !finalText.isEmpty else {
-                state = .error("No text after processing")
+                finalizationResult = try await transcriptFinalizer.finalize(FinalizationRequest(
+                    asrText: asrText,
+                    language: result.language,
+                    duration: result.duration,
+                    processingTime: result.processingTime,
+                    backendType: result.backendType,
+                    targetApp: targetApp,
+                    targetElement: targetElement,
+                    autoCopyToClipboard: autoCopyToClipboard,
+                    autoPasteToActiveApp: autoPasteToActiveApp,
+                    restoreClipboardAfterPaste: restoreClipboardAfterPaste,
+                    steps: textProcessingSteps
+                ))
+            } catch is CancellationError {
+                frozenSnapshot = nil
                 return
+            } catch let error as FinalizationError {
+                switch error {
+                case .emptyAfterProcessing:
+                    state = .error("No text after processing")
+                    frozenSnapshot = nil
+                    return
+                case .storageFailed(let underlying):
+                    SentryBreadcrumb.captureError(underlying, category: .asrFailed, stage: "storage")
+                    state = .error("Failed to save transcript")
+                    frozenSnapshot = nil
+                    return
+                }
             }
 
-            var transcript = Transcript(
-                text: context.text,
-                polishedText: context.polishedText,
-                language: result.language,
-                duration: result.duration,
-                processingTime: result.processingTime,
-                backendType: result.backendType,
-                llmProvider: context.llmProvider,
-                llmModel: context.llmModel
-            )
-
-            // Save to store
-            try transcriptStore.save(transcript)
+            lastPolishError = finalizationResult.polishError
 
             // Notify ASR manager that transcription is done; schedules unload timer if configured.
             asrManager.noteTranscriptionComplete(policy: modelUnloadPolicy)
 
-            // Auto-copy/paste + auto-submit — tiered cascade
-            let pasteStart = CFAbsoluteTimeGetCurrent()
-            var pasteTier: PasteTier?
-            var pasteMs: Int?
+            // Build metrics (pipeline-specific: uses ASR timing, streaming mode)
             let pasteTargetApp = targetApp?.bundleIdentifier
-            if autoPasteToActiveApp {
-                let text = PasteService.appendTrailingSpace(transcript.displayText)
-                let result = await performPaste(text: text, pasteStart: pasteStart)
-                pasteTier = result.tier
-                pasteMs = result.durationMs
-            } else if autoCopyToClipboard {
-                PasteService.copyToClipboard(transcript.displayText)
-            }
-            let pasteEnd = CFAbsoluteTimeGetCurrent()
             targetApp = nil
             targetElement = nil
 
             let pipelineEnd = CFAbsoluteTimeGetCurrent()
+            let polishDuration = finalizationResult.polishDurationSeconds
+            let pasteDuration = finalizationResult.pasteDurationSeconds
             Task { await AppLogger.shared.log(
                 "Pipeline timing TOTAL: \(String(format: "%.3f", pipelineEnd - pipelineStart))s " +
                 "(ASR=\(String(format: "%.3f", asrEnd - asrStart))s, " +
-                "polish=\(String(format: "%.3f", polishEnd - polishStart))s, " +
-                "paste=\(String(format: "%.3f", pasteEnd - pasteStart))s)",
+                "polish=\(String(format: "%.3f", polishDuration))s, " +
+                "paste=\(String(format: "%.3f", pasteDuration))s)",
                 level: .info, category: "PipelineTiming"
             ) }
 
+            var transcript = finalizationResult.transcript
             transcript.metrics = ExecutionMetrics(
                 asrLatencySeconds: asrEnd - asrStart,
-                llmLatencySeconds: polishEnd - polishStart,
-                pasteTier: pasteTier?.rawValue,
-                pasteLatencyMs: pasteMs,
+                llmLatencySeconds: polishDuration,
+                pasteTier: finalizationResult.pasteResult?.tier.rawValue,
+                pasteLatencyMs: finalizationResult.pasteResult?.durationMs,
                 targetApp: pasteTargetApp,
                 coldStart: false,
                 streamingMode: wasStreaming,
@@ -674,8 +646,8 @@ public final class TranscriptionPipeline: DictationPipeline {
             SentryBreadcrumb.add(stage: "pipeline", message: "Pipeline complete", data: [
                 "e2e_s": String(format: "%.3f", pipelineEnd - pipelineStart),
                 "asr_s": String(format: "%.3f", asrEnd - asrStart),
-                "polish_s": String(format: "%.3f", polishEnd - polishStart),
-                "paste_tier": pasteTier?.rawValue ?? "none",
+                "polish_s": String(format: "%.3f", polishDuration),
+                "paste_tier": finalizationResult.pasteResult?.tier.rawValue ?? "none",
                 "backend": asrManager.activeBackendType.rawValue,
             ])
             frozenSnapshot = nil
@@ -1036,33 +1008,6 @@ public final class TranscriptionPipeline: DictationPipeline {
         )
 
         return result
-    }
-
-    // MARK: - Paste Cascade
-
-    private func performPaste(text: String, pasteStart: CFAbsoluteTime) async -> (tier: PasteTier, durationMs: Int) {
-        let result = await pasteExecutor.deliver(PasteDeliveryRequest(
-            text: text,
-            targetApp: targetApp,
-            targetElement: targetElement,
-            restoreClipboardAfterPaste: restoreClipboardAfterPaste
-        ))
-        return (result.tier, result.durationMs)
-    }
-
-    // MARK: - Text Processing
-
-    private func runTextProcessing(asrText: String, language: String?) async throws -> TextProcessingContext {
-        let result = try await textProcessingRunner.run(
-            rawText: asrText,
-            language: language,
-            targetAppName: targetApp?.localizedName,
-            steps: textProcessingSteps
-        )
-        if let error = result.polishError {
-            lastPolishError = error
-        }
-        return result.context
     }
 
     // MARK: - DictationPipeline Conformance
