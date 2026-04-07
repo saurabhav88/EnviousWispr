@@ -877,32 +877,21 @@ public final class TranscriptionPipeline: DictationPipeline {
     }
 
     private func monitorVAD() async {
-        // Max-duration enforcement runs regardless of backend mode.
-        // VAD chunk processing only runs for in-process capture.
-        // XPC-mode VAD runs in the service and fires vadAutoStopTriggered callback.
-        //
-        // TEMPORARY DEBT: `is AudioCaptureProxy` leaks a concrete type into pipeline code.
-        // Step 7 (flag removal) should replace this with a capability query on the interface
-        // (e.g. `var supportsServiceSideVAD: Bool`) so the pipeline stays implementation-agnostic.
+        // Detector setup stays in pipeline (owns silenceDetector lifecycle)
         let isXPCMode = audioCapture is AudioCaptureProxy
+        var detector: SilenceDetector?
 
         if !isXPCMode {
-            // Build SmoothedVAD config from sensitivity setting
             let config = SmoothedVADConfig.fromSensitivity(vadSensitivity, energyGate: vadEnergyGate)
-
-            // Lazily create detector
             if silenceDetector == nil {
                 silenceDetector = SilenceDetector(silenceTimeout: vadSilenceTimeout, vadConfig: config)
             }
-            guard let detector = silenceDetector else { return }
-
-            await detector.reset()
-            await detector.updateConfig(config)
-
-            // Prepare VAD model if needed
-            if !(await detector.isReady) {
+            guard let det = silenceDetector else { return }
+            await det.reset()
+            await det.updateConfig(config)
+            if !(await det.isReady) {
                 do {
-                    try await detector.prepare()
+                    try await det.prepare()
                 } catch {
                     Task { await AppLogger.shared.log(
                         "VAD preparation failed: \(error)",
@@ -911,54 +900,23 @@ public final class TranscriptionPipeline: DictationPipeline {
                     return
                 }
             }
-
-            var processedSampleCount = 0
-            let chunkSize = SilenceDetector.chunkSize
-
-            while state == .recording && !Task.isCancelled {
-                // Graceful max duration check — auto-stop before AudioCaptureManager's hard limit.
-                if let startTime = recordingStartTime,
-                   Date().timeIntervalSince(startTime) >= TimingConstants.maxRecordingDuration {
-                    Task { [weak self] in await self?.stopAndTranscribe() }
-                    return
-                }
-
-                // Snapshot @MainActor-isolated data before any await suspension.
-                let currentCount = audioCapture.capturedSamples.count
-
-                while processedSampleCount + chunkSize <= currentCount && !Task.isCancelled {
-                    let endIdx = processedSampleCount + chunkSize
-                    // Snapshot the chunk on @MainActor before crossing into the detector actor.
-                    let chunk = Array(audioCapture.capturedSamples[processedSampleCount..<endIdx])
-                    let autoStop = vadAutoStop
-
-                    let shouldStop = await detector.processChunk(chunk)
-
-                    if shouldStop && autoStop && state == .recording {
-                        // Run in a new Task so cancelling vadMonitorTask
-                        // doesn't propagate CancellationError into transcription.
-                        Task { [weak self] in await self?.stopAndTranscribe() }
-                        return
-                    }
-
-                    processedSampleCount += chunkSize
-                    await Task.yield()
-                }
-
-                try? await Task.sleep(for: .milliseconds(100))
-            }
-        } else {
-            // XPC mode: service handles VAD, fires vadAutoStopTriggered callback.
-            // Only run max-duration enforcement here.
-            while state == .recording && !Task.isCancelled {
-                if let startTime = recordingStartTime,
-                   Date().timeIntervalSince(startTime) >= TimingConstants.maxRecordingDuration {
-                    Task { [weak self] in await self?.stopAndTranscribe() }
-                    return
-                }
-                try? await Task.sleep(for: .milliseconds(500))
-            }
+            detector = det
         }
+
+        let startTime = recordingStartTime ?? Date()
+        let capture = audioCapture
+
+        await VADMonitorLoop.run(
+            detector: detector,
+            vadAutoStop: vadAutoStop,
+            maxDuration: TimingConstants.maxRecordingDuration,
+            recordingStartTime: startTime,
+            sampleProvider: { [weak capture] in capture?.capturedSamples ?? [] },
+            isRecording: { [weak self] in self?.state == .recording && !(self?.isStopping ?? true) },
+            onStop: { [weak self] _ in
+                Task { [weak self] in await self?.stopAndTranscribe() }
+            }
+        )
     }
 
 
