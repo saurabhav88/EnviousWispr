@@ -106,5 +106,16 @@ const ogImageUrl = ogImage.startsWith('http') ? ogImage : `${siteUrl}${ogImage}`
       });
     });
   </script>
+  <!-- Crisp Chat Widget -->
+  <script>
+    window.$crisp = [];
+    window.CRISP_WEBSITE_ID = '6cfca684-ab92-4927-a1a3-6bf97eac13f9';
+    (function() {
+      var d = document, s = d.createElement('script');
+      s.src = 'https://client.crisp.chat/l.js';
+      s.async = 1;
+      d.getElementsByTagName('head')[0].appendChild(s);
+    })();
+  </script>
 </body>
 </html>
