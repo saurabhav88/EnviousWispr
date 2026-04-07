@@ -46,7 +46,7 @@ struct TranscriptDetailView: View {
                         Label("Enhance", systemImage: "sparkles")
                     }
                     .controlSize(.small)
-                    .disabled(appState.pipelineState == .polishing)
+                    .disabled(appState.polishService.polishingTranscriptID != nil)
                     .help("Polish with AI")
                 }
 
@@ -96,11 +96,12 @@ struct TranscriptDetailView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
-                    if let polishError = appState.lastPolishError {
+                    if let enhError = appState.lastEnhancementError,
+                       enhError.transcriptID == transcript.id {
                         HStack(spacing: 6) {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundStyle(.orange)
-                            Text("AI polish failed: \(polishError)")
+                            Text("AI polish failed: \(enhError.message)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }

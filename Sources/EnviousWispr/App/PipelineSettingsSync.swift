@@ -12,6 +12,7 @@ import EnviousWisprServices
 final class PipelineSettingsSync {
     private let pipeline: TranscriptionPipeline
     private let whisperKitPipeline: WhisperKitPipeline
+    private let polishService: TranscriptPolishService
     private let audioCapture: any AudioCaptureInterface
     private let asrManager: any ASRManagerInterface
     private let hotkeyService: HotkeyService
@@ -24,6 +25,7 @@ final class PipelineSettingsSync {
     init(
         pipeline: TranscriptionPipeline,
         whisperKitPipeline: WhisperKitPipeline,
+        polishService: TranscriptPolishService,
         audioCapture: any AudioCaptureInterface,
         asrManager: any ASRManagerInterface,
         hotkeyService: HotkeyService,
@@ -31,6 +33,7 @@ final class PipelineSettingsSync {
     ) {
         self.pipeline = pipeline
         self.whisperKitPipeline = whisperKitPipeline
+        self.polishService = polishService
         self.audioCapture = audioCapture
         self.asrManager = asrManager
         self.hotkeyService = hotkeyService
@@ -42,11 +45,7 @@ final class PipelineSettingsSync {
         // Parakeet pipeline
         pipeline.autoCopyToClipboard = settings.autoCopyToClipboard
         pipeline.llmPolish.llmProvider = settings.llmProvider
-        // Defensive normalization: ensure model matches provider before syncing
-        let resolvedModel = settings.llmProvider == .appleIntelligence ? "apple-intelligence"
-            : settings.llmProvider == .ollama ? settings.ollamaModel
-            : settings.llmModel
-        pipeline.llmPolish.llmModel = resolvedModel
+        pipeline.llmPolish.llmModel = resolvedModel(settings)
         pipeline.vadAutoStop = settings.vadAutoStop
         pipeline.vadSilenceTimeout = settings.vadSilenceTimeout
         pipeline.vadSensitivity = settings.vadSensitivity
@@ -63,6 +62,9 @@ final class PipelineSettingsSync {
 
         // WhisperKit pipeline
         syncWhisperKitPipelineSettings(settings, customWords: customWords)
+
+        // Transcript polish service (re-polish from detail view)
+        syncPolishServiceSettings(settings, customWords: customWords)
 
         // Audio capture
         if settings.noiseSuppression {
@@ -122,19 +124,17 @@ final class PipelineSettingsSync {
         case .llmProvider:
             pipeline.llmPolish.llmProvider = settings.llmProvider
             whisperKitPipeline.llmPolish.llmProvider = settings.llmProvider
+            polishService.llmPolishStep.llmProvider = settings.llmProvider
             // Also sync model — provider change may canonicalize the model
-            let provSyncModel = settings.llmProvider == .appleIntelligence ? "apple-intelligence"
-                : settings.llmProvider == .ollama ? settings.ollamaModel
-                : settings.llmModel
-            pipeline.llmPolish.llmModel = provSyncModel
-            whisperKitPipeline.llmPolish.llmModel = provSyncModel
+            let model = resolvedModel(settings)
+            pipeline.llmPolish.llmModel = model
+            whisperKitPipeline.llmPolish.llmModel = model
+            polishService.llmPolishStep.llmModel = model
         case .llmModel:
-            // Defensive: resolve model based on provider at the sync boundary
-            let syncModel = settings.llmProvider == .appleIntelligence ? "apple-intelligence"
-                : settings.llmProvider == .ollama ? settings.ollamaModel
-                : settings.llmModel
-            pipeline.llmPolish.llmModel = syncModel
-            whisperKitPipeline.llmPolish.llmModel = syncModel
+            let model = resolvedModel(settings)
+            pipeline.llmPolish.llmModel = model
+            whisperKitPipeline.llmPolish.llmModel = model
+            polishService.llmPolishStep.llmModel = model
             if settings.llmProvider == .ollama {
                 settings.ollamaModel = settings.llmModel
             }
@@ -142,6 +142,7 @@ final class PipelineSettingsSync {
             if settings.llmProvider == .ollama {
                 pipeline.llmPolish.llmModel = settings.ollamaModel
                 whisperKitPipeline.llmPolish.llmModel = settings.ollamaModel
+                polishService.llmPolishStep.llmModel = settings.ollamaModel
             }
         case .autoCopyToClipboard:
             pipeline.autoCopyToClipboard = settings.autoCopyToClipboard
@@ -172,6 +173,7 @@ final class PipelineSettingsSync {
         case .writingStylePreset:
             pipeline.llmPolish.polishInstructions = settings.activePolishInstructions
             whisperKitPipeline.llmPolish.polishInstructions = settings.activePolishInstructions
+            polishService.llmPolishStep.polishInstructions = settings.activePolishInstructions
         case .vadSensitivity:
             pipeline.vadSensitivity = settings.vadSensitivity
             whisperKitPipeline.vadSensitivity = settings.vadSensitivity
@@ -215,6 +217,7 @@ final class PipelineSettingsSync {
         case .customSystemPrompt:
             pipeline.llmPolish.polishInstructions = settings.activePolishInstructions
             whisperKitPipeline.llmPolish.polishInstructions = settings.activePolishInstructions
+            polishService.llmPolishStep.polishInstructions = settings.activePolishInstructions
         case .wordCorrectionEnabled:
             pipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
             whisperKitPipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
@@ -228,6 +231,7 @@ final class PipelineSettingsSync {
         case .useExtendedThinking:
             pipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
             whisperKitPipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
+            polishService.llmPolishStep.useExtendedThinking = settings.useExtendedThinking
         case .whisperKitLanguage:
             syncTranscriptionOptions(settings)
         case .selectedInputDeviceUID:
@@ -273,10 +277,7 @@ final class PipelineSettingsSync {
         whisperKitPipeline.autoCopyToClipboard = settings.autoCopyToClipboard
         whisperKitPipeline.restoreClipboardAfterPaste = settings.restoreClipboardAfterPaste
         whisperKitPipeline.llmPolish.llmProvider = settings.llmProvider
-        let wkResolvedModel = settings.llmProvider == .appleIntelligence ? "apple-intelligence"
-            : settings.llmProvider == .ollama ? settings.ollamaModel
-            : settings.llmModel
-        whisperKitPipeline.llmPolish.llmModel = wkResolvedModel
+        whisperKitPipeline.llmPolish.llmModel = resolvedModel(settings)
         whisperKitPipeline.llmPolish.polishInstructions = settings.activePolishInstructions
         whisperKitPipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
         whisperKitPipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
@@ -288,6 +289,26 @@ final class PipelineSettingsSync {
         whisperKitPipeline.vadSensitivity = settings.vadSensitivity
         whisperKitPipeline.vadEnergyGate = settings.vadEnergyGate
         whisperKitPipeline.modelUnloadPolicy = settings.modelUnloadPolicy
+    }
+
+    /// Sync all LLM settings to the transcript polish service (re-polish from detail view).
+    /// TODO: Replace 3-way sync with shared LLMPolishConfig provider (#206 follow-up)
+    private func syncPolishServiceSettings(_ settings: SettingsManager, customWords: [CustomWord]) {
+        polishService.llmPolishStep.llmProvider = settings.llmProvider
+        polishService.llmPolishStep.llmModel = resolvedModel(settings)
+        polishService.llmPolishStep.polishInstructions = settings.activePolishInstructions
+        polishService.llmPolishStep.useExtendedThinking = settings.useExtendedThinking
+        polishService.llmPolishStep.customWords = customWords
+    }
+
+    /// Resolve the effective LLM model ID for the current provider.
+    /// Apple Intelligence has a fixed model; Ollama uses its own model field.
+    private func resolvedModel(_ settings: SettingsManager) -> String {
+        switch settings.llmProvider {
+        case .appleIntelligence: return "apple-intelligence"
+        case .ollama: return settings.ollamaModel
+        default: return settings.llmModel
+        }
     }
 
     /// Re-register Carbon hotkeys after a config change.

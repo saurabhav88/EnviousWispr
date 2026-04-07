@@ -38,6 +38,10 @@ final class AppState {
     let pipeline: TranscriptionPipeline
     let whisperKitPipeline: WhisperKitPipeline
 
+    /// Standalone service for re-polishing saved transcripts from the detail view.
+    /// Completely decoupled from pipeline state machines.
+    let polishService: TranscriptPolishService
+
     /// Forwards settings changes to pipelines and subsystems.
     private let settingsSync: PipelineSettingsSync
 
@@ -102,16 +106,26 @@ final class AppState {
             transcriptStore: transcriptStore,
             keychainManager: keychainManager
         )
-        // Initialize settingsSync and apply initial settings to both pipelines and audio capture
+        // Transcript polish service (re-polish from detail view, decoupled from pipelines)
+        polishService = TranscriptPolishService(
+            keychainManager: keychainManager,
+            transcriptStore: transcriptStore
+        )
+
+        // Initialize settingsSync and apply initial settings to all targets
         settingsSync = PipelineSettingsSync(
             pipeline: pipeline,
             whisperKitPipeline: whisperKitPipeline,
+            polishService: polishService,
             audioCapture: audioCapture,
             asrManager: asrManager,
             hotkeyService: hotkeyService,
             whisperKitSetup: whisperKitSetup
         )
         settingsSync.applyInitialSettings(settings, customWords: customWordsCoordinator.customWords)
+
+        // Wire dictation activity provider (after all stored properties initialized)
+        polishService.setDictationActivity(self)
 
         // Unified engine interruption handler — routes to whichever pipeline is actively recording.
         // Both pipelines share the same audioCapture instance. When the audio engine/XPC service
@@ -195,6 +209,7 @@ final class AppState {
             self.pipeline.llmPolish.customWords = words
             self.whisperKitPipeline.wordCorrection.customWords = words
             self.whisperKitPipeline.llmPolish.customWords = words
+            self.polishService.llmPolishStep.customWords = words
         }
 
         // Initialize logger
@@ -662,18 +677,44 @@ final class AppState {
         }
     }
 
-    /// Polish an existing transcript with LLM. Stays in AppState as pipeline coordination forwarding.
+    /// Enhancement error from the transcript detail view's re-polish service.
+    /// Separate from `lastPolishError` which tracks live-dictation polish failures.
+    var lastEnhancementError: EnhancementError? {
+        polishService.lastEnhancementError
+    }
+
+    /// Re-polish an existing transcript via the standalone polish service.
+    /// Decoupled from pipeline state: does not touch pipeline.state, currentTranscript, or lastPolishError.
     func polishTranscript(_ transcript: Transcript) async {
-        if let updated = await pipeline.polishExistingTranscript(transcript) {
+        do {
+            let updated = try await polishService.polish(transcript)
             if let idx = transcriptCoordinator.transcripts.firstIndex(where: { $0.id == updated.id }) {
                 transcriptCoordinator.transcripts[idx] = updated
             }
+            // Ensure detail view refreshes even when activeTranscript falls back to pipeline.currentTranscript
+            transcriptCoordinator.selectedTranscriptID = updated.id
+        } catch {
+            // Error already captured in polishService.lastEnhancementError
+            Task { await AppLogger.shared.log(
+                "Transcript enhancement failed: \(error.localizedDescription)",
+                level: .info, category: "Enhancement"
+            ) }
         }
     }
 
     // Phase 5 B.1 validated 2026-03-16: batch round-trip 51-60ms across XPC.
     // Cold model load: 13,966ms. 3 warm back-to-back runs stable.
     // Test function in git history.
+}
+
+// MARK: - DictationActivityProviding
+
+extension AppState: DictationActivityProviding {
+    /// True when either pipeline is actively recording, transcribing, or polishing.
+    /// Used by TranscriptPolishService to prevent concurrent re-polish + live dictation.
+    var isDictationActive: Bool {
+        pipeline.state.isActive || whisperKitPipeline.state.isActive
+    }
 }
 
 extension WhisperKitPipelineState {
