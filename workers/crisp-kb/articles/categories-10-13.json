@@ -1,0 +1,174 @@
+{
+  "categories": [
+    {
+      "name": "Troubleshooting",
+      "sections": [
+        {
+          "name": "Permissions",
+          "articles": [
+            {
+              "title": "Accessibility Permission Not Working",
+              "description": "How to grant and verify Accessibility permission for EnviousWispr.",
+              "content": "<h2>Why Accessibility Is Required</h2><p>EnviousWispr uses Accessibility permission to paste transcribed text into your active app. Without it, text delivery (Tier 2 simulated keyboard paste and Tier 2b AppleScript paste) will silently fail.</p><h2>Granting Permission</h2><ol><li>Open <strong>System Settings &gt; Privacy &amp; Security &gt; Accessibility</strong>.</li><li>Click the <strong>+</strong> button and add EnviousWispr (or drag the .app into the list).</li><li>Make sure the toggle next to EnviousWispr is <strong>on</strong>.</li></ol><h2>Permission Can Be Revoked at Runtime</h2><p>macOS allows revoking Accessibility permission while the app is running. EnviousWispr monitors this with a 5-second polling interval and will re-display a warning banner if permission is revoked. You do not need to restart the app after re-granting permission.</p><h2>Dev Builds and Signing</h2><p>If you are running a development build, it uses a separate bundle ID (<code>com.enviouswispr.app.dev</code>) with a stable signing identity. This means permission grants persist across rebuilds. If you switch between production and dev builds, you may need to grant Accessibility permission separately for each.</p><h2>Resetting Permission</h2><p>If permission seems stuck, you can reset it for EnviousWispr only:</p><pre><code>tccutil reset Accessibility com.enviouswispr.app</code></pre><p>For dev builds:</p><pre><code>tccutil reset Accessibility com.enviouswispr.app.dev</code></pre><p><strong>Never</strong> run <code>tccutil reset Accessibility</code> without a bundle ID. That wipes Accessibility permission for every app on your system.</p>"
+            }
+          ]
+        },
+        {
+          "name": "Transcription Issues",
+          "articles": [
+            {
+              "title": "Empty or Missing Transcription",
+              "description": "What to check when EnviousWispr records but produces no text.",
+              "content": "<h2>Check These in Order</h2><ol><li><strong>Microphone permission.</strong> Open <strong>System Settings &gt; Privacy &amp; Security &gt; Microphone</strong> and confirm EnviousWispr is listed and enabled.</li><li><strong>Audio input device.</strong> In EnviousWispr settings under <strong>Microphone</strong>, verify your preferred input device is selected. The Auto mode uses smart device selection, but you can pick a specific mic if needed.</li><li><strong>ASR model loaded.</strong> The speech recognition model must be downloaded and loaded before transcription can work. If the model is still downloading, the menu bar icon or overlay will indicate progress. Wait for it to complete.</li><li><strong>VAD filtering.</strong> The Voice Activity Detection (VAD) system filters out silence. If the environment sensitivity is set too low, it may discard audio that contains speech. Try setting the environment preset to <strong>Quiet</strong> or increasing the sensitivity slider.</li><li><strong>Minimum audio length.</strong> Very short recordings may be too brief for the ASR engine to produce output. The app requires at least 1 second of total audio (16000 samples) for transcription. Additionally, the VAD filter needs at least 300ms of voiced content; below that, it falls back to using the full audio.</li></ol><h2>Still No Text?</h2><p>If the recording completes but the transcript is empty, check that your microphone is not muted at the hardware level (some headsets have a physical mute switch). Also verify that audio is actually reaching the app: the menu bar icon animates with audio-reactive bars during recording, which confirms the mic input is live.</p>"
+            },
+            {
+              "title": "First Word Gets Cut Off",
+              "description": "How EnviousWispr prevents first-word clipping and what to do if it happens.",
+              "content": "<h2>How First-Word Capture Works</h2><p>EnviousWispr uses a <strong>pre-roll audio buffer</strong> with a 500ms ring buffer (8000 samples at 16kHz) to capture audio before you start speaking. When the audio engine is warm (kept alive between recordings), the ring buffer continuously stores audio. When you press the hotkey, those pre-roll samples are drained and included in the recording, eliminating first-word clipping.</p><h2>Warm Engine Policy</h2><p>The warm engine keeps the audio engine and microphone tap running between recordings. You can configure this in <strong>Settings &gt; Microphone</strong>. Options range from Off (engine shuts down immediately after each recording) to Always (engine stays warm indefinitely). The default is 30 seconds.</p><p>With a warm engine, the next recording reuses the already-running audio tap and drains buffered pre-roll audio, so your first word is captured even if you start speaking the instant you press the hotkey.</p><h2>Cold Starts</h2><p>On a cold start (first recording after launch, or after the warm engine times out), the audio engine needs to start up. Measured cold-start latency on Apple Silicon is approximately 100ms, which is fast enough that first-word clipping is rare in practice. However, no pre-roll audio is available on cold starts because the engine was not running.</p><h2>If First Words Still Clip</h2><ul><li>Increase the warm engine timeout in <strong>Settings &gt; Microphone</strong> (e.g., 60s or Always).</li><li>Use Push-to-Talk mode: pressing and holding the hotkey triggers a pre-warm that starts the engine, giving the ring buffer time to fill before you begin speaking.</li></ul>"
+            }
+          ]
+        },
+        {
+          "name": "Paste and Text Delivery",
+          "articles": [
+            {
+              "title": "Paste Goes to the Wrong App",
+              "description": "Why text sometimes lands in a different app than expected.",
+              "content": "<h2>Target App Is Captured at Recording Start</h2><p>EnviousWispr captures the target app and the focused text element at the moment you <strong>start</strong> recording, not when text is pasted. This is intentional. AI polishing can take several seconds, during which you might switch to another app. By locking the target at recording start, the text goes where you were when you pressed the hotkey.</p><h2>How Paste Works</h2><p>EnviousWispr uses a four-tier paste cascade:</p><ol><li><strong>Tier 1 (AX Direct Insert):</strong> Sets text directly on the focused element via the Accessibility API. No clipboard involvement, no focus change.</li><li><strong>Tier 2 (Simulated Cmd+V):</strong> Re-activates the target app and sends a keyboard paste event. Clipboard is used but restored afterward.</li><li><strong>Tier 2b (AppleScript):</strong> Falls back to clicking Edit &gt; Paste via AppleScript if the app does not respond to keyboard events.</li><li><strong>Tier 3 (Clipboard Only):</strong> Places text on the clipboard for you to paste manually. This is the last resort.</li></ol><h2>If the Wrong App Receives Text</h2><ul><li>Make sure the correct app and text field are focused <strong>before</strong> you start recording.</li><li>If you need to switch apps during recording, the text will still go to the original app. This is by design.</li></ul><h2>Clipboard Preservation</h2><p>EnviousWispr saves your clipboard contents before pasting and restores them afterward. If a clipboard manager intercepts the change, restoration is skipped to avoid conflicts.</p>"
+            }
+          ]
+        },
+        {
+          "name": "Audio and Bluetooth",
+          "articles": [
+            {
+              "title": "Bluetooth Audio Issues",
+              "description": "How EnviousWispr handles Bluetooth headsets and codec switching.",
+              "content": "<h2>The Bluetooth Codec Problem</h2><p>When a Bluetooth headset (like AirPods) is used for audio output, macOS switches the codec from A2DP (high-quality playback) to SCO (lower-quality bidirectional) when an app requests microphone input. This codec switch causes a brief audio disruption and can degrade recording quality.</p><h2>Automatic BT-Aware Routing</h2><p>EnviousWispr has built-in Bluetooth-aware audio routing via the <strong>Bluetooth-aware audio router</strong>. When it detects that a Bluetooth device is active for audio output:</p><ul><li>It automatically routes audio capture to your Mac's <strong>built-in microphone</strong> instead of the Bluetooth device.</li><li>This avoids the A2DP-to-SCO codec switch entirely.</li><li>Your Bluetooth headset continues playing audio without interruption.</li></ul><h2>Pre-Warm on Push-to-Talk</h2><p>When using Push-to-Talk mode, pressing the hotkey triggers a pre-warm phase that resolves the audio route and settles any codec switching before capture begins. This happens in parallel with other setup tasks.</p><h2>Device Disconnect During Recording</h2><p>If a Bluetooth device disconnects during recording, EnviousWispr detects this via CoreAudio device property monitoring. If the device is still alive (codec switch), it recovers gracefully in place. If the device is gone (disconnect), it performs an emergency teardown and salvages any audio captured so far.</p>"
+            }
+          ]
+        },
+        {
+          "name": "AI Polish Issues",
+          "articles": [
+            {
+              "title": "Ollama Polish Not Working",
+              "description": "Troubleshooting local LLM polish via Ollama.",
+              "content": "<h2>Requirements</h2><p>Ollama polish requires the Ollama server to be running on your Mac. EnviousWispr connects to it at <code>http://localhost:11434</code>.</p><h2>Troubleshooting Steps</h2><ol><li><strong>Is Ollama installed?</strong> Download it from <a href=\"https://ollama.com\">ollama.com</a> if you have not already.</li><li><strong>Is the server running?</strong> Start it with <code>ollama serve</code> in Terminal, or launch the Ollama app. The server must be running before you start recording.</li><li><strong>Is a model downloaded?</strong> You need at least one model installed. Run <code>ollama list</code> in Terminal to see your installed models, or <code>ollama pull llama3</code> to download one.</li><li><strong>Check the timeout.</strong> EnviousWispr uses a strict 3-second timeout when connecting to the Ollama server. If the server is slow to respond, the connection may time out.</li></ol><h2>Fallback Behavior</h2><p>If Ollama is unreachable or the request times out, EnviousWispr falls back to using the raw ASR text. Your dictation is never lost. The text will be unpolished but still pasted into your app.</p><h2>Model Selection</h2><p>EnviousWispr auto-discovers your installed Ollama models. You can select which model to use in <strong>Settings &gt; AI Polish</strong>. Models are classified by quality tier; smaller models may hide some advanced polish options.</p>"
+            },
+            {
+              "title": "Apple Intelligence Not Available",
+              "description": "Diagnosing why Apple Intelligence polish is unavailable on your Mac.",
+              "content": "<h2>Five-Stage Diagnostic</h2><p>EnviousWispr runs a five-stage gate check to determine Apple Intelligence availability. Each stage must pass before the next runs:</p><ol><li><strong>Stage 1: Build/Binary.</strong> Was the FoundationModels framework compiled into this build? If the app was built on an older SDK, Apple Intelligence code may be absent entirely.</li><li><strong>Stage 2: OS/Runtime Preconditions.</strong> Is your macOS version sufficient? Apple Intelligence requires macOS 26 or later.</li><li><strong>Stage 3: Device Eligibility.</strong> Is your Mac eligible for Apple Intelligence? This checks hardware and locale requirements set by Apple.</li><li><strong>Stage 4: Model Access.</strong> Can a language model session be created? This verifies the on-device AI model is available and accessible. Has a 2-second timeout.</li><li><strong>Stage 5: Functional Probe.</strong> Can a minimal text generation succeed? This is a live test with a 3-second timeout to confirm the AI actually works.</li></ol><h2>Common Reasons for Failure</h2><ul><li><strong>macOS version too old.</strong> Apple Intelligence requires macOS 26. Check your version in Apple menu &gt; About This Mac.</li><li><strong>Apple Intelligence not enabled.</strong> You may need to enable Apple Intelligence in System Settings &gt; Apple Intelligence &amp; Siri.</li><li><strong>Model not yet downloaded.</strong> After enabling Apple Intelligence, macOS may need time to download the on-device model.</li></ul><h2>Viewing Diagnostics</h2><p>EnviousWispr shows the diagnostic results in <strong>Settings &gt; AI Polish</strong> when Apple Intelligence is selected as the provider. Each gate shows its status so you can identify exactly where the chain breaks.</p>"
+            }
+          ]
+        },
+        {
+          "name": "Recording Issues",
+          "articles": [
+            {
+              "title": "Recording Won't Stop or Seems Stuck",
+              "description": "What to do when a recording appears to hang.",
+              "content": "<h2>Cancel with Escape</h2><p>Press the <strong>Escape</strong> key at any time during recording to cancel and discard the current recording. This works regardless of the recording mode (Push-to-Talk, Toggle, or Hands-Free).</p><h2>Maximum Recording Duration</h2><p>EnviousWispr enforces two safety limits:</p><ul><li><strong>Soft limit (5 minutes):</strong> The app gracefully stops recording and proceeds to transcription.</li><li><strong>Hard limit (10 minutes):</strong> An emergency cutoff that ensures the app never records indefinitely.</li></ul><h2>Process Isolation</h2><p>Audio capture and ASR inference run in separate background processes, isolated from the main app. If one of these processes hangs or crashes, it does not take down the main app. The app detects the interruption, transitions to an error state, and the next recording automatically re-launches the service.</p><h2>VAD Auto-Stop</h2><p>If VAD auto-stop is enabled (the default), recording ends automatically when sustained silence is detected. The silence timeout is configurable via the environment sensitivity settings. If the VAD detects extended silence, it transitions through a hangover period before stopping, which prevents premature cutoff during natural speech pauses.</p>"
+            },
+            {
+              "title": "App Crashes or ASR Engine Crashes",
+              "description": "How EnviousWispr isolates crashes and recovers automatically.",
+              "content": "<h2>Process Isolation</h2><p>EnviousWispr runs audio capture and speech recognition in separate background processes. This means:</p><ul><li>If the ASR engine crashes (out of memory, model error, etc.), the main app stays running.</li><li>If the audio capture service crashes, the main app stays running.</li><li>The next recording after a crash automatically re-launches the failed service.</li></ul><h2>Automatic Recovery</h2><p>When an background service crash is detected via the interruption handler, the pipeline transitions to an error state. No user action is needed. Simply start your next recording and the service restarts automatically.</p><h2>Crash Tracking</h2><p>EnviousWispr uses Sentry for crash tracking with breadcrumbs that capture the pipeline state leading up to a crash. This data is used to diagnose and fix issues. No audio or transcript content is ever sent to crash reporting services.</p><h2>If the Main App Itself Crashes</h2><p>Main app crashes are rare thanks to process isolation. If it does happen, relaunch from your Applications folder. Transcript history is persisted to disk (JSON), so your previous dictations are preserved.</p>"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Advanced Features",
+      "sections": [
+        {
+          "name": "Transcript History",
+          "articles": [
+            {
+              "title": "Transcript History",
+              "description": "Reviewing, copying, and managing your past dictations.",
+              "content": "<h2>How It Works</h2><p>Every transcription is saved automatically to a persistent transcript history stored as JSON on disk. You can access your history from the <strong>History</strong> section in the app's settings window.</p><h2>What Is Stored</h2><p>Each transcript entry includes:</p><ul><li>The original ASR text (before any polishing)</li><li>The final polished text (after word correction, filler removal, and LLM polish)</li><li>Execution metrics: a full latency breakdown for each stage of the pipeline (recording duration, ASR time, polish time, total time)</li><li>Timestamp and metadata</li></ul><h2>Actions</h2><ul><li><strong>Copy:</strong> Copy any past transcript to your clipboard.</li><li><strong>Re-polish:</strong> Reprocess a transcript with different AI settings without re-recording. See the Re-Polish Past Transcripts article for details.</li><li><strong>Search and filter:</strong> Find specific transcripts using the search bar in the History view.</li></ul><h2>Storage</h2><p>Transcripts are stored as JSON on disk and persist across app restarts, crashes, and updates. History is currently unlimited with no restrictions.</p><h2>Troubleshooting</h2><ul><li><strong>History appears empty:</strong> If you just installed the app, you need to complete at least one dictation first. If you previously had transcripts and they disappeared, check that you are running the same build (production vs development builds use separate storage).</li></ul>"
+            },
+            {
+              "title": "Re-Polish Past Transcripts",
+              "description": "Change AI provider or style and reprocess a past transcript.",
+              "content": "<h2>What Re-Polish Does</h2><p>Re-polish takes the original ASR text from a saved transcript and runs it through the text processing chain again with your current settings. This lets you:</p><ul><li>Try a different LLM provider (switch from OpenAI to Gemini, or from Ollama to Apple Intelligence)</li><li>Change the writing style (Standard, Formal, Friendly, or Custom)</li><li>Apply a different custom system prompt</li><li>Test the effect of enabling or disabling filler word removal</li></ul><h2>How to Re-Polish</h2><p>Open <strong>History</strong> in the settings window, select a transcript, and use the re-polish action. The transcript is reprocessed using whatever AI Polish settings are currently configured. The original ASR text is always preserved.</p><h2>No Re-Recording Needed</h2><p>Re-polish works entirely from the saved ASR text. You do not need to speak again. This is useful when you change your AI settings and want to see how they affect past dictations.</p>"
+            }
+          ]
+        },
+        {
+          "name": "Text Processing",
+          "articles": [
+            {
+              "title": "Filler Word Removal",
+              "description": "Automatic removal of um, uh, hmm, and other filler words.",
+              "content": "<h2>What It Does</h2><p>Filler word removal strips common verbal fillers from your transcription: <strong>um, uh, hmm, mm, mhm, ah, er</strong>. Matching is case-insensitive. After removal, double spaces are collapsed and the text is trimmed.</p><h2>No AI Required</h2><p>Filler removal is a regex-based post-processing step that runs independently of AI polish. It works even when the LLM provider is set to None and the app is fully offline.</p><h2>Performance</h2><p>Filler removal has a 50ms timeout budget. If it somehow exceeds this (extremely unlikely given the regex approach), the pipeline falls back to the unfiltered text. Your dictation is never lost or delayed by this step.</p><h2>Processing Order</h2><p>Filler removal runs as the second step in the text processing chain:</p><ol><li>Word Correction (custom dictionary)</li><li>Filler Removal</li><li>LLM Polish (if enabled)</li></ol><p>This order means fillers are removed before the text reaches the LLM, giving the AI cleaner input to work with.</p><h2>Enabling and Disabling</h2><p>Filler removal can be toggled in the app settings. It is a separate control from AI polish.</p>"
+            }
+          ]
+        },
+        {
+          "name": "Performance",
+          "articles": [
+            {
+              "title": "Warm Engine and Performance Tuning",
+              "description": "Configuring the warm engine policy and model unload behavior for optimal speed.",
+              "content": "<h2>Warm Engine Policy</h2><p>The warm engine keeps the audio engine and microphone tap running between recordings so the next recording starts instantly. You can configure this in <strong>Settings &gt; Microphone</strong>.</p><p>Available policies:</p><ul><li><strong>Off:</strong> Engine shuts down immediately after each recording. Lowest memory usage, but each recording has a cold start.</li><li><strong>10 seconds:</strong> Engine stays warm for 10 seconds after recording stops.</li><li><strong>30 seconds (default):</strong> Good balance between responsiveness and resource usage.</li><li><strong>60 seconds:</strong> Longer warm window for frequent dictators.</li><li><strong>Always:</strong> Engine never shuts down. Fastest possible start time, highest idle resource usage.</li></ul><h2>Pre-Warm on Push-to-Talk Key-Down</h2><p>When using Push-to-Talk mode, pressing the hotkey triggers two parallel actions: (1) the audio input is pre-warmed (audio engine started, Bluetooth codec settled), and (2) recording setup begins. By the time you start speaking, the engine is ready and the 500ms pre-roll ring buffer has been draining, capturing those critical first milliseconds of audio.</p><h2>Model Unload Policy</h2><p>The ASR model can be unloaded from memory after a period of inactivity. This is separate from the warm engine (which controls audio hardware). Available policies include: never unload, immediately, 2 minutes, 5 minutes, 10 minutes, 15 minutes, and 60 minutes. Keeping the model loaded means zero cold-start latency on the next dictation but uses more memory.</p><h2>Background Model Pre-Loading</h2><p>On launch, EnviousWispr pre-loads the ASR model in the background so your first dictation has zero cold-start delay. The model download includes progress tracking and SHA-256 checksum verification.</p>"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Compatibility and Use Cases",
+      "sections": [
+        {
+          "name": "App Compatibility",
+          "articles": [
+            {
+              "title": "Supported Apps",
+              "description": "EnviousWispr works with any macOS app that accepts text input.",
+              "content": "<h2>Universal Compatibility</h2><p>EnviousWispr works with any macOS application that has a text input field. This includes native macOS apps, web browsers, Electron apps (VS Code, Slack, Discord, Notion), and any other app where you can type.</p><h2>Multi-Tier Paste for Maximum Compatibility</h2><p>Different apps handle text input differently. EnviousWispr uses a cascading paste strategy to maximize compatibility:</p><ol><li><strong>Tier 1 (AX Direct Insert):</strong> Uses the macOS Accessibility API to insert text directly into the focused element. Works with standard text fields, text areas, combo boxes, and search fields. Zero clipboard involvement, zero focus change. Includes verification that text actually appeared.</li><li><strong>Tier 2 (Simulated Cmd+V):</strong> Re-activates the target app and simulates a keyboard paste. Used when Tier 1 is unavailable or verification fails (common with Electron apps that report success but do not render the text).</li><li><strong>Tier 2b (AppleScript Paste):</strong> Clicks Edit &gt; Paste via AppleScript. Used when keyboard-based activation times out.</li><li><strong>Tier 3 (Clipboard Only):</strong> Places text on the clipboard for manual paste. The absolute last resort. Your text is never lost.</li></ol><h2>Clipboard Preservation</h2><p>During Tier 2 and 2b paste, EnviousWispr saves your clipboard contents before pasting and restores them afterward. If a clipboard manager has advanced the clipboard in the meantime, restoration is skipped to avoid conflicts.</p>"
+            }
+          ]
+        },
+        {
+          "name": "Use Cases",
+          "articles": [
+            {
+              "title": "Use Cases",
+              "description": "Nine real-world personas and how they use EnviousWispr.",
+              "content": "<h2>Coder</h2><p>Ship code without leaving flow. Narrate your thoughts while you work. Dictate PR descriptions, commit messages, review notes, and inline code comments without switching away from your IDE.</p><h2>Writer</h2><p>Draft at the speed of thought. Speak your first draft out loud. Use it for freewriting, outlines, structure notes, blog posts, essays, and pitches.</p><h2>Executive</h2><p>Clear communication, zero typing. Move faster than your inbox. Dictate follow-up emails, decision memos, action items, and strategy notes.</p><h2>Student</h2><p>Study smarter, write faster. Capture lectures as they happen. Summarize readings in your own words. Use it for lecture notes, essay drafts, outlines, and research summaries.</p><h2>Podcaster</h2><p>From episode to show notes in seconds. Narrate descriptions while ideas are fresh. Dictate show notes, episode summaries, RSS descriptions, clip captions, and social snippets.</p><h2>Remote Worker</h2><p>Stay responsive without breaking focus. Answer Slack, update tickets, post standups without switching mental contexts. Dictate Slack replies, daily standup updates, and issue comments.</p><h2>Accessibility</h2><p>Your voice, your primary input. Hands-free and reliable all day. Use for hands-free writing, form filling, and continuous dictation with no mode-switching or limits.</p><h2>Parent</h2><p>Dictate while your hands are full. Send the school email, add to the grocery list, text the sitter. Dictate school emails, teacher notes, grocery lists, reminders, and quick messages.</p><h2>Healthcare Professional</h2><p>Chart notes without the keyboard. Dictate patient notes, referral letters, and discharge summaries between rounds. Fully on-device with no cloud, no WiFi needed, and no patient data leaving your Mac.</p>"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Updates and Source Code",
+      "sections": [
+        {
+          "name": "Updates",
+          "articles": [
+            {
+              "title": "Auto-Updates",
+              "description": "How EnviousWispr keeps itself up to date via Sparkle.",
+              "content": "<h2>Automatic Update Checking</h2><p>EnviousWispr uses the <strong>Sparkle</strong> framework for automatic updates. The app periodically checks for new versions in the background. When an update is available, you will be prompted to download and install it.</p><h2>Manual Update Check</h2><p>You can trigger an update check manually from the menu bar. Click the EnviousWispr icon in the menu bar and look for the update option.</p><h2>What Happens During an Update</h2><ol><li>The app downloads the new version from GitHub Releases.</li><li>The update is verified (signature check via Sparkle).</li><li>The app restarts with the new version.</li></ol><h2>Update Source</h2><p>Updates are distributed as DMG files hosted on GitHub Releases. The update feed (appcast.xml) is served from enviouswispr.com and cached by Cloudflare with a short TTL for fast propagation.</p>"
+            }
+          ]
+        },
+        {
+          "name": "Source Code",
+          "articles": [
+            {
+              "title": "Source Code and Contributing",
+              "description": "Where to find the source code and how the license works.",
+              "content": "<h2>Source Code</h2><p>The full EnviousWispr codebase is available on GitHub at <a href=\"https://github.com/saurabhav88/EnviousWispr\">github.com/saurabhav88/EnviousWispr</a>. Every privacy claim is verifiable by reading the code.</p><h2>License</h2><p>EnviousWispr is licensed under the <strong>Business Source License 1.1 (BSL 1.1)</strong>. Key points:</p><ul><li><strong>Personal, non-commercial use is permitted.</strong> You can use, copy, modify, and redistribute the code for personal purposes.</li><li><strong>Commercial use requires a separate license.</strong> You may not sell, sublicense, or distribute the software or derivative works for a fee without a commercial license from Envious Labs LLC.</li><li><strong>Change Date: March 10, 2030.</strong> On this date, the code automatically converts to the <strong>Apache License 2.0</strong>, a permissive open-source license.</li></ul><h2>Contributing</h2><p>Community contributions are welcome. You can:</p><ul><li>Report issues on the GitHub Issues tracker.</li><li>Submit pull requests for bug fixes or improvements.</li><li>Inspect the code to verify privacy and security claims.</li></ul><h2>Building from Source</h2><p>EnviousWispr builds with the Swift compiler toolchain (CLT only, no Xcode required). It targets macOS 14+ on Apple Silicon.</p><pre><code>swift build              # Debug build\nswift build -c release   # Release build</code></pre>"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
