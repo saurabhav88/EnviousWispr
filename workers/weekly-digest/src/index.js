@@ -38,19 +38,18 @@ async function fetchCloudflareStats(env, dateFrom, dateTo) {
   const query = `query {
     viewer {
       zones(filter: {zoneTag: "${env.CF_ZONE_ID}"}) {
-        httpRequests1dGroups(
+        totals: httpRequests1dGroups(
           limit: 7
           filter: {date_geq: "${dateFrom}", date_leq: "${dateTo}"}
         ) {
           sum { requests pageViews }
           uniq { uniques }
         }
-        httpRequests1dGroups: httpRequests1dGroups(
+        byDay: httpRequests1dGroups(
           limit: 7
           filter: {date_geq: "${dateFrom}", date_leq: "${dateTo}"}
-          orderBy: [date_ASC]
         ) {
-          date: dimensions { date }
+          dimensions { date }
           sum {
             pageViews
             countryMap { clientCountryName requests }
@@ -101,15 +100,18 @@ async function fetchCloudflareStats(env, dateFrom, dateTo) {
   ]);
 
   const zone = mainRes?.data?.viewer?.zones?.[0];
-  const groups = zone?.httpRequests1dGroups || [];
+  const totals = zone?.totals || [];
+  const byDay = zone?.byDay || [];
 
   let totalRequests = 0, totalPageViews = 0, totalUniques = 0;
   const countries = {};
 
-  for (const g of groups) {
+  for (const g of totals) {
     totalRequests += g.sum?.requests || 0;
     totalPageViews += g.sum?.pageViews || 0;
     totalUniques += g.uniq?.uniques || 0;
+  }
+  for (const g of byDay) {
     for (const c of g.sum?.countryMap || []) {
       countries[c.clientCountryName] = (countries[c.clientCountryName] || 0) + c.requests;
     }
@@ -133,9 +135,12 @@ async function fetchCloudflareStats(env, dateFrom, dateTo) {
 // ── GitHub Release Downloads ──────────────────────────────────
 
 async function fetchGitHubDownloads(env) {
+  const headers = { "User-Agent": "EnviousWispr-Digest-Worker" };
+  if (env.GITHUB_TOKEN) headers.Authorization = `token ${env.GITHUB_TOKEN}`;
+
   const res = await fetch(
     `https://api.github.com/repos/${env.GITHUB_REPO}/releases`,
-    { headers: { "User-Agent": "EnviousWispr-Digest-Worker" } }
+    { headers }
   );
   if (!res.ok) return { totalDownloads: "?", latestVersion: "?" };
 
@@ -165,14 +170,16 @@ async function fetchPostHogStats(env, dateFrom, dateTo) {
     "Content-Type": "application/json",
   };
 
-  // Weekly active users (app_launched unique users in last 7 days)
+  // Weekly active users (production only — excludes dev dogfooding)
+  const prodFilter = [{ key: "environment", operator: "exact", type: "event", value: "production" }];
   const wauQuery = {
     kind: "TrendsQuery",
     dateRange: { date_from: dateFrom, date_to: dateTo },
     interval: "week",
+    properties: prodFilter,
     series: [
-      { kind: "EventsNode", event: "app_launched", math: "dau", custom_name: "WAU" },
-      { kind: "EventsNode", event: "app_launched", math: "first_time_for_user", custom_name: "New" },
+      { kind: "EventsNode", event: "app.launched", math: "dau", custom_name: "WAU" },
+      { kind: "EventsNode", event: "app.launched", math: "first_time_for_user", custom_name: "New" },
     ],
   };
 
@@ -184,12 +191,9 @@ async function fetchPostHogStats(env, dateFrom, dateTo) {
     series: [
       {
         kind: "EventsNode",
-        event: "$autocapture",
+        event: "download_clicked",
         math: "total",
         custom_name: "Download clicks",
-        properties: [
-          { key: "href", operator: "icontains", type: "element", value: "EnviousWispr.dmg" },
-        ],
       },
     ],
   };
@@ -221,7 +225,12 @@ async function fetchPostHogStats(env, dateFrom, dateTo) {
 
   const extractTotal = (res, seriesIdx = 0) => {
     try {
-      return res.results?.[seriesIdx]?.aggregated_value ?? "?";
+      const series = res?.results?.[seriesIdx];
+      if (!series) return "?";
+      // aggregated_value can be null for weekly intervals; sum the data array instead
+      if (series.aggregated_value != null) return series.aggregated_value;
+      if (Array.isArray(series.data)) return series.data.reduce((a, b) => a + b, 0);
+      return "?";
     } catch {
       return "?";
     }
