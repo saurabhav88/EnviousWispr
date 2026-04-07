@@ -27,15 +27,42 @@ public enum OllamaQualityTier: String, Sendable {
     }
 }
 
-/// A model entry in the curated Ollama catalog.
+/// A model entry in the Ollama catalog (curated or dynamic).
 public struct OllamaModelCatalogEntry: Identifiable, Sendable {
     public let name: String
     public let displayName: String
     public let parameterCount: String
     public let qualityTier: OllamaQualityTier
     public let downloadSize: String
+    public let isDownloaded: Bool
 
     public var id: String { name }
+
+    public init(
+        name: String,
+        displayName: String,
+        parameterCount: String,
+        qualityTier: OllamaQualityTier,
+        downloadSize: String,
+        isDownloaded: Bool = false
+    ) {
+        self.name = name
+        self.displayName = displayName
+        self.parameterCount = parameterCount
+        self.qualityTier = qualityTier
+        self.downloadSize = downloadSize
+        self.isDownloaded = isDownloaded
+    }
+}
+
+/// A model parsed from Ollama's /api/tags response.
+public struct OllamaDownloadedModel: Sendable {
+    public let exactName: String
+    public let canonicalName: String
+    public let parameterSize: String?
+    public let parameterBillions: Double?
+    public let fileSizeBytes: Int64
+    public let displayName: String
 }
 
 /// Guides users through Ollama installation, server startup, and model pulling.
@@ -48,10 +75,16 @@ public final class OllamaSetupService {
     public private(set) var setupState: OllamaSetupState = .detecting
     public private(set) var pullProgress: Double = 0
     public private(set) var pullStatusText: String = ""
-    public private(set) var downloadedModelNames: Set<String> = []
+    public private(set) var downloadedModels: [OllamaDownloadedModel] = []
+
+    /// Canonical names of downloaded models. Backward-compatible with old Set<String> consumers.
+    public var downloadedModelNames: Set<String> {
+        Set(downloadedModels.map(\.canonicalName))
+    }
 
     // MARK: - Model Catalog
 
+    /// Curated suggestions for users who haven't downloaded models yet.
     public static let modelCatalog: [OllamaModelCatalogEntry] = [
         OllamaModelCatalogEntry(name: "llama3.2", displayName: "Llama 3.2", parameterCount: "3B", qualityTier: .best, downloadSize: "~2 GB"),
         OllamaModelCatalogEntry(name: "llama3.2:1b", displayName: "Llama 3.2 (1B)", parameterCount: "1B", qualityTier: .medium, downloadSize: "~800 MB"),
@@ -65,12 +98,109 @@ public final class OllamaSetupService {
         OllamaModelCatalogEntry(name: "phi-2", displayName: "Phi-2", parameterCount: "2.7B", qualityTier: .worst, downloadSize: "~1.7 GB"),
     ]
 
+    /// Dynamic catalog: downloaded models first (with real metadata), then undownloaded suggestions.
+    public var dynamicCatalog: [OllamaModelCatalogEntry] {
+        let canonicalDownloaded = Set(downloadedModels.map(\.canonicalName))
+
+        // Build catalog entries from downloaded models
+        let downloadedEntries: [OllamaModelCatalogEntry] = downloadedModels.map { model in
+            // Overlay curated metadata if we have a catalog match
+            if let curated = Self.modelCatalog.first(where: {
+                Self.canonicalModelName($0.name) == model.canonicalName
+            }) {
+                return OllamaModelCatalogEntry(
+                    name: model.exactName,
+                    displayName: curated.displayName,
+                    parameterCount: model.parameterSize ?? curated.parameterCount,
+                    qualityTier: curated.qualityTier,
+                    downloadSize: Self.formatFileSize(model.fileSizeBytes),
+                    isDownloaded: true
+                )
+            }
+
+            // Unknown/custom model: infer metadata
+            return OllamaModelCatalogEntry(
+                name: model.exactName,
+                displayName: Self.inferDisplayName(from: model.exactName),
+                parameterCount: model.parameterSize ?? "Unknown",
+                qualityTier: Self.inferQualityTier(parameterBillions: model.parameterBillions),
+                downloadSize: Self.formatFileSize(model.fileSizeBytes),
+                isDownloaded: true
+            )
+        }
+        .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+
+        // Undownloaded suggestions (preserve static catalog order)
+        let suggestions: [OllamaModelCatalogEntry] = Self.modelCatalog.compactMap { entry in
+            let canonical = Self.canonicalModelName(entry.name)
+            guard !canonicalDownloaded.contains(canonical) else { return nil }
+            return entry
+        }
+
+        return downloadedEntries + suggestions
+    }
+
+    // MARK: - Name Normalization
+
+    /// Canonical name: strips `:latest` suffix only. All other tags preserved.
+    public nonisolated static func canonicalModelName(_ name: String) -> String {
+        if name.hasSuffix(":latest") {
+            return String(name.dropLast(":latest".count))
+        }
+        return name
+    }
+
+    // MARK: - Parameter Size Parsing
+
+    /// Parse Ollama parameter size strings like "3B", "3.2B", "500M", "1T" into billions.
+    /// Returns nil if parsing fails.
+    public nonisolated static func parseParameterSize(_ raw: String) -> Double? {
+        let trimmed = raw.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+
+        let upper = trimmed.uppercased()
+        let multiplier: Double
+        let suffix: Character
+
+        if upper.hasSuffix("B") {
+            multiplier = 1.0
+            suffix = "B"
+        } else if upper.hasSuffix("M") {
+            multiplier = 0.001
+            suffix = "M"
+        } else if upper.hasSuffix("T") {
+            multiplier = 1000.0
+            suffix = "T"
+        } else {
+            return nil
+        }
+
+        let numberPart = String(upper.dropLast())
+        guard let value = Double(numberPart), value > 0 else { return nil }
+        _ = suffix  // used for clarity in the if-else chain above
+        return value * multiplier
+    }
+
     // MARK: - Weak Model Detection
 
-    public nonisolated static func isWeakModel(_ name: String) -> Bool {
-        let prefixes: [String] = ["tinyllama", "phi-2", "gemma2:2b"]
+    /// Hardcoded fallback prefixes for weak model detection when parameter size is unknown.
+    nonisolated private static let weakModelFallbackPrefixes: [String] = ["tinyllama", "phi-2", "gemma2:2b"]
+
+    /// Determine if a model should receive a simplified system prompt.
+    /// Uses parameter count when available, falls back to name-based heuristic.
+    public nonisolated static func isWeakModel(_ name: String, parameterBillions: Double? = nil) -> Bool {
+        if let billions = parameterBillions {
+            return billions <= 3.0
+        }
         let lower = name.lowercased()
-        return prefixes.contains(where: { lower.hasPrefix($0) })
+        return weakModelFallbackPrefixes.contains(where: { lower.hasPrefix($0) })
+    }
+
+    /// Convenience: check if a model name is weak using downloaded model metadata.
+    public func isWeakModel(_ name: String) -> Bool {
+        let canonical = Self.canonicalModelName(name)
+        let downloaded = downloadedModels.first(where: { $0.canonicalName == canonical })
+        return Self.isWeakModel(name, parameterBillions: downloaded?.parameterBillions)
     }
 
     // MARK: - Private
@@ -86,7 +216,7 @@ public final class OllamaSetupService {
 
     public init() {}
 
-    /// Run the full detection pipeline: binary → server → models.
+    /// Run the full detection pipeline: binary -> server -> models.
     public func detectState() async {
         setupState = .detecting
 
@@ -194,12 +324,12 @@ public final class OllamaSetupService {
     /// Check whether Ollama has at least one pulled model.
     public func hasAnyModels() async -> Bool {
         await refreshDownloadedModels()
-        return !downloadedModelNames.isEmpty
+        return !downloadedModels.isEmpty
     }
 
     // MARK: - Model Management
 
-    /// Refresh the set of downloaded model names from GET /api/tags.
+    /// Refresh the list of downloaded models from GET /api/tags, parsing full metadata.
     public func refreshDownloadedModels() async {
         guard let url = URL(string: "\(Self.baseURL)/api/tags") else { return }
         var request = URLRequest(url: url)
@@ -211,17 +341,38 @@ public final class OllamaSetupService {
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
             let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
             guard let models = json?["models"] as? [[String: Any]] else { return }
-            downloadedModelNames = Set(models.compactMap { model -> String? in
+            downloadedModels = models.compactMap { model -> OllamaDownloadedModel? in
                 guard let name = model["name"] as? String else { return nil }
-                // Ollama returns "llama3.2:latest" but catalog uses "llama3.2".
-                // Normalize by stripping the implicit ":latest" tag.
-                if name.hasSuffix(":latest") {
-                    return String(name.dropLast(":latest".count))
+                let canonical = Self.canonicalModelName(name)
+
+                // Parse details.parameter_size
+                let details = model["details"] as? [String: Any]
+                let parameterSize = details?["parameter_size"] as? String
+                let parameterBillions = parameterSize.flatMap { Self.parseParameterSize($0) }
+
+                // Parse file size (Int64 for large models)
+                let fileSizeBytes: Int64
+                if let size = model["size"] as? Int64 {
+                    fileSizeBytes = size
+                } else if let size = model["size"] as? Int {
+                    fileSizeBytes = Int64(size)
+                } else {
+                    fileSizeBytes = 0
                 }
-                return name
-            })
+
+                let displayName = Self.inferDisplayName(from: name)
+
+                return OllamaDownloadedModel(
+                    exactName: name,
+                    canonicalName: canonical,
+                    parameterSize: parameterSize,
+                    parameterBillions: parameterBillions,
+                    fileSizeBytes: fileSizeBytes,
+                    displayName: displayName
+                )
+            }
         } catch {
-            // Silently ignore — server may not be running
+            // Silently ignore -- server may not be running
         }
     }
 
@@ -239,15 +390,15 @@ public final class OllamaSetupService {
             do {
                 let (_, response) = try await URLSession.shared.data(for: request)
                 if let http = response as? HTTPURLResponse, http.statusCode == 200 {
-                    downloadedModelNames.remove(name)
+                    downloadedModels.removeAll(where: { $0.exactName == name })
                     // If current model was deleted, update setup state
-                    if downloadedModelNames.isEmpty {
+                    if downloadedModels.isEmpty {
                         setupState = .runningNoModels
                         UserDefaults.standard.set(false, forKey: Self.lastKnownStateKey)
                     }
                 }
             } catch {
-                // Silently ignore delete errors — user can try again
+                // Silently ignore delete errors -- user can try again
             }
         }
     }
@@ -337,7 +488,12 @@ public final class OllamaSetupService {
                 setupState = .ready
                 UserDefaults.standard.set(true, forKey: Self.lastKnownStateKey)
             } catch is CancellationError {
-                setupState = .runningNoModels
+                // Bug fix: don't force .runningNoModels if models exist
+                if downloadedModels.isEmpty {
+                    setupState = .runningNoModels
+                } else {
+                    setupState = .ready
+                }
             } catch let urlError as URLError {
                 setupState = .error(friendlyMessage(for: urlError))
             } catch {
@@ -348,7 +504,7 @@ public final class OllamaSetupService {
                     )
                 } else {
                     setupState = .error(
-                        "Download failed — check your internet connection and try again."
+                        "Download failed. Check your internet connection and try again."
                     )
                 }
             }
@@ -359,7 +515,12 @@ public final class OllamaSetupService {
     public func cancelPull() {
         pullTask?.cancel()
         pullTask = nil
-        setupState = .runningNoModels
+        // Bug fix: don't force .runningNoModels if models exist
+        if downloadedModels.isEmpty {
+            setupState = .runningNoModels
+        } else {
+            setupState = .ready
+        }
     }
 
     // MARK: - Streaming Pull (Private)
@@ -421,16 +582,47 @@ public final class OllamaSetupService {
         }
     }
 
+    // MARK: - Display Helpers
+
+    /// Infer a display name from a raw Ollama model name.
+    nonisolated static func inferDisplayName(from name: String) -> String {
+        let base = name.components(separatedBy: ":").first ?? name
+        return base.replacingOccurrences(of: "-", with: " ")
+            .replacingOccurrences(of: ".", with: " ")
+            .split(separator: " ")
+            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+            .joined(separator: " ")
+    }
+
+    /// Infer quality tier from parameter count.
+    nonisolated static func inferQualityTier(parameterBillions: Double?) -> OllamaQualityTier {
+        guard let billions = parameterBillions else { return .medium }
+        if billions >= 7.0 { return .best }
+        if billions <= 2.0 { return .worst }
+        return .medium
+    }
+
+    /// Format file size in bytes to human-readable string.
+    nonisolated static func formatFileSize(_ bytes: Int64) -> String {
+        guard bytes > 0 else { return "Unknown" }
+        let gb = Double(bytes) / 1_073_741_824.0
+        if gb >= 1.0 {
+            return String(format: "%.1f GB", gb)
+        }
+        let mb = Double(bytes) / 1_048_576.0
+        return String(format: "%.0f MB", mb)
+    }
+
     // MARK: - Error Mapping
 
     private func friendlyMessage(for urlError: URLError) -> String {
         switch urlError.code {
         case .notConnectedToInternet:
-            return "Download failed — check your internet connection and try again."
+            return "Download failed. Check your internet connection and try again."
         case .cancelled, .networkConnectionLost, .timedOut:
             return "Download was interrupted. Tap retry to resume where you left off."
         default:
-            return "Download failed — check your internet connection and try again."
+            return "Download failed. Check your internet connection and try again."
         }
     }
 }

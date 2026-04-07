@@ -1,7 +1,8 @@
 import Foundation
 import EnviousWisprCore
 
-/// Ollama local LLM connector. Uses Ollama's OpenAI-compatible endpoint.
+/// Ollama local LLM connector. Uses Ollama's native /api/chat endpoint
+/// for access to `think`, `keep_alive`, and timing telemetry.
 /// Requires Ollama to be running: https://ollama.com
 public struct OllamaConnector: TranscriptPolisher {
     private let baseURL: String
@@ -19,7 +20,7 @@ public struct OllamaConnector: TranscriptPolisher {
         config: LLMProviderConfig,
         onToken: (@Sendable (String) -> Void)?
     ) async throws -> LLMResult {
-        let endpointURL = "\(baseURL)/v1/chat/completions"
+        let endpointURL = "\(baseURL)/api/chat"
         guard let url = URL(string: endpointURL) else {
             throw LLMError.requestFailed("Invalid Ollama URL: \(endpointURL)")
         }
@@ -36,12 +37,16 @@ public struct OllamaConnector: TranscriptPolisher {
             messages.append(["role": "user", "content": text])
         }
 
-        let body: [String: Any] = [
-            "model":       config.model,
-            "messages":    messages,
-            "max_tokens":  config.maxTokens,
-            "temperature": config.temperature,
-            "stream":      false,
+        var body: [String: Any] = [
+            "model": config.model,
+            "messages": messages,
+            "stream": false,
+            "think": false,
+            "keep_alive": "15m",
+            "options": [
+                "num_predict": config.maxTokens,
+                "temperature": config.temperature,
+            ],
         ]
 
         var request = URLRequest(url: url)
@@ -53,17 +58,30 @@ public struct OllamaConnector: TranscriptPolisher {
         let (data, _) = try await performWithRetry(request: request, config: config)
 
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        guard let choices = json?["choices"] as? [[String: Any]],
-              let message = choices.first?["message"] as? [String: Any],
+        guard let message = json?["message"] as? [String: Any],
               let content = message["content"] as? String,
               !content.isEmpty else {
             throw LLMError.emptyResponse
         }
 
-        if let finishReason = choices.first?["finish_reason"] as? String,
-           finishReason == "length" {
+        // Log timing telemetry for observability
+        if let loadNs = json?["load_duration"] as? Int64,
+           let promptNs = json?["prompt_eval_duration"] as? Int64,
+           let evalNs = json?["eval_duration"] as? Int64,
+           let evalCount = json?["eval_count"] as? Int {
+            let loadMs = Double(loadNs) / 1_000_000
+            let promptMs = Double(promptNs) / 1_000_000
+            let evalMs = Double(evalNs) / 1_000_000
             Task { await AppLogger.shared.log(
-                "WARNING: Ollama response truncated (finish_reason=length, model=\(config.model), max_tokens=\(config.maxTokens))",
+                "Ollama timing: load=\(String(format: "%.0f", loadMs))ms prompt=\(String(format: "%.0f", promptMs))ms eval=\(String(format: "%.0f", evalMs))ms tokens=\(evalCount) (model=\(config.model))",
+                level: .verbose, category: "LLM"
+            ) }
+        }
+
+        // Check for truncation via done_reason
+        if let doneReason = json?["done_reason"] as? String, doneReason != "stop" {
+            Task { await AppLogger.shared.log(
+                "WARNING: Ollama response truncated (done_reason=\(doneReason), model=\(config.model))",
                 level: .info, category: "LLM"
             ) }
         }
