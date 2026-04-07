@@ -194,7 +194,7 @@ public final class WhisperKitPipeline: DictationPipeline {
         await audioCapture.preWarm()
         guard !Task.isCancelled else { return }
         isPreWarmed = true
-        let totalMs = Self.durationMs(ContinuousClock.now - start)
+        let totalMs = PipelineUtils.durationMs(ContinuousClock.now - start)
         Task { await AppLogger.shared.log(
             "COLD-START [WhisperKit] preWarmAudioInput total=\(totalMs)ms",
             level: .info, category: "Pipeline"
@@ -202,12 +202,6 @@ public final class WhisperKitPipeline: DictationPipeline {
         // Defense-in-depth: ensure model is loaded from cache (no download).
         // If not cached, startRecording() handles the full load with user-visible UI.
         Task { _ = try? await backend.prepareIfCached() }
-    }
-
-    /// Convert Duration to milliseconds for logging.
-    private static func durationMs(_ d: Duration) -> Int {
-        let (seconds, attoseconds) = d.components
-        return Int(seconds) * 1000 + Int(attoseconds / 1_000_000_000_000_000)
     }
 
     public func toggleRecording() async {
@@ -381,7 +375,7 @@ public final class WhisperKitPipeline: DictationPipeline {
             vadSegmentCount = segments.count
             vadSpeechDurationMs = segments.reduce(0) { $0 + ($1.endSample - $1.startSample) } * 1000 / 16000
             if !segments.isEmpty {
-                samples = Self.filterSamples(from: rawSamples, segments: segments)
+                samples = SampleFilter.filter(from: rawSamples, segments: segments)
                 let pct = String(format: "%.1f", Double(samples.count) / Double(max(rawSamples.count, 1)) * 100)
                 Task { await AppLogger.shared.log(
                     "WhisperKit VAD (XPC) filtered to \(samples.count) samples (\(pct)% voiced)",
@@ -879,34 +873,6 @@ public final class WhisperKitPipeline: DictationPipeline {
         }
     }
 
-    // MARK: - VAD Segment Filtering
-
-    /// Filter samples using speech segments from service-side VAD (XPC mode).
-    /// Mirrors SilenceDetector.filterSamples logic — pad segments, merge overlaps, extract voiced audio.
-    private static func filterSamples(from allSamples: [Float], segments: [SpeechSegment], padding: Int = 1600) -> [Float] {
-        guard !segments.isEmpty else { return allSamples }
-
-        let totalVoiced = segments.reduce(0) { $0 + ($1.endSample - $1.startSample) }
-        guard totalVoiced >= 4800 else { return allSamples }
-
-        var merged: [(start: Int, end: Int)] = []
-        for segment in segments {
-            let start = max(0, segment.startSample - padding)
-            let end = min(allSamples.count, segment.endSample + padding)
-            if let last = merged.last, start <= last.end {
-                merged[merged.count - 1].end = max(last.end, end)
-            } else {
-                merged.append((start, end))
-            }
-        }
-
-        var result: [Float] = []
-        for range in merged {
-            guard range.start < range.end else { continue }
-            result.append(contentsOf: allSamples[range.start..<range.end])
-        }
-        return result.isEmpty ? allSamples : result
-    }
 
     // MARK: - Model Lifecycle
 
