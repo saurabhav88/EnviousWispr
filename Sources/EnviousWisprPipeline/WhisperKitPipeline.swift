@@ -39,7 +39,6 @@ public enum WhisperKitPipelineState: Equatable, Sendable {
 public final class WhisperKitPipeline: DictationPipeline {
     private let audioCapture: any AudioCaptureInterface
     private let backend: WhisperKitBackend
-    private let transcriptStore: TranscriptStore
     private let keychainManager: KeychainManager
 
     public private(set) var state: WhisperKitPipelineState = .idle {
@@ -102,7 +101,6 @@ public final class WhisperKitPipeline: DictationPipeline {
     ) {
         self.audioCapture = audioCapture
         self.backend = backend
-        self.transcriptStore = transcriptStore
         self.keychainManager = keychainManager
         self.transcriptFinalizer = TranscriptFinalizer(transcriptStore: transcriptStore)
         self.llmPolishStep = LLMPolishStep(keychainManager: keychainManager)

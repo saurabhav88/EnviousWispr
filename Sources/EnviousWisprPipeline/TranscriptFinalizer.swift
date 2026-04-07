@@ -27,8 +27,6 @@ internal struct FinalizationResult {
     let pasteResult: PasteDeliveryResult?
     /// Error message from polish step failure, if any.
     let polishError: String?
-    /// Context from text processing, for LLM provider/model tracking.
-    let processingContext: TextProcessingContext
     /// Time spent in text processing (for metrics).
     let polishDurationSeconds: Double
     /// Time spent in paste (for metrics).
@@ -131,7 +129,6 @@ internal final class TranscriptFinalizer {
             transcript: transcript,
             pasteResult: pasteResult,
             polishError: processingResult.polishError,
-            processingContext: context,
             polishDurationSeconds: polishEnd - polishStart,
             pasteDurationSeconds: pasteEnd - pasteStart
         )
