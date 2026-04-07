@@ -87,8 +87,8 @@ public enum LLMConstants {
     /// Thinking models (Gemini 2.5) consume output tokens for reasoning, so this must be generous.
     public static let defaultMaxTokens: Int = 8192
 
-    /// Max tokens for Ollama (local models).
-    public static let ollamaMaxTokens: Int = 2048
+    /// Max tokens for Ollama (local models). Polish output is short; 256 is plenty.
+    public static let ollamaMaxTokens: Int = 256
 
     /// Default thinking budget for extended thinking models (Gemini 2.5 Flash/Pro).
     public static let defaultThinkingBudget: Int = 8192

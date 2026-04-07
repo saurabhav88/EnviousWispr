@@ -24,6 +24,13 @@ struct AIPolishSettingsView: View {
         appState.settings.llmProvider != .none && appState.settings.llmProvider != .appleIntelligence
     }
 
+    private var ollamaShowsManageModels: Bool {
+        switch appState.ollamaSetup.setupState {
+        case .ready, .pullingModel: return true
+        default: return false
+        }
+    }
+
     private var showWritingStyleSection: Bool {
         appState.settings.llmProvider != .none
     }
@@ -159,9 +166,9 @@ struct AIPolishSettingsView: View {
                 }
             }
 
-            // Manage Models for Ollama (when ready)
+            // Manage Models for Ollama (when ready or pulling)
             if appState.settings.llmProvider == .ollama,
-               case .ready = appState.ollamaSetup.setupState {
+               ollamaShowsManageModels {
                 BrandedSection(header: "Manage Models") {
                     BrandedRow(showDivider: false) {
                         DisclosureGroup("Download / Remove Models", isExpanded: $showManageModels) {
@@ -768,8 +775,14 @@ struct AIPolishSettingsView: View {
 
     @ViewBuilder
     private var ollamaModelCatalogView: some View {
+        let catalog = appState.ollamaSetup.dynamicCatalog
+        let isPulling: Bool = {
+            if case .pullingModel = appState.ollamaSetup.setupState { return true }
+            return false
+        }()
+
         VStack(alignment: .leading, spacing: 6) {
-            ForEach(OllamaSetupService.modelCatalog) { entry in
+            ForEach(catalog) { entry in
                 HStack(spacing: 8) {
                     VStack(alignment: .leading, spacing: 1) {
                         HStack(spacing: 4) {
@@ -786,7 +799,7 @@ struct AIPolishSettingsView: View {
 
                     Spacer()
 
-                    if appState.ollamaSetup.downloadedModelNames.contains(entry.name) {
+                    if entry.isDownloaded {
                         Button {
                             appState.ollamaSetup.deleteModel(name: entry.name)
                         } label: {
@@ -795,6 +808,7 @@ struct AIPolishSettingsView: View {
                         }
                         .controlSize(.small)
                         .buttonStyle(.borderless)
+                        .disabled(isPulling)
                     } else {
                         Button {
                             appState.ollamaSetup.pullModel(entry.name)
@@ -803,11 +817,12 @@ struct AIPolishSettingsView: View {
                         }
                         .controlSize(.small)
                         .buttonStyle(.borderless)
+                        .disabled(isPulling)
                     }
                 }
                 .padding(.vertical, 2)
 
-                if entry.id != OllamaSetupService.modelCatalog.last?.id {
+                if entry.id != catalog.last?.id {
                     Divider()
                 }
             }
