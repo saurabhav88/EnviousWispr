@@ -65,7 +65,7 @@ const ogImageUrl = ogImage.startsWith('http') ? ogImage : `${siteUrl}${ogImage}`
   <a href="#main-content" class="skip-link">Skip to content</a>
   <div class="dot-grid" aria-hidden="true"></div>
   <Nav activePage={activePage} />
-  <main id="main-content">
+  <main id="main-content" tabindex="-1">
     <slot />
   </main>
   <Footer />
