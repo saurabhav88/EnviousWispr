@@ -53,6 +53,7 @@ final class PipelineSettingsSync {
         pipeline.modelUnloadPolicy = settings.modelUnloadPolicy
         pipeline.restoreClipboardAfterPaste = settings.restoreClipboardAfterPaste
         pipeline.llmPolish.polishInstructions = settings.activePolishInstructions
+        pipeline.llmPolish.styleConfig = settings.activePolishStyleConfig
         pipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
         pipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
         pipeline.wordCorrection.customWords = customWords
@@ -172,8 +173,11 @@ final class PipelineSettingsSync {
             settings.vadSensitivity = sensitivity
         case .writingStylePreset:
             pipeline.llmPolish.polishInstructions = settings.activePolishInstructions
+            pipeline.llmPolish.styleConfig = settings.activePolishStyleConfig
             whisperKitPipeline.llmPolish.polishInstructions = settings.activePolishInstructions
+            whisperKitPipeline.llmPolish.styleConfig = settings.activePolishStyleConfig
             polishService.llmPolishStep.polishInstructions = settings.activePolishInstructions
+            polishService.llmPolishStep.styleConfig = settings.activePolishStyleConfig
         case .vadSensitivity:
             pipeline.vadSensitivity = settings.vadSensitivity
             whisperKitPipeline.vadSensitivity = settings.vadSensitivity
@@ -216,8 +220,11 @@ final class PipelineSettingsSync {
             whisperKitPipeline.restoreClipboardAfterPaste = settings.restoreClipboardAfterPaste
         case .customSystemPrompt:
             pipeline.llmPolish.polishInstructions = settings.activePolishInstructions
+            pipeline.llmPolish.styleConfig = settings.activePolishStyleConfig
             whisperKitPipeline.llmPolish.polishInstructions = settings.activePolishInstructions
+            whisperKitPipeline.llmPolish.styleConfig = settings.activePolishStyleConfig
             polishService.llmPolishStep.polishInstructions = settings.activePolishInstructions
+            polishService.llmPolishStep.styleConfig = settings.activePolishStyleConfig
         case .wordCorrectionEnabled:
             pipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
             whisperKitPipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
@@ -279,6 +286,7 @@ final class PipelineSettingsSync {
         whisperKitPipeline.llmPolish.llmProvider = settings.llmProvider
         whisperKitPipeline.llmPolish.llmModel = resolvedModel(settings)
         whisperKitPipeline.llmPolish.polishInstructions = settings.activePolishInstructions
+        whisperKitPipeline.llmPolish.styleConfig = settings.activePolishStyleConfig
         whisperKitPipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
         whisperKitPipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
         whisperKitPipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
@@ -297,6 +305,7 @@ final class PipelineSettingsSync {
         polishService.llmPolishStep.llmProvider = settings.llmProvider
         polishService.llmPolishStep.llmModel = resolvedModel(settings)
         polishService.llmPolishStep.polishInstructions = settings.activePolishInstructions
+        polishService.llmPolishStep.styleConfig = settings.activePolishStyleConfig
         polishService.llmPolishStep.useExtendedThinking = settings.useExtendedThinking
         polishService.llmPolishStep.customWords = customWords
     }

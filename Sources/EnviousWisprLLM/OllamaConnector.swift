@@ -92,6 +92,71 @@ public struct OllamaConnector: TranscriptPolisher {
         )
     }
 
+    public func polish(
+        envelope: PromptEnvelope,
+        config: LLMProviderConfig,
+        onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+        // Ollama supports the full messages array (needed for Gemma few-shot).
+        // Map PromptEnvelope roles directly to Ollama API roles.
+        let messages: [[String: String]] = envelope.messages.map { msg in
+            let role: String
+            switch msg.role {
+            case .system: role = "system"
+            case .user: role = "user"
+            case .assistant: role = "assistant"
+            }
+            return ["role": role, "content": msg.content]
+        }
+
+        let endpointURL = "\(baseURL)/api/chat"
+        guard let url = URL(string: endpointURL) else {
+            throw LLMError.requestFailed("Invalid Ollama URL: \(endpointURL)")
+        }
+
+        let body: [String: Any] = [
+            "model": config.model,
+            "messages": messages,
+            "stream": false,
+            "think": false,
+            "keep_alive": "60m",
+            "options": [
+                "num_predict": config.maxTokens,
+                "temperature": config.temperature,
+            ],
+        ]
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.timeoutInterval = 60
+
+        let (data, _) = try await performWithRetry(request: request, config: config)
+
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        guard let message = json?["message"] as? [String: Any],
+              let content = message["content"] as? String,
+              !content.isEmpty
+        else {
+            throw LLMError.emptyResponse
+        }
+
+        if let doneReason = json?["done_reason"] as? String, doneReason != "stop" {
+            Task {
+                await AppLogger.shared.log(
+                    "WARNING: Ollama response truncated (done_reason=\(doneReason), model=\(config.model))",
+                    level: .info, category: "LLM"
+                )
+            }
+        }
+
+        return LLMResult(
+            polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines)
+                .strippingLLMPreamble()
+        )
+    }
+
     // MARK: - Retry
 
     private func performWithRetry(
