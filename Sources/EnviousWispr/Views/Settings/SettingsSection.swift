@@ -3,6 +3,7 @@ import SwiftUI
 /// Sidebar navigation sections for the unified window.
 enum SettingsSection: String, CaseIterable, Identifiable {
     case history
+    case whatsNew
     case speechEngine
     case audio
     case shortcuts
@@ -18,6 +19,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     var label: String {
         switch self {
         case .history:        return "History"
+        case .whatsNew:       return "What's New"
         case .speechEngine:   return "Transcription"
         case .audio:          return "Microphone"
         case .shortcuts:      return "Shortcuts"
@@ -33,6 +35,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .history:        return "clock.arrow.circlepath"
+        case .whatsNew:       return "sparkle.magnifyingglass"
         case .speechEngine:   return "waveform"
         case .audio:          return "speaker.wave.2"
         case .shortcuts:      return "keyboard"
@@ -47,7 +50,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 
     var group: SettingsGroup {
         switch self {
-        case .history:                              return .app
+        case .history, .whatsNew:                      return .app
         case .speechEngine, .audio, .shortcuts:     return .record
         case .aiPolish, .wordCorrection:            return .process
         case .clipboard:                            return .output

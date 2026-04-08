@@ -12,8 +12,13 @@ struct UnifiedWindowView: View {
                 ForEach(SettingsGroup.allCases, id: \.self) { group in
                     Section(group.rawValue) {
                         ForEach(group.sections) { section in
-                            Label(section.label, systemImage: section.icon)
-                                .tag(section)
+                            if section == .whatsNew {
+                                WhatsNewSidebarRow(isUnread: appState.settings.hasUnreadWhatsNew)
+                                    .tag(section)
+                            } else {
+                                Label(section.label, systemImage: section.icon)
+                                    .tag(section)
+                            }
                         }
                     }
                 }
@@ -53,6 +58,8 @@ struct UnifiedWindowView: View {
         switch selectedSection {
         case .history:
             HistoryContentView()
+        case .whatsNew:
+            WhatsNewSettingsView()
         case .speechEngine:
             SpeechEngineSettingsView()
         case .audio:
