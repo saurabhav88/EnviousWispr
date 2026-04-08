@@ -177,7 +177,7 @@ final class RecordingOverlayPanel {
     func showClipboardFallback() {
         guard panel == nil else {
             // Transition from existing panel (recording/polishing) to clipboard notice
-            transitionToPolishing(label: "Paste failed \u{2014} \u{2318}V to paste")
+            transitionToPolishing(label: "Copied. Press \u{2318}V to paste")
             scheduleAutoDismiss()
             return
         }
@@ -189,7 +189,7 @@ final class RecordingOverlayPanel {
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.generation == token else { return }
             self.pendingCreateWork = nil
-            self.createPolishingPanel(label: "Paste failed \u{2014} \u{2318}V to paste")
+            self.createPolishingPanel(label: "Copied. Press \u{2318}V to paste")
             self.scheduleAutoDismiss()
         }
         pendingCreateWork = work
