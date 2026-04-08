@@ -67,6 +67,30 @@ public struct OpenAIConnector: TranscriptPolisher {
         )
     }
 
+    public func polish(
+        envelope: PromptEnvelope,
+        config: LLMProviderConfig,
+        onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+        guard let pair = envelope.asSingleTurn() else {
+            // Fallback: join all messages (should not happen for OpenAI)
+            let text = envelope.messages.filter { $0.role == .user }.map(\.content).joined()
+            let system = envelope.messages.filter { $0.role == .system }.map(\.content).joined(separator: "\n")
+            return try await polish(
+                text: text,
+                instructions: PolishInstructions(systemPrompt: system),
+                config: config,
+                onToken: onToken
+            )
+        }
+        return try await polish(
+            text: pair.user,
+            instructions: PolishInstructions(systemPrompt: pair.system ?? ""),
+            config: config,
+            onToken: onToken
+        )
+    }
+
     // MARK: - Retry
 
     private func performWithRetry(

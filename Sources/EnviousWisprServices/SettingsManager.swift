@@ -337,6 +337,19 @@ public final class SettingsManager {
         }
     }
 
+    /// Build a PolishStyleConfig from current settings.
+    /// Detects CustomPromptMode (${transcript} placeholder) at config construction time.
+    public var activePolishStyleConfig: PolishStyleConfig {
+        let mode: CustomPromptMode = (writingStylePreset == .custom && customSystemPrompt.contains("${transcript}"))
+            ? .legacyTemplate
+            : .normal
+        return PolishStyleConfig(
+            writingStylePreset: writingStylePreset,
+            customSystemPrompt: customSystemPrompt,
+            customPromptMode: mode
+        )
+    }
+
     public var isPushToTalk: Bool {
         get { recordingMode == .pushToTalk }
         set { recordingMode = newValue ? .pushToTalk : .toggle }

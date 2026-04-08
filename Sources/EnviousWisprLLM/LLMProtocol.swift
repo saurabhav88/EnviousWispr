@@ -13,6 +13,30 @@ public protocol TranscriptPolisher: Sendable {
         config: LLMProviderConfig,
         onToken: (@Sendable (String) -> Void)?
     ) async throws -> LLMResult
+
+    /// Polish using a structured PromptEnvelope (new prompt planner path).
+    /// Connectors map roles to their API format. Default implementation bridges
+    /// to the legacy method for Apple Intelligence (which never uses this path).
+    func polish(
+        envelope: PromptEnvelope,
+        config: LLMProviderConfig,
+        onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult
+}
+
+extension TranscriptPolisher {
+    /// Default bridge: extract single-turn pair and delegate to legacy method.
+    /// Apple Intelligence connector relies on this default (never uses envelope path).
+    public func polish(
+        envelope: PromptEnvelope,
+        config: LLMProviderConfig,
+        onToken: (@Sendable (String) -> Void)?
+    ) async throws -> LLMResult {
+        let pair = envelope.asSingleTurn()
+        let instructions = PolishInstructions(systemPrompt: pair?.system ?? "")
+        let text = pair?.user ?? ""
+        return try await polish(text: text, instructions: instructions, config: config, onToken: onToken)
+    }
 }
 
 // MARK: - Preamble Stripping
