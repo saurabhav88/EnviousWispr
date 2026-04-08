@@ -28,12 +28,22 @@ public enum PasteTier: String {
 public enum PasteService {
 
     /// AX roles that accept text insertion.
-    private static let textRoles: Set<String> = [
+    static let textRoles: Set<String> = [
         kAXTextFieldRole as String,
         kAXTextAreaRole as String,
         kAXComboBoxRole as String,
         "AXSearchField",
     ]
+
+    /// Check if an AX element has a text input role (AXTextField, AXTextArea, etc.).
+    public static func isTextFieldRole(_ element: AXUIElement) -> Bool {
+        var roleRef: CFTypeRef?
+        let err = AXUIElementCopyAttributeValue(
+            element, kAXRoleAttribute as CFString, &roleRef
+        )
+        guard err == .success, let role = roleRef as? String else { return false }
+        return textRoles.contains(role)
+    }
 
     /// Copy text to the system clipboard.
     public static func copyToClipboard(_ text: String) {
