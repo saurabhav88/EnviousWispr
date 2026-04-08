@@ -83,7 +83,7 @@ const ogImageUrl = ogImage.startsWith('http') ? ogImage : `${siteUrl}${ogImage}`
       });
     }
     if ('requestIdleCallback' in window) {
-      requestIdleCallback(loadPostHog);
+      requestIdleCallback(loadPostHog, { timeout: 3000 });
     } else {
       window.addEventListener('load', loadPostHog);
     }
