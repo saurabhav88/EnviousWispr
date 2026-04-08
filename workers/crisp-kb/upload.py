@@ -37,10 +37,9 @@ def api(method, path, data=None):
 def delete_all_articles():
     """Delete all existing articles to allow clean re-upload."""
     print("Cleaning existing articles...")
-    page = 1
     deleted = 0
     while True:
-        res = api("GET", f"/website/{WEBSITE_ID}/helpdesk/locale/{LOCALE}/articles/{page}")
+        res = api("GET", f"/website/{WEBSITE_ID}/helpdesk/locale/{LOCALE}/articles/1")
         articles = res.get("data", [])
         if not articles:
             break
@@ -49,16 +48,14 @@ def delete_all_articles():
             api("DELETE", f"/website/{WEBSITE_ID}/helpdesk/locale/{LOCALE}/article/{aid}")
             deleted += 1
             time.sleep(0.2)
-        page += 1
     print(f"  Deleted {deleted} existing articles.")
 
 def delete_all_categories():
     """Delete all existing categories."""
     print("Cleaning existing categories...")
-    page = 1
     deleted = 0
     while True:
-        res = api("GET", f"/website/{WEBSITE_ID}/helpdesk/locale/{LOCALE}/categories/{page}")
+        res = api("GET", f"/website/{WEBSITE_ID}/helpdesk/locale/{LOCALE}/categories/1")
         cats = res.get("data", [])
         if not cats:
             break
@@ -67,7 +64,6 @@ def delete_all_categories():
             api("DELETE", f"/website/{WEBSITE_ID}/helpdesk/locale/{LOCALE}/category/{cid}")
             deleted += 1
             time.sleep(0.2)
-        page += 1
     print(f"  Deleted {deleted} existing categories.")
 
 def main():
