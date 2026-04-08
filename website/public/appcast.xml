@@ -311,5 +311,18 @@
       />
     </item>
 
+        <item>
+      <title>Version 1.9.0</title>
+      <pubDate>Wed, 08 Apr 2026 02:37:29 -0400</pubDate>
+      <sparkle:version>1.9.0</sparkle:version>
+      <sparkle:shortVersionString>1.9.0</sparkle:shortVersionString>
+      <enclosure
+        url="https://github.com/saurabhav88/EnviousWispr/releases/download/v1.9.0/EnviousWispr-1.9.0.dmg"
+        length="13034444"
+        type="application/octet-stream"
+        sparkle:edSignature="A5k0Umrod4yBJZ4tcdemaTH/U847dUo+oHg4Acfqx3JiudQOqAjynQ13VLOjsqo0E6b02j6CeujF6FL8n0FkBw=="
+      />
+    </item>
+
     </channel>
 </rss>
