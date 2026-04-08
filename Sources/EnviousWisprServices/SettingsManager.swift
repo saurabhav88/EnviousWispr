@@ -322,6 +322,24 @@ public final class SettingsManager {
         }
     }
 
+    // MARK: - What's New
+
+    public var lastSeenWhatsNewVersion: String {
+        didSet {
+            UserDefaults.standard.set(lastSeenWhatsNewVersion, forKey: WhatsNewConstants.lastSeenVersionDefaultsKey)
+            hasUnreadWhatsNew = (lastSeenWhatsNewVersion != WhatsNewConstants.currentContentVersion)
+        }
+    }
+
+    public private(set) var hasUnreadWhatsNew: Bool
+
+    public func markWhatsNewSeen() {
+        guard hasUnreadWhatsNew else { return }
+        lastSeenWhatsNewVersion = WhatsNewConstants.currentContentVersion
+    }
+
+    // MARK: - Computed Configurations
+
     public var activePolishInstructions: PolishInstructions {
         switch writingStylePreset {
         case .formal:
@@ -433,6 +451,12 @@ public final class SettingsManager {
         warmEnginePolicy = WarmEnginePolicy(
             rawValue: defaults.string(forKey: "warmEnginePolicy") ?? ""
         ) ?? .seconds30
+
+        // What's New: fresh install (nil) defaults to current version so new users aren't badged.
+        let storedWhatsNew = defaults.string(forKey: WhatsNewConstants.lastSeenVersionDefaultsKey)
+            ?? WhatsNewConstants.currentContentVersion
+        lastSeenWhatsNewVersion = storedWhatsNew
+        hasUnreadWhatsNew = (storedWhatsNew != WhatsNewConstants.currentContentVersion)
 
         // Canonicalize provider-coupled model names after all properties are loaded.
         if llmProvider == .appleIntelligence {
