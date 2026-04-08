@@ -7,30 +7,39 @@ struct WhatsNewSettingsView: View {
     var body: some View {
         SettingsContentView {
             VStack(alignment: .leading, spacing: 4) {
-                Text("What's New in v\(AppConstants.appVersion)")
+                Text("What's New")
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(.stTextSecondary)
-                Text("Here's what improved since your last update.")
+                Text("Here's what improved in recent updates.")
                     .font(.stHelper)
                     .foregroundStyle(.stTextTertiary)
             }
             .padding(.bottom, 4)
 
-            ForEach(WhatsNewContent.groupedEntries, id: \.category.id) { group in
-                BrandedSection(header: group.category.title) {
-                    ForEach(Array(group.entries.enumerated()), id: \.element.id) { index, entry in
-                        BrandedRow(showDivider: index < group.entries.count - 1) {
-                            HStack(alignment: .top, spacing: 12) {
-                                Image(systemName: entry.icon)
-                                    .font(.system(size: 16))
-                                    .foregroundStyle(.stAccent)
-                                    .frame(width: 24, alignment: .center)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(entry.title)
-                                        .font(.system(size: 13, weight: .semibold))
-                                    Text(entry.description)
-                                        .font(.stHelper)
-                                        .foregroundStyle(.stTextTertiary)
+            ForEach(WhatsNewContent.groupedByVersion, id: \.version) { versionGroup in
+                // Version header
+                Text("v\(versionGroup.version)")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(.stTextSecondary)
+                    .padding(.top, 8)
+
+                // Category sections within this version
+                ForEach(versionGroup.sections, id: \.category.id) { section in
+                    BrandedSection(header: section.category.title) {
+                        ForEach(Array(section.entries.enumerated()), id: \.element.id) { index, entry in
+                            BrandedRow(showDivider: index < section.entries.count - 1) {
+                                HStack(alignment: .top, spacing: 12) {
+                                    Image(systemName: entry.icon)
+                                        .font(.system(size: 16))
+                                        .foregroundStyle(.stAccent)
+                                        .frame(width: 24, alignment: .center)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(entry.title)
+                                            .font(.system(size: 13, weight: .semibold))
+                                        Text(entry.description)
+                                            .font(.stHelper)
+                                            .foregroundStyle(.stTextTertiary)
+                                    }
                                 }
                             }
                         }
