@@ -16,7 +16,7 @@
     "undici": ">=7.24.0"
   },
   "dependencies": {
-    "@astrojs/rss": "^4.0.17",
+    "@astrojs/rss": "^4.0.18",
     "@astrojs/sitemap": "^3.7.1",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@fontsource/plus-jakarta-sans": "^5.2.8",
