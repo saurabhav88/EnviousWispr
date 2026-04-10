@@ -182,14 +182,33 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
         }
     }
 
-    func stopCapture(reply: @escaping (Data) -> Void) {
+    func stopCapture(reply: @escaping (Data, Data) -> Void) {
         nonisolated(unsafe) let safeReply = reply
         Task { @MainActor in
             self.cancelVADMonitoring()
-            let samples = await self.captureManager.stopCapture()
-            // Transport format: raw Float32 bytes, non-interleaved mono, 16kHz.
-            let data = samples.withUnsafeBytes { Data($0) }
-            safeReply(data)
+
+            // CRITICAL: finalize VAD segments BEFORE clearing the sample buffer.
+            // Previously, stopCapture() cleared capturedSamples first, then getVADSegments()
+            // read capturedSamples.count as 0 for finalization, producing endSample=0 on open
+            // segments and negative durations (-768ms). See #226.
+            var vadData = Data()
+            if let detector = self.silenceDetector {
+                let totalCount = self.captureManager.capturedSamples.count
+                await detector.finalizeSegments(totalSampleCount: totalCount)
+                let segments = await detector.speechSegments
+                vadData = Data(capacity: segments.count * MemoryLayout<Int32>.size * 2)
+                for seg in segments {
+                    var start = Int32(seg.startSample)
+                    var end = Int32(seg.endSample)
+                    vadData.append(Data(bytes: &start, count: MemoryLayout<Int32>.size))
+                    vadData.append(Data(bytes: &end, count: MemoryLayout<Int32>.size))
+                }
+            }
+
+            // NOW clear the sample buffer and return both atomically.
+            let captureResult = await self.captureManager.stopCapture()
+            let sampleData = captureResult.samples.withUnsafeBytes { Data($0) }
+            safeReply(sampleData, vadData)
         }
     }
 

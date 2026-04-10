@@ -27,6 +27,32 @@ public enum AppConstants {
     }
 }
 
+// MARK: - Speech Segment
+
+/// A contiguous range of audio samples identified as speech by VAD.
+public struct SpeechSegment: Sendable {
+    public let startSample: Int
+    public let endSample: Int
+    public init(startSample: Int, endSample: Int) {
+        self.startSample = startSample
+        self.endSample = endSample
+    }
+}
+
+// MARK: - Capture Result
+
+/// Atomic result from stopCapture(): audio samples + VAD speech segments.
+/// Bundling these together eliminates the ordering dependency between
+/// stopCapture() and getVADSegments() across the XPC boundary.
+public struct CaptureResult: Sendable {
+    public let samples: [Float]
+    public let vadSegments: [SpeechSegment]
+    public init(samples: [Float], vadSegments: [SpeechSegment] = []) {
+        self.samples = samples
+        self.vadSegments = vadSegments
+    }
+}
+
 // MARK: - Audio Constants
 
 public enum AudioConstants {

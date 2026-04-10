@@ -64,11 +64,6 @@ enum SmoothedVADPhase: Sendable {
     case hangover(chunksRemaining: Int)
 }
 
-public struct SpeechSegment: Sendable {
-    public let startSample: Int
-    public let endSample: Int
-}
-
 /// Monitors audio for speech activity and detects silence after speech for auto-stop.
 ///
 /// Uses FluidAudio's Silero VAD model for raw probability, then applies EMA smoothing

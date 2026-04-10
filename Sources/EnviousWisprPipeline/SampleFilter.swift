@@ -1,4 +1,5 @@
 import EnviousWisprAudio
+import EnviousWisprCore
 import Foundation
 
 /// Shared utilities extracted from both pipelines to eliminate duplication.
