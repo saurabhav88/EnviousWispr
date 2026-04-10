@@ -32,8 +32,16 @@ public final class LLMPolishStep: TextProcessingStep {
         llmProvider != .none
     }
 
-    /// 5s initial budget — real-world LLM calls take 2-5s. Will tighten with telemetry data.
-    public var maxDuration: Duration { .seconds(5) }
+    /// Provider-aware timeout budget. Cloud providers respond in <2s so 5s is generous.
+    /// Local models (Ollama 12B) generate ~18 tok/s and need 10-15s for long dictations.
+    /// Apple Intelligence runs on-device with variable latency depending on model size.
+    public var maxDuration: Duration {
+        switch llmProvider {
+        case .ollama: return .seconds(15)
+        case .appleIntelligence: return .seconds(10)
+        case .openAI, .gemini, .none: return .seconds(5)
+        }
+    }
 
     public init(keychainManager: KeychainManager) {
         self.keychainManager = keychainManager
@@ -87,7 +95,12 @@ public final class LLMPolishStep: TextProcessingStep {
 
         let (thinkingBudget, reasoningEffort) = resolveThinkingConfig()
         let maxTokens: Int = {
-            if llmProvider == .ollama { return LLMConstants.ollamaMaxTokens }
+            if llmProvider == .ollama {
+                // Scale with input length, same formula as cloud providers.
+                // For 921-char input this gives 921 tokens (~4x headroom over ~230 actual).
+                // The pipeline-level timeout (15s) caps runaway generation.
+                return max(context.text.count, LLMConstants.ollamaMaxTokens)
+            }
             // OpenAI reasoning models include reasoning in max_completion_tokens — keep generous.
             if reasoningEffort != nil { return LLMConstants.defaultMaxTokens }
             // Character-based cap: ~1 token per 4 chars, so charCount ≈ 4× token estimate.

@@ -291,4 +291,40 @@ struct TextProcessingChainTests {
         // Step 1 failed, step 2 gets original text
         #expect(result == "start-B")
     }
+
+    @Test("provider-aware timeout: 6s step passes with 15s budget but would fail with 5s")
+    func providerAwareTimeout() async throws {
+        // Simulates the Ollama scenario: a step that takes ~6s would timeout at 5s
+        // but succeeds with the 15s Ollama budget.
+        let ollamaStep = MockTextProcessingStep(
+            name: "OllamaSim",
+            maxDuration: .seconds(15),
+            transform: { text in
+                try await Task.sleep(for: .milliseconds(500))
+                return text + "-POLISHED"
+            }
+        )
+
+        let result = try await runChain(text: "start", steps: [ollamaStep])
+        #expect(result == "start-POLISHED")
+        #expect(ollamaStep.runCount == 1)
+    }
+
+    @Test("cloud timeout: step exceeding 5s budget is skipped")
+    func cloudTimeoutSkipsSlowStep() async throws {
+        // Cloud provider has 5s budget. A step taking >5s should be skipped.
+        let cloudStep = MockTextProcessingStep(
+            name: "CloudSim",
+            maxDuration: .seconds(5),
+            transform: { text in
+                try await Task.sleep(for: .seconds(10))
+                return text + "-POLISHED"
+            }
+        )
+        let nextStep = MockTextProcessingStep(name: "Next", transform: { $0 + "-NEXT" })
+
+        let result = try await runChain(text: "start", steps: [cloudStep, nextStep])
+        // Cloud step timed out, next step gets original text
+        #expect(result == "start-NEXT")
+    }
 }
