@@ -190,6 +190,16 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
 
     public func preWarm() async {
         let proxyStart = ContinuousClock.now
+
+        // Derive route label so Sentry telemetry is populated even when
+        // startEnginePhase() is skipped on the next recording (warm engine reuse).
+        if let outID = AudioDeviceEnumerator.defaultOutputDeviceID(),
+           AudioDeviceEnumerator.isBluetoothDevice(outID) {
+            currentAudioRoute = "capture_session_bt"
+        } else {
+            currentAudioRoute = "built_in_mic"
+        }
+
         ensureConnection()
         resendConfigIfNeeded()
         let connMs = Self.ms(ContinuousClock.now - proxyStart)

@@ -710,6 +710,11 @@ public final class TranscriptionPipeline: DictationPipeline {
             }
         }
         deactivateStreamingForwarding()
+        // Reset capture state so isCapturing and warm engine timer are consistent.
+        // The engine is already dead, but stopCapture() clears client-side flags.
+        Task { [weak self] in
+            _ = await self?.audioCapture.stopCapture()
+        }
         targetApp = nil
         targetElement = nil
         recordingStartTime = nil

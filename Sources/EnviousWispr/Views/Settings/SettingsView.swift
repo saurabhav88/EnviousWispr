@@ -42,9 +42,6 @@ struct UnifiedWindowView: View {
             }
         }
         .preferredColorScheme(.light)
-        .task {
-            appState.transcriptCoordinator.load()
-        }
         .onChange(of: appState.pendingNavigationSection) { _, newSection in
             if let section = newSection {
                 selectedSection = section
