@@ -187,14 +187,18 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
         Task { @MainActor in
             self.cancelVADMonitoring()
 
-            // CRITICAL: finalize VAD segments BEFORE clearing the sample buffer.
-            // Previously, stopCapture() cleared capturedSamples first, then getVADSegments()
-            // read capturedSamples.count as 0 for finalization, producing endSample=0 on open
-            // segments and negative durations (-768ms). See #226.
+            // Stop capture first: freezes the tap, returns all accumulated samples,
+            // clears the internal buffer. No new samples can arrive after this.
+            let captureResult = await self.captureManager.stopCapture()
+
+            // Finalize VAD using the EXACT count of returned samples. This guarantees
+            // segment endpoints align perfectly with the sample array the caller receives.
+            // Using captureResult.samples.count (not capturedSamples.count) avoids both:
+            // - The original bug: capturedSamples already cleared -> count=0 -> endSample=0
+            // - The race window: samples arriving during await -> count drift -> tail trim
             var vadData = Data()
             if let detector = self.silenceDetector {
-                let totalCount = self.captureManager.capturedSamples.count
-                await detector.finalizeSegments(totalSampleCount: totalCount)
+                await detector.finalizeSegments(totalSampleCount: captureResult.samples.count)
                 let segments = await detector.speechSegments
                 vadData = Data(capacity: segments.count * MemoryLayout<Int32>.size * 2)
                 for seg in segments {
@@ -205,8 +209,6 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
                 }
             }
 
-            // NOW clear the sample buffer and return both atomically.
-            let captureResult = await self.captureManager.stopCapture()
             let sampleData = captureResult.samples.withUnsafeBytes { Data($0) }
             safeReply(sampleData, vadData)
         }
