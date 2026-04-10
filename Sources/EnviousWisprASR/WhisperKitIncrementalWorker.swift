@@ -119,8 +119,9 @@ public actor WhisperKitIncrementalWorker {
             )
         }
 
-        // Tail has speech — async tail decode with silence padding
+        // Tail has speech — decode with standard silence padding.
         let paddedSamples = WhisperKitBackend.padAudioWithSilence(finalSamples)
+
         let tailStart = CFAbsoluteTimeGetCurrent()
         do {
             let overlapStartSeconds = max(0, Float(lastResultSampleCount) / 16000.0 - 1.0)
@@ -129,11 +130,11 @@ public actor WhisperKitIncrementalWorker {
             opts.clipTimestamps = [overlapStartSeconds]
             opts.windowClipTime = 0
 
-            if let tokenizer {
-                let suffix = String(candidateText!.suffix(200))
-                let allTokens = tokenizer.encode(text: " " + suffix.trimmingCharacters(in: .whitespaces))
-                opts.promptTokens = allTokens.filter { $0 < tokenizer.specialTokens.specialTokenBegin }
-            }
+            // Do NOT pass promptTokens for the tail decode. When the worker's last
+            // text ends a sentence (e.g., "finalize the vendor contract"), prompt
+            // tokens bias the decoder to emit end-of-text instead of transcribing
+            // the remaining short fragment (e.g., "by Friday"). This was the root
+            // cause of #216: tail decode returned empty despite speech being present.
 
             let results = try await whisperKit.transcribe(audioArray: paddedSamples, decodeOptions: opts)
             let tailText = results.map(\.text)
@@ -142,7 +143,6 @@ public actor WhisperKitIncrementalWorker {
 
             let tailMs = Int((CFAbsoluteTimeGetCurrent() - tailStart) * 1000)
 
-            // Diagnostic: log worker text, tail-only text, overlap window, and uncovered duration
             await AppLogger.shared.log(
                 "TAIL_DIAG: workerText=[\(candidateText?.suffix(60) ?? "nil")] " +
                 "tailText=[\(tailText.suffix(60))] " +
@@ -152,18 +152,29 @@ public actor WhisperKitIncrementalWorker {
                 level: .info, category: "WhisperKitWorker"
             )
 
-            let finalText: String
-            if tailText.isEmpty {
-                finalText = candidateText!
-            } else {
-                finalText = candidateText! + " " + tailText
+            if !tailText.isEmpty {
+                let finalText = candidateText! + " " + tailText
+                return IncrementalResult(
+                    text: finalText, samplesCovered: finalSamples.count,
+                    decodeCount: decodeCount, totalDecodeTimeMs: totalDecodeTimeMs,
+                    accepted: true, mode: baseMode + "+tail",
+                    strategy: "worker+tail", tailDecodeMs: tailMs
+                )
             }
 
+            // Tail decode returned empty despite speech evidence (RMS > 0.001).
+            // Do NOT silently accept the truncated worker result. Signal batch
+            // fallback so the pipeline re-transcribes the full audio.
+            await AppLogger.shared.log(
+                "TAIL_DIAG: empty tail despite speech evidence, triggering batch fallback " +
+                "(uncovered=\(String(format: "%.1f", tailDurationSeconds))s)",
+                level: .info, category: "WhisperKitWorker"
+            )
             return IncrementalResult(
-                text: finalText, samplesCovered: finalSamples.count,
+                text: nil, samplesCovered: lastResultSampleCount,
                 decodeCount: decodeCount, totalDecodeTimeMs: totalDecodeTimeMs,
-                accepted: true, mode: baseMode + "+tail",
-                strategy: "worker+tail", tailDecodeMs: tailMs
+                accepted: false, mode: baseMode,
+                strategy: "tail_empty_fallback", tailDecodeMs: tailMs
             )
         } catch {
             let tailMs = Int((CFAbsoluteTimeGetCurrent() - tailStart) * 1000)
