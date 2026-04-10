@@ -213,8 +213,14 @@ public final class WhisperKitPipeline: DictationPipeline {
         }
     }
 
+    /// Guards against concurrent startRecording calls (e.g., rapid toggle presses).
+    private var isStarting = false
+
     public func startRecording() async {
+        guard !isStarting else { return }
         guard !state.isActive || state == .complete || state == .ready else { return }
+        isStarting = true
+        defer { isStarting = false }
 
         // Cancel any pending model unload — keep model loaded during recording.
         modelUnloadTask?.cancel()
