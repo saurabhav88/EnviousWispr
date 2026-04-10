@@ -649,6 +649,10 @@ public final class WhisperKitPipeline: DictationPipeline {
         vadMonitorTask?.cancel()
         vadMonitorTask = nil
         silenceDetector = nil
+        // Reset capture state so isCapturing and warm engine timer are consistent.
+        Task { [weak self] in
+            _ = await self?.audioCapture.stopCapture()
+        }
         targetApp = nil
         targetElement = nil
         recordingStartTime = nil
