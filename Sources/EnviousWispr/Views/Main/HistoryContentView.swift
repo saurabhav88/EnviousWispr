@@ -27,5 +27,8 @@ struct HistoryContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task {
+            appState.transcriptCoordinator.load()
+        }
     }
 }
