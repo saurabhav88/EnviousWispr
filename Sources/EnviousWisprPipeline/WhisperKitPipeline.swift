@@ -350,7 +350,8 @@ public final class WhisperKitPipeline: DictationPipeline {
         vadMonitorTask?.cancel()
         vadMonitorTask = nil
 
-        let rawSamples = await audioCapture.stopCapture()
+        let captureResult = await audioCapture.stopCapture()
+        let rawSamples = captureResult.samples
         SentryBreadcrumb.add(stage: "recording", message: "WhisperKit recording stopped", data: ["sample_count": rawSamples.count])
         SentryBreadcrumb.updateRecordingState(active: false)
 
@@ -373,8 +374,8 @@ public final class WhisperKitPipeline: DictationPipeline {
         var vadSpeechDurationMs = 0
         let isXPCMode = audioCapture is AudioCaptureProxy
         if isXPCMode {
-            // XPC mode: get speech segments from service-side VAD.
-            let segments = await audioCapture.getVADSegments()
+            // XPC mode: VAD segments returned atomically with samples from stopCapture() (#226).
+            let segments = captureResult.vadSegments
             hasSpeechEvidence = !segments.isEmpty
             vadSegmentCount = segments.count
             vadSpeechDurationMs = segments.reduce(0) { $0 + ($1.endSample - $1.startSample) } * 1000 / 16000

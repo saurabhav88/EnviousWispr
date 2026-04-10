@@ -368,7 +368,8 @@ public final class TranscriptionPipeline: DictationPipeline {
         // to the Parakeet actor before we deactivate forwarding.
         // Without this reorder, deactivateStreamingForwarding() sets the flag to false
         // and all queued tasks drop their buffers — losing ~250-500ms of trailing audio.
-        let rawSamples = await audioCapture.stopCapture()
+        let captureResult = await audioCapture.stopCapture()
+        let rawSamples = captureResult.samples
         SentryBreadcrumb.add(stage: "recording", message: "Recording stopped", data: ["sample_count": rawSamples.count])
         SentryBreadcrumb.updateRecordingState(active: false)
 
@@ -429,8 +430,10 @@ public final class TranscriptionPipeline: DictationPipeline {
         var vadSpeechDurationMs = 0
         let isXPCMode = audioCapture is AudioCaptureProxy
         if isXPCMode {
-            // XPC mode: get speech segments from service-side VAD.
-            let segments = await audioCapture.getVADSegments()
+            // XPC mode: VAD segments are returned atomically with samples from stopCapture().
+            // This eliminates the call-order bug where separate getVADSegments() read
+            // capturedSamples.count as 0 after stopCapture() cleared the buffer (#226).
+            let segments = captureResult.vadSegments
             hasSpeechEvidence = !segments.isEmpty
             vadSegmentCount = segments.count
             vadSpeechDurationMs = segments.reduce(0) { $0 + ($1.endSample - $1.startSample) } * 1000 / 16000

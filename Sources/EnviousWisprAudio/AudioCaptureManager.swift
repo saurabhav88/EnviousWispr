@@ -164,11 +164,11 @@ public final class AudioCaptureManager: AudioCaptureInterface {
         return try await beginCapturePhase()
     }
 
-    public func stopCapture() async -> [Float] {
+    public func stopCapture() async -> CaptureResult {
         guard let source = activeSource else {
             let samples = capturedSamples
             capturedSamples = []
-            return samples
+            return CaptureResult(samples: samples)
         }
 
         isCapturing = false
@@ -188,10 +188,11 @@ public final class AudioCaptureManager: AudioCaptureInterface {
         // dictation but doesn't run indefinitely.
         scheduleWarmEngineTeardown()
 
-        // Samples accumulated via onSamples callback → manager.capturedSamples
+        // Samples accumulated via onSamples callback -> manager.capturedSamples.
+        // In-process path returns empty vadSegments; pipeline owns its own SilenceDetector.
         let samples = capturedSamples
         capturedSamples = []
-        return samples
+        return CaptureResult(samples: samples)
     }
 
     public func rebuildEngine() {

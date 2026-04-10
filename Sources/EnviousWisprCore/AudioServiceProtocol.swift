@@ -48,8 +48,11 @@ import Foundation
     /// Phase 2: install audio tap and begin capture. Buffers flow back via audioBufferCaptured callback.
     func beginCapture(reply: @escaping (NSError?) -> Void)
 
-    /// Stop capture and return accumulated samples as raw Float32 bytes (Data).
-    func stopCapture(reply: @escaping (Data) -> Void)
+    /// Stop capture and return accumulated samples + finalized VAD segments atomically.
+    /// First Data = raw Float32 sample bytes. Second Data = packed [Int32 start, Int32 end] VAD segment pairs.
+    /// VAD segments are finalized BEFORE the sample buffer is cleared, preventing the call-order bug
+    /// where separate stopCapture/getVADSegments calls produced endSample=0 on open segments.
+    func stopCapture(reply: @escaping (Data, Data) -> Void)
 
     /// Cancel a pre-warmed engine that never began capture.
     func abortPreWarm()

@@ -27,7 +27,7 @@ public protocol AudioCaptureInterface: AnyObject {
     func startEnginePhase() async throws
     func beginCapturePhase() async throws -> AsyncStream<AVAudioPCMBuffer>
     func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> // periphery:ignore - convenience method combining engine + capture phases
-    func stopCapture() async -> [Float]
+    func stopCapture() async -> CaptureResult
     func rebuildEngine()
     func buildEngine(noiseSuppression: Bool)
     func preWarm() async

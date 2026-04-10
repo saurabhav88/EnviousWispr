@@ -144,20 +144,22 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
         return try await beginCapturePhase()
     }
 
-    public func stopCapture() async -> [Float] {
+    public func stopCapture() async -> CaptureResult {
         // Bump generation so stale callbacks from this session don't leak into the next.
         captureGeneration &+= 1
 
-        var result: [Float] = []
+        var result = CaptureResult(samples: [])
         do {
-            result = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<[Float], any Error>) in
+            result = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<CaptureResult, any Error>) in
                 let guard_ = OneShotContinuation(cont)
                 serviceProxy { proxy in
-                    proxy.stopCapture { data in
-                        guard_.resume(returning: Self.dataToFloats(data))
+                    proxy.stopCapture { sampleData, vadData in
+                        let samples = Self.dataToFloats(sampleData)
+                        let segments = Self.decodeVADSegments(vadData)
+                        guard_.resume(returning: CaptureResult(samples: samples, vadSegments: segments))
                     }
                 } onProxyError: {
-                    guard_.resume(returning: [])
+                    guard_.resume(returning: CaptureResult(samples: []))
                 }
             }
         } catch {
