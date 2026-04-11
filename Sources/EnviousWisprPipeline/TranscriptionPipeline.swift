@@ -721,7 +721,7 @@ public final class TranscriptionPipeline: DictationPipeline {
         targetApp = nil
         targetElement = nil
         recordingStartTime = nil
-        state = .error("Audio device disconnected")
+        state = .error("Microphone disconnected")
     }
 
     /// Handle ASR XPC service crash during active session.
@@ -937,6 +937,9 @@ public final class TranscriptionPipeline: DictationPipeline {
         case .idle, .complete:
             return .hidden
         case .error(let msg):
+            if msg == InterruptionMessages.micDisconnected {
+                return .interruption(message: msg)
+            }
             return .error(message: msg)
         }
     }

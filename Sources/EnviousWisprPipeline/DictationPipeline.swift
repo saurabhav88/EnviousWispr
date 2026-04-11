@@ -1,5 +1,10 @@
 import Foundation
 
+/// Known interruption message strings used to route .error state to .interruption overlay intent.
+public enum InterruptionMessages {
+    public static let micDisconnected = "Microphone disconnected"
+}
+
 /// Events that any dictation pipeline must handle.
 public enum PipelineEvent: Sendable {
     case preWarm
@@ -23,6 +28,9 @@ public enum OverlayIntent: Equatable, Sendable {
     /// Transient error notice shown when ASR fails despite speech evidence.
     /// Auto-dismissed by the overlay panel after 3 seconds.
     case error(message: String)
+    /// Transient interruption notice shown when the recording device disconnects.
+    /// Distress lips (red pulse) with reason text, auto-dismissed after 2 seconds.
+    case interruption(message: String)
 }
 
 /// Abstraction over dictation pipelines (Parakeet streaming, WhisperKit batch, etc.).
