@@ -135,6 +135,9 @@ public final class WhisperKitPipeline: DictationPipeline {
         case .idle, .ready, .complete:
             return .hidden
         case .error(let msg):
+            if msg == InterruptionMessages.micDisconnected {
+                return .interruption(message: msg)
+            }
             return .error(message: msg)
         }
     }
@@ -659,7 +662,7 @@ public final class WhisperKitPipeline: DictationPipeline {
         recordingStartTime = nil
         isStopping = false
         isPreWarmed = false
-        state = .error("Audio device disconnected")
+        state = .error("Microphone disconnected")
     }
 
     /// Handle ASR XPC service crash during active session.

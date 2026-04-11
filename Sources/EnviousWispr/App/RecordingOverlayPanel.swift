@@ -98,6 +98,13 @@ final class RecordingOverlayPanel {
                 userInfo: [.announcement: "Error: \(message)",
                            .priority: NSAccessibilityPriorityLevel.high.rawValue as NSNumber])
             showError(message: message)
+        case .interruption(let message):
+            NSAccessibility.post(
+                element: NSApp.mainWindow as Any,
+                notification: .announcementRequested,
+                userInfo: [.announcement: "Interruption: \(message)",
+                           .priority: NSAccessibilityPriorityLevel.high.rawValue as NSNumber])
+            showNotification(message: message, style: .interruption)
         }
     }
 
@@ -490,8 +497,10 @@ struct SpectrumWheelIcon: View {
 /// At peak (level = 1.0) center bars reach maximum expansion (lips open/talking).
 struct RainbowLipsIcon: View {
     let size: CGFloat
-    /// Normalised audio level 0.0–1.0, updated every ~50 ms by the parent view.
+    /// Normalised audio level 0.0-1.0, updated every ~50 ms by the parent view.
     let audioLevel: Float
+    /// When true, all bars turn red and pulse opacity (distress/interruption state).
+    var isDistress: Bool = false
 
     private let upperBars: [(x: CGFloat, y: CGFloat, h: CGFloat, color: Color)] = [
         (4,  22.25,   5,  Color(red: 1.0,   green: 0.165, blue: 0.251)),
@@ -536,25 +545,40 @@ struct RainbowLipsIcon: View {
         silenceScale + peakRange * level * sensitivity[barIndex]
     }
 
+    private static let distressRed = Color(red: 1.0, green: 0.165, blue: 0.251)
+
     var body: some View {
+        if isDistress {
+            // Distress mode: lips in normal shape, all bars red, pulsing opacity.
+            // TimelineView drives continuous redraw; Canvas does not respond to @State animation.
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+                let phase = timeline.date.timeIntervalSinceReferenceDate
+                let pulseOpacity = 0.4 + 0.6 * (0.5 + 0.5 * sin(phase * .pi / 0.35))
+                lipsCanvas(level: 0.3, barColorOverride: Self.distressRed)
+                    .opacity(pulseOpacity)
+            }
+            .frame(width: size, height: size)
+            .accessibilityHidden(true)
+        } else {
+            lipsCanvas(level: CGFloat(min(max(audioLevel, 0), 1)), barColorOverride: nil)
+                .frame(width: size, height: size)
+                .accessibilityHidden(true)
+        }
+    }
+
+    /// Shared Canvas renderer for both normal and distress modes.
+    /// When `barColorOverride` is non-nil, all bars use that color instead of their rainbow colors.
+    private func lipsCanvas(level: CGFloat, barColorOverride: Color?) -> some View {
         let scale = size / 64.0
-        let level = CGFloat(min(max(audioLevel, 0), 1))
-        Canvas { context, canvasSize in
-            // maxSeparation: maximum vertical translation (in points) applied to
-            // each lip half at peak audio level. Scaled proportionally with icon size.
+        return Canvas { context, canvasSize in
             let maxSeparation = 3.5 * scale
             let barW = 4.5 * scale
             let cornerRadius = 1.5 * scale
 
-            // Upper bars — each bar scales from its bottom edge upward and
-            // translates upward, giving the upper lip a "rising" motion.
             for i in 0..<upperBars.count {
                 let bar = upperBars[i]
                 let s = yScale(for: i, level: level)
                 let scaledH = bar.h * scale * s
-                // Bottom edge of the bar sits at the unscaled bottom position.
-                // Original bar bottom (in canvas coords) = (bar.y + bar.h) * scale.
-                // Upper-lip separation: shift upward proportional to level.
                 let separation = -maxSeparation * level * sensitivity[i]
                 let barBottom = (bar.y + bar.h) * scale + separation
                 let rect = CGRect(
@@ -564,18 +588,13 @@ struct RainbowLipsIcon: View {
                     height: scaledH
                 )
                 let barPath = Path(roundedRect: rect, cornerRadius: cornerRadius)
-                context.fill(barPath, with: .color(bar.color))
+                context.fill(barPath, with: .color(barColorOverride ?? bar.color))
             }
 
-            // Lower bars — each bar scales from its top edge downward and
-            // translates downward, giving the lower lip a "dropping" motion.
             for i in 0..<lowerBars.count {
                 let bar = lowerBars[i]
                 let s = yScale(for: 8 - i, level: level)
                 let scaledH = bar.h * scale * s
-                // Top edge of the bar sits at the unscaled top position.
-                // Original bar top (in canvas coords) = bar.y * scale.
-                // Lower-lip separation: shift downward proportional to level.
                 let separation = maxSeparation * level * sensitivity[8 - i]
                 let barTop = bar.y * scale + separation
                 let rect = CGRect(
@@ -585,11 +604,9 @@ struct RainbowLipsIcon: View {
                     height: scaledH
                 )
                 let barPath = Path(roundedRect: rect, cornerRadius: cornerRadius)
-                context.fill(barPath, with: .color(bar.color))
+                context.fill(barPath, with: .color(barColorOverride ?? bar.color))
             }
         }
-        .frame(width: size, height: size)
-        .accessibilityHidden(true)
     }
 }
 
@@ -633,6 +650,45 @@ private struct OverlayCapsuleBackground: View {
             .onAppear {
                 withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
                     glowOpacity = 0.65
+                }
+            }
+            .accessibilityHidden(true)
+    }
+}
+
+// MARK: - DistressCapsuleBackground
+
+/// Capsule background for interruption warnings: red glow instead of rainbow.
+private struct DistressCapsuleBackground: View {
+    @State private var glowOpacity: Double = 0.3
+
+    var body: some View {
+        Capsule()
+            .fill(Color(red: 0.078, green: 0.078, blue: 0.11).opacity(0.82))
+            .overlay(
+                Capsule()
+                    .strokeBorder(Color.white.opacity(0.1), lineWidth: 0.5)
+            )
+            .overlay(alignment: .bottom) {
+                LinearGradient(
+                    colors: [
+                        .clear,
+                        Color(red: 1.0, green: 0.165, blue: 0.251),
+                        Color(red: 1.0, green: 0.27, blue: 0.27),
+                        Color(red: 1.0, green: 0.165, blue: 0.251),
+                        .clear
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .frame(height: 1)
+                .opacity(glowOpacity)
+                .padding(.horizontal, 20)
+                .offset(y: -1)
+            }
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.4).repeatForever(autoreverses: true)) {
+                    glowOpacity = 0.6
                 }
             }
             .accessibilityHidden(true)
@@ -709,11 +765,13 @@ struct PolishingOverlayView: View {
 enum NotificationStyle {
     case error
     case warning
+    case interruption
 
     var iconName: String {
         switch self {
         case .error: "xmark.circle.fill"
         case .warning: "exclamationmark.triangle.fill"
+        case .interruption: ""  // uses distress lips, not SF Symbol
         }
     }
 
@@ -721,6 +779,7 @@ enum NotificationStyle {
         switch self {
         case .error: .red
         case .warning: .orange
+        case .interruption: .red
         }
     }
 
@@ -728,31 +787,40 @@ enum NotificationStyle {
         switch self {
         case .error: 3.0
         case .warning: 2.5
+        case .interruption: 2.0
         }
+    }
+
+    var usesDistressLips: Bool {
+        self == .interruption
     }
 }
 
 // MARK: - NotificationOverlayView
 
-/// Compact notification overlay for errors (red) and warnings (orange).
+/// Compact notification overlay for errors (red), warnings (orange), and interruptions (distress lips).
 struct NotificationOverlayView: View {
     let message: String
     let style: NotificationStyle
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: style.iconName)
-                .foregroundStyle(style.iconColor)
-                .font(.system(size: 16))
+            if style.usesDistressLips {
+                RainbowLipsIcon(size: 24, audioLevel: 0, isDistress: true)
+            } else {
+                Image(systemName: style.iconName)
+                    .foregroundStyle(style.iconColor)
+                    .font(.system(size: 16))
+            }
 
             Text(message)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.white)
+                .foregroundStyle(style.usesDistressLips ? Color.orange : .white)
                 .lineLimit(1)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(OverlayCapsuleBackground())
+        .background(style.usesDistressLips ? AnyView(DistressCapsuleBackground()) : AnyView(OverlayCapsuleBackground()))
     }
 }
 
