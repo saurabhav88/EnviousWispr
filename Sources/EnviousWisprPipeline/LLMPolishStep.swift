@@ -96,10 +96,10 @@ public final class LLMPolishStep: TextProcessingStep {
         let (thinkingBudget, reasoningEffort) = resolveThinkingConfig()
         let maxTokens: Int = {
             if llmProvider == .ollama {
-                // Scale with input length, same formula as cloud providers.
-                // For 921-char input this gives 921 tokens (~4x headroom over ~230 actual).
+                // Estimate tokens (~3 chars per token for English), add headroom.
+                // For 921-char input: 921/3 + 100 = 407 tokens (~2x actual output of ~195).
                 // The pipeline-level timeout (15s) caps runaway generation.
-                return max(context.text.count, LLMConstants.ollamaMaxTokens)
+                return max(context.text.count / 3 + 100, LLMConstants.ollamaMaxTokens)
             }
             // OpenAI reasoning models include reasoning in max_completion_tokens — keep generous.
             if reasoningEffort != nil { return LLMConstants.defaultMaxTokens }
