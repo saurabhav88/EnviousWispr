@@ -27,6 +27,25 @@ enum WhatsNewContent {
     }
 
     static let entries: [Entry] = [
+        // MARK: - v1.9.2
+
+        Entry(
+            id: "whisperkit-full-capture",
+            icon: "text.badge.checkmark",
+            title: "WhisperKit captures every word",
+            description: "Fixed an issue where the last few words of a dictation could be silently dropped when using WhisperKit. Every word now reaches your clipboard.",
+            category: .fasterAndMoreReliable,
+            version: "1.9.2"
+        ),
+        Entry(
+            id: "ollama-long-dictation",
+            icon: "timer",
+            title: "Ollama handles long dictations",
+            description: "Local AI polish with large models like Gemma 4 no longer times out on longer recordings. Timeout budgets now adapt to your provider.",
+            category: .betterOllamaSupport,
+            version: "1.9.2"
+        ),
+
         // MARK: - v1.9.1
 
         Entry(
