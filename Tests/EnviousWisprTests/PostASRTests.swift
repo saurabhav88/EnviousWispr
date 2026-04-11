@@ -292,10 +292,10 @@ struct TextProcessingChainTests {
         #expect(result == "start-B")
     }
 
-    @Test("provider-aware timeout: 6s step passes with 15s budget but would fail with 5s")
-    func providerAwareTimeout() async throws {
-        // Simulates the Ollama scenario: a step that takes ~6s would timeout at 5s
-        // but succeeds with the 15s Ollama budget.
+    @Test("step with 15s budget completes within budget")
+    func largerBudgetCompletes() async throws {
+        // Verifies that a step with a generous budget (e.g., Ollama's 15s)
+        // completes successfully when the operation finishes within that budget.
         let ollamaStep = MockTextProcessingStep(
             name: "OllamaSim",
             maxDuration: .seconds(15),
