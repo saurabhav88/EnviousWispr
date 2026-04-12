@@ -63,10 +63,16 @@ public final class LLMPolishStep: TextProcessingStep {
         self.keychainManager = keychainManager
     }
 
-    /// Minimum word count to send to the LLM. Transcripts at or below this
-    /// threshold are passed through verbatim — LLMs hallucinate on ultra-short
-    /// input (e.g., "Yeah" → a full essay). See ew-zr4.
+    /// Minimum word count to send to the LLM (Latin/Cyrillic/Indic/Arabic etc).
+    /// Transcripts at or below this threshold are passed through verbatim — LLMs
+    /// hallucinate on ultra-short input (e.g., "Yeah" → a full essay). See ew-zr4.
     private static let minWordsForPolish = 3
+
+    /// Minimum character count for CJK/Thai/Lao scripts which don't use spaces.
+    /// Japanese/Chinese word-counting treats a 31-char sentence as 2 words,
+    /// which would wrongly short-circuit polish. Character-count is the correct
+    /// gate for non-whitespace-segmented scripts. 10 chars ≈ a short utterance.
+    private static let minCharsForCJKPolish = 10
 
     public func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
         onWillProcess?()
@@ -77,15 +83,33 @@ public final class LLMPolishStep: TextProcessingStep {
 
         // Short-circuit: ultra-short transcripts get passed through verbatim.
         // LLMs treat 1-3 word inputs as prompts to respond to, not text to clean.
-        let wordCount = context.text.split(whereSeparator: \.isWhitespace).count
-        if wordCount <= Self.minWordsForPolish {
-            Task { await AppLogger.shared.log(
-                "LLM polish skipped: transcript too short (\(wordCount) words, minimum \(Self.minWordsForPolish + 1))",
-                level: .info, category: "LLM"
-            ) }
-            var ctx = context
-            ctx.polishedText = context.text
-            return ctx
+        // Language-aware: CJK/Thai/Lao scripts use char-count since they don't
+        // segment words with whitespace (a 31-char Japanese utterance is 1-2
+        // "words" by split, which would wrongly skip polish).
+        let lang = languageDetection?.lang ?? context.language
+        let useCharCount = lang.map(LanguageTypes.isUnsegmentedScript) ?? false
+        if useCharCount {
+            let charCount = context.text.unicodeScalars.filter { !$0.properties.isWhitespace }.count
+            if charCount < Self.minCharsForCJKPolish {
+                Task { await AppLogger.shared.log(
+                    "LLM polish skipped: transcript too short (\(charCount) chars, minimum \(Self.minCharsForCJKPolish), lang=\(lang ?? "?"))",
+                    level: .info, category: "LLM"
+                ) }
+                var ctx = context
+                ctx.polishedText = context.text
+                return ctx
+            }
+        } else {
+            let wordCount = context.text.split(whereSeparator: \.isWhitespace).count
+            if wordCount <= Self.minWordsForPolish {
+                Task { await AppLogger.shared.log(
+                    "LLM polish skipped: transcript too short (\(wordCount) words, minimum \(Self.minWordsForPolish + 1))",
+                    level: .info, category: "LLM"
+                ) }
+                var ctx = context
+                ctx.polishedText = context.text
+                return ctx
+            }
         }
 
         Task { await AppLogger.shared.log(

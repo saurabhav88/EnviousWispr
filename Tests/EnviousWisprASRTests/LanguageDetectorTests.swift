@@ -297,6 +297,26 @@ struct LanguageDetectorTests {
         #expect(!LanguageTypes.isNonLatinScript(""))
     }
 
+    @Test("Unsegmented script: CJK/Thai/Lao use char count, whitespace langs do not")
+    func unsegmentedScriptClassification() {
+        // CJK + Southeast Asian non-whitespace-segmented scripts.
+        for code in ["ja", "zh", "yue", "th", "lo", "my", "km"] {
+            #expect(LanguageTypes.isUnsegmentedScript(code), "expected unsegmented: \(code)")
+        }
+        // Scripts that DO whitespace-segment and must stay on the word-count
+        // path: Korean (Eojeol-spaced), Indic, Arabic, Hebrew, Cyrillic.
+        for code in ["ko", "hi", "gu", "ta", "te", "mr", "bn", "ar", "he", "ru", "uk"] {
+            #expect(!LanguageTypes.isUnsegmentedScript(code), "expected segmented: \(code)")
+        }
+        // Latin too.
+        for code in ["en", "es", "fr", "de"] {
+            #expect(!LanguageTypes.isUnsegmentedScript(code))
+        }
+        // Case-insensitive.
+        #expect(LanguageTypes.isUnsegmentedScript("JA"))
+        #expect(LanguageTypes.isUnsegmentedScript("Zh"))
+    }
+
     // MARK: - Whisper-supported set
 
     @Test("whisperSupportedLanguages matches the spec roster size")
@@ -344,23 +364,6 @@ struct LanguageDetectorTests {
         let decL = try JSONDecoder().decode(LanguageMode.self, from: encL)
         #expect(decA == .auto)
         #expect(decL == .locked("ja"))
-    }
-
-    // MARK: - Softmax helper
-
-    @Test("softmaxFromLogProbs normalizes to sum=1 and preserves ordering")
-    func softmaxHelper() {
-        let logProbs: [String: Float] = ["en": -0.2, "de": -2.0, "fr": -4.0]
-        let probs = LanguageDetector.softmaxFromLogProbs(logProbs)
-        let sum = probs.values.reduce(0, +)
-        #expect(abs(sum - 1.0) < 1e-6)
-        #expect((probs["en"] ?? 0) > (probs["de"] ?? 0))
-        #expect((probs["de"] ?? 0) > (probs["fr"] ?? 0))
-    }
-
-    @Test("softmaxFromLogProbs on empty map returns empty")
-    func softmaxEmpty() {
-        #expect(LanguageDetector.softmaxFromLogProbs([:]).isEmpty)
     }
 
     // MARK: - Passive chip

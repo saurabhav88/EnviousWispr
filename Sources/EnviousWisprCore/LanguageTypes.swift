@@ -242,6 +242,17 @@ public enum LanguageDetectorThresholds {
     // Session-prior boost for low-confidence decisions
     public static let sessionPriorBoost: Double = 0.10
 
+    // Anti-flap single-shot switch: when all multi-window LID calls return the
+    // SAME language with mean exp(logProb) >= this value, bypass the two-
+    // utterance "pending candidate" requirement and switch immediately. Keeps
+    // the anti-flap protection for ambiguous cases while preventing first-
+    // switch hallucination on clean non-preferred audio. Aligned with
+    // `normalProb`: if the classifier accepts a unanimous detection as
+    // mediumAuto or highAuto, the single-shot path lets it through too.
+    // Avoids leaving low-confidence-but-consistent languages (e.g., Tamil on
+    // short clips) stuck behind the session prior indefinitely.
+    public static let unanimousSingleShotProb: Double = 0.65
+
     // Multi-window configuration (seconds)
     public static let windows: [(start: TimeInterval, end: TimeInterval)] = [
         (0, 3),
@@ -270,6 +281,21 @@ public enum LanguageScriptGuardrail {
     public static func isNonLatinScript(_ lang: String) -> Bool {
         nonLatinScriptLanguages.contains(lang.lowercased())
     }
+
+    /// Scripts that do not segment words with whitespace. Policy gates that
+    /// use word-count (e.g. LLM polish minimum-length short-circuit) must
+    /// switch to character-count for these. Note: Korean DOES use whitespace
+    /// between Eojeol word units, so it stays on the word-count path. Arabic,
+    /// Hebrew, Cyrillic, and Indic scripts also use whitespace.
+    public static let unsegmentedScriptLanguages: Set<String> = [
+        "ja", "zh", "yue", "th", "lo", "my", "km",
+    ]
+
+    /// True if the language uses a script that does not separate words with
+    /// whitespace. See `unsegmentedScriptLanguages`.
+    public static func isUnsegmentedScript(_ lang: String) -> Bool {
+        unsegmentedScriptLanguages.contains(lang.lowercased())
+    }
 }
 
 // Top-level helper so other modules can call `LanguageTypes.isNonLatinScript(...)`
@@ -277,6 +303,13 @@ public enum LanguageScriptGuardrail {
 public enum LanguageTypes {
     public static func isNonLatinScript(_ lang: String) -> Bool {
         LanguageScriptGuardrail.isNonLatinScript(lang)
+    }
+
+    /// True for scripts that do not whitespace-segment words (CJK, Thai, Lao,
+    /// Burmese, Khmer). Use character count, not word count, for length gates
+    /// on these languages.
+    public static func isUnsegmentedScript(_ lang: String) -> Bool {
+        LanguageScriptGuardrail.isUnsegmentedScript(lang)
     }
 
     /// Full set of Whisper-supported ISO 639-1 codes (99 languages).

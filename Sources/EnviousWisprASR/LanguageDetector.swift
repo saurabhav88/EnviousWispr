@@ -154,10 +154,10 @@ public actor LanguageDetector {
             return .abstain(voicedDuration: voicedDuration)
         }
 
-        // Layer 2: multi-window detection with mean probabilities.
-        let aggregated: [String: Double]
+        // Layer 2: multi-window detection with majority-vote aggregation.
+        let multi: MultiWindowLID
         do {
-            aggregated = try await runMultiWindowLID(samples: samples, voicedDuration: voicedDuration, whisperKit: kit)
+            multi = try await runMultiWindowLID(samples: samples, voicedDuration: voicedDuration, whisperKit: kit)
         } catch is CancellationError {
             // User hotkey-cancelled: abstain cleanly, do not touch session memory.
             await log("LID cancelled during detectLanguage windows")
@@ -169,59 +169,113 @@ public actor LanguageDetector {
             return .abstain(voicedDuration: voicedDuration)
         }
 
-        guard !aggregated.isEmpty else {
+        guard !multi.voteCounts.isEmpty else {
             memory.recordAbstain(now: now)
             persistMemory()
             return .abstain(voicedDuration: voicedDuration)
         }
+        // Structured aggregation log: lets us audit LID behavior in UAT logs
+        // without per-window noise.
+        let topLog = multi.voteCounts.keys
+            .sorted { lhs, rhs in
+                let lv = multi.voteCounts[lhs] ?? 0, rv = multi.voteCounts[rhs] ?? 0
+                if lv != rv { return lv > rv }
+                return (multi.meanProbs[lhs] ?? 0) > (multi.meanProbs[rhs] ?? 0)
+            }
+            .prefix(3)
+            .map { lang in
+                let votes = multi.voteCounts[lang] ?? 0
+                let mean = multi.meanProbs[lang] ?? 0
+                return "\(lang):votes=\(votes)/\(multi.windowCount),meanP=\(String(format: "%.3f", mean))"
+            }.joined(separator: " ")
+        await log("LID aggregated [\(topLog)]")
 
-        // Layer 3: rank raw probabilities first so the anti-flap gate sees the
-        // model's unbiased view. Session-prior boost is only applied to rescue
-        // borderline (lowAuto) decisions per spec ("boost ... in later
-        // low-confidence decisions").
-        let rawRanked = aggregated.sorted { $0.value > $1.value }
-        var top = rawRanked[0]
-        var runnerUp: Double = rawRanked.count > 1 ? rawRanked[1].value : 0
+        // Rank languages by (voteCount desc, meanProb desc). The winner is the
+        // language most windows agreed on; meanProb breaks ties. This separation
+        // keeps the downstream classifier and `recordAccepted` on true per-
+        // window confidence instead of a vote-share-diluted composite.
+        let rankedLangs = Array(multi.voteCounts.keys).sorted { lhs, rhs in
+            let lv = multi.voteCounts[lhs] ?? 0, rv = multi.voteCounts[rhs] ?? 0
+            if lv != rv { return lv > rv }
+            return (multi.meanProbs[lhs] ?? 0) > (multi.meanProbs[rhs] ?? 0)
+        }
+        let windowCountD = Double(max(multi.windowCount, 1))
+        var topLang = rankedLangs[0]
+        var topProb = multi.meanProbs[topLang] ?? 0
+        var topVoteShare = Double(multi.voteCounts[topLang] ?? 0) / windowCountD
+        // Margin is the vote-share gap between the winner and the next-best
+        // language (0 when there is no runner-up).
+        var runnerUpVoteShare: Double = rankedLangs.count > 1
+            ? Double(multi.voteCounts[rankedLangs[1]] ?? 0) / windowCountD
+            : 0
+        var margin = max(0, topVoteShare - runnerUpVoteShare)
         var usedSessionPrior = false
 
-        // Decide acceptance tier against the speech-duration-aware thresholds.
         var decision = classify(
-            topProb: top.value,
-            margin: top.value - runnerUp,
+            topProb: topProb,
+            margin: margin,
             voicedDuration: voicedDuration
         )
 
-        // If lowAuto AND we have a session-preferred language present in probs,
-        // apply the +0.10 boost and re-rank. This is the rescue path for
-        // borderline cases where the prior should tip the balance.
+        // Session-prior boost (lowAuto rescue): if the preferred language has
+        // at least as many votes as any other candidate (plurality, ties
+        // allowed), bump its meanProb by +0.10 and re-evaluate. The rescue
+        // CANNOT overturn a clear vote majority — that would defeat the whole
+        // point of majority-vote aggregation. Commits only if the boost
+        // elevates the decision past lowAuto.
+        let rawPreferredMeanProb = multi.meanProbs[memory.sessionPreferred ?? ""] ?? 0
         if decision == .lowAuto,
            let preferred = memory.sessionPreferred,
            LanguageTypes.isSupported(preferred),
-           aggregated[preferred] != nil {
-            var boosted = aggregated
-            boosted[preferred, default: 0] += LanguageDetectorThresholds.sessionPriorBoost
-            let boostedRanked = boosted.sorted { $0.value > $1.value }
-            let boostedTop = boostedRanked[0]
-            let boostedRunner: Double = boostedRanked.count > 1 ? boostedRanked[1].value : 0
-            let boostedDecision = classify(
-                topProb: boostedTop.value,
-                margin: boostedTop.value - boostedRunner,
-                voicedDuration: voicedDuration
-            )
-            if boostedDecision != .lowAuto && boostedDecision != .abstain {
-                top = boostedTop
-                runnerUp = boostedRunner
-                decision = boostedDecision
-                usedSessionPrior = true
+           (multi.voteCounts[preferred] ?? 0) > 0 {
+            let preferredShare = Double(multi.voteCounts[preferred] ?? 0) / windowCountD
+            let competitor = rankedLangs.first(where: { $0 != preferred })
+            let competitorShare = competitor.map {
+                Double(multi.voteCounts[$0] ?? 0) / windowCountD
+            } ?? 0
+            // Gate: preferred must not be a minority loser. If another lang
+            // has strictly more votes, the rescue is skipped.
+            if preferredShare >= competitorShare {
+                let boostedProb = min(1.0, rawPreferredMeanProb + LanguageDetectorThresholds.sessionPriorBoost)
+                let competitorMeanProb = competitor.map { multi.meanProbs[$0] ?? 0 } ?? 0
+                let voteMargin = preferredShare - competitorShare
+                let probMargin = boostedProb - competitorMeanProb
+                let boostedMargin = max(0, max(voteMargin, probMargin))
+                let boostedDecision = classify(
+                    topProb: boostedProb,
+                    margin: boostedMargin,
+                    voicedDuration: voicedDuration
+                )
+                if boostedDecision != .lowAuto && boostedDecision != .abstain {
+                    topLang = preferred
+                    topProb = boostedProb
+                    topVoteShare = preferredShare
+                    runnerUpVoteShare = competitorShare
+                    margin = boostedMargin
+                    decision = boostedDecision
+                    usedSessionPrior = true
+                }
             }
         }
 
-        let rawTopProb = min(max(aggregated[top.key] ?? top.value, 0), 1)
-        let rawMargin = max(0, rawTopProb - (rawRanked.count > 1 ? rawRanked[1].value : 0))
+        // When the session-prior boost rescues a decision, the returned
+        // confidence + the value recorded into session memory must reflect the
+        // model's actual per-window confidence, not the artificially boosted
+        // value. Otherwise `recordAccepted` elevates languages based on the
+        // +0.10 bump rather than genuine model evidence.
+        let rawTopProb: Double = {
+            if usedSessionPrior { return min(max(rawPreferredMeanProb, 0), 1) }
+            return min(max(topProb, 0), 1)
+        }()
+        let rawMargin = margin
+        // Repack as a (key, value) tuple so the existing downstream switch
+        // branches keep their concise spelling.
+        let top = (key: topLang, value: topProb)
+        let runnerUp = runnerUpVoteShare
 
         switch decision {
         case .abstain:
-            await log("LID abstain: top=\(top.key) prob=\(top.value) margin=\(top.value - runnerUp) dur=\(voicedDuration)")
+            await log("LID abstain: top=\(top.key) meanP=\(String(format: "%.3f", top.value)) voteShareMargin=\(String(format: "%.3f", rawMargin)) dur=\(voicedDuration)")
             consecutiveLowConfidence += 1
             // Anti-flap: abstain breaks the "consecutive" chain.
             pendingSwitchCandidate = nil
@@ -261,12 +315,25 @@ public actor LanguageDetector {
         case .mediumAuto, .highAuto:
             // Anti-flap: if a sessionPreferred exists and the detected lang
             // differs, require the high bar (>=0.85 prob, >=0.25 margin) twice
-            // in a row to switch away.
+            // in a row to switch away — unless the evidence is unanimous across
+            // all windows at moderate per-window confidence, in which case one
+            // utterance is enough (prevents first-switch hallucination on clean
+            // non-preferred audio).
+            //
+            // Note: the switch-bar signal is the per-window `meanProb` (not the
+            // combined `score = mean * voteShare`). Otherwise non-unanimous
+            // winners — e.g. 3/4 windows voting a language — could never cross
+            // 0.85 regardless of per-window confidence, leaving the two-
+            // utterance commit path unreachable in realistic mixed-window audio.
             let tier: LanguageConfidenceTier = (decision == .highAuto ? .highAuto : .mediumAuto)
+            let winningMeanProb = multi.meanProbs[top.key] ?? 0
+            let unanimous = multi.voteCounts[top.key] == multi.windowCount && multi.windowCount >= 2
+            let singleShotSwitch = unanimous && winningMeanProb >= LanguageDetectorThresholds.unanimousSingleShotProb
             let finalLang = resolveAntiFlap(
                 candidate: top.key,
-                topProb: top.value,
-                margin: top.value - runnerUp
+                switchProbSignal: winningMeanProb,
+                margin: rawMargin,
+                allowSingleShotSwitch: singleShotSwitch
             )
             if finalLang == top.key {
                 consecutiveLowConfidence = 0
@@ -390,7 +457,15 @@ public actor LanguageDetector {
             )
         case .mediumAuto, .highAuto:
             let tier: LanguageConfidenceTier = (decision == .highAuto ? .highAuto : .mediumAuto)
-            let finalLang = resolveAntiFlap(candidate: top.key, topProb: top.value, margin: top.value - runnerUp)
+            // evaluateForTesting has no per-window info; callers supply a
+            // pre-aggregated distribution, so treat `top.value` as both the
+            // switch-bar signal and the score. No single-shot path here.
+            let finalLang = resolveAntiFlap(
+                candidate: top.key,
+                switchProbSignal: top.value,
+                margin: top.value - runnerUp,
+                allowSingleShotSwitch: false
+            )
             if finalLang == top.key {
                 consecutiveLowConfidence = 0
                 registerFlipFlopCandidate(lang: top.key, confidence: rawTopProb, at: now)
@@ -413,38 +488,68 @@ public actor LanguageDetector {
 
     // MARK: - Layer 2: multi-window LID
 
+    /// Aggregated outcome of the multi-window language detection pass.
+    ///
+    /// - `voteCounts`: Raw per-window argmax wins per language.
+    /// - `meanProbs`: Mean exp(logProb) per language across windows where it won.
+    /// - `windowCount`: Number of windows that actually returned a result.
+    ///
+    /// The classifier and anti-flap paths consume `meanProbs[winner]` as the
+    /// per-window confidence and the `voteShare` gap as margin. Keeping these
+    /// signals separate (instead of collapsing them into a single score)
+    /// prevents vote-share dilution from masking true per-window confidence.
+    struct MultiWindowLID {
+        let voteCounts: [String: Int]
+        let meanProbs: [String: Double]
+        let windowCount: Int
+    }
+
     private func runMultiWindowLID(
         samples: [Float],
         voicedDuration: TimeInterval,
         whisperKit: WhisperKit
-    ) async throws -> [String: Double] {
+    ) async throws -> MultiWindowLID {
         let sampleRate = LanguageDetectorThresholds.sampleRate
         let totalSamples = samples.count
+        // Dedupe (startIdx, endIdx) pairs so short clips don't get counted
+        // twice — the fixed windows and the full-window range can collapse to
+        // identical slices on <3s audio and double-count under majority vote.
         var windows: [[Float]] = []
+        var seenRanges: Set<[Int]> = []
+
+        func appendIfNew(_ startIdx: Int, _ endIdx: Int) {
+            guard endIdx > startIdx else { return }
+            guard seenRanges.insert([startIdx, endIdx]).inserted else { return }
+            windows.append(Array(samples[startIdx..<endIdx]))
+        }
 
         for w in LanguageDetectorThresholds.windows {
             let startIdx = min(totalSamples, Int(w.start * Double(sampleRate)))
             let endIdx = min(totalSamples, Int(w.end * Double(sampleRate)))
-            guard endIdx > startIdx else { continue }
-            windows.append(Array(samples[startIdx..<endIdx]))
+            appendIfNew(startIdx, endIdx)
         }
-        // Full voiced window capped at 12s (always included so we always have >=1).
+        // Full voiced window capped at 12s (always tried so we always have >=1,
+        // but deduped against the fixed windows above for short clips).
         let fullEnd = min(totalSamples, Int(LanguageDetectorThresholds.fullWindowMaxSec * Double(sampleRate)))
-        if fullEnd > 0 {
-            windows.append(Array(samples[0..<fullEnd]))
-        }
-        guard !windows.isEmpty else { return [:] }
+        appendIfNew(0, fullEnd)
+        guard !windows.isEmpty else { return MultiWindowLID(voteCounts: [:], meanProbs: [:], windowCount: 0) }
 
         // Run up to 4 windows. The spec says "up to 4"; for short voicedDuration
         // many of the fixed windows collapse to empty and are skipped above.
         let capped = Array(windows.prefix(4))
 
-        var accumulated: [String: Double] = [:]
+        // WhisperKit's `detectLangauge` returns a single-entry `langProbs` map
+        // `{detectedLanguage: logProb}` — it's the argmax + its log-softmax, not
+        // a distribution over all languages. Aggregation must be majority vote
+        // over per-window argmaxes, with per-window exp(logProb) as a
+        // within-window confidence signal.
+        var votes: [String: Int] = [:]
+        var probSum: [String: Double] = [:]
         var counted = 0
         for (i, window) in capped.enumerated() {
             try Task.checkCancellation()
-            // Each window is its own detectLanguage call. WhisperKit API is
-            // `detectLangauge(audioArray:)` (original typo preserved upstream).
+            // WhisperKit API is `detectLangauge(audioArray:)` (original typo
+            // preserved upstream — do not "fix" it).
             let result: (language: String, langProbs: [String: Float])
             do {
                 result = try await whisperKit.detectLangauge(audioArray: window)
@@ -452,38 +557,23 @@ public actor LanguageDetector {
                 await log("LID window \(i) failed: \(error.localizedDescription)")
                 continue
             }
-            let probs = Self.softmaxFromLogProbs(result.langProbs)
-            for (lang, p) in probs {
-                accumulated[lang, default: 0] += p
-            }
+            let lang = result.language
+            // Safety: langProbs is single-entry; fall back to 0 log-prob if the
+            // detected language isn't represented (shouldn't happen per spec).
+            let lp = Double(result.langProbs[lang] ?? 0)
+            let p = min(max(exp(lp), 0), 1)
+            votes[lang, default: 0] += 1
+            probSum[lang, default: 0] += p
             counted += 1
         }
-        guard counted > 0 else { return [:] }
-        // Arithmetic mean across windows.
-        for key in accumulated.keys {
-            accumulated[key, default: 0] /= Double(counted)
+        guard counted > 0 else {
+            return MultiWindowLID(voteCounts: [:], meanProbs: [:], windowCount: 0)
         }
-        return accumulated
-    }
-
-    /// Convert WhisperKit's log-prob map into a normalized probability map.
-    /// WhisperKit returns the sampler's `logProbs` (filtered logits -> log softmax),
-    /// so exp() is a decent per-token probability; we then renormalize across the
-    /// reported candidates so the map sums to 1 for stable mean aggregation.
-    static func softmaxFromLogProbs(_ logProbs: [String: Float]) -> [String: Double] {
-        guard !logProbs.isEmpty else { return [:] }
-        // Numerical stability: subtract max before exp.
-        let maxLog = logProbs.values.max() ?? 0
-        var exped: [String: Double] = [:]
-        var sum = 0.0
-        for (lang, lp) in logProbs {
-            let v = exp(Double(lp - maxLog))
-            exped[lang] = v
-            sum += v
+        var means: [String: Double] = [:]
+        for (lang, count) in votes {
+            means[lang] = probSum[lang, default: 0] / Double(count)
         }
-        guard sum > 0 else { return [:] }
-        for key in exped.keys { exped[key, default: 0] /= sum }
-        return exped
+        return MultiWindowLID(voteCounts: votes, meanProbs: means, windowCount: counted)
     }
 
     // MARK: - Layer 3: session memory logic
@@ -495,7 +585,12 @@ public actor LanguageDetector {
     /// or invalidates it. Any non-confirming event (abstain, lowAuto, a
     /// different strong candidate, or a candidate that fails the switch bar)
     /// resets the pending state.
-    private func resolveAntiFlap(candidate: String, topProb: Double, margin: Double) -> String {
+    private func resolveAntiFlap(
+        candidate: String,
+        switchProbSignal: Double,
+        margin: Double,
+        allowSingleShotSwitch: Bool
+    ) -> String {
         guard let preferred = memory.sessionPreferred,
               LanguageTypes.isSupported(preferred),
               preferred != candidate else {
@@ -503,8 +598,16 @@ public actor LanguageDetector {
             pendingSwitchCandidate = nil
             return candidate
         }
+        // Unanimous + strong per-window confidence bypasses the two-utterance
+        // gate. Checked first so the low-confidence single-shot range that
+        // `unanimousSingleShotProb` is designed to cover cannot be short-
+        // circuited by the stricter `switchProb` bar below.
+        if allowSingleShotSwitch {
+            pendingSwitchCandidate = nil
+            return candidate
+        }
         let switchProb = 0.85
-        let meetsSwitchBar = topProb >= switchProb
+        let meetsSwitchBar = switchProbSignal >= switchProb
             && margin >= LanguageDetectorThresholds.highMargin
         if !meetsSwitchBar {
             // Candidate is not strong enough to count as switch evidence.
