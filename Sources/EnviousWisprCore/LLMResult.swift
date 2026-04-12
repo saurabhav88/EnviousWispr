@@ -61,14 +61,28 @@ public struct LLMProviderConfig: Codable, Sendable {
     public let temperature: Double
     public let thinkingBudget: Int?
     public let reasoningEffort: String?
+    /// Detected input language (ISO 639-1 base code). Nil for the Parakeet
+    /// highway, pre-W2 callsites, or when no language hint is available.
+    /// Consumed by providers that gate or condition behavior on input language
+    /// (currently: Apple Intelligence preflight + language-aware prompting).
+    public let detectedLanguage: String?
 
-    public init(model: String, apiKeyKeychainId: String?, maxTokens: Int, temperature: Double, thinkingBudget: Int?, reasoningEffort: String?) {
+    public init(
+        model: String,
+        apiKeyKeychainId: String?,
+        maxTokens: Int,
+        temperature: Double,
+        thinkingBudget: Int?,
+        reasoningEffort: String?,
+        detectedLanguage: String? = nil
+    ) {
         self.model = model
         self.apiKeyKeychainId = apiKeyKeychainId
         self.maxTokens = maxTokens
         self.temperature = temperature
         self.thinkingBudget = thinkingBudget
         self.reasoningEffort = reasoningEffort
+        self.detectedLanguage = detectedLanguage
     }
 }
 

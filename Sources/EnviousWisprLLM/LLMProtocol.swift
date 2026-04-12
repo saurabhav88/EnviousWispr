@@ -116,6 +116,17 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
     case providerUnavailable
     case modelNotFound(String)
     case frameworkUnavailable(String)
+    /// Input language is not supported by the selected provider. Distinct from
+    /// `frameworkUnavailable` (global provider state): this fires per-request
+    /// when a specific detected language is outside the provider's supported
+    /// set. Pipeline falls back to raw text.
+    case unsupportedInputLanguage(String)
+    /// Post-generation validator detected that the output language differs
+    /// from the expected input language (e.g. German input polished as
+    /// English). Pipeline falls back to raw text silently; this signal is
+    /// kept distinct from `requestFailed` so it never surfaces as "AI polish
+    /// failed" in the UI.
+    case outputLanguageDrift(expected: String, actual: String)
 
     public var errorDescription: String? {
         switch self {
@@ -128,6 +139,10 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
             return "Ollama model '\(model)' is not pulled. Run: ollama pull \(model)"
         case .frameworkUnavailable(let reason):
             return reason
+        case .unsupportedInputLanguage(let code):
+            return "Apple Intelligence does not support the input language '\(code)' for on-device polishing."
+        case .outputLanguageDrift(let expected, let actual):
+            return "LLM polish output drifted from expected language '\(expected)' to '\(actual)'."
         }
     }
 
@@ -140,8 +155,11 @@ public enum LLMError: LocalizedError, Sendable, Equatable {
             return true
         case (.requestFailed(let a), .requestFailed(let b)),
              (.modelNotFound(let a), .modelNotFound(let b)),
-             (.frameworkUnavailable(let a), .frameworkUnavailable(let b)):
+             (.frameworkUnavailable(let a), .frameworkUnavailable(let b)),
+             (.unsupportedInputLanguage(let a), .unsupportedInputLanguage(let b)):
             return a == b
+        case (.outputLanguageDrift(let le, let la), .outputLanguageDrift(let re, let ra)):
+            return le == re && la == ra
         default:
             return false
         }

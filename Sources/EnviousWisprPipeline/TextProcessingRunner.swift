@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprLLM
 import Foundation
 
 /// Result of running the text processing chain.
@@ -78,7 +79,23 @@ internal final class TextProcessingRunner {
             } catch {
                 let stepMs = (CFAbsoluteTimeGetCurrent() - stepStart) * 1000
                 let reason = error is TimeoutError ? "timed out" : "failed: \(error.localizedDescription)"
-                if stepName == "LLM Polish" {
+                // Apple Intelligence language-gate skips (unsupported input
+                // language, output-language drift) are expected no-ops, not
+                // polish failures. Log and continue with raw text; do not
+                // set `polishError`, which would surface as "AI polish
+                // failed" in the UI.
+                let isLanguageGateSkip: Bool
+                if let llmError = error as? LLMError {
+                    switch llmError {
+                    case .unsupportedInputLanguage, .outputLanguageDrift:
+                        isLanguageGateSkip = true
+                    default:
+                        isLanguageGateSkip = false
+                    }
+                } else {
+                    isLanguageGateSkip = false
+                }
+                if stepName == "LLM Polish" && !isLanguageGateSkip {
                     polishError = error.localizedDescription
                 }
                 Task {
