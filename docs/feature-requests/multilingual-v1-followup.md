@@ -260,3 +260,135 @@ If you are still stuck, the following session artifacts may help:
 - The actual UAT log (with LID results for the 7 languages) is in `~/Library/Logs/EnviousWispr/app.log` under the 2026-04-12T17:41-17:47Z timestamps.
 - The TTS audio files are at `/tmp/wispr_eyes_tts.mp3` (most recent overwrites prior; regenerate per language via `wispr_eyes.tts(sentence, voice, engine)`).
 - The benchmark corpus with 150 sentences across 15 languages is at `benchmark-results/multilingual-eval-2026-04-12/corpus/sentences.jsonl` on the feature branch.
+
+### 10. Hypotheses vs verified facts
+
+Be clear on what is verified and what is a hypothesis so you do not chase the wrong thing.
+
+**Verified (reproduced at runtime in this session):**
+- LanguageDetector in auto mode returns `lang=en` with confidence 1.00 and margin 1.00 for fr/it/zh/ko/ta audio when fed through WhisperKit's `detectLangauge`. Reproduced with 5 different TTS utterances across those languages in the same session.
+- Italian and Tamil audio hallucinated into complete English garbage. Other languages (fr, zh, ko) transcribed correctly despite the wrong language hint because Whisper's decoder is robust to bad hints when the audio is unambiguous.
+- Parakeet + Gemini polish is byte-identical to pre-change behavior (runtime UAT on a live dictation).
+- WhisperKit in locked mode correctly decodes Japanese and the incremental worker is used (per Critical #1 fix wiring).
+- Japanese/Chinese/Korean transcripts hit the polish short-circuit because word count treats them as 2 words.
+- The 99-lang sheet, search filter, and language persistence all work.
+
+**Hypotheses (not verified; test before acting):**
+- The root cause of the LID bug is `softmaxFromLogProbs` misinterpreting `langProbs`. This is the most likely cause but NOT confirmed. The alternative is that WhisperKit's API returns something other than what we assumed (e.g., only top-5 candidates, a different probability semantic, a token-log-prob map that includes non-language tokens). Run the diagnostic in section 2 BEFORE coding the fix.
+- The American-accented TTS is contributing to LID confusion. Plausible but untested. The LID bug might be real even with native-accented audio. Do NOT assume the TTS swap fixes it. Validate with FLEURS real-speech clips after the code fix.
+
+### 11. Ship criteria before merging feat/multilingual-v1 to main
+
+Check all of these before opening a PR. Per CLAUDE.md rule 9 you own the merge end-to-end.
+
+**Functional:**
+- [ ] #249 LID accuracy fix landed; detector correctly identifies at least 6 of 7 languages in the regression matrix (section 4).
+- [ ] #250 CJK polish short-circuit fix landed; Japanese/Chinese/Korean transcripts of sufficient character length trigger polish.
+- [ ] Parakeet English dictation + LLM polish still works (re-run the long dictation test that user exercised in this session).
+- [ ] WhisperKit auto-detect correctly identifies English, Japanese, Spanish on real PTT recordings.
+
+**Quality:**
+- [ ] `swift build -c release` exit 0.
+- [ ] `scripts/swift-test.sh` all tests pass. Target: 253+ tests (251 current + 2 for the two fixes minimum).
+- [ ] FLEURS-based validation across at least 10 languages from the priority list (en, es, fr, de, it, pt, ru, ja, zh, ko, hi, ar, tr) with WER/CER tier assignment.
+- [ ] No em-dashes or en-dashes in any new lines. Pre-existing ones in unrelated files are allowed.
+
+**Architecture DoD (per `.claude/rules/architecture-rules.md`):**
+- [ ] Module placement justified in the PR body (LanguageDetector → ASR, PromptVocabulary → Core, etc.).
+- [ ] Heart protection verified: pipeline completes even if detector, planner, or telemetry all throw.
+- [ ] No new god objects, no central file became a junk drawer, AppState growth is explainable.
+- [ ] Access control at narrowest practical level; any new `public` is justified.
+- [ ] Dependency direction unchanged (lower modules do not import upward).
+- [ ] Architecture Closeout comment written on issue #242 before closing.
+
+**Dead-code hygiene:**
+- [ ] `/periphery` scan run (LARGE tier mandatory). Clean output or justified exceptions.
+
+**External review:**
+- [ ] Fresh `codex review --uncommitted` pass (via direct CLI) on the fixes. Validate each finding, fix true positives, document false positives with reasoning.
+- [ ] `/ask-gpt` sign-off on the final diff.
+
+**Protocol:**
+- [ ] Wispr Eyes verification of the UI + transcription flow.
+- [ ] Post-merge: watch CI to green on main, clean up the worktree.
+
+### 12. Process playbook when things go sideways
+
+- **Codex returns findings:** for each, read the actual code, reproduce or falsify. Do NOT dispatch a fix agent (violates `feedback_refactor_discipline`). Fix directly in main session. Document false positives with one-line reasoning.
+- **Fix introduces regressions (codex or UAT finds new issues):** iterate. Rounds 2-4 in this session caught 2 regressions per round that my fixes caused. Expected. Budget for 2-3 passes.
+- **Test suite goes red:** read the failing test name, map to the change that broke it. Do not delete or weaken tests to make them pass (per `feedback_never_weaken_guardrails`). Fix the code or fix the test if the test was genuinely wrong.
+- **Uncertain architecture question:** resume the `multilingual-northstar-gpt` council session or open a fresh one. Architecture-changing decisions need council per CLAUDE.md rule 4.
+- **UAT reveals new real-world bug:** file a follow-up issue referencing epic #242. Decide if ship-blocking or next-iteration.
+
+### 13. Quick-reference commands and locations
+
+```bash
+# Worktree
+cd /Users/m4pro_sv/Desktop/EnviousWispr-multilingual-v1
+
+# Tail the app log during UAT
+tail -f ~/Library/Logs/EnviousWispr/app.log | grep -E "LID result|WhisperKit ASR|LLM Polish|CORRECTION_DEBUG"
+
+# Read current languageMode (binary plist)
+defaults read com.enviouswispr.app.dev languageMode
+
+# Current model variant persisted
+defaults read com.enviouswispr.app.dev whisperKitModel
+
+# Force rollback flag on
+defaults write com.enviouswispr.app.dev useRefreshedWhisperKitModel -bool false
+
+# Reset the Auto/Lock state to clean for testing
+defaults delete com.enviouswispr.app.dev languageMode
+
+# Session memory (JSON blob)
+defaults read com.enviouswispr.app.dev sessionLanguagePriors
+
+# Run just the new multilingual tests
+./scripts/swift-test.sh 2>&1 | grep -iE "language|multilingual|detector|prompt injection" | tail -30
+
+# Single-language TTS dictation harness
+cd /Users/m4pro_sv/Desktop/EnviousWispr && python3 -c "
+import sys; sys.path.insert(0, 'Tests/UITests')
+from wispr_eyes import connect, record_tts
+connect('EnviousWispr')
+result = record_tts(sentence='<YOUR SENTENCE>', key='rcmd')
+print(result.get('raw_asr'), '|', result.get('polished'))
+"
+```
+
+Key file locations (feature branch):
+- LID logic: `Sources/EnviousWisprASR/LanguageDetector.swift`
+- LID tests: `Tests/EnviousWisprASRTests/LanguageDetectorTests.swift`
+- Polish short-circuit: `Sources/EnviousWisprPipeline/LLMPolishStep.swift` (grep for `transcript too short`)
+- Prompt tier dispatch: `Sources/EnviousWisprLLM/Prompting/DefaultPromptPlanner.swift`
+- UI entry: `Sources/EnviousWispr/Views/Settings/SpeechEngineSettingsView.swift`
+- Lock sheet: `Sources/EnviousWispr/Views/Settings/LanguageLockSheet.swift`
+- 99-lang catalog: `Sources/EnviousWispr/Views/Settings/LanguageCatalog.swift`
+- Settings migration: `Sources/EnviousWisprServices/SettingsManager.swift` (grep for `languageMode`)
+- Pipeline call site: `Sources/EnviousWisprPipeline/WhisperKitPipeline.swift` (grep for `LID result`)
+
+### 14. Gotchas burned in from this session
+
+- **Never auto-correct the typo `detectLangauge` to `detectLanguage`**. WhisperKit's public API actually has the typo. Our code preserves it. The inline comment in `LanguageDetector.swift` documents this. Do not "fix" it.
+- **macOS `defaults` reads plist-encoded values as binary byte dumps for non-string types.** `languageMode` is stored as base64-encoded JSON. To decode: `defaults read com.enviouswispr.app.dev languageMode` shows bytes; convert via `xxd` or Python.
+- **The rebuild skill `/wispr-rebuild-and-relaunch` hardcodes `PROJ_ROOT=/Users/m4pro_sv/Desktop/EnviousWispr`.** To rebuild the feature worktree, override `PROJ_ROOT` inline (the verbatim command sequence that worked is preserved in this session's bash history and in section 1).
+- **The bundle-app.md recipe requires the "EnviousWispr Dev" self-signed cert.** If that cert is missing, follow `docs/self-hosted-runner.md`. The cert is what lets TCC grants (Accessibility, Microphone) persist across rebuilds.
+- **`/tmp/wispr_eyes_tts.mp3` is overwritten on every `record_tts()` call.** Do not rely on it persisting.
+- **Telemetry fires during dev UAT.** Events tagged `environment=development` in PostHog. Filter those out when reading dashboards.
+- **The `benchmark-results/multilingual-eval-2026-04-12/corpus/sentences.jsonl` file with 150 native-speaker validated sentences** is on disk in the worktree but gitignored. If next session needs those sentences and they are missing, regenerate via the Gemini-backed agent approach documented in epic #242 history (W2 spec phase).
+- **The `scripts/multilingual-eval/` directory is gitignored.** The eval harness (`tts_generate.py`, `runner/`, `score.py`, `fleurs_download.py`, etc.) exists on disk but is not version-controlled. Update `.gitignore` to whitelist before committing the harness.
+
+### 15. Estimated time for ship-ready completion
+
+With high confidence the session state is correctly characterized:
+
+- LID diagnostic + fix + test: 2-3 hours
+- CJK polish fix + test: 30-45 minutes
+- 7-language regression rerun: 30 minutes
+- FLEURS validation across 10 priority languages: 1-2 hours
+- Codex review pass(es) + validation: 30-60 minutes
+- Architecture DoD + Periphery scan: 30 minutes
+- PR + CI watch + merge: 30-60 minutes
+
+**Total: roughly half a day to a full day of focused work from a fresh session.** If you hit an architecture question or codex surfaces something systemic, add a day.
