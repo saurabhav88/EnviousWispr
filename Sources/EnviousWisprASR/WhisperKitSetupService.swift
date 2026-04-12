@@ -38,8 +38,11 @@ public final class WhisperKitSetupService {
     public private(set) var setupState: WhisperKitSetupState = .checking
 
     /// Model variant to download (synced from AppSettings).
+    /// Single source of truth lives on `WhisperKitBackend.defaultModelVariant()`.
+    /// Cold flag: changes to `useRefreshedWhisperKitModel` only take effect on
+    /// the next app launch, consistent with the flag's documented behavior.
     // BRAIN: gotcha id=model-name-format
-    public var modelVariant: String = "openai_whisper-large-v3_turbo"
+    public var modelVariant: String = WhisperKitBackend.defaultModelVariant()
 
     public init() {}
 

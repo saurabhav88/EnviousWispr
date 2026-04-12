@@ -233,4 +233,126 @@ public final class TelemetryService {
         if let p = llmProvider { props["llm_provider"] = p }
         PostHogSDK.shared.capture("metric.pipeline.e2e_seconds", properties: props)
     }
+
+    // MARK: - Multilingual v1 (language detection lifecycle)
+    //
+    // Events per docs/feature-requests/multilingual-v1.md § Telemetry.
+    // All methods are fire-and-forget and PII-free (lang codes + numeric stats only).
+    // The `environment` property (production/development) is globally registered on
+    // PostHog init (see ObservabilityBootstrap) so every capture below inherits it.
+
+    /// Emitted after `LanguageDetector.detect` completes for any outcome (accepted or abstained).
+    public func trackLanguageDetected(
+        lang: String?,
+        confidence: Double,
+        margin: Double,
+        voicedDuration: TimeInterval,
+        abstained: Bool,
+        sessionPreferredLang: String?,
+        usedSticky: Bool
+    ) {
+        var props: [String: Any] = [
+            "lang": lang ?? "nil",
+            "confidence": String(format: "%.3f", confidence),
+            "margin": String(format: "%.3f", margin),
+            "duration_bucket": Self.durationBucket(voicedDuration),
+            "voiced_duration_s": String(format: "%.2f", voicedDuration),
+            "abstained": abstained,
+            "used_sticky": usedSticky,
+        ]
+        if let pref = sessionPreferredLang {
+            props["session_preferred_lang"] = pref
+        }
+        PostHogSDK.shared.capture("language.detected", properties: props)
+    }
+
+    /// Emitted when the user confirms a language in the Lock language sheet.
+    /// `fromLang` is the prior mode ("auto" if unlocked, else prior ISO code).
+    /// `reason` is one of: "first_time", "after_bad_detect", "preference".
+    public func trackManualLockUsed(fromLang: String, toLang: String, reason: String) {
+        PostHogSDK.shared.capture("language.manual_lock_used", properties: [
+            "from_lang": fromLang,
+            "to_lang": toLang,
+            "reason": reason,
+        ])
+    }
+
+    /// Emitted when two different languages are accepted in the same session within 5 minutes.
+    /// Fired from the detector's flip-flop path (piggybacks on the passive-chip trigger).
+    public func trackLanguageFlip(fromLang: String, toLang: String, confidenceBoth: Double) {
+        PostHogSDK.shared.capture("language.flip", properties: [
+            "from_lang": fromLang,
+            "to_lang": toLang,
+            "confidence_both": String(format: "%.3f", confidenceBoth),
+        ])
+    }
+
+    /// Emitted when the user deletes more than 50% of pasted text within 5s of insert.
+    /// `lang` is the language detected for the failed transcript.
+    ///
+    /// TODO (W6/#248 follow-up): no call site yet. v1 ships with this method
+    /// available so the analytics schema is ready, but the paste-cascade does
+    /// not observe post-insert user edits. Implementing this requires either
+    /// an AX observer on the focused text field or a clipboard diff heuristic
+    /// that ignores our own restore-clipboard writes. Deferred pending review
+    /// of whether real-world correction rates justify the AX surface.
+    public func trackCorrectionAfterInsert(lang: String?, confidence: Double, charCount: Int) {
+        var props: [String: Any] = [
+            "confidence": String(format: "%.3f", confidence),
+            "char_count": charCount,
+        ]
+        if let l = lang { props["lang"] = l }
+        PostHogSDK.shared.capture("language.correction_after_insert", properties: props)
+    }
+
+    /// Emitted when LID abstains (returned nil language).
+    /// `reason` is one of: "too_short", "low_confidence", "narrow_margin".
+    public func trackLIDAbstained(
+        voicedDuration: TimeInterval,
+        top1Prob: Double,
+        top1Lang: String?,
+        reason: String
+    ) {
+        var props: [String: Any] = [
+            "voiced_duration": String(format: "%.2f", voicedDuration),
+            "top1_prob": String(format: "%.3f", top1Prob),
+            "reason": reason,
+        ]
+        if let l = top1Lang { props["top1_lang"] = l }
+        PostHogSDK.shared.capture("language.lid_abstained", properties: props)
+    }
+
+    /// Emitted per transcription: surfaces real-time factor per language+model for
+    /// per-language perf dashboards. Kept separate from `asr.completed` (generic) so
+    /// the multilingual dashboard can slice by lang without schema churn elsewhere.
+    public func trackTranscriptionLatency(
+        lang: String?,
+        model: String,
+        durationSeconds: Double,
+        msPerAudioSecond: Double
+    ) {
+        var props: [String: Any] = [
+            "model": model,
+            "duration_s": String(format: "%.3f", durationSeconds),
+            "ms_per_audio_s": String(format: "%.1f", msPerAudioSecond),
+            "$value": msPerAudioSecond,
+        ]
+        if let l = lang { props["lang"] = l }
+        PostHogSDK.shared.capture("language.transcription_latency", properties: props)
+    }
+
+    // MARK: - Multilingual helpers
+
+    /// Spec-defined voiced-duration buckets. Single source of truth so the
+    /// detector call site and UI debug views agree on labels.
+    private static func durationBucket(_ seconds: TimeInterval) -> String {
+        switch seconds {
+        case ..<1.0:    return "<1s"
+        case ..<2.5:    return "1-2.5s"
+        case ..<5.0:    return "2.5-5s"
+        case ..<10.0:   return "5-10s"
+        case ..<15.0:   return "10-15s"
+        default:        return "15s+"
+        }
+    }
 }

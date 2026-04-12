@@ -92,6 +92,10 @@ public final class TranscriptionPipeline: DictationPipeline {
         self.keychainManager = keychainManager
         self.transcriptFinalizer = TranscriptFinalizer(transcriptStore: transcriptStore)
         self.llmPolishStep = LLMPolishStep(keychainManager: keychainManager)
+        // Explicit engine identity: makes the Parakeet path non-inferred. The
+        // planner will force the legacy English-centric path for Parakeet
+        // regardless of any `languageDetection` a caller might set.
+        llmPolishStep.backend = .parakeet
         llmPolishStep.onWillProcess = { [weak self] in
             self?.state = .polishing
         }

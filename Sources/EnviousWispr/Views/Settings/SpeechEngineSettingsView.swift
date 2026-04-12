@@ -5,6 +5,8 @@ import EnviousWisprCore
 struct SpeechEngineSettingsView: View {
     @Environment(AppState.self) private var appState
 
+    @State private var showLanguageLockSheet: Bool = false
+
     var body: some View {
         @Bindable var state = appState
 
@@ -42,17 +44,44 @@ struct SpeechEngineSettingsView: View {
             if appState.settings.selectedBackend == .whisperKit,
                case .ready = appState.whisperKitSetup.setupState {
                 BrandedSection(header: "Language") {
-                    BrandedRow(showDivider: false) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Picker("Language", selection: $state.settings.whisperKitLanguage) {
-                                Text("English").tag("en")
-                                Text("German (Deutsch)").tag("de")
-                                Text("Tamil (தமிழ்)").tag("ta")
-                            }
-                            .pickerStyle(.segmented)
-                            Text("Select the language you'll be speaking. Parakeet is English-only; WhisperKit supports multiple languages.")
+                    BrandedRow {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Toggle(
+                                "Auto-detect language",
+                                isOn: Binding(
+                                    get: { isAutoLanguage(appState.settings.languageMode) },
+                                    set: { newValue in
+                                        state.settings.languageMode = newValue
+                                            ? .auto
+                                            : .locked(currentOrDefaultLockCode())
+                                    }
+                                )
+                            )
+                            .toggleStyle(BrandedToggleStyle())
+                            Text("Auto-detect your language, or lock to a specific one. WhisperKit supports 99 languages.")
                                 .font(.stHelper)
                                 .foregroundStyle(.stTextTertiary)
+                        }
+                    }
+
+                    if case .locked(let code) = appState.settings.languageMode {
+                        BrandedRow(showDivider: false) {
+                            HStack(spacing: 10) {
+                                let entry = LanguageCatalog.entry(for: code)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Language")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(.stTextTertiary)
+                                    Text("\(entry.nativeName) (\(entry.englishName))")
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundStyle(.primary)
+                                }
+                                Spacer()
+                                Button("Change") {
+                                    showLanguageLockSheet = true
+                                }
+                                .controlSize(.small)
+                            }
                         }
                     }
                 }
@@ -122,6 +151,33 @@ struct SpeechEngineSettingsView: View {
                 Task { await appState.whisperKitSetup.detectState() }
             }
         }
+        .sheet(isPresented: $showLanguageLockSheet) {
+            LanguageLockSheet()
+                .environment(appState)
+        }
+    }
+
+    // MARK: - Language mode helpers
+
+    /// True when the current mode is `.auto`. Defined as a free helper so the
+    /// Toggle binding stays trivially readable.
+    private func isAutoLanguage(_ mode: LanguageMode) -> Bool {
+        if case .auto = mode { return true }
+        return false
+    }
+
+    /// When the user flips the Auto toggle off, we need a concrete ISO code
+    /// to lock to. Preserve the prior locked code if we have one (comes from
+    /// the W2 migration of `whisperKitLanguage`), otherwise default to English.
+    private func currentOrDefaultLockCode() -> String {
+        if case .locked(let code) = appState.settings.languageMode {
+            return code
+        }
+        let migrated = appState.settings.whisperKitLanguage
+        if LanguageTypes.isSupported(migrated) {
+            return migrated
+        }
+        return "en"
     }
 
     // MARK: - WhisperKit Setup UI

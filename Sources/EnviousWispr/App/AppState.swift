@@ -56,6 +56,14 @@ final class AppState {
     /// Read by the overlay to switch to the expanded lips visual.
     var isRecordingLocked: Bool = false
 
+    /// Multilingual v1: latest passive-chip trigger emitted by LanguageDetector,
+    /// if any. Observed by settings/overlay UI to offer a "Detected X. Lock it?"
+    /// or "Language unstable. Lock language?" CTA. Nil when no chip is pending.
+    /// UI consumers set this to nil after dismissing.
+    /// TODO: wire a settings-level banner that presents this; current v1 ship is
+    /// callback-only so chip events are not silently dropped.
+    var pendingPassiveChip: PassiveChipTrigger?
+
     // Feature #8: custom word management — delegated to coordinator
     let customWordsCoordinator = CustomWordsCoordinator()
 
@@ -100,11 +108,30 @@ final class AppState {
             transcriptStore: transcriptStore,
             keychainManager: keychainManager
         )
+        // W6: wire language-flip telemetry into the detector via a closure so
+        // `EnviousWisprASR` (which cannot import PostHog) stays vendor-contained.
+        // The detector fires this inline from an actor; we hop to MainActor to
+        // call `TelemetryService` (which is @MainActor isolated).
+        // The chip handler is wired AFTER init completes (see setPassiveChipHandler
+        // call below) because it needs to capture self, and Swift does not allow
+        // that before all stored properties are initialized.
+        let languageDetector = LanguageDetector(
+            onLanguageFlip: { @Sendable event in
+                Task { @MainActor in
+                    TelemetryService.shared.trackLanguageFlip(
+                        fromLang: event.fromLang,
+                        toLang: event.toLang,
+                        confidenceBoth: event.confidenceBoth
+                    )
+                }
+            }
+        )
         whisperKitPipeline = WhisperKitPipeline(
             audioCapture: audioCapture,
             backend: WhisperKitBackend(),
             transcriptStore: transcriptStore,
-            keychainManager: keychainManager
+            keychainManager: keychainManager,
+            languageDetector: languageDetector
         )
         // Transcript polish service (re-polish from detail view, decoupled from pipelines)
         polishService = TranscriptPolishService(
@@ -126,6 +153,17 @@ final class AppState {
 
         // Wire dictation activity provider (after all stored properties initialized)
         polishService.setDictationActivity(self)
+
+        // Wire the passive-chip handler on the LanguageDetector actor now that
+        // self is fully constructed. The handler hops back to the MainActor
+        // to publish the chip on `pendingPassiveChip` so UI can observe it.
+        Task { [weak self] in
+            await languageDetector.setPassiveChipHandler { @Sendable (trigger: PassiveChipTrigger) in
+                Task { @MainActor in
+                    self?.pendingPassiveChip = trigger
+                }
+            }
+        }
 
         // Unified engine interruption handler — routes to whichever pipeline is actively recording.
         // Both pipelines share the same audioCapture instance. When the audio engine/XPC service

@@ -7,6 +7,14 @@ let package = Package(
     platforms: [
         .macOS(.v14)
     ],
+    products: [
+        // Exposed so the multilingual polish-quality harness (a separate
+        // SwiftPM package at scripts/multilingual-eval/polisher-runner) can
+        // depend on the real planner + connectors via a path-based package
+        // dependency. Purely additive — no production code imports these.
+        .library(name: "EnviousWisprCore", targets: ["EnviousWisprCore"]),
+        .library(name: "EnviousWisprLLM", targets: ["EnviousWisprLLM"]),
+    ],
     dependencies: [
         .package(url: "https://github.com/argmaxinc/WhisperKit.git", from: "0.12.0"),
         .package(url: "https://github.com/saurabhav88/FluidAudio.git", revision: "46e96f4"),
@@ -122,6 +130,14 @@ let package = Package(
                 "EnviousWisprLLM",
             ],
             path: "Tests/EnviousWisprTests"
+        ),
+        .testTarget(
+            name: "EnviousWisprASRTests",
+            dependencies: [
+                "EnviousWisprCore",
+                "EnviousWisprASR",
+            ],
+            path: "Tests/EnviousWisprASRTests"
         ),
     ],
     swiftLanguageModes: [.v6]

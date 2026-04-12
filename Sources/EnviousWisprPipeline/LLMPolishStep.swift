@@ -17,6 +17,22 @@ public final class LLMPolishStep: TextProcessingStep {
     public var useExtendedThinking: Bool = false
     public var customWords: [CustomWord] = []
 
+    // MARK: - Multilingual v1 (W3)
+
+    /// Language detection outcome from the autodetect stack. Set by
+    /// `WhisperKitPipeline` after the detector runs, before finalization.
+    /// Nil for the Parakeet highway or pre-W2 callsites. The planner falls
+    /// back to legacy (locked-equivalent) behavior when nil.
+    public var languageDetection: LanguageDetectionResult?
+
+    /// Active ASR backend for this polish step. Set at init time by the
+    /// owning pipeline (Parakeet or WhisperKit) so the prompt planner can
+    /// dispatch on explicit engine identity rather than inferring it from
+    /// the absence of `languageDetection`. Nil for standalone callsites
+    /// (e.g., `TranscriptPolishService`) that do not know the original ASR
+    /// engine; the planner preserves legacy passthrough in that case.
+    public var backend: ASRBackendType?
+
     /// Injectable prompt planner. DefaultPromptPlanner in production, mockable in tests.
     public var promptPlanner: any PromptPlanning = DefaultPromptPlanner()
 
@@ -47,10 +63,16 @@ public final class LLMPolishStep: TextProcessingStep {
         self.keychainManager = keychainManager
     }
 
-    /// Minimum word count to send to the LLM. Transcripts at or below this
-    /// threshold are passed through verbatim — LLMs hallucinate on ultra-short
-    /// input (e.g., "Yeah" → a full essay). See ew-zr4.
+    /// Minimum word count to send to the LLM (Latin/Cyrillic/Indic/Arabic etc).
+    /// Transcripts at or below this threshold are passed through verbatim — LLMs
+    /// hallucinate on ultra-short input (e.g., "Yeah" → a full essay). See ew-zr4.
     private static let minWordsForPolish = 3
+
+    /// Minimum character count for CJK/Thai/Lao scripts which don't use spaces.
+    /// Japanese/Chinese word-counting treats a 31-char sentence as 2 words,
+    /// which would wrongly short-circuit polish. Character-count is the correct
+    /// gate for non-whitespace-segmented scripts. 10 chars ≈ a short utterance.
+    private static let minCharsForCJKPolish = 10
 
     public func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
         onWillProcess?()
@@ -61,15 +83,33 @@ public final class LLMPolishStep: TextProcessingStep {
 
         // Short-circuit: ultra-short transcripts get passed through verbatim.
         // LLMs treat 1-3 word inputs as prompts to respond to, not text to clean.
-        let wordCount = context.text.split(whereSeparator: \.isWhitespace).count
-        if wordCount <= Self.minWordsForPolish {
-            Task { await AppLogger.shared.log(
-                "LLM polish skipped: transcript too short (\(wordCount) words, minimum \(Self.minWordsForPolish + 1))",
-                level: .info, category: "LLM"
-            ) }
-            var ctx = context
-            ctx.polishedText = context.text
-            return ctx
+        // Language-aware: CJK/Thai/Lao scripts use char-count since they don't
+        // segment words with whitespace (a 31-char Japanese utterance is 1-2
+        // "words" by split, which would wrongly skip polish).
+        let lang = languageDetection?.lang ?? context.language
+        let useCharCount = lang.map(LanguageTypes.isUnsegmentedScript) ?? false
+        if useCharCount {
+            let charCount = context.text.unicodeScalars.filter { !$0.properties.isWhitespace }.count
+            if charCount < Self.minCharsForCJKPolish {
+                Task { await AppLogger.shared.log(
+                    "LLM polish skipped: transcript too short (\(charCount) chars, minimum \(Self.minCharsForCJKPolish), lang=\(lang ?? "?"))",
+                    level: .info, category: "LLM"
+                ) }
+                var ctx = context
+                ctx.polishedText = context.text
+                return ctx
+            }
+        } else {
+            let wordCount = context.text.split(whereSeparator: \.isWhitespace).count
+            if wordCount <= Self.minWordsForPolish {
+                Task { await AppLogger.shared.log(
+                    "LLM polish skipped: transcript too short (\(wordCount) words, minimum \(Self.minWordsForPolish + 1))",
+                    level: .info, category: "LLM"
+                ) }
+                var ctx = context
+                ctx.polishedText = context.text
+                return ctx
+            }
         }
 
         Task { await AppLogger.shared.log(
@@ -158,6 +198,11 @@ public final class LLMPolishStep: TextProcessingStep {
             return prompt.replacingOccurrences(of: "${transcript}", with: context.text)
         }()
 
+        // Multilingual v1 (W3): snapshot the active vocabulary at construction
+        // time so the planner/builders see a stable list even if the user edits
+        // custom words mid-polish. Migration default: all entries tagged global.
+        let vocabularySnapshot = PromptVocabulary.fromLegacy(customWords)
+
         let input = PromptBuildInput(
             transcript: context.text,
             provider: llmProvider,
@@ -168,7 +213,10 @@ public final class LLMPolishStep: TextProcessingStep {
             appName: context.targetAppName,
             language: context.language,
             customWords: customWords,
-            focusSnapshot: nil  // PR 3
+            focusSnapshot: nil,  // PR 3
+            customVocabulary: vocabularySnapshot,
+            languageDetection: languageDetection,
+            backend: backend
         )
         let plan = promptPlanner.plan(input: input)
 
