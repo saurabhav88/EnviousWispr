@@ -100,6 +100,18 @@ public final class TranscriptPolishService {
         ])
 
         // Run the LLM polish step
+        // Multilingual v1: forward the original backend so the planner dispatches
+        // on the correct path (Parakeet → legacy, WhisperKit → tier-aware). Without
+        // this, re-polish of saved WhisperKit transcripts uses nil-backend legacy
+        // passthrough, which can corrupt non-English output with English prompts.
+        // See docs/feature-requests/multilingual-v1.md "Prompt injection
+        // rearchitecture" for tier-dispatch behavior.
+        llmPolishStep.backend = transcript.backendType
+        // languageDetection is not available for saved transcripts (the detector
+        // result is not persisted), so leave it nil. The planner treats
+        // .whisperKit + nil detection as formatting-only (safe, no lexical bias).
+        llmPolishStep.languageDetection = nil
+
         let polishedText: String
         do {
             var context = TextProcessingContext(

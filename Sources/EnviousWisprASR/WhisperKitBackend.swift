@@ -24,15 +24,31 @@ public actor WhisperKitBackend: ASRBackend {
     private let modelVariant: String
     private var whisperKit: WhisperKit?
 
+    /// Exposes the configured model variant name (e.g. `openai_whisper-large-v3-v20240930_turbo`).
+    /// Read-only; used by telemetry to tag per-transcription events with the model in use.
+    public var modelVariantName: String { modelVariant }
+
     /// Exposes the WhisperKit instance for background incremental transcription.
     public var whisperKitInstance: WhisperKit? { whisperKit }
 
     /// Exposes the tokenizer for prompt token encoding (used by incremental worker tail decode).
     public var whisperKitTokenizer: (any WhisperTokenizer)? { whisperKit?.tokenizer }
 
-    // BRAIN: gotcha id=default-model-turbo
-    public init(modelVariant: String = "openai_whisper-large-v3_turbo") {
+    // BRAIN: gotcha id=default-model-turbo-v20240930
+    public init(modelVariant: String = WhisperKitBackend.defaultModelVariant()) {
         self.modelVariant = modelVariant
+    }
+
+    /// Single source of truth for the shipped default model variant.
+    /// Reads the `useRefreshedWhisperKitModel` feature flag from UserDefaults:
+    /// true (default) returns the Multilingual v1 refresh, false returns the
+    /// legacy variant for emergency rollback. Cold flag: read at init time,
+    /// does not live-switch.
+    public static func defaultModelVariant() -> String {
+        let useRefreshed = UserDefaults.standard.object(forKey: "useRefreshedWhisperKitModel") as? Bool ?? true
+        return useRefreshed
+            ? "openai_whisper-large-v3-v20240930_turbo"
+            : "openai_whisper-large-v3_turbo"
     }
 
     public func prepare() async throws {

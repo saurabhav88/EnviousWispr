@@ -241,6 +241,12 @@ final class PipelineSettingsSync {
             polishService.llmPolishStep.useExtendedThinking = settings.useExtendedThinking
         case .whisperKitLanguage:
             syncTranscriptionOptions(settings)
+        case .languageMode:
+            // Multilingual v1 (W2): keep pipeline in sync with user's auto/locked
+            // choice. Detection itself happens in the pipeline; this path just
+            // forwards the current mode so the detector actor reads it lazily.
+            whisperKitPipeline.languageMode = settings.languageMode
+            syncTranscriptionOptions(settings)
         case .selectedInputDeviceUID:
             audioCapture.selectedInputDeviceUID = settings.selectedInputDeviceUID
         case .preferredInputDeviceIDOverride:
@@ -265,6 +271,10 @@ final class PipelineSettingsSync {
             pipeline.useStreamingASR = settings.useStreamingASR
         case .warmEnginePolicy:
             audioCapture.warmEnginePolicy = settings.warmEnginePolicy
+        case .useRefreshedWhisperKitModel:
+            // Cold flag (Multilingual v1 W4). The active modelVariant is resolved
+            // from this default at startup; toggling requires an app restart.
+            break
         }
     }
 
@@ -272,9 +282,22 @@ final class PipelineSettingsSync {
     private func syncTranscriptionOptions(_ settings: SettingsManager) {
         var opts = TranscriptionOptions()
         // Parakeet is English-only; WhisperKit uses the user's selected language.
-        // Pass the language to both pipelines — Parakeet ignores it, WhisperKit
+        // Pass the language to both pipelines: Parakeet ignores it, WhisperKit
         // passes it through to DecodingOptions.
-        opts.language = settings.whisperKitLanguage
+        //
+        // Multilingual v1: source is now `languageMode`, not the deprecated
+        // `whisperKitLanguage` field. In auto mode, leave language empty so the
+        // detector's result (set later in the pipeline) fills it. In locked
+        // mode, push the ISO code so the incremental worker and the batch
+        // decode see the correct language from recording start.
+        switch settings.languageMode {
+        case .auto:
+            // `TranscriptionOptions.language` is String?; nil means "let the
+            // detector decide" (the pipeline overwrites it after LID runs).
+            opts.language = nil
+        case .locked(let code):
+            opts.language = code
+        }
         pipeline.transcriptionOptions = opts
         whisperKitPipeline.transcriptionOptions = opts
     }
@@ -297,6 +320,8 @@ final class PipelineSettingsSync {
         whisperKitPipeline.vadSensitivity = settings.vadSensitivity
         whisperKitPipeline.vadEnergyGate = settings.vadEnergyGate
         whisperKitPipeline.modelUnloadPolicy = settings.modelUnloadPolicy
+        // Multilingual v1 (W2): mirror the current auto/locked mode on startup.
+        whisperKitPipeline.languageMode = settings.languageMode
     }
 
     /// Sync all LLM settings to the transcript polish service (re-polish from detail view).

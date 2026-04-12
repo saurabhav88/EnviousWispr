@@ -57,6 +57,29 @@ public final class WhisperKitPipeline: DictationPipeline {
     public var lastPolishError: String?
     public var modelUnloadPolicy: ModelUnloadPolicy = .never
 
+    // Multilingual v1 (W2): language mode + detector. Captured lazily at
+    // detection time so a user toggling Auto->Locked mid-recording is respected.
+    public var languageMode: LanguageMode = .auto {
+        didSet {
+            // Mid-recording changes to the language mode invalidate the
+            // incremental worker, which snapshots the decode language at its
+            // init. Rather than try to re-decode the worker's buffers with the
+            // new language, we drop the worker entirely so finalize falls back
+            // to batch decode with the post-change language.
+            if oldValue != languageMode, let worker = incrementalWorker {
+                incrementalWorker = nil
+                Task { await worker.cancel() }
+                Task { await AppLogger.shared.log(
+                    "Language mode changed mid-recording, incremental worker invalidated",
+                    level: .info, category: "WhisperKitPipeline"
+                ) }
+            }
+        }
+    }
+    private let languageDetector: LanguageDetector
+    /// Last detection result, exposed for telemetry and UI (passive chip).
+    public private(set) var lastLanguageDetection: LanguageDetectionResult?
+
     // Shared services
     private let transcriptFinalizer: TranscriptFinalizer
 
@@ -97,13 +120,20 @@ public final class WhisperKitPipeline: DictationPipeline {
         audioCapture: any AudioCaptureInterface,
         backend: WhisperKitBackend,
         transcriptStore: TranscriptStore,
-        keychainManager: KeychainManager
+        keychainManager: KeychainManager,
+        languageDetector: LanguageDetector = LanguageDetector()
     ) {
         self.audioCapture = audioCapture
         self.backend = backend
         self.keychainManager = keychainManager
+        self.languageDetector = languageDetector
         self.transcriptFinalizer = TranscriptFinalizer(transcriptStore: transcriptStore)
         self.llmPolishStep = LLMPolishStep(keychainManager: keychainManager)
+        // Explicit engine identity: prevents a future codepath that skips the
+        // language detector from silently falling through to the legacy
+        // English-centric prompt path. The planner reads `.whisperKit` + nil
+        // detection as low-confidence (formatting only, no lexical injection).
+        llmPolishStep.backend = .whisperKit
 
         llmPolishStep.onWillProcess = { [weak self] in
             self?.state = .polishing
@@ -281,10 +311,21 @@ public final class WhisperKitPipeline: DictationPipeline {
             SentryBreadcrumb.updateRecordingState(active: true, backend: "whisperkit")
             SentryBreadcrumb.updateAudioRoute(audioCapture.currentAudioRoute)
             startVADMonitoring()
-            await startIncrementalWorker()
+            // Multilingual v1: the incremental worker snapshots transcriptionOptions.language
+            // at recording start. In .auto mode, language is unknown until LID runs at
+            // recording stop, so the worker would decode with the stale/legacy language.
+            // Skip the worker in .auto mode; batch decode at finalize picks up the
+            // post-LID language. .locked mode is safe because the language is known upfront.
+            let workerEnabled: Bool
+            if case .locked = languageMode {
+                workerEnabled = true
+                await startIncrementalWorker()
+            } else {
+                workerEnabled = false
+            }
 
-            Task { await AppLogger.shared.log(
-                "WhisperKit recording started (batch mode, incremental worker active)",
+            Task { [workerEnabled] in await AppLogger.shared.log(
+                "WhisperKit recording started (batch mode, incremental worker: \(workerEnabled ? "on" : "off, auto language mode"))",
                 level: .info, category: "WhisperKitPipeline"
             ) }
         } catch {
@@ -448,6 +489,80 @@ public final class WhisperKitPipeline: DictationPipeline {
             samples.append(contentsOf: [Float](repeating: 0, count: minimumSamples - samples.count))
         }
 
+        // Multilingual v1 (W2): detect language on voiced audio before transcribe.
+        // Heart protection: detector never throws; if it abstains, pass nil to
+        // TranscriptionOptions.language so WhisperKit's internal LID runs.
+        // languageMode is captured lazily so a user toggling Auto<->Locked
+        // mid-recording is respected.
+        let voicedDurationSec = Double(vadSpeechDurationMs) / 1000.0
+        // nonisolated(unsafe): WhisperKit is an actor/reference-typed handle that is
+        // not Sendable. Safe to pass to the detector actor because the backend owns
+        // it for its lifetime and the detector only calls read-only detectLanguage.
+        nonisolated(unsafe) let kitForLID = await backend.whisperKitInstance
+        let lidResult = await languageDetector.detect(
+            samples: samples,
+            voicedDuration: voicedDurationSec,
+            whisperKit: kitForLID,
+            mode: languageMode
+        )
+        lastLanguageDetection = lidResult
+        // Multilingual v1 (W3): forward the detection to the polish step so the
+        // prompt planner can apply confidence-tiered, language-aware vocab
+        // injection. Heart-protected: the planner degrades gracefully when the
+        // detection is abstained or low-confidence.
+        llmPolishStep.languageDetection = lidResult
+        if let lang = lidResult.lang, !lidResult.abstained {
+            transcriptionOptions.language = lang
+        } else {
+            // Abstain: let WhisperKit's own LID run. Heart still completes.
+            transcriptionOptions.language = nil
+        }
+        Task { await AppLogger.shared.log(
+            "LID result: lang=\(lidResult.lang ?? "nil") tier=\(lidResult.tier) conf=\(String(format: "%.2f", lidResult.confidence)) margin=\(String(format: "%.2f", lidResult.margin)) voiced=\(String(format: "%.2f", lidResult.voicedDuration))s abstained=\(lidResult.abstained)",
+            level: .info, category: "WhisperKitPipeline"
+        ) }
+        SentryBreadcrumb.add(stage: "asr", message: "Language detected", data: [
+            "lang": lidResult.lang ?? "nil",
+            "tier": lidResult.tier.rawValue,
+            "confidence": String(format: "%.3f", lidResult.confidence),
+            "margin": String(format: "%.3f", lidResult.margin),
+            "voiced_s": String(format: "%.2f", lidResult.voicedDuration),
+            "abstained": lidResult.abstained,
+        ])
+
+        // Multilingual v1 (W6): emit language.detected for every LID call and
+        // language.lid_abstained when abstaining. Fire-and-forget; telemetry is a
+        // limb and must never block transcription.
+        let sessionPreferredSnapshot = await languageDetector.peekMemory().sessionPreferred
+        TelemetryService.shared.trackLanguageDetected(
+            lang: lidResult.lang,
+            confidence: lidResult.confidence,
+            margin: lidResult.margin,
+            voicedDuration: lidResult.voicedDuration,
+            abstained: lidResult.abstained,
+            sessionPreferredLang: sessionPreferredSnapshot,
+            usedSticky: lidResult.usedSessionPrior
+        )
+        if lidResult.abstained {
+            // Classify the abstain reason per spec § Telemetry table.
+            let reason: String
+            if lidResult.voicedDuration < LanguageDetectorThresholds.shortClipMinSec {
+                reason = "too_short"
+            } else if lidResult.confidence < LanguageDetectorThresholds.normalProb {
+                reason = "low_confidence"
+            } else if lidResult.margin < LanguageDetectorThresholds.normalMargin {
+                reason = "narrow_margin"
+            } else {
+                reason = "low_confidence"
+            }
+            TelemetryService.shared.trackLIDAbstained(
+                voicedDuration: lidResult.voicedDuration,
+                top1Prob: lidResult.confidence,
+                top1Lang: lidResult.lang,
+                reason: reason
+            )
+        }
+
         state = .transcribing
         SentryBreadcrumb.add(stage: "asr", message: "WhisperKit transcription started", data: ["backend": "whisperKit"])
 
@@ -507,6 +622,25 @@ public final class WhisperKitPipeline: DictationPipeline {
             }
 
             let asrEnd = CFAbsoluteTimeGetCurrent()
+
+            // Multilingual v1 (W6): per-transcription latency event for the
+            // per-language performance dashboard. Emitted only when we actually
+            // produced text (empty-result cases are covered by asr.completed +
+            // pipeline.failed elsewhere). Audio duration is derived from the raw
+            // capture buffer (16kHz mono) so latency is compared against actual
+            // recording length, not the VAD-trimmed slice.
+            let asrLatencySec = asrEnd - asrStart
+            let audioDurationSec = Double(rawSamples.count) / Double(AudioConstants.sampleRate)
+            if !asrText.isEmpty && audioDurationSec > 0 {
+                let msPerAudioSec = (asrLatencySec * 1000.0) / audioDurationSec
+                let modelName = await backend.modelVariantName
+                TelemetryService.shared.trackTranscriptionLatency(
+                    lang: asrLanguage,
+                    model: modelName,
+                    durationSeconds: asrLatencySec,
+                    msPerAudioSecond: msPerAudioSec
+                )
+            }
 
             guard !asrText.isEmpty else {
                 if hasSpeechEvidence {

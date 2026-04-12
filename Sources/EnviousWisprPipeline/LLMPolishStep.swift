@@ -17,6 +17,22 @@ public final class LLMPolishStep: TextProcessingStep {
     public var useExtendedThinking: Bool = false
     public var customWords: [CustomWord] = []
 
+    // MARK: - Multilingual v1 (W3)
+
+    /// Language detection outcome from the autodetect stack. Set by
+    /// `WhisperKitPipeline` after the detector runs, before finalization.
+    /// Nil for the Parakeet highway or pre-W2 callsites. The planner falls
+    /// back to legacy (locked-equivalent) behavior when nil.
+    public var languageDetection: LanguageDetectionResult?
+
+    /// Active ASR backend for this polish step. Set at init time by the
+    /// owning pipeline (Parakeet or WhisperKit) so the prompt planner can
+    /// dispatch on explicit engine identity rather than inferring it from
+    /// the absence of `languageDetection`. Nil for standalone callsites
+    /// (e.g., `TranscriptPolishService`) that do not know the original ASR
+    /// engine; the planner preserves legacy passthrough in that case.
+    public var backend: ASRBackendType?
+
     /// Injectable prompt planner. DefaultPromptPlanner in production, mockable in tests.
     public var promptPlanner: any PromptPlanning = DefaultPromptPlanner()
 
@@ -158,6 +174,11 @@ public final class LLMPolishStep: TextProcessingStep {
             return prompt.replacingOccurrences(of: "${transcript}", with: context.text)
         }()
 
+        // Multilingual v1 (W3): snapshot the active vocabulary at construction
+        // time so the planner/builders see a stable list even if the user edits
+        // custom words mid-polish. Migration default: all entries tagged global.
+        let vocabularySnapshot = PromptVocabulary.fromLegacy(customWords)
+
         let input = PromptBuildInput(
             transcript: context.text,
             provider: llmProvider,
@@ -168,7 +189,10 @@ public final class LLMPolishStep: TextProcessingStep {
             appName: context.targetAppName,
             language: context.language,
             customWords: customWords,
-            focusSnapshot: nil  // PR 3
+            focusSnapshot: nil,  // PR 3
+            customVocabulary: vocabularySnapshot,
+            languageDetection: languageDetection,
+            backend: backend
         )
         let plan = promptPlanner.plan(input: input)
 

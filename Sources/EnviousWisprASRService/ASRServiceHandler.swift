@@ -70,7 +70,18 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
 
                     self.parakeetBackend = backend
                 case "whisperKit":
-                    let variant = modelVariant.isEmpty ? "openai_whisper-large-v3_turbo" : modelVariant
+                    // XPC service process has a SEPARATE UserDefaults domain
+                    // from the app, so we cannot read the rollback flag here.
+                    // The app (SettingsManager.whisperKitModel) is flag-aware
+                    // and pushes the correct variant via the XPC interface.
+                    // The fallback used below is only hit if the app sends an
+                    // empty variant (e.g., first load before settings sync),
+                    // in which case we default to the refreshed Multilingual
+                    // v1 variant. Users opting into rollback rely on the app
+                    // to push the legacy variant explicitly.
+                    let variant = modelVariant.isEmpty
+                        ? "openai_whisper-large-v3-v20240930_turbo"
+                        : modelVariant
                     let backend = WhisperKitBackend(modelVariant: variant)
                     try await backend.prepare()
                     self.whisperKitBackend = backend
