@@ -148,13 +148,20 @@ public final class LLMPolishStep: TextProcessingStep {
             return max(context.text.count, LLMConstants.polishMaxTokensFloor)
         }()
 
+        // Prefer live LID but fall back to the context's persisted language
+        // so saved-transcript re-polish paths (e.g. TranscriptPolishService
+        // which clears languageDetection) still hit the Apple Intelligence
+        // preflight gate and language-aware prompt.
+        let detectedLanguage = languageDetection?.lang ?? context.language
+
         let config = LLMProviderConfig(
             model: llmModel,
             apiKeyKeychainId: keychainId,
             maxTokens: maxTokens,
             temperature: 0,
             thinkingBudget: thinkingBudget,
-            reasoningEffort: reasoningEffort
+            reasoningEffort: reasoningEffort,
+            detectedLanguage: detectedLanguage
         )
 
         // Apple Intelligence: own prompt path (unchanged, out of scope for planner).
@@ -170,6 +177,12 @@ public final class LLMPolishStep: TextProcessingStep {
                 )
                 userText = ""
             }
+            // Let `LLMError.unsupportedInputLanguage` and
+            // `LLMError.outputLanguageDrift` propagate. The live dictation
+            // path (TextProcessingRunner) treats them as silent skips. The
+            // saved-transcript re-polish path (TranscriptPolishService)
+            // surfaces them to the user so they can retry with another
+            // provider instead of the transcript being mislabeled AI-polished.
             let llmStart = CFAbsoluteTimeGetCurrent()
             let result = try await polisher.polish(
                 text: userText,

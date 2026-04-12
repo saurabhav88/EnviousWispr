@@ -332,3 +332,20 @@ public enum LanguageTypes {
         whisperSupportedLanguages.contains(lang.lowercased())
     }
 }
+
+// MARK: - Apple Intelligence capabilities
+
+/// Fallback allowlist for Apple Intelligence on-device Foundation Models polish.
+///
+/// The runtime `SystemLanguageModel.default.supportedLanguages` query is the
+/// authoritative source; this set is used only when that query returns an
+/// empty result. Sourced from Apple's documented 2026-04 supported languages.
+public enum AppleIntelligenceCapabilities {
+    /// ISO 639-1 base codes Apple documents as supported for on-device
+    /// Foundation Models generation as of 2026-04. Used only as a safety net
+    /// when the runtime framework query returns an empty set.
+    public static let documentedSupportedLanguages: Set<String> = [
+        "en", "es", "fr", "de", "it", "pt", "ja", "ko", "zh",
+        "nl", "sv", "tr", "da", "no", "vi",
+    ]
+}
