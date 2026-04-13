@@ -102,4 +102,64 @@ struct OllamaModelCatalogTests {
     func notWeakByDefault() {
         #expect(OllamaSetupService.isWeakModel("some-custom-model", parameterBillions: nil) == false)
     }
+
+    @Test("parses :Nb size tag from name when parameter size is unknown")
+    func weakFromSizeTag() {
+        // Common 1-3B variants should be classified as weak by tag alone (#272).
+        #expect(OllamaSetupService.isWeakModel("llama3.2:1b", parameterBillions: nil) == true)
+        #expect(OllamaSetupService.isWeakModel("llama3.2:3b", parameterBillions: nil) == true)
+        #expect(OllamaSetupService.isWeakModel("qwen2.5:3b", parameterBillions: nil) == true)
+        #expect(OllamaSetupService.isWeakModel("gemma2:0.5b-instruct", parameterBillions: nil) == true)
+    }
+
+    @Test("size-tag parser leaves larger models non-weak")
+    func notWeakFromSizeTag() {
+        #expect(OllamaSetupService.isWeakModel("llama3.1:8b", parameterBillions: nil) == false)
+        #expect(OllamaSetupService.isWeakModel("llama3.1:70b", parameterBillions: nil) == false)
+        #expect(OllamaSetupService.isWeakModel("gemma4:latest", parameterBillions: nil) == false)
+    }
+
+    @Test("bare llama3.2 is weak (3B default); other bare names remain unknown")
+    func weakFromBarePrefix() {
+        // Default Ollama model shipped by the app is the bare name `llama3.2`
+        // (3B). Needs to hit the weak path or it falls into the thinking-token
+        // headroom intended only for larger models (#272 codex round 3).
+        #expect(OllamaSetupService.isWeakModel("llama3.2", parameterBillions: nil) == true)
+        #expect(OllamaSetupService.isWeakModel("llama3.2:latest", parameterBillions: nil) == true)
+    }
+
+    @Test("size tag wins over prefix when a larger variant is explicit")
+    func sizeTagWinsOverPrefix() {
+        // Hypothetical future tag: bare `llama3.2` is weak, but an explicit 70b
+        // variant must NOT be classified as weak just because the family prefix
+        // is in the fallback list.
+        #expect(OllamaSetupService.isWeakModel("llama3.2:70b", parameterBillions: nil) == false)
+        #expect(OllamaSetupService.isWeakModel("llama3.2:8b", parameterBillions: nil) == false)
+    }
+
+    // MARK: - Thinking-Capable Detection (#272)
+
+    @Test("known thinking-capable families are detected across tag variants")
+    func thinkingCapableFamilies() {
+        #expect(OllamaSetupService.isThinkingCapableModel("gemma4:latest") == true)
+        #expect(OllamaSetupService.isThinkingCapableModel("gemma4:8b") == true)
+        #expect(OllamaSetupService.isThinkingCapableModel("qwen3") == true)
+        #expect(OllamaSetupService.isThinkingCapableModel("qwen3:7b") == true)
+        #expect(OllamaSetupService.isThinkingCapableModel("deepseek-r1") == true)
+        #expect(OllamaSetupService.isThinkingCapableModel("deepseek-r1:14b") == true)
+        #expect(OllamaSetupService.isThinkingCapableModel("gpt-oss:20b") == true)
+    }
+
+    @Test("non-thinking models are not flagged as thinking-capable")
+    func notThinkingCapable() {
+        // Prevents regression where non-thinking 7B+ models would get the
+        // 2048-token budget and risk outrunning the 15s pipeline timeout.
+        #expect(OllamaSetupService.isThinkingCapableModel("llama3.2") == false)
+        #expect(OllamaSetupService.isThinkingCapableModel("llama3.1:8b") == false)
+        #expect(OllamaSetupService.isThinkingCapableModel("mistral") == false)
+        #expect(OllamaSetupService.isThinkingCapableModel("gemma2:2b") == false)
+        #expect(OllamaSetupService.isThinkingCapableModel("gemma3:12b") == false)
+        #expect(OllamaSetupService.isThinkingCapableModel("phi-2") == false)
+        #expect(OllamaSetupService.isThinkingCapableModel("qwen2.5:7b") == false)
+    }
 }

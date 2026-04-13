@@ -113,9 +113,21 @@ public enum LLMConstants {
     /// Thinking models (Gemini 2.5) consume output tokens for reasoning, so this must be generous.
     public static let defaultMaxTokens: Int = 8192
 
-    /// Floor for Ollama max tokens. Actual cap scales with input length (charCount)
-    /// to handle long dictations. 256 covers short text; longer text uses charCount.
+    /// Floor for Ollama max tokens on non-thinking-capable models (weak/small
+    /// models, plain completion models like llama3.2). Actual cap scales with
+    /// input length (charCount) to handle long dictations. Kept small so a
+    /// rambly small model can't outrun the 15s pipeline timeout.
     public static let ollamaMaxTokens: Int = 256
+
+    /// Floor for Ollama max tokens on thinking-capable models (e.g. Gemma4).
+    /// These models emit reasoning into `message.thinking` separately from the
+    /// final answer in `message.content`, but the reasoning still counts
+    /// against `num_predict`. With the 256 floor, Gemma4's internal reasoning
+    /// exhausted the budget and left `message.content` empty on ~50% of polish
+    /// calls (#272). 2048 gives thinking models enough headroom to complete
+    /// reasoning and emit a clean answer; `done_reason=stop` ends generation
+    /// early for short transcripts so latency is bounded.
+    public static let ollamaThinkingMaxTokens: Int = 2048
 
     /// Default thinking budget for extended thinking models (Gemini 2.5 Flash/Pro).
     public static let defaultThinkingBudget: Int = 8192
