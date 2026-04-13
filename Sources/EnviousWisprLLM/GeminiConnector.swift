@@ -238,11 +238,14 @@ public struct GeminiConnector: TranscriptPolisher {
         }
         statusForLog = String(httpResponse.statusCode)
 
-        // Post-header failures (non-200 body, malformed JSON, empty candidates)
-        // must be reflected in statusForLog so the defer never records a
-        // successful-looking line for a failed call (Codex review finding P2).
+        // Post-header failures (non-200 body, malformed JSON, empty candidates,
+        // all-thought response with zero text) must be reflected in statusForLog
+        // so the defer never records a successful-looking line for a failed
+        // call. The responseText empty-check is inside this do block because
+        // an all-thought response still throws LLMError.emptyResponse and would
+        // otherwise leak through with status=200.
         let firstCandidate: [String: Any]
-        let parts: [[String: Any]]
+        let responseText: String
         do {
             if httpResponse.statusCode != 200 {
                 let body = String(data: data, encoding: .utf8) ?? ""
@@ -256,20 +259,18 @@ public struct GeminiConnector: TranscriptPolisher {
                   let candidateParts = content["parts"] as? [[String: Any]] else {
                 throw LLMError.emptyResponse
             }
+            let text = candidateParts
+                .filter { $0["thought"] as? Bool != true }
+                .compactMap { $0["text"] as? String }
+                .joined()
+            guard !text.isEmpty else {
+                throw LLMError.emptyResponse
+            }
             firstCandidate = candidate
-            parts = candidateParts
+            responseText = text
         } catch {
             statusForLog = "error_after_\(httpResponse.statusCode):\(Self.shortError(error))"
             throw error
-        }
-
-        // Filter out thought parts and join remaining text
-        let responseText = parts
-            .filter { $0["thought"] as? Bool != true }
-            .compactMap { $0["text"] as? String }
-            .joined()
-        guard !responseText.isEmpty else {
-            throw LLMError.emptyResponse
         }
 
         logTruncationIfNeeded(
