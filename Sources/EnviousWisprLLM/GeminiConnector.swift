@@ -59,11 +59,20 @@ public struct GeminiConnector: TranscriptPolisher {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         request.timeoutInterval = 60
 
+        // Allocate the call number once per logical polish. Retries reuse the
+        // same number so logs never mistake a retried polish for multiple
+        // independent calls (see Codex review finding P3).
+        let callNumber = LLMNetworkSession.shared.nextCallNumber()
+
         return try await performWithRetry(config: config) {
             if let onToken {
-                return try await self.polishStreaming(request: request, config: config, onToken: onToken)
+                return try await self.polishStreaming(
+                    request: request, config: config, callNumber: callNumber, onToken: onToken
+                )
             } else {
-                return try await self.polishBatch(request: request, config: config)
+                return try await self.polishBatch(
+                    request: request, config: config, callNumber: callNumber
+                )
             }
         }
     }
@@ -97,59 +106,94 @@ public struct GeminiConnector: TranscriptPolisher {
     private func polishStreaming(
         request: URLRequest,
         config: LLMProviderConfig,
+        callNumber: Int,
         onToken: @Sendable (String) -> Void
     ) async throws -> LLMResult {
         let session = LLMNetworkSession.shared.session
-        let (stream, response) = try await session.bytes(for: request)
+        let collector = LLMTaskMetricsCollector()
+        var statusForLog = "pending"
+        defer {
+            let line = LLMTaskMetricsCollector.format(
+                provider: "gemini", model: config.model, callNumber: callNumber,
+                status: statusForLog, metrics: collector.metrics
+            )
+            Task { await AppLogger.shared.log(line, level: .info, category: "LLM") }
+        }
+
+        let stream: URLSession.AsyncBytes
+        let response: URLResponse
+        do {
+            (stream, response) = try await session.bytes(for: request, delegate: collector)
+        } catch {
+            statusForLog = "error:\(Self.shortError(error))"
+            throw error
+        }
 
         guard let httpResponse = response as? HTTPURLResponse else {
+            statusForLog = "error:non_http_response"
             throw LLMError.requestFailed("Invalid response")
         }
+        statusForLog = String(httpResponse.statusCode)
 
-        // For streaming, non-200 means the entire response is an error body
-        if httpResponse.statusCode != 200 {
-            var errorBody = ""
+        // From here on the stream may throw (mid-response timeout, disconnect,
+        // cancellation). Capture that outcome in statusForLog before the defer
+        // fires so the diagnostic does not record a mid-stream failure as a
+        // successful 200 (Codex review finding P2).
+        let fullText: String
+        let lastFinishReason: String?
+        do {
+            if httpResponse.statusCode != 200 {
+                var errorBody = ""
+                for try await line in stream.lines {
+                    errorBody += line
+                }
+                try handleHTTPError(statusCode: httpResponse.statusCode, body: errorBody)
+            }
+
+            var text = ""
+            var finishReason: String?
+
             for try await line in stream.lines {
-                errorBody += line
-            }
-            try handleHTTPError(statusCode: httpResponse.statusCode, body: errorBody)
-        }
+                // SSE format: lines prefixed with "data: " contain JSON
+                // Empty lines delimit events, lines starting with ":" are comments
+                guard line.hasPrefix("data: ") else { continue }
+                let jsonString = String(line.dropFirst(6))
 
-        var fullText = ""
-        var lastFinishReason: String?
+                guard let jsonData = jsonString.data(using: .utf8),
+                      let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+                      let candidates = json["candidates"] as? [[String: Any]],
+                      let firstCandidate = candidates.first else {
+                    continue
+                }
 
-        for try await line in stream.lines {
-            // SSE format: lines prefixed with "data: " contain JSON
-            // Empty lines delimit events, lines starting with ":" are comments
-            guard line.hasPrefix("data: ") else { continue }
-            let jsonString = String(line.dropFirst(6))
-
-            guard let jsonData = jsonString.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-                  let candidates = json["candidates"] as? [[String: Any]],
-                  let firstCandidate = candidates.first else {
-                continue
-            }
-
-            // Extract text fragments from this chunk, skipping thought parts
-            if let content = firstCandidate["content"] as? [String: Any],
-               let parts = content["parts"] as? [[String: Any]] {
-                for part in parts {
-                    if part["thought"] as? Bool == true { continue }
-                    if let textFragment = part["text"] as? String {
-                        fullText += textFragment
-                        onToken(textFragment)
+                // Extract text fragments from this chunk, skipping thought parts
+                if let content = firstCandidate["content"] as? [String: Any],
+                   let parts = content["parts"] as? [[String: Any]] {
+                    for part in parts {
+                        if part["thought"] as? Bool == true { continue }
+                        if let textFragment = part["text"] as? String {
+                            text += textFragment
+                            onToken(textFragment)
+                        }
                     }
                 }
-            }
 
-            // Check finishReason — present only in the final chunk
-            if let finishReason = firstCandidate["finishReason"] as? String {
-                lastFinishReason = finishReason
+                // Check finishReason — present only in the final chunk
+                if let reason = firstCandidate["finishReason"] as? String {
+                    finishReason = reason
+                }
             }
+            fullText = text
+            lastFinishReason = finishReason
+        } catch {
+            // Record the mid-stream failure so the metrics line reflects reality.
+            // The HTTP status was 200 at headers, but the body did not complete.
+            statusForLog = "error_after_\(httpResponse.statusCode):\(Self.shortError(error))"
+            throw error
         }
 
         guard !fullText.isEmpty else {
+            statusForLog = "error_after_\(httpResponse.statusCode):empty_response"
             throw LLMError.emptyResponse
         }
 
@@ -165,26 +209,58 @@ public struct GeminiConnector: TranscriptPolisher {
 
     private func polishBatch(
         request: URLRequest,
-        config: LLMProviderConfig
+        config: LLMProviderConfig,
+        callNumber: Int
     ) async throws -> LLMResult {
         let session = LLMNetworkSession.shared.session
-        let (data, response) = try await session.data(for: request)
+        let collector = LLMTaskMetricsCollector()
+        var statusForLog = "pending"
+        defer {
+            let line = LLMTaskMetricsCollector.format(
+                provider: "gemini", model: config.model, callNumber: callNumber,
+                status: statusForLog, metrics: collector.metrics
+            )
+            Task { await AppLogger.shared.log(line, level: .info, category: "LLM") }
+        }
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request, delegate: collector)
+        } catch {
+            statusForLog = "error:\(Self.shortError(error))"
+            throw error
+        }
 
         guard let httpResponse = response as? HTTPURLResponse else {
+            statusForLog = "error:non_http_response"
             throw LLMError.requestFailed("Invalid response")
         }
+        statusForLog = String(httpResponse.statusCode)
 
-        if httpResponse.statusCode != 200 {
-            let body = String(data: data, encoding: .utf8) ?? ""
-            try handleHTTPError(statusCode: httpResponse.statusCode, body: body)
-        }
+        // Post-header failures (non-200 body, malformed JSON, empty candidates)
+        // must be reflected in statusForLog so the defer never records a
+        // successful-looking line for a failed call (Codex review finding P2).
+        let firstCandidate: [String: Any]
+        let parts: [[String: Any]]
+        do {
+            if httpResponse.statusCode != 200 {
+                let body = String(data: data, encoding: .utf8) ?? ""
+                try handleHTTPError(statusCode: httpResponse.statusCode, body: body)
+            }
 
-        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        guard let candidates = json?["candidates"] as? [[String: Any]],
-              let firstCandidate = candidates.first,
-              let content = firstCandidate["content"] as? [String: Any],
-              let parts = content["parts"] as? [[String: Any]] else {
-            throw LLMError.emptyResponse
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            guard let candidates = json?["candidates"] as? [[String: Any]],
+                  let candidate = candidates.first,
+                  let content = candidate["content"] as? [String: Any],
+                  let candidateParts = content["parts"] as? [[String: Any]] else {
+                throw LLMError.emptyResponse
+            }
+            firstCandidate = candidate
+            parts = candidateParts
+        } catch {
+            statusForLog = "error_after_\(httpResponse.statusCode):\(Self.shortError(error))"
+            throw error
         }
 
         // Filter out thought parts and join remaining text
@@ -239,6 +315,19 @@ public struct GeminiConnector: TranscriptPolisher {
         default:
             throw LLMError.requestFailed(Self.friendlyMessage(for: statusCode))
         }
+    }
+
+    /// Short error token for diagnostic log lines. Prefers URLError.code.rawValue
+    /// for network errors (e.g. -1001 for timeout, -1009 for offline); falls back
+    /// to the Swift type name. Never a full localized message.
+    fileprivate static func shortError(_ error: Error) -> String {
+        if let urlError = error as? URLError {
+            return "urlerror_\(urlError.code.rawValue)"
+        }
+        if error is CancellationError {
+            return "cancelled"
+        }
+        return "\(type(of: error))"
     }
 
     private static func friendlyMessage(for statusCode: Int) -> String {

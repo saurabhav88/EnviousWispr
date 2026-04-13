@@ -99,6 +99,10 @@ public struct OpenAIConnector: TranscriptPolisher {
         maxRetries: Int = LLMRetryPolicy.defaultMaxRetries,
         delays: [UInt64] = LLMRetryPolicy.defaultDelays
     ) async throws -> (Data, HTTPURLResponse) {
+        // Allocate the call number once per logical polish. Retries reuse the
+        // same number so logs never mistake a retried polish for multiple
+        // independent calls (Codex review finding P3).
+        let callNumber = LLMNetworkSession.shared.nextCallNumber()
         var lastError: Error?
         for attempt in 0...maxRetries {
             if attempt > 0 {
@@ -110,11 +114,31 @@ public struct OpenAIConnector: TranscriptPolisher {
                 try await Task.sleep(nanoseconds: delay)
             }
 
+            let collector = LLMTaskMetricsCollector()
+            var statusForLog = "pending"
             do {
-                let (data, response) = try await LLMNetworkSession.shared.session.data(for: request)
+                defer {
+                    let line = LLMTaskMetricsCollector.format(
+                        provider: "openai", model: config.model, callNumber: callNumber,
+                        status: statusForLog, metrics: collector.metrics
+                    )
+                    Task { await AppLogger.shared.log(line, level: .info, category: "LLM") }
+                }
+                let data: Data
+                let response: URLResponse
+                do {
+                    (data, response) = try await LLMNetworkSession.shared.session.data(
+                        for: request, delegate: collector
+                    )
+                } catch {
+                    statusForLog = "error:\(Self.shortError(error))"
+                    throw error
+                }
                 guard let httpResponse = response as? HTTPURLResponse else {
+                    statusForLog = "error:non_http_response"
                     throw LLMError.requestFailed("Invalid response")
                 }
+                statusForLog = String(httpResponse.statusCode)
                 switch httpResponse.statusCode {
                 case 200:
                     return (data, httpResponse)
@@ -139,11 +163,25 @@ public struct OpenAIConnector: TranscriptPolisher {
                     throw LLMError.requestFailed(Self.friendlyMessage(for: httpResponse.statusCode))
                 }
             } catch {
+                if statusForLog == "pending" {
+                    statusForLog = "error:\(Self.shortError(error))"
+                }
                 lastError = error
                 if !LLMRetryPolicy.isRetryable(error) { throw error }
             }
         }
         throw lastError ?? LLMError.requestFailed("All retries exhausted")
+    }
+
+    /// Short error token for diagnostic log lines. Mirrors GeminiConnector.shortError.
+    fileprivate static func shortError(_ error: Error) -> String {
+        if let urlError = error as? URLError {
+            return "urlerror_\(urlError.code.rawValue)"
+        }
+        if error is CancellationError {
+            return "cancelled"
+        }
+        return "\(type(of: error))"
     }
 
     private static func friendlyMessage(for statusCode: Int) -> String {

@@ -1,4 +1,5 @@
 import Foundation
+import os
 import EnviousWisprCore
 
 /// Singleton URLSession for LLM API requests.
@@ -11,6 +12,11 @@ public final class LLMNetworkSession: Sendable {
 
     public let session: URLSession
 
+    /// Per-process monotonic counter for polish calls. Increments from 1. Lets
+    /// diagnostic log lines distinguish the very first call after launch from
+    /// subsequent calls without carrying extra state.
+    private let callCounter = OSAllocatedUnfairLock<Int>(initialState: 0)
+
     private init() {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 60
@@ -18,6 +24,14 @@ public final class LLMNetworkSession: Sendable {
         config.waitsForConnectivity = false
         config.networkServiceType = .responsiveData
         session = URLSession(configuration: config)
+    }
+
+    /// Returns the next process-wide polish call number (starting at 1).
+    func nextCallNumber() -> Int {
+        callCounter.withLock { n in
+            n += 1
+            return n
+        }
     }
 
     /// Pre-warm the connection to the given URL by sending a lightweight HEAD request.
@@ -28,8 +42,24 @@ public final class LLMNetworkSession: Sendable {
         request.httpMethod = "HEAD"
         request.timeoutInterval = 5
 
-        Task.detached {
-            _ = try? await self.session.data(for: request)
+        Task.detached { [session] in
+            let start = CFAbsoluteTimeGetCurrent()
+            do {
+                let (_, response) = try await session.data(for: request)
+                let ms = Int(((CFAbsoluteTimeGetCurrent() - start) * 1000).rounded())
+                let status = (response as? HTTPURLResponse)?.statusCode.description ?? "n/a"
+                await AppLogger.shared.log(
+                    "preWarm completed url=\(url.absoluteString) duration_ms=\(ms) status=\(status)",
+                    level: .info, category: "LLM"
+                )
+            } catch {
+                let ms = Int(((CFAbsoluteTimeGetCurrent() - start) * 1000).rounded())
+                await AppLogger.shared.log(
+                    "preWarm failed url=\(url.absoluteString) duration_ms=\(ms) "
+                        + "error=\(String(describing: error))",
+                    level: .info, category: "LLM"
+                )
+            }
         }
     }
 
