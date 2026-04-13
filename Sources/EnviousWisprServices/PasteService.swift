@@ -124,7 +124,13 @@ public enum PasteService {
     /// Sets a 1-second AX timeout on the element to avoid hanging on misbehaving apps.
     /// Returns nil if no element is focused or accessibility is not trusted.
     public static func captureFocusedElement() -> AXUIElement? {
-        guard AXIsProcessTrusted() else { return nil }
+        guard AXIsProcessTrusted() else {
+            Task { await AppLogger.shared.log(
+                "AXDiag capture: not trusted",
+                level: .info, category: "AXDiag"
+            ) }
+            return nil
+        }
         let systemWide = AXUIElementCreateSystemWide()
         var focusedRef: CFTypeRef?
         let err = AXUIElementCopyAttributeValue(
@@ -132,16 +138,53 @@ public enum PasteService {
             kAXFocusedUIElementAttribute as CFString,
             &focusedRef
         )
-        guard err == .success, let ref = focusedRef else { return nil }
-        // AXUIElement is a CFTypeRef — cast is always valid after the success guard above.
+        guard err == .success, let ref = focusedRef else {
+            Task { await AppLogger.shared.log(
+                "AXDiag capture: systemWide focus FAILED err=\(err.rawValue)",
+                level: .info, category: "AXDiag"
+            ) }
+            return nil
+        }
         let element = ref as! AXUIElement
-        // Set timeout once at capture — persists for the element's lifetime.
         AXUIElementSetAttributeValue(
             element,
             "AXTimeout" as CFString,
             Float(1.0) as CFTypeRef
         )
+        logElementDiagnostics(element)
         return element
+    }
+
+    /// Log role, subrole, and key settability signals for the focused element.
+    /// One line per paste; used to diagnose cascade fall-throughs in the wild
+    /// (e.g., the Chromium lazy-AX case uncovered in #277).
+    ///
+    /// Runs off the caller's thread so the extra AX round-trips don't add
+    /// latency to the PTT-to-recording start path.
+    private static func logElementDiagnostics(_ element: AXUIElement) {
+        nonisolated(unsafe) let axElement = element
+        let bundleId = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "<nil>"
+        Task.detached {
+            var roleRef: CFTypeRef?
+            _ = AXUIElementCopyAttributeValue(axElement, kAXRoleAttribute as CFString, &roleRef)
+            let role = (roleRef as? String) ?? "<nil>"
+
+            var subroleRef: CFTypeRef?
+            _ = AXUIElementCopyAttributeValue(axElement, kAXSubroleAttribute as CFString, &subroleRef)
+            let subrole = (subroleRef as? String) ?? "<nil>"
+
+            func settable(_ attr: String) -> Bool {
+                var s: DarwinBoolean = false
+                let err = AXUIElementIsAttributeSettable(axElement, attr as CFString, &s)
+                return err == .success && s.boolValue
+            }
+
+            let msg = "AXDiag capture: app=\(bundleId) role=\(role) subrole=\(subrole) " +
+                      "valueSettable=\(settable("AXValue")) " +
+                      "selTextSettable=\(settable("AXSelectedText")) " +
+                      "selRangeSettable=\(settable("AXSelectedTextRange"))"
+            await AppLogger.shared.log(msg, level: .info, category: "AXDiag")
+        }
     }
 
     /// Insert text directly into an AX element at the cursor position.
