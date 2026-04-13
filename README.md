@@ -144,7 +144,7 @@ EnviousWispr is built on a simple principle: **your voice is yours.**
 - **X:** [@EnviousLabs](https://x.com/EnviousLabs)
 - **Email:** hello@enviouswispr.com
 
-Built by [Envious Labs](https://enviouslabs.com)
+Built by [Envious Labs](https://enviouslabs.co)
 
 ## License
 
