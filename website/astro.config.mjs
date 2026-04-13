@@ -24,6 +24,8 @@ const CORE_PAGE_DATES = {
   'https://enviouswispr.com/compare/notta/': '2026-04-04',
   'https://enviouswispr.com/compare/google-docs-voice-typing/': '2026-04-04',
   'https://enviouswispr.com/compare/otter-ai/': '2026-04-04',
+  'https://enviouswispr.com/privacy-policy/': '2026-04-10',
+  'https://enviouswispr.com/terms-of-service/': '2026-04-12',
 };
 
 // Build a URL→pubDate map by reading blog post frontmatter at config time.
