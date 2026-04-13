@@ -43,28 +43,7 @@ public struct OpenAIConnector: TranscriptPolisher {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         request.timeoutInterval = 60
 
-        let (data, httpResponse) = try await performWithRetry(request: request, config: config)
-
-        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        guard let choices = json?["choices"] as? [[String: Any]],
-              let message = choices.first?["message"] as? [String: Any],
-              let content = message["content"] as? String,
-              !content.isEmpty else {
-            throw LLMError.emptyResponse
-        }
-
-        if let finishReason = choices.first?["finish_reason"] as? String,
-           finishReason == "length" {
-            Task { await AppLogger.shared.log(
-                "WARNING: OpenAI response truncated (finish_reason=length, model=\(config.model), max_tokens=\(config.maxTokens))",
-                level: .info, category: "LLM"
-            ) }
-        }
-
-        return LLMResult(
-            polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines)
-                .strippingLLMPreamble()
-        )
+        return try await performWithRetry(request: request, config: config)
     }
 
     public func polish(
@@ -98,7 +77,7 @@ public struct OpenAIConnector: TranscriptPolisher {
         config: LLMProviderConfig,
         maxRetries: Int = LLMRetryPolicy.defaultMaxRetries,
         delays: [UInt64] = LLMRetryPolicy.defaultDelays
-    ) async throws -> (Data, HTTPURLResponse) {
+    ) async throws -> LLMResult {
         // Allocate the call number once per logical polish. Retries reuse the
         // same number so logs never mistake a retried polish for multiple
         // independent calls (Codex review finding P3).
@@ -141,7 +120,16 @@ public struct OpenAIConnector: TranscriptPolisher {
                 statusForLog = String(httpResponse.statusCode)
                 switch httpResponse.statusCode {
                 case 200:
-                    return (data, httpResponse)
+                    // Parse inside the defer scope so a malformed 200 payload
+                    // (e.g. content-moderation refusal, unexpected schema)
+                    // updates statusForLog to error_after_200 before the
+                    // metrics line is written (Codex GitHub review P2).
+                    do {
+                        return try Self.parseSuccess(data: data, config: config)
+                    } catch {
+                        statusForLog = "error_after_200:\(Self.shortError(error))"
+                        throw error
+                    }
                 case 401:
                     throw LLMError.invalidAPIKey
                 case 429:
@@ -171,6 +159,34 @@ public struct OpenAIConnector: TranscriptPolisher {
             }
         }
         throw lastError ?? LLMError.requestFailed("All retries exhausted")
+    }
+
+    /// Parse a successful OpenAI 200 response into an LLMResult.
+    /// Throws `LLMError.emptyResponse` on missing/empty content so the retry
+    /// caller can mark statusForLog as error_after_200.
+    private static func parseSuccess(
+        data: Data, config: LLMProviderConfig
+    ) throws -> LLMResult {
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        guard let choices = json?["choices"] as? [[String: Any]],
+              let message = choices.first?["message"] as? [String: Any],
+              let content = message["content"] as? String,
+              !content.isEmpty else {
+            throw LLMError.emptyResponse
+        }
+
+        if let finishReason = choices.first?["finish_reason"] as? String,
+           finishReason == "length" {
+            Task { await AppLogger.shared.log(
+                "WARNING: OpenAI response truncated (finish_reason=length, model=\(config.model), max_tokens=\(config.maxTokens))",
+                level: .info, category: "LLM"
+            ) }
+        }
+
+        return LLMResult(
+            polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines)
+                .strippingLLMPreamble()
+        )
     }
 
     /// Short error token for diagnostic log lines. Mirrors GeminiConnector.shortError.
