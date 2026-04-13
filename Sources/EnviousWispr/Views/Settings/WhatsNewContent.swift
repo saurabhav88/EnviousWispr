@@ -30,6 +30,22 @@ enum WhatsNewContent {
         // MARK: - v1.9.2
 
         Entry(
+            id: "multilingual-auto-detect",
+            icon: "globe",
+            title: "Dictate in 99 languages",
+            description: "EnviousWispr now auto-detects the language you are speaking and transcribes accordingly. German, Japanese, Arabic, Tamil, Mandarin and 95 others work out of the box with no setting change needed.",
+            category: .newFeatures,
+            version: "1.9.2"
+        ),
+        Entry(
+            id: "apple-intelligence-multilingual",
+            icon: "sparkles",
+            title: "Apple Intelligence polish stays in your language",
+            description: "AI polish with Apple Intelligence now preserves the language you spoke in. German stays German, Korean stays Korean. Languages Apple Intelligence cannot handle are quietly skipped so you always get your raw transcript instead of a silent failure.",
+            category: .smarterAIPolish,
+            version: "1.9.2"
+        ),
+        Entry(
             id: "whisperkit-full-capture",
             icon: "text.badge.checkmark",
             title: "WhisperKit captures every word",
