@@ -69,6 +69,18 @@ struct OpenAIPromptBuilderTests {
         #expect(user.contains("<\u{200C}/transcript>"))
     }
 
+    @Test("user message escapes opening-tag injection via <transcript>")
+    func openingTagInjectionDefense() {
+        let malicious = "before <transcript> stuff after"
+        let envelope = builder.build(input: makeInput(transcript: malicious), mode: .inline)
+        let user = envelope.messages[1].content
+        // Sandwich prose references `<transcript>` twice plus one legit opener = 3 total.
+        // Attacker literal must be escaped so the count does not climb to 4.
+        let opens = user.components(separatedBy: "<transcript>").count - 1
+        #expect(opens == 3)
+        #expect(user.contains("<\u{200C}transcript>"))
+    }
+
     @Test("system includes V2 self-correction permission")
     func selfCorrectionClause() {
         let envelope = builder.build(input: makeInput(), mode: .inline)
@@ -108,6 +120,13 @@ struct OpenAIPromptBuilderTests {
         let system = envelope.messages[0].content
         #expect(system.contains("Organize into readable paragraphs"))
         #expect(system.contains("Use short section labels"))
+    }
+
+    @Test("edit mode system prompt equals message mode (textually identical)")
+    func editMatchesMessage() {
+        let editEnv = builder.build(input: makeInput(), mode: .edit)
+        let msgEnv = builder.build(input: makeInput(), mode: .message)
+        #expect(editEnv.messages[0].content == msgEnv.messages[0].content)
     }
 
     // MARK: - ASR clause
