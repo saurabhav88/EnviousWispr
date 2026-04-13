@@ -27,6 +27,25 @@ enum WhatsNewContent {
     }
 
     static let entries: [Entry] = [
+        // MARK: - v1.9.3
+
+        Entry(
+            id: "gemma4-polish-fixed",
+            icon: "checkmark.seal",
+            title: "Gemma 4 polish works again",
+            description: "Local AI polish with Gemma 4 was quietly falling back to the raw transcript on every dictation. It now produces cleaned-up output reliably. Fillers are removed, punctuation is added, and lists are formatted, all running offline on your Mac.",
+            category: .betterOllamaSupport,
+            version: "1.9.3"
+        ),
+        Entry(
+            id: "thinking-models-supported",
+            icon: "brain",
+            title: "Better support for reasoning models",
+            description: "Thinking models like Gemma 4, Qwen 3, QwQ, DeepSeek R1, and gpt-oss now have enough room to finish reasoning and still produce a clean polished answer. Smaller local models still run on the tight budget that keeps them fast and reliable.",
+            category: .smarterAIPolish,
+            version: "1.9.3"
+        ),
+
         // MARK: - v1.9.2
 
         Entry(
