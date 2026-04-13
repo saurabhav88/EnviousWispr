@@ -133,12 +133,14 @@ struct PromptPlannerTests {
 
     // MARK: - Builder selection produces correct prompt style
 
-    @Test("Gemini plan uses plain-label format, no XML")
+    @Test("Gemini plan uses V2 editor-role system and sandwich user message")
     func geminiPlanStyle() {
-        let plan = planner.plan(input: makeInput(provider: .gemini, modelID: "gemini-2.0-flash"))
+        let plan = planner.plan(input: makeInput(provider: .gemini, modelID: "gemini-2.5-flash"))
         let system = plan.envelope.messages[0].content
-        #expect(system.contains("rewrite dictated text"))
+        let user = plan.envelope.messages[1].content
+        #expect(system.contains("transcript polisher for direct paste"))
         #expect(!system.contains("<transcript>"))
+        #expect(user.contains("<transcript>"))
     }
 
     @Test("OpenAI plan uses prose format with sandwich framing")
