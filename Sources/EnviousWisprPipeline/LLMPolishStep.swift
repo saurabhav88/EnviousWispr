@@ -139,7 +139,18 @@ public final class LLMPolishStep: TextProcessingStep {
                 // Estimate tokens (~3 chars per token for English), add headroom.
                 // For 921-char input: 921/3 + 100 = 407 tokens (~2x actual output of ~195).
                 // The pipeline-level timeout (15s) caps runaway generation.
-                return max(context.text.count / 3 + 100, LLMConstants.ollamaMaxTokens)
+                //
+                // Only thinking-capable families (Gemma4, qwen3, deepseek-r1,
+                // gpt-oss) get the larger 2048-token floor — they emit reasoning
+                // into `message.thinking` separately from `message.content`, and
+                // that reasoning still counts against `num_predict` (#272). All
+                // other Ollama models (weak or not) keep the tight 256 floor so
+                // a rambly generation can't outrun the 15s pipeline timeout.
+                // `done_reason=stop` ends generation early for short transcripts.
+                let floor = OllamaSetupService.isThinkingCapableModel(llmModel)
+                    ? LLMConstants.ollamaThinkingMaxTokens
+                    : LLMConstants.ollamaMaxTokens
+                return max(context.text.count / 3 + 100, floor)
             }
             // OpenAI reasoning models include reasoning in max_completion_tokens — keep generous.
             if reasoningEffort != nil { return LLMConstants.defaultMaxTokens }

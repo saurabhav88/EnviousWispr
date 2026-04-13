@@ -195,17 +195,67 @@ public final class OllamaSetupService {
 
     // MARK: - Weak Model Detection
 
-    /// Hardcoded fallback prefixes for weak model detection when parameter size is unknown.
-    nonisolated private static let weakModelFallbackPrefixes: [String] = ["tinyllama", "phi-2", "gemma2:2b"]
+    /// Hardcoded fallback prefixes for weak model detection when parameter size
+    /// is unknown and no size tag is present. Covers:
+    /// - `tinyllama` (1.1B, all variants)
+    /// - `phi-2` (2.7B, bare name)
+    /// - `gemma2:2b` (2B, tagged)
+    /// - `llama3.2` (3B default; bare name used as the app's default Ollama model)
+    nonisolated private static let weakModelFallbackPrefixes: [String] = [
+        "tinyllama", "phi-2", "gemma2:2b", "llama3.2",
+    ]
+
+    /// Matches a size tag like `:1b`, `:3b`, `:0.5b` — Ollama's standard naming
+    /// convention for parameter-count variants. Used as a fallback when we don't
+    /// have downloaded-model metadata for the exact parameter billions.
+    nonisolated private static let sizeTagRegex = try? NSRegularExpression(
+        pattern: #":(\d+(?:\.\d+)?)b(?:-|$|\s|:)"#,
+        options: .caseInsensitive
+    )
 
     /// Determine if a model should receive a simplified system prompt.
-    /// Uses parameter count when available, falls back to name-based heuristic.
+    /// Resolution order (strongest signal first):
+    /// 1. Explicit `parameterBillions` from downloaded-model metadata.
+    /// 2. `:Nb` size tag in the name (e.g. `llama3.2:70b` → 70B, not weak; `qwen2.5:3b` → weak).
+    /// 3. Hardcoded fallback prefix list for bare names without any size hint.
     public nonisolated static func isWeakModel(_ name: String, parameterBillions: Double? = nil) -> Bool {
         if let billions = parameterBillions {
             return billions <= 3.0
         }
         let lower = name.lowercased()
+        // Size tag is authoritative when present (overrides prefix defaults so
+        // `llama3.2:70b` is correctly classified as non-weak even though the
+        // `llama3.2` family is in the prefix list).
+        let range = NSRange(lower.startIndex..<lower.endIndex, in: lower)
+        if let match = sizeTagRegex?.firstMatch(in: lower, range: range),
+           match.numberOfRanges > 1,
+           let billionsRange = Range(match.range(at: 1), in: lower),
+           let billions = Double(lower[billionsRange]) {
+            return billions <= 3.0
+        }
         return weakModelFallbackPrefixes.contains(where: { lower.hasPrefix($0) })
+    }
+
+    /// Known thinking-capable Ollama model family prefixes (as of 2026-04).
+    /// These families emit reasoning into `message.thinking` separately from the
+    /// final answer in `message.content`. Because the reasoning still counts
+    /// against `num_predict`, these models need a larger token budget to avoid
+    /// truncating the final answer to empty (#272).
+    nonisolated private static let thinkingCapableFamilyPrefixes: [String] = [
+        "gemma4",        // Google Gemma 4 (thinking capability in Ollama 0.20+)
+        "qwen3",         // Alibaba Qwen 3 reasoning
+        "deepseek-r1",   // DeepSeek R1 reasoning
+        "gpt-oss",       // OpenAI gpt-oss (low/medium/high thinking)
+    ]
+
+    /// Determine if a model emits separate thinking tokens that consume
+    /// `num_predict` budget. Used to decide whether to grant the larger
+    /// 2048-token floor in `LLMPolishStep` (non-thinking models stay on the
+    /// tight 256 floor so they can't outrun the 15s pipeline timeout on a
+    /// rambly generation).
+    public nonisolated static func isThinkingCapableModel(_ name: String) -> Bool {
+        let lower = name.lowercased()
+        return thinkingCapableFamilyPrefixes.contains(where: { lower.hasPrefix($0) })
     }
 
     /// Convenience: check if a model name is weak using downloaded model metadata.

@@ -37,17 +37,12 @@ public struct OllamaConnector: TranscriptPolisher {
             messages.append(["role": "user", "content": text])
         }
 
-        var body: [String: Any] = [
-            "model": config.model,
-            "messages": messages,
-            "stream": false,
-            "think": false,
-            "keep_alive": "60m",
-            "options": [
-                "num_predict": config.maxTokens,
-                "temperature": config.temperature,
-            ],
-        ]
+        let body = Self.makeRequestBody(
+            model: config.model,
+            messages: messages,
+            maxTokens: config.maxTokens,
+            temperature: config.temperature
+        )
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -114,17 +109,12 @@ public struct OllamaConnector: TranscriptPolisher {
             throw LLMError.requestFailed("Invalid Ollama URL: \(endpointURL)")
         }
 
-        let body: [String: Any] = [
-            "model": config.model,
-            "messages": messages,
-            "stream": false,
-            "think": false,
-            "keep_alive": "60m",
-            "options": [
-                "num_predict": config.maxTokens,
-                "temperature": config.temperature,
-            ],
-        ]
+        let body = Self.makeRequestBody(
+            model: config.model,
+            messages: messages,
+            maxTokens: config.maxTokens,
+            temperature: config.temperature
+        )
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -155,6 +145,38 @@ public struct OllamaConnector: TranscriptPolisher {
             polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines)
                 .strippingLLMPreamble()
         )
+    }
+
+    // MARK: - Request body
+
+    /// Builds the `/api/chat` request body shared by both polish entry points.
+    ///
+    /// The `think` parameter is intentionally omitted (#272):
+    /// - Setting `think: false` (boolean) is silently ignored by gemma4:latest and
+    ///   causes reasoning to leak into `message.content` as a 5-13× expansion that
+    ///   the validator rejects.
+    /// - Omitting the key lets Ollama route any reasoning to `message.thinking`
+    ///   (which we don't read) and deliver the clean final answer in `message.content`,
+    ///   provided `num_predict` is large enough to accommodate both (see
+    ///   `LLMConstants.ollamaMaxTokens`).
+    /// Non-thinking models (llama3.2 etc.) are unaffected: they emit empty
+    /// `message.thinking` regardless.
+    static func makeRequestBody(
+        model: String,
+        messages: [[String: String]],
+        maxTokens: Int,
+        temperature: Double
+    ) -> [String: Any] {
+        [
+            "model": model,
+            "messages": messages,
+            "stream": false,
+            "keep_alive": "60m",
+            "options": [
+                "num_predict": maxTokens,
+                "temperature": temperature,
+            ],
+        ]
     }
 
     // MARK: - Retry
