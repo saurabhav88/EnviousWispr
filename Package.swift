@@ -128,6 +128,7 @@ let package = Package(
                 "EnviousWisprCore",
                 "EnviousWisprPostProcessing",
                 "EnviousWisprLLM",
+                "EnviousWisprPipeline",
             ],
             path: "Tests/EnviousWisprTests"
         ),
