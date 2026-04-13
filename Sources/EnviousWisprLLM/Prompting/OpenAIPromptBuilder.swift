@@ -1,11 +1,11 @@
 import EnviousWisprCore
 
 /// Builds prompts for OpenAI models using V2 sandwich framing.
-/// Shares V2 system base and user-message sandwich helpers with GeminiPromptBuilder
-/// (see V2SystemBase / buildSandwichUserMessage / formattingClause). Retains OpenAI-specific
-/// mode-specific editing rules, language override prefix (English-default polish only
-/// removed here; OpenAI keeps its pre-V2 language block because its production sandwich
-/// already works for multilingual), short-text guard, custom vocabulary.
+/// Uses the shared `buildSandwichUserMessage` helper from PromptV2Support.swift for
+/// user-message wrapping. OpenAI owns its own mode-specific allowed-edits list,
+/// ASR-awareness clause, appName context block, language override prefix, short-text
+/// guard, and custom vocabulary rendering. Gemini-specific system text (`V2SystemBase`)
+/// and mode clauses (`formattingClause`) are NOT used by this builder.
 public struct OpenAIPromptBuilder: PromptBuilder {
     public init() {}
 
@@ -108,7 +108,7 @@ public struct OpenAIPromptBuilder: PromptBuilder {
             system += "\n\n\(vocab)"
         }
 
-        // User message: V2 sandwich (shared helper from GeminiPromptBuilder).
+        // User message: V2 sandwich (shared helper from PromptV2Support.swift).
         let userMessage = buildSandwichUserMessage(transcript: input.transcript)
 
         return PromptEnvelope(messages: [
@@ -117,6 +117,18 @@ public struct OpenAIPromptBuilder: PromptBuilder {
         ])
     }
 
+    /// Minimal wrapping for the `${transcript}` placeholder path
+    /// (`customPromptMode == .legacyTemplate`). The caller supplied a custom system prompt
+    /// with a literal `${transcript}` placeholder that `LLMPolishStep` substitutes with
+    /// the raw transcript before this call. This mode EXPLICITLY OPTS OUT OF V2
+    /// ANTI-INSTRUCTION DEFENSE: we do not wrap in `<transcript>` tags, we do not add
+    /// allowed-edits or multilingual clauses. The user owns prompt safety for their custom
+    /// prompt.
+    ///
+    /// Wrapping we still apply: optional language prefix (non-English transcripts) and a
+    /// trailing "Return only the final text." sentence as a minimum format safety net.
+    /// See docs/feature-requests/polish-prompt-v2.md §3.5 and
+    /// Sources/EnviousWisprCore/PolishStyleConfig.swift for `CustomPromptMode.legacyTemplate`.
     private func buildLegacyTemplate(customPrompt: String, language: String?) -> PromptEnvelope {
         var system = ""
         if let language = language, !language.isEmpty {
