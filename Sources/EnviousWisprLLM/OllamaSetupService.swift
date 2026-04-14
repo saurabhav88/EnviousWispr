@@ -103,6 +103,7 @@ public final class OllamaSetupService {
 
     /// Curated suggestions for users who haven't downloaded models yet.
     public static let modelCatalog: [OllamaModelCatalogEntry] = [
+        OllamaModelCatalogEntry(name: "gemma3n:e4b", displayName: "Gemma 3 Nano (4B)", parameterCount: "4B", qualityTier: .best, downloadSize: "~6 GB"),
         OllamaModelCatalogEntry(name: "llama3.2", displayName: "Llama 3.2", parameterCount: "3B", qualityTier: .best, downloadSize: "~2 GB"),
         OllamaModelCatalogEntry(name: "llama3.2:1b", displayName: "Llama 3.2 (1B)", parameterCount: "1B", qualityTier: .medium, downloadSize: "~800 MB"),
         OllamaModelCatalogEntry(name: "mistral", displayName: "Mistral", parameterCount: "7B", qualityTier: .best, downloadSize: "~4 GB"),
