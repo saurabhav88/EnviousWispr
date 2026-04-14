@@ -59,19 +59,7 @@ public struct OllamaConnector: TranscriptPolisher {
             throw LLMError.emptyResponse
         }
 
-        // Log timing telemetry for observability
-        if let loadNs = json?["load_duration"] as? Int64,
-           let promptNs = json?["prompt_eval_duration"] as? Int64,
-           let evalNs = json?["eval_duration"] as? Int64,
-           let evalCount = json?["eval_count"] as? Int {
-            let loadMs = Double(loadNs) / 1_000_000
-            let promptMs = Double(promptNs) / 1_000_000
-            let evalMs = Double(evalNs) / 1_000_000
-            Task { await AppLogger.shared.log(
-                "Ollama timing: load=\(String(format: "%.0f", loadMs))ms prompt=\(String(format: "%.0f", promptMs))ms eval=\(String(format: "%.0f", evalMs))ms tokens=\(evalCount) (model=\(config.model))",
-                level: .verbose, category: "LLM"
-            ) }
-        }
+        Self.logTelemetry(json: json, message: message, model: config.model)
 
         // Check for truncation via done_reason
         if let doneReason = json?["done_reason"] as? String, doneReason != "stop" {
@@ -132,6 +120,8 @@ public struct OllamaConnector: TranscriptPolisher {
             throw LLMError.emptyResponse
         }
 
+        Self.logTelemetry(json: json, message: message, model: config.model)
+
         if let doneReason = json?["done_reason"] as? String, doneReason != "stop" {
             Task {
                 await AppLogger.shared.log(
@@ -145,6 +135,39 @@ public struct OllamaConnector: TranscriptPolisher {
             polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines)
                 .strippingLLMPreamble()
         )
+    }
+
+    // MARK: - Telemetry
+
+    /// Logs Ollama `/api/chat` timing + reasoning-output telemetry (#276).
+    ///
+    /// `thinking` captures the char count of `message.thinking`, which we
+    /// discard but which gemma4 spends significant eval time producing. Non-
+    /// thinking models (llama3.2 etc.) log `thinking=0`. Compare against
+    /// `eval`/`tokens` to see what fraction of eval time was spent on
+    /// reasoning vs the final answer.
+    private static func logTelemetry(
+        json: [String: Any]?,
+        message: [String: Any],
+        model: String
+    ) {
+        guard
+            let loadNs = json?["load_duration"] as? Int64,
+            let promptNs = json?["prompt_eval_duration"] as? Int64,
+            let evalNs = json?["eval_duration"] as? Int64,
+            let evalCount = json?["eval_count"] as? Int
+        else { return }
+        let loadMs = Double(loadNs) / 1_000_000
+        let promptMs = Double(promptNs) / 1_000_000
+        let evalMs = Double(evalNs) / 1_000_000
+        let thinkingChars = (message["thinking"] as? String)?.count ?? 0
+        let contentChars = (message["content"] as? String)?.count ?? 0
+        Task {
+            await AppLogger.shared.log(
+                "Ollama timing: load=\(String(format: "%.0f", loadMs))ms prompt=\(String(format: "%.0f", promptMs))ms eval=\(String(format: "%.0f", evalMs))ms tokens=\(evalCount) thinking=\(thinkingChars)chars content=\(contentChars)chars (model=\(model))",
+                level: .verbose, category: "LLM"
+            )
+        }
     }
 
     // MARK: - Request body
