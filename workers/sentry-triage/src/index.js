@@ -124,7 +124,12 @@ async function handleTriage(body, env) {
 
   // Handle terminal actions — update KV state and exit without firing Routine
   if (action === "resolved" || action === "archived") {
-    await env.SENTRY_DEDUP.put(kvKey, JSON.stringify({ state: "resolved", updatedAt: Date.now() }));
+    // 90-day TTL — same as fired state, prevents unbounded KV growth.
+    await env.SENTRY_DEDUP.put(
+      kvKey,
+      JSON.stringify({ state: "resolved", updatedAt: Date.now() }),
+      { expirationTtl: 7776000 } // 90 days
+    );
     console.log(`[sentry-triage] Issue ${issueId} ${action} — KV updated, no Routine`);
     return;
   }
@@ -198,9 +203,10 @@ async function handleTriage(body, env) {
   const capRaw = await env.SENTRY_DEDUP.get(capKey);
   const capCount = parseInt(capRaw ?? "0", 10);
 
-  if (capCount >= 13) {
-    // Fire at 13 to leave 2 headroom for P0s that arrive late in the day.
-    console.warn(`[sentry-triage] Daily Routine count at ${capCount}/15 — cap threshold reached, posting Discord alert`);
+  if (capCount >= 13 && priority !== "P0") {
+    // Cap at 13 to leave 2 headroom. P0 always bypasses — a critical crash at 11pm
+    // should never be silently dropped because the day was busy.
+    console.warn(`[sentry-triage] Daily Routine count at ${capCount}/15 — blocking ${priority}, posting Discord alert`);
     await postDiscord(env.DISCORD_WEBHOOK_URL, buildCapAlertEmbed(capCount, issueId, title, permalink));
     return;
   }
