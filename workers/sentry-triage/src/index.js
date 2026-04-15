@@ -61,15 +61,18 @@ async function verifyHmac(body, sigHeader, secret) {
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
 
-    // Convert header hex to Uint8Array for timingSafeEqual
+    // Constant-time comparison — avoids timing side-channels without relying
+    // on any runtime-specific API. XOR each byte and OR-accumulate: diff===0 iff equal.
     const computedBytes = encoder.encode(computedHex);
     const receivedBytes = encoder.encode(sigHeader);
 
-    // timingSafeEqual requires equal-length buffers — length mismatch = invalid sig
     if (computedBytes.length !== receivedBytes.length) return false;
 
-    // crypto.timingSafeEqual is a CF Workers non-standard extension
-    return crypto.timingSafeEqual(computedBytes, receivedBytes);
+    let diff = 0;
+    for (let i = 0; i < computedBytes.length; i++) {
+      diff |= computedBytes[i] ^ receivedBytes[i];
+    }
+    return diff === 0;
   } catch (err) {
     console.error("[sentry-triage] HMAC error:", err.message);
     return false;
@@ -200,6 +203,10 @@ async function handleTriage(body, env) {
   // Check daily Routine cap
   const today = new Date().toISOString().slice(0, 10);
   const capKey = `routines:fired:${today}`;
+  // Non-atomic read/modify/write: two concurrent Workers can both read capCount=12,
+  // both pass the gate, and overwrite each other's increment. CF KV has no CAS.
+  // Accepted: solo app, low volume, max over-fire bounded by per-colo concurrency.
+  // P0 always bypasses the cap anyway, so worst case is a few extra P1/P2 Routines.
   const capRaw = await env.SENTRY_DEDUP.get(capKey);
   const capCount = parseInt(capRaw ?? "0", 10);
 
