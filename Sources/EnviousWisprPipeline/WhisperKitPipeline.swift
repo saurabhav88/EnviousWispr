@@ -1,33 +1,33 @@
 import AppKit
-import EnviousWisprCore
-import EnviousWisprStorage
-import EnviousWisprAudio
-import EnviousWisprServices
 import EnviousWisprASR
+import EnviousWisprAudio
+import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprServices
+import EnviousWisprStorage
 import Foundation
 @preconcurrency import WhisperKit
 
 /// Internal state machine for the WhisperKit highway — independent of PipelineState.
 public enum WhisperKitPipelineState: Equatable, Sendable {
-    case idle
-    case startingUp       // engine warm-up / pre-capture setup
-    case loadingModel
-    case ready
-    case recording
-    case transcribing
-    case polishing
-    case complete
-    case error(String)
+  case idle
+  case startingUp  // engine warm-up / pre-capture setup
+  case loadingModel
+  case ready
+  case recording
+  case transcribing
+  case polishing
+  case complete
+  case error(String)
 
-    public var isActive: Bool {
-        switch self {
-        case .startingUp, .recording, .transcribing, .polishing, .loadingModel:
-            return true
-        default:
-            return false
-        }
+  public var isActive: Bool {
+    switch self {
+    case .startingUp, .recording, .transcribing, .polishing, .loadingModel:
+      return true
+    default:
+      return false
     }
+  }
 }
 
 /// Independent WhisperKit dictation pipeline — batch record → transcribe → polish → paste.
@@ -36,961 +36,1164 @@ public enum WhisperKitPipelineState: Equatable, Sendable {
 /// with the Parakeet highway (TranscriptionPipeline). No streaming — batch only.
 @MainActor
 @Observable
-public final class WhisperKitPipeline: DictationPipeline {
-    private let audioCapture: any AudioCaptureInterface
-    private let backend: WhisperKitBackend
-    private let keychainManager: KeychainManager
+public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarget {
+  private let audioCapture: any AudioCaptureInterface
+  private let backend: WhisperKitBackend
+  private let keychainManager: KeychainManager
 
-    public private(set) var state: WhisperKitPipelineState = .idle {
-        didSet {
-            if state != oldValue {
-                onStateChange?(state)
-            }
-        }
+  public private(set) var state: WhisperKitPipelineState = .idle {
+    didSet {
+      if state != oldValue {
+        onStateChange?(state)
+      }
     }
-    public var onStateChange: ((WhisperKitPipelineState) -> Void)?
-    public private(set) var currentTranscript: Transcript?
-    public var autoCopyToClipboard: Bool = true
-    public var autoPasteToActiveApp: Bool = false
-    public var restoreClipboardAfterPaste: Bool = false
-    public var transcriptionOptions: TranscriptionOptions = .default
-    public var lastPolishError: String?
-    public var modelUnloadPolicy: ModelUnloadPolicy = .never
+  }
+  public var onStateChange: ((WhisperKitPipelineState) -> Void)?
+  public private(set) var currentTranscript: Transcript?
+  public var autoCopyToClipboard: Bool = true
+  public var autoPasteToActiveApp: Bool = false
+  public var restoreClipboardAfterPaste: Bool = false
+  public var transcriptionOptions: TranscriptionOptions = .default
+  public var lastPolishError: String?
+  public var modelUnloadPolicy: ModelUnloadPolicy = .never
 
-    // Multilingual v1 (W2): language mode + detector. Captured lazily at
-    // detection time so a user toggling Auto->Locked mid-recording is respected.
-    public var languageMode: LanguageMode = .auto {
-        didSet {
-            // Mid-recording changes to the language mode invalidate the
-            // incremental worker, which snapshots the decode language at its
-            // init. Rather than try to re-decode the worker's buffers with the
-            // new language, we drop the worker entirely so finalize falls back
-            // to batch decode with the post-change language.
-            if oldValue != languageMode, let worker = incrementalWorker {
-                incrementalWorker = nil
-                Task { await worker.cancel() }
-                Task { await AppLogger.shared.log(
-                    "Language mode changed mid-recording, incremental worker invalidated",
-                    level: .info, category: "WhisperKitPipeline"
-                ) }
-            }
-        }
-    }
-    private let languageDetector: LanguageDetector
-    /// Last detection result, exposed for telemetry and UI (passive chip).
-    public private(set) var lastLanguageDetection: LanguageDetectionResult?
-
-    // Shared services
-    private let transcriptFinalizer: TranscriptFinalizer
-
-    // Text processing steps (own instances — not shared with Parakeet)
-    public let wordCorrectionStep = WordCorrectionStep()
-    public let fillerRemovalStep = FillerRemovalStep()
-    public let llmPolishStep: LLMPolishStep
-    private var textProcessingSteps: [any TextProcessingStep] = []
-
-    /// Access for configuration
-    public var wordCorrection: WordCorrectionStep { wordCorrectionStep }
-    public var fillerRemoval: FillerRemovalStep { fillerRemovalStep }
-    public var llmPolish: LLMPolishStep { llmPolishStep }
-
-    /// The app that was frontmost when recording started.
-    private var targetApp: NSRunningApplication?
-    private var targetElement: AXUIElement?
-    private var recordingStartTime: Date?
-    /// Guards against concurrent stopAndTranscribe calls.
-    private var isStopping = false
-    /// Whether audio input has been pre-warmed by PTT key-down.
-    private var isPreWarmed = false
-
-    // VAD properties
-    public var vadAutoStop: Bool = false
-    public var vadSilenceTimeout: Double = 1.5
-    public var vadSensitivity: Float = 0.5
-    public var vadEnergyGate: Bool = false
-
-    private var silenceDetector: SilenceDetector?
-    private var vadMonitorTask: Task<Void, Never>?
-    /// Frozen snapshot of recording state, built before teardown for post-recording error enrichment.
-    private var frozenSnapshot: SentryBreadcrumb.RecordingSnapshot?
-    private var incrementalWorker: WhisperKitIncrementalWorker?
-    private var modelUnloadTask: Task<Void, Never>?
-
-    public init(
-        audioCapture: any AudioCaptureInterface,
-        backend: WhisperKitBackend,
-        transcriptStore: TranscriptStore,
-        keychainManager: KeychainManager,
-        languageDetector: LanguageDetector = LanguageDetector()
-    ) {
-        self.audioCapture = audioCapture
-        self.backend = backend
-        self.keychainManager = keychainManager
-        self.languageDetector = languageDetector
-        self.transcriptFinalizer = TranscriptFinalizer(transcriptStore: transcriptStore)
-        self.llmPolishStep = LLMPolishStep(keychainManager: keychainManager)
-        // Explicit engine identity: prevents a future codepath that skips the
-        // language detector from silently falling through to the legacy
-        // English-centric prompt path. The planner reads `.whisperKit` + nil
-        // detection as low-confidence (formatting only, no lexical injection).
-        llmPolishStep.backend = .whisperKit
-
-        llmPolishStep.onWillProcess = { [weak self] in
-            self?.state = .polishing
-        }
-
-        // Engine interruption cleanup is wired by AppState.onEngineInterrupted
-        // (unified handler that routes to the active pipeline). The pipeline exposes
-        // handleEngineInterruption() for AppState to call.
-
-        // Activate SSE streaming for Gemini
-        llmPolishStep.onToken = { _ in }
-        textProcessingSteps = [wordCorrectionStep, fillerRemovalStep, llmPolishStep]
-    }
-
-    // MARK: - DictationPipeline Conformance
-
-    public var overlayIntent: OverlayIntent {
-        switch state {
-        case .startingUp:
-            return .processing(label: "Starting...")
-        case .loadingModel:
-            return .processing(label: "Loading model...")
-        case .recording:
-            return .recording(audioLevel: 0)
-        case .transcribing:
-            return .processing(label: "Transcribing...")
-        case .polishing:
-            return .processing(label: "Polishing...")
-        case .idle, .ready, .complete:
-            return .hidden
-        case .error(let msg):
-            if msg == InterruptionMessages.micDisconnected {
-                return .interruption(message: msg)
-            }
-            return .error(message: msg)
-        }
-    }
-
-    public func handle(event: PipelineEvent) async {
-        switch event {
-        case .preWarm:
-            await preWarmAudioInput()
-        case .toggleRecording:
-            await toggleRecording()
-        case .requestStop:
-            await requestStop()
-        case .cancelRecording:
-            await cancelRecording()
-        case .reset:
-            reset()
-        }
-    }
-
-    // MARK: - Background Pre-load
-
-    /// Silently load the WhisperKit model into RAM without changing pipeline state.
-    /// Called after model download completes or on launch if model is already cached.
-    /// Uses prepareIfCached() to avoid triggering a silent network download.
-    /// If user presses record before this finishes, startRecording() handles it with its own .loadingModel flow.
-    public func prepareBackendSilently() async {
-        let isBackendReady = await backend.isReady
-        guard !isBackendReady else { return }
-        do {
-            let loaded = try await backend.prepareIfCached()
-            if loaded {
-                Task { await AppLogger.shared.log(
-                    "WhisperKit model pre-loaded successfully (background)",
-                    level: .info, category: "WhisperKitPipeline"
-                ) }
-            } else {
-                Task { await AppLogger.shared.log(
-                    "WhisperKit model not cached, skipping silent pre-load",
-                    level: .info, category: "WhisperKitPipeline"
-                ) }
-            }
-        } catch {
-            Task { await AppLogger.shared.log(
-                "WhisperKit model pre-load failed: \(error.localizedDescription)",
-                level: .info, category: "WhisperKitPipeline"
-            ) }
-        }
-    }
-
-    // MARK: - Recording Lifecycle
-
-    public func preWarmAudioInput() async {
-        guard !state.isActive, state != .recording else { return }
-        let start = ContinuousClock.now
-        await audioCapture.preWarm()
-        guard !Task.isCancelled else { return }
-        isPreWarmed = true
-        let totalMs = PipelineUtils.durationMs(ContinuousClock.now - start)
-        Task { await AppLogger.shared.log(
-            "COLD-START [WhisperKit] preWarmAudioInput total=\(totalMs)ms",
-            level: .info, category: "Pipeline"
-        ) }
-        // Defense-in-depth: ensure model is loaded from cache (no download).
-        // If not cached, startRecording() handles the full load with user-visible UI.
-        Task { _ = try? await backend.prepareIfCached() }
-    }
-
-    public func toggleRecording() async {
-        switch state {
-        case .idle, .ready, .complete, .error:
-            await startRecording()
-        case .recording:
-            await stopAndTranscribe()
-        case .loadingModel, .startingUp, .transcribing, .polishing:
-            break
-        }
-    }
-
-    /// Guards against concurrent startRecording calls (e.g., rapid toggle presses).
-    private var isStarting = false
-
-    public func startRecording() async {
-        guard !isStarting else { return }
-        guard !state.isActive || state == .complete || state == .ready else { return }
-        isStarting = true
-        defer { isStarting = false }
-
-        // Cancel any pending model unload — keep model loaded during recording.
-        modelUnloadTask?.cancel()
-        modelUnloadTask = nil
-
-        state = .startingUp
-        lastPolishError = nil
-        SentryBreadcrumb.add(stage: "whisperkit", message: "Pipeline starting up")
-
-        // Load model if not ready
-        let isBackendReady = await backend.isReady
-        guard state == .startingUp else { return }  // cancelled during await
-
-        if !isBackendReady {
-            state = .loadingModel
-            SentryBreadcrumb.add(stage: "asr", message: "WhisperKit model loading")
-            do {
-                try await backend.prepare()
-            } catch {
-                SentryBreadcrumb.captureError(error, category: .modelLoadFailed, stage: "asr", extra: ["backend": "whisperKit"])
-                state = .error("Model load failed: \(error.localizedDescription)")
-                return
-            }
-            guard state == .loadingModel else { return }  // cancelled during model load
-            state = .startingUp  // back to startingUp for engine setup
-        }
-
-        // Capture target app for paste-back
-        targetApp = NSWorkspace.shared.frontmostApplication
-        targetElement = PasteService.captureFocusedElement()
-
-        // No streaming buffer forwarding for batch mode
-        audioCapture.onBufferCaptured = nil
-
-        do {
-            if !isPreWarmed {
-                try await audioCapture.startEnginePhase()
-                let stabilized = await audioCapture.waitForFormatStabilization(
-                    maxWait: 1.5,
-                    pollInterval: 0.2
-                )
-                guard state == .startingUp else { return }  // cancelled during stabilization
-                if !stabilized {
-                    audioCapture.rebuildEngine()
-                    try await audioCapture.startEnginePhase()
-                }
-            }
-            isPreWarmed = false
-
-            _ = try await audioCapture.beginCapturePhase()
-            state = .recording
-            recordingStartTime = Date()
-            currentTranscript = nil
-            SentryBreadcrumb.add(stage: "recording", message: "WhisperKit recording started", data: ["backend": "whisperKit"])
-            SentryBreadcrumb.updateRecordingState(active: true, backend: "whisperkit")
-            SentryBreadcrumb.updateAudioRoute(audioCapture.currentAudioRoute)
-            startVADMonitoring()
-            // Multilingual v1: the incremental worker snapshots transcriptionOptions.language
-            // at recording start. In .auto mode, language is unknown until LID runs at
-            // recording stop, so the worker would decode with the stale/legacy language.
-            // Skip the worker in .auto mode; batch decode at finalize picks up the
-            // post-LID language. .locked mode is safe because the language is known upfront.
-            let workerEnabled: Bool
-            if case .locked = languageMode {
-                workerEnabled = true
-                await startIncrementalWorker()
-            } else {
-                workerEnabled = false
-            }
-
-            Task { [workerEnabled] in await AppLogger.shared.log(
-                "WhisperKit recording started (batch mode, incremental worker: \(workerEnabled ? "on" : "off, auto language mode"))",
-                level: .info, category: "WhisperKitPipeline"
-            ) }
-        } catch {
-            SentryBreadcrumb.captureError(error, category: .audioCaptureFailed, stage: "recording", extra: ["backend": "whisperKit"])
-            state = .error("Recording failed: \(error.localizedDescription)")
-        }
-    }
-
-    public func requestStop() async {
-        switch state {
-        case .recording:
-            await stopAndTranscribe()
-        case .startingUp, .loadingModel:
-            // Clean abort — startRecording() checks state after each await suspension point.
-            state = .idle
-        case .idle, .ready, .complete, .error:
-            // PTT release before recording started — clean up pre-warmed audio engine
-            if isPreWarmed {
-                isPreWarmed = false
-                audioCapture.abortPreWarm()
-            }
-        case .transcribing, .polishing:
-            // Pipeline is past the point of no return — ignore.
-            break
-        }
-    }
-
-    public func stopAndTranscribe() async {
-        guard state == .recording, !isStopping else { return }
-        isStopping = true
-        defer { isStopping = false }
-
-        let pipelineStart = CFAbsoluteTimeGetCurrent()
-
-        // Discard accidental short recordings
-        if let startTime = recordingStartTime {
-            let elapsed = Date().timeIntervalSince(startTime)
-            if elapsed < TimingConstants.minimumRecordingDuration {
-                vadMonitorTask?.cancel()
-                vadMonitorTask = nil
-                await incrementalWorker?.cancel()
-                incrementalWorker = nil
-                _ = await audioCapture.stopCapture()
-                recordingStartTime = nil
-                state = .idle
-                Task { await AppLogger.shared.log(
-                    "WhisperKit recording too short (\(String(format: "%.2f", elapsed))s), discarded",
-                    level: .info, category: "WhisperKitPipeline"
-                ) }
-                return
-            }
-        }
-        // Freeze snapshot BEFORE teardown — post-recording errors use this instead of live scope.
-        let snapshotStartTime = recordingStartTime ?? Date()
-        let durationMs = Int(Date().timeIntervalSince(snapshotStartTime) * 1000)
-        frozenSnapshot = SentryBreadcrumb.RecordingSnapshot(
-            backend: "whisperkit",
-            audioRoute: audioCapture.currentAudioRoute,
-            wasStreaming: false,
-            startTime: snapshotStartTime,
-            durationMs: durationMs,
-            targetAppBundleID: targetApp?.bundleIdentifier
-        )
-
-        recordingStartTime = nil
-        vadMonitorTask?.cancel()
-        vadMonitorTask = nil
-
-        let captureResult = await audioCapture.stopCapture()
-        let rawSamples = captureResult.samples
-        SentryBreadcrumb.add(stage: "recording", message: "WhisperKit recording stopped", data: ["sample_count": rawSamples.count])
-        SentryBreadcrumb.updateRecordingState(active: false)
-
-        // Pre-warm LLM connection while ASR runs
-        LLMNetworkSession.shared.preWarmIfConfigured(
-            provider: llmPolishStep.llmProvider,
-            keychainManager: keychainManager
-        )
-
-        guard !rawSamples.isEmpty else {
-            SentryBreadcrumb.add(stage: "recording", message: "No audio captured (WhisperKit)", level: .warning)
-            state = .error("No audio captured")
-            return
-        }
-
-        // Post-capture VAD filtering — remove silence segments
-        var samples: [Float]
-        var hasSpeechEvidence = false
-        var vadSegmentCount = 0
-        var vadSpeechDurationMs = 0
-        let isXPCMode = audioCapture is AudioCaptureProxy
-        if isXPCMode {
-            // XPC mode: VAD segments returned atomically with samples from stopCapture() (#226).
-            let segments = captureResult.vadSegments
-            hasSpeechEvidence = !segments.isEmpty
-            vadSegmentCount = segments.count
-            vadSpeechDurationMs = segments.reduce(0) { $0 + ($1.endSample - $1.startSample) } * 1000 / 16000
-            if !segments.isEmpty {
-                samples = SampleFilter.filter(from: rawSamples, segments: segments)
-                let pct = String(format: "%.1f", Double(samples.count) / Double(max(rawSamples.count, 1)) * 100)
-                Task { await AppLogger.shared.log(
-                    "WhisperKit VAD (XPC) filtered to \(samples.count) samples (\(pct)% voiced)",
-                    level: .info, category: "WhisperKitPipeline"
-                ) }
-            } else {
-                samples = rawSamples
-            }
-        } else if let detector = silenceDetector {
-            await detector.finalizeSegments(totalSampleCount: rawSamples.count)
-            let segments = await detector.speechSegments
-            hasSpeechEvidence = !segments.isEmpty
-            vadSegmentCount = segments.count
-            vadSpeechDurationMs = segments.reduce(0) { $0 + ($1.endSample - $1.startSample) } * 1000 / 16000
-            samples = await detector.filterSamples(from: rawSamples)
-            let pct = String(format: "%.1f", Double(samples.count) / Double(max(rawSamples.count, 1)) * 100)
-            Task { await AppLogger.shared.log(
-                "WhisperKit VAD filtered to \(samples.count) samples (\(pct)% voiced)",
-                level: .info, category: "WhisperKitPipeline"
-            ) }
-        } else {
-            samples = rawSamples
-            // No VAD detector available -- default to true so empty ASR results
-            // still fire Sentry errors (fail toward visibility).
-            hasSpeechEvidence = true
-        }
-        let peakAudioLevel = rawSamples.reduce(Float(0)) { max($0, abs($1)) }
-
-        // VAD gate: if no speech was detected, skip ASR entirely.
-        // Prevents noise-induced hallucinations from ambient sounds.
-        if !hasSpeechEvidence {
-            if let worker = incrementalWorker {
-                await worker.cancel()
-                incrementalWorker = nil
-            }
-            SentryBreadcrumb.add(
-                stage: "asr", message: "VAD gate: no speech detected, skipping WhisperKit ASR",
-                level: .info,
-                data: [
-                    "backend": "whisperKit",
-                    "raw_sample_count": rawSamples.count,
-                    "peak_audio_level": peakAudioLevel,
-                ]
-            )
-            frozenSnapshot = nil
-            state = .idle
-            Task { await AppLogger.shared.log(
-                "VAD gate: no speech, skipping WhisperKit ASR (samples=\(rawSamples.count), peak=\(String(format: "%.4f", peakAudioLevel)))",
-                level: .info, category: "WhisperKitPipeline"
-            ) }
-            return
-        }
-
-        // Fallback: if VAD was too aggressive, use raw
-        let minimumSamples = AudioConstants.minimumTranscriptionSamples
-        if samples.count < minimumSamples && rawSamples.count >= minimumSamples {
-            samples = rawSamples
-        }
-
-        // Pad short recordings
-        if samples.count > 0 && samples.count < minimumSamples {
-            samples.append(contentsOf: [Float](repeating: 0, count: minimumSamples - samples.count))
-        }
-
-        // Multilingual v1 (W2): detect language on voiced audio before transcribe.
-        // Heart protection: detector never throws; if it abstains, pass nil to
-        // TranscriptionOptions.language so WhisperKit's internal LID runs.
-        // languageMode is captured lazily so a user toggling Auto<->Locked
-        // mid-recording is respected.
-        let voicedDurationSec = Double(vadSpeechDurationMs) / 1000.0
-        // nonisolated(unsafe): WhisperKit is an actor/reference-typed handle that is
-        // not Sendable. Safe to pass to the detector actor because the backend owns
-        // it for its lifetime and the detector only calls read-only detectLanguage.
-        nonisolated(unsafe) let kitForLID = await backend.whisperKitInstance
-        let lidResult = await languageDetector.detect(
-            samples: samples,
-            voicedDuration: voicedDurationSec,
-            whisperKit: kitForLID,
-            mode: languageMode
-        )
-        lastLanguageDetection = lidResult
-        // Multilingual v1 (W3): forward the detection to the polish step so the
-        // prompt planner can apply confidence-tiered, language-aware vocab
-        // injection. Heart-protected: the planner degrades gracefully when the
-        // detection is abstained or low-confidence.
-        llmPolishStep.languageDetection = lidResult
-        if let lang = lidResult.lang, !lidResult.abstained {
-            transcriptionOptions.language = lang
-        } else {
-            // Abstain: let WhisperKit's own LID run. Heart still completes.
-            transcriptionOptions.language = nil
-        }
-        Task { await AppLogger.shared.log(
-            "LID result: lang=\(lidResult.lang ?? "nil") tier=\(lidResult.tier) conf=\(String(format: "%.2f", lidResult.confidence)) margin=\(String(format: "%.2f", lidResult.margin)) voiced=\(String(format: "%.2f", lidResult.voicedDuration))s abstained=\(lidResult.abstained)",
+  // Multilingual v1 (W2): language mode + detector. Captured lazily at
+  // detection time so a user toggling Auto->Locked mid-recording is respected.
+  public var languageMode: LanguageMode = .auto {
+    didSet {
+      // Mid-recording changes to the language mode invalidate the
+      // incremental worker, which snapshots the decode language at its
+      // init. Rather than try to re-decode the worker's buffers with the
+      // new language, we drop the worker entirely so finalize falls back
+      // to batch decode with the post-change language.
+      if oldValue != languageMode, let worker = incrementalWorker {
+        incrementalWorker = nil
+        Task { await worker.cancel() }
+        Task {
+          await AppLogger.shared.log(
+            "Language mode changed mid-recording, incremental worker invalidated",
             level: .info, category: "WhisperKitPipeline"
-        ) }
-        SentryBreadcrumb.add(stage: "asr", message: "Language detected", data: [
-            "lang": lidResult.lang ?? "nil",
-            "tier": lidResult.tier.rawValue,
-            "confidence": String(format: "%.3f", lidResult.confidence),
-            "margin": String(format: "%.3f", lidResult.margin),
-            "voiced_s": String(format: "%.2f", lidResult.voicedDuration),
-            "abstained": lidResult.abstained,
-        ])
-
-        // Multilingual v1 (W6): emit language.detected for every LID call and
-        // language.lid_abstained when abstaining. Fire-and-forget; telemetry is a
-        // limb and must never block transcription.
-        let sessionPreferredSnapshot = await languageDetector.peekMemory().sessionPreferred
-        TelemetryService.shared.trackLanguageDetected(
-            lang: lidResult.lang,
-            confidence: lidResult.confidence,
-            margin: lidResult.margin,
-            voicedDuration: lidResult.voicedDuration,
-            abstained: lidResult.abstained,
-            sessionPreferredLang: sessionPreferredSnapshot,
-            usedSticky: lidResult.usedSessionPrior
-        )
-        if lidResult.abstained {
-            // Classify the abstain reason per spec § Telemetry table.
-            let reason: String
-            if lidResult.voicedDuration < LanguageDetectorThresholds.shortClipMinSec {
-                reason = "too_short"
-            } else if lidResult.confidence < LanguageDetectorThresholds.normalProb {
-                reason = "low_confidence"
-            } else if lidResult.margin < LanguageDetectorThresholds.normalMargin {
-                reason = "narrow_margin"
-            } else {
-                reason = "low_confidence"
-            }
-            TelemetryService.shared.trackLIDAbstained(
-                voicedDuration: lidResult.voicedDuration,
-                top1Prob: lidResult.confidence,
-                top1Lang: lidResult.lang,
-                reason: reason
-            )
+          )
         }
+      }
+    }
+  }
+  private let languageDetector: LanguageDetector
+  /// Last detection result, exposed for telemetry and UI (passive chip).
+  public private(set) var lastLanguageDetection: LanguageDetectionResult?
 
-        state = .transcribing
-        SentryBreadcrumb.add(stage: "asr", message: "WhisperKit transcription started", data: ["backend": "whisperKit"])
+  // Shared services
+  private let transcriptFinalizer: TranscriptFinalizer
 
-        do {
-            let asrStart = CFAbsoluteTimeGetCurrent()
+  // Text processing steps (own instances — not shared with Parakeet)
+  public let wordCorrectionStep = WordCorrectionStep()
+  public let fillerRemovalStep = FillerRemovalStep()
+  public let llmPolishStep: LLMPolishStep
+  private var textProcessingSteps: [any TextProcessingStep] = []
 
-            // Try background worker result first, batch fallback if stale/empty
-            let asrText: String
-            let asrLanguage: String?
-            var usedIncremental = false
+  /// Access for configuration
+  public var wordCorrection: WordCorrectionStep { wordCorrectionStep }
+  public var fillerRemoval: FillerRemovalStep { fillerRemovalStep }
+  public var llmPolish: LLMPolishStep { llmPolishStep }
 
-            if let worker = incrementalWorker {
-                let segments = await silenceDetector?.speechSegments ?? []
-                let result = await worker.finalize(finalSamples: rawSamples, speechSegments: segments)
-                incrementalWorker = nil
+  /// The app that was frontmost when recording started.
+  private var targetApp: NSRunningApplication?
+  private var targetElement: AXUIElement?
+  private var recordingStartTime: Date?
+  /// Guards against concurrent stopAndTranscribe calls.
+  private var isStopping = false
+  /// Whether audio input has been pre-warmed by PTT key-down.
+  private var isPreWarmed = false
 
-                let coveragePct = rawSamples.count > 0
-                    ? String(format: "%.1f", Double(result.samplesCovered) / Double(rawSamples.count) * 100)
-                    : "0"
+  // VAD properties
+  public var vadAutoStop: Bool = false
+  public var vadSilenceTimeout: Double = 1.5
+  public var vadSensitivity: Float = 0.5
+  public var vadEnergyGate: Bool = false
 
-                if result.accepted, let text = result.text,
-                   !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    asrText = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    asrLanguage = transcriptionOptions.language
-                    usedIncremental = true
+  private var silenceDetector: SilenceDetector?
+  private var vadMonitorTask: Task<Void, Never>?
+  /// Frozen snapshot of recording state, built before teardown for post-recording error enrichment.
+  private var frozenSnapshot: SentryBreadcrumb.RecordingSnapshot?
+  private var incrementalWorker: WhisperKitIncrementalWorker?
+  private var modelUnloadTask: Task<Void, Never>?
 
-                    Task { await AppLogger.shared.log(
-                        "WhisperKit finalize: strategy=\(result.strategy), mode=\(result.mode), " +
-                        "decodes=\(result.decodeCount), tailDecodeMs=\(result.tailDecodeMs), " +
-                        "coverage=\(result.samplesCovered)/\(rawSamples.count) (\(coveragePct)%)",
-                        level: .info, category: "WhisperKitPipeline"
-                    ) }
-                } else {
-                    Task { await AppLogger.shared.log(
-                        "WhisperKit finalize: strategy=\(result.strategy), " +
-                        "workerDecodes=\(result.decodeCount), workerCoverage=\(coveragePct)%, " +
-                        "falling back to batch",
-                        level: .info, category: "WhisperKitPipeline"
-                    ) }
+  public init(
+    audioCapture: any AudioCaptureInterface,
+    backend: WhisperKitBackend,
+    transcriptStore: TranscriptStore,
+    keychainManager: KeychainManager,
+    languageDetector: LanguageDetector = LanguageDetector()
+  ) {
+    self.audioCapture = audioCapture
+    self.backend = backend
+    self.keychainManager = keychainManager
+    self.languageDetector = languageDetector
+    self.transcriptFinalizer = TranscriptFinalizer(transcriptStore: transcriptStore)
+    self.llmPolishStep = LLMPolishStep(keychainManager: keychainManager)
+    // Explicit engine identity: prevents a future codepath that skips the
+    // language detector from silently falling through to the legacy
+    // English-centric prompt path. The planner reads `.whisperKit` + nil
+    // detection as low-confidence (formatting only, no lexical injection).
+    llmPolishStep.backend = .whisperKit
 
-                    let batchStart = CFAbsoluteTimeGetCurrent()
-                    let batchResult = try await backend.transcribe(audioSamples: samples, options: transcriptionOptions)
-                    let batchMs = Int((CFAbsoluteTimeGetCurrent() - batchStart) * 1000)
-                    asrText = batchResult.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    asrLanguage = batchResult.language
-
-                    Task { await AppLogger.shared.log(
-                        "WhisperKit finalize: strategy=\(result.strategy), batchMs=\(batchMs), " +
-                        "workerDecodes=\(result.decodeCount), workerCoverage=\(coveragePct)%",
-                        level: .info, category: "WhisperKitPipeline"
-                    ) }
-                }
-            } else {
-                let batchResult = try await backend.transcribe(audioSamples: samples, options: transcriptionOptions)
-                asrText = batchResult.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                asrLanguage = batchResult.language
-            }
-
-            let asrEnd = CFAbsoluteTimeGetCurrent()
-
-            // Multilingual v1 (W6): per-transcription latency event for the
-            // per-language performance dashboard. Emitted only when we actually
-            // produced text (empty-result cases are covered by asr.completed +
-            // pipeline.failed elsewhere). Audio duration is derived from the raw
-            // capture buffer (16kHz mono) so latency is compared against actual
-            // recording length, not the VAD-trimmed slice.
-            let asrLatencySec = asrEnd - asrStart
-            let audioDurationSec = Double(rawSamples.count) / Double(AudioConstants.sampleRate)
-            if !asrText.isEmpty && audioDurationSec > 0 {
-                let msPerAudioSec = (asrLatencySec * 1000.0) / audioDurationSec
-                let modelName = await backend.modelVariantName
-                TelemetryService.shared.trackTranscriptionLatency(
-                    lang: asrLanguage,
-                    model: modelName,
-                    durationSeconds: asrLatencySec,
-                    msPerAudioSecond: msPerAudioSec
-                )
-            }
-
-            guard !asrText.isEmpty else {
-                if hasSpeechEvidence {
-                    // Real ASR failure: VAD detected speech but decoder returned nothing
-                    SentryBreadcrumb.captureError(
-                        NSError(domain: "EnviousWispr", code: -1, userInfo: [NSLocalizedDescriptionKey: "WhisperKit ASR returned empty text despite speech evidence"]),
-                        category: .asrEmptyResult, stage: "asr",
-                        extra: [
-                            "backend": "whisperKit",
-                            "incremental": usedIncremental,
-                            "has_speech_evidence": true,
-                            "raw_sample_count": rawSamples.count,
-                            "vad_segment_count": vadSegmentCount,
-                            "vad_speech_duration_ms": vadSpeechDurationMs,
-                            "peak_audio_level": peakAudioLevel,
-                        ],
-                        snapshot: frozenSnapshot
-                    )
-                    state = .error("Couldn't catch that -- try again")
-                    Task { await AppLogger.shared.log(
-                        "WhisperKit ASR empty despite speech evidence (segments=\(vadSegmentCount), speechMs=\(vadSpeechDurationMs), peak=\(peakAudioLevel))",
-                        level: .info, category: "WhisperKitPipeline"
-                    ) }
-                } else {
-                    // Expected: user held button without speaking
-                    SentryBreadcrumb.add(
-                        stage: "asr", message: "WhisperKit ASR empty (no speech detected)",
-                        level: .info,
-                        data: ["backend": "whisperKit", "incremental": usedIncremental]
-                    )
-                    state = .idle
-                    Task { await AppLogger.shared.log(
-                        "WhisperKit: no speech detected, returning to idle",
-                        level: .info, category: "WhisperKitPipeline"
-                    ) }
-                }
-                frozenSnapshot = nil
-                return
-            }
-
-            SentryBreadcrumb.add(stage: "asr", message: "WhisperKit ASR completed", data: [
-                "duration_s": String(format: "%.3f", asrEnd - asrStart),
-                "char_count": asrText.count,
-                "incremental": usedIncremental,
-            ])
-            Task { await AppLogger.shared.log(
-                "WhisperKit ASR completed in \(String(format: "%.3f", asrEnd - asrStart))s " +
-                "(\(asrText.count) chars, lang=\(asrLanguage ?? "?"), incremental=\(usedIncremental))",
-                level: .info, category: "WhisperKitPipeline"
-            ) }
-
-            // Post-ASR finalization: text processing -> store -> paste
-            let recordingDuration = Double(rawSamples.count) / 16000.0
-            let finalizationResult: FinalizationResult
-            do {
-                finalizationResult = try await transcriptFinalizer.finalize(FinalizationRequest(
-                    asrText: asrText,
-                    language: asrLanguage,
-                    duration: recordingDuration,
-                    processingTime: asrEnd - asrStart,
-                    backendType: .whisperKit,
-                    targetApp: targetApp,
-                    targetElement: targetElement,
-                    autoCopyToClipboard: autoCopyToClipboard,
-                    autoPasteToActiveApp: autoPasteToActiveApp,
-                    restoreClipboardAfterPaste: restoreClipboardAfterPaste,
-                    steps: textProcessingSteps
-                ))
-            } catch is CancellationError {
-                frozenSnapshot = nil
-                return
-            } catch let error as FinalizationError {
-                switch error {
-                case .emptyAfterProcessing:
-                    state = .error("No text after processing")
-                    frozenSnapshot = nil
-                    return
-                case .storageFailed(let underlying):
-                    SentryBreadcrumb.captureError(underlying, category: .asrFailed, stage: "storage")
-                    state = .error("Failed to save transcript")
-                    frozenSnapshot = nil
-                    return
-                }
-            }
-
-            lastPolishError = finalizationResult.polishError
-
-            // Build metrics (pipeline-specific: uses ASR timing)
-            let pasteTargetApp = targetApp?.bundleIdentifier
-            targetApp = nil
-            targetElement = nil
-
-            let pipelineEnd = CFAbsoluteTimeGetCurrent()
-            let polishDuration = finalizationResult.polishDurationSeconds
-            let pasteDuration = finalizationResult.pasteDurationSeconds
-            Task { await AppLogger.shared.log(
-                "WhisperKit pipeline TOTAL: \(String(format: "%.3f", pipelineEnd - pipelineStart))s " +
-                "(ASR=\(String(format: "%.3f", asrEnd - asrStart))s, " +
-                "polish=\(String(format: "%.3f", polishDuration))s, " +
-                "paste=\(String(format: "%.3f", pasteDuration))s)",
-                level: .info, category: "WhisperKitPipeline"
-            ) }
-
-            var transcript = finalizationResult.transcript
-            transcript.metrics = ExecutionMetrics(
-                asrLatencySeconds: asrEnd - asrStart,
-                llmLatencySeconds: polishDuration,
-                pasteTier: finalizationResult.pasteResult?.tier.rawValue,
-                pasteLatencyMs: finalizationResult.pasteResult?.durationMs,
-                targetApp: pasteTargetApp,
-                coldStart: false,
-                streamingMode: false,
-                e2eSeconds: pipelineEnd - pipelineStart
-            )
-            currentTranscript = transcript
-            SentryBreadcrumb.add(stage: "pipeline", message: "WhisperKit pipeline complete", data: [
-                "e2e_s": String(format: "%.3f", pipelineEnd - pipelineStart),
-                "asr_s": String(format: "%.3f", asrEnd - asrStart),
-                "polish_s": String(format: "%.3f", polishDuration),
-                "paste_tier": finalizationResult.pasteResult?.tier.rawValue ?? "none",
-            ])
-            frozenSnapshot = nil
-            state = .complete
-            scheduleModelUnloadIfNeeded()
-        } catch {
-            SentryBreadcrumb.captureError(error, category: .asrFailed, stage: "transcription", extra: ["backend": "whisperKit"], snapshot: frozenSnapshot)
-            frozenSnapshot = nil
-            state = .error("Transcription failed: \(error.localizedDescription)")
-        }
+    llmPolishStep.onWillProcess = { [weak self] in
+      self?.state = .polishing
     }
 
-    /// Handle audio engine interruption (device disconnect, service crash, max duration cap).
-    /// Called by AppState's unified interruption handler, not set directly on audioCapture.
-    public func handleEngineInterruption() {
-        let snapshot = buildInterruptionSnapshot()
+    // Engine interruption cleanup is wired by AppState.onEngineInterrupted
+    // (unified handler that routes to the active pipeline). The pipeline exposes
+    // handleEngineInterruption() for AppState to call.
+
+    // Activate SSE streaming for Gemini
+    llmPolishStep.onToken = { _ in }
+    textProcessingSteps = [wordCorrectionStep, fillerRemovalStep, llmPolishStep]
+
+    // Issue #285 — telemetry callbacks on `audioCapture` are single-owner
+    // properties and both pipelines share the same instance. `AppState`
+    // centralizes routing to the active pipeline.
+  }
+
+  public func handleCaptureSessionInterruption(_ ctx: CaptureSessionInterruptionContext) {
+    SentryBreadcrumb.captureError(
+      HeartPathError.captureSessionInterrupted(ctx: ctx),
+      category: .audioCaptureFailed,
+      stage: "audio",
+      extra: [
+        "capture_session.kind": ctx.kind.rawValue,
+        "capture_session.reason_code": ctx.reasonCode.map { $0 } ?? NSNull(),
+        "capture_session.reason_label": ctx.reasonLabel ?? NSNull(),
+        "capture_session.error_domain": ctx.errorDomain ?? NSNull(),
+        "capture_session.error_code": ctx.errorCode.map { $0 } ?? NSNull(),
+        "capture_session.error_description": ctx.errorDescription ?? NSNull(),
+        "capture.is_actively_capturing": ctx.isActivelyCapturing,
+        "capture_session_id": Int(ctx.sessionID),
+        "backend": "whisperKit",
+      ]
+    )
+  }
+
+  // Issue #285 dedup — stall vs rawSamples-empty for a single session.
+  private var stallEventAlreadyCaptured: Bool = false
+  private var lastObservedCaptureSession: UInt64 = 0
+  private var xpcReplyFailedThisSession: Bool = false
+
+  public func handleXPCReplyFailed(_ ctx: XPCReplyFailureContext) {
+    resetStallFlagIfNewSession(ctx.sessionID)
+    xpcReplyFailedThisSession = true
+    SentryBreadcrumb.captureError(
+      HeartPathError.xpcReplyFailed(ctx: ctx),
+      category: .xpcServiceError,
+      stage: "audio",
+      extra: [
+        "xpc.reply_stage": ctx.replyStage,
+        "xpc.error_domain": ctx.errorDomain,
+        "xpc.error_code": ctx.errorCode,
+        "capture_session_id": Int(ctx.sessionID),
+      ]
+    )
+  }
+
+  public func handleCaptureStall(_ ctx: CaptureStallContext) {
+    resetStallFlagIfNewSession(ctx.sessionID)
+    guard !stallEventAlreadyCaptured else { return }
+    stallEventAlreadyCaptured = true
+    let extras = SentryAudioExtras.buildCaptureExtras(
+      route: ctx.route,
+      sourceType: ctx.sourceType,
+      sessionID: ctx.sessionID,
+      isActivelyCapturing: audioCapture.isActivelyCapturing,
+      inputDeviceUIDPreferred: ctx.inputDeviceUIDPreferred,
+      inputDeviceUIDSystemDefault: ctx.inputDeviceUIDSystemDefault,
+      failureMode: "stall_window_elapsed",
+      stallContext: ctx
+    )
+    SentryBreadcrumb.captureError(
+      HeartPathError.audioCaptureStalled(sessionID: ctx.sessionID, ctx: ctx),
+      category: .audioCaptureStalled,
+      stage: "recording",
+      extra: extras
+    )
+  }
+
+  private func resetStallFlagIfNewSession(_ sessionID: UInt64) {
+    guard sessionID != lastObservedCaptureSession else { return }
+    lastObservedCaptureSession = sessionID
+    stallEventAlreadyCaptured = false
+    xpcReplyFailedThisSession = false
+  }
+
+  private func emitNoAudioCapturedEvent() {
+    let sessionID = audioCapture.currentCaptureSessionID
+    resetStallFlagIfNewSession(sessionID)
+    let durationMs: Int = {
+      guard let start = recordingStartTime else { return 0 }
+      return Int(Date().timeIntervalSince(start) * 1000)
+    }()
+    let route = audioCapture.currentAudioRoute
+    if stallEventAlreadyCaptured || xpcReplyFailedThisSession {
+      let dedupedFrom =
+        stallEventAlreadyCaptured ? "audio_capture_stalled" : "xpc_reply_failed"
+      SentryBreadcrumb.add(
+        stage: "recording",
+        message: "No audio captured (WhisperKit, deduped)",
+        level: .warning,
+        data: [
+          "deduped_from": dedupedFrom,
+          "capture_session_id": Int(sessionID),
+        ]
+      )
+      return
+    }
+    SentryBreadcrumb.captureError(
+      HeartPathError.noAudioCaptured(
+        sessionID: sessionID, durationMs: durationMs, wasStreaming: false, route: route),
+      category: .audioCaptureFailed,
+      stage: "recording",
+      extra: SentryAudioExtras.buildCaptureExtras(
+        route: route,
+        sourceType: audioCapture.captureSourceType,
+        sessionID: sessionID,
+        isActivelyCapturing: audioCapture.isActivelyCapturing,
+        inputDeviceUIDPreferred: audioCapture.preferredInputDeviceIDOverride.isEmpty
+          ? nil : audioCapture.preferredInputDeviceIDOverride,
+        inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID(),
+        failureMode: "no_audio_captured"
+      )
+    )
+  }
+
+  // MARK: - DictationPipeline Conformance
+
+  public var overlayIntent: OverlayIntent {
+    switch state {
+    case .startingUp:
+      return .processing(label: "Starting...")
+    case .loadingModel:
+      return .processing(label: "Loading model...")
+    case .recording:
+      return .recording(audioLevel: 0)
+    case .transcribing:
+      return .processing(label: "Transcribing...")
+    case .polishing:
+      return .processing(label: "Polishing...")
+    case .idle, .ready, .complete:
+      return .hidden
+    case .error(let msg):
+      if msg == InterruptionMessages.micDisconnected {
+        return .interruption(message: msg)
+      }
+      return .error(message: msg)
+    }
+  }
+
+  public func handle(event: PipelineEvent) async {
+    switch event {
+    case .preWarm:
+      await preWarmAudioInput()
+    case .toggleRecording:
+      await toggleRecording()
+    case .requestStop:
+      await requestStop()
+    case .cancelRecording:
+      await cancelRecording()
+    case .reset:
+      reset()
+    }
+  }
+
+  // MARK: - Background Pre-load
+
+  /// Silently load the WhisperKit model into RAM without changing pipeline state.
+  /// Called after model download completes or on launch if model is already cached.
+  /// Uses prepareIfCached() to avoid triggering a silent network download.
+  /// If user presses record before this finishes, startRecording() handles it with its own .loadingModel flow.
+  public func prepareBackendSilently() async {
+    let isBackendReady = await backend.isReady
+    guard !isBackendReady else { return }
+    do {
+      let loaded = try await backend.prepareIfCached()
+      if loaded {
+        Task {
+          await AppLogger.shared.log(
+            "WhisperKit model pre-loaded successfully (background)",
+            level: .info, category: "WhisperKitPipeline"
+          )
+        }
+      } else {
+        Task {
+          await AppLogger.shared.log(
+            "WhisperKit model not cached, skipping silent pre-load",
+            level: .info, category: "WhisperKitPipeline"
+          )
+        }
+      }
+    } catch {
+      Task {
+        await AppLogger.shared.log(
+          "WhisperKit model pre-load failed: \(error.localizedDescription)",
+          level: .info, category: "WhisperKitPipeline"
+        )
+      }
+    }
+  }
+
+  // MARK: - Recording Lifecycle
+
+  public func preWarmAudioInput() async {
+    guard !state.isActive, state != .recording else { return }
+    let start = ContinuousClock.now
+    await audioCapture.preWarm()
+    guard !Task.isCancelled else { return }
+    isPreWarmed = true
+    let totalMs = PipelineUtils.durationMs(ContinuousClock.now - start)
+    Task {
+      await AppLogger.shared.log(
+        "COLD-START [WhisperKit] preWarmAudioInput total=\(totalMs)ms",
+        level: .info, category: "Pipeline"
+      )
+    }
+    // Defense-in-depth: ensure model is loaded from cache (no download).
+    // If not cached, startRecording() handles the full load with user-visible UI.
+    Task { _ = try? await backend.prepareIfCached() }
+  }
+
+  public func toggleRecording() async {
+    switch state {
+    case .idle, .ready, .complete, .error:
+      await startRecording()
+    case .recording:
+      await stopAndTranscribe()
+    case .loadingModel, .startingUp, .transcribing, .polishing:
+      break
+    }
+  }
+
+  /// Guards against concurrent startRecording calls (e.g., rapid toggle presses).
+  private var isStarting = false
+
+  public func startRecording() async {
+    guard !isStarting else { return }
+    guard !state.isActive || state == .complete || state == .ready else { return }
+    isStarting = true
+    defer { isStarting = false }
+
+    // Cancel any pending model unload — keep model loaded during recording.
+    modelUnloadTask?.cancel()
+    modelUnloadTask = nil
+
+    state = .startingUp
+    lastPolishError = nil
+    SentryBreadcrumb.add(stage: "whisperkit", message: "Pipeline starting up")
+
+    // Load model if not ready
+    let isBackendReady = await backend.isReady
+    guard state == .startingUp else { return }  // cancelled during await
+
+    if !isBackendReady {
+      state = .loadingModel
+      SentryBreadcrumb.add(stage: "asr", message: "WhisperKit model loading")
+      do {
+        try await backend.prepare()
+      } catch {
         SentryBreadcrumb.captureError(
-            NSError(domain: "EnviousWispr", code: -2, userInfo: [NSLocalizedDescriptionKey: "Audio engine interrupted (WhisperKit)"]),
-            category: .xpcServiceError, stage: "audio",
-            extra: ["was_recording": state == .recording, "backend": "whisperKit"],
-            snapshot: snapshot
+          error, category: .modelLoadFailed, stage: "asr", extra: ["backend": "whisperKit"])
+        state = .error("Model load failed: \(error.localizedDescription)")
+        return
+      }
+      guard state == .loadingModel else { return }  // cancelled during model load
+      state = .startingUp  // back to startingUp for engine setup
+    }
+
+    // Capture target app for paste-back
+    targetApp = NSWorkspace.shared.frontmostApplication
+    targetElement = PasteService.captureFocusedElement()
+
+    // No streaming buffer forwarding for batch mode
+    audioCapture.onBufferCaptured = nil
+
+    do {
+      if !isPreWarmed {
+        try await audioCapture.startEnginePhase()
+        let stabilized = await audioCapture.waitForFormatStabilization(
+          maxWait: 1.5,
+          pollInterval: 0.2
         )
-        SentryBreadcrumb.updateRecordingState(active: false)
-        frozenSnapshot = nil
-        vadMonitorTask?.cancel()
-        vadMonitorTask = nil
-        silenceDetector = nil
-        // Reset capture state so isCapturing and warm engine timer are consistent.
-        Task { [weak self] in
-            _ = await self?.audioCapture.stopCapture()
+        guard state == .startingUp else { return }  // cancelled during stabilization
+        if !stabilized {
+          audioCapture.rebuildEngine()
+          try await audioCapture.startEnginePhase()
         }
-        targetApp = nil
-        targetElement = nil
-        recordingStartTime = nil
-        isStopping = false
+      }
+      isPreWarmed = false
+
+      _ = try await audioCapture.beginCapturePhase()
+      state = .recording
+      recordingStartTime = Date()
+      currentTranscript = nil
+      SentryBreadcrumb.add(
+        stage: "recording", message: "WhisperKit recording started", data: ["backend": "whisperKit"]
+      )
+      SentryBreadcrumb.updateRecordingState(active: true, backend: "whisperkit")
+      SentryBreadcrumb.updateAudioRoute(audioCapture.currentAudioRoute)
+      startVADMonitoring()
+      // Multilingual v1: the incremental worker snapshots transcriptionOptions.language
+      // at recording start. In .auto mode, language is unknown until LID runs at
+      // recording stop, so the worker would decode with the stale/legacy language.
+      // Skip the worker in .auto mode; batch decode at finalize picks up the
+      // post-LID language. .locked mode is safe because the language is known upfront.
+      let workerEnabled: Bool
+      if case .locked = languageMode {
+        workerEnabled = true
+        await startIncrementalWorker()
+      } else {
+        workerEnabled = false
+      }
+
+      Task { [workerEnabled] in
+        await AppLogger.shared.log(
+          "WhisperKit recording started (batch mode, incremental worker: \(workerEnabled ? "on" : "off, auto language mode"))",
+          level: .info, category: "WhisperKitPipeline"
+        )
+      }
+    } catch {
+      var extras = SentryAudioExtras.buildCaptureExtras(
+        route: audioCapture.currentAudioRoute,
+        sourceType: audioCapture.captureSourceType,
+        sessionID: audioCapture.currentCaptureSessionID,
+        isActivelyCapturing: audioCapture.isActivelyCapturing,
+        inputDeviceUIDPreferred: audioCapture.preferredInputDeviceIDOverride.isEmpty
+          ? nil : audioCapture.preferredInputDeviceIDOverride,
+        inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID(),
+        failureMode: "thrown_start"
+      )
+      extras["backend"] = "whisperKit"
+      SentryBreadcrumb.captureError(
+        error, category: .audioCaptureFailed, stage: "recording", extra: extras)
+      state = .error("Recording failed: \(error.localizedDescription)")
+    }
+  }
+
+  public func requestStop() async {
+    switch state {
+    case .recording:
+      await stopAndTranscribe()
+    case .startingUp, .loadingModel:
+      // Clean abort — startRecording() checks state after each await suspension point.
+      state = .idle
+    case .idle, .ready, .complete, .error:
+      // PTT release before recording started — clean up pre-warmed audio engine
+      if isPreWarmed {
         isPreWarmed = false
-        state = .error("Microphone disconnected")
+        audioCapture.abortPreWarm()
+      }
+    case .transcribing, .polishing:
+      // Pipeline is past the point of no return — ignore.
+      break
     }
+  }
 
-    /// Handle ASR XPC service crash during active session.
-    /// Called by AppState's unified ASR interruption handler when this pipeline is active.
-    /// Must stop audio capture (still running — only ASR died) and clean up fully.
-    public func handleASRServiceInterruption() {
-        let snapshot = buildInterruptionSnapshot()
-        SentryBreadcrumb.captureError(
-            NSError(domain: "EnviousWispr", code: -3, userInfo: [NSLocalizedDescriptionKey: "ASR XPC service crashed (WhisperKit)"]),
-            category: .xpcServiceError, stage: "asr",
-            extra: ["was_recording": state == .recording, "backend": "whisperKit"],
-            snapshot: snapshot
-        )
-        SentryBreadcrumb.updateRecordingState(active: false)
-        frozenSnapshot = nil
-        vadMonitorTask?.cancel()
-        vadMonitorTask = nil
-        silenceDetector = nil
-        Task { [weak self] in
-            await self?.audioCapture.stopCapture()
-        }
-        targetApp = nil
-        targetElement = nil
-        recordingStartTime = nil
-        isStopping = false
-        isPreWarmed = false
-        state = .error("Transcription service crashed — please try again")
-    }
+  public func stopAndTranscribe() async {
+    guard state == .recording, !isStopping else { return }
+    isStopping = true
+    defer { isStopping = false }
 
-    private func buildInterruptionSnapshot() -> SentryBreadcrumb.RecordingSnapshot {
-        if let existing = frozenSnapshot { return existing }
-        let start = recordingStartTime ?? Date()
-        return SentryBreadcrumb.RecordingSnapshot(
-            backend: "whisperkit",
-            audioRoute: audioCapture.currentAudioRoute,
-            wasStreaming: false,
-            startTime: start,
-            durationMs: Int(Date().timeIntervalSince(start) * 1000),
-            targetAppBundleID: targetApp?.bundleIdentifier
-        )
-    }
+    let pipelineStart = CFAbsoluteTimeGetCurrent()
 
-    public func cancelRecording() async {
-        if state == .startingUp || state == .loadingModel {
-            // Cancel during startup or model load — transition to idle
-            state = .idle
-            return
-        }
-
-        guard state == .recording else { return }
+    // Discard accidental short recordings
+    if let startTime = recordingStartTime {
+      let elapsed = Date().timeIntervalSince(startTime)
+      if elapsed < TimingConstants.minimumRecordingDuration {
         vadMonitorTask?.cancel()
         vadMonitorTask = nil
         await incrementalWorker?.cancel()
         incrementalWorker = nil
-        silenceDetector = nil
         _ = await audioCapture.stopCapture()
-        targetApp = nil
-        targetElement = nil
         recordingStartTime = nil
         state = .idle
+        Task {
+          await AppLogger.shared.log(
+            "WhisperKit recording too short (\(String(format: "%.2f", elapsed))s), discarded",
+            level: .info, category: "WhisperKitPipeline"
+          )
+        }
+        return
+      }
+    }
+    // Freeze snapshot BEFORE teardown — post-recording errors use this instead of live scope.
+    let snapshotStartTime = recordingStartTime ?? Date()
+    let durationMs = Int(Date().timeIntervalSince(snapshotStartTime) * 1000)
+    frozenSnapshot = SentryBreadcrumb.RecordingSnapshot(
+      backend: "whisperkit",
+      audioRoute: audioCapture.currentAudioRoute,
+      wasStreaming: false,
+      startTime: snapshotStartTime,
+      durationMs: durationMs,
+      targetAppBundleID: targetApp?.bundleIdentifier
+    )
+
+    recordingStartTime = nil
+    vadMonitorTask?.cancel()
+    vadMonitorTask = nil
+
+    let captureResult = await audioCapture.stopCapture()
+    let rawSamples = captureResult.samples
+    SentryBreadcrumb.add(
+      stage: "recording", message: "WhisperKit recording stopped",
+      data: ["sample_count": rawSamples.count])
+    SentryBreadcrumb.updateRecordingState(active: false)
+
+    // Pre-warm LLM connection while ASR runs
+    LLMNetworkSession.shared.preWarmIfConfigured(
+      provider: llmPolishStep.llmProvider,
+      keychainManager: keychainManager
+    )
+
+    guard !rawSamples.isEmpty else {
+      emitNoAudioCapturedEvent()
+      state = .error("No audio captured")
+      return
     }
 
-    public func reset() {
-        vadMonitorTask?.cancel()
-        vadMonitorTask = nil
-        // Fire-and-forget cancel — reset() is synchronous, worker cancel is safe to defer
-        if let worker = incrementalWorker {
-            incrementalWorker = nil
-            Task { await worker.cancel() }
+    // Post-capture VAD filtering — remove silence segments
+    var samples: [Float]
+    var hasSpeechEvidence = false
+    var vadSegmentCount = 0
+    var vadSpeechDurationMs = 0
+    let isXPCMode = audioCapture is AudioCaptureProxy
+    if isXPCMode {
+      // XPC mode: VAD segments returned atomically with samples from stopCapture() (#226).
+      let segments = captureResult.vadSegments
+      hasSpeechEvidence = !segments.isEmpty
+      vadSegmentCount = segments.count
+      vadSpeechDurationMs =
+        segments.reduce(0) { $0 + ($1.endSample - $1.startSample) } * 1000 / 16000
+      if !segments.isEmpty {
+        samples = SampleFilter.filter(from: rawSamples, segments: segments)
+        let pct = String(
+          format: "%.1f", Double(samples.count) / Double(max(rawSamples.count, 1)) * 100)
+        Task {
+          await AppLogger.shared.log(
+            "WhisperKit VAD (XPC) filtered to \(samples.count) samples (\(pct)% voiced)",
+            level: .info, category: "WhisperKitPipeline"
+          )
         }
-        silenceDetector = nil
-        if audioCapture.isCapturing {
-            let capture = audioCapture
-            Task { _ = await capture.stopCapture() }
-        }
-        audioCapture.onBufferCaptured = nil
-        recordingStartTime = nil
-        state = .idle
-        currentTranscript = nil
-    }
-
-    // MARK: - Incremental Worker
-
-    private func startIncrementalWorker() async {
-        guard let kit = await backend.whisperKitInstance else { return }
-        let opts = await backend.makeDecodeOptions(from: transcriptionOptions, sampleCount: 0)
-        // BRAIN: gotcha id=nonisolated-unsafe-tokenizer
-        // nonisolated(unsafe): WhisperTokenizer is not Sendable but is safe to transfer —
-        // the backend is the sole owner and we pass it to a single actor that holds it for its lifetime.
-        nonisolated(unsafe) let tokenizer = await backend.whisperKitTokenizer
-        let worker = WhisperKitIncrementalWorker(whisperKit: kit, decodingOptions: opts, tokenizer: tokenizer)
-        self.incrementalWorker = worker
-
-        let isXPCMode = audioCapture is AudioCaptureProxy
-        let capture = audioCapture
-
-        if isXPCMode {
-            // XPC mode: use getSamplesSnapshot for incremental sample access.
-            // Tracks fromIndex locally — each call fetches only new samples since last snapshot.
-            //
-            // Memory: `accumulated` grows linearly with recording duration, mirroring the
-            // in-process path where capturedSamples grows the same way. The worker expects
-            // full audio history for re-transcription. At 16kHz Float32, 2 min = ~7.7MB,
-            // 5 min (max recording) = ~19MB. Bounded by TimingConstants.maxRecordingDuration.
-            var nextIndex = 0
-            var accumulated: [Float] = []
-            await worker.start(audioSamplesProvider: { @MainActor in
-                let (newSamples, totalCount) = await capture.getSamplesSnapshot(fromIndex: nextIndex)
-                accumulated.append(contentsOf: newSamples)
-                nextIndex = totalCount
-                return (samples: accumulated, count: accumulated.count)
-            })
-        } else {
-            // In-process mode: read directly from MainActor-isolated capturedSamples.
-            await worker.start(audioSamplesProvider: { @MainActor in
-                let samples = capture.capturedSamples
-                return (samples: samples, count: samples.count)
-            })
-        }
-    }
-
-    // MARK: - VAD Monitoring
-
-    private func startVADMonitoring() {
-        vadMonitorTask = Task { [weak self] in
-            await self?.monitorVAD()
-        }
-    }
-
-    private func monitorVAD() async {
-        // Detector setup stays in pipeline (owns silenceDetector lifecycle)
-        let isXPCMode = audioCapture is AudioCaptureProxy
-        var detector: SilenceDetector?
-
-        if !isXPCMode {
-            let config = SmoothedVADConfig.fromSensitivity(vadSensitivity, energyGate: vadEnergyGate)
-            if silenceDetector == nil {
-                silenceDetector = SilenceDetector(silenceTimeout: vadSilenceTimeout, vadConfig: config)
-            }
-            guard let det = silenceDetector else { return }
-            await det.reset()
-            await det.updateConfig(config)
-            if !(await det.isReady) {
-                do {
-                    try await det.prepare()
-                } catch {
-                    Task { await AppLogger.shared.log(
-                        "VAD preparation failed: \(error)",
-                        level: .info, category: "VAD"
-                    ) }
-                    return
-                }
-            }
-            detector = det
-        }
-
-        let startTime = recordingStartTime ?? Date()
-        let capture = audioCapture
-
-        await VADMonitorLoop.run(
-            detector: detector,
-            vadAutoStop: vadAutoStop,
-            maxDuration: TimingConstants.maxRecordingDuration,
-            recordingStartTime: startTime,
-            sampleProvider: { [weak capture] in capture?.capturedSamples ?? [] },
-            isRecording: { [weak self] in self?.state == .recording && !(self?.isStopping ?? true) },
-            onStop: { [weak self] _ in
-                Task { [weak self] in await self?.stopAndTranscribe() }
-            }
+      } else {
+        samples = rawSamples
+      }
+    } else if let detector = silenceDetector {
+      await detector.finalizeSegments(totalSampleCount: rawSamples.count)
+      let segments = await detector.speechSegments
+      hasSpeechEvidence = !segments.isEmpty
+      vadSegmentCount = segments.count
+      vadSpeechDurationMs =
+        segments.reduce(0) { $0 + ($1.endSample - $1.startSample) } * 1000 / 16000
+      samples = await detector.filterSamples(from: rawSamples)
+      let pct = String(
+        format: "%.1f", Double(samples.count) / Double(max(rawSamples.count, 1)) * 100)
+      Task {
+        await AppLogger.shared.log(
+          "WhisperKit VAD filtered to \(samples.count) samples (\(pct)% voiced)",
+          level: .info, category: "WhisperKitPipeline"
         )
+      }
+    } else {
+      samples = rawSamples
+      // No VAD detector available -- default to true so empty ASR results
+      // still fire Sentry errors (fail toward visibility).
+      hasSpeechEvidence = true
+    }
+    let peakAudioLevel = rawSamples.reduce(Float(0)) { max($0, abs($1)) }
+
+    // VAD gate: if no speech was detected, skip ASR entirely.
+    // Prevents noise-induced hallucinations from ambient sounds.
+    if !hasSpeechEvidence {
+      if let worker = incrementalWorker {
+        await worker.cancel()
+        incrementalWorker = nil
+      }
+      SentryBreadcrumb.add(
+        stage: "asr", message: "VAD gate: no speech detected, skipping WhisperKit ASR",
+        level: .info,
+        data: [
+          "backend": "whisperKit",
+          "raw_sample_count": rawSamples.count,
+          "peak_audio_level": peakAudioLevel,
+        ]
+      )
+      frozenSnapshot = nil
+      state = .idle
+      Task {
+        await AppLogger.shared.log(
+          "VAD gate: no speech, skipping WhisperKit ASR (samples=\(rawSamples.count), peak=\(String(format: "%.4f", peakAudioLevel)))",
+          level: .info, category: "WhisperKitPipeline"
+        )
+      }
+      return
     }
 
+    // Fallback: if VAD was too aggressive, use raw
+    let minimumSamples = AudioConstants.minimumTranscriptionSamples
+    if samples.count < minimumSamples && rawSamples.count >= minimumSamples {
+      samples = rawSamples
+    }
 
-    // MARK: - Model Lifecycle
+    // Pad short recordings
+    if samples.count > 0 && samples.count < minimumSamples {
+      samples.append(contentsOf: [Float](repeating: 0, count: minimumSamples - samples.count))
+    }
 
-    private func scheduleModelUnloadIfNeeded() {
-        modelUnloadTask?.cancel()
-        modelUnloadTask = nil
+    // Multilingual v1 (W2): detect language on voiced audio before transcribe.
+    // Heart protection: detector never throws; if it abstains, pass nil to
+    // TranscriptionOptions.language so WhisperKit's internal LID runs.
+    // languageMode is captured lazily so a user toggling Auto<->Locked
+    // mid-recording is respected.
+    let voicedDurationSec = Double(vadSpeechDurationMs) / 1000.0
+    // nonisolated(unsafe): WhisperKit is an actor/reference-typed handle that is
+    // not Sendable. Safe to pass to the detector actor because the backend owns
+    // it for its lifetime and the detector only calls read-only detectLanguage.
+    nonisolated(unsafe) let kitForLID = await backend.whisperKitInstance
+    let lidResult = await languageDetector.detect(
+      samples: samples,
+      voicedDuration: voicedDurationSec,
+      whisperKit: kitForLID,
+      mode: languageMode
+    )
+    lastLanguageDetection = lidResult
+    // Multilingual v1 (W3): forward the detection to the polish step so the
+    // prompt planner can apply confidence-tiered, language-aware vocab
+    // injection. Heart-protected: the planner degrades gracefully when the
+    // detection is abstained or low-confidence.
+    llmPolishStep.languageDetection = lidResult
+    if let lang = lidResult.lang, !lidResult.abstained {
+      transcriptionOptions.language = lang
+    } else {
+      // Abstain: let WhisperKit's own LID run. Heart still completes.
+      transcriptionOptions.language = nil
+    }
+    Task {
+      await AppLogger.shared.log(
+        "LID result: lang=\(lidResult.lang ?? "nil") tier=\(lidResult.tier) conf=\(String(format: "%.2f", lidResult.confidence)) margin=\(String(format: "%.2f", lidResult.margin)) voiced=\(String(format: "%.2f", lidResult.voicedDuration))s abstained=\(lidResult.abstained)",
+        level: .info, category: "WhisperKitPipeline"
+      )
+    }
+    SentryBreadcrumb.add(
+      stage: "asr", message: "Language detected",
+      data: [
+        "lang": lidResult.lang ?? "nil",
+        "tier": lidResult.tier.rawValue,
+        "confidence": String(format: "%.3f", lidResult.confidence),
+        "margin": String(format: "%.3f", lidResult.margin),
+        "voiced_s": String(format: "%.2f", lidResult.voicedDuration),
+        "abstained": lidResult.abstained,
+      ])
 
-        switch modelUnloadPolicy {
-        case .never:
-            return
-        case .immediately:
-            modelUnloadTask = Task { [weak self] in
-                await self?.backend.unload()
-            }
-        default:
-            guard let interval = modelUnloadPolicy.interval else { return }
-            modelUnloadTask = Task { [weak self] in
-                try? await Task.sleep(for: .seconds(interval))
-                guard !Task.isCancelled else { return }
-                await self?.backend.unload()
-            }
+    // Multilingual v1 (W6): emit language.detected for every LID call and
+    // language.lid_abstained when abstaining. Fire-and-forget; telemetry is a
+    // limb and must never block transcription.
+    let sessionPreferredSnapshot = await languageDetector.peekMemory().sessionPreferred
+    TelemetryService.shared.trackLanguageDetected(
+      lang: lidResult.lang,
+      confidence: lidResult.confidence,
+      margin: lidResult.margin,
+      voicedDuration: lidResult.voicedDuration,
+      abstained: lidResult.abstained,
+      sessionPreferredLang: sessionPreferredSnapshot,
+      usedSticky: lidResult.usedSessionPrior
+    )
+    if lidResult.abstained {
+      // Classify the abstain reason per spec § Telemetry table.
+      let reason: String
+      if lidResult.voicedDuration < LanguageDetectorThresholds.shortClipMinSec {
+        reason = "too_short"
+      } else if lidResult.confidence < LanguageDetectorThresholds.normalProb {
+        reason = "low_confidence"
+      } else if lidResult.margin < LanguageDetectorThresholds.normalMargin {
+        reason = "narrow_margin"
+      } else {
+        reason = "low_confidence"
+      }
+      TelemetryService.shared.trackLIDAbstained(
+        voicedDuration: lidResult.voicedDuration,
+        top1Prob: lidResult.confidence,
+        top1Lang: lidResult.lang,
+        reason: reason
+      )
+    }
+
+    state = .transcribing
+    SentryBreadcrumb.add(
+      stage: "asr", message: "WhisperKit transcription started", data: ["backend": "whisperKit"])
+
+    do {
+      let asrStart = CFAbsoluteTimeGetCurrent()
+
+      // Try background worker result first, batch fallback if stale/empty
+      let asrText: String
+      let asrLanguage: String?
+      var usedIncremental = false
+
+      if let worker = incrementalWorker {
+        let segments = await silenceDetector?.speechSegments ?? []
+        let result = await worker.finalize(finalSamples: rawSamples, speechSegments: segments)
+        incrementalWorker = nil
+
+        let coveragePct =
+          rawSamples.count > 0
+          ? String(format: "%.1f", Double(result.samplesCovered) / Double(rawSamples.count) * 100)
+          : "0"
+
+        if result.accepted, let text = result.text,
+          !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
+          asrText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+          asrLanguage = transcriptionOptions.language
+          usedIncremental = true
+
+          Task {
+            await AppLogger.shared.log(
+              "WhisperKit finalize: strategy=\(result.strategy), mode=\(result.mode), "
+                + "decodes=\(result.decodeCount), tailDecodeMs=\(result.tailDecodeMs), "
+                + "coverage=\(result.samplesCovered)/\(rawSamples.count) (\(coveragePct)%)",
+              level: .info, category: "WhisperKitPipeline"
+            )
+          }
+        } else {
+          Task {
+            await AppLogger.shared.log(
+              "WhisperKit finalize: strategy=\(result.strategy), "
+                + "workerDecodes=\(result.decodeCount), workerCoverage=\(coveragePct)%, "
+                + "falling back to batch",
+              level: .info, category: "WhisperKitPipeline"
+            )
+          }
+
+          let batchStart = CFAbsoluteTimeGetCurrent()
+          let batchResult = try await backend.transcribe(
+            audioSamples: samples, options: transcriptionOptions)
+          let batchMs = Int((CFAbsoluteTimeGetCurrent() - batchStart) * 1000)
+          asrText = batchResult.text.trimmingCharacters(in: .whitespacesAndNewlines)
+          asrLanguage = batchResult.language
+
+          Task {
+            await AppLogger.shared.log(
+              "WhisperKit finalize: strategy=\(result.strategy), batchMs=\(batchMs), "
+                + "workerDecodes=\(result.decodeCount), workerCoverage=\(coveragePct)%",
+              level: .info, category: "WhisperKitPipeline"
+            )
+          }
         }
+      } else {
+        let batchResult = try await backend.transcribe(
+          audioSamples: samples, options: transcriptionOptions)
+        asrText = batchResult.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        asrLanguage = batchResult.language
+      }
+
+      let asrEnd = CFAbsoluteTimeGetCurrent()
+
+      // Multilingual v1 (W6): per-transcription latency event for the
+      // per-language performance dashboard. Emitted only when we actually
+      // produced text (empty-result cases are covered by asr.completed +
+      // pipeline.failed elsewhere). Audio duration is derived from the raw
+      // capture buffer (16kHz mono) so latency is compared against actual
+      // recording length, not the VAD-trimmed slice.
+      let asrLatencySec = asrEnd - asrStart
+      let audioDurationSec = Double(rawSamples.count) / Double(AudioConstants.sampleRate)
+      if !asrText.isEmpty && audioDurationSec > 0 {
+        let msPerAudioSec = (asrLatencySec * 1000.0) / audioDurationSec
+        let modelName = await backend.modelVariantName
+        TelemetryService.shared.trackTranscriptionLatency(
+          lang: asrLanguage,
+          model: modelName,
+          durationSeconds: asrLatencySec,
+          msPerAudioSecond: msPerAudioSec
+        )
+      }
+
+      guard !asrText.isEmpty else {
+        if hasSpeechEvidence {
+          // Real ASR failure: VAD detected speech but decoder returned nothing
+          SentryBreadcrumb.captureError(
+            NSError(
+              domain: "EnviousWispr", code: -1,
+              userInfo: [
+                NSLocalizedDescriptionKey:
+                  "WhisperKit ASR returned empty text despite speech evidence"
+              ]),
+            category: .asrEmptyResult, stage: "asr",
+            extra: [
+              "backend": "whisperKit",
+              "incremental": usedIncremental,
+              "has_speech_evidence": true,
+              "raw_sample_count": rawSamples.count,
+              "vad_segment_count": vadSegmentCount,
+              "vad_speech_duration_ms": vadSpeechDurationMs,
+              "peak_audio_level": peakAudioLevel,
+            ],
+            snapshot: frozenSnapshot
+          )
+          state = .error("Couldn't catch that -- try again")
+          Task {
+            await AppLogger.shared.log(
+              "WhisperKit ASR empty despite speech evidence (segments=\(vadSegmentCount), speechMs=\(vadSpeechDurationMs), peak=\(peakAudioLevel))",
+              level: .info, category: "WhisperKitPipeline"
+            )
+          }
+        } else {
+          // Expected: user held button without speaking
+          SentryBreadcrumb.add(
+            stage: "asr", message: "WhisperKit ASR empty (no speech detected)",
+            level: .info,
+            data: ["backend": "whisperKit", "incremental": usedIncremental]
+          )
+          state = .idle
+          Task {
+            await AppLogger.shared.log(
+              "WhisperKit: no speech detected, returning to idle",
+              level: .info, category: "WhisperKitPipeline"
+            )
+          }
+        }
+        frozenSnapshot = nil
+        return
+      }
+
+      SentryBreadcrumb.add(
+        stage: "asr", message: "WhisperKit ASR completed",
+        data: [
+          "duration_s": String(format: "%.3f", asrEnd - asrStart),
+          "char_count": asrText.count,
+          "incremental": usedIncremental,
+        ])
+      Task {
+        await AppLogger.shared.log(
+          "WhisperKit ASR completed in \(String(format: "%.3f", asrEnd - asrStart))s "
+            + "(\(asrText.count) chars, lang=\(asrLanguage ?? "?"), incremental=\(usedIncremental))",
+          level: .info, category: "WhisperKitPipeline"
+        )
+      }
+
+      // Post-ASR finalization: text processing -> store -> paste
+      let recordingDuration = Double(rawSamples.count) / 16000.0
+      let finalizationResult: FinalizationResult
+      do {
+        finalizationResult = try await transcriptFinalizer.finalize(
+          FinalizationRequest(
+            asrText: asrText,
+            language: asrLanguage,
+            duration: recordingDuration,
+            processingTime: asrEnd - asrStart,
+            backendType: .whisperKit,
+            targetApp: targetApp,
+            targetElement: targetElement,
+            autoCopyToClipboard: autoCopyToClipboard,
+            autoPasteToActiveApp: autoPasteToActiveApp,
+            restoreClipboardAfterPaste: restoreClipboardAfterPaste,
+            steps: textProcessingSteps
+          ))
+      } catch is CancellationError {
+        frozenSnapshot = nil
+        return
+      } catch let error as FinalizationError {
+        switch error {
+        case .emptyAfterProcessing:
+          SentryBreadcrumb.captureError(
+            HeartPathError.emptyAfterProcessing(
+              route: audioCapture.currentAudioRoute,
+              wasPolishEnabled: llmPolishStep.isEnabled
+            ),
+            category: .heartPathFinalization,
+            stage: "processing",
+            extra: [
+              "capture.route": audioCapture.currentAudioRoute,
+              "polish.enabled": llmPolishStep.isEnabled,
+              "backend": "whisperKit",
+              "capture_session_id": Int(audioCapture.currentCaptureSessionID),
+            ]
+          )
+          state = .error("No text after processing")
+          frozenSnapshot = nil
+          return
+        case .storageFailed(let underlying):
+          SentryBreadcrumb.captureError(underlying, category: .asrFailed, stage: "storage")
+          state = .error("Failed to save transcript")
+          frozenSnapshot = nil
+          return
+        }
+      }
+
+      lastPolishError = finalizationResult.polishError
+
+      // Build metrics (pipeline-specific: uses ASR timing)
+      let pasteTargetApp = targetApp?.bundleIdentifier
+      targetApp = nil
+      targetElement = nil
+
+      let pipelineEnd = CFAbsoluteTimeGetCurrent()
+      let polishDuration = finalizationResult.polishDurationSeconds
+      let pasteDuration = finalizationResult.pasteDurationSeconds
+      Task {
+        await AppLogger.shared.log(
+          "WhisperKit pipeline TOTAL: \(String(format: "%.3f", pipelineEnd - pipelineStart))s "
+            + "(ASR=\(String(format: "%.3f", asrEnd - asrStart))s, "
+            + "polish=\(String(format: "%.3f", polishDuration))s, "
+            + "paste=\(String(format: "%.3f", pasteDuration))s)",
+          level: .info, category: "WhisperKitPipeline"
+        )
+      }
+
+      var transcript = finalizationResult.transcript
+      transcript.metrics = ExecutionMetrics(
+        asrLatencySeconds: asrEnd - asrStart,
+        llmLatencySeconds: polishDuration,
+        pasteTier: finalizationResult.pasteResult?.tier.rawValue,
+        pasteLatencyMs: finalizationResult.pasteResult?.durationMs,
+        targetApp: pasteTargetApp,
+        coldStart: false,
+        streamingMode: false,
+        e2eSeconds: pipelineEnd - pipelineStart
+      )
+      currentTranscript = transcript
+      SentryBreadcrumb.add(
+        stage: "pipeline", message: "WhisperKit pipeline complete",
+        data: [
+          "e2e_s": String(format: "%.3f", pipelineEnd - pipelineStart),
+          "asr_s": String(format: "%.3f", asrEnd - asrStart),
+          "polish_s": String(format: "%.3f", polishDuration),
+          "paste_tier": finalizationResult.pasteResult?.tier.rawValue ?? "none",
+        ])
+      frozenSnapshot = nil
+      state = .complete
+      scheduleModelUnloadIfNeeded()
+    } catch {
+      SentryBreadcrumb.captureError(
+        error, category: .asrFailed, stage: "transcription", extra: ["backend": "whisperKit"],
+        snapshot: frozenSnapshot)
+      frozenSnapshot = nil
+      state = .error("Transcription failed: \(error.localizedDescription)")
     }
+  }
+
+  /// Handle audio engine interruption (device disconnect, service crash, max duration cap).
+  /// Called by AppState's unified interruption handler, not set directly on audioCapture.
+  public func handleEngineInterruption() {
+    // Issue #285 — Sentry emission for audio/XPC interruptions is owned by
+    // AppState.onXPCServiceError (single-owner per plan §3.4a). Control-flow
+    // cleanup only.
+    SentryBreadcrumb.updateRecordingState(active: false)
+    frozenSnapshot = nil
+    vadMonitorTask?.cancel()
+    vadMonitorTask = nil
+    silenceDetector = nil
+    // Reset capture state so isCapturing and warm engine timer are consistent.
+    Task { [weak self] in
+      _ = await self?.audioCapture.stopCapture()
+    }
+    targetApp = nil
+    targetElement = nil
+    recordingStartTime = nil
+    isStopping = false
+    isPreWarmed = false
+    state = .error("Microphone disconnected")
+  }
+
+  /// Handle ASR XPC service crash during active session.
+  /// Called by AppState's unified ASR interruption handler when this pipeline is active.
+  /// Must stop audio capture (still running — only ASR died) and clean up fully.
+  public func handleASRServiceInterruption() {
+    let snapshot = buildInterruptionSnapshot()
+    SentryBreadcrumb.captureError(
+      NSError(
+        domain: "EnviousWispr", code: -3,
+        userInfo: [NSLocalizedDescriptionKey: "ASR XPC service crashed (WhisperKit)"]),
+      category: .xpcServiceError, stage: "asr",
+      extra: ["was_recording": state == .recording, "backend": "whisperKit"],
+      snapshot: snapshot
+    )
+    SentryBreadcrumb.updateRecordingState(active: false)
+    frozenSnapshot = nil
+    vadMonitorTask?.cancel()
+    vadMonitorTask = nil
+    silenceDetector = nil
+    Task { [weak self] in
+      await self?.audioCapture.stopCapture()
+    }
+    targetApp = nil
+    targetElement = nil
+    recordingStartTime = nil
+    isStopping = false
+    isPreWarmed = false
+    state = .error("Transcription service crashed — please try again")
+  }
+
+  private func buildInterruptionSnapshot() -> SentryBreadcrumb.RecordingSnapshot {
+    if let existing = frozenSnapshot { return existing }
+    let start = recordingStartTime ?? Date()
+    return SentryBreadcrumb.RecordingSnapshot(
+      backend: "whisperkit",
+      audioRoute: audioCapture.currentAudioRoute,
+      wasStreaming: false,
+      startTime: start,
+      durationMs: Int(Date().timeIntervalSince(start) * 1000),
+      targetAppBundleID: targetApp?.bundleIdentifier
+    )
+  }
+
+  public func cancelRecording() async {
+    if state == .startingUp || state == .loadingModel {
+      // Cancel during startup or model load — transition to idle
+      state = .idle
+      return
+    }
+
+    guard state == .recording else { return }
+    vadMonitorTask?.cancel()
+    vadMonitorTask = nil
+    await incrementalWorker?.cancel()
+    incrementalWorker = nil
+    silenceDetector = nil
+    _ = await audioCapture.stopCapture()
+    targetApp = nil
+    targetElement = nil
+    recordingStartTime = nil
+    state = .idle
+  }
+
+  public func reset() {
+    vadMonitorTask?.cancel()
+    vadMonitorTask = nil
+    // Fire-and-forget cancel — reset() is synchronous, worker cancel is safe to defer
+    if let worker = incrementalWorker {
+      incrementalWorker = nil
+      Task { await worker.cancel() }
+    }
+    silenceDetector = nil
+    if audioCapture.isCapturing {
+      let capture = audioCapture
+      Task { _ = await capture.stopCapture() }
+    }
+    audioCapture.onBufferCaptured = nil
+    recordingStartTime = nil
+    state = .idle
+    currentTranscript = nil
+  }
+
+  // MARK: - Incremental Worker
+
+  private func startIncrementalWorker() async {
+    guard let kit = await backend.whisperKitInstance else { return }
+    let opts = await backend.makeDecodeOptions(from: transcriptionOptions, sampleCount: 0)
+    // BRAIN: gotcha id=nonisolated-unsafe-tokenizer
+    // nonisolated(unsafe): WhisperTokenizer is not Sendable but is safe to transfer —
+    // the backend is the sole owner and we pass it to a single actor that holds it for its lifetime.
+    nonisolated(unsafe) let tokenizer = await backend.whisperKitTokenizer
+    let worker = WhisperKitIncrementalWorker(
+      whisperKit: kit, decodingOptions: opts, tokenizer: tokenizer)
+    self.incrementalWorker = worker
+
+    let isXPCMode = audioCapture is AudioCaptureProxy
+    let capture = audioCapture
+
+    if isXPCMode {
+      // XPC mode: use getSamplesSnapshot for incremental sample access.
+      // Tracks fromIndex locally — each call fetches only new samples since last snapshot.
+      //
+      // Memory: `accumulated` grows linearly with recording duration, mirroring the
+      // in-process path where capturedSamples grows the same way. The worker expects
+      // full audio history for re-transcription. At 16kHz Float32, 2 min = ~7.7MB,
+      // 5 min (max recording) = ~19MB. Bounded by TimingConstants.maxRecordingDuration.
+      var nextIndex = 0
+      var accumulated: [Float] = []
+      await worker.start(audioSamplesProvider: { @MainActor in
+        let (newSamples, totalCount) = await capture.getSamplesSnapshot(fromIndex: nextIndex)
+        accumulated.append(contentsOf: newSamples)
+        nextIndex = totalCount
+        return (samples: accumulated, count: accumulated.count)
+      })
+    } else {
+      // In-process mode: read directly from MainActor-isolated capturedSamples.
+      await worker.start(audioSamplesProvider: { @MainActor in
+        let samples = capture.capturedSamples
+        return (samples: samples, count: samples.count)
+      })
+    }
+  }
+
+  // MARK: - VAD Monitoring
+
+  private func startVADMonitoring() {
+    vadMonitorTask = Task { [weak self] in
+      await self?.monitorVAD()
+    }
+  }
+
+  private func monitorVAD() async {
+    // Detector setup stays in pipeline (owns silenceDetector lifecycle)
+    let isXPCMode = audioCapture is AudioCaptureProxy
+    var detector: SilenceDetector?
+
+    if !isXPCMode {
+      let config = SmoothedVADConfig.fromSensitivity(vadSensitivity, energyGate: vadEnergyGate)
+      if silenceDetector == nil {
+        silenceDetector = SilenceDetector(silenceTimeout: vadSilenceTimeout, vadConfig: config)
+      }
+      guard let det = silenceDetector else { return }
+      await det.reset()
+      await det.updateConfig(config)
+      if !(await det.isReady) {
+        do {
+          try await det.prepare()
+        } catch {
+          Task {
+            await AppLogger.shared.log(
+              "VAD preparation failed: \(error)",
+              level: .info, category: "VAD"
+            )
+          }
+          return
+        }
+      }
+      detector = det
+    }
+
+    let startTime = recordingStartTime ?? Date()
+    let capture = audioCapture
+
+    await VADMonitorLoop.run(
+      detector: detector,
+      vadAutoStop: vadAutoStop,
+      maxDuration: TimingConstants.maxRecordingDuration,
+      recordingStartTime: startTime,
+      sampleProvider: { [weak capture] in capture?.capturedSamples ?? [] },
+      isRecording: { [weak self] in self?.state == .recording && !(self?.isStopping ?? true) },
+      onStop: { [weak self] _ in
+        Task { [weak self] in await self?.stopAndTranscribe() }
+      }
+    )
+  }
+
+  // MARK: - Model Lifecycle
+
+  private func scheduleModelUnloadIfNeeded() {
+    modelUnloadTask?.cancel()
+    modelUnloadTask = nil
+
+    switch modelUnloadPolicy {
+    case .never:
+      return
+    case .immediately:
+      modelUnloadTask = Task { [weak self] in
+        await self?.backend.unload()
+      }
+    default:
+      guard let interval = modelUnloadPolicy.interval else { return }
+      modelUnloadTask = Task { [weak self] in
+        try? await Task.sleep(for: .seconds(interval))
+        guard !Task.isCancelled else { return }
+        await self?.backend.unload()
+      }
+    }
+  }
 
 }
