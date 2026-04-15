@@ -292,7 +292,7 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     serviceProxy { proxy in proxy.buildEngine(noiseSuppression: noiseSuppression) }
   }
 
-  public func preWarm() async {
+  public func preWarm() async throws {
     let proxyStart = ContinuousClock.now
 
     // Derive route label so Sentry telemetry is populated even when
@@ -331,7 +331,10 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
           level: .info, category: "XPC"
         )
       }
-      return
+      // Issue #289: propagate so the pipeline / AppState can abort the
+      // recording cleanly instead of flipping isPreWarmed=true against a
+      // dead capture path.
+      throw error
     }
     let enginePhaseMs = Self.ms(ContinuousClock.now - enginePhaseStart)
     // Phase 2: wait for format stabilization

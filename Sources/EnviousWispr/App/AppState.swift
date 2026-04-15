@@ -509,18 +509,49 @@ final class AppState {
       )
 
       let pttStart = ContinuousClock.now
-      await active.handle(event: .preWarm)
-      guard !Task.isCancelled else {
-        // PTT release arrived during preWarm — stop the engine that preWarm started
+      do {
+        try await active.handle(event: .preWarm)
+      } catch is CancellationError {
+        // Issue #289: PTT release mid-preWarm threw CancellationError (silent
+        // unwind). Not a user-visible failure — just clean up. The existing
+        // `Task.isCancelled` guard below no longer fires because the throw
+        // short-circuits past it, so this catch is load-bearing.
         self.audioCapture.abortPreWarm()
         self.recordingOverlay.show(intent: .hidden)
+        self.isRecordingLocked = false
+        return
+      } catch {
+        // Issue #289: real preWarm failure (XPC transport dead, AVAudioEngine
+        // `'what?'`, etc.). Abort the start cleanly — never call
+        // `.toggleRecording` against a dead capture path — and surface a brief
+        // user-visible error. Telemetry-free here: the lower layers already
+        // breadcrumbed the root cause; this is the user-facing UX.
+        self.audioCapture.abortPreWarm()
+        self.recordingOverlay.show(intent: .hidden)
+        self.isRecordingLocked = false
+        SentryBreadcrumb.add(
+          stage: "recording", message: "preWarm failed — start aborted",
+          level: .warning, data: ["error": String(describing: error)]
+        )
+        active.setExternalError("Microphone unavailable — try again.")
+        return
+      }
+      guard !Task.isCancelled else {
+        // Non-throwing cancellation path (e.g. outer Task cancel between
+        // preWarm return and .toggleRecording dispatch).
+        self.audioCapture.abortPreWarm()
+        self.recordingOverlay.show(intent: .hidden)
+        self.isRecordingLocked = false
         return
       }
       let preWarmMs = {
         let (s, a) = (ContinuousClock.now - pttStart).components
         return Int(s) * 1000 + Int(a / 1_000_000_000_000_000)
       }()
-      await active.handle(event: .toggleRecording)
+      // `.toggleRecording` is declared throws on the protocol, but today the
+      // underlying implementation doesn't throw. `try?` keeps the surface
+      // unchanged. If a future event grows a meaningful throw we revisit here.
+      try? await active.handle(event: .toggleRecording)
       let totalMs = {
         let (s, a) = (ContinuousClock.now - pttStart).components
         return Int(s) * 1000 + Int(a / 1_000_000_000_000_000)
@@ -545,7 +576,7 @@ final class AppState {
     hotkeyService.onStopRecording = { [weak self] in
       guard let self else { return }
       self.isRecordingLocked = false
-      await self.activePipeline.handle(event: .requestStop)
+      try? await self.activePipeline.handle(event: .requestStop)
       if self.asrManager.activeBackendType == .whisperKit {
         self.whisperKitPipeline.autoPasteToActiveApp = false
       } else {
@@ -833,7 +864,7 @@ final class AppState {
       )
     }
 
-    await active.handle(event: .toggleRecording)
+    try? await active.handle(event: .toggleRecording)
 
     // Clear auto-paste on completion/error
     if active is WhisperKitPipeline {
@@ -860,7 +891,7 @@ final class AppState {
         return
       }
       whisperKitPipeline.autoPasteToActiveApp = false
-      await whisperKitPipeline.handle(event: .cancelRecording)
+      try? await whisperKitPipeline.handle(event: .cancelRecording)
     } else {
       guard pipelineState == .recording || pipelineState == .loadingModel else { return }
       pipeline.autoPasteToActiveApp = false
