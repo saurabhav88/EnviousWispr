@@ -90,6 +90,15 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
   /// instead of also firing `no_audio_captured` for the same incident.
   private var xpcReplyFailedThisSession: Bool = false
 
+  /// Issue #289 stall-recovery ownership token. Set to the stalled session's
+  /// ID when `handleCaptureStall` flips state to `.error`, cleared by any path
+  /// that takes ownership back (fresh `startRecording`, `cancelRecording`,
+  /// `reset`, engine interruption). `finishStallRecovery` bails unless the
+  /// token still matches, so a fast retry that hasn't yet reached
+  /// `beginCapturePhase()` (and therefore hasn't advanced
+  /// `currentCaptureSessionID`) is not torn down by stale cleanup.
+  private var pendingStallRecoveryToken: UInt64?
+
   public init(
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface,
@@ -180,6 +189,49 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
       stage: "recording",
       extra: extras
     )
+
+    // Issue #289: flip terminal state SYNCHRONOUSLY before any await so a
+    // racing PTT key-up can't slip into `stopAndTranscribe` against a live
+    // `.recording` state. `stallEventAlreadyCaptured` already dedups re-entry.
+    guard state == .recording else { return }
+    stopRequested = true
+    isPreWarmed = false
+    recordingStartTime = nil
+    pendingStallRecoveryToken = ctx.sessionID
+    state = .error("No audio detected — try again.")
+
+    // Async cleanup — token-gated. `currentCaptureSessionID` alone is
+    // insufficient because `preWarm()` / `startEnginePhase()` do not advance
+    // it (Codex 2026-04-15); a fast retry would slip through a sessionID-only
+    // gate while still pre-`beginCapturePhase`. The token is cleared by any
+    // path that takes ownership back, so fast-retry + cross-pipeline races
+    // both bail cleanly here.
+    Task { @MainActor [weak self, sessionID = ctx.sessionID] in
+      await self?.finishStallRecovery(for: sessionID)
+    }
+  }
+
+  /// Issue #289: token-gated cleanup after `handleCaptureStall` flipped
+  /// terminal state. Bails if any path has taken ownership back.
+  /// `stopCapture()` is required — the source-side watchdog is only cancelled
+  /// by stop / deactivate / interruption paths, so a state-only recovery
+  /// would leak it in the committed-recovery case.
+  @MainActor
+  private func finishStallRecovery(for sessionID: UInt64) async {
+    // Defense-in-depth: if state has moved off `.error` since we scheduled
+    // cleanup, another path is in-flight (retry, cancel, interruption) —
+    // do not stopCapture.
+    guard case .error = state else { return }
+    guard pendingStallRecoveryToken == sessionID else { return }
+    guard audioCapture.currentCaptureSessionID == sessionID else { return }
+    pendingStallRecoveryToken = nil
+    vadMonitorTask?.cancel()
+    vadMonitorTask = nil
+    if streamingASRActive {
+      await asrManager.cancelStreaming()
+    }
+    deactivateStreamingForwarding()
+    _ = await audioCapture.stopCapture()
   }
 
   private func resetStallFlagIfNewSession(_ sessionID: UInt64) {
@@ -240,11 +292,23 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
   /// Pre-warm the audio input to trigger any Bluetooth codec switch before recording.
   /// Called on PTT key-down to hide the 0.5-2s Bluetooth negotiation latency.
   /// Sets `isPreWarmed` so `startRecording()` skips engine phase 1.
-  public func preWarmAudioInput() async {
+  public func preWarmAudioInput() async throws {
     guard !state.isActive, state != .recording else { return }
+    // Issue #289: earliest new-attempt signal — clear any stale stall-recovery
+    // token BEFORE the cleanup Task can race against this retry's `preWarm`
+    // and `startEnginePhase`, neither of which advance currentCaptureSessionID.
+    // Clearing in `startRecording` alone was too late: the async cleanup could
+    // fire during the window between `preWarmAudioInput` start and
+    // `startRecording` entry (PTT event flow is `.preWarm` then
+    // `.toggleRecording`). Same-pipeline retry only; cross-pipeline backend
+    // switch is a narrower window handled by the sessionID gate once
+    // `beginCapturePhase()` runs on the other pipeline.
+    pendingStallRecoveryToken = nil
     stopRequested = false
     let start = ContinuousClock.now
-    await audioCapture.preWarm()
+    // Issue #289: propagate preWarm failures. `isPreWarmed` is only flipped
+    // to true on a real success — never against a dead capture path.
+    try await audioCapture.preWarm()
     guard !Task.isCancelled else { return }
     isPreWarmed = true
     let totalMs = PipelineUtils.durationMs(ContinuousClock.now - start)
@@ -270,6 +334,9 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
 
   /// Start recording audio from the microphone.
   public func startRecording() async {
+    // Issue #289: new attempt takes ownership — any pending stall recovery
+    // from a prior session must not tear down the fresh source.
+    pendingStallRecoveryToken = nil
     guard !Task.isCancelled else { return }
     guard !isStarting else { return }
     guard !state.isActive || state == .complete else { return }
@@ -892,6 +959,7 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
   public func reset() {
     guard !isStopping, !isStarting else { return }
     stopRequested = false
+    pendingStallRecoveryToken = nil
     vadMonitorTask?.cancel()
     vadMonitorTask = nil
     // Cancel any active streaming ASR session to prevent orphaned sessions.
@@ -915,6 +983,7 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
   /// Handle audio engine interruption (device disconnect, service crash, max duration cap).
   /// Called by AppState's unified interruption handler, not set directly on audioCapture.
   public func handleEngineInterruption() {
+    pendingStallRecoveryToken = nil
     // Issue #285 — Sentry emission for audio/XPC interruptions is owned by
     // AppState.onXPCServiceError (single-owner per plan §3.4a). This handler
     // is control-flow only: clean up pipeline state + transition UI.
@@ -944,6 +1013,7 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
   /// Called by AppState's unified ASR interruption handler when this pipeline is active.
   /// Must stop audio capture (still running — only ASR died) and clean up fully.
   public func handleASRServiceInterruption() {
+    pendingStallRecoveryToken = nil
     let snapshot = buildInterruptionSnapshot()
     SentryBreadcrumb.captureError(
       NSError(
@@ -990,6 +1060,7 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
   /// Guards on `.recording` state — safe to call from any other state.
   public func cancelRecording() async {
     stopRequested = false
+    pendingStallRecoveryToken = nil
 
     // Cancel during model loading: abort the load task and return to idle.
     if state == .loadingModel {
@@ -1165,10 +1236,10 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
     }
   }
 
-  public func handle(event: PipelineEvent) async {
+  public func handle(event: PipelineEvent) async throws {
     switch event {
     case .preWarm:
-      await preWarmAudioInput()
+      try await preWarmAudioInput()
     case .toggleRecording:
       await toggleRecording()
     case .requestStop:
@@ -1178,5 +1249,17 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
     case .reset:
       reset()
     }
+  }
+
+  /// Issue #289: dumb external-error sink. No transition side-effects, no
+  /// retry scheduling — callers own the decision to surface an error here.
+  public func setExternalError(_ message: String) {
+    currentTranscript = nil
+    state = .error(message)
+  }
+
+  /// Issue #289: see `DictationPipeline.clearPendingStallRecovery`.
+  public func clearPendingStallRecovery() {
+    pendingStallRecoveryToken = nil
   }
 }

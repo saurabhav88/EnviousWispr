@@ -86,7 +86,7 @@ public protocol AudioCaptureInterface: AnyObject {
   func stopCapture() async -> CaptureResult
   func rebuildEngine()
   func buildEngine(noiseSuppression: Bool)
-  func preWarm() async
+  func preWarm() async throws
   func abortPreWarm()
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool
 

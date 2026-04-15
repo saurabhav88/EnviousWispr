@@ -290,7 +290,7 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     }
   }
 
-  public func preWarm() async {
+  public func preWarm() async throws {
     let preWarmStart = ContinuousClock.now
     let source = resolveSource()
     let resolveMs = Self.ms(ContinuousClock.now - preWarmStart)
@@ -308,7 +308,8 @@ public final class AudioCaptureManager: AudioCaptureInterface {
           level: .info, category: "Audio"
         )
       }
-      return
+      // Issue #289: propagate so callers can abort the start cleanly.
+      throw error
     }
     let prepareMs = Self.ms(ContinuousClock.now - preWarmStart)
     let stabStart = ContinuousClock.now

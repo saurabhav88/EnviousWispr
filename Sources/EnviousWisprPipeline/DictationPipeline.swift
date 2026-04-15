@@ -39,7 +39,23 @@ public enum OverlayIntent: Equatable, Sendable {
 @MainActor
 public protocol DictationPipeline: AnyObject {
   var overlayIntent: OverlayIntent { get }
-  func handle(event: PipelineEvent) async
+  /// Issue #289: `.preWarm` may now throw if the audio input fails to
+  /// start (XPC transport error, AVAudioEngine start refusal, etc.). Other
+  /// events never throw today but the unified signature lets callers observe
+  /// failures without a second protocol method.
+  func handle(event: PipelineEvent) async throws
+  /// Surface an error to the pipeline from outside (e.g. `AppState` after
+  /// `handle(.preWarm)` threw). Intentionally dumb: sets `state = .error(msg)`
+  /// and clears transient state. No retry scheduling, no transition logic.
+  func setExternalError(_ message: String)
+
+  /// Issue #289: invalidate any pending stall-recovery cleanup token so a
+  /// deferred `finishStallRecovery` won't call `stopCapture()` on a session
+  /// this pipeline no longer owns. Called by `PipelineSettingsSync` on
+  /// backend switch — the deactivating pipeline may still hold a token for a
+  /// pre-switch stall, and the shared `AudioCaptureInterface.currentCaptureSessionID`
+  /// doesn't advance until the other pipeline reaches `beginCapturePhase()`.
+  func clearPendingStallRecovery()
 }
 
 /// Issue #285 — heart-path telemetry callbacks that AppState routes to

@@ -118,6 +118,9 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
   private var incrementalWorker: WhisperKitIncrementalWorker?
   private var modelUnloadTask: Task<Void, Never>?
 
+  /// Issue #289 stall-recovery ownership token (see TranscriptionPipeline).
+  private var pendingStallRecoveryToken: UInt64?
+
   public init(
     audioCapture: any AudioCaptureInterface,
     backend: WhisperKitBackend,
@@ -214,6 +217,35 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
       stage: "recording",
       extra: extras
     )
+
+    // Issue #289: synchronous terminal-state flip before any await — see
+    // TranscriptionPipeline.handleCaptureStall for the race-closure rationale.
+    guard state == .recording else { return }
+    isPreWarmed = false
+    recordingStartTime = nil
+    pendingStallRecoveryToken = ctx.sessionID
+    state = .error("No audio detected — try again.")
+
+    Task { @MainActor [weak self, sessionID = ctx.sessionID] in
+      await self?.finishStallRecovery(for: sessionID)
+    }
+  }
+
+  /// Issue #289: token-gated cleanup (mirrors `TranscriptionPipeline`).
+  /// See TranscriptionPipeline.finishStallRecovery for the sessionID-stale
+  /// race that the token gate closes.
+  @MainActor
+  private func finishStallRecovery(for sessionID: UInt64) async {
+    // Defense-in-depth (see TranscriptionPipeline).
+    guard case .error = state else { return }
+    guard pendingStallRecoveryToken == sessionID else { return }
+    guard audioCapture.currentCaptureSessionID == sessionID else { return }
+    pendingStallRecoveryToken = nil
+    vadMonitorTask?.cancel()
+    vadMonitorTask = nil
+    await incrementalWorker?.cancel()
+    incrementalWorker = nil
+    _ = await audioCapture.stopCapture()
   }
 
   private func resetStallFlagIfNewSession(_ sessionID: UInt64) {
@@ -287,10 +319,10 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
     }
   }
 
-  public func handle(event: PipelineEvent) async {
+  public func handle(event: PipelineEvent) async throws {
     switch event {
     case .preWarm:
-      await preWarmAudioInput()
+      try await preWarmAudioInput()
     case .toggleRecording:
       await toggleRecording()
     case .requestStop:
@@ -300,6 +332,17 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
     case .reset:
       reset()
     }
+  }
+
+  /// Issue #289: dumb external-error sink (mirrors `TranscriptionPipeline`).
+  public func setExternalError(_ message: String) {
+    currentTranscript = nil
+    state = .error(message)
+  }
+
+  /// Issue #289: see `DictationPipeline.clearPendingStallRecovery`.
+  public func clearPendingStallRecovery() {
+    pendingStallRecoveryToken = nil
   }
 
   // MARK: - Background Pre-load
@@ -340,10 +383,14 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
 
   // MARK: - Recording Lifecycle
 
-  public func preWarmAudioInput() async {
+  public func preWarmAudioInput() async throws {
     guard !state.isActive, state != .recording else { return }
+    // Issue #289: earliest new-attempt signal — see TranscriptionPipeline
+    // for rationale. Clearing in `startRecording` alone left a race window.
+    pendingStallRecoveryToken = nil
     let start = ContinuousClock.now
-    await audioCapture.preWarm()
+    // Issue #289: propagate preWarm failures (see TranscriptionPipeline).
+    try await audioCapture.preWarm()
     guard !Task.isCancelled else { return }
     isPreWarmed = true
     let totalMs = PipelineUtils.durationMs(ContinuousClock.now - start)
@@ -373,6 +420,9 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
   private var isStarting = false
 
   public func startRecording() async {
+    // Issue #289: new attempt takes ownership — invalidate any pending stall
+    // recovery token so an in-flight cleanup cannot tear down this session.
+    pendingStallRecoveryToken = nil
     guard !isStarting else { return }
     guard !state.isActive || state == .complete || state == .ready else { return }
     isStarting = true
@@ -978,6 +1028,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
   /// Handle audio engine interruption (device disconnect, service crash, max duration cap).
   /// Called by AppState's unified interruption handler, not set directly on audioCapture.
   public func handleEngineInterruption() {
+    pendingStallRecoveryToken = nil
     // Issue #285 — Sentry emission for audio/XPC interruptions is owned by
     // AppState.onXPCServiceError (single-owner per plan §3.4a). Control-flow
     // cleanup only.
@@ -1002,6 +1053,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
   /// Called by AppState's unified ASR interruption handler when this pipeline is active.
   /// Must stop audio capture (still running — only ASR died) and clean up fully.
   public func handleASRServiceInterruption() {
+    pendingStallRecoveryToken = nil
     let snapshot = buildInterruptionSnapshot()
     SentryBreadcrumb.captureError(
       NSError(
@@ -1041,6 +1093,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
   }
 
   public func cancelRecording() async {
+    pendingStallRecoveryToken = nil
     if state == .startingUp || state == .loadingModel {
       // Cancel during startup or model load — transition to idle
       state = .idle
@@ -1061,6 +1114,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
   }
 
   public func reset() {
+    pendingStallRecoveryToken = nil
     vadMonitorTask?.cancel()
     vadMonitorTask = nil
     // Fire-and-forget cancel — reset() is synchronous, worker cancel is safe to defer
