@@ -1,0 +1,10 @@
+name = "enviouswispr-sentry-triage"
+main = "src/index.js"
+compatibility_date = "2026-04-15"
+
+[vars]
+GITHUB_REPO = "saurabhav88/EnviousWispr"
+
+[[kv_namespaces]]
+binding = "SENTRY_DEDUP"
+id = "7003376387884d21b2e4ab191a37fcbf"
