@@ -9,121 +9,133 @@ import OSLog
 ///   isDebugModeEnabled is true.
 /// - API keys and secrets are never logged — callers must redact before passing.
 public actor AppLogger {
-    public static let shared = AppLogger()
+  public static let shared = AppLogger()
 
-    public private(set) var isDebugModeEnabled: Bool = false
-    public private(set) var logLevel: DebugLogLevel = .info
+  public private(set) var isDebugModeEnabled: Bool = false
+  public private(set) var logLevel: DebugLogLevel = .info
 
-    private let oslog = Logger(subsystem: "com.enviouswispr.app", category: "pipeline")
+  private let oslog = Logger(subsystem: "com.enviouswispr.app", category: "pipeline")
 
-    /// Cached date formatter to avoid allocation per log line.
-    /// Instance property is safe since AppLogger is an actor with serialized access.
-    private let timestampFormatter: ISO8601DateFormatter = ISO8601DateFormatter()
+  /// Cached date formatter to avoid allocation per log line.
+  /// Instance property is safe since AppLogger is an actor with serialized access.
+  /// Uses the user's local time zone so `[2026-04-15T19:11:22-04:00]` in the
+  /// file log matches their wall clock, not UTC.
+  private let timestampFormatter: ISO8601DateFormatter = {
+    let formatter = ISO8601DateFormatter()
+    // autoupdatingCurrent tracks DST transitions and travel; .current would
+    // snapshot the offset at init and go stale in long-running sessions.
+    formatter.timeZone = TimeZone.autoupdatingCurrent
+    return formatter
+  }()
 
-    private let maxFileSize: Int = 10 * 1024 * 1024
-    private let maxFileCount: Int = 5
+  private let maxFileSize: Int = 10 * 1024 * 1024
+  private let maxFileCount: Int = 5
 
-    private var logDirectory: URL {
-        let lib = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
-        return lib.appendingPathComponent("Logs/EnviousWispr", isDirectory: true)
+  private var logDirectory: URL {
+    let lib = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
+    return lib.appendingPathComponent("Logs/EnviousWispr", isDirectory: true)
+  }
+  private var currentLogURL: URL { logDirectory.appendingPathComponent("app.log") }
+  private var fileHandle: FileHandle?
+
+  private init() {}
+
+  public func setDebugMode(_ enabled: Bool) {
+    isDebugModeEnabled = enabled
+    if enabled {
+      openFileHandleIfNeeded()
+      log("Debug mode enabled", level: .info, category: "AppLogger")
+    } else {
+      log("Debug mode disabled", level: .info, category: "AppLogger")
+      fileHandle?.closeFile()
+      fileHandle = nil
     }
-    private var currentLogURL: URL { logDirectory.appendingPathComponent("app.log") }
-    private var fileHandle: FileHandle?
+  }
 
-    private init() {}
+  public func setLogLevel(_ level: DebugLogLevel) {
+    logLevel = level
+  }
 
-    public func setDebugMode(_ enabled: Bool) {
-        isDebugModeEnabled = enabled
-        if enabled {
-            openFileHandleIfNeeded()
-            log("Debug mode enabled", level: .info, category: "AppLogger")
-        } else {
-            log("Debug mode disabled", level: .info, category: "AppLogger")
-            fileHandle?.closeFile()
-            fileHandle = nil
-        }
-    }
-
-    public func setLogLevel(_ level: DebugLogLevel) {
-        logLevel = level
-    }
-
-    public func log(_ message: String, level: DebugLogLevel = .info, category: String = "App") {
-        switch level {
-        case .info:    oslog.info("[\(category)] \(message)")
-        case .verbose: oslog.debug("[\(category)] \(message)")
-        #if DEBUG
-        case .debug:   oslog.debug("[\(category, privacy: .public)] \(message, privacy: .public)")
-        #else
-        case .debug:   oslog.debug("[\(category)] \(message)")
-        #endif
-        }
-
-        guard isDebugModeEnabled, level <= logLevel else { return }
-
-        let timestamp = timestampFormatter.string(from: Date())
-        let line = "[\(timestamp)] [\(level.rawValue.uppercased())] [\(category)] \(message)\n"
-
-        guard let data = line.data(using: .utf8) else { return }
-        writeToFile(data)
-    }
-
-    // MARK: - File management
-
-    private func openFileHandleIfNeeded() {
-        guard fileHandle == nil else { return }
-        let dir = logDirectory
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        if !FileManager.default.fileExists(atPath: currentLogURL.path) {
-            FileManager.default.createFile(atPath: currentLogURL.path, contents: nil)
-        }
-        fileHandle = try? FileHandle(forWritingTo: currentLogURL)
-        fileHandle?.seekToEndOfFile()
+  public func log(_ message: String, level: DebugLogLevel = .info, category: String = "App") {
+    switch level {
+    case .info: oslog.info("[\(category)] \(message)")
+    case .verbose: oslog.debug("[\(category)] \(message)")
+    #if DEBUG
+      case .debug: oslog.debug("[\(category, privacy: .public)] \(message, privacy: .public)")
+    #else
+      case .debug: oslog.debug("[\(category)] \(message)")
+    #endif
     }
 
-    private func writeToFile(_ data: Data) {
-        guard let fh = fileHandle else { return }
-        fh.write(data)
-        rotateIfNeeded()
+    guard isDebugModeEnabled, level <= logLevel else { return }
+
+    let timestamp = timestampFormatter.string(from: Date())
+    let line = "[\(timestamp)] [\(level.rawValue.uppercased())] [\(category)] \(message)\n"
+
+    guard let data = line.data(using: .utf8) else { return }
+    writeToFile(data)
+  }
+
+  // MARK: - File management
+
+  private func openFileHandleIfNeeded() {
+    guard fileHandle == nil else { return }
+    let dir = logDirectory
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    if !FileManager.default.fileExists(atPath: currentLogURL.path) {
+      FileManager.default.createFile(atPath: currentLogURL.path, contents: nil)
     }
+    fileHandle = try? FileHandle(forWritingTo: currentLogURL)
+    fileHandle?.seekToEndOfFile()
+  }
 
-    private func rotateIfNeeded() {
-        guard let attrs = try? FileManager.default.attributesOfItem(atPath: currentLogURL.path),
-              let size = attrs[.size] as? Int,
-              size >= maxFileSize else { return }
+  private func writeToFile(_ data: Data) {
+    guard let fh = fileHandle else { return }
+    fh.write(data)
+    rotateIfNeeded()
+  }
 
-        fileHandle?.closeFile()
-        fileHandle = nil
+  private func rotateIfNeeded() {
+    guard let attrs = try? FileManager.default.attributesOfItem(atPath: currentLogURL.path),
+      let size = attrs[.size] as? Int,
+      size >= maxFileSize
+    else { return }
 
-        let dir = logDirectory
-        for i in stride(from: maxFileCount - 1, through: 1, by: -1) {
-            let old = dir.appendingPathComponent("app.\(i).log")
-            let new = dir.appendingPathComponent("app.\(i + 1).log")
-            try? FileManager.default.moveItem(at: old, to: new)
-        }
-        try? FileManager.default.moveItem(at: currentLogURL,
-                                          to: dir.appendingPathComponent("app.1.log"))
+    fileHandle?.closeFile()
+    fileHandle = nil
 
-        let oldest = dir.appendingPathComponent("app.\(maxFileCount).log")
-        try? FileManager.default.removeItem(at: oldest)
-
-        openFileHandleIfNeeded()
+    let dir = logDirectory
+    for i in stride(from: maxFileCount - 1, through: 1, by: -1) {
+      let old = dir.appendingPathComponent("app.\(i).log")
+      let new = dir.appendingPathComponent("app.\(i + 1).log")
+      try? FileManager.default.moveItem(at: old, to: new)
     }
+    try? FileManager.default.moveItem(
+      at: currentLogURL,
+      to: dir.appendingPathComponent("app.1.log"))
 
-    // MARK: - Utilities
+    let oldest = dir.appendingPathComponent("app.\(maxFileCount).log")
+    try? FileManager.default.removeItem(at: oldest)
 
-    public func logDirectoryURL() -> URL { logDirectory }
+    openFileHandleIfNeeded()
+  }
 
-    public func clearLogs() throws {
-        fileHandle?.closeFile()
-        fileHandle = nil
-        let dir = logDirectory
-        guard let files = try? FileManager.default.contentsOfDirectory(
-            at: dir, includingPropertiesForKeys: nil
-        ) else { return }
-        for file in files where file.pathExtension == "log" {
-            try FileManager.default.removeItem(at: file)
-        }
-        if isDebugModeEnabled { openFileHandleIfNeeded() }
+  // MARK: - Utilities
+
+  public func logDirectoryURL() -> URL { logDirectory }
+
+  public func clearLogs() throws {
+    fileHandle?.closeFile()
+    fileHandle = nil
+    let dir = logDirectory
+    guard
+      let files = try? FileManager.default.contentsOfDirectory(
+        at: dir, includingPropertiesForKeys: nil
+      )
+    else { return }
+    for file in files where file.pathExtension == "log" {
+      try FileManager.default.removeItem(at: file)
     }
+    if isDebugModeEnabled { openFileHandleIfNeeded() }
+  }
 }
