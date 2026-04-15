@@ -22,6 +22,14 @@ final class PipelineSettingsSync {
   /// Set by AppState — keeps preload observation ownership in AppState.
   var onNeedsPreloadObservation: (() -> Void)?
 
+  /// Last effective Ollama model name seen by this observer, or nil if the
+  /// last known state was non-Ollama. Tracked independently of
+  /// `polishService.llmPolishStep` because SettingsManager's cascading
+  /// didSet (e.g., `llmProvider = .appleIntelligence` synchronously writes
+  /// `llmModel = "apple-intelligence"`) can corrupt a pre-snapshot read from
+  /// the polish step. Sole source of truth for #295 eviction decisions.
+  private var lastEvictableOllamaModel: String?
+
   init(
     pipeline: TranscriptionPipeline,
     whisperKitPipeline: WhisperKitPipeline,
@@ -87,6 +95,13 @@ final class PipelineSettingsSync {
 
     // Transcription options (language)
     syncTranscriptionOptions(settings)
+
+    // #295: seed the eviction tracker so the first swap captures the right
+    // "previous" model. No initial eviction fires (this is app launch, not
+    // a user swap).
+    lastEvictableOllamaModel = OllamaConnector.effectiveOllamaModel(
+      provider: settings.llmProvider, model: resolvedModel(settings)
+    )
   }
 
   /// Handle a settings change by forwarding to the appropriate subsystem.
@@ -138,6 +153,7 @@ final class PipelineSettingsSync {
       pipeline.llmPolish.llmModel = model
       whisperKitPipeline.llmPolish.llmModel = model
       polishService.llmPolishStep.llmModel = model
+      reconcileOllamaEviction(settings: settings)
     case .llmModel:
       let model = resolvedModel(settings)
       pipeline.llmPolish.llmModel = model
@@ -146,12 +162,14 @@ final class PipelineSettingsSync {
       if settings.llmProvider == .ollama {
         settings.ollamaModel = settings.llmModel
       }
+      reconcileOllamaEviction(settings: settings)
     case .ollamaModel:
       if settings.llmProvider == .ollama {
         pipeline.llmPolish.llmModel = settings.ollamaModel
         whisperKitPipeline.llmPolish.llmModel = settings.ollamaModel
         polishService.llmPolishStep.llmModel = settings.ollamaModel
       }
+      reconcileOllamaEviction(settings: settings)
     case .autoCopyToClipboard:
       pipeline.autoCopyToClipboard = settings.autoCopyToClipboard
       whisperKitPipeline.autoCopyToClipboard = settings.autoCopyToClipboard
@@ -351,6 +369,35 @@ final class PipelineSettingsSync {
     case .appleIntelligence: return "apple-intelligence"
     case .ollama: return settings.ollamaModel
     default: return settings.llmModel
+    }
+  }
+
+  // MARK: - Ollama eviction on swap (#295)
+
+  /// Reconcile `lastEvictableOllamaModel` with the current effective state
+  /// and fire a best-effort unload if the tracked previous model differs
+  /// from the new one (including new = nil when the user leaves Ollama).
+  ///
+  /// Using an internal tracker — not a polishStep snapshot — avoids the
+  /// SettingsManager cascading-didSet trap where
+  /// `settings.llmProvider = .appleIntelligence` synchronously writes
+  /// `settings.llmModel = "apple-intelligence"` before the provider change
+  /// notification fires, which would otherwise corrupt a pre-snapshot and
+  /// lead to an eviction attempt on "apple-intelligence" (#295 UAT bug).
+  ///
+  /// The tracker is also the coalesce guard for the cascading
+  /// `.llmModel` → `.ollamaModel` fire: after the first case reconciles,
+  /// the second sees `pre == new` and skips.
+  private func reconcileOllamaEviction(settings: SettingsManager) {
+    let new = OllamaConnector.effectiveOllamaModel(
+      provider: settings.llmProvider, model: resolvedModel(settings)
+    )
+    let pre = lastEvictableOllamaModel
+    lastEvictableOllamaModel = new
+    guard let pre, pre != new else { return }
+    let polishStep = polishService.llmPolishStep
+    Task { [polishStep, pre] in
+      await polishStep.evictPreviousOllamaModel(pre)
     }
   }
 
