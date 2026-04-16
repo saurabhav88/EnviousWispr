@@ -85,6 +85,11 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
   // Shared services
   private let transcriptFinalizer: TranscriptFinalizer
 
+  /// App-wide capture telemetry state (shared with Parakeet pipeline). Owns
+  /// dedupe for zombie-engine events (#302) and the AVAudioEngineConfigurationChange
+  /// counter (#294 smoking-gun diagnostic).
+  private let captureTelemetry: CaptureTelemetryState
+
   // Text processing steps (own instances — not shared with Parakeet)
   public let wordCorrectionStep = WordCorrectionStep()
   public let fillerRemovalStep = FillerRemovalStep()
@@ -126,12 +131,14 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
     backend: WhisperKitBackend,
     transcriptStore: TranscriptStore,
     keychainManager: KeychainManager,
-    languageDetector: LanguageDetector = LanguageDetector()
+    languageDetector: LanguageDetector = LanguageDetector(),
+    captureTelemetry: CaptureTelemetryState = CaptureTelemetryState()
   ) {
     self.audioCapture = audioCapture
     self.backend = backend
     self.keychainManager = keychainManager
     self.languageDetector = languageDetector
+    self.captureTelemetry = captureTelemetry
     self.transcriptFinalizer = TranscriptFinalizer(transcriptStore: transcriptStore)
     self.llmPolishStep = LLMPolishStep(keychainManager: keychainManager)
     // Explicit engine identity: prevents a future codepath that skips the
@@ -672,6 +679,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
           "peak_audio_level": peakAudioLevel,
         ]
       )
+      emitZombieEngineEventIfNeeded(rawSamples: rawSamples, peakAudioLevel: peakAudioLevel)
       frozenSnapshot = nil
       state = .idle
       Task {
@@ -1014,6 +1022,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
           "polish_s": String(format: "%.3f", polishDuration),
           "paste_tier": finalizationResult.pasteResult?.tier.rawValue ?? "none",
         ])
+      captureTelemetry.recordSuccessfulRecording()
       frozenSnapshot = nil
       state = .complete
       scheduleModelUnloadIfNeeded()
@@ -1225,6 +1234,53 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
       onStop: { [weak self] _ in
         Task { [weak self] in await self?.stopAndTranscribe() }
       }
+    )
+  }
+
+  // MARK: - Zombie engine telemetry (#302)
+
+  /// Emit a Sentry event when the VAD gate gets a full recording of exactly-zero
+  /// audio. That signature (`peak == 0.0` with non-empty samples) matches the
+  /// zombie-engine failure described in gotchas.md, not genuine silence (which
+  /// has a noise floor). Dedupes via captureTelemetry.
+  private func emitZombieEngineEventIfNeeded(rawSamples: [Float], peakAudioLevel: Float) {
+    guard peakAudioLevel == 0.0,
+      rawSamples.count >= AudioConstants.minimumTranscriptionSamples
+    else { return }
+
+    let route = audioCapture.currentAudioRoute
+    let sessionID = audioCapture.currentCaptureSessionID
+    let durationMs = rawSamples.count * 1000 / 16_000
+    let shouldEmit = captureTelemetry.shouldEmitZombie(
+      route: route, window: .seconds(30))
+    captureTelemetry.markZombieEmitted(route: route)
+
+    guard shouldEmit else { return }
+
+    let err = HeartPathError.zombieEngineZeroPeak(
+      sessionID: sessionID,
+      durationMs: durationMs,
+      route: route,
+      sampleCount: rawSamples.count
+    )
+    SentryBreadcrumb.captureError(
+      err,
+      category: .audioCaptureFailed,
+      stage: "recording",
+      extra: SentryAudioExtras.buildCaptureExtras(
+        route: route,
+        sourceType: audioCapture.captureSourceType,
+        sessionID: sessionID,
+        isActivelyCapturing: audioCapture.isActivelyCapturing,
+        inputDeviceUIDPreferred: audioCapture.preferredInputDeviceIDOverride.isEmpty
+          ? nil : audioCapture.preferredInputDeviceIDOverride,
+        inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID(),
+        failureMode: "zombie_engine_zero_peak",
+        timeSinceLastSuccessfulRecordingMs:
+          captureTelemetry
+          .timeSinceLastSuccessfulRecordingMs(),
+        configChangeCountSinceLaunch: captureTelemetry.configurationChangeCount
+      )
     )
   }
 

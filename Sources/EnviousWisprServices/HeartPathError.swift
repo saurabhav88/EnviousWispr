@@ -24,6 +24,7 @@ public enum HeartPathError: LocalizedError, Sendable {
   case xpcReplyFailed(ctx: XPCReplyFailureContext)
   case xpcServerClientProxyNil(sessionID: UInt64?, consecutiveDrops: Int)
   case emptyAfterProcessing(route: String, wasPolishEnabled: Bool)
+  case zombieEngineZeroPeak(sessionID: UInt64, durationMs: Int, route: String, sampleCount: Int)
 
   public var errorDescription: String? {
     switch self {
@@ -48,6 +49,9 @@ public enum HeartPathError: LocalizedError, Sendable {
       return "XPC server observed nil clientProxy for \(drops) consecutive buffer sends"
     case .emptyAfterProcessing(_, let wasPolishEnabled):
       return "Post-processing emptied the transcript (polish=\(wasPolishEnabled))"
+    case .zombieEngineZeroPeak(let sessionID, let durationMs, let route, let sampleCount):
+      return
+        "Zombie engine: zero-peak \(sampleCount) samples over \(durationMs)ms (session \(sessionID), route=\(route))"
     }
   }
 }

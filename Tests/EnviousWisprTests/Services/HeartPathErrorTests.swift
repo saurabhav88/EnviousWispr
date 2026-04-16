@@ -42,6 +42,7 @@ struct HeartPathErrorTests {
       .xpcReplyFailed(ctx: replyCtx),
       .xpcServerClientProxyNil(sessionID: 1, consecutiveDrops: 5),
       .emptyAfterProcessing(route: "built_in_mic", wasPolishEnabled: true),
+      .zombieEngineZeroPeak(sessionID: 7, durationMs: 9000, route: "bt", sampleCount: 145360),
     ]
 
     for heart in cases {
@@ -54,5 +55,17 @@ struct HeartPathErrorTests {
   func handlerKinds() {
     #expect(XPCHandlerKind.interrupt.rawValue == "interrupt")
     #expect(XPCHandlerKind.invalidate.rawValue == "invalidate")
+  }
+
+  @Test("zombieEngineZeroPeak description includes all fields")
+  func zombieEngineZeroPeakDescription() {
+    let err = HeartPathError.zombieEngineZeroPeak(
+      sessionID: 42, durationMs: 9000, route: "bt", sampleCount: 145360
+    )
+    let desc = err.errorDescription ?? ""
+    #expect(desc.contains("42"))
+    #expect(desc.contains("9000ms"))
+    #expect(desc.contains("bt"))
+    #expect(desc.contains("145360"))
   }
 }

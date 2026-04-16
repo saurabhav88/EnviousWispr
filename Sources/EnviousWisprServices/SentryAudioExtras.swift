@@ -20,7 +20,9 @@ public enum SentryAudioExtras {
     inputDeviceUIDSystemDefault: String?,
     failureMode: String,
     stallContext: CaptureStallContext? = nil,
-    polishModelSwapMs: Int? = nil
+    polishModelSwapMs: Int? = nil,
+    timeSinceLastSuccessfulRecordingMs: Int? = nil,
+    configChangeCountSinceLaunch: Int? = nil
   ) -> [String: Any] {
     var extras: [String: Any] = [
       "capture.source_type": sourceType,
@@ -49,6 +51,14 @@ public enum SentryAudioExtras {
 
     if let swap = polishModelSwapMs {
       extras["polish.recent_model_swap_ms"] = swap
+    }
+
+    if let ms = timeSinceLastSuccessfulRecordingMs {
+      extras["capture.time_since_last_successful_recording_ms"] = ms
+    }
+
+    if let count = configChangeCountSinceLaunch {
+      extras["capture.config_change_count_since_launch"] = count
     }
 
     return extras

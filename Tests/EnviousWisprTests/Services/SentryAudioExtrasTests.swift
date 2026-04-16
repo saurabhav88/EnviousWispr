@@ -85,4 +85,36 @@ struct SentryAudioExtrasTests {
     )
     #expect(extras["polish.recent_model_swap_ms"] == nil)
   }
+
+  @Test("zombie telemetry extras: nil inputs omit both keys")
+  func zombieExtrasOmitted() {
+    let extras = SentryAudioExtras.buildCaptureExtras(
+      route: "bt",
+      sourceType: "xpc_proxy",
+      sessionID: 1,
+      isActivelyCapturing: false,
+      inputDeviceUIDPreferred: nil,
+      inputDeviceUIDSystemDefault: nil,
+      failureMode: "zombie_engine_zero_peak"
+    )
+    #expect(extras["capture.time_since_last_successful_recording_ms"] == nil)
+    #expect(extras["capture.config_change_count_since_launch"] == nil)
+  }
+
+  @Test("zombie telemetry extras: values passed through with stable keys")
+  func zombieExtrasPassthrough() {
+    let extras = SentryAudioExtras.buildCaptureExtras(
+      route: "bt",
+      sourceType: "xpc_proxy",
+      sessionID: 1,
+      isActivelyCapturing: false,
+      inputDeviceUIDPreferred: nil,
+      inputDeviceUIDSystemDefault: nil,
+      failureMode: "zombie_engine_zero_peak",
+      timeSinceLastSuccessfulRecordingMs: 45_000,
+      configChangeCountSinceLaunch: 0
+    )
+    #expect(extras["capture.time_since_last_successful_recording_ms"] as? Int == 45_000)
+    #expect(extras["capture.config_change_count_since_launch"] as? Int == 0)
+  }
 }

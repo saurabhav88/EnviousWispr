@@ -39,6 +39,11 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
   // Shared services
   private let transcriptFinalizer: TranscriptFinalizer
 
+  /// App-wide capture telemetry state (shared with WhisperKit pipeline).
+  /// Owns dedupe for zombie-engine events (#302) and the
+  /// AVAudioEngineConfigurationChange counter (#294 smoking-gun diagnostic).
+  private let captureTelemetry: CaptureTelemetryState
+
   // Text processing steps
   private let wordCorrectionStep = WordCorrectionStep()
   private let fillerRemovalStep = FillerRemovalStep()
@@ -103,12 +108,14 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface,
     transcriptStore: TranscriptStore,
-    keychainManager: KeychainManager = KeychainManager()
+    keychainManager: KeychainManager = KeychainManager(),
+    captureTelemetry: CaptureTelemetryState = CaptureTelemetryState()
   ) {
     self.audioCapture = audioCapture
     self.asrManager = asrManager
     self.transcriptStore = transcriptStore
     self.keychainManager = keychainManager
+    self.captureTelemetry = captureTelemetry
     self.transcriptFinalizer = TranscriptFinalizer(transcriptStore: transcriptStore)
     self.llmPolishStep = LLMPolishStep(keychainManager: keychainManager)
     // Explicit engine identity: makes the Parakeet path non-inferred. The
@@ -728,6 +735,7 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
           "peak_audio_level": peakAudioLevel,
         ]
       )
+      emitZombieEngineEventIfNeeded(rawSamples: rawSamples, peakAudioLevel: peakAudioLevel)
       frozenSnapshot = nil
       state = .idle
       Task {
@@ -939,6 +947,7 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
           "paste_tier": finalizationResult.pasteResult?.tier.rawValue ?? "none",
           "backend": asrManager.activeBackendType.rawValue,
         ])
+      captureTelemetry.recordSuccessfulRecording()
       frozenSnapshot = nil
       state = .complete
     } catch {
@@ -950,6 +959,51 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
       frozenSnapshot = nil
       state = .error("Transcription failed: \(error.localizedDescription)")
     }
+  }
+
+  /// Issue #302: emit a Sentry event when the VAD gate gets a full recording's
+  /// worth of exactly-zero audio. That signature (`peak == 0.0` with non-empty
+  /// samples) matches the zombie-engine failure described in gotchas.md, not
+  /// genuine silence (which has a noise floor). Dedupes via captureTelemetry.
+  private func emitZombieEngineEventIfNeeded(rawSamples: [Float], peakAudioLevel: Float) {
+    guard peakAudioLevel == 0.0,
+      rawSamples.count >= AudioConstants.minimumTranscriptionSamples
+    else { return }
+
+    let route = audioCapture.currentAudioRoute
+    let sessionID = audioCapture.currentCaptureSessionID
+    let durationMs = rawSamples.count * 1000 / 16_000
+    let shouldEmit = captureTelemetry.shouldEmitZombie(
+      route: route, window: .seconds(30))
+    captureTelemetry.markZombieEmitted(route: route)
+
+    guard shouldEmit else { return }
+
+    let err = HeartPathError.zombieEngineZeroPeak(
+      sessionID: sessionID,
+      durationMs: durationMs,
+      route: route,
+      sampleCount: rawSamples.count
+    )
+    SentryBreadcrumb.captureError(
+      err,
+      category: .audioCaptureFailed,
+      stage: "recording",
+      extra: SentryAudioExtras.buildCaptureExtras(
+        route: route,
+        sourceType: audioCapture.captureSourceType,
+        sessionID: sessionID,
+        isActivelyCapturing: audioCapture.isActivelyCapturing,
+        inputDeviceUIDPreferred: audioCapture.preferredInputDeviceIDOverride.isEmpty
+          ? nil : audioCapture.preferredInputDeviceIDOverride,
+        inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID(),
+        failureMode: "zombie_engine_zero_peak",
+        timeSinceLastSuccessfulRecordingMs:
+          captureTelemetry
+          .timeSinceLastSuccessfulRecordingMs(),
+        configChangeCountSinceLaunch: captureTelemetry.configurationChangeCount
+      )
+    )
   }
 
   // polishExistingTranscript() removed — re-polish is now handled by TranscriptPolishService,
