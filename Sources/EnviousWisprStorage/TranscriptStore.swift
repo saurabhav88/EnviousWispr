@@ -1,81 +1,81 @@
-import Foundation
 import EnviousWisprCore
+import Foundation
 
 /// Persists transcripts as JSON files in Application Support.
 @MainActor
 public final class TranscriptStore {
-    private let directory: URL
+  private let directory: URL
 
-    public init() {
-        directory = AppConstants.appSupportURL
-            .appendingPathComponent(AppConstants.transcriptsDir, isDirectory: true)
+  public init() {
+    directory = AppConstants.appSupportURL
+      .appendingPathComponent(AppConstants.transcriptsDir, isDirectory: true)
 
-        try? FileManager.default.createDirectory(
-            at: directory,
-            withIntermediateDirectories: true
-        )
-    }
+    try? FileManager.default.createDirectory(
+      at: directory,
+      withIntermediateDirectories: true
+    )
+  }
 
-    /// Save a transcript to disk.
-    public func save(_ transcript: Transcript) throws {
-        let filename = "\(transcript.id.uuidString).json"
-        let url = directory.appendingPathComponent(filename)
-        let data = try JSONEncoder().encode(transcript)
-        try data.write(to: url, options: .atomic)
-    }
+  /// Save a transcript to disk.
+  public func save(_ transcript: Transcript) throws {
+    let filename = "\(transcript.id.uuidString).json"
+    let url = directory.appendingPathComponent(filename)
+    let data = try JSONEncoder().encode(transcript)
+    try data.write(to: url, options: .atomic)
+  }
 
-    /// Load all transcripts, sorted by creation date (newest first).
-    /// Heavy file IO is performed on a background thread to keep UI responsive.
-    public func loadAll() async throws -> [Transcript] {
-        let dir = directory
-        guard FileManager.default.fileExists(atPath: dir.path) else { return [] }
+  /// Load all transcripts, sorted by creation date (newest first).
+  /// Heavy file IO is performed on a background thread to keep UI responsive.
+  public func loadAll() async throws -> [Transcript] {
+    let dir = directory
+    guard FileManager.default.fileExists(atPath: dir.path) else { return [] }
 
-        // Move heavy IO to background thread
-        let transcripts: [Transcript] = try await Task.detached(priority: .userInitiated) {
-            let files = try FileManager.default.contentsOfDirectory(
-                at: dir,
-                includingPropertiesForKeys: nil
-            )
+    // Move heavy IO to background thread
+    let transcripts: [Transcript] = try await Task.detached(priority: .userInitiated) {
+      let files = try FileManager.default.contentsOfDirectory(
+        at: dir,
+        includingPropertiesForKeys: nil
+      )
 
-            let decoder = JSONDecoder()
-            var result: [Transcript] = []
-            for url in files where url.pathExtension == "json" {
-                do {
-                    let data = try Data(contentsOf: url)
-                    let transcript = try decoder.decode(Transcript.self, from: data)
-                    result.append(transcript)
-                } catch {
-                    // Log errors but don't block — corrupt files are skipped
-                    await AppLogger.shared.log(
-                        "Skipping corrupt transcript \(url.lastPathComponent): \(error)",
-                        level: .info, category: "TranscriptStore"
-                    )
-                }
-            }
-            return result.sorted { $0.createdAt > $1.createdAt }
-        }.value
-
-        return transcripts
-    }
-
-    /// Delete a transcript by ID.
-    public func delete(id: UUID) throws {
-        let url = directory.appendingPathComponent("\(id.uuidString).json")
+      let decoder = JSONDecoder()
+      var result: [Transcript] = []
+      for url in files where url.pathExtension == "json" {
         do {
-            try FileManager.default.removeItem(at: url)
-        } catch let error as CocoaError where error.code == .fileNoSuchFile {
-            return
+          let data = try Data(contentsOf: url)
+          let transcript = try decoder.decode(Transcript.self, from: data)
+          result.append(transcript)
+        } catch {
+          // Log errors but don't block — corrupt files are skipped
+          await AppLogger.shared.log(
+            "Skipping corrupt transcript \(url.lastPathComponent): \(error)",
+            level: .info, category: "TranscriptStore"
+          )
         }
-    }
+      }
+      return result.sorted { $0.createdAt > $1.createdAt }
+    }.value
 
-    /// Delete all transcripts from disk atomically.
-    /// Removes and recreates the directory to avoid partial-failure states.
-    public func deleteAll() throws {
-        guard FileManager.default.fileExists(atPath: directory.path) else { return }
-        try FileManager.default.removeItem(at: directory)
-        try FileManager.default.createDirectory(
-            at: directory,
-            withIntermediateDirectories: true
-        )
+    return transcripts
+  }
+
+  /// Delete a transcript by ID.
+  public func delete(id: UUID) throws {
+    let url = directory.appendingPathComponent("\(id.uuidString).json")
+    do {
+      try FileManager.default.removeItem(at: url)
+    } catch let error as CocoaError where error.code == .fileNoSuchFile {
+      return
     }
+  }
+
+  /// Delete all transcripts from disk atomically.
+  /// Removes and recreates the directory to avoid partial-failure states.
+  public func deleteAll() throws {
+    guard FileManager.default.fileExists(atPath: directory.path) else { return }
+    try FileManager.default.removeItem(at: directory)
+    try FileManager.default.createDirectory(
+      at: directory,
+      withIntermediateDirectories: true
+    )
+  }
 }

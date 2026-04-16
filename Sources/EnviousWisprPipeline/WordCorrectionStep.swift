@@ -1,34 +1,36 @@
-import Foundation
 import EnviousWisprCore
 import EnviousWisprPostProcessing
+import Foundation
 
 /// Applies custom word corrections to ASR output.
 @MainActor
 public final class WordCorrectionStep: TextProcessingStep {
-    public let name = "Word Correction"
+  public let name = "Word Correction"
 
-    public var wordCorrectionEnabled: Bool = false
-    public var customWords: [CustomWord] = []
+  public var wordCorrectionEnabled: Bool = false
+  public var customWords: [CustomWord] = []
 
-    public var isEnabled: Bool {
-        wordCorrectionEnabled && !customWords.isEmpty
+  public var isEnabled: Bool {
+    wordCorrectionEnabled && !customWords.isEmpty
+  }
+
+  public var maxDuration: Duration { .milliseconds(100) }
+
+  public init() {}
+
+  public func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
+    let corrector = WordCorrector()
+    let (fixed, count) = corrector.correct(context.text, against: customWords)
+    if count > 0 {
+      Task {
+        await AppLogger.shared.log(
+          "WordCorrector applied \(count) correction(s)",
+          level: .verbose, category: "Pipeline"
+        )
+      }
     }
-
-    public var maxDuration: Duration { .milliseconds(100) }
-
-    public init() {}
-
-    public func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
-        let corrector = WordCorrector()
-        let (fixed, count) = corrector.correct(context.text, against: customWords)
-        if count > 0 {
-            Task { await AppLogger.shared.log(
-                "WordCorrector applied \(count) correction(s)",
-                level: .verbose, category: "Pipeline"
-            ) }
-        }
-        var ctx = context
-        ctx.text = fixed
-        return ctx
-    }
+    var ctx = context
+    ctx.text = fixed
+    return ctx
+  }
 }

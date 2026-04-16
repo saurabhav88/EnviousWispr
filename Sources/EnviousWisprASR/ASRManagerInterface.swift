@@ -7,43 +7,43 @@ import EnviousWisprCore
 /// Pipelines and AppState interact through this interface only.
 @MainActor
 public protocol ASRManagerInterface: AnyObject {
-    // Observable state
-    var activeBackendType: ASRBackendType { get }
-    var isModelLoaded: Bool { get }
-    var isStreaming: Bool { get } // periphery:ignore - read via existential type (ASRManagerProxy)
+  // Observable state
+  var activeBackendType: ASRBackendType { get }
+  var isModelLoaded: Bool { get }
+  var isStreaming: Bool { get }  // periphery:ignore - read via existential type (ASRManagerProxy)
 
-    // Download progress (0.0–1.0), phase description, and detail string.
-    // Updated during loadModel() when model download is in progress.
-    // periphery:ignore:all - read via existential type in OnboardingV2View progress polling
-    var downloadProgress: Double { get }
-    var downloadPhase: String { get }
-    var downloadDetail: String { get }
+  // Download progress (0.0–1.0), phase description, and detail string.
+  // Updated during loadModel() when model download is in progress.
+  // periphery:ignore:all - read via existential type in OnboardingV2View progress polling
+  var downloadProgress: Double { get }
+  var downloadPhase: String { get }
+  var downloadDetail: String { get }
 
-    // Model lifecycle
-    func loadModel() async throws
-    func loadModelSilently() async
-    func unloadModel() async // periphery:ignore - called via existential type (ASRManager idle timer)
-    func setInitialBackendType(_ type: ASRBackendType)
-    func switchBackend(to type: ASRBackendType) async
-    func updateWhisperKitModel(_ variant: String) async
+  // Model lifecycle
+  func loadModel() async throws
+  func loadModelSilently() async
+  func unloadModel() async  // periphery:ignore - called via existential type (ASRManager idle timer)
+  func setInitialBackendType(_ type: ASRBackendType)
+  func switchBackend(to type: ASRBackendType) async
+  func updateWhisperKitModel(_ variant: String) async
 
-    // Capability
-    var activeBackendSupportsStreaming: Bool { get async }
+  // Capability
+  var activeBackendSupportsStreaming: Bool { get async }
 
-    // Batch transcription
-    func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult
+  // Batch transcription
+  func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult
 
-    // Streaming transcription
-    func startStreaming(options: TranscriptionOptions) async throws
-    func feedAudio(_ buffer: AVAudioPCMBuffer) async throws
-    func finalizeStreaming() async throws -> ASRResult
-    func cancelStreaming() async
+  // Streaming transcription
+  func startStreaming(options: TranscriptionOptions) async throws
+  func feedAudio(_ buffer: AVAudioPCMBuffer) async throws
+  func finalizeStreaming() async throws -> ASRResult
+  func cancelStreaming() async
 
-    // Pipeline lifecycle hooks
-    func noteTranscriptionComplete(policy: ModelUnloadPolicy)
-    func cancelIdleTimer()
+  // Pipeline lifecycle hooks
+  func noteTranscriptionComplete(policy: ModelUnloadPolicy)
+  func cancelIdleTimer()
 
-    // Crash notification — fires when XPC ASR service dies during an active session.
-    // Wired by AppState to route to the active pipeline (same pattern as AudioCaptureProxy.onEngineInterrupted).
-    var onServiceInterrupted: (() -> Void)? { get set }
+  // Crash notification — fires when XPC ASR service dies during an active session.
+  // Wired by AppState to route to the active pipeline (same pattern as AudioCaptureProxy.onEngineInterrupted).
+  var onServiceInterrupted: (() -> Void)? { get set }
 }

@@ -1,240 +1,263 @@
 @preconcurrency import AVFoundation
-import Foundation
-import EnviousWisprCore
 import EnviousWisprASR
+import EnviousWisprCore
+import Foundation
 
 /// XPC service handler for ASR transcription.
 ///
 /// Owns ParakeetBackend (and WhisperKitBackend in Stage D). All inference runs in this
 /// XPC service process — model memory is isolated from the main app.
 final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable {
-    weak var connection: NSXPCConnection? // periphery:ignore - XPC connection lifecycle; set by delegate, prevents premature release
+  weak var connection: NSXPCConnection?  // periphery:ignore - XPC connection lifecycle; set by delegate, prevents premature release
 
-    /// The active ASR backend — only one loaded at a time.
-    private var parakeetBackend: ParakeetBackend?
-    private var whisperKitBackend: WhisperKitBackend?
-    private var activeBackendType: String? // periphery:ignore - tracks loaded backend for diagnostics and unload routing
+  /// The active ASR backend — only one loaded at a time.
+  private var parakeetBackend: ParakeetBackend?
+  private var whisperKitBackend: WhisperKitBackend?
+  private var activeBackendType: String?  // periphery:ignore - tracks loaded backend for diagnostics and unload routing
 
-    /// Streaming state flag — only Parakeet supports streaming.
-    private var isStreamingActive = false
+  /// Streaming state flag — only Parakeet supports streaming.
+  private var isStreamingActive = false
 
-    /// Reusable audio format for buffer reconstruction in feedAudioBuffer.
-    private let pcmFormat = AVAudioFormat(
-        commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false
-    )!
+  /// Reusable audio format for buffer reconstruction in feedAudioBuffer.
+  private let pcmFormat = AVAudioFormat(
+    commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false
+  )!
 
-    // MARK: - Diagnostics
+  // MARK: - Diagnostics
 
-    func ping(reply: @escaping (String) -> Void) {
-        let fluidAudioPath = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/FluidAudio/Models")
-        let whisperKitPath = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Documents/huggingface/models/argmaxinc/whisperkit-coreml")
-        let fluidAccess = FileManager.default.isReadableFile(atPath: fluidAudioPath.path)
-        let whisperAccess = FileManager.default.isReadableFile(atPath: whisperKitPath.path)
-        reply("pong — modelAccess: FluidAudio=\(fluidAccess), WhisperKit=\(whisperAccess)")
+  func ping(reply: @escaping (String) -> Void) {
+    let fluidAudioPath = FileManager.default.homeDirectoryForCurrentUser
+      .appendingPathComponent("Library/Application Support/FluidAudio/Models")
+    let whisperKitPath = FileManager.default.homeDirectoryForCurrentUser
+      .appendingPathComponent("Documents/huggingface/models/argmaxinc/whisperkit-coreml")
+    let fluidAccess = FileManager.default.isReadableFile(atPath: fluidAudioPath.path)
+    let whisperAccess = FileManager.default.isReadableFile(atPath: whisperKitPath.path)
+    reply("pong — modelAccess: FluidAudio=\(fluidAccess), WhisperKit=\(whisperAccess)")
+  }
+
+  // MARK: - Model Lifecycle
+
+  func loadModel(backendType: String, modelVariant: String, reply: @escaping (NSError?) -> Void) {
+    nonisolated(unsafe) let safeReply = reply
+    Task { @MainActor in
+      do {
+        // Unload previous backend before loading new one
+        self.parakeetBackend = nil
+        self.whisperKitBackend = nil
+
+        switch backendType {
+        case "parakeet":
+          let backend = ParakeetBackend()
+
+          // Decoupled push model for progress reporting:
+          // The URLSession delegate callback (from FluidAudio) must NEVER call XPC directly —
+          // Mach port queue exhaustion blocks the delegate thread, stalling the download.
+          // Instead: callback writes to a thread-safe snapshot, a DispatchSource timer
+          // samples it at 4 Hz and sends XPC messages from its own thread.
+          // Progress via shared file — bypasses XPC entirely.
+          // XPC serializes replies, so getDownloadProgress replies are blocked
+          // behind the pending loadModel reply. Writing to a file that the app
+          // reads on a timer is the only reliable cross-process progress path.
+          let progressFile = ProgressFile.shared
+          progressFile.clear()
+
+          try await backend.prepare { fraction, phase, detail in
+            // Hot path — runs on URLSession delegate thread. File write is fast.
+            progressFile.write(fraction: fraction, phase: phase, detail: detail)
+          }
+
+          progressFile.write(fraction: 1.0, phase: "", detail: "")
+
+          self.parakeetBackend = backend
+        case "whisperKit":
+          // XPC service process has a SEPARATE UserDefaults domain
+          // from the app, so we cannot read the rollback flag here.
+          // The app (SettingsManager.whisperKitModel) is flag-aware
+          // and pushes the correct variant via the XPC interface.
+          // The fallback used below is only hit if the app sends an
+          // empty variant (e.g., first load before settings sync),
+          // in which case we default to the refreshed Multilingual
+          // v1 variant. Users opting into rollback rely on the app
+          // to push the legacy variant explicitly.
+          let variant =
+            modelVariant.isEmpty
+            ? "openai_whisper-large-v3-v20240930_turbo"
+            : modelVariant
+          let backend = WhisperKitBackend(modelVariant: variant)
+          try await backend.prepare()
+          self.whisperKitBackend = backend
+        default:
+          safeReply(
+            NSError(
+              domain: "ASRService", code: -1,
+              userInfo: [NSLocalizedDescriptionKey: "Unknown backend: \(backendType)"]))
+          return
+        }
+        self.activeBackendType = backendType
+        safeReply(nil)
+      } catch {
+        safeReply(error as NSError)
+      }
+    }
+  }
+
+  func unloadModel(reply: @escaping () -> Void) {
+    nonisolated(unsafe) let safeReply = reply
+    Task { @MainActor in
+      if let wk = self.whisperKitBackend {
+        await wk.unload()
+      }
+      self.parakeetBackend = nil
+      self.whisperKitBackend = nil
+      self.activeBackendType = nil
+      safeReply()
+    }
+  }
+
+  func getModelState(reply: @escaping (Bool, Bool) -> Void) {
+    nonisolated(unsafe) let safeReply = reply
+    Task { @MainActor in
+      let isLoaded = self.parakeetBackend != nil || self.whisperKitBackend != nil
+      safeReply(isLoaded, self.isStreamingActive)
+    }
+  }
+
+  // MARK: - Batch Transcription
+
+  func transcribeSamples(
+    _ data: Data, sampleCount: Int, language: String, enableTimestamps: Bool,
+    reply: @escaping (Data?, NSError?) -> Void
+  ) {
+    nonisolated(unsafe) let safeReply = reply
+
+    // Validate input
+    guard data.count == sampleCount * MemoryLayout<Float>.size else {
+      safeReply(
+        nil,
+        NSError(
+          domain: "ASRService", code: -2,
+          userInfo: [
+            NSLocalizedDescriptionKey:
+              "Data size mismatch: expected \(sampleCount * MemoryLayout<Float>.size), got \(data.count)"
+          ]))
+      return
     }
 
-    // MARK: - Model Lifecycle
-
-    func loadModel(backendType: String, modelVariant: String, reply: @escaping (NSError?) -> Void) {
-        nonisolated(unsafe) let safeReply = reply
-        Task { @MainActor in
-            do {
-                // Unload previous backend before loading new one
-                self.parakeetBackend = nil
-                self.whisperKitBackend = nil
-
-                switch backendType {
-                case "parakeet":
-                    let backend = ParakeetBackend()
-
-                    // Decoupled push model for progress reporting:
-                    // The URLSession delegate callback (from FluidAudio) must NEVER call XPC directly —
-                    // Mach port queue exhaustion blocks the delegate thread, stalling the download.
-                    // Instead: callback writes to a thread-safe snapshot, a DispatchSource timer
-                    // samples it at 4 Hz and sends XPC messages from its own thread.
-                    // Progress via shared file — bypasses XPC entirely.
-                    // XPC serializes replies, so getDownloadProgress replies are blocked
-                    // behind the pending loadModel reply. Writing to a file that the app
-                    // reads on a timer is the only reliable cross-process progress path.
-                    let progressFile = ProgressFile.shared
-                    progressFile.clear()
-
-                    try await backend.prepare { fraction, phase, detail in
-                        // Hot path — runs on URLSession delegate thread. File write is fast.
-                        progressFile.write(fraction: fraction, phase: phase, detail: detail)
-                    }
-
-                    progressFile.write(fraction: 1.0, phase: "", detail: "")
-
-                    self.parakeetBackend = backend
-                case "whisperKit":
-                    // XPC service process has a SEPARATE UserDefaults domain
-                    // from the app, so we cannot read the rollback flag here.
-                    // The app (SettingsManager.whisperKitModel) is flag-aware
-                    // and pushes the correct variant via the XPC interface.
-                    // The fallback used below is only hit if the app sends an
-                    // empty variant (e.g., first load before settings sync),
-                    // in which case we default to the refreshed Multilingual
-                    // v1 variant. Users opting into rollback rely on the app
-                    // to push the legacy variant explicitly.
-                    let variant = modelVariant.isEmpty
-                        ? "openai_whisper-large-v3-v20240930_turbo"
-                        : modelVariant
-                    let backend = WhisperKitBackend(modelVariant: variant)
-                    try await backend.prepare()
-                    self.whisperKitBackend = backend
-                default:
-                    safeReply(NSError(domain: "ASRService", code: -1,
-                        userInfo: [NSLocalizedDescriptionKey: "Unknown backend: \(backendType)"]))
-                    return
-                }
-                self.activeBackendType = backendType
-                safeReply(nil)
-            } catch {
-                safeReply(error as NSError)
-            }
+    Task { @MainActor in
+      do {
+        // Convert Data → [Float]
+        let samples = data.withUnsafeBytes { raw -> [Float] in
+          guard raw.count > 0 else { return [] }
+          return Array(raw.bindMemory(to: Float.self))
         }
+
+        var options = TranscriptionOptions()
+        options.language = language.isEmpty ? nil : language
+        options.enableTimestamps = enableTimestamps
+
+        // Route to the active backend
+        let result: EnviousWisprCore.ASRResult
+        if let parakeet = self.parakeetBackend {
+          result = try await parakeet.transcribe(audioSamples: samples, options: options)
+        } else if let whisperKit = self.whisperKitBackend {
+          result = try await whisperKit.transcribe(audioSamples: samples, options: options)
+        } else {
+          safeReply(
+            nil,
+            NSError(
+              domain: "ASRService", code: -3,
+              userInfo: [NSLocalizedDescriptionKey: "No model loaded"]))
+          return
+        }
+
+        // Encode ASRResult → Data via PropertyListEncoder
+        let encoded = try PropertyListEncoder().encode(result)
+        safeReply(encoded, nil)
+      } catch {
+        safeReply(nil, error as NSError)
+      }
+    }
+  }
+
+  // MARK: - Streaming
+
+  func startStreaming(language: String, enableTimestamps: Bool, reply: @escaping (NSError?) -> Void)
+  {
+    guard let parakeet = parakeetBackend else {
+      reply(
+        NSError(
+          domain: "ASRService", code: -3,
+          userInfo: [NSLocalizedDescriptionKey: "No Parakeet model loaded for streaming"]))
+      return
     }
 
-    func unloadModel(reply: @escaping () -> Void) {
-        nonisolated(unsafe) let safeReply = reply
-        Task { @MainActor in
-            if let wk = self.whisperKitBackend {
-                await wk.unload()
-            }
-            self.parakeetBackend = nil
-            self.whisperKitBackend = nil
-            self.activeBackendType = nil
-            safeReply()
-        }
+    nonisolated(unsafe) let safeReply = reply
+    Task { @MainActor in
+      do {
+        var options = TranscriptionOptions()
+        options.language = language.isEmpty ? nil : language
+        options.enableTimestamps = enableTimestamps
+        try await parakeet.startStreaming(options: options)
+        self.isStreamingActive = true
+        safeReply(nil)
+      } catch {
+        safeReply(error as NSError)
+      }
+    }
+  }
+
+  func feedAudioBuffer(_ data: Data, frameCount: Int) {
+    guard isStreamingActive, let parakeet = parakeetBackend else { return }
+    guard data.count == frameCount * MemoryLayout<Float>.size else { return }
+
+    // Reconstruct AVAudioPCMBuffer from raw Float32 data
+    guard
+      let buffer = AVAudioPCMBuffer(
+        pcmFormat: pcmFormat, frameCapacity: AVAudioFrameCount(frameCount))
+    else { return }
+    buffer.frameLength = AVAudioFrameCount(frameCount)
+    data.withUnsafeBytes { raw in
+      guard let src = raw.baseAddress?.assumingMemoryBound(to: Float.self) else { return }
+      buffer.floatChannelData![0].update(from: src, count: frameCount)
     }
 
-    func getModelState(reply: @escaping (Bool, Bool) -> Void) {
-        nonisolated(unsafe) let safeReply = reply
-        Task { @MainActor in
-            let isLoaded = self.parakeetBackend != nil || self.whisperKitBackend != nil
-            safeReply(isLoaded, self.isStreamingActive)
-        }
+    nonisolated(unsafe) let unsafeBuffer = buffer
+    Task { try? await parakeet.feedAudio(unsafeBuffer) }
+  }
+
+  func finalizeStreaming(reply: @escaping (Data?, NSError?) -> Void) {
+    guard isStreamingActive, let parakeet = parakeetBackend else {
+      reply(
+        nil,
+        NSError(
+          domain: "ASRService", code: -3,
+          userInfo: [NSLocalizedDescriptionKey: "No active streaming session"]))
+      return
     }
 
-    // MARK: - Batch Transcription
-
-    func transcribeSamples(_ data: Data, sampleCount: Int, language: String, enableTimestamps: Bool, reply: @escaping (Data?, NSError?) -> Void) {
-        nonisolated(unsafe) let safeReply = reply
-
-        // Validate input
-        guard data.count == sampleCount * MemoryLayout<Float>.size else {
-            safeReply(nil, NSError(domain: "ASRService", code: -2,
-                userInfo: [NSLocalizedDescriptionKey: "Data size mismatch: expected \(sampleCount * MemoryLayout<Float>.size), got \(data.count)"]))
-            return
-        }
-
-        Task { @MainActor in
-            do {
-                // Convert Data → [Float]
-                let samples = data.withUnsafeBytes { raw -> [Float] in
-                    guard raw.count > 0 else { return [] }
-                    return Array(raw.bindMemory(to: Float.self))
-                }
-
-                var options = TranscriptionOptions()
-                options.language = language.isEmpty ? nil : language
-                options.enableTimestamps = enableTimestamps
-
-                // Route to the active backend
-                let result: EnviousWisprCore.ASRResult
-                if let parakeet = self.parakeetBackend {
-                    result = try await parakeet.transcribe(audioSamples: samples, options: options)
-                } else if let whisperKit = self.whisperKitBackend {
-                    result = try await whisperKit.transcribe(audioSamples: samples, options: options)
-                } else {
-                    safeReply(nil, NSError(domain: "ASRService", code: -3,
-                        userInfo: [NSLocalizedDescriptionKey: "No model loaded"]))
-                    return
-                }
-
-                // Encode ASRResult → Data via PropertyListEncoder
-                let encoded = try PropertyListEncoder().encode(result)
-                safeReply(encoded, nil)
-            } catch {
-                safeReply(nil, error as NSError)
-            }
-        }
+    nonisolated(unsafe) let safeReply = reply
+    Task { @MainActor in
+      do {
+        let result = try await parakeet.finalizeStreaming()
+        self.isStreamingActive = false
+        let encoded = try PropertyListEncoder().encode(result)
+        safeReply(encoded, nil)
+      } catch {
+        self.isStreamingActive = false
+        safeReply(nil, error as NSError)
+      }
     }
+  }
 
-    // MARK: - Streaming
+  func cancelStreaming() {
+    guard isStreamingActive, let parakeet = parakeetBackend else { return }
+    isStreamingActive = false
+    Task { await parakeet.cancelStreaming() }
+  }
 
-    func startStreaming(language: String, enableTimestamps: Bool, reply: @escaping (NSError?) -> Void) {
-        guard let parakeet = parakeetBackend else {
-            reply(NSError(domain: "ASRService", code: -3,
-                userInfo: [NSLocalizedDescriptionKey: "No Parakeet model loaded for streaming"]))
-            return
-        }
+  // MARK: - Capability
 
-        nonisolated(unsafe) let safeReply = reply
-        Task { @MainActor in
-            do {
-                var options = TranscriptionOptions()
-                options.language = language.isEmpty ? nil : language
-                options.enableTimestamps = enableTimestamps
-                try await parakeet.startStreaming(options: options)
-                self.isStreamingActive = true
-                safeReply(nil)
-            } catch {
-                safeReply(error as NSError)
-            }
-        }
-    }
-
-    func feedAudioBuffer(_ data: Data, frameCount: Int) {
-        guard isStreamingActive, let parakeet = parakeetBackend else { return }
-        guard data.count == frameCount * MemoryLayout<Float>.size else { return }
-
-        // Reconstruct AVAudioPCMBuffer from raw Float32 data
-        guard let buffer = AVAudioPCMBuffer(pcmFormat: pcmFormat, frameCapacity: AVAudioFrameCount(frameCount)) else { return }
-        buffer.frameLength = AVAudioFrameCount(frameCount)
-        data.withUnsafeBytes { raw in
-            guard let src = raw.baseAddress?.assumingMemoryBound(to: Float.self) else { return }
-            buffer.floatChannelData![0].update(from: src, count: frameCount)
-        }
-
-        nonisolated(unsafe) let unsafeBuffer = buffer
-        Task { try? await parakeet.feedAudio(unsafeBuffer) }
-    }
-
-    func finalizeStreaming(reply: @escaping (Data?, NSError?) -> Void) {
-        guard isStreamingActive, let parakeet = parakeetBackend else {
-            reply(nil, NSError(domain: "ASRService", code: -3,
-                userInfo: [NSLocalizedDescriptionKey: "No active streaming session"]))
-            return
-        }
-
-        nonisolated(unsafe) let safeReply = reply
-        Task { @MainActor in
-            do {
-                let result = try await parakeet.finalizeStreaming()
-                self.isStreamingActive = false
-                let encoded = try PropertyListEncoder().encode(result)
-                safeReply(encoded, nil)
-            } catch {
-                self.isStreamingActive = false
-                safeReply(nil, error as NSError)
-            }
-        }
-    }
-
-    func cancelStreaming() {
-        guard isStreamingActive, let parakeet = parakeetBackend else { return }
-        isStreamingActive = false
-        Task { await parakeet.cancelStreaming() }
-    }
-
-    // MARK: - Capability
-
-    func checkStreamingSupport(backendType: String, reply: @escaping (Bool) -> Void) {
-        reply(backendType == "parakeet")
-    }
+  func checkStreamingSupport(backendType: String, reply: @escaping (Bool) -> Void) {
+    reply(backendType == "parakeet")
+  }
 }
-

@@ -1,167 +1,171 @@
-import Foundation
 import EnviousWisprCore
+import Foundation
 
 /// Protocol for LLM-based transcript polishing.
 public protocol TranscriptPolisher: Sendable {
-    /// Polish a transcript using the configured LLM provider.
-    /// - Parameters:
-    ///   - onToken: Optional streaming callback invoked with each text fragment as it arrives.
-    ///              Pass `nil` for batch (non-streaming) behavior.
-    func polish(
-        text: String,
-        instructions: PolishInstructions,
-        config: LLMProviderConfig,
-        onToken: (@Sendable (String) -> Void)?
-    ) async throws -> LLMResult
+  /// Polish a transcript using the configured LLM provider.
+  /// - Parameters:
+  ///   - onToken: Optional streaming callback invoked with each text fragment as it arrives.
+  ///              Pass `nil` for batch (non-streaming) behavior.
+  func polish(
+    text: String,
+    instructions: PolishInstructions,
+    config: LLMProviderConfig,
+    onToken: (@Sendable (String) -> Void)?
+  ) async throws -> LLMResult
 
-    /// Polish using a structured PromptEnvelope (new prompt planner path).
-    /// Connectors map roles to their API format. Default implementation bridges
-    /// to the legacy method for Apple Intelligence (which never uses this path).
-    func polish(
-        envelope: PromptEnvelope,
-        config: LLMProviderConfig,
-        onToken: (@Sendable (String) -> Void)?
-    ) async throws -> LLMResult
+  /// Polish using a structured PromptEnvelope (new prompt planner path).
+  /// Connectors map roles to their API format. Default implementation bridges
+  /// to the legacy method for Apple Intelligence (which never uses this path).
+  func polish(
+    envelope: PromptEnvelope,
+    config: LLMProviderConfig,
+    onToken: (@Sendable (String) -> Void)?
+  ) async throws -> LLMResult
 }
 
 extension TranscriptPolisher {
-    /// Default bridge: extract single-turn pair and delegate to legacy method.
-    /// Apple Intelligence connector relies on this default (never uses envelope path).
-    public func polish(
-        envelope: PromptEnvelope,
-        config: LLMProviderConfig,
-        onToken: (@Sendable (String) -> Void)?
-    ) async throws -> LLMResult {
-        let pair = envelope.asSingleTurn()
-        let instructions = PolishInstructions(systemPrompt: pair?.system ?? "")
-        let text = pair?.user ?? ""
-        return try await polish(text: text, instructions: instructions, config: config, onToken: onToken)
-    }
+  /// Default bridge: extract single-turn pair and delegate to legacy method.
+  /// Apple Intelligence connector relies on this default (never uses envelope path).
+  public func polish(
+    envelope: PromptEnvelope,
+    config: LLMProviderConfig,
+    onToken: (@Sendable (String) -> Void)?
+  ) async throws -> LLMResult {
+    let pair = envelope.asSingleTurn()
+    let instructions = PolishInstructions(systemPrompt: pair?.system ?? "")
+    let text = pair?.user ?? ""
+    return try await polish(
+      text: text, instructions: instructions, config: config, onToken: onToken)
+  }
 }
 
 // MARK: - Preamble Stripping
 
 extension String {
-    /// Strip common LLM preamble/acknowledgment patterns from polished transcript output.
-    ///
-    /// Strategy:
-    /// 1. Strip a leading single-word/phrase acknowledgment (e.g. "Certainly!", "Sure,", "Got it.")
-    /// 2. If the (remaining) first line is short (<100 chars) and ends with ":", treat it as a
-    ///    preamble line (e.g. "Here is the corrected version of the speech transcript:") and strip it.
-    func strippingLLMPreamble() -> String {
-        var result = self.trimmingCharacters(in: .whitespacesAndNewlines)
+  /// Strip common LLM preamble/acknowledgment patterns from polished transcript output.
+  ///
+  /// Strategy:
+  /// 1. Strip a leading single-word/phrase acknowledgment (e.g. "Certainly!", "Sure,", "Got it.")
+  /// 2. If the (remaining) first line is short (<100 chars) and ends with ":", treat it as a
+  ///    preamble line (e.g. "Here is the corrected version of the speech transcript:") and strip it.
+  func strippingLLMPreamble() -> String {
+    var result = self.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // Step 1: Strip a leading acknowledgment word/phrase if present.
-        let acknowledgments = [
-            "Certainly!",
-            "Sure!",
-            "Sure,",
-            "Of course!",
-            "Got it.",
-            "Got it!",
-            "Absolutely!",
-            "Here you go:",
-        ]
-        for ack in acknowledgments {
-            if result.hasPrefix(ack) {
-                result = String(result.dropFirst(ack.count))
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                break
-            }
-        }
-
-        // Step 2: If the first line is short and ends with ":", it's likely a preamble line.
-        // e.g. "Here is the corrected version of the speech transcript:"
-        // Also catches "Here's the cleaned-up transcript:" etc.
-        let firstNewline = result.firstIndex(of: "\n") ?? result.endIndex
-        let firstLine = result[result.startIndex..<firstNewline]
-        if firstLine.count < 100,
-           firstLine.hasSuffix(":"),
-           !firstLine.isEmpty {
-            // Additional guard: only strip if it looks like a preamble, not legitimate content.
-            // Preamble lines typically start with "Here" or are very short introductions.
-            let trimmedFirst = firstLine.trimmingCharacters(in: .whitespaces).lowercased()
-            let isPreambleLike = trimmedFirst.hasPrefix("here")
-                || trimmedFirst.hasPrefix("below")
-                || trimmedFirst.hasPrefix("the corrected")
-                || trimmedFirst.hasPrefix("the cleaned")
-                || trimmedFirst.hasPrefix("the polished")
-                || trimmedFirst.hasPrefix("the rewritten")
-                || trimmedFirst.hasPrefix("corrected version")
-                || trimmedFirst.hasPrefix("cleaned")
-                || trimmedFirst.hasPrefix("polished")
-            if isPreambleLike {
-                result = String(result[firstNewline...])
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-        }
-
-        // Step 3: Strip <transcript> wrapper if echoed back (may be truncated at token limit).
-        result = result.replacingOccurrences(
-            of: "</?transcript>",
-            with: "",
-            options: .regularExpression
-        ).trimmingCharacters(in: .whitespacesAndNewlines)
-
-        return result
+    // Step 1: Strip a leading acknowledgment word/phrase if present.
+    let acknowledgments = [
+      "Certainly!",
+      "Sure!",
+      "Sure,",
+      "Of course!",
+      "Got it.",
+      "Got it!",
+      "Absolutely!",
+      "Here you go:",
+    ]
+    for ack in acknowledgments {
+      if result.hasPrefix(ack) {
+        result = String(result.dropFirst(ack.count))
+          .trimmingCharacters(in: .whitespacesAndNewlines)
+        break
+      }
     }
+
+    // Step 2: If the first line is short and ends with ":", it's likely a preamble line.
+    // e.g. "Here is the corrected version of the speech transcript:"
+    // Also catches "Here's the cleaned-up transcript:" etc.
+    let firstNewline = result.firstIndex(of: "\n") ?? result.endIndex
+    let firstLine = result[result.startIndex..<firstNewline]
+    if firstLine.count < 100,
+      firstLine.hasSuffix(":"),
+      !firstLine.isEmpty
+    {
+      // Additional guard: only strip if it looks like a preamble, not legitimate content.
+      // Preamble lines typically start with "Here" or are very short introductions.
+      let trimmedFirst = firstLine.trimmingCharacters(in: .whitespaces).lowercased()
+      let isPreambleLike =
+        trimmedFirst.hasPrefix("here")
+        || trimmedFirst.hasPrefix("below")
+        || trimmedFirst.hasPrefix("the corrected")
+        || trimmedFirst.hasPrefix("the cleaned")
+        || trimmedFirst.hasPrefix("the polished")
+        || trimmedFirst.hasPrefix("the rewritten")
+        || trimmedFirst.hasPrefix("corrected version")
+        || trimmedFirst.hasPrefix("cleaned")
+        || trimmedFirst.hasPrefix("polished")
+      if isPreambleLike {
+        result = String(result[firstNewline...])
+          .trimmingCharacters(in: .whitespacesAndNewlines)
+      }
+    }
+
+    // Step 3: Strip <transcript> wrapper if echoed back (may be truncated at token limit).
+    result = result.replacingOccurrences(
+      of: "</?transcript>",
+      with: "",
+      options: .regularExpression
+    ).trimmingCharacters(in: .whitespacesAndNewlines)
+
+    return result
+  }
 }
 
 /// Errors that can occur during LLM operations.
 public enum LLMError: LocalizedError, Sendable, Equatable {
-    case invalidAPIKey
-    case requestFailed(String)
-    case rateLimited
-    case emptyResponse
-    case providerUnavailable
-    case modelNotFound(String)
-    case frameworkUnavailable(String)
-    /// Input language is not supported by the selected provider. Distinct from
-    /// `frameworkUnavailable` (global provider state): this fires per-request
-    /// when a specific detected language is outside the provider's supported
-    /// set. Pipeline falls back to raw text.
-    case unsupportedInputLanguage(String)
-    /// Post-generation validator detected that the output language differs
-    /// from the expected input language (e.g. German input polished as
-    /// English). Pipeline falls back to raw text silently; this signal is
-    /// kept distinct from `requestFailed` so it never surfaces as "AI polish
-    /// failed" in the UI.
-    case outputLanguageDrift(expected: String, actual: String)
+  case invalidAPIKey
+  case requestFailed(String)
+  case rateLimited
+  case emptyResponse
+  case providerUnavailable
+  case modelNotFound(String)
+  case frameworkUnavailable(String)
+  /// Input language is not supported by the selected provider. Distinct from
+  /// `frameworkUnavailable` (global provider state): this fires per-request
+  /// when a specific detected language is outside the provider's supported
+  /// set. Pipeline falls back to raw text.
+  case unsupportedInputLanguage(String)
+  /// Post-generation validator detected that the output language differs
+  /// from the expected input language (e.g. German input polished as
+  /// English). Pipeline falls back to raw text silently; this signal is
+  /// kept distinct from `requestFailed` so it never surfaces as "AI polish
+  /// failed" in the UI.
+  case outputLanguageDrift(expected: String, actual: String)
 
-    public var errorDescription: String? {
-        switch self {
-        case .invalidAPIKey: return "Invalid API key."
-        case .requestFailed(let msg): return "LLM request failed: \(msg)"
-        case .rateLimited: return "Rate limited. Please try again later."
-        case .emptyResponse: return "LLM returned an empty response."
-        case .providerUnavailable: return "LLM provider is unavailable."
-        case .modelNotFound(let model):
-            return "Ollama model '\(model)' is not pulled. Run: ollama pull \(model)"
-        case .frameworkUnavailable(let reason):
-            return reason
-        case .unsupportedInputLanguage(let code):
-            return "Apple Intelligence does not support the input language '\(code)' for on-device polishing."
-        case .outputLanguageDrift(let expected, let actual):
-            return "LLM polish output drifted from expected language '\(expected)' to '\(actual)'."
-        }
+  public var errorDescription: String? {
+    switch self {
+    case .invalidAPIKey: return "Invalid API key."
+    case .requestFailed(let msg): return "LLM request failed: \(msg)"
+    case .rateLimited: return "Rate limited. Please try again later."
+    case .emptyResponse: return "LLM returned an empty response."
+    case .providerUnavailable: return "LLM provider is unavailable."
+    case .modelNotFound(let model):
+      return "Ollama model '\(model)' is not pulled. Run: ollama pull \(model)"
+    case .frameworkUnavailable(let reason):
+      return reason
+    case .unsupportedInputLanguage(let code):
+      return
+        "Apple Intelligence does not support the input language '\(code)' for on-device polishing."
+    case .outputLanguageDrift(let expected, let actual):
+      return "LLM polish output drifted from expected language '\(expected)' to '\(actual)'."
     }
+  }
 
-    public static func == (lhs: LLMError, rhs: LLMError) -> Bool {
-        switch (lhs, rhs) {
-        case (.invalidAPIKey, .invalidAPIKey),
-             (.rateLimited, .rateLimited),
-             (.emptyResponse, .emptyResponse),
-             (.providerUnavailable, .providerUnavailable):
-            return true
-        case (.requestFailed(let a), .requestFailed(let b)),
-             (.modelNotFound(let a), .modelNotFound(let b)),
-             (.frameworkUnavailable(let a), .frameworkUnavailable(let b)),
-             (.unsupportedInputLanguage(let a), .unsupportedInputLanguage(let b)):
-            return a == b
-        case (.outputLanguageDrift(let le, let la), .outputLanguageDrift(let re, let ra)):
-            return le == re && la == ra
-        default:
-            return false
-        }
+  public static func == (lhs: LLMError, rhs: LLMError) -> Bool {
+    switch (lhs, rhs) {
+    case (.invalidAPIKey, .invalidAPIKey),
+      (.rateLimited, .rateLimited),
+      (.emptyResponse, .emptyResponse),
+      (.providerUnavailable, .providerUnavailable):
+      return true
+    case (.requestFailed(let a), .requestFailed(let b)),
+      (.modelNotFound(let a), .modelNotFound(let b)),
+      (.frameworkUnavailable(let a), .frameworkUnavailable(let b)),
+      (.unsupportedInputLanguage(let a), .unsupportedInputLanguage(let b)):
+      return a == b
+    case (.outputLanguageDrift(let le, let la), .outputLanguageDrift(let re, let ra)):
+      return le == re && la == ra
+    default:
+      return false
     }
+  }
 }

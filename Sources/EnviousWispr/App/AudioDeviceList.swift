@@ -1,20 +1,20 @@
-import Observation
 import EnviousWisprAudio
+import Observation
 
 /// Manages the list of available audio input devices, refreshing automatically on hardware changes.
 @MainActor @Observable
 final class AudioDeviceList {
-    var availableInputDevices: [AudioInputDevice] = []
-    private var deviceMonitor: AudioDeviceMonitor?
+  var availableInputDevices: [AudioInputDevice] = []
+  private var deviceMonitor: AudioDeviceMonitor?
 
-    init() {
-        refresh()
-        deviceMonitor = AudioDeviceMonitor { [weak self] in
-            Task { @MainActor in self?.refresh() }
-        }
+  init() {
+    refresh()
+    deviceMonitor = AudioDeviceMonitor { [weak self] in
+      Task { @MainActor in self?.refresh() }
     }
+  }
 
-    func refresh() {
-        availableInputDevices = AudioDeviceEnumerator.allInputDevices()
-    }
+  func refresh() {
+    availableInputDevices = AudioDeviceEnumerator.allInputDevices()
+  }
 }

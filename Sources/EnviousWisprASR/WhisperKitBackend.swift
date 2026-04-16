@@ -1,14 +1,14 @@
-import Foundation
 import EnviousWisprCore
+import Foundation
 @preconcurrency import WhisperKit
 
 /// Hardcoded compute options optimized for Apple Silicon dictation.
 /// Audio encoder + text decoder → Neural Engine, mel spectrogram → GPU, prefill → CPU only.
 private let dictationComputeOptions = ModelComputeOptions(
-    melCompute: .cpuAndGPU,
-    audioEncoderCompute: .cpuAndNeuralEngine,
-    textDecoderCompute: .cpuAndNeuralEngine,
-    prefillCompute: .cpuOnly
+  melCompute: .cpuAndGPU,
+  audioEncoderCompute: .cpuAndNeuralEngine,
+  textDecoderCompute: .cpuAndNeuralEngine,
+  prefillCompute: .cpuOnly
 )
 
 /// WhisperKit ASR backend — broad language support with hardcoded dictation-optimized quality.
@@ -19,164 +19,172 @@ private let dictationComputeOptions = ModelComputeOptions(
 ///
 /// The model must be downloaded via WhisperKitSetupService before calling prepare().
 public actor WhisperKitBackend: ASRBackend {
-    public private(set) var isReady = false
+  public private(set) var isReady = false
 
-    private let modelVariant: String
-    private var whisperKit: WhisperKit?
+  private let modelVariant: String
+  private var whisperKit: WhisperKit?
 
-    /// Exposes the configured model variant name (e.g. `openai_whisper-large-v3-v20240930_turbo`).
-    /// Read-only; used by telemetry to tag per-transcription events with the model in use.
-    public var modelVariantName: String { modelVariant }
+  /// Exposes the configured model variant name (e.g. `openai_whisper-large-v3-v20240930_turbo`).
+  /// Read-only; used by telemetry to tag per-transcription events with the model in use.
+  public var modelVariantName: String { modelVariant }
 
-    /// Exposes the WhisperKit instance for background incremental transcription.
-    public var whisperKitInstance: WhisperKit? { whisperKit }
+  /// Exposes the WhisperKit instance for background incremental transcription.
+  public var whisperKitInstance: WhisperKit? { whisperKit }
 
-    /// Exposes the tokenizer for prompt token encoding (used by incremental worker tail decode).
-    public var whisperKitTokenizer: (any WhisperTokenizer)? { whisperKit?.tokenizer }
+  /// Exposes the tokenizer for prompt token encoding (used by incremental worker tail decode).
+  public var whisperKitTokenizer: (any WhisperTokenizer)? { whisperKit?.tokenizer }
 
-    // BRAIN: gotcha id=default-model-turbo-v20240930
-    public init(modelVariant: String = WhisperKitBackend.defaultModelVariant()) {
-        self.modelVariant = modelVariant
+  // BRAIN: gotcha id=default-model-turbo-v20240930
+  public init(modelVariant: String = WhisperKitBackend.defaultModelVariant()) {
+    self.modelVariant = modelVariant
+  }
+
+  /// Single source of truth for the shipped default model variant.
+  /// Reads the `useRefreshedWhisperKitModel` feature flag from UserDefaults:
+  /// true (default) returns the Multilingual v1 refresh, false returns the
+  /// legacy variant for emergency rollback. Cold flag: read at init time,
+  /// does not live-switch.
+  public static func defaultModelVariant() -> String {
+    let useRefreshed =
+      UserDefaults.standard.object(forKey: "useRefreshedWhisperKitModel") as? Bool ?? true
+    return useRefreshed
+      ? "openai_whisper-large-v3-v20240930_turbo"
+      : "openai_whisper-large-v3_turbo"
+  }
+
+  public func prepare() async throws {
+    guard !isReady else { return }  // Idempotent — skip if already loaded
+
+    // Use cached model path from WhisperKitSetupService (no network call).
+    // Falls back to WhisperKit.download() if path not found (handles edge cases
+    // like user-initiated record when cache was cleared).
+    let modelPath: String
+    if let cached = WhisperKitSetupService.getLocalModelPath(variant: modelVariant) {
+      modelPath = cached
+    } else {
+      let folder = try await WhisperKit.download(variant: modelVariant, progressCallback: nil)
+      modelPath = folder.path
     }
 
-    /// Single source of truth for the shipped default model variant.
-    /// Reads the `useRefreshedWhisperKitModel` feature flag from UserDefaults:
-    /// true (default) returns the Multilingual v1 refresh, false returns the
-    /// legacy variant for emergency rollback. Cold flag: read at init time,
-    /// does not live-switch.
-    public static func defaultModelVariant() -> String {
-        let useRefreshed = UserDefaults.standard.object(forKey: "useRefreshedWhisperKitModel") as? Bool ?? true
-        return useRefreshed
-            ? "openai_whisper-large-v3-v20240930_turbo"
-            : "openai_whisper-large-v3_turbo"
+    try await loadFromPath(modelPath)
+  }
+
+  /// Load model from local cache only. Returns false if model is not cached.
+  /// Used by silent/background warmup paths that must never trigger a network download.
+  public func prepareIfCached() async throws -> Bool {
+    guard !isReady else { return true }
+    guard let cached = WhisperKitSetupService.getLocalModelPath(variant: modelVariant) else {
+      return false  // Model not downloaded, skip silently
     }
+    try await loadFromPath(cached)
+    return true
+  }
 
-    public func prepare() async throws {
-        guard !isReady else { return }  // Idempotent — skip if already loaded
+  private func loadFromPath(_ modelPath: String) async throws {
+    let config = WhisperKitConfig(
+      model: modelVariant,
+      modelFolder: modelPath,
+      computeOptions: dictationComputeOptions,
+      download: false
+    )
+    let kit = try await WhisperKit(config)
+    self.whisperKit = kit
+    isReady = true
+  }
 
-        // Use cached model path from WhisperKitSetupService (no network call).
-        // Falls back to WhisperKit.download() if path not found (handles edge cases
-        // like user-initiated record when cache was cleared).
-        let modelPath: String
-        if let cached = WhisperKitSetupService.getLocalModelPath(variant: modelVariant) {
-            modelPath = cached
-        } else {
-            let folder = try await WhisperKit.download(variant: modelVariant, progressCallback: nil)
-            modelPath = folder.path
-        }
+  public func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws
+    -> ASRResult
+  {
+    guard isReady, let kit = whisperKit else { throw ASRError.notReady }
 
-        try await loadFromPath(modelPath)
+    let paddedSamples = Self.padAudioWithSilence(audioSamples)
+    let decodeOptions = makeDecodeOptions(from: options, sampleCount: paddedSamples.count)
+    let startTime = CFAbsoluteTimeGetCurrent()
+    let results: [TranscriptionResult]
+    do {
+      results = try await kit.transcribe(audioArray: paddedSamples, decodeOptions: decodeOptions)
+    } catch {
+      throw ASRError.transcriptionFailed(error.localizedDescription)
     }
+    let elapsed = CFAbsoluteTimeGetCurrent() - startTime
 
-    /// Load model from local cache only. Returns false if model is not cached.
-    /// Used by silent/background warmup paths that must never trigger a network download.
-    public func prepareIfCached() async throws -> Bool {
-        guard !isReady else { return true }
-        guard let cached = WhisperKitSetupService.getLocalModelPath(variant: modelVariant) else {
-            return false  // Model not downloaded, skip silently
-        }
-        try await loadFromPath(cached)
-        return true
-    }
+    return mapResults(results, processingTime: elapsed)
+  }
 
-    private func loadFromPath(_ modelPath: String) async throws {
-        let config = WhisperKitConfig(
-            model: modelVariant,
-            modelFolder: modelPath,
-            computeOptions: dictationComputeOptions,
-            download: false
-        )
-        let kit = try await WhisperKit(config)
-        self.whisperKit = kit
-        isReady = true
-    }
+  public func unload() async {
+    whisperKit = nil
+    isReady = false
+  }
 
-    public func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult {
-        guard isReady, let kit = whisperKit else { throw ASRError.notReady }
+  // MARK: - Private
 
-        let paddedSamples = Self.padAudioWithSilence(audioSamples)
-        let decodeOptions = makeDecodeOptions(from: options, sampleCount: paddedSamples.count)
-        let startTime = CFAbsoluteTimeGetCurrent()
-        let results: [TranscriptionResult]
-        do {
-            results = try await kit.transcribe(audioArray: paddedSamples, decodeOptions: decodeOptions)
-        } catch {
-            throw ASRError.transcriptionFailed(error.localizedDescription)
-        }
-        let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+  // public: called by WhisperKitPipeline in EnviousWisprPipeline (cross-module boundary).
+  // TODO: Phase 2 — narrow to package once Pipeline moves into the same SPM package.
+  public func makeDecodeOptions(from options: TranscriptionOptions, sampleCount: Int)
+    -> DecodingOptions
+  {
+    var opts = DecodingOptions()
 
-        return mapResults(results, processingTime: elapsed)
-    }
+    // Shared options (from TranscriptionOptions)
+    opts.language = options.language
+    opts.wordTimestamps = options.enableTimestamps
 
-    public func unload() async {
-        whisperKit = nil
-        isReady = false
-    }
+    // Hardcoded dictation-optimized defaults
+    opts.temperature = 0.0
+    opts.temperatureFallbackCount = 3
+    opts.temperatureIncrementOnFallback = 0.2
+    opts.compressionRatioThreshold = 2.4
+    opts.logProbThreshold = -1.0
+    opts.noSpeechThreshold = 0.6
+    opts.skipSpecialTokens = true
+    opts.suppressBlank = true
+    opts.usePrefillPrompt = true
+    opts.usePrefillCache = true
 
-    // MARK: - Private
+    // Use VAD chunking for long recordings to prevent hallucinated repetitions
+    let thirtySeconds = 16000 * 30  // 480_000 samples
+    // BRAIN: gotcha id=vad-chunking-30s
+    opts.chunkingStrategy = sampleCount > thirtySeconds ? .vad : ChunkingStrategy.none
 
-    // public: called by WhisperKitPipeline in EnviousWisprPipeline (cross-module boundary).
-    // TODO: Phase 2 — narrow to package once Pipeline moves into the same SPM package.
-    public func makeDecodeOptions(from options: TranscriptionOptions, sampleCount: Int) -> DecodingOptions {
-        var opts = DecodingOptions()
+    // Disable windowClipTime (default 1.0s) which skips the last 1s of audio.
+    // We pad audio with silence instead, which provides the look-ahead context
+    // the decoder needs without sacrificing real content.
+    // BRAIN: gotcha id=window-clip-time-zero
+    opts.windowClipTime = 0
 
-        // Shared options (from TranscriptionOptions)
-        opts.language = options.language
-        opts.wordTimestamps = options.enableTimestamps
+    return opts
+  }
 
-        // Hardcoded dictation-optimized defaults
-        opts.temperature = 0.0
-        opts.temperatureFallbackCount = 3
-        opts.temperatureIncrementOnFallback = 0.2
-        opts.compressionRatioThreshold = 2.4
-        opts.logProbThreshold = -1.0
-        opts.noSpeechThreshold = 0.6
-        opts.skipSpecialTokens = true
-        opts.suppressBlank = true
-        opts.usePrefillPrompt = true
-        opts.usePrefillCache = true
+  /// Pads audio with trailing silence so the Whisper decoder has look-ahead context
+  /// at the end of speech. Without this, abruptly-ending audio loses the last 1-3 words.
+  // BRAIN: gotcha id=silence-padding
+  private static let silencePaddingSamples = Int(0.5 * 16000)  // 500ms at 16kHz
 
-        // Use VAD chunking for long recordings to prevent hallucinated repetitions
-        let thirtySeconds = 16000 * 30  // 480_000 samples
-        // BRAIN: gotcha id=vad-chunking-30s
-        opts.chunkingStrategy = sampleCount > thirtySeconds ? .vad : ChunkingStrategy.none
+  static func padAudioWithSilence(_ samples: [Float]) -> [Float] {
+    var padded = samples
+    padded.append(contentsOf: [Float](repeating: 0, count: silencePaddingSamples))
+    return padded
+  }
 
-        // Disable windowClipTime (default 1.0s) which skips the last 1s of audio.
-        // We pad audio with silence instead, which provides the look-ahead context
-        // the decoder needs without sacrificing real content.
-        // BRAIN: gotcha id=window-clip-time-zero
-        opts.windowClipTime = 0
+  private func mapResults(_ results: [TranscriptionResult], processingTime: TimeInterval)
+    -> ASRResult
+  {
+    let text = results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespaces)
+    let language = results.first?.language
 
-        return opts
-    }
+    let duration: TimeInterval =
+      if let lastSeg = results.last?.segments.last {
+        TimeInterval(lastSeg.end)
+      } else {
+        0
+      }
 
-    /// Pads audio with trailing silence so the Whisper decoder has look-ahead context
-    /// at the end of speech. Without this, abruptly-ending audio loses the last 1-3 words.
-    // BRAIN: gotcha id=silence-padding
-    private static let silencePaddingSamples = Int(0.5 * 16000)  // 500ms at 16kHz
-
-    static func padAudioWithSilence(_ samples: [Float]) -> [Float] {
-        var padded = samples
-        padded.append(contentsOf: [Float](repeating: 0, count: silencePaddingSamples))
-        return padded
-    }
-
-    private func mapResults(_ results: [TranscriptionResult], processingTime: TimeInterval) -> ASRResult {
-        let text = results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespaces)
-        let language = results.first?.language
-
-        let duration: TimeInterval = if let lastSeg = results.last?.segments.last {
-            TimeInterval(lastSeg.end)
-        } else {
-            0
-        }
-
-        return ASRResult(
-            text: text,
-            language: language,
-            duration: duration,
-            processingTime: processingTime,
-            backendType: .whisperKit
-        )
-    }
+    return ASRResult(
+      text: text,
+      language: language,
+      duration: duration,
+      processingTime: processingTime,
+      backendType: .whisperKit
+    )
+  }
 }
