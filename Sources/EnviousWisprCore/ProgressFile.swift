@@ -11,47 +11,48 @@ import Foundation
 ///
 /// Thread-safe: writes are atomic (write-to-temp + rename). Reads tolerate partial writes.
 public final class ProgressFile: Sendable {
-    public static let shared = ProgressFile()
+  public static let shared = ProgressFile()
 
-    /// Well-known path both processes can find.
-    /// Uses /tmp/ which is accessible to both the app and its XPC services.
-    private let filePath: String = "/tmp/com.enviouswispr.download-progress"
+  /// Well-known path both processes can find.
+  /// Uses /tmp/ which is accessible to both the app and its XPC services.
+  private let filePath: String = "/tmp/com.enviouswispr.download-progress"
 
-    private init() {}
+  private init() {}
 
-    /// Write a progress snapshot. Called from the download delegate thread — must be fast.
-    /// Uses atomic write (write to temp + rename) to prevent partial reads.
-    public func write(fraction: Double, phase: String, detail: String) {
-        // Simple format: "fraction|phase|detail" — no JSON overhead
-        let content = "\(fraction)|\(phase)|\(detail)"
-        guard let data = content.data(using: .utf8) else { return }
+  /// Write a progress snapshot. Called from the download delegate thread — must be fast.
+  /// Uses atomic write (write to temp + rename) to prevent partial reads.
+  public func write(fraction: Double, phase: String, detail: String) {
+    // Simple format: "fraction|phase|detail" — no JSON overhead
+    let content = "\(fraction)|\(phase)|\(detail)"
+    guard let data = content.data(using: .utf8) else { return }
 
-        let tmpPath = filePath + ".tmp"
-        do {
-            try data.write(to: URL(fileURLWithPath: tmpPath), options: .atomic)
-            // rename is atomic on APFS/HFS+
-            _ = rename(tmpPath, filePath)
-        } catch {
-            // Progress write failure is non-fatal — UI just won't update this tick
-        }
+    let tmpPath = filePath + ".tmp"
+    do {
+      try data.write(to: URL(fileURLWithPath: tmpPath), options: .atomic)
+      // rename is atomic on APFS/HFS+
+      _ = rename(tmpPath, filePath)
+    } catch {
+      // Progress write failure is non-fatal — UI just won't update this tick
     }
+  }
 
-    /// Read the latest progress snapshot. Returns nil if file doesn't exist or is malformed.
-    /// Called by the host app on a timer.
-    public func read() -> (fraction: Double, phase: String, detail: String)? {
-        guard let data = try? Data(contentsOf: URL(fileURLWithPath: filePath)),
-              let content = String(data: data, encoding: .utf8) else { return nil }
+  /// Read the latest progress snapshot. Returns nil if file doesn't exist or is malformed.
+  /// Called by the host app on a timer.
+  public func read() -> (fraction: Double, phase: String, detail: String)? {
+    guard let data = try? Data(contentsOf: URL(fileURLWithPath: filePath)),
+      let content = String(data: data, encoding: .utf8)
+    else { return nil }
 
-        let parts = content.split(separator: "|", maxSplits: 2, omittingEmptySubsequences: false)
-        guard parts.count >= 1, let fraction = Double(parts[0]) else { return nil }
+    let parts = content.split(separator: "|", maxSplits: 2, omittingEmptySubsequences: false)
+    guard parts.count >= 1, let fraction = Double(parts[0]) else { return nil }
 
-        let phase = parts.count > 1 ? String(parts[1]) : ""
-        let detail = parts.count > 2 ? String(parts[2]) : ""
-        return (fraction, phase, detail)
-    }
+    let phase = parts.count > 1 ? String(parts[1]) : ""
+    let detail = parts.count > 2 ? String(parts[2]) : ""
+    return (fraction, phase, detail)
+  }
 
-    /// Clear the progress file. Called before starting a new download.
-    public func clear() {
-        try? FileManager.default.removeItem(atPath: filePath)
-    }
+  /// Clear the progress file. Called before starting a new download.
+  public func clear() {
+    try? FileManager.default.removeItem(atPath: filePath)
+  }
 }
