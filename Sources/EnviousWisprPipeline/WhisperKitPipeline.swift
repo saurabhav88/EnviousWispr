@@ -593,9 +593,10 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
       data: ["sample_count": rawSamples.count])
     SentryBreadcrumb.updateRecordingState(active: false)
 
-    // Pre-warm LLM connection while ASR runs
-    LLMNetworkSession.shared.preWarmIfConfigured(
+    // Pre-warm LLM backend while ASR runs
+    LLMNetworkSession.shared.preWarmModel(
       provider: llmPolishStep.llmProvider,
+      model: llmPolishStep.llmModel,
       keychainManager: keychainManager
     )
 
