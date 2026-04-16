@@ -642,10 +642,10 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
     // Defense: if cancelRecording() ran during yield, bail out
     guard state == .recording else { return }
 
-    // Pre-warm the LLM connection while ASR is still running (fire-and-forget).
-    // Establishes TLS + HTTP/2 so the polish request skips the handshake.
-    LLMNetworkSession.shared.preWarmIfConfigured(
+    // Pre-warm the LLM backend while ASR is still running (fire-and-forget).
+    LLMNetworkSession.shared.preWarmModel(
       provider: llmPolishStep.llmProvider,
+      model: llmPolishStep.llmModel,
       keychainManager: keychainManager
     )
 
