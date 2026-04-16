@@ -108,7 +108,7 @@ public final class LLMNetworkSession: Sendable {
       let body: [String: Any] = [
         "model": model,
         "messages": [["role": "user", "content": "."]],
-        "max_tokens": 1,
+        "max_completion_tokens": 1,
         "store": false,
       ]
       request.httpBody = try? JSONSerialization.data(withJSONObject: body)
