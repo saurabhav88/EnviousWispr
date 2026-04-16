@@ -27,6 +27,25 @@ enum WhatsNewContent {
     }
 
     static let entries: [Entry] = [
+        // MARK: - v1.9.4
+
+        Entry(
+            id: "smoother-model-switching",
+            icon: "arrow.triangle.swap",
+            title: "Smoother model switching",
+            description: "Switching between local AI polish models now frees up the previous model cleanly, so your Mac stays responsive and recordings keep working.",
+            category: .betterOllamaSupport,
+            version: "1.9.4"
+        ),
+        Entry(
+            id: "more-reliable-recordings",
+            icon: "waveform.badge.checkmark",
+            title: "More reliable recordings",
+            description: "Improved recovery when the microphone gets into a bad state, so recordings start cleanly even after long idle periods or audio interruptions.",
+            category: .fasterAndMoreReliable,
+            version: "1.9.4"
+        ),
+
         // MARK: - v1.9.3
 
         Entry(
