@@ -16,12 +16,11 @@ import Foundation
 
   // MARK: - Model Lifecycle
 
-  /// Load the specified ASR backend and model variant.
+  /// Load the specified ASR backend.
   /// - Parameters:
   ///   - backendType: "parakeet" or "whisperKit"
-  ///   - modelVariant: WhisperKit model name (e.g., "openai_whisper-large-v3-v20240930_turbo"). Ignored for Parakeet.
   ///   - reply: nil on success, NSError on failure.
-  func loadModel(backendType: String, modelVariant: String, reply: @escaping (NSError?) -> Void)
+  func loadModel(backendType: String, reply: @escaping (NSError?) -> Void)
 
   /// Unload the current model and free memory.
   func unloadModel(reply: @escaping () -> Void)

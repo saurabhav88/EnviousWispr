@@ -28,9 +28,6 @@ public final class ASRManagerProxy: ASRManagerInterface {
   private var connection: NSXPCConnection?
   private var needsReinit = false
 
-  /// Stored config for crash recovery replay.
-  private var lastModelVariant: String = ""
-
   // MARK: - Crash notification
 
   /// Fires when the ASR XPC service crashes during an active session (streaming or batch in-flight).
@@ -71,10 +68,7 @@ public final class ASRManagerProxy: ASRManagerInterface {
       try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
         let guard_ = OneShotContinuationASR(cont)
         self.serviceProxy { proxy in
-          proxy.loadModel(
-            backendType: self.activeBackendType.rawValue,
-            modelVariant: self.lastModelVariant
-          ) { nsError in
+          proxy.loadModel(backendType: self.activeBackendType.rawValue) { nsError in
             if let error = nsError { guard_.resume(throwing: error) } else { guard_.resume() }
           }
         } onProxyError: {
@@ -164,13 +158,6 @@ public final class ASRManagerProxy: ASRManagerInterface {
     if isModelLoaded { await unloadModel() }
     activeBackendType = type
     isStreaming = false
-  }
-
-  public func updateWhisperKitModel(_ variant: String) async {
-    lastModelVariant = variant
-    if activeBackendType == .whisperKit && isModelLoaded {
-      await unloadModel()
-    }
   }
 
   // MARK: - ASRManagerInterface: Capability

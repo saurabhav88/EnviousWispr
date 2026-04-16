@@ -261,3 +261,9 @@ Before closing the epic:
 - XPC boundary: language setting is passed through `TranscriptionOptions.language`; detector call site is host-process (`WhisperKitPipeline`), not the XPC service process, because detection needs audio samples that live on the host side
 - Never log API keys, Bluetooth-specific audio paths need `AVCaptureSessionSource` (unaffected here but keep in mind for testing)
 - Every `swift build -c release` + bundle step after code edits; never test via `.build/debug` alone
+
+---
+
+## Resolution footer (2026-04-16)
+
+The `useRefreshedWhisperKitModel` rollback flag and the `whisperKitModel` setting it controlled were removed entirely in the variant-swap cleanup PR for #256. Rationale: no UI exposes a WhisperKit model picker, the flag had a latent defect (XPC cold-start sync gap), and the product decision is to ship a single canonical model rather than maintain variant-choice plumbing. Single source of truth is now `WhisperKitBackend.defaultModelVariant()`. Future model swaps update one literal and notify users via the What's New flow.

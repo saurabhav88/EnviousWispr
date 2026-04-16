@@ -6,7 +6,6 @@ import EnviousWisprCore
 public final class SettingsManager {
   public enum SettingKey {
     case selectedBackend
-    case whisperKitModel
     case recordingMode
     case llmProvider
     case llmModel
@@ -43,7 +42,6 @@ public final class SettingsManager {
     case useXPCAudioService
     case useStreamingASR
     case warmEnginePolicy
-    case useRefreshedWhisperKitModel
   }
 
   public var onChange: ((SettingKey) -> Void)?
@@ -52,25 +50,6 @@ public final class SettingsManager {
     didSet {
       UserDefaults.standard.set(selectedBackend.rawValue, forKey: "selectedBackend")
       onChange?(.selectedBackend)
-    }
-  }
-
-  public var whisperKitModel: String {
-    didSet {
-      UserDefaults.standard.set(whisperKitModel, forKey: "whisperKitModel")
-      onChange?(.whisperKitModel)
-    }
-  }
-
-  /// Emergency rollback flag for the Multilingual v1 model swap (W4).
-  /// Default: true (use openai_whisper-large-v3-v20240930_turbo).
-  /// When false, the app falls back to the legacy openai_whisper-large-v3_turbo
-  /// variant. Cold flag: read by WhisperKitSetupService at startup.
-  /// Escape hatch: defaults write com.enviouswispr.app useRefreshedWhisperKitModel -bool false
-  public var useRefreshedWhisperKitModel: Bool {
-    didSet {
-      UserDefaults.standard.set(useRefreshedWhisperKitModel, forKey: "useRefreshedWhisperKitModel")
-      onChange?(.useRefreshedWhisperKitModel)
     }
   }
 
@@ -408,27 +387,6 @@ public final class SettingsManager {
     let defaults = UserDefaults.standard
     selectedBackend =
       ASRBackendType(rawValue: defaults.string(forKey: "selectedBackend") ?? "") ?? .parakeet
-    // Fallback is flag-aware: when `useRefreshedWhisperKitModel` is false, we
-    // revert to the legacy variant so rollback actually flows end to end.
-    // Matches WhisperKitBackend.defaultModelVariant() (duplicated here because
-    // Services cannot import ASR; if this logic changes, update both sites).
-    let flagUseRefreshed = defaults.object(forKey: "useRefreshedWhisperKitModel") as? Bool ?? true
-    let refreshedVariant = "openai_whisper-large-v3-v20240930_turbo"
-    let legacyVariant = "openai_whisper-large-v3_turbo"
-    let defaultWhisperKitVariant = flagUseRefreshed ? refreshedVariant : legacyVariant
-    // One-time migration: existing installs persisted the legacy variant
-    // before Multilingual v1. If the flag says refreshed and we find the
-    // legacy value persisted, upgrade it so setup service + runtime backend
-    // converge on the same variant. Users who explicitly rolled back
-    // (`useRefreshedWhisperKitModel` = false) skip this migration because
-    // `defaultWhisperKitVariant` is already the legacy one for them.
-    let persistedWhisperKitModel = defaults.string(forKey: "whisperKitModel")
-    if flagUseRefreshed, persistedWhisperKitModel == legacyVariant {
-      whisperKitModel = refreshedVariant
-      defaults.set(refreshedVariant, forKey: "whisperKitModel")
-    } else {
-      whisperKitModel = persistedWhisperKitModel ?? defaultWhisperKitVariant
-    }
     recordingMode =
       RecordingMode(rawValue: defaults.string(forKey: "recordingMode") ?? "") ?? .pushToTalk
     llmProvider = LLMProvider(rawValue: defaults.string(forKey: "llmProvider") ?? "") ?? .none
@@ -545,8 +503,6 @@ public final class SettingsManager {
       WritingStylePreset(rawValue: defaults.string(forKey: "writingStylePreset") ?? "") ?? .standard
     useXPCAudioService = defaults.object(forKey: "useXPCAudioService") as? Bool ?? true
     useStreamingASR = defaults.object(forKey: "useStreamingASR") as? Bool ?? false
-    useRefreshedWhisperKitModel =
-      defaults.object(forKey: "useRefreshedWhisperKitModel") as? Bool ?? true
     warmEnginePolicy =
       WarmEnginePolicy(
         rawValue: defaults.string(forKey: "warmEnginePolicy") ?? ""

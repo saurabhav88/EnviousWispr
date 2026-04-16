@@ -57,15 +57,6 @@ public final class ASRManager: ASRManagerInterface {
     isStreaming = false
   }
 
-  /// Update the WhisperKit model variant. Requires reloading the model.
-  public func updateWhisperKitModel(_ variant: String) async {
-    await whisperKitBackend.unload()
-    whisperKitBackend = WhisperKitBackend(modelVariant: variant)
-    if activeBackendType == .whisperKit {
-      isModelLoaded = false
-    }
-  }
-
   /// Load the active backend's model. Single-flight: concurrent callers await the same task.
   public func loadModel() async throws {
     // If a load is already in progress, await it instead of starting a new one.

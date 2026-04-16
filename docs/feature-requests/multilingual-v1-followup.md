@@ -392,3 +392,9 @@ With high confidence the session state is correctly characterized:
 - PR + CI watch + merge: 30-60 minutes
 
 **Total: roughly half a day to a full day of focused work from a fresh session.** If you hit an architecture question or codex surfaces something systemic, add a day.
+
+---
+
+## Resolution footer (2026-04-16)
+
+The P3 XPC defaults domain sync follow-up (listed at §"Follow-up issues to file" in this document) was closed by the variant-swap cleanup PR for #256. Rather than patching the XPC sync gap, the entire variant-swap subsystem was deleted: the `useRefreshedWhisperKitModel` flag, the `whisperKitModel` setting, `ASRManagerInterface.updateWhisperKitModel`, the XPC `loadModel(modelVariant:)` parameter, and associated plumbing. Single source of truth is now `WhisperKitBackend.defaultModelVariant()`. Prior references to the flag earlier in this document are historical and no longer describe shipped behavior.

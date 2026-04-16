@@ -328,9 +328,6 @@ final class AppState {
       await AppLogger.shared.setDebugMode(settings.isDebugModeEnabled)
     }
 
-    // Sync WhisperKit setup service model variant
-    whisperKitSetup.modelVariant = settings.whisperKitModel
-
     // Restore persisted backend selection synchronously (no race with first record).
     // setInitialBackendType is safe at startup: nothing loaded, no unload needed.
     asrManager.setInitialBackendType(settings.selectedBackend)

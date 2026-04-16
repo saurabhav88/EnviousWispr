@@ -134,14 +134,6 @@ final class PipelineSettingsSync {
           self?.onNeedsPreloadObservation?()
         }
       }
-    case .whisperKitModel:
-      let model = settings.whisperKitModel
-      whisperKitSetup.modelVariant = model
-      Task { [weak self] in
-        await self?.asrManager.updateWhisperKitModel(model)
-        await self?.whisperKitSetup.forceDetectState()
-        self?.onNeedsPreloadObservation?()
-      }
     case .recordingMode:
       hotkeyService.recordingMode = settings.recordingMode
     case .llmProvider:
@@ -296,10 +288,6 @@ final class PipelineSettingsSync {
       pipeline.useStreamingASR = settings.useStreamingASR
     case .warmEnginePolicy:
       audioCapture.warmEnginePolicy = settings.warmEnginePolicy
-    case .useRefreshedWhisperKitModel:
-      // Cold flag (Multilingual v1 W4). The active modelVariant is resolved
-      // from this default at startup; toggling requires an app restart.
-      break
     }
   }
 
