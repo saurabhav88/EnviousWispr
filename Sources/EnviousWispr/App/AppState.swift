@@ -26,6 +26,7 @@ final class AppState {
   let ollamaSetup = OllamaSetupService()
   let whisperKitSetup = WhisperKitSetupService()
   let audioDeviceList = AudioDeviceList()
+  let captureTelemetry = CaptureTelemetryState()
 
   /// Background task that observes WhisperKitSetupService.setupState and pre-loads the model when ready.
   private var whisperKitPreloadTask: Task<Void, Never>?
@@ -106,7 +107,8 @@ final class AppState {
       audioCapture: audioCapture,
       asrManager: asrManager,
       transcriptStore: transcriptStore,
-      keychainManager: keychainManager
+      keychainManager: keychainManager,
+      captureTelemetry: captureTelemetry
     )
     // W6: wire language-flip telemetry into the detector via a closure so
     // `EnviousWisprASR` (which cannot import PostHog) stays vendor-contained.
@@ -131,7 +133,8 @@ final class AppState {
       backend: WhisperKitBackend(),
       transcriptStore: transcriptStore,
       keychainManager: keychainManager,
-      languageDetector: languageDetector
+      languageDetector: languageDetector,
+      captureTelemetry: captureTelemetry
     )
     // Transcript polish service (re-polish from detail view, decoupled from pipelines)
     polishService = TranscriptPolishService(
@@ -261,7 +264,9 @@ final class AppState {
       forName: .AVAudioEngineConfigurationChange, object: nil, queue: nil
     ) { [weak self] _ in
       Task { @MainActor in
-        let route = self?.audioCapture.currentAudioRoute ?? "unknown"
+        guard let self else { return }
+        self.captureTelemetry.incrementConfigChange()
+        let route = self.audioCapture.currentAudioRoute
         SentryBreadcrumb.add(
           stage: "audio", message: "Audio route changed", level: .warning,
           data: [
