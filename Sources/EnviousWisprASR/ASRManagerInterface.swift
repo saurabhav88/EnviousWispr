@@ -25,7 +25,6 @@ public protocol ASRManagerInterface: AnyObject {
   func unloadModel() async  // periphery:ignore - called via existential type (ASRManager idle timer)
   func setInitialBackendType(_ type: ASRBackendType)
   func switchBackend(to type: ASRBackendType) async
-  func updateWhisperKitModel(_ variant: String) async
 
   // Capability
   var activeBackendSupportsStreaming: Bool { get async }
