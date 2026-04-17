@@ -72,6 +72,10 @@ jobs:
         if: steps.changes.outputs.needs_build == 'true'
         run: swift build -c release --arch arm64
 
+      - name: XPC error hygiene
+        if: steps.changes.outputs.needs_build == 'true'
+        run: scripts/check-xpc-error-hygiene.sh
+
       - name: Run logic tests
         if: steps.changes.outputs.needs_build == 'true'
         run: |

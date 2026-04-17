@@ -149,7 +149,8 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
         try await captureManager.startEnginePhase()
         safeReply(nil)
       } catch {
-        safeReply(error as NSError)
+        // XPC error sanitization boundary.
+        safeReply(XPCErrorSanitizer.sanitizeForXPC(error))
       }
     }
   }
@@ -177,7 +178,8 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
         self.startVADMonitoring()
         safeReply(nil)
       } catch {
-        safeReply(error as NSError)
+        // XPC error sanitization boundary.
+        safeReply(XPCErrorSanitizer.sanitizeForXPC(error))
       }
     }
   }

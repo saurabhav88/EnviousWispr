@@ -83,7 +83,8 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
         self.activeBackendType = backendType
         safeReply(nil)
       } catch {
-        safeReply(error as NSError)
+        // XPC error sanitization boundary.
+        safeReply(XPCErrorSanitizer.sanitizeForXPC(error))
       }
     }
   }
@@ -161,7 +162,8 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
         let encoded = try PropertyListEncoder().encode(result)
         safeReply(encoded, nil)
       } catch {
-        safeReply(nil, error as NSError)
+        // XPC error sanitization boundary.
+        safeReply(nil, XPCErrorSanitizer.sanitizeForXPC(error))
       }
     }
   }
@@ -188,7 +190,8 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
         self.isStreamingActive = true
         safeReply(nil)
       } catch {
-        safeReply(error as NSError)
+        // XPC error sanitization boundary.
+        safeReply(XPCErrorSanitizer.sanitizeForXPC(error))
       }
     }
   }
@@ -231,7 +234,8 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
         safeReply(encoded, nil)
       } catch {
         self.isStreamingActive = false
-        safeReply(nil, error as NSError)
+        // XPC error sanitization boundary.
+        safeReply(nil, XPCErrorSanitizer.sanitizeForXPC(error))
       }
     }
   }
