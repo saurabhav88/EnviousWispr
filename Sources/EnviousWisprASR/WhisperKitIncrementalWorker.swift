@@ -1,4 +1,3 @@
-import EnviousWisprAudio
 import EnviousWisprCore
 import Foundation
 @preconcurrency import WhisperKit

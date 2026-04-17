@@ -1,4 +1,3 @@
-import EnviousWisprCore
 import SwiftUI
 
 struct WhatsNewSettingsView: View {
