@@ -43,8 +43,44 @@ enum WhatsNewContent {
       icon: "waveform.badge.checkmark",
       title: "More reliable recordings",
       description:
-        "Improved recovery when the microphone gets into a bad state, so recordings start cleanly even after long idle periods or audio interruptions.",
+        "Fewer silent failures. The audio helper now recovers cleanly from a rare crash class, and the microphone bounces back better from bad states after long idle periods or audio interruptions.",
       category: .fasterAndMoreReliable,
+      version: "1.9.4"
+    ),
+    Entry(
+      id: "ollama-download-progress",
+      icon: "arrow.down.circle",
+      title: "Ollama downloads show progress and can be cancelled",
+      description:
+        "The Manage Models row now shows a live progress bar while an Ollama model downloads, plus a Cancel button. No more wondering whether the download is stuck or how big it is.",
+      category: .betterOllamaSupport,
+      version: "1.9.4"
+    ),
+    Entry(
+      id: "faster-polish-after-pause",
+      icon: "bolt.horizontal",
+      title: "Faster first polish after a pause",
+      description:
+        "Your first dictation after a quiet stretch now gets polished faster. The pre-warm probe talks to the LLM the same way a real polish does, so the first real call doesn't pay a cold-start tax.",
+      category: .fasterAndMoreReliable,
+      version: "1.9.4"
+    ),
+    Entry(
+      id: "paste-chromium-electron",
+      icon: "doc.on.clipboard",
+      title: "Paste works in more apps",
+      description:
+        "Dictating into Chrome, Slack, Discord, VS Code, and other Electron-based apps now pastes cleanly even when the focused text field isn't fully reported. Previously the text would sometimes sit on the clipboard instead of landing in place.",
+      category: .fasterAndMoreReliable,
+      version: "1.9.4"
+    ),
+    Entry(
+      id: "gemma-3-nano",
+      icon: "cpu",
+      title: "Gemma 3 Nano joins the Ollama lineup",
+      description:
+        "Google's 4B Gemma 3 Nano is now available in the Ollama model picker. A tight on-device option for AI polish when you want speed and privacy and don't need a large model.",
+      category: .betterOllamaSupport,
       version: "1.9.4"
     ),
 
