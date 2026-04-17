@@ -650,6 +650,12 @@ final class AppState {
       while !Task.isCancelled {
         guard let self else { return }
 
+        // Exit immediately when WhisperKit isn't the active backend. Parakeet
+        // users shouldn't pay CPU/memory cost warming a backend they never use.
+        // Backend switches fire settingsSync.onNeedsPreloadObservation, which
+        // restarts this observer; the re-entry sees the new activeBackendType.
+        guard self.asrManager.activeBackendType == .whisperKit else { return }
+
         // Check current state — if already .ready, trigger pre-load
         let currentState = self.whisperKitSetup.setupState
         if currentState == .ready {
