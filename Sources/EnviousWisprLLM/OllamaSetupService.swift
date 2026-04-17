@@ -91,8 +91,15 @@ public final class OllamaSetupService {
   public private(set) var setupState: OllamaSetupState = .detecting
   public private(set) var pullProgress: Double = 0
   public private(set) var pullStatusText: String = ""
+  public private(set) var currentPullingModel: String?
   public private(set) var downloadedModels: [OllamaDownloadedModel] = []
   public private(set) var warmupState: OllamaWarmupState = .idle
+
+  // Per-pull generation token. Bumped on every pullModel/cancelPull call so stale
+  // tasks can no-op their writes (Swift Task cancellation is cooperative; without
+  // this, a late chunk or terminal-branch cleanup from an old task could clobber
+  // the newer pull's state, most acutely on cancel-then-re-download-same-model).
+  private var pullEpoch: UInt64 = 0
 
   /// Canonical names of downloaded models. Backward-compatible with old Set<String> consumers.
   public var downloadedModelNames: Set<String> {
@@ -571,38 +578,51 @@ public final class OllamaSetupService {
 
   /// Pull a model by name, streaming progress updates.
   public func pullModel(_ modelName: String) {
-    // Cancel any in-flight pull
+    // Cancel any in-flight pull and invalidate its epoch so stale writes no-op.
     pullTask?.cancel()
     pullTask = nil
+    pullEpoch &+= 1
+    let epoch = pullEpoch
 
     // Reset progress
+    currentPullingModel = modelName
     pullProgress = 0
     pullStatusText = "Starting download..."
     setupState = .pullingModel(progress: 0, status: "Starting download...")
 
-    pullTask = Task {
+    pullTask = Task { [weak self] in
+      guard let self else { return }
       do {
-        try await performStreamingPull(modelName: modelName)
-        await refreshDownloadedModels()
-        setupState = .ready
+        try await self.performStreamingPull(modelName: modelName, epoch: epoch)
+        guard self.pullEpoch == epoch else { return }
+        await self.refreshDownloadedModels()
+        guard self.pullEpoch == epoch else { return }
+        self.currentPullingModel = nil
+        self.setupState = .ready
         UserDefaults.standard.set(true, forKey: Self.lastKnownStateKey)
       } catch is CancellationError {
+        guard self.pullEpoch == epoch else { return }
+        self.currentPullingModel = nil
         // Bug fix: don't force .runningNoModels if models exist
-        if downloadedModels.isEmpty {
-          setupState = .runningNoModels
+        if self.downloadedModels.isEmpty {
+          self.setupState = .runningNoModels
         } else {
-          setupState = .ready
+          self.setupState = .ready
         }
       } catch let urlError as URLError {
-        setupState = .error(friendlyMessage(for: urlError))
+        guard self.pullEpoch == epoch else { return }
+        self.currentPullingModel = nil
+        self.setupState = .error(self.friendlyMessage(for: urlError))
       } catch {
+        guard self.pullEpoch == epoch else { return }
+        self.currentPullingModel = nil
         let message = error.localizedDescription.lowercased()
         if message.contains("no space") || message.contains("errno 28") {
-          setupState = .error(
+          self.setupState = .error(
             "Not enough disk space. The model needs about 2 GB free."
           )
         } else {
-          setupState = .error(
+          self.setupState = .error(
             "Download failed. Check your internet connection and try again."
           )
         }
@@ -614,6 +634,8 @@ public final class OllamaSetupService {
   public func cancelPull() {
     pullTask?.cancel()
     pullTask = nil
+    pullEpoch &+= 1
+    currentPullingModel = nil
     // Bug fix: don't force .runningNoModels if models exist
     if downloadedModels.isEmpty {
       setupState = .runningNoModels
@@ -702,7 +724,7 @@ public final class OllamaSetupService {
 
   // MARK: - Streaming Pull (Private)
 
-  private func performStreamingPull(modelName: String) async throws {
+  private func performStreamingPull(modelName: String, epoch: UInt64) async throws {
     guard let url = URL(string: "\(Self.baseURL)/api/pull") else {
       throw LLMError.requestFailed("Invalid Ollama URL")
     }
@@ -725,6 +747,9 @@ public final class OllamaSetupService {
 
     for try await line in bytes.lines {
       try Task.checkCancellation()
+      // Drop stale writes from a task whose pull was superseded by a newer
+      // pullModel()/cancelPull() call. Epoch mismatch → bail silently.
+      guard pullEpoch == epoch else { return }
 
       guard let lineData = line.data(using: .utf8),
         let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any]

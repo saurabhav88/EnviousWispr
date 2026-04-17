@@ -874,7 +874,23 @@ struct AIPolishSettingsView: View {
 
           Spacer()
 
-          if entry.isDownloaded {
+          if appState.ollamaSetup.currentPullingModel == entry.name {
+            // Active pull for THIS row: show progress + Cancel.
+            HStack(spacing: 8) {
+              Text("Downloading… \(Int(appState.ollamaSetup.pullProgress * 100))%")
+                .font(.caption)
+                .foregroundStyle(Color.secondary)
+                .monospacedDigit()
+              Button {
+                appState.ollamaSetup.cancelPull()
+              } label: {
+                Text("Cancel")
+                  .foregroundStyle(.stError)
+              }
+              .controlSize(.small)
+              .buttonStyle(.borderless)
+            }
+          } else if entry.isDownloaded {
             Button {
               appState.ollamaSetup.deleteModel(name: entry.name)
             } label: {
