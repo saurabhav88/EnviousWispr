@@ -91,8 +91,15 @@ public final class OllamaSetupService {
   public private(set) var setupState: OllamaSetupState = .detecting
   public private(set) var pullProgress: Double = 0
   public private(set) var pullStatusText: String = ""
+  public private(set) var currentPullingModel: String?
   public private(set) var downloadedModels: [OllamaDownloadedModel] = []
   public private(set) var warmupState: OllamaWarmupState = .idle
+
+  // Per-pull generation token. Bumped on every pullModel/cancelPull call so stale
+  // tasks can no-op their writes (Swift Task cancellation is cooperative; without
+  // this, a late chunk or terminal-branch cleanup from an old task could clobber
+  // the newer pull's state, most acutely on cancel-then-re-download-same-model).
+  private var pullEpoch: UInt64 = 0
 
   /// Canonical names of downloaded models. Backward-compatible with old Set<String> consumers.
   public var downloadedModelNames: Set<String> {
@@ -571,38 +578,62 @@ public final class OllamaSetupService {
 
   /// Pull a model by name, streaming progress updates.
   public func pullModel(_ modelName: String) {
-    // Cancel any in-flight pull
+    // Cancel any in-flight pull and invalidate its epoch so stale writes no-op.
     pullTask?.cancel()
     pullTask = nil
+    pullEpoch &+= 1
+    let epoch = pullEpoch
 
     // Reset progress
+    currentPullingModel = modelName
     pullProgress = 0
     pullStatusText = "Starting download..."
     setupState = .pullingModel(progress: 0, status: "Starting download...")
 
-    pullTask = Task {
+    pullTask = Task { [weak self] in
+      guard let self else { return }
       do {
-        try await performStreamingPull(modelName: modelName)
-        await refreshDownloadedModels()
-        setupState = .ready
+        try await self.performStreamingPull(modelName: modelName, epoch: epoch)
+        guard self.pullEpoch == epoch else { return }
+        // Pull stream succeeded. Clear pullTask so cancelPull() short-circuits
+        // during the post-success refresh window (see cancelPull guard). Keep
+        // setupState = .pullingModel(1.0, "success") from the last stream chunk
+        // AND keep currentPullingModel = modelName so isPulling stays true and
+        // the catalog UI stays disabled until the refresh confirms the new
+        // model is visible. This prevents a duplicate pull for the same model
+        // while /api/tags is in flight (up to 5s).
+        self.pullTask = nil
         UserDefaults.standard.set(true, forKey: Self.lastKnownStateKey)
+        await self.refreshDownloadedModels()
+        // Only commit to .ready if we are still the current pull. A newer
+        // pullModel() during the refresh would have bumped pullEpoch and set
+        // its own setupState; overwriting with .ready would clobber it.
+        guard self.pullEpoch == epoch else { return }
+        self.currentPullingModel = nil
+        self.setupState = .ready
       } catch is CancellationError {
+        guard self.pullEpoch == epoch else { return }
+        self.currentPullingModel = nil
         // Bug fix: don't force .runningNoModels if models exist
-        if downloadedModels.isEmpty {
-          setupState = .runningNoModels
+        if self.downloadedModels.isEmpty {
+          self.setupState = .runningNoModels
         } else {
-          setupState = .ready
+          self.setupState = .ready
         }
       } catch let urlError as URLError {
-        setupState = .error(friendlyMessage(for: urlError))
+        guard self.pullEpoch == epoch else { return }
+        self.currentPullingModel = nil
+        self.setupState = .error(self.friendlyMessage(for: urlError))
       } catch {
+        guard self.pullEpoch == epoch else { return }
+        self.currentPullingModel = nil
         let message = error.localizedDescription.lowercased()
         if message.contains("no space") || message.contains("errno 28") {
-          setupState = .error(
+          self.setupState = .error(
             "Not enough disk space. The model needs about 2 GB free."
           )
         } else {
-          setupState = .error(
+          self.setupState = .error(
             "Download failed. Check your internet connection and try again."
           )
         }
@@ -610,14 +641,43 @@ public final class OllamaSetupService {
     }
   }
 
-  /// Cancel an in-progress model pull.
+  /// Cancel an in-progress model pull. Also clears stale row UI during the
+  /// post-success refresh window (pullTask nil + currentPullingModel still
+  /// set). Called from Cancel buttons AND from `onChange(llmProvider)` in
+  /// `AIPolishSettingsView` when the user switches providers.
   public func cancelPull() {
-    pullTask?.cancel()
-    pullTask = nil
-    // Bug fix: don't force .runningNoModels if models exist
-    if downloadedModels.isEmpty {
-      setupState = .runningNoModels
-    } else {
+    if pullTask != nil {
+      // Active pull in flight: cancel, bump epoch, reset state.
+      pullTask?.cancel()
+      pullTask = nil
+      pullEpoch &+= 1
+      currentPullingModel = nil
+      // Bug fix: don't force .runningNoModels if models exist
+      if downloadedModels.isEmpty {
+        setupState = .runningNoModels
+      } else {
+        setupState = .ready
+      }
+    } else if currentPullingModel != nil {
+      // Post-success refresh window (pullTask was cleared at the commit point
+      // but currentPullingModel is kept to hold the row UI). The download
+      // already succeeded. Three things must happen:
+      //   1. Bump pullEpoch so the pull Task's final guard (after the refresh
+      //      await) bails and does NOT overwrite setupState. Otherwise a
+      //      detectState() reassignment (e.g. .installedNotRunning after a
+      //      provider switch/back) would be clobbered by a late .ready write.
+      //   2. Clear currentPullingModel so callers like provider switch don't
+      //      leave a stale "Downloading…" row visible if the user returns to
+      //      Ollama settings before /api/tags finishes.
+      //   3. Commit setupState = .ready here. The stream reported success, so
+      //      Ollama has at least one model downloaded even if the /api/tags
+      //      refresh hasn't updated downloadedModels yet. Without this, the
+      //      Task's bail (step 1) would leave setupState stuck at
+      //      .pullingModel(1.0, "success") until some later detectState()
+      //      runs. Provider-switch path overwrites this moments later via
+      //      detectState() on switch-back; same-pane Cancel just settles here.
+      pullEpoch &+= 1
+      currentPullingModel = nil
       setupState = .ready
     }
   }
@@ -702,7 +762,7 @@ public final class OllamaSetupService {
 
   // MARK: - Streaming Pull (Private)
 
-  private func performStreamingPull(modelName: String) async throws {
+  private func performStreamingPull(modelName: String, epoch: UInt64) async throws {
     guard let url = URL(string: "\(Self.baseURL)/api/pull") else {
       throw LLMError.requestFailed("Invalid Ollama URL")
     }
@@ -725,6 +785,9 @@ public final class OllamaSetupService {
 
     for try await line in bytes.lines {
       try Task.checkCancellation()
+      // Drop stale writes from a task whose pull was superseded by a newer
+      // pullModel()/cancelPull() call. Epoch mismatch → bail silently.
+      guard pullEpoch == epoch else { return }
 
       guard let lineData = line.data(using: .utf8),
         let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any]
