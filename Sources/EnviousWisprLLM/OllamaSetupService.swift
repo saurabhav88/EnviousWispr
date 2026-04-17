@@ -641,24 +641,32 @@ public final class OllamaSetupService {
     }
   }
 
-  /// Cancel an in-progress model pull.
+  /// Cancel an in-progress model pull. Also clears stale row UI during the
+  /// post-success refresh window (pullTask nil + currentPullingModel still
+  /// set). Called from Cancel buttons AND from `onChange(llmProvider)` in
+  /// `AIPolishSettingsView` when the user switches providers.
   public func cancelPull() {
-    // Guard on pullTask only. During the post-success refresh window, pullTask
-    // is nil but currentPullingModel may still be the just-finished model name
-    // (kept so the catalog UI stays disabled until /api/tags returns). A Cancel
-    // tap in that window must NOT fire — the download already succeeded. Once
-    // pullTask is nil there is nothing left to cancel; the pull Task will
-    // commit .ready when refreshDownloadedModels() returns.
-    guard pullTask != nil else { return }
-    pullTask?.cancel()
-    pullTask = nil
-    pullEpoch &+= 1
-    currentPullingModel = nil
-    // Bug fix: don't force .runningNoModels if models exist
-    if downloadedModels.isEmpty {
-      setupState = .runningNoModels
-    } else {
-      setupState = .ready
+    if pullTask != nil {
+      // Active pull in flight: cancel, bump epoch, reset state.
+      pullTask?.cancel()
+      pullTask = nil
+      pullEpoch &+= 1
+      currentPullingModel = nil
+      // Bug fix: don't force .runningNoModels if models exist
+      if downloadedModels.isEmpty {
+        setupState = .runningNoModels
+      } else {
+        setupState = .ready
+      }
+    } else if currentPullingModel != nil {
+      // Post-success refresh window (pullTask was cleared at the commit point
+      // but currentPullingModel is kept to hold the row UI). The download
+      // already succeeded, so we must NOT mutate setupState here — the pull
+      // Task will commit .ready when refreshDownloadedModels() returns. But
+      // we DO clear currentPullingModel so that caller contexts like provider
+      // switch don't leave a stale "Downloading…" row visible if the user
+      // returns to Ollama settings before /api/tags finishes.
+      currentPullingModel = nil
     }
   }
 
