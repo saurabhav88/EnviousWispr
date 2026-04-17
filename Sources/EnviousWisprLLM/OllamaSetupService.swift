@@ -662,10 +662,15 @@ public final class OllamaSetupService {
       // Post-success refresh window (pullTask was cleared at the commit point
       // but currentPullingModel is kept to hold the row UI). The download
       // already succeeded, so we must NOT mutate setupState here — the pull
-      // Task will commit .ready when refreshDownloadedModels() returns. But
-      // we DO clear currentPullingModel so that caller contexts like provider
-      // switch don't leave a stale "Downloading…" row visible if the user
-      // returns to Ollama settings before /api/tags finishes.
+      // Task will commit .ready when refreshDownloadedModels() returns. But:
+      //   1. Clear currentPullingModel so callers like provider switch don't
+      //      leave a stale "Downloading…" row visible if the user returns to
+      //      Ollama settings before /api/tags finishes.
+      //   2. Bump pullEpoch so the pull Task's final guard (after the refresh
+      //      await) bails and does NOT overwrite setupState. Otherwise a
+      //      detectState() reassignment (e.g. .installedNotRunning after a
+      //      provider switch/back) would be clobbered by a late .ready write.
+      pullEpoch &+= 1
       currentPullingModel = nil
     }
   }
