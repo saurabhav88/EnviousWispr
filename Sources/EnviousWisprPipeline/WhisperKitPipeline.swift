@@ -379,11 +379,27 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
         }
       }
     } catch {
+      // A partial on-disk cache (model folder present, a `.mlmodelc` subfile
+      // missing) surfaces as `WhisperError.modelsUnavailable("Model file not
+      // found at <path>")` — a typed case with a hardcoded English payload
+      // (WhisperKit.swift line 379; not locale-dependent). Pattern-match the
+      // case and confirm the payload indicates a missing file so other
+      // `.modelsUnavailable` reasons (e.g., initialization misconfiguration)
+      // still surface as a failure. Anything that isn't `.modelsUnavailable`
+      // also falls through to the legacy failure log.
+      let cacheIncomplete: Bool
+      if case let WhisperError.modelsUnavailable(msg) = error {
+        let lower = msg.lowercased()
+        cacheIncomplete = lower.contains("not found") || lower.contains("no such file")
+      } else {
+        cacheIncomplete = false
+      }
+      let text =
+        cacheIncomplete
+        ? "WhisperKit model cache incomplete, skipping silent pre-load"
+        : "WhisperKit model pre-load failed: \(error)"
       Task {
-        await AppLogger.shared.log(
-          "WhisperKit model pre-load failed: \(error.localizedDescription)",
-          level: .info, category: "WhisperKitPipeline"
-        )
+        await AppLogger.shared.log(text, level: .info, category: "WhisperKitPipeline")
       }
     }
   }
