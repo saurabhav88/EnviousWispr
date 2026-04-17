@@ -595,17 +595,22 @@ public final class OllamaSetupService {
       do {
         try await self.performStreamingPull(modelName: modelName, epoch: epoch)
         guard self.pullEpoch == epoch else { return }
-        // Commit point: Ollama reported "success" for this pull. Snap the
-        // service into a completed state BEFORE awaiting the refresh so a
-        // concurrent cancelPull() during refresh can't corrupt setupState
-        // from the stale (pre-refresh) downloadedModels array. After this
-        // point, cancelPull() is a no-op for this pull (pullTask is nil and
-        // currentPullingModel is nil; the guard in cancelPull() short-circuits).
+        // Pull stream succeeded. Clear pullTask so cancelPull() short-circuits
+        // during the post-success refresh window (see cancelPull guard). Keep
+        // setupState = .pullingModel(1.0, "success") from the last stream chunk
+        // AND keep currentPullingModel = modelName so isPulling stays true and
+        // the catalog UI stays disabled until the refresh confirms the new
+        // model is visible. This prevents a duplicate pull for the same model
+        // while /api/tags is in flight (up to 5s).
         self.pullTask = nil
-        self.currentPullingModel = nil
-        self.setupState = .ready
         UserDefaults.standard.set(true, forKey: Self.lastKnownStateKey)
         await self.refreshDownloadedModels()
+        // Only commit to .ready if we are still the current pull. A newer
+        // pullModel() during the refresh would have bumped pullEpoch and set
+        // its own setupState; overwriting with .ready would clobber it.
+        guard self.pullEpoch == epoch else { return }
+        self.currentPullingModel = nil
+        self.setupState = .ready
       } catch is CancellationError {
         guard self.pullEpoch == epoch else { return }
         self.currentPullingModel = nil
@@ -638,12 +643,13 @@ public final class OllamaSetupService {
 
   /// Cancel an in-progress model pull.
   public func cancelPull() {
-    // Nothing to cancel — short-circuit. This matters during the post-success
-    // refreshDownloadedModels() window: the stream already committed setupState
-    // to .ready, pullTask is nil, and currentPullingModel is nil. Without this
-    // guard, a late Cancel tap would overwrite the freshly-ready state using
-    // the still-stale downloadedModels array.
-    guard pullTask != nil || currentPullingModel != nil else { return }
+    // Guard on pullTask only. During the post-success refresh window, pullTask
+    // is nil but currentPullingModel may still be the just-finished model name
+    // (kept so the catalog UI stays disabled until /api/tags returns). A Cancel
+    // tap in that window must NOT fire — the download already succeeded. Once
+    // pullTask is nil there is nothing left to cancel; the pull Task will
+    // commit .ready when refreshDownloadedModels() returns.
+    guard pullTask != nil else { return }
     pullTask?.cancel()
     pullTask = nil
     pullEpoch &+= 1
