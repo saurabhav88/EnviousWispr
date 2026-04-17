@@ -595,11 +595,17 @@ public final class OllamaSetupService {
       do {
         try await self.performStreamingPull(modelName: modelName, epoch: epoch)
         guard self.pullEpoch == epoch else { return }
-        await self.refreshDownloadedModels()
-        guard self.pullEpoch == epoch else { return }
+        // Commit point: Ollama reported "success" for this pull. Snap the
+        // service into a completed state BEFORE awaiting the refresh so a
+        // concurrent cancelPull() during refresh can't corrupt setupState
+        // from the stale (pre-refresh) downloadedModels array. After this
+        // point, cancelPull() is a no-op for this pull (pullTask is nil and
+        // currentPullingModel is nil; the guard in cancelPull() short-circuits).
+        self.pullTask = nil
         self.currentPullingModel = nil
         self.setupState = .ready
         UserDefaults.standard.set(true, forKey: Self.lastKnownStateKey)
+        await self.refreshDownloadedModels()
       } catch is CancellationError {
         guard self.pullEpoch == epoch else { return }
         self.currentPullingModel = nil
@@ -632,6 +638,12 @@ public final class OllamaSetupService {
 
   /// Cancel an in-progress model pull.
   public func cancelPull() {
+    // Nothing to cancel — short-circuit. This matters during the post-success
+    // refreshDownloadedModels() window: the stream already committed setupState
+    // to .ready, pullTask is nil, and currentPullingModel is nil. Without this
+    // guard, a late Cancel tap would overwrite the freshly-ready state using
+    // the still-stale downloadedModels array.
+    guard pullTask != nil || currentPullingModel != nil else { return }
     pullTask?.cancel()
     pullTask = nil
     pullEpoch &+= 1
