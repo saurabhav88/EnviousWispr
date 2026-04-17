@@ -86,8 +86,15 @@ public final class WhisperKitSetupService {
     return getLocalModelPath(variant: variant) != nil
   }
 
-  /// Returns the local path to a cached WhisperKit model, or nil if not downloaded.
-  /// WhisperKit 0.12+ stores models as direct subdirectories like `openai_whisper-large-v3`.
+  /// Returns the local path to a fully-cached WhisperKit model, or nil if not
+  /// downloaded OR if the cache is incomplete (missing one of the required
+  /// `.mlmodelc` artifacts — e.g. an interrupted download).
+  /// WhisperKit 0.12+ stores models as direct subdirectories like
+  /// `openai_whisper-large-v3`. Partial-download semantics (issue #329):
+  /// treating an incomplete folder as "not cached" keeps `detectState` →
+  /// `setupState` accurate (UI offers Download) and lets `prepare()` fall
+  /// back to `WhisperKit.download(...)` instead of trying to load a
+  /// corrupt path.
   public nonisolated static func getLocalModelPath(variant: String) -> String? {
     guard let root = whisperKitModelRoot else { return nil }
 
@@ -106,9 +113,11 @@ public final class WhisperKitSetupService {
       if lower.contains(variantLower) || lower.contains(sanitizedLower) {
         let fullPath = root.appendingPathComponent(dir).path
         var isDir: ObjCBool = false
-        if fm.fileExists(atPath: fullPath, isDirectory: &isDir), isDir.boolValue {
-          return fullPath
+        guard fm.fileExists(atPath: fullPath, isDirectory: &isDir), isDir.boolValue else {
+          continue
         }
+        guard WhisperKitBackend.hasRequiredArtifacts(at: fullPath) else { continue }
+        return fullPath
       }
     }
     return nil

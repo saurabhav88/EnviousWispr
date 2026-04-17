@@ -59,14 +59,58 @@ public actor WhisperKitBackend: ASRBackend {
     try await loadFromPath(modelPath)
   }
 
-  /// Load model from local cache only. Returns false if model is not cached.
-  /// Used by silent/background warmup paths that must never trigger a network download.
+  /// Load model from local cache only. Returns false if model is not cached
+  /// OR if the cached directory is incomplete (missing one of the required
+  /// `.mlmodelc` artifacts). Partial-download detection is enforced upstream in
+  /// `WhisperKitSetupService.getLocalModelPath`, so a non-nil path here implies
+  /// the artifacts are all present. Used by silent/background warmup paths
+  /// that must never trigger a network download.
   public func prepareIfCached() async throws -> Bool {
     guard !isReady else { return true }
     guard let cached = WhisperKitSetupService.getLocalModelPath(variant: modelVariant) else {
-      return false  // Model not downloaded, skip silently
+      return false  // Model not cached or cache incomplete — skip silently.
     }
     try await loadFromPath(cached)
+    return true
+  }
+
+  /// WhisperKit 0.12+ model folder artifacts required for a successful load.
+  /// Aligned with `WhisperKit.loadModels()` at
+  /// `.build/checkouts/WhisperKit/Sources/WhisperKit/Core/WhisperKit.swift:372-381`
+  /// — it hard-fails when any of these three are missing. `TextDecoderContextPrefill`
+  /// is intentionally excluded: upstream loads it conditionally and tolerates its
+  /// absence, so requiring it here would over-reject otherwise-valid caches.
+  /// Scope: `.mlmodelc` layout only; our shipped variant is produced by
+  /// `WhisperKit.download` which emits this format. `.mlpackage` caches (not used
+  /// by our product) are not modeled here.
+  internal static let requiredArtifacts: [String] = [
+    "AudioEncoder.mlmodelc",
+    "MelSpectrogram.mlmodelc",
+    "TextDecoder.mlmodelc",
+  ]
+
+  /// Canonical inner-file marker that a CoreML compiled-model bundle is complete.
+  /// Hugging Face downloads each `.mlmodelc` subfile individually, so an interrupted
+  /// pull can leave the outer directory present but its contents partial. Checking
+  /// `coremldata.bin` (always the first write Apple's compiler emits at the root of
+  /// the bundle) rules out the common "outer dir created, inner files missing" state
+  /// without coupling to CoreML's full internal layout.
+  internal static let artifactCompletionMarker = "coremldata.bin"
+
+  /// Returns true iff every required `.mlmodelc` artifact exists and contains the
+  /// completion marker. Used as a proactive partial-download guard so silent
+  /// pre-load (and `detectState`) can distinguish "incomplete cache" from "ready."
+  internal static func hasRequiredArtifacts(at modelFolder: String) -> Bool {
+    let fm = FileManager.default
+    for name in requiredArtifacts {
+      let artifactPath = (modelFolder as NSString).appendingPathComponent(name)
+      var isDir: ObjCBool = false
+      guard fm.fileExists(atPath: artifactPath, isDirectory: &isDir), isDir.boolValue else {
+        return false
+      }
+      let markerPath = (artifactPath as NSString).appendingPathComponent(artifactCompletionMarker)
+      if !fm.fileExists(atPath: markerPath) { return false }
+    }
     return true
   }
 
