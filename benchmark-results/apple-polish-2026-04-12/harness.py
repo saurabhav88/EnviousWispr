@@ -2,7 +2,7 @@
 """Apple Intelligence polish test across 20 languages x 3 utterance types.
 Uses Google Cloud Chirp3-HD TTS (natural voices) and native-language disfluencies."""
 import os, subprocess, sys, time, threading, json, base64, urllib.request, urllib.parse, tempfile
-sys.path.insert(0, '/Users/m4pro_sv/Desktop/EnviousWispr/Tests/UITests')
+sys.path.insert(0, '/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/Tests/UITests')
 import simulate_input as si
 
 APP_LOG = os.path.expanduser("~/Library/Logs/EnviousWispr/app.log")
