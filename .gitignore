@@ -38,6 +38,16 @@ logs/*.log
 
 # Playwright
 playwright-report/
+
+# Local scratch — screenshots, research captures, anything without a real home yet
+.scratch/
+
+# Local build/runtime caches
+.wrangler/
+.validation/
+
+# Historical benchmark output — regenerable, untracked
+benchmark-results/
 test-results/
 .playwright-mcp/
 
@@ -85,9 +95,6 @@ EnviousWispr.app/
 *.gguf
 *.bin
 .me
-
-# Sub-projects (separate git repos, nested inside EnviousWispr for tooling access)
-EnviousType/
 
 # Dolt database files (added by bd init)
 .dolt/
