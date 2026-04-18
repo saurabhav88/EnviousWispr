@@ -64,11 +64,18 @@ scan_dir() {
       my $stripped = $orig;
       # Equal-length blanking preserves byte offsets so $-[0] still maps
       # to the correct line in the original file.
-      # Order matters: strip raw strings (#"..."#) and multi-line strings BEFORE
-      # ordinary strings so we do not shred a raw-string body character-by-char.
+      # Order matters: raw strings (#"..."#) and multi-line strings first so
+      # we do not shred a raw-string body character-by-char when the simple
+      # pattern hits the inner quotes. Then ordinary strings, then comments.
       $stripped =~ s/((#+)".*?"\2)/" " x length($1)/sge;
       $stripped =~ s/(""".*?""")/" " x length($1)/sge;
       $stripped =~ s/("(?:[^"\\\n]|\\.)*")/" " x length($1)/ge;
+      # Block comments (non-nested). Swift does allow nested block comments,
+      # but they are rare in practice and this check is a regression net,
+      # not a security boundary.
+      $stripped =~ s/(\/\*[\s\S]*?\*\/)/" " x length($1)/ge;
+      # Line comments // to end-of-line. Keep the newline so line numbers stay correct.
+      $stripped =~ s/(\/\/[^\n]*)/" " x length($1)/ge;
       while ($stripped =~ /(safeReply\s*(\((?:[^()]++|(?2))*+\)))/g) {
         my $whole = $1;
         next unless $whole =~ /\bas\s+NSError\b/;
@@ -208,6 +215,21 @@ func i(err: Error) {
 }
 EOF
 
+  # Fixture J: a commented-out violation. Must NOT match — a multi-line
+  # block comment showing the anti-pattern in an example should not trip CI.
+  cat > "$tmp/fixture_j.swift" <<'EOF'
+import Foundation
+// Example of the banned pattern (see issue #297):
+//     safeReply(nil, err as NSError)
+/* Equivalent multi-line ban:
+   safeReply(
+       nil,
+       err as NSError
+   )
+*/
+func j() {}
+EOF
+
   local out
   out="$(scan_dir "$tmp")"
 
@@ -248,6 +270,10 @@ EOF
     echo "self-test FAILED: raw-string paren fixture (I) not matched" >&2
     fail=1
   fi
+  if printf '%s' "$out" | grep -q "fixture_j.swift:"; then
+    echo "self-test FAILED: commented-out violation (J) matched" >&2
+    fail=1
+  fi
 
   if [ "$fail" -eq 1 ]; then
     echo >&2
@@ -256,7 +282,7 @@ EOF
     exit 1
   fi
 
-  echo "self-test PASSED: 9 fixtures (single-line, multi-line, safe, nested parens, cross-call negatives x2, paren-in-string +/-, raw-string)"
+  echo "self-test PASSED: 10 fixtures (single-line, multi-line, safe, nested parens, cross-call negatives x2, paren-in-string +/-, raw-string, commented-out)"
   exit 0
 }
 
