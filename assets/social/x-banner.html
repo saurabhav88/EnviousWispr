@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EnviousWispr — X Banner (1500×500)</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #111;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  .banner-wrapper {
+    width: 1500px;
+    height: 500px;
+    position: relative;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+
+  .banner {
+    width: 1500px;
+    height: 500px;
+    background-color: #0a0a12;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Dot grid background */
+  .dot-grid {
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle, rgba(124, 58, 237, 0.18) 1px, transparent 1px);
+    background-size: 28px 28px;
+    background-position: 0 0;
+    opacity: 1;
+    z-index: 1;
+  }
+
+  /* Radial vignette to darken edges and make center feel open */
+  .vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 80% 80% at 70% 45%, transparent 30%, rgba(10, 10, 18, 0.72) 100%);
+    z-index: 2;
+  }
+
+  /* Subtle upward glow from the rainbow bar */
+  .rainbow-glow {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 220px;
+    background: linear-gradient(
+      to top,
+      rgba(138, 43, 226, 0.10) 0%,
+      rgba(0, 255, 255, 0.04) 35%,
+      transparent 100%
+    );
+    z-index: 3;
+  }
+
+  /* Left-side vertical gradient to gently obscure the profile pic zone */
+  .left-fade {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 420px;
+    height: 100%;
+    background: linear-gradient(to right, rgba(10,10,18,0.55) 0%, transparent 100%);
+    z-index: 4;
+  }
+
+  /* Main content layer — nudge up slightly from center */
+  .content {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding-left: 460px;
+    padding-right: 340px;
+    padding-bottom: 40px;
+  }
+
+  /* App name badge */
+  .app-badge {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 22px;
+  }
+
+  .app-badge-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #8a2be2, #00ffff);
+    flex-shrink: 0;
+    box-shadow: 0 0 8px rgba(0, 255, 255, 0.5);
+  }
+
+  .app-badge-text {
+    font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.38);
+  }
+
+  /* Main tagline */
+  .tagline {
+    font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+    font-size: 62px;
+    font-weight: 800;
+    line-height: 1.08;
+    letter-spacing: -0.03em;
+    color: #ffffff;
+    margin-bottom: 18px;
+    max-width: 820px;
+  }
+
+  /* "Paste perfectly." gets the rainbow treatment — reversed so it reads cool-to-warm,
+     anchoring the violet end at the left where the eye starts, flowing outward */
+  .tagline-highlight {
+    background: linear-gradient(90deg, #8a2be2, #4169e1, #1e90ff, #00ffff, #00fa9a, #adff2f, #ffd700, #ff8c00, #ff2a40);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Subtitle */
+  .subtitle {
+    font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+    font-size: 22px;
+    font-weight: 400;
+    letter-spacing: 0.01em;
+    color: rgba(255, 255, 255, 0.55);
+  }
+
+  /* Waveform decoration — right side, intentionally subtle/ghost-like */
+  .waveform {
+    position: absolute;
+    right: 52px;
+    top: 50%;
+    transform: translateY(-54%);
+    z-index: 8;
+    opacity: 0.16;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 168px;
+  }
+
+  .waveform-bar {
+    width: 4px;
+    border-radius: 2px;
+    background: linear-gradient(to top, #4169e1, #00ffff);
+    flex-shrink: 0;
+  }
+
+  /* Rainbow bottom bar */
+  .rainbow-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg,
+      #ff2a40 0%,
+      #ff8c00 12.5%,
+      #ffd700 25%,
+      #adff2f 37.5%,
+      #00fa9a 50%,
+      #00ffff 62.5%,
+      #1e90ff 75%,
+      #4169e1 87.5%,
+      #8a2be2 100%
+    );
+    z-index: 20;
+  }
+</style>
+</head>
+<body>
+
+<div class="banner-wrapper">
+  <div class="banner" id="banner">
+
+    <!-- Background layers -->
+    <div class="dot-grid"></div>
+    <div class="vignette"></div>
+    <div class="rainbow-glow"></div>
+    <div class="left-fade"></div>
+
+    <!-- Main content -->
+    <div class="content">
+      <div class="app-badge">
+        <div class="app-badge-dot"></div>
+        <span class="app-badge-text">EnviousWispr</span>
+      </div>
+
+      <div class="tagline">
+        Talk naturally.<br>
+        <span class="tagline-highlight">Paste perfectly.</span>
+      </div>
+
+      <div class="subtitle">Private AI dictation for macOS</div>
+    </div>
+
+    <!-- Rainbow bottom bar (always on top) -->
+    <div class="rainbow-bar"></div>
+
+  </div>
+</div>
+
+<script>
+  // Build waveform bars procedurally
+  // Heights simulate an audio waveform shape
+  const waveform = document.getElementById('waveform');
+  // Single clean Gaussian bell-curve waveform
+  const heights = [
+    8, 12, 18, 26, 36, 48, 62, 78, 95, 112,
+    128, 142, 154, 162, 166, 168, 166, 162, 154, 142,
+    128, 112, 95, 78, 62, 48, 36, 26, 18, 12, 8
+  ];
+
+  heights.forEach(h => {
+    const bar = document.createElement('div');
+    bar.className = 'waveform-bar';
+    bar.style.height = h + 'px';
+    waveform.appendChild(bar);
+  });
+</script>
+
+</body>
+</html>
