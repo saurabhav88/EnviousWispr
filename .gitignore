@@ -108,6 +108,18 @@ scripts/*
 !scripts/check-xpc-error-hygiene.sh
 !scripts/release-preflight.sh
 !scripts/swift-test.sh
+# Polish eval harness — PUBLIC tracked files only (see .claude/knowledge/polish-eval.md for scope rules)
+!scripts/eval/
+scripts/eval/*
+!scripts/eval/acceptance_gate.py
+!scripts/eval/chunk_size_benchmark.py
+!scripts/eval/overpolish-eval.py
+!scripts/eval/golden_judge_scores.json
+!scripts/eval/corpus/
+scripts/eval/corpus/*
+!scripts/eval/corpus/ci_corpus.jsonl
+!scripts/eval/baselines/
+!scripts/eval/baselines/*.json
 docs/
 content-engine/
 Brand Assets/

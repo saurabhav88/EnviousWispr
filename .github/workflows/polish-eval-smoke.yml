@@ -1,0 +1,107 @@
+name: polish-eval-smoke
+
+on:
+  pull_request:
+    paths:
+      # Polish provider + prompt builders + vocab formatter
+      - 'Sources/EnviousWisprLLM/**'
+      # Pipeline step that injects custom vocab, short-text guard, app context
+      - 'Sources/EnviousWisprPipeline/LLMPolishStep.swift'
+      # Shipped default custom vocabulary (EnviousWispr, GitHub, macOS, etc.)
+      - 'Sources/EnviousWisprPostProcessing/CustomWordsManager.swift'
+      # Core types that flow through the polish path
+      - 'Sources/EnviousWisprCore/PolishMode.swift'
+      - 'Sources/EnviousWisprCore/PolishPlan.swift'
+      - 'Sources/EnviousWisprCore/PolishStyleConfig.swift'
+      - 'Sources/EnviousWisprCore/PromptEnvelope.swift'
+      - 'Sources/EnviousWisprCore/PromptBuildInput.swift'
+      # The eval harness itself
+      - 'scripts/eval/**'
+      - '.github/workflows/polish-eval-smoke.yml'
+
+# Fork PRs cannot access repository secrets; the eval would fail inside
+# acceptance_gate.py with auth errors and block an external contribution on
+# infrastructure it cannot satisfy. Skip forks entirely by gating every job
+# on same-repo PR origin — jobs that don't run report as "not required."
+# If secrets are missing in the main repo itself, that's a legitimate config
+# error and the job fails red; fix the repo's Actions secrets.
+jobs:
+  meta-test:
+    name: judge-drift-check
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Stage API keys locally
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ] || [ -z "$GEMINI_API_KEY" ]; then
+            echo "ERROR: OPENAI_API_KEY or GEMINI_API_KEY secret is empty." >&2
+            echo "This is a repo config problem, not a PR regression." >&2
+            echo "Add the missing secret in Settings > Secrets and variables > Actions." >&2
+            exit 1
+          fi
+          mkdir -p ~/.enviouswispr-keys
+          printf '%s' "$OPENAI_API_KEY" > ~/.enviouswispr-keys/openai-api-key
+          printf '%s' "$GEMINI_API_KEY" > ~/.enviouswispr-keys/gemini-api-key
+      - name: Run judge drift meta-test
+        run: python3 scripts/eval/acceptance_gate.py --mode meta-test --polish-model gpt-4o-mini
+      - name: Upload artifacts on failure
+        if: failure()
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: meta-test-failure-pr
+          path: |
+            scripts/eval/golden_judge_scores.json
+            benchmark-results/eval/
+          retention-days: 14
+
+  acceptance-gate:
+    name: polish-quality-gate
+    needs: meta-test
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Stage API keys locally
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ] || [ -z "$GEMINI_API_KEY" ]; then
+            echo "ERROR: OPENAI_API_KEY or GEMINI_API_KEY secret is empty." >&2
+            exit 1
+          fi
+          mkdir -p ~/.enviouswispr-keys
+          printf '%s' "$OPENAI_API_KEY" > ~/.enviouswispr-keys/openai-api-key
+          printf '%s' "$GEMINI_API_KEY" > ~/.enviouswispr-keys/gemini-api-key
+      - name: Run acceptance gate (gpt-4o-mini polish, Gemini 3 Pro judge)
+        run: |
+          python3 scripts/eval/acceptance_gate.py \
+            --mode run \
+            --polish-model gpt-4o-mini \
+            --out-name "ci-pr-${PR_NUMBER}-${SHA}"
+      - name: Upload full run artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: polish-eval-pr
+          path: benchmark-results/eval/runs/
+          retention-days: 30

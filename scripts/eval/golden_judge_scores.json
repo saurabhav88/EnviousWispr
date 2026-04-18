@@ -1,0 +1,188 @@
+{
+  "locked_at": "2026-04-18T17:38:37.620717Z",
+  "judge_model": "gemini-3-pro-preview",
+  "source_run": "2026-04-18T172152",
+  "purpose": "Judge drift meta-test. If the judge returns different scores than expected_scores on these cases, treat as judge infra change, not PR regression.",
+  "cases": {
+    "CLEAN-PRIYA-001": {
+      "asr_input": "Let's sync tomorrow at ten to review the API changes.",
+      "candidate": "Let's sync tomorrow at 10 to review the API changes.",
+      "baseline": "Let's sync tomorrow at ten to review the API changes.",
+      "expected_scores": {
+        "accuracy": 3,
+        "conciseness": 3,
+        "fluency": 3,
+        "format": 3,
+        "regression": 1
+      }
+    },
+    "PUNCT-PRIYA-001": {
+      "asr_input": "were you able to push the fix i'm blocked on the ci passing",
+      "candidate": "Were you able to push the fix? I'm blocked on the CI passing.",
+      "baseline": "Were you able to push the fix? I'm blocked on the CI passing.",
+      "expected_scores": {
+        "accuracy": 3,
+        "conciseness": 3,
+        "fluency": 3,
+        "format": 3,
+        "regression": 1
+      }
+    },
+    "NOPREAMB-PRIYA-001": {
+      "asr_input": "The fix is in the feature branch please review when you have a chance",
+      "candidate": "The fix is in the feature branch. Please review when you have a chance.",
+      "baseline": "The fix is in the feature branch. Please review when you have a chance.",
+      "expected_scores": {
+        "accuracy": 3,
+        "conciseness": 3,
+        "fluency": 3,
+        "format": 3,
+        "regression": 1
+      }
+    },
+    "ANTIHALL-VASQ-003": {
+      "asr_input": "Patient feels better",
+      "candidate": "Patient feels better.",
+      "baseline": "Patient feels better.",
+      "expected_scores": {
+        "accuracy": 3,
+        "conciseness": 3,
+        "fluency": 3,
+        "format": 3,
+        "regression": 1
+      }
+    },
+    "DATETIME-DIANA-001": {
+      "asr_input": "Let's do Monday at three pm Eastern for the sync",
+      "candidate": "Let's do Monday at 3 PM Eastern for the sync.",
+      "baseline": "Let's do Monday at 3 PM Eastern for the sync.",
+      "expected_scores": {
+        "accuracy": 3,
+        "conciseness": 3,
+        "fluency": 3,
+        "format": 3,
+        "regression": 1
+      }
+    },
+    "REVISE-DIANA-002": {
+      "asr_input": "The deadline is Thursday no wait it's Friday end of day",
+      "candidate": "The deadline is Friday, end of day.",
+      "baseline": "The deadline is Friday end of day.",
+      "expected_scores": {
+        "accuracy": 3,
+        "conciseness": 3,
+        "fluency": 3,
+        "format": 3,
+        "regression": 2
+      }
+    },
+    "LIST-PRIYA-001": {
+      "asr_input": "For the release we need to ship the auth fix ship the rate limiter ship the new polish prompt and update the changelog",
+      "candidate": "For the release, we need to ship the auth fix, ship the rate limiter, ship the new polish prompt, and update the changelog.",
+      "baseline": "For the release we need to:\n- Ship the auth fix\n- Ship the rate limiter\n- Ship the new polish prompt\n- Update the changelog",
+      "expected_scores": {
+        "accuracy": 3,
+        "conciseness": 3,
+        "fluency": 3,
+        "format": 3,
+        "regression": 0
+      }
+    },
+    "TOPIC-DIANA-001": {
+      "asr_input": "The launch is on track all eng items are green marketing has the assets ready shifting gears the pricing experiment results are in we saw a seven percent lift on the annual plan",
+      "candidate": "The launch is on track. All engineering items are green. Marketing has the assets ready. Shifting gears, the pricing experiment results are in. We saw a seven percent lift on the annual plan.",
+      "baseline": "The launch is on track. All eng items are green, marketing has the assets ready.\n\nShifting gears, the pricing experiment results are in. We saw a 7% lift on the annual plan.",
+      "expected_scores": {
+        "accuracy": 3,
+        "conciseness": 3,
+        "fluency": 3,
+        "format": 3,
+        "regression": 0
+      }
+    },
+    "FILLER-PRIYA-005": {
+      "asr_input": "okay so basically the auth token was expired which is why like every request was four oh one",
+      "candidate": "Okay, so basically the auth token was expired, which is why every request was 401.",
+      "baseline": "The auth token was expired, which is why every request was 401.",
+      "expected_scores": {
+        "accuracy": 3,
+        "conciseness": 1,
+        "fluency": 3,
+        "format": 3,
+        "regression": 0
+      }
+    },
+    "CUSTOMVOC-PRIYA-001": {
+      "asr_input": "The envious wispr pipeline uses parakeet for streaming and whisper kit for batch",
+      "candidate": "The Envious Wispr pipeline uses Parakeet for streaming and Whisper Kit for batch.",
+      "baseline": "The EnviousWispr pipeline uses Parakeet for streaming and WhisperKit for batch.",
+      "expected_scores": {
+        "accuracy": 2,
+        "conciseness": 3,
+        "fluency": 3,
+        "format": 3,
+        "regression": 0
+      }
+    },
+    "LANG-DIANA-001": {
+      "asr_input": "The team in Madrid said the feature is listo for launch but quieren more time on QA",
+      "candidate": "The team in Madrid said the feature is ready for launch but want more time on QA.",
+      "baseline": "The team in Madrid said the feature is listo for launch but quieren more time on QA.",
+      "expected_scores": {
+        "accuracy": 3,
+        "conciseness": 3,
+        "fluency": 2,
+        "format": 3,
+        "regression": 2
+      }
+    },
+    "ENTITY-PRIYA-001": {
+      "asr_input": "Saurabh asked me to deploy EnviousWispr to the new mac mini for testing",
+      "candidate": "Saurabh asked me to deploy EnviousWispr to the new Mac Mini for testing.",
+      "baseline": "Saurabh asked me to deploy EnviousWispr to the new Mac mini for testing.",
+      "expected_scores": {
+        "accuracy": 3,
+        "conciseness": 3,
+        "fluency": 3,
+        "format": 3,
+        "regression": 1
+      }
+    },
+    "HOMO-VASQ-004": {
+      "asr_input": "Per our previous correspondence the defendant's council has failed to provide the required documents",
+      "candidate": "Per our previous correspondence, the defendant's counsel has failed to provide the required documents.",
+      "baseline": "Per our previous correspondence, the defendant's counsel has failed to provide the required documents.",
+      "expected_scores": {
+        "accuracy": 3,
+        "conciseness": 3,
+        "fluency": 3,
+        "format": 3,
+        "regression": 1
+      }
+    },
+    "NUMFMT-AARON-004": {
+      "asr_input": "The p value was point zero zero three which is well below our threshold",
+      "candidate": "The p-value was 0.003, which is well below our threshold.",
+      "baseline": "The p value was 0.003, which is well below our threshold.",
+      "expected_scores": {
+        "accuracy": 3,
+        "conciseness": 3,
+        "fluency": 3,
+        "format": 3,
+        "regression": 2
+      }
+    },
+    "SHORT-PRIYA-001": {
+      "asr_input": "got it",
+      "candidate": "Got it.",
+      "baseline": "Got it.",
+      "expected_scores": {
+        "accuracy": 3,
+        "conciseness": 3,
+        "fluency": 3,
+        "format": 3,
+        "regression": 1
+      }
+    }
+  }
+}
