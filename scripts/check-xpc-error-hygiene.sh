@@ -64,6 +64,9 @@ scan_dir() {
       my $stripped = $orig;
       # Equal-length blanking preserves byte offsets so $-[0] still maps
       # to the correct line in the original file.
+      # Order matters: strip raw strings (#"..."#) and multi-line strings BEFORE
+      # ordinary strings so we do not shred a raw-string body character-by-char.
+      $stripped =~ s/((#+)".*?"\2)/" " x length($1)/sge;
       $stripped =~ s/(""".*?""")/" " x length($1)/sge;
       $stripped =~ s/("(?:[^"\\\n]|\\.)*")/" " x length($1)/ge;
       while ($stripped =~ /(safeReply\s*(\((?:[^()]++|(?2))*+\)))/g) {
@@ -194,6 +197,17 @@ func h(err: Error) {
 }
 EOF
 
+  # Fixture I: forbidden call using a Swift raw string that contains a
+  # literal `)` (would confuse the balanced-paren regex without raw-string
+  # stripping). Defense in depth — no raw strings in XPC services today,
+  # but the guard costs nothing and prevents future surprises.
+  cat > "$tmp/fixture_i.swift" <<'EOF'
+import Foundation
+func i(err: Error) {
+    safeReply(#")"#, err as NSError)
+}
+EOF
+
   local out
   out="$(scan_dir "$tmp")"
 
@@ -230,6 +244,10 @@ EOF
     echo "self-test FAILED: safe paren-in-string fixture (H) matched" >&2
     fail=1
   fi
+  if ! printf '%s' "$out" | grep -q "fixture_i.swift:"; then
+    echo "self-test FAILED: raw-string paren fixture (I) not matched" >&2
+    fail=1
+  fi
 
   if [ "$fail" -eq 1 ]; then
     echo >&2
@@ -238,7 +256,7 @@ EOF
     exit 1
   fi
 
-  echo "self-test PASSED: 8 fixtures (single-line, multi-line, safe, nested parens, cross-call negatives x2, paren-in-string positive + negative)"
+  echo "self-test PASSED: 9 fixtures (single-line, multi-line, safe, nested parens, cross-call negatives x2, paren-in-string +/-, raw-string)"
   exit 0
 }
 
