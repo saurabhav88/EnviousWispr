@@ -48,8 +48,15 @@ scan_dir() {
       continue
     fi
     local hits
+    # Recursive regex: match a complete balanced `safeReply(...)` call, then
+    # check its body for `as NSError`. `(?2)` recurses into group 2 (the
+    # paren-balanced span). `[^()]++` is possessive to avoid catastrophic
+    # backtracking. This prevents false positives where `as NSError` appears
+    # in a later, unrelated statement (e.g. `safeReply(nil)` + `let x = err as NSError`).
     hits=$("$PERL" -0777 -ne '
-      while (/safeReply\s*\([\s\S]{0,2000}?\bas\s+NSError\b/g) {
+      while (/(safeReply\s*(\((?:[^()]++|(?2))*+\)))/g) {
+        my $whole = $1;
+        next unless $whole =~ /\bas\s+NSError\b/;
         my $at = $-[0];
         my $line = 1 + (substr($_, 0, $at) =~ tr/\n//);
         my $snip = substr($_, $at, 120);
@@ -126,6 +133,33 @@ func d(err: Error) {
 }
 EOF
 
+  # Fixture E: negative control — safe safeReply followed later by an unrelated
+  # `as NSError` statement. Must NOT match. Guards the Codex-flagged cross-call
+  # false-positive case.
+  cat > "$tmp/fixture_e.swift" <<'EOF'
+import Foundation
+func e(err: Error) {
+    safeReply(nil)
+    let ns = err as NSError
+    _ = ns
+}
+EOF
+
+  # Fixture F: same, but with a multi-line safe safeReply and the later `as NSError`
+  # within 2000 characters (the old 2000-char bound would have swallowed it).
+  cat > "$tmp/fixture_f.swift" <<'EOF'
+import Foundation
+func f(err: Error) {
+    safeReply(
+        reply,
+        payload
+    )
+
+    let wrapped = err as NSError
+    _ = wrapped
+}
+EOF
+
   local out
   out="$(scan_dir "$tmp")"
 
@@ -146,6 +180,14 @@ EOF
     echo "self-test FAILED: nested-parens fixture (D) not matched" >&2
     fail=1
   fi
+  if printf '%s' "$out" | grep -q "fixture_e.swift:"; then
+    echo "self-test FAILED: cross-call false-positive (E) matched" >&2
+    fail=1
+  fi
+  if printf '%s' "$out" | grep -q "fixture_f.swift:"; then
+    echo "self-test FAILED: multi-line cross-call false-positive (F) matched" >&2
+    fail=1
+  fi
 
   if [ "$fail" -eq 1 ]; then
     echo >&2
@@ -154,7 +196,7 @@ EOF
     exit 1
   fi
 
-  echo "self-test PASSED: 4 fixtures (single-line, multi-line, negative control, nested parens)"
+  echo "self-test PASSED: 6 fixtures (single-line, multi-line, negative control, nested parens, cross-call negatives x2)"
   exit 0
 }
 
