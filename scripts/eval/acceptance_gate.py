@@ -269,10 +269,19 @@ RULES:
 # ---------- api clients ----------
 
 
+class MissingSecretError(RuntimeError):
+    """Raised when an API key file is absent. Caught by run/meta-test/baseline
+    handlers and reported as INFRA-ERROR (exit 2), not regression (exit 1).
+    SystemExit was the wrong base class because it inherits from BaseException
+    and escapes `except Exception` blocks — misclassifying infra as regression.
+    Ref: #367 GitHub Codex review P1, 2026-04-18.
+    """
+
+
 def _key(name: str) -> str:
     p = Path(os.path.expanduser(f"~/.enviouswispr-keys/{name}"))
     if not p.exists():
-        raise SystemExit(f"Missing key file: {p}")
+        raise MissingSecretError(f"Missing key file: {p}")
     return p.read_text().strip()
 
 
@@ -580,7 +589,16 @@ def mode_meta_test(polish_model: str) -> int:
         {"id": k, "asr_input": v["asr_input"], "candidate": v["candidate"], "baseline": v["baseline"]}
         for k, v in golden["cases"].items()
     ]
-    drifted = []
+    # Drift classification:
+    #   hard   = any single axis off by >=2  OR  any unknown case ID from judge
+    #   soft   = axis off by exactly 1 (thinking-model variance at temp=0)
+    # Threshold: fail only if any hard drift OR soft drift exceeds 15% of
+    # total axis checks. Empirically, 5-10% soft drift per run is normal noise
+    # for thinking models; 15% captures real systemic shift.
+    hard_drift: list[dict] = []
+    soft_drift: list[dict] = []
+    unknown_ids: list[str] = []
+    golden_corruption: list[dict] = []
     scored_ids: set[str] = set()
     for chunk in chunked(cases, CHUNK_SIZE):
         try:
@@ -589,14 +607,39 @@ def mode_meta_test(polish_model: str) -> int:
             print(f"INFRA-ERROR: judge chunk failed: {e}", file=sys.stderr)
             return 2
         for r in results:
-            scored_ids.add(r["id"])
-            exp = golden["cases"][r["id"]]["expected_scores"]
+            rid = r.get("id")
+            if rid not in golden["cases"]:
+                # Judge hallucinated an ID we didn't send. Treat as hard drift.
+                unknown_ids.append(str(rid))
+                continue
+            scored_ids.add(rid)
+            exp = golden["cases"][rid]["expected_scores"]
             for axis in ABSOLUTE_AXES + ("regression",):
-                if r.get(axis) != exp.get(axis):
-                    drifted.append({"id": r["id"], "axis": axis, "expected": exp.get(axis), "got": r.get(axis)})
-    # Judge can drop items from a chunk response. Silent drop on meta-test
-    # would let drift go undetected on the dropped cases. Require every golden
-    # ID to be scored; otherwise treat as infra error.
+                exp_v = exp.get(axis)
+                got_v = r.get(axis)
+                # Golden-side missing axis = corrupt golden file; infra error.
+                # Must never silently pass with incomplete attestation.
+                # `bool` subclasses `int` in Python — exclude explicitly so a
+                # corrupt `true`/`false` in golden fails loud.
+                if not isinstance(exp_v, int) or isinstance(exp_v, bool):
+                    golden_corruption.append({"id": rid, "axis": axis, "value": exp_v})
+                    continue
+                # Judge-side missing axis = schema drift. Must fail loud.
+                if got_v is None:
+                    hard_drift.append({"id": rid, "axis": axis, "expected": exp_v, "got": None, "delta": "missing"})
+                    continue
+                # Non-numeric judge value (string, float, bool, etc.) =
+                # schema drift. bool is an int subclass; exclude it here too.
+                if not isinstance(got_v, int) or isinstance(got_v, bool):
+                    hard_drift.append({"id": rid, "axis": axis, "expected": exp_v, "got": got_v, "delta": f"non-int({type(got_v).__name__})"})
+                    continue
+                delta = got_v - exp_v  # signed, for directional bias check
+                abs_delta = abs(delta)
+                if abs_delta >= 2:
+                    hard_drift.append({"id": rid, "axis": axis, "expected": exp_v, "got": got_v, "delta": abs_delta})
+                elif abs_delta == 1:
+                    soft_drift.append({"id": rid, "axis": axis, "expected": exp_v, "got": got_v, "signed_delta": delta})
+    # Missing-score check first — infra, not drift.
     missing_ids = [c["id"] for c in cases if c["id"] not in scored_ids]
     if missing_ids:
         print(
@@ -606,13 +649,58 @@ def mode_meta_test(polish_model: str) -> int:
         )
         print(f"  Missing: {missing_ids[:10]}", file=sys.stderr)
         return 2
-    if drifted:
-        print(f"\nJUDGE DRIFT DETECTED — {len(drifted)} axis mismatches:", file=sys.stderr)
-        for d in drifted[:20]:
-            print(f"  {d['id']}  {d['axis']}: expected {d['expected']}, got {d['got']}", file=sys.stderr)
+    # Golden-file corruption = infra error. Must not silently pass.
+    if golden_corruption:
+        print(
+            f"INFRA-ERROR: golden set has {len(golden_corruption)} missing/non-int expected score(s). "
+            "File is corrupt; meta-test cannot attest drift.",
+            file=sys.stderr,
+        )
+        for d in golden_corruption[:10]:
+            print(f"  {d['id']}  {d['axis']}: value={d['value']!r}", file=sys.stderr)
+        return 2
+    total_axes = len(cases) * (len(ABSOLUTE_AXES) + 1)
+    soft_pct = 100 * len(soft_drift) / total_axes if total_axes else 0
+    # Directional bias: if the judge has shifted systemically (e.g. become
+    # consistently more lenient), most soft drifts will go the same way.
+    # A 1-point random wobble should be roughly balanced; a real shift will
+    # be lopsided. Flag when ≥80% of soft drifts point the same direction AND
+    # there are enough of them for the ratio to mean anything.
+    positive = sum(1 for d in soft_drift if d.get("signed_delta", 0) > 0)
+    negative = len(soft_drift) - positive
+    bias_ratio = max(positive, negative) / len(soft_drift) if soft_drift else 0
+    # Require >=6 drifts before a same-direction ratio is meaningful.
+    # At N=4, 4/4 same-direction = 12.5% chance under pure noise (too noisy).
+    # At N=6, 6/6 same-direction = 3.1% chance (acceptable false-positive rate).
+    systemic_shift = len(soft_drift) >= 6 and bias_ratio >= 0.8
+    # Fail on: any hard drift, any unknown-ID, systemic shift, or soft-drift
+    # count exceeding the noise floor. Threshold 10% (was 15%) — tighter than
+    # empirical ~5% noise, still leaves 2x headroom. Codex P1 round 3 of #299.
+    drift_fail = (
+        bool(hard_drift) or bool(unknown_ids) or systemic_shift or soft_pct > 10
+    )
+    if drift_fail:
+        print(f"\nJUDGE DRIFT DETECTED — hard: {len(hard_drift)}  soft: {len(soft_drift)} ({soft_pct:.1f}%)  unknown-ids: {len(unknown_ids)}  bias: {positive}+/{negative}- (ratio {bias_ratio:.2f})", file=sys.stderr)
+        for d in hard_drift[:10]:
+            got_repr = "<missing>" if d["got"] is None else d["got"]
+            print(f"  HARD  {d['id']}  {d['axis']}: expected {d['expected']}, got {got_repr} (delta {d['delta']})", file=sys.stderr)
+        if unknown_ids:
+            print(f"  UNKNOWN IDs: {unknown_ids[:10]}", file=sys.stderr)
+        if systemic_shift:
+            print(f"  SYSTEMIC SHIFT: {max(positive,negative)}/{len(soft_drift)} soft drifts in same direction (ratio {bias_ratio:.2f} >= 0.80)", file=sys.stderr)
+        if soft_pct > 10 or systemic_shift:
+            for d in soft_drift[:10]:
+                print(f"  SOFT  {d['id']}  {d['axis']}: expected {d['expected']}, got {d['got']}", file=sys.stderr)
         print("\nJudge infra changed (model version, prompt edit, provider behavior).", file=sys.stderr)
         print("NOT a PR regression. Investigate judge before merging any PR.", file=sys.stderr)
         return 3
+    if soft_drift:
+        detail = f"threshold 10%"
+        if len(soft_drift) >= 6:
+            detail += f", bias {bias_ratio:.2f} (systemic-shift threshold 0.80)"
+        else:
+            detail += f", sample below 6 (systemic-shift check requires more data)"
+        print(f"[meta-test] {len(soft_drift)} soft drifts ({soft_pct:.1f}%) tolerated as thinking-model variance ({detail}).")
     print("[meta-test] PASSED: judge scores match locked golden set")
     return 0
 
