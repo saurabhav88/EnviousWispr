@@ -276,7 +276,9 @@ Bot identity fallback: if the strict filter returns zero but you expected result
 
 Fetch every `codex-review`-labelled issue and scan bodies for `codex-source` markers. GitHub Search API defaults to 30 items/page; reading only page 1 would silently drop older markers once the repo grows past the first page and cause duplicate issue creation. Paginate with `per_page=100` up to the Search API's hard ceiling of 1000 results (10 pages), stopping early when a page returns fewer than 100 items.
 
-`sleep 2` between pages is REQUIRED — unauthenticated Search is capped at 10 req/min primary + a stricter secondary/abuse limit that fires on burst patterns. Skipping the sleep will cause page 2+ to return HTTP 403/429 and the script will exit Path D cleanly with no dedup coverage, which is wasted work.
+`sleep 6` between pages is REQUIRED. Unauthenticated Search is capped at 10 req/min primary + a stricter secondary/abuse limit, AND that budget is shared with Step 2 (Sentry-side search/issues calls, one per Sentry issue). Six seconds between pagination requests keeps even a worst-case combined burst (Step 2's ~5 lookups + 10 dedup pages) inside the rolling-minute window. Skipping the sleep will cause page 2+ to return HTTP 403/429; the script will then exit Path D cleanly with no dedup coverage, which is wasted work AND risks duplicate codex-review issue creation.
+
+Future note: once the `codex-review` issue count exceeds ~200 (>2 pages are routine), reconsider either authenticating the Search call via the built-in GitHub tools (5000 req/hr authenticated budget) or staggering Path D by a minute after Step 2 completes. For 2026-04 volume (&lt;30 issues) this is not needed.
 
 Do NOT switch to `Link`-header-following pagination here — `grep`-ing `rel="next"` out of a `curl` header dump in bash is notoriously brittle; the simpler `page=N + break on < 100 items` pattern is easier to audit.
 
@@ -285,7 +287,7 @@ PAGE=1
 ALL_ITEMS="[]"
 COUNT=0
 while [ "$PAGE" -le 10 ]; do
-  if [ "$PAGE" -gt 1 ]; then sleep 2; fi
+  if [ "$PAGE" -gt 1 ]; then sleep 6; fi
   RESP=$(curl -s -w '\n%{http_code}' "https://api.github.com/search/issues?q=label:codex-review+repo:saurabhav88/EnviousWispr&per_page=100&page=$PAGE")
   CODE=$(echo "$RESP" | tail -1)
   BODY=$(echo "$RESP" | sed '$d')
