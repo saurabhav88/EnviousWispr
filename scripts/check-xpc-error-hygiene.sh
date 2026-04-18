@@ -48,18 +48,30 @@ scan_dir() {
       continue
     fi
     local hits
-    # Recursive regex: match a complete balanced `safeReply(...)` call, then
-    # check its body for `as NSError`. `(?2)` recurses into group 2 (the
-    # paren-balanced span). `[^()]++` is possessive to avoid catastrophic
-    # backtracking. This prevents false positives where `as NSError` appears
-    # in a later, unrelated statement (e.g. `safeReply(nil)` + `let x = err as NSError`).
+    # Recursive regex matches a complete balanced `safeReply(...)` call, then
+    # checks its body for `as NSError`. `(?2)` recurses into group 2 (the
+    # paren-balanced span); `[^()]++` is possessive to avoid catastrophic
+    # backtracking. Strip string literals FIRST so a literal `)` inside a
+    # quoted argument (e.g. `safeReply(")", err as NSError)`) can't fool
+    # the balance tracker — without this, such calls would silently evade
+    # the hygiene check.
+    #
+    # Line numbers come from the ORIGINAL source; we strip a copy for
+    # matching but preserve the original for offset-to-line translation
+    # by replacing stripped ranges with spaces of equal length.
     hits=$("$PERL" -0777 -ne '
-      while (/(safeReply\s*(\((?:[^()]++|(?2))*+\)))/g) {
+      my $orig = $_;
+      my $stripped = $orig;
+      # Equal-length blanking preserves byte offsets so $-[0] still maps
+      # to the correct line in the original file.
+      $stripped =~ s/(""".*?""")/" " x length($1)/sge;
+      $stripped =~ s/("(?:[^"\\\n]|\\.)*")/" " x length($1)/ge;
+      while ($stripped =~ /(safeReply\s*(\((?:[^()]++|(?2))*+\)))/g) {
         my $whole = $1;
         next unless $whole =~ /\bas\s+NSError\b/;
         my $at = $-[0];
-        my $line = 1 + (substr($_, 0, $at) =~ tr/\n//);
-        my $snip = substr($_, $at, 120);
+        my $line = 1 + (substr($orig, 0, $at) =~ tr/\n//);
+        my $snip = substr($orig, $at, 120);
         $snip =~ s/\s+/ /g;
         print "$ARGV:$line: $snip\n";
       }
@@ -160,6 +172,28 @@ func f(err: Error) {
 }
 EOF
 
+  # Fixture G: forbidden call with a literal `)` inside a string argument.
+  # The balanced-paren regex would lose track of nesting without string-stripping;
+  # this fixture guards that second Codex-flagged evasion path.
+  cat > "$tmp/fixture_g.swift" <<'EOF'
+import Foundation
+func g(err: Error) {
+    safeReply(")", err as NSError)
+}
+EOF
+
+  # Fixture H: safe safeReply containing a literal `(` inside a string arg.
+  # Must NOT match — ensures string-stripping doesn't accidentally concatenate
+  # adjacent calls and break on the next safeReply.
+  cat > "$tmp/fixture_h.swift" <<'EOF'
+import Foundation
+func h(err: Error) {
+    safeReply(nil, "error (code: 1)")
+    let wrapped = err as NSError
+    _ = wrapped
+}
+EOF
+
   local out
   out="$(scan_dir "$tmp")"
 
@@ -188,6 +222,14 @@ EOF
     echo "self-test FAILED: multi-line cross-call false-positive (F) matched" >&2
     fail=1
   fi
+  if ! printf '%s' "$out" | grep -q "fixture_g.swift:"; then
+    echo "self-test FAILED: paren-in-string fixture (G) not matched" >&2
+    fail=1
+  fi
+  if printf '%s' "$out" | grep -q "fixture_h.swift:"; then
+    echo "self-test FAILED: safe paren-in-string fixture (H) matched" >&2
+    fail=1
+  fi
 
   if [ "$fail" -eq 1 ]; then
     echo >&2
@@ -196,7 +238,7 @@ EOF
     exit 1
   fi
 
-  echo "self-test PASSED: 6 fixtures (single-line, multi-line, negative control, nested parens, cross-call negatives x2)"
+  echo "self-test PASSED: 8 fixtures (single-line, multi-line, safe, nested parens, cross-call negatives x2, paren-in-string positive + negative)"
   exit 0
 }
 
