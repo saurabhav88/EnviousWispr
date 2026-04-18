@@ -29,7 +29,9 @@ if [ "${1:-}" = "--self-test" ]; then
 elif [ -n "${1:-}" ]; then
   ROOT="$1"
 fi
-if [ -z "$ROOT" ]; then
+# Only resolve the repo root when we actually need it (scan mode).
+# --self-test must work outside a git checkout.
+if [ "$MODE" = "scan" ] && [ -z "$ROOT" ]; then
   ROOT="$(git rev-parse --show-toplevel)"
 fi
 
