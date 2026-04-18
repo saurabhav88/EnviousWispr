@@ -248,11 +248,17 @@ This is an isolated block executed AFTER finishing all Sentry work (Paths A/B/C)
 
 ### Step D1 — Fetch Codex review events
 
-Single HTTP call to the repo-wide events feed:
+Fetch the repo-wide events feed and check the HTTP status explicitly. Non-2xx is fatal for Path D (per the Path D error policy below) — a silent `[]` would mask rate-limit and outage errors and contradict the stated policy.
 
 ```bash
-curl -s "https://api.github.com/repos/saurabhav88/EnviousWispr/events?per_page=100" \
-  | jq '[.[] | select(.type=="PullRequestReviewEvent" and .actor.login=="chatgpt-codex-connector[bot]")]'
+RESPONSE=$(curl -s -w '\n%{http_code}' "https://api.github.com/repos/saurabhav88/EnviousWispr/events?per_page=100")
+HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+BODY=$(echo "$RESPONSE" | sed '$d')
+if [ "$HTTP_CODE" != "200" ]; then
+  echo "Path D: events API HTTP $HTTP_CODE. Exiting Path D cleanly."
+  exit 0
+fi
+echo "$BODY" | jq '[.[] | select(.type=="PullRequestReviewEvent" and .actor.login=="chatgpt-codex-connector[bot]")]'
 ```
 
 Each item surfaces:
@@ -262,16 +268,42 @@ Each item surfaces:
 - `.payload.review.commit_id` — head SHA at review time
 - `.created_at` — event timestamp
 
-If the list is empty, log "Path D: no Codex events" and exit Path D cleanly.
+If the filtered list is empty, log "Path D: no Codex events" and exit Path D cleanly.
 
 Bot identity fallback: if the strict filter returns zero but you expected results, retry with `.actor.type=="Bot"` AND require the fetched review body to contain the literal string "Codex Review".
 
 ### Step D2 — Dedup against prior triage
 
-Fetch issues already triaged by Path D:
+Fetch every `codex-review`-labelled issue and scan bodies for `codex-source` markers. GitHub Search API defaults to 30 items/page; reading only page 1 would silently drop older markers once the repo grows past the first page and cause duplicate issue creation. Paginate with `per_page=100` up to the Search API's hard ceiling of 1000 results (10 pages), stopping early when a page returns fewer than 100 items.
+
+`sleep 2` between pages is REQUIRED — unauthenticated Search is capped at 10 req/min primary + a stricter secondary/abuse limit that fires on burst patterns. Skipping the sleep will cause page 2+ to return HTTP 403/429 and the script will exit Path D cleanly with no dedup coverage, which is wasted work.
+
+Do NOT switch to `Link`-header-following pagination here — `grep`-ing `rel="next"` out of a `curl` header dump in bash is notoriously brittle; the simpler `page=N + break on < 100 items` pattern is easier to audit.
 
 ```bash
-curl -s "https://api.github.com/search/issues?q=label:codex-review+repo:saurabhav88/EnviousWispr"
+PAGE=1
+ALL_ITEMS="[]"
+COUNT=0
+while [ "$PAGE" -le 10 ]; do
+  if [ "$PAGE" -gt 1 ]; then sleep 2; fi
+  RESP=$(curl -s -w '\n%{http_code}' "https://api.github.com/search/issues?q=label:codex-review+repo:saurabhav88/EnviousWispr&per_page=100&page=$PAGE")
+  CODE=$(echo "$RESP" | tail -1)
+  BODY=$(echo "$RESP" | sed '$d')
+  if [ "$CODE" != "200" ]; then
+    echo "Path D dedup: search HTTP $CODE on page $PAGE. Exiting Path D cleanly."
+    exit 0
+  fi
+  ITEMS=$(echo "$BODY" | jq '.items')
+  COUNT=$(echo "$ITEMS" | jq 'length')
+  ALL_ITEMS=$(echo "$ALL_ITEMS $ITEMS" | jq -s 'add')
+  if [ "$COUNT" -lt 100 ]; then break; fi
+  PAGE=$((PAGE + 1))
+done
+if [ "$PAGE" -gt 10 ] && [ "$COUNT" -eq 100 ]; then
+  echo "Path D dedup: hit 10-page cap with full page; dedup may be incomplete. Revisit cap."
+fi
+# Preserve the object shape downstream steps expect (`items` at top level).
+echo "{\"items\": $ALL_ITEMS}"
 ```
 
 For each returned issue, scan its `body` field for markers matching:
