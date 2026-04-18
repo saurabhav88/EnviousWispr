@@ -60,9 +60,13 @@ if ! swift build -c release --arch arm64 2>&1 | tee /tmp/release-preflight-build
 fi
 echo "  OK  Release build passed"
 
-# 6. Test target compiles
-echo "  ... Running swift build --build-tests"
-if ! swift build --build-tests 2>&1 | tail -3; then
+# 6. Test target compiles.
+# Use scripts/swift-test.sh --no-run so the CLT Testing.framework flags are
+# applied. Bare `swift build --build-tests` fails under CLT-only because
+# Testing.framework and lib_TestingInterop.dylib aren't on the default path.
+echo "  ... Running scripts/swift-test.sh --no-run"
+if ! BUILD_OUTPUT=$(scripts/swift-test.sh --no-run 2>&1); then
+    echo "$BUILD_OUTPUT" | tail -10
     echo "FAIL: Test target failed to compile"
     exit 1
 fi
