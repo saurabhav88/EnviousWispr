@@ -51,18 +51,35 @@ internal enum FinalizationError: Error {
 /// Does NOT emit pipeline-specific telemetry (ASR mode, backend, etc.).
 @MainActor
 internal final class TranscriptFinalizer {
-  private let transcriptStore: TranscriptStore
+  private let save: @MainActor (Transcript) throws -> Void
   private let textProcessingRunner: TextProcessingRunner
-  private let pasteExecutor: PasteCascadeExecutor
+  private let deliverPaste: @MainActor (PasteDeliveryRequest) async -> PasteDeliveryResult
 
   init(
     transcriptStore: TranscriptStore,
     textProcessingRunner: TextProcessingRunner = TextProcessingRunner(),
     pasteExecutor: PasteCascadeExecutor = PasteCascadeExecutor()
   ) {
-    self.transcriptStore = transcriptStore
+    self.save = { try transcriptStore.save($0) }
     self.textProcessingRunner = textProcessingRunner
-    self.pasteExecutor = pasteExecutor
+    self.deliverPaste = { await pasteExecutor.deliver($0) }
+  }
+
+  // Test-only seam: contract tests construct the finalizer with fake closures
+  // so they can exercise failure paths without touching disk or AX APIs.
+  // The seam is intentionally local to this type. Do NOT promote `save` /
+  // `deliverPaste` to protocols on `TranscriptStore` / `PasteCascadeExecutor`
+  // just because this surface exists. Those types carry wider production
+  // responsibilities and a single-method protocol is blast radius without
+  // coverage.
+  init(
+    save: @escaping @MainActor (Transcript) throws -> Void,
+    textProcessingRunner: TextProcessingRunner = TextProcessingRunner(),
+    deliverPaste: @escaping @MainActor (PasteDeliveryRequest) async -> PasteDeliveryResult
+  ) {
+    self.save = save
+    self.textProcessingRunner = textProcessingRunner
+    self.deliverPaste = deliverPaste
   }
 
   /// Finalize a transcription: process text, store transcript, paste to target.
@@ -106,7 +123,7 @@ internal final class TranscriptFinalizer {
       llmModel: context.llmModel
     )
     do {
-      try transcriptStore.save(transcript)
+      try save(transcript)
     } catch {
       throw FinalizationError.storageFailed(underlying: error)
     }
@@ -116,7 +133,7 @@ internal final class TranscriptFinalizer {
     var pasteResult: PasteDeliveryResult?
     if request.autoPasteToActiveApp {
       let text = PasteService.appendTrailingSpace(transcript.displayText)
-      pasteResult = await pasteExecutor.deliver(
+      pasteResult = await deliverPaste(
         PasteDeliveryRequest(
           text: text,
           targetApp: request.targetApp,
