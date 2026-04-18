@@ -276,13 +276,11 @@ Bot identity fallback: if the strict filter returns zero but you expected result
 
 Fetch every `codex-review`-labelled issue and scan bodies for `codex-source` markers. GitHub Search API defaults to 30 items/page; reading only page 1 would silently drop older markers once the repo grows past the first page and cause duplicate issue creation. Paginate with `per_page=100` up to the Search API's hard ceiling of 1000 results (10 pages), stopping early when a page returns fewer than 100 items.
 
-`sleep 6` between pages is REQUIRED. Unauthenticated Search is capped at 10 req/min primary + a stricter secondary/abuse limit, AND that budget is shared with Step 2 (Sentry-side search/issues calls, one per Sentry issue). Six seconds between pagination requests keeps even a worst-case combined burst (Step 2's ~5 lookups + 10 dedup pages) inside the rolling-minute window. Skipping the sleep will cause page 2+ to return HTTP 403/429; the script will then exit Path D cleanly with no dedup coverage, which is wasted work AND risks duplicate codex-review issue creation.
+`sleep 10` between pages is REQUIRED. Unauthenticated Search is capped at 10 req/min primary + a stricter secondary/abuse limit, AND that budget is shared with Step 2 (Sentry-side search/issues calls, one per Sentry issue). Ten seconds between pagination requests keeps even a worst-case combined burst (Step 2's ~5 lookups + 10 dedup pages) inside the rolling-minute window with headroom. Skipping the sleep will cause page 2+ to return HTTP 403/429; the script will then exit Path D cleanly with no dedup coverage, which is wasted work AND risks duplicate codex-review issue creation. (A prior 6s cadence was too tight: at 10 pages × 6s Path D alone fires 10 calls in 54s, and any overlap with Step 2's calls in the same 60s window pushed the rolling total past the cap.)
 
 Future note: once the `codex-review` issue count exceeds ~200 (>2 pages are routine), reconsider either authenticating the Search call via the built-in GitHub tools (5000 req/hr authenticated budget) or staggering Path D by a minute after Step 2 completes. For 2026-04 volume (&lt;30 issues) this is not needed.
 
 Do NOT switch to `Link`-header-following pagination here — `grep`-ing `rel="next"` out of a `curl` header dump in bash is notoriously brittle; the simpler `page=N + break on < 100 items` pattern is easier to audit.
-
-The inter-page delay is 10 seconds, not 6, because Step 2 of this routine also hits `/search/issues` on the same unauthenticated IP quota (10 req/min). At 10 pages × 10s between them, Path D's own burst stays under the cap and leaves headroom for Step 2's 2-3 prior calls in the rolling 60-second window.
 
 ```bash
 PAGE=1
