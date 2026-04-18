@@ -16,6 +16,7 @@
 # Usage:
 #   scripts/swift-test.sh              # run all tests
 #   scripts/swift-test.sh --filter Foo # filter to tests matching "Foo"
+#   scripts/swift-test.sh --no-run     # compile tests only (used by release-preflight)
 
 set -euo pipefail
 
@@ -30,10 +31,26 @@ if [ ! -d "$FRAMEWORKS_DIR/Testing.framework" ]; then
     exit 1
 fi
 
-exec swift test \
-    -Xswiftc "-F${FRAMEWORKS_DIR}" \
-    -Xlinker "-F${FRAMEWORKS_DIR}" \
-    -Xlinker -rpath -Xlinker "${FRAMEWORKS_DIR}" \
-    -Xlinker -rpath -Xlinker "${USR_LIB_DIR}" \
-    -Xlinker -rpath -Xlinker "${INTEROP_LIB_DIR}" \
-    "$@"
+# Shared flag set — single source of truth for CLT Testing.framework wiring.
+CLT_FLAGS=(
+    -Xswiftc "-F${FRAMEWORKS_DIR}"
+    -Xlinker "-F${FRAMEWORKS_DIR}"
+    -Xlinker -rpath -Xlinker "${FRAMEWORKS_DIR}"
+    -Xlinker -rpath -Xlinker "${USR_LIB_DIR}"
+    -Xlinker -rpath -Xlinker "${INTEROP_LIB_DIR}"
+)
+
+NO_RUN=0
+REMAINING_ARGS=()
+for arg in "$@"; do
+    case "$arg" in
+        --no-run) NO_RUN=1 ;;
+        *)        REMAINING_ARGS+=("$arg") ;;
+    esac
+done
+
+if [[ $NO_RUN -eq 1 ]]; then
+    exec swift build --build-tests "${CLT_FLAGS[@]}" "${REMAINING_ARGS[@]}"
+fi
+
+exec swift test "${CLT_FLAGS[@]}" "${REMAINING_ARGS[@]}"
