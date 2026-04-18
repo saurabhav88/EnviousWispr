@@ -282,12 +282,14 @@ Future note: once the `codex-review` issue count exceeds ~200 (>2 pages are rout
 
 Do NOT switch to `Link`-header-following pagination here — `grep`-ing `rel="next"` out of a `curl` header dump in bash is notoriously brittle; the simpler `page=N + break on < 100 items` pattern is easier to audit.
 
+The inter-page delay is 10 seconds, not 6, because Step 2 of this routine also hits `/search/issues` on the same unauthenticated IP quota (10 req/min). At 10 pages × 10s between them, Path D's own burst stays under the cap and leaves headroom for Step 2's 2-3 prior calls in the rolling 60-second window.
+
 ```bash
 PAGE=1
 ALL_ITEMS="[]"
 COUNT=0
 while [ "$PAGE" -le 10 ]; do
-  if [ "$PAGE" -gt 1 ]; then sleep 6; fi
+  if [ "$PAGE" -gt 1 ]; then sleep 10; fi
   RESP=$(curl -s -w '\n%{http_code}' "https://api.github.com/search/issues?q=label:codex-review+repo:saurabhav88/EnviousWispr&per_page=100&page=$PAGE")
   CODE=$(echo "$RESP" | tail -1)
   BODY=$(echo "$RESP" | sed '$d')
