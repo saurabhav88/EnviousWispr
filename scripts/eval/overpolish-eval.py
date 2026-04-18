@@ -25,7 +25,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-PROJ_ROOT = Path(__file__).parent.parent
+PROJ_ROOT = Path(__file__).parent.parent.parent
 AUDIO_DIR = Path("/tmp/overpolish-eval-audio")
 LOG_PATH = os.path.expanduser("~/Library/Logs/EnviousWispr/app.log")
 RESULTS_DIR = PROJ_ROOT / "benchmark-results" / "overpolish-eval"

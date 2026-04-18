@@ -64,18 +64,24 @@ scan_dir() {
       my $stripped = $orig;
       # Equal-length blanking preserves byte offsets so $-[0] still maps
       # to the correct line in the original file.
-      # Order matters: raw strings (#"..."#) and multi-line strings first so
-      # we do not shred a raw-string body character-by-char when the simple
-      # pattern hits the inner quotes. Then ordinary strings, then comments.
-      $stripped =~ s/((#+)".*?"\2)/" " x length($1)/sge;
-      $stripped =~ s/(""".*?""")/" " x length($1)/sge;
-      $stripped =~ s/("(?:[^"\\\n]|\\.)*")/" " x length($1)/ge;
-      # Block comments (non-nested). Swift does allow nested block comments,
-      # but they are rare in practice and this check is a regression net,
-      # not a security boundary.
-      $stripped =~ s/(\/\*[\s\S]*?\*\/)/" " x length($1)/ge;
-      # Line comments // to end-of-line. Keep the newline so line numbers stay correct.
-      $stripped =~ s/(\/\/[^\n]*)/" " x length($1)/ge;
+      # Single-pass alternation with left-priority is required: sequential
+      # stripping cannot simultaneously (a) blank `// #"` in a line comment
+      # before the raw-string regex sees it, and (b) avoid blanking the
+      # `//` inside a legitimate string literal like `"https://..."`.
+      # Perls alternation tries each branch left-to-right at each cursor
+      # position, so at the first `"` of a string, the string branches
+      # match before the comment branches can; conversely, at `//` outside
+      # any string, the comment branch matches before raw-string can
+      # confuse itself on a quote character inside the comment body.
+      # Order within the alternation: raw string, triple string, ordinary
+      # string, block comment, line comment.
+      $stripped =~ s{
+        ( (\#+) " .*? " \2 )                      # (1,2) raw string #"..."#
+        | ( """ .*? """ )                         # (3)   triple-quoted string
+        | ( " (?: [^"\\\n] | \\. )* " )           # (4)   ordinary string
+        | ( /\* [\s\S]*? \*/ )                    # (5)   block comment (non-nested)
+        | ( // [^\n]* )                           # (6)   line comment to end-of-line
+      }{" " x length($&)}sgex;
       while ($stripped =~ /(safeReply\s*(\((?:[^()]++|(?2))*+\)))/g) {
         my $whole = $1;
         next unless $whole =~ /\bas\s+NSError\b/;
@@ -230,6 +236,43 @@ import Foundation
 func j() {}
 EOF
 
+  # Fixture K: line comment that seeds a fake raw-string opener (`// #"`)
+  # above a real violation, closed by a later legitimate raw string. Under
+  # the prior string-before-comment ordering, the raw-string regex would
+  # consume the comment body, the newline, and the real safeReply call up
+  # to `"#`, blanking the violation and returning OK. This fixture guards
+  # issue #351 — comments must be stripped before raw strings at the same
+  # cursor position.
+  cat > "$tmp/fixture_k.swift" <<'EOF'
+import Foundation
+// #"
+func k(err: Error) {
+    safeReply(nil, err as NSError)
+}
+let ok = #"ok"#
+EOF
+
+  # Fixture L: forbidden call with a URL literal (`"https://..."`) in the
+  # arg list. The string body contains `//`, so a naive comment-first pass
+  # would blank from `//` to end of line, destroying the closing `)` of the
+  # call and hiding the violation. Single-pass alternation with string
+  # branches tried before comment branches must keep this visible.
+  cat > "$tmp/fixture_l.swift" <<'EOF'
+import Foundation
+func l(err: Error) {
+    safeReply(URL(string: "https://example.com"), err as NSError)
+}
+EOF
+
+  # Fixture M: forbidden call with a string literal containing `/*`. Same
+  # shape as L but for block-comment confusion inside a string body.
+  cat > "$tmp/fixture_m.swift" <<'EOF'
+import Foundation
+func m(err: Error) {
+    safeReply("start /* not a comment */ end", err as NSError)
+}
+EOF
+
   local out
   out="$(scan_dir "$tmp")"
 
@@ -274,6 +317,18 @@ EOF
     echo "self-test FAILED: commented-out violation (J) matched" >&2
     fail=1
   fi
+  if ! printf '%s' "$out" | grep -q "fixture_k.swift:"; then
+    echo "self-test FAILED: fake raw-string opener in comment (K) not matched" >&2
+    fail=1
+  fi
+  if ! printf '%s' "$out" | grep -q "fixture_l.swift:"; then
+    echo "self-test FAILED: // inside URL string literal (L) not matched" >&2
+    fail=1
+  fi
+  if ! printf '%s' "$out" | grep -q "fixture_m.swift:"; then
+    echo "self-test FAILED: /* inside string literal (M) not matched" >&2
+    fail=1
+  fi
 
   if [ "$fail" -eq 1 ]; then
     echo >&2
@@ -282,7 +337,7 @@ EOF
     exit 1
   fi
 
-  echo "self-test PASSED: 10 fixtures (single-line, multi-line, safe, nested parens, cross-call negatives x2, paren-in-string +/-, raw-string, commented-out)"
+  echo "self-test PASSED: 13 fixtures (single-line, multi-line, safe, nested parens, cross-call negatives x2, paren-in-string +/-, raw-string, commented-out, fake-raw-string-opener-in-comment, //-in-string, /*-in-string)"
   exit 0
 }
 
