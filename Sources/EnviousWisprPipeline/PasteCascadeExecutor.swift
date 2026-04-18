@@ -79,6 +79,12 @@ internal final class PasteCascadeExecutor {
     // Tracked for `.clipboardOnly` outcome construction.
     var tiersAttempted: [PasteTier] = []
     var cgEventFailureAccessibilityTrusted: Bool? = nil
+    // Per-tier failure reasons (issue #313). Keyed by a short stage label
+    // (`ax_direct`, `cgevent`, `applescript`, `activation`) rather than by
+    // PasteTier so activation timeout, which happens before any tier is
+    // attempted, can also be recorded. Populated only on failure paths;
+    // attached to the `.clipboardOnly` Sentry payload as `paste.tier_failures`.
+    var tierFailures: [String: String] = [:]
 
     // Three-way classification of the focused element (PR #220 design intent,
     // restored for Chromium/Electron contenteditable inputs — see #277).
@@ -116,6 +122,9 @@ internal final class PasteCascadeExecutor {
       tiersAttempted.append(.axDirect)
       if PasteService.insertViaAccessibility(request.text, element: element) {
         tier = .axDirect
+      } else {
+        tierFailures["ax_direct"] = "refused"
+        emitTierFailureBreadcrumb(stage: "ax_direct", reason: "refused", bundleId: bundleId)
       }
     }
 
@@ -159,6 +168,12 @@ internal final class PasteCascadeExecutor {
           tier = .cgEvent
         case .cgEventCreationFailed(let accessibilityTrusted, _):
           cgEventFailureAccessibilityTrusted = accessibilityTrusted
+          tierFailures["cgevent"] = "creation_failed (ax_trusted=\(accessibilityTrusted))"
+          emitTierFailureBreadcrumb(
+            stage: "cgevent",
+            reason: "creation_failed (ax_trusted=\(accessibilityTrusted))",
+            bundleId: bundleId
+          )
         }
         if let snapshot {
           try? await Task.sleep(for: .milliseconds(TimingConstants.clipboardRestoreDelayMs))
@@ -166,6 +181,13 @@ internal final class PasteCascadeExecutor {
             snapshot, changeCountAfterPaste: dispatchResult.changeCount)
         }
       } else {
+        // Activation timed out. Record it as a distinct failure stage so
+        // Sentry can separate "target app never came frontmost" from
+        // "cgevent failed on the frontmost app".
+        tierFailures["activation"] = "timeout_ms=\(elapsed)"
+        emitTierFailureBreadcrumb(
+          stage: "activation", reason: "timeout_ms=\(elapsed)", bundleId: bundleId
+        )
         // Tier 2b: AppleScript Edit > Paste
         tiersAttempted.append(.appleScript)
         _ = PasteService.forceActivateApp(pid: app.processIdentifier)
@@ -178,6 +200,9 @@ internal final class PasteCascadeExecutor {
         let changeCount = PasteService.copyToClipboardReturningChangeCount(request.text)
         if PasteService.pasteViaAppleScript(pid: app.processIdentifier) {
           tier = .appleScript
+        } else {
+          tierFailures["applescript"] = "refused"
+          emitTierFailureBreadcrumb(stage: "applescript", reason: "refused", bundleId: bundleId)
         }
         if let snapshot {
           try? await Task.sleep(for: .milliseconds(TimingConstants.clipboardRestoreDelayMs))
@@ -226,14 +251,16 @@ internal final class PasteCascadeExecutor {
       )
     }
 
-    emitPasteTelemetry(outcome: outcome)
+    emitPasteTelemetry(outcome: outcome, tierFailures: tierFailures)
 
     return PasteDeliveryResult(tier: tier, durationMs: durationMs, outcome: outcome)
   }
 
   /// Fires Sentry captureError for non-delivered outcomes. Owned by the cascade
   /// so overlay UI and telemetry both derive from the same typed outcome.
-  private func emitPasteTelemetry(outcome: PasteDeliveryOutcome) {
+  private func emitPasteTelemetry(
+    outcome: PasteDeliveryOutcome, tierFailures: [String: String]
+  ) {
     switch outcome {
     case .delivered:
       return
@@ -253,6 +280,7 @@ internal final class PasteCascadeExecutor {
           "paste.focus_classification": focus.telemetryLabel,
           "paste.target_bundle_id": bundle ?? NSNull(),
           "paste.outcome": "clipboard_only",
+          "paste.tier_failures": tierFailures,
         ]
       )
     case .cgEventCreationFailed(let accessibilityTrusted):
@@ -266,9 +294,27 @@ internal final class PasteCascadeExecutor {
           "paste.outcome": "cgevent_creation_failed",
           "paste.accessibility_trusted": accessibilityTrusted,
           "paste.cgevent_failed": true,
+          "paste.tier_failures": tierFailures,
         ]
       )
     }
+  }
+
+  /// Emit a non-blocking Sentry breadcrumb for a single tier failure. The
+  /// clipboard-only handled-error event carries the full `tier_failures` map;
+  /// these breadcrumbs preserve the trail when the session reaches Sentry via
+  /// an unrelated later error or crash.
+  private func emitTierFailureBreadcrumb(stage: String, reason: String, bundleId: String) {
+    SentryBreadcrumb.add(
+      stage: "paste",
+      message: "paste.tier_failed: \(stage)",
+      level: .info,
+      data: [
+        "tier": stage,
+        "reason": reason,
+        "target_bundle_id": bundleId,
+      ]
+    )
   }
 }
 
