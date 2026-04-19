@@ -41,22 +41,38 @@ const legacyDev = [
   { name: "Apple Dictation", slug: "apple-dictation", angle: "Built-in macOS dictation vs dedicated dictation app" },
   { name: "whisper.cpp", slug: "whisper-cpp", angle: "Developer CLI vs ready-to-use Mac dictation app" },
 ];
+
+const allComparisons = [...cloudTools, ...onDeviceApps, ...legacyDev];
+const itemListJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "ItemList",
+  "name": "Free dictation software for Mac: 11 apps compared",
+  "description": "Side-by-side comparisons of EnviousWispr against the major Mac dictation apps.",
+  "itemListElement": allComparisons.map((tool, idx) => ({
+    "@type": "ListItem",
+    "position": idx + 1,
+    "url": `${siteUrl}/compare/${tool.slug}/`,
+    "name": `EnviousWispr vs ${tool.name}`,
+  })),
+});
 ---
 
 <BaseLayout
-  title="EnviousWispr Comparisons: Free Mac Dictation vs Alternatives"
-  description="See how EnviousWispr compares to WisprFlow, Dragon, Apple Dictation, Otter.ai, and more. Free on-device Mac dictation."
+  title="Free Dictation Software for Mac: 11 Apps Compared"
+  description="Honest side-by-side comparisons of free Mac dictation apps. EnviousWispr vs WisprFlow, Superwhisper, MacWhisper, Apple Dictation, Dragon, Otter.ai, and more."
   activePage="compare"
   canonicalPath="/compare/"
 >
   <Fragment slot="head">
     <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
+    <script type="application/ld+json" set:html={itemListJsonLd}></script>
   </Fragment>
 
 <style>
 .compare-hero { padding: 100px 0 48px; text-align: center; }
 .compare-hero h1 { font-size: 48px; font-weight: 800; letter-spacing: -2.5px; line-height: 1.1; color: var(--text); margin-bottom: 14px; }
 .compare-hero p { font-size: 18px; color: var(--text-2); max-width: 560px; margin: 0 auto; line-height: 1.6; }
+.compare-hero .compare-intro { font-size: 16px; max-width: 720px; margin-top: 24px; text-align: left; }
 
 .compare-group { margin-bottom: 48px; }
 .compare-group-label {
@@ -97,8 +113,9 @@ const legacyDev = [
 
 <div class="compare-hero">
   <div class="container">
-    <h1>How EnviousWispr compares</h1>
-    <p>Honest, side-by-side comparisons with every major dictation tool.</p>
+    <h1>Free dictation software for Mac, compared</h1>
+    <p>Honest, side-by-side breakdowns of EnviousWispr against the 11 major Mac dictation apps people actually use.</p>
+    <p class="compare-intro">Mac dictation tools split into three groups: cloud-based services that send your audio to a server (WisprFlow, Otter.ai, Notta, Google Docs Voice Typing), on-device apps that keep audio local (Superwhisper, MacWhisper, VoiceInk, Willow Voice), and legacy or developer-focused tools (Dragon, Apple Dictation, whisper.cpp). Pricing ranges from free to $144 a year. Each comparison below covers price, accuracy, latency, privacy architecture, and the specific use case the tool fits best, so you can pick the right one without trying all 11.</p>
   </div>
 </div>
 
