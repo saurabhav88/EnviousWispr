@@ -121,6 +121,12 @@ scripts/eval/corpus/*
 !scripts/eval/corpus/ci_corpus.jsonl
 !scripts/eval/baselines/
 !scripts/eval/baselines/*.json
+!scripts/eval/apple_runner/
+!scripts/eval/apple_runner/**
+!scripts/eval/tests/
+!scripts/eval/tests/**
+scripts/eval/apple_runner/.build/
+scripts/eval/apple_runner/Package.resolved
 docs/
 content-engine/
 Brand Assets/
