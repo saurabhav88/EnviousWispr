@@ -2,29 +2,22 @@ name: polish-eval-smoke
 
 on:
   pull_request:
-    paths:
-      # Polish provider + prompt builders + vocab formatter
-      - 'Sources/EnviousWisprLLM/**'
-      # Pipeline step that injects custom vocab, short-text guard, app context
-      - 'Sources/EnviousWisprPipeline/LLMPolishStep.swift'
-      # Shipped default custom vocabulary (EnviousWispr, GitHub, macOS, etc.)
-      - 'Sources/EnviousWisprPostProcessing/CustomWordsManager.swift'
-      # Core types that flow through the polish path
-      - 'Sources/EnviousWisprCore/PolishMode.swift'
-      - 'Sources/EnviousWisprCore/PolishPlan.swift'
-      - 'Sources/EnviousWisprCore/PolishStyleConfig.swift'
-      - 'Sources/EnviousWisprCore/PromptEnvelope.swift'
-      - 'Sources/EnviousWisprCore/PromptBuildInput.swift'
-      # The eval harness itself
-      - 'scripts/eval/**'
-      - '.github/workflows/polish-eval-smoke.yml'
 
+# Required status checks judge-drift-check and polish-quality-gate must
+# always emit a result so non-polish PRs don't stall forever. Each job
+# detects whether polish paths were touched; if yes, runs the real eval;
+# if no, emits SUCCESS via a no-op step. One workflow, one check context
+# per name — no race with a companion skip workflow.
+#
 # Fork PRs cannot access repository secrets; the eval would fail inside
 # acceptance_gate.py with auth errors and block an external contribution on
 # infrastructure it cannot satisfy. Skip forks entirely by gating every job
 # on same-repo PR origin — jobs that don't run report as "not required."
 # If secrets are missing in the main repo itself, that's a legitimate config
 # error and the job fails red; fix the repo's Actions secrets.
+#
+# All run: steps reference secrets only via env: bindings, never interpolated
+# inline — no injection surface from PR title, body, branch name, or commits.
 jobs:
   meta-test:
     name: judge-drift-check
@@ -33,11 +26,32 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - name: Detect polish paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            polish:
+              - 'Sources/EnviousWisprLLM/**'
+              - 'Sources/EnviousWisprPipeline/LLMPolishStep.swift'
+              - 'Sources/EnviousWisprPostProcessing/CustomWordsManager.swift'
+              - 'Sources/EnviousWisprCore/PolishMode.swift'
+              - 'Sources/EnviousWisprCore/PolishPlan.swift'
+              - 'Sources/EnviousWisprCore/PolishStyleConfig.swift'
+              - 'Sources/EnviousWisprCore/PromptEnvelope.swift'
+              - 'Sources/EnviousWisprCore/PromptBuildInput.swift'
+              - 'scripts/eval/**'
+              - '.github/workflows/polish-eval-smoke.yml'
+      - name: Skip when polish paths not touched
+        if: steps.filter.outputs.polish == 'false'
+        run: echo "Polish paths not touched; nothing to evaluate."
       - name: Setup Python
+        if: steps.filter.outputs.polish == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - name: Stage API keys locally
+        if: steps.filter.outputs.polish == 'true'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -52,9 +66,10 @@ jobs:
           printf '%s' "$OPENAI_API_KEY" > ~/.enviouswispr-keys/openai-api-key
           printf '%s' "$GEMINI_API_KEY" > ~/.enviouswispr-keys/gemini-api-key
       - name: Run judge drift meta-test
+        if: steps.filter.outputs.polish == 'true'
         run: python3 scripts/eval/acceptance_gate.py --mode meta-test --polish-model gpt-4o-mini
       - name: Upload artifacts on failure
-        if: failure()
+        if: failure() && steps.filter.outputs.polish == 'true'
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         uses: actions/upload-artifact@v4
@@ -76,11 +91,32 @@ jobs:
       SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
+      - name: Detect polish paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            polish:
+              - 'Sources/EnviousWisprLLM/**'
+              - 'Sources/EnviousWisprPipeline/LLMPolishStep.swift'
+              - 'Sources/EnviousWisprPostProcessing/CustomWordsManager.swift'
+              - 'Sources/EnviousWisprCore/PolishMode.swift'
+              - 'Sources/EnviousWisprCore/PolishPlan.swift'
+              - 'Sources/EnviousWisprCore/PolishStyleConfig.swift'
+              - 'Sources/EnviousWisprCore/PromptEnvelope.swift'
+              - 'Sources/EnviousWisprCore/PromptBuildInput.swift'
+              - 'scripts/eval/**'
+              - '.github/workflows/polish-eval-smoke.yml'
+      - name: Skip when polish paths not touched
+        if: steps.filter.outputs.polish == 'false'
+        run: echo "Polish paths not touched; nothing to evaluate."
       - name: Setup Python
+        if: steps.filter.outputs.polish == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - name: Stage API keys locally
+        if: steps.filter.outputs.polish == 'true'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -93,13 +129,14 @@ jobs:
           printf '%s' "$OPENAI_API_KEY" > ~/.enviouswispr-keys/openai-api-key
           printf '%s' "$GEMINI_API_KEY" > ~/.enviouswispr-keys/gemini-api-key
       - name: Run acceptance gate (gpt-4o-mini polish, Gemini 3 Pro judge)
+        if: steps.filter.outputs.polish == 'true'
         run: |
           python3 scripts/eval/acceptance_gate.py \
             --mode run \
             --polish-model gpt-4o-mini \
             --out-name "ci-pr-${PR_NUMBER}-${SHA}"
       - name: Upload full run artifacts
-        if: always()
+        if: always() && steps.filter.outputs.polish == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: polish-eval-pr
