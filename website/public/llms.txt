@@ -1,0 +1,61 @@
+# EnviousWispr
+
+> The fastest voice-to-text on macOS. Hold a hotkey, speak, release. Polished text lands on your clipboard or pastes directly. Runs entirely on-device with Parakeet (English) or WhisperKit (multilingual). No cloud, no account, no subscription. Free download.
+
+## Product
+
+- [How it works](https://enviouswispr.com/how-it-works/): The end-to-end pipeline: hotkey hold, audio capture, on-device ASR, optional LLM polish, clipboard or paste-to-app delivery.
+- [Homepage](https://enviouswispr.com/): Download, screenshots, core value proposition, system requirements (Apple Silicon, macOS 14+).
+- [Compare to alternatives](https://enviouswispr.com/compare/): Index of comparison pages vs WisprFlow, Superwhisper, Apple Dictation, Dragon, MacWhisper, Otter.ai, and others.
+
+## Comparisons
+
+- [vs WisprFlow](https://enviouswispr.com/compare/wisprflow/): Free and on-device vs paid cloud subscription.
+- [vs Superwhisper](https://enviouswispr.com/compare/superwhisper/): Both on-device, different defaults and model coverage.
+- [vs Apple Dictation](https://enviouswispr.com/compare/apple-dictation/): How EnviousWispr extends what Apple ships built-in.
+- [vs MacWhisper](https://enviouswispr.com/compare/macwhisper/): Real-time hotkey dictation vs file-based transcription.
+- [vs Otter.ai](https://enviouswispr.com/compare/otter-ai/): Personal dictation vs meeting transcription.
+- [vs Dragon](https://enviouswispr.com/compare/dragon/): Modern on-device alternative to legacy desktop dictation.
+- [vs Google Docs voice typing](https://enviouswispr.com/compare/google-docs-voice-typing/): System-wide vs Docs-only.
+- [vs Whisper.cpp](https://enviouswispr.com/compare/whisper-cpp/): Polished consumer app vs CLI/library.
+- [vs MacWhisper, VoiceInk, Notta, Willow](https://enviouswispr.com/compare/): Full comparison set.
+
+## Privacy and architecture
+
+- [On-device vs cloud dictation privacy](https://enviouswispr.com/blog/on-device-vs-cloud-dictation-privacy/): What each architecture does with your voice data and what that means for privacy.
+- [macOS dictation, offline and private](https://enviouswispr.com/blog/macos-dictation-offline-private/): How offline dictation works and why it matters.
+- [Voice coding on macOS without the cloud](https://enviouswispr.com/blog/voice-coding-macos-without-cloud/): Dictating code locally without sending to a remote server.
+
+## Use cases
+
+- [Getting started in under 2 minutes](https://enviouswispr.com/blog/getting-started-enviouswispr-under-2-minutes/): First-run setup walkthrough.
+- [Dictating emails at the speed of thought](https://enviouswispr.com/blog/dictate-emails-speed-of-thought/): Email workflow.
+- [Dictation for developers: code reviews and PRs](https://enviouswispr.com/blog/dictation-for-developers-code-reviews/): PR descriptions and review comments by voice.
+- [Dictation for writers: skip the blank page](https://enviouswispr.com/blog/dictation-for-writers-skip-blank-page/): First-draft workflow for writers.
+- [Voice input for RSI: keyboard-free workflow](https://enviouswispr.com/blog/voice-input-rsi-keyboard-free-workflow/): Accessibility and hands-free typing.
+- [Hands-free typing when a toddler climbs you](https://enviouswispr.com/blog/hands-free-typing-toddler-climbs-you/): Parent-friendly use case.
+- [Dictation for parents who type one-handed](https://enviouswispr.com/blog/dictation-parents-type-one-handed/): One-handed parenting workflow.
+- [Dictation for remote workers tired of typing](https://enviouswispr.com/blog/dictation-remote-workers-tired-of-typing/): Remote work fatigue.
+- [Switched typing to dictating git commits](https://enviouswispr.com/blog/switched-typing-to-dictating-git-commits/): Git commit message workflow.
+- [Take lecture notes by speaking](https://enviouswispr.com/blog/take-lecture-notes-by-speaking/): Student note-taking.
+- [Essay outline by talking it out](https://enviouswispr.com/blog/essay-outline-by-talking-it-out/): Outlining workflow.
+- [Voice-to-prose writing workflow](https://enviouswispr.com/blog/voice-to-prose-writing-workflow/): Long-form writing.
+- [Dictate first drafts that sound like you](https://enviouswispr.com/blog/dictate-first-drafts-sound-like-you/): Preserving voice in drafts.
+- [Dictating episode scripts without losing flow](https://enviouswispr.com/blog/dictating-episode-scripts-without-losing-flow/): Podcasting workflow.
+- [Meeting notes and polished summaries](https://enviouswispr.com/blog/meeting-notes-polished-summaries/): Post-meeting workflow.
+- [Podcast show notes to blog posts](https://enviouswispr.com/blog/podcast-show-notes-to-blog-posts/): Repurposing workflow.
+- [Async communication is better when you speak](https://enviouswispr.com/blog/async-communication-better-when-you-speak/): Async-first communication.
+
+## Behind the scenes
+
+- [Building commercial software solo with Claude Code](https://enviouswispr.com/blog/building-commercial-software-solo-with-claude-code/): How the app is built (one founder + Claude Code).
+- [Welcome to EnviousWispr](https://enviouswispr.com/blog/welcome-to-enviouswispr/): Launch post.
+
+## Legal
+
+- [Privacy policy](https://enviouswispr.com/privacy-policy/)
+- [Terms of service](https://enviouswispr.com/terms-of-service/)
+
+## Source
+
+- [GitHub repository](https://github.com/saurabhav88/EnviousWispr): Source-available under BSL 1.1.

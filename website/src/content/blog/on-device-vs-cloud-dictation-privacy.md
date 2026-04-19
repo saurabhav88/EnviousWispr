@@ -72,8 +72,8 @@ There's no shame in choosing cloud dictation for the right use case. The key is 
 
 On-device dictation is the stronger choice when:
 
-- **You're dictating anything sensitive.** Legal memos, medical notes, financial discussions, proprietary code reviews, internal company communications. Anything where the content of the recording matters if it were exposed.
-- **You want predictable performance.** No network variability, no server outages, no API rate limits. It works the same whether you're on a plane or in a coffee shop.
+- **You're dictating anything sensitive.** Legal memos, medical notes, financial discussions, proprietary [code reviews and pull request descriptions](/blog/dictation-for-developers-code-reviews/), internal company communications. Anything where the content of the recording matters if it were exposed.
+- **You want predictable performance.** No network variability, no server outages, no API rate limits. [Fully offline dictation](/blog/macos-dictation-offline-private/) works the same whether you're on a plane or in a coffee shop with no Wi-Fi.
 - **You care about cost at scale.** Cloud speech APIs typically charge $0.006 to $0.024 per 15 seconds of audio (source: Google Cloud Speech-to-Text and AWS Transcribe published pricing pages, accessed March 2026). For heavy users dictating hours per day, local processing costs nothing beyond the hardware you already own.
 - **You prefer zero friction.** On-device tools can work with no sign-up, no API key, and no recurring payment.
 - **You want control over your tooling.** Local models don't change unless you change them. No surprise API deprecations, no terms-of-service updates, no forced model swaps.
