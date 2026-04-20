@@ -37,6 +37,8 @@ struct AudioSettingsView: View {
             .foregroundStyle(.stTextTertiary)
           }
         }
+      } footer: {
+        FrozenPerRecordingFootnote()
       }
 
       BrandedSection(header: "Audio Processing") {

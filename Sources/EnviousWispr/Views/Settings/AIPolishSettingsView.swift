@@ -111,6 +111,8 @@ struct AIPolishSettingsView: View {
               .font(.stHelper)
               .foregroundStyle(Color.stTextTertiary)
           }
+        } footer: {
+          FrozenPerRecordingFootnote()
         }
       }
 
@@ -183,6 +185,8 @@ struct AIPolishSettingsView: View {
               modelRecommendationCards
             }
           }
+        } footer: {
+          FrozenPerRecordingFootnote()
         }
       }
 
@@ -210,6 +214,8 @@ struct AIPolishSettingsView: View {
                 .foregroundStyle(Color.stTextTertiary)
             }
           }
+        } footer: {
+          FrozenPerRecordingFootnote()
         }
       }
     }

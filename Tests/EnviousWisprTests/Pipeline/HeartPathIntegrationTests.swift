@@ -92,8 +92,26 @@ struct HeartPathIntegrationTests {
       asrManager: asrManager,
       transcriptStore: TranscriptStore()
     )
-    await pipeline.startRecording(
-      config: DictationSessionConfig.testDefault(autoPasteToActiveApp: true))
+    #expect(pipeline.currentSessionConfig == nil)
+
+    let config = DictationSessionConfig.testDefault(
+      autoPasteToActiveApp: true,
+      vadSensitivity: 0.73,
+      languageMode: .locked("fr"),
+      llmProvider: .openAI,
+      llmModel: "gpt-test"
+    )
+    await pipeline.startRecording(config: config)
+
+    // Phase B freeze contract: the pipeline captures the config handed in by
+    // AppState, and external readers see the frozen snapshot for the
+    // recording's lifetime.
+    let captured = pipeline.currentSessionConfig
+    #expect(captured?.autoPasteToActiveApp == true)
+    #expect(captured?.vadSensitivity == 0.73)
+    #expect(captured?.languageMode == LanguageMode.locked("fr"))
+    #expect(captured?.llmProvider == LLMProvider.openAI)
+    #expect(captured?.llmModel == "gpt-test")
 
     let reachedRecording = await pollUntil(timeout: .seconds(1)) {
       pipeline.state == .recording

@@ -24,6 +24,8 @@ struct ClipboardSettingsView: View {
               .foregroundStyle(.stTextTertiary)
           }
         }
+      } footer: {
+        FrozenPerRecordingFootnote()
       }
     }
   }

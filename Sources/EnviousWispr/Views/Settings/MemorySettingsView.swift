@@ -35,6 +35,8 @@ struct MemorySettingsView: View {
             .foregroundStyle(.stWarning)
           }
         }
+      } footer: {
+        FrozenPerRecordingFootnote()
       }
     }
   }

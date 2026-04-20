@@ -106,6 +106,19 @@ struct BrandedRow<Content: View>: View {
   }
 }
 
+// MARK: - Frozen-per-recording footnote
+
+/// Static helper text for settings sections whose values freeze at recording
+/// start via `DictationSessionConfig`. Placed in a `BrandedSection`'s footer
+/// slot or inline under affected controls.
+struct FrozenPerRecordingFootnote: View {
+  var body: some View {
+    Text("Changes made during a recording apply to the next recording.")
+      .font(.caption)
+      .foregroundStyle(.stTextTertiary)
+  }
+}
+
 // MARK: - Branded Toggle Style
 
 /// Green ON / lavender OFF toggle matching the brand mockups, 38x22 px.
