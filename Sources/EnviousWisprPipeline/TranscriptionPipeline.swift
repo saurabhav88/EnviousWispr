@@ -21,6 +21,15 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
       if state != oldValue {
         onStateChange?(state)
       }
+      // Honor the `currentSessionConfig` contract: nil when no recording is
+      // in flight. Clear on every transition to a terminal state so callers
+      // can distinguish an idle pipeline from one still mid-session.
+      switch state {
+      case .idle, .complete, .error:
+        currentSessionConfig = nil
+      case .loadingModel, .recording, .transcribing, .polishing:
+        break
+      }
     }
   }
   public var onStateChange: ((PipelineState) -> Void)?

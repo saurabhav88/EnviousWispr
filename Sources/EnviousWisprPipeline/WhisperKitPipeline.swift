@@ -61,6 +61,15 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
       if state != oldValue {
         onStateChange?(state)
       }
+      // Honor the `currentSessionConfig` contract: nil when no recording is
+      // in flight. `.ready` is terminal for pipeline activity — the backend
+      // is warm but the user hasn't asked for a session yet.
+      switch state {
+      case .idle, .ready, .complete, .error:
+        currentSessionConfig = nil
+      case .startingUp, .loadingModel, .recording, .transcribing, .polishing:
+        break
+      }
     }
   }
   public var onStateChange: ((WhisperKitPipelineState) -> Void)?
