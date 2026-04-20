@@ -1378,6 +1378,13 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
       energyGate: config.vadEnergyGate
     )
 
+    // Push the frozen device UIDs. AudioCaptureManager reads them at source
+    // construction, but the source isn't built until `beginCapturePhase`
+    // later in this method — a mic swap after pre-warm but before capture
+    // would otherwise slip through PipelineSettingsSync's live writes.
+    audioCapture.selectedInputDeviceUID = config.selectedInputDeviceUID
+    audioCapture.preferredInputDeviceIDOverride = config.preferredInputDeviceIDOverride
+
     var opts = TranscriptionOptions()
     switch config.languageMode {
     case .auto:

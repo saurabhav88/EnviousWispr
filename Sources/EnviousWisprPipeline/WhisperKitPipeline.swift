@@ -1354,6 +1354,11 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
       energyGate: config.vadEnergyGate
     )
 
+    // Push the frozen device UIDs. See TranscriptionPipeline.applySessionConfig
+    // for the narrow-race rationale.
+    audioCapture.selectedInputDeviceUID = config.selectedInputDeviceUID
+    audioCapture.preferredInputDeviceIDOverride = config.preferredInputDeviceIDOverride
+
     var opts = TranscriptionOptions()
     switch config.languageMode {
     case .auto:
