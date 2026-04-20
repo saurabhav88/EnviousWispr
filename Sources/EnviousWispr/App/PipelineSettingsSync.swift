@@ -6,8 +6,9 @@ import EnviousWisprPipeline
 import EnviousWisprServices
 import Foundation
 
-/// Forwards settings changes to pipelines and subsystems.
-/// Single responsibility: settings propagation. No business logic.
+/// Forwards live-mutable settings changes. Per-recording values are frozen
+/// via `DictationSessionConfig` at `startRecording` and do not flow here —
+/// see #195 plan for the full frozen/live classification.
 @MainActor
 final class PipelineSettingsSync {
   private let pipeline: TranscriptionPipeline
@@ -18,16 +19,13 @@ final class PipelineSettingsSync {
   private let hotkeyService: HotkeyService
   private let whisperKitSetup: WhisperKitSetupService
 
-  /// Called when backend/model changes require WhisperKit preload re-observation.
-  /// Set by AppState — keeps preload observation ownership in AppState.
+  /// Set by AppState so backend/model changes can retrigger preload observation
+  /// without coupling this layer to AppState.
   var onNeedsPreloadObservation: (() -> Void)?
 
-  /// Last effective Ollama model name seen by this observer, or nil if the
-  /// last known state was non-Ollama. Tracked independently of
-  /// `polishService.llmPolishStep` because SettingsManager's cascading
-  /// didSet (e.g., `llmProvider = .appleIntelligence` synchronously writes
-  /// `llmModel = "apple-intelligence"`) can corrupt a pre-snapshot read from
-  /// the polish step. Sole source of truth for #295 eviction decisions.
+  /// Tracks the last evictable Ollama model for #295. Independent of
+  /// `polishService.llmPolishStep` because SettingsManager's cascading didSet
+  /// can corrupt a pre-snapshot read from the polish step.
   private var lastEvictableOllamaModel: String?
 
   init(
@@ -48,34 +46,20 @@ final class PipelineSettingsSync {
     self.whisperKitSetup = whisperKitSetup
   }
 
-  /// Apply initial settings to both pipelines and audio capture. Called once from AppState.init.
+  /// Seed live-mutable subsystems. Per-recording values are captured fresh
+  /// at each `startRecording` and are not seeded here.
   func applyInitialSettings(_ settings: SettingsManager, customWords: [CustomWord]) {
-    // Parakeet pipeline
-    pipeline.autoCopyToClipboard = settings.autoCopyToClipboard
-    pipeline.llmPolish.llmProvider = settings.llmProvider
-    pipeline.llmPolish.llmModel = resolvedModel(settings)
-    pipeline.vadAutoStop = settings.vadAutoStop
-    pipeline.vadSilenceTimeout = settings.vadSilenceTimeout
-    pipeline.vadSensitivity = settings.vadSensitivity
-    pipeline.vadEnergyGate = settings.vadEnergyGate
-    pipeline.modelUnloadPolicy = settings.modelUnloadPolicy
-    pipeline.restoreClipboardAfterPaste = settings.restoreClipboardAfterPaste
-    pipeline.llmPolish.polishInstructions = settings.activePolishInstructions
-    pipeline.llmPolish.styleConfig = settings.activePolishStyleConfig
     pipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
     pipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
     pipeline.wordCorrection.customWords = customWords
     pipeline.llmPolish.customWords = customWords
-    pipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
-    pipeline.useStreamingASR = settings.useStreamingASR
+    whisperKitPipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
+    whisperKitPipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
+    whisperKitPipeline.wordCorrection.customWords = customWords
+    whisperKitPipeline.llmPolish.customWords = customWords
 
-    // WhisperKit pipeline
-    syncWhisperKitPipelineSettings(settings, customWords: customWords)
-
-    // Transcript polish service (re-polish from detail view)
     syncPolishServiceSettings(settings, customWords: customWords)
 
-    // Audio capture
     if settings.noiseSuppression {
       audioCapture.buildEngine(noiseSuppression: true)
     } else {
@@ -84,8 +68,6 @@ final class PipelineSettingsSync {
     audioCapture.selectedInputDeviceUID = settings.selectedInputDeviceUID
     audioCapture.preferredInputDeviceIDOverride = settings.preferredInputDeviceIDOverride
     audioCapture.warmEnginePolicy = settings.warmEnginePolicy
-
-    // VAD config to audio capture (used by XPC service-side VAD)
     audioCapture.configureVAD(
       autoStop: settings.vadAutoStop,
       silenceTimeout: settings.vadSilenceTimeout,
@@ -93,12 +75,7 @@ final class PipelineSettingsSync {
       energyGate: settings.vadEnergyGate
     )
 
-    // Transcription options (language)
-    syncTranscriptionOptions(settings)
-
-    // #295: seed the eviction tracker so the first swap captures the right
-    // "previous" model. No initial eviction fires (this is app launch, not
-    // a user swap).
+    // #295: seed eviction tracker. No initial eviction on app launch.
     lastEvictableOllamaModel = OllamaConnector.effectiveOllamaModel(
       provider: settings.llmProvider, model: resolvedModel(settings)
     )
@@ -137,82 +114,30 @@ final class PipelineSettingsSync {
     case .recordingMode:
       hotkeyService.recordingMode = settings.recordingMode
     case .llmProvider:
-      pipeline.llmPolish.llmProvider = settings.llmProvider
-      whisperKitPipeline.llmPolish.llmProvider = settings.llmProvider
+      // Live mirror to re-polish path; eviction fires for RAM management (#295).
+      // Pipeline polish uses the frozen value from `DictationSessionConfig`.
       polishService.llmPolishStep.llmProvider = settings.llmProvider
-      // Also sync model — provider change may canonicalize the model
-      let model = resolvedModel(settings)
-      pipeline.llmPolish.llmModel = model
-      whisperKitPipeline.llmPolish.llmModel = model
-      polishService.llmPolishStep.llmModel = model
+      polishService.llmPolishStep.llmModel = resolvedModel(settings)
       reconcileOllamaEviction(settings: settings)
     case .llmModel:
-      let model = resolvedModel(settings)
-      pipeline.llmPolish.llmModel = model
-      whisperKitPipeline.llmPolish.llmModel = model
-      polishService.llmPolishStep.llmModel = model
+      polishService.llmPolishStep.llmModel = resolvedModel(settings)
       if settings.llmProvider == .ollama {
         settings.ollamaModel = settings.llmModel
       }
       reconcileOllamaEviction(settings: settings)
     case .ollamaModel:
       if settings.llmProvider == .ollama {
-        pipeline.llmPolish.llmModel = settings.ollamaModel
-        whisperKitPipeline.llmPolish.llmModel = settings.ollamaModel
         polishService.llmPolishStep.llmModel = settings.ollamaModel
       }
       reconcileOllamaEviction(settings: settings)
-    case .autoCopyToClipboard:
-      pipeline.autoCopyToClipboard = settings.autoCopyToClipboard
-      whisperKitPipeline.autoCopyToClipboard = settings.autoCopyToClipboard
     case .hotkeyEnabled:
       if settings.hotkeyEnabled { hotkeyService.start() } else { hotkeyService.stop() }
-    case .vadAutoStop:
-      pipeline.vadAutoStop = settings.vadAutoStop
-      whisperKitPipeline.vadAutoStop = settings.vadAutoStop
-      audioCapture.configureVAD(
-        autoStop: settings.vadAutoStop,
-        silenceTimeout: settings.vadSilenceTimeout,
-        sensitivity: settings.vadSensitivity,
-        energyGate: settings.vadEnergyGate
-      )
-    case .vadSilenceTimeout:
-      pipeline.vadSilenceTimeout = settings.vadSilenceTimeout
-      whisperKitPipeline.vadSilenceTimeout = settings.vadSilenceTimeout
-      audioCapture.configureVAD(
-        autoStop: settings.vadAutoStop,
-        silenceTimeout: settings.vadSilenceTimeout,
-        sensitivity: settings.vadSensitivity,
-        energyGate: settings.vadEnergyGate
-      )
     case .environmentPreset:
-      let sensitivity = settings.environmentPreset.vadSensitivity
-      settings.vadSensitivity = sensitivity
-    case .writingStylePreset:
-      pipeline.llmPolish.polishInstructions = settings.activePolishInstructions
-      pipeline.llmPolish.styleConfig = settings.activePolishStyleConfig
-      whisperKitPipeline.llmPolish.polishInstructions = settings.activePolishInstructions
-      whisperKitPipeline.llmPolish.styleConfig = settings.activePolishStyleConfig
+      // Cascade into `vadSensitivity` for the next recording's snapshot.
+      settings.vadSensitivity = settings.environmentPreset.vadSensitivity
+    case .writingStylePreset, .customSystemPrompt:
       polishService.llmPolishStep.polishInstructions = settings.activePolishInstructions
       polishService.llmPolishStep.styleConfig = settings.activePolishStyleConfig
-    case .vadSensitivity:
-      pipeline.vadSensitivity = settings.vadSensitivity
-      whisperKitPipeline.vadSensitivity = settings.vadSensitivity
-      audioCapture.configureVAD(
-        autoStop: settings.vadAutoStop,
-        silenceTimeout: settings.vadSilenceTimeout,
-        sensitivity: settings.vadSensitivity,
-        energyGate: settings.vadEnergyGate
-      )
-    case .vadEnergyGate:
-      pipeline.vadEnergyGate = settings.vadEnergyGate
-      whisperKitPipeline.vadEnergyGate = settings.vadEnergyGate
-      audioCapture.configureVAD(
-        autoStop: settings.vadAutoStop,
-        silenceTimeout: settings.vadSilenceTimeout,
-        sensitivity: settings.vadSensitivity,
-        energyGate: settings.vadEnergyGate
-      )
     case .cancelKeyCode:
       hotkeyService.cancelKeyCode = settings.cancelKeyCode
     case .cancelModifiers:
@@ -227,21 +152,10 @@ final class PipelineSettingsSync {
       // PTT mirrors toggle — single hotkey, mode determines behavior. No separate registration needed.
       break
     case .modelUnloadPolicy:
-      pipeline.modelUnloadPolicy = settings.modelUnloadPolicy
-      whisperKitPipeline.modelUnloadPolicy = settings.modelUnloadPolicy
+      // Frozen per recording; cancel idle timer live when switched to .never.
       if settings.modelUnloadPolicy == .never {
         asrManager.cancelIdleTimer()
       }
-    case .restoreClipboardAfterPaste:
-      pipeline.restoreClipboardAfterPaste = settings.restoreClipboardAfterPaste
-      whisperKitPipeline.restoreClipboardAfterPaste = settings.restoreClipboardAfterPaste
-    case .customSystemPrompt:
-      pipeline.llmPolish.polishInstructions = settings.activePolishInstructions
-      pipeline.llmPolish.styleConfig = settings.activePolishStyleConfig
-      whisperKitPipeline.llmPolish.polishInstructions = settings.activePolishInstructions
-      whisperKitPipeline.llmPolish.styleConfig = settings.activePolishStyleConfig
-      polishService.llmPolishStep.polishInstructions = settings.activePolishInstructions
-      polishService.llmPolishStep.styleConfig = settings.activePolishStyleConfig
     case .wordCorrectionEnabled:
       pipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
       whisperKitPipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
@@ -253,24 +167,15 @@ final class PipelineSettingsSync {
     case .debugLogLevel:
       Task { await AppLogger.shared.setLogLevel(settings.debugLogLevel) }
     case .useExtendedThinking:
-      pipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
-      whisperKitPipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
       polishService.llmPolishStep.useExtendedThinking = settings.useExtendedThinking
-    case .whisperKitLanguage:
-      syncTranscriptionOptions(settings)
-    case .languageMode:
-      // Multilingual v1 (W2): keep pipeline in sync with user's auto/locked
-      // choice. Detection itself happens in the pipeline; this path just
-      // forwards the current mode so the detector actor reads it lazily.
-      whisperKitPipeline.languageMode = settings.languageMode
-      syncTranscriptionOptions(settings)
     case .selectedInputDeviceUID:
+      // Rebuilds next recording's capture source; in-flight recordings unaffected.
       audioCapture.selectedInputDeviceUID = settings.selectedInputDeviceUID
     case .preferredInputDeviceIDOverride:
       audioCapture.preferredInputDeviceIDOverride = settings.preferredInputDeviceIDOverride
     case .noiseSuppression:
-      // Full engine rebuild — runtime toggling of voice processing is unreliable.
-      // Cancel any active recording first to avoid corrupted state.
+      // Runtime voice-processing toggling is unreliable — full engine rebuild.
+      // Cancel active recording first to avoid corrupted state.
       if pipeline.state == .recording {
         Task { [weak self] in
           await self?.pipeline.cancelRecording()
@@ -279,68 +184,19 @@ final class PipelineSettingsSync {
       } else {
         audioCapture.buildEngine(noiseSuppression: settings.noiseSuppression)
       }
-    case .onboardingState, .hasCompletedOnboarding:
-      break
-    case .useXPCAudioService:
-      // Cold flag — requires app restart. No live propagation needed.
-      break
-    case .useStreamingASR:
-      pipeline.useStreamingASR = settings.useStreamingASR
     case .warmEnginePolicy:
       audioCapture.warmEnginePolicy = settings.warmEnginePolicy
+    case .autoCopyToClipboard, .vadAutoStop, .vadSilenceTimeout, .vadSensitivity,
+      .vadEnergyGate, .restoreClipboardAfterPaste, .languageMode, .useStreamingASR:
+      break  // Frozen per recording; see `DictationSessionConfig`.
+    case .whisperKitLanguage:
+      break  // Deprecated — legacy migration only (SettingsManager:460-484).
+    case .onboardingState, .hasCompletedOnboarding, .useXPCAudioService:
+      break  // UI-only or cold flag.
     }
   }
 
-  /// Sync shared transcription options (language, timestamps) to both pipelines.
-  private func syncTranscriptionOptions(_ settings: SettingsManager) {
-    var opts = TranscriptionOptions()
-    // Parakeet is English-only; WhisperKit uses the user's selected language.
-    // Pass the language to both pipelines: Parakeet ignores it, WhisperKit
-    // passes it through to DecodingOptions.
-    //
-    // Multilingual v1: source is now `languageMode`, not the deprecated
-    // `whisperKitLanguage` field. In auto mode, leave language empty so the
-    // detector's result (set later in the pipeline) fills it. In locked
-    // mode, push the ISO code so the incremental worker and the batch
-    // decode see the correct language from recording start.
-    switch settings.languageMode {
-    case .auto:
-      // `TranscriptionOptions.language` is String?; nil means "let the
-      // detector decide" (the pipeline overwrites it after LID runs).
-      opts.language = nil
-    case .locked(let code):
-      opts.language = code
-    }
-    pipeline.transcriptionOptions = opts
-    whisperKitPipeline.transcriptionOptions = opts
-  }
-
-  /// Sync all user-facing settings to the WhisperKit pipeline.
-  private func syncWhisperKitPipelineSettings(
-    _ settings: SettingsManager, customWords: [CustomWord]
-  ) {
-    whisperKitPipeline.autoCopyToClipboard = settings.autoCopyToClipboard
-    whisperKitPipeline.restoreClipboardAfterPaste = settings.restoreClipboardAfterPaste
-    whisperKitPipeline.llmPolish.llmProvider = settings.llmProvider
-    whisperKitPipeline.llmPolish.llmModel = resolvedModel(settings)
-    whisperKitPipeline.llmPolish.polishInstructions = settings.activePolishInstructions
-    whisperKitPipeline.llmPolish.styleConfig = settings.activePolishStyleConfig
-    whisperKitPipeline.llmPolish.useExtendedThinking = settings.useExtendedThinking
-    whisperKitPipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
-    whisperKitPipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
-    whisperKitPipeline.wordCorrection.customWords = customWords
-    whisperKitPipeline.llmPolish.customWords = customWords
-    whisperKitPipeline.vadAutoStop = settings.vadAutoStop
-    whisperKitPipeline.vadSilenceTimeout = settings.vadSilenceTimeout
-    whisperKitPipeline.vadSensitivity = settings.vadSensitivity
-    whisperKitPipeline.vadEnergyGate = settings.vadEnergyGate
-    whisperKitPipeline.modelUnloadPolicy = settings.modelUnloadPolicy
-    // Multilingual v1 (W2): mirror the current auto/locked mode on startup.
-    whisperKitPipeline.languageMode = settings.languageMode
-  }
-
-  /// Sync all LLM settings to the transcript polish service (re-polish from detail view).
-  /// TODO: Replace 3-way sync with shared LLMPolishConfig provider (#206 follow-up)
+  /// Re-polish settings. TODO: share `LLMPolishConfig` with the pipeline (#206 follow-up).
   private func syncPolishServiceSettings(_ settings: SettingsManager, customWords: [CustomWord]) {
     polishService.llmPolishStep.llmProvider = settings.llmProvider
     polishService.llmPolishStep.llmModel = resolvedModel(settings)
@@ -362,20 +218,8 @@ final class PipelineSettingsSync {
 
   // MARK: - Ollama eviction on swap (#295)
 
-  /// Reconcile `lastEvictableOllamaModel` with the current effective state
-  /// and fire a best-effort unload if the tracked previous model differs
-  /// from the new one (including new = nil when the user leaves Ollama).
-  ///
-  /// Using an internal tracker — not a polishStep snapshot — avoids the
-  /// SettingsManager cascading-didSet trap where
-  /// `settings.llmProvider = .appleIntelligence` synchronously writes
-  /// `settings.llmModel = "apple-intelligence"` before the provider change
-  /// notification fires, which would otherwise corrupt a pre-snapshot and
-  /// lead to an eviction attempt on "apple-intelligence" (#295 UAT bug).
-  ///
-  /// The tracker is also the coalesce guard for the cascading
-  /// `.llmModel` → `.ollamaModel` fire: after the first case reconciles,
-  /// the second sees `pre == new` and skips.
+  /// Fires best-effort unload when the tracked previous Ollama model differs
+  /// from the new one. Also coalesces cascading .llmModel → .ollamaModel fires.
   private func reconcileOllamaEviction(settings: SettingsManager) {
     let new = OllamaConnector.effectiveOllamaModel(
       provider: settings.llmProvider, model: resolvedModel(settings)

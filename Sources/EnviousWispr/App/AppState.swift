@@ -456,21 +456,15 @@ final class AppState {
 
       if isWhisperKit {
         guard !self.whisperKitPipeline.state.isActive else { return }
-        self.whisperKitPipeline.autoPasteToActiveApp = true
-        self.whisperKitPipeline.autoCopyToClipboard = self.settings.autoCopyToClipboard
       } else {
         guard !self.pipelineState.isActive else { return }
-        self.pipeline.autoPasteToActiveApp = true
-        self.pipeline.autoCopyToClipboard = self.settings.autoCopyToClipboard
       }
 
+      // Refresh AX status so `makeDictationSessionConfig` sees the right
+      // paste capability. The session snapshot is captured fresh at
+      // `.toggleRecording` dispatch below.
       self.permissions.refreshAccessibilityStatus()
       if !self.permissions.hasAccessibilityPermission {
-        if isWhisperKit {
-          self.whisperKitPipeline.autoPasteToActiveApp = false
-        } else {
-          self.pipeline.autoPasteToActiveApp = false
-        }
         self.permissions.restartMonitoringIfNeeded()
       }
 
@@ -538,26 +532,11 @@ final class AppState {
           level: .info, category: "Pipeline"
         )
       }
-
-      if isWhisperKit {
-        if case .error = self.whisperKitPipeline.state {
-          self.whisperKitPipeline.autoPasteToActiveApp = false
-        }
-      } else {
-        if case .error = self.pipeline.state {
-          self.pipeline.autoPasteToActiveApp = false
-        }
-      }
     }
     hotkeyService.onStopRecording = { [weak self] in
       guard let self else { return }
       self.isRecordingLocked = false
       try? await self.activePipeline.handle(event: .requestStop)
-      if self.asrManager.activeBackendType == .whisperKit {
-        self.whisperKitPipeline.autoPasteToActiveApp = false
-      } else {
-        self.pipeline.autoPasteToActiveApp = false
-      }
     }
 
     hotkeyService.onCancelRecording = { [weak self] in
@@ -799,29 +778,13 @@ final class AppState {
   func toggleRecording() async {
     postCompletionWarningTask?.cancel()
     let active = activePipeline
-    // Set auto-paste before toggle
-    if active is WhisperKitPipeline {
-      switch whisperKitPipeline.state {
-      case .idle, .ready, .complete, .error:
-        whisperKitPipeline.autoPasteToActiveApp = true
-        permissions.refreshAccessibilityStatus()
-        if !permissions.hasAccessibilityPermission {
-          whisperKitPipeline.autoPasteToActiveApp = false
-          permissions.restartMonitoringIfNeeded()
-        }
-      default: break
-      }
-    } else {
-      switch pipeline.state {
-      case .idle, .complete, .error:
-        pipeline.autoPasteToActiveApp = true
-        permissions.refreshAccessibilityStatus()
-        if !permissions.hasAccessibilityPermission {
-          pipeline.autoPasteToActiveApp = false
-          permissions.restartMonitoringIfNeeded()
-        }
-      default: break
-      }
+
+    // Refresh AX status before snapshotting — `makeDictationSessionConfig`
+    // derives `autoPasteToActiveApp` from the active pipeline's idle state
+    // plus the current AX permission.
+    permissions.refreshAccessibilityStatus()
+    if !permissions.hasAccessibilityPermission {
+      permissions.restartMonitoringIfNeeded()
     }
 
     // Fire dictation.invoked telemetry when starting (not stopping).
@@ -847,31 +810,28 @@ final class AppState {
     }
 
     try? await active.handle(event: .toggleRecording(makeDictationSessionConfig()))
-
-    // Clear auto-paste on completion/error
-    if active is WhisperKitPipeline {
-      if case .complete = whisperKitPipeline.state {
-        whisperKitPipeline.autoPasteToActiveApp = false
-      }
-      if case .error = whisperKitPipeline.state { whisperKitPipeline.autoPasteToActiveApp = false }
-    } else {
-      if pipeline.state == .complete { pipeline.autoPasteToActiveApp = false }
-      if case .error = pipeline.state { pipeline.autoPasteToActiveApp = false }
-    }
   }
 
   /// Build the per-recording `DictationSessionConfig` snapshot. Captures the
-  /// current `SettingsManager` state plus the input-mode-derived paste intent
-  /// which AppState sets on the active pipeline immediately before dispatching
-  /// `.toggleRecording`. Phase B commit 1: snapshot is captured and threaded
-  /// through the event but pipelines still read from their public properties;
-  /// behavior unchanged. Commit 2 flips pipelines to read from the snapshot.
+  /// current `SettingsManager` state plus the input-mode-derived paste intent.
+  /// Called at `.toggleRecording` dispatch; the recording's pipeline freezes
+  /// the snapshot for its lifetime via `startRecording(config:)`.
   private func makeDictationSessionConfig() -> DictationSessionConfig {
     let isWhisperKit = asrManager.activeBackendType == .whisperKit
-    let autoPaste =
-      isWhisperKit
-      ? whisperKitPipeline.autoPasteToActiveApp
-      : pipeline.autoPasteToActiveApp
+    let activePipelineIdle: Bool = {
+      if isWhisperKit {
+        switch whisperKitPipeline.state {
+        case .idle, .ready, .complete, .error: return true
+        default: return false
+        }
+      } else {
+        switch pipeline.state {
+        case .idle, .complete, .error: return true
+        default: return false
+        }
+      }
+    }()
+    let autoPaste = activePipelineIdle && permissions.hasAccessibilityPermission
     let resolvedModel: String = {
       switch settings.llmProvider {
       case .appleIntelligence: return "apple-intelligence"
@@ -912,11 +872,9 @@ final class AppState {
       guard wkState == .recording || wkState == .loadingModel || wkState == .startingUp else {
         return
       }
-      whisperKitPipeline.autoPasteToActiveApp = false
       try? await whisperKitPipeline.handle(event: .cancelRecording)
     } else {
       guard pipelineState == .recording || pipelineState == .loadingModel else { return }
-      pipeline.autoPasteToActiveApp = false
       await pipeline.cancelRecording()
     }
   }

@@ -65,39 +65,33 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
   }
   public var onStateChange: ((WhisperKitPipelineState) -> Void)?
   public private(set) var currentTranscript: Transcript?
-  public var autoCopyToClipboard: Bool = true
-  public var autoPasteToActiveApp: Bool = false
-  public var restoreClipboardAfterPaste: Bool = false
-  public var transcriptionOptions: TranscriptionOptions = .default
   public var lastPolishError: String?
-  public var modelUnloadPolicy: ModelUnloadPolicy = .never
 
   /// Per-recording session config snapshot. Captured at `startRecording`; immutable
   /// for the duration of the recording. Settings mutated mid-recording apply to the
   /// NEXT recording. `nil` when no recording is in flight.
   public private(set) var currentSessionConfig: DictationSessionConfig?
 
-  // Multilingual v1 (W2): language mode + detector. Captured lazily at
-  // detection time so a user toggling Auto->Locked mid-recording is respected.
-  public var languageMode: LanguageMode = .auto {
-    didSet {
-      // Mid-recording changes to the language mode invalidate the
-      // incremental worker, which snapshots the decode language at its
-      // init. Rather than try to re-decode the worker's buffers with the
-      // new language, we drop the worker entirely so finalize falls back
-      // to batch decode with the post-change language.
-      if oldValue != languageMode, let worker = incrementalWorker {
-        incrementalWorker = nil
-        Task { await worker.cancel() }
-        Task {
-          await AppLogger.shared.log(
-            "Language mode changed mid-recording, incremental worker invalidated",
-            level: .info, category: "WhisperKitPipeline"
-          )
-        }
-      }
-    }
+  // MARK: - Session-scoped accessors (backed by `currentSessionConfig`)
+
+  private var autoCopyToClipboard: Bool { currentSessionConfig?.autoCopyToClipboard ?? true }
+  private var autoPasteToActiveApp: Bool { currentSessionConfig?.autoPasteToActiveApp ?? false }
+  private var restoreClipboardAfterPaste: Bool {
+    currentSessionConfig?.restoreClipboardAfterPaste ?? false
   }
+  private var modelUnloadPolicy: ModelUnloadPolicy {
+    currentSessionConfig?.modelUnloadPolicy ?? .never
+  }
+  /// Frozen language mode for the active recording. Mid-record Auto/Locked
+  /// toggles no longer reach the in-flight session — intentional behavior
+  /// change documented in `DictationSessionConfig` and the #195 plan.
+  private var languageMode: LanguageMode { currentSessionConfig?.languageMode ?? .auto }
+
+  /// Decode-time options. Mutable within a recording because LID results can
+  /// overwrite `.language`. Re-derived from `config.languageMode` at each
+  /// `startRecording`.
+  private var transcriptionOptions: TranscriptionOptions = .default
+
   private let languageDetector: LanguageDetector
   /// Last detection result, exposed for telemetry and UI (passive chip).
   public private(set) var lastLanguageDetection: LanguageDetectionResult?
@@ -130,11 +124,11 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
   /// Whether audio input has been pre-warmed by PTT key-down.
   private var isPreWarmed = false
 
-  // VAD properties
-  public var vadAutoStop: Bool = false
-  public var vadSilenceTimeout: Double = 1.5
-  public var vadSensitivity: Float = 0.5
-  public var vadEnergyGate: Bool = false
+  // VAD properties — frozen per recording in `currentSessionConfig`.
+  private var vadAutoStop: Bool { currentSessionConfig?.vadAutoStop ?? false }
+  private var vadSilenceTimeout: Double { currentSessionConfig?.vadSilenceTimeout ?? 1.5 }
+  private var vadSensitivity: Float { currentSessionConfig?.vadSensitivity ?? 0.5 }
+  private var vadEnergyGate: Bool { currentSessionConfig?.vadEnergyGate ?? false }
 
   private var silenceDetector: SilenceDetector?
   private var vadMonitorTask: Task<Void, Never>?
@@ -451,6 +445,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
 
   public func startRecording(config: DictationSessionConfig) async {
     currentSessionConfig = config
+    applySessionConfig(config)
     // Issue #289: new attempt takes ownership — invalidate any pending stall
     // recovery token so an in-flight cleanup cannot tear down this session.
     pendingStallRecoveryToken = nil
@@ -1329,6 +1324,25 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
         await self?.backend.unload()
       }
     }
+  }
+
+  /// Fan out frozen config values to substeps and derive decode options.
+  /// See `TranscriptionPipeline.applySessionConfig` for rationale.
+  private func applySessionConfig(_ config: DictationSessionConfig) {
+    llmPolishStep.llmProvider = config.llmProvider
+    llmPolishStep.llmModel = config.llmModel
+    llmPolishStep.polishInstructions = config.polishInstructions
+    llmPolishStep.styleConfig = config.styleConfig
+    llmPolishStep.useExtendedThinking = config.useExtendedThinking
+
+    var opts = TranscriptionOptions()
+    switch config.languageMode {
+    case .auto:
+      opts.language = nil
+    case .locked(let code):
+      opts.language = code
+    }
+    transcriptionOptions = opts
   }
 
 }
