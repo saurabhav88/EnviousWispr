@@ -39,6 +39,49 @@ final class AppState {
   let pipeline: TranscriptionPipeline
   let whisperKitPipeline: WhisperKitPipeline
 
+  // Phase A (#196) — per-pipeline state-change behavior absorbed from the
+  // onStateChange closures. Each handler owns the effect execution; AppState
+  // still owns the cross-pipeline warning Task + tiebreaker + hotkey ordering.
+  // Lazy so the callback closures can capture `self` after stored-property
+  // assignment completes. First access is inside `onStateChange`, well after
+  // `init()` returns.
+  @ObservationIgnored
+  private lazy var parakeetStateHandler: PipelineStateChangeHandler = {
+    makeStateChangeHandler(backendLabel: "parakeet")
+  }()
+  @ObservationIgnored
+  private lazy var whisperKitStateHandler: PipelineStateChangeHandler = {
+    makeStateChangeHandler(backendLabel: "whisperKit")
+  }()
+
+  private func makeStateChangeHandler(backendLabel: String) -> PipelineStateChangeHandler {
+    PipelineStateChangeHandler(
+      showOverlay: { [weak self] intent in
+        guard let self else { return }
+        self.recordingOverlay.show(
+          intent: intent,
+          audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 },
+          isRecordingLocked: self.isRecordingLocked
+        )
+      },
+      cancelPendingWarning: { [weak self] in self?.postCompletionWarningTask?.cancel() },
+      schedulePolishFailedWarning: { [weak self] in
+        self?.schedulePostCompletionWarning(message: "Polish failed -- using raw text")
+      },
+      reloadTranscriptHistory: { [weak self] in self?.transcriptCoordinator.load() },
+      reportDictationCompleted: { [weak self] t in
+        guard let self else { return }
+        TelemetryService.shared.reportDictationCompleted(
+          transcript: t, inputMode: self.settings.recordingMode.rawValue)
+      },
+      reportPipelineFailed: { msg in
+        TelemetryService.shared.pipelineFailed(
+          stage: "transcription", errorCategory: "pipeline_error", errorCode: msg,
+          recoverable: false, backend: backendLabel)
+      }
+    )
+  }
+
   /// Standalone service for re-polishing saved transcripts from the detail view.
   /// Completely decoupled from pipeline state machines.
   let polishService: TranscriptPolishService
@@ -342,8 +385,8 @@ final class AppState {
 
     // Wire pipeline state changes to overlay and icon.
     // The behavioral contract (overlay resolution, warning scheduling /
-    // cancellation, telemetry, history reload) is derived by
-    // PipelineStateChangePlanner. The closure still owns AppState-local
+    // cancellation, telemetry, history reload) is owned by the per-pipeline
+    // PipelineStateChangeHandler. The closure still owns AppState-local
     // concerns: external observer fan-out, hotkey register/unregister,
     // isRecordingLocked reset, and the inactive→active tiebreaker (#285).
     pipeline.onStateChange = { [weak self] newState in
@@ -361,15 +404,12 @@ final class AppState {
         self.lastCapturingBackend = .parakeet
       }
       self.prevParakeetActive = nowActive
-      let plan = PipelineStateChangePlanner.plan(
+      self.parakeetStateHandler.handle(
         to: newState,
         pipelineOverlayIntent: self.pipeline.overlayIntent,
-        isClipboardFallback: self.pipeline.currentTranscript?.metrics?.pasteTier
-          == "clipboard_only",
         lastPolishError: self.pipeline.lastPolishError,
-        hasCurrentTranscript: self.pipeline.currentTranscript != nil
+        currentTranscript: self.pipeline.currentTranscript
       )
-      self.executePlan(plan, transcript: self.pipeline.currentTranscript, backend: "parakeet")
     }
 
     // Wire WhisperKit pipeline state changes to overlay and icon.
@@ -388,16 +428,12 @@ final class AppState {
         self.lastCapturingBackend = .whisperKit
       }
       self.prevWhisperKitActive = nowActive
-      let plan = PipelineStateChangePlanner.plan(
+      self.whisperKitStateHandler.handle(
         to: newState,
         pipelineOverlayIntent: self.whisperKitPipeline.overlayIntent,
-        isClipboardFallback: self.whisperKitPipeline.currentTranscript?.metrics?.pasteTier
-          == "clipboard_only",
         lastPolishError: self.whisperKitPipeline.lastPolishError,
-        hasCurrentTranscript: self.whisperKitPipeline.currentTranscript != nil
+        currentTranscript: self.whisperKitPipeline.currentTranscript
       )
-      self.executePlan(
-        plan, transcript: self.whisperKitPipeline.currentTranscript, backend: "whisperKit")
     }
 
     // Wire hotkey callbacks
@@ -692,40 +728,6 @@ final class AppState {
     case nil:
       // Idle → attribute to the backend that most recently owned a session.
       return lastCapturingBackend == .whisperKit ? whisperKitPipeline : pipeline
-    }
-  }
-
-  /// Execute a state-change plan derived by PipelineStateChangePlanner.
-  /// Owns the concrete side effects (overlay panel, warning Task, telemetry
-  /// service, transcript coordinator). Inlined into AppState for commit 1;
-  /// commit 2 absorbs this into the extracted PipelineStateChangeHandler.
-  private func executePlan(
-    _ plan: PipelineStateChangePlan, transcript: Transcript?, backend: String
-  ) {
-    for effect in plan.effects {
-      switch effect {
-      case .cancelPendingWarning:
-        postCompletionWarningTask?.cancel()
-      case .schedulePolishFailedWarning:
-        schedulePostCompletionWarning(message: "Polish failed -- using raw text")
-      case .showOverlay(let intent):
-        recordingOverlay.show(
-          intent: intent,
-          audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 },
-          isRecordingLocked: isRecordingLocked
-        )
-      case .reloadTranscriptHistory:
-        transcriptCoordinator.load()
-      case .reportDictationCompleted:
-        if let t = transcript {
-          TelemetryService.shared.reportDictationCompleted(
-            transcript: t, inputMode: settings.recordingMode.rawValue)
-        }
-      case .reportPipelineFailed(let msg):
-        TelemetryService.shared.pipelineFailed(
-          stage: "transcription", errorCategory: "pipeline_error", errorCode: msg,
-          recoverable: false, backend: backend)
-      }
     }
   }
 

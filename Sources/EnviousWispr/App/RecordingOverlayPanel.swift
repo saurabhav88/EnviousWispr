@@ -15,31 +15,13 @@ final class OverlayLockState {
   var isLocked: Bool = false
 }
 
-// MARK: - RecordingOverlayPanelProtocol
-
-/// Narrow seam covering only the single method state-change closures call.
-///
-/// `updateLockState`, `hide`, and the legacy `show(audioLevelProvider:)`
-/// overload are used by OTHER AppState paths, not by the state-change
-/// closures — do NOT widen this protocol; the bible (§7.3) explicitly scopes
-/// it to the intent-driven entry point. Tests inject a spy conforming to
-/// this to observe the resolved overlay intent.
-@MainActor
-protocol RecordingOverlayPanelProtocol: AnyObject {
-  func show(
-    intent: OverlayIntent,
-    audioLevelProvider: @escaping () -> Float,
-    isRecordingLocked: Bool
-  )
-}
-
 // MARK: - RecordingOverlayPanel
 
 /// Floating overlay panel that shows recording and polishing status.
 /// Uses NSPanel with .nonactivatingPanel behavior so it floats above all apps
 /// without stealing focus.
 @MainActor
-final class RecordingOverlayPanel: RecordingOverlayPanelProtocol {
+final class RecordingOverlayPanel {
   private var panel: NSPanel?
 
   /// Reactive lock state shared with RecordingOverlayView.
