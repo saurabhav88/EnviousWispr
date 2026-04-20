@@ -722,13 +722,13 @@ That is 19 rows (14 original + 5 Phase G sub-phases imported from epic #385 on 2
 
 ### 7.1 Why this phase exists
 
-Both `TranscriptionPipeline` and `WhisperKitPipeline` emit state changes into AppState's `onStateChange` closures (L221-L314 per the original plan). Both closures do the same work: hotkey register/unregister, overlay intent mapping, post-completion warning triggers, telemetry emission, transcript reload. The code is near-identical. Diff is trivial. The duplication is the tell — this is cohesive logic that wants to live in one type.
+Both `TranscriptionPipeline` and `WhisperKitPipeline` emit state changes into AppState's `onStateChange` closures (Parakeet L344-L406, WhisperKit L409-L463 — verified 2026-04-20 against `origin/main` @ `8c5a5f3`). Both closures do the same work: hotkey register/unregister, overlay intent mapping (with three-way post-completion priority), post-completion warning scheduling AND cancellation, telemetry emission, transcript reload. The code is near-identical. Diff is trivial. The duplication is the tell — this is cohesive logic that wants to live in one type.
 
 ### 7.2 Design summary
 
-**Adversarial-verified state enum shapes (2026-04-18):**
-- `TranscriptionPipeline.State` (Parakeet) — seven cases: `.idle`, `.loadingModel`, `.recording`, `.transcribing`, `.polishing`, `.complete`, `.error(String)`.
-- `WhisperKitPipelineState` (`Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:12`) — nine cases: `.idle`, `.ready`, `.startingUp`, `.loadingModel`, `.recording`, `.transcribing`, `.polishing`, `.complete`, `.error(String)`.
+**Adversarial-verified state enum shapes (2026-04-18, re-verified 2026-04-20):**
+- `PipelineState` (Parakeet — defined in `Sources/EnviousWisprCore/AppSettings.swift:17`, NOT nested under `TranscriptionPipeline`) — seven cases: `.idle`, `.loadingModel`, `.recording`, `.transcribing`, `.polishing`, `.complete`, `.error(String)`.
+- `WhisperKitPipelineState` (`Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:12`) — nine cases: `.idle`, `.startingUp`, `.loadingModel`, `.ready`, `.recording`, `.transcribing`, `.polishing`, `.complete`, `.error(String)`.
 
 The two states share seven of the enum cases and diverge on `.ready` / `.startingUp` (WhisperKit-only, used while the model is being loaded but before recording becomes available). The "shared" handler cannot blindly accept `any PipelineStateProtocol`; it must either:
 
@@ -766,23 +766,26 @@ New `PipelineStateChangeHandler` implementation:
 
 ```swift
 // Sources/EnviousWispr/App/PipelineStateChangeHandler.swift
-// Adversarial-verified 2026-04-18 (Codex plan review + Codex A-review):
-// - overlay UI owner is RecordingOverlayPanel (type OverlayManager does not exist).
+// Adversarial-verified 2026-04-18 + re-verified 2026-04-20 (Codex plan review + Codex A-review + v1.16 Gate 0 sweep):
+// - Overlay UI owner is RecordingOverlayPanel (type OverlayManager does not exist).
 // - Real API is recordingOverlay.show(intent:audioLevelProvider:isRecordingLocked:).
+// - The intent value type is OverlayIntent (NOT RecordingOverlayIntent). Defined in
+//   Sources/EnviousWisprUI/ (.hidden / .recording(audioLevel:) / .processing(label:) /
+//   .warning(message:) / .clipboardFallback). Pipeline.overlayIntent returns this type.
 // - Telemetry facade is TelemetryService.shared (Sources/EnviousWisprServices/TelemetryService.swift:8).
-// - Codex A-review correction: backend injected at INIT (one per handler instance), not per-call.
-//   reportDictationCompleted derives backend from Transcript.backendType (:15), so the only
-//   backend-requiring call is pipelineFailed which today passes literals from AppState.
+// - Backend injected at INIT (one per handler instance), not per-call. reportDictationCompleted
+//   derives backend from Transcript.backendType; the only backend-requiring call is pipelineFailed.
 @MainActor
 internal final class PipelineStateChangeHandler {
   private let backend: ASRBackendType       // injected at construction
-  private let overlay: RecordingOverlayPanel
+  private let overlay: RecordingOverlayPanelProtocol
   private let audioLevelProvider: @MainActor () -> Float
   private let isRecordingLockedProvider: @MainActor () -> Bool
   private let onTranscriptCompleted: @MainActor (Transcript) -> Void  // Phase C wires this to coordinator.append(_:)
+  private var postCompletionWarningTask: Task<Void, Never>?
 
   init(backend: ASRBackendType,
-       overlay: RecordingOverlayPanel,
+       overlay: RecordingOverlayPanelProtocol,
        audioLevelProvider: @escaping @MainActor () -> Float,
        isRecordingLockedProvider: @escaping @MainActor () -> Bool,
        onTranscriptCompleted: @escaping @MainActor (Transcript) -> Void) { ... }
@@ -791,39 +794,68 @@ internal final class PipelineStateChangeHandler {
   // Handler takes the pre-computed intent rather than deriving from coarse activity —
   // preserves "Starting..." vs "Loading model..." (WhisperKitPipeline.swift:307-313),
   // "Transcribing..." vs "Polishing..." (both pipelines' overlay logic).
+  //
+  // `isClipboardFallback` is a FIRST-CLASS input because the current production code
+  // (AppState.swift:370-388 / :429-445) applies a THREE-WAY priority on .complete:
+  //   1. clipboardFallback wins → show .clipboardFallback intent
+  //   2. else polish-failed → use pipeline.overlayIntent, then schedule .warning after 400ms
+  //   3. else → use pipeline.overlayIntent (success)
+  // Collapsing this into just "warning when lastPolishError != nil" would silently drop
+  // the clipboard-only notification users rely on for paste-failure feedback.
   func handle<State: PipelineStateProtocol>(
     from: State, to: State,
-    overlayIntent: RecordingOverlayIntent,   // pipeline's pre-computed label
+    overlayIntent: OverlayIntent,             // pipeline's pre-computed label
+    isClipboardFallback: Bool,                // from transcript.metrics.pasteTier == "clipboard_only"
     lastPolishError: String?,
     latestTranscript: Transcript?
   ) {
-    // 1. overlay.show(intent: overlayIntent, audioLevelProvider: ..., isRecordingLocked: isRecordingLockedProvider())
-    //    The CALLER computed the intent using the pipeline's own state→label mapping.
-    //    Handler does not derive labels from to.activity.
-    // 2. Post-completion warning scheduled when to.activity == .complete && lastPolishError != nil.
-    // 3. Telemetry: TelemetryService.shared.reportDictationCompleted(transcript:inputMode:) when to.activity == .complete.
+    // 1. overlay.show(intent: resolvedIntent, audioLevelProvider: ..., isRecordingLocked: isRecordingLockedProvider())
+    //    where resolvedIntent is:
+    //      - to.activity == .complete && isClipboardFallback  → .clipboardFallback
+    //      - to.activity == .complete && lastPolishError != nil → overlayIntent (unchanged),
+    //        then schedulePostCompletionWarning(message: "Polish failed -- using raw text")
+    //      - to.activity == .complete                         → overlayIntent (success path)
+    //      - to.activity != .complete                         → overlayIntent AND cancel
+    //        any pending postCompletionWarningTask (the previous completion's warning is
+    //        superseded by the new state transition; AppState today does this at :386 / :443)
+    // 2. Telemetry: TelemetryService.shared.reportDictationCompleted(transcript:inputMode:) when to.activity == .complete.
     //    Backend already on Transcript.backendType; no `backend` parameter needed for this call.
-    // 4. Telemetry: TelemetryService.shared.pipelineFailed(...) when errorReason != nil.
+    // 3. Telemetry: TelemetryService.shared.pipelineFailed(...) when errorReason != nil.
     //    Uses self.backend from init. Single source of truth; not per-call.
-    // 5. When to.activity == .complete && latestTranscript != nil: call onTranscriptCompleted(latestTranscript).
+    // 4. When to.activity == .complete && latestTranscript != nil: call onTranscriptCompleted(latestTranscript).
     //    Phase C wires this closure to TranscriptCoordinator.append(_:). Handler does not know about TranscriptCoordinator.
     //    IMPORTANT: TranscriptFinalizer has already persisted the transcript by the time .complete fires.
     //    append() is in-memory-only. Do NOT call store.save here — that would double-persist.
   }
+
+  // Owned by handler because warning cancellation is tied to the overlay-priority
+  // logic above. Moving it out fragments the "completion → warning scheduling"
+  // lifecycle across two owners.
+  private func schedulePostCompletionWarning(message: String) { ... }
 }
 ```
 
-**Hotkey code stays inline in AppState (Carbon sensitive). NOT just Carbon.** Codex A-review correction: the current inline block at `AppState.swift:344-405` / `:409-465` includes `isRecordingLocked = false` at `:352` and `:417` — that's session/UI state reset, not Carbon hotkey work. If extraction leaves that reset AFTER the handler call, the ordering changes. Fix: keep both the hotkey register/unregister AND the `isRecordingLocked = false` reset inline in AppState BEFORE calling the handler. Document them as two separate concerns that happen to sit in the same block today.
+**Not moved into the handler (stays inline in AppState):**
+- `self.onPipelineStateChange?(newState)` fan-out at `AppState.swift:346` (Parakeet) / `:411` (WhisperKit). The WhisperKit closure fans out `self.pipelineState` (unified Parakeet-shaped projection), not the raw WhisperKit enum. This is cross-backend projection glue that belongs in AppState, not in a per-backend handler.
+- Inactive→active tiebreaker (owns `lastCapturingBackend` / `prevParakeetActive` / `prevWhisperKitActive` — cross-pipeline state).
+- Hotkey register/unregister + `isRecordingLocked = false` reset (see next paragraph).
 
-**Tiebreaker stays in AppState, not handler (Codex A-review correction).** The `newState.isActive` inactive→active tiebreaker at `AppState.swift:360-366` and `:423` (per PR #285 comment) owns cross-pipeline state: `lastCapturingBackend`, `prevParakeetActive`, `prevWhisperKitActive`. Moving it into the handler would force the handler to become stateful about cross-pipeline coordination. Keep in AppState; handler receives its outputs (if any) as parameters.
+**Hotkey code stays inline in AppState (Carbon sensitive). NOT just Carbon.** Codex A-review correction: the current inline block at `AppState.swift:344-406` (Parakeet) / `:409-463` (WhisperKit) includes `isRecordingLocked = false` at `:352` and `:417` — that's session/UI state reset, not Carbon hotkey work. If extraction leaves that reset AFTER the handler call, the ordering changes. Fix: keep both the hotkey register/unregister AND the `isRecordingLocked = false` reset inline in AppState BEFORE calling the handler. Document them as two separate concerns that happen to sit in the same block today.
+
+**Tiebreaker stays in AppState, not handler (Codex A-review correction).** The `newState.isActive` inactive→active tiebreaker at `AppState.swift:360-364` (Parakeet) and `:423-427` (WhisperKit, per PR #285 comment) owns cross-pipeline state: `lastCapturingBackend`, `prevParakeetActive`, `prevWhisperKitActive`. Moving it into the handler would force the handler to become stateful about cross-pipeline coordination. Keep in AppState; handler receives its outputs (if any) as parameters.
 
 ### 7.3 Substeps (ordered)
 
 1. **Write characterization tests (Feathers).** Concrete mechanism. Verified 2026-04-18: no existing test-seam precedent for `TelemetryService.shared` or `RecordingOverlayPanel.show(intent:)` in `Tests/`. This substep designs the seam; nothing to port.
    - **Overlay intent capture:** `RecordingOverlayPanel` is a concrete `final class`. For testability, extract an internal `RecordingOverlayPanelProtocol` (new) with `show(intent:audioLevelProvider:isRecordingLocked:)`. Concrete panel conforms. Codex A-review 2026-04-18 scope check: the handler only needs `show(...)`. `updateLockState` (`:419`) and `hide` (elsewhere) are used by OTHER AppState paths (`:609`, `:894`), NOT by the extracted shared closure body — do NOT widen the protocol. Test injects a `RecordingOverlayPanelSpy` that records `show(intent:...)` calls into an array. Transition state, assert the captured intent sequence.
    - **Required specific label assertions (Codex A-review finding):** overlay labels must be pinned individually because `PipelineActivity` coarse-grains them. Assert "Starting..." emitted for WhisperKit `.startingUp`, "Loading model..." for `.loadingModel`, "Transcribing..." for `.transcribing`, "Polishing..." for `.polishing`, and correct post-polish-error label when `lastPolishError != nil`.
-   - **Required WhisperKit `.ready`-as-completion-equivalent assertion (Codex A-review finding at `AppState.swift:766`):** the delayed-warning path treats `.ready` as completion-equivalent for warning scheduling. Test must cover this.
-   - **Required inactive→active tiebreaker test (Codex A-review finding, PR #285, `AppState.swift:360, :423`):** capture `lastCapturingBackend` before and after `newState.isActive` transition; assert tiebreaker sets it only on inactive→active, not active→active.
+   - **Required WhisperKit `.ready`-as-completion-equivalent assertion (Codex A-review finding, current ref `AppState.swift:768`):** the delayed-warning path at `schedulePostCompletionWarning` treats `whisperKitPipeline.state == .ready` as completion-equivalent for warning scheduling (`parakeetComplete || whisperKitComplete` where `whisperKitComplete = .complete || .ready`). Test must cover this.
+   - **Required three-way overlay-priority assertions (Gate 0 sweep 2026-04-20):** pin each branch at `.complete`:
+     - `pasteTier == "clipboard_only"` AND `lastPolishError != nil` → `.clipboardFallback` wins, NO warning scheduled.
+     - `pasteTier != "clipboard_only"` AND `lastPolishError != nil` → `pipeline.overlayIntent` shown, `.warning("Polish failed -- using raw text")` fires after 400ms.
+     - success path → `pipeline.overlayIntent` shown, no warning scheduled.
+     Plus: on any non-complete transition, any in-flight warning task is cancelled (`AppState.swift:386, :443`).
+   - **Required inactive→active tiebreaker test (Codex A-review finding, PR #285, `AppState.swift:360-364, :423-427`):** capture `lastCapturingBackend` before and after `newState.isActive` transition; assert tiebreaker sets it only on inactive→active, not active→active.
    - **Telemetry capture:** `TelemetryService` is `public final class TelemetryService` with a `.shared` singleton at `Sources/EnviousWisprServices/TelemetryService.swift:8`. Add a test-only hook as the seam. Adversarial-verified 2026-04-18: `[String: Any]` is NOT Swift 6 `Sendable` — the naive hook signature will not compile. Use a concrete Sendable payload type:
      ```swift
      // TelemetryService.swift (add)
@@ -2886,6 +2918,20 @@ Only then does Phase B work start. Missing the decision capture in any of the th
 ---
 
 ## 30. Changelog
+
+- **2026-04-20 v1.16 · Phase A Gate 0 sweep before kickoff** — Gate 0 citation audit against `origin/main` @ `8c5a5f3`. Two material design gaps and four naming/line-range drifts corrected in §7 before code work begins. No change to any other phase.
+
+  **Material (design gap):**
+  - **Three-way post-completion overlay priority documented.** Current production code (`AppState.swift:370-388` Parakeet, `:429-445` WhisperKit) applies `clipboardFallback > polishFailed-warning > success` priority on `.complete`. v1.15 handler design only described the polish-warning path. Handler signature now takes `isClipboardFallback: Bool` as a first-class input; handle() body enumerates all three branches.
+  - **`postCompletionWarningTask` cancellation is a handler responsibility.** Current closures cancel the pending warning task on any non-complete transition (`AppState.swift:386, :443`); omitted from the v1.15 design. Handler now owns the `Task<Void, Never>?` and the cancellation invariant.
+
+  **Naming / line drift:**
+  - Intent value type is `OverlayIntent` (NOT `RecordingOverlayIntent`).
+  - Parakeet state enum is `PipelineState` defined in `Sources/EnviousWisprCore/AppSettings.swift:17` (NOT nested `TranscriptionPipeline.State`).
+  - §7.1 legacy "L221-L314" line range replaced with verified Parakeet `:344-406` / WhisperKit `:409-463`.
+  - `.ready`-as-completion-equivalent ref moved from `:766` to actual `:768`; tiebreaker ranges refreshed to `:360-364` and `:423-427`.
+
+  **Not moved into handler (now explicit):** `self.onPipelineStateChange?` external observer fan-out at `:346 / :411` stays inline in AppState — WhisperKit variant projects through unified `self.pipelineState`, which is cross-backend glue that doesn't belong in a per-backend handler.
 
 - **2026-04-20 v1.15 · Phase G grounded-review fixes** — Codex grounded review (`docs/audits/2026-04-20-phase-g-grounded-review.txt`) returned NO on the v1.14 plans. Two structural traps and four drift items corrected:
 
