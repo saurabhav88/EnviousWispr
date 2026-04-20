@@ -109,6 +109,11 @@ scripts/*
 !scripts/release-preflight.sh
 !scripts/swift-test.sh
 !scripts/indexnow-submit.py
+# UAT scripts — required by workflow hooks in every worktree (validation-discipline.md § UAT modes)
+!scripts/attest.sh
+!scripts/clear-uat.sh
+!scripts/test-validation.sh
+!scripts/validation-status.sh
 # Polish eval harness — PUBLIC tracked files only (see .claude/knowledge/polish-eval.md for scope rules)
 !scripts/eval/
 scripts/eval/*
