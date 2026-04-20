@@ -30,6 +30,21 @@ public enum WhisperKitPipelineState: Equatable, Sendable {
   }
 }
 
+// MARK: - PipelineStateProtocol conformance
+
+extension WhisperKitPipelineState: PipelineStateProtocol {
+  public var activity: PipelineActivity {
+    switch self {
+    case .idle, .ready: return .idle
+    case .startingUp, .loadingModel: return .preparing
+    case .recording: return .recording
+    case .transcribing, .polishing: return .processing
+    case .complete: return .complete
+    case .error(let msg): return .error(msg)
+    }
+  }
+}
+
 /// Independent WhisperKit dictation pipeline — batch record → transcribe → polish → paste.
 ///
 /// Owns its own 8-state machine, shares only AudioCaptureManager and LLM infrastructure

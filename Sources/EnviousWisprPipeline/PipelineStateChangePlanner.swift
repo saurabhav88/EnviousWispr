@@ -1,0 +1,109 @@
+import EnviousWisprCore
+import Foundation
+
+/// Every side effect the state-change closure produces, as a value.
+///
+/// Executed in order by the caller. The caller owns stateful concerns
+/// (the warning `Task`, the concrete telemetry service, the overlay panel);
+/// the planner is a pure projection from inputs to this list.
+enum PipelineStateSideEffect: Equatable, Sendable {
+  /// Cancel any pending post-completion warning task. Emitted on every
+  /// non-complete transition — mirrors AppState.swift:386 / :443 behavior.
+  case cancelPendingWarning
+
+  /// Schedule the "Polish failed -- using raw text" warning 400 ms after
+  /// completion. Emitted ONLY on `.complete` when a polish error was recorded
+  /// AND the paste did not fall back to clipboard-only.
+  case schedulePolishFailedWarning
+
+  /// Render this intent on the overlay. Always emitted exactly once per call.
+  case showOverlay(OverlayIntent)
+
+  /// Trigger disk-backed transcript history reload. Emitted on every
+  /// `.complete` transition, regardless of whether the current transcript is
+  /// nil. (Phase C will replace this with an in-memory `append(_:)`.)
+  case reloadTranscriptHistory
+
+  /// Call `TelemetryService.shared.reportDictationCompleted(transcript:inputMode:)`
+  /// using the caller's current transcript. Emitted only when `.complete` AND
+  /// the pipeline has a current transcript — matches AppState's `if let t`.
+  case reportDictationCompleted
+
+  /// Call `TelemetryService.shared.pipelineFailed(...)` with the captured error
+  /// code. The caller supplies the fixed `stage` / `errorCategory` / `backend`
+  /// literals that today live in AppState's closures.
+  case reportPipelineFailed(errorCode: String)
+}
+
+struct PipelineStateChangePlan: Equatable, Sendable {
+  let effects: [PipelineStateSideEffect]
+}
+
+/// Pure projection from a state transition's observable inputs to the ordered
+/// list of side effects AppState's `onStateChange` closures must perform.
+///
+/// **What lives here:**
+/// - Three-way overlay priority on `.complete`
+///   (clipboardFallback > polish-failed-warning > success).
+/// - Warning-task cancellation on any non-complete transition.
+/// - Telemetry + history-reload emission for `.complete` / `.error`.
+///
+/// **What does NOT live here** (stays with the caller / future handler):
+/// - Stateful `Task` ownership for the delayed polish-failed warning.
+/// - The `.ready`-as-completion-equivalent guard inside the delayed warning
+///   closure (that guard fires at 400 ms, not at plan time).
+/// - Hotkey register/unregister, `isRecordingLocked = false` reset, the
+///   inactive→active tiebreaker, the `onPipelineStateChange?` fan-out.
+///   All four are AppState-only concerns that the bible (§7) keeps inline.
+///
+/// Kept `internal` to `EnviousWisprPipeline`: only the handler in this
+/// module calls `plan(...)`; tests reach it through `@testable import`.
+@MainActor
+enum PipelineStateChangePlanner {
+  static func plan(
+    to newState: any PipelineStateProtocol,
+    pipelineOverlayIntent: OverlayIntent,
+    isClipboardFallback: Bool,
+    lastPolishError: String?,
+    hasCurrentTranscript: Bool
+  ) -> PipelineStateChangePlan {
+    var effects: [PipelineStateSideEffect] = []
+
+    // Step 1 — overlay resolution + warning scheduling / cancellation.
+    // Order mirrors the production closures at AppState.swift:370-393 /
+    // :429-450: resolve intent, schedule warning iff applicable, then show.
+    let resolvedOverlayIntent: OverlayIntent
+    switch newState.activity {
+    case .complete:
+      if isClipboardFallback {
+        resolvedOverlayIntent = .clipboardFallback
+      } else if lastPolishError != nil {
+        resolvedOverlayIntent = pipelineOverlayIntent
+        effects.append(.schedulePolishFailedWarning)
+      } else {
+        resolvedOverlayIntent = pipelineOverlayIntent
+      }
+    default:
+      effects.append(.cancelPendingWarning)
+      resolvedOverlayIntent = pipelineOverlayIntent
+    }
+    effects.append(.showOverlay(resolvedOverlayIntent))
+
+    // Step 2 — complete-path telemetry and history reload.
+    // reloadTranscriptHistory fires even without a current transcript
+    // (matches AppState.swift:395 unconditional load).
+    if case .complete = newState.activity {
+      effects.append(.reloadTranscriptHistory)
+      if hasCurrentTranscript {
+        effects.append(.reportDictationCompleted)
+      }
+    }
+
+    // Step 3 — error-path telemetry.
+    if case .error(let msg) = newState.activity {
+      effects.append(.reportPipelineFailed(errorCode: msg))
+    }
+
+    return PipelineStateChangePlan(effects: effects)
+  }
+}
