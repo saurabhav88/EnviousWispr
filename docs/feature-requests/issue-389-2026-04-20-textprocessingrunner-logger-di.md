@@ -33,20 +33,22 @@ Found by Codex during 2026-04-19 audit (`docs/audits/2026-04-19-postasr-test-rew
 
 ## 3. Design
 
-New protocol in `EnviousWisprPipeline`:
+**Grounded-review correction (2026-04-20):** v1 plan referred to `LogLevel`. The actual project type is `DebugLogLevel`, declared at `Sources/EnviousWisprCore/DebugLogLevel.swift:3` and already `Sendable`. Protocol visibility recommended `internal` (not `public`) unless a cross-module consumer appears.
+
+Internal protocol in `EnviousWisprPipeline`:
 
 ```swift
-public protocol PipelineLogging: Sendable {
-  func log(_ message: String, level: LogLevel, category: String) async
+internal protocol PipelineLogging: Sendable {
+  func log(_ message: String, level: DebugLogLevel, category: String) async
 }
 ```
 
 Adapter making the existing `AppLogger.shared` conform:
 
 ```swift
-public struct AppLoggerAdapter: PipelineLogging {
-  public init() {}
-  public func log(_ message: String, level: LogLevel, category: String) async {
+internal struct AppLoggerAdapter: PipelineLogging {
+  init() {}
+  func log(_ message: String, level: DebugLogLevel, category: String) async {
     await AppLogger.shared.log(message, level: level, category: category)
   }
 }
@@ -72,10 +74,10 @@ Test-side recorder:
 
 ```swift
 final class RecordingPipelineLogger: PipelineLogging, @unchecked Sendable {
-  struct Entry: Equatable { let message: String; let level: LogLevel; let category: String }
+  struct Entry: Equatable { let message: String; let level: DebugLogLevel; let category: String }
   private let lock = NSLock()
   private var entries: [Entry] = []
-  func log(_ message: String, level: LogLevel, category: String) async {
+  func log(_ message: String, level: DebugLogLevel, category: String) async {
     lock.lock(); defer { lock.unlock() }
     entries.append(.init(message: message, level: level, category: category))
   }

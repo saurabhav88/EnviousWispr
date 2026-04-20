@@ -8,9 +8,11 @@ User Rubric: N/A — #319 Hardening and Refactors is internal-only.
 
 ## 0. TL;DR
 
-`TranscriptionPipeline.init(...)` constructs its own `TranscriptFinalizer`; the finalizer owns the only clean paste seam (`deliverPaste`) plus the real text-processing runner. Tests cannot drive the pipeline directly with a mock paste executor or alternate LLM step. HeartPathIntegrationTests (PR #391) worked around this with a local harness. Fix: accept `TranscriptFinalizer` through init with a default that reproduces current production wiring (Option A). SMALL/MEDIUM: ~60 LOC, one production file + tests.
+`TranscriptionPipeline.init(...)` at `Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:107-119` constructs its own `TranscriptFinalizer` inline. Tests cannot drive the pipeline directly with a mock finalizer. PR #391's HeartPathIntegrationTests worked around this with a local harness that bypassed the pipeline entirely. Fix: add an **internal / `@testable`-accessible** overload that accepts a pre-built `TranscriptFinalizer`; keep the current `public init(...)` production signature unchanged. SMALL: ~40 LOC, one production file + tests.
 
-**Precondition (council-added 2026-04-20): G4 (#396) must merge before G3 starts.** Grep-verified 2026-04-20 that `TranscriptFinalizer.swift:60-61` already has default-valued seams for `TextProcessingRunner` and `PasteCascadeExecutor`. Option A relies on being able to construct a `TranscriptFinalizer` with fake collaborators inside tests. The fake `TextProcessingRunner` exists today (runner is already mockable); the fake `PasteCascadeExecutor` does NOT exist until G4 ships. Without G4, Option A compiles but the resulting test cannot observe paste behavior — defeats the point. Fallback if G4 reveals deeper blockers: switch G3 to Option B (inject paste seam + runner directly as a dependency struct; no reliance on finalizer construction).
+**Revised 2026-04-20 after grounded review (NO sign-off).** The v1 plan proposed a `public init(finalizer: TranscriptFinalizer? = nil)` signature. That is an access-control trap: `TranscriptFinalizer` is `internal` at `TranscriptFinalizer.swift:53`, so exposing it as a parameter on a `public` init widens visibility unnecessarily and is exactly the Swift-6 compile concern Gemini raised in round 1. Corrected design: add a SEPARATE `internal` init overload for tests, leave the `public init(...)` alone.
+
+**Also corrected 2026-04-20:** v1 claimed G3 depends on G4 ("need fake `PasteCascadeExecutor` to mock finalizer"). FALSE — grep-verified `TranscriptFinalizer.swift:75-82` already exposes a closure-based seam init (`save:`, `textProcessingRunner:`, `deliverPaste:`), and `Tests/EnviousWisprTests/Pipeline/TranscriptFinalizerTests.swift:24` already uses it. Tests can construct a `TranscriptFinalizer` with fake closures today — no dependency on G4. G3 is independent.
 
 ## 1. Problem
 
@@ -36,42 +38,59 @@ Consequence: cancellation observability is indirect (the harness infers paste no
 - Unifying paste delivery across pipelines.
 - Introducing an `any TranscriptionPipelineDelegate` protocol in this PR. A default-valued struct is enough; a protocol can come later if another pipeline needs it.
 
-## 3. Design
+## 3. Design — revised 2026-04-20 after grounded review
 
-Two options; recommend Option A (smaller surface, same testability).
-
-**Option A (recommended): inject `TranscriptFinalizer`.**
+Add a second, **internal** init overload on `TranscriptionPipeline` that accepts a pre-built `TranscriptFinalizer`. Production callers use the existing `public init(...)` at `:107` unchanged. Tests use the internal overload via `@testable import EnviousWisprPipeline`.
 
 ```swift
 public final class TranscriptionPipeline: DictationPipeline {
-  private let finalizer: TranscriptFinalizer
+  private let transcriptFinalizer: TranscriptFinalizer
   // ... existing properties ...
 
+  // Existing production init — UNCHANGED.
   public init(
-    /* existing deps */,
-    finalizer: TranscriptFinalizer? = nil
+    /* existing deps including transcriptStore */
   ) {
     // ... existing setup ...
-    self.finalizer = finalizer ?? TranscriptFinalizer(/* current production args */)
+    self.transcriptFinalizer = TranscriptFinalizer(transcriptStore: transcriptStore)
+  }
+
+  // NEW internal init for tests. Same module visibility as TranscriptFinalizer.
+  // @testable import makes this reachable from Tests/EnviousWisprTests.
+  internal init(
+    /* same existing deps */,
+    transcriptFinalizer: TranscriptFinalizer
+  ) {
+    // ... same existing setup ...
+    self.transcriptFinalizer = transcriptFinalizer
   }
 }
 ```
 
-Default preserves production wiring. Tests pass a `TranscriptFinalizer` built from mock sub-collaborators.
-
-**Option B: inject the finalizer's two most-useful seams directly.**
+Tests construct the pipeline with a `TranscriptFinalizer` built from the existing closure seams (`save:`, `deliverPaste:` — grep-verified at `TranscriptFinalizer.swift:75-82`). Test code:
 
 ```swift
-public struct TranscriptionPipelineDependencies {
-  public let deliverPaste: @MainActor (String) async -> Void
-  public let textProcessingRunner: TextProcessingRunner
-  // default-initializer reproduces current production wiring
+@testable import EnviousWisprPipeline
+
+let recordingDeliverPaste: @MainActor (PasteDeliveryRequest) async -> PasteDeliveryResult = { req in
+  recorder.append(req.text)
+  return .success(/* whatever matches the real contract */)
 }
+
+let finalizer = TranscriptFinalizer(
+  save: { _ in /* no-op */ },
+  textProcessingRunner: TextProcessingRunner(),
+  deliverPaste: recordingDeliverPaste
+)
+
+let pipeline = TranscriptionPipeline(/* existing deps */, transcriptFinalizer: finalizer)
 ```
 
-Option B is narrower but introduces a new dependency-object type. Option A reuses the existing finalizer as the seam and keeps the pipeline's public surface almost unchanged (one new optional init param).
+No `TranscriptFinalizer` visibility change. No new public surface. No dependency on G4's paste executor.
 
-**Prefer Option A** unless grep-verification reveals that `TranscriptFinalizer` itself is not testably constructible with mocks today (in which case the real blocker is inside the finalizer, and #394 needs to pull #396's paste-executor work forward). Grep before writing code.
+**Why NOT the v1 `public init(finalizer:...)` approach:** `TranscriptFinalizer` is declared `internal` at `TranscriptFinalizer.swift:53`. Putting an internal type in a `public` init signature widens access on the type indirectly and costs us the narrow-access discipline from `architecture-rules.md` §Access Control. The internal-overload approach reuses existing seams, matches the `TranscriptFinalizerTests.swift:24` pattern already in the suite, and costs zero public-surface change.
+
+**Why NOT go through `TranscriptFinalizer`'s closure seam directly at the pipeline level:** That would duplicate the finalizer-level injection and create two truthy paths to the same seam. Reuse the existing finalizer path; only open one new door at the pipeline level.
 
 ## 4. MANDATORY Contract deltas
 

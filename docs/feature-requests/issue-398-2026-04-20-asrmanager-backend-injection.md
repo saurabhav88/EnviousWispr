@@ -49,9 +49,33 @@ The same blind spot blocks `switchBackend` reset-branch testing and any future c
 - Adding test-only initializers that accept preset flag state (Option A from issue body) — rejected because it masks the real issue (backends are the seam, flags are derived state).
 - `#if DEBUG` helpers (Option B) — rejected because "exposes state for testing" is an anti-pattern when the real fix is composable DI.
 
-## 3. Design
+## 3. Design — revised 2026-04-20 after grounded review
 
-Option C from the issue body: inject backends.
+**Blocker identified by grounded review.** `ASRManager.loadModel()` at `:76` calls `parakeetBackend.prepare { fraction, phase, detail in ... }` — the progress-reporting variant. That variant is declared on `ParakeetBackend` concretely at `Sources/EnviousWisprASR/ParakeetBackend.swift:46`, NOT on the `ASRBackend` protocol (which only declares plain `prepare()` at `ASRProtocol.swift:14`). Blindly converting both stored properties to `any ASRBackend` loses the Parakeet progress path and download UI goes dark. v1 plan skipped this.
+
+**Corrected design:** widen the `ASRBackend` protocol with an optional default-implemented progress variant. Both live backends already have the behavior; we just surface it.
+
+```swift
+// ASRProtocol.swift — add one method with a default implementation.
+public protocol ASRBackend: Actor {
+  // ... existing members unchanged ...
+  func prepare() async throws
+
+  // NEW: progress-reporting variant. Default delegates to plain prepare().
+  func prepare(progressCallback: ProgressCallback?) async throws
+}
+
+extension ASRBackend {
+  public func prepare(progressCallback: ProgressCallback?) async throws {
+    // Backends that do not report progress ignore the callback.
+    try await prepare()
+  }
+}
+```
+
+`ProgressCallback` should live next to the protocol (move from `ParakeetBackend` if it's declared there today; grep-verify during implementation). `ParakeetBackend`'s existing concrete `prepare(progressCallback:)` at `:46` stays as the override. `WhisperKitBackend` inherits the default (no progress) — matches today's behavior.
+
+With the protocol widened, the injection in `ASRManager` is now safe:
 
 ```swift
 @MainActor
@@ -79,11 +103,13 @@ public final class ASRManager: ASRManagerInterface {
     case .whisperKit: return whisperKitBackend
     }
   }
-  // ... unchanged ...
+  // loadModel() keeps calling `prepare(progressCallback:)` through `activeBackend` — the protocol now exposes it.
 }
 ```
 
-Tests construct `ASRManager(parakeetBackend: FakeReadyBackend(), whisperKitBackend: FakeReadyBackend())` where `FakeReadyBackend` reports `isReady=true` and records calls to `unload()`.
+Tests construct `ASRManager(parakeetBackend: FakeReadyBackend(), whisperKitBackend: FakeReadyBackend())` where `FakeReadyBackend` is an actor that reports `isReady=true`, ignores the progress callback (default impl), and records `unload()` calls.
+
+**Alternative considered and rejected:** keep `parakeetBackend` concrete and only abstract `whisperKitBackend` via `any ASRBackend`. Rejected because asymmetric abstraction is uglier than a one-method protocol widening, and the progress variant is a legitimate shared-protocol concern (any future backend with download progress would re-hit the same wall).
 
 ## 4. MANDATORY Contract deltas
 

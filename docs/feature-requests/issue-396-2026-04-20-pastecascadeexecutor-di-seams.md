@@ -120,12 +120,13 @@ public final class PasteCascadeExecutor {
 - `ControllableClock` is a token-ish clock: `sleep(for:)` returns immediately but records the requested duration.
 - `TestRestoreScheduler` stores the `operation` closure in a queue; tests call `triggerPendingRestores()` to fire them synchronously. Covers scenario (f) honestly.
 
-## 4. MANDATORY Contract deltas
+## 4. MANDATORY Contract deltas — revised 2026-04-20 after grounded review
 
-- **Added `PasteServiceProtocol`.** Covers the exact surface the executor consumes today. Sendable. Async methods match the existing async/non-async shape of each `PasteService` static (verify each during implementation).
-- **Added `FrontmostAppObserving`.** Abstracts `NSWorkspace.shared.frontmostApplication` reads and the activation-wait loop.
-- **Added `PasteClock`.** Abstracts `Task.sleep` + delayed-restore scheduling.
-- **Changed `PasteCascadeExecutor.init(...)`** to accept three optional params with production-default adapters.
+- **Added `PasteServiceProtocol`.** `@MainActor`-isolated (not just `Sendable`) because pasteboard + AX APIs are main-actor-sensitive on macOS 14+. Method signatures MIRROR the exact live-code shapes — grep-verify during implementation. Notable: `pasteToActiveApp(_:) -> PasteDispatchResult` (not `-> Bool` — v1 plan drift; real enum declared at `Sources/EnviousWisprServices/PasteService.swift:260`). `saveClipboard() -> ClipboardSnapshot`, `restoreClipboard(_ snapshot:changeCountAfterPaste:)`, etc.
+- **Added `FrontmostAppObserving`.** `@MainActor`. Exposes the single read pattern the executor uses (PID-based frontmost check).
+- **Added `RestoreScheduler`.** `@MainActor`. Narrow queue-and-fire surface for the delayed clipboard-restore window. Covers scenario (f) honestly.
+- **Used `any Clock<Duration>`** (Swift 5.7+) as a fourth init param for the linear activation-poll sleep at `:145` and the pre-AppleScript stabilization sleep at `:195`. NO custom `PasteClock` type. Native Clock is sufficient for linear sleep; the queue-and-manually-trigger behavior lives on `RestoreScheduler`.
+- **Changed `PasteCascadeExecutor.init(...)`** to accept FOUR optional params (paste service, frontmost observer, clock, restore scheduler), each with a production-default adapter.
 
 Semantics: dependency-injection seams, no new policy. Production-default adapters route calls to today's free functions exactly. Tests pass fakes that record calls and control timing.
 
@@ -138,7 +139,7 @@ No persisted fields. No legacy data.
 | Live / new dictation | Executor invoked on pipeline completion. Default adapters preserve today's behavior exactly. |
 | Saved / reloaded item | N/A — executor has no persistence. |
 | Retry or re-run | Re-polish → clipboard → paste path uses this executor too. Default wiring preserved. |
-| Background / async completion arriving after state changed | Existing delayed-restore uses a scheduled Task. The `PasteClock.scheduleAfter` abstraction preserves that. |
+| Background / async completion arriving after state changed | Existing delayed-restore uses a scheduled `Task`. The `RestoreScheduler.schedule(after:operation:)` abstraction preserves that; production adapter is `Task { try? await Task.sleep(for: interval); await MainActor.run { operation() } }`. |
 | User manual override / edit | N/A — user does not override paste mechanism. |
 
 **Upstream sources.** Grep `grep -rn "PasteCascadeExecutor(" Sources/ Tests/`. Expected: production construction inside the pipeline's finalizer (and possibly re-polish path). Tests may construct with fakes.
@@ -149,13 +150,13 @@ No persisted fields. No legacy data.
 
 **App-kill scenario.** If the app is killed mid-deliver, the delayed-restore never fires. Today's behavior. Unchanged.
 
-**Concurrency guard.** Executor is MainActor (verify during implementation); seams are `Sendable` protocols. Protocol `async` boundaries match existing code. No new actor hop introduced.
+**Concurrency guard.** Executor is MainActor (verify during implementation). Seam protocols are `@MainActor`-isolated, NOT just `Sendable` — pasteboard + AX + NSWorkspace are all main-actor-sensitive and the delayed-restore closure captures MainActor state. No new actor hop introduced; protocol methods compose naturally with the existing MainActor executor.
 
 ## 6. MANDATORY Downstream consumer matrix
 
 | Contract delta | Consumer | Current | Required | Change? | Verified by |
 |---|---|---|---|---|---|
-| `PasteCascadeExecutor.init(pasteService:frontmost:clock:)` | production construction site (pipeline or finalizer) | no args | no args (defaults fill) | No | compile |
+| `PasteCascadeExecutor.init(pasteService:frontmost:clock:restoreScheduler:)` | production construction site (pipeline or finalizer) | no args | no args (defaults fill) | No | compile |
 | (same) | new tests | N/A today | construct with fakes | **Yes** | new test file |
 | Static `PasteService` callers elsewhere | grep-find all | unchanged | unchanged | No | grep |
 | `AXIsProcessTrusted` / `NSWorkspace.frontmostApplication` callers elsewhere | grep-find all | unchanged | unchanged | No | grep |
@@ -200,9 +201,9 @@ No new fallback branch. The executor's existing cascade fallbacks preserve their
 
 ## 10. File-by-file changes
 
-- **`Sources/EnviousWisprPipeline/PasteCascadeExecutor.swift`**: three init params + internal rewiring from statics to stored properties.
-- **New file** `Sources/EnviousWisprPipeline/PasteServiceProtocol.swift` (or bundled): three protocols + three live adapters.
-- **New test file** `Tests/EnviousWisprPipelineTests/PasteCascadeExecutorTests.swift`: `RecordingPasteService`, `FakeFrontmostObserver`, `ControllableClock` fakes + four scenario tests (per §11).
+- **`Sources/EnviousWisprPipeline/PasteCascadeExecutor.swift`**: FOUR init params (paste service, frontmost, clock, restore scheduler) + internal rewiring from statics to stored properties. Rewrite `pasteToActiveApp` call site to expect `PasteDispatchResult`, not `Bool` (grep-verify `Sources/EnviousWisprServices/PasteService.swift:276` during implementation).
+- **New file** `Sources/EnviousWisprPipeline/PasteCascadeSeams.swift` (or bundled into executor file): three `@MainActor` protocols (`PasteServiceProtocol`, `FrontmostAppObserving`, `RestoreScheduler`) + three live adapters. Clock uses Swift's native `ContinuousClock()` as production default — no new type.
+- **New test file** `Tests/EnviousWisprTests/Pipeline/PasteCascadeExecutorTests.swift`: `RecordingPasteService`, `FakeFrontmostObserver`, test-controlled `any Clock<Duration>`, and `TestRestoreScheduler` fakes + four scenario tests (per §11).
 
 ## 11. Testing
 
