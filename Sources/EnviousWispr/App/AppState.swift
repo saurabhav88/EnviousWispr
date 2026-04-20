@@ -395,9 +395,15 @@ final class AppState {
       switch newState {
       case .recording:
         self.hotkeyService.registerCancelHotkey()
-      case .loadingModel, .transcribing, .polishing, .error, .idle, .complete:
+      case .loadingModel, .transcribing, .polishing:
         self.isRecordingLocked = false
         self.hotkeyService.unregisterCancelHotkey()
+      case .error, .idle, .complete:
+        self.isRecordingLocked = false
+        self.hotkeyService.unregisterCancelHotkey()
+        // Session ended — retry any Ollama eviction deferred because the
+        // frozen session pinned the old model.
+        self.settingsSync.retryDeferredOllamaEviction(settings: self.settings)
       }
       let nowActive = newState.isActive
       if nowActive && !self.prevParakeetActive {
@@ -419,9 +425,13 @@ final class AppState {
       switch newState {
       case .recording:
         self.hotkeyService.registerCancelHotkey()
-      case .startingUp, .loadingModel, .transcribing, .polishing, .error, .idle, .ready, .complete:
+      case .startingUp, .loadingModel, .transcribing, .polishing:
         self.isRecordingLocked = false
         self.hotkeyService.unregisterCancelHotkey()
+      case .error, .idle, .ready, .complete:
+        self.isRecordingLocked = false
+        self.hotkeyService.unregisterCancelHotkey()
+        self.settingsSync.retryDeferredOllamaEviction(settings: self.settings)
       }
       let nowActive = newState.isActive
       if nowActive && !self.prevWhisperKitActive {

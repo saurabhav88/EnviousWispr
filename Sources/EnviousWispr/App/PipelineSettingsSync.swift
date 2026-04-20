@@ -242,6 +242,13 @@ final class PipelineSettingsSync {
     }
   }
 
+  /// Retry a deferred Ollama eviction after an in-flight session ends.
+  /// AppState calls this from `onStateChange` when either pipeline transitions
+  /// to a terminal state. Idempotent: no-op if nothing is pending.
+  func retryDeferredOllamaEviction(settings: SettingsManager) {
+    reconcileOllamaEviction(settings: settings)
+  }
+
   /// True if either pipeline's frozen `DictationSessionConfig` targets the
   /// given Ollama model. Used by `reconcileOllamaEviction` to avoid evicting
   /// a model the in-flight polish still needs.
