@@ -225,12 +225,34 @@ final class PipelineSettingsSync {
       provider: settings.llmProvider, model: resolvedModel(settings)
     )
     let pre = lastEvictableOllamaModel
+    guard let pre, pre != new else {
+      lastEvictableOllamaModel = new
+      return
+    }
+    // Phase B: if either pipeline has frozen `pre` into its in-flight
+    // session via `DictationSessionConfig`, the upcoming polish call is
+    // pinned to that model. Evicting now would cold-swap the active
+    // recording's polish. Defer by leaving `lastEvictableOllamaModel` at
+    // `pre`; the next setting change re-evaluates.
+    if isOllamaModelPinnedInFlight(pre) { return }
     lastEvictableOllamaModel = new
-    guard let pre, pre != new else { return }
     let polishStep = polishService.llmPolishStep
     Task { [polishStep, pre] in
       await polishStep.evictPreviousOllamaModel(pre)
     }
+  }
+
+  /// True if either pipeline's frozen `DictationSessionConfig` targets the
+  /// given Ollama model. Used by `reconcileOllamaEviction` to avoid evicting
+  /// a model the in-flight polish still needs.
+  private func isOllamaModelPinnedInFlight(_ model: String) -> Bool {
+    for cfg in [pipeline.currentSessionConfig, whisperKitPipeline.currentSessionConfig] {
+      guard let cfg else { continue }
+      if cfg.llmProvider == .ollama && cfg.llmModel == model {
+        return true
+      }
+    }
+    return false
   }
 
   /// Re-register Carbon hotkeys after a config change.
