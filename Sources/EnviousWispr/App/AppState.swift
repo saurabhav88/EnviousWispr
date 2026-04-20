@@ -340,11 +340,15 @@ final class AppState {
       self.settingsSync.handleSettingChanged(key, settings: self.settings)
     }
 
-    // Wire pipeline state changes to overlay and icon
+    // Wire pipeline state changes to overlay and icon.
+    // The behavioral contract (overlay resolution, warning scheduling /
+    // cancellation, telemetry, history reload) is derived by
+    // PipelineStateChangePlanner. The closure still owns AppState-local
+    // concerns: external observer fan-out, hotkey register/unregister,
+    // isRecordingLocked reset, and the inactive→active tiebreaker (#285).
     pipeline.onStateChange = { [weak self] newState in
       guard let self else { return }
       self.onPipelineStateChange?(newState)
-      // Hotkey management
       switch newState {
       case .recording:
         self.hotkeyService.registerCancelHotkey()
@@ -352,64 +356,26 @@ final class AppState {
         self.isRecordingLocked = false
         self.hotkeyService.unregisterCancelHotkey()
       }
-      // #285 — flip the telemetry tiebreaker ONLY on inactive→active
-      // transitions, so an active→active state change (e.g.
-      // `.transcribing → .polishing`) on this pipeline cannot steal ownership
-      // back from a different backend that already acquired the shared
-      // capture during the overlap window.
       let nowActive = newState.isActive
       if nowActive && !self.prevParakeetActive {
         self.lastCapturingBackend = .parakeet
       }
       self.prevParakeetActive = nowActive
-      // Intent-driven overlay — pipeline.overlayIntent maps state to the correct label.
-      // On completion, compute a single post-completion notification by priority:
-      //   1. clipboardFallback (paste fell back to clipboard-only)
-      //   2. warning (polish failed but text was delivered)
-      //   3. hidden (success, no notification needed)
-      let overlayIntent: OverlayIntent
-      if newState == .complete {
-        let isClipboardFallback =
-          self.pipeline.currentTranscript?.metrics?.pasteTier == "clipboard_only"
-        let polishFailed = self.pipeline.lastPolishError != nil
-        if isClipboardFallback {
-          overlayIntent = .clipboardFallback
-        } else if polishFailed {
-          // Show polish warning after a brief delay so the completion
-          // transition feels natural. Cancellable if a new recording starts.
-          overlayIntent = self.pipeline.overlayIntent
-          self.schedulePostCompletionWarning(message: "Polish failed -- using raw text")
-        } else {
-          overlayIntent = self.pipeline.overlayIntent
-        }
-      } else {
-        self.postCompletionWarningTask?.cancel()
-        overlayIntent = self.pipeline.overlayIntent
-      }
-      self.recordingOverlay.show(
-        intent: overlayIntent,
-        audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 },
-        isRecordingLocked: self.isRecordingLocked
+      let plan = PipelineStateChangePlanner.plan(
+        to: newState,
+        pipelineOverlayIntent: self.pipeline.overlayIntent,
+        isClipboardFallback: self.pipeline.currentTranscript?.metrics?.pasteTier
+          == "clipboard_only",
+        lastPolishError: self.pipeline.lastPolishError,
+        hasCurrentTranscript: self.pipeline.currentTranscript != nil
       )
-      if newState == .complete {
-        self.transcriptCoordinator.load()
-        if let t = self.pipeline.currentTranscript {
-          TelemetryService.shared.reportDictationCompleted(
-            transcript: t, inputMode: self.settings.recordingMode.rawValue)
-        }
-      }
-      if case .error(let msg) = newState {
-        TelemetryService.shared.pipelineFailed(
-          stage: "transcription", errorCategory: "pipeline_error", errorCode: msg,
-          recoverable: false, backend: "parakeet")
-      }
+      self.executePlan(plan, transcript: self.pipeline.currentTranscript, backend: "parakeet")
     }
 
-    // Wire WhisperKit pipeline state changes to overlay and icon
+    // Wire WhisperKit pipeline state changes to overlay and icon.
     whisperKitPipeline.onStateChange = { [weak self] newState in
       guard let self else { return }
       self.onPipelineStateChange?(self.pipelineState)
-      // Hotkey management
       switch newState {
       case .recording:
         self.hotkeyService.registerCancelHotkey()
@@ -417,49 +383,21 @@ final class AppState {
         self.isRecordingLocked = false
         self.hotkeyService.unregisterCancelHotkey()
       }
-      // #285 — flip tiebreaker ONLY on inactive→active transitions so
-      // active→active state changes cannot steal capture ownership from the
-      // other backend.
       let nowActive = newState.isActive
       if nowActive && !self.prevWhisperKitActive {
         self.lastCapturingBackend = .whisperKit
       }
       self.prevWhisperKitActive = nowActive
-      // Intent-driven overlay — same post-completion priority logic as Parakeet above.
-      let wkOverlayIntent: OverlayIntent
-      if newState == .complete {
-        let isClipboardFallback =
-          self.whisperKitPipeline.currentTranscript?.metrics?.pasteTier == "clipboard_only"
-        let polishFailed = self.whisperKitPipeline.lastPolishError != nil
-        if isClipboardFallback {
-          wkOverlayIntent = .clipboardFallback
-        } else if polishFailed {
-          wkOverlayIntent = self.whisperKitPipeline.overlayIntent
-          self.schedulePostCompletionWarning(message: "Polish failed -- using raw text")
-        } else {
-          wkOverlayIntent = self.whisperKitPipeline.overlayIntent
-        }
-      } else {
-        self.postCompletionWarningTask?.cancel()
-        wkOverlayIntent = self.whisperKitPipeline.overlayIntent
-      }
-      self.recordingOverlay.show(
-        intent: wkOverlayIntent,
-        audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 },
-        isRecordingLocked: self.isRecordingLocked
+      let plan = PipelineStateChangePlanner.plan(
+        to: newState,
+        pipelineOverlayIntent: self.whisperKitPipeline.overlayIntent,
+        isClipboardFallback: self.whisperKitPipeline.currentTranscript?.metrics?.pasteTier
+          == "clipboard_only",
+        lastPolishError: self.whisperKitPipeline.lastPolishError,
+        hasCurrentTranscript: self.whisperKitPipeline.currentTranscript != nil
       )
-      if newState == .complete {
-        self.transcriptCoordinator.load()
-        if let t = self.whisperKitPipeline.currentTranscript {
-          TelemetryService.shared.reportDictationCompleted(
-            transcript: t, inputMode: self.settings.recordingMode.rawValue)
-        }
-      }
-      if case .error(let msg) = newState {
-        TelemetryService.shared.pipelineFailed(
-          stage: "transcription", errorCategory: "pipeline_error", errorCode: msg,
-          recoverable: false, backend: "whisperKit")
-      }
+      self.executePlan(
+        plan, transcript: self.whisperKitPipeline.currentTranscript, backend: "whisperKit")
     }
 
     // Wire hotkey callbacks
@@ -754,6 +692,40 @@ final class AppState {
     case nil:
       // Idle → attribute to the backend that most recently owned a session.
       return lastCapturingBackend == .whisperKit ? whisperKitPipeline : pipeline
+    }
+  }
+
+  /// Execute a state-change plan derived by PipelineStateChangePlanner.
+  /// Owns the concrete side effects (overlay panel, warning Task, telemetry
+  /// service, transcript coordinator). Inlined into AppState for commit 1;
+  /// commit 2 absorbs this into the extracted PipelineStateChangeHandler.
+  private func executePlan(
+    _ plan: PipelineStateChangePlan, transcript: Transcript?, backend: String
+  ) {
+    for effect in plan.effects {
+      switch effect {
+      case .cancelPendingWarning:
+        postCompletionWarningTask?.cancel()
+      case .schedulePolishFailedWarning:
+        schedulePostCompletionWarning(message: "Polish failed -- using raw text")
+      case .showOverlay(let intent):
+        recordingOverlay.show(
+          intent: intent,
+          audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 },
+          isRecordingLocked: isRecordingLocked
+        )
+      case .reloadTranscriptHistory:
+        transcriptCoordinator.load()
+      case .reportDictationCompleted:
+        if let t = transcript {
+          TelemetryService.shared.reportDictationCompleted(
+            transcript: t, inputMode: settings.recordingMode.rawValue)
+        }
+      case .reportPipelineFailed(let msg):
+        TelemetryService.shared.pipelineFailed(
+          stage: "transcription", errorCategory: "pipeline_error", errorCode: msg,
+          recoverable: false, backend: backend)
+      }
     }
   }
 

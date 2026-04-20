@@ -2,6 +2,34 @@ import EnviousWisprCore
 import Foundation
 import PostHog
 
+/// Captured-for-test snapshot of a top-level telemetry emission.
+///
+/// Typed buckets (not `[String: Any]`) so the hook signature is Swift 6
+/// `Sendable`. Covers the two top-level methods AppState's state-change
+/// closures invoke: `reportDictationCompleted` and `pipelineFailed`. Extend
+/// the buckets if a future phase needs to observe additional methods.
+public struct CapturedTelemetryEvent: Sendable, Equatable {
+  public let name: String
+  public let stringProps: [String: String]
+  public let intProps: [String: Int]
+  public let doubleProps: [String: Double]
+  public let boolProps: [String: Bool]
+
+  public init(
+    name: String,
+    stringProps: [String: String] = [:],
+    intProps: [String: Int] = [:],
+    doubleProps: [String: Double] = [:],
+    boolProps: [String: Bool] = [:]
+  ) {
+    self.name = name
+    self.stringProps = stringProps
+    self.intProps = intProps
+    self.doubleProps = doubleProps
+    self.boolProps = boolProps
+  }
+}
+
 /// Thin wrapper — type-safe event names, no business logic.
 /// Limb: observes facts from domain objects, publishes to PostHog.
 @MainActor
@@ -9,10 +37,28 @@ public final class TelemetryService {
   public static let shared = TelemetryService()
   private init() {}
 
+  #if DEBUG
+    /// Test-only observation seam. Fired at the entry of each top-level facade
+    /// method (currently `reportDictationCompleted` and `pipelineFailed`) with
+    /// a typed summary. Nil in release builds; tests set this to capture
+    /// emissions without reaching PostHog.
+    public var testEventHook: (@Sendable (CapturedTelemetryEvent) -> Void)?
+  #endif
+
   // MARK: - Observation Layer (reads domain objects)
 
   /// Called by AppState when a pipeline completes. Reads Transcript + ExecutionMetrics.
   public func reportDictationCompleted(transcript t: Transcript, inputMode: String) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "dictation.completed",
+          stringProps: [
+            "input_mode": inputMode,
+            "asr_backend": t.backendType.rawValue,
+          ]
+        ))
+    #endif
     let m = t.metrics
     dictationCompleted(
       result: "success",
@@ -200,6 +246,20 @@ public final class TelemetryService {
     stage: String, errorCategory: String, errorCode: String,
     recoverable: Bool, backend: String?
   ) {
+    #if DEBUG
+      var hookStrings: [String: String] = [
+        "stage": stage,
+        "error_category": errorCategory,
+        "error_code": errorCode,
+      ]
+      if let b = backend { hookStrings["backend"] = b }
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "pipeline.failed",
+          stringProps: hookStrings,
+          boolProps: ["recoverable": recoverable]
+        ))
+    #endif
     var props: [String: Any] = [
       "stage": stage,
       "error_category": errorCategory,
