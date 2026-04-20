@@ -1,0 +1,49 @@
+import EnviousWisprCore
+
+extension DictationSessionConfig {
+  /// Default snapshot for tests that don't care about specific settings values.
+  /// Mirrors the `SettingsManager` defaults at construction time.
+  static func testDefault(
+    autoCopyToClipboard: Bool = true,
+    autoPasteToActiveApp: Bool = false,
+    restoreClipboardAfterPaste: Bool = false,
+    vadAutoStop: Bool = false,
+    vadSilenceTimeout: Double = 1.5,
+    vadSensitivity: Float = 0.5,
+    vadEnergyGate: Bool = false,
+    languageMode: LanguageMode = .auto,
+    useStreamingASR: Bool = true,
+    modelUnloadPolicy: ModelUnloadPolicy = .never,
+    llmProvider: LLMProvider = .none,
+    llmModel: String = "",
+    polishInstructions: PolishInstructions = .default,
+    styleConfig: PolishStyleConfig = PolishStyleConfig(
+      writingStylePreset: .standard,
+      customSystemPrompt: "",
+      customPromptMode: .normal
+    ),
+    useExtendedThinking: Bool = false,
+    selectedInputDeviceUID: String = "",
+    preferredInputDeviceIDOverride: String = ""
+  ) -> DictationSessionConfig {
+    DictationSessionConfig(
+      autoCopyToClipboard: autoCopyToClipboard,
+      autoPasteToActiveApp: autoPasteToActiveApp,
+      restoreClipboardAfterPaste: restoreClipboardAfterPaste,
+      vadAutoStop: vadAutoStop,
+      vadSilenceTimeout: vadSilenceTimeout,
+      vadSensitivity: vadSensitivity,
+      vadEnergyGate: vadEnergyGate,
+      languageMode: languageMode,
+      useStreamingASR: useStreamingASR,
+      modelUnloadPolicy: modelUnloadPolicy,
+      llmProvider: llmProvider,
+      llmModel: llmModel,
+      polishInstructions: polishInstructions,
+      styleConfig: styleConfig,
+      useExtendedThinking: useExtendedThinking,
+      selectedInputDeviceUID: selectedInputDeviceUID,
+      preferredInputDeviceIDOverride: preferredInputDeviceIDOverride
+    )
+  }
+}

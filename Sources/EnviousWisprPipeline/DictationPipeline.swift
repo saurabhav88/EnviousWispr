@@ -9,7 +9,10 @@ public enum InterruptionMessages {
 /// Events that any dictation pipeline must handle.
 public enum PipelineEvent: Sendable {
   case preWarm
-  case toggleRecording
+  /// Toggle recording. Carries the per-recording configuration snapshot; pipelines
+  /// consume the config on start transitions and ignore it on stop transitions.
+  /// Settings mutated mid-recording apply to the next recording's snapshot.
+  case toggleRecording(DictationSessionConfig)
   case requestStop
   case cancelRecording
   case reset

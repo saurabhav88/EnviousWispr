@@ -90,6 +90,8 @@ struct SpeechEngineSettingsView: View {
               }
             }
           }
+        } footer: {
+          FrozenPerRecordingFootnote()
         }
       }
 
@@ -120,6 +122,8 @@ struct SpeechEngineSettingsView: View {
             }
           }
         }
+      } footer: {
+        FrozenPerRecordingFootnote()
       }
 
       // ── Section 4: Transcription Mode ────────────────────────────────
@@ -136,6 +140,8 @@ struct SpeechEngineSettingsView: View {
               .foregroundStyle(.stTextTertiary)
             }
           }
+        } footer: {
+          FrozenPerRecordingFootnote()
         }
       }
 

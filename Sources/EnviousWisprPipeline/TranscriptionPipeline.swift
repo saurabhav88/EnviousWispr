@@ -21,20 +21,50 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
       if state != oldValue {
         onStateChange?(state)
       }
+      // Honor the `currentSessionConfig` contract: nil when no recording is
+      // in flight. Clear on every transition to a terminal state so callers
+      // can distinguish an idle pipeline from one still mid-session.
+      switch state {
+      case .idle, .complete, .error:
+        currentSessionConfig = nil
+      case .loadingModel, .recording, .transcribing, .polishing:
+        break
+      }
     }
   }
   public var onStateChange: ((PipelineState) -> Void)?
   public private(set) var currentTranscript: Transcript?
-  public var autoCopyToClipboard: Bool = true
-  public var autoPasteToActiveApp: Bool = false
-  public var vadAutoStop: Bool = false
-  public var vadSilenceTimeout: Double = 1.5
-  public var vadSensitivity: Float = 0.5
-  public var vadEnergyGate: Bool = false
-  public var modelUnloadPolicy: ModelUnloadPolicy = .never
-  public var restoreClipboardAfterPaste: Bool = false
-  public var transcriptionOptions: TranscriptionOptions = .default
   public var lastPolishError: String?
+
+  /// Per-recording session config snapshot. Captured at `startRecording`; immutable
+  /// for the duration of the recording. Settings mutated mid-recording apply to the
+  /// NEXT recording. `nil` when no recording is in flight.
+  public private(set) var currentSessionConfig: DictationSessionConfig?
+
+  // MARK: - Session-scoped accessors (backed by `currentSessionConfig`)
+  //
+  // These reads are guaranteed to happen inside a recording's lifecycle
+  // (from `startRecording` through `stopAndTranscribe`/`cancelRecording`),
+  // so `currentSessionConfig` is set. The `??` fallbacks mirror the prior
+  // public-property defaults and exist only as defense-in-depth.
+
+  private var autoCopyToClipboard: Bool { currentSessionConfig?.autoCopyToClipboard ?? true }
+  private var autoPasteToActiveApp: Bool { currentSessionConfig?.autoPasteToActiveApp ?? false }
+  private var restoreClipboardAfterPaste: Bool {
+    currentSessionConfig?.restoreClipboardAfterPaste ?? false
+  }
+  private var vadAutoStop: Bool { currentSessionConfig?.vadAutoStop ?? false }
+  private var vadSilenceTimeout: Double { currentSessionConfig?.vadSilenceTimeout ?? 1.5 }
+  private var vadSensitivity: Float { currentSessionConfig?.vadSensitivity ?? 0.5 }
+  private var vadEnergyGate: Bool { currentSessionConfig?.vadEnergyGate ?? false }
+  private var modelUnloadPolicy: ModelUnloadPolicy {
+    currentSessionConfig?.modelUnloadPolicy ?? .never
+  }
+
+  /// Decode-time options. Mutable within a recording because LID results can
+  /// overwrite `.language`. Re-derived from `config.languageMode` at each
+  /// `startRecording`.
+  private var transcriptionOptions: TranscriptionOptions = .default
 
   // Shared services
   private let transcriptFinalizer: TranscriptFinalizer
@@ -65,7 +95,8 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
   private var vadMonitorTask: Task<Void, Never>?
   private var recordingStartTime: Date?
   /// User preference: use streaming ASR during recording (lower latency) or batch after stop (cleaner text).
-  public var useStreamingASR: Bool = true
+  /// Frozen per recording in `currentSessionConfig`.
+  private var useStreamingASR: Bool { currentSessionConfig?.useStreamingASR ?? true }
   /// Whether streaming ASR was successfully started for the current recording.
   private var streamingASRActive = false
   /// Counters for diagnosing streaming buffer delivery (tail-cutoff instrumentation).
@@ -327,11 +358,13 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
     }
   }
 
-  /// Toggle recording: start if idle, stop if recording.
-  public func toggleRecording() async {
+  /// Toggle recording: start if idle, stop if recording. On start transitions,
+  /// the provided session config is captured; on stop transitions the config
+  /// is ignored (the in-flight recording continues to use its original snapshot).
+  public func toggleRecording(config: DictationSessionConfig) async {
     switch state {
     case .idle, .complete, .error:
-      await startRecording()
+      await startRecording(config: config)
     case .recording:
       await stopAndTranscribe()
     case .loadingModel, .transcribing, .polishing:
@@ -339,8 +372,13 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
     }
   }
 
-  /// Start recording audio from the microphone.
-  public func startRecording() async {
+  /// Start recording audio from the microphone. `config` freezes per-recording
+  /// settings (auto-paste, VAD config, polish provider/model, etc.) for the
+  /// duration of this recording. Mid-recording setting changes apply to the
+  /// NEXT recording's snapshot.
+  public func startRecording(config: DictationSessionConfig) async {
+    currentSessionConfig = config
+    applySessionConfig(config)
     // Issue #289: new attempt takes ownership — any pending stall recovery
     // from a prior session must not tear down the fresh source.
     pendingStallRecoveryToken = nil
@@ -1294,8 +1332,8 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
     switch event {
     case .preWarm:
       try await preWarmAudioInput()
-    case .toggleRecording:
-      await toggleRecording()
+    case .toggleRecording(let config):
+      await toggleRecording(config: config)
     case .requestStop:
       await requestStop()
     case .cancelRecording:
@@ -1315,5 +1353,45 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
   /// Issue #289: see `DictationPipeline.clearPendingStallRecovery`.
   public func clearPendingStallRecovery() {
     pendingStallRecoveryToken = nil
+  }
+
+  /// Fan out frozen config values to substeps and derive decode options.
+  /// Called once at `startRecording` after `currentSessionConfig` is set.
+  /// `llmPolishStep` is written here rather than read via the config because
+  /// its internal caches key off provider/model identity, and the
+  /// `TranscriptPolishService` (re-polish path) keeps it live-synced
+  /// between recordings.
+  private func applySessionConfig(_ config: DictationSessionConfig) {
+    llmPolishStep.llmProvider = config.llmProvider
+    llmPolishStep.llmModel = config.llmModel
+    llmPolishStep.polishInstructions = config.polishInstructions
+    llmPolishStep.styleConfig = config.styleConfig
+    llmPolishStep.useExtendedThinking = config.useExtendedThinking
+
+    // XPC audio service holds its own VAD state across the process boundary —
+    // push the frozen values at recording start so the service-side
+    // auto-stop behavior matches this recording's config.
+    audioCapture.configureVAD(
+      autoStop: config.vadAutoStop,
+      silenceTimeout: config.vadSilenceTimeout,
+      sensitivity: config.vadSensitivity,
+      energyGate: config.vadEnergyGate
+    )
+
+    // Push the frozen device UIDs. AudioCaptureManager reads them at source
+    // construction, but the source isn't built until `beginCapturePhase`
+    // later in this method — a mic swap after pre-warm but before capture
+    // would otherwise slip through PipelineSettingsSync's live writes.
+    audioCapture.selectedInputDeviceUID = config.selectedInputDeviceUID
+    audioCapture.preferredInputDeviceIDOverride = config.preferredInputDeviceIDOverride
+
+    var opts = TranscriptionOptions()
+    switch config.languageMode {
+    case .auto:
+      opts.language = nil
+    case .locked(let code):
+      opts.language = code
+    }
+    transcriptionOptions = opts
   }
 }
