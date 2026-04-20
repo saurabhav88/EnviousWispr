@@ -17,10 +17,13 @@ public enum PipelineActivity: Equatable, Sendable {
 
 /// Narrow protocol the planner / handler consume. Backends' concrete enums
 /// conform by extension; the planner never inspects their specific cases.
+///
+/// `isActive` is NOT part of this protocol: both backends' concrete state
+/// enums already expose their own `isActive` (used inline by AppState for
+/// the inactive->active tiebreaker), and the planner derives all its
+/// control-flow decisions from `activity` alone.
 public protocol PipelineStateProtocol: Equatable, Sendable {
   var activity: PipelineActivity { get }
-  var isActive: Bool { get }
-  var errorReason: String? { get }
 }
 
 // MARK: - Parakeet (PipelineState) conformance
@@ -35,10 +38,5 @@ extension PipelineState: PipelineStateProtocol {
     case .complete: return .complete
     case .error(let msg): return .error(msg)
     }
-  }
-
-  public var errorReason: String? {
-    if case .error(let msg) = self { return msg }
-    return nil
   }
 }

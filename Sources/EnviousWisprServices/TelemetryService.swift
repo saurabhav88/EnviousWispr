@@ -2,33 +2,42 @@ import EnviousWisprCore
 import Foundation
 import PostHog
 
-/// Captured-for-test snapshot of a top-level telemetry emission.
-///
-/// Typed buckets (not `[String: Any]`) so the hook signature is Swift 6
-/// `Sendable`. Covers the two top-level methods AppState's state-change
-/// closures invoke: `reportDictationCompleted` and `pipelineFailed`. Extend
-/// the buckets if a future phase needs to observe additional methods.
-public struct CapturedTelemetryEvent: Sendable, Equatable {
-  public let name: String
-  public let stringProps: [String: String]
-  public let intProps: [String: Int]
-  public let doubleProps: [String: Double]
-  public let boolProps: [String: Bool]
+#if DEBUG
+  /// Captured-for-test snapshot of a top-level telemetry emission.
+  ///
+  /// Typed buckets (not `[String: Any]`) so the hook signature is Swift 6
+  /// `Sendable`. Debug-only: the entire observation seam is compiled out of
+  /// release builds, so the struct itself lives inside the same `#if DEBUG`
+  /// region as `testEventHook`. Fields read by `@testable` tests — Periphery
+  /// runs with `--exclude-tests` and can't see those reads; the annotations
+  /// below declare the fields intentional test-facing surface.
+  public struct CapturedTelemetryEvent: Sendable, Equatable {
+    // periphery:ignore
+    public let name: String
+    // periphery:ignore
+    public let stringProps: [String: String]
+    // periphery:ignore
+    public let intProps: [String: Int]
+    // periphery:ignore
+    public let doubleProps: [String: Double]
+    // periphery:ignore
+    public let boolProps: [String: Bool]
 
-  public init(
-    name: String,
-    stringProps: [String: String] = [:],
-    intProps: [String: Int] = [:],
-    doubleProps: [String: Double] = [:],
-    boolProps: [String: Bool] = [:]
-  ) {
-    self.name = name
-    self.stringProps = stringProps
-    self.intProps = intProps
-    self.doubleProps = doubleProps
-    self.boolProps = boolProps
+    public init(
+      name: String,
+      stringProps: [String: String] = [:],
+      intProps: [String: Int] = [:],
+      doubleProps: [String: Double] = [:],
+      boolProps: [String: Bool] = [:]
+    ) {
+      self.name = name
+      self.stringProps = stringProps
+      self.intProps = intProps
+      self.doubleProps = doubleProps
+      self.boolProps = boolProps
+    }
   }
-}
+#endif
 
 /// Thin wrapper — type-safe event names, no business logic.
 /// Limb: observes facts from domain objects, publishes to PostHog.

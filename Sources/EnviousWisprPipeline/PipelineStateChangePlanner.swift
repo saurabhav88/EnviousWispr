@@ -6,7 +6,7 @@ import Foundation
 /// Executed in order by the caller. The caller owns stateful concerns
 /// (the warning `Task`, the concrete telemetry service, the overlay panel);
 /// the planner is a pure projection from inputs to this list.
-public enum PipelineStateSideEffect: Equatable, Sendable {
+enum PipelineStateSideEffect: Equatable, Sendable {
   /// Cancel any pending post-completion warning task. Emitted on every
   /// non-complete transition — mirrors AppState.swift:386 / :443 behavior.
   case cancelPendingWarning
@@ -35,12 +35,8 @@ public enum PipelineStateSideEffect: Equatable, Sendable {
   case reportPipelineFailed(errorCode: String)
 }
 
-public struct PipelineStateChangePlan: Equatable, Sendable {
-  public let effects: [PipelineStateSideEffect]
-
-  public init(effects: [PipelineStateSideEffect]) {
-    self.effects = effects
-  }
+struct PipelineStateChangePlan: Equatable, Sendable {
+  let effects: [PipelineStateSideEffect]
 }
 
 /// Pure projection from a state transition's observable inputs to the ordered
@@ -60,13 +56,11 @@ public struct PipelineStateChangePlan: Equatable, Sendable {
 ///   inactive→active tiebreaker, the `onPipelineStateChange?` fan-out.
 ///   All four are AppState-only concerns that the bible (§7) keeps inline.
 ///
-/// This type is intentionally ~60 LOC of mechanical case analysis. It exists
-/// so characterization tests can pin the full behavior contract without
-/// driving AppState (which has no DI seams). Commit 2 wraps it in a stateful
-/// handler that owns the warning `Task`.
+/// Kept `internal` to `EnviousWisprPipeline`: only the handler in this
+/// module calls `plan(...)`; tests reach it through `@testable import`.
 @MainActor
-public enum PipelineStateChangePlanner {
-  public static func plan(
+enum PipelineStateChangePlanner {
+  static func plan(
     to newState: any PipelineStateProtocol,
     pipelineOverlayIntent: OverlayIntent,
     isClipboardFallback: Bool,

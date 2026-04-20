@@ -43,11 +43,6 @@ extension WhisperKitPipelineState: PipelineStateProtocol {
     case .error(let msg): return .error(msg)
     }
   }
-
-  public var errorReason: String? {
-    if case .error(let msg) = self { return msg }
-    return nil
-  }
 }
 
 /// Independent WhisperKit dictation pipeline — batch record → transcribe → polish → paste.
