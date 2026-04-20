@@ -2173,7 +2173,7 @@ Phase G closes those gaps. Five sub-phases, each a small DI seam refactor in a h
 | Sub | Issue | Target file | Seam introduced | LOC | Tier |
 |---|---|---|---|---|---|
 | G1 | #388 | `Sources/EnviousWisprPipeline/TextProcessingRunner.swift:99` | Replace literal `stepName == "LLM Polish"` with `TextProcessingStep.errorSurfacePolicy` (enum) or `is LLMPolishStep` type check | ~20 | SMALL |
-| G2 | #389 | `Sources/EnviousWisprPipeline/TextProcessingRunner.swift` (nine `AppLogger.shared` sites) | Inject `any PipelineLogging` via default-valued init param; default remains `AppLogger.shared` | ~30 | SMALL |
+| G2 | #389 | `Sources/EnviousWisprPipeline/TextProcessingRunner.swift` (six `AppLogger.shared.log` sites at lines 33, 58, 63, 67, 72, 103) | Inject `any PipelineLogging` via default-valued init param; default remains `AppLogger.shared` via `AppLoggerAdapter` | ~30 | SMALL |
 | G3 | #394 | `Sources/EnviousWisprPipeline/TranscriptionPipeline.swift` (init constructs its own `TranscriptFinalizer`) | Accept `TranscriptFinalizer` (or its paste seam + runner) via init; default-construct preserves current callers | ~60 | SMALL/MEDIUM |
 | G4 | #396 | `Sources/EnviousWisprPipeline/PasteCascadeExecutor.swift` (hard-calls static `PasteService`, `AXIsProcessTrusted`, `NSWorkspace.frontmostApplication`, live `Task.sleep`) | Protocolize `PasteService` surface + inject frontmost-app observer + inject clock/sleeper; default production wiring unchanged | ~80 | SMALL/MEDIUM |
 | G5 | #398 | `Sources/EnviousWisprASR/ASRManager.swift:23-24` (concrete `ParakeetBackend` / `WhisperKitBackend` owned directly) | Inject backends through a factory or `any ASRBackend` pair; unlocks adversarial `switchBackend` tests without real model load | ~40 | SMALL |
@@ -2198,19 +2198,19 @@ Plan files carry the full §4–§9 MANDATORY template answers. This bible secti
 
 ### 17A.4 Sequencing — revised 2026-04-20 after GPT + Gemini council
 
-**Correction:** the v1.13 draft called all five sub-phases "mutually independent." Council (both providers) pushed back. Two real dependencies exist:
-
-1. **G1 and G2 share a file** (`TextProcessingRunner.swift`). They are NOT parallel-safe. Bundle into one PR (recommended) or sequence strictly.
-2. **G3 depends on G4.** G3 (Option A — inject `TranscriptFinalizer`) relies on the finalizer being test-constructible with fake collaborators. Grep-verified 2026-04-20: `TranscriptFinalizer.swift:60-61` already has default-valued init seams for `TextProcessingRunner` and `PasteCascadeExecutor`. So the finalizer IS mockable *if* a fake `PasteCascadeExecutor` exists — which is exactly what G4 delivers. G4 must land before G3 starts, or G3 re-scopes to Option B (inject seams directly as closures / dependency struct).
+**Correction history:**
+- v1.13 draft called all five sub-phases "mutually independent." Round-1 council (GPT + Gemini) pushed back.
+- v1.14 re-sequenced around "G3 depends on G4." Grounded-review round 1 (2026-04-20, sign-off NO) showed that dependency was fictional.
+- **v1.15 locks the final order below.** One shared-file dependency (G1/G2) and nothing else.
 
 **Locked order:**
 
-1. **G1 + G2 bundled** (same file, same PR, ~50 LOC total).
-2. **G5** (independent module, unblocks PR #400's dropped eighth test).
-3. **G4** (heart-path, highest risk, isolated session; also delivers the fake paste executor that G3 needs).
-4. **G3** (uses G4's fake executor + the existing finalizer seams to go Option A — or switches to Option B if G4 reveals blockers).
+1. **G1 + G2 bundled** (same file `TextProcessingRunner.swift`, one PR, ~50 LOC total).
+2. **G5** (independent module; requires one-method widening of `ASRBackend` protocol to preserve Parakeet progress-prepare path, see plan §3).
+3. **G3** (independent — `TranscriptFinalizer.swift:75-82` already exposes a closure-seam init that tests use today at `TranscriptFinalizerTests.swift:24`; G3 only needs to add an internal-only init overload on `TranscriptionPipeline` that accepts a pre-built finalizer, keeping the existing `public init(...)` unchanged to avoid access-control widening).
+4. **G4** (heart-path, highest risk, isolated session — last because of runtime UAT requirement, not because of any code dependency).
 
-Phase G remains independent of Phases A–F and R2–R6. No worktree collision across G sub-phases if executed in the locked order above.
+All four are genuinely independent. G1/G2 bundle is a workflow convenience (shared file), not a hidden dependency. Phase G remains independent of Phases A–F and R2–R6.
 
 ### 17A.5 Aggregate DoD
 
@@ -2886,6 +2886,21 @@ Only then does Phase B work start. Missing the decision capture in any of the th
 ---
 
 ## 30. Changelog
+
+- **2026-04-20 v1.15 · Phase G grounded-review fixes** — Codex grounded review (`docs/audits/2026-04-20-phase-g-grounded-review.txt`) returned NO on the v1.14 plans. Two structural traps and four drift items corrected:
+
+  **Structural:**
+  - **G3 (#394) Option A was an access-control trap.** `TranscriptionPipeline.init(...)` at `:107` is `public`; `TranscriptFinalizer` at `:53` is `internal`. v1.14 proposed putting the internal type in the public init signature. Fix: add a separate `internal init(...)` overload for tests via `@testable import`; keep existing `public init(...)` unchanged.
+  - **G3 "depends on G4" was fictional.** Grep-verified `TranscriptFinalizer.swift:75-82` already exposes a closure-seam init (`save:`, `textProcessingRunner:`, `deliverPaste:`), and `TranscriptFinalizerTests.swift:24` already uses it. G3 is independent.
+  - **G5 (#398) `any ASRBackend` sketch would not compile.** `ASRManager.loadModel()` at `:76` calls `parakeetBackend.prepare { callback }` — the progress-reporting variant is declared on `ParakeetBackend.swift:46` concretely, NOT on `ASRProtocol.swift:14`. Fix: widen protocol with a one-method `prepare(progressCallback:)` + default implementation that delegates to plain `prepare()`; existing `ParakeetBackend.prepare(progressCallback:)` becomes the override.
+
+  **Drift:**
+  - **G2 (#389) `LogLevel` → `DebugLogLevel`** (actual project type at `Sources/EnviousWisprCore/DebugLogLevel.swift:3`; already Sendable). Protocol + adapter visibility changed from `public` to `internal` (same-module consumers only).
+  - **G4 (#396) `pasteToActiveApp(_:) -> Bool` → `-> PasteDispatchResult`** (real signature at `PasteService.swift:276`). Stale §4–§6 contract/consumer/lifecycle sections realigned with the revised §3 design (MainActor protocols, `any Clock<Duration>`, narrow `RestoreScheduler` — not custom `PasteClock`). Init param count corrected from three to four.
+  - **G1 (#388) LLMPolishStep path** corrected from "likely `Sources/EnviousWisprLLM/LLMPolishStep.swift`" to verified `Sources/EnviousWisprPipeline/LLMPolishStep.swift:8` (same module as the runner — simplifies visibility to all-internal).
+  - **Bible §17A.2 G2 row** "nine" → "six" with exact line numbers (final drift from the v1.14 sweep).
+
+  **Sequencing final:** G1+G2 bundled → G5 → G3 → G4. All sub-phases genuinely independent; G1/G2 bundled only because they share a file. Re-running grounded review before G1 starts is advisable but not mandatory since the fixes are surgical.
 
 - **2026-04-20 v1.14 · Phase G council revisions** — GPT + Gemini council round 1 on the five plans (sessions `phase-g-review-gpt-2026-04-20`, `phase-g-review-gemini-2026-04-20`). Both providers pushed back on the "mutually independent" sequencing claim and Swift 6 concurrency annotations. Corrections applied: (a) §17A.4 locked to G1+G2 bundled → G5 → G4 → G3, with G3 gated on G4 (finalizer's existing default-valued seams at `TranscriptFinalizer.swift:60-61` become useful only once a fake `PasteCascadeExecutor` exists). (b) G4 plan: protocols declared `@MainActor` (not just `Sendable`) because `NSWorkspace.shared.frontmostApplication` and pasteboard APIs are main-actor-sensitive; custom `PasteClock` replaced with `any Clock<Duration>` for linear sleeps plus a narrow `RestoreScheduler` for the queue-and-manually-trigger case (covers scenario f honestly, per GPT); added failure rows for restore-task throw, overlapping deliveries, activation-branch drift. (c) G5: clarified `ASRBackend: Actor` (grep-verified `Sources/EnviousWisprASR/ASRProtocol.swift:9`) — fakes must be `actor` types; existing `ASRManager` already `await`s every backend call. (d) G1: kept `ErrorSurfacePolicy` enum (Gemini called it YAGNI; type-check alternative would couple Pipeline to LLM module, architecturally worse) but flagged `Sendable` propagation check as a precondition. (e) G2: added failure row for logger-induced stalls (runner currently `await`s every log). Plan files updated in place.
 

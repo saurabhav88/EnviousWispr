@@ -153,8 +153,8 @@ No new fallback branch. Existing fallback (limb failure → continue with prior 
 ## 10. File-by-file changes
 
 - **`Sources/EnviousWisprPipeline/TextProcessingRunner.swift`**: line 99 condition swap.
-- **File declaring `TextProcessingStep` protocol** (grep-verify exact path — likely `Sources/EnviousWisprPipeline/TextProcessingStep.swift`): add `ErrorSurfacePolicy` enum + protocol requirement + default extension.
-- **File declaring `LLMPolishStep`** (likely `Sources/EnviousWisprLLM/LLMPolishStep.swift`): add `public let errorSurfacePolicy: ErrorSurfacePolicy = .surface`.
+- **`Sources/EnviousWisprPipeline/TextProcessingStep.swift`** (grep-verified at line 29): add `ErrorSurfacePolicy` enum + protocol requirement + default extension.
+- **`Sources/EnviousWisprPipeline/LLMPolishStep.swift`** (grep-verified at line 8; same module as the runner, NOT `EnviousWisprLLM` as v1 plan said): add `public let errorSurfacePolicy: ErrorSurfacePolicy = .surface`.
 - **New or extended test** (e.g. `Tests/EnviousWisprPipelineTests/TextProcessingRunnerErrorSurfaceTests.swift`): four tests per §11.
 
 ## 11. Testing
