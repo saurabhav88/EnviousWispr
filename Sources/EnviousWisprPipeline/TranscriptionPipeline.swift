@@ -1359,6 +1359,16 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
     llmPolishStep.styleConfig = config.styleConfig
     llmPolishStep.useExtendedThinking = config.useExtendedThinking
 
+    // XPC audio service holds its own VAD state across the process boundary —
+    // push the frozen values at recording start so the service-side
+    // auto-stop behavior matches this recording's config.
+    audioCapture.configureVAD(
+      autoStop: config.vadAutoStop,
+      silenceTimeout: config.vadSilenceTimeout,
+      sensitivity: config.vadSensitivity,
+      energyGate: config.vadEnergyGate
+    )
+
     var opts = TranscriptionOptions()
     switch config.languageMode {
     case .auto:
