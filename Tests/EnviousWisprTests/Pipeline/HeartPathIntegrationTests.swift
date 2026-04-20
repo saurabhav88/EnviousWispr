@@ -10,9 +10,18 @@ import Testing
 @testable import EnviousWisprPipeline
 
 @MainActor
-@Suite("Heart Path Integration")
+@Suite("Heart Path Integration — Finalizer layer (mocked ASR + paste)")
 struct HeartPathIntegrationTests {
-  private static let asrFailureSentinel = "[transcription unavailable]"
+  // Scope note. The tests in this file exercise `TranscriptFinalizer` with
+  // mocked ASR and paste boundaries, plus one true `TranscriptionPipeline`
+  // cancellation test. The full pipeline heart-path (audio capture through
+  // delivery) cannot be exercised end-to-end until `TranscriptionPipeline`
+  // gains DI seams for the finalizer and paste executor (#394).
+  //
+  // Do NOT add tests here that claim graceful ASR-failure degradation —
+  // production currently terminates with .error on ASR failure (#392), and a
+  // harness that smuggles in fallback text produces test theater rather
+  // than coverage.
 
   @Test("happy path: fixture -> ASR -> polish -> paste")
   func happyPathFixtureToPolishToPaste() async throws {
@@ -99,37 +108,6 @@ struct HeartPathIntegrationTests {
     #expect(asrManager.transcribeCallCount == 0)
     #expect(audioCapture.stopCaptureCallCount == 1)
     #expect(audioCapture.isCapturing == false)
-  }
-
-  @Test("ASR failure degrades to a documented sentinel and still pastes")
-  func asrFailureStillPastesDocumentedSentinel() async throws {
-    let fixture = try SyntheticAudioFixture.make(
-      fileName: "heart-path-asr-failure.wav",
-      pattern: .toneBurst
-    )
-
-    let audioCapture = try FixtureAudioCapture(fixtureURL: fixture.url)
-    let asrManager = MockASRManager(
-      transcribeBehavior: .failure(MockFailure.asrUnavailable)
-    )
-    let pasteSink = CapturingPasteSink()
-
-    let harness = HeartPathHarness(
-      audioCapture: audioCapture,
-      asrManager: asrManager,
-      pasteSink: pasteSink,
-      steps: [],
-      asrFailureFallbackText: Self.asrFailureSentinel
-    )
-
-    let result = try await harness.run()
-
-    #expect(asrManager.transcribeCallCount == 1)
-    #expect(result.usedASRFallback)
-    #expect(result.finalization.transcript.text == Self.asrFailureSentinel)
-    #expect(result.finalization.transcript.polishedText == nil)
-    #expect(result.finalization.polishError == nil)
-    #expect(pasteSink.pastedTexts == ["\(Self.asrFailureSentinel) "])
   }
 
   @Test("polish failure degrades to raw ASR output")
@@ -231,20 +209,17 @@ private final class HeartPathHarness {
   private let asrManager: MockASRManager
   private let pasteSink: CapturingPasteSink
   private let steps: [any TextProcessingStep]
-  private let asrFailureFallbackText: String?
 
   init(
     audioCapture: FixtureAudioCapture,
     asrManager: MockASRManager,
     pasteSink: CapturingPasteSink,
-    steps: [any TextProcessingStep],
-    asrFailureFallbackText: String? = nil
+    steps: [any TextProcessingStep]
   ) {
     self.audioCapture = audioCapture
     self.asrManager = asrManager
     self.pasteSink = pasteSink
     self.steps = steps
-    self.asrFailureFallbackText = asrFailureFallbackText
   }
 
   func run() async throws -> HeartPathHarnessResult {
@@ -254,32 +229,10 @@ private final class HeartPathHarness {
 
     let duration = Double(captureResult.samples.count) / AudioConstants.sampleRate
 
-    let asrText: String
-    let language: String?
-    let processingTime: TimeInterval
-    let backendType: ASRBackendType
-    let usedASRFallback: Bool
-
-    do {
-      let asrResult = try await asrManager.transcribe(
-        audioSamples: captureResult.samples,
-        options: .default
-      )
-      asrText = asrResult.text
-      language = asrResult.language
-      processingTime = asrResult.processingTime
-      backendType = asrResult.backendType
-      usedASRFallback = false
-    } catch {
-      guard let fallback = asrFailureFallbackText else {
-        throw error
-      }
-      asrText = fallback
-      language = nil
-      processingTime = 0
-      backendType = asrManager.activeBackendType
-      usedASRFallback = true
-    }
+    let asrResult = try await asrManager.transcribe(
+      audioSamples: captureResult.samples,
+      options: .default
+    )
 
     let finalizer = TranscriptFinalizer(
       save: { _ in },
@@ -290,11 +243,11 @@ private final class HeartPathHarness {
 
     let finalization = try await finalizer.finalize(
       FinalizationRequest(
-        asrText: asrText,
-        language: language,
+        asrText: asrResult.text,
+        language: asrResult.language,
         duration: duration,
-        processingTime: processingTime,
-        backendType: backendType,
+        processingTime: asrResult.processingTime,
+        backendType: asrResult.backendType,
         targetApp: nil,
         targetElement: nil,
         autoCopyToClipboard: false,
@@ -306,7 +259,7 @@ private final class HeartPathHarness {
 
     return HeartPathHarnessResult(
       finalization: finalization,
-      usedASRFallback: usedASRFallback
+      usedASRFallback: false
     )
   }
 }
