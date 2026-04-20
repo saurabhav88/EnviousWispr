@@ -527,7 +527,7 @@ final class AppState {
       // `.toggleRecording` is declared throws on the protocol, but today the
       // underlying implementation doesn't throw. `try?` keeps the surface
       // unchanged. If a future event grows a meaningful throw we revisit here.
-      try? await active.handle(event: .toggleRecording)
+      try? await active.handle(event: .toggleRecording(makeDictationSessionConfig()))
       let totalMs = {
         let (s, a) = (ContinuousClock.now - pttStart).components
         return Int(s) * 1000 + Int(a / 1_000_000_000_000_000)
@@ -846,7 +846,7 @@ final class AppState {
       )
     }
 
-    try? await active.handle(event: .toggleRecording)
+    try? await active.handle(event: .toggleRecording(makeDictationSessionConfig()))
 
     // Clear auto-paste on completion/error
     if active is WhisperKitPipeline {
@@ -858,6 +858,46 @@ final class AppState {
       if pipeline.state == .complete { pipeline.autoPasteToActiveApp = false }
       if case .error = pipeline.state { pipeline.autoPasteToActiveApp = false }
     }
+  }
+
+  /// Build the per-recording `DictationSessionConfig` snapshot. Captures the
+  /// current `SettingsManager` state plus the input-mode-derived paste intent
+  /// which AppState sets on the active pipeline immediately before dispatching
+  /// `.toggleRecording`. Phase B commit 1: snapshot is captured and threaded
+  /// through the event but pipelines still read from their public properties;
+  /// behavior unchanged. Commit 2 flips pipelines to read from the snapshot.
+  private func makeDictationSessionConfig() -> DictationSessionConfig {
+    let isWhisperKit = asrManager.activeBackendType == .whisperKit
+    let autoPaste =
+      isWhisperKit
+      ? whisperKitPipeline.autoPasteToActiveApp
+      : pipeline.autoPasteToActiveApp
+    let resolvedModel: String = {
+      switch settings.llmProvider {
+      case .appleIntelligence: return "apple-intelligence"
+      case .ollama: return settings.ollamaModel
+      default: return settings.llmModel
+      }
+    }()
+    return DictationSessionConfig(
+      autoCopyToClipboard: settings.autoCopyToClipboard,
+      autoPasteToActiveApp: autoPaste,
+      restoreClipboardAfterPaste: settings.restoreClipboardAfterPaste,
+      vadAutoStop: settings.vadAutoStop,
+      vadSilenceTimeout: settings.vadSilenceTimeout,
+      vadSensitivity: settings.vadSensitivity,
+      vadEnergyGate: settings.vadEnergyGate,
+      languageMode: settings.languageMode,
+      useStreamingASR: settings.useStreamingASR,
+      modelUnloadPolicy: settings.modelUnloadPolicy,
+      llmProvider: settings.llmProvider,
+      llmModel: resolvedModel,
+      polishInstructions: settings.activePolishInstructions,
+      styleConfig: settings.activePolishStyleConfig,
+      useExtendedThinking: settings.useExtendedThinking,
+      selectedInputDeviceUID: settings.selectedInputDeviceUID,
+      preferredInputDeviceIDOverride: settings.preferredInputDeviceIDOverride
+    )
   }
 
   /// Cancel an active recording, discarding all captured audio.

@@ -36,6 +36,11 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
   public var transcriptionOptions: TranscriptionOptions = .default
   public var lastPolishError: String?
 
+  /// Per-recording session config snapshot. Captured at `startRecording`; immutable
+  /// for the duration of the recording. Settings mutated mid-recording apply to the
+  /// NEXT recording. `nil` when no recording is in flight.
+  public private(set) var currentSessionConfig: DictationSessionConfig?
+
   // Shared services
   private let transcriptFinalizer: TranscriptFinalizer
 
@@ -327,11 +332,13 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
     }
   }
 
-  /// Toggle recording: start if idle, stop if recording.
-  public func toggleRecording() async {
+  /// Toggle recording: start if idle, stop if recording. On start transitions,
+  /// the provided session config is captured; on stop transitions the config
+  /// is ignored (the in-flight recording continues to use its original snapshot).
+  public func toggleRecording(config: DictationSessionConfig) async {
     switch state {
     case .idle, .complete, .error:
-      await startRecording()
+      await startRecording(config: config)
     case .recording:
       await stopAndTranscribe()
     case .loadingModel, .transcribing, .polishing:
@@ -339,8 +346,12 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
     }
   }
 
-  /// Start recording audio from the microphone.
-  public func startRecording() async {
+  /// Start recording audio from the microphone. `config` freezes per-recording
+  /// settings (auto-paste, VAD config, polish provider/model, etc.) for the
+  /// duration of this recording. Mid-recording setting changes apply to the
+  /// NEXT recording's snapshot.
+  public func startRecording(config: DictationSessionConfig) async {
+    currentSessionConfig = config
     // Issue #289: new attempt takes ownership — any pending stall recovery
     // from a prior session must not tear down the fresh source.
     pendingStallRecoveryToken = nil
@@ -1294,8 +1305,8 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
     switch event {
     case .preWarm:
       try await preWarmAudioInput()
-    case .toggleRecording:
-      await toggleRecording()
+    case .toggleRecording(let config):
+      await toggleRecording(config: config)
     case .requestStop:
       await requestStop()
     case .cancelRecording:

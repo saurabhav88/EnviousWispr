@@ -94,7 +94,7 @@ struct HeartPathIntegrationTests {
     )
     pipeline.autoPasteToActiveApp = true
 
-    await pipeline.startRecording()
+    await pipeline.startRecording(config: DictationSessionConfig.testDefault())
 
     let reachedRecording = await pollUntil(timeout: .seconds(1)) {
       pipeline.state == .recording

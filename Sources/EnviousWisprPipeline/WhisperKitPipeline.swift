@@ -72,6 +72,11 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
   public var lastPolishError: String?
   public var modelUnloadPolicy: ModelUnloadPolicy = .never
 
+  /// Per-recording session config snapshot. Captured at `startRecording`; immutable
+  /// for the duration of the recording. Settings mutated mid-recording apply to the
+  /// NEXT recording. `nil` when no recording is in flight.
+  public private(set) var currentSessionConfig: DictationSessionConfig?
+
   // Multilingual v1 (W2): language mode + detector. Captured lazily at
   // detection time so a user toggling Auto->Locked mid-recording is respected.
   public var languageMode: LanguageMode = .auto {
@@ -345,8 +350,8 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
     switch event {
     case .preWarm:
       try await preWarmAudioInput()
-    case .toggleRecording:
-      await toggleRecording()
+    case .toggleRecording(let config):
+      await toggleRecording(config: config)
     case .requestStop:
       await requestStop()
     case .cancelRecording:
@@ -427,10 +432,13 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
     Task { _ = try? await backend.prepareIfCached() }
   }
 
-  public func toggleRecording() async {
+  /// Toggle recording: start if idle, stop if recording. On start transitions,
+  /// the provided session config is captured; on stop transitions the config
+  /// is ignored.
+  public func toggleRecording(config: DictationSessionConfig) async {
     switch state {
     case .idle, .ready, .complete, .error:
-      await startRecording()
+      await startRecording(config: config)
     case .recording:
       await stopAndTranscribe()
     case .loadingModel, .startingUp, .transcribing, .polishing:
@@ -441,7 +449,8 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
   /// Guards against concurrent startRecording calls (e.g., rapid toggle presses).
   private var isStarting = false
 
-  public func startRecording() async {
+  public func startRecording(config: DictationSessionConfig) async {
+    currentSessionConfig = config
     // Issue #289: new attempt takes ownership — invalidate any pending stall
     // recovery token so an in-flight cleanup cannot tear down this session.
     pendingStallRecoveryToken = nil
