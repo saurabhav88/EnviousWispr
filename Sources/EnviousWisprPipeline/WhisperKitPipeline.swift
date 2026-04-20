@@ -1052,8 +1052,11 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
         ])
       captureTelemetry.recordSuccessfulRecording()
       frozenSnapshot = nil
-      state = .complete
+      // Schedule unload BEFORE the terminal transition — the `state` didSet
+      // clears `currentSessionConfig` on entry to `.complete`, and the
+      // unload policy is read from that snapshot.
       scheduleModelUnloadIfNeeded()
+      state = .complete
     } catch {
       SentryBreadcrumb.captureError(
         error, category: .asrFailed, stage: "transcription", extra: ["backend": "whisperKit"],
