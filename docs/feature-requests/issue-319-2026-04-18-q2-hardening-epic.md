@@ -2919,6 +2919,16 @@ Only then does Phase B work start. Missing the decision capture in any of the th
 
 ## 30. Changelog
 
+- **2026-04-20 v1.17 · Phase A shipped — closure-based overlay injection replaces protocol existential** — Phase A landed on `refactor/phase-a-pipeline-state-handler` (commits `a00cbcb` commit 1 + `5fffb96` commit 2; PR TBD). Final design deviates from v1.16 §7.2 in one specific way: the handler's overlay dependency is a `@MainActor (OverlayIntent) -> Void` closure, NOT an `any RecordingOverlayPanelProtocol` existential.
+
+  **Why the change.** An earlier draft of commit 2 used the protocol existential as the v1.16 sketch prescribed. That form broke WhisperKit's batch transcription (LID windows + XPC reply cancelled with `Swift.CancellationError` during `.transcribing`). Parakeet's streaming path was unaffected. Bisect isolated the fault to the handler commit; the one-variable fix that restored WhisperKit was replacing `any RecordingOverlayPanelProtocol` with a concrete `@MainActor (OverlayIntent) -> Void` closure callback.
+
+  **Proof is the A/B isolation, not runtime theory.** main → works. Commit 1 (no handler class, inline show) → works. Commit 2 with existential → breaks WhisperKit. Commit 2 with closure → works on both. Proximate-cause guess (not a claim): actor-isolated protocol-existential indirection on a hot path interacts badly with WhisperKit's longer MainActor-held critical sections during batch transcription. Swift-runtime mechanism not fully confirmed.
+
+  **Standing lesson, captured in memory** (`feedback_no_actor_protocol_existential_hot_path.md`): avoid `any`-of-`@MainActor`-protocol indirection on hot paths when concrete or closure dispatch gives the same architectural outcome. Tests retain the observation seam via a recording closure + plain spy type; no production protocol needed.
+
+  **What landed.** Handler class is `public final class PipelineStateChangeHandler` in `EnviousWisprPipeline`. Six injected callbacks (one closure-based showOverlay + cancelWarning/scheduleWarning/reloadHistory/reportCompleted/reportFailed). Pure `PipelineStateChangePlanner` from commit 1 drives the decision. Both backends verified end-to-end. AppState.swift: 965 → 934 (−31). 382 tests pass. Bible §7.2 prose retains the original design for historical context; this changelog entry supersedes the `RecordingOverlayPanelProtocol` stored-field sketch.
+
 - **2026-04-20 v1.16 · Phase A Gate 0 sweep before kickoff** — Gate 0 citation audit against `origin/main` @ `8c5a5f3`. Two material design gaps and four naming/line-range drifts corrected in §7 before code work begins. No change to any other phase.
 
   **Material (design gap):**
