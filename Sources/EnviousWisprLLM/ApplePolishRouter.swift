@@ -264,16 +264,40 @@ public enum ApplePolishRouter {
     "um", "uh", "please", "hey", "okay", "ok", "so", "well",
   ]
 
+  /// Multi-word polite prefixes. When the first two tokens match one of these
+  /// pairs, both are skipped so the imperative still reaches `hardImperatives`.
+  /// Covers "Could you make …", "Can you answer …", "Would you draft …",
+  /// "Will you write …", "Do you draft …".
+  private static let leadingSkipBigrams: Set<[String]> = [
+    ["could", "you"], ["can", "you"], ["would", "you"],
+    ["will", "you"], ["do", "you"],
+  ]
+
   private static func firstMeaningfulWord(_ trimmed: String) -> String {
     let separators: Set<Character> = [" ", "\t", "\n", ",", "."]
     let tokens =
       trimmed
       .split(whereSeparator: { separators.contains($0) })
       .map { String($0).trimmingCharacters(in: .punctuationCharacters).lowercased() }
-    for token in tokens {
-      if !token.isEmpty && !leadingSkipWords.contains(token) {
-        return token
+    var i = 0
+    while i < tokens.count {
+      let token = tokens[i]
+      if token.isEmpty {
+        i += 1
+        continue
       }
+      // Skip two-token polite prefix like "could you" / "can you".
+      if i + 1 < tokens.count,
+        leadingSkipBigrams.contains([token, tokens[i + 1]])
+      {
+        i += 2
+        continue
+      }
+      if leadingSkipWords.contains(token) {
+        i += 1
+        continue
+      }
+      return token
     }
     return ""
   }
@@ -310,8 +334,16 @@ public enum ApplePolishRouter {
   ]
 
   private static func preservationIntent(_ lower: String) -> String? {
-    for phrase in preservationPhrases where lower.contains(phrase) {
-      return phrase
+    // Word-boundary match so "keep it literal" does NOT fire inside
+    // "keep it literally simple" (the conversational `literally` hazard
+    // the file guards against everywhere else). Other matchers in this
+    // file use regex with `\b`; this one was the inconsistency.
+    for phrase in preservationPhrases {
+      let escaped = NSRegularExpression.escapedPattern(for: phrase)
+      let pattern = "\\b\(escaped)\\b"
+      if lower.range(of: pattern, options: .regularExpression) != nil {
+        return phrase
+      }
     }
     return nil
   }
