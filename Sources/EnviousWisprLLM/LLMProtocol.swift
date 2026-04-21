@@ -45,14 +45,64 @@ extension TranscriptPolisher {
 extension String {
   /// Strip common LLM preamble/acknowledgment patterns from polished transcript output.
   ///
-  /// Strategy:
-  /// 1. Strip a leading single-word/phrase acknowledgment (e.g. "Certainly!", "Sure,", "Got it.")
-  /// 2. If the (remaining) first line is short (<100 chars) and ends with ":", treat it as a
-  ///    preamble line (e.g. "Here is the corrected version of the speech transcript:") and strip it.
+  /// Strategy (v30 — conservative):
+  ///   1. Detect "wrapper shape" — either:
+  ///      a) First line is short, ends with ":", and starts with an assistant
+  ///         phrase (Here/Below/The corrected/etc.), OR
+  ///      b) Acknowledgment prefix ("Sure,", "Certainly!") is IMMEDIATELY followed
+  ///         by wrapper shape (a) on the remaining content.
+  ///   2. Only strip when wrapper shape is present. This prevents false-stripping
+  ///      user dictation that happens to start with "Sure, here is the plan..."
+  ///      (which flows into prose without a colon).
+  ///   3. Strip `<transcript>` wrapper tags if echoed back.
   func strippingLLMPreamble() -> String {
     var result = self.trimmingCharacters(in: .whitespacesAndNewlines)
 
-    // Step 1: Strip a leading acknowledgment word/phrase if present.
+    // Helper — does the first line look like an assistant-emitted preamble?
+    // (short, ends with ":", starts with a wrapper phrase)
+    func firstLineLooksLikePreamble(_ text: String) -> Bool {
+      let firstNewline = text.firstIndex(of: "\n") ?? text.endIndex
+      let firstLine = text[text.startIndex..<firstNewline]
+      guard firstLine.count < 100, firstLine.hasSuffix(":"), !firstLine.isEmpty else {
+        return false
+      }
+      let trimmedFirst = firstLine.trimmingCharacters(in: .whitespaces).lowercased()
+      return
+        trimmedFirst.hasPrefix("here")
+        || trimmedFirst.hasPrefix("below")
+        || trimmedFirst.hasPrefix("the corrected")
+        || trimmedFirst.hasPrefix("the cleaned")
+        || trimmedFirst.hasPrefix("the polished")
+        || trimmedFirst.hasPrefix("the rewritten")
+        || trimmedFirst.hasPrefix("corrected version")
+        || trimmedFirst.hasPrefix("cleaned")
+        || trimmedFirst.hasPrefix("polished")
+    }
+
+    // Does the first sentence after the acknowledgment look like a short
+    // standalone reply (few clauses, short), as cloud LLMs typically produce?
+    // This discriminates from user dictation that flows into multi-clause prose.
+    // e.g. "I can help with that." (0 commas, 21 chars) => standalone reply.
+    //      "here is the plan, we launch the beta on Tuesday..." (multi-comma,
+    //       70+ chars) => user prose, do not strip.
+    func firstSentenceIsStandaloneReply(_ text: String) -> Bool {
+      guard !text.isEmpty else { return false }
+      // Find end of first sentence (first . ! ? or newline).
+      let terminators: Set<Character> = [".", "!", "?", "\n"]
+      var firstSentence = ""
+      for ch in text {
+        firstSentence.append(ch)
+        if terminators.contains(ch) { break }
+      }
+      let commaCount = firstSentence.filter { $0 == "," }.count
+      // Standalone reply: ≤ 60 chars and at most 1 comma. Adjustable.
+      return firstSentence.count <= 60 && commaCount <= 1
+    }
+
+    // Acknowledgment prefixes. Stripped when followed by EITHER:
+    //   a) preamble-line wrapper shape ("Here is the transcript:\n...")
+    //   b) short standalone reply ("I can help with that.")
+    // Preserved when followed by user prose that flows with commas.
     let acknowledgments = [
       "Certainly!",
       "Sure!",
@@ -65,45 +115,28 @@ extension String {
     ]
     for ack in acknowledgments {
       if result.hasPrefix(ack) {
-        result = String(result.dropFirst(ack.count))
+        let afterAck = String(result.dropFirst(ack.count))
           .trimmingCharacters(in: .whitespacesAndNewlines)
+        if firstLineLooksLikePreamble(afterAck) || firstSentenceIsStandaloneReply(afterAck) {
+          result = afterAck
+        }
         break
       }
     }
 
-    // Step 2: If the first line is short and ends with ":", it's likely a preamble line.
-    // e.g. "Here is the corrected version of the speech transcript:"
-    // Also catches "Here's the cleaned-up transcript:" etc.
-    let firstNewline = result.firstIndex(of: "\n") ?? result.endIndex
-    let firstLine = result[result.startIndex..<firstNewline]
-    if firstLine.count < 100,
-      firstLine.hasSuffix(":"),
-      !firstLine.isEmpty
-    {
-      // Additional guard: only strip if it looks like a preamble, not legitimate content.
-      // Preamble lines typically start with "Here" or are very short introductions.
-      let trimmedFirst = firstLine.trimmingCharacters(in: .whitespaces).lowercased()
-      let isPreambleLike =
-        trimmedFirst.hasPrefix("here")
-        || trimmedFirst.hasPrefix("below")
-        || trimmedFirst.hasPrefix("the corrected")
-        || trimmedFirst.hasPrefix("the cleaned")
-        || trimmedFirst.hasPrefix("the polished")
-        || trimmedFirst.hasPrefix("the rewritten")
-        || trimmedFirst.hasPrefix("corrected version")
-        || trimmedFirst.hasPrefix("cleaned")
-        || trimmedFirst.hasPrefix("polished")
-      if isPreambleLike {
-        result = String(result[firstNewline...])
-          .trimmingCharacters(in: .whitespacesAndNewlines)
-      }
+    // Strip the first line if it looks like an assistant preamble.
+    if firstLineLooksLikePreamble(result) {
+      let firstNewline = result.firstIndex(of: "\n") ?? result.endIndex
+      result = String(result[firstNewline...])
+        .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    // Step 3: Strip <transcript> wrapper if echoed back (may be truncated at token limit).
+    // Strip <transcript> wrapper if echoed back (may be truncated at token limit).
+    // Case-insensitive so both <transcript> and <TRANSCRIPT> are handled.
     result = result.replacingOccurrences(
       of: "</?transcript>",
       with: "",
-      options: .regularExpression
+      options: [.regularExpression, .caseInsensitive]
     ).trimmingCharacters(in: .whitespacesAndNewlines)
 
     return result
