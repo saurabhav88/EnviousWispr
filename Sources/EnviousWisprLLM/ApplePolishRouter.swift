@@ -264,13 +264,18 @@ public enum ApplePolishRouter {
     "um", "uh", "please", "hey", "okay", "ok", "so", "well",
   ]
 
-  /// Multi-word polite prefixes. When the first two tokens match one of these
-  /// pairs, both are skipped so the imperative still reaches `hardImperatives`.
-  /// Covers "Could you make …", "Can you answer …", "Would you draft …",
-  /// "Will you write …", "Do you draft …".
+  /// Multi-word polite prefixes that soften a following imperative. When the
+  /// first two tokens match, both are skipped so the imperative still reaches
+  /// `hardImperatives`. "could/can/would/will" + "you" read as softened
+  /// requests ("Could you make …", "Will you draft …").
+  ///
+  /// `"do you"` is deliberately NOT in this set — "Do you answer customer
+  /// emails?" is a yes/no question, not a softened imperative. Skipping it
+  /// would route genuine conversational questions to .technical. Codex flagged
+  /// this on PR #436.
   private static let leadingSkipBigrams: Set<[String]> = [
     ["could", "you"], ["can", "you"], ["would", "you"],
-    ["will", "you"], ["do", "you"],
+    ["will", "you"],
   ]
 
   private static func firstMeaningfulWord(_ trimmed: String) -> String {

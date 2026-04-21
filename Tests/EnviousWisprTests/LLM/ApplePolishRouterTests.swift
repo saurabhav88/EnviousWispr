@@ -583,6 +583,26 @@ struct ApplePolishRouterTests {
     #expect(!d.signals.hasImperativeStart)
   }
 
+  @Test("do you answer yes/no question stays natural (not a softened imperative)")
+  func doYouInterrogativeStaysNatural() {
+    // Codex flag on PR #436: adding `do you` to skip-bigrams would make
+    // "Do you answer customer emails?" route technical via impStart(answer).
+    // `do you` is a yes/no question marker, not a polite-prefix softener.
+    let d = ApplePolishRouter.decide("Do you answer customer emails on Sundays?")
+    #expect(d.mode == .natural)
+    #expect(!d.signals.hasImperativeStart)
+  }
+
+  @Test("do you draft question stays natural")
+  func doYouDraftStaysNatural() {
+    // Same pattern as "do you answer": a habit question, not a softened
+    // imperative. `draft` is in hardImperatives but should not Tier-1 fire
+    // here because `do` is the first meaningful word, not `draft`.
+    let d = ApplePolishRouter.decide("Do you draft your replies on mobile or desktop?")
+    #expect(d.mode == .natural)
+    #expect(!d.signals.hasImperativeStart)
+  }
+
   // MARK: - #431: preservationIntent word-boundary match
 
   @Test("keep it literally simple does not trip preservation")
