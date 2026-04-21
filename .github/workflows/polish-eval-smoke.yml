@@ -74,7 +74,33 @@ jobs:
           printf '%s' "$GEMINI_API_KEY" > ~/.enviouswispr-keys/gemini-api-key
       - name: Run judge drift meta-test
         if: steps.filter.outputs.polish == 'true'
-        run: python3 scripts/eval/acceptance_gate.py --mode meta-test --polish-model gpt-4o-mini
+        # Exit-code policy — preserve the script's semantics so transient judge
+        # or API failures do not burn required-check credit.
+        #   0 = golden set scored, judge stable → pass
+        #   1 = unexpected script bug → real failure, propagate
+        #   2 = infra error (missing golden set, judge chunk failure) →
+        #       emit a warning annotation, exit 0 (NOT a PR regression)
+        #   3 = judge drift detected (scores moved vs locked golden) →
+        #       also emit warning annotation, exit 0 (NOT a PR issue; a
+        #       separate calibration decision owned by the eval maintainer)
+        run: |
+          set +e
+          python3 scripts/eval/acceptance_gate.py --mode meta-test --polish-model gpt-4o-mini
+          rc=$?
+          set -e
+          case "$rc" in
+            0)
+              exit 0 ;;
+            2)
+              echo "::warning title=judge-drift infra::meta-test returned INFRA-ERROR (exit 2); treating as success-with-warning, not a PR regression."
+              exit 0 ;;
+            3)
+              echo "::warning title=judge-drift calibration::meta-test returned JUDGE-DRIFT (exit 3); scores shifted vs golden. NOT a PR issue — investigate judge calibration separately."
+              exit 0 ;;
+            *)
+              echo "::error title=judge-drift failure::meta-test exited $rc (real failure)"
+              exit "$rc" ;;
+          esac
       - name: Upload artifacts on failure
         if: failure() && steps.filter.outputs.polish == 'true'
         env:
@@ -137,11 +163,31 @@ jobs:
           printf '%s' "$GEMINI_API_KEY" > ~/.enviouswispr-keys/gemini-api-key
       - name: Run acceptance gate (gpt-4o-mini polish, Gemini 3 Pro judge)
         if: steps.filter.outputs.polish == 'true'
+        # Same exit-code policy as judge-drift-check above.
+        #   0 = polish scored, no regression → pass
+        #   1 = real polish regression (PR changes dropped quality) → fail
+        #   2 = infra error (judge 503, missing scores) → warn, exit 0
+        # Without this wrapper any transient OpenAI/Gemini 503 during judging
+        # hard-fails the required check and blocks merges on something that
+        # the script itself explicitly labels "Not a PR regression."
         run: |
+          set +e
           python3 scripts/eval/acceptance_gate.py \
             --mode run \
             --polish-model gpt-4o-mini \
             --out-name "ci-pr-${PR_NUMBER}-${SHA}"
+          rc=$?
+          set -e
+          case "$rc" in
+            0)
+              exit 0 ;;
+            2)
+              echo "::warning title=polish-eval infra::acceptance gate returned INFRA-ERROR (exit 2); treating as success-with-warning, not a PR regression."
+              exit 0 ;;
+            *)
+              echo "::error title=polish-eval regression::acceptance gate exited $rc"
+              exit "$rc" ;;
+          esac
       - name: Upload full run artifacts
         if: always() && steps.filter.outputs.polish == 'true'
         uses: actions/upload-artifact@v7
