@@ -1,22 +1,46 @@
 version: 2
+# Volume-tuned for the hosted-runner era. Every Dependabot PR triggers a full
+# Swift build on a paid shared runner, so group aggressively and widen cadence:
+# - one grouped PR per ecosystem per month (vs ~weekly per-package before)
+# - patch + minor auto-bump inside the group; major bumps emit their own PR
+#   and get tagged 'needs-review' so a human (Claude session) decides
+# - the 'ci' label referenced in Dependabot config must exist in the repo; it
+#   doesn't today, so it's omitted until created
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 5
+      interval: "monthly"
+    open-pull-requests-limit: 3
     labels:
       - "dependencies"
-      - "ci"
     groups:
-      github-actions:
+      github-actions-minor:
         patterns:
-          - "actions/*"
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
 
   - package-ecosystem: "swift"
     directory: "/"
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 5
+      interval: "monthly"
+    open-pull-requests-limit: 3
     labels:
       - "dependencies"
+    groups:
+      swift-minor:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
