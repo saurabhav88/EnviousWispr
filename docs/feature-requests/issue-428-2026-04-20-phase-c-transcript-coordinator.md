@@ -27,8 +27,8 @@ This is also an ownership smell: `AppState` should not be deciding "refresh hist
 
 - Eliminate O(n) `loadAll()` from the heart-completion path. Post-change: `grep -n "transcriptCoordinator.load()" Sources/App/AppState.swift` returns zero hits.
 - `TranscriptCoordinator.append(_:)` exists, is `@MainActor`, inserts into `transcripts` at index 0, performs no disk I/O.
-- `TranscriptStore` gains `public init(directory: URL)` so Phase C's 1000-transcript perf test can seed a temp directory.
-- `AppState` no longer holds a direct `transcriptStore` property; the coordinator is the sole production construction point (single-owner invariant per D8).
+- `TranscriptStore` gains `internal init(directory: URL)` (reached from tests via `@testable import EnviousWisprStorage`) so Phase C's 1000-transcript perf test can seed a temp directory. Visibility locked to `internal` per §14 decision #4 to keep production call sites unable to mis-point the store.
+- `AppState` no longer holds a direct `transcriptStore` property. Composition-root pattern per §3.1: AppState's init is the single production construction point; the store is threaded by init into `TranscriptCoordinator`, both pipelines, and `TranscriptPolishService`.
 - Zero production history loss (Phase C Invariant §27 + Phase C doc).
 - Race between startup `load()` and concurrent `append(_:)` resolved by union-by-ID merge on `load()`, not wholesale replace.
 
