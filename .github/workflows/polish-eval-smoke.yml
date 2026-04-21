@@ -13,6 +13,13 @@ on:
 # acceptance_gate.py with auth errors and block an external contribution on
 # infrastructure it cannot satisfy. Skip forks entirely by gating every job
 # on same-repo PR origin — jobs that don't run report as "not required."
+# Dependabot PRs are skipped the same way. Dependabot diffs only touch
+# Package.resolved or .github/workflows/*.yml — they cannot change prompts,
+# models, or the eval corpus, so the judge-drift check has nothing to verify.
+# Mirroring secrets to Dependabot scope would create a supply-chain exfil
+# surface without adding coverage. If a Dependabot PR ever looks like it
+# should run polish evaluation (hypothetical), re-trigger manually as a
+# regular PR.
 # If secrets are missing in the main repo itself, that's a legitimate config
 # error and the job fails red; fix the repo's Actions secrets.
 #
@@ -21,7 +28,7 @@ on:
 jobs:
   meta-test:
     name: judge-drift-check
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -83,7 +90,7 @@ jobs:
   acceptance-gate:
     name: polish-quality-gate
     needs: meta-test
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
