@@ -28,6 +28,38 @@ public enum RouterSignal: Sendable, Equatable {
   case spokenFormatting([String])
   case selfCorrection([String])
   case filler([String])
+
+  /// Compact, grep-friendly one-line rendering for the app log. Each case
+  /// collapses to `name` or `name(value)` / `name(a,b,c)` so telemetry
+  /// consumers and humans can scan router signals without scrolling.
+  ///
+  /// Captured substrings (strongPhrase, preservationIntent, imperativeStart
+  /// pulls) can span a newline when the transcript contains a line break
+  /// inside a `\s+` match. Sanitize before rendering so a multi-line dictation
+  /// cannot split one ROUTE event into two log lines.
+  public var logDescription: String {
+    switch self {
+    case .emptyInput: return "empty"
+    case .strongPhrase(let s): return "strong(\(Self.sanitize(s)))"
+    case .preservationIntent(let s): return "preserve(\(Self.sanitize(s)))"
+    case .imperativeStart(let s): return "impStart(\(Self.sanitize(s)))"
+    case .conversationalImperativeStart(let s): return "convImpStart(\(Self.sanitize(s)))"
+    case .techNouns(let xs): return "tech(\(Self.sanitizeList(xs)))"
+    case .spokenFormatting(let xs): return "fmt(\(Self.sanitizeList(xs)))"
+    case .selfCorrection(let xs): return "selfCorr(\(Self.sanitizeList(xs)))"
+    case .filler(let xs): return "filler(\(Self.sanitizeList(xs)))"
+    }
+  }
+
+  /// Collapse internal whitespace runs (including newlines) to a single space
+  /// so a captured substring cannot break the one-line-per-event log shape.
+  private static func sanitize(_ s: String) -> String {
+    s.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+  }
+
+  private static func sanitizeList(_ xs: [String]) -> String {
+    xs.map(sanitize).joined(separator: ",")
+  }
 }
 
 /// How the router arrived at its decision. Useful for distinguishing
@@ -38,6 +70,15 @@ public enum RouterBasis: Sendable, Equatable {
   case empty
   case tier1
   case scored
+
+  /// Compact label used in polish trace logs.
+  public var logDescription: String {
+    switch self {
+    case .empty: return "empty"
+    case .tier1: return "tier1"
+    case .scored: return "scored"
+    }
+  }
 }
 
 /// Deterministic, inspectable classifier that selects between `natural` and
@@ -198,7 +239,7 @@ public enum ApplePolishRouter {
   private static let hardImperatives: Set<String> = [
     "write", "draft", "generate", "create", "compose", "build", "make",
     "convert", "translate", "summarize", "summarise", "paraphrase", "rewrite",
-    "refactor", "implement", "turn",
+    "refactor", "implement", "turn", "brainstorm",
     "chart", "plot", "calculate", "parse", "compile",
     // "Answer this question ..." is an execution-risk imperative the router
     // exists to catch (AFM answers the question instead of preserving it).

@@ -113,6 +113,11 @@ struct RunnerMain {
     let args = parseArgs()
     let cases = loadCorpus(path: args.corpusPath)
 
+    // Enable file logging so [AIPolish] trace lines from AppleIntelligenceConnector
+    // land in ~/Library/Logs/EnviousWispr/app.log. Required for bench-mode A/B
+    // analysis of router/filter behavior. AppLogger is file-gated on this flag.
+    await AppLogger.shared.setDebugMode(true)
+
     let sink: FileHandle
     if let outPath = args.outPath {
       // Remove any existing file before recreating: createFile(atPath:contents:)

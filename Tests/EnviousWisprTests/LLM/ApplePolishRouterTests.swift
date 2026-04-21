@@ -478,4 +478,63 @@ struct ApplePolishRouterTests {
     #expect(scored.basis == .scored)
     #expect(empty.basis == .empty)
   }
+
+  // MARK: - brainstorm imperative (regression gate for T023)
+
+  @Test("brainstorm imperative routes technical via imperativeStart")
+  func brainstormRoutesTechnical() {
+    let d = ApplePolishRouter.decide("Brainstorm three names for the new onboarding flow.")
+    #expect(d.mode == .technical)
+    #expect(d.basis == .tier1)
+    #expect(d.signals.hasImperativeStart)
+  }
+
+  // MARK: - Signal rendering for app log traces
+
+  @Test("router signal logDescription renders each case without whitespace gaps")
+  func routerSignalLogDescription() {
+    #expect(RouterSignal.emptyInput.logDescription == "empty")
+    #expect(
+      RouterSignal.strongPhrase("write a python script").logDescription
+        == "strong(write a python script)")
+    #expect(
+      RouterSignal.preservationIntent("keep the words").logDescription
+        == "preserve(keep the words)")
+    #expect(RouterSignal.imperativeStart("draft").logDescription == "impStart(draft)")
+    #expect(
+      RouterSignal.conversationalImperativeStart("remind").logDescription
+        == "convImpStart(remind)")
+    #expect(RouterSignal.techNouns(["api", "sdk"]).logDescription == "tech(api,sdk)")
+    #expect(
+      RouterSignal.spokenFormatting(["bullet", "colon"]).logDescription
+        == "fmt(bullet,colon)")
+    #expect(RouterSignal.selfCorrection(["no"]).logDescription == "selfCorr(no)")
+    #expect(RouterSignal.filler(["um", "like"]).logDescription == "filler(um,like)")
+  }
+
+  @Test("router basis logDescription covers all cases")
+  func routerBasisLogDescription() {
+    #expect(RouterBasis.empty.logDescription == "empty")
+    #expect(RouterBasis.tier1.logDescription == "tier1")
+    #expect(RouterBasis.scored.logDescription == "scored")
+  }
+
+  @Test("signal logDescription collapses embedded newlines to a single space")
+  func routerSignalSanitizesNewlines() {
+    // Regex matches in strongPhraseMatch can span a line break when the
+    // transcript has a newline inside a `\s+` group. The trace format
+    // requires one log event per line, so the sanitizer collapses internal
+    // whitespace runs (including newlines) to a single space.
+    let s = RouterSignal.strongPhrase("write\n a\n\t python script").logDescription
+    #expect(!s.contains("\n"))
+    #expect(!s.contains("\t"))
+    #expect(s == "strong(write a python script)")
+  }
+
+  @Test("tech nouns list sanitization flattens whitespace across list items")
+  func routerTechNounsSanitizesNewlines() {
+    let s = RouterSignal.techNouns(["api\nkey", "sdk"]).logDescription
+    #expect(!s.contains("\n"))
+    #expect(s == "tech(api key,sdk)")
+  }
 }
