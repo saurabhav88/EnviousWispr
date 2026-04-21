@@ -287,7 +287,7 @@ Full artifact at `docs/audits/2026-04-18-senior-audit.json`. This section reprod
 - **Counterfactual rationale:** Respects the existing split where `TranscriptCoordinator` owns view state and `TranscriptStore` owns disk IO.
 - **Falsifiability:** Seed the transcript directory with 10,000 JSON files, complete a short dictation, and measure time from `.complete` to responsive history UI. A visible stall or delayed state transition confirms the static hotspot.
 - **Audit `depends_on`:** REF-01 (because the call site lives inside AppState's state-change closure).
-- **Phase addressing:** Phase C (§9), folded into #196 expansion.
+- **Phase addressing:** Phase C (§9), shipped under #428 / PR #432 (2026-04-21).
 
 ### 3.6 REF-06 — Cap or rotate Bluetooth route diagnostics
 
@@ -615,10 +615,10 @@ Each refactor pattern carries its own test strategy.
 
 | # | ID | Title | Track | Tier | Issue | Status | Est. LOC |
 |---|---|---|---|---|---|---|---|
-| 1 | **A** | PipelineStateChangeHandler extraction | 1 | REFACTOR | #196 | SHIP-READY | ~200 (−) |
-| 2 | **B** | DictationSessionConfig freeze-at-startRecording | 1 | REFACTOR | #195 | UX-BLOCKED | ~140 (−) |
-| 3 | **C** | TranscriptCoordinator owns history | 1 | MEDIUM | #196 (expanded) | PLANNED §9 | ~140 |
-| 4 | **D** | CustomWordsPropagator replaces 5-way fanout | 1 | MEDIUM | #196 (expanded) | PLANNED §10 | ~180 |
+| 1 | **A** | PipelineStateChangeHandler extraction | 1 | REFACTOR | #196 | SHIPPED (PR #422, 2026-04-20) | ~200 (−) |
+| 2 | **B** | DictationSessionConfig freeze-at-startRecording | 1 | REFACTOR | #195 | SHIPPED (PR #424, 2026-04-20) | ~140 (−) |
+| 3 | **C** | TranscriptCoordinator owns history | 1 | MEDIUM | #428 | SHIPPED (PR #432, 2026-04-21) | +283/−39 actual |
+| 4 | **D** | CustomWordsPropagator replaces 5-way fanout | 1 | MEDIUM | to open | PLANNED §10 | ~180 |
 | 5 | **E** | Architecture regression tests | 1 | SMALL | to open | PLANNED §11 | ~65 |
 | **F** | SetupCoordinator extraction (NEW v1.3) | 1 | MEDIUM | to open | PLANNED §17 | ~+90 net |
 | 6 | **R2** | WhisperKitBackend adapter | 1 | MEDIUM | #360 | PLANNED §12 | ~120 |
@@ -1079,9 +1079,9 @@ Phase B does not start until the Phase B UX decision (§27.1) is recorded per §
 
 ## 9. Phase C — TranscriptCoordinator owns history (new)
 
-**Issue:** #196 (expanded) · **Plan:** inline below · **Status:** PLANNED
+**Issue:** #428 · **Plan:** `docs/feature-requests/issue-428-2026-04-20-phase-c-transcript-coordinator.md` · **Status:** SHIPPED (PR #432 squash `b42e562`, 2026-04-21)
 **Pattern:** Move Field + Move Method (Fowler). Not Extract Class — `TranscriptCoordinator` already exists as a class (§4.2); this phase moves ownership of state and behavior INTO it from AppState, and eliminates a reload call site. The correct taxonomy is Move Field (`transcriptStore` ownership moves from AppState to TranscriptCoordinator) plus Move Method (the `.complete`-time reload logic moves into the coordinator's append-integration path) plus a small Extract Method if `append(_:)` needs an internal helper.
-**Tier:** MEDIUM · **Est. LOC delta:** +~100 net (TranscriptCoordinator grows, AppState shrinks)
+**Tier:** MEDIUM · **Actual LOC delta:** +283/−39 across 9 files (see PR #432 for file-level diff).
 
 ### 9.1 Why this phase exists
 
