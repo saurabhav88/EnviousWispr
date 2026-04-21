@@ -18,7 +18,6 @@ final class AppState {
   let permissions = PermissionsService()
   let audioCapture: any AudioCaptureInterface
   let asrManager: any ASRManagerInterface
-  let transcriptStore = TranscriptStore()
   let keychainManager = KeychainManager()
   let hotkeyService = HotkeyService()
   let benchmark = BenchmarkSuite()
@@ -68,7 +67,7 @@ final class AppState {
       schedulePolishFailedWarning: { [weak self] in
         self?.schedulePostCompletionWarning(message: "Polish failed -- using raw text")
       },
-      reloadTranscriptHistory: { [weak self] in self?.transcriptCoordinator.load() },
+      appendCompletedTranscript: { [weak self] t in self?.transcriptCoordinator.append(t) },
       reportDictationCompleted: { [weak self] t in
         guard let self else { return }
         TelemetryService.shared.reportDictationCompleted(
@@ -141,6 +140,21 @@ final class AppState {
       asrManager = ASRManager()
     }
 
+    // Phase C (#428) — composition-root for transcript storage.
+    // One `TranscriptStore` instance is constructed here and threaded
+    // into every consumer (coordinator + both pipelines + polish service).
+    // AppState does NOT retain this as a property; each consumer keeps
+    // the reference it received via init. No accessor is exposed on the
+    // coordinator; no consumer constructs its own. The shared-store
+    // invariant is verifiable by grep: exactly one `TranscriptStore(`
+    // call in `Sources/` outside `EnviousWisprStorage/TranscriptStore.swift`.
+    let transcriptStore = TranscriptStore()
+    // Production invariant: the app has always written transcripts to
+    // AppConstants.appSupportURL/transcripts. Verified via grep 2026-04-20.
+    // No legacy path, no group container, no iCloud. Phase C Invariant
+    // safeguard #4 (Option B — plan §11): a concrete migrator would be a
+    // no-op, so we rely on the default init's directory-create-on-miss
+    // plus founder dogfood (safeguard #3) to catch any future path shift.
     transcriptCoordinator = TranscriptCoordinator(store: transcriptStore)
     llmDiscovery = LLMModelDiscoveryCoordinator(keychainManager: keychainManager)
 

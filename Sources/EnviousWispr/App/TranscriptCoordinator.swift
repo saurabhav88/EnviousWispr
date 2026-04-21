@@ -30,7 +30,15 @@ final class TranscriptCoordinator {
     loadTask?.cancel()
     loadTask = Task {
       do {
-        transcripts = try await store.loadAll()
+        let diskRows = try await store.loadAll()
+        // Phase C union-by-ID merge. Preserve any in-memory rows whose IDs
+        // are not yet on disk (append-during-load race window) in their
+        // existing order, then append disk rows. Protects the newest-first
+        // invariant under multiple concurrent completions while a slow
+        // startup load is still running.
+        let diskIDs = Set(diskRows.map(\.id))
+        let inFlightRows = transcripts.filter { !diskIDs.contains($0.id) }
+        transcripts = inFlightRows + diskRows
       } catch {
         await AppLogger.shared.log(
           "Failed to load transcripts: \(error)",
@@ -38,6 +46,16 @@ final class TranscriptCoordinator {
         )
       }
     }
+  }
+
+  /// Append a just-completed transcript to the in-memory cache.
+  ///
+  /// Precondition: the transcript has already been persisted by
+  /// `TranscriptFinalizer.save(_:)`. This method does no disk I/O. Caller
+  /// must not invoke it twice for the same transcript — duplicate-ID
+  /// protection would mask heart-path bugs.
+  func append(_ transcript: Transcript) {
+    transcripts.insert(transcript, at: 0)
   }
 
   func delete(_ transcript: Transcript) {

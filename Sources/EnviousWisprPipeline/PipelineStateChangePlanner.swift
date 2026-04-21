@@ -19,10 +19,12 @@ enum PipelineStateSideEffect: Equatable, Sendable {
   /// Render this intent on the overlay. Always emitted exactly once per call.
   case showOverlay(OverlayIntent)
 
-  /// Trigger disk-backed transcript history reload. Emitted on every
-  /// `.complete` transition, regardless of whether the current transcript is
-  /// nil. (Phase C will replace this with an in-memory `append(_:)`.)
-  case reloadTranscriptHistory
+  /// Append the just-completed transcript to the in-memory history cache
+  /// (no disk I/O — finalizer already persisted before `.complete` fires).
+  /// Emitted only when `hasCurrentTranscript` is true; `.complete` with
+  /// `nil` transcript is treated as a transient stale-cache condition and
+  /// no append is emitted.
+  case appendCompletedTranscript
 
   /// Call `TelemetryService.shared.reportDictationCompleted(transcript:inputMode:)`
   /// using the caller's current transcript. Emitted only when `.complete` AND
@@ -89,12 +91,16 @@ enum PipelineStateChangePlanner {
     }
     effects.append(.showOverlay(resolvedOverlayIntent))
 
-    // Step 2 — complete-path telemetry and history reload.
-    // reloadTranscriptHistory fires even without a current transcript
-    // (matches AppState.swift:395 unconditional load).
+    // Step 2 — complete-path: append to in-memory history + telemetry.
+    // Phase C: replaced unconditional disk-backed reload with an
+    // in-memory append that only fires when the pipeline has a
+    // current transcript. Finalizer already persisted by the time
+    // `.complete` is observed (TranscriptFinalizer.swift:126), so the
+    // new row is on disk regardless. The in-memory append keeps the
+    // history cache visibly fresh without an O(n) disk scan.
     if case .complete = newState.activity {
-      effects.append(.reloadTranscriptHistory)
       if hasCurrentTranscript {
+        effects.append(.appendCompletedTranscript)
         effects.append(.reportDictationCompleted)
       }
     }
