@@ -537,4 +537,90 @@ struct ApplePolishRouterTests {
     #expect(!s.contains("\n"))
     #expect(s == "tech(api key,sdk)")
   }
+
+  // MARK: - #430: polite-prefixed imperatives reach hardImperatives
+
+  @Test("could you make routes technical")
+  func couldYouMakeRoutesTechnical() {
+    let d = ApplePolishRouter.decide("Could you make a Python script that parses logs?")
+    #expect(d.mode == .technical)
+    #expect(d.basis == .tier1)
+    #expect(d.signals.hasImperativeStart)
+  }
+
+  @Test("can you answer routes technical")
+  func canYouAnswerRoutesTechnical() {
+    let d = ApplePolishRouter.decide("Can you answer what the migration plan is?")
+    #expect(d.mode == .technical)
+    #expect(d.basis == .tier1)
+    #expect(d.signals.hasImperativeStart)
+  }
+
+  @Test("would you draft routes technical")
+  func wouldYouDraftRoutesTechnical() {
+    let d = ApplePolishRouter.decide("Would you draft a calendar invite for tomorrow?")
+    #expect(d.mode == .technical)
+    #expect(d.basis == .tier1)
+    #expect(d.signals.hasImperativeStart)
+  }
+
+  @Test("please could you draft stacks single + bigram skip")
+  func pleaseCouldYouDraftRoutesTechnical() {
+    // "please" (single skip) then "could you" (bigram skip) then "draft"
+    // which is a hardImperative but does not match any strongPhrasePattern
+    // (those need a language noun). Tier 1 should fire via imperativeStart.
+    let d = ApplePolishRouter.decide("Please could you draft a note for the landlord?")
+    #expect(d.mode == .technical)
+    #expect(d.basis == .tier1)
+    #expect(d.signals.hasImperativeStart)
+  }
+
+  @Test("could you followed by non-imperative stays natural")
+  func couldYouNonImperativeStaysNatural() {
+    // "could you" skipped, lands on "hand" which is not in hardImperatives.
+    let d = ApplePolishRouter.decide("Could you hand me the notes from Monday?")
+    #expect(d.mode == .natural)
+    #expect(!d.signals.hasImperativeStart)
+  }
+
+  @Test("do you answer yes/no question stays natural (not a softened imperative)")
+  func doYouInterrogativeStaysNatural() {
+    // Codex flag on PR #436: adding `do you` to skip-bigrams would make
+    // "Do you answer customer emails?" route technical via impStart(answer).
+    // `do you` is a yes/no question marker, not a polite-prefix softener.
+    let d = ApplePolishRouter.decide("Do you answer customer emails on Sundays?")
+    #expect(d.mode == .natural)
+    #expect(!d.signals.hasImperativeStart)
+  }
+
+  @Test("do you draft question stays natural")
+  func doYouDraftStaysNatural() {
+    // Same pattern as "do you answer": a habit question, not a softened
+    // imperative. `draft` is in hardImperatives but should not Tier-1 fire
+    // here because `do` is the first meaningful word, not `draft`.
+    let d = ApplePolishRouter.decide("Do you draft your replies on mobile or desktop?")
+    #expect(d.mode == .natural)
+    #expect(!d.signals.hasImperativeStart)
+  }
+
+  // MARK: - #431: preservationIntent word-boundary match
+
+  @Test("keep it literally simple does not trip preservation")
+  func keepItLiterallySimpleDoesNotMatch() {
+    let d = ApplePolishRouter.decide("Just keep it literally simple for the demo.")
+    #expect(!d.signals.hasPreservationIntent)
+  }
+
+  @Test("keep it literal still routes via preservation")
+  func keepItLiteralStillMatches() {
+    let d = ApplePolishRouter.decide("Just keep it literal.")
+    #expect(d.mode == .technical)
+    #expect(d.signals.hasPreservationIntent)
+  }
+
+  @Test("preserve the word does not match inside wordsmith")
+  func preserveTheWordNotMatchWordsmith() {
+    let d = ApplePolishRouter.decide("We could preserve the wordsmith tone in the copy.")
+    #expect(!d.signals.hasPreservationIntent)
+  }
 }
