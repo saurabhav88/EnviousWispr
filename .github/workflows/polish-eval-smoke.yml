@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Detect polish paths
         id: filter
         uses: dorny/paths-filter@v4
@@ -54,7 +54,7 @@ jobs:
         run: echo "Polish paths not touched; nothing to evaluate."
       - name: Setup Python
         if: steps.filter.outputs.polish == 'true'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
       - name: Stage API keys locally
@@ -79,7 +79,7 @@ jobs:
         if: failure() && steps.filter.outputs.polish == 'true'
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: meta-test-failure-pr
           path: |
@@ -97,7 +97,7 @@ jobs:
       PR_NUMBER: ${{ github.event.pull_request.number }}
       SHA: ${{ github.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Detect polish paths
         id: filter
         uses: dorny/paths-filter@v4
@@ -119,7 +119,7 @@ jobs:
         run: echo "Polish paths not touched; nothing to evaluate."
       - name: Setup Python
         if: steps.filter.outputs.polish == 'true'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
       - name: Stage API keys locally
@@ -144,7 +144,7 @@ jobs:
             --out-name "ci-pr-${PR_NUMBER}-${SHA}"
       - name: Upload full run artifacts
         if: always() && steps.filter.outputs.polish == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: polish-eval-pr
           path: benchmark-results/eval/runs/
