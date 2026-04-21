@@ -39,7 +39,7 @@ struct PipelineStateChangePlannerTests {
     #expect(plan.effects.contains(.showOverlay(.clipboardFallback)))
     #expect(!plan.effects.contains(.schedulePolishFailedWarning))
     // Clipboard fallback still reports telemetry + reloads history.
-    #expect(plan.effects.contains(.reloadTranscriptHistory))
+    #expect(plan.effects.contains(.appendCompletedTranscript))
     #expect(plan.effects.contains(.reportDictationCompleted))
     #expect(!plan.effects.contains(.cancelPendingWarning))
   }
@@ -55,7 +55,7 @@ struct PipelineStateChangePlannerTests {
     )
     #expect(plan.effects.contains(.showOverlay(.hidden)))
     #expect(plan.effects.contains(.schedulePolishFailedWarning))
-    #expect(plan.effects.contains(.reloadTranscriptHistory))
+    #expect(plan.effects.contains(.appendCompletedTranscript))
     #expect(plan.effects.contains(.reportDictationCompleted))
     #expect(!plan.effects.contains(.cancelPendingWarning))
   }
@@ -71,13 +71,19 @@ struct PipelineStateChangePlannerTests {
     )
     #expect(plan.effects.contains(.showOverlay(.hidden)))
     #expect(!plan.effects.contains(.schedulePolishFailedWarning))
-    #expect(plan.effects.contains(.reloadTranscriptHistory))
+    #expect(plan.effects.contains(.appendCompletedTranscript))
     #expect(plan.effects.contains(.reportDictationCompleted))
     #expect(!plan.effects.contains(.cancelPendingWarning))
   }
 
-  @Test("complete without current transcript -> history reloads but no telemetry")
-  func completeWithoutTranscriptSkipsTelemetryButReloadsHistory() {
+  @Test("complete without current transcript -> neither append nor telemetry fires (Phase C)")
+  func completeWithoutTranscriptSkipsBothAppendAndTelemetry() {
+    // Phase C (#428) contract change: when `.complete` arrives with no
+    // currentTranscript, the planner emits neither `.appendCompletedTranscript`
+    // nor `.reportDictationCompleted`. This is an accepted transient
+    // stale-cache condition — finalizer already persisted, so the row is on
+    // disk; the in-memory cache is stale until next `load()`. Previously
+    // (Phase A) an unconditional disk reload fired even without a transcript.
     let plan = PipelineStateChangePlanner.plan(
       to: PipelineState.complete,
       pipelineOverlayIntent: Self.hiddenIntent,
@@ -85,7 +91,7 @@ struct PipelineStateChangePlannerTests {
       lastPolishError: nil,
       hasCurrentTranscript: false
     )
-    #expect(plan.effects.contains(.reloadTranscriptHistory))
+    #expect(!plan.effects.contains(.appendCompletedTranscript))
     #expect(!plan.effects.contains(.reportDictationCompleted))
   }
 
@@ -129,7 +135,7 @@ struct PipelineStateChangePlannerTests {
     )
     #expect(plan.effects.first == .cancelPendingWarning)
     #expect(plan.effects.contains(.showOverlay(.hidden)))
-    #expect(!plan.effects.contains(.reloadTranscriptHistory))
+    #expect(!plan.effects.contains(.appendCompletedTranscript))
     #expect(!plan.effects.contains(.reportDictationCompleted))
   }
 
@@ -196,7 +202,7 @@ struct PipelineStateChangePlannerTests {
     #expect(plan.effects.contains(.cancelPendingWarning))
     #expect(plan.effects.contains(.showOverlay(.error(message: "mic_disconnected"))))
     // error must not trigger .complete-path effects.
-    #expect(!plan.effects.contains(.reloadTranscriptHistory))
+    #expect(!plan.effects.contains(.appendCompletedTranscript))
     #expect(!plan.effects.contains(.reportDictationCompleted))
   }
 
@@ -228,7 +234,7 @@ struct PipelineStateChangePlannerTests {
     #expect(
       plan.effects == [
         .showOverlay(.hidden),
-        .reloadTranscriptHistory,
+        .appendCompletedTranscript,
         .reportDictationCompleted,
       ])
   }
@@ -246,7 +252,7 @@ struct PipelineStateChangePlannerTests {
       plan.effects == [
         .schedulePolishFailedWarning,
         .showOverlay(.hidden),
-        .reloadTranscriptHistory,
+        .appendCompletedTranscript,
         .reportDictationCompleted,
       ])
   }
@@ -263,7 +269,7 @@ struct PipelineStateChangePlannerTests {
     #expect(
       plan.effects == [
         .showOverlay(.clipboardFallback),
-        .reloadTranscriptHistory,
+        .appendCompletedTranscript,
         .reportDictationCompleted,
       ])
   }

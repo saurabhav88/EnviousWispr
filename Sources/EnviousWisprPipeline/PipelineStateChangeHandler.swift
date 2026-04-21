@@ -31,7 +31,7 @@ public final class PipelineStateChangeHandler {
   private let showOverlay: ShowOverlay
   private let cancelPendingWarning: @MainActor () -> Void
   private let schedulePolishFailedWarning: @MainActor () -> Void
-  private let reloadTranscriptHistory: @MainActor () -> Void
+  private let appendCompletedTranscript: @MainActor (Transcript) -> Void
   private let reportDictationCompleted: @MainActor (Transcript) -> Void
   private let reportPipelineFailed: @MainActor (String) -> Void
 
@@ -39,14 +39,14 @@ public final class PipelineStateChangeHandler {
     showOverlay: @escaping ShowOverlay,
     cancelPendingWarning: @escaping @MainActor () -> Void,
     schedulePolishFailedWarning: @escaping @MainActor () -> Void,
-    reloadTranscriptHistory: @escaping @MainActor () -> Void,
+    appendCompletedTranscript: @escaping @MainActor (Transcript) -> Void,
     reportDictationCompleted: @escaping @MainActor (Transcript) -> Void,
     reportPipelineFailed: @escaping @MainActor (String) -> Void
   ) {
     self.showOverlay = showOverlay
     self.cancelPendingWarning = cancelPendingWarning
     self.schedulePolishFailedWarning = schedulePolishFailedWarning
-    self.reloadTranscriptHistory = reloadTranscriptHistory
+    self.appendCompletedTranscript = appendCompletedTranscript
     self.reportDictationCompleted = reportDictationCompleted
     self.reportPipelineFailed = reportPipelineFailed
   }
@@ -78,8 +78,10 @@ public final class PipelineStateChangeHandler {
         schedulePolishFailedWarning()
       case .showOverlay(let intent):
         showOverlay(intent)
-      case .reloadTranscriptHistory:
-        reloadTranscriptHistory()
+      case .appendCompletedTranscript:
+        if let t = currentTranscript {
+          appendCompletedTranscript(t)
+        }
       case .reportDictationCompleted:
         if let t = currentTranscript {
           reportDictationCompleted(t)

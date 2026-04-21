@@ -37,7 +37,7 @@ struct PipelineStateChangeHandlerTests {
   final class CallbackRecorder {
     var cancelWarningCount = 0
     var scheduleWarningCount = 0
-    var reloadHistoryCount = 0
+    var appendedCalls: [Transcript] = []
     var completedCalls: [Transcript] = []
     var failedCalls: [String] = []
   }
@@ -50,7 +50,7 @@ struct PipelineStateChangeHandlerTests {
       showOverlay: { intent in overlay.record(intent) },
       cancelPendingWarning: { callbacks.cancelWarningCount += 1 },
       schedulePolishFailedWarning: { callbacks.scheduleWarningCount += 1 },
-      reloadTranscriptHistory: { callbacks.reloadHistoryCount += 1 },
+      appendCompletedTranscript: { callbacks.appendedCalls.append($0) },
       reportDictationCompleted: { callbacks.completedCalls.append($0) },
       reportPipelineFailed: { callbacks.failedCalls.append($0) }
     )
@@ -87,7 +87,7 @@ struct PipelineStateChangeHandlerTests {
     )
 
     #expect(spy.calls == [OverlaySpy.Call(intent: .hidden)])
-    #expect(calls.reloadHistoryCount == 1)
+    #expect(calls.appendedCalls.count == 1)
     #expect(calls.completedCalls.count == 1)
     #expect(calls.completedCalls.first?.id == transcript.id)
     #expect(calls.failedCalls.isEmpty)
@@ -112,7 +112,7 @@ struct PipelineStateChangeHandlerTests {
     #expect(calls.scheduleWarningCount == 1)
     #expect(calls.cancelWarningCount == 0)
     #expect(spy.calls == [OverlaySpy.Call(intent: .hidden)])
-    #expect(calls.reloadHistoryCount == 1)
+    #expect(calls.appendedCalls.count == 1)
     #expect(calls.completedCalls.count == 1)
   }
 
@@ -132,14 +132,17 @@ struct PipelineStateChangeHandlerTests {
 
     #expect(spy.calls == [OverlaySpy.Call(intent: .clipboardFallback)])
     #expect(calls.scheduleWarningCount == 0)
-    #expect(calls.reloadHistoryCount == 1)
+    #expect(calls.appendedCalls.count == 1)
     #expect(calls.completedCalls.count == 1)
   }
 
   // MARK: - Transcript-conditional guards
 
-  @Test("complete without current transcript: reload fires but reportDictationCompleted does not")
-  func completeWithoutTranscriptSkipsTelemetry() {
+  @Test("complete without current transcript: neither append nor telemetry fires (Phase C)")
+  func completeWithoutTranscriptSkipsBothAppendAndTelemetry() {
+    // Phase C (#428): `.complete` with nil transcript emits overlay only.
+    // The in-memory cache is stale until next `load()`; finalizer has
+    // already persisted the row, so disk is authoritative.
     let spy = OverlaySpy()
     let calls = CallbackRecorder()
     let handler = Self.makeHandler(overlay: spy, callbacks: calls)
@@ -151,7 +154,7 @@ struct PipelineStateChangeHandlerTests {
       currentTranscript: nil
     )
 
-    #expect(calls.reloadHistoryCount == 1)
+    #expect(calls.appendedCalls.isEmpty)
     #expect(calls.completedCalls.isEmpty)
     #expect(spy.calls.count == 1)
   }
@@ -174,7 +177,7 @@ struct PipelineStateChangeHandlerTests {
     #expect(calls.cancelWarningCount == 1)
     #expect(calls.scheduleWarningCount == 0)
     #expect(spy.calls == [OverlaySpy.Call(intent: .recording(audioLevel: 0))])
-    #expect(calls.reloadHistoryCount == 0)
+    #expect(calls.appendedCalls.count == 0)
     #expect(calls.completedCalls.isEmpty)
     #expect(calls.failedCalls.isEmpty)
   }
@@ -193,7 +196,7 @@ struct PipelineStateChangeHandlerTests {
     )
 
     #expect(calls.cancelWarningCount == 1)
-    #expect(calls.reloadHistoryCount == 0)
+    #expect(calls.appendedCalls.count == 0)
     #expect(calls.completedCalls.isEmpty)
   }
 
@@ -216,7 +219,7 @@ struct PipelineStateChangeHandlerTests {
     #expect(
       spy.calls == [OverlaySpy.Call(intent: .error(message: "mic_disconnected"))])
     #expect(calls.failedCalls == ["mic_disconnected"])
-    #expect(calls.reloadHistoryCount == 0)
+    #expect(calls.appendedCalls.count == 0)
     #expect(calls.completedCalls.isEmpty)
   }
 
@@ -243,7 +246,7 @@ struct PipelineStateChangeHandlerTests {
       currentTranscript: second
     )
 
-    #expect(calls.reloadHistoryCount == 2)
+    #expect(calls.appendedCalls.count == 2)
     #expect(calls.completedCalls.count == 2)
     #expect(calls.completedCalls.map(\.id) == [first.id, second.id])
   }

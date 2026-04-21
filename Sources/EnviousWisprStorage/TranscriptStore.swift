@@ -16,6 +16,21 @@ public final class TranscriptStore {
     )
   }
 
+  // Tests only. Reached via `@testable import EnviousWisprStorage`.
+  // Production uses the default `init()` so the store always points at
+  // `AppConstants.appSupportURL/transcripts`. Keeping this `internal`
+  // means a production call site cannot mis-point the store. Periphery
+  // scans `--exclude-tests` so this init appears unused from production;
+  // the annotation suppresses that false positive.
+  // periphery:ignore
+  internal init(directory: URL) {
+    self.directory = directory
+    try? FileManager.default.createDirectory(
+      at: directory,
+      withIntermediateDirectories: true
+    )
+  }
+
   /// Save a transcript to disk.
   public func save(_ transcript: Transcript) throws {
     let filename = "\(transcript.id.uuidString).json"
