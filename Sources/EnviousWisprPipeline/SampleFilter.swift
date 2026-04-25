@@ -43,6 +43,13 @@ internal enum SampleFilter {
 
     var merged: [(start: Int, end: Int)] = []
     for segment in sortedSegments {
+      // Skip malformed segments (endSample <= startSample) consistently:
+      // the voiced-sum accumulator above already ignores them, so the merge
+      // loop must too. Otherwise, a single invalid segment alongside enough
+      // valid speech to pass the threshold would emit a padded non-speech
+      // slice in the filtered audio.
+      guard segment.endSample > segment.startSample else { continue }
+
       let start: Int
       if segment.startSample <= pad {
         start = 0

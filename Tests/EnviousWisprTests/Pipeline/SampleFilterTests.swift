@@ -187,6 +187,24 @@ struct SampleFilterTests {
     #expect(negative != samples)
   }
 
+  @Test("invalid segments mixed with valid speech are skipped in the merge loop too")
+  func invalidSegmentsAreSkippedInMergeLoop() {
+    // One valid 4_800-sample segment passes the voiced threshold.
+    // One malformed segment (end <= start) sits at sample 10_000.
+    // The merge loop must NOT emit a padded slice around the invalid
+    // segment's reversed range — otherwise non-speech audio leaks through.
+    let samples = (0..<20_000).map(Float.init)
+    let segments = [
+      SpeechSegment(startSample: 1_000, endSample: 5_800),
+      SpeechSegment(startSample: 10_000, endSample: 9_000),
+    ]
+
+    let result = SampleFilter.filter(from: samples, segments: segments, padding: 500)
+    let expected = Array(samples[500..<6_300])
+
+    #expect(result == expected)
+  }
+
   @Test("invalid segments (endSample <= startSample) do not contribute to voiced threshold")
   func invalidSegmentsAreSkippedInVoicedSum() {
     let samples = (0..<20_000).map(Float.init)
