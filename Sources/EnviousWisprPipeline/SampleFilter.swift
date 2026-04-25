@@ -9,6 +9,9 @@ internal enum SampleFilter {
   ///
   /// Extracted from TranscriptionPipeline.filterSamples() and WhisperKitPipeline.filterSamples()
   /// which were character-for-character identical.
+  ///
+  /// Hardened against unsorted input (#386) and `Int` overflow on near-`Int.max` endpoints (#387).
+  /// Inputs may arrive in any order; output is monotonic by sample index and deduplicated by overlap.
   static func filter(
     from allSamples: [Float],
     segments: [SpeechSegment],
@@ -16,13 +19,47 @@ internal enum SampleFilter {
   ) -> [Float] {
     guard !segments.isEmpty else { return allSamples }
 
-    let totalVoiced = segments.reduce(0) { $0 + ($1.endSample - $1.startSample) }
+    let sampleCount = allSamples.count
+    let pad = max(0, padding)
+    let sortedSegments = segments.sorted { $0.startSample < $1.startSample }
+
+    var totalVoiced = 0
+    for segment in sortedSegments {
+      guard segment.endSample > segment.startSample else { continue }
+      let (length, lengthOverflow) =
+        segment.endSample.subtractingReportingOverflow(segment.startSample)
+      if lengthOverflow {
+        totalVoiced = 4800
+        break
+      }
+      let (newTotal, sumOverflow) = totalVoiced.addingReportingOverflow(length)
+      if sumOverflow || newTotal >= 4800 {
+        totalVoiced = 4800
+        break
+      }
+      totalVoiced = newTotal
+    }
     guard totalVoiced >= 4800 else { return allSamples }
 
     var merged: [(start: Int, end: Int)] = []
-    for segment in segments {
-      let start = max(0, segment.startSample - padding)
-      let end = min(allSamples.count, segment.endSample + padding)
+    for segment in sortedSegments {
+      // Skip malformed segments (endSample <= startSample) consistently:
+      // the voiced-sum accumulator above already ignores them, so the merge
+      // loop must too. Otherwise, a single invalid segment alongside enough
+      // valid speech to pass the threshold would emit a padded non-speech
+      // slice in the filtered audio.
+      guard segment.endSample > segment.startSample else { continue }
+
+      let start: Int
+      if segment.startSample <= pad {
+        start = 0
+      } else {
+        start = min(sampleCount, segment.startSample - pad)
+      }
+
+      let (paddedEnd, endOverflow) = segment.endSample.addingReportingOverflow(pad)
+      let end = endOverflow ? sampleCount : min(sampleCount, max(0, paddedEnd))
+
       if let last = merged.last, start <= last.end {
         merged[merged.count - 1].end = max(last.end, end)
       } else {
