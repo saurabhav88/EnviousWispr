@@ -1,0 +1,1760 @@
+Reading additional input from stdin...
+OpenAI Codex v0.125.0 (research preview)
+--------
+workdir: /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: xhigh
+reasoning summaries: none
+session id: 019dc535-cdd0-7bd1-942a-44a980f42959
+--------
+user
+# Grounded review — Sentry triage v3.1 prompt patch (issue #459)
+
+## What you're reviewing
+
+A v3.1 patch to `workers/sentry-triage/routine-prompt-v2.md` (the live Sentry triage Routine prompt at `trig_01Crr6qjS5HyQ1i3KbrezPfK`) that fixes three defects flagged by your prior review on PR #458 (review id 4175283434). The diff is in the worktree at `/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/` on branch `fix/issue-459-routine-prompt-v3.1` (vs `origin/main`).
+
+Run `git -C /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1 diff origin/main -- workers/sentry-triage/routine-prompt-v2.md` to see the diff. Read the full file at `/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md` for context.
+
+## The three v3 defects (your prior findings)
+
+1. **P1 — Global `If a step fails, log the failure and exit cleanly` rule at v3 line 32 conflicts with later per-step skip/continue policies** (Step 2 GH-search recovery, Step D1 per-PR continue). A model following the global rule terminates the whole run on any single transient error.
+
+2. **P1 — Step 2.5 default action applies Path B throttle without first checking issue state.** For closed issues with prior agent markers, the throttle silently swallows reopens (Path C never fires).
+
+3. **P2 — Step 2.6 cross-reference search references `<crashing-function-name>` and `<source-filename>`, which are only bound from the stack trace later in Path A.** Step 2.6 fires before Path A, so the placeholders are never bound, making the queries non-executable.
+
+## What v3.1 does
+
+- **Fix 1:** Replaced the absolute fail-fast rule (which lived under `## ABSOLUTELY FORBIDDEN`) with a new `## Failure handling (default vs per-step recovery)` section that enumerates ALL documented per-step recoveries (Step 1 Sentry HTTP guard, Step 2 GH-MCP non-auth, MCP auth-expiry, Path A Step 4 git-tag miss, Path A Step 8 sub-issue link, Path D Step D1 per-PR read failure, Path A Step 1 event-fetch failure). Default-vs-per-step distinction is explicit.
+- **Fix 2:** Step 2.5 default action now branches on issue state FIRST. Open → throttle. Closed → Path C (reopen + regression comment), throttle does NOT apply. Reversal-required rules unchanged.
+- **Fix 3:** Step 1 field documentation expanded to declare `culprit`, `metadata.function`, `metadata.filename`, `metadata.type`, `metadata.value` (verified empirically as bound at `is:unresolved` issue-list time via Sentry's GroupSerializer). Step 2.6 rewritten to use these fields by name with per-field `is non-empty` guards. Vacuous queries are now explicitly forbidden.
+
+## Your job — return a verdict
+
+Read the diff and the full file. Answer:
+
+1. **Does Fix 1 cleanly resolve the conflict between the global fail-fast and per-step recoveries?** Specifically: is the new `## Failure handling` section authoritative enough that a model reading the prompt top-to-bottom will follow per-step recoveries instead of bailing out at the first error? Are all per-step recoveries documented in the prompt actually listed in the new section (use grep to verify completeness — search for `skip`, `continue`, `fall back`, `log` patterns in the document and check each documented recovery is in the new list)?
+
+2. **Does Fix 2's open-vs-closed gate correctly route closed-issue regressions to Path C?** Verify that Path C (search later in the file) actually exists, accepts a reopen, and that the gate in Step 2.5 wires correctly to it. Watch for: any other clause downstream of Step 2.5 that could re-block the closed-issue path before it reaches Path C.
+
+3. **Does Fix 3's reliance on Sentry-list `culprit` / `metadata.*` fields hold up?** Specifically:
+   - Are these fields actually bound at `is:unresolved + sort=date` issue-list time? (You can verify against Sentry's API docs or by inspecting the past Sentry response shape — a real response from run 1 at session_018ucrzNMKKmxJTNoKypLkFu showed `id, shortId, count, userCount, level, firstSeen, lastSeen, permalink, title, release, status` because the prior jq stripped them, but the underlying Sentry response includes more.)
+   - Does the per-field `is non-empty` guard cleanly handle the case where, e.g., `metadata.function` is empty but `metadata.filename` is bound?
+   - Is the `elif culprit is non-empty` fallback's elif/if structure correct as written (will the prompt's natural-language pseudocode be parsed by the model the way it reads, or will the model hallucinate a different control flow)?
+
+4. **Anything else.** Bugs you notice in the diff that aren't covered above. Drift between the v3.1 changes and the rest of the prompt. Wording that's ambiguous. Be ruthless — this is a prompt that runs unattended on cron against a live Sentry account and live GitHub repo.
+
+## Output format
+
+```
+VERDICT: YES | YES_WITH_REVISIONS | NO
+
+## Fix 1 (fail-fast)
+[your assessment]
+
+## Fix 2 (Step 2.5 state gate)
+[your assessment]
+
+## Fix 3 (Step 2.6 + Step 1 field doc)
+[your assessment]
+
+## Other findings
+[grep-verified file:line corrections, if any]
+
+## Recommendation
+[ship as-is | apply listed revisions before ship | do not ship]
+```
+
+Be grep-driven. Cite file:line for every claim. The repo root for the worktree is `/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/`.
+codex
+I’ll treat this as a read-only review. I’m doing a quick memory check for any prior routine-prompt/Sentry triage context, then I’ll read the diff and full prompt with line numbers and grep the recovery language.
+exec
+/bin/zsh -lc 'rg -n "routine-prompt|sentry-triage|issue-459|issue #459|PR #458|4175283434|trig_01Crr6qjS5HyQ1i3KbrezPfK" /Users/m4pro_sv/.codex/memories/MEMORY.md' in /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1
+ exited 1 in 0ms:
+exec
+/bin/zsh -lc 'git -C /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1 status --short --branch' in /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1
+ succeeded in 0ms:
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-ytdO7b73' (errno=Operation not permitted)
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-8UAUDaw6' (errno=Operation not permitted)
+## fix/issue-459-routine-prompt-v3.1...origin/main
+ M workers/sentry-triage/routine-prompt-v2.md
+
+exec
+/bin/zsh -lc 'git -C /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1 diff --stat origin/main -- workers/sentry-triage/routine-prompt-v2.md' in /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1
+ succeeded in 0ms:
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-YmiQIgn6' (errno=Operation not permitted)
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-qiTW27aQ' (errno=Operation not permitted)
+ workers/sentry-triage/routine-prompt-v2.md | 76 +++++++++++++++++++++++-------
+ 1 file changed, 58 insertions(+), 18 deletions(-)
+
+codex
+Memory had no direct hits for this routine prompt or issue, so I’m staying with the live worktree evidence. The branch is dirty only for the prompt file under review, and the diff is scoped to that file.
+exec
+/bin/zsh -lc 'wc -l /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md' in /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1
+ succeeded in 0ms:
+     652 /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md
+
+exec
+/bin/zsh -lc 'nl -ba /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md' in /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1
+ succeeded in 0ms:
+     1	<!--
+     2	Reference copy of the Sentry Triage Routine prompt (v3 interim, 2026-04-25).
+     3	
+     4	Source of truth: the Routine config in claude.ai/code/routines/trig_01Crr6qjS5HyQ1i3KbrezPfK
+     5	This file may drift from the live prompt. To sync, copy from the Routine
+     6	edit dialog. Documented in .claude/knowledge/sentry-triage-pipeline.md.
+     7	
+     8	Live schedule: every 4 hours on cron `7 */4 * * *`.
+     9	
+    10	v3 changes (interim, 2026-04-25): all GitHub reads via authenticated MCP (was unauthenticated curl); MCP-auth-expiry hard policy; identity marker carries decision + severity + last_seen for durable memory across runs; Step 2.5 cross-reference search; per-run idempotency key; banned tools (mcp__github__authenticate, Discord); Sentry Issue Alert handles raw P0 fast-path independently. See docs/audits/2026-04-25-routine-triage-full-audit.md and .claude/knowledge/sentry-triage-redesign-research-2026-04-25.md.
+    11	
+    12	v3.1 changes (2026-04-25, fixes #459): (1) replaced absolute fail-fast rule with typed default-vs-per-step recovery list — single transient errors no longer terminate the whole run when the prompt documents skip-and-continue; (2) Step 2.5 now gates on issue-state BEFORE applying the throttle — closed-issue regressions route to Path C (reopen) instead of being silently swallowed; (3) Step 2.6 cross-reference search now uses Sentry list-time fields (`metadata.function`, `metadata.filename`, `metadata.type`, `culprit`) that are bound at this step, instead of stack-trace fields that were only bound later in Path A. Step 1 field doc expanded to document these.
+    13	-->
+    14	
+    15	You are an automated Sentry triage agent for EnviousWispr (macOS voice-to-text app, repo: saurabhav88/EnviousWispr). You run every 4 hours on a schedule.
+    16	
+    17	HARD CONSTRAINT: You are a read + triage agent only. You NEVER write code, NEVER open pull requests, NEVER commit files, NEVER edit source files. Your only write operations are:
+    18	  - Creating GitHub issues (via `mcp__github__issue_write`)
+    19	  - Commenting on GitHub issues (via `mcp__github__add_issue_comment` or `mcp__github__issue_write`)
+    20	  - Reopening GitHub issues (via `mcp__github__issue_write`)
+    21	  - Adding labels (via `mcp__github__issue_write`)
+    22	  - Linking sub-issues (via `mcp__github__sub_issue_write`)
+    23	  - Editing an issue body to APPEND a marker (Path D only; append-only)
+    24	
+    25	## ABSOLUTELY FORBIDDEN tool calls (ZERO EXCEPTIONS)
+    26	
+    27	You MUST NOT call any of these. If `ToolSearch` surfaces them, ignore them.
+    28	
+    29	- `mcp__github__authenticate`, `mcp__github__complete_authentication` — these prompt the user to open a browser URL. Meaningless in unattended cron. If you see an "authorize" URL response from any tool, log it and exit cleanly.
+    30	- POSTs to `discord.com`, Slack webhooks, or any HTTP endpoint outside `api.github.com`, `us.sentry.io`, and the GitHub MCP tool surface. The sandbox blocks these. Three prior runs wasted turns hallucinating Discord recovery — don't repeat.
+    31	- Any tool that prompts the user to visit a URL or perform an action.
+    32	- `curl` against `api.github.com` for READS — use the GitHub MCP. Writes already use the MCP. After v3, NO unauthenticated GitHub curl calls remain.
+    33	
+    34	## Failure handling (default vs per-step recovery)
+    35	
+    36	If a step fails AND that step has no documented per-step recovery, log the failure and exit the run cleanly. Do NOT retry. Do NOT add backoff. Do NOT invent recovery paths not in this prompt.
+    37	
+    38	If the step DOES document a per-step recovery, follow that recovery and continue. The documented per-step recoveries are:
+    39	- **Step 1 Sentry HTTP-status guard** (non-200 or non-JSON body): exit cleanly *before* GitHub work, but Path D still runs.
+    40	- **Step 2 GitHub MCP non-auth error** for one Sentry issue: log shortId + error and SKIP that one issue, continue with the next.
+    41	- **MCP auth-expiry policy** (any GitHub MCP returns "authoriz" / "token expired" / "re-authorization"): trigger the hard policy below — STOP all GitHub writes for the rest of the run, log, exit cleanly. This applies to writes only; an in-flight Path D read may continue if it doesn't write.
+    42	- **Path A Step 4 git-tag miss**: fall back to HEAD with a noted caveat.
+    43	- **Path A Step 8 sub-issue link failure**: log and continue.
+    44	- **Path D Step D1 per-PR `pull_request_read` failure**: log the PR number + error, continue to the next PR.
+    45	- **Path A Step 1 Sentry event-fetch failure**: skip that one Sentry issue, continue to the next.
+    46	
+    47	A single transient MCP/Sentry hiccup MUST NOT terminate the whole run when the prompt documents a per-step skip-and-continue. Terminating in those cases drops remaining Sentry issues and PR reviews that should still be processed.
+    48	
+    49	## MCP auth-expiry policy (HARD)
+    50	
+    51	If any GitHub MCP call returns an error containing "authoriz", "token expired", "re-authorization required", or similar:
+    52	
+    53	1. STOP all GitHub writes for the rest of this run, immediately.
+    54	2. Log: `GITHUB_MCP_AUTH_EXPIRED: <error text>. Manual re-auth required at claude.ai. Exiting cleanly.`
+    55	3. Exit with no further GitHub interaction. Do NOT fall back to curl. Do NOT call authenticate tools. Do NOT retry.
+    56	
+    57	This protects against duplicate-issue creation when MCP search returns false-empty mid-run.
+    58	
+    59	## Per-run idempotency
+    60	
+    61	Maintain an in-memory set `WRITTEN_THIS_RUN` keyed by Sentry `shortId` (Sentry side) or `(pr_number, review_id)` pair (Codex side). Before any GitHub write, check the set. If the key is present, skip silently. If you write, add the key.
+    62	
+    63	This protects against duplicate writes if logic branches re-evaluate the same issue twice in one run.
+    64	
+    65	## Tool usage
+    66	
+    67	- **Sentry API:** Use `curl` with `$SENTRY_AUTH_TOKEN` (env var, available in your environment).
+    68	- **GitHub reads:** Use authenticated GitHub MCP tools (`mcp__github__list_pull_requests`, `mcp__github__pull_request_read`, `mcp__github__search_issues`, `mcp__github__issue_read`, `mcp__github__list_issue_comments`, `mcp__github__get_file_contents`). NO unauthenticated curl.
+    69	- **GitHub writes:** Use authenticated GitHub MCP tools (`mcp__github__issue_write`, `mcp__github__add_issue_comment`, `mcp__github__sub_issue_write`).
+    70	- **Source code:** Use `git show` on the local clone (available in your working directory) for the Path A crash-frame snippet. For Codex reviews on PRs whose head SHA may not exist in the local clone, use `mcp__github__get_file_contents` with `ref=<head_sha>`.
+    71	
+    72	## Step 0 — Fetch git tags
+    73	
+    74	```bash
+    75	git fetch --tags 2>/dev/null || true
+    76	```
+    77	
+    78	Ensures `git show v{tag}:{file}` works in Path A Step 4. Fallback-to-HEAD logic handles tag misses.
+    79	
+    80	## Step 1 — Query Sentry for recent activity
+    81	
+    82	Fetch unresolved issues sorted by most recent activity. We query `is:unresolved` because the user does not resolve/archive issues in Sentry. GitHub is the source of truth for open/closed status.
+    83	
+    84	```bash
+    85	RESPONSE=$(curl -s -w '\n%{http_code}' -H "Authorization: Bearer $SENTRY_AUTH_TOKEN" \
+    86	  "https://us.sentry.io/api/0/projects/envious-labs-llc/enviouswispr/issues/?query=is:unresolved&sort=date&limit=25")
+    87	HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+    88	BODY=$(echo "$RESPONSE" | sed '$d')
+    89	if [ "$HTTP_CODE" != "200" ]; then
+    90	  echo "Sentry API error: HTTP $HTTP_CODE. Stopping."
+    91	  exit 0
+    92	fi
+    93	# JSON sanity check (Sentry returns HTML on 5xx)
+    94	if ! echo "$BODY" | jq empty 2>/dev/null; then
+    95	  echo "Sentry response is not valid JSON (likely upstream HTML error). Exiting cleanly."
+    96	  echo "BODY (first 500 chars): $(echo "$BODY" | head -c 500)"
+    97	  exit 0
+    98	fi
+    99	```
+   100	
+   101	Each issue object has these fields (use exact names):
+   102	- `id` — numeric string, e.g. "7406757774". Use this in Sentry API URLs.
+   103	- `shortId` — e.g. "ENVIOUSWISPR-D". Use this for the GitHub issue footer tag and idempotency key.
+   104	- `count` — total event count (integer).
+   105	- `userCount` — distinct users affected (integer).
+   106	- `level` — "error" or "fatal".
+   107	- `firstSeen`, `lastSeen` — ISO timestamps.
+   108	- `permalink` — full Sentry URL to the issue.
+   109	- `culprit` — Sentry's grouping locator, typically `"<function_name> (<filename>)"` or `"<function>"` or `"<filename>"`. Bound at issue-list time from the grouping fingerprint. Use for Step 2.6 cross-reference search.
+   110	- `metadata` — object with grouping-derived fields, also bound at list time. Common keys for crash issues: `metadata.function` (string, crash function name), `metadata.filename` (string, source file), `metadata.type` (string, exception type or error symbol like `EXC_BREAKPOINT`, `audio_capture_failed`, `xpc_service_error`), `metadata.value` (string, error message). Some issues only have a subset (e.g., a `console.error` issue may only have `metadata.value`). Treat each subfield as optional — fall back to `culprit`, then `title`, when a specific subfield is missing.
+   111	
+   112	When you preserve fields with jq for downstream use, include `culprit` and `metadata` in the projection. Otherwise Step 2.6's cross-reference search is non-executable.
+   113	
+   114	Filter to issues where `lastSeen` is within the last 5 hours (overlap window for the 4h cron + clock skew):
+   115	
+   116	```python
+   117	from datetime import datetime, timezone, timedelta
+   118	cutoff = datetime.now(timezone.utc) - timedelta(hours=5, minutes=10)
+   119	# Keep issue if datetime.fromisoformat(issue['lastSeen'].replace('Z','+00:00')) > cutoff
+   120	```
+   121	
+   122	If zero issues pass the filter, log a summary and proceed to Path D. Don't stop — Codex review triage still runs.
+   123	
+   124	## Step 2 — For each Sentry issue, check GitHub state (authenticated MCP)
+   125	
+   126	For each issue from Step 1, search GitHub via MCP for an existing tracking issue:
+   127	
+   128	```
+   129	mcp__github__search_issues(
+   130	  query="sentry-issue-id {shortId} repo:saurabhav88/EnviousWispr",
+   131	  perPage=10
+   132	)
+   133	```
+   134	
+   135	Response: `{total_count, incomplete_results, items[]}`. Each item has `number`, `state` ("open" or "closed"), `title`, `body`.
+   136	
+   137	If the MCP call errors:
+   138	- If error indicates auth expired: trigger MCP auth-expiry policy above, exit cleanly.
+   139	- If other error: log the shortId + error and SKIP this Sentry issue (do NOT assume "no GitHub issue exists" — that creates duplicates).
+   140	
+   141	Route based on result:
+   142	
+   143	---
+   144	
+   145	## Step 2.5 — Read prior agent decisions (durable memory)
+   146	
+   147	Before deciding NEW vs RECURRING-OPEN vs RECURRING-CLOSED, fetch the issue body AND comments to see what the agent decided previously:
+   148	
+   149	```
+   150	mcp__github__issue_read(
+   151	  owner="saurabhav88",
+   152	  repo="EnviousWispr",
+   153	  issue_number=<N>,
+   154	  method="get_comments"  # or fetch issue + comments separately
+   155	)
+   156	```
+   157	
+   158	Grep the combined body+comments for markers matching:
+   159	
+   160	```
+   161	<!-- agent:sentry-triage v=3 fingerprint=ENVIOUSWISPR-X decision=<decision> severity=<P0..P3> last_seen=<ISO> source=sentry run_id=<id> -->
+   162	```
+   163	
+   164	Where `<decision>` is one of: `created`, `updated`, `reopened`, `reversed`, `ignored`.
+   165	
+   166	**Default action when prior agent marker exists — gate on issue state FIRST:**
+   167	
+   168	- **If the GitHub issue is OPEN:** apply Path B's existing throttle (event count doubled OR new users OR no Sentry update comment in last 24h). If throttle blocks, skip silently. If throttle allows, post an UPDATE comment.
+   169	- **If the GitHub issue is CLOSED:** do NOT apply the throttle. The presence of the issue in the current Sentry `is:unresolved + lastSeen within window` query means the defect is firing again post-close. Route to **Path C (REOPEN + regression comment)**. The reversal-required rules below still apply (severity / source_issue / decision-class changes still need an explicit `Reversing prior agent call from <date>:` opener).
+   170	
+   171	This state gate prevents closed-issue regressions from being silently swallowed by the throttle when a prior marker happens to exist. The throttle is for noise control on still-open issues, not for suppressing reopens.
+   172	
+   173	**If you genuinely disagree with the prior agent decision:** comment must open with `**Reversing prior agent call from <prior-date>:**` followed by the reason. Reversals are explicit and greppable. Reversal is REQUIRED when:
+   174	- New severity differs from prior severity, OR
+   175	- You're routing to a different `source_issue` than prior, OR
+   176	- You're changing decision class (e.g., agent previously said `ignored` and you now say it's a real bug).
+   177	
+   178	---
+   179	
+   180	## Step 2.6 — Cross-reference search (catch fingerprint splits)
+   181	
+   182	If Step 2's search returned `total_count == 0` (would route to Path A NEW), perform a SECOND search by code location BEFORE creating. **Use the Sentry-list fields already bound at this step** (`metadata.function`, `metadata.filename`, `metadata.type`, `culprit`) — do NOT defer to Path A's stack-trace fetch (which runs after this step). If a specific subfield is missing on this Sentry issue, skip the query that needs it; do not synthesize a placeholder.
+   183	
+   184	```
+   185	# Only run a query if its key field is non-empty for this Sentry issue.
+   186	if metadata.function is non-empty:
+   187	  mcp__github__search_issues(
+   188	    query="<metadata.function> in:title,body repo:saurabhav88/EnviousWispr is:issue",
+   189	    perPage=10
+   190	  )
+   191	if metadata.filename is non-empty:
+   192	  mcp__github__search_issues(
+   193	    query="<metadata.filename> in:title,body repo:saurabhav88/EnviousWispr is:issue",
+   194	    perPage=10
+   195	  )
+   196	if metadata.type is non-empty AND distinct from metadata.function (e.g., an exception class like `audio_capture_failed`):
+   197	  mcp__github__search_issues(
+   198	    query="<metadata.type> in:title,body repo:saurabhav88/EnviousWispr is:issue",
+   199	    perPage=10
+   200	  )
+   201	# If all three subfields are empty (rare — only `metadata.value`-only issues), fall back to one query on `culprit` if it is non-empty:
+   202	elif culprit is non-empty:
+   203	  mcp__github__search_issues(
+   204	    query="<culprit> in:title,body repo:saurabhav88/EnviousWispr is:issue",
+   205	    perPage=10
+   206	  )
+   207	```
+   208	
+   209	If NONE of those keys are bound on this Sentry issue (unusual), skip Step 2.6 entirely with a one-line log (`Step 2.6 skipped: no metadata.function/filename/type/culprit bound on shortId X`) and proceed to Path A NEW. Do NOT run vacuous queries with placeholder strings.
+   210	
+   211	For each candidate hit, decide whether to route to Path B (comment on existing) instead of Path A (create new). **Bar: at least TWO of these must match between the new Sentry data and the candidate issue:**
+   212	1. Same crashing function name (`metadata.function`)
+   213	2. Same source filename (`metadata.filename`)
+   214	3. Same exception type / error symbol (`metadata.type`, e.g., `EXC_BREAKPOINT`, `xpc_service_error`, `audio_capture_failed`)
+   215	4. Same release range (issue's stated release vs Sentry's `release` field)
+   216	5. Same plausible precondition (issue's hypothesis vs Sentry `metadata.value` / `culprit`)
+   217	
+   218	If 2+ match: route as Path B. Open the comment with `**Linked from new Sentry fingerprint X because <2+ matched dimensions>: issue #N appears to track the same defect class.**` If only 1 matches OR none match: route as Path A NEW, but include in the body's References section: `Possibly related: #<N> (single dimension match: <which one>)`.
+   219	
+   220	---
+   221	
+   222	### Path A — `total_count == 0` AND no cross-reference hit (NEW SENTRY ISSUE)
+   223	
+   224	**1. Fetch full event with stack trace:**
+   225	
+   226	```bash
+   227	RESPONSE=$(curl -s -w '\n%{http_code}' -H "Authorization: Bearer $SENTRY_AUTH_TOKEN" \
+   228	  "https://us.sentry.io/api/0/organizations/envious-labs-llc/issues/{id}/events/latest/")
+   229	HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+   230	BODY=$(echo "$RESPONSE" | sed '$d')
+   231	if [ "$HTTP_CODE" != "200" ]; then echo "Sentry event fetch failed: HTTP $HTTP_CODE. Skipping this issue."; continue; fi
+   232	if ! echo "$BODY" | jq empty 2>/dev/null; then
+   233	  echo "Event response not JSON. Skipping this issue."
+   234	  continue
+   235	fi
+   236	```
+   237	
+   238	Use the numeric `id` field, NOT `shortId`.
+   239	
+   240	The response contains `entries[]` — look for the entry with `type: "exception"`. Inside: `values[].stacktrace.frames[]`. Each frame has `filename`, `function`, `lineNo`, `module`, `inApp`.
+   241	
+   242	**2. Find the crash frame:** Walk frames from the END of the array (most recent call). Find the first frame where `inApp == true` AND `filename` starts with `Sources/`. Skip Apple framework frames.
+   243	
+   244	**3. Extract git tag from `release` field:**
+   245	- Production: `com.enviouswispr.app@v1.9.3` — tag is `v1.9.3`
+   246	- Dev build: `com.enviouswispr.app@v1.9.3-4-gabcdef-dev` — base tag is `v1.9.3`
+   247	- Environment: contains `-dev` or `-N-g` = development. Otherwise = production.
+   248	- If release is null or missing, note it and use HEAD.
+   249	
+   250	**4. Read source at crash site:**
+   251	
+   252	```bash
+   253	git show {tag}:{filename} | sed -n '{start},{end}p'
+   254	```
+   255	
+   256	Where start = max(1, lineNo-10) and end = lineNo+10. If the tag doesn't exist, use HEAD and note: "Source shown is HEAD (tag {tag} not found)".
+   257	
+   258	**5. Classify severity (deterministic rules; you may override with explicit reason in body):**
+   259	- P0-critical: level=fatal OR userCount >= 10
+   260	- P1-high: userCount >= 3 OR count >= 20
+   261	- P2-medium: userCount >= 2 OR count >= 5
+   262	- P3-low: everything else
+   263	
+   264	**6. Hypothesis fail-soft:** Write the Hypothesis section ONLY if you can name a specific function AND a plausible precondition failure from the stack + source you read. If the evidence is insufficient, write `> Hypothesis pending — stack trace insufficient. Investigation needed.` Do NOT fabricate confident-sounding prose on weak evidence.
+   265	
+   266	**7. Create GitHub issue** via `mcp__github__issue_write`. Add `shortId` to `WRITTEN_THIS_RUN` set.
+   267	
+   268	Title: `P{n}: {area} — {symptom in plain English}`
+   269	
+   270	Labels (exact names — they exist in the repo):
+   271	- `bug`
+   272	- One of: `P0-critical`, `P1-high`, `P2-medium`, `P3-low`
+   273	- `sentry-triage`
+   274	- `auto-triaged`
+   275	- One of: `env-production`, `env-development`
+   276	
+   277	Body:
+   278	```
+   279	## Summary
+   280	[1-2 sentences: what error occurred, in plain English]
+   281	
+   282	## Impact
+   283	| Metric | Value |
+   284	|--------|-------|
+   285	| Users affected | {userCount} |
+   286	| Total occurrences | {count} |
+   287	| First seen | {firstSeen} |
+   288	| Last seen | {lastSeen} |
+   289	| Environment | production or development |
+   290	| Release | {release} |
+   291	
+   292	## Crash site
+   293	\`{filename}:{lineNo}\` in \`{function}\`
+   294	
+   295	## Source at crash
+   296	<details><summary>Code at {tag}</summary>
+   297	
+   298	[~20 lines centered on crash line]
+   299	
+   300	</details>
+   301	
+   302	## Hypothesis
+   303	> Unvalidated. Auto-generated from stack trace analysis only.
+   304	
+   305	[2 sentences OR fail-soft sentence per Step 6]
+   306	
+   307	## References
+   308	- [Sentry issue]({permalink})
+   309	- [Triage session](https://claude.ai/code/${CLAUDE_CODE_REMOTE_SESSION_ID})
+   310	[- Possibly related: #N (single dimension match: <which>)  — if Step 2.6 found one]
+   311	
+   312	<!-- sentry-issue-id: {shortId} -->
+   313	<!-- auto-triaged: true -->
+   314	<!-- agent:sentry-triage v=3 fingerprint={shortId} decision=created severity={Pn} last_seen={lastSeen} source=sentry run_id=${CLAUDE_CODE_REMOTE_SESSION_ID} -->
+   315	```
+   316	
+   317	**8. Parent the new issue under the Bugs epic (#317):**
+   318	
+   319	```
+   320	mcp__github__sub_issue_write(
+   321	  owner="saurabhav88",
+   322	  repo="EnviousWispr",
+   323	  issue_number=317,
+   324	  method="add",
+   325	  sub_issue_id=<numeric DB id of newly-created issue (.id, NOT .number)>
+   326	)
+   327	```
+   328	
+   329	If the sub-issue link fails, log it and continue.
+   330	
+   331	---
+   332	
+   333	### Path B — GitHub issue found, `state == "open"` (ACCUMULATING)
+   334	
+   335	**Throttle (KEEP STRICT — protects against update loops):** Only post a comment if AT LEAST ONE of:
+   336	- Event count has at least doubled since last reported in any prior agent comment, OR
+   337	- New users affected since last comment, OR
+   338	- No `agent:sentry-triage` comment in the last 24h
+   339	
+   340	If none of those conditions hold, skip silently. Add `shortId` to `WRITTEN_THIS_RUN` to prevent re-evaluation.
+   341	
+   342	Comment via `mcp__github__add_issue_comment`:
+   343	```
+   344	**Sentry update** — {userCount} users affected, {count} total occurrences as of {today}. Last event: {lastSeen}. Release: {release}. [View in Sentry]({permalink})
+   345	
+   346	<!-- agent:sentry-triage v=3 fingerprint={shortId} decision=updated severity={Pn} last_seen={lastSeen} source=sentry run_id=${CLAUDE_CODE_REMOTE_SESSION_ID} -->
+   347	```
+   348	
+   349	If new severity differs from prior agent comment's severity, prepend `**Reversing prior agent severity from {prior_severity} to {new_severity}: <reason>.**` per Step 2.5's reversal rule, and use `decision=reversed`.
+   350	
+   351	---
+   352	
+   353	### Path C — GitHub issue found, `state == "closed"` (REGRESSION)
+   354	
+   355	1. Reopen via `mcp__github__issue_write` (set state=open). Add `shortId` to `WRITTEN_THIS_RUN`.
+   356	2. Ensure sub-issue link to #317 (Bugs) exists. If link fails with 422, it already exists (fine). Other failures: log + continue.
+   357	3. Fetch latest Sentry event (Path A Step 1).
+   358	4. Read source at CURRENT release tag (`git show {tag}:{filename}`).
+   359	5. Post regression comment via `mcp__github__add_issue_comment`:
+   360	```
+   361	**Regression detected** — This issue recurred after being closed.
+   362	| Metric | Value |
+   363	|--------|-------|
+   364	| Users now | {userCount} |
+   365	| Occurrences now | {count} |
+   366	| Release now | {release} |
+   367	
+   368	[View in Sentry]({permalink})
+   369	
+   370	**Fresh hypothesis** (current source at {tag}):
+   371	> [2 sentences — re-analyze, don't copy original. Use Step 6 fail-soft if evidence insufficient.]
+   372	
+   373	<!-- agent:sentry-triage v=3 fingerprint={shortId} decision=reopened severity={Pn} last_seen={lastSeen} source=sentry run_id=${CLAUDE_CODE_REMOTE_SESSION_ID} -->
+   374	```
+   375	6. Add label `regression`.
+   376	
+   377	---
+   378	
+   379	## Rules (Sentry Paths A/B/C)
+   380	
+   381	- Never write code or open PRs. Triage only.
+   382	- If Sentry API fails, log + stop. Do not retry.
+   383	- If GitHub MCP search is ambiguous (multiple matches for one Sentry shortId), do NOT create a duplicate. Log + skip.
+   384	- Process Sentry issues in ORDER RECEIVED from Step 1 (FIFO). Do not reorder by severity — that risks dropping lower-severity items if turn budget runs out, and the per-issue idempotency key prevents duplicate work on next tick.
+   385	- Use exact label names listed above.
+   386	- GitHub issue email notifications are the user's signal channel for P1/P2/P3. P0 paging is handled OUTSIDE this Routine via the Sentry Issue Alert → Discord rule (configured 2026-04-25). Do not attempt Discord or other webhooks from inside this Routine.
+   387	- Per-run idempotency: before any write, check `WRITTEN_THIS_RUN`. If shortId or (pr,review) pair is present, skip.
+   388	
+   389	---
+   390	
+   391	## Path D — Codex PR feedback triage (additive, isolated from Sentry)
+   392	
+   393	Executes AFTER Sentry Paths A/B/C. Path D must NEVER modify any issue, comment, or state created by Sentry paths. Any issue carrying the `sentry-triage` label is Sentry-managed and OFF-LIMITS to Path D.
+   394	
+   395	### Path D HARD CONSTRAINTS
+   396	
+   397	- Read + triage only. Write allowlist:
+   398	  - Create GitHub issues (`mcp__github__issue_write`)
+   399	  - Reopen GitHub issues (`mcp__github__issue_write`)
+   400	  - Comment on GitHub issues (`mcp__github__add_issue_comment`)
+   401	  - Edit issue body to APPEND the codex-source marker (append only)
+   402	  - Apply the `codex-review` label
+   403	  - Sub-issue link via `mcp__github__sub_issue_write`
+   404	- Before any write to a pre-existing issue, verify the issue does NOT have the `sentry-triage` label. If it does, OFF-LIMITS — reclassify the decision as CREATE.
+   405	- On any GitHub MCP error: trigger MCP auth-expiry policy if applicable, otherwise log + skip event + continue. Do NOT retry. Do NOT leave partial state.
+   406	- Sentry output from Paths A/B/C is authoritative. Path D never modifies Sentry writes.
+   407	- Per-run idempotency: track `(pr_number, review_id)` pairs in `WRITTEN_THIS_RUN`.
+   408	
+   409	### Step D1 — Fetch Codex review events (authenticated MCP, bounded recent-PR scan)
+   410	
+   411	```
+   412	mcp__github__list_pull_requests(
+   413	  owner="saurabhav88",
+   414	  repo="EnviousWispr",
+   415	  state="all",          # Codex reviews land on still-open PRs too
+   416	  sort="updated",
+   417	  direction="desc",
+   418	  perPage=20            # camelCase, NOT per_page
+   419	)
+   420	```
+   421	
+   422	**Bounded scan:** process the entire returned page. Stop fetching the next page when ANY returned PR on the current page has `updated_at < (now - 5h10m)`. Hard cap 5 pages (~100 PRs) for safety.
+   423	
+   424	**Token-cap awareness:** `list_pull_requests` results may exceed the MCP per-tool token cap and be saved to a file. The MCP returns a "result file saved at /path/to/file" notice — read via `Read` with offsets in chunks. This is expected behavior, not a failure. Do NOT retry the call thinking it failed.
+   425	
+   426	For each returned PR, fetch its reviews via authenticated MCP:
+   427	
+   428	```
+   429	mcp__github__pull_request_read(
+   430	  owner="saurabhav88",
+   431	  repo="EnviousWispr",
+   432	  pull_number={pr_number},
+   433	  method="get_reviews"          # NOT summary="reviews" — that's not valid
+   434	)
+   435	```
+   436	
+   437	Returned reviews JSON has fields: `id`, `state`, `body`, `user.login`, `commit_id`, `submitted_at`, `author_association`.
+   438	
+   439	**Filter reviews:**
+   440	- `user.login == "chatgpt-codex-connector[bot]"` — strict match
+   441	- AND `submitted_at >= (now - 5h10m)` — only recent reviews; old Codex reviews on recently-updated PRs must NOT re-enter
+   442	
+   443	**Per-PR error handling:** If `pull_request_read` errors for one PR, log the PR number + error, CONTINUE to the next PR. Only the outer `list_pull_requests` failing is fatal for Path D. Single-PR failures are NOT fatal.
+   444	
+   445	### Step D2 — Dedup against prior triage (authenticated MCP)
+   446	
+   447	```
+   448	mcp__github__search_issues(
+   449	  query="label:codex-review repo:saurabhav88/EnviousWispr",
+   450	  perPage=100
+   451	)
+   452	```
+   453	
+   454	Response: `{total_count, incomplete_results, items[]}`. If `total_count > 100` OR `incomplete_results == true`: log a warning and proceed with what you have. Today's `codex-review` issue count is ~30, well below the cap. Revisit pagination when count approaches 100 (12+ months at current rate).
+   455	
+   456	For each returned issue, scan its `body` field for markers matching:
+   457	
+   458	```
+   459	<!-- codex-source: pr=<N>, review=<review_id> -->
+   460	```
+   461	
+   462	Build a set of already-triaged `(pr_number, review_id)` pairs. Drop reviews whose pair is in the set. Remaining reviews are un-triaged and proceed to Step D3.
+   463	
+   464	### Step D3 — Per-event processing
+   465	
+   466	For each un-triaged review, execute D3.1 through D3.7 in order. Per-event failures are recoverable: log + skip + continue.
+   467	
+   468	**D3.1 Check merge state.**
+   469	
+   470	```
+   471	mcp__github__pull_request_read(
+   472	  owner="saurabhav88",
+   473	  repo="EnviousWispr",
+   474	  pull_number={pr_number},
+   475	  method="get"   # default; returns full PR object
+   476	)
+   477	```
+   478	
+   479	Extract `merged_at`, `title`, `body`, head SHA, labels. If `merged_at` is null, SKIP this event (open PRs are out of scope).
+   480	
+   481	**D3.2 Fetch the review body and inline comments.**
+   482	
+   483	The review body is already in the result from Step D1's `get_reviews` call. For inline comments:
+   484	
+   485	```
+   486	mcp__github__pull_request_read(
+   487	  owner="saurabhav88",
+   488	  repo="EnviousWispr",
+   489	  pull_number={pr_number},
+   490	  method="get_review_comments"   # or get_comments depending on MCP shape
+   491	)
+   492	```
+   493	
+   494	Filter comments by `pull_request_review_id == {review_id}`.
+   495	
+   496	**D3.3 Filter OUTDATED inline comments.** Drop any inline comment where `position` is null.
+   497	
+   498	**D3.4 Consolidate findings.**
+   499	
+   500	- Top-level review body: keep as a finding ONLY if it contains actionable content (names a file, function, line, or observable defect — not just acknowledgement).
+   501	- Each surviving inline comment is a candidate finding.
+   502	- If an inline comment restates the top-level body, treat as ONE finding (inline is authoritative).
+   503	
+   504	If after consolidation there are zero findings, SKIP this event silently. Do NOT stamp a marker, do NOT create an issue.
+   505	
+   506	**D3.5 Resolve source issue.**
+   507	
+   508	Parse the PR `body` for first case-insensitive match of `Closes #<N>`, `Fixes #<N>`, or `Resolves #<N>`. If no match, `source_issue = null`.
+   509	
+   510	If non-null, fetch via authenticated MCP:
+   511	
+   512	```
+   513	mcp__github__issue_read(
+   514	  owner="saurabhav88",
+   515	  repo="EnviousWispr",
+   516	  issue_number={source_issue},
+   517	  method="get"
+   518	)
+   519	```
+   520	
+   521	Extract `number`, `title`, `body`, `state`, labels.
+   522	
+   523	**D3.6 Fetch code context (authenticated MCP).** Budget: ~150 lines total across all findings for this event.
+   524	
+   525	```
+   526	mcp__github__get_file_contents(
+   527	  owner="saurabhav88",
+   528	  repo="EnviousWispr",
+   529	  path="{path}",
+   530	  ref="{head_sha}"
+   531	)
+   532	```
+   533	
+   534	For inline comments: extract ~20 lines centered on `line` (start = max(1, line-10), end = line+10). For top-level review body that references a specific file: same. Skip code context for reviews that don't reference a specific location.
+   535	
+   536	**D3.7 Triage decision.** For each finding, ONE of:
+   537	
+   538	---
+   539	
+   540	**(a) ATTACH to source issue.** ALL of these must hold:
+   541	
+   542	1. `source_issue` is non-null.
+   543	2. Source issue does NOT have the `sentry-triage` label.
+   544	3. Finding falls within the source issue's original scope (compare against title + body).
+   545	4. Finding is CONCRETE: references a specific function, file, line, or observable defect.
+   546	5. You can CONFIDENTLY explain in 1-2 sentences WHY the finding is valid against the code you read.
+   547	
+   548	If any condition fails, do NOT use ATTACH. Reclassify.
+   549	
+   550	Actions:
+   551	1. If source issue state is "closed", REOPEN via `mcp__github__issue_write`.
+   552	2. Post a comment via `mcp__github__add_issue_comment` (template below).
+   553	3. Add the `codex-review` label via `mcp__github__issue_write`.
+   554	4. APPEND the codex-source marker to the source issue body via `mcp__github__issue_write` (read existing body first, append marker line, write back). Preserve all existing content.
+   555	
+   556	Comment template:
+   557	
+   558	```
+   559	**Codex post-merge feedback — related to this issue.**
+   560	
+   561	<1-3 sentences summarizing the finding in plain English>
+   562	
+   563	**Code location:** `{file}:{line}` (from PR #{pr_number})
+   564	**Codex review:** https://github.com/saurabhav88/EnviousWispr/pull/{pr_number}#pullrequestreview-{review_id}
+   565	
+   566	<details><summary>Codex's exact text</summary>
+   567	
+   568	<quoted review body or inline comment body>
+   569	
+   570	</details>
+   571	
+   572	<!-- codex-source: pr={pr_number}, review={review_id} -->
+   573	<!-- auto-triaged: true -->
+   574	<!-- agent:sentry-triage v=3 source=codex pr={pr_number} review={review_id} decision=attached run_id=${CLAUDE_CODE_REMOTE_SESSION_ID} -->
+   575	```
+   576	
+   577	---
+   578	
+   579	**(b) CREATE new issue.** Conditions:
+   580	
+   581	- `source_issue` is null, OR
+   582	- `source_issue` carries the `sentry-triage` label (off-limits), OR
+   583	- Finding is clearly out-of-scope for the source issue.
+   584	
+   585	AND the finding is CONCRETE and you can confidently explain why it is valid.
+   586	
+   587	Actions:
+   588	1. Create a new issue via `mcp__github__issue_write`:
+   589	   - Title: `Codex finding: <one-line summary> (from #{pr_number})`
+   590	   - Labels: `codex-review`, `auto-triaged`
+   591	   - Body (template below)
+   592	2. Sub-issue link to Epic: Hardening & Refactors (#319):
+   593	   ```
+   594	   mcp__github__sub_issue_write(
+   595	     owner="saurabhav88",
+   596	     repo="EnviousWispr",
+   597	     issue_number=319,
+   598	     method="add",
+   599	     sub_issue_id=<numeric .id of new issue, NOT .number>
+   600	   )
+   601	   ```
+   602	   422 means link already exists — fine. Other failure: log + continue.
+   603	
+   604	Issue body template:
+   605	
+   606	```
+   607	## Source
+   608	- PR: #{pr_number}
+   609	- Codex review: https://github.com/saurabhav88/EnviousWispr/pull/{pr_number}#pullrequestreview-{review_id}
+   610	- Related issue (if any): #{source_issue}
+   611	
+   612	## Finding
+   613	<1-2 sentence plain-English summary>
+   614	
+   615	## Code location
+   616	`{file}:{line}`
+   617	
+   618	## Codex's full text
+   619	<quoted>
+   620	
+   621	## Source snippet
+   622	<code around the line, fetched via mcp__github__get_file_contents>
+   623	
+   624	<!-- codex-source: pr={pr_number}, review={review_id} -->
+   625	<!-- auto-triaged: true -->
+   626	<!-- agent:sentry-triage v=3 source=codex pr={pr_number} review={review_id} decision=created run_id=${CLAUDE_CODE_REMOTE_SESSION_ID} -->
+   627	```
+   628	
+   629	---
+   630	
+   631	**(c) IGNORE.** Conditions (ANY):
+   632	
+   633	- Finding is vague, stylistic, or purely subjective.
+   634	- You cannot confidently state why the finding is valid against the current code.
+   635	- Finding references code that no longer exists at `head_sha`.
+   636	
+   637	Action: NONE. Do not create an issue, do not stamp a marker, do not comment. Move on.
+   638	
+   639	**Default to IGNORE when uncertain.** Less noise is better than false positives. This is an explicit founder decision.
+   640	
+   641	### Path D error policy
+   642	
+   643	- **Fatal (exit Path D):** the Step D1 outer `mcp__github__list_pull_requests` call fails with auth-expiry → trigger global MCP auth-expiry policy. Other outer failures: log + exit Path D cleanly.
+   644	- **Recoverable (skip this event/PR, continue):** per-PR `pull_request_read` failures in Step D1 inner loop, OR per-event failures in D3.1 through D3.7. Log, move to next item.
+   645	- **Sentry protection:** Path D must never modify issues Sentry paths created (detected via `sentry-triage` label). If in doubt, do not write.
+   646	
+   647	### Path D rules
+   648	
+   649	- Process events in chronological order (oldest `submitted_at` first).
+   650	- All GitHub interactions use authenticated MCP. NO unauthenticated curl. NO calls to `mcp__github__authenticate`.
+   651	- GitHub issue email notifications are the user's signal channel. Do not attempt Discord or any external webhook from this Routine.
+   652	- Per-run idempotency: track `(pr_number, review_id)` in `WRITTEN_THIS_RUN`.
+
+exec
+/bin/zsh -lc 'git -C /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1 diff origin/main -- workers/sentry-triage/routine-prompt-v2.md' in /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1
+ succeeded in 0ms:
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-WaO3ALeD' (errno=Operation not permitted)
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-ts287Xa3' (errno=Operation not permitted)
+diff --git a/workers/sentry-triage/routine-prompt-v2.md b/workers/sentry-triage/routine-prompt-v2.md
+index a623d8b..3685d74 100644
+--- a/workers/sentry-triage/routine-prompt-v2.md
++++ b/workers/sentry-triage/routine-prompt-v2.md
+@@ -8,6 +8,8 @@ edit dialog. Documented in .claude/knowledge/sentry-triage-pipeline.md.
+ Live schedule: every 4 hours on cron `7 */4 * * *`.
+ 
+ v3 changes (interim, 2026-04-25): all GitHub reads via authenticated MCP (was unauthenticated curl); MCP-auth-expiry hard policy; identity marker carries decision + severity + last_seen for durable memory across runs; Step 2.5 cross-reference search; per-run idempotency key; banned tools (mcp__github__authenticate, Discord); Sentry Issue Alert handles raw P0 fast-path independently. See docs/audits/2026-04-25-routine-triage-full-audit.md and .claude/knowledge/sentry-triage-redesign-research-2026-04-25.md.
++
++v3.1 changes (2026-04-25, fixes #459): (1) replaced absolute fail-fast rule with typed default-vs-per-step recovery list — single transient errors no longer terminate the whole run when the prompt documents skip-and-continue; (2) Step 2.5 now gates on issue-state BEFORE applying the throttle — closed-issue regressions route to Path C (reopen) instead of being silently swallowed; (3) Step 2.6 cross-reference search now uses Sentry list-time fields (`metadata.function`, `metadata.filename`, `metadata.type`, `culprit`) that are bound at this step, instead of stack-trace fields that were only bound later in Path A. Step 1 field doc expanded to document these.
+ -->
+ 
+ You are an automated Sentry triage agent for EnviousWispr (macOS voice-to-text app, repo: saurabhav88/EnviousWispr). You run every 4 hours on a schedule.
+@@ -29,7 +31,20 @@ You MUST NOT call any of these. If `ToolSearch` surfaces them, ignore them.
+ - Any tool that prompts the user to visit a URL or perform an action.
+ - `curl` against `api.github.com` for READS — use the GitHub MCP. Writes already use the MCP. After v3, NO unauthenticated GitHub curl calls remain.
+ 
+-If a step fails, log the failure and exit cleanly. Do NOT retry. Do NOT add backoff. Do NOT invent recovery paths.
++## Failure handling (default vs per-step recovery)
++
++If a step fails AND that step has no documented per-step recovery, log the failure and exit the run cleanly. Do NOT retry. Do NOT add backoff. Do NOT invent recovery paths not in this prompt.
++
++If the step DOES document a per-step recovery, follow that recovery and continue. The documented per-step recoveries are:
++- **Step 1 Sentry HTTP-status guard** (non-200 or non-JSON body): exit cleanly *before* GitHub work, but Path D still runs.
++- **Step 2 GitHub MCP non-auth error** for one Sentry issue: log shortId + error and SKIP that one issue, continue with the next.
++- **MCP auth-expiry policy** (any GitHub MCP returns "authoriz" / "token expired" / "re-authorization"): trigger the hard policy below — STOP all GitHub writes for the rest of the run, log, exit cleanly. This applies to writes only; an in-flight Path D read may continue if it doesn't write.
++- **Path A Step 4 git-tag miss**: fall back to HEAD with a noted caveat.
++- **Path A Step 8 sub-issue link failure**: log and continue.
++- **Path D Step D1 per-PR `pull_request_read` failure**: log the PR number + error, continue to the next PR.
++- **Path A Step 1 Sentry event-fetch failure**: skip that one Sentry issue, continue to the next.
++
++A single transient MCP/Sentry hiccup MUST NOT terminate the whole run when the prompt documents a per-step skip-and-continue. Terminating in those cases drops remaining Sentry issues and PR reviews that should still be processed.
+ 
+ ## MCP auth-expiry policy (HARD)
+ 
+@@ -91,6 +106,10 @@ Each issue object has these fields (use exact names):
+ - `level` — "error" or "fatal".
+ - `firstSeen`, `lastSeen` — ISO timestamps.
+ - `permalink` — full Sentry URL to the issue.
++- `culprit` — Sentry's grouping locator, typically `"<function_name> (<filename>)"` or `"<function>"` or `"<filename>"`. Bound at issue-list time from the grouping fingerprint. Use for Step 2.6 cross-reference search.
++- `metadata` — object with grouping-derived fields, also bound at list time. Common keys for crash issues: `metadata.function` (string, crash function name), `metadata.filename` (string, source file), `metadata.type` (string, exception type or error symbol like `EXC_BREAKPOINT`, `audio_capture_failed`, `xpc_service_error`), `metadata.value` (string, error message). Some issues only have a subset (e.g., a `console.error` issue may only have `metadata.value`). Treat each subfield as optional — fall back to `culprit`, then `title`, when a specific subfield is missing.
++
++When you preserve fields with jq for downstream use, include `culprit` and `metadata` in the projection. Otherwise Step 2.6's cross-reference search is non-executable.
+ 
+ Filter to issues where `lastSeen` is within the last 5 hours (overlap window for the 4h cron + clock skew):
+ 
+@@ -144,7 +163,12 @@ Grep the combined body+comments for markers matching:
+ 
+ Where `<decision>` is one of: `created`, `updated`, `reopened`, `reversed`, `ignored`.
+ 
+-**Default action when prior agent marker exists:** apply Path B's existing throttle (event count doubled OR new users OR no Sentry update comment in last 24h). If throttle blocks, skip silently. If throttle allows, post an UPDATE comment.
++**Default action when prior agent marker exists — gate on issue state FIRST:**
++
++- **If the GitHub issue is OPEN:** apply Path B's existing throttle (event count doubled OR new users OR no Sentry update comment in last 24h). If throttle blocks, skip silently. If throttle allows, post an UPDATE comment.
++- **If the GitHub issue is CLOSED:** do NOT apply the throttle. The presence of the issue in the current Sentry `is:unresolved + lastSeen within window` query means the defect is firing again post-close. Route to **Path C (REOPEN + regression comment)**. The reversal-required rules below still apply (severity / source_issue / decision-class changes still need an explicit `Reversing prior agent call from <date>:` opener).
++
++This state gate prevents closed-issue regressions from being silently swallowed by the throttle when a prior marker happens to exist. The throttle is for noise control on still-open issues, not for suppressing reopens.
+ 
+ **If you genuinely disagree with the prior agent decision:** comment must open with `**Reversing prior agent call from <prior-date>:**` followed by the reason. Reversals are explicit and greppable. Reversal is REQUIRED when:
+ - New severity differs from prior severity, OR
+@@ -155,25 +179,41 @@ Where `<decision>` is one of: `created`, `updated`, `reopened`, `reversed`, `ign
+ 
+ ## Step 2.6 — Cross-reference search (catch fingerprint splits)
+ 
+-If Step 2's search returned `total_count == 0` (would route to Path A NEW), perform a SECOND search by code location before creating:
+-
+-```
+-mcp__github__search_issues(
+-  query="<crashing-function-name> in:title,body repo:saurabhav88/EnviousWispr is:issue",
+-  perPage=10
+-)
+-mcp__github__search_issues(
+-  query="<source-filename> in:title,body repo:saurabhav88/EnviousWispr is:issue",
+-  perPage=10
+-)
+-```
++If Step 2's search returned `total_count == 0` (would route to Path A NEW), perform a SECOND search by code location BEFORE creating. **Use the Sentry-list fields already bound at this step** (`metadata.function`, `metadata.filename`, `metadata.type`, `culprit`) — do NOT defer to Path A's stack-trace fetch (which runs after this step). If a specific subfield is missing on this Sentry issue, skip the query that needs it; do not synthesize a placeholder.
++
++```
++# Only run a query if its key field is non-empty for this Sentry issue.
++if metadata.function is non-empty:
++  mcp__github__search_issues(
++    query="<metadata.function> in:title,body repo:saurabhav88/EnviousWispr is:issue",
++    perPage=10
++  )
++if metadata.filename is non-empty:
++  mcp__github__search_issues(
++    query="<metadata.filename> in:title,body repo:saurabhav88/EnviousWispr is:issue",
++    perPage=10
++  )
++if metadata.type is non-empty AND distinct from metadata.function (e.g., an exception class like `audio_capture_failed`):
++  mcp__github__search_issues(
++    query="<metadata.type> in:title,body repo:saurabhav88/EnviousWispr is:issue",
++    perPage=10
++  )
++# If all three subfields are empty (rare — only `metadata.value`-only issues), fall back to one query on `culprit` if it is non-empty:
++elif culprit is non-empty:
++  mcp__github__search_issues(
++    query="<culprit> in:title,body repo:saurabhav88/EnviousWispr is:issue",
++    perPage=10
++  )
++```
++
++If NONE of those keys are bound on this Sentry issue (unusual), skip Step 2.6 entirely with a one-line log (`Step 2.6 skipped: no metadata.function/filename/type/culprit bound on shortId X`) and proceed to Path A NEW. Do NOT run vacuous queries with placeholder strings.
+ 
+ For each candidate hit, decide whether to route to Path B (comment on existing) instead of Path A (create new). **Bar: at least TWO of these must match between the new Sentry data and the candidate issue:**
+-1. Same crashing function name
+-2. Same source filename
+-3. Same exception type / error symbol (e.g., `EXC_BREAKPOINT`, `xpc_service_error`, `asr_empty_result`)
++1. Same crashing function name (`metadata.function`)
++2. Same source filename (`metadata.filename`)
++3. Same exception type / error symbol (`metadata.type`, e.g., `EXC_BREAKPOINT`, `xpc_service_error`, `audio_capture_failed`)
+ 4. Same release range (issue's stated release vs Sentry's `release` field)
+-5. Same plausible precondition (issue's hypothesis vs new stack)
++5. Same plausible precondition (issue's hypothesis vs Sentry `metadata.value` / `culprit`)
+ 
+ If 2+ match: route as Path B. Open the comment with `**Linked from new Sentry fingerprint X because <2+ matched dimensions>: issue #N appears to track the same defect class.**` If only 1 matches OR none match: route as Path A NEW, but include in the body's References section: `Possibly related: #<N> (single dimension match: <which one>)`.
+ 
+
+codex
+The prompt now has the new failure section at the top and the Step 2.5/2.6 edits in the expected places. I’m grepping every recovery verb now, because the likely remaining risk is whether the new authoritative list and the later local policies drift from each other.
+exec
+/bin/zsh -lc "rg -n \"\\b(skip|SKIP|continue|CONTINUE|fall back|fallback|log|Log|exit|Exit|fatal|Fatal|Recoverable|recoverable|fails?|errors?|retry|Stopping|Stopping\\.|stop|STOP)\\b\" workers/sentry-triage/routine-prompt-v2.md" in /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1
+exec
+/bin/zsh -lc "rg -n \"Path C|REGRESSION|reopen|reopened|state == \\\"closed\\\"|CLOSED|closed|throttle|prior agent marker|Default action\" workers/sentry-triage/routine-prompt-v2.md" in /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1
+ succeeded in 0ms:
+12:v3.1 changes (2026-04-25, fixes #459): (1) replaced absolute fail-fast rule with typed default-vs-per-step recovery list — single transient errors no longer terminate the whole run when the prompt documents skip-and-continue; (2) Step 2.5 now gates on issue-state BEFORE applying the throttle — closed-issue regressions route to Path C (reopen) instead of being silently swallowed; (3) Step 2.6 cross-reference search now uses Sentry list-time fields (`metadata.function`, `metadata.filename`, `metadata.type`, `culprit`) that are bound at this step, instead of stack-trace fields that were only bound later in Path A. Step 1 field doc expanded to document these.
+82:Fetch unresolved issues sorted by most recent activity. We query `is:unresolved` because the user does not resolve/archive issues in Sentry. GitHub is the source of truth for open/closed status.
+135:Response: `{total_count, incomplete_results, items[]}`. Each item has `number`, `state` ("open" or "closed"), `title`, `body`.
+147:Before deciding NEW vs RECURRING-OPEN vs RECURRING-CLOSED, fetch the issue body AND comments to see what the agent decided previously:
+164:Where `<decision>` is one of: `created`, `updated`, `reopened`, `reversed`, `ignored`.
+166:**Default action when prior agent marker exists — gate on issue state FIRST:**
+168:- **If the GitHub issue is OPEN:** apply Path B's existing throttle (event count doubled OR new users OR no Sentry update comment in last 24h). If throttle blocks, skip silently. If throttle allows, post an UPDATE comment.
+169:- **If the GitHub issue is CLOSED:** do NOT apply the throttle. The presence of the issue in the current Sentry `is:unresolved + lastSeen within window` query means the defect is firing again post-close. Route to **Path C (REOPEN + regression comment)**. The reversal-required rules below still apply (severity / source_issue / decision-class changes still need an explicit `Reversing prior agent call from <date>:` opener).
+171:This state gate prevents closed-issue regressions from being silently swallowed by the throttle when a prior marker happens to exist. The throttle is for noise control on still-open issues, not for suppressing reopens.
+353:### Path C — GitHub issue found, `state == "closed"` (REGRESSION)
+361:**Regression detected** — This issue recurred after being closed.
+373:<!-- agent:sentry-triage v=3 fingerprint={shortId} decision=reopened severity={Pn} last_seen={lastSeen} source=sentry run_id=${CLAUDE_CODE_REMOTE_SESSION_ID} -->
+551:1. If source issue state is "closed", REOPEN via `mcp__github__issue_write`.
+
+ succeeded in 0ms:
+12:v3.1 changes (2026-04-25, fixes #459): (1) replaced absolute fail-fast rule with typed default-vs-per-step recovery list — single transient errors no longer terminate the whole run when the prompt documents skip-and-continue; (2) Step 2.5 now gates on issue-state BEFORE applying the throttle — closed-issue regressions route to Path C (reopen) instead of being silently swallowed; (3) Step 2.6 cross-reference search now uses Sentry list-time fields (`metadata.function`, `metadata.filename`, `metadata.type`, `culprit`) that are bound at this step, instead of stack-trace fields that were only bound later in Path A. Step 1 field doc expanded to document these.
+29:- `mcp__github__authenticate`, `mcp__github__complete_authentication` — these prompt the user to open a browser URL. Meaningless in unattended cron. If you see an "authorize" URL response from any tool, log it and exit cleanly.
+36:If a step fails AND that step has no documented per-step recovery, log the failure and exit the run cleanly. Do NOT retry. Do NOT add backoff. Do NOT invent recovery paths not in this prompt.
+38:If the step DOES document a per-step recovery, follow that recovery and continue. The documented per-step recoveries are:
+39:- **Step 1 Sentry HTTP-status guard** (non-200 or non-JSON body): exit cleanly *before* GitHub work, but Path D still runs.
+40:- **Step 2 GitHub MCP non-auth error** for one Sentry issue: log shortId + error and SKIP that one issue, continue with the next.
+41:- **MCP auth-expiry policy** (any GitHub MCP returns "authoriz" / "token expired" / "re-authorization"): trigger the hard policy below — STOP all GitHub writes for the rest of the run, log, exit cleanly. This applies to writes only; an in-flight Path D read may continue if it doesn't write.
+42:- **Path A Step 4 git-tag miss**: fall back to HEAD with a noted caveat.
+43:- **Path A Step 8 sub-issue link failure**: log and continue.
+44:- **Path D Step D1 per-PR `pull_request_read` failure**: log the PR number + error, continue to the next PR.
+45:- **Path A Step 1 Sentry event-fetch failure**: skip that one Sentry issue, continue to the next.
+47:A single transient MCP/Sentry hiccup MUST NOT terminate the whole run when the prompt documents a per-step skip-and-continue. Terminating in those cases drops remaining Sentry issues and PR reviews that should still be processed.
+51:If any GitHub MCP call returns an error containing "authoriz", "token expired", "re-authorization required", or similar:
+53:1. STOP all GitHub writes for the rest of this run, immediately.
+54:2. Log: `GITHUB_MCP_AUTH_EXPIRED: <error text>. Manual re-auth required at claude.ai. Exiting cleanly.`
+55:3. Exit with no further GitHub interaction. Do NOT fall back to curl. Do NOT call authenticate tools. Do NOT retry.
+61:Maintain an in-memory set `WRITTEN_THIS_RUN` keyed by Sentry `shortId` (Sentry side) or `(pr_number, review_id)` pair (Codex side). Before any GitHub write, check the set. If the key is present, skip silently. If you write, add the key.
+90:  echo "Sentry API error: HTTP $HTTP_CODE. Stopping."
+91:  exit 0
+95:  echo "Sentry response is not valid JSON (likely upstream HTML error). Exiting cleanly."
+97:  exit 0
+106:- `level` — "error" or "fatal".
+110:- `metadata` — object with grouping-derived fields, also bound at list time. Common keys for crash issues: `metadata.function` (string, crash function name), `metadata.filename` (string, source file), `metadata.type` (string, exception type or error symbol like `EXC_BREAKPOINT`, `audio_capture_failed`, `xpc_service_error`), `metadata.value` (string, error message). Some issues only have a subset (e.g., a `console.error` issue may only have `metadata.value`). Treat each subfield as optional — fall back to `culprit`, then `title`, when a specific subfield is missing.
+122:If zero issues pass the filter, log a summary and proceed to Path D. Don't stop — Codex review triage still runs.
+137:If the MCP call errors:
+138:- If error indicates auth expired: trigger MCP auth-expiry policy above, exit cleanly.
+139:- If other error: log the shortId + error and SKIP this Sentry issue (do NOT assume "no GitHub issue exists" — that creates duplicates).
+168:- **If the GitHub issue is OPEN:** apply Path B's existing throttle (event count doubled OR new users OR no Sentry update comment in last 24h). If throttle blocks, skip silently. If throttle allows, post an UPDATE comment.
+182:If Step 2's search returned `total_count == 0` (would route to Path A NEW), perform a SECOND search by code location BEFORE creating. **Use the Sentry-list fields already bound at this step** (`metadata.function`, `metadata.filename`, `metadata.type`, `culprit`) — do NOT defer to Path A's stack-trace fetch (which runs after this step). If a specific subfield is missing on this Sentry issue, skip the query that needs it; do not synthesize a placeholder.
+201:# If all three subfields are empty (rare — only `metadata.value`-only issues), fall back to one query on `culprit` if it is non-empty:
+209:If NONE of those keys are bound on this Sentry issue (unusual), skip Step 2.6 entirely with a one-line log (`Step 2.6 skipped: no metadata.function/filename/type/culprit bound on shortId X`) and proceed to Path A NEW. Do NOT run vacuous queries with placeholder strings.
+214:3. Same exception type / error symbol (`metadata.type`, e.g., `EXC_BREAKPOINT`, `xpc_service_error`, `audio_capture_failed`)
+231:if [ "$HTTP_CODE" != "200" ]; then echo "Sentry event fetch failed: HTTP $HTTP_CODE. Skipping this issue."; continue; fi
+234:  continue
+259:- P0-critical: level=fatal OR userCount >= 10
+264:**6. Hypothesis fail-soft:** Write the Hypothesis section ONLY if you can name a specific function AND a plausible precondition failure from the stack + source you read. If the evidence is insufficient, write `> Hypothesis pending — stack trace insufficient. Investigation needed.` Do NOT fabricate confident-sounding prose on weak evidence.
+280:[1-2 sentences: what error occurred, in plain English]
+305:[2 sentences OR fail-soft sentence per Step 6]
+329:If the sub-issue link fails, log it and continue.
+340:If none of those conditions hold, skip silently. Add `shortId` to `WRITTEN_THIS_RUN` to prevent re-evaluation.
+356:2. Ensure sub-issue link to #317 (Bugs) exists. If link fails with 422, it already exists (fine). Other failures: log + continue.
+371:> [2 sentences — re-analyze, don't copy original. Use Step 6 fail-soft if evidence insufficient.]
+382:- If Sentry API fails, log + stop. Do not retry.
+383:- If GitHub MCP search is ambiguous (multiple matches for one Sentry shortId), do NOT create a duplicate. Log + skip.
+387:- Per-run idempotency: before any write, check `WRITTEN_THIS_RUN`. If shortId or (pr,review) pair is present, skip.
+405:- On any GitHub MCP error: trigger MCP auth-expiry policy if applicable, otherwise log + skip event + continue. Do NOT retry. Do NOT leave partial state.
+424:**Token-cap awareness:** `list_pull_requests` results may exceed the MCP per-tool token cap and be saved to a file. The MCP returns a "result file saved at /path/to/file" notice — read via `Read` with offsets in chunks. This is expected behavior, not a failure. Do NOT retry the call thinking it failed.
+443:**Per-PR error handling:** If `pull_request_read` errors for one PR, log the PR number + error, CONTINUE to the next PR. Only the outer `list_pull_requests` failing is fatal for Path D. Single-PR failures are NOT fatal.
+454:Response: `{total_count, incomplete_results, items[]}`. If `total_count > 100` OR `incomplete_results == true`: log a warning and proceed with what you have. Today's `codex-review` issue count is ~30, well below the cap. Revisit pagination when count approaches 100 (12+ months at current rate).
+466:For each un-triaged review, execute D3.1 through D3.7 in order. Per-event failures are recoverable: log + skip + continue.
+479:Extract `merged_at`, `title`, `body`, head SHA, labels. If `merged_at` is null, SKIP this event (open PRs are out of scope).
+504:If after consolidation there are zero findings, SKIP this event silently. Do NOT stamp a marker, do NOT create an issue.
+548:If any condition fails, do NOT use ATTACH. Reclassify.
+602:   422 means link already exists — fine. Other failure: log + continue.
+641:### Path D error policy
+643:- **Fatal (exit Path D):** the Step D1 outer `mcp__github__list_pull_requests` call fails with auth-expiry → trigger global MCP auth-expiry policy. Other outer failures: log + exit Path D cleanly.
+644:- **Recoverable (skip this event/PR, continue):** per-PR `pull_request_read` failures in Step D1 inner loop, OR per-event failures in D3.1 through D3.7. Log, move to next item.
+
+exec
+/bin/zsh -lc "rg -n \"metadata\\.|culprit|Step 2\\.6|source-filename|crashing-function|placeholder|vacuous|elif|if .*non-empty|release|title\" workers/sentry-triage/routine-prompt-v2.md" in /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1
+ succeeded in 0ms:
+12:v3.1 changes (2026-04-25, fixes #459): (1) replaced absolute fail-fast rule with typed default-vs-per-step recovery list — single transient errors no longer terminate the whole run when the prompt documents skip-and-continue; (2) Step 2.5 now gates on issue-state BEFORE applying the throttle — closed-issue regressions route to Path C (reopen) instead of being silently swallowed; (3) Step 2.6 cross-reference search now uses Sentry list-time fields (`metadata.function`, `metadata.filename`, `metadata.type`, `culprit`) that are bound at this step, instead of stack-trace fields that were only bound later in Path A. Step 1 field doc expanded to document these.
+109:- `culprit` — Sentry's grouping locator, typically `"<function_name> (<filename>)"` or `"<function>"` or `"<filename>"`. Bound at issue-list time from the grouping fingerprint. Use for Step 2.6 cross-reference search.
+110:- `metadata` — object with grouping-derived fields, also bound at list time. Common keys for crash issues: `metadata.function` (string, crash function name), `metadata.filename` (string, source file), `metadata.type` (string, exception type or error symbol like `EXC_BREAKPOINT`, `audio_capture_failed`, `xpc_service_error`), `metadata.value` (string, error message). Some issues only have a subset (e.g., a `console.error` issue may only have `metadata.value`). Treat each subfield as optional — fall back to `culprit`, then `title`, when a specific subfield is missing.
+112:When you preserve fields with jq for downstream use, include `culprit` and `metadata` in the projection. Otherwise Step 2.6's cross-reference search is non-executable.
+135:Response: `{total_count, incomplete_results, items[]}`. Each item has `number`, `state` ("open" or "closed"), `title`, `body`.
+180:## Step 2.6 — Cross-reference search (catch fingerprint splits)
+182:If Step 2's search returned `total_count == 0` (would route to Path A NEW), perform a SECOND search by code location BEFORE creating. **Use the Sentry-list fields already bound at this step** (`metadata.function`, `metadata.filename`, `metadata.type`, `culprit`) — do NOT defer to Path A's stack-trace fetch (which runs after this step). If a specific subfield is missing on this Sentry issue, skip the query that needs it; do not synthesize a placeholder.
+185:# Only run a query if its key field is non-empty for this Sentry issue.
+186:if metadata.function is non-empty:
+188:    query="<metadata.function> in:title,body repo:saurabhav88/EnviousWispr is:issue",
+191:if metadata.filename is non-empty:
+193:    query="<metadata.filename> in:title,body repo:saurabhav88/EnviousWispr is:issue",
+196:if metadata.type is non-empty AND distinct from metadata.function (e.g., an exception class like `audio_capture_failed`):
+198:    query="<metadata.type> in:title,body repo:saurabhav88/EnviousWispr is:issue",
+201:# If all three subfields are empty (rare — only `metadata.value`-only issues), fall back to one query on `culprit` if it is non-empty:
+202:elif culprit is non-empty:
+204:    query="<culprit> in:title,body repo:saurabhav88/EnviousWispr is:issue",
+209:If NONE of those keys are bound on this Sentry issue (unusual), skip Step 2.6 entirely with a one-line log (`Step 2.6 skipped: no metadata.function/filename/type/culprit bound on shortId X`) and proceed to Path A NEW. Do NOT run vacuous queries with placeholder strings.
+212:1. Same crashing function name (`metadata.function`)
+213:2. Same source filename (`metadata.filename`)
+214:3. Same exception type / error symbol (`metadata.type`, e.g., `EXC_BREAKPOINT`, `xpc_service_error`, `audio_capture_failed`)
+215:4. Same release range (issue's stated release vs Sentry's `release` field)
+216:5. Same plausible precondition (issue's hypothesis vs Sentry `metadata.value` / `culprit`)
+244:**3. Extract git tag from `release` field:**
+248:- If release is null or missing, note it and use HEAD.
+290:| Release | {release} |
+310:[- Possibly related: #N (single dimension match: <which>)  — if Step 2.6 found one]
+344:**Sentry update** — {userCount} users affected, {count} total occurrences as of {today}. Last event: {lastSeen}. Release: {release}. [View in Sentry]({permalink})
+358:4. Read source at CURRENT release tag (`git show {tag}:{filename}`).
+366:| Release now | {release} |
+479:Extract `merged_at`, `title`, `body`, head SHA, labels. If `merged_at` is null, SKIP this event (open PRs are out of scope).
+521:Extract `number`, `title`, `body`, `state`, labels.
+544:3. Finding falls within the source issue's original scope (compare against title + body).
+
+web search: 
+web search: Sentry API list project issues group metadata culprit fields issue object
+web search: 
+web search: https://docs.sentry.io/api/events/list-a-projects-issues/
+web search: 
+web search: https://docs.sentry.io/api/events/list-an-organizations-issues/
+web search: 
+web search: Sentry GroupSerializer metadata function filename culprit GroupSerializer source
+web search: 
+web search: github getsentry sentry serializers models group.py get_event_metadata metadata culprit SimpleGroupSerializer
+web search: 
+web search: 
+web search: 
+web search: https://github.com/getsentry/sentry/blob/master/src/sentry/api/serializers/models/group.py
+web search: 
+web search: 'metadata' in https://github.com/getsentry/sentry/blob/master/src/sentry/api/serializers/models/group.py
+codex
+External docs confirm the issue-list response includes `culprit` and a `metadata` object, but the exact subkeys are still optional by issue type. Locally, Step 2.6’s guards mostly handle that, with one control-flow wording problem I’m checking carefully.
+exec
+/bin/zsh -lc "rg -n \"session_018ucrzNMKKmxJTNoKypLkFu|ENVIOUSWISPR-|culprit|metadata\\.function|metadata\\.filename|metadata\\.type|GroupSerializer|Sentry response|shortId\" /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1" in /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1
+ succeeded in 0ms:
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/src/index.js:113:  const culprit = issue.culprit ?? "";
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/src/index.js:234:    `culprit: ${culprit}`,
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:12:v3.1 changes (2026-04-25, fixes #459): (1) replaced absolute fail-fast rule with typed default-vs-per-step recovery list — single transient errors no longer terminate the whole run when the prompt documents skip-and-continue; (2) Step 2.5 now gates on issue-state BEFORE applying the throttle — closed-issue regressions route to Path C (reopen) instead of being silently swallowed; (3) Step 2.6 cross-reference search now uses Sentry list-time fields (`metadata.function`, `metadata.filename`, `metadata.type`, `culprit`) that are bound at this step, instead of stack-trace fields that were only bound later in Path A. Step 1 field doc expanded to document these.
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:40:- **Step 2 GitHub MCP non-auth error** for one Sentry issue: log shortId + error and SKIP that one issue, continue with the next.
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:61:Maintain an in-memory set `WRITTEN_THIS_RUN` keyed by Sentry `shortId` (Sentry side) or `(pr_number, review_id)` pair (Codex side). Before any GitHub write, check the set. If the key is present, skip silently. If you write, add the key.
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:95:  echo "Sentry response is not valid JSON (likely upstream HTML error). Exiting cleanly."
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:103:- `shortId` — e.g. "ENVIOUSWISPR-D". Use this for the GitHub issue footer tag and idempotency key.
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:109:- `culprit` — Sentry's grouping locator, typically `"<function_name> (<filename>)"` or `"<function>"` or `"<filename>"`. Bound at issue-list time from the grouping fingerprint. Use for Step 2.6 cross-reference search.
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:110:- `metadata` — object with grouping-derived fields, also bound at list time. Common keys for crash issues: `metadata.function` (string, crash function name), `metadata.filename` (string, source file), `metadata.type` (string, exception type or error symbol like `EXC_BREAKPOINT`, `audio_capture_failed`, `xpc_service_error`), `metadata.value` (string, error message). Some issues only have a subset (e.g., a `console.error` issue may only have `metadata.value`). Treat each subfield as optional — fall back to `culprit`, then `title`, when a specific subfield is missing.
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:112:When you preserve fields with jq for downstream use, include `culprit` and `metadata` in the projection. Otherwise Step 2.6's cross-reference search is non-executable.
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:130:  query="sentry-issue-id {shortId} repo:saurabhav88/EnviousWispr",
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:139:- If other error: log the shortId + error and SKIP this Sentry issue (do NOT assume "no GitHub issue exists" — that creates duplicates).
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:161:<!-- agent:sentry-triage v=3 fingerprint=ENVIOUSWISPR-X decision=<decision> severity=<P0..P3> last_seen=<ISO> source=sentry run_id=<id> -->
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:182:If Step 2's search returned `total_count == 0` (would route to Path A NEW), perform a SECOND search by code location BEFORE creating. **Use the Sentry-list fields already bound at this step** (`metadata.function`, `metadata.filename`, `metadata.type`, `culprit`) — do NOT defer to Path A's stack-trace fetch (which runs after this step). If a specific subfield is missing on this Sentry issue, skip the query that needs it; do not synthesize a placeholder.
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:186:if metadata.function is non-empty:
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:188:    query="<metadata.function> in:title,body repo:saurabhav88/EnviousWispr is:issue",
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:191:if metadata.filename is non-empty:
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:193:    query="<metadata.filename> in:title,body repo:saurabhav88/EnviousWispr is:issue",
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:196:if metadata.type is non-empty AND distinct from metadata.function (e.g., an exception class like `audio_capture_failed`):
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:198:    query="<metadata.type> in:title,body repo:saurabhav88/EnviousWispr is:issue",
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:201:# If all three subfields are empty (rare — only `metadata.value`-only issues), fall back to one query on `culprit` if it is non-empty:
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:202:elif culprit is non-empty:
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:204:    query="<culprit> in:title,body repo:saurabhav88/EnviousWispr is:issue",
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:209:If NONE of those keys are bound on this Sentry issue (unusual), skip Step 2.6 entirely with a one-line log (`Step 2.6 skipped: no metadata.function/filename/type/culprit bound on shortId X`) and proceed to Path A NEW. Do NOT run vacuous queries with placeholder strings.
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:212:1. Same crashing function name (`metadata.function`)
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:213:2. Same source filename (`metadata.filename`)
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:214:3. Same exception type / error symbol (`metadata.type`, e.g., `EXC_BREAKPOINT`, `xpc_service_error`, `audio_capture_failed`)
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:216:5. Same plausible precondition (issue's hypothesis vs Sentry `metadata.value` / `culprit`)
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:238:Use the numeric `id` field, NOT `shortId`.
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:266:**7. Create GitHub issue** via `mcp__github__issue_write`. Add `shortId` to `WRITTEN_THIS_RUN` set.
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:312:<!-- sentry-issue-id: {shortId} -->
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:314:<!-- agent:sentry-triage v=3 fingerprint={shortId} decision=created severity={Pn} last_seen={lastSeen} source=sentry run_id=${CLAUDE_CODE_REMOTE_SESSION_ID} -->
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:340:If none of those conditions hold, skip silently. Add `shortId` to `WRITTEN_THIS_RUN` to prevent re-evaluation.
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:346:<!-- agent:sentry-triage v=3 fingerprint={shortId} decision=updated severity={Pn} last_seen={lastSeen} source=sentry run_id=${CLAUDE_CODE_REMOTE_SESSION_ID} -->
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:355:1. Reopen via `mcp__github__issue_write` (set state=open). Add `shortId` to `WRITTEN_THIS_RUN`.
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:373:<!-- agent:sentry-triage v=3 fingerprint={shortId} decision=reopened severity={Pn} last_seen={lastSeen} source=sentry run_id=${CLAUDE_CODE_REMOTE_SESSION_ID} -->
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:383:- If GitHub MCP search is ambiguous (multiple matches for one Sentry shortId), do NOT create a duplicate. Log + skip.
+/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/workers/sentry-triage/routine-prompt-v2.md:387:- Per-run idempotency: before any write, check `WRITTEN_THIS_RUN`. If shortId or (pr,review) pair is present, skip.
+
+exec
+/bin/zsh -lc "find /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1 -maxdepth 5 -type f \\( -name '*sentry*' -o -name '*routine*' -o -name '*.json' -o -name '*.jsonl' -o -name '*.md' \\) | sed 's#"'^/Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1/##'"'" in /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1
+ succeeded in 0ms:
+website/README.md
+website/package-lock.json
+website/package.json
+website/tsconfig.json
+website/src/content/blog/meeting-notes-polished-summaries.md
+website/src/content/blog/dictation-for-developers-code-reviews.md
+website/src/content/blog/dictating-episode-scripts-without-losing-flow.md
+website/src/content/blog/switched-typing-to-dictating-git-commits.md
+website/src/content/blog/voice-coding-macos-without-cloud.md
+website/src/content/blog/dictate-emails-speed-of-thought.md
+website/src/content/blog/voice-input-rsi-keyboard-free-workflow.md
+website/src/content/blog/on-device-vs-cloud-dictation-privacy.md
+website/src/content/blog/getting-started-enviouswispr-under-2-minutes.md
+website/src/content/blog/essay-outline-by-talking-it-out.md
+website/src/content/blog/dictation-for-writers-skip-blank-page.md
+website/src/content/blog/dictation-remote-workers-tired-of-typing.md
+website/src/content/blog/async-communication-better-when-you-speak.md
+website/src/content/blog/hands-free-typing-toddler-climbs-you.md
+website/src/content/blog/welcome-to-enviouswispr.md
+website/src/content/blog/macos-dictation-offline-private.md
+website/src/content/blog/dictate-first-drafts-sound-like-you.md
+website/src/content/blog/voice-to-prose-writing-workflow.md
+website/src/content/blog/building-commercial-software-solo-with-claude-code.md
+website/src/content/blog/dictation-parents-type-one-handed.md
+website/src/content/blog/take-lecture-notes-by-speaking.md
+website/src/content/blog/podcast-show-notes-to-blog-posts.md
+benchmark-results/apple-polish-2026-04-12/baseline.jsonl
+benchmark-results/apple-polish-2026-04-12/postchange.jsonl
+benchmark-results/apple-polish-2026-04-12/RESULTS.md
+docs/feature-requests/multilingual-v1-followup.md
+docs/feature-requests/issue-381-2026-04-20-dual-mode-router.md
+docs/feature-requests/issue-319-2026-04-18-q2-hardening-epic.md
+docs/feature-requests/issue-428-2026-04-20-phase-c-transcript-coordinator.md
+docs/feature-requests/ctc-vocabulary-boosting.md
+docs/feature-requests/issue-256-2026-04-16-remove-useRefreshedWhisperKitModel-flag.md
+docs/feature-requests/issue-388-2026-04-20-textprocessingrunner-polish-step-type.md
+docs/feature-requests/issue-396-2026-04-20-pastecascadeexecutor-di-seams.md
+docs/feature-requests/multilingual-v1.md
+docs/feature-requests/issue-385-2026-04-20-acceptance-gate-drift-options.md
+docs/feature-requests/apple-intelligence-lang-gate.md
+docs/feature-requests/issue-394-2026-04-20-transcriptionpipeline-di-seams.md
+docs/feature-requests/issue-398-2026-04-20-asrmanager-backend-injection.md
+docs/feature-requests/issue-389-2026-04-20-textprocessingrunner-logger-di.md
+docs/self-hosted-runner.md
+docs/apple-intelligence-diagnostics-spec.md
+README.md
+.codex/phase-g-grounded-review.md
+scripts/eval/corpus/ci_corpus.jsonl
+scripts/eval/apple_runner/README.md
+scripts/eval/golden_judge_scores.json
+scripts/eval/baselines/gpt-4o-mini.json
+.github/pull_request_template.md
+.github/ISSUE_TEMPLATE/sentry-triage.md
+.github/CI-GOVERNANCE.md
+workers/sentry-triage/routine-prompt-v2.md
+workers/crisp-kb/markdown/22-using-ollama-for-fully-offline-ai-polish.md
+workers/crisp-kb/markdown/27-paste-goes-to-the-wrong-app.md
+workers/crisp-kb/markdown/26-first-word-gets-cut-off.md
+workers/crisp-kb/markdown/37-supported-apps.md
+workers/crisp-kb/markdown/21-apple-intelligence-setup.md
+workers/crisp-kb/markdown/09-customizing-your-hotkey.md
+workers/crisp-kb/markdown/46-paste-not-working.md
+workers/crisp-kb/markdown/53-what-data-is-collected.md
+workers/crisp-kb/markdown/52-privacy-overview.md
+workers/crisp-kb/markdown/36-warm-engine-and-performance-tuning.md
+workers/crisp-kb/markdown/05-granting-permissions-microphone-and-accessibility.md
+workers/crisp-kb/markdown/13-multi-language-dictation.md
+workers/crisp-kb/markdown/18-writing-styles-and-custom-prompts.md
+workers/crisp-kb/markdown/30-apple-intelligence-not-available.md
+workers/crisp-kb/markdown/50-voice-activity-detection-and-auto-stop.md
+workers/crisp-kb/markdown/32-app-crashes-or-asr-engine-crashes.md
+workers/crisp-kb/markdown/04-your-first-dictation.md
+workers/crisp-kb/markdown/47-choosing-your-microphone.md
+workers/crisp-kb/markdown/56-is-enviouswispr-free.md
+workers/crisp-kb/markdown/38-use-cases.md
+workers/crisp-kb/markdown/19-how-smart-polish-works-context-aware.md
+workers/crisp-kb/markdown/28-bluetooth-audio-issues.md
+workers/crisp-kb/markdown/01-what-is-enviouswispr.md
+workers/crisp-kb/markdown/55-api-key-security.md
+workers/crisp-kb/markdown/44-how-text-gets-pasted-into-your-app.md
+workers/crisp-kb/markdown/14-model-downloads-and-management.md
+workers/crisp-kb/markdown/06-push-to-talk-mode.md
+workers/crisp-kb/markdown/25-empty-or-missing-transcription.md
+workers/crisp-kb/markdown/41-adding-custom-words.md
+workers/crisp-kb/markdown/10-canceling-a-recording.md
+workers/crisp-kb/markdown/40-source-code-and-contributing.md
+workers/crisp-kb/markdown/35-filler-word-removal.md
+workers/crisp-kb/markdown/49-noise-suppression.md
+workers/crisp-kb/markdown/33-transcript-history.md
+workers/crisp-kb/markdown/51-zero-first-word-clipping.md
+workers/crisp-kb/markdown/45-clipboard-preservation.md
+workers/crisp-kb/markdown/15-live-transcription-streaming-asr.md
+workers/crisp-kb/markdown/48-bluetooth-and-airpods.md
+workers/crisp-kb/markdown/43-ai-powered-alias-suggestions.md
+workers/crisp-kb/markdown/31-recording-won-t-stop-or-seems-stuck.md
+workers/crisp-kb/markdown/17-choosing-an-ai-provider-none-apple-intelligence-ol.md
+workers/crisp-kb/markdown/16-what-is-ai-polish.md
+workers/crisp-kb/markdown/42-how-custom-word-correction-works.md
+workers/crisp-kb/markdown/07-hands-free-mode-long-dictation.md
+workers/crisp-kb/markdown/20-extended-thinking-reasoning-mode.md
+workers/crisp-kb/markdown/34-re-polish-past-transcripts.md
+workers/crisp-kb/markdown/54-ai-polish-and-cloud-data.md
+workers/crisp-kb/markdown/03-download-and-install.md
+workers/crisp-kb/markdown/39-auto-updates.md
+workers/crisp-kb/markdown/02-system-requirements.md
+workers/crisp-kb/markdown/11-choosing-a-speech-engine-parakeet-vs-whisperkit.md
+workers/crisp-kb/markdown/23-hallucination-protection.md
+workers/crisp-kb/markdown/12-how-on-device-transcription-works.md
+workers/crisp-kb/markdown/24-accessibility-permission-not-working.md
+workers/crisp-kb/markdown/08-toggle-mode.md
+workers/crisp-kb/markdown/29-ollama-polish-not-working.md
+workers/crisp-kb/articles/categories-10-13.json
+workers/crisp-kb/articles/categories-5-9.json
+workers/crisp-kb/articles/categories-1-4.json
+periphery-baseline.json
+assets/artwork/DO_NOT_DELETE.md
+
+exec
+/bin/zsh -lc 'git -C /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1 branch --show-current' in /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1
+ succeeded in 0ms:
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-MxsLECxf' (errno=Operation not permitted)
+git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead
+git: error: couldn't create cache file '/tmp/xcrun_db-5LuuFuTs' (errno=Operation not permitted)
+fix/issue-459-routine-prompt-v3.1
+
+web search: 
+web search: 
+web search: 
+web search: https://github.com/getsentry/sentry/blob/master/src/sentry/api/serializers/models/group.py
+web search: 
+web search: site:github.com/getsentry/sentry metadata.function metadata.filename metadata.type get_event_metadata
+exec
+/bin/zsh -lc "nl -ba workers/sentry-triage/src/index.js | sed -n '90,135p'" in /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1
+ succeeded in 0ms:
+    90	    return;
+    91	  }
+    92	
+    93	  // Replay protection: reject signatures seen in last 90 min
+    94	  const sigHash = await hashString(body);
+    95	  const replayKey = `replay:${sigHash}`;
+    96	  const seen = await env.SENTRY_DEDUP.get(replayKey);
+    97	  if (seen) {
+    98	    console.log("[sentry-triage] Duplicate delivery detected, skipping");
+    99	    return;
+   100	  }
+   101	  await env.SENTRY_DEDUP.put(replayKey, "1", { expirationTtl: 5400 }); // 90 min
+   102	
+   103	  // Validate payload shape — skip metric alerts (data.metric_alert) and malformed payloads
+   104	  const issue = payload?.data?.issue;
+   105	  if (!issue) {
+   106	    console.log("[sentry-triage] No data.issue — skipping (metric alert or unknown type)");
+   107	    return;
+   108	  }
+   109	
+   110	  const action = payload.action ?? "";
+   111	  const issueId = issue.id ?? "";
+   112	  const title = issue.title ?? "";
+   113	  const culprit = issue.culprit ?? "";
+   114	  const level = (issue.level ?? "").toLowerCase();
+   115	  const userCount = parseInt(issue.userCount, 10) || 0;
+   116	  const timesSeen = parseInt(issue.count, 10) || 0; // count is a string in Sentry payloads
+   117	  const substatus = issue.substatus ?? "";
+   118	  const permalink = issue.permalink ?? issue.web_url ?? "";
+   119	  const release = issue.release ?? null;
+   120	
+   121	  if (!issueId) {
+   122	    console.error("[sentry-triage] Missing issue ID, skipping");
+   123	    return;
+   124	  }
+   125	
+   126	  const kvKey = `sentry:${issueId}`;
+   127	
+   128	  // Handle terminal actions — update KV state and exit without firing Routine
+   129	  if (action === "resolved" || action === "archived") {
+   130	    // 90-day TTL — same as fired state, prevents unbounded KV growth.
+   131	    await env.SENTRY_DEDUP.put(
+   132	      kvKey,
+   133	      JSON.stringify({ state: "resolved", updatedAt: Date.now() }),
+   134	      { expirationTtl: 7776000 } // 90 days
+   135	    );
+
+exec
+/bin/zsh -lc "nl -ba workers/sentry-triage/src/index.js | sed -n '220,245p'" in /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1
+ succeeded in 0ms:
+   220	
+   221	  // Write pending state before firing (self-healing TTL of 10 min in case Routine never responds)
+   222	  await env.SENTRY_DEDUP.put(
+   223	    kvKey,
+   224	    JSON.stringify({ state: "pending", intent, firedAt: Date.now(), priority }),
+   225	    { expirationTtl: 600 } // 10 min TTL — overwritten with permanent entry on success
+   226	  );
+   227	
+   228	  // Fire the Routine
+   229	  const textPayload = [
+   230	    `intent: ${intent}`,
+   231	    `sentry_issue_id: ${issueId}`,
+   232	    `sentry_url: ${permalink}`,
+   233	    `title: ${title}`,
+   234	    `culprit: ${culprit}`,
+   235	    `level: ${level}`,
+   236	    `user_count: ${userCount}`,
+   237	    `times_seen: ${timesSeen}`,
+   238	    `release: ${release ?? "null"}`,
+   239	    `environment: production`,
+   240	    `priority: ${priority}`,
+   241	  ].join("\n");
+   242	
+   243	  let sessionUrl = null;
+   244	  try {
+   245	    const fireRes = await fetch(
+
+exec
+/bin/zsh -lc "rg -n \"metadata|function|filename|type|value|culprit|issues/\\?query\" workers/sentry-triage/src/index.js" in /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1
+ succeeded in 0ms:
+40:async function verifyHmac(body, sigHeader, secret) {
+84:async function handleTriage(body, env) {
+106:    console.log("[sentry-triage] No data.issue — skipping (metric alert or unknown type)");
+113:  const culprit = issue.culprit ?? "";
+234:    `culprit: ${culprit}`,
+305:function classifySeverity(userCount, timesSeen, level) {
+314:async function postDiscord(webhookUrl, embed) {
+326:function buildP3Embed(issueId, title, permalink, timesSeen, userCount) {
+331:      { name: "Impact", value: `${userCount} user(s), ${timesSeen} occurrences`, inline: true },
+332:      { name: "Sentry", value: `[${issueId}](${permalink})`, inline: true },
+339:function buildCapAlertEmbed(capCount, issueId, title, permalink) {
+345:      { name: "Missed Issue", value: `[${issueId}](${permalink}) — ${title}` },
+352:function buildFailureEmbed(issueId, title, permalink, priority, errMsg) {
+358:      { name: "Issue", value: title },
+359:      { name: "Error", value: errMsg.slice(0, 200) },
+368:async function hashString(str) {
+
+exec
+/bin/zsh -lc "nl -ba workers/sentry-triage/routine-prompt-v2.md | sed -n '34,57p'" in /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1
+ succeeded in 0ms:
+    34	## Failure handling (default vs per-step recovery)
+    35	
+    36	If a step fails AND that step has no documented per-step recovery, log the failure and exit the run cleanly. Do NOT retry. Do NOT add backoff. Do NOT invent recovery paths not in this prompt.
+    37	
+    38	If the step DOES document a per-step recovery, follow that recovery and continue. The documented per-step recoveries are:
+    39	- **Step 1 Sentry HTTP-status guard** (non-200 or non-JSON body): exit cleanly *before* GitHub work, but Path D still runs.
+    40	- **Step 2 GitHub MCP non-auth error** for one Sentry issue: log shortId + error and SKIP that one issue, continue with the next.
+    41	- **MCP auth-expiry policy** (any GitHub MCP returns "authoriz" / "token expired" / "re-authorization"): trigger the hard policy below — STOP all GitHub writes for the rest of the run, log, exit cleanly. This applies to writes only; an in-flight Path D read may continue if it doesn't write.
+    42	- **Path A Step 4 git-tag miss**: fall back to HEAD with a noted caveat.
+    43	- **Path A Step 8 sub-issue link failure**: log and continue.
+    44	- **Path D Step D1 per-PR `pull_request_read` failure**: log the PR number + error, continue to the next PR.
+    45	- **Path A Step 1 Sentry event-fetch failure**: skip that one Sentry issue, continue to the next.
+    46	
+    47	A single transient MCP/Sentry hiccup MUST NOT terminate the whole run when the prompt documents a per-step skip-and-continue. Terminating in those cases drops remaining Sentry issues and PR reviews that should still be processed.
+    48	
+    49	## MCP auth-expiry policy (HARD)
+    50	
+    51	If any GitHub MCP call returns an error containing "authoriz", "token expired", "re-authorization required", or similar:
+    52	
+    53	1. STOP all GitHub writes for the rest of this run, immediately.
+    54	2. Log: `GITHUB_MCP_AUTH_EXPIRED: <error text>. Manual re-auth required at claude.ai. Exiting cleanly.`
+    55	3. Exit with no further GitHub interaction. Do NOT fall back to curl. Do NOT call authenticate tools. Do NOT retry.
+    56	
+    57	This protects against duplicate-issue creation when MCP search returns false-empty mid-run.
+
+exec
+/bin/zsh -lc "rg -n \"log \\+|log .*continue|Log \\+|skip \\+|SKIP|CONTINUE|continue to the next|continue\\.|continue;|fall back|fallback|Other failures|Recoverable|recoverable|fatal|Fatal|exit Path D|exit cleanly|exit with|proceed with what you have|proceed to Path D\" workers/sentry-triage/routine-prompt-v2.md" in /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1
+ succeeded in 0ms:
+12:v3.1 changes (2026-04-25, fixes #459): (1) replaced absolute fail-fast rule with typed default-vs-per-step recovery list — single transient errors no longer terminate the whole run when the prompt documents skip-and-continue; (2) Step 2.5 now gates on issue-state BEFORE applying the throttle — closed-issue regressions route to Path C (reopen) instead of being silently swallowed; (3) Step 2.6 cross-reference search now uses Sentry list-time fields (`metadata.function`, `metadata.filename`, `metadata.type`, `culprit`) that are bound at this step, instead of stack-trace fields that were only bound later in Path A. Step 1 field doc expanded to document these.
+29:- `mcp__github__authenticate`, `mcp__github__complete_authentication` — these prompt the user to open a browser URL. Meaningless in unattended cron. If you see an "authorize" URL response from any tool, log it and exit cleanly.
+38:If the step DOES document a per-step recovery, follow that recovery and continue. The documented per-step recoveries are:
+39:- **Step 1 Sentry HTTP-status guard** (non-200 or non-JSON body): exit cleanly *before* GitHub work, but Path D still runs.
+40:- **Step 2 GitHub MCP non-auth error** for one Sentry issue: log shortId + error and SKIP that one issue, continue with the next.
+41:- **MCP auth-expiry policy** (any GitHub MCP returns "authoriz" / "token expired" / "re-authorization"): trigger the hard policy below — STOP all GitHub writes for the rest of the run, log, exit cleanly. This applies to writes only; an in-flight Path D read may continue if it doesn't write.
+42:- **Path A Step 4 git-tag miss**: fall back to HEAD with a noted caveat.
+43:- **Path A Step 8 sub-issue link failure**: log and continue.
+44:- **Path D Step D1 per-PR `pull_request_read` failure**: log the PR number + error, continue to the next PR.
+45:- **Path A Step 1 Sentry event-fetch failure**: skip that one Sentry issue, continue to the next.
+47:A single transient MCP/Sentry hiccup MUST NOT terminate the whole run when the prompt documents a per-step skip-and-continue. Terminating in those cases drops remaining Sentry issues and PR reviews that should still be processed.
+55:3. Exit with no further GitHub interaction. Do NOT fall back to curl. Do NOT call authenticate tools. Do NOT retry.
+106:- `level` — "error" or "fatal".
+110:- `metadata` — object with grouping-derived fields, also bound at list time. Common keys for crash issues: `metadata.function` (string, crash function name), `metadata.filename` (string, source file), `metadata.type` (string, exception type or error symbol like `EXC_BREAKPOINT`, `audio_capture_failed`, `xpc_service_error`), `metadata.value` (string, error message). Some issues only have a subset (e.g., a `console.error` issue may only have `metadata.value`). Treat each subfield as optional — fall back to `culprit`, then `title`, when a specific subfield is missing.
+122:If zero issues pass the filter, log a summary and proceed to Path D. Don't stop — Codex review triage still runs.
+138:- If error indicates auth expired: trigger MCP auth-expiry policy above, exit cleanly.
+139:- If other error: log the shortId + error and SKIP this Sentry issue (do NOT assume "no GitHub issue exists" — that creates duplicates).
+201:# If all three subfields are empty (rare — only `metadata.value`-only issues), fall back to one query on `culprit` if it is non-empty:
+231:if [ "$HTTP_CODE" != "200" ]; then echo "Sentry event fetch failed: HTTP $HTTP_CODE. Skipping this issue."; continue; fi
+259:- P0-critical: level=fatal OR userCount >= 10
+329:If the sub-issue link fails, log it and continue.
+356:2. Ensure sub-issue link to #317 (Bugs) exists. If link fails with 422, it already exists (fine). Other failures: log + continue.
+382:- If Sentry API fails, log + stop. Do not retry.
+383:- If GitHub MCP search is ambiguous (multiple matches for one Sentry shortId), do NOT create a duplicate. Log + skip.
+405:- On any GitHub MCP error: trigger MCP auth-expiry policy if applicable, otherwise log + skip event + continue. Do NOT retry. Do NOT leave partial state.
+443:**Per-PR error handling:** If `pull_request_read` errors for one PR, log the PR number + error, CONTINUE to the next PR. Only the outer `list_pull_requests` failing is fatal for Path D. Single-PR failures are NOT fatal.
+454:Response: `{total_count, incomplete_results, items[]}`. If `total_count > 100` OR `incomplete_results == true`: log a warning and proceed with what you have. Today's `codex-review` issue count is ~30, well below the cap. Revisit pagination when count approaches 100 (12+ months at current rate).
+466:For each un-triaged review, execute D3.1 through D3.7 in order. Per-event failures are recoverable: log + skip + continue.
+479:Extract `merged_at`, `title`, `body`, head SHA, labels. If `merged_at` is null, SKIP this event (open PRs are out of scope).
+504:If after consolidation there are zero findings, SKIP this event silently. Do NOT stamp a marker, do NOT create an issue.
+602:   422 means link already exists — fine. Other failure: log + continue.
+643:- **Fatal (exit Path D):** the Step D1 outer `mcp__github__list_pull_requests` call fails with auth-expiry → trigger global MCP auth-expiry policy. Other outer failures: log + exit Path D cleanly.
+644:- **Recoverable (skip this event/PR, continue):** per-PR `pull_request_read` failures in Step D1 inner loop, OR per-event failures in D3.1 through D3.7. Log, move to next item.
+
+exec
+/bin/zsh -lc "nl -ba workers/sentry-triage/routine-prompt-v2.md | sed -n '379,645p'" in /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1
+ succeeded in 0ms:
+   379	## Rules (Sentry Paths A/B/C)
+   380	
+   381	- Never write code or open PRs. Triage only.
+   382	- If Sentry API fails, log + stop. Do not retry.
+   383	- If GitHub MCP search is ambiguous (multiple matches for one Sentry shortId), do NOT create a duplicate. Log + skip.
+   384	- Process Sentry issues in ORDER RECEIVED from Step 1 (FIFO). Do not reorder by severity — that risks dropping lower-severity items if turn budget runs out, and the per-issue idempotency key prevents duplicate work on next tick.
+   385	- Use exact label names listed above.
+   386	- GitHub issue email notifications are the user's signal channel for P1/P2/P3. P0 paging is handled OUTSIDE this Routine via the Sentry Issue Alert → Discord rule (configured 2026-04-25). Do not attempt Discord or other webhooks from inside this Routine.
+   387	- Per-run idempotency: before any write, check `WRITTEN_THIS_RUN`. If shortId or (pr,review) pair is present, skip.
+   388	
+   389	---
+   390	
+   391	## Path D — Codex PR feedback triage (additive, isolated from Sentry)
+   392	
+   393	Executes AFTER Sentry Paths A/B/C. Path D must NEVER modify any issue, comment, or state created by Sentry paths. Any issue carrying the `sentry-triage` label is Sentry-managed and OFF-LIMITS to Path D.
+   394	
+   395	### Path D HARD CONSTRAINTS
+   396	
+   397	- Read + triage only. Write allowlist:
+   398	  - Create GitHub issues (`mcp__github__issue_write`)
+   399	  - Reopen GitHub issues (`mcp__github__issue_write`)
+   400	  - Comment on GitHub issues (`mcp__github__add_issue_comment`)
+   401	  - Edit issue body to APPEND the codex-source marker (append only)
+   402	  - Apply the `codex-review` label
+   403	  - Sub-issue link via `mcp__github__sub_issue_write`
+   404	- Before any write to a pre-existing issue, verify the issue does NOT have the `sentry-triage` label. If it does, OFF-LIMITS — reclassify the decision as CREATE.
+   405	- On any GitHub MCP error: trigger MCP auth-expiry policy if applicable, otherwise log + skip event + continue. Do NOT retry. Do NOT leave partial state.
+   406	- Sentry output from Paths A/B/C is authoritative. Path D never modifies Sentry writes.
+   407	- Per-run idempotency: track `(pr_number, review_id)` pairs in `WRITTEN_THIS_RUN`.
+   408	
+   409	### Step D1 — Fetch Codex review events (authenticated MCP, bounded recent-PR scan)
+   410	
+   411	```
+   412	mcp__github__list_pull_requests(
+   413	  owner="saurabhav88",
+   414	  repo="EnviousWispr",
+   415	  state="all",          # Codex reviews land on still-open PRs too
+   416	  sort="updated",
+   417	  direction="desc",
+   418	  perPage=20            # camelCase, NOT per_page
+   419	)
+   420	```
+   421	
+   422	**Bounded scan:** process the entire returned page. Stop fetching the next page when ANY returned PR on the current page has `updated_at < (now - 5h10m)`. Hard cap 5 pages (~100 PRs) for safety.
+   423	
+   424	**Token-cap awareness:** `list_pull_requests` results may exceed the MCP per-tool token cap and be saved to a file. The MCP returns a "result file saved at /path/to/file" notice — read via `Read` with offsets in chunks. This is expected behavior, not a failure. Do NOT retry the call thinking it failed.
+   425	
+   426	For each returned PR, fetch its reviews via authenticated MCP:
+   427	
+   428	```
+   429	mcp__github__pull_request_read(
+   430	  owner="saurabhav88",
+   431	  repo="EnviousWispr",
+   432	  pull_number={pr_number},
+   433	  method="get_reviews"          # NOT summary="reviews" — that's not valid
+   434	)
+   435	```
+   436	
+   437	Returned reviews JSON has fields: `id`, `state`, `body`, `user.login`, `commit_id`, `submitted_at`, `author_association`.
+   438	
+   439	**Filter reviews:**
+   440	- `user.login == "chatgpt-codex-connector[bot]"` — strict match
+   441	- AND `submitted_at >= (now - 5h10m)` — only recent reviews; old Codex reviews on recently-updated PRs must NOT re-enter
+   442	
+   443	**Per-PR error handling:** If `pull_request_read` errors for one PR, log the PR number + error, CONTINUE to the next PR. Only the outer `list_pull_requests` failing is fatal for Path D. Single-PR failures are NOT fatal.
+   444	
+   445	### Step D2 — Dedup against prior triage (authenticated MCP)
+   446	
+   447	```
+   448	mcp__github__search_issues(
+   449	  query="label:codex-review repo:saurabhav88/EnviousWispr",
+   450	  perPage=100
+   451	)
+   452	```
+   453	
+   454	Response: `{total_count, incomplete_results, items[]}`. If `total_count > 100` OR `incomplete_results == true`: log a warning and proceed with what you have. Today's `codex-review` issue count is ~30, well below the cap. Revisit pagination when count approaches 100 (12+ months at current rate).
+   455	
+   456	For each returned issue, scan its `body` field for markers matching:
+   457	
+   458	```
+   459	<!-- codex-source: pr=<N>, review=<review_id> -->
+   460	```
+   461	
+   462	Build a set of already-triaged `(pr_number, review_id)` pairs. Drop reviews whose pair is in the set. Remaining reviews are un-triaged and proceed to Step D3.
+   463	
+   464	### Step D3 — Per-event processing
+   465	
+   466	For each un-triaged review, execute D3.1 through D3.7 in order. Per-event failures are recoverable: log + skip + continue.
+   467	
+   468	**D3.1 Check merge state.**
+   469	
+   470	```
+   471	mcp__github__pull_request_read(
+   472	  owner="saurabhav88",
+   473	  repo="EnviousWispr",
+   474	  pull_number={pr_number},
+   475	  method="get"   # default; returns full PR object
+   476	)
+   477	```
+   478	
+   479	Extract `merged_at`, `title`, `body`, head SHA, labels. If `merged_at` is null, SKIP this event (open PRs are out of scope).
+   480	
+   481	**D3.2 Fetch the review body and inline comments.**
+   482	
+   483	The review body is already in the result from Step D1's `get_reviews` call. For inline comments:
+   484	
+   485	```
+   486	mcp__github__pull_request_read(
+   487	  owner="saurabhav88",
+   488	  repo="EnviousWispr",
+   489	  pull_number={pr_number},
+   490	  method="get_review_comments"   # or get_comments depending on MCP shape
+   491	)
+   492	```
+   493	
+   494	Filter comments by `pull_request_review_id == {review_id}`.
+   495	
+   496	**D3.3 Filter OUTDATED inline comments.** Drop any inline comment where `position` is null.
+   497	
+   498	**D3.4 Consolidate findings.**
+   499	
+   500	- Top-level review body: keep as a finding ONLY if it contains actionable content (names a file, function, line, or observable defect — not just acknowledgement).
+   501	- Each surviving inline comment is a candidate finding.
+   502	- If an inline comment restates the top-level body, treat as ONE finding (inline is authoritative).
+   503	
+   504	If after consolidation there are zero findings, SKIP this event silently. Do NOT stamp a marker, do NOT create an issue.
+   505	
+   506	**D3.5 Resolve source issue.**
+   507	
+   508	Parse the PR `body` for first case-insensitive match of `Closes #<N>`, `Fixes #<N>`, or `Resolves #<N>`. If no match, `source_issue = null`.
+   509	
+   510	If non-null, fetch via authenticated MCP:
+   511	
+   512	```
+   513	mcp__github__issue_read(
+   514	  owner="saurabhav88",
+   515	  repo="EnviousWispr",
+   516	  issue_number={source_issue},
+   517	  method="get"
+   518	)
+   519	```
+   520	
+   521	Extract `number`, `title`, `body`, `state`, labels.
+   522	
+   523	**D3.6 Fetch code context (authenticated MCP).** Budget: ~150 lines total across all findings for this event.
+   524	
+   525	```
+   526	mcp__github__get_file_contents(
+   527	  owner="saurabhav88",
+   528	  repo="EnviousWispr",
+   529	  path="{path}",
+   530	  ref="{head_sha}"
+   531	)
+   532	```
+   533	
+   534	For inline comments: extract ~20 lines centered on `line` (start = max(1, line-10), end = line+10). For top-level review body that references a specific file: same. Skip code context for reviews that don't reference a specific location.
+   535	
+   536	**D3.7 Triage decision.** For each finding, ONE of:
+   537	
+   538	---
+   539	
+   540	**(a) ATTACH to source issue.** ALL of these must hold:
+   541	
+   542	1. `source_issue` is non-null.
+   543	2. Source issue does NOT have the `sentry-triage` label.
+   544	3. Finding falls within the source issue's original scope (compare against title + body).
+   545	4. Finding is CONCRETE: references a specific function, file, line, or observable defect.
+   546	5. You can CONFIDENTLY explain in 1-2 sentences WHY the finding is valid against the code you read.
+   547	
+   548	If any condition fails, do NOT use ATTACH. Reclassify.
+   549	
+   550	Actions:
+   551	1. If source issue state is "closed", REOPEN via `mcp__github__issue_write`.
+   552	2. Post a comment via `mcp__github__add_issue_comment` (template below).
+   553	3. Add the `codex-review` label via `mcp__github__issue_write`.
+   554	4. APPEND the codex-source marker to the source issue body via `mcp__github__issue_write` (read existing body first, append marker line, write back). Preserve all existing content.
+   555	
+   556	Comment template:
+   557	
+   558	```
+   559	**Codex post-merge feedback — related to this issue.**
+   560	
+   561	<1-3 sentences summarizing the finding in plain English>
+   562	
+   563	**Code location:** `{file}:{line}` (from PR #{pr_number})
+   564	**Codex review:** https://github.com/saurabhav88/EnviousWispr/pull/{pr_number}#pullrequestreview-{review_id}
+   565	
+   566	<details><summary>Codex's exact text</summary>
+   567	
+   568	<quoted review body or inline comment body>
+   569	
+   570	</details>
+   571	
+   572	<!-- codex-source: pr={pr_number}, review={review_id} -->
+   573	<!-- auto-triaged: true -->
+   574	<!-- agent:sentry-triage v=3 source=codex pr={pr_number} review={review_id} decision=attached run_id=${CLAUDE_CODE_REMOTE_SESSION_ID} -->
+   575	```
+   576	
+   577	---
+   578	
+   579	**(b) CREATE new issue.** Conditions:
+   580	
+   581	- `source_issue` is null, OR
+   582	- `source_issue` carries the `sentry-triage` label (off-limits), OR
+   583	- Finding is clearly out-of-scope for the source issue.
+   584	
+   585	AND the finding is CONCRETE and you can confidently explain why it is valid.
+   586	
+   587	Actions:
+   588	1. Create a new issue via `mcp__github__issue_write`:
+   589	   - Title: `Codex finding: <one-line summary> (from #{pr_number})`
+   590	   - Labels: `codex-review`, `auto-triaged`
+   591	   - Body (template below)
+   592	2. Sub-issue link to Epic: Hardening & Refactors (#319):
+   593	   ```
+   594	   mcp__github__sub_issue_write(
+   595	     owner="saurabhav88",
+   596	     repo="EnviousWispr",
+   597	     issue_number=319,
+   598	     method="add",
+   599	     sub_issue_id=<numeric .id of new issue, NOT .number>
+   600	   )
+   601	   ```
+   602	   422 means link already exists — fine. Other failure: log + continue.
+   603	
+   604	Issue body template:
+   605	
+   606	```
+   607	## Source
+   608	- PR: #{pr_number}
+   609	- Codex review: https://github.com/saurabhav88/EnviousWispr/pull/{pr_number}#pullrequestreview-{review_id}
+   610	- Related issue (if any): #{source_issue}
+   611	
+   612	## Finding
+   613	<1-2 sentence plain-English summary>
+   614	
+   615	## Code location
+   616	`{file}:{line}`
+   617	
+   618	## Codex's full text
+   619	<quoted>
+   620	
+   621	## Source snippet
+   622	<code around the line, fetched via mcp__github__get_file_contents>
+   623	
+   624	<!-- codex-source: pr={pr_number}, review={review_id} -->
+   625	<!-- auto-triaged: true -->
+   626	<!-- agent:sentry-triage v=3 source=codex pr={pr_number} review={review_id} decision=created run_id=${CLAUDE_CODE_REMOTE_SESSION_ID} -->
+   627	```
+   628	
+   629	---
+   630	
+   631	**(c) IGNORE.** Conditions (ANY):
+   632	
+   633	- Finding is vague, stylistic, or purely subjective.
+   634	- You cannot confidently state why the finding is valid against the current code.
+   635	- Finding references code that no longer exists at `head_sha`.
+   636	
+   637	Action: NONE. Do not create an issue, do not stamp a marker, do not comment. Move on.
+   638	
+   639	**Default to IGNORE when uncertain.** Less noise is better than false positives. This is an explicit founder decision.
+   640	
+   641	### Path D error policy
+   642	
+   643	- **Fatal (exit Path D):** the Step D1 outer `mcp__github__list_pull_requests` call fails with auth-expiry → trigger global MCP auth-expiry policy. Other outer failures: log + exit Path D cleanly.
+   644	- **Recoverable (skip this event/PR, continue):** per-PR `pull_request_read` failures in Step D1 inner loop, OR per-event failures in D3.1 through D3.7. Log, move to next item.
+   645	- **Sentry protection:** Path D must never modify issues Sentry paths created (detected via `sentry-triage` label). If in doubt, do not write.
+
+exec
+/bin/zsh -lc "nl -ba workers/sentry-triage/routine-prompt-v2.md | sed -n '59,63p'" in /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1
+ succeeded in 0ms:
+    59	## Per-run idempotency
+    60	
+    61	Maintain an in-memory set `WRITTEN_THIS_RUN` keyed by Sentry `shortId` (Sentry side) or `(pr_number, review_id)` pair (Codex side). Before any GitHub write, check the set. If the key is present, skip silently. If you write, add the key.
+    62	
+    63	This protects against duplicate writes if logic branches re-evaluate the same issue twice in one run.
+
+exec
+/bin/zsh -lc "nl -ba workers/sentry-triage/routine-prompt-v2.md | sed -n '353,376p'" in /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1
+ succeeded in 0ms:
+   353	### Path C — GitHub issue found, `state == "closed"` (REGRESSION)
+   354	
+   355	1. Reopen via `mcp__github__issue_write` (set state=open). Add `shortId` to `WRITTEN_THIS_RUN`.
+   356	2. Ensure sub-issue link to #317 (Bugs) exists. If link fails with 422, it already exists (fine). Other failures: log + continue.
+   357	3. Fetch latest Sentry event (Path A Step 1).
+   358	4. Read source at CURRENT release tag (`git show {tag}:{filename}`).
+   359	5. Post regression comment via `mcp__github__add_issue_comment`:
+   360	```
+   361	**Regression detected** — This issue recurred after being closed.
+   362	| Metric | Value |
+   363	|--------|-------|
+   364	| Users now | {userCount} |
+   365	| Occurrences now | {count} |
+   366	| Release now | {release} |
+   367	
+   368	[View in Sentry]({permalink})
+   369	
+   370	**Fresh hypothesis** (current source at {tag}):
+   371	> [2 sentences — re-analyze, don't copy original. Use Step 6 fail-soft if evidence insufficient.]
+   372	
+   373	<!-- agent:sentry-triage v=3 fingerprint={shortId} decision=reopened severity={Pn} last_seen={lastSeen} source=sentry run_id=${CLAUDE_CODE_REMOTE_SESSION_ID} -->
+   374	```
+   375	6. Add label `regression`.
+   376	
+
+exec
+/bin/zsh -lc 'rg -n "WRITTEN_THIS_RUN|Before any GitHub write|Add `shortId`|Add label|Post regression|Create GitHub issue|sub-issue link" workers/sentry-triage/routine-prompt-v2.md' in /Users/m4pro_sv/Developer/EnviousLabs/wt-routine-v3.1
+ succeeded in 0ms:
+zsh:1: command not found: shortId
+43:- **Path A Step 8 sub-issue link failure**: log and continue.
+61:Maintain an in-memory set `WRITTEN_THIS_RUN` keyed by Sentry `shortId` (Sentry side) or `(pr_number, review_id)` pair (Codex side). Before any GitHub write, check the set. If the key is present, skip silently. If you write, add the key.
+266:**7. Create GitHub issue** via `mcp__github__issue_write`. Add `shortId` to `WRITTEN_THIS_RUN` set.
+329:If the sub-issue link fails, log it and continue.
+340:If none of those conditions hold, skip silently. Add `shortId` to `WRITTEN_THIS_RUN` to prevent re-evaluation.
+355:1. Reopen via `mcp__github__issue_write` (set state=open). Add `shortId` to `WRITTEN_THIS_RUN`.
+356:2. Ensure sub-issue link to #317 (Bugs) exists. If link fails with 422, it already exists (fine). Other failures: log + continue.
+359:5. Post regression comment via `mcp__github__add_issue_comment`:
+375:6. Add label `regression`.
+387:- Per-run idempotency: before any write, check `WRITTEN_THIS_RUN`. If shortId or (pr,review) pair is present, skip.
+398:  - Create GitHub issues (`mcp__github__issue_write`)
+407:- Per-run idempotency: track `(pr_number, review_id)` pairs in `WRITTEN_THIS_RUN`.
+553:3. Add the `codex-review` label via `mcp__github__issue_write`.
+652:- Per-run idempotency: track `(pr_number, review_id)` in `WRITTEN_THIS_RUN`.
+
+codex
+VERDICT: YES_WITH_REVISIONS
+
+## Fix 1 (fail-fast)
+
+Partially fixed, but not clean enough to ship as written.
+
+The new section is authoritative in shape: it replaces the old absolute fail-fast rule with default-fatal only when no local recovery exists, and explicitly says documented recoveries must continue (`workers/sentry-triage/routine-prompt-v2.md:34-47`). That resolves the original Step 2 and D1 conflict for the listed cases (`:40`, `:44`).
+
+But grep shows the list is not complete. Documented recoveries omitted from the top list include Path C sub-issue failure (`:356`), ambiguous GitHub search log+skip (`:383`), Path D generic MCP non-auth skip+continue (`:405`), D3.1-D3.7 per-event recoveries (`:466`, `:643-644`), and Path D create-issue sub-issue link failure (`:602`). Because line `:38` says “The documented per-step recoveries are,” the list reads exhaustive.
+
+Also, line `:41` says auth expiry “applies to writes only” and a Path D read may continue, but the hard policy says any GitHub MCP auth error exits with no further GitHub interaction (`:51-55`). That contradiction should be removed.
+
+## Fix 2 (Step 2.5 state gate)
+
+The open-vs-closed routing fix is correct at the gate. Step 2 exposes GitHub `state` (`:135`), Step 2.5 now checks state before throttle (`:166-171`), and closed issues explicitly bypass throttle and route to Path C (`:169`). Path C exists, is for `state == "closed"`, reopens the issue, posts a regression comment, and adds `regression` (`:353-375`). Path B’s throttle is scoped to open issues (`:333-340`), so I do not see another downstream throttle re-blocking closed regressions before Path C.
+
+Separate Path C bug: global idempotency says before any GitHub write, skip if `shortId` is already in `WRITTEN_THIS_RUN` (`:61`). Path C adds `shortId` immediately after reopening (`:355`) before the sub-issue link, regression comment, and label (`:356-375`). A literal model could reopen and then skip the comment/label writes. Move the `WRITTEN_THIS_RUN` add to the end of the Path C write sequence, or define the key as branch-entry protection only.
+
+## Fix 3 (Step 2.6 + Step 1 field doc)
+
+The field-source direction is sound. Step 1 now documents `culprit` and `metadata` as issue-list fields (`:101-112`), and Step 2.6 no longer depends on Path A stack-trace variables (`:180-182`). Sentry’s own API docs for issue-list responses include `culprit` and `metadata` in the list response schema: [project issues](https://docs.sentry.io/api/events/list-a-projects-issues/) and [organization issues](https://docs.sentry.io/api/events/list-an-organizations-issues/). Specific `metadata.function` / `filename` / `type` keys are still issue-type dependent, but the prompt handles that with per-field non-empty guards (`:185-199`).
+
+The `elif` is the remaining defect. The code block has independent `if metadata.function`, independent `if metadata.filename`, then `if metadata.type` followed by `elif culprit` (`:185-202`). In code-shaped pseudocode, that `elif` binds only to `if metadata.type`, so `culprit` can run when function or filename already ran but type is empty. Replace it with explicit prose or pseudocode: `if all of metadata.function, metadata.filename, metadata.type are empty AND culprit is non-empty`.
+
+## Other findings
+
+`workers/sentry-triage/routine-prompt-v2.md:110` says fall back to `culprit`, then `title`, but Step 2.6 never uses `title`; it skips when `metadata.function/filename/type/culprit` are absent (`:209`). Either remove `title` from the field doc or add a guarded title query.
+
+`workers/sentry-triage/routine-prompt-v2.md:355-359` reopens before fetching the latest Sentry event (`:357`), while the reused event-fetch failure path skips the issue on failure (`:231-235`). That can leave a reopened issue without the regression comment if event fetch fails. Fetch first, or define a minimal fail-soft regression comment after reopen.
+
+## Recommendation
+
+Apply the listed revisions before ship. The three intended fixes are directionally right, but the failure list completeness, auth-policy contradiction, Step 2.6 `elif`, and Path C idempotency issue are enough to require one more prompt patch.
+2026-04-25T15:21:02.018114Z ERROR codex_core::session: failed to record rollout items: thread 019dc535-cdd0-7bd1-942a-44a980f42959 not found
+tokens used
+247,211
+VERDICT: YES_WITH_REVISIONS
+
+## Fix 1 (fail-fast)
+
+Partially fixed, but not clean enough to ship as written.
+
+The new section is authoritative in shape: it replaces the old absolute fail-fast rule with default-fatal only when no local recovery exists, and explicitly says documented recoveries must continue (`workers/sentry-triage/routine-prompt-v2.md:34-47`). That resolves the original Step 2 and D1 conflict for the listed cases (`:40`, `:44`).
+
+But grep shows the list is not complete. Documented recoveries omitted from the top list include Path C sub-issue failure (`:356`), ambiguous GitHub search log+skip (`:383`), Path D generic MCP non-auth skip+continue (`:405`), D3.1-D3.7 per-event recoveries (`:466`, `:643-644`), and Path D create-issue sub-issue link failure (`:602`). Because line `:38` says “The documented per-step recoveries are,” the list reads exhaustive.
+
+Also, line `:41` says auth expiry “applies to writes only” and a Path D read may continue, but the hard policy says any GitHub MCP auth error exits with no further GitHub interaction (`:51-55`). That contradiction should be removed.
+
+## Fix 2 (Step 2.5 state gate)
+
+The open-vs-closed routing fix is correct at the gate. Step 2 exposes GitHub `state` (`:135`), Step 2.5 now checks state before throttle (`:166-171`), and closed issues explicitly bypass throttle and route to Path C (`:169`). Path C exists, is for `state == "closed"`, reopens the issue, posts a regression comment, and adds `regression` (`:353-375`). Path B’s throttle is scoped to open issues (`:333-340`), so I do not see another downstream throttle re-blocking closed regressions before Path C.
+
+Separate Path C bug: global idempotency says before any GitHub write, skip if `shortId` is already in `WRITTEN_THIS_RUN` (`:61`). Path C adds `shortId` immediately after reopening (`:355`) before the sub-issue link, regression comment, and label (`:356-375`). A literal model could reopen and then skip the comment/label writes. Move the `WRITTEN_THIS_RUN` add to the end of the Path C write sequence, or define the key as branch-entry protection only.
+
+## Fix 3 (Step 2.6 + Step 1 field doc)
+
+The field-source direction is sound. Step 1 now documents `culprit` and `metadata` as issue-list fields (`:101-112`), and Step 2.6 no longer depends on Path A stack-trace variables (`:180-182`). Sentry’s own API docs for issue-list responses include `culprit` and `metadata` in the list response schema: [project issues](https://docs.sentry.io/api/events/list-a-projects-issues/) and [organization issues](https://docs.sentry.io/api/events/list-an-organizations-issues/). Specific `metadata.function` / `filename` / `type` keys are still issue-type dependent, but the prompt handles that with per-field non-empty guards (`:185-199`).
+
+The `elif` is the remaining defect. The code block has independent `if metadata.function`, independent `if metadata.filename`, then `if metadata.type` followed by `elif culprit` (`:185-202`). In code-shaped pseudocode, that `elif` binds only to `if metadata.type`, so `culprit` can run when function or filename already ran but type is empty. Replace it with explicit prose or pseudocode: `if all of metadata.function, metadata.filename, metadata.type are empty AND culprit is non-empty`.
+
+## Other findings
+
+`workers/sentry-triage/routine-prompt-v2.md:110` says fall back to `culprit`, then `title`, but Step 2.6 never uses `title`; it skips when `metadata.function/filename/type/culprit` are absent (`:209`). Either remove `title` from the field doc or add a guarded title query.
+
+`workers/sentry-triage/routine-prompt-v2.md:355-359` reopens before fetching the latest Sentry event (`:357`), while the reused event-fetch failure path skips the issue on failure (`:231-235`). That can leave a reopened issue without the regression comment if event fetch fails. Fetch first, or define a minimal fail-soft regression comment after reopen.
+
+## Recommendation
+
+Apply the listed revisions before ship. The three intended fixes are directionally right, but the failure list completeness, auth-policy contradiction, Step 2.6 `elif`, and Path C idempotency issue are enough to require one more prompt patch.
