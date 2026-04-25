@@ -2,7 +2,7 @@
 
 ## 1. Problem recap
 
-Today the offline eval in [scripts/eval/acceptance_gate.py](/Users/m4pro_sv/Developer/EnviousLabs/worktrees/target-6-drift-research/scripts/eval/acceptance_gate.py) rebuilds production polish prompts in Python, while the user-facing logic lives in Swift under [Sources/EnviousWisprLLM/Prompting/](/Users/m4pro_sv/Developer/EnviousLabs/worktrees/target-6-drift-research/Sources/EnviousWisprLLM/Prompting/) and [Sources/EnviousWisprPostProcessing/CustomWordsManager.swift](/Users/m4pro_sv/Developer/EnviousLabs/worktrees/target-6-drift-research/Sources/EnviousWisprPostProcessing/CustomWordsManager.swift). That creates a predictable drift risk: prompt changes land in Swift first, and the eval harness can silently keep testing an older prompt shape.
+Today the offline eval in [scripts/eval/acceptance_gate.py](scripts/eval/acceptance_gate.py) rebuilds production polish prompts in Python, while the user-facing logic lives in Swift under [Sources/EnviousWisprLLM/Prompting/](Sources/EnviousWisprLLM/Prompting/) and [Sources/EnviousWisprPostProcessing/CustomWordsManager.swift](Sources/EnviousWisprPostProcessing/CustomWordsManager.swift). That creates a predictable drift risk: prompt changes land in Swift first, and the eval harness can silently keep testing an older prompt shape.
 
 ## 2. Options
 
@@ -10,19 +10,19 @@ Today the offline eval in [scripts/eval/acceptance_gate.py](/Users/m4pro_sv/Deve
 
 **Architecture sketch**
 
-Add a small Swift CLI whose only job is to render the production prompt envelope and return it as JSON. It should call the same production path the app already uses for cloud providers: [DefaultPromptPlanner.swift](/Users/m4pro_sv/Developer/EnviousLabs/worktrees/target-6-drift-research/Sources/EnviousWisprLLM/Prompting/DefaultPromptPlanner.swift), [OpenAIPromptBuilder.swift](/Users/m4pro_sv/Developer/EnviousLabs/worktrees/target-6-drift-research/Sources/EnviousWisprLLM/Prompting/OpenAIPromptBuilder.swift), [GeminiPromptBuilder.swift](/Users/m4pro_sv/Developer/EnviousLabs/worktrees/target-6-drift-research/Sources/EnviousWisprLLM/Prompting/GeminiPromptBuilder.swift), [GemmaPromptBuilder.swift](/Users/m4pro_sv/Developer/EnviousLabs/worktrees/target-6-drift-research/Sources/EnviousWisprLLM/Prompting/GemmaPromptBuilder.swift), and [TranscriptAnalyzer.swift](/Users/m4pro_sv/Developer/EnviousLabs/worktrees/target-6-drift-research/Sources/EnviousWisprLLM/Prompting/TranscriptAnalyzer.swift). For Apple Intelligence, the same CLI can expose the enriched production instruction from [LLMPolishStep.swift](/Users/m4pro_sv/Developer/EnviousLabs/worktrees/target-6-drift-research/Sources/EnviousWisprPipeline/LLMPolishStep.swift) instead of requiring Python to assemble `PolishInstructions.default + enrichment + custom vocab`. Python stays as the orchestration and judging layer, but stops owning prompt text.
+Add a small Swift CLI whose only job is to render the production prompt envelope and return it as JSON. It should call the same production path the app already uses for cloud providers: [DefaultPromptPlanner.swift](Sources/EnviousWisprLLM/Prompting/DefaultPromptPlanner.swift), [OpenAIPromptBuilder.swift](Sources/EnviousWisprLLM/Prompting/OpenAIPromptBuilder.swift), [GeminiPromptBuilder.swift](Sources/EnviousWisprLLM/Prompting/GeminiPromptBuilder.swift), [GemmaPromptBuilder.swift](Sources/EnviousWisprLLM/Prompting/GemmaPromptBuilder.swift), and [TranscriptAnalyzer.swift](Sources/EnviousWisprLLM/Prompting/TranscriptAnalyzer.swift). For Apple Intelligence, the same CLI can expose the enriched production instruction from [LLMPolishStep.swift](Sources/EnviousWisprPipeline/LLMPolishStep.swift) instead of requiring Python to assemble `PolishInstructions.default + enrichment + custom vocab`. Python stays as the orchestration and judging layer, but stops owning prompt text.
 
 **Tradeoffs**
 
 - Latency: one subprocess call per case is acceptable for 1,590 cases if batched; one call per prompt would be too slow, so the CLI should accept many rows in one input file.
-- Binary-size impact: low. This is a developer-only tool, similar in spirit to the existing [scripts/eval/apple_runner/](/Users/m4pro_sv/Developer/EnviousLabs/worktrees/target-6-drift-research/scripts/eval/apple_runner/) package.
+- Binary-size impact: low. This is a developer-only tool, similar in spirit to the existing [scripts/eval/apple_runner/](scripts/eval/apple_runner/) package.
 - Build-time coupling: moderate. Eval now depends on a built Swift helper, but only at dev/CI time, not in the shipped app.
 - Debuggability: good. JSON prompt artifacts can be written alongside eval outputs, which makes “what prompt did we actually send?” easy to inspect.
 - Ability to run eval without a full Swift build: reduced. Python-only eval disappears for prompt rendering; however, the build can stay scoped to a small helper package rather than the whole app product.
 
 **Migration cost**
 
-In [acceptance_gate.py](/Users/m4pro_sv/Developer/EnviousLabs/worktrees/target-6-drift-research/scripts/eval/acceptance_gate.py), the mirrored prompt constants and builders would be removed or bypassed: `OPENAI_BASE`, `OPENAI_FORMATTING`, `OPENAI_TAIL`, `GEMINI_BASE`, `GEMINI_FORMATTING`, `USER_TEMPLATE`, `DEFAULT_CUSTOM_VOCAB`, `render_custom_vocab()`, `build_openai_system()`, `build_gemini_system()`, and the Apple `_build_afm_system_prompt()` path. The Python side would instead call the Swift dumper with transcript, provider, model, app context, language, and custom words, then pass the returned prompt straight to OpenAI/Gemini APIs. In [scripts/eval/apple_runner/](/Users/m4pro_sv/Developer/EnviousLabs/worktrees/target-6-drift-research/scripts/eval/apple_runner/), either add a sibling executable or extend the existing package with a non-Apple mode that can emit prompts without invoking the connector.
+In [acceptance_gate.py](scripts/eval/acceptance_gate.py), the mirrored prompt constants and builders would be removed or bypassed: `OPENAI_BASE`, `OPENAI_FORMATTING`, `OPENAI_TAIL`, `GEMINI_BASE`, `GEMINI_FORMATTING`, `USER_TEMPLATE`, `DEFAULT_CUSTOM_VOCAB`, `render_custom_vocab()`, `build_openai_system()`, `build_gemini_system()`, and the Apple `_build_afm_system_prompt()` path. The Python side would instead call the Swift dumper with transcript, provider, model, app context, language, and custom words, then pass the returned prompt straight to OpenAI/Gemini APIs. In [scripts/eval/apple_runner/](scripts/eval/apple_runner/), either add a sibling executable or extend the existing package with a non-Apple mode that can emit prompts without invoking the connector.
 
 **Verdict**
 
@@ -46,7 +46,7 @@ Instead of a one-shot CLI, run a long-lived Swift helper process that accepts JS
 
 **Migration cost**
 
-[acceptance_gate.py](/Users/m4pro_sv/Developer/EnviousLabs/worktrees/target-6-drift-research/scripts/eval/acceptance_gate.py) would change more deeply than in Option A because it would need bridge lifecycle management: start process, stream requests, handle partial failures, retry, and fall back if the helper dies mid-run. [scripts/eval/apple_runner/Sources/AppleIntelligenceRunner/main.swift](/Users/m4pro_sv/Developer/EnviousLabs/worktrees/target-6-drift-research/scripts/eval/apple_runner/Sources/AppleIntelligenceRunner/main.swift) would likely stop being “Apple-only bench runner” and become a more general eval bridge package with subcommands or protocol modes. This is still manageable, but it is real systems work, not just a helper command.
+[acceptance_gate.py](scripts/eval/acceptance_gate.py) would change more deeply than in Option A because it would need bridge lifecycle management: start process, stream requests, handle partial failures, retry, and fall back if the helper dies mid-run. [scripts/eval/apple_runner/Sources/AppleIntelligenceRunner/main.swift](scripts/eval/apple_runner/Sources/AppleIntelligenceRunner/main.swift) would likely stop being “Apple-only bench runner” and become a more general eval bridge package with subcommands or protocol modes. This is still manageable, but it is real systems work, not just a helper command.
 
 **Verdict**
 
@@ -70,7 +70,7 @@ Package the production prompt renderer as a Swift dynamic library or Python exte
 
 **Migration cost**
 
-[acceptance_gate.py](/Users/m4pro_sv/Developer/EnviousLabs/worktrees/target-6-drift-research/scripts/eval/acceptance_gate.py) would need a new native integration layer and packaging assumptions that do not exist today. [scripts/eval/apple_runner/](/Users/m4pro_sv/Developer/EnviousLabs/worktrees/target-6-drift-research/scripts/eval/apple_runner/) would either become obsolete or need to coexist with an even more complex native bridge. This is a larger infrastructure change than the drift problem justifies.
+[acceptance_gate.py](scripts/eval/acceptance_gate.py) would need a new native integration layer and packaging assumptions that do not exist today. [scripts/eval/apple_runner/](scripts/eval/apple_runner/) would either become obsolete or need to coexist with an even more complex native bridge. This is a larger infrastructure change than the drift problem justifies.
 
 **Verdict**
 
@@ -95,7 +95,7 @@ Package the production prompt renderer as a Swift dynamic library or Python exte
 
 **Current-best bet: Option A, the hidden Swift CLI prompt dumper.**
 
-It fits the codebase as it exists today. The repo already has a working pattern for a Swift sidecar tool in [scripts/eval/apple_runner/Package.swift](/Users/m4pro_sv/Developer/EnviousLabs/worktrees/target-6-drift-research/scripts/eval/apple_runner/Package.swift), and the actual prompt source of truth is already centralized in Swift in [DefaultPromptPlanner.swift](/Users/m4pro_sv/Developer/EnviousLabs/worktrees/target-6-drift-research/Sources/EnviousWisprLLM/Prompting/DefaultPromptPlanner.swift) plus the provider builders. That means the team can remove the risky Python mirror without redesigning the whole eval harness.
+It fits the codebase as it exists today. The repo already has a working pattern for a Swift sidecar tool in [scripts/eval/apple_runner/Package.swift](scripts/eval/apple_runner/Package.swift), and the actual prompt source of truth is already centralized in Swift in [DefaultPromptPlanner.swift](Sources/EnviousWisprLLM/Prompting/DefaultPromptPlanner.swift) plus the provider builders. That means the team can remove the risky Python mirror without redesigning the whole eval harness.
 
 It also keeps the architecture honest. Swift continues to own prompt construction; Python continues to own corpus iteration, API calling, judging, and reporting. That is a clean boundary, easy to explain to a founder and easy to debug in CI.
 

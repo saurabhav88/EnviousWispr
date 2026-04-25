@@ -144,7 +144,7 @@ public final class ASRManager: ASRManagerInterface {
     try await activeBackend.feedAudio(buffer)
   }
 
-  /// Finalize streaming and return the transcript. Falls back to batch if streaming was not active.
+  /// Finalize streaming and return the transcript. Throws `ASRError.streamingNotSupported` if no streaming session is active.
   public func finalizeStreaming() async throws -> ASRResult {
     guard isStreaming else {
       throw ASRError.streamingNotSupported
