@@ -92,12 +92,12 @@ No `TranscriptFinalizer` visibility change. No new public surface. No dependency
 
 **Why NOT go through `TranscriptFinalizer`'s closure seam directly at the pipeline level:** That would duplicate the finalizer-level injection and create two truthy paths to the same seam. Reuse the existing finalizer path; only open one new door at the pipeline level.
 
-## 4. MANDATORY Contract deltas
+## 4. MANDATORY Contract deltas — revised 2026-04-20 after grounded review
 
-- **Changed `TranscriptionPipeline.init(...)` signature** — added one optional parameter `finalizer: TranscriptFinalizer? = nil`.
-  - Semantics: Dependency injection seam. Nil = "use production default"; non-nil = "use this one."
-  - Invariant: production callers omitting the arg get identical behavior to today. Tests passing a mock-backed finalizer observe paste delivery through their mock, not through the real paste path.
-- **No new public types.** `TranscriptFinalizer` is already public (grep-verify — if not, promote only the minimal surface the pipeline's init needs, or go Option B).
+- **Added `internal init` overload on `TranscriptionPipeline`** that accepts a pre-built `TranscriptFinalizer`. The existing `public init(...)` at `:107` is **UNCHANGED**.
+  - Semantics: Dependency injection seam reachable only from same-module code or `@testable import EnviousWisprPipeline`.
+  - Invariant: production callers continue to use the existing `public init` and get identical behavior to today. Tests construct the internal overload with a mock-backed finalizer and observe paste delivery through their mock.
+- **No public surface change.** `TranscriptFinalizer` remains `internal` (declared at `TranscriptFinalizer.swift:53`). The `internal` overload keeps the type's narrow access discipline per `architecture-rules.md` §Access Control.
 
 No persisted fields. No legacy data.
 
@@ -125,8 +125,8 @@ No persisted fields. No legacy data.
 
 | Contract delta | Consumer | Current | Required | Change? | Verified by |
 |---|---|---|---|---|---|
-| `TranscriptionPipeline.init(finalizer:)` | `AppState` (production) | omits param | omits param, gets default | No | compile |
-| (same) | `HeartPathIntegrationTests` | constructs ad-hoc harness | constructs pipeline with mock finalizer | **Yes (test)** | new test file |
+| `TranscriptionPipeline.init(...)` (existing public) | `AppState` (production) | calls existing public init | calls existing public init, identical signature | No | compile |
+| `internal init(..., transcriptFinalizer:)` | `HeartPathIntegrationTests` | constructs ad-hoc harness | constructs pipeline via `@testable import` with mock finalizer | **Yes (test)** | new test file |
 | Future test scenarios (streaming, backend switch) | (not yet written) | blocked | unblocked | Yes (future) | follow-on tests |
 
 Discovery method:
@@ -162,9 +162,9 @@ No new fallback branch. If the mock finalizer throws in a test, the test is the 
 
 ## 10. File-by-file changes
 
-- **`Sources/EnviousWisprPipeline/TranscriptionPipeline.swift`**: add optional `finalizer:` init param; assign internal `self.finalizer = finalizer ?? TranscriptFinalizer(...)`.
-- **Possibly** `Sources/EnviousWisprPipeline/TranscriptFinalizer.swift`: promote visibility on any member the new init needs. Prefer not to widen; if a widening is required, disclose in PR per `architecture-rules.md` §Access Control.
-- **New tests** in `Tests/EnviousWisprPipelineTests/TranscriptionPipelineInjectionTests.swift`: construction sanity + one heart-path scenario that was previously NOT_TESTABLE.
+- **`Sources/EnviousWisprPipeline/TranscriptionPipeline.swift`**: add a second `internal init` overload that accepts `transcriptFinalizer: TranscriptFinalizer`. The existing `public init(...)` at `:107` is unchanged.
+- **No visibility change** to `Sources/EnviousWisprPipeline/TranscriptFinalizer.swift`. The new init is `internal`, so an `internal` finalizer parameter type is fine without promotion.
+- **New tests** in `Tests/EnviousWisprPipelineTests/TranscriptionPipelineInjectionTests.swift` (uses `@testable import EnviousWisprPipeline`): construction sanity + one heart-path scenario that was previously NOT_TESTABLE.
 
 ## 11. Testing
 

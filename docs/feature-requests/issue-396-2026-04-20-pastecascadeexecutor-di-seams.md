@@ -54,7 +54,7 @@ public protocol PasteServiceProtocol {
   func isTextFieldRole(_ element: AXUIElement) -> Bool
   func insertViaAccessibility(_ text: String, element: AXUIElement) -> Bool
   func forceActivateApp(pid: pid_t) -> Bool
-  func pasteToActiveApp(_ text: String) -> Bool
+  func pasteToActiveApp(_ text: String) -> PasteDispatchResult
   func pasteViaAppleScript(pid: pid_t) -> Bool
   func saveClipboard() -> ClipboardSnapshot
   func restoreClipboard(_ snapshot: ClipboardSnapshot, changeCountAfterPaste: Int)

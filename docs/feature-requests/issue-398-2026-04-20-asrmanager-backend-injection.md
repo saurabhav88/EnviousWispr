@@ -43,11 +43,12 @@ The same blind spot blocks `switchBackend` reset-branch testing and any future c
 
 ### 2.2 Non-goals
 
-- Changing the backend protocol `ASRBackend`.
 - Refactoring `ParakeetBackend` or `WhisperKitBackend` internals.
 - Changing `ASRManagerInterface`.
 - Adding test-only initializers that accept preset flag state (Option A from issue body) — rejected because it masks the real issue (backends are the seam, flags are derived state).
 - `#if DEBUG` helpers (Option B) — rejected because "exposes state for testing" is an anti-pattern when the real fix is composable DI.
+
+**Note:** §3 widens `ASRBackend` to expose the progress-reporting variant. This is the minimum surface change required to keep production progress UI working when backend properties become `any ASRBackend`. The original v1 plan had "Changing the backend protocol `ASRBackend`" listed as a non-goal — grounded review (2026-04-20) overrode that, and the corrected design in §3 is now the canonical scope. `ASRProtocol.swift` is in scope.
 
 ## 3. Design — revised 2026-04-20 after grounded review
 
@@ -189,13 +190,17 @@ No new fallback branch.
 
 ## 10. File-by-file changes
 
+- **`Sources/EnviousWisprASR/ASRProtocol.swift`** (in scope per §3 design correction):
+  - Add `func prepare(progressCallback: ProgressCallback?) async throws` to `ASRBackend`.
+  - Add a default-implementation extension that delegates to `prepare()`.
+  - Move `ProgressCallback` typealias next to the protocol if it currently lives on `ParakeetBackend` (grep-verify during implementation).
 - **`Sources/EnviousWisprASR/ASRManager.swift`**:
   - Lines 23-24: change property types from concrete to `any ASRBackend`.
   - Line 26: change `public init()` to `public init(parakeetBackend: (any ASRBackend)? = nil, whisperKitBackend: (any ASRBackend)? = nil)`; assign via `??` defaults.
 - **New test file** `Tests/EnviousWisprASRTests/ASRManagerBackendInjectionTests.swift`:
   - `FakeASRBackend` (records calls, controllable `isReady`, controllable `unload()` / `prepare()` throws).
   - Three scenario tests per §11.
-- **No other file changes**. `ASRManagerProxy` and `ASRManagerInterface` untouched.
+- **No other file changes**. `ParakeetBackend`'s concrete `prepare(progressCallback:)` at `:46` is unchanged (still serves as the override). `WhisperKitBackend` inherits the default. `ASRManagerProxy` and `ASRManagerInterface` untouched.
 
 ## 11. Testing
 
