@@ -2,9 +2,18 @@
 title: "Is Cloud Dictation Private? On-Device vs Cloud on macOS"
 description: "On-device dictation keeps your audio on your Mac. Cloud dictation sends it to a server. Here's what each does with your voice and what it means for privacy."
 pubDate: 2026-03-23
-updatedDate: 2026-04-19
+updatedDate: 2026-04-25
 tags: ["privacy", "dictation", "comparison", "on-device", "speech-to-text"]
 author: "Saurabh Vaish"
+faqs:
+  - question: "Is on-device dictation as accurate as cloud dictation?"
+    answer: "On modern hardware, yes. On-device speech recognition models running natively via Core ML on Apple Silicon achieve word error rates under 2% on standard benchmarks, competitive with leading cloud speech APIs. For most English dictation, you won't notice a meaningful difference."
+  - question: "Does on-device dictation work offline?"
+    answer: "Yes. Because the speech recognition model runs locally on your hardware, no internet connection is needed. EnviousWispr works fully offline: on a plane, in a basement, or at a coffee shop with your MacBook Air and no Wi-Fi."
+  - question: "What happens to my audio recordings with cloud dictation?"
+    answer: "It depends on the provider. Some delete audio immediately after transcription. Others retain recordings for varying periods, sometimes to improve their models. Always check the provider's data retention and processing policies before using a cloud dictation service for sensitive content."
+  - question: "Can I use on-device dictation on older Macs?"
+    answer: "EnviousWispr requires Apple Silicon (M1 or later). The Neural Engine and GPU on M-series chips are what make on-device transcription fast enough to feel instant."
 ---
 
 "Your data is processed securely." Every cloud dictation service says some version of this. Almost none of them tell you what it actually means: where your audio goes, who can access it, how long it persists, or what happens to it after transcription. The assumption is that you won't ask.

@@ -14,6 +14,14 @@ const blog = defineCollection({
     authorUrl: z.string().url().optional(),
     image: z.string().optional(),
     keywords: z.array(z.string()).optional(),
+    faqs: z
+      .array(
+        z.object({
+          question: z.string(),
+          answer: z.string(),
+        }),
+      )
+      .optional(),
   }),
 });
 
