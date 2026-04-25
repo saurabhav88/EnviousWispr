@@ -28,7 +28,7 @@ on:
 jobs:
   meta-test:
     name: judge-drift-check
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -74,26 +74,40 @@ jobs:
           printf '%s' "$GEMINI_API_KEY" > ~/.enviouswispr-keys/gemini-api-key
       - name: Run judge drift meta-test
         if: steps.filter.outputs.polish == 'true'
+        shell: bash
         # Exit-code policy — preserve the script's semantics so transient judge
-        # or API failures do not burn required-check credit.
+        # or API failures do not burn required-check credit. Exit 2 is shared
+        # by acceptance_gate.py's INFRA-ERROR path AND argparse usage errors,
+        # so we discriminate by stderr content (INFRA-ERROR: prefix) before
+        # downgrading.
         #   0 = golden set scored, judge stable → pass
         #   1 = unexpected script bug → real failure, propagate
-        #   2 = infra error (missing golden set, judge chunk failure) →
-        #       emit a warning annotation, exit 0 (NOT a PR regression)
+        #   2 + stderr matches '^INFRA-ERROR:' = infra error
+        #     (missing golden set, judge chunk failure, transient API 503) →
+        #     emit warning annotation, exit 0 (NOT a PR regression)
+        #   2 without that marker = argparse / invocation failure → fail red
         #   3 = judge drift detected (scores moved vs locked golden) →
-        #       also emit warning annotation, exit 0 (NOT a PR issue; a
-        #       separate calibration decision owned by the eval maintainer)
+        #       emit warning annotation, exit 0 (separate calibration decision)
         run: |
+          err="$(mktemp -t meta-test-stderr.XXXXXX)"
           set +e
-          python3 scripts/eval/acceptance_gate.py --mode meta-test --polish-model gpt-4o-mini
-          rc=$?
+          {
+            python3 scripts/eval/acceptance_gate.py --mode meta-test --polish-model gpt-4o-mini \
+              2>&1 1>&3 | tee "$err" >&2
+            rc=${PIPESTATUS[0]}
+          } 3>&1
           set -e
           case "$rc" in
             0)
               exit 0 ;;
             2)
-              echo "::warning title=judge-drift infra::meta-test returned INFRA-ERROR (exit 2); treating as success-with-warning, not a PR regression."
-              exit 0 ;;
+              if grep -q '^INFRA-ERROR:' "$err"; then
+                echo "::warning title=judge-drift infra::meta-test returned INFRA-ERROR (exit 2); treating as success-with-warning, not a PR regression."
+                exit 0
+              else
+                echo "::error title=judge-drift invocation::acceptance gate exited 2 with no INFRA-ERROR marker on stderr (likely argparse/invocation failure). NOT downgraded."
+                exit 2
+              fi ;;
             3)
               echo "::warning title=judge-drift calibration::meta-test returned JUDGE-DRIFT (exit 3); scores shifted vs golden. NOT a PR issue — investigate judge calibration separately."
               exit 0 ;;
@@ -116,7 +130,7 @@ jobs:
   acceptance-gate:
     name: polish-quality-gate
     needs: meta-test
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -163,27 +177,39 @@ jobs:
           printf '%s' "$GEMINI_API_KEY" > ~/.enviouswispr-keys/gemini-api-key
       - name: Run acceptance gate (gpt-4o-mini polish, Gemini 3 Pro judge)
         if: steps.filter.outputs.polish == 'true'
-        # Same exit-code policy as judge-drift-check above.
+        shell: bash
+        # Same exit-code policy as judge-drift-check above. Exit 2 is shared
+        # by the script's INFRA-ERROR path AND argparse usage errors, so we
+        # discriminate by stderr content (INFRA-ERROR: prefix) before
+        # downgrading.
         #   0 = polish scored, no regression → pass
         #   1 = real polish regression (PR changes dropped quality) → fail
-        #   2 = infra error (judge 503, missing scores) → warn, exit 0
-        # Without this wrapper any transient OpenAI/Gemini 503 during judging
-        # hard-fails the required check and blocks merges on something that
-        # the script itself explicitly labels "Not a PR regression."
+        #   2 + stderr matches '^INFRA-ERROR:' = infra error
+        #     (judge 503, missing scores) → warn, exit 0
+        #   2 without that marker = argparse / invocation failure → fail red
         run: |
+          err="$(mktemp -t polish-eval-stderr.XXXXXX)"
           set +e
-          python3 scripts/eval/acceptance_gate.py \
-            --mode run \
-            --polish-model gpt-4o-mini \
-            --out-name "ci-pr-${PR_NUMBER}-${SHA}"
-          rc=$?
+          {
+            python3 scripts/eval/acceptance_gate.py \
+              --mode run \
+              --polish-model gpt-4o-mini \
+              --out-name "ci-pr-${PR_NUMBER}-${SHA}" \
+              2>&1 1>&3 | tee "$err" >&2
+            rc=${PIPESTATUS[0]}
+          } 3>&1
           set -e
           case "$rc" in
             0)
               exit 0 ;;
             2)
-              echo "::warning title=polish-eval infra::acceptance gate returned INFRA-ERROR (exit 2); treating as success-with-warning, not a PR regression."
-              exit 0 ;;
+              if grep -q '^INFRA-ERROR:' "$err"; then
+                echo "::warning title=polish-eval infra::acceptance gate returned INFRA-ERROR (exit 2); treating as success-with-warning, not a PR regression."
+                exit 0
+              else
+                echo "::error title=polish-eval invocation::acceptance gate exited 2 with no INFRA-ERROR marker on stderr (likely argparse/invocation failure). NOT downgraded."
+                exit 2
+              fi ;;
             *)
               echo "::error title=polish-eval regression::acceptance gate exited $rc"
               exit "$rc" ;;
