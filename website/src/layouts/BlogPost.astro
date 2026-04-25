@@ -8,6 +8,11 @@ interface RelatedPost {
   pubDate: Date;
 }
 
+interface FAQ {
+  question: string;
+  answer: string;
+}
+
 interface Props {
   title: string;
   description: string;
@@ -18,9 +23,10 @@ interface Props {
   authorUrl?: string;
   image?: string;
   relatedPosts?: RelatedPost[];
+  faqs?: FAQ[];
 }
 
-const { title, description, pubDate, updatedDate, tags = [], author = 'Saurabh Vaish', authorUrl = 'https://enviouswispr.com/authors/saurabh-vaish/', image, relatedPosts = [] } = Astro.props;
+const { title, description, pubDate, updatedDate, tags = [], author = 'Saurabh Vaish', authorUrl = 'https://enviouswispr.com/authors/saurabh-vaish/', image, relatedPosts = [], faqs } = Astro.props;
 
 const formatDate = (d: Date) =>
   d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -80,6 +86,23 @@ const articleJsonLd = JSON.stringify({
   ...(tags.length > 0 && { "keywords": tags.join(', ') }),
 });
 
+// Emit FAQPage schema only when the post supplies 3+ Q&A pairs (Google's threshold
+// for FAQPage rich-result eligibility — fewer than 3 is unlikely to be selected).
+const faqJsonLd = faqs && faqs.length >= 3
+  ? JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": faqs.map((faq) => ({
+        "@type": "Question",
+        "name": faq.question,
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": faq.answer,
+        },
+      })),
+    })
+  : null;
+
 const breadcrumbJsonLd = JSON.stringify({
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
@@ -114,6 +137,7 @@ const breadcrumbJsonLd = JSON.stringify({
     {tags.map(tag => <meta property="article:tag" content={tag} />)}
     <script type="application/ld+json" set:html={articleJsonLd}></script>
     <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
+    {faqJsonLd && <script type="application/ld+json" set:html={faqJsonLd}></script>}
   </Fragment>
   <div class="blog-post-page">
     <div class="blog-post-container">
