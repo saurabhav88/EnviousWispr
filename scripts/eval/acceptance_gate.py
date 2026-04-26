@@ -918,8 +918,10 @@ def _apply_validator(candidates_by_id: dict, cases: list, provider: str) -> tupl
         cid = case["id"]
         original = case["asr_input"]
         # Production short-circuit: <=3 words never touches the LLM.
-        # Force candidate=original regardless of what the provider returned
-        # (we still paid for the API call — wasted in bench-mode but harmless).
+        # Force candidate=original regardless of what the provider returned.
+        # HTTP providers skip the call upstream in `_http_polish_all`; the AFM
+        # runner still polishes everything, so this catches that path. Either
+        # way the validator's substitution matches the user-visible outcome.
         if _is_short_input_bypass(original):
             out[cid] = original
             stats["short_input_bypass"] += 1
@@ -1013,6 +1015,16 @@ def _http_polish_all(polish_model: str, cases: list, out_path: Path) -> dict:
     error_breakdown: dict[str, int] = {}
     with out_path.open("w", encoding="utf-8") as f:
         for i, case in enumerate(cases, 1):
+            # Mirror production short-circuit: <=3 words never touches the LLM.
+            # Skip the HTTP call entirely so transient provider errors on
+            # bypassable cases cannot inflate `cases_errored` toward the 20%
+            # ceiling. The validator still substitutes raw downstream, so the
+            # `candidate=original` written here matches the user-visible outcome
+            # exactly. Counts as a success for reliability accounting.
+            if _is_short_input_bypass(case["asr_input"]):
+                f.write(json.dumps({"id": case["id"], "candidate": case["asr_input"]}, ensure_ascii=False) + "\n")
+                successes += 1
+                continue
             try:
                 # Bench mode absorbs transient 5xx/429 via retry. Per-case retries
                 # are still short-lived (max ~10s on 3 attempts); if a provider is
