@@ -755,10 +755,14 @@ def mode_meta_test(polish_model: str) -> int:
     positive = sum(1 for d in soft_drift if d.get("signed_delta", 0) > 0)
     negative = len(soft_drift) - positive
     bias_ratio = max(positive, negative) / len(soft_drift) if soft_drift else 0
-    # Require >=6 drifts before a same-direction ratio is meaningful.
-    # At N=4, 4/4 same-direction = 12.5% chance under pure noise (too noisy).
-    # At N=6, 6/6 same-direction = 3.1% chance (acceptable false-positive rate).
-    systemic_shift = len(soft_drift) >= 6 and bias_ratio >= 0.8
+    # Require >=6 drifts AND 100% same-direction before flagging systemic
+    # shift. The 3.1% false-positive ceiling (the original calibration target)
+    # only holds at the 6/6 endpoint; the previous 0.8 threshold tripped at
+    # 5/6 (≈22% two-sided FP under pure noise) and contradicted the comment.
+    # At N>6 the 100% requirement is even stricter (7/7 = 1.6%, 8/8 = 0.8%),
+    # which is the right direction — judge drift should require strong
+    # evidence before failing the gate. Codex finding from PR #368: #369.
+    systemic_shift = len(soft_drift) >= 6 and bias_ratio >= 1.0
     # Fail on: any hard drift, any unknown-ID, systemic shift, or soft-drift
     # count exceeding the noise floor. Threshold 10% (was 15%) — tighter than
     # empirical ~5% noise, still leaves 2x headroom. Codex P1 round 3 of #299.
@@ -773,7 +777,7 @@ def mode_meta_test(polish_model: str) -> int:
         if unknown_ids:
             print(f"  UNKNOWN IDs: {unknown_ids[:10]}", file=sys.stderr)
         if systemic_shift:
-            print(f"  SYSTEMIC SHIFT: {max(positive,negative)}/{len(soft_drift)} soft drifts in same direction (ratio {bias_ratio:.2f} >= 0.80)", file=sys.stderr)
+            print(f"  SYSTEMIC SHIFT: {max(positive,negative)}/{len(soft_drift)} soft drifts in same direction (ratio {bias_ratio:.2f} >= 1.00)", file=sys.stderr)
         if soft_pct > 10 or systemic_shift:
             for d in soft_drift[:10]:
                 print(f"  SOFT  {d['id']}  {d['axis']}: expected {d['expected']}, got {d['got']}", file=sys.stderr)
@@ -783,7 +787,7 @@ def mode_meta_test(polish_model: str) -> int:
     if soft_drift:
         detail = f"threshold 10%"
         if len(soft_drift) >= 6:
-            detail += f", bias {bias_ratio:.2f} (systemic-shift threshold 0.80)"
+            detail += f", bias {bias_ratio:.2f} (systemic-shift threshold 1.00)"
         else:
             detail += f", sample below 6 (systemic-shift check requires more data)"
         print(f"[meta-test] {len(soft_drift)} soft drifts ({soft_pct:.1f}%) tolerated as thinking-model variance ({detail}).")
