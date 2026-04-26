@@ -922,8 +922,10 @@ def _apply_validator(candidates_by_id: dict, cases: list, provider: str) -> tupl
         cid = case["id"]
         original = case["asr_input"]
         # Production short-circuit: <=3 words never touches the LLM.
-        # Force candidate=original regardless of what the provider returned
-        # (we still paid for the API call — wasted in bench-mode but harmless).
+        # Force candidate=original regardless of what the provider returned.
+        # HTTP providers skip the call upstream in `_http_polish_all`; the AFM
+        # runner still polishes everything, so this catches that path. Either
+        # way the validator's substitution matches the user-visible outcome.
         if _is_short_input_bypass(original):
             out[cid] = original
             stats["short_input_bypass"] += 1
@@ -1013,10 +1015,23 @@ def _http_polish_all(polish_model: str, cases: list, out_path: Path) -> dict:
     Returns {"successes": int, "errors": int, "error_breakdown": {kind: n}}.
     """
     successes = 0
+    bypassed = 0
     error_count = 0
     error_breakdown: dict[str, int] = {}
     with out_path.open("w", encoding="utf-8") as f:
         for i, case in enumerate(cases, 1):
+            # Mirror production short-circuit: <=3 words never touches the LLM.
+            # Skip the HTTP call entirely so transient provider errors on
+            # bypassable cases cannot inflate `cases_errored` toward the 20%
+            # ceiling. The validator still substitutes raw downstream, so the
+            # `candidate=original` written here matches the user-visible outcome
+            # exactly. Tracked as `bypassed`, NOT `successes`, so the ceiling
+            # math (errors / non-bypassed-attempts) stays honest on corpora
+            # heavy with short inputs.
+            if _is_short_input_bypass(case["asr_input"]):
+                f.write(json.dumps({"id": case["id"], "candidate": case["asr_input"]}, ensure_ascii=False) + "\n")
+                bypassed += 1
+                continue
             try:
                 # Bench mode absorbs transient 5xx/429 via retry. Per-case retries
                 # are still short-lived (max ~10s on 3 attempts); if a provider is
@@ -1041,25 +1056,54 @@ def _http_polish_all(polish_model: str, cases: list, out_path: Path) -> dict:
                 print(f"  [{polish_model}] {case['id']} ERROR: {kind}: {e}", file=sys.stderr)
             if i % 10 == 0:
                 print(f"  [{polish_model}] {i}/{len(cases)}")
-    return {"successes": successes, "errors": error_count, "error_breakdown": error_breakdown}
+    return {
+        "successes": successes,
+        "bypassed": bypassed,
+        "errors": error_count,
+        "error_breakdown": error_breakdown,
+    }
 
 
-def _load_candidates_jsonl(path: Path) -> tuple[dict, dict]:
+def _load_candidates_jsonl(path: Path, cases: list | None = None) -> tuple[dict, dict]:
     """Load a candidate JSONL file written by either _http_polish_all or the
     Swift runner. Returns (candidates_by_id, reliability_info).
 
     candidates_by_id[id] is either the polished string OR None if the record
     had an `error` field instead of `candidate`.
+
+    If `cases` is provided, errors on production-bypassed short inputs
+    (<=3 words) are normalized: the record is treated as a success with
+    candidate=raw_input rather than an error. This keeps reliability
+    accounting symmetric across providers regardless of whether the runner
+    skipped the call upstream (HTTP, see `_http_polish_all`) or attempted it
+    and errored (AFM Swift runner). Without this, AFM's short-input errors
+    flowed into `cases_errored` and could trip the 20% ceiling on a corpus
+    with many short inputs while HTTP providers got a free pass.
     """
+    short_input_ids: set[str] = set()
+    raw_input_by_id: dict[str, str] = {}
+    if cases is not None:
+        for case in cases:
+            raw_input_by_id[case["id"]] = case["asr_input"]
+            if _is_short_input_bypass(case["asr_input"]):
+                short_input_ids.add(case["id"])
     candidates: dict[str, str | None] = {}
     error_breakdown: dict[str, int] = {}
     error_count = 0
+    short_input_errors_normalized = 0
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
         record = json.loads(line)
+        cid = record.get("id")
+        if "error" in record and cid in short_input_ids:
+            # Production never sent this case to the LLM; an error here is
+            # accounting noise. Substitute raw and count as success.
+            candidates[cid] = raw_input_by_id[cid]
+            short_input_errors_normalized += 1
+            continue
         if "error" in record:
-            candidates[record["id"]] = None
+            candidates[cid] = None
             error_count += 1
             # Extract the LLMError kind from the Swift enum-description string
             # (e.g. "emptyResponse", "frameworkUnavailable(...)", "outputLanguageDrift(...)").
@@ -1067,12 +1111,13 @@ def _load_candidates_jsonl(path: Path) -> tuple[dict, dict]:
             kind = record["error"].split("(", 1)[0].strip()
             error_breakdown[kind] = error_breakdown.get(kind, 0) + 1
         elif "candidate" in record:
-            candidates[record["id"]] = record["candidate"]
+            candidates[cid] = record["candidate"]
         else:
             raise ValueError(f"candidate JSONL record missing both 'candidate' and 'error': {record}")
     return candidates, {
         "cases_succeeded": sum(1 for v in candidates.values() if v is not None),
         "cases_errored": error_count,
+        "short_input_errors_normalized": short_input_errors_normalized,
         "error_breakdown": error_breakdown,
     }
 
@@ -1447,6 +1492,7 @@ def mode_bench(out_name: str | None, corpus_path: Path | None, sleep_seconds: fl
             "cases_attempted": len(cases),
             "cases_succeeded": info["successes"],
             "cases_errored": info["errors"],
+            "cases_bypassed": info["bypassed"],
             "error_breakdown": info["error_breakdown"],
         }
 
@@ -1465,11 +1511,16 @@ def mode_bench(out_name: str | None, corpus_path: Path | None, sleep_seconds: fl
     # This mirrors LLMPolishStep.validatePolishOutput so the benchmark judges the
     # text users actually see (post-guard fallback to raw where applicable),
     # not raw provider output. Per-provider fallback counts feed reliability.
+    # AFM and HTTP both share the same bypass set (production short-circuit on
+    # <=3 words), so the bypassed count is provider-independent.
+    afm_bypassed = sum(1 for c in cases if _is_short_input_bypass(c["asr_input"]))
+
     loaded: dict[str, tuple[dict, dict]] = {}
     for provider, path in candidate_files.items():
-        cands, rel = _load_candidates_jsonl(path)
+        cands, rel = _load_candidates_jsonl(path, cases=cases)
         if provider == "apple-intelligence":
             rel["cases_attempted"] = len(cases)
+            rel["cases_bypassed"] = afm_bypassed
             reliability["apple-intelligence"] = rel
         validated, val_stats = _apply_validator(cands, cases, provider)
         reliability[provider]["validator_fallbacks"] = val_stats["validator_fallbacks"]
@@ -1489,15 +1540,20 @@ def mode_bench(out_name: str | None, corpus_path: Path | None, sleep_seconds: fl
             )
 
     # Provider-error ceiling guard (applies to ALL providers including AFM).
-    # If any provider failed on >20% of cases, a broader outage or device
-    # issue is polluting the measurement. Abort rather than publish numbers
-    # that reflect provider availability more than polish quality.
+    # If any provider failed on >20% of cases that production would actually
+    # send, a broader outage or device issue is polluting the measurement.
+    # Bypassed (<=3-word) cases are excluded from the denominator so a corpus
+    # heavy with short inputs cannot mask real provider failures (e.g. 80
+    # bypassed + 5 failures on the 20 real calls = 25% real failure rate, not
+    # 5% of corpus). Abort rather than publish numbers that reflect provider
+    # availability more than polish quality.
     for provider, info in reliability.items():
-        err_rate = info.get("cases_errored", 0) / max(len(cases), 1)
+        attempted = max(len(cases) - info.get("cases_bypassed", 0), 0)
+        err_rate = info.get("cases_errored", 0) / attempted if attempted else 0.0
         if err_rate > BENCH_PROVIDER_ERROR_CEILING:
             print(
                 f"\nINFRA-ERROR: {provider} errored on "
-                f"{info.get('cases_errored', 0)}/{len(cases)} cases "
+                f"{info.get('cases_errored', 0)}/{attempted} non-bypassed cases "
                 f"(> {BENCH_PROVIDER_ERROR_CEILING:.0%} ceiling). "
                 "Likely an outage or broken setup — bench aborted; report NOT written.",
                 file=sys.stderr,
