@@ -130,6 +130,7 @@ let package = Package(
         "EnviousWisprLLM",
         "EnviousWisprPipeline",
         "EnviousWisprStorage",
+        "EnviousWisprAudio",
         "EnviousWispr",
       ],
       path: "Tests/EnviousWisprTests"

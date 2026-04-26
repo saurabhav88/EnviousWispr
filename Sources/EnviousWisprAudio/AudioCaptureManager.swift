@@ -520,26 +520,27 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
   // MARK: - BT Route Logging (Step 6 instrumentation)
 
+  /// Default sink path; cross-process write target shared by main app + XPC service.
+  /// Phase R4: bounded by `RotatingFileSink` at 5 MB × 3 files = 15 MB ceiling.
+  nonisolated private static let btRouteLogURL: URL = FileManager.default
+    .homeDirectoryForCurrentUser
+    .appendingPathComponent("Library/Logs/EnviousWispr/bt-route.log")
+
+  /// Bounded sink for BT route diagnostics. `nonisolated static` matches the
+  /// prior surface so existing sync callers keep their call shape; the sink
+  /// itself uses `OSAllocatedUnfairLock` + `flock` for safety across the main
+  /// app and XPC service writing concurrently.
+  nonisolated static let btRouteSink = RotatingFileSink(
+    path: btRouteLogURL,
+    maxSize: 5 * 1_024 * 1_024,
+    maxFiles: 3)
+
   /// Direct file write for BT route diagnostics. os_log info level is suppressed on macOS 26 beta,
   /// and AppLogger.shared is process-local (XPC service has its own instance).
   nonisolated static func btRouteLog(_ message: String) {
     let timestamp = ISO8601DateFormatter().string(from: Date())
     let line = "[\(timestamp)] [BTRoute] \(message)\n"
-    let url = FileManager.default.homeDirectoryForCurrentUser
-      .appendingPathComponent("Library/Logs/EnviousWispr/bt-route.log")
-    try? FileManager.default.createDirectory(
-      at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-    if let data = line.data(using: .utf8) {
-      if FileManager.default.fileExists(atPath: url.path) {
-        if let handle = try? FileHandle(forWritingTo: url) {
-          handle.seekToEndOfFile()
-          handle.write(data)
-          handle.closeFile()
-        }
-      } else {
-        try? data.write(to: url)
-      }
-    }
+    btRouteSink.append(line)
   }
 
   // MARK: - VAD Interface (Step 5)
