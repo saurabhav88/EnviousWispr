@@ -749,10 +749,15 @@ struct AIPolishSettingsView: View {
         .foregroundStyle(Color.stTextTertiary)
     }
 
-    // Debug section — dev builds only
-    if appState.settings.isDebugModeEnabled, let report = appState.aiAvailability.latestReport {
-      aiDebugSection(report: report)
-    }
+    #if DEBUG
+      // Debug section — dev builds only. Wrapped with `#if DEBUG` (not just the
+      // `isDebugModeEnabled` runtime check) so a release binary inheriting a
+      // persisted-true flag from a prior dev session cannot reach
+      // `aiDebugSection`.
+      if appState.settings.isDebugModeEnabled, let report = appState.aiAvailability.latestReport {
+        aiDebugSection(report: report)
+      }
+    #endif
   }
 
   @ViewBuilder
@@ -780,74 +785,76 @@ struct AIPolishSettingsView: View {
     }
   }
 
-  @ViewBuilder
-  private func aiDebugSection(report: AppleIntelligenceAvailabilityReport) -> some View {
-    DisclosureGroup("Diagnostics") {
-      VStack(alignment: .leading, spacing: 4) {
-        ForEach(report.gates.allGates, id: \.name) { gate in
-          HStack(spacing: 6) {
-            gateStatusIcon(gate.result.status)
-            Text(gate.name)
-              .font(.caption)
-              .fontWeight(.medium)
-            Spacer()
-            Text(gate.result.summary)
-              .font(.caption2)
-              .foregroundStyle(Color.stTextTertiary)
-              .lineLimit(1)
-            if let ms = gate.result.durationMs {
-              Text("\(ms)ms")
+  #if DEBUG
+    @ViewBuilder
+    private func aiDebugSection(report: AppleIntelligenceAvailabilityReport) -> some View {
+      DisclosureGroup("Diagnostics") {
+        VStack(alignment: .leading, spacing: 4) {
+          ForEach(report.gates.allGates, id: \.name) { gate in
+            HStack(spacing: 6) {
+              gateStatusIcon(gate.result.status)
+              Text(gate.name)
+                .font(.caption)
+                .fontWeight(.medium)
+              Spacer()
+              Text(gate.result.summary)
                 .font(.caption2)
                 .foregroundStyle(Color.stTextTertiary)
+                .lineLimit(1)
+              if let ms = gate.result.durationMs {
+                Text("\(ms)ms")
+                  .font(.caption2)
+                  .foregroundStyle(Color.stTextTertiary)
+              }
             }
           }
-        }
-        HStack {
-          Text("OS: \(report.osVersion)")
-          Spacer()
-          Text("HW: \(report.hardwareClass)")
-          Spacer()
-          Text("Total: \(report.checkDurationMs)ms")
-        }
-        .font(.caption2)
-        .foregroundStyle(Color.stTextTertiary)
+          HStack {
+            Text("OS: \(report.osVersion)")
+            Spacer()
+            Text("HW: \(report.hardwareClass)")
+            Spacer()
+            Text("Total: \(report.checkDurationMs)ms")
+          }
+          .font(.caption2)
+          .foregroundStyle(Color.stTextTertiary)
 
-        Button("Copy Diagnostics") {
-          appState.aiAvailability.copyDiagnosticsToClipboard()
+          Button("Copy Diagnostics") {
+            appState.aiAvailability.copyDiagnosticsToClipboard()
+          }
+          .font(.caption)
+          .buttonStyle(.borderless)
         }
-        .font(.caption)
-        .buttonStyle(.borderless)
+        .padding(.vertical, 4)
       }
-      .padding(.vertical, 4)
+      .font(.caption)
     }
-    .font(.caption)
-  }
 
-  @ViewBuilder
-  private func gateStatusIcon(_ status: AIGateStatus) -> some View {
-    switch status {
-    case .passed:
-      Image(systemName: "checkmark.circle.fill")
-        .foregroundStyle(.stSuccess)
-        .font(.caption2)
-    case .failed:
-      Image(systemName: "xmark.circle.fill")
-        .foregroundStyle(.stError)
-        .font(.caption2)
-    case .skipped:
-      Image(systemName: "minus.circle")
-        .foregroundStyle(Color.stTextTertiary)
-        .font(.caption2)
-    case .timedOut:
-      Image(systemName: "clock.badge.exclamationmark")
-        .foregroundStyle(.stWarning)
-        .font(.caption2)
-    case .unknown:
-      Image(systemName: "questionmark.circle")
-        .foregroundStyle(Color.stTextTertiary)
-        .font(.caption2)
+    @ViewBuilder
+    private func gateStatusIcon(_ status: AIGateStatus) -> some View {
+      switch status {
+      case .passed:
+        Image(systemName: "checkmark.circle.fill")
+          .foregroundStyle(.stSuccess)
+          .font(.caption2)
+      case .failed:
+        Image(systemName: "xmark.circle.fill")
+          .foregroundStyle(.stError)
+          .font(.caption2)
+      case .skipped:
+        Image(systemName: "minus.circle")
+          .foregroundStyle(Color.stTextTertiary)
+          .font(.caption2)
+      case .timedOut:
+        Image(systemName: "clock.badge.exclamationmark")
+          .foregroundStyle(.stWarning)
+          .font(.caption2)
+      case .unknown:
+        Image(systemName: "questionmark.circle")
+          .foregroundStyle(Color.stTextTertiary)
+          .font(.caption2)
+      }
     }
-  }
+  #endif
 
   // MARK: - Ollama Model Catalog
 

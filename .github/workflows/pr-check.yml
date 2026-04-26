@@ -100,6 +100,31 @@ jobs:
           PASSED=$(echo "$OUTPUT" | grep -c "passed" || true)
           echo "==> $STARTED test entries started, $PASSED reported passed, 0 failures"
 
+      - name: Run logic tests (release config)
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          set -euo pipefail
+          set +e
+          OUTPUT=$(scripts/swift-test.sh -c release 2>&1)
+          STATUS=$?
+          set -e
+          echo "$OUTPUT"
+          if [ "$STATUS" -ne 0 ]; then
+            echo "::error::scripts/swift-test.sh -c release exited $STATUS"
+            exit "$STATUS"
+          fi
+          if echo "$OUTPUT" | grep -q "✘"; then
+            echo "::error::Swift tests have failures (release config)"
+            exit 1
+          fi
+          STARTED=$(echo "$OUTPUT" | grep -c "started" || true)
+          if [ "$STARTED" -eq 0 ]; then
+            echo "::error::No tests started in release config — possible compilation failure"
+            exit 1
+          fi
+          PASSED=$(echo "$OUTPUT" | grep -c "passed" || true)
+          echo "==> release: $STARTED test entries started, $PASSED reported passed, 0 failures"
+
       - name: Verify FoundationModels compile probe
         if: steps.changes.outputs.needs_build == 'true'
         run: |

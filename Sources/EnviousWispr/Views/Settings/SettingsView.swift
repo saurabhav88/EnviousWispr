@@ -73,8 +73,10 @@ struct UnifiedWindowView: View {
       MemorySettingsView()
     case .permissions:
       PermissionsSettingsView()
-    case .diagnostics:
-      DiagnosticsSettingsView()
+    #if DEBUG
+      case .diagnostics:
+        DiagnosticsSettingsView()
+    #endif
     }
   }
 }

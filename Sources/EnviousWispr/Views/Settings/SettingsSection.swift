@@ -12,7 +12,9 @@ enum SettingsSection: String, CaseIterable, Identifiable {
   case clipboard
   case memory
   case permissions
-  case diagnostics
+  #if DEBUG
+    case diagnostics
+  #endif
 
   var id: String { rawValue }
 
@@ -28,7 +30,9 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .clipboard: return "Clipboard"
     case .memory: return "Performance"
     case .permissions: return "Permissions"
-    case .diagnostics: return "Diagnostics"
+    #if DEBUG
+      case .diagnostics: return "Diagnostics"
+    #endif
     }
   }
 
@@ -44,7 +48,9 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .clipboard: return "clipboard"
     case .memory: return "memorychip"
     case .permissions: return "lock.shield"
-    case .diagnostics: return "ladybug"
+    #if DEBUG
+      case .diagnostics: return "ladybug"
+    #endif
     }
   }
 
@@ -54,7 +60,10 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case .speechEngine, .audio, .shortcuts: return .record
     case .aiPolish, .wordCorrection: return .process
     case .clipboard: return .output
-    case .memory, .permissions, .diagnostics: return .system
+    case .memory, .permissions: return .system
+    #if DEBUG
+      case .diagnostics: return .system
+    #endif
     }
   }
 }
