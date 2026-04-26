@@ -1,8 +1,8 @@
-
 import EnviousWisprCore
 import EnviousWisprLLM
 import Foundation
 import Testing
+import os
 
 @testable import EnviousWisprPipeline
 
@@ -165,7 +165,7 @@ struct TextProcessingRunnerTests {
       return next
     }
 
-    let llm = RecordingStep(name: "LLM Polish") { _ in
+    let llm = RecordingStep(name: "LLM Polish", errorSurfacePolicy: .surface) { _ in
       throw LLMError.requestFailed("service unavailable")
     }
 
@@ -183,14 +183,15 @@ struct TextProcessingRunnerTests {
     )
 
     #expect(result.context.text == "start-A-C")
-    #expect(result.polishError == LLMError.requestFailed("service unavailable").localizedDescription)
+    #expect(
+      result.polishError == LLMError.requestFailed("service unavailable").localizedDescription)
   }
 
   @Test("suppresses polishError for unsupported input language skips from LLM Polish")
   func suppressesPolishErrorForUnsupportedInputLanguage() async throws {
     let runner = TextProcessingRunner()
 
-    let llm = RecordingStep(name: "LLM Polish") { _ in
+    let llm = RecordingStep(name: "LLM Polish", errorSurfacePolicy: .surface) { _ in
       throw LLMError.unsupportedInputLanguage("de")
     }
 
@@ -219,7 +220,7 @@ struct TextProcessingRunnerTests {
   func suppressesPolishErrorForOutputLanguageDrift() async throws {
     let runner = TextProcessingRunner()
 
-    let llm = RecordingStep(name: "LLM Polish") { _ in
+    let llm = RecordingStep(name: "LLM Polish", errorSurfacePolicy: .surface) { _ in
       throw LLMError.outputLanguageDrift(expected: "de", actual: "en")
     }
 
@@ -293,7 +294,9 @@ struct TextProcessingRunnerTests {
       return next
     }
 
-    let slowLLM = RecordingStep(name: "LLM Polish", maxDuration: .milliseconds(50)) { context in
+    let slowLLM = RecordingStep(
+      name: "LLM Polish", maxDuration: .milliseconds(50), errorSurfacePolicy: .surface
+    ) { context in
       try await Task.sleep(for: .milliseconds(300))
       var next = context
       next.text += "-slow"
@@ -358,10 +361,138 @@ struct TextProcessingRunnerTests {
     }
   }
 
-  // TODO: production bug — add a contract test once fixed.
-  // `TextProcessingRunner` decides whether to surface `polishError` by matching
-  // the literal step name "LLM Polish". That is brittle: renaming the polish step
-  // silently changes user-visible error behavior.
+  // MARK: - Phase G1 — error-surface policy contract tests
+
+  @Test(
+    "Renaming the polish step does NOT affect polishError when the policy stays .surface"
+  )
+  func policyDispatchSurvivesRename() async throws {
+    let runner = TextProcessingRunner()
+
+    let renamed = RecordingStep(
+      name: "Polish",  // intentionally NOT "LLM Polish"
+      errorSurfacePolicy: .surface
+    ) { _ in
+      throw StepFailure(message: "renamed surface step exploded")
+    }
+
+    let result = try await runner.run(
+      rawText: "start",
+      language: "en",
+      targetAppName: nil,
+      steps: [renamed]
+    )
+
+    #expect(result.polishError == "renamed surface step exploded")
+  }
+
+  @Test(".swallow policy never sets polishError, even for a step named 'LLM Polish'")
+  func swallowPolicyHidesErrorEvenForCollidingName() async throws {
+    let runner = TextProcessingRunner()
+
+    // Same legacy name but explicit .swallow policy: the runner must read the
+    // policy, not the name. This is the symmetric guarantee for
+    // policyDispatchSurvivesRename.
+    let collide = RecordingStep(
+      name: "LLM Polish",
+      errorSurfacePolicy: .swallow
+    ) { _ in
+      throw StepFailure(message: "should be swallowed")
+    }
+
+    let result = try await runner.run(
+      rawText: "start",
+      language: "en",
+      targetAppName: nil,
+      steps: [collide]
+    )
+
+    #expect(result.polishError == nil)
+  }
+
+  @Test("LLMPolishStep declares .surface error policy")
+  func llmPolishStepDeclaresSurfacePolicy() async throws {
+    let llmStep = LLMPolishStep(keychainManager: KeychainManager())
+    #expect(llmStep.errorSurfacePolicy == .surface)
+  }
+
+  // MARK: - Phase G2 — injectable logger contract tests
+
+  @Test("Step success emits a PipelineTiming entry into the injected logger")
+  func successLogsPipelineTimingEntry() async throws {
+    let recorder = RecordingPipelineLogger()
+    let runner = TextProcessingRunner(logger: recorder)
+
+    let step = RecordingStep(name: "A") { context in
+      var next = context
+      next.text += "-A"
+      return next
+    }
+
+    _ = try await runner.run(
+      rawText: "start",
+      language: "en",
+      targetAppName: nil,
+      steps: [step]
+    )
+
+    // Logger work runs in fire-and-forget Task envelopes; bounded-poll for it.
+    let entries = await recorder.awaitEntry(
+      category: "PipelineTiming", messageContains: "A completed in")
+    #expect(
+      entries.contains { $0.category == "PipelineTiming" && $0.message.hasPrefix("A completed in") }
+    )
+  }
+
+  @Test("Step that mutates text emits CorrectionDebug IN/OUT lines via injected logger")
+  func mutatingStepLogsCorrectionDebug() async throws {
+    let recorder = RecordingPipelineLogger()
+    let runner = TextProcessingRunner(logger: recorder)
+
+    let step = RecordingStep(name: "Renamer") { context in
+      var next = context
+      next.text = "polished"
+      return next
+    }
+
+    _ = try await runner.run(
+      rawText: "raw",
+      language: "en",
+      targetAppName: nil,
+      steps: [step]
+    )
+
+    // OUT is emitted right after IN inside the same Task envelope; awaiting OUT
+    // implicitly drains until both have landed.
+    let entries = await recorder.awaitEntry(
+      category: "CorrectionDebug", messageContains: "[Renamer] OUT: polished")
+    let cd = entries.filter { $0.category == "CorrectionDebug" }
+    #expect(cd.contains { $0.message.contains("[Renamer] IN:  raw") })
+    #expect(cd.contains { $0.message.contains("[Renamer] OUT: polished") })
+  }
+
+  @Test("Step timeout emits a TextProcessing 'timed out' entry via injected logger")
+  func timeoutLogsTextProcessingWarning() async throws {
+    let recorder = RecordingPipelineLogger()
+    let runner = TextProcessingRunner(logger: recorder)
+
+    let slow = RecordingStep(name: "Slow", maxDuration: .milliseconds(50)) { context in
+      try await Task.sleep(for: .milliseconds(300))
+      return context
+    }
+
+    _ = try await runner.run(
+      rawText: "start",
+      language: "en",
+      targetAppName: nil,
+      steps: [slow]
+    )
+
+    let entries = await recorder.awaitEntry(
+      category: "TextProcessing", messageContains: "Slow timed out")
+    #expect(
+      entries.contains { $0.category == "TextProcessing" && $0.message.contains("Slow timed out") })
+  }
 }
 
 @MainActor
@@ -369,6 +500,7 @@ private final class RecordingStep: TextProcessingStep {
   let name: String
   let isEnabled: Bool
   let maxDuration: Duration
+  let errorSurfacePolicy: ErrorSurfacePolicy
 
   private let transform: @MainActor (TextProcessingContext) async throws -> TextProcessingContext
 
@@ -379,11 +511,13 @@ private final class RecordingStep: TextProcessingStep {
     name: String,
     isEnabled: Bool = true,
     maxDuration: Duration = .seconds(5),
+    errorSurfacePolicy: ErrorSurfacePolicy = .swallow,
     transform: @escaping @MainActor (TextProcessingContext) async throws -> TextProcessingContext
   ) {
     self.name = name
     self.isEnabled = isEnabled
     self.maxDuration = maxDuration
+    self.errorSurfacePolicy = errorSurfacePolicy
     self.transform = transform
   }
 
@@ -391,6 +525,48 @@ private final class RecordingStep: TextProcessingStep {
     runCount += 1
     seenInputs.append(context)
     return try await transform(context)
+  }
+}
+
+/// Test-only PipelineLogging conformer. Records every log call in memory so
+/// G2 tests can assert log side effects that the prior global-singleton
+/// `AppLogger.shared` design hid behind disk-only writes.
+final class RecordingPipelineLogger: PipelineLogging, @unchecked Sendable {
+  struct Entry: Equatable {
+    let message: String
+    let level: DebugLogLevel
+    let category: String
+  }
+
+  // OSAllocatedUnfairLock rather than NSLock — Swift 6 strict concurrency
+  // forbids NSLock.lock/unlock from async contexts.
+  private let storage = OSAllocatedUnfairLock<[Entry]>(initialState: [])
+
+  func log(_ message: String, level: DebugLogLevel, category: String) async {
+    storage.withLock { state in
+      state.append(Entry(message: message, level: level, category: category))
+    }
+  }
+
+  func snapshot() -> [Entry] {
+    storage.withLock { $0 }
+  }
+
+  /// Waits up to ~500ms for an entry whose category matches `category` and
+  /// whose message contains `messageContains` to appear. Returns the full
+  /// recorded buffer afterwards. The runner emits log calls from inside
+  /// fire-and-forget `Task { ... }` envelopes; cooperative yield alone is
+  /// not deterministic because the detached Tasks have no parent the test
+  /// can await. A bounded poll is a robust and cheap workaround.
+  func awaitEntry(category: String, messageContains needle: String) async -> [Entry] {
+    for _ in 0..<50 {
+      let current = snapshot()
+      if current.contains(where: { $0.category == category && $0.message.contains(needle) }) {
+        return current
+      }
+      try? await Task.sleep(for: .milliseconds(10))
+    }
+    return snapshot()
   }
 }
 

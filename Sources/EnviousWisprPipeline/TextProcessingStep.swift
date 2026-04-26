@@ -21,6 +21,19 @@ public struct TextProcessingContext: Sendable {
   }
 }
 
+/// Whether a step's thrown error should reach the user as `polishError`
+/// (e.g. the "AI polish failed" banner) or be silently absorbed by the heart.
+///
+/// Default conformance is `.swallow`: limb failures stay invisible. Only
+/// `LLMPolishStep` overrides to `.surface` today. Adding the property as a
+/// protocol requirement (with a default extension) replaces the prior
+/// string-literal branch on `step.name == "LLM Polish"`, so renaming a step
+/// can never silently mute the user-visible failure path.
+internal enum ErrorSurfacePolicy {
+  case surface
+  case swallow
+}
+
 /// A single step in the post-ASR text processing chain.
 ///
 /// Steps run in order after transcription. Each step receives the context
@@ -35,4 +48,11 @@ protocol TextProcessingStep {
   var maxDuration: Duration { get }
   /// Process the text and return an updated context.
   func process(_ context: TextProcessingContext) async throws -> TextProcessingContext
+  /// How `TextProcessingRunner` should treat an error thrown by `process`.
+  /// Defaults to `.swallow` — only LLM polish overrides to `.surface`.
+  var errorSurfacePolicy: ErrorSurfacePolicy { get }
+}
+
+extension TextProcessingStep {
+  var errorSurfacePolicy: ErrorSurfacePolicy { .swallow }
 }

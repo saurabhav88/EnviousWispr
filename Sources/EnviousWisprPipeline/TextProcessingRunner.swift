@@ -16,8 +16,18 @@ internal struct TextProcessingRunResult {
 /// ownership for PipelineSettingsSync mutation.
 /// The runner owns only the execution algorithm: ordering, timeout, cancellation,
 /// failure continuation (heart & limbs), and CORRECTION_DEBUG logging.
+///
+/// Phase G1+G2: error-surface dispatch reads `step.errorSurfacePolicy` instead
+/// of matching `step.name == "LLM Polish"`, and the log sink is injectable via
+/// `PipelineLogging` so tests can verify side effects without disk reads.
 @MainActor
 internal final class TextProcessingRunner {
+
+  private let logger: any PipelineLogging
+
+  init(logger: any PipelineLogging = AppLoggerAdapter()) {
+    self.logger = logger
+  }
 
   func run(
     rawText: String,
@@ -29,8 +39,9 @@ internal final class TextProcessingRunner {
     context.targetAppName = targetAppName
     var polishError: String?
 
+    let logger = self.logger
     Task {
-      await AppLogger.shared.log(
+      await logger.log(
         "CORRECTION_DEBUG [RAW ASR] \(rawText)",
         level: .info, category: "CorrectionDebug"
       )
@@ -55,21 +66,21 @@ internal final class TextProcessingRunner {
         let outputText = context.polishedText ?? context.text
         let changed = inputText != outputText
         Task {
-          await AppLogger.shared.log(
+          await logger.log(
             "\(stepName) completed in \(String(format: "%.1f", stepMs))ms (budget: \(String(format: "%.0f", budgetSeconds * 1000))ms)",
             level: .info, category: "PipelineTiming"
           )
           if changed {
-            await AppLogger.shared.log(
+            await logger.log(
               "CORRECTION_DEBUG [\(stepName)] IN:  \(inputText)",
               level: .info, category: "CorrectionDebug"
             )
-            await AppLogger.shared.log(
+            await logger.log(
               "CORRECTION_DEBUG [\(stepName)] OUT: \(outputText)",
               level: .info, category: "CorrectionDebug"
             )
           } else {
-            await AppLogger.shared.log(
+            await logger.log(
               "CORRECTION_DEBUG [\(stepName)] no change",
               level: .info, category: "CorrectionDebug"
             )
@@ -96,11 +107,11 @@ internal final class TextProcessingRunner {
         } else {
           isLanguageGateSkip = false
         }
-        if stepName == "LLM Polish" && !isLanguageGateSkip {
+        if step.errorSurfacePolicy == .surface && !isLanguageGateSkip {
           polishError = error.localizedDescription
         }
         Task {
-          await AppLogger.shared.log(
+          await logger.log(
             "\(stepName) \(reason) after \(String(format: "%.1f", stepMs))ms — skipping",
             level: .info, category: "TextProcessing"
           )
