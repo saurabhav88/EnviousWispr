@@ -1141,6 +1141,7 @@ def _compute_pairing_metrics(
     """
     def summarize(scores: dict) -> dict:
         wins = ties = losses = 0
+        regression_schema_errors: list[tuple[str, object]] = []
         case_outcomes: dict[str, str] = {}
         axis_totals = {a: 0 for a in ABSOLUTE_AXES}
         axis_counts = {a: 0 for a in ABSOLUTE_AXES}
@@ -1179,10 +1180,13 @@ def _compute_pairing_metrics(
                 for a in ABSOLUTE_AXES
             )
             reg = s.get("regression", 0)
-            reg_ok = isinstance(reg, int) and reg >= MIN_REGRESSION
+            # Match the absolute-axis check exactly: bool is a subclass of int
+            # in Python, so a JSON `true` would otherwise leak through as 1.
+            reg_is_int = isinstance(reg, int) and not isinstance(reg, bool)
+            reg_ok = reg_is_int and reg >= MIN_REGRESSION
             if absolute_ok and reg_ok:
                 pass_count += 1
-            if isinstance(reg, int):
+            if reg_is_int:
                 if reg >= 2:
                     case_outcomes[cid] = "win"
                     wins += 1
@@ -1193,8 +1197,12 @@ def _compute_pairing_metrics(
                     case_outcomes[cid] = "loss"
                     losses += 1
             else:
-                case_outcomes[cid] = "tie"
-                ties += 1
+                # Schema drift: judge returned a non-int regression (e.g. "2",
+                # 2.0, or a bool). Previously this was silently miscounted as a
+                # tie, masking infra failures inside legitimate-looking output.
+                # Record the violations and let the caller surface as INFRA-ERROR.
+                regression_schema_errors.append((cid, reg))
+                case_outcomes[cid] = "infra_error"
         total = len(cases)
         return {
             "pass_rate_pct": round(100 * pass_count / total, 1) if total else 0.0,
@@ -1209,6 +1217,7 @@ def _compute_pairing_metrics(
                 for a in ABSOLUTE_AXES
             },
             "case_outcomes": case_outcomes,
+            "regression_schema_errors": regression_schema_errors,
         }
 
     rep1 = summarize(scores_rep1)
@@ -1508,6 +1517,25 @@ def mode_bench(out_name: str | None, corpus_path: Path | None, sleep_seconds: fl
             rep_scores[0], rep_scores[1] if len(rep_scores) > 1 else rep_scores[0],
         )
         pairing_metrics.append(metrics)
+
+    # Schema-drift guard: if any judge returned a non-int regression score,
+    # the run is corrupted (silent miscounts mask infra failures as ties).
+    # Fail loud at INFRA-ERROR (exit 2) BEFORE writing the report.
+    schema_errors = []
+    for m in pairing_metrics:
+        for rep_key in ("rep1", "rep2"):
+            for cid, val in m[rep_key].get("regression_schema_errors", []) or []:
+                schema_errors.append((m["id"], rep_key, cid, val))
+    if schema_errors:
+        print(
+            f"\nINFRA-ERROR: judge returned {len(schema_errors)} non-int regression "
+            f"score(s); previously these were silently counted as ties and corrupted "
+            f"the bench. Fix the judge schema or rerun.",
+            file=sys.stderr,
+        )
+        for pid, rep_key, cid, val in schema_errors[:10]:
+            print(f"  {pid} {rep_key} case={cid} regression={val!r} (type={type(val).__name__})", file=sys.stderr)
+        return 2
 
     # Phase 3 — report.
     report = {
