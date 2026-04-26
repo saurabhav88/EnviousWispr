@@ -283,7 +283,7 @@ private final class HeartPathHarness {
 
 // MARK: - Fixture generation
 
-private struct SyntheticAudioFixture {
+internal struct SyntheticAudioFixture {
   let url: URL
   let durationSeconds: TimeInterval
 
@@ -402,7 +402,7 @@ extension Data {
 // MARK: - Test doubles
 
 @MainActor
-private final class FixtureAudioCapture: AudioCaptureInterface {
+internal final class FixtureAudioCapture: AudioCaptureInterface {
   var isCapturing: Bool = false
   var audioLevel: Float = 0
   var capturedSamples: [Float] = []
@@ -550,7 +550,7 @@ private final class FixtureAudioCapture: AudioCaptureInterface {
 }
 
 @MainActor
-private final class MockASRManager: ASRManagerInterface {
+internal final class MockASRManager: ASRManagerInterface {
   enum TranscribeBehavior {
     case success(ASRResult)
     case failure(Error)
@@ -676,7 +676,7 @@ private final class MockPolishStep: TextProcessingStep {
 
 // MARK: - Helpers
 
-private enum FixtureError: Error {
+internal enum FixtureError: Error {
   case malformedWAV
   case unsupportedFormat
 }

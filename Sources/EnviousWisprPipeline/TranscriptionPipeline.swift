@@ -137,19 +137,41 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
   /// `currentCaptureSessionID`) is not torn down by stale cleanup.
   private var pendingStallRecoveryToken: UInt64?
 
-  public init(
+  public convenience init(
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface,
     transcriptStore: TranscriptStore,
     keychainManager: KeychainManager = KeychainManager(),
     captureTelemetry: CaptureTelemetryState = CaptureTelemetryState()
   ) {
+    self.init(
+      audioCapture: audioCapture,
+      asrManager: asrManager,
+      transcriptStore: transcriptStore,
+      keychainManager: keychainManager,
+      captureTelemetry: captureTelemetry,
+      transcriptFinalizer: TranscriptFinalizer(transcriptStore: transcriptStore))
+  }
+
+  /// Phase G3 — `internal` overload that accepts a pre-built finalizer so
+  /// `@testable` callers can drive the heart path with a mock paste seam.
+  /// Production callers use the zero-arg-finalizer `public init` above and
+  /// get identical wiring; only the construction of `transcriptFinalizer`
+  /// is parameterized.
+  internal init(
+    audioCapture: any AudioCaptureInterface,
+    asrManager: any ASRManagerInterface,
+    transcriptStore: TranscriptStore,
+    keychainManager: KeychainManager = KeychainManager(),
+    captureTelemetry: CaptureTelemetryState = CaptureTelemetryState(),
+    transcriptFinalizer: TranscriptFinalizer
+  ) {
     self.audioCapture = audioCapture
     self.asrManager = asrManager
     self.transcriptStore = transcriptStore
     self.keychainManager = keychainManager
     self.captureTelemetry = captureTelemetry
-    self.transcriptFinalizer = TranscriptFinalizer(transcriptStore: transcriptStore)
+    self.transcriptFinalizer = transcriptFinalizer
     self.llmPolishStep = LLMPolishStep(keychainManager: keychainManager)
     // Explicit engine identity: makes the Parakeet path non-inferred. The
     // planner will force the legacy English-centric path for Parakeet
