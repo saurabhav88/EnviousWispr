@@ -8,9 +8,11 @@ import urllib.request
 import urllib.error
 import base64
 import os
+import subprocess
 
-CRISP_ID = open(os.path.expanduser("~/.enviouswispr-keys/crisp-plugin-identifier")).read().strip()
-CRISP_KEY = open(os.path.expanduser("~/.enviouswispr-keys/crisp-plugin-key")).read().strip()
+GET_KEY = os.path.expanduser("~/.claude/bin/get-key")
+CRISP_ID = subprocess.check_output([GET_KEY, "crisp-plugin-identifier"], text=True).strip()
+CRISP_KEY = subprocess.check_output([GET_KEY, "crisp-plugin-key"], text=True).strip()
 WEBSITE_ID = "6cfca684-ab92-4927-a1a3-6bf97eac13f9"
 LOCALE = "en"
 BASE = "https://api.crisp.chat/v1"
