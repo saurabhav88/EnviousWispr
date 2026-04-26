@@ -5,8 +5,8 @@
 
 set -uo pipefail
 
-CRISP_ID=$(cat ~/.enviouswispr-keys/crisp-plugin-identifier)
-CRISP_KEY=$(cat ~/.enviouswispr-keys/crisp-plugin-key)
+CRISP_ID=$("$HOME/.claude/bin/get-key" crisp-plugin-identifier)
+CRISP_KEY=$("$HOME/.claude/bin/get-key" crisp-plugin-key)
 WEBSITE_ID="6cfca684-ab92-4927-a1a3-6bf97eac13f9"
 LOCALE="en"
 BASE="https://api.crisp.chat/v1"
