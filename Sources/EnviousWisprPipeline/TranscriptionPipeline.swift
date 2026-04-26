@@ -18,17 +18,19 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
 
   public private(set) var state: PipelineState = .idle {
     didSet {
-      if state != oldValue {
-        onStateChange?(state)
-      }
       // Honor the `currentSessionConfig` contract: nil when no recording is
-      // in flight. Clear on every transition to a terminal state so callers
-      // can distinguish an idle pipeline from one still mid-session.
+      // in flight. Clear on every transition to a terminal state BEFORE
+      // firing `onStateChange` so observer code (e.g. `reconcileOllamaEviction`
+      // on the AppState side) sees the cleared session and does not treat the
+      // just-finished recording as still pinning a model. (#426 — Codex)
       switch state {
       case .idle, .complete, .error:
         currentSessionConfig = nil
       case .loadingModel, .recording, .transcribing, .polishing:
         break
+      }
+      if state != oldValue {
+        onStateChange?(state)
       }
     }
   }
