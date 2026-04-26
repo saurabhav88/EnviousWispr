@@ -3,11 +3,13 @@ name: polish-eval-smoke
 on:
   pull_request:
 
-# Required status checks judge-drift-check and polish-quality-gate must
-# always emit a result so non-polish PRs don't stall forever. Each job
-# detects whether polish paths were touched; if yes, runs the real eval;
-# if no, emits SUCCESS via a no-op step. One workflow, one check context
-# per name — no race with a companion skip workflow.
+# polish-quality-gate runs the actual polish-quality eval on PRs that touch
+# polish paths. It is advisory (not in required status checks). The judge-drift
+# meta-test job that lived here previously was retired 2026-04-25: it required
+# secrets to authenticate against OpenAI/Gemini judges, which excluded fork
+# and Dependabot PRs (no secrets), and as a required check it stalled
+# auto-merge whenever it skipped. Run the meta-test locally instead via
+# `python3 scripts/eval/acceptance_gate.py --mode meta-test --polish-model gpt-4o-mini`.
 #
 # Fork PRs cannot access repository secrets; the eval would fail inside
 # acceptance_gate.py with auth errors and block an external contribution on
@@ -15,7 +17,7 @@ on:
 # on same-repo PR origin — jobs that don't run report as "not required."
 # Dependabot PRs are skipped the same way. Dependabot diffs only touch
 # Package.resolved or .github/workflows/*.yml — they cannot change prompts,
-# models, or the eval corpus, so the judge-drift check has nothing to verify.
+# models, or the eval corpus, so the polish gate has nothing to verify.
 # Mirroring secrets to Dependabot scope would create a supply-chain exfil
 # surface without adding coverage. If a Dependabot PR ever looks like it
 # should run polish evaluation (hypothetical), re-trigger manually as a
@@ -26,110 +28,8 @@ on:
 # All run: steps reference secrets only via env: bindings, never interpolated
 # inline — no injection surface from PR title, body, branch name, or commits.
 jobs:
-  meta-test:
-    name: judge-drift-check
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-      - name: Detect polish paths
-        id: filter
-        uses: dorny/paths-filter@v4
-        with:
-          filters: |
-            polish:
-              - 'Sources/EnviousWisprLLM/**'
-              - 'Sources/EnviousWisprPipeline/LLMPolishStep.swift'
-              - 'Sources/EnviousWisprPostProcessing/CustomWordsManager.swift'
-              - 'Sources/EnviousWisprCore/PolishMode.swift'
-              - 'Sources/EnviousWisprCore/PolishPlan.swift'
-              - 'Sources/EnviousWisprCore/PolishStyleConfig.swift'
-              - 'Sources/EnviousWisprCore/PromptEnvelope.swift'
-              - 'Sources/EnviousWisprCore/PromptBuildInput.swift'
-              - 'scripts/eval/**'
-              - '.github/workflows/polish-eval-smoke.yml'
-      - name: Skip when polish paths not touched
-        if: steps.filter.outputs.polish == 'false'
-        run: echo "Polish paths not touched; nothing to evaluate."
-      - name: Setup Python
-        if: steps.filter.outputs.polish == 'true'
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-      - name: Stage API keys locally
-        if: steps.filter.outputs.polish == 'true'
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: |
-          if [ -z "$OPENAI_API_KEY" ] || [ -z "$GEMINI_API_KEY" ]; then
-            echo "ERROR: OPENAI_API_KEY or GEMINI_API_KEY secret is empty." >&2
-            echo "This is a repo config problem, not a PR regression." >&2
-            echo "Add the missing secret in Settings > Secrets and variables > Actions." >&2
-            exit 1
-          fi
-          mkdir -p ~/.enviouswispr-keys
-          printf '%s' "$OPENAI_API_KEY" > ~/.enviouswispr-keys/openai-api-key
-          printf '%s' "$GEMINI_API_KEY" > ~/.enviouswispr-keys/gemini-api-key
-      - name: Run judge drift meta-test
-        if: steps.filter.outputs.polish == 'true'
-        shell: bash
-        # Exit-code policy — preserve the script's semantics so transient judge
-        # or API failures do not burn required-check credit. Exit 2 is shared
-        # by acceptance_gate.py's INFRA-ERROR path AND argparse usage errors,
-        # so we discriminate by stderr content (INFRA-ERROR: prefix) before
-        # downgrading.
-        #   0 = golden set scored, judge stable → pass
-        #   1 = unexpected script bug → real failure, propagate
-        #   2 + stderr matches '^INFRA-ERROR:' = infra error
-        #     (missing golden set, judge chunk failure, transient API 503) →
-        #     emit warning annotation, exit 0 (NOT a PR regression)
-        #   2 without that marker = argparse / invocation failure → fail red
-        #   3 = judge drift detected (scores moved vs locked golden) →
-        #       emit warning annotation, exit 0 (separate calibration decision)
-        run: |
-          err="$(mktemp -t meta-test-stderr.XXXXXX)"
-          set +e
-          {
-            python3 scripts/eval/acceptance_gate.py --mode meta-test --polish-model gpt-4o-mini \
-              2>&1 1>&3 | tee "$err" >&2
-            rc=${PIPESTATUS[0]}
-          } 3>&1
-          set -e
-          case "$rc" in
-            0)
-              exit 0 ;;
-            2)
-              if grep -q '^INFRA-ERROR:' "$err"; then
-                echo "::warning title=judge-drift infra::meta-test returned INFRA-ERROR (exit 2); treating as success-with-warning, not a PR regression."
-                exit 0
-              else
-                echo "::error title=judge-drift invocation::acceptance gate exited 2 with no INFRA-ERROR marker on stderr (likely argparse/invocation failure). NOT downgraded."
-                exit 2
-              fi ;;
-            3)
-              echo "::warning title=judge-drift calibration::meta-test returned JUDGE-DRIFT (exit 3); scores shifted vs golden. NOT a PR issue — investigate judge calibration separately."
-              exit 0 ;;
-            *)
-              echo "::error title=judge-drift failure::meta-test exited $rc (real failure)"
-              exit "$rc" ;;
-          esac
-      - name: Upload artifacts on failure
-        if: failure() && steps.filter.outputs.polish == 'true'
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: meta-test-failure-pr
-          path: |
-            scripts/eval/golden_judge_scores.json
-            benchmark-results/eval/
-          retention-days: 14
-
   acceptance-gate:
     name: polish-quality-gate
-    needs: meta-test
     if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -178,9 +78,10 @@ jobs:
       - name: Run acceptance gate (gpt-4o-mini polish, Gemini 3 Pro judge)
         if: steps.filter.outputs.polish == 'true'
         shell: bash
-        # Same exit-code policy as judge-drift-check above. Exit 2 is shared
-        # by the script's INFRA-ERROR path AND argparse usage errors, so we
-        # discriminate by stderr content (INFRA-ERROR: prefix) before
+        # Exit-code policy — preserve the script's semantics so transient judge
+        # or API failures do not burn required-check credit. Exit 2 is shared
+        # by acceptance_gate.py's INFRA-ERROR path AND argparse usage errors,
+        # so we discriminate by stderr content (INFRA-ERROR: prefix) before
         # downgrading.
         #   0 = polish scored, no regression → pass
         #   1 = real polish regression (PR changes dropped quality) → fail
