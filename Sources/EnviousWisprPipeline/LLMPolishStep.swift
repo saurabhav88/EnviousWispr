@@ -8,6 +8,11 @@ import Foundation
 public final class LLMPolishStep: TextProcessingStep {
   public let name = "LLM Polish"
 
+  /// LLM polish failures are user-visible: surface them to `polishError` so
+  /// the runner shows the "AI polish failed" banner. All other steps inherit
+  /// the default `.swallow` from the protocol extension.
+  internal var errorSurfacePolicy: ErrorSurfacePolicy { .surface }
+
   public var llmProvider: LLMProvider = .none
   public var llmModel: String = LLMProvider.defaultModel(for: .openAI)
   public var polishInstructions: PolishInstructions = .default

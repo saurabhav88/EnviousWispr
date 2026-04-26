@@ -639,6 +639,7 @@ private final class MockPolishStep: TextProcessingStep {
   let name = "LLM Polish"
   let isEnabled = true
   let maxDuration: Duration
+  let errorSurfacePolicy: ErrorSurfacePolicy = .surface
 
   private let mode: Mode
 
