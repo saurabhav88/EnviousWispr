@@ -1052,22 +1052,46 @@ def _http_polish_all(polish_model: str, cases: list, out_path: Path) -> dict:
     return {"successes": successes, "errors": error_count, "error_breakdown": error_breakdown}
 
 
-def _load_candidates_jsonl(path: Path) -> tuple[dict, dict]:
+def _load_candidates_jsonl(path: Path, cases: list | None = None) -> tuple[dict, dict]:
     """Load a candidate JSONL file written by either _http_polish_all or the
     Swift runner. Returns (candidates_by_id, reliability_info).
 
     candidates_by_id[id] is either the polished string OR None if the record
     had an `error` field instead of `candidate`.
+
+    If `cases` is provided, errors on production-bypassed short inputs
+    (<=3 words) are normalized: the record is treated as a success with
+    candidate=raw_input rather than an error. This keeps reliability
+    accounting symmetric across providers regardless of whether the runner
+    skipped the call upstream (HTTP, see `_http_polish_all`) or attempted it
+    and errored (AFM Swift runner). Without this, AFM's short-input errors
+    flowed into `cases_errored` and could trip the 20% ceiling on a corpus
+    with many short inputs while HTTP providers got a free pass.
     """
+    short_input_ids: set[str] = set()
+    raw_input_by_id: dict[str, str] = {}
+    if cases is not None:
+        for case in cases:
+            raw_input_by_id[case["id"]] = case["asr_input"]
+            if _is_short_input_bypass(case["asr_input"]):
+                short_input_ids.add(case["id"])
     candidates: dict[str, str | None] = {}
     error_breakdown: dict[str, int] = {}
     error_count = 0
+    short_input_errors_normalized = 0
     for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
         record = json.loads(line)
+        cid = record.get("id")
+        if "error" in record and cid in short_input_ids:
+            # Production never sent this case to the LLM; an error here is
+            # accounting noise. Substitute raw and count as success.
+            candidates[cid] = raw_input_by_id[cid]
+            short_input_errors_normalized += 1
+            continue
         if "error" in record:
-            candidates[record["id"]] = None
+            candidates[cid] = None
             error_count += 1
             # Extract the LLMError kind from the Swift enum-description string
             # (e.g. "emptyResponse", "frameworkUnavailable(...)", "outputLanguageDrift(...)").
@@ -1075,12 +1099,13 @@ def _load_candidates_jsonl(path: Path) -> tuple[dict, dict]:
             kind = record["error"].split("(", 1)[0].strip()
             error_breakdown[kind] = error_breakdown.get(kind, 0) + 1
         elif "candidate" in record:
-            candidates[record["id"]] = record["candidate"]
+            candidates[cid] = record["candidate"]
         else:
             raise ValueError(f"candidate JSONL record missing both 'candidate' and 'error': {record}")
     return candidates, {
         "cases_succeeded": sum(1 for v in candidates.values() if v is not None),
         "cases_errored": error_count,
+        "short_input_errors_normalized": short_input_errors_normalized,
         "error_breakdown": error_breakdown,
     }
 
@@ -1466,7 +1491,7 @@ def mode_bench(out_name: str | None, corpus_path: Path | None, sleep_seconds: fl
     # not raw provider output. Per-provider fallback counts feed reliability.
     loaded: dict[str, tuple[dict, dict]] = {}
     for provider, path in candidate_files.items():
-        cands, rel = _load_candidates_jsonl(path)
+        cands, rel = _load_candidates_jsonl(path, cases=cases)
         if provider == "apple-intelligence":
             rel["cases_attempted"] = len(cases)
             reliability["apple-intelligence"] = rel
