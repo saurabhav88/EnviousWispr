@@ -2,6 +2,11 @@
 import EnviousWisprCore
 import Foundation
 
+/// Progress callback shape: (fractionCompleted, phaseString, detailString).
+/// Lives at the protocol scope so any backend with download progress can
+/// surface it through the shared `prepare(progressCallback:)` entry point.
+public typealias ProgressCallback = @Sendable (Double, String, String) -> Void
+
 /// Unified protocol for all ASR backends.
 ///
 /// Both WhisperKit and Parakeet/FluidAudio conform to this protocol,
@@ -12,6 +17,11 @@ public protocol ASRBackend: Actor {
 
   /// Load/initialize the model. Call once before transcription.
   func prepare() async throws
+
+  /// Load/initialize the model with optional progress reporting.
+  /// Default implementation delegates to `prepare()`; backends that report
+  /// progress (Parakeet via FluidAudio download) override directly.
+  func prepare(progressCallback: ProgressCallback?) async throws
 
   /// Batch transcription from raw Float32 samples (16kHz mono).
   func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult
@@ -54,6 +64,13 @@ extension ASRBackend {
   }
 
   public func cancelStreaming() async {}
+
+  /// Default delegates to plain `prepare()` — backends without progress
+  /// reporting ignore the callback. ParakeetBackend overrides directly to
+  /// report FluidAudio download progress.
+  public func prepare(progressCallback: ProgressCallback?) async throws {
+    try await prepare()
+  }
 }
 
 /// Errors that can occur during ASR operations.

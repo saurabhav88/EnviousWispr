@@ -20,10 +20,20 @@ public final class ASRManager: ASRManagerInterface {
   /// Single-flight guard: if a load is already in progress, callers await it instead of starting a new one.
   private var inFlightLoadTask: Task<Void, any Error>?
 
-  private var parakeetBackend = ParakeetBackend()
-  private var whisperKitBackend = WhisperKitBackend()
+  // Phase G5: existential-typed for test injection. Production callers pass
+  // nothing; the defaults preserve today's wiring exactly. Tests pass fakes
+  // that report `isReady=true` without a real model load, unblocking
+  // reset-branch coverage in `setInitialBackendType` and `switchBackend`.
+  private var parakeetBackend: any ASRBackend
+  private var whisperKitBackend: any ASRBackend
 
-  public init() {}
+  public init(
+    parakeetBackend: (any ASRBackend)? = nil,
+    whisperKitBackend: (any ASRBackend)? = nil
+  ) {
+    self.parakeetBackend = parakeetBackend ?? ParakeetBackend()
+    self.whisperKitBackend = whisperKitBackend ?? WhisperKitBackend()
+  }
 
   /// The currently active backend.
   public var activeBackend: any ASRBackend {

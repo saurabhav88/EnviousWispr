@@ -25,9 +25,6 @@ public actor ParakeetBackend: ASRBackend {
 
   public init() {}
 
-  /// Progress callback type: (fractionCompleted, phaseString, detailString)
-  public typealias ProgressCallback = @Sendable (Double, String, String) -> Void
-
   public func prepare() async throws {
     try await prepare(progressCallback: nil)
   }
