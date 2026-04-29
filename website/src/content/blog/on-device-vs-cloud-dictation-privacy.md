@@ -160,4 +160,4 @@ EnviousWispr requires Apple Silicon (M1 or later). The Neural Engine and GPU on 
 
 ---
 
-*Curious how specific tools compare? See our side-by-side breakdowns: [EnviousWispr vs WisprFlow](/compare/wisprflow/), [vs Apple Dictation](/compare/apple-dictation/), or [browse all comparisons](/compare/).*
+*Curious how specific tools compare on privacy? See our side-by-side breakdowns: [vs WisprFlow](/compare/wisprflow/), [vs Apple Dictation](/compare/apple-dictation/), [vs Otter.ai](/compare/otter-ai/), [vs Notta](/compare/notta/), [vs Dragon](/compare/dragon/), or [browse all comparisons](/compare/).*

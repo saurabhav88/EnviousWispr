@@ -132,4 +132,4 @@ That's the full setup, from install to your first dictation in under two minutes
 
 [Download EnviousWispr free](/#download) and start dictating, or grab it directly from [GitHub](https://github.com/saurabhav88/EnviousWispr/releases).
 
-*Switching from another tool? See how EnviousWispr compares: [vs WisprFlow](/compare/wisprflow/), [vs Superwhisper](/compare/superwhisper/), [vs Apple Dictation](/compare/apple-dictation/), or [browse all comparisons](/compare/).*
+*Switching from another tool? See how EnviousWispr compares: [vs WisprFlow](/compare/wisprflow/), [vs Superwhisper](/compare/superwhisper/), [vs MacWhisper](/compare/macwhisper/), [vs VoiceInk](/compare/voiceink/), [vs Apple Dictation](/compare/apple-dictation/), or [browse all comparisons](/compare/).*
