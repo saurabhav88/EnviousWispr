@@ -132,3 +132,5 @@ That's the whole workflow. Hold, speak, release. Your commit message lands forma
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/). From download to first dictation in minutes.
 
 Your future self, reading `git log` at 2 AM trying to understand why that migration exists, will thank you.
+
+*Sizing up other dictation tools for dev work? See [vs WisprFlow](/compare/wisprflow/), [vs whisper.cpp](/compare/whisper-cpp/), or [browse all comparisons](/compare/).*

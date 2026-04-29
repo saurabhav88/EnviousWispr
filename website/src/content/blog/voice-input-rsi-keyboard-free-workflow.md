@@ -117,3 +117,5 @@ EnviousWispr gives you a way to listen to that signal without losing your abilit
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/). Minimal-typing setup guide from download to first dictation.
 
 Your hands will thank you.
+
+*Looking at hands-free options for RSI? See [vs Dragon](/compare/dragon/), [vs WisprFlow](/compare/wisprflow/), or [browse all comparisons](/compare/).*

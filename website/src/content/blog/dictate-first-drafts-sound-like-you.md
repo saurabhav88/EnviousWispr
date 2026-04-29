@@ -132,3 +132,5 @@ EnviousWispr is free and yours to keep. No strings.
 - [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/). A fair comparison of where your recordings go.
 
 Your words, your style, your Mac. Nothing leaves the building.
+
+*Looking at other tools for writing? See [vs WisprFlow](/compare/wisprflow/), [vs VoiceInk](/compare/voiceink/), or [browse all comparisons](/compare/).*

@@ -118,3 +118,5 @@ If you want to understand the full transcription and post-processing pipeline be
 - [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/). A fair comparison of where your recordings go.
 
 And if you run into issues or have ideas for developer-specific features, open an issue on [GitHub](https://github.com/saurabhav88/EnviousWispr). We read everything.
+
+*Comparing on-device options for dev work? See [vs whisper.cpp](/compare/whisper-cpp/), [vs WisprFlow](/compare/wisprflow/), or [browse all comparisons](/compare/).*

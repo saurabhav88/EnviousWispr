@@ -93,3 +93,5 @@ A few tips for getting started:
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/). From download to first dictation.
 
 Your next meeting is probably in an hour. That's enough time to install the app and have it ready for your first post-meeting dictation. Try it once. If the summary that comes back is better than what you'd have typed in five minutes (and it will be) you won't go back to the old way.
+
+*Looking for meeting transcription? See [vs Otter.ai](/compare/otter-ai/), [vs Notta](/compare/notta/), or [browse all comparisons](/compare/).*
