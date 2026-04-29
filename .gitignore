@@ -109,10 +109,13 @@ scripts/*
 !scripts/release-preflight.sh
 !scripts/swift-test.sh
 !scripts/indexnow-submit.py
-# UAT scripts — required by workflow hooks in every worktree (validation-discipline.md § UAT modes)
+# UAT scripts — required by workflow tooling (workflow-process.md §1 step 9 + §11)
+# clear-uat.sh removed in PR #498 (per-task .needs-uat marker convention dropped).
+# validate-pr.sh + check-validation.sh added in PR #498 (run-directory model).
 !scripts/attest.sh
-!scripts/clear-uat.sh
+!scripts/check-validation.sh
 !scripts/test-validation.sh
+!scripts/validate-pr.sh
 !scripts/validation-status.sh
 # Polish eval harness — PUBLIC tracked files only (see .claude/knowledge/polish-eval.md for scope rules)
 !scripts/eval/

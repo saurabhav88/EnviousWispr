@@ -1,15 +1,28 @@
 #!/bin/bash
-# attest.sh — Record completion of a validation check.
-# Usage: scripts/attest.sh <check_name> "what I observed"
-# Validates: check is in required_checks, tree hash matches current state.
-# Appends to .validation/events.jsonl. Never deletes old events.
+# attest.sh — Record completion of a validation check (PR #498 reworked).
+#
+# Writes into the latest .validation/runs/<id>/ directory as an attestation
+# event for that run. Also keeps the legacy .validation/events.jsonl
+# append-only log as a low-signal cross-PR breadcrumb.
+#
+# Binds attestation to current HEAD SHA (committed state) AND the older
+# tree_hash (working state) so callers can reason about either. The run
+# directory itself is the canonical primary evidence; events.jsonl stays
+# for backwards compatibility with `validation-status.sh` consumers.
+#
+# Usage:
+#   scripts/attest.sh <check_name> "what I observed"
+#
+# `check_name` examples: tests, smoke, live-uat, codex-review, codex-prose,
+# broken-refs, shellcheck, self-test, astro-build, link-check,
+# workflow-run, acceptance-gate, worker-test, deploy-smoke, endpoint-smoke.
 
 set -eo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VALIDATION_DIR="$PROJECT_ROOT/.validation"
-STATE_FILE="$VALIDATION_DIR/state.json"
 EVENTS_FILE="$VALIDATION_DIR/events.jsonl"
+RUNS_DIR="$VALIDATION_DIR/runs"
 
 # --- Args ---
 if [ $# -lt 2 ]; then
@@ -26,24 +39,10 @@ if [ -z "$note" ]; then
   exit 1
 fi
 
-# --- State file must exist ---
-if [ ! -f "$STATE_FILE" ]; then
-  echo "ERROR: No validation state found. Run tier-check.sh first (or edit a file to trigger the hook)." >&2
-  exit 1
-fi
-
-# --- Validate check name against required_checks ---
-required=$(jq -r '.required_checks[]' "$STATE_FILE" 2>/dev/null)
-if ! echo "$required" | grep -qx "$check_name"; then
-  echo "ERROR: '$check_name' is not in required_checks for this change." >&2
-  echo "Required checks: $(jq -r '.required_checks | join(", ")' "$STATE_FILE")" >&2
-  exit 1
-fi
-
-# --- Compute current tree hash and compare ---
-state_hash=$(jq -r '.tree_hash' "$STATE_FILE")
-
-current_hash=$(
+# --- Capture HEAD SHA + tree hash + bundle path ---
+head_sha=$(git -C "$PROJECT_ROOT" rev-parse HEAD 2>/dev/null || echo "unknown")
+short_sha=$(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+tree_hash=$(
   cd "$PROJECT_ROOT"
   {
     git diff HEAD -- . ':(exclude).validation' 2>/dev/null || true
@@ -52,33 +51,88 @@ current_hash=$(
     done || true
   } | shasum | cut -d' ' -f1
 )
+bundle_path="/tmp/EnviousWispr Local.app"
+[ -d "$bundle_path" ] || bundle_path=""
 
-if [ "$current_hash" != "$state_hash" ]; then
-  echo "ERROR: Tree hash changed since last tier-check." >&2
-  echo "  State hash:   $state_hash" >&2
-  echo "  Current hash: $current_hash" >&2
-  echo "Code was edited after tier-check ran. Re-run tier-check.sh or rebuild to update state." >&2
-  exit 1
+# --- Find or create the latest run directory for this HEAD ---
+mkdir -p "$RUNS_DIR"
+LATEST_RUN=""
+if [ -d "$RUNS_DIR" ]; then
+  # Per Codex round 4 + round 5: glob expands oldest-first; xargs -I{} ls -td
+  # was a no-op (ls -t on 1 file). Pick newest run dir for this HEAD via stat
+  # mtime + sort -rn. Attestations must target the NEWEST matching run.
+  LATEST_RUN=$(grep -lE "\"head_sha\":\\s*\"$head_sha\"" "$RUNS_DIR"/*/run.json 2>/dev/null \
+    | while read -r f; do
+        printf '%s\t%s\n' "$(stat -f '%m' "$f" 2>/dev/null || stat -c '%Y' "$f" 2>/dev/null || echo 0)" "$f"
+      done \
+    | sort -rn \
+    | head -1 \
+    | cut -f2 \
+    || true)
+  LATEST_RUN=${LATEST_RUN:+$(dirname "$LATEST_RUN")}
 fi
 
-# --- Check if already attested for this hash ---
-if [ -f "$EVENTS_FILE" ]; then
-  already=$(jq -r "select(.check == \"$check_name\" and .tree_hash == \"$state_hash\") | .check" "$EVENTS_FILE" 2>/dev/null || true)
-  if [ -n "$already" ]; then
-    echo "NOTE: '$check_name' already attested for this tree hash. Updating note." >&2
-  fi
+if [ -z "$LATEST_RUN" ]; then
+  TIMESTAMP=$(date -u +"%Y-%m-%dT%H-%M-%SZ")
+  LATEST_RUN="$RUNS_DIR/$TIMESTAMP-$short_sha"
+  mkdir -p "$LATEST_RUN"
+  branch=$(git -C "$PROJECT_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+  jq -n -c \
+    --argjson schema 1 \
+    --arg head "$head_sha" \
+    --arg branch "$branch" \
+    --arg started "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+    '{schema_version:$schema, head_sha:$head, branch:$branch, declared_lane:"unknown", detected_lanes:[], is_mixed_pr:false, started_at:$started, completed_at:null, obligations_satisfied:[], obligations_skipped:[], skip_notes:[]}' \
+    > "$LATEST_RUN/run.json"
 fi
 
-# --- Append attestation event ---
+# --- Write per-step attestation file in the run dir ---
 timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+step_file="$LATEST_RUN/${check_name}.json"
 
 jq -n -c \
   --arg check "$check_name" \
-  --arg tree_hash "$state_hash" \
+  --arg head_sha "$head_sha" \
+  --arg tree_hash "$tree_hash" \
+  --arg bundle "$bundle_path" \
   --arg note "$note" \
   --arg ts "$timestamp" \
-  '{check:$check, tree_hash:$tree_hash, note:$note, ts:$ts}' >> "$EVENTS_FILE"
+  '{check:$check, head_sha:$head_sha, tree_hash:$tree_hash, bundle_path:$bundle, note:$note, ts:$ts}' \
+  > "$step_file"
+
+# --- Also append to legacy events.jsonl for cross-PR breadcrumb ---
+mkdir -p "$VALIDATION_DIR"
+jq -n -c \
+  --arg check "$check_name" \
+  --arg head_sha "$head_sha" \
+  --arg tree_hash "$tree_hash" \
+  --arg note "$note" \
+  --arg ts "$timestamp" \
+  '{check:$check, head_sha:$head_sha, tree_hash:$tree_hash, note:$note, ts:$ts}' \
+  >> "$EVENTS_FILE"
+
+# --- Update run.json's obligations_satisfied to include this check, AND
+# remove from obligations_skipped + skip_notes (paired by index). Per
+# Codex review feedback: a satisfied obligation must not also appear in
+# the skipped list — the run.json should reflect honest current state.
+TMP_RUN=$(mktemp)
+jq --arg check "$check_name" \
+  '
+  # Find the index of this check in obligations_skipped so we can remove the
+  # paired skip_notes entry too.
+  ((.obligations_skipped // []) | index($check)) as $idx
+  | .obligations_satisfied = ((.obligations_satisfied // []) + [$check] | unique)
+  | if $idx == null then
+      .
+    else
+      .obligations_skipped = ((.obligations_skipped // []) | del(.[$idx]))
+      | .skip_notes = ((.skip_notes // []) | del(.[$idx]))
+    end
+  ' \
+  "$LATEST_RUN/run.json" > "$TMP_RUN" && mv "$TMP_RUN" "$LATEST_RUN/run.json"
 
 echo "Attested: $check_name"
 echo "  Note: $note"
-echo "  Tree hash: $state_hash"
+echo "  Run dir: $LATEST_RUN"
+echo "  HEAD: $head_sha"
+echo "  Tree: $tree_hash"
