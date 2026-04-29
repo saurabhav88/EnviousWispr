@@ -103,3 +103,5 @@ EnviousWispr doesn't try to be a personal assistant or a voice-activated everyth
 If you want to understand more about how the transcription pipeline works under the hood, the [how it works page](/how-it-works/) walks through the full process. But honestly, you don't need to know any of that to use it. Download it, turn on hands-free mode, and start getting your emails done while your toddler treats you like playground equipment.
 
 Your text gets written. Your kid gets your attention. Nobody's audio goes to the cloud. You get to be the parent who's actually present, not the one hunched over a keyboard saying "one more minute." That's the whole pitch.
+
+*Comparing hands-free dictation tools? See [vs Dragon](/compare/dragon/), [vs Apple Dictation](/compare/apple-dictation/), or [browse all comparisons](/compare/).*

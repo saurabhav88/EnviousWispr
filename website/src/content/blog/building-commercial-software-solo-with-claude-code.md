@@ -203,3 +203,5 @@ The tracker piece is separate. Pick whatever works for you: GitHub Issues, Linea
 This is what's working for me. Your project is different, your stack is different, and you'll find your own patterns. The core idea is simple: give Claude a real brain, track your work so nothing falls through the cracks, and follow a consistent loop so quality stays high even when you're moving fast.
 
 I'd love to hear what's working for you. If you're building something with Claude Code and have found patterns that help, I'm genuinely interested. We're all figuring this out together.
+
+*Curious about EnviousWispr the product Claude and I shipped together? See [how it works](/how-it-works/) or [browse comparisons](/compare/) against other Mac dictation tools.*

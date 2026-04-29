@@ -107,3 +107,5 @@ If you don't have EnviousWispr yet, [download it free](https://enviouswispr.com/
 - [Dictation for Writers: Skip the Blank Page](/blog/dictation-for-writers-skip-blank-page/). The same principle that helps writers applies to podcast scripting.
 
 The blank page is intimidating because it asks you to write. But you don't need to write a podcast script. You need to *say* it. Podcast prep dictation just means capturing what you already know how to do (talk about things you care about) and turning it into text that's ready for the mic.
+
+*Comparing tools for podcast prep? See [vs MacWhisper](/compare/macwhisper/), [vs Otter.ai](/compare/otter-ai/), or [browse all comparisons](/compare/).*

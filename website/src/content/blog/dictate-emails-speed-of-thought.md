@@ -96,3 +96,5 @@ The speech model downloads automatically on first launch. After that initial set
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/). From download to first dictation.
 
 Set your hotkey. Open your email client. Hold, speak, release. Your first dictated email will be done before you finish reading this sentence.
+
+*Comparing tools for email and quick replies? See [vs WisprFlow](/compare/wisprflow/), [vs Apple Dictation](/compare/apple-dictation/), or [browse all comparisons](/compare/).*

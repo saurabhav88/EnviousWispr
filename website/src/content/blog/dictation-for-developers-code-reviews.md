@@ -113,3 +113,5 @@ It's fast to switch, and you'll quickly develop a habit of matching the preset t
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/). Setup walkthrough from download to first dictation.
 
 No login screen. No pricing page. Just faster prose, wherever your dev workflow needs it.
+
+*Comparing dev dictation workflows on Mac? See [vs WisprFlow](/compare/wisprflow/), [vs whisper.cpp](/compare/whisper-cpp/), or [browse all comparisons](/compare/).*

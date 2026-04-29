@@ -108,3 +108,5 @@ Dictation with on-device post-processing removes that friction. You speak your s
 - [On-device vs. cloud dictation: what's private](/blog/on-device-vs-cloud-dictation-privacy/). Why on-device matters for pre-release and embargoed podcast content.
 
 [Download EnviousWispr free](https://enviouswispr.com/#download). No account, no subscription, no API key required. The speech model downloads automatically on first launch. Choose a writing style preset, and start turning episodes into written content the same day. The source is [on GitHub](https://github.com/saurabhav88/EnviousWispr/releases) if you want to inspect it first.
+
+*Comparing tools for episode-to-text workflows? See [vs MacWhisper](/compare/macwhisper/), [vs Otter.ai](/compare/otter-ai/), or [browse all comparisons](/compare/).*

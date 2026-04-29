@@ -106,3 +106,5 @@ EnviousWispr is [free](https://github.com/saurabhav88/EnviousWispr). Just downlo
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/). From download to first dictation.
 
 If you spend your days bouncing between Slack, email, and docs, and you're tired of typing the same kinds of messages over and over, try speaking them instead. You'll write more, write better, and finish faster. Your hands will thank you by the end of the day.
+
+*Comparing daily-driver dictation tools? See [vs WisprFlow](/compare/wisprflow/), [vs Apple Dictation](/compare/apple-dictation/), or [browse all comparisons](/compare/).*

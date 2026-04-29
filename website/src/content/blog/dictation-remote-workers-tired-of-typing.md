@@ -115,3 +115,5 @@ Then get comfortable switching between Friendly (for Slack) and Formal (for emai
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/). From download to first dictation.
 
 The typing load of remote work isn't going to shrink. Slack channels multiply. Async communication grows. The volume of text you're expected to produce only goes up. You can either type all of it, or you can start talking some of it. Your wrists will thank you.
+
+*Looking for a dictation daily-driver? See [vs WisprFlow](/compare/wisprflow/), [vs Otter.ai](/compare/otter-ai/), or [browse all comparisons](/compare/).*

@@ -98,3 +98,5 @@ The first model download takes a few minutes. After that, you're set. Download i
 - [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/). Why your family's background audio should stay on your Mac.
 
 Hold the hotkey. Say what you need to say. Let go. That's the whole workflow, and it works just as well with one hand as it does with two.
+
+*Looking at hands-free options? See [vs Apple Dictation](/compare/apple-dictation/), [vs Dragon](/compare/dragon/), or [browse all comparisons](/compare/).*

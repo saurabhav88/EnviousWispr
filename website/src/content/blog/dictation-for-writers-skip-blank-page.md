@@ -120,3 +120,5 @@ EnviousWispr is free. You don't need an account, a subscription, or an API key.
 [Download EnviousWispr free](/#download) or grab the latest release from [GitHub](https://github.com/saurabhav88/EnviousWispr/releases). Install it, grant microphone and accessibility permissions, and you're dictating within a few minutes. The speech model downloads automatically. Pick a writing style preset that matches your voice, and try dictating your next first draft instead of typing it.
 
 The blank page problem doesn't go away. But when you can speak your way past it, it stops being the thing that kills your morning.
+
+*Sizing up other writing tools? See [vs WisprFlow](/compare/wisprflow/), [vs Superwhisper](/compare/superwhisper/), or [browse all comparisons](/compare/).*

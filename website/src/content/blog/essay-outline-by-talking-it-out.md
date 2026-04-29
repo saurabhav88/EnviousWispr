@@ -103,3 +103,5 @@ If you've got a paper due and the outline isn't cooperating, try talking it out.
 - [Dictation for Writers: Skip the Blank Page](/blog/dictation-for-writers-skip-blank-page/). The same principle applied to longer-form writing.
 
 You'll probably surprise yourself with how much structure was already in your head. It just needed a way out.
+
+*Comparing dictation options for students? See [vs WisprFlow](/compare/wisprflow/), [vs Apple Dictation](/compare/apple-dictation/), or [browse all comparisons](/compare/).*

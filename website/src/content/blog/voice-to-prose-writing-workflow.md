@@ -114,3 +114,5 @@ Then try this: open whatever you're working on, hold the hotkey, and talk throug
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/). Full setup walkthrough from download to first dictation.
 
 You might be surprised how quickly it becomes part of how you draft. Not a replacement for typing. Just a faster way to get the first version out of your head and onto the page.
+
+*Looking at other tools for writers? See [vs WisprFlow](/compare/wisprflow/), [vs Superwhisper](/compare/superwhisper/), or [browse all comparisons](/compare/).*

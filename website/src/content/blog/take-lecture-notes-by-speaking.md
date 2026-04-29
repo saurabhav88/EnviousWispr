@@ -99,3 +99,5 @@ If you're ready to try voice notes for students, the setup takes less than five 
 - [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/). Why your academic work stays safer with on-device processing.
 
 That's it. No sign-up, no credit card, no trial period. Just a dictation tool that runs on your Mac (macOS Sonoma or later) and stays out of your way. Your notes will thank you.
+
+*Comparing dictation for students? See [vs WisprFlow](/compare/wisprflow/), [vs Apple Dictation](/compare/apple-dictation/), or [browse all comparisons](/compare/).*
