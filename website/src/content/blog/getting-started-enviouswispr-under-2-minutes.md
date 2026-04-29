@@ -2,10 +2,21 @@
 title: "Getting Started with EnviousWispr in Under 2 Minutes"
 description: "Install EnviousWispr, grant two permissions, and start dictating in any app. This step-by-step guide walks you through full setup in under two minutes."
 pubDate: 2026-03-11
-updatedDate: 2026-04-04
+updatedDate: 2026-04-28
 tags: ["getting-started", "tutorial", "setup", "dictation"]
 draft: false
 author: "Saurabh Vaish"
+faqs:
+  - question: "Do I need an account or API key to use EnviousWispr?"
+    answer: "No. EnviousWispr works fully offline out of the box with the default Parakeet engine. There is no signup, no email confirmation, and no API key to paste in. You can optionally bring your own OpenAI or Anthropic key later if you want cloud AI polish, but it is opt-in."
+  - question: "Which permissions does EnviousWispr request, and why?"
+    answer: "Two permissions, both granted through standard macOS prompts. Microphone access lets the app capture your voice. Accessibility access lets the app paste polished text into the app you are typing in. Neither permission sends data anywhere; both are required for a dictation app to function."
+  - question: "What if my Mac is too old to run EnviousWispr?"
+    answer: "EnviousWispr requires Apple Silicon (M1 or later) running macOS Sonoma 14 or newer. If you are on an Intel Mac, the on-device transcription speed would not be acceptable. We recommend Apple Dictation as a built-in alternative, or a cloud option like WisprFlow if you need a non-Apple-Silicon path."
+  - question: "Will EnviousWispr work in my favorite app?"
+    answer: "Yes, in any text field that accepts paste. That covers Slack, Gmail, VS Code, Notion, Google Docs, Terminal, browsers, native macOS apps, Word, and Cursor. The app pastes into whichever text field has focus, so it works wherever your cursor is blinking."
+  - question: "How do I uninstall EnviousWispr if I change my mind?"
+    answer: "Drag EnviousWispr from your Applications folder to the Trash. Optionally, revoke microphone and accessibility permissions in System Settings under Privacy and Security. The app stores nothing on remote servers, so there is nothing to delete from a cloud account."
 ---
 
 You'll be dictating polished text into your apps before you finish your coffee. No account to create, no API key to find, no subscription to debate. Download, grant two permissions, talk. That's the entire setup, and it takes under two minutes.
