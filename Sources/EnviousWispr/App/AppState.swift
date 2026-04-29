@@ -110,6 +110,13 @@ final class AppState {
   // Feature #8: custom word management — delegated to coordinator
   let customWordsCoordinator = CustomWordsCoordinator()
 
+  /// Broadcasts custom-words changes to all registered consumers (pipelines'
+  /// word-correction + polish steps, plus the re-polish service). Initialized
+  /// at property declaration (no ctor dependencies); seeded with
+  /// `customWordsCoordinator.customWords` in `init` before consumer
+  /// registrations.
+  let customWordsPropagator = CustomWordsPropagator()
+
   // Model discovery — delegated to coordinator
   let llmDiscovery: LLMModelDiscoveryCoordinator
 
@@ -369,14 +376,22 @@ final class AppState {
       self?.startWhisperKitPreloadObservation()
     }
 
-    // Wire custom words changes to pipeline sync
-    customWordsCoordinator.onWordsChanged = { [weak self] words in
-      guard let self else { return }
-      self.pipeline.wordCorrection.customWords = words
-      self.pipeline.llmPolish.customWords = words
-      self.whisperKitPipeline.wordCorrection.customWords = words
-      self.whisperKitPipeline.llmPolish.customWords = words
-      self.polishService.llmPolishStep.customWords = words
+    // Wire custom-words propagator. Construction order is non-reversible:
+    // 1) seed `propagator.words` with current coordinator words via `update`
+    //    (no consumers registered yet, so this is a no-op broadcast that just
+    //    captures the seed value)
+    // 2) register all five consumers (each receives the seed via `register()`'s
+    //    initial-sync path)
+    // 3) THEN forward `onWordsChanged` into `propagator.update(_:)` so future
+    //    mutations broadcast through the registry.
+    customWordsPropagator.update(customWordsCoordinator.customWords)
+    customWordsPropagator.register(pipeline.wordCorrection)
+    customWordsPropagator.register(pipeline.llmPolish)
+    customWordsPropagator.register(whisperKitPipeline.wordCorrection)
+    customWordsPropagator.register(whisperKitPipeline.llmPolish)
+    customWordsPropagator.register(polishService.llmPolishStep)
+    customWordsCoordinator.onWordsChanged = { [weak customWordsPropagator] words in
+      customWordsPropagator?.update(words)
     }
 
     // Initialize logger
