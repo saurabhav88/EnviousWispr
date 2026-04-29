@@ -8,7 +8,7 @@ export async function GET(context: APIContext) {
   return rss({
     title: 'EnviousWispr Blog',
     description:
-      'Updates, release notes, and deep dives from the EnviousWispr team — private AI dictation for macOS.',
+      'Updates, release notes, and deep dives from the EnviousWispr team: private AI dictation for macOS.',
     site: context.site ?? 'https://enviouswispr.com',
     items: sorted.map(post => ({
       title: post.data.title,

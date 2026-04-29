@@ -34,7 +34,7 @@ const formatDate = (d: Date) =>
 const siteUrl = 'https://enviouswispr.com';
 const canonicalUrl = Astro.url.href;
 const ogImage = image || '/og-image.png';
-const ogImageAlt = `${title} — EnviousWispr`;
+const ogImageAlt = `${title} | EnviousWispr`;
 
 const articleJsonLd = JSON.stringify({
   "@context": "https://schema.org",
@@ -129,7 +129,7 @@ const breadcrumbJsonLd = JSON.stringify({
 });
 ---
 
-<BaseLayout title={`${title} — EnviousWispr`} description={description} activePage="blog" ogType="article" ogImage={ogImage} ogImageAlt={ogImageAlt}>
+<BaseLayout title={`${title} | EnviousWispr`} description={description} activePage="blog" ogType="article" ogImage={ogImage} ogImageAlt={ogImageAlt}>
   <Fragment slot="head">
     <meta property="article:published_time" content={pubDate.toISOString()} />
     {updatedDate && <meta property="article:modified_time" content={updatedDate.toISOString()} />}
