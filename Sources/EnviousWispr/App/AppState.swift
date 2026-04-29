@@ -216,7 +216,7 @@ final class AppState {
       hotkeyService: hotkeyService,
       whisperKitSetup: whisperKitSetup
     )
-    settingsSync.applyInitialSettings(settings, customWords: customWordsCoordinator.customWords)
+    settingsSync.applyInitialSettings(settings)
 
     // Wire dictation activity provider (after all stored properties initialized)
     polishService.setDictationActivity(self)
@@ -382,7 +382,7 @@ final class AppState {
     //    captures the seed value)
     // 2) register all five consumers (each receives the seed via `register()`'s
     //    initial-sync path)
-    // 3) THEN forward `onWordsChanged` into `propagator.update(_:)` so future
+    // 3) forward `onWordsChanged` into `propagator.update(_:)` so future
     //    mutations broadcast through the registry.
     customWordsPropagator.update(customWordsCoordinator.customWords)
     customWordsPropagator.register(pipeline.wordCorrection)
@@ -393,6 +393,12 @@ final class AppState {
     customWordsCoordinator.onWordsChanged = { [weak customWordsPropagator] words in
       customWordsPropagator?.update(words)
     }
+    // Phase D (#496): the prior 5-way fanout (pipeline.wordCorrection,
+    // pipeline.llmPolish, whisperKitPipeline.wordCorrection,
+    // whisperKitPipeline.llmPolish, polishService.llmPolishStep) is now
+    // owned by `customWordsPropagator` above. Mirror sites in
+    // PipelineSettingsSync (5 setter lines + the `customWords:` parameter)
+    // were also removed.
 
     // Initialize logger
     Task {

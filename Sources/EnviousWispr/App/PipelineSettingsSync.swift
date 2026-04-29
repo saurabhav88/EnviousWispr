@@ -48,17 +48,16 @@ final class PipelineSettingsSync {
 
   /// Seed live-mutable subsystems. Per-recording values are captured fresh
   /// at each `startRecording` and are not seeded here.
-  func applyInitialSettings(_ settings: SettingsManager, customWords: [CustomWord]) {
+  ///
+  /// Custom words are NOT seeded here — `CustomWordsPropagator` (registered
+  /// in AppState init) owns that fanout. See Phase D (#496).
+  func applyInitialSettings(_ settings: SettingsManager) {
     pipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
     pipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
-    pipeline.wordCorrection.customWords = customWords
-    pipeline.llmPolish.customWords = customWords
     whisperKitPipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
     whisperKitPipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
-    whisperKitPipeline.wordCorrection.customWords = customWords
-    whisperKitPipeline.llmPolish.customWords = customWords
 
-    syncPolishServiceSettings(settings, customWords: customWords)
+    syncPolishServiceSettings(settings)
 
     if settings.noiseSuppression {
       audioCapture.buildEngine(noiseSuppression: true)
@@ -197,13 +196,15 @@ final class PipelineSettingsSync {
   }
 
   /// Re-polish settings. TODO: share `LLMPolishConfig` with the pipeline (#206 follow-up).
-  private func syncPolishServiceSettings(_ settings: SettingsManager, customWords: [CustomWord]) {
+  ///
+  /// Custom words are NOT seeded here — `CustomWordsPropagator` owns that
+  /// fanout (Phase D, #496).
+  private func syncPolishServiceSettings(_ settings: SettingsManager) {
     polishService.llmPolishStep.llmProvider = settings.llmProvider
     polishService.llmPolishStep.llmModel = resolvedModel(settings)
     polishService.llmPolishStep.polishInstructions = settings.activePolishInstructions
     polishService.llmPolishStep.styleConfig = settings.activePolishStyleConfig
     polishService.llmPolishStep.useExtendedThinking = settings.useExtendedThinking
-    polishService.llmPolishStep.customWords = customWords
   }
 
   /// Resolve the effective LLM model ID for the current provider.
