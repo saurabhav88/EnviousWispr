@@ -5,7 +5,7 @@ import Foundation
 
 /// Polishes transcribed text using an LLM provider.
 @MainActor
-public final class LLMPolishStep: TextProcessingStep {
+public final class LLMPolishStep: TextProcessingStep, CustomWordsConsumer {
   public let name = "LLM Polish"
 
   /// LLM polish failures are user-visible: surface them to `polishError` so

@@ -110,6 +110,13 @@ final class AppState {
   // Feature #8: custom word management — delegated to coordinator
   let customWordsCoordinator = CustomWordsCoordinator()
 
+  /// Broadcasts custom-words changes to all registered consumers (pipelines'
+  /// word-correction + polish steps, plus the re-polish service). Initialized
+  /// at property declaration (no ctor dependencies); seeded with
+  /// `customWordsCoordinator.customWords` in `init` before consumer
+  /// registrations.
+  let customWordsPropagator = CustomWordsPropagator()
+
   // Model discovery — delegated to coordinator
   let llmDiscovery: LLMModelDiscoveryCoordinator
 
@@ -209,7 +216,7 @@ final class AppState {
       hotkeyService: hotkeyService,
       whisperKitSetup: whisperKitSetup
     )
-    settingsSync.applyInitialSettings(settings, customWords: customWordsCoordinator.customWords)
+    settingsSync.applyInitialSettings(settings)
 
     // Wire dictation activity provider (after all stored properties initialized)
     polishService.setDictationActivity(self)
@@ -369,15 +376,23 @@ final class AppState {
       self?.startWhisperKitPreloadObservation()
     }
 
-    // Wire custom words changes to pipeline sync
-    customWordsCoordinator.onWordsChanged = { [weak self] words in
-      guard let self else { return }
-      self.pipeline.wordCorrection.customWords = words
-      self.pipeline.llmPolish.customWords = words
-      self.whisperKitPipeline.wordCorrection.customWords = words
-      self.whisperKitPipeline.llmPolish.customWords = words
-      self.polishService.llmPolishStep.customWords = words
-    }
+    // Wire custom-words propagator. The exact ordering (seed → register all
+    // consumers → install onWordsChanged) lives in `wireCustomWords` so
+    // tests can drive the same path with spy consumers + a real
+    // `CustomWordsCoordinator`. Phase D (#496) replaces the prior 5-way
+    // fanout in AppState plus 5 mirror sites in `PipelineSettingsSync`.
+    wireCustomWords(
+      propagator: customWordsPropagator,
+      initialWords: customWordsCoordinator.customWords,
+      consumers: [
+        pipeline.wordCorrection,
+        pipeline.llmPolish,
+        whisperKitPipeline.wordCorrection,
+        whisperKitPipeline.llmPolish,
+        polishService.llmPolishStep,
+      ],
+      coordinator: customWordsCoordinator
+    )
 
     // Initialize logger
     Task {

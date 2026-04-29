@@ -4,7 +4,7 @@ import Foundation
 
 /// Applies custom word corrections to ASR output.
 @MainActor
-public final class WordCorrectionStep: TextProcessingStep {
+public final class WordCorrectionStep: TextProcessingStep, CustomWordsConsumer {
   public let name = "Word Correction"
 
   public var wordCorrectionEnabled: Bool = false
