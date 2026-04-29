@@ -2,10 +2,21 @@
 title: "macOS Dictation That Works Offline and Stays Private"
 description: "Fully private, on-device dictation for macOS that never sends your voice to the cloud. How EnviousWispr delivers offline speech-to-text you can trust."
 pubDate: 2026-03-11
-updatedDate: 2026-04-04
+updatedDate: 2026-04-28
 tags: ["accessibility", "privacy", "dictation", "offline"]
 draft: false
 author: "Saurabh Vaish"
+faqs:
+  - question: "Does macOS have a built-in offline dictation option?"
+    answer: "Yes, but with caveats. Apple Dictation can download an Enhanced Dictation model that runs locally, but the experience is dated, post-processing is minimal, and accuracy on long-form dictation lags purpose-built tools. EnviousWispr runs entirely on-device using newer speech models (Parakeet for English, Whisper for multilingual) plus optional AI polish, so the transcript you paste is closer to what you actually meant to write."
+  - question: "Can dictation software really work without an internet connection?"
+    answer: "Yes, when the speech model runs locally. EnviousWispr ships with Core ML models that execute on your Mac's Neural Engine, so the entire transcribe-and-polish pipeline runs offline after the first download. There is no API call out, no server round-trip, and no graceful degradation when the Wi-Fi drops."
+  - question: "Is on-device dictation accurate enough for medical or accessibility use?"
+    answer: "On Apple Silicon Macs, on-device speech recognition reaches word error rates competitive with leading cloud APIs for English dictation. For accessibility users who rely on voice input as a primary modality, that accuracy plus the predictability of no network failures is usually the deciding factor. For medical dictation, accuracy matters but the on-device privacy story usually matters more."
+  - question: "What happens if I dictate while completely offline?"
+    answer: "Everything works the same. EnviousWispr captures audio, runs transcription via Core ML, and pastes polished text into your app. The only feature that needs network is optional cloud AI polish (OpenAI, Gemini); on-device polish via Apple Intelligence or Ollama still works offline, as does raw transcription with no polish at all."
+  - question: "Is there a free offline dictation app for Mac?"
+    answer: "Yes. EnviousWispr is free to download, requires no account, and runs entirely on your Mac. There is no usage cap, no trial period, and no subscription tier. You can use it indefinitely without ever creating an account or connecting to a server."
 ---
 
 What happens to your primary input method when the Wi-Fi goes down? If voice input is how you write (because typing hurts, or because it's simply not an option) that's not a hypothetical question. It's the difference between a tool you can depend on and one that fails when you need it most.
