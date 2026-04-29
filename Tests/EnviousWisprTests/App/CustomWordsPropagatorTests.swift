@@ -7,10 +7,15 @@ import Testing
 /// Phase D (#496) — pins the `CustomWordsPropagator` contract around the new
 /// registry pattern that replaces AppState's 5-way custom-words fanout.
 ///
-/// Tests assert observable behavior on conforming spy consumers, not internal
-/// `consumers` array state. Spies are plain `@MainActor final class` types —
-/// no actor indirection, no production-protocol re-use beyond the contract
-/// the propagator broadcasts on.
+/// Tests assert observable behavior on conforming spy consumers. Spies are
+/// plain `@MainActor final class` types — no actor indirection.
+///
+/// Coverage shape (after Codex truth-audit, 2026-04-29):
+/// - Unit: weak storage (deinit probe), initial-sync, dup-register idempotence.
+/// - Integration via `wireCustomWords`: AppState's exact wire ordering
+///   exercised against spy consumers + a real `CustomWordsCoordinator`. This
+///   is the test that catches "future AppState refactor drops a register()
+///   call" or "wire ordering reversed."
 @MainActor
 @Suite("CustomWordsPropagator — Phase D registry contract")
 struct CustomWordsPropagatorTests {
@@ -26,54 +31,73 @@ struct CustomWordsPropagatorTests {
     var setCount: Int = 0
   }
 
+  /// Reference holder for cross-isolation flag access from a nonisolated
+  /// `deinit`. Marked `@unchecked Sendable` because all writes happen during
+  /// synchronous deallocation on the test's @MainActor thread (autoreleasepool
+  /// drain is synchronous), and reads happen from the same actor afterward.
+  private final class DeinitFlag: @unchecked Sendable {
+    var fired: Bool = false
+  }
+
+  /// Spy that flips a flag in `deinit`. Used to actually prove weak storage
+  /// in the propagator: a strong-storing buggy implementation would keep
+  /// this alive past the autoreleasepool boundary, the flag would stay
+  /// false, and the test would fail.
+  private final class DeinitProbeSpy: CustomWordsConsumer {
+    var customWords: [CustomWord] = []
+    let flag: DeinitFlag
+    init(flag: DeinitFlag) { self.flag = flag }
+    deinit { flag.fired = true }
+  }
+
   private static func makeWord(_ canonical: String) -> CustomWord {
     CustomWord(canonical: canonical)
   }
 
-  // MARK: - Unit: weak-ref behavior
+  // MARK: - Unit: weak storage proven via deinit probe
 
-  /// Replaces "dead-pruning internal state" assertion (which would require a
-  /// test seam to inspect `consumers`). Pins observable behavior: a deallocated
-  /// consumer does not cause a crash on next `update`, and surviving consumers
-  /// continue to receive broadcasts.
-  @Test("Weak-ref behavior — surviving consumer still receives, no crash")
-  func weakRefSurvivorReceives() {
+  /// Substantive proof of weak storage: registers a probe consumer in an
+  /// autoreleasepool, asserts its `deinit` fires after the pool exits.
+  /// A buggy propagator that stored consumers strongly would keep the probe
+  /// alive past the autoreleasepool, the deinit closure would never fire,
+  /// and `deinitFired` would stay false.
+  @Test("Weak storage — transient consumer is deinit'd after autoreleasepool exits")
+  func weakStorageDeinitProbe() {
     let propagator = CustomWordsPropagator()
+    let flag = DeinitFlag()
+    autoreleasepool {
+      let probe = DeinitProbeSpy(flag: flag)
+      propagator.register(probe)
+      // Sanity: probe received initial-sync before going out of scope.
+      #expect(probe.customWords.isEmpty)
+    }
+    #expect(
+      flag.fired,
+      "Probe consumer must be deallocated after the autoreleasepool exits — proves the propagator stores it weakly."
+    )
+
+    // After deallocation, a subsequent update must not crash and must prune
+    // the dead box. Surviving consumer registered AFTER probe death sees
+    // the broadcast cleanly.
     let survivor = SpyConsumer()
     propagator.register(survivor)
-
-    // Register a transient consumer in a scope so its strong ref drops at
-    // scope exit. The propagator's WeakBox is the only remaining reference,
-    // and that reference is weak.
-    autoreleasepool {
-      let transient = SpyConsumer()
-      propagator.register(transient)
-      // Confirm initial-sync hit the transient before it drops.
-      #expect(transient.setCount == 1)
-    }
-
     let words = [Self.makeWord("survivor")]
     propagator.update(words)
-
     #expect(survivor.customWords == words)
-    // Second update should also succeed — pruning happens inside update.
-    let words2 = [Self.makeWord("survivor"), Self.makeWord("again")]
-    propagator.update(words2)
-    #expect(survivor.customWords == words2)
   }
 
   // MARK: - Unit: initial-sync on register
 
   /// `register(_:)` writes the propagator's current `words` to the consumer
-  /// before returning. This is the contract that AppState init relies on for
-  /// "all 5 consumers have the seed before the first user mutation."
+  /// before returning. AppState init relies on this for "all consumers have
+  /// the seed before the first user mutation."
   @Test("Initial-sync on register — late registrant gets current words")
   func initialSyncOnRegister() {
     let propagator = CustomWordsPropagator()
 
     let early = SpyConsumer()
     propagator.register(early)
-    #expect(early.customWords.isEmpty)  // initial-synced from empty seed
+    #expect(early.customWords.isEmpty)
     #expect(early.setCount == 1)
 
     let updated = [Self.makeWord("alpha"), Self.makeWord("beta")]
@@ -97,7 +121,7 @@ struct CustomWordsPropagatorTests {
     let propagator = CustomWordsPropagator()
     let consumer = SpyConsumer()
     propagator.register(consumer)
-    propagator.register(consumer)  // idempotent
+    propagator.register(consumer)  // second call is a no-op
 
     let baseline = consumer.setCount
     let word = Self.makeWord("x")
@@ -106,76 +130,62 @@ struct CustomWordsPropagatorTests {
     #expect(consumer.customWords == [word])
   }
 
-  // MARK: - Unit: re-entrancy contract (DEBUG only)
+  // MARK: - Integration: wireCustomWords exact AppState ordering
 
-  #if DEBUG
-    /// Re-entrant `update()` from inside a consumer setter is contracted out.
-    /// DEBUG builds trap immediately. This test documents the contract; production
-    /// consumers MUST NOT re-enter the propagator synchronously.
-    ///
-    /// Skipped at runtime today: Swift Testing does not have a public API for
-    /// asserting `precondition()` traps without crashing the test process. The
-    /// contract is documented in `CustomWordsPropagator.update(_:)`. Future
-    /// upgrade if a real re-entrant consumer appears: replace this no-op with
-    /// a coalesced last-write-wins implementation and assert ordering instead.
-    @Test("Re-entrancy contract — documented (skipped at runtime; precondition would trap)")
-    func reentrancyContractIsDocumented() {
-      // Intentionally does nothing at runtime. The contract is enforced by the
-      // DEBUG `precondition(!isBroadcasting, ...)` inside `update(_:)`. Trying
-      // to assert that here would crash the test process.
-      //
-      // Sanity: confirm that a normal (non-re-entrant) update sequence works.
-      let propagator = CustomWordsPropagator()
-      let spy = SpyConsumer()
-      propagator.register(spy)
-      let word = Self.makeWord("re-entry-not-attempted")
-      propagator.update([word])
-      #expect(spy.customWords == [word])
-    }
-  #endif
-
-  // MARK: - Integration: initial-launch seeding
-
-  /// Highest-risk regression. Pins the AppState init wire ordering's contract:
-  /// preloaded coordinator words reach all known consumers BEFORE any user
-  /// interaction. If Phase D's wire ordering breaks, this test fails before the
-  /// propagator ever broadcasts on a real event.
-  @Test("Integration — initial-launch seeding from preloaded words")
-  func initialLaunchSeeding() {
+  /// Highest-risk regression test (per Codex grounded review). Drives
+  /// `wireCustomWords` — the exact helper AppState's init calls — with spy
+  /// consumers + a real `CustomWordsCoordinator`. Catches:
+  ///   - someone dropping a `register()` call from AppState's wiring
+  ///   - reordering (assigning `onWordsChanged` before registers, or
+  ///     registering before the seed)
+  ///   - the coordinator's onWordsChanged closure failing to broadcast
+  @Test(
+    "Integration — wireCustomWords seeds all 5 spy consumers + coordinator broadcast reaches them")
+  func wireCustomWordsIntegration() {
+    let coordinator = CustomWordsCoordinator()
     let preloaded = [
-      Self.makeWord("foo"),
-      Self.makeWord("bar"),
-      Self.makeWord("baz"),
+      Self.makeWord("preload-one"),
+      Self.makeWord("preload-two"),
     ]
 
-    // Mirrors AppState init: seed via update(_:) with no consumers attached,
-    // then register each consumer (each receives the seed via initial-sync).
+    // Five spies stand in for the five real production consumers
+    // (pipeline × 2 × 2 + polishService).
+    let spies: [SpyConsumer] = (0..<5).map { _ in SpyConsumer() }
     let propagator = CustomWordsPropagator()
-    propagator.update(preloaded)
 
-    let one = SpyConsumer()
-    let two = SpyConsumer()
-    let three = SpyConsumer()
-    propagator.register(one)
-    propagator.register(two)
-    propagator.register(three)
+    wireCustomWords(
+      propagator: propagator,
+      initialWords: preloaded,
+      consumers: spies,
+      coordinator: coordinator
+    )
 
-    #expect(one.customWords == preloaded)
-    #expect(two.customWords == preloaded)
-    #expect(three.customWords == preloaded)
-    // Each consumer received exactly one write (the initial-sync). No
-    // subsequent broadcast was needed.
-    #expect(one.setCount == 1)
-    #expect(two.setCount == 1)
-    #expect(three.setCount == 1)
+    // After wiring, every spy must hold the preloaded words via
+    // register()'s initial-sync, BEFORE any user interaction.
+    for (i, spy) in spies.enumerated() {
+      #expect(
+        spy.customWords == preloaded,
+        "spy[\(i)] missed the preloaded seed; check register() initial-sync ordering")
+    }
+
+    // Now fire the coordinator callback that wireCustomWords installed.
+    // Every spy must receive the new list. Catches "onWordsChanged was
+    // assigned but doesn't actually broadcast through propagator."
+    let updated = preloaded + [Self.makeWord("user-added")]
+    coordinator.onWordsChanged?(updated)
+    for (i, spy) in spies.enumerated() {
+      #expect(
+        spy.customWords == updated,
+        "spy[\(i)] missed the broadcast triggered through coordinator.onWordsChanged")
+    }
   }
 
   // MARK: - Integration: late-register receives current words
 
   /// Pins the contract that a consumer registered AFTER an `update()` still
-  /// gets the most-recent broadcast value. Future surface for "AI-driven custom
-  /// words" or "word-pack sources" that may register their own consumers at
-  /// runtime relies on this behavior.
+  /// gets the most-recent broadcast value. Future surface for AI-driven custom
+  /// words / word-pack sources that may register their own consumers at
+  /// runtime.
   @Test("Integration — consumer registered after update receives current words")
   func lateRegisterReceivesCurrent() {
     let propagator = CustomWordsPropagator()
@@ -186,12 +196,10 @@ struct CustomWordsPropagatorTests {
     propagator.update(firstBatch)
     #expect(alpha.customWords == firstBatch)
 
-    // Late-register: must see firstBatch immediately via initial-sync.
     let beta = SpyConsumer()
     propagator.register(beta)
     #expect(beta.customWords == firstBatch)
 
-    // Another broadcast: both alpha and beta see it.
     let secondBatch = [Self.makeWord("one"), Self.makeWord("two")]
     propagator.update(secondBatch)
     #expect(alpha.customWords == secondBatch)

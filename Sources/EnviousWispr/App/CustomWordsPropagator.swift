@@ -59,3 +59,35 @@ final class CustomWordsPropagator {
     }
   }
 }
+
+// MARK: - Wiring helper (extracted for testability)
+
+/// Wires a `CustomWordsPropagator` to its consumers and a coordinator using
+/// AppState's exact init ordering: seed via `update`, register all consumers
+/// (each receives the seed via initial-sync), then assign the coordinator's
+/// `onWordsChanged` callback to broadcast future mutations.
+///
+/// Order is non-reversible. Reordering — e.g. assigning `onWordsChanged`
+/// before registering consumers, or registering before seeding — produces
+/// different observable behavior on first launch.
+///
+/// Returns the assigned `onWordsChanged` closure so tests can fire it
+/// without depending on `CustomWordsCoordinator` internals.
+@MainActor
+@discardableResult
+func wireCustomWords(
+  propagator: CustomWordsPropagator,
+  initialWords: [CustomWord],
+  consumers: [any CustomWordsConsumer],
+  coordinator: CustomWordsCoordinator
+) -> ([CustomWord]) -> Void {
+  propagator.update(initialWords)
+  for consumer in consumers {
+    propagator.register(consumer)
+  }
+  let onChange: ([CustomWord]) -> Void = { [weak propagator] words in
+    propagator?.update(words)
+  }
+  coordinator.onWordsChanged = onChange
+  return onChange
+}

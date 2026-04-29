@@ -376,29 +376,23 @@ final class AppState {
       self?.startWhisperKitPreloadObservation()
     }
 
-    // Wire custom-words propagator. Construction order is non-reversible:
-    // 1) seed `propagator.words` with current coordinator words via `update`
-    //    (no consumers registered yet, so this is a no-op broadcast that just
-    //    captures the seed value)
-    // 2) register all five consumers (each receives the seed via `register()`'s
-    //    initial-sync path)
-    // 3) forward `onWordsChanged` into `propagator.update(_:)` so future
-    //    mutations broadcast through the registry.
-    customWordsPropagator.update(customWordsCoordinator.customWords)
-    customWordsPropagator.register(pipeline.wordCorrection)
-    customWordsPropagator.register(pipeline.llmPolish)
-    customWordsPropagator.register(whisperKitPipeline.wordCorrection)
-    customWordsPropagator.register(whisperKitPipeline.llmPolish)
-    customWordsPropagator.register(polishService.llmPolishStep)
-    customWordsCoordinator.onWordsChanged = { [weak customWordsPropagator] words in
-      customWordsPropagator?.update(words)
-    }
-    // Phase D (#496): the prior 5-way fanout (pipeline.wordCorrection,
-    // pipeline.llmPolish, whisperKitPipeline.wordCorrection,
-    // whisperKitPipeline.llmPolish, polishService.llmPolishStep) is now
-    // owned by `customWordsPropagator` above. Mirror sites in
-    // PipelineSettingsSync (5 setter lines + the `customWords:` parameter)
-    // were also removed.
+    // Wire custom-words propagator. The exact ordering (seed → register all
+    // consumers → install onWordsChanged) lives in `wireCustomWords` so
+    // tests can drive the same path with spy consumers + a real
+    // `CustomWordsCoordinator`. Phase D (#496) replaces the prior 5-way
+    // fanout in AppState plus 5 mirror sites in `PipelineSettingsSync`.
+    wireCustomWords(
+      propagator: customWordsPropagator,
+      initialWords: customWordsCoordinator.customWords,
+      consumers: [
+        pipeline.wordCorrection,
+        pipeline.llmPolish,
+        whisperKitPipeline.wordCorrection,
+        whisperKitPipeline.llmPolish,
+        polishService.llmPolishStep,
+      ],
+      coordinator: customWordsCoordinator
+    )
 
     // Initialize logger
     Task {
