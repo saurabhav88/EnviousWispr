@@ -1,0 +1,36 @@
+**Q1**
+
+Phase F is a real but modest hardening step. It is not ceremonial, but the new SPM library target is overbuilt for the current payoff.
+
+The cohesion claim is **partial**. `OllamaSetupService` and `WhisperKitSetupService` are both Settings-facing setup limbs: both are `@MainActor @Observable` services with setup state and user-triggered setup actions (`OllamaSetupService.swift:84-91`, `WhisperKitSetupService.swift:30-38`). Grouping those under `setup` is coherent. The preload observer is narrower: it watches `whisperKitSetup.setupState`, checks `asrManager.activeBackendType`, then calls `whisperKitPipeline.prepareBackendSilently()` (`AppState.swift:649-654`). That belongs to the WhisperKit setup/pipeline boundary, not to Ollama. It is acceptable inside a thin `SetupCoordinator`, but only if the coordinator is explicitly “optional setup orchestration,” not a generic setup bucket.
+
+The decoupling claim is also **partial**. AppState stops owning two leaf services and one task (`AppState.swift:25-31`), but the proposed coordinator still depends on `ASRManagerInterface` and a closure into `WhisperKitPipeline` because the current observer needs both (`AppState.swift:649`, `AppState.swift:654`). That is not vanity: the injected `preloadAction` is a real unit-test seam, and `ASRManagerInterface` is already the app’s intended ASR abstraction (`ASRManagerInterface.swift:9-27`). But it is not a major coupling reduction. It mainly moves a small lifecycle bridge out of AppState.
+
+Observation risk is **low if `setup` stays concrete**. The repo already has multi-level observable paths such as `appState.transcriptCoordinator.transcripts` (`TranscriptHistoryView.swift:21-29`), `appState.customWordsCoordinator.customWords` (`WordFixSettingsView.swift:31-72`), and `appState.benchmark.results` (`DiagnosticsSettingsView.swift:104-145`). The real trap is typing `setup` as `any SetupCoordinating`; the codebase already documents that SwiftUI cannot observe `@Observable` properties through protocol existentials (`OnboardingV2View.swift:39-42`). So the revision is: AppState should expose `let setup: SetupCoordinator`, not an existential, and the protocol should be test-only/package-scoped if it exists.
+
+Heart path check: Phase F does not touch the heart path directly. Grep found no `appState.ollamaSetup` or `appState.whisperKitSetup` in `Sources/EnviousWisprPipeline`, `Sources/EnviousWisprASR`, or `Sources/EnviousWisprAudio`; the only non-view consumers are AppDelegate cleanup, AppState wiring, and `PipelineSettingsSync` setup detection. Recording start routes through `active.handle(event: .preWarm)` and `.toggleRecording(...)` (`AppState.swift:522-563`), streaming setup/finalize lives inside `TranscriptionPipeline` (`TranscriptionPipeline.swift:467-493`, `1288-1323`), and finalization goes through `TranscriptFinalizer` (`TranscriptionPipeline.swift:920-930`, `WhisperKitPipeline.swift:966-982`). `WhisperKitPipeline.prepareBackendSilently()` is a background preload helper and explicitly says user recording handles its own load path (`WhisperKitPipeline.swift:382-386`).
+
+The library-target choice is the weakest part. The stale D7 concern is real: `EnviousWisprTests` already depends on `"EnviousWispr"` (`Package.swift:125-135`; the plan’s “line 138” is drifted). The secondary rationale, “right shape day-one,” is not strong enough by itself. A new target forces `public` exposure for an app-shell coordinator and its init/properties, while the architecture rules say public is expensive and new coordinators must justify themselves (`architecture-rules.md:14`, `115-119`). Put `SetupCoordinator` in the executable target first. Extract to a library target later only when a second production module actually needs it.
+
+Phase E ceiling honesty: this is not a Phase E problem and not a sign Phase F is undersized. The current bible already revised the target to `<= 12` direct concrete deps (`issue-319...md:1373-1375`, `1407-1411`). The current AppState has 20 file-scope `let` declarations if you count interfaces, pipelines, and peers (`AppState.swift:18-124`), but that is a noisy metric. The meaningful count is direct concrete ownership. Phase F should not absorb more properties just to hit a counter.
+
+**Q2**
+
+The bigger-bang refactor is `TelemetryObservationCoordinator`, not `BenchmarkCoordinator`, but it is also riskier. Telemetry wiring in AppState owns shared audio/ASR callback routing and Sentry context (`AppState.swift:310-340`, `343-363`), and `CaptureTelemetryState` is explicitly shared across both pipelines (`CaptureTelemetryState.swift:3-12`). That is more central god-object signal than setup. It is also closer to heart-adjacent failure handling, so it is not the better Phase F substitute.
+
+`BenchmarkCoordinator` is smaller and safer, but lower value: it mostly moves diagnostics view calls around `appState.benchmark` (`DiagnosticsSettingsView.swift:104-145`). Phase F as scoped is the right low-risk next move, with the target-placement revision.
+
+**Q3**
+
+- `AppState.startWhisperKitPreloadObservation()` body at `639-668`: **TRUE**. Current body is exactly `AppState.swift:639-668`.
+- Consumer counts: **PARTIAL/FALSE**. `AIPolishSettingsView` has **29** `appState.ollamaSetup.` occurrences, not 31. `SpeechEngineSettingsView` has **8**. `AppDelegate.swift:417` has **1** cleanup call. The standalone plan’s total 44 is therefore inflated; external service-access migration is 38 sites.
+- `Package.swift:138` includes `"EnviousWispr"` in test deps: **PARTIAL**. Substance true, line false. `"EnviousWispr"` is at `Package.swift:134`; line 138 starts the next test target.
+- Proposed init captures everything the observer needs: **TRUE**. External needs are `asrManager.activeBackendType` (`AppState.swift:649`) and `whisperKitPipeline.prepareBackendSilently()` (`AppState.swift:654`). The coordinator also owns `whisperKitSetup` and the task handle.
+- Contract delta table: **PARTIAL**. Missing deltas: new target/import graph in `Package.swift`, `AppState` import of `EnviousWisprAppCore` if library target remains, public `SetupCoordinator.init`, public passthrough properties, and the widened public API caused by moving app-shell code into a library target.
+- LOC estimates: **TRUE enough**. Nothing is off by 2x. `SetupCoordinator` around 95 LOC, AppState net reduction, view rename no-net LOC, and a 75-line test are plausible against current file sizes.
+
+**PROCEED-WITH-REVISIONS**
+
+Do Phase F, but keep `SetupCoordinator` in the existing executable target, expose it concretely from AppState, and keep the protocol/package-public surface out of the first PR unless tests prove it is needed. In plain English: moving this setup wiring out of AppState is worthwhile because it removes a small but real responsibility from the central object without touching dictation. Creating a new module for it is the part that turns a useful cleanup into architecture ceremony. Start local, keep it thin, and only promote it to a shared library when the code earns that boundary.
+
+

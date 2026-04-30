@@ -1,0 +1,14 @@
+{
+  "executor": "manual-human (founder, in-office)",
+  "expected_token": "Dallas",
+  "observed_transcript": "She was just getting ready to watch this program. And at this point, she was able to take a lot of feedback that we got last year in Dallas, but also some of the other events that we've done and we drew out last year as well.",
+  "manual_paths_confirmed": [
+    {"path": "Parakeet dictation", "result": "pass — heart-path baseline"},
+    {"path": "Apple Intelligence polish", "result": "pass"},
+    {"path": "WhisperKit (Speech Engine tab + dictation)", "result": "pass"},
+    {"path": "Ollama (AI Polish tab)", "result": "pass"},
+    {"path": "PTT dictation (long-form free-speech, in-office)", "result": "pass — full sentence transcribed, polished, pasted; matches what was spoken"}
+  ],
+  "log_scan": "clean — no errors / fatals / crashes in app.log or bt-route.log; bt-route shows healthy warm-engine reuse during UAT",
+  "notes": "R3 #if DEBUG gating means release-build app.log is sparse by design, not a regression"
+}

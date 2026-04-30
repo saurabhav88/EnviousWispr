@@ -1,0 +1,1 @@
+I did not identify any actionable regressions in the refactor. The EnviousWispr target builds successfully; the full test target could not be run in this environment due an unrelated missing Swift Testing module.

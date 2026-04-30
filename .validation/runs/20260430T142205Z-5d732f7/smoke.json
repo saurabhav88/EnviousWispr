@@ -1,0 +1,9 @@
+{
+  "build_config": "release",
+  "build_status": "success",
+  "build_time_seconds": 83.19,
+  "bundle_path": "/tmp/EnviousWispr Local.app",
+  "version": "v1.9.4-74-gbc445a1-dev",
+  "launch_status": "running",
+  "launch_pid_at_smoke": 68055
+}
