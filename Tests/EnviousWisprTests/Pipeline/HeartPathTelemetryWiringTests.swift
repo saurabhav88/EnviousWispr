@@ -1,0 +1,376 @@
+@preconcurrency import AVFoundation
+import EnviousWisprASR
+import EnviousWisprAudio
+import EnviousWisprCore
+import EnviousWisprServices
+import EnviousWisprStorage
+import Foundation
+import Testing
+
+@testable import EnviousWisprPipeline
+
+/// Pipeline-level tests for the `HeartPathTelemetryEmitter` wiring.
+///
+/// Codex round-1 (2026-04-30) flagged two gaps the emitter unit tests
+/// alone could not catch:
+///   3. Pipeline-level dedup + terminal-state flip: a future refactor that
+///      drops `guard fired else { return }` in `handleCaptureStall` would
+///      still pass emitter unit tests. We must observe both the Sentry
+///      dedup contract AND the `state` flip contract holding at the
+///      pipeline boundary.
+///   4. Backend wiring proof: each pipeline must construct its emitter
+///      with the correct `ASRBackendType`. The asymmetric `"backend"`
+///      extra on `captureSessionInterruption` is the cheapest observable
+///      witness.
+///
+/// Codex round-2 (2026-04-30) caught that an earlier version of the dedup
+/// test only fired Sentry events from `.idle` state, so the
+/// `guard state == .recording` path bailed both calls regardless of the
+/// emitter's return value. That made the terminal-state-flip claim
+/// theater. The fix lives in `parakeetPipelineStallFlipsStateOnceFromRecording`
+/// below, which uses `FixtureAudioCapture` + `startRecording(...)` to
+/// drive into `.recording` before calling `handleCaptureStall`.
+///
+/// We test `TranscriptionPipeline` (Parakeet) directly because its
+/// dependencies are easy to stub. The WhisperKit equivalent would require
+/// constructing a real `WhisperKitBackend` actor; the asymmetry it depends
+/// on is already proven by the unit tests in
+/// `HeartPathTelemetryEmitterTests` plus the literal `backend: .whisperKit`
+/// argument at the WhisperKit init site. Adding a full pipeline init test
+/// for WhisperKit would not catch a regression the unit tests miss.
+@MainActor
+@Suite("HeartPathTelemetryEmitter — pipeline wiring + dedup at pipeline level")
+struct HeartPathTelemetryWiringTests {
+
+  // MARK: - Spy bridge
+
+  /// Sendable-by-mutex captured-call list. The Sentry delegate runs on
+  /// whichever thread the SDK fires from, so the storage must be
+  /// thread-safe; the test reads on @MainActor after the synchronous
+  /// pipeline call returns.
+  private final class CaptureSpy: @unchecked Sendable {
+    struct Captured {
+      let category: SentryBreadcrumb.ErrorCategory
+      let stage: String
+      let extra: [String: Any]
+    }
+    private let lock = NSLock()
+    private var _calls: [Captured] = []
+
+    var calls: [Captured] {
+      lock.lock()
+      defer { lock.unlock() }
+      return _calls
+    }
+
+    func record(_ call: Captured) {
+      lock.lock()
+      defer { lock.unlock() }
+      _calls.append(call)
+    }
+  }
+
+  /// Install a spy on `SentryBreadcrumb.captureErrorDelegate` for the
+  /// duration of the test, then restore the prior delegate. The
+  /// delegate hook (`SentryBreadcrumb.swift:145`) fires synchronously
+  /// before the SDK dispatch, so spy.calls is observable immediately
+  /// after the pipeline method returns.
+  private static func withCaptureSpy(
+    _ body: (CaptureSpy) -> Void
+  ) {
+    let spy = CaptureSpy()
+    let prior = SentryBreadcrumb.captureErrorDelegate
+    SentryBreadcrumb.captureErrorDelegate = { _, category, stage, extra in
+      spy.record(.init(category: category, stage: stage, extra: extra ?? [:]))
+    }
+    defer { SentryBreadcrumb.captureErrorDelegate = prior }
+    body(spy)
+  }
+
+  // MARK: - Test doubles
+
+  private static func makeStubAudio() -> NoOpAudioCapture {
+    NoOpAudioCapture()
+  }
+
+  private static func makeASR() -> NoOpASRManager {
+    NoOpASRManager()
+  }
+
+  private static func makePipeline() -> TranscriptionPipeline {
+    TranscriptionPipeline(
+      audioCapture: makeStubAudio(),
+      asrManager: makeASR(),
+      transcriptStore: TranscriptStore()
+    )
+  }
+
+  private static func stallContext(sessionID: UInt64) -> CaptureStallContext {
+    CaptureStallContext(
+      sessionID: sessionID,
+      armedAtUptimeNs: 1_000,
+      firedAtUptimeNs: 2_000,
+      route: "built_in_mic",
+      sourceType: "av_audio_engine",
+      engineStartedSuccessfully: true,
+      tapInstalled: true,
+      formatMismatchObserved: false,
+      inputDeviceUIDPreferred: nil,
+      inputDeviceUIDSystemDefault: nil
+    )
+  }
+
+  private static func interruptionContext(
+    sessionID: UInt64
+  ) -> CaptureSessionInterruptionContext {
+    CaptureSessionInterruptionContext(
+      kind: .runtimeError,
+      reasonCode: 1,
+      reasonLabel: nil,
+      errorDomain: "AVFoundationErrorDomain",
+      errorCode: -11800,
+      errorDescription: nil,
+      sessionID: sessionID,
+      isActivelyCapturing: true
+    )
+  }
+
+  // MARK: - Tests
+
+  /// Codex gap #4 — Parakeet pipeline must construct its emitter with
+  /// `.parakeet`. The captureSessionInterruption extras are the cheapest
+  /// witness: Parakeet omits the `"backend"` key.
+  @Test("TranscriptionPipeline interruption extras omit backend key (Parakeet wiring)")
+  func parakeetPipelineWiringOmitsBackendExtra() {
+    let pipeline = Self.makePipeline()
+
+    Self.withCaptureSpy { spy in
+      pipeline.handleCaptureSessionInterruption(Self.interruptionContext(sessionID: 1))
+
+      #expect(spy.calls.count == 1)
+      let call = spy.calls[0]
+      #expect(call.category == .audioCaptureFailed)
+      #expect(call.stage == "audio")
+      #expect(call.extra["backend"] == nil)
+      #expect(call.extra["capture_session_id"] as? Int == 1)
+    }
+  }
+
+  /// Codex gap #3 (Sentry-emit half) — pipeline-level emit dedup. Two
+  /// consecutive `handleCaptureStall` calls on the same session must
+  /// produce ONE captureError. Proves the emitter the pipeline uses is
+  /// connected to the same dedup state. Does NOT verify the
+  /// terminal-state flip — that lives in the next test.
+  @Test("TranscriptionPipeline.handleCaptureStall dedups Sentry emits per session")
+  func parakeetPipelineStallDedupsSentryPerSession() {
+    let pipeline = Self.makePipeline()
+
+    Self.withCaptureSpy { spy in
+      pipeline.handleCaptureStall(Self.stallContext(sessionID: 7))
+      pipeline.handleCaptureStall(Self.stallContext(sessionID: 7))
+
+      #expect(spy.calls.count == 1)
+      #expect(spy.calls[0].category == .audioCaptureStalled)
+      #expect(spy.calls[0].extra["capture_session_id"] as? Int == 7)
+    }
+  }
+
+  /// Sanity companion to the dedup test: a different `sessionID` re-arms
+  /// the dedup, proving it is not a global one-shot.
+  @Test("TranscriptionPipeline.handleCaptureStall re-arms Sentry emits on session change")
+  func parakeetPipelineStallReArmsOnSession() {
+    let pipeline = Self.makePipeline()
+
+    Self.withCaptureSpy { spy in
+      pipeline.handleCaptureStall(Self.stallContext(sessionID: 1))
+      pipeline.handleCaptureStall(Self.stallContext(sessionID: 1))  // suppressed
+      pipeline.handleCaptureStall(Self.stallContext(sessionID: 2))  // fresh session
+
+      #expect(spy.calls.count == 2)
+      let sessions = spy.calls.compactMap { $0.extra["capture_session_id"] as? Int }
+      #expect(sessions == [1, 2])
+    }
+  }
+
+  /// Codex gap #3 — `guard fired else { return }` in
+  /// `TranscriptionPipeline.handleCaptureStall` must prevent a
+  /// session-deduped call from incorrectly flipping state to `.error`.
+  ///
+  /// Test shape (Codex round-3 suggestion):
+  ///   1. Pre-dedup the emitter's stall flag while the pipeline is `.idle`
+  ///      by calling `handleCaptureStall(sessionID: N)`. The `.idle` state
+  ///      gate bails before any state mutation, but the emitter's
+  ///      per-session dedup still flips internally (it runs FIRST).
+  ///   2. Drive into `.recording` via `startRecording(...)`.
+  ///   3. Call `handleCaptureStall(sessionID: N)` again — same session.
+  ///
+  /// With `guard fired else { return }` present (correct): emitter returns
+  /// false (already deduped), the guard short-circuits before the
+  /// `state == .recording` check, state stays `.recording`.
+  ///
+  /// Without that guard (regression): emitter returns false but control
+  /// reaches `guard state == .recording`, which passes, so state
+  /// incorrectly flips to `.error` and `pendingStallRecoveryToken` is
+  /// reset — breaking the #289 token-gated recovery contract.
+  ///
+  /// The first-stall-from-recording case (state → .error on first hit) is
+  /// covered implicitly: if the emitter's pre-dedup wiring breaks, the
+  /// second call would emit and the test fails for the opposite reason.
+  @Test("TranscriptionPipeline.handleCaptureStall guard fired prevents deduped state flip")
+  func parakeetPipelineStallGuardFiredPreventsDedupedFlip() async throws {
+    let fixture = try SyntheticAudioFixture.make(
+      fileName: "r5-stall-guard-fired.wav",
+      pattern: .toneBurst
+    )
+    let audioCapture = try FixtureAudioCapture(fixtureURL: fixture.url)
+    let asrManager = MockASRManager(
+      transcribeBehavior: .success(
+        ASRResult(
+          text: "",
+          language: "en",
+          duration: fixture.durationSeconds,
+          processingTime: 0.01,
+          backendType: .parakeet
+        )
+      )
+    )
+    let pipeline = TranscriptionPipeline(
+      audioCapture: audioCapture,
+      asrManager: asrManager,
+      transcriptStore: TranscriptStore()
+    )
+
+    // Step 1: pre-dedup the emitter's stall flag while pipeline is .idle.
+    // `handleCaptureStall` calls telemetry.stallFired (which dedups
+    // per-session) BEFORE the state guard, so the emitter's internal
+    // flag gets set even though pipeline state stays .idle.
+    pipeline.handleCaptureStall(Self.stallContext(sessionID: 99))
+    #expect(pipeline.state == .idle)
+
+    // Step 2: drive into .recording.
+    let config = DictationSessionConfig.testDefault(
+      autoPasteToActiveApp: false,
+      vadSensitivity: 0.5,
+      languageMode: .auto,
+      llmProvider: .openAI,
+      llmModel: "gpt-test"
+    )
+    await pipeline.startRecording(config: config)
+
+    let reachedRecording = await pollUntil(timeout: .seconds(1)) {
+      pipeline.state == .recording
+    }
+    #expect(reachedRecording)
+
+    // Step 3: same-session stall, now from .recording. Emitter returns
+    // false (deduped). With `guard fired else { return }`: state stays
+    // .recording. Without it: state flips to .error.
+    pipeline.handleCaptureStall(Self.stallContext(sessionID: 99))
+
+    #expect(
+      pipeline.state == .recording,
+      "deduped stall must NOT flip state — `guard fired` regressed?")
+
+    await pipeline.cancelRecording()
+  }
+}
+
+@MainActor
+private func pollUntil(
+  timeout: Duration,
+  interval: Duration = .milliseconds(10),
+  condition: @escaping @MainActor () -> Bool
+) async -> Bool {
+  let deadline = ContinuousClock.now + timeout
+  while ContinuousClock.now < deadline {
+    if condition() {
+      return true
+    }
+    try? await Task.sleep(for: interval)
+  }
+  return condition()
+}
+
+// MARK: - Stubs (test-local)
+
+/// Minimal `AudioCaptureInterface` stub for pipeline-construction tests.
+/// All capture lifecycle methods are no-ops; only the small read-only
+/// surface the pipeline reads in `handleCaptureStall` /
+/// `handleCaptureSessionInterruption` matters.
+@MainActor
+private final class NoOpAudioCapture: AudioCaptureInterface {
+  var isCapturing: Bool = false
+  var audioLevel: Float = 0
+  var capturedSamples: [Float] = []
+  var currentAudioRoute: String = "built_in_mic"
+  var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?
+  var onEngineInterrupted: (() -> Void)?
+  var onVADAutoStop: (() -> Void)?
+  var onCaptureStalled: ((CaptureStallContext) -> Void)?
+  var onCaptureSessionInterruption: ((CaptureSessionInterruptionContext) -> Void)?
+  var onXPCServiceError: ((XPCErrorContext) -> Void)?
+  var onXPCReplyFailed: ((XPCReplyFailureContext) -> Void)?
+  var onRouteResolved: ((CaptureRouteDecision, _ sourceTypeChanged: Bool) -> Void)?
+  var currentCaptureSessionID: UInt64 = 0
+  var isActivelyCapturing: Bool = false
+  var captureSourceType: String = "av_audio_engine"
+  var noiseSuppressionEnabled: Bool = false
+  var selectedInputDeviceUID: String = ""
+  var preferredInputDeviceIDOverride: String = ""
+  var warmEnginePolicy: WarmEnginePolicy = .off
+
+  func startEnginePhase() async throws {}
+  func beginCapturePhase() async throws -> AsyncStream<AVAudioPCMBuffer> {
+    AsyncStream { $0.finish() }
+  }
+  func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
+    AsyncStream { $0.finish() }
+  }
+  func stopCapture() async -> CaptureResult { CaptureResult(samples: []) }
+  func rebuildEngine() {}
+  func buildEngine(noiseSuppression: Bool) {}
+  func preWarm() async throws {}
+  func abortPreWarm() {}
+  func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool {
+    true
+  }
+  func configureVAD(autoStop: Bool, silenceTimeout: Double, sensitivity: Float, energyGate: Bool) {}
+  func getSamplesSnapshot(fromIndex: Int) async -> (samples: [Float], totalCount: Int) {
+    ([], 0)
+  }
+  func getVADSegments() async -> [SpeechSegment] { [] }
+}
+
+/// Minimal `ASRManagerInterface` stub. Pipeline construction reads no ASR
+/// state in the telemetry callbacks under test; methods throw or return
+/// trivial values so any unintended invocation surfaces immediately.
+@MainActor
+private final class NoOpASRManager: ASRManagerInterface {
+  var activeBackendType: ASRBackendType = .parakeet
+  var isModelLoaded: Bool = false
+  var isStreaming: Bool = false
+  var downloadProgress: Double = 0
+  var downloadPhase: String = "idle"
+  var downloadDetail: String = ""
+  var onServiceInterrupted: (() -> Void)?
+
+  func loadModel() async throws {}
+  func loadModelSilently() async {}
+  func unloadModel() async {}
+  func setInitialBackendType(_ type: ASRBackendType) { activeBackendType = type }
+  func switchBackend(to type: ASRBackendType) async { activeBackendType = type }
+
+  var activeBackendSupportsStreaming: Bool { get async { false } }
+
+  func transcribe(audioSamples: [Float], options: TranscriptionOptions) async throws -> ASRResult {
+    throw NoOpError.unexpected
+  }
+  func startStreaming(options: TranscriptionOptions) async throws { throw NoOpError.unexpected }
+  func feedAudio(_ buffer: AVAudioPCMBuffer) async throws { throw NoOpError.unexpected }
+  func finalizeStreaming() async throws -> ASRResult { throw NoOpError.unexpected }
+  func cancelStreaming() async {}
+  func noteTranscriptionComplete(policy: ModelUnloadPolicy) {}
+  func cancelIdleTimer() {}
+
+  enum NoOpError: Error { case unexpected }
+}
