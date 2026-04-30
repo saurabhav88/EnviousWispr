@@ -24,7 +24,7 @@ struct AIPolishSettingsView: View {
   }
 
   private var ollamaShowsManageModels: Bool {
-    switch appState.ollamaSetup.setupState {
+    switch appState.setup.ollamaSetup.setupState {
     case .ready, .pullingModel, .runningNoModels: return true
     default: return false
     }
@@ -225,8 +225,8 @@ struct AIPolishSettingsView: View {
       if appState.settings.llmProvider == .ollama {
         appState.llmDiscovery.loadCachedModels(for: .ollama)
         Task {
-          await appState.ollamaSetup.detectState()
-          if case .ready = appState.ollamaSetup.setupState {
+          await appState.setup.ollamaSetup.detectState()
+          if case .ready = appState.setup.ollamaSetup.setupState {
             await appState.llmDiscovery.validateKeyAndDiscoverModels(
               provider: .ollama, settings: appState.settings)
           }
@@ -244,8 +244,8 @@ struct AIPolishSettingsView: View {
 
       // Clean up Ollama state when switching away
       if newProvider != .ollama {
-        appState.ollamaSetup.cancelPull()
-        appState.ollamaSetup.resetWarmup()
+        appState.setup.ollamaSetup.cancelPull()
+        appState.setup.ollamaSetup.resetWarmup()
       }
 
       switch newProvider {
@@ -254,7 +254,7 @@ struct AIPolishSettingsView: View {
       case .ollama:
         // detectState() will set setupState, which triggers the onChange handler
         // for discovery + warm-up. Don't duplicate that work here.
-        Task { await appState.ollamaSetup.detectState() }
+        Task { await appState.setup.ollamaSetup.detectState() }
       case .appleIntelligence:
         Task { await appState.aiAvailability.checkAvailability(trigger: "provider_switch") }
       default:
@@ -265,7 +265,7 @@ struct AIPolishSettingsView: View {
         }
       }
     }
-    .onChange(of: appState.ollamaSetup.setupState) { _, newState in
+    .onChange(of: appState.setup.ollamaSetup.setupState) { _, newState in
       if case .ready = newState, appState.settings.llmProvider == .ollama {
         Task {
           await appState.llmDiscovery.validateKeyAndDiscoverModels(
@@ -273,20 +273,20 @@ struct AIPolishSettingsView: View {
         }
         // Warm up the selected model when Ollama becomes ready
         if !appState.settings.llmModel.isEmpty {
-          appState.ollamaSetup.warmUpModel(appState.settings.llmModel)
+          appState.setup.ollamaSetup.warmUpModel(appState.settings.llmModel)
         }
       } else if appState.settings.llmProvider == .ollama {
         // Reset warmup when Ollama leaves .ready (server died, etc.)
-        appState.ollamaSetup.resetWarmup()
+        appState.setup.ollamaSetup.resetWarmup()
       }
     }
     .onChange(of: appState.settings.llmModel) { _, newModel in
       // Warm up when user switches Ollama model
       if appState.settings.llmProvider == .ollama,
-        case .ready = appState.ollamaSetup.setupState,
+        case .ready = appState.setup.ollamaSetup.setupState,
         !newModel.isEmpty
       {
-        appState.ollamaSetup.warmUpModel(newModel)
+        appState.setup.ollamaSetup.warmUpModel(newModel)
       }
     }
   }
@@ -570,7 +570,7 @@ struct AIPolishSettingsView: View {
 
   @ViewBuilder
   private var ollamaSetupContent: some View {
-    switch appState.ollamaSetup.setupState {
+    switch appState.setup.ollamaSetup.setupState {
     case .detecting:
       HStack {
         ProgressView()
@@ -616,7 +616,7 @@ struct AIPolishSettingsView: View {
 
         HStack {
           Button("Start Ollama") {
-            appState.ollamaSetup.startServer()
+            appState.setup.ollamaSetup.startServer()
           }
           .buttonStyle(.borderedProminent)
           .controlSize(.small)
@@ -639,7 +639,7 @@ struct AIPolishSettingsView: View {
 
         HStack {
           Button("Download \(appState.settings.ollamaModel)") {
-            appState.ollamaSetup.pullModel(appState.settings.ollamaModel)
+            appState.setup.ollamaSetup.pullModel(appState.settings.ollamaModel)
           }
           .buttonStyle(.borderedProminent)
           .controlSize(.small)
@@ -672,7 +672,7 @@ struct AIPolishSettingsView: View {
               .foregroundStyle(Color.stTextTertiary)
           }
           Button("Cancel") {
-            appState.ollamaSetup.cancelPull()
+            appState.setup.ollamaSetup.cancelPull()
           }
           .controlSize(.small)
           .buttonStyle(.borderless)
@@ -705,8 +705,8 @@ struct AIPolishSettingsView: View {
 
         Button("Try Again") {
           Task {
-            await appState.ollamaSetup.detectState()
-            if case .ready = appState.ollamaSetup.setupState {
+            await appState.setup.ollamaSetup.detectState()
+            if case .ready = appState.setup.ollamaSetup.setupState {
               await appState.llmDiscovery.validateKeyAndDiscoverModels(
                 provider: .ollama, settings: appState.settings)
             }
@@ -860,9 +860,9 @@ struct AIPolishSettingsView: View {
 
   @ViewBuilder
   private var ollamaModelCatalogView: some View {
-    let catalog = appState.ollamaSetup.dynamicCatalog
+    let catalog = appState.setup.ollamaSetup.dynamicCatalog
     let isPulling: Bool = {
-      if case .pullingModel = appState.ollamaSetup.setupState { return true }
+      if case .pullingModel = appState.setup.ollamaSetup.setupState { return true }
       return false
     }()
 
@@ -887,15 +887,15 @@ struct AIPolishSettingsView: View {
 
           Spacer()
 
-          if appState.ollamaSetup.currentPullingModel == entry.name {
+          if appState.setup.ollamaSetup.currentPullingModel == entry.name {
             // Active pull for THIS row: show progress + Cancel.
             HStack(spacing: 8) {
-              Text("Downloading… \(Int(appState.ollamaSetup.pullProgress * 100))%")
+              Text("Downloading… \(Int(appState.setup.ollamaSetup.pullProgress * 100))%")
                 .font(.caption)
                 .foregroundStyle(Color.secondary)
                 .monospacedDigit()
               Button {
-                appState.ollamaSetup.cancelPull()
+                appState.setup.ollamaSetup.cancelPull()
               } label: {
                 Text("Cancel")
                   .foregroundStyle(.stError)
@@ -905,7 +905,7 @@ struct AIPolishSettingsView: View {
             }
           } else if entry.isDownloaded {
             Button {
-              appState.ollamaSetup.deleteModel(name: entry.name)
+              appState.setup.ollamaSetup.deleteModel(name: entry.name)
             } label: {
               Text("Delete")
                 .foregroundStyle(.stError)
@@ -915,7 +915,7 @@ struct AIPolishSettingsView: View {
             .disabled(isPulling)
           } else {
             Button {
-              appState.ollamaSetup.pullModel(entry.name)
+              appState.setup.ollamaSetup.pullModel(entry.name)
             } label: {
               Text("Download")
             }
@@ -983,8 +983,8 @@ struct AIPolishSettingsView: View {
   private func ollamaRefreshButton() -> some View {
     Button {
       Task {
-        await appState.ollamaSetup.detectState()
-        if case .ready = appState.ollamaSetup.setupState {
+        await appState.setup.ollamaSetup.detectState()
+        if case .ready = appState.setup.ollamaSetup.setupState {
           await appState.llmDiscovery.validateKeyAndDiscoverModels(
             provider: .ollama, settings: appState.settings)
         }
@@ -1001,7 +1001,7 @@ struct AIPolishSettingsView: View {
   @ViewBuilder
   private var ollamaWarmupIndicator: some View {
     let currentModel = OllamaSetupService.canonicalModelName(appState.settings.llmModel)
-    switch appState.ollamaSetup.warmupState {
+    switch appState.setup.ollamaSetup.warmupState {
     case .warming(let model) where model == currentModel:
       ProgressView()
         .controlSize(.small)
@@ -1012,7 +1012,7 @@ struct AIPolishSettingsView: View {
         .help("Model is ready")
     case .failed(let model) where model == currentModel:
       Button {
-        appState.ollamaSetup.warmUpModel(appState.settings.llmModel)
+        appState.setup.ollamaSetup.warmUpModel(appState.settings.llmModel)
       } label: {
         Image(systemName: "exclamationmark.triangle")
           .foregroundStyle(.stWarning)
@@ -1022,7 +1022,7 @@ struct AIPolishSettingsView: View {
     default:
       Button {
         guard !appState.settings.llmModel.isEmpty else { return }
-        appState.ollamaSetup.warmUpModel(appState.settings.llmModel)
+        appState.setup.ollamaSetup.warmUpModel(appState.settings.llmModel)
       } label: {
         Image(systemName: "arrow.clockwise")
       }
