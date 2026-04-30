@@ -92,7 +92,10 @@ private func countTopLevelLetCollaborators(in body: String) -> Int {
 }
 
 private let collaboratorLetPattern: String = {
-  let attrs = #"(@[A-Za-z_][A-Za-z0-9_]*[[:space:]]+)*"#
+  // Attribute can have a parenthesized argument list (`@available(macOS 14, *)`,
+  // `@Injected(...)`); the optional `(\([^)]*\))?` matches that. Multiple
+  // attributes in series allowed via `*` repetition.
+  let attrs = #"(@[A-Za-z_][A-Za-z0-9_]*(\([^)]*\))?[[:space:]]+)*"#
   let access = #"(public|internal|private|fileprivate|package|open)?"#
   return "^[[:space:]]*\(attrs)\(access)[[:space:]]*let[[:space:]]+[A-Za-z_]"
 }()
