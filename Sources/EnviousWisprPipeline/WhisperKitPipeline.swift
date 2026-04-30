@@ -6,7 +6,12 @@ import EnviousWisprLLM
 import EnviousWisprServices
 import EnviousWisprStorage
 import Foundation
-@preconcurrency import WhisperKit
+
+// R2 (#360): the pipeline holds no WhisperKit-typed values after the
+// Approach C session protocol + LID-button refactor, so it no longer
+// imports the vendor module directly. The dependency is also dropped from
+// the EnviousWisprPipeline target in `Package.swift`. All vendor reach now
+// goes through `EnviousWisprASR`'s package-access seams.
 
 /// Internal state machine for the WhisperKit highway — independent of PipelineState.
 public enum WhisperKitPipelineState: Equatable, Sendable {
@@ -151,7 +156,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
   private var vadMonitorTask: Task<Void, Never>?
   /// Frozen snapshot of recording state, built before teardown for post-recording error enrichment.
   private var frozenSnapshot: SentryBreadcrumb.RecordingSnapshot?
-  private var incrementalWorker: WhisperKitIncrementalWorker?
+  private var incrementalWorker: (any WhisperKitIncrementalSession)?
   private var modelUnloadTask: Task<Void, Never>?
 
   /// Issue #289 stall-recovery ownership token (see TranscriptionPipeline).
@@ -675,17 +680,23 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
     // Multilingual v1 (W2): detect language on voiced audio before transcribe.
     // Heart protection: detector never throws; if it abstains, pass nil to
     // TranscriptionOptions.language so WhisperKit's internal LID runs.
-    // languageMode is captured lazily so a user toggling Auto<->Locked
-    // mid-recording is respected.
+    // languageMode comes from the frozen DictationSessionConfig captured at
+    // startRecording (Phase B refactor, PR #424); mid-recording user toggles
+    // are NOT applied to the in-flight session by design.
     let voicedDurationSec = Double(vadSpeechDurationMs) / 1000.0
-    // nonisolated(unsafe): WhisperKit is an actor/reference-typed handle that is
-    // not Sendable. Safe to pass to the detector actor because the backend owns
-    // it for its lifetime and the detector only calls read-only detectLanguage.
-    nonisolated(unsafe) let kitForLID = await backend.whisperKitInstance
+    // R2 (#360): closure-based observer. The non-Sendable WhisperKit handle
+    // stays inside the backend's actor isolation; only the Sendable
+    // LIDObservationBatch crosses to the LanguageDetector classifier.
+    // The previous unsafe-Sendable workaround is gone.
+    // Snapshot `samples` into an immutable binding so the @Sendable observer
+    // closure does not capture the surrounding `var samples` (would race).
+    let observerSamples = samples
     let lidResult = await languageDetector.detect(
       samples: samples,
       voicedDuration: voicedDurationSec,
-      whisperKit: kitForLID,
+      observerFn: { [backend] in
+        await backend.observeLID(samples: observerSamples, maxWindows: 4)
+      },
       mode: languageMode
     )
     lastLanguageDetection = lidResult
@@ -1119,15 +1130,12 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
   // MARK: - Incremental Worker
 
   private func startIncrementalWorker() async {
-    guard let kit = await backend.whisperKitInstance else { return }
-    let opts = await backend.makeDecodeOptions(from: transcriptionOptions, sampleCount: 0)
-    // BRAIN: gotcha id=nonisolated-unsafe-tokenizer
-    // nonisolated(unsafe): WhisperTokenizer is not Sendable but is safe to transfer —
-    // the backend is the sole owner and we pass it to a single actor that holds it for its lifetime.
-    nonisolated(unsafe) let tokenizer = await backend.whisperKitTokenizer
-    let worker = WhisperKitIncrementalWorker(
-      whisperKit: kit, decodingOptions: opts, tokenizer: tokenizer)
-    self.incrementalWorker = worker
+    // R2 (#360): vended via opaque session protocol so Pipeline holds no
+    // WhisperKit-specific type. Returns nil iff the backend's WhisperKit
+    // model is unloaded (same gating as the legacy reach this replaced).
+    guard let session = await backend.makeIncrementalSession(options: transcriptionOptions)
+    else { return }
+    self.incrementalWorker = session
 
     let isXPCMode = audioCapture is AudioCaptureProxy
     let capture = audioCapture
@@ -1142,7 +1150,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
       // 5 min (max recording) = ~19MB. Bounded by TimingConstants.maxRecordingDuration.
       var nextIndex = 0
       var accumulated: [Float] = []
-      await worker.start(audioSamplesProvider: { @MainActor in
+      await session.start(audioSamplesProvider: { @MainActor in
         let (newSamples, totalCount) = await capture.getSamplesSnapshot(fromIndex: nextIndex)
         accumulated.append(contentsOf: newSamples)
         nextIndex = totalCount
@@ -1150,7 +1158,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
       })
     } else {
       // In-process mode: read directly from MainActor-isolated capturedSamples.
-      await worker.start(audioSamplesProvider: { @MainActor in
+      await session.start(audioSamplesProvider: { @MainActor in
         let samples = capture.capturedSamples
         return (samples: samples, count: samples.count)
       })

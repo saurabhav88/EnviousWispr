@@ -2,15 +2,15 @@ import EnviousWisprCore
 import Foundation
 @preconcurrency import WhisperKit
 
-public struct IncrementalResult: Sendable {
-  public let text: String?
-  public let samplesCovered: Int
-  public let decodeCount: Int
-  public let totalDecodeTimeMs: Int  // periphery:ignore - telemetry field, populated for diagnostics
-  public let accepted: Bool
-  public let mode: String
-  public let strategy: String
-  public let tailDecodeMs: Int
+package struct IncrementalResult: Sendable {
+  package let text: String?
+  package let samplesCovered: Int
+  package let decodeCount: Int
+  package let totalDecodeTimeMs: Int  // periphery:ignore - telemetry field, populated for diagnostics
+  package let accepted: Bool
+  package let mode: String
+  package let strategy: String
+  package let tailDecodeMs: Int
 }
 
 /// Periodically transcribes the growing audio buffer during recording.
@@ -20,10 +20,9 @@ public struct IncrementalResult: Sendable {
 /// - Short recordings (<30s): re-transcribe full buffer each cycle (highest quality)
 /// - Long recordings (>30s): use clipTimestamps to only decode new audio (efficient)
 /// - On finalize: async tail decode covers speech after the last worker result
-public actor WhisperKitIncrementalWorker {
+package actor WhisperKitIncrementalWorker: WhisperKitIncrementalSession {
   private let whisperKit: WhisperKit
   private let baseDecodingOptions: DecodingOptions
-  private let tokenizer: (any WhisperTokenizer)?
   private let cadence: Duration = .seconds(3)
   private let longRecordingThreshold: Int = 16000 * 30
 
@@ -37,15 +36,12 @@ public actor WhisperKitIncrementalWorker {
   private var running = false
   private var loopTask: Task<Void, Never>?
 
-  public init(
-    whisperKit: WhisperKit, decodingOptions: DecodingOptions, tokenizer: (any WhisperTokenizer)?
-  ) {
+  package init(whisperKit: WhisperKit, decodingOptions: DecodingOptions) {
     self.whisperKit = whisperKit
     self.baseDecodingOptions = decodingOptions
-    self.tokenizer = tokenizer
   }
 
-  public func start(
+  package func start(
     audioSamplesProvider: @Sendable @escaping () async -> (samples: [Float], count: Int)
   ) {
     running = true
@@ -63,7 +59,7 @@ public actor WhisperKitIncrementalWorker {
   }
 
   // periphery:ignore:parameters speechSegments - kept for API compatibility; energy-based gate replaced VAD segment check
-  public func finalize(
+  package func finalize(
     finalSamples: [Float],
     speechSegments: [SpeechSegment]
   ) async -> IncrementalResult {
@@ -193,7 +189,7 @@ public actor WhisperKitIncrementalWorker {
     }
   }
 
-  public func cancel() {
+  package func cancel() {
     running = false
     loopTask?.cancel()
     loopTask = nil

@@ -1,6 +1,9 @@
 import EnviousWisprCore
 import Foundation
-@preconcurrency import WhisperKit
+
+// R2 (#360): no longer reaches `WhisperKit` directly. The non-Sendable
+// reference stays inside `WhisperKitBackend.observeLID`; this actor consumes
+// only the Sendable `LIDObservationBatch` shape.
 
 /// Passive UX fallback event emitted by `LanguageDetector`.
 ///
@@ -106,20 +109,26 @@ public actor LanguageDetector {
   /// - Parameters:
   ///   - samples: 16kHz mono Float32 voiced samples. May be the raw captured
   ///     buffer or a VAD-filtered subset; the detector itself just windows what
-  ///     it is given.
+  ///     it is given. Forwarded to `observerFn` for the per-window WhisperKit
+  ///     calls.
   ///   - voicedDuration: Total voiced duration, in seconds. Used by the speech
   ///     gate (Layer 1).
-  ///   - whisperKit: Loaded WhisperKit instance. Passed in per call so the
-  ///     detector does not own model lifecycle.
+  ///   - observerFn: Closure that runs the WhisperKit-side LID call and returns
+  ///     a `LIDObservationBatch`. R2 (#360) — moves the WhisperKit handle out
+  ///     of this actor. The closure is called only when actually needed (after
+  ///     the locked-mode bypass and Layer 1 speech gate). The closure must
+  ///     return a Sendable batch; the non-Sendable `WhisperKit` reference
+  ///     stays inside the backend's actor isolation.
   ///   - mode: Current `LanguageMode` (auto or locked). Captured here (not at
   ///     recording-start) so late user toggles are respected.
-  public func detect(
+  package func detect(
     samples: [Float],
     voicedDuration: TimeInterval,
-    whisperKit: WhisperKit?,
+    observerFn: @Sendable () async -> LIDObservationBatch,
     mode: LanguageMode
   ) async -> LanguageDetectionResult {
-    // Locked short-circuit. No model call required.
+    // Locked short-circuit. No model call required. observerFn is NOT invoked
+    // — pinned by `R2-CHAR-050` characterization test (added 2026-04-30).
     if case .locked(let code) = mode {
       let normalized = Self.normalizeLangCode(code)
       return LanguageDetectionResult(
@@ -149,27 +158,41 @@ public actor LanguageDetector {
       return .abstain(voicedDuration: voicedDuration)
     }
 
-    guard let kit = whisperKit else {
-      await log("LID abstain: whisperKit instance unavailable")
+    // Layer 2: multi-window detection. The backend runs the WhisperKit calls
+    // and returns a Sendable batch. We map each batch variant to the matching
+    // abstain reason — this preserves the per-failure-mode semantics from
+    // the previous inline implementation.
+    let batch = await observerFn()
+    let multi: MultiWindowLID
+    switch batch {
+    case .unavailable:
+      // Same as today's nil-handle abstain (with persistMemory side effect).
+      await log("LID abstain: backend reports model unavailable")
       memory.recordAbstain(now: now)
       persistMemory()
       return .abstain(voicedDuration: voicedDuration)
-    }
-
-    // Layer 2: multi-window detection with majority-vote aggregation.
-    let multi: MultiWindowLID
-    do {
-      multi = try await runMultiWindowLID(
-        samples: samples, voicedDuration: voicedDuration, whisperKit: kit)
-    } catch is CancellationError {
+    case .cancelled:
       // User hotkey-cancelled: abstain cleanly, do not touch session memory.
+      // The classifier-side observable behavior (clean abstain, no memory
+      // touch, no telemetry) matches the previous inline implementation.
+      // The backend-side cancellation path is slightly more responsive — see
+      // `LIDObservationBatch.cancelled` doc comment for the detail.
       await log("LID cancelled during detectLanguage windows")
       return .abstain(voicedDuration: voicedDuration)
-    } catch {
-      await log("LID failed, abstaining: \(error.localizedDescription)")
+    case .noWindows:
+      // No windows constructible from the provided samples. Treat as
+      // empty-result abstain (matches today's empty-windows guard).
       memory.recordAbstain(now: now)
       persistMemory()
       return .abstain(voicedDuration: voicedDuration)
+    case .error(let reason):
+      // All windows failed. Matches today's outer-catch abstain branch.
+      await log("LID failed, abstaining: \(reason)")
+      memory.recordAbstain(now: now)
+      persistMemory()
+      return .abstain(voicedDuration: voicedDuration)
+    case .observations(let observations):
+      multi = aggregateObservations(observations)
     }
 
     guard !multi.voteCounts.isEmpty else {
@@ -517,71 +540,29 @@ public actor LanguageDetector {
     let windowCount: Int
   }
 
-  private func runMultiWindowLID(
-    samples: [Float],
-    voicedDuration: TimeInterval,
-    whisperKit: WhisperKit
-  ) async throws -> MultiWindowLID {
-    let sampleRate = LanguageDetectorThresholds.sampleRate
-    let totalSamples = samples.count
-    // Dedupe (startIdx, endIdx) pairs so short clips don't get counted
-    // twice — the fixed windows and the full-window range can collapse to
-    // identical slices on <3s audio and double-count under majority vote.
-    var windows: [[Float]] = []
-    var seenRanges: Set<[Int]> = []
-
-    func appendIfNew(_ startIdx: Int, _ endIdx: Int) {
-      guard endIdx > startIdx else { return }
-      guard seenRanges.insert([startIdx, endIdx]).inserted else { return }
-      windows.append(Array(samples[startIdx..<endIdx]))
-    }
-
-    for w in LanguageDetectorThresholds.windows {
-      let startIdx = min(totalSamples, Int(w.start * Double(sampleRate)))
-      let endIdx = min(totalSamples, Int(w.end * Double(sampleRate)))
-      appendIfNew(startIdx, endIdx)
-    }
-    // Full voiced window capped at 12s (always tried so we always have >=1,
-    // but deduped against the fixed windows above for short clips).
-    let fullEnd = min(
-      totalSamples, Int(LanguageDetectorThresholds.fullWindowMaxSec * Double(sampleRate)))
-    appendIfNew(0, fullEnd)
-    guard !windows.isEmpty else {
-      return MultiWindowLID(voteCounts: [:], meanProbs: [:], windowCount: 0)
-    }
-
-    // Run up to 4 windows. The spec says "up to 4"; for short voicedDuration
-    // many of the fixed windows collapse to empty and are skipped above.
-    let capped = Array(windows.prefix(4))
-
-    // WhisperKit's `detectLangauge` returns a single-entry `langProbs` map
-    // `{detectedLanguage: logProb}` — it's the argmax + its log-softmax, not
-    // a distribution over all languages. Aggregation must be majority vote
-    // over per-window argmaxes, with per-window exp(logProb) as a
-    // within-window confidence signal.
+  /// Aggregate per-window observations into vote counts + mean probabilities.
+  ///
+  /// R2 (#360): This is the post-WhisperKit-call portion of the previous
+  /// `runMultiWindowLID`. Window construction + the `detectLangauge` call moved
+  /// to `WhisperKitBackend.observeLID`, which returns a `[RawLIDObservation]`
+  /// inside `LIDObservationBatch.observations`. This helper takes that array
+  /// and produces the `MultiWindowLID` shape the classifier consumes.
+  ///
+  /// Aggregation rule (preserved verbatim from the previous inline code):
+  /// - Each observation contributes one vote to its `argmaxLang`.
+  /// - Each observation's clamped `exp(logProb)` contributes to the per-language
+  ///   probability sum.
+  /// - The returned `meanProbs[lang]` is the average exp(logProb) across windows
+  ///   where that language won.
+  private func aggregateObservations(_ observations: [RawLIDObservation]) -> MultiWindowLID {
     var votes: [String: Int] = [:]
     var probSum: [String: Double] = [:]
-    var counted = 0
-    for (i, window) in capped.enumerated() {
-      try Task.checkCancellation()
-      // WhisperKit API is `detectLangauge(audioArray:)` (original typo
-      // preserved upstream — do not "fix" it).
-      let result: (language: String, langProbs: [String: Float])
-      do {
-        result = try await whisperKit.detectLangauge(audioArray: window)
-      } catch {
-        await log("LID window \(i) failed: \(error.localizedDescription)")
-        continue
-      }
-      let lang = result.language
-      // Safety: langProbs is single-entry; fall back to 0 log-prob if the
-      // detected language isn't represented (shouldn't happen per spec).
-      let lp = Double(result.langProbs[lang] ?? 0)
-      let p = min(max(exp(lp), 0), 1)
-      votes[lang, default: 0] += 1
-      probSum[lang, default: 0] += p
-      counted += 1
+    for obs in observations {
+      let p = min(max(exp(obs.logProb), 0), 1)
+      votes[obs.argmaxLang, default: 0] += 1
+      probSum[obs.argmaxLang, default: 0] += p
     }
+    let counted = observations.count
     guard counted > 0 else {
       return MultiWindowLID(voteCounts: [:], meanProbs: [:], windowCount: 0)
     }
