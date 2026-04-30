@@ -1,0 +1,7 @@
+{
+  "head_sha": "24e16ec47d54c005f9fc7a995d8e762bb8cb1e95",
+  "build_version": "v1.9.4-77-g24e16ec-dev",
+  "bundle_path": "/tmp/EnviousWispr Local.app",
+  "smoke_step": "build_bundle_launch",
+  "note": "bundle-dev.sh ran end-to-end after Phase E (public→package narrowing); release build + sign + launch all clean"
+}

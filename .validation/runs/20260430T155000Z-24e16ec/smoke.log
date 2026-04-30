@@ -1,0 +1,487 @@
+==> Step 1: Building release...
+[1/1] Compiling plugin GenerateManual
+[2/2] Compiling plugin GenerateDoccReference
+Building for production...
+[2/189] Write sources
+[2/189] Copying PrivacyInfo.xcprivacy
+[2/189] Copying gpt2_tokenizer_config.json
+[2/189] Copying PrivacyInfo.xcprivacy
+[2/189] Copying t5_tokenizer_config.json
+[16/189] Write swift-version--1AB21518FC5DEDBE.txt
+[17/189] Compiling phlibwebp upsampling_sse2.c
+[18/189] Compiling phlibwebp yuv_sse41.c
+[19/189] Compiling phlibwebp upsampling_sse41.c
+[20/189] Compiling phlibwebp utils.c
+[21/189] Compiling phlibwebp webp_enc.c
+[22/189] Compiling phlibwebp thread_utils.c
+[23/189] Compiling phlibwebp token_enc.c
+[24/189] Compiling phlibwebp ssim_sse2.c
+[25/191] Compiling phlibwebp sharpyuv_sse2.c
+[26/191] Compiling phlibwebp syntax_enc.c
+[27/191] Compiling phlibwebp tree_enc.c
+[28/191] Compiling phlibwebp ssim.c
+[29/191] Compiling phlibwebp sharpyuv_dsp.c
+[30/191] Compiling phlibwebp upsampling.c
+[31/191] Compiling phlibwebp sharpyuv_cpu.c
+[32/191] Compiling phlibwebp sharpyuv_gamma.c
+[33/191] Compiling phlibwebp sharpyuv_csp.c
+[34/191] Compiling phlibwebp rescaler_sse2.c
+[35/191] Compiling phlibwebp yuv.c
+[36/191] Compiling phlibwebp yuv_neon.c
+[37/191] Compiling phlibwebp rescaler_utils.c
+[38/191] Compiling phlibwebp random_utils.c
+[39/191] Compiling phlibwebp rescaler_neon.c
+[40/191] Compiling phlibwebp rescaler.c
+[41/191] Compiling phlibwebp sharpyuv_neon.c
+[42/191] Compiling phlibwebp vp8l_enc.c
+[43/191] Compiling phlibwebp quant_levels_utils.c
+[44/191] Compiling phlibwebp yuv_sse2.c
+[44/191] Compiling phlibwebp sharpyuv.c
+[46/191] Compiling phlibwebp quant_levels_dec_utils.c
+[47/191] Compiling phlibwebp picture_rescale_enc.c
+[48/191] Compiling phlibwebp picture_psnr_enc.c
+[49/191] Compiling phlibwebp picture_enc.c
+[50/191] Compiling phlibwebp muxread.c
+[51/191] Compiling phlibwebp near_lossless_enc.c
+[52/191] Compiling phlibwebp muxedit.c
+[53/191] Compiling phlibwebp muxinternal.c
+[54/191] Compiling phlibwebp palette.c
+[55/191] Compiling phlibwebp lossless_sse41.c
+[56/191] Compiling phlibwebp lossless_sse2.c
+[57/191] Compiling phlibwebp picture_csp_enc.c
+[58/191] Compiling phlibwebp lossless_enc_sse41.c
+[59/191] Compiling phlibwebp lossless_enc_sse2.c
+[60/191] Compiling phlibwebp huffman_utils.c
+[60/191] Compiling phlibwebp lossless_enc_neon.c
+[62/191] Compiling phlibwebp quant_enc.c
+[63/191] Compiling phlibwebp lossless_neon.c
+[64/191] Compiling phlibwebp filters_sse2.c
+[65/191] Compiling phlibwebp predictor_enc.c
+[66/191] Compiling phlibwebp filters_utils.c
+[67/191] Compiling phlibwebp iterator_enc.c
+[67/191] Compiling phlibwebp upsampling_neon.c
+[69/191] Compiling phlibwebp picture_tools_enc.c
+[70/191] Compiling phlibwebp filters.c
+[71/191] Compiling phlibwebp huffman_encode_utils.c
+[72/191] Compiling phlibwebp enc_sse41.c
+[73/191] Compiling phlibwebp enc_sse2.c
+[74/191] Compiling phlibwebp lossless.c
+[75/191] Compiling phlibwebp lossless_enc.c
+[76/191] Compiling phlibwebp filter_enc.c
+[77/191] Compiling phlibwebp dec_sse41.c
+[78/191] Compiling phlibwebp filters_neon.c
+[78/191] Compiling phlibwebp frame_enc.c
+[80/191] Compiling phlibwebp dec_sse2.c
+[81/191] Compiling phlibwebp dec_clip_tables.c
+[82/191] Compiling phlibwebp cpu.c
+[83/191] Compiling phlibwebp cost_sse2.c
+[84/191] Compiling phlibwebp enc.c
+[85/191] Compiling phlibwebp color_cache_utils.c
+[86/191] Compiling phlibwebp config_enc.c
+[87/191] Compiling phlibwebp cost.c
+[88/191] Compiling phlibwebp enc_neon.c
+[89/191] Compiling phlibwebp dec.c
+[90/191] Compiling phlibwebp cost_neon.c
+[91/191] Compiling phlibwebp bit_reader_utils.c
+[92/191] Compiling phlibwebp histogram_enc.c
+[93/191] Compiling phlibwebp cost_enc.c
+[93/191] Compiling phlibwebp alpha_processing_sse41.c
+[95/191] Compiling phlibwebp bit_writer_utils.c
+[96/191] Write sources
+[97/191] Copying Info.plist
+[98/191] Compiling phlibwebp alpha_processing_sse2.c
+[98/191] Write sources
+[100/191] Copying Sentry.framework
+[100/191] Write sources
+[111/191] Compiling phlibwebp alpha_processing_neon.c
+[111/191] Compiling phlibwebp alpha_processing.c
+[111/191] Copying Sparkle.framework
+[111/191] Compiling phlibwebp dec_neon.c
+[115/191] Compiling phlibwebp analysis_enc.c
+[116/191] Compiling phlibwebp alpha_enc.c
+[117/191] Compiling phlibwebp backward_references_cost_enc.c
+[118/193] Compiling phlibwebp backward_references_enc.c
+[119/193] Compiling dwarf_opstream.cpp
+[120/193] Compiling MachTaskSelfWrapper MachTaskSelf.c
+[121/193] Compiling PLCrashSysctl.c
+[122/193] Compiling PLCrashSignalHandler.mm
+[123/193] Compiling FastClusterWrapper FastClusterWrapper.cpp
+[124/193] Compiling CrashReporter resource_bundle_accessor.m
+[125/193] Compiling PLCrashReportSymbolInfo.m
+[126/193] Compiling PLCrashReporterNSError.m
+[127/193] Compiling PLCrashReportStackFrameInfo.m
+[128/194] Compiling PLCrashReportSignalInfo.m
+[129/194] Compiling PLCrashReportTextFormatter.m
+[130/194] Compiling PLCrashReportRegisterInfo.m
+[131/194] Compiling PLCrashReportProcessorInfo.m
+[132/194] Compiling PLCrashUncaughtExceptionHandler.m
+[133/194] Compiling PLCrashReportProcessInfo.m
+[134/194] Compiling PLCrashReportMachineInfo.m
+[135/194] Compiling PLCrashReportMachExceptionInfo.m
+[136/194] Compiling PLCrashReportSystemInfo.m
+[137/194] Compiling PLCrashReportExceptionInfo.m
+[138/194] Compiling PLCrashReportApplicationInfo.m
+[139/194] Compiling PLCrashReportBinaryImageInfo.m
+[140/194] Compiling PLCrashReport.pb-c.c
+[141/194] Compiling PLCrashReporterConfig.m
+[142/194] Compiling PLCrashProcessInfo.m
+[143/194] Compiling PLCrashReporter.m
+[144/194] Compiling PLCrashMachExceptionPortSet.m
+[145/194] Compiling PLCrashMachExceptionPort.m
+[146/194] Compiling PLCrashReport.m
+[147/194] Compiling PLCrashMachExceptionServer.m
+[148/194] Compiling PLCrashLogWriterEncoding.c
+[149/194] Compiling PLCrashHostInfo.m
+[150/194] Compiling PLCrashAsyncThread_x86.c
+[151/194] Compiling PLCrashFrameCompactUnwind.c
+[152/194] Compiling PLCrashFrameWalker.c
+[153/194] Compiling PLCrashFrameStackUnwind.c
+[154/194] Compiling PLCrashLogWriter.m
+[155/194] Compiling PLCrashAsyncThread_current.c
+[156/194] Compiling PLCrashAsyncThread_current.S
+[157/194] Compiling PLCrashAsyncThread.c
+[158/194] Compiling PLCrashAsyncThread_arm.c
+[159/194] Compiling PLCrashAsyncSignalInfo.c
+[160/194] Compiling PLCrashReportThreadInfo.m
+[161/194] Compiling PLCrashAsyncSymbolication.c
+[162/194] Compiling PLCrashAsyncMachOString.c
+[163/194] Compiling PLCrashFrameDWARFUnwind.cpp
+[164/194] Compiling PLCrashAsyncMachExceptionInfo.c
+[165/194] Compiling PLCrashAsyncMObject.c
+[166/194] Compiling PLCrashAsyncMachOImage.c
+[167/194] Compiling PLCrashAsyncImageList.cpp
+[168/194] Compiling PLCrashAsyncDwarfFDE.cpp
+[169/194] Compiling PLCrashAsyncDwarfPrimitives.cpp
+[170/194] Compiling PLCrashAsyncDwarfEncoding.cpp
+[171/194] Compiling PLCrashAsyncDwarfCIE.cpp
+[172/194] Compiling CrashReporterFramework.m
+[173/194] Compiling PLCrashAsync.c
+[174/194] Write sources
+[175/194] Compiling PLCrashAsyncDwarfExpression.cpp
+[176/194] Compiling CrashReporter.m
+[177/194] Compiling PLCrashAsyncDwarfCFAState.cpp
+[178/194] Compiling PLCrashAsyncDwarfCFAStateEvaluation.cpp
+[179/194] Compiling PLCrashAsyncObjCSection.mm
+[180/194] Compiling PLCrashAsyncCompactUnwindEncoding.c
+[181/194] Compiling protobuf-c.c
+[182/195] Compiling yyjson.c
+[184/195] Compiling SentryCppHelper SentryCppHelper.swift
+[185/195] Compiling InternalCollectionsUtilities Debugging.swift
+[186/196] Compiling OrderedCollections _HashTable+Bucket.swift
+[187/197] Compiling Crypto AES-GCM.swift
+[188/197] Compiling EnviousWisprCore ASRResult.swift
+[189/200] Compiling EnviousWisprStorage TranscriptStore.swift
+[190/200] Compiling EnviousWisprPostProcessing CustomWordsManager.swift
+[191/200] Compiling Jinja AST.swift
+[192/201] Compiling EnviousWisprLLM AppleIntelligenceConnector.swift
+[193/201] Compiling Hub BinaryDistinct.swift
+[194/203] Compiling ArgmaxCore ArgmaxCoreError.swift
+[195/203] Compiling PostHog ApplicationLifecyclePublisher.swift
+[196/204] Compiling Tokenizers BPETokenizer.swift
+[197/205] Compiling EnviousWisprServices CaptureTelemetryState.swift
+[198/205] Compiling WhisperKit AudioChunker.swift
+[199/205] Compiling FluidAudio AsrManager.swift
+[200/206] Compiling EnviousWisprAudio AVAudioEngineSource.swift
+/Users/m4pro_sv/Developer/EnviousLabs/wt-phase-e/Sources/EnviousWisprAudio/AudioCaptureProxy.swift:107:3: warning: 'nonisolated(unsafe)' is unnecessary for a constant with 'Sendable' type 'AVAudioFormat', consider removing it
+105 |   /// 16kHz mono Float32 format used for buffer reconstruction.
+106 |   /// Matches AudioCaptureManager.targetSampleRate / targetChannels.
+107 |   nonisolated(unsafe) private static let targetFormat = AVAudioFormat(
+    |   `- warning: 'nonisolated(unsafe)' is unnecessary for a constant with 'Sendable' type 'AVAudioFormat', consider removing it
+108 |     commonFormat: .pcmFormatFloat32,
+109 |     sampleRate: 16000,
+
+/Users/m4pro_sv/Developer/EnviousLabs/wt-phase-e/Sources/EnviousWisprAudio/AVCaptureSessionSource.swift:367:14: warning: sending 'notification' risks causing data races [#SendingRisksDataRace]
+365 |       MainActor.assumeIsolated {
+366 |         guard let self else { return }
+367 |         self.emitCaptureSessionInterruption(kind: .wasInterrupted, notification: notification)
+    |              |- warning: sending 'notification' risks causing data races [#SendingRisksDataRace]
+    |              `- note: task-isolated 'notification' is captured by a main actor-isolated closure. main actor-isolated uses in closure may race against later nonisolated uses
+368 |         self.onInterrupted?()
+369 |       }
+
+/Users/m4pro_sv/Developer/EnviousLabs/wt-phase-e/Sources/EnviousWisprAudio/AVCaptureSessionSource.swift:379:14: warning: sending 'notification' risks causing data races [#SendingRisksDataRace]
+377 |       MainActor.assumeIsolated {
+378 |         guard let self else { return }
+379 |         self.emitCaptureSessionInterruption(kind: .runtimeError, notification: notification)
+    |              |- warning: sending 'notification' risks causing data races [#SendingRisksDataRace]
+    |              `- note: task-isolated 'notification' is captured by a main actor-isolated closure. main actor-isolated uses in closure may race against later nonisolated uses
+380 |         self.onInterrupted?()
+381 |       }
+
+[#SendingRisksDataRace]: <https://docs.swift.org/compiler/documentation/diagnostics/sending-risks-data-race>
+[201/208] Compiling EnviousWisprAudioService AudioServiceDelegate.swift
+[201/208] Write Objects.LinkFileList
+[202/208] Linking EnviousWisprAudioService
+[204/208] Compiling EnviousWisprASR ASRManager.swift
+/Users/m4pro_sv/Developer/EnviousLabs/wt-phase-e/Sources/EnviousWisprASR/ASRManagerProxy.swift:118:29: warning: main actor-isolated property 'isModelLoaded' can not be referenced from a Sendable closure
+ 16 | 
+ 17 |   public private(set) var activeBackendType: ASRBackendType = .parakeet
+ 18 |   public private(set) var isModelLoaded = false
+    |                           `- note: property declared here
+ 19 |   public private(set) var isStreaming = false
+ 20 | 
+    :
+116 |     let progressFile = ProgressFile.shared
+117 |     let timer = Timer(timeInterval: 0.125, repeats: true) { [weak self] _ in
+118 |       guard let self, !self.isModelLoaded else { return }
+    |                             `- warning: main actor-isolated property 'isModelLoaded' can not be referenced from a Sendable closure
+119 |       if let state = progressFile.read() {
+120 |         self.downloadProgress = state.fraction
+
+/Users/m4pro_sv/Developer/EnviousLabs/wt-phase-e/Sources/EnviousWisprASR/ASRManagerProxy.swift:120:14: warning: main actor-isolated property 'downloadProgress' can not be mutated from a Sendable closure
+ 20 | 
+ 21 |   // Download progress — updated via XPC callback from ASR service.
+ 22 |   public private(set) var downloadProgress: Double = 0
+    |                           `- note: mutation of this property is only permitted within the actor
+ 23 |   public private(set) var downloadPhase: String = ""
+ 24 |   public private(set) var downloadDetail: String = ""
+    :
+118 |       guard let self, !self.isModelLoaded else { return }
+119 |       if let state = progressFile.read() {
+120 |         self.downloadProgress = state.fraction
+    |              `- warning: main actor-isolated property 'downloadProgress' can not be mutated from a Sendable closure
+121 |         self.downloadPhase = state.phase
+122 |         self.downloadDetail = state.detail
+
+/Users/m4pro_sv/Developer/EnviousLabs/wt-phase-e/Sources/EnviousWisprASR/ASRManagerProxy.swift:121:14: warning: main actor-isolated property 'downloadPhase' can not be mutated from a Sendable closure
+ 21 |   // Download progress — updated via XPC callback from ASR service.
+ 22 |   public private(set) var downloadProgress: Double = 0
+ 23 |   public private(set) var downloadPhase: String = ""
+    |                           `- note: mutation of this property is only permitted within the actor
+ 24 |   public private(set) var downloadDetail: String = ""
+ 25 | 
+    :
+119 |       if let state = progressFile.read() {
+120 |         self.downloadProgress = state.fraction
+121 |         self.downloadPhase = state.phase
+    |              `- warning: main actor-isolated property 'downloadPhase' can not be mutated from a Sendable closure
+122 |         self.downloadDetail = state.detail
+123 |       }
+
+/Users/m4pro_sv/Developer/EnviousLabs/wt-phase-e/Sources/EnviousWisprASR/ASRManagerProxy.swift:122:14: warning: main actor-isolated property 'downloadDetail' can not be mutated from a Sendable closure
+ 22 |   public private(set) var downloadProgress: Double = 0
+ 23 |   public private(set) var downloadPhase: String = ""
+ 24 |   public private(set) var downloadDetail: String = ""
+    |                           `- note: mutation of this property is only permitted within the actor
+ 25 | 
+ 26 |   // MARK: - XPC connection
+    :
+120 |         self.downloadProgress = state.fraction
+121 |         self.downloadPhase = state.phase
+122 |         self.downloadDetail = state.detail
+    |              `- warning: main actor-isolated property 'downloadDetail' can not be mutated from a Sendable closure
+123 |       }
+124 |     }
+
+/Users/m4pro_sv/Developer/EnviousLabs/wt-phase-e/Sources/EnviousWisprASR/LanguageDetector.swift:283:9: warning: initialization of immutable value 'runnerUp' was never used; consider replacing with assignment to '_' or removing it [#no-usage]
+281 |     // branches keep their concise spelling.
+282 |     let top = (key: topLang, value: topProb)
+283 |     let runnerUp = runnerUpVoteShare
+    |         `- warning: initialization of immutable value 'runnerUp' was never used; consider replacing with assignment to '_' or removing it [#no-usage]
+284 | 
+285 |     switch decision {
+
+/Users/m4pro_sv/Developer/EnviousLabs/wt-phase-e/Sources/EnviousWisprASR/WhisperKitSetupService.swift:53:3: warning: 'nonisolated(unsafe)' is unnecessary for a constant with 'Sendable' type 'URL?', consider removing it
+ 51 |   /// WhisperKit 0.12+ downloads models to ~/Documents/huggingface/models/argmaxinc/whisperkit-coreml/
+ 52 |   /// nonisolated(unsafe) is required: the class is @MainActor but nonisolated static methods reference this.
+ 53 |   nonisolated(unsafe) private static let whisperKitModelRoot: URL? = FileManager.default
+    |   `- warning: 'nonisolated(unsafe)' is unnecessary for a constant with 'Sendable' type 'URL?', consider removing it
+ 54 |     .homeDirectoryForCurrentUser
+ 55 |     .appendingPathComponent("Documents/huggingface/models/argmaxinc/whisperkit-coreml")
+[205/210] Compiling EnviousWisprASRService ASRServiceDelegate.swift
+[205/210] Write Objects.LinkFileList
+[206/210] Linking EnviousWisprASRService
+[208/210] Compiling EnviousWisprPipeline DictationPipeline.swift
+[209/211] Compiling EnviousWispr AIAvailabilityCoordinator.swift
+/Users/m4pro_sv/Developer/EnviousLabs/wt-phase-e/Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift:167:14: warning: main actor-isolated property 'downloadProgress' can not be mutated from a Sendable closure
+  40 |   /// SwiftUI can't observe @Observable properties through protocol existentials
+  41 |   /// (asrManager is typed as `any ASRManagerInterface`), so we poll and copy.
+  42 |   var downloadProgress: Double = 0
+     |       `- note: mutation of this property is only permitted within the actor
+  43 |   var downloadPhase: String = ""
+  44 |   var downloadDetail: String = ""
+     :
+ 165 |       guard let self else { return }
+ 166 |       if let state = progressFile.read() {
+ 167 |         self.downloadProgress = state.fraction
+     |              `- warning: main actor-isolated property 'downloadProgress' can not be mutated from a Sendable closure
+ 168 |         self.downloadPhase = state.phase
+ 169 |         self.downloadDetail = state.detail
+
+/Users/m4pro_sv/Developer/EnviousLabs/wt-phase-e/Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift:168:14: warning: main actor-isolated property 'downloadPhase' can not be mutated from a Sendable closure
+  41 |   /// (asrManager is typed as `any ASRManagerInterface`), so we poll and copy.
+  42 |   var downloadProgress: Double = 0
+  43 |   var downloadPhase: String = ""
+     |       `- note: mutation of this property is only permitted within the actor
+  44 |   var downloadDetail: String = ""
+  45 |   private var progressPollTimer: Timer?
+     :
+ 166 |       if let state = progressFile.read() {
+ 167 |         self.downloadProgress = state.fraction
+ 168 |         self.downloadPhase = state.phase
+     |              `- warning: main actor-isolated property 'downloadPhase' can not be mutated from a Sendable closure
+ 169 |         self.downloadDetail = state.detail
+ 170 | 
+
+/Users/m4pro_sv/Developer/EnviousLabs/wt-phase-e/Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift:169:14: warning: main actor-isolated property 'downloadDetail' can not be mutated from a Sendable closure
+  42 |   var downloadProgress: Double = 0
+  43 |   var downloadPhase: String = ""
+  44 |   var downloadDetail: String = ""
+     |       `- note: mutation of this property is only permitted within the actor
+  45 |   private var progressPollTimer: Timer?
+  46 | 
+     :
+ 167 |         self.downloadProgress = state.fraction
+ 168 |         self.downloadPhase = state.phase
+ 169 |         self.downloadDetail = state.detail
+     |              `- warning: main actor-isolated property 'downloadDetail' can not be mutated from a Sendable closure
+ 170 | 
+ 171 |         // Start quip timer when compilation begins (fraction >= 0.5)
+
+/Users/m4pro_sv/Developer/EnviousLabs/wt-phase-e/Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift:172:42: warning: main actor-isolated property 'quipTimer' can not be referenced from a nonisolated autoclosure
+  47 |   /// Quirky installation message, cycled during the compilation phase.
+  48 |   var installQuip: String = ""
+  49 |   private var quipTimer: Timer?
+     |               `- note: property declared here
+  50 |   private var quipIndex: Int = 0
+  51 | 
+     :
+ 170 | 
+ 171 |         // Start quip timer when compilation begins (fraction >= 0.5)
+ 172 |         if state.fraction >= 0.5 && self.quipTimer == nil {
+     |                                          `- warning: main actor-isolated property 'quipTimer' can not be referenced from a nonisolated autoclosure
+ 173 |           self.startQuipTimer()
+ 174 |         }
+
+/Users/m4pro_sv/Developer/EnviousLabs/wt-phase-e/Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift:173:16: warning: call to main actor-isolated instance method 'startQuipTimer()' in a synchronous nonisolated context [#ActorIsolatedCall]
+ 171 |         // Start quip timer when compilation begins (fraction >= 0.5)
+ 172 |         if state.fraction >= 0.5 && self.quipTimer == nil {
+ 173 |           self.startQuipTimer()
+     |                `- warning: call to main actor-isolated instance method 'startQuipTimer()' in a synchronous nonisolated context [#ActorIsolatedCall]
+ 174 |         }
+ 175 |       }
+     :
+ 187 |   // MARK: - Installation Quips
+ 188 | 
+ 189 |   private func startQuipTimer() {
+     |                `- note: calls to instance method 'startQuipTimer()' from outside of its actor context are implicitly asynchronous
+ 190 |     quipIndex = 0
+ 191 |     installQuip = Self.installQuips[0]
+
+/Users/m4pro_sv/Developer/EnviousLabs/wt-phase-e/Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift:194:12: warning: main actor-isolated property 'quipIndex' can not be mutated from a Sendable closure
+  48 |   var installQuip: String = ""
+  49 |   private var quipTimer: Timer?
+  50 |   private var quipIndex: Int = 0
+     |               `- note: mutation of this property is only permitted within the actor
+  51 | 
+  52 |   /// Fun status messages shown during model compilation (~20-30s wait).
+     :
+ 192 |     let timer = Timer(timeInterval: 2.5, repeats: true) { [weak self] _ in
+ 193 |       guard let self else { return }
+ 194 |       self.quipIndex = (self.quipIndex + 1) % Self.installQuips.count
+     |            `- warning: main actor-isolated property 'quipIndex' can not be mutated from a Sendable closure
+ 195 |       self.installQuip = Self.installQuips[self.quipIndex]
+ 196 |     }
+
+/Users/m4pro_sv/Developer/EnviousLabs/wt-phase-e/Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift:194:30: warning: main actor-isolated property 'quipIndex' can not be referenced from a Sendable closure
+  48 |   var installQuip: String = ""
+  49 |   private var quipTimer: Timer?
+  50 |   private var quipIndex: Int = 0
+     |               `- note: property declared here
+  51 | 
+  52 |   /// Fun status messages shown during model compilation (~20-30s wait).
+     :
+ 192 |     let timer = Timer(timeInterval: 2.5, repeats: true) { [weak self] _ in
+ 193 |       guard let self else { return }
+ 194 |       self.quipIndex = (self.quipIndex + 1) % Self.installQuips.count
+     |                              `- warning: main actor-isolated property 'quipIndex' can not be referenced from a Sendable closure
+ 195 |       self.installQuip = Self.installQuips[self.quipIndex]
+ 196 |     }
+
+/Users/m4pro_sv/Developer/EnviousLabs/wt-phase-e/Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift:194:52: warning: main actor-isolated static property 'installQuips' can not be referenced from a Sendable closure
+  51 | 
+  52 |   /// Fun status messages shown during model compilation (~20-30s wait).
+  53 |   private static let installQuips = [
+     |                      `- note: static property declared here
+  54 |     "Tuning the neural ears...",
+  55 |     "Teaching AI to listen politely...",
+     :
+ 192 |     let timer = Timer(timeInterval: 2.5, repeats: true) { [weak self] _ in
+ 193 |       guard let self else { return }
+ 194 |       self.quipIndex = (self.quipIndex + 1) % Self.installQuips.count
+     |                                                    `- warning: main actor-isolated static property 'installQuips' can not be referenced from a Sendable closure
+ 195 |       self.installQuip = Self.installQuips[self.quipIndex]
+ 196 |     }
+
+/Users/m4pro_sv/Developer/EnviousLabs/wt-phase-e/Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift:195:12: warning: main actor-isolated property 'installQuip' can not be mutated from a Sendable closure
+  46 | 
+  47 |   /// Quirky installation message, cycled during the compilation phase.
+  48 |   var installQuip: String = ""
+     |       `- note: mutation of this property is only permitted within the actor
+  49 |   private var quipTimer: Timer?
+  50 |   private var quipIndex: Int = 0
+     :
+ 193 |       guard let self else { return }
+ 194 |       self.quipIndex = (self.quipIndex + 1) % Self.installQuips.count
+ 195 |       self.installQuip = Self.installQuips[self.quipIndex]
+     |            `- warning: main actor-isolated property 'installQuip' can not be mutated from a Sendable closure
+ 196 |     }
+ 197 |     RunLoop.main.add(timer, forMode: .common)
+
+/Users/m4pro_sv/Developer/EnviousLabs/wt-phase-e/Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift:195:31: warning: main actor-isolated static property 'installQuips' can not be referenced from a Sendable closure
+  51 | 
+  52 |   /// Fun status messages shown during model compilation (~20-30s wait).
+  53 |   private static let installQuips = [
+     |                      `- note: static property declared here
+  54 |     "Tuning the neural ears...",
+  55 |     "Teaching AI to listen politely...",
+     :
+ 193 |       guard let self else { return }
+ 194 |       self.quipIndex = (self.quipIndex + 1) % Self.installQuips.count
+ 195 |       self.installQuip = Self.installQuips[self.quipIndex]
+     |                               `- warning: main actor-isolated static property 'installQuips' can not be referenced from a Sendable closure
+ 196 |     }
+ 197 |     RunLoop.main.add(timer, forMode: .common)
+
+/Users/m4pro_sv/Developer/EnviousLabs/wt-phase-e/Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift:195:49: warning: main actor-isolated property 'quipIndex' can not be referenced from a Sendable closure
+  48 |   var installQuip: String = ""
+  49 |   private var quipTimer: Timer?
+  50 |   private var quipIndex: Int = 0
+     |               `- note: property declared here
+  51 | 
+  52 |   /// Fun status messages shown during model compilation (~20-30s wait).
+     :
+ 193 |       guard let self else { return }
+ 194 |       self.quipIndex = (self.quipIndex + 1) % Self.installQuips.count
+ 195 |       self.installQuip = Self.installQuips[self.quipIndex]
+     |                                                 `- warning: main actor-isolated property 'quipIndex' can not be referenced from a Sendable closure
+ 196 |     }
+ 197 |     RunLoop.main.add(timer, forMode: .common)
+
+[#ActorIsolatedCall]: <https://docs.swift.org/compiler/documentation/diagnostics/actor-isolated-call>
+[209/211] Write Objects.LinkFileList
+[210/211] Linking EnviousWispr
+Build complete! (84.29s)
+==> Build complete
+==> Step 2: Stopping running app...
+==> Step 3: Assembling bundle...
+==> Step 4: Signing (inside-out)...
+    [1/6] Signing Updater.app
+/tmp/EnviousWispr Local.app/Contents/Frameworks/Sparkle.framework/Versions/B/Updater.app: replacing existing signature
+    [2/6] Signing Downloader.xpc
+/tmp/EnviousWispr Local.app/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Downloader.xpc: replacing existing signature
+    [2/6] Signing Installer.xpc
+/tmp/EnviousWispr Local.app/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Installer.xpc: replacing existing signature
+    [3/6] Signing Autoupdate
+/tmp/EnviousWispr Local.app/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate: replacing existing signature
+    [4/6] Signing Sparkle.framework
+/tmp/EnviousWispr Local.app/Contents/Frameworks/Sparkle.framework/Versions/B: replacing existing signature
+    [5/6] Signing XPC services
+/tmp/EnviousWispr Local.app/Contents/XPCServices/com.enviouswispr.audioservice.xpc: replacing existing signature
+/tmp/EnviousWispr Local.app/Contents/XPCServices/com.enviouswispr.asrservice.xpc: replacing existing signature
+    [6/6] Signing main app
+/tmp/EnviousWispr Local.app: replacing existing signature
+==> Signatures verified
+==> Step 5: Deploying...
+==> Step 6: Launching...
+==> EnviousWispr (v1.9.4-77-g24e16ec-dev) running ✓
