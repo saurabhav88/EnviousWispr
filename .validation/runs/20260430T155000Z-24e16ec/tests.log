@@ -1,0 +1,1170 @@
+[1/1] Compiling plugin GenerateManual
+[2/2] Compiling plugin GenerateDoccReference
+Building for debugging...
+[2/10] Write swift-version--1AB21518FC5DEDBE.txt
+Build complete! (0.21s)
+◇ Test run started.
+↳ Testing Library Version: 1743
+↳ Target Platform: arm64e-apple-macos14.0
+◇ Suite "SampleFilter" started.
+◇ Suite "Multilingual v1 W3 Prompt Injection" started.
+◇ Suite "ASRManager backend injection (Phase G5)" started.
+◇ Suite "XPCErrorSanitizer" started.
+◇ Suite "WhisperKitBackend partial-download guard (issue #329)" started.
+◇ Suite "WordCorrector" started.
+◇ Suite CrossModulePublicGuardTests started.
+◇ Suite "PasteFocusClassification" started.
+◇ Suite "GeminiPromptBuilder" started.
+◇ Suite "LanguageDetector boundary logic" started.
+◇ Suite "PasteService clipboard helpers" started.
+◇ Suite "EnhancementError" started.
+◇ Suite "TranscriptAnalyzer" started.
+◇ Suite "ASRManager cold-state contract" started.
+◇ Suite "CustomWordsPropagator — Phase D registry contract" started.
+◇ Suite SetupCoordinatorTests started.
+◇ Suite "OllamaConnector request body" started.
+◇ Suite "TextProcessingRunner Races" started.
+◇ Suite AppleIntelligencePreflightGateTests started.
+◇ Suite "PreWarm throws contract" started.
+◇ Suite "Preamble Stripping" started.
+◇ Suite "LLMRetryPolicy" started.
+◇ Suite "TextProcessingRunner" started.
+◇ Suite "CaptureTelemetryState" started.
+◇ Suite "AppLogger R3 compile-out" started.
+◇ Suite AppStateCeilingsTests started.
+◇ Suite "LLMTaskMetricsCollector.format" started.
+◇ Suite "LLMProviderConfig: detectedLanguage" started.
+◇ Suite "CustomWord" started.
+◇ Suite "TranscriptCoordinator — Phase C append + merge" started.
+◇ Suite "HeartPathError" started.
+◇ Suite "WERCalculator" started.
+◇ Suite "OpenAIPromptBuilder" started.
+◇ Suite "DictationSessionConfig — per-recording snapshot" started.
+◇ Suite "TranscriptionPipeline injection (Phase G3)" started.
+◇ Suite "Apple Intelligence: output language validation" started.
+◇ Suite "Apple Intelligence: documented allowlist" started.
+◇ Suite "PipelineStateChangePlanner — characterization" started.
+◇ Suite "GemmaPromptBuilder" started.
+◇ Suite "PipelineState" started.
+◇ Suite "EnviousOutputFilter" started.
+◇ Suite "TranscriptFinalizer contracts" started.
+◇ Suite "OllamaModelCatalog" started.
+◇ Suite "SentryAudioExtras" started.
+◇ Suite "RotatingFileSink" started.
+◇ Suite "ApplePolishRouter" started.
+◇ Suite "DefaultPromptPlanner" started.
+◇ Suite "Connector Envelope Contracts" started.
+◇ Suite "Heart Path Integration — Finalizer layer (mocked ASR + paste)" started.
+◇ Suite "PipelineStateChangeHandler — execution contract" started.
+◇ Suite "HeartPathContexts" started.
+◇ Suite "Apple Intelligence: LanguageNormalizer" started.
+◇ Test "returns original samples when every padded range is invalid after clamping" started.
+◇ Test "invalid segments mixed with valid speech are skipped in the merge loop too" started.
+◇ Test "nested segments merge into a single range" started.
+◇ Test "endSample near Int.max does not trap and clamps to allSamples.count" started.
+◇ Test "keeps disjoint padded ranges separate and concatenates them in segment order" started.
+◇ Test "failureReason is appended when there's no underlying chain and it differs from description" started.
+◇ Test "merges overlapping padded ranges into one contiguous slice" started.
+◇ Test "switchBackend to the same type is a no-op (no unload, flags preserved)" started.
+◇ Test "merges padded ranges that only touch at the boundary" started.
+◇ Test "unsorted segments are deduplicated across overlap" started.
+◇ Test "failureReason is NOT used when there is an underlying chain" started.
+◇ Test "negative padding is treated as zero padding" started.
+◇ Test "filters when total voiced audio is exactly the minimum threshold" started.
+◇ Test "planner highAuto keeps vocab in system prompt" started.
+◇ Test "unsorted segments produce the same output as sorted segments" started.
+◇ Test "returns original samples when no speech segments are present" started.
+◇ Test "Three-level NSUnderlyingError chain: all four descriptions joined" started.
+◇ Test "Parakeet prompt output is byte-identical to legacy (no backend set)" started.
+◇ Test "Sanitized NSError round-trips through NSKeyedArchiver with XPC-allowed classes" started.
+◇ Test "returns original samples when total voiced audio is below the minimum threshold" started.
+◇ Test "invalid segments (endSample <= startSample) do not contribute to voiced threshold" started.
+◇ Test "Property-based: representative errors all yield single-key userInfo" started.
+◇ Test "URL in userInfo is dropped, only NSLocalizedDescriptionKey remains" started.
+◇ Test "lowAuto tier: NO lexical injection at all" started.
+◇ Test "failureReason NOT appended when identical to localizedDescription" started.
+◇ Test "switchBackend from a loaded state resets isModelLoaded to false" started.
+◇ Test "switchBackend unloads the previous backend exactly once" started.
+◇ Test "planner nil detection preserves legacy customWords verbatim" started.
+◇ Test "Deep chain caps at depth 8, does not hang or stack-overflow" started.
+◇ Test "One-level NSUnderlyingError chain flattens into localizedDescription" started.
+◇ Test "backend nil falls through to legacy passthrough (safety net)" started.
+◇ Test "no perLanguage key for detected lang falls back to global-only" started.
+◇ Test "abstain tier: NO lexical injection at all" started.
+◇ Test "Swift enum error: domain, code, description preserved; userInfo has only NSLocalizedDescriptionKey" started.
+◇ Test "clamps padded ranges to the available sample bounds" started.
+◇ Test "setInitialBackendType after a load resets isModelLoaded and isStreaming" started.
+◇ Test "highAuto tier: global + perLanguage[detected] both injected" started.
+◇ Test "backend .whisperKit with nil detection uses formatting-only path" started.
+◇ Test "script guardrail: does NOT strip Latin terms for Latin-script langs" started.
+◇ Test "planner lowAuto strips all vocab from system prompt" started.
+◇ Test "locked tier: global + perLanguage[detected] both injected" started.
+◇ Test "fromLegacy: all CustomWords go into global, perLanguage is empty" started.
+◇ Test "mediumAuto tier: ONLY global, NO perLanguage lexicon" started.
+◇ Test "planner mediumAuto keeps global but not perLanguage in system prompt" started.
+◇ Test "script guardrail: strips Latin-only terms from non-Latin perLanguage list" started.
+◇ Test "exact alias match corrects casing" started.
+◇ Test "fuzzy match preserves canonical casing regardless of input case" started.
+◇ Test "fuzzy canonical fallback for words with no aliases" started.
+◇ Test "backend .parakeet forces legacy path even when detection is populated" started.
+◇ Test "score identical strings returns 1.0" started.
+◇ Test "exact multi-word alias replacement" started.
+◇ Test "fromLegacy empty list produces empty vocabulary" started.
+◇ Test "n-gram compound preserves surrounding punctuation" started.
+◇ Test "short token exact alias" started.
+◇ Test "n-gram compound fixes casing: chat gpt -> ChatGPT" started.
+◇ Test "script guardrail: keeps global terms regardless of their script" started.
+◇ Test "n-gram already correct casing not replaced" started.
+◇ Test "n-gram single token casing fix" started.
+◇ Test noConfessionalCrossModulePublicExists() started.
+◇ Test "backend .whisperKit with populated detection uses tier-gated W3 path" started.
+◇ Test "canonical self-entry fixes casing" started.
+◇ Test "n-gram compound: open a i -> OpenAI (3 tokens, max window)" started.
+◇ Test "unsupported perLanguage key is defensively skipped" started.
+◇ Test "script guardrail: strips Latin-extended terms (ß, é, ñ, ế) from non-Latin perLanguage list" started.
+◇ Test "no match when input is too different" started.
+◇ Test "short token below short threshold not corrected" started.
+◇ Test "planner locked + non-Latin detected lang strips Latin perLanguage terms" started.
+◇ Test "score distant word is below threshold" started.
+◇ Test "preserves surrounding punctuation" started.
+◇ Test "system contains ASR-awareness clause" started.
+◇ Test "roleIsTextField is ignored when element is missing" started.
+◇ Test "score completely different strings returns low value" started.
+◇ Test "score near-miss is above threshold" started.
+◇ Test "produces system + user messages" started.
+◇ Test "inline mode -> no bullets, no headers" started.
+◇ Test "empty word list returns unchanged text" started.
+◇ Test "multiple replacements in one pass" started.
+◇ Test "fuzzy alias match corrects minor misspelling" started.
+◇ Test "asSingleTurn succeeds for standard envelope" started.
+◇ Test "empty custom words -> no vocab block" started.
+◇ Test "system documents allowed edits including self-correction" started.
+◇ Test "message mode -> bullets for 3+ listed items and topic-shift paragraphs" started.
+◇ Test "long transcript does not trigger guard" started.
+◇ Test "appName present -> context block included" started.
+◇ Test "V2 removes old language override block" started.
+◇ Test "custom words appended with full format" started.
+◇ Test "Element missing -> .missing (Chromium/Electron lazy AX)" started.
+◇ Test "user message escapes opening-tag injection via <transcript>" started.
+◇ Test "Required artifact list matches WhisperKit.loadModels hard-required set" started.
+◇ Test "Text field role with element present -> .textField" started.
+◇ Test "Non-text role with element present -> .nonText (PR #220 void protection)" started.
+◇ Test "system declares editor-not-conversation role" started.
+◇ Test "system preserves multilingual + code-switching clause" started.
+◇ Test "user message contains anti-instruction clause" started.
+◇ Test "Any single artifact directory missing entirely → returns false" started.
+◇ Test "edit mode -> paragraph breaks + bullets (no list-size threshold)" started.
+◇ Test "user message escapes injection attempt via </transcript>" started.
+◇ Test "appName nil -> no context block" started.
+◇ Test "Locked mode normalizes to lowercase" started.
+◇ Test "user message wraps transcript in <transcript> tags" started.
+◇ Test "Non-existent folder → returns false (does not throw)" started.
+◇ Test "error is scoped to transcript ID" started.
+◇ Test "legacyTemplate with non-English prepends language" started.
+◇ Test "short transcript triggers guard" started.
+◇ Test "Normal clip: 0.65/0.20 boundary is mediumAuto" started.
+◇ Test "different transcript IDs are distinct" started.
+◇ Test "structured mode -> paragraphs + bullets + optional section labels" started.
+◇ Test "Locked mode: short-circuit to .locked tier" started.
+◇ Test "Script guardrail: isNonLatinScript maps correctly" started.
+◇ Test "legacyTemplate wraps custom prompt minimally and opts out of V2" started.
+◇ Test "already correct text unchanged" started.
+◇ Test "short text with list cues -> message (cues override length)" started.
+◇ Test "ambiguity margin prevents correction when two candidates are close" started.
+◇ Test "Two consecutive high-confidence accepts elevate sessionPreferred" started.
+◇ Test "Anti-flap: one strong utterance alone does NOT switch (pending)" started.
+◇ Test "case insensitive cue detection" started.
+◇ Test "Outer artifact dirs present but inner coremldata.bin missing → returns false" started.
+◇ Test "Anti-flap: two consecutive strong utterances commit the switch" started.
+◇ Test "copyToClipboardReturningChangeCount writes string and returns the new changeCount" started.
+◇ Test "nil appName with 75 words and list cues -> message (conservative, needs >110)" started.
+◇ Test "All four required artifacts complete → returns true" started.
+◇ Test "Passive chip fires on LID flip-flop within 5 minutes" started.
+◇ Test "Unsegmented script: CJK/Thai/Lao use char count, whitespace langs do not" started.
+◇ Test "finalizeStreaming without an active stream throws streamingNotSupported and preserves flags" started.
+◇ Test "110 words -> message (boundary)" started.
+◇ Test "whisperSupportedLanguages matches the spec roster size" started.
+◇ Test "transcribe before load throws notReady and preserves manager flags" started.
+◇ Test "Session prior boosts low-confidence decision toward preferred lang" started.
+◇ Test "111 words -> structured" started.
+◇ Test "109 words -> message" started.
+◇ Test "Empty folder → returns false" started.
+◇ Test "nil appName with 111 words and list cues -> structured" started.
+◇ Test "34 words with 'three things' -> message" started.
+◇ Test "setInitialBackendType on a cold manager selects WhisperKit and reports no streaming support" started.
+◇ Test "Normal clip: margin below 0.20 drops to lowAuto" started.
+◇ Test "startStreaming on WhisperKit is a no-op because streaming is unsupported" started.
+◇ Test "sequential switchBackend calls leave the last requested backend active" started.
+◇ Test "Between 1.0 and 2.5s: high-confidence lang passes strict" started.
+◇ Test "startStreaming before prepare on Parakeet throws notReady and leaves isStreaming false" started.
+◇ Test "default manager starts on Parakeet, unloaded, not streaming" started.
+◇ Test "nil appName with 111 words and no cues -> message (conservative)" started.
+◇ Test "10-minute inactivity clears sessionPreferred" started.
+◇ Test "Prefill artifact absent is acceptable (matches WhisperKit contract)" started.
+◇ Test "'to do' in ordinary prose is NOT a false positive" started.
+◇ Test "34 words with no cues -> inline" started.
+◇ Test "75 words with list cues -> structured (cues lower threshold)" started.
+◇ Test "36 words with no cues -> message" started.
+◇ Test "single word -> inline" started.
+◇ Test "Between 1.0 and 2.5s voiced: strict thresholds apply" started.
+◇ Test "Normal clip: 0.80/0.25 => highAuto" started.
+◇ Test "Normal clip: below 0.65 prob => lowAuto (accepted but unlexiconed)" started.
+◇ Test "Anti-flap: intervening weak utterance resets pending switch" started.
+◇ Test "35 words with no cues -> inline (boundary)" started.
+◇ Test "Script guardrail: unknown code treated as Latin (conservative default)" started.
+◇ Test "'number one' detected as list cue" started.
+◇ Test "Anti-flap: switch away requires prob >= 0.85 AND margin >= 0.25" started.
+◇ Test "plain prose without cues returns false" started.
+◇ Test "'things to do' IS a valid list cue" started.
+◇ Test "empty string -> inline" started.
+◇ Test "Below 1.0s voiced: abstain, never call LID" started.
+◇ Test parakeetBackendSkipsPreload() started.
+◇ Test "Stale (unsupported) sessionPreferred is ignored, not crashed" started.
+◇ Test "cancelling the outer task while a step is suspended rethrows CancellationError and stops the chain" started.
+◇ Test "'agenda' detected as list cue" started.
+◇ Test requestBodyPassesModelAndMessages() started.
+◇ Test "Initial-sync on register — late registrant gets current words" started.
+◇ Test evictRequestBodyCarriesModel() started.
+◇ Test "'next steps' detected as list cue" started.
+◇ Test "'pros and cons' detected as list cue" started.
+◇ Test requestBodyDoesNotIncludeThinkKey() started.
+◇ Test effectiveOllamaModelReturnsNilWhenProviderIsNotOllama() started.
+◇ Test effectiveOllamaModelReturnsNilWhenModelIsEmpty() started.
+◇ Test repeatedStartCancelsPrior() started.
+◇ Test effectiveOllamaModelReturnsModelWhenProviderIsOllama() started.
+◇ Test evictRequestBodyIncludesEmptyPrompt() started.
+◇ Test "Integration — consumer registered after update receives current words" started.
+◇ Test "Weak storage — transient consumer is deinit'd after autoreleasepool exits" started.
+◇ Test "'action items' detected as list cue" started.
+◇ Test "Duplicate-register idempotence — same instance written once per update" started.
+◇ Test evictRequestBodyHasOnlyExpectedKeys() started.
+◇ Test requestBodyDisablesStreaming() started.
+◇ Test evictRequestBodyUsesKeepAliveZero() started.
+◇ Test "user content starting with Sure preserved when not acknowledgment pattern" started.
+◇ Test "LanguageMode Codable round-trip" started.
+◇ Test "preflight gate throws unsupportedInputLanguage for language not in allowlist" started.
+◇ Test "clean text passes through unchanged" started.
+◇ Test "preamble lines stripped" started.
+◇ Test "acknowledgment + preamble line both stripped" started.
+◇ Test "conforming mock can throw on preWarm, callers observe error" started.
+◇ Test "mock preWarm returns cleanly when not configured to throw" started.
+◇ Test "short colon line not matching preamble patterns preserved" started.
+◇ Test "empty string returns empty" started.
+◇ Test "default max retries is 2" started.
+◇ Test "non-retryable URLError codes" started.
+◇ Test "default delays are 1s and 3s" started.
+◇ Test "stripping is idempotent" started.
+◇ Test "acknowledgment patterns stripped" started.
+◇ Test evictModelWithEmptyNameIsNoOp() started.
+◇ Test "retryable URLError codes" started.
+◇ Test "non-retryable LLM errors" started.
+◇ Test "LLMPolishStep declares .surface error policy" started.
+◇ Test "acknowledgment + transcript wrapper both stripped" started.
+◇ Test "TextProcessingRunner is per-call stateless: two overlapping run() invocations each execute the chain through to completion" started.
+◇ Test "rateLimited is retryable" started.
+◇ Test "whitespace-only string returns empty" started.
+◇ Test "requestFailed containing server error substring is retryable" started.
+◇ Test "unclosed transcript tag removed" started.
+◇ Test "Integration — wireCustomWords seeds all 5 spy consumers + coordinator broadcast reaches them" started.
+◇ Test "requestFailed with server error is retryable" started.
+◇ Test "captures LLM polish failures in polishError and continues with prior text" started.
+◇ Test "skips disabled steps and keeps running enabled ones in order" started.
+◇ Test "skips a timed-out non-LLM step and continues without polishError" started.
+◇ Test "generic NSError is not retryable" started.
+◇ Test "Step success emits a PipelineTiming entry into the injected logger" started.
+◇ Test "passes raw text, language, target app, and prior mutations through the real runner" started.
+◇ Test "suppresses polishError for output language drift skips from LLM Polish" started.
+◇ Test "recordSuccessfulRecording clears dedupe so the next zombie re-emits" started.
+◇ Test "shouldEmitZombie when window is zero always returns true" started.
+◇ Test "records polishError when LLM Polish times out and continues with prior text" started.
+◇ Test "shouldEmitZombie on first call returns true" started.
+◇ Test ".swallow policy never sets polishError, even for a step named 'LLM Polish'" started.
+◇ Test "requestFailed with empty message is not retryable" started.
+◇ Test "returns the seeded context unchanged when there are no steps" started.
+◇ Test "continues after a non-LLM step failure and does not set polishError" started.
+◇ Test "Step that mutates text emits CorrectionDebug IN/OUT lines via injected logger" started.
+◇ Test requestBodyMapsOptions() started.
+◇ Test "incrementConfigChange is monotonic" started.
+◇ Test "default init leaves detectedLanguage nil" started.
+◇ Test appStateConcreteCollaboratorCeilingHolds() started.
+◇ Test "shouldEmitZombie when route changes returns true" started.
+◇ Test "metrics=nil emits a full line with metrics_available=false and n/a phases" started.
+◇ Test "shouldEmitZombie within window on same route returns false" started.
+◇ Test "all word categories round-trip through Codable" started.
+◇ Test "Codable auto-synthesis decodes legacy JSON without detectedLanguage" started.
+◇ Test "Debug build: log() emits the marker into the file sink" started.
+◇ Test "empty-transaction-list case selects nothing and returns nil" started.
+◇ Test "call number is echoed verbatim, no zero-padding" started.
+◇ Test "Step timeout emits a TextProcessing 'timed out' entry via injected logger" started.
+◇ Test "startup load brings every on-disk row into memory" started.
+◇ Test "Renaming the polish step does NOT affect polishError when the policy stays .surface" started.
+◇ Test "recordSuccessfulRecording sets a time-since baseline" started.
+◇ Test "transcript tags removed" started.
+◇ Test "rethrows CancellationError and does not run later steps" started.
+◇ Test "suppresses polishError for unsupported input language skips from LLM Polish" started.
+◇ Test "single insertion" started.
+◇ Test "load during multiple appends preserves append-order at the front" started.
+◇ Test "delete removes from cache and disk" started.
+◇ Test "default values applied when using minimal init" started.
+◇ Test "produces system + user messages" started.
+◇ Test "zombieEngineZeroPeak description includes all fields" started.
+◇ Test "single deletion" started.
+◇ Test "XPCHandlerKind rawValues are stable" started.
+◇ Test "decode from known JSON payload" started.
+◇ Test "user message uses V2 anti-instruction wording" started.
+◇ Test "non-empty reference with empty hypothesis" started.
+◇ Test "short transcript triggers guard" started.
+◇ Test "mixed operations" started.
+◇ Test "every case produces a non-empty localizedDescription" started.
+◇ Test "Codable round-trip preserves detectedLanguage" started.
+◇ Test "user message escapes injection via </transcript>" started.
+◇ Test "append does not mutate disk" started.
+◇ Test appStateLineCountCeilingHolds() started.
+◇ Test "explicit value round-trips through init" started.
+◇ Test "empty reference with empty hypothesis" started.
+◇ Test "encode then decode preserves all properties" started.
+◇ Test "testDefault factory returns SettingsManager-default-shaped values" started.
+◇ Test "all optional fields nil -> valid prompt" started.
+◇ Test "completely different strings" started.
+◇ Test "per-field overrides survive construction intact" started.
+◇ Test "legacyTemplate wraps custom prompt minimally" started.
+◇ Test "identical strings yield 0 WER" started.
+◇ Test "empty reference with non-empty hypothesis" started.
+◇ Test "edit mode system prompt equals message mode (textually identical)" started.
+◇ Test "user message uses V2 sandwich framing with <transcript> tags" started.
+◇ Test "load during a concurrent append merges both rows" started.
+◇ Test "append inserts at index 0" started.
+◇ Test "fails closed on strong language drift (de expected, English long output)" started.
+◇ Test "user message escapes opening-tag injection via <transcript>" started.
+◇ Test "single substitution" started.
+◇ Test "Sendable value semantics — modifying a copy's source does not mutate the snapshot" started.
+◇ Test "appName present -> plain text context" started.
+◇ Test "Public convenience init still produces a working default-finalizer pipeline" started.
+◇ Test "message mode -> bullet and paragraph rules" started.
+◇ Test "Internal init wires an injected TranscriptFinalizer instead of the default one" started.
+◇ Test "fails open on short output (<24 letters)" started.
+◇ Test "allowlist excludes known-unsupported languages" started.
+◇ Test "WhisperKit .ready cancels warning (activity == .idle)" started.
+◇ Test "ASR-awareness clause always present" started.
+◇ Test "custom words appended with full format" started.
+◇ Test "non-English language prepends LANGUAGE block with 'Clean'" started.
+◇ Test "produces system + user messages" started.
+◇ Test "inline mode -> 'Keep as one paragraph, no formatting'" started.
+◇ Test "no <transcript> tags in Gemma prompt" started.
+◇ Test "error is not active" started.
+◇ Test "allowlist covers Apple's documented 2026 languages" started.
+◇ Test "inline mode -> single prose example only" started.
+◇ Test "active states" started.
+◇ Test "equality for error states" started.
+◇ Test "equality for non-error states" started.
+◇ Test "complete + clipboard_only fallback -> .clipboardFallback wins, no warning scheduled" started.
+◇ Test "user message is plain transcript, no tags" started.
+◇ Test "WhisperKit startingUp vs loadingModel labels are preserved distinctly" started.
+◇ Test "no context block even with appName in input" started.
+◇ Test "weak model gets simplified prompt" started.
+◇ Test "system includes V2 formatting clause for numbers/emails/URLs" started.
+◇ Test "complete + polish failed plan produces canonical effect order" started.
+◇ Test "non-English uses minimal language instruction" started.
+◇ Test "structured mode -> same examples as message" started.
+◇ Test "Store throw wraps error as .storageFailed(underlying:) and preserves underlying type" started.
+◇ Test "idle is not active" started.
+◇ Test "system includes V2 self-correction permission" started.
+◇ Test "error state emits reportPipelineFailed with error code" started.
+◇ Test "Chinese dominance normalizes to zh" started.
+◇ Test "WhisperKit state activity mapping covers ready + startingUp" started.
+◇ Test "system ends with 'Now clean up this text:'" started.
+◇ Test "error plan produces cancel, show, report order" started.
+◇ Test "appName nil -> no context line" started.
+◇ Test "structured mode -> organize with sections" started.
+◇ Test "complete without current transcript -> neither append nor telemetry fires (Phase C)" started.
+◇ Test "no explicit ASR clause for Gemma" started.
+◇ Test "blank-line wrapper preamble is stripped" started.
+◇ Test "legacyTemplate wraps minimally" started.
+◇ Test "Paste clipboard-only outcome still returns a FinalizationResult" started.
+◇ Test "create a regex execution falls back to raw input" started.
+◇ Test "pipeline overlay intent passes through verbatim for non-complete states" started.
+◇ Test "complete + polish failed (not clipboard) -> overlay + schedulePolishFailedWarning" started.
+◇ Test "executed imperative answer falls back to raw input" started.
+◇ Test "dictate the words execution falls back to raw input" started.
+◇ Test "message mode -> two examples (list + prose)" started.
+◇ Test "passes when output matches expected language" started.
+◇ Test "complete is not active" started.
+◇ Test "Step failures preserve raw ASR text and call store exactly once" started.
+◇ Test "custom words use simplified comma format" started.
+◇ Test "zombie telemetry extras: nil inputs omit both keys" started.
+◇ Test "Cancellation mid-processing throws CancellationError without saving" started.
+◇ Test "WhisperKit error state emits reportPipelineFailed" started.
+◇ Test "case insensitive comparison" started.
+◇ Test "Store failure short-circuits paste (m13v data-loss invariant, strengthened)" started.
+◇ Test "aggressive shortening on meta-reference falls back to raw" started.
+◇ Test "parses million values as fractional billions" started.
+◇ Test "structured data output falls back to raw input" started.
+◇ Test "parses :Nb size tag from name when parameter size is unknown" started.
+◇ Test "zombie telemetry extras: values passed through with stable keys" started.
+◇ Test "bare name stays unchanged" started.
+◇ Test "divergence flag true when preferred differs from system default" started.
+◇ Test "complete + clipboard fallback plan produces canonical effect order" started.
+◇ Test "Whitespace-only processed text throws .emptyAfterProcessing without saving" started.
+◇ Test "non-complete transitions cancel pending warning" started.
+◇ Test "stall context adds stall-specific keys + window ms math" started.
+◇ Test "nil polish swap omits the key entirely" started.
+◇ Test "short inputs bypass aggressive shortening guard" started.
+◇ Test "same-line opener content is preserved" started.
+◇ Test "strips :latest suffix" started.
+◇ Test "normal filler cleanup is not caught by aggressive shortening" started.
+◇ Test "Concurrent in-process writers do not produce torn lines" started.
+◇ Test "parses fractional billion values" started.
+◇ Test "non-complete plan produces cancel-before-show ordering" started.
+◇ Test "complete + success (no fallback, no polish error) -> no warning, telemetry fires" started.
+◇ Test "Writes are appended in order and visible on disk" started.
+◇ Test "Parakeet state activity mapping is stable" started.
+◇ Test "brainstorm execution falls back to raw input" started.
+◇ Test "models under 3B are weak when parameter size is known" started.
+◇ Test "Sibling process appends survive a rotation triggered by us" started.
+◇ Test "base extras include core fields with stable keys" started.
+◇ Test "Rotation caps total retention at maxFiles (active + archives)" started.
+◇ Test "falls back to hardcoded list when parameter size unknown" started.
+◇ Test "push to thursday stays natural despite self-correction" started.
+◇ Test "generate a sql query routes technical via strong phrase" started.
+◇ Test "defaults to not weak when unknown name and no parameter size" started.
+◇ Test "honestly conversational stays natural" started.
+◇ Test "known thinking-capable families are detected across tag variants" started.
+◇ Test "plan with empty transcript still produces valid output" started.
+◇ Test "returns nil for invalid input" started.
+◇ Test "long transcript -> structured mode in plan" started.
+◇ Test "bare llama3.2 is weak (3B default); other bare names remain unknown" started.
+◇ Test "heading colon structure dictation routes technical" started.
+◇ Test "complete success plan produces canonical effect order" started.
+◇ Test "em dash is not double-counted via dash" started.
+◇ Test "preserves other tags" started.
+◇ Test "legacyTemplate forces .message mode regardless of transcript length" started.
+◇ Test "parses trillion values" started.
+◇ Test "3B models are weak (threshold is <=3)" started.
+◇ Test "vercel build description stays natural" started.
+◇ Test "non-thinking models are not flagged as thinking-capable" started.
+◇ Test "create a regex routes technical via strong phrase" started.
+◇ Test "Ollama Gemma plan uses few-shot examples" started.
+◇ Test "leading please still routes imperative technical" started.
+◇ Test "handles case insensitivity" started.
+◇ Test "size tag wins over prefix when a larger variant is explicit" started.
+◇ Test "write a golang program routes technical via strong phrase" started.
+◇ Test "asSingleTurn handles system-only + user pair" started.
+◇ Test "Ollama + non-gemma model -> openAIProse" started.
+◇ Test "models above 3B are not weak" started.
+◇ Test "bare verbatim in conversational speech stays natural" started.
+◇ Test "size-tag parser leaves larger models non-weak" started.
+◇ Test "Ollama + Gemma uppercase -> gemmaFewShot" started.
+◇ Test "parses standard billion values" started.
+◇ Test "schedule lunch stays natural" started.
+◇ Test "Ollama + gemma model -> gemmaFewShot" started.
+◇ Test "Ollama non-Gemma uses OpenAI prose style with sandwich framing" started.
+◇ Test "asSingleTurn succeeds for system + user pair" started.
+◇ Test "OpenAI -> openAIProse" started.
+◇ Test "decision basis distinguishes tier1 vs scored" started.
+◇ Test "preserve the words routes technical via preservation intent" started.
+◇ Test "Gemini uses asSingleTurn with V2 sandwich in user message" started.
+◇ Test "legacyTemplate produces envelope with custom prompt, not builder default" started.
+◇ Test "asSingleTurn handles user-only (no system)" started.
+◇ Test "keep it literal still routes via preservation" started.
+◇ Test "appleIntelligence -> openAIProse (fallback, should not reach planner)" started.
+◇ Test "asSingleTurn returns nil for multiple user messages" started.
+◇ Test "classify convenience method matches decide" started.
+◇ Test "complete + polish failed: schedule warning before showing overlay, then reload + report" started.
+◇ Test "whitespace only defaults natural" started.
+◇ Test "asSingleTurn returns nil for few-shot envelope" started.
+◇ Test "complete without current transcript: neither append nor telemetry fires (Phase C)" started.
+◇ Test "Ollama + mistral -> openAIProse" started.
+◇ Test "XPCReplyFailureContext retains replyStage verbatim" started.
+◇ Test "unknown 2-char code passes through" started.
+◇ Test "CaptureStallContext is Sendable and carries all fields" started.
+◇ Test "complete + clipboard fallback wins over polish warning" started.
+◇ Test "happy path: fixture -> ASR -> polish -> paste" started.
+◇ Test "Chinese variants collapse to zh" started.
+◇ Test "polish timeout degrades to raw ASR output" started.
+◇ Test "Gemini plan uses V2 editor-role system and sandwich user message" started.
+◇ Test "legacyTemplate produces system + empty user for all providers" started.
+◇ Test "XPCErrorKind rawValues match protocol contract" started.
+◇ Test "invalid and empty inputs return nil" started.
+◇ Test "preserve the word does not match inside wordsmith" started.
+◇ Test "WhisperKit .ready cancels warning and does not emit completion telemetry" started.
+◇ Test "polish failure degrades to raw ASR output" started.
+◇ Test "CaptureSessionInterruptionContext kinds are stable" started.
+◇ Test "complete + success transcript: show overlay, reload, report completed" started.
+◇ Test "OpenAI uses asSingleTurn for standard prompts" started.
+◇ Test "BCP-47 region tags strip to base" started.
+◇ Test "recording transition cancels pending warning and shows overlay" started.
+◇ Test "early cancellation: recording starts, pipeline cancels, no transcript or paste path runs" started.
+◇ Test "two successive complete calls route two telemetry reports and two history reloads" started.
+◇ Test "case-insensitive normalization" started.
+◇ Test "please could you draft stacks single + bigram skip" started.
+◇ Test "Norwegian variants collapse to no" started.
+◇ Test "medium transcript -> message mode in plan" started.
+◇ Test "Gemini -> geminiPlain" started.
+◇ Test "opener phrase stays natural" started.
+◇ Test "plan always produces non-empty envelope" started.
+◇ Test "OpenAI plan uses prose format with sandwich framing" started.
+◇ Test "Ollama non-Gemma plan uses OpenAI prose style" started.
+◇ Test "error state cancels warning, shows overlay, reports pipelineFailed with code" started.
+◇ Test "Ollama Gemma produces multi-turn messages for few-shot" started.
+◇ Test "keep it literally simple does not trip preservation" started.
+◇ Test "base codes stable for common ISO 639-1 inputs" started.
+◇ Test "summarize the notes routes technical via imperative at start" started.
+◇ Test "build a c sharp script routes technical via strong phrase" started.
+◇ Test "short transcript -> inline mode in plan" started.
+◇ Test "clinical stat ekg stays natural" started.
+◇ Test "spoken formatting heavy sentence routes technical" started.
+◇ Test "descriptive mention without imperative stays natural" started.
+◇ Test "clinical write nursing note routes technical" started.
+◇ Test "generate sql without determiner routes technical" started.
+◇ Test "send the follow up stays natural" started.
+◇ Test "convert this into json routes technical via strong phrase" started.
+◇ Test "self correction only routes natural" started.
+◇ Test "write go live messaging stays natural" started.
+◇ Test "do you draft question stays natural" started.
+◇ Test "clinical descriptive dictation stays natural" started.
+◇ Test "remind conversational imperative stays natural" started.
+◇ Test "could you followed by non-imperative stays natural" started.
+◇ Test "lets does not trigger imperative at start" started.
+◇ Test "c sharp spoken form routes technical" started.
+◇ Test "clinical colon anatomical stays natural" started.
+◇ Test "filler heavy conversational routes natural" started.
+◇ Test "branch + slash + hotfix routes technical despite self correction" started.
+◇ Test "bare literally in conversational speech stays natural" started.
+◇ Test "write python code without determiner routes technical" started.
+◇ Test "refactor struct routes technical via imperative at start" started.
+◇ Test "would you draft routes technical" started.
+◇ Test "write a python script routes technical via strong phrase" started.
+◇ Test "apiary does not trigger api tech noun" started.
+◇ Test "empty input defaults natural" started.
+◇ Test "tech nouns list sanitization flattens whitespace across list items" started.
+◇ Test "signal logDescription collapses embedded newlines to a single space" started.
+◇ Test case passing 2 arguments input → "Here is the corrected version:
+The actual text.", expected → "The actual text." to "preamble lines stripped" started.
+◇ Test case passing 2 arguments input → "Below is the cleaned transcript:
+Hello world.", expected → "Hello world." to "preamble lines stripped" started.
+◇ Test case passing 2 arguments input → "The corrected text:
+Fixed version here.", expected → "Fixed version here." to "preamble lines stripped" started.
+◇ Test case passing 2 arguments input → "The cleaned up version:
+Nice and clean.", expected → "Nice and clean." to "preamble lines stripped" started.
+◇ Test case passing 2 arguments input → "The polished transcript:
+Polished text.", expected → "Polished text." to "preamble lines stripped" started.
+◇ Test case passing 2 arguments input → "The rewritten text:
+Rewritten version.", expected → "Rewritten version." to "preamble lines stripped" started.
+◇ Test case passing 2 arguments input → "Cleaned transcript:
+Clean.", expected → "Clean." to "preamble lines stripped" started.
+◇ Test case passing 2 arguments input → "Polished version:
+Shiny.", expected → "Shiny." to "preamble lines stripped" started.
+◇ Test "reply to sarah stays natural" started.
+◇ Test case passing 2 arguments input → "Corrected version:
+Fixed.", expected → "Fixed." to "preamble lines stripped" started.
+◇ Test case passing 1 argument code → Code(rawValue: -1002) to "non-retryable URLError codes" started.
+◇ Test case passing 1 argument code → Code(rawValue: -999) to "non-retryable URLError codes" started.
+◇ Test case passing 1 argument code → Code(rawValue: -1000) to "non-retryable URLError codes" started.
+◇ Test case passing 1 argument code → Code(rawValue: -1011) to "non-retryable URLError codes" started.
+◇ Test case passing 2 arguments input → "Certainly! Here is your text.", expected → "Here is your text." to "acknowledgment patterns stripped" started.
+◇ Test case passing 2 arguments input → "Sure! The answer is yes.", expected → "The answer is yes." to "acknowledgment patterns stripped" started.
+◇ Test "can you answer routes technical" started.
+◇ Test case passing 2 arguments input → "Got it. Processing now.", expected → "Processing now." to "acknowledgment patterns stripped" started.
+◇ Test case passing 1 argument code → Code(rawValue: -1005) to "retryable URLError codes" started.
+◇ Test case passing 2 arguments input → "Sure, I can help with that.", expected → "I can help with that." to "acknowledgment patterns stripped" started.
+◇ Test case passing 1 argument code → Code(rawValue: -1004) to "retryable URLError codes" started.
+◇ Test case passing 1 argument code → Code(rawValue: -1001) to "retryable URLError codes" started.
+◇ Test case passing 2 arguments input → "Got it! Working on it.", expected → "Working on it." to "acknowledgment patterns stripped" started.
+◇ Test case passing 2 arguments input → "Of course! Here you go.", expected → "Here you go." to "acknowledgment patterns stripped" started.
+◇ Test case passing 1 argument error → .emptyResponse to "non-retryable LLM errors" started.
+◇ Test case passing 1 argument error → .providerUnavailable to "non-retryable LLM errors" started.
+◇ Test case passing 2 arguments input → "Absolutely! Done.", expected → "Done." to "acknowledgment patterns stripped" started.
+◇ Test case passing 2 arguments input → "Here you go: some text", expected → "some text" to "acknowledgment patterns stripped" started.
+◇ Test case passing 1 argument error → .invalidAPIKey to "non-retryable LLM errors" started.
+◇ Test "router basis logDescription covers all cases" started.
+◇ Test case passing 1 argument error → .modelNotFound("llama3") to "non-retryable LLM errors" started.
+◇ Test case passing 1 argument error → .frameworkUnavailable("FoundationModels not available") to "non-retryable LLM errors" started.
+◇ Test case passing 1 argument error → .requestFailed("bad request") to "non-retryable LLM errors" started.
+◇ Test "brainstorm imperative routes technical via imperativeStart" started.
+◇ Test case passing 1 argument error → .requestFailed("authentication failed") to "non-retryable LLM errors" started.
+◇ Test "c plus plus spoken form routes technical" started.
+◇ Test "answer this question routes technical via imperative at start" started.
+◇ Test "leading filler um still routes imperative technical" started.
+◇ Test case passing 1 argument category → .person to "all word categories round-trip through Codable" started.
+◇ Test case passing 1 argument category → .general to "all word categories round-trip through Codable" started.
+◇ Test case passing 1 argument category → .acronym to "all word categories round-trip through Codable" started.
+◇ Test case passing 1 argument category → .domain to "all word categories round-trip through Codable" started.
+◇ Test case passing 1 argument category → .brand to "all word categories round-trip through Codable" started.
+◇ Test "draft an email routes technical via imperative at start" started.
+◇ Test "race condition description stays natural" started.
+◇ Test "could you make routes technical" started.
+◇ Test "router signal logDescription renders each case without whitespace gaps" started.
+◇ Test "do you answer yes/no question stays natural (not a softened imperative)" started.
+◇ Test "write a cpp function routes technical via strong phrase" started.
+◇ Test "dictate the words routes technical via preservation intent" started.
+◇ Test "clinical hold dose stays natural" started.
+◇ Test "swiftly does not trigger swift tech noun" started.
+◇ Test "translate this routes technical via imperative at start" started.
+◇ Test case passing 1 argument state → .loadingModel to "active states" started.
+◇ Test case passing 1 argument state → .recording to "active states" started.
+◇ Test case passing 1 argument state → .transcribing to "active states" started.
+◇ Test case passing 1 argument state → .polishing to "active states" started.
+✔ Test "returns original samples when every padded range is invalid after clamping" passed after 0.019 seconds.
+✔ Test "failureReason is NOT used when there is an underlying chain" passed after 0.018 seconds.
+✔ Test "failureReason is appended when there's no underlying chain and it differs from description" passed after 0.018 seconds.
+✔ Test "returns original samples when no speech segments are present" passed after 0.018 seconds.
+✔ Test "merges padded ranges that only touch at the boundary" passed after 0.019 seconds.
+✔ Test "endSample near Int.max does not trap and clamps to allSamples.count" passed after 0.019 seconds.
+✔ Test "Three-level NSUnderlyingError chain: all four descriptions joined" passed after 0.019 seconds.
+✔ Test "filters when total voiced audio is exactly the minimum threshold" passed after 0.019 seconds.
+✔ Test "nested segments merge into a single range" passed after 0.019 seconds.
+✔ Test "lowAuto tier: NO lexical injection at all" passed after 0.019 seconds.
+✔ Test "failureReason NOT appended when identical to localizedDescription" passed after 0.019 seconds.
+✔ Test "keeps disjoint padded ranges separate and concatenates them in segment order" passed after 0.019 seconds.
+✔ Test "invalid segments mixed with valid speech are skipped in the merge loop too" passed after 0.019 seconds.
+✔ Test "merges overlapping padded ranges into one contiguous slice" passed after 0.019 seconds.
+✔ Test "unsorted segments are deduplicated across overlap" passed after 0.019 seconds.
+✔ Test "Deep chain caps at depth 8, does not hang or stack-overflow" passed after 0.019 seconds.
+✔ Test "One-level NSUnderlyingError chain flattens into localizedDescription" passed after 0.019 seconds.
+✔ Test "URL in userInfo is dropped, only NSLocalizedDescriptionKey remains" passed after 0.019 seconds.
+✔ Test "Sanitized NSError round-trips through NSKeyedArchiver with XPC-allowed classes" passed after 0.020 seconds.
+✔ Test "no perLanguage key for detected lang falls back to global-only" passed after 0.020 seconds.
+✔ Test "Swift enum error: domain, code, description preserved; userInfo has only NSLocalizedDescriptionKey" passed after 0.020 seconds.
+✔ Test "highAuto tier: global + perLanguage[detected] both injected" passed after 0.020 seconds.
+✔ Test "abstain tier: NO lexical injection at all" passed after 0.021 seconds.
+✔ Test "script guardrail: does NOT strip Latin terms for Latin-script langs" passed after 0.021 seconds.
+✔ Test "backend .whisperKit with nil detection uses formatting-only path" passed after 0.021 seconds.
+✔ Test "returns original samples when total voiced audio is below the minimum threshold" passed after 0.021 seconds.
+✔ Test "negative padding is treated as zero padding" passed after 0.021 seconds.
+✔ Test "locked tier: global + perLanguage[detected] both injected" passed after 0.021 seconds.
+✔ Test "planner lowAuto strips all vocab from system prompt" passed after 0.021 seconds.
+✔ Test "fromLegacy: all CustomWords go into global, perLanguage is empty" passed after 0.021 seconds.
+✔ Test "mediumAuto tier: ONLY global, NO perLanguage lexicon" passed after 0.021 seconds.
+✔ Test "script guardrail: strips Latin-only terms from non-Latin perLanguage list" passed after 0.021 seconds.
+✔ Test "planner highAuto keeps vocab in system prompt" passed after 0.021 seconds.
+✔ Test "backend nil falls through to legacy passthrough (safety net)" passed after 0.021 seconds.
+✔ Test "clamps padded ranges to the available sample bounds" passed after 0.022 seconds.
+✔ Test "fromLegacy empty list produces empty vocabulary" passed after 0.021 seconds.
+✔ Test "unsorted segments produce the same output as sorted segments" passed after 0.022 seconds.
+✔ Test "backend .parakeet forces legacy path even when detection is populated" passed after 0.021 seconds.
+✔ Test "script guardrail: keeps global terms regardless of their script" passed after 0.021 seconds.
+✔ Test "Parakeet prompt output is byte-identical to legacy (no backend set)" passed after 0.022 seconds.
+✔ Test "planner nil detection preserves legacy customWords verbatim" passed after 0.021 seconds.
+✔ Test "invalid segments (endSample <= startSample) do not contribute to voiced threshold" passed after 0.022 seconds.
+✔ Test "planner mediumAuto keeps global but not perLanguage in system prompt" passed after 0.021 seconds.
+✔ Test "backend .whisperKit with populated detection uses tier-gated W3 path" passed after 0.021 seconds.
+✔ Test "score identical strings returns 1.0" passed after 0.021 seconds.
+✔ Test "unsupported perLanguage key is defensively skipped" passed after 0.021 seconds.
+✔ Test "script guardrail: strips Latin-extended terms (ß, é, ñ, ế) from non-Latin perLanguage list" passed after 0.021 seconds.
+✔ Test "n-gram single token casing fix" passed after 0.021 seconds.
+✔ Test "n-gram compound fixes casing: chat gpt -> ChatGPT" passed after 0.021 seconds.
+✔ Test "short token below short threshold not corrected" passed after 0.021 seconds.
+✔ Test "score distant word is below threshold" passed after 0.021 seconds.
+✔ Test "planner locked + non-Latin detected lang strips Latin perLanguage terms" passed after 0.021 seconds.
+✔ Test "short token exact alias" passed after 0.022 seconds.
+✔ Test "no match when input is too different" passed after 0.022 seconds.
+✔ Test "n-gram compound: open a i -> OpenAI (3 tokens, max window)" passed after 0.022 seconds.
+✔ Test "canonical self-entry fixes casing" passed after 0.022 seconds.
+✔ Test "produces system + user messages" passed after 0.022 seconds.
+✔ Test "system contains ASR-awareness clause" passed after 0.021 seconds.
+✔ Test "preserves surrounding punctuation" passed after 0.022 seconds.
+✔ Test "score near-miss is above threshold" passed after 0.022 seconds.
+✔ Test "roleIsTextField is ignored when element is missing" passed after 0.022 seconds.
+✔ Test "inline mode -> no bullets, no headers" passed after 0.022 seconds.
+✔ Test "exact alias match corrects casing" passed after 0.022 seconds.
+✔ Test "fuzzy match preserves canonical casing regardless of input case" passed after 0.022 seconds.
+✔ Test "n-gram already correct casing not replaced" passed after 0.022 seconds.
+✔ Test "fuzzy canonical fallback for words with no aliases" passed after 0.022 seconds.
+✔ Test "long transcript does not trigger guard" passed after 0.022 seconds.
+✔ Test "empty word list returns unchanged text" passed after 0.022 seconds.
+✔ Test "appName present -> context block included" passed after 0.022 seconds.
+✔ Test "asSingleTurn succeeds for standard envelope" passed after 0.022 seconds.
+✔ Test "score completely different strings returns low value" passed after 0.022 seconds.
+✔ Test "V2 removes old language override block" passed after 0.022 seconds.
+✔ Test "system documents allowed edits including self-correction" passed after 0.022 seconds.
+✔ Test "Required artifact list matches WhisperKit.loadModels hard-required set" passed after 0.022 seconds.
+✔ Test "Text field role with element present -> .textField" passed after 0.022 seconds.
+✔ Test "n-gram compound preserves surrounding punctuation" passed after 0.022 seconds.
+✔ Test "fuzzy alias match corrects minor misspelling" passed after 0.022 seconds.
+✔ Test "Element missing -> .missing (Chromium/Electron lazy AX)" passed after 0.022 seconds.
+✔ Test "Property-based: representative errors all yield single-key userInfo" passed after 0.023 seconds.
+✔ Test "exact multi-word alias replacement" passed after 0.022 seconds.
+✔ Test "empty custom words -> no vocab block" passed after 0.022 seconds.
+✔ Test "Non-text role with element present -> .nonText (PR #220 void protection)" passed after 0.022 seconds.
+✔ Test "user message escapes opening-tag injection via <transcript>" passed after 0.022 seconds.
+✔ Test "appName nil -> no context block" passed after 0.022 seconds.
+✔ Test "edit mode -> paragraph breaks + bullets (no list-size threshold)" passed after 0.022 seconds.
+✔ Test "user message wraps transcript in <transcript> tags" passed after 0.022 seconds.
+✔ Test "system declares editor-not-conversation role" passed after 0.022 seconds.
+✔ Test "legacyTemplate with non-English prepends language" passed after 0.022 seconds.
+✔ Test "custom words appended with full format" passed after 0.022 seconds.
+✔ Test "message mode -> bullets for 3+ listed items and topic-shift paragraphs" passed after 0.022 seconds.
+✔ Test "multiple replacements in one pass" passed after 0.023 seconds.
+✔ Test "user message contains anti-instruction clause" passed after 0.022 seconds.
+✔ Test "system preserves multilingual + code-switching clause" passed after 0.022 seconds.
+✔ Test "user message escapes injection attempt via </transcript>" passed after 0.022 seconds.
+✔ Test "Script guardrail: isNonLatinScript maps correctly" passed after 0.022 seconds.
+✔ Test "short transcript triggers guard" passed after 0.022 seconds.
+✔ Test "legacyTemplate wraps custom prompt minimally and opts out of V2" passed after 0.022 seconds.
+✔ Test "short text with list cues -> message (cues override length)" passed after 0.022 seconds.
+✔ Test "structured mode -> paragraphs + bullets + optional section labels" passed after 0.022 seconds.
+✔ Test "error is scoped to transcript ID" passed after 0.023 seconds.
+✔ Test "already correct text unchanged" passed after 0.023 seconds.
+✔ Test "case insensitive cue detection" passed after 0.023 seconds.
+✔ Test "nil appName with 75 words and list cues -> message (conservative, needs >110)" passed after 0.023 seconds.
+✔ Test "Unsegmented script: CJK/Thai/Lao use char count, whitespace langs do not" passed after 0.023 seconds.
+✔ Test "Non-existent folder → returns false (does not throw)" passed after 0.023 seconds.
+✔ Test "ambiguity margin prevents correction when two candidates are close" passed after 0.023 seconds.
+✔ Test "different transcript IDs are distinct" passed after 0.023 seconds.
+✔ Test "whisperSupportedLanguages matches the spec roster size" passed after 0.023 seconds.
+✔ Test "Locked mode normalizes to lowercase" passed after 0.023 seconds.
+✔ Test "Normal clip: 0.65/0.20 boundary is mediumAuto" passed after 0.023 seconds.
+✔ Test "110 words -> message (boundary)" passed after 0.023 seconds.
+✔ Test "Locked mode: short-circuit to .locked tier" passed after 0.023 seconds.
+✔ Test "111 words -> structured" passed after 0.023 seconds.
+✔ Test "34 words with 'three things' -> message" passed after 0.023 seconds.
+✔ Test "nil appName with 111 words and list cues -> structured" passed after 0.023 seconds.
+✔ Test "109 words -> message" passed after 0.023 seconds.
+✔ Test "Two consecutive high-confidence accepts elevate sessionPreferred" passed after 0.023 seconds.
+✔ Test "Anti-flap: one strong utterance alone does NOT switch (pending)" passed after 0.023 seconds.
+✔ Test "nil appName with 111 words and no cues -> message (conservative)" passed after 0.023 seconds.
+✔ Test "75 words with list cues -> structured (cues lower threshold)" passed after 0.023 seconds.
+✔ Test "34 words with no cues -> inline" passed after 0.023 seconds.
+✔ Test "single word -> inline" passed after 0.023 seconds.
+✔ Test "36 words with no cues -> message" passed after 0.023 seconds.
+✔ Test "Anti-flap: two consecutive strong utterances commit the switch" passed after 0.023 seconds.
+✔ Test "Empty folder → returns false" passed after 0.023 seconds.
+✔ Test "Session prior boosts low-confidence decision toward preferred lang" passed after 0.023 seconds.
+✔ Test "Script guardrail: unknown code treated as Latin (conservative default)" passed after 0.023 seconds.
+✔ Test "35 words with no cues -> inline (boundary)" passed after 0.023 seconds.
+✔ Test "'number one' detected as list cue" passed after 0.023 seconds.
+✔ Test "plain prose without cues returns false" passed after 0.023 seconds.
+✔ Test "Normal clip: margin below 0.20 drops to lowAuto" passed after 0.023 seconds.
+✔ Test "'things to do' IS a valid list cue" passed after 0.023 seconds.
+✔ Test "empty string -> inline" passed after 0.023 seconds.
+✔ Test "10-minute inactivity clears sessionPreferred" passed after 0.023 seconds.
+✔ Test "'to do' in ordinary prose is NOT a false positive" passed after 0.023 seconds.
+✔ Test "'agenda' detected as list cue" passed after 0.023 seconds.
+✔ Test "Between 1.0 and 2.5s: high-confidence lang passes strict" passed after 0.023 seconds.
+✔ Test "'next steps' detected as list cue" passed after 0.023 seconds.
+✔ Test requestBodyPassesModelAndMessages() passed after 0.023 seconds.
+✔ Test "'pros and cons' detected as list cue" passed after 0.023 seconds.
+✔ Test evictRequestBodyCarriesModel() passed after 0.023 seconds.
+✔ Test "Between 1.0 and 2.5s voiced: strict thresholds apply" passed after 0.023 seconds.
+✔ Test requestBodyDoesNotIncludeThinkKey() passed after 0.023 seconds.
+✔ Test effectiveOllamaModelReturnsNilWhenProviderIsNotOllama() passed after 0.023 seconds.
+✔ Test effectiveOllamaModelReturnsNilWhenModelIsEmpty() passed after 0.023 seconds.
+✔ Test effectiveOllamaModelReturnsModelWhenProviderIsOllama() passed after 0.023 seconds.
+✔ Test "'action items' detected as list cue" passed after 0.023 seconds.
+✔ Test evictRequestBodyIncludesEmptyPrompt() passed after 0.023 seconds.
+✔ Test evictRequestBodyHasOnlyExpectedKeys() passed after 0.023 seconds.
+✔ Test evictRequestBodyUsesKeepAliveZero() passed after 0.023 seconds.
+✔ Test requestBodyDisablesStreaming() passed after 0.023 seconds.
+✔ Test "clean text passes through unchanged" passed after 0.023 seconds.
+✔ Test "user content starting with Sure preserved when not acknowledgment pattern" passed after 0.023 seconds.
+✔ Test "Normal clip: below 0.65 prob => lowAuto (accepted but unlexiconed)" passed after 0.024 seconds.
+✔ Test "acknowledgment + preamble line both stripped" passed after 0.023 seconds.
+✔ Test "empty string returns empty" passed after 0.023 seconds.
+✔ Test "short colon line not matching preamble patterns preserved" passed after 0.023 seconds.
+✔ Test "Normal clip: 0.80/0.25 => highAuto" passed after 0.024 seconds.
+✔ Test "default max retries is 2" passed after 0.023 seconds.
+✔ Test "preamble lines stripped" with 9 test cases passed after 0.023 seconds.
+✔ Test "default delays are 1s and 3s" passed after 0.023 seconds.
+✔ Test "Anti-flap: intervening weak utterance resets pending switch" passed after 0.024 seconds.
+✔ Test "Anti-flap: switch away requires prob >= 0.85 AND margin >= 0.25" passed after 0.024 seconds.
+✔ Test "non-retryable URLError codes" with 4 test cases passed after 0.023 seconds.
+✔ Test "stripping is idempotent" passed after 0.023 seconds.
+✔ Test "acknowledgment patterns stripped" with 8 test cases passed after 0.023 seconds.
+✔ Test "LanguageMode Codable round-trip" passed after 0.023 seconds.
+✔ Test "All four required artifacts complete → returns true" passed after 0.024 seconds.
+✔ Test evictModelWithEmptyNameIsNoOp() passed after 0.023 seconds.
+✔ Test "Below 1.0s voiced: abstain, never call LID" passed after 0.024 seconds.
+✔ Test "retryable URLError codes" with 3 test cases passed after 0.023 seconds.
+✔ Test "non-retryable LLM errors" with 7 test cases passed after 0.024 seconds.
+✔ Test "rateLimited is retryable" passed after 0.023 seconds.
+✔ Test "Stale (unsupported) sessionPreferred is ignored, not crashed" passed after 0.024 seconds.
+✔ Test "whitespace-only string returns empty" passed after 0.024 seconds.
+✔ Test "unclosed transcript tag removed" passed after 0.024 seconds.
+✔ Test "requestFailed containing server error substring is retryable" passed after 0.024 seconds.
+✔ Test "generic NSError is not retryable" passed after 0.023 seconds.
+✔ Test "acknowledgment + transcript wrapper both stripped" passed after 0.024 seconds.
+✔ Test "requestFailed with server error is retryable" passed after 0.024 seconds.
+✔ Test "requestFailed with empty message is not retryable" passed after 0.024 seconds.
+✔ Test "default init leaves detectedLanguage nil" passed after 0.024 seconds.
+✔ Test requestBodyMapsOptions() passed after 0.024 seconds.
+✔ Test "metrics=nil emits a full line with metrics_available=false and n/a phases" passed after 0.024 seconds.
+✔ Test "call number is echoed verbatim, no zero-padding" passed after 0.023 seconds.
+✔ Test "Prefill artifact absent is acceptable (matches WhisperKit contract)" passed after 0.024 seconds.
+✔ Test "Codable auto-synthesis decodes legacy JSON without detectedLanguage" passed after 0.024 seconds.
+✔ Test "empty-transaction-list case selects nothing and returns nil" passed after 0.024 seconds.
+✔ Test "transcript tags removed" passed after 0.024 seconds.
+✔ Test "single insertion" passed after 0.024 seconds.
+✔ Test "all word categories round-trip through Codable" with 5 test cases passed after 0.024 seconds.
+✔ Test "produces system + user messages" passed after 0.024 seconds.
+✔ Test "decode from known JSON payload" passed after 0.024 seconds.
+✔ Test "default values applied when using minimal init" passed after 0.024 seconds.
+✔ Test "non-empty reference with empty hypothesis" passed after 0.024 seconds.
+✔ Test "short transcript triggers guard" passed after 0.024 seconds.
+✔ Test "Codable round-trip preserves detectedLanguage" passed after 0.024 seconds.
+✔ Test "single deletion" passed after 0.024 seconds.
+✔ Test "mixed operations" passed after 0.024 seconds.
+✔ Test "XPCHandlerKind rawValues are stable" passed after 0.024 seconds.
+✔ Test "user message uses V2 anti-instruction wording" passed after 0.024 seconds.
+✔ Test "explicit value round-trips through init" passed after 0.024 seconds.
+✔ Test "empty reference with empty hypothesis" passed after 0.024 seconds.
+✔ Test "every case produces a non-empty localizedDescription" passed after 0.024 seconds.
+✔ Test "completely different strings" passed after 0.024 seconds.
+✔ Test "user message escapes injection via </transcript>" passed after 0.024 seconds.
+✔ Test "legacyTemplate wraps custom prompt minimally" passed after 0.024 seconds.
+✔ Test "encode then decode preserves all properties" passed after 0.024 seconds.
+✔ Test "user message uses V2 sandwich framing with <transcript> tags" passed after 0.024 seconds.
+✔ Test "all optional fields nil -> valid prompt" passed after 0.024 seconds.
+✔ Test "edit mode system prompt equals message mode (textually identical)" passed after 0.024 seconds.
+✔ Test "zombieEngineZeroPeak description includes all fields" passed after 0.024 seconds.
+✔ Test "identical strings yield 0 WER" passed after 0.024 seconds.
+✔ Test "empty reference with non-empty hypothesis" passed after 0.024 seconds.
+✔ Test "single substitution" passed after 0.024 seconds.
+✔ Test "user message escapes opening-tag injection via <transcript>" passed after 0.024 seconds.
+✔ Test "message mode -> bullet and paragraph rules" passed after 0.024 seconds.
+✔ Test "appName present -> plain text context" passed after 0.024 seconds.
+✔ Test "per-field overrides survive construction intact" passed after 0.024 seconds.
+✔ Test "allowlist excludes known-unsupported languages" passed after 0.024 seconds.
+✔ Test "Sendable value semantics — modifying a copy's source does not mutate the snapshot" passed after 0.024 seconds.
+✔ Test "testDefault factory returns SettingsManager-default-shaped values" passed after 0.024 seconds.
+✔ Test appStateLineCountCeilingHolds() passed after 0.024 seconds.
+✔ Test "non-English language prepends LANGUAGE block with 'Clean'" passed after 0.024 seconds.
+✔ Test "no <transcript> tags in Gemma prompt" passed after 0.024 seconds.
+✔ Test "inline mode -> 'Keep as one paragraph, no formatting'" passed after 0.024 seconds.
+✔ Test "produces system + user messages" passed after 0.024 seconds.
+✔ Test "fails open on short output (<24 letters)" passed after 0.024 seconds.
+✔ Test "ASR-awareness clause always present" passed after 0.024 seconds.
+✔ Test "allowlist covers Apple's documented 2026 languages" passed after 0.024 seconds.
+✔ Test "inline mode -> single prose example only" passed after 0.024 seconds.
+✔ Test "active states" with 4 test cases passed after 0.024 seconds.
+✔ Test "error is not active" passed after 0.024 seconds.
+✔ Test "equality for non-error states" passed after 0.024 seconds.
+✔ Test "equality for error states" passed after 0.024 seconds.
+✔ Test "no context block even with appName in input" passed after 0.024 seconds.
+✔ Test "custom words appended with full format" passed after 0.024 seconds.
+✔ Test "idle is not active" passed after 0.024 seconds.
+✔ Test "preflight gate throws unsupportedInputLanguage for language not in allowlist" passed after 0.025 seconds.
+✔ Test "Any single artifact directory missing entirely → returns false" passed after 0.025 seconds.
+✔ Test "system includes V2 formatting clause for numbers/emails/URLs" passed after 0.024 seconds.
+✔ Test "user message is plain transcript, no tags" passed after 0.024 seconds.
+✔ Test "weak model gets simplified prompt" passed after 0.024 seconds.
+✔ Test "non-English uses minimal language instruction" passed after 0.024 seconds.
+✔ Test "structured mode -> same examples as message" passed after 0.024 seconds.
+✔ Test "legacyTemplate wraps minimally" passed after 0.024 seconds.
+✔ Test "system ends with 'Now clean up this text:'" passed after 0.024 seconds.
+✔ Test "system includes V2 self-correction permission" passed after 0.024 seconds.
+✔ Test "no explicit ASR clause for Gemma" passed after 0.024 seconds.
+✔ Test "Outer artifact dirs present but inner coremldata.bin missing → returns false" passed after 0.025 seconds.
+✔ Test "complete is not active" passed after 0.024 seconds.
+✔ Test "structured mode -> organize with sections" passed after 0.024 seconds.
+✔ Test "message mode -> two examples (list + prose)" passed after 0.024 seconds.
+✔ Test "appName nil -> no context line" passed after 0.024 seconds.
+✔ Test "custom words use simplified comma format" passed after 0.024 seconds.
+✔ Test "case insensitive comparison" passed after 0.024 seconds.
+✔ Test "parses million values as fractional billions" passed after 0.024 seconds.
+✔ Test "bare name stays unchanged" passed after 0.023 seconds.
+✔ Test "dictate the words execution falls back to raw input" passed after 0.024 seconds.
+✔ Test "Debug build: log() emits the marker into the file sink" passed after 0.025 seconds.
+✔ Test "parses :Nb size tag from name when parameter size is unknown" passed after 0.024 seconds.
+✔ Test "strips :latest suffix" passed after 0.024 seconds.
+✔ Test "structured data output falls back to raw input" passed after 0.024 seconds.
+✔ Test "same-line opener content is preserved" passed after 0.023 seconds.
+✔ Test "create a regex execution falls back to raw input" passed after 0.024 seconds.
+✔ Test "normal filler cleanup is not caught by aggressive shortening" passed after 0.023 seconds.
+✔ Test "parses fractional billion values" passed after 0.023 seconds.
+✔ Test "falls back to hardcoded list when parameter size unknown" passed after 0.023 seconds.
+✔ Test "blank-line wrapper preamble is stripped" passed after 0.024 seconds.
+✔ Test "models under 3B are weak when parameter size is known" passed after 0.023 seconds.
+✔ Test "aggressive shortening on meta-reference falls back to raw" passed after 0.024 seconds.
+✔ Test "executed imperative answer falls back to raw input" passed after 0.024 seconds.
+✔ Test "defaults to not weak when unknown name and no parameter size" passed after 0.023 seconds.
+✔ Test "short inputs bypass aggressive shortening guard" passed after 0.024 seconds.
+✔ Test "known thinking-capable families are detected across tag variants" passed after 0.023 seconds.
+✔ Test "plan with empty transcript still produces valid output" passed after 0.023 seconds.
+✔ Test "returns nil for invalid input" passed after 0.023 seconds.
+✔ Test "bare llama3.2 is weak (3B default); other bare names remain unknown" passed after 0.023 seconds.
+✔ Test "long transcript -> structured mode in plan" passed after 0.023 seconds.
+✔ Test "generate a sql query routes technical via strong phrase" passed after 0.023 seconds.
+✔ Test "preserves other tags" passed after 0.024 seconds.
+✔ Test "legacyTemplate forces .message mode regardless of transcript length" passed after 0.023 seconds.
+✔ Test "parses trillion values" passed after 0.024 seconds.
+✔ Test "3B models are weak (threshold is <=3)" passed after 0.023 seconds.
+✔ Test "Writes are appended in order and visible on disk" passed after 0.024 seconds.
+✔ Test "non-thinking models are not flagged as thinking-capable" passed after 0.023 seconds.
+✔ Test "create a regex routes technical via strong phrase" passed after 0.023 seconds.
+✔ Test "brainstorm execution falls back to raw input" passed after 0.024 seconds.
+✔ Test "Ollama Gemma plan uses few-shot examples" passed after 0.023 seconds.
+✔ Test "handles case insensitivity" passed after 0.023 seconds.
+✔ Test "size tag wins over prefix when a larger variant is explicit" passed after 0.023 seconds.
+✔ Test "write a golang program routes technical via strong phrase" passed after 0.023 seconds.
+✔ Test "Ollama + non-gemma model -> openAIProse" passed after 0.023 seconds.
+✔ Test "asSingleTurn handles system-only + user pair" passed after 0.023 seconds.
+✔ Test "models above 3B are not weak" passed after 0.023 seconds.
+✔ Test "fails closed on strong language drift (de expected, English long output)" passed after 0.025 seconds.
+✔ Test "Chinese dominance normalizes to zh" passed after 0.024 seconds.
+✔ Test "size-tag parser leaves larger models non-weak" passed after 0.023 seconds.
+✔ Test "Ollama + Gemma uppercase -> gemmaFewShot" passed after 0.023 seconds.
+✔ Test "passes when output matches expected language" passed after 0.024 seconds.
+✔ Test "parses standard billion values" passed after 0.023 seconds.
+✔ Test "Sibling process appends survive a rotation triggered by us" passed after 0.024 seconds.
+✔ Test "Ollama + gemma model -> gemmaFewShot" passed after 0.023 seconds.
+✔ Test "Ollama non-Gemma uses OpenAI prose style with sandwich framing" passed after 0.023 seconds.
+✔ Test "asSingleTurn succeeds for system + user pair" passed after 0.023 seconds.
+✔ Test "OpenAI -> openAIProse" passed after 0.023 seconds.
+✔ Test "Gemini uses asSingleTurn with V2 sandwich in user message" passed after 0.022 seconds.
+✔ Test "legacyTemplate produces envelope with custom prompt, not builder default" passed after 0.022 seconds.
+✔ Test "asSingleTurn handles user-only (no system)" passed after 0.022 seconds.
+✔ Test "preserve the words routes technical via preservation intent" passed after 0.022 seconds.
+✔ Test "appleIntelligence -> openAIProse (fallback, should not reach planner)" passed after 0.022 seconds.
+✔ Test "asSingleTurn returns nil for multiple user messages" passed after 0.022 seconds.
+✔ Test "classify convenience method matches decide" passed after 0.022 seconds.
+✔ Test "whitespace only defaults natural" passed after 0.022 seconds.
+✔ Test "asSingleTurn returns nil for few-shot envelope" passed after 0.022 seconds.
+✔ Test "leading please still routes imperative technical" passed after 0.023 seconds.
+✔ Test "Ollama + mistral -> openAIProse" passed after 0.022 seconds.
+✔ Test "XPCReplyFailureContext retains replyStage verbatim" passed after 0.022 seconds.
+✔ Test "unknown 2-char code passes through" passed after 0.022 seconds.
+✔ Test "CaptureStallContext is Sendable and carries all fields" passed after 0.022 seconds.
+✔ Test "Chinese variants collapse to zh" passed after 0.022 seconds.
+✔ Test "Gemini plan uses V2 editor-role system and sandwich user message" passed after 0.022 seconds.
+✔ Test "legacyTemplate produces system + empty user for all providers" passed after 0.022 seconds.
+✔ Test "XPCErrorKind rawValues match protocol contract" passed after 0.022 seconds.
+✔ Test "invalid and empty inputs return nil" passed after 0.022 seconds.
+✔ Test "CaptureSessionInterruptionContext kinds are stable" passed after 0.021 seconds.
+✔ Test "OpenAI uses asSingleTurn for standard prompts" passed after 0.021 seconds.
+✔ Test "BCP-47 region tags strip to base" passed after 0.021 seconds.
+✔ Test "case-insensitive normalization" passed after 0.021 seconds.
+✔ Test "keep it literal still routes via preservation" passed after 0.022 seconds.
+✔ Test "Norwegian variants collapse to no" passed after 0.021 seconds.
+✔ Test "medium transcript -> message mode in plan" passed after 0.021 seconds.
+✔ Test "Gemini -> geminiPlain" passed after 0.021 seconds.
+✔ Test "plan always produces non-empty envelope" passed after 0.021 seconds.
+✔ Test "push to thursday stays natural despite self-correction" passed after 0.024 seconds.
+✔ Test "OpenAI plan uses prose format with sandwich framing" passed after 0.021 seconds.
+✔ Test "please could you draft stacks single + bigram skip" passed after 0.022 seconds.
+✔ Test "Ollama non-Gemma plan uses OpenAI prose style" passed after 0.021 seconds.
+✔ Test "Ollama Gemma produces multi-turn messages for few-shot" passed after 0.021 seconds.
+✔ Test "heading colon structure dictation routes technical" passed after 0.024 seconds.
+✔ Test "decision basis distinguishes tier1 vs scored" passed after 0.023 seconds.
+✔ Test "base codes stable for common ISO 639-1 inputs" passed after 0.021 seconds.
+✔ Test "build a c sharp script routes technical via strong phrase" passed after 0.021 seconds.
+✔ Test "short transcript -> inline mode in plan" passed after 0.021 seconds.
+✔ Test "summarize the notes routes technical via imperative at start" passed after 0.021 seconds.
+✔ Test "schedule lunch stays natural" passed after 0.023 seconds.
+✔ Test "Rotation caps total retention at maxFiles (active + archives)" passed after 0.024 seconds.
+✔ Test "em dash is not double-counted via dash" passed after 0.024 seconds.
+✔ Test "bare verbatim in conversational speech stays natural" passed after 0.024 seconds.
+✔ Test "vercel build description stays natural" passed after 0.024 seconds.
+✔ Test "preserve the word does not match inside wordsmith" passed after 0.022 seconds.
+✔ Test "generate sql without determiner routes technical" passed after 0.018 seconds.
+✔ Test "keep it literally simple does not trip preservation" passed after 0.021 seconds.
+✔ Test "honestly conversational stays natural" passed after 0.024 seconds.
+✔ Test appStateConcreteCollaboratorCeilingHolds() passed after 0.025 seconds.
+✔ Test "clinical write nursing note routes technical" passed after 0.018 seconds.
+✔ Test "convert this into json routes technical via strong phrase" passed after 0.018 seconds.
+✔ Test "descriptive mention without imperative stays natural" passed after 0.020 seconds.
+✔ Test "spoken formatting heavy sentence routes technical" passed after 0.021 seconds.
+✔ Test "send the follow up stays natural" passed after 0.018 seconds.
+✔ Test "clinical stat ekg stays natural" passed after 0.021 seconds.
+✔ Test "c sharp spoken form routes technical" passed after 0.017 seconds.
+✔ Test "self correction only routes natural" passed after 0.018 seconds.
+✔ Test "finalizeStreaming without an active stream throws streamingNotSupported and preserves flags" passed after 0.026 seconds.
+✔ Test "write python code without determiner routes technical" passed after 0.017 seconds.
+✔ Test "opener phrase stays natural" passed after 0.022 seconds.
+✔ Test "remind conversational imperative stays natural" passed after 0.017 seconds.
+✔ Test "do you draft question stays natural" passed after 0.018 seconds.
+✔ Test "refactor struct routes technical via imperative at start" passed after 0.016 seconds.
+✔ Test "write a python script routes technical via strong phrase" passed after 0.016 seconds.
+✔ Test "empty input defaults natural" passed after 0.015 seconds.
+✔ Test "could you followed by non-imperative stays natural" passed after 0.017 seconds.
+✔ Test "would you draft routes technical" passed after 0.016 seconds.
+✔ Test "lets does not trigger imperative at start" passed after 0.017 seconds.
+✔ Test "tech nouns list sanitization flattens whitespace across list items" passed after 0.015 seconds.
+✔ Test "signal logDescription collapses embedded newlines to a single space" passed after 0.015 seconds.
+✔ Test "write go live messaging stays natural" passed after 0.018 seconds.
+✔ Test "LLMPolishStep declares .surface error policy" passed after 0.026 seconds.
+✔ Test "mock preWarm returns cleanly when not configured to throw" passed after 0.026 seconds.
+✔ Test "clinical colon anatomical stays natural" passed after 0.017 seconds.
+✔ Test "router basis logDescription covers all cases" passed after 0.014 seconds.
+✔ Test "c plus plus spoken form routes technical" passed after 0.014 seconds.
+✔ Test "returns the seeded context unchanged when there are no steps" passed after 0.026 seconds.
+✔ Test "bare literally in conversational speech stays natural" passed after 0.017 seconds.
+✔ Test "can you answer routes technical" passed after 0.015 seconds.
+✔ Test "clinical descriptive dictation stays natural" passed after 0.018 seconds.
+✔ Test "router signal logDescription renders each case without whitespace gaps" passed after 0.014 seconds.
+✔ Test "write a cpp function routes technical via strong phrase" passed after 0.014 seconds.
+✔ Test "brainstorm imperative routes technical via imperativeStart" passed after 0.014 seconds.
+✔ Test "branch + slash + hotfix routes technical despite self correction" passed after 0.017 seconds.
+✔ Test "leading filler um still routes imperative technical" passed after 0.014 seconds.
+✔ Test "draft an email routes technical via imperative at start" passed after 0.014 seconds.
+✔ Test "apiary does not trigger api tech noun" passed after 0.016 seconds.
+✔ Test "answer this question routes technical via imperative at start" passed after 0.014 seconds.
+✔ Test "could you make routes technical" passed after 0.014 seconds.
+✔ Test "dictate the words routes technical via preservation intent" passed after 0.014 seconds.
+✔ Test "reply to sarah stays natural" passed after 0.015 seconds.
+✔ Test "translate this routes technical via imperative at start" passed after 0.013 seconds.
+✔ Test "filler heavy conversational routes natural" passed after 0.018 seconds.
+✔ Test "do you answer yes/no question stays natural (not a softened imperative)" passed after 0.014 seconds.
+✔ Test "append does not mutate disk" passed after 0.026 seconds.
+✔ Test "append inserts at index 0" passed after 0.025 seconds.
+✔ Test "swiftly does not trigger swift tech noun" passed after 0.014 seconds.
+✔ Suite "XPCErrorSanitizer" passed after 0.030 seconds.
+✔ Suite "SampleFilter" passed after 0.030 seconds.
+✔ Test "clinical hold dose stays natural" passed after 0.014 seconds.
+✔ Suite "Multilingual v1 W3 Prompt Injection" passed after 0.030 seconds.
+✔ Suite "PasteFocusClassification" passed after 0.030 seconds.
+✔ Suite "WhisperKitBackend partial-download guard (issue #329)" passed after 0.030 seconds.
+✔ Suite "EnhancementError" passed after 0.030 seconds.
+✔ Suite "WordCorrector" passed after 0.030 seconds.
+✔ Suite "GeminiPromptBuilder" passed after 0.030 seconds.
+✔ Suite "OllamaConnector request body" passed after 0.030 seconds.
+✔ Test "race condition description stays natural" passed after 0.014 seconds.
+✔ Suite "TranscriptAnalyzer" passed after 0.030 seconds.
+✔ Suite "Preamble Stripping" passed after 0.030 seconds.
+✔ Suite "LLMProviderConfig: detectedLanguage" passed after 0.030 seconds.
+✔ Suite "LLMTaskMetricsCollector.format" passed after 0.030 seconds.
+✔ Suite "LLMRetryPolicy" passed after 0.030 seconds.
+✔ Suite "CustomWord" passed after 0.030 seconds.
+✔ Suite "HeartPathError" passed after 0.030 seconds.
+✔ Suite "WERCalculator" passed after 0.030 seconds.
+✔ Suite "Apple Intelligence: documented allowlist" passed after 0.030 seconds.
+✔ Suite "DictationSessionConfig — per-recording snapshot" passed after 0.030 seconds.
+✔ Suite AppStateCeilingsTests passed after 0.030 seconds.
+✔ Suite "OpenAIPromptBuilder" passed after 0.030 seconds.
+✔ Suite "Apple Intelligence: output language validation" passed after 0.030 seconds.
+✔ Suite "AppLogger R3 compile-out" passed after 0.030 seconds.
+✔ Suite "PipelineState" passed after 0.030 seconds.
+✔ Suite "GemmaPromptBuilder" passed after 0.030 seconds.
+✔ Suite "OllamaModelCatalog" passed after 0.030 seconds.
+✔ Suite "EnviousOutputFilter" passed after 0.030 seconds.
+✔ Suite "Connector Envelope Contracts" passed after 0.029 seconds.
+✔ Suite "DefaultPromptPlanner" passed after 0.030 seconds.
+✔ Test "Public convenience init still produces a working default-finalizer pipeline" passed after 0.026 seconds.
+✔ Suite "HeartPathContexts" passed after 0.030 seconds.
+✔ Suite "Apple Intelligence: LanguageNormalizer" passed after 0.030 seconds.
+◇ Test "preflight gate normalizes BCP-47 before allowlist lookup" started.
+✔ Suite "ApplePolishRouter" passed after 0.030 seconds.
+✔ Test "preflight gate normalizes BCP-47 before allowlist lookup" passed after 0.001 seconds.
+◇ Test "preflight gate allows nil detectedLanguage (Parakeet path)" started.
+✔ Test "Internal init wires an injected TranscriptFinalizer instead of the default one" passed after 0.032 seconds.
+✔ Test "Store throw wraps error as .storageFailed(underlying:) and preserves underlying type" passed after 0.032 seconds.
+✔ Suite "TranscriptionPipeline injection (Phase G3)" passed after 0.036 seconds.
+✔ Test "Paste clipboard-only outcome still returns a FinalizationResult" passed after 0.032 seconds.
+✔ Test "Store failure short-circuits paste (m13v data-loss invariant, strengthened)" passed after 0.032 seconds.
+✔ Test "Concurrent in-process writers do not produce torn lines" passed after 0.065 seconds.
+✔ Suite "RotatingFileSink" passed after 0.070 seconds.
+[Sentry] [fatal] [1777563940.64921] [SentrySDKInternal:456] The SDK is disabled, so addBreadcrumb doesn't work. Please ensure to start the SDK before adding breadcrumbs.
+✔ Test "early cancellation: recording starts, pipeline cancels, no transcript or paste path runs" passed after 0.071 seconds.
+✔ Test "Passive chip fires on LID flip-flop within 5 minutes" passed after 0.077 seconds.
+✔ Suite "LanguageDetector boundary logic" passed after 0.080 seconds.
+✔ Test "setInitialBackendType on a cold manager selects WhisperKit and reports no streaming support" passed after 0.079 seconds.
+✔ Test "default manager starts on Parakeet, unloaded, not streaming" passed after 0.079 seconds.
+✔ Test "transcribe before load throws notReady and preserves manager flags" passed after 0.079 seconds.
+✔ Test "conforming mock can throw on preWarm, callers observe error" passed after 0.079 seconds.
+✔ Suite "PreWarm throws contract" passed after 0.082 seconds.
+✔ Test repeatedStartCancelsPrior() passed after 0.167 seconds.
+✔ Test "startStreaming on WhisperKit is a no-op because streaming is unsupported" passed after 0.167 seconds.
+✔ Test "Weak storage — transient consumer is deinit'd after autoreleasepool exits" passed after 0.167 seconds.
+✔ Test "Duplicate-register idempotence — same instance written once per update" passed after 0.167 seconds.
+✔ Test parakeetBackendSkipsPreload() passed after 0.167 seconds.
+✔ Test "Initial-sync on register — late registrant gets current words" passed after 0.167 seconds.
+✔ Test "startStreaming before prepare on Parakeet throws notReady and leaves isStreaming false" passed after 0.167 seconds.
+✔ Test "incrementConfigChange is monotonic" passed after 0.166 seconds.
+✔ Test "recordSuccessfulRecording clears dedupe so the next zombie re-emits" passed after 0.166 seconds.
+✔ Test "Integration — wireCustomWords seeds all 5 spy consumers + coordinator broadcast reaches them" passed after 0.167 seconds.
+✔ Test "shouldEmitZombie when window is zero always returns true" passed after 0.166 seconds.
+✔ Test "shouldEmitZombie when route changes returns true" passed after 0.166 seconds.
+✔ Test "recordSuccessfulRecording sets a time-since baseline" passed after 0.166 seconds.
+✔ Test "Integration — consumer registered after update receives current words" passed after 0.167 seconds.
+✔ Suite SetupCoordinatorTests passed after 0.170 seconds.
+✔ Test ".swallow policy never sets polishError, even for a step named 'LLM Polish'" passed after 0.166 seconds.
+✔ Test "copyToClipboardReturningChangeCount writes string and returns the new changeCount" passed after 0.167 seconds.
+✔ Test "WhisperKit state activity mapping covers ready + startingUp" passed after 0.166 seconds.
+✔ Test "WhisperKit .ready cancels warning (activity == .idle)" passed after 0.166 seconds.
+✔ Test "error plan produces cancel, show, report order" passed after 0.166 seconds.
+✔ Test "shouldEmitZombie on first call returns true" passed after 0.166 seconds.
+✔ Test "complete without current transcript -> neither append nor telemetry fires (Phase C)" passed after 0.166 seconds.
+✔ Test "complete + clipboard_only fallback -> .clipboardFallback wins, no warning scheduled" passed after 0.166 seconds.
+✔ Test "Renaming the polish step does NOT affect polishError when the policy stays .surface" passed after 0.166 seconds.
+✔ Test "complete + polish failed (not clipboard) -> overlay + schedulePolishFailedWarning" passed after 0.166 seconds.
+✔ Test "shouldEmitZombie within window on same route returns false" passed after 0.167 seconds.
+✔ Test "WhisperKit error state emits reportPipelineFailed" passed after 0.166 seconds.
+✔ Test "zombie telemetry extras: nil inputs omit both keys" passed after 0.166 seconds.
+✔ Test "pipeline overlay intent passes through verbatim for non-complete states" passed after 0.166 seconds.
+✔ Test "non-complete transitions cancel pending warning" passed after 0.165 seconds.
+✔ Test "Whitespace-only processed text throws .emptyAfterProcessing without saving" passed after 0.166 seconds.
+✔ Test "complete + polish failed plan produces canonical effect order" passed after 0.166 seconds.
+✔ Test "divergence flag true when preferred differs from system default" passed after 0.165 seconds.
+✔ Test "complete + clipboard fallback plan produces canonical effect order" passed after 0.166 seconds.
+✔ Test "base extras include core fields with stable keys" passed after 0.165 seconds.
+✔ Test "complete + success (no fallback, no polish error) -> no warning, telemetry fires" passed after 0.165 seconds.
+✔ Test "complete + polish failed: schedule warning before showing overlay, then reload + report" passed after 0.163 seconds.
+✔ Test "complete + clipboard fallback wins over polish warning" passed after 0.163 seconds.
+✔ Test "WhisperKit startingUp vs loadingModel labels are preserved distinctly" passed after 0.166 seconds.
+✔ Test "nil polish swap omits the key entirely" passed after 0.165 seconds.
+✔ Test "error state emits reportPipelineFailed with error code" passed after 0.166 seconds.
+✔ Test "Parakeet state activity mapping is stable" passed after 0.165 seconds.
+✔ Test "complete success plan produces canonical effect order" passed after 0.165 seconds.
+✔ Test "complete + success transcript: show overlay, reload, report completed" passed after 0.163 seconds.
+✔ Test "WhisperKit .ready cancels warning and does not emit completion telemetry" passed after 0.163 seconds.
+✔ Suite "CaptureTelemetryState" passed after 0.170 seconds.
+✔ Test "zombie telemetry extras: values passed through with stable keys" passed after 0.166 seconds.
+✔ Suite "CustomWordsPropagator — Phase D registry contract" passed after 0.170 seconds.
+✔ Test "polish failure degrades to raw ASR output" passed after 0.163 seconds.
+✔ Test "stall context adds stall-specific keys + window ms math" passed after 0.166 seconds.
+✔ Test "happy path: fixture -> ASR -> polish -> paste" passed after 0.163 seconds.
+✔ Test "recording transition cancels pending warning and shows overlay" passed after 0.163 seconds.
+◇ Test "restoreClipboard restores a saved snapshot when changeCount still matches our paste write" started.
+✔ Test "error state cancels warning, shows overlay, reports pipelineFailed with code" passed after 0.163 seconds.
+✔ Test "Step failures preserve raw ASR text and call store exactly once" passed after 0.166 seconds.
+✔ Test "sequential switchBackend calls leave the last requested backend active" passed after 0.168 seconds.
+✔ Test "non-complete plan produces cancel-before-show ordering" passed after 0.166 seconds.
+✔ Test "complete without current transcript: neither append nor telemetry fires (Phase C)" passed after 0.163 seconds.
+✔ Suite "SentryAudioExtras" passed after 0.170 seconds.
+✔ Test "two successive complete calls route two telemetry reports and two history reloads" passed after 0.163 seconds.
+✔ Test "setInitialBackendType after a load resets isModelLoaded and isStreaming" passed after 0.169 seconds.
+✔ Test "switchBackend from a loaded state resets isModelLoaded to false" passed after 0.169 seconds.
+✔ Suite "ASRManager cold-state contract" passed after 0.171 seconds.
+✔ Suite "PipelineStateChangePlanner — characterization" passed after 0.170 seconds.
+✔ Test "passes raw text, language, target app, and prior mutations through the real runner" passed after 0.167 seconds.
+✔ Test "skips disabled steps and keeps running enabled ones in order" passed after 0.167 seconds.
+✔ Test "switchBackend unloads the previous backend exactly once" passed after 0.169 seconds.
+✔ Test "polish timeout degrades to raw ASR output" passed after 0.163 seconds.
+✔ Test "suppresses polishError for output language drift skips from LLM Polish" passed after 0.167 seconds.
+✔ Test "switchBackend to the same type is a no-op (no unload, flags preserved)" passed after 0.169 seconds.
+✔ Suite "Heart Path Integration — Finalizer layer (mocked ASR + paste)" passed after 0.170 seconds.
+✔ Suite "PipelineStateChangeHandler — execution contract" passed after 0.170 seconds.
+✔ Suite "ASRManager backend injection (Phase G5)" passed after 0.171 seconds.
+✔ Test "rethrows CancellationError and does not run later steps" passed after 0.176 seconds.
+✔ Test "cancelling the outer task while a step is suspended rethrows CancellationError and stops the chain" passed after 0.176 seconds.
+✔ Test "Cancellation mid-processing throws CancellationError without saving" passed after 0.175 seconds.
+✔ Test "suppresses polishError for unsupported input language skips from LLM Polish" passed after 0.176 seconds.
+✔ Test "restoreClipboard restores a saved snapshot when changeCount still matches our paste write" passed after 0.009 seconds.
+✔ Test "captures LLM polish failures in polishError and continues with prior text" passed after 0.177 seconds.
+◇ Test "restoreClipboard skips restore when clipboard changed after our paste write" started.
+✔ Test "Step success emits a PipelineTiming entry into the injected logger" passed after 0.177 seconds.
+✔ Test "continues after a non-LLM step failure and does not set polishError" passed after 0.177 seconds.
+✔ Test "Step that mutates text emits CorrectionDebug IN/OUT lines via injected logger" passed after 0.177 seconds.
+✔ Suite "TranscriptFinalizer contracts" passed after 0.184 seconds.
+[10:45:40.755] [INFO] [FluidAudio.DownloadUtils] Host environment: macOS Version 26.5 (Build 25F5058e), arch=arm64, chip=Apple M4 Pro, cores=14/14, mem=24 GB, rosetta=false
+[10:45:40.757] [INFO] [FluidAudio.DownloadUtils] Found silero-vad locally, no download needed
+✔ Test "Step timeout emits a TextProcessing 'timed out' entry via injected logger" passed after 0.182 seconds.
+✔ Test "restoreClipboard skips restore when clipboard changed after our paste write" passed after 0.005 seconds.
+✔ Suite "PasteService clipboard helpers" passed after 0.186 seconds.
+✔ Test noConfessionalCrossModulePublicExists() passed after 0.195 seconds.
+✔ Suite CrossModulePublicGuardTests passed after 0.197 seconds.
+[10:45:40.785] [INFO] [FluidAudio.DownloadUtils] Compiled model silero-vad-unified-256ms-v6.0.0.mlmodelc in 27.94 ms :: macOS Version 26.5 (Build 25F5058e), arch=arm64, chip=Apple M4 Pro, cores=14/14, mem=24 GB, rosetta=false
+[10:45:40.785] [INFO] [FluidAudio.VadManager] VAD model loaded successfully
+[10:45:40.785] [INFO] [FluidAudio.VadManager] VAD system initialized in 0.03s
+✔ Test "skips a timed-out non-LLM step and continues without polishError" passed after 0.221 seconds.
+✔ Test "records polishError when LLM Polish times out and continues with prior text" passed after 0.221 seconds.
+✔ Suite "TextProcessingRunner" passed after 0.224 seconds.
+✔ Test "startup load brings every on-disk row into memory" passed after 0.238 seconds.
+✔ Test "delete removes from cache and disk" passed after 0.238 seconds.
+✔ Test "load during a concurrent append merges both rows" passed after 0.238 seconds.
+✔ Test "load during multiple appends preserves append-order at the front" passed after 0.238 seconds.
+✔ Suite "TranscriptCoordinator — Phase C append + merge" passed after 0.242 seconds.
+✔ Test "TextProcessingRunner is per-call stateless: two overlapping run() invocations each execute the chain through to completion" passed after 0.373 seconds.
+✔ Suite "TextProcessingRunner Races" passed after 0.376 seconds.
+✔ Test "preflight gate allows nil detectedLanguage (Parakeet path)" passed after 0.965 seconds.
+✔ Suite AppleIntelligencePreflightGateTests passed after 0.996 seconds.
+✔ Test run with 501 tests in 52 suites passed after 0.997 seconds.

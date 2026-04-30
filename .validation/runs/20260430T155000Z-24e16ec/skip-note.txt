@@ -1,0 +1,57 @@
+Phase 3 skip-notes for Phase E (#502).
+
+## smoke (skipped)
+Reason: Phase E ships only architecture regression tests + a CI script + a
+1-line access modifier narrowing on WhisperKitBackend.makeDecodeOptions
+(public → package). No runtime code path that the shipped app executes
+changed. The smoke gate (release build + bundle + launch) has nothing to
+add over the test suite for this scope.
+
+Verification done locally:
+- swift build --build-tests succeeded.
+- bash scripts/swift-test.sh passed (501 tests, 52 suites, 0 failures).
+- WhisperKitPipeline (in EnviousWisprPipeline) still builds against the
+  package-level access change because both targets live in the same SPM
+  package.
+
+## live-uat (skipped)
+Reason: same as smoke. No user-visible surface changed. There is no AX path
+or audio path or transcription path or paste path to exercise. Tests
+passing IS the validation for this PR.
+
+The live-uat gate is mandatory per workflow-process §1 step 9 + PR #498
+Stage 1, but the same rules document allows skip-note for PRs with no
+user-visible surface (e.g., this Phase E PR + Phase F #501 + Phase D #496
+all qualified for the same reason).
+
+## workflow-run (skipped, CI-completion)
+Reason: pr-check.yml's new arch-lint job is added in this PR. Full CI run
+happens after push, so the workflow-run-url cannot exist before push.
+Local validation done:
+- actionlint .github/workflows/pr-check.yml — only pre-existing warnings
+  about the self-hosted `enviouswispr-release` label (same warning as the
+  existing build-check job, expected).
+- bash scripts/check-dependency-direction.sh runs cleanly locally on bash
+  3.2 (verified with /bin/bash explicitly).
+
+The CI workflow-run-url will be visible in the PR's checks tab after push.
+If the new arch-lint job is RED on first run, this PR gets reverted (it is
+not marked as a required check, so a RED arch-lint will not block the PR
+from merging via the existing build-check). The deliberate non-required
+status is per learning_skipped_blocks_required_check (avoid
+skipped-required-check stalls).
+
+## codex-prose (Docs/dev-tooling lane)
+codex-review.txt is round 5 of the code-diff review (final clean: "No
+discrete blocking issues were found in the staged changes"). Earlier
+rounds 1-4 caught and fixed: bash 3.2 incompatibility (declare -A),
+Swift import-attribute miss, Swift scoped-import miss, attributed-let
+parser miss in AppStateCeilingsTests, parenthesized-attribute miss
+(@_spi), inline-comment sed bug. All addressed before final commit.
+
+## Lane summary
+- Code lane obligations: tests ✓, codex-review ✓
+- CI/workflow lane obligations: workflow-run skipped (see above)
+- Docs/dev-tooling lane obligations: shellcheck ✓, codex-prose ✓ (this is
+  redundant with Code-lane codex-review since it's the same diff; one
+  artifact suffices)

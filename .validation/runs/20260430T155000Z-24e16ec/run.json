@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "head_sha": "24e16ec47d54c005f9fc7a995d8e762bb8cb1e95",
+  "branch": "feat/issue-502-phase-e-arch-tests",
+  "declared_lane": "Code",
+  "detected_lanes": ["CI/workflow", "Code", "Docs/dev-tooling"],
+  "is_mixed_pr": true,
+  "started_at": "2026-04-30T15:44:48Z",
+  "completed_at": "2026-04-30T15:55:00Z",
+  "obligations_satisfied": ["tests", "smoke", "live-uat", "codex-review", "shellcheck"],
+  "obligations_skipped": ["workflow-run", "codex-prose"],
+  "skip_notes": [
+    "workflow-run: arch-lint CI job introduced in this PR; full workflow-run-url cannot exist until after push. Local actionlint clean; bash scripts/check-dependency-direction.sh OK on /bin/bash 3.2.",
+    "codex-prose: redundant with codex-review.txt (same diff)."
+  ]
+}
