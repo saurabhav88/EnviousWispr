@@ -619,7 +619,7 @@ Each refactor pattern carries its own test strategy.
 | 2 | **B** | DictationSessionConfig freeze-at-startRecording | 1 | REFACTOR | #195 | SHIPPED (PR #424, 2026-04-20) | ~140 (−) |
 | 3 | **C** | TranscriptCoordinator owns history | 1 | MEDIUM | #428 | SHIPPED (PR #432, 2026-04-21) | +283/−39 actual |
 | 4 | **D** | CustomWordsPropagator replaces 5-way fanout | 1 | MEDIUM | #496 | SHIPPED (PR #497, 2026-04-29) | +/− per PR |
-| 5 | **E** | Architecture regression tests | 1 | SMALL | #502 | PLANNED §11 (depends on F) | ~65 |
+| 5 | **E** | Architecture regression tests | 1 | SMALL | #502 | SHIPPED (PR pending, 2026-04-30) | ~+275 actual (tests + script + CI + docs + 1-line ASR access narrowing) |
 | **F** | SetupCoordinator extraction (NEW v1.3) | 1 | MEDIUM | #501 | SHIPPED (PR #503, 2026-04-30, F-Exec) | ~+135 net |
 | 6 | **R2** | WhisperKitBackend adapter | 1 | MEDIUM | #360 | PLANNED §12 | ~120 |
 | 7 | **R3** | Transcript out of logs | 1 | SMALL | #361 | PLANNED §13 | ~40 |
@@ -2918,6 +2918,10 @@ Only then does Phase B work start. Missing the decision capture in any of the th
 ---
 
 ## 30. Changelog
+
+- **2026-04-30 v1.21 · Phase E shipped — architecture regression tests + dep-direction CI** — closes #502 (PR pending at plan time; backfill once merged). Three fitness tests in `Tests/EnviousWisprTests/Architecture/`: AppState concrete-collaborator ceiling (≤ 19), AppState line-count ceiling (≤ 1050 = 954 + 10%), cross-module-public TODO guard. Plus `scripts/check-dependency-direction.sh` re-introduced and wired into a new `arch-lint` CI job in `.github/workflows/pr-check.yml` (no `lint` job existed; created deliberately). One Sources/ change: `WhisperKitBackend.makeDecodeOptions` narrowed `public` → `package` (the existing TODO offender Codex grounded review caught; Swift 6's `package` access lets Pipeline call it without the cross-module-public exposure). Council skipped per `feedback_codex_over_council_when_no_user_surface` (User Rubric: N/A; Codex grounded review settled the only structural fork — regex tightening + dep-graph correction). All 3 tests pass at baseline + 4 negative-test scenarios verified locally (intentional violation → test fails → revert). Audit meta-rec #1 marked RESOLVED.
+
+  **Phase F metric reconciliation.** Phase F's plan predicted a post-F AppState count of 17, but the live count under Phase E's stricter definition is 19. The discrepancy is a metric-tightening, not a Phase F under-delivery: Phase F's count was a looser nominal "concrete property" concept (`19 → 17` in the plan; `19` actually counts *all* top-level `let` declarations including the two `any X` existentials). Phase E's locked metric counts existentials as collaborators because they still represent architectural seams that AppState owns. Net architectural win from Phase F is real: two services moved to SetupCoordinator (ollamaSetup, whisperKitSetup) and one collaborator added (the `setup` coordinator itself), yielding -1 collaborator overall. The headline number changed because the metric did, not because the work shrank.
 
 - **2026-04-29 v1.19 · Phase D shipped — CustomWordsPropagator + wireCustomWords helper** — PR #497 (squash `8bf9423`, 4 commits in branch). Closes #496. Issue #496 auto-closed via PR body link.
 

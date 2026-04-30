@@ -152,9 +152,10 @@ public actor WhisperKitBackend: ASRBackend {
 
   // MARK: - Private
 
-  // public: called by WhisperKitPipeline in EnviousWisprPipeline (cross-module boundary).
-  // TODO: Phase 2 — narrow to package once Pipeline moves into the same SPM package.
-  public func makeDecodeOptions(from options: TranscriptionOptions, sampleCount: Int)
+  // Called by WhisperKitPipeline in EnviousWisprPipeline. `package` access is
+  // sufficient: both targets live in the same SPM package, so no `public`
+  // exposure is needed.
+  package func makeDecodeOptions(from options: TranscriptionOptions, sampleCount: Int)
     -> DecodingOptions
   {
     var opts = DecodingOptions()
