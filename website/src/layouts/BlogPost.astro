@@ -753,7 +753,7 @@ const breadcrumbJsonLd = JSON.stringify({
 </script>
 
 <script is:inline>
-  // Remark42 comments - only load on production
+  // Remark42 comments - only load on production, only when reader scrolls near the comments section
   if (window.location.hostname === 'enviouswispr.com') {
     var remark_config = {
       host: 'https://comments.enviouswispr.com',
@@ -764,6 +764,21 @@ const breadcrumbJsonLd = JSON.stringify({
       page_title: document.title,
     };
 
-    !function(e,n){for(var o=0;o<e.length;o++){var r=n.createElement("script"),c=".js",d=n.head||n.body;"noModule"in r?(r.type="module",c=".mjs"):r.async=!0,r.defer=!0,r.src=remark_config.host+"/web/"+e[o]+c,d.appendChild(r)}}(remark_config.components||["embed"],document);
+    var loadRemark42 = function () {
+      !function(e,n){for(var o=0;o<e.length;o++){var r=n.createElement("script"),c=".js",d=n.head||n.body;"noModule"in r?(r.type="module",c=".mjs"):r.async=!0,r.defer=!0,r.src=remark_config.host+"/web/"+e[o]+c,d.appendChild(r)}}(remark_config.components||["embed"],document);
+    };
+
+    var mount = document.getElementById('remark42');
+    if (mount && 'IntersectionObserver' in window) {
+      var io = new IntersectionObserver(function (entries) {
+        if (entries.some(function (e) { return e.isIntersecting; })) {
+          io.disconnect();
+          loadRemark42();
+        }
+      }, { rootMargin: '400px 0px' });
+      io.observe(mount);
+    } else {
+      loadRemark42();
+    }
   }
 </script>
