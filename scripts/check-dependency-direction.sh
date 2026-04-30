@@ -46,6 +46,9 @@ modules_scanned=0
 # Match `import EnviousWispr...` with:
 #   - Optional Swift attributes (e.g. `@preconcurrency`, `@_implementationOnly`,
 #     `@_spi(Internal)` — parenthesized argument allowed)
+#   - Optional access-level on the import statement (Swift 6:
+#     `public import`, `package import`, `internal import`, `fileprivate import`,
+#     `private import`)
 #   - Optional leading whitespace
 #   - Optional import-kind tokens (`struct`, `class`, `enum`, `protocol`, `func`,
 #     `var`, `let`, `typealias`) for scoped imports like
@@ -53,8 +56,9 @@ modules_scanned=0
 # Requires start-of-line anchoring to avoid matching literal text inside
 # comments or strings.
 import_kinds='(typealias|struct|class|enum|protocol|let|var|func)'
+import_access='(public|package|internal|fileprivate|private)'
 import_attr='(@[A-Za-z_][A-Za-z0-9_]*(\([^)]*\))?[[:space:]]+)*'
-import_grep_pattern="^[[:space:]]*${import_attr}import[[:space:]]+(${import_kinds}[[:space:]]+)?EnviousWispr"
+import_grep_pattern="^[[:space:]]*${import_attr}(${import_access}[[:space:]]+)?import[[:space:]]+(${import_kinds}[[:space:]]+)?EnviousWispr"
 
 for module_dir in Sources/*/; do
   module=$(basename "$module_dir")
