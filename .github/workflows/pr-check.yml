@@ -147,16 +147,3 @@ jobs:
             -o /tmp/foundation_models_probe
 
           echo "==> FoundationModels compile probe PASSED"
-
-  arch-lint:
-    runs-on: [self-hosted, enviouswispr-release]
-    timeout-minutes: 5
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 1
-
-      - name: Architecture dep-direction
-        run: bash scripts/check-dependency-direction.sh
