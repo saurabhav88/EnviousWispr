@@ -171,6 +171,80 @@ public actor WhisperKitBackend: ASRBackend {
     return WhisperKitIncrementalWorker(whisperKit: kit, decodingOptions: opts)
   }
 
+  // R2 (#360): vend Sendable LID observations so the non-Sendable WhisperKit
+  // handle never crosses an actor boundary. The window-loop logic is
+  // migrated verbatim from `LanguageDetector.runMultiWindowLID` (the previous
+  // owner). The classifier in `LanguageDetector` consumes the resulting
+  // `LIDObservationBatch` and runs the same five-layer decision logic.
+  //
+  // Window construction (start/end indices, fixed windows, full-window cap,
+  // dedup, prefix-4) MUST match the original to preserve characterization
+  // (per `Tests/EnviousWisprASRTests/R2/R2CharacterizationTests.swift`).
+  package func observeLID(
+    samples: [Float],
+    maxWindows: Int
+  ) async -> LIDObservationBatch {
+    guard let kit = whisperKit else { return .unavailable }
+
+    let sampleRate = LanguageDetectorThresholds.sampleRate
+    let totalSamples = samples.count
+    var windows: [[Float]] = []
+    var seenRanges: Set<[Int]> = []
+
+    func appendIfNew(_ startIdx: Int, _ endIdx: Int) {
+      guard endIdx > startIdx else { return }
+      guard seenRanges.insert([startIdx, endIdx]).inserted else { return }
+      windows.append(Array(samples[startIdx..<endIdx]))
+    }
+
+    for w in LanguageDetectorThresholds.windows {
+      let startIdx = min(totalSamples, Int(w.start * Double(sampleRate)))
+      let endIdx = min(totalSamples, Int(w.end * Double(sampleRate)))
+      appendIfNew(startIdx, endIdx)
+    }
+    let fullEnd = min(
+      totalSamples, Int(LanguageDetectorThresholds.fullWindowMaxSec * Double(sampleRate)))
+    appendIfNew(0, fullEnd)
+    guard !windows.isEmpty else {
+      return .noWindows
+    }
+
+    let capped = Array(windows.prefix(maxWindows))
+
+    // WhisperKit's `detectLangauge` returns a single-entry `langProbs` map
+    // `{detectedLanguage: logProb}` — argmax + its log-softmax. Per-window
+    // collection here; aggregation (vote-count + mean prob) lives in the
+    // classifier.
+    var observations: [RawLIDObservation] = []
+    var lastError: String?
+    for (i, window) in capped.enumerated() {
+      if Task.isCancelled { return .cancelled }
+      let result: (language: String, langProbs: [String: Float])
+      do {
+        // WhisperKit API is `detectLangauge(audioArray:)` (original typo
+        // preserved upstream — do not "fix" it).
+        result = try await kit.detectLangauge(audioArray: window)
+      } catch is CancellationError {
+        return .cancelled
+      } catch {
+        lastError = error.localizedDescription
+        await AppLogger.shared.log(
+          "LID window \(i) failed: \(error.localizedDescription)",
+          level: .info, category: "WhisperKitBackend"
+        )
+        continue
+      }
+      let lang = result.language
+      let lp = Double(result.langProbs[lang] ?? 0)
+      observations.append(RawLIDObservation(argmaxLang: lang, logProb: lp))
+    }
+
+    if observations.isEmpty {
+      return .error(reason: lastError ?? "all_windows_failed")
+    }
+    return .observations(observations)
+  }
+
   // Called by WhisperKitPipeline in EnviousWisprPipeline. `package` access is
   // sufficient: both targets live in the same SPM package, so no `public`
   // exposure is needed.

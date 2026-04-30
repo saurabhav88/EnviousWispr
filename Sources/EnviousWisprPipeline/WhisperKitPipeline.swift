@@ -678,14 +678,19 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
     // languageMode is captured lazily so a user toggling Auto<->Locked
     // mid-recording is respected.
     let voicedDurationSec = Double(vadSpeechDurationMs) / 1000.0
-    // nonisolated(unsafe): WhisperKit is an actor/reference-typed handle that is
-    // not Sendable. Safe to pass to the detector actor because the backend owns
-    // it for its lifetime and the detector only calls read-only detectLanguage.
-    nonisolated(unsafe) let kitForLID = await backend.whisperKitInstance
+    // R2 (#360): closure-based observer. The non-Sendable `WhisperKit` handle
+    // stays inside the backend's actor isolation; only the Sendable
+    // `LIDObservationBatch` crosses to the LanguageDetector classifier.
+    // The previous `nonisolated(unsafe) let kitForLID` workaround is gone.
+    // Snapshot `samples` into an immutable binding so the @Sendable observer
+    // closure does not capture the surrounding `var samples` (would race).
+    let observerSamples = samples
     let lidResult = await languageDetector.detect(
       samples: samples,
       voicedDuration: voicedDurationSec,
-      whisperKit: kitForLID,
+      observerFn: { [backend] in
+        await backend.observeLID(samples: observerSamples, maxWindows: 4)
+      },
       mode: languageMode
     )
     lastLanguageDetection = lidResult
