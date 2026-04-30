@@ -22,13 +22,13 @@ final class AppState {
   let hotkeyService = HotkeyService()
   let benchmark = BenchmarkSuite()
   let recordingOverlay = RecordingOverlayPanel()
-  let ollamaSetup = OllamaSetupService()
-  let whisperKitSetup = WhisperKitSetupService()
+  // Phase F (#501) — setup-orchestration cluster moved out of AppState.
+  // Holds ollamaSetup, whisperKitSetup, and the WhisperKit preload-observation
+  // task. Constructed in init() after asrManager and whisperKitPipeline exist
+  // (it needs both to drive the preload observer).
+  let setup: SetupCoordinator
   let audioDeviceList = AudioDeviceList()
   let captureTelemetry = CaptureTelemetryState()
-
-  /// Background task that observes WhisperKitSetupService.setupState and pre-loads the model when ready.
-  private var whisperKitPreloadTask: Task<Void, Never>?
 
   /// Cancellable task for showing a deferred post-completion warning (e.g. polish failed).
   /// Cancelled when a new recording starts or a higher-priority notification is shown.
@@ -206,6 +206,17 @@ final class AppState {
       transcriptStore: transcriptStore
     )
 
+    // Phase F (#501) — construct SetupCoordinator after asrManager + whisperKitPipeline
+    // exist (it needs both — asrManager for activeBackendType reads, the pipeline
+    // closure for prepareBackendSilently()). The capture is [weak whisperKitPipeline]
+    // so the coordinator does not retain the pipeline.
+    setup = SetupCoordinator(
+      asrManager: asrManager,
+      preloadAction: { [weak whisperKitPipeline] in
+        await whisperKitPipeline?.prepareBackendSilently()
+      }
+    )
+
     // Initialize settingsSync and apply initial settings to all targets
     settingsSync = PipelineSettingsSync(
       pipeline: pipeline,
@@ -214,7 +225,7 @@ final class AppState {
       audioCapture: audioCapture,
       asrManager: asrManager,
       hotkeyService: hotkeyService,
-      whisperKitSetup: whisperKitSetup
+      whisperKitSetup: setup.whisperKitSetup
     )
     settingsSync.applyInitialSettings(settings)
 
@@ -372,8 +383,8 @@ final class AppState {
         Task { await self.whisperKitPipeline.stopAndTranscribe() }
       }
     }
-    settingsSync.onNeedsPreloadObservation = { [weak self] in
-      self?.startWhisperKitPreloadObservation()
+    settingsSync.onNeedsPreloadObservation = { [weak setup] in
+      setup?.startPreloadObservation()
     }
 
     // Wire custom-words propagator. The exact ordering (seed → register all
@@ -616,8 +627,8 @@ final class AppState {
       }
     }
     Task { [weak self] in
-      await self?.whisperKitSetup.detectState()
-      self?.startWhisperKitPreloadObservation()
+      await self?.setup.whisperKitSetup.detectState()
+      self?.setup.startPreloadObservation()
     }
 
     // NOTE: hotkey registration is deferred to startHotkeyServiceIfEnabled(),
@@ -631,39 +642,6 @@ final class AppState {
   func startHotkeyServiceIfEnabled() {
     if settings.hotkeyEnabled {
       hotkeyService.start()
-    }
-  }
-
-  /// Observe WhisperKitSetupService.setupState and pre-load the model when it becomes .ready.
-  /// Uses withObservationTracking to react to @Observable property changes outside SwiftUI.
-  private func startWhisperKitPreloadObservation() {
-    whisperKitPreloadTask?.cancel()
-    whisperKitPreloadTask = Task { [weak self] in
-      while !Task.isCancelled {
-        guard let self else { return }
-
-        // Exit immediately when WhisperKit isn't the active backend. Parakeet
-        // users shouldn't pay CPU/memory cost warming a backend they never use.
-        // Backend switches fire settingsSync.onNeedsPreloadObservation, which
-        // restarts this observer; the re-entry sees the new activeBackendType.
-        guard self.asrManager.activeBackendType == .whisperKit else { return }
-
-        // Check current state — if already .ready, trigger pre-load
-        let currentState = self.whisperKitSetup.setupState
-        if currentState == .ready {
-          await self.whisperKitPipeline.prepareBackendSilently()
-          return  // Model loaded — no need to keep observing
-        }
-
-        // Wait for the next change to setupState
-        await withCheckedContinuation { continuation in
-          withObservationTracking {
-            _ = self.whisperKitSetup.setupState
-          } onChange: {
-            continuation.resume()
-          }
-        }
-      }
     }
   }
 

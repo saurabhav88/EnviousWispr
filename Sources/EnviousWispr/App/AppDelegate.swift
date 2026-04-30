@@ -414,7 +414,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       NotificationCenter.default.removeObserver(observer)
       onboardingCloseObserver = nil
     }
-    appState.ollamaSetup.cleanup()
+    appState.setup.ollamaSetup.cleanup()
     appState.hotkeyService.stop()
     LLMNetworkSession.shared.invalidate()
   }

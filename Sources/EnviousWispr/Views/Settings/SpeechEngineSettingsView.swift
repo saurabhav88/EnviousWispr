@@ -44,7 +44,7 @@ struct SpeechEngineSettingsView: View {
 
       // ── Section 3: Language Selection (only when model is ready) ──
       if appState.settings.selectedBackend == .whisperKit,
-        case .ready = appState.whisperKitSetup.setupState
+        case .ready = appState.setup.whisperKitSetup.setupState
       {
         BrandedSection(header: "Language") {
           BrandedRow {
@@ -162,12 +162,12 @@ struct SpeechEngineSettingsView: View {
     }
     .onAppear {
       if appState.settings.selectedBackend == .whisperKit {
-        Task { await appState.whisperKitSetup.detectState() }
+        Task { await appState.setup.whisperKitSetup.detectState() }
       }
     }
     .onChange(of: appState.settings.selectedBackend) { _, newBackend in
       if newBackend == .whisperKit {
-        Task { await appState.whisperKitSetup.detectState() }
+        Task { await appState.setup.whisperKitSetup.detectState() }
       }
     }
     .sheet(isPresented: $showLanguageLockSheet) {
@@ -203,7 +203,7 @@ struct SpeechEngineSettingsView: View {
 
   @ViewBuilder
   private var whisperKitSetupContent: some View {
-    switch appState.whisperKitSetup.setupState {
+    switch appState.setup.whisperKitSetup.setupState {
     case .checking:
       HStack {
         ProgressView()
@@ -225,7 +225,7 @@ struct SpeechEngineSettingsView: View {
 
         HStack {
           Button("Download WhisperKit Model") {
-            appState.whisperKitSetup.downloadModel()
+            appState.setup.whisperKitSetup.downloadModel()
           }
           .buttonStyle(.borderedProminent)
           .controlSize(.small)
@@ -254,7 +254,7 @@ struct SpeechEngineSettingsView: View {
               .foregroundStyle(.stTextTertiary)
           }
           Button("Cancel") {
-            appState.whisperKitSetup.cancelDownload()
+            appState.setup.whisperKitSetup.cancelDownload()
           }
           .controlSize(.small)
           .buttonStyle(.borderless)
@@ -281,7 +281,7 @@ struct SpeechEngineSettingsView: View {
           .fixedSize(horizontal: false, vertical: true)
 
         Button("Try Again") {
-          Task { await appState.whisperKitSetup.detectState() }
+          Task { await appState.setup.whisperKitSetup.detectState() }
         }
         .controlSize(.small)
       }
@@ -298,7 +298,7 @@ struct SpeechEngineSettingsView: View {
   @ViewBuilder
   private var whisperKitRefreshButton: some View {
     Button {
-      Task { await appState.whisperKitSetup.forceDetectState() }
+      Task { await appState.setup.whisperKitSetup.forceDetectState() }
     } label: {
       Image(systemName: "arrow.clockwise")
     }

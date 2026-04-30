@@ -620,7 +620,7 @@ Each refactor pattern carries its own test strategy.
 | 3 | **C** | TranscriptCoordinator owns history | 1 | MEDIUM | #428 | SHIPPED (PR #432, 2026-04-21) | +283/−39 actual |
 | 4 | **D** | CustomWordsPropagator replaces 5-way fanout | 1 | MEDIUM | to open | PLANNED §10 | ~180 |
 | 5 | **E** | Architecture regression tests | 1 | SMALL | to open | PLANNED §11 | ~65 |
-| **F** | SetupCoordinator extraction (NEW v1.3) | 1 | MEDIUM | to open | PLANNED §17 | ~+90 net |
+| **F** | SetupCoordinator extraction (NEW v1.3) | 1 | MEDIUM | #501 | IN-FLIGHT (F-Exec, Codex grounded review 2026-04-30) | ~+135 net |
 | 6 | **R2** | WhisperKitBackend adapter | 1 | MEDIUM | #360 | PLANNED §12 | ~120 |
 | 7 | **R3** | Transcript out of logs | 1 | SMALL | #361 | PLANNED §13 | ~40 |
 | 8 | **R4** | BT route log rotation | 1 | SMALL | #362 | PLANNED §15 | ~45 |
