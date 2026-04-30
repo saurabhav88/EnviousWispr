@@ -115,6 +115,12 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
   /// counter (#294 smoking-gun diagnostic).
   private let captureTelemetry: CaptureTelemetryState
 
+  /// Issue #285 dedup state moved to `HeartPathTelemetryEmitter` (#290 R5).
+  /// Pipeline delegates the four shared infrastructure events + zombie zero-peak
+  /// to `telemetry`; engine-internal telemetry (model load, LID, batch failures)
+  /// stays in this file by design.
+  private let telemetry: HeartPathTelemetryEmitter
+
   // Text processing steps (own instances — not shared with Parakeet)
   public let wordCorrectionStep = WordCorrectionStep()
   public let fillerRemovalStep = FillerRemovalStep()
@@ -164,6 +170,10 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
     self.keychainManager = keychainManager
     self.languageDetector = languageDetector
     self.captureTelemetry = captureTelemetry
+    self.telemetry = HeartPathTelemetryEmitter(
+      backend: .whisperKit,
+      captureTelemetry: captureTelemetry
+    )
     self.transcriptFinalizer = TranscriptFinalizer(transcriptStore: transcriptStore)
     self.llmPolishStep = LLMPolishStep(keychainManager: keychainManager)
     // Explicit engine identity: prevents a future codepath that skips the
@@ -190,68 +200,24 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
   }
 
   public func handleCaptureSessionInterruption(_ ctx: CaptureSessionInterruptionContext) {
-    SentryBreadcrumb.captureError(
-      HeartPathError.captureSessionInterrupted(ctx: ctx),
-      category: .audioCaptureFailed,
-      stage: "audio",
-      extra: [
-        "capture_session.kind": ctx.kind.rawValue,
-        "capture_session.reason_code": ctx.reasonCode.map { $0 } ?? NSNull(),
-        "capture_session.reason_label": ctx.reasonLabel ?? NSNull(),
-        "capture_session.error_domain": ctx.errorDomain ?? NSNull(),
-        "capture_session.error_code": ctx.errorCode.map { $0 } ?? NSNull(),
-        "capture_session.error_description": ctx.errorDescription ?? NSNull(),
-        "capture.is_actively_capturing": ctx.isActivelyCapturing,
-        "capture_session_id": Int(ctx.sessionID),
-        "backend": "whisperKit",
-      ]
-    )
+    telemetry.captureSessionInterrupted(ctx: ctx)
   }
 
-  // Issue #285 dedup — stall vs rawSamples-empty for a single session.
-  private var stallEventAlreadyCaptured: Bool = false
-  private var lastObservedCaptureSession: UInt64 = 0
-  private var xpcReplyFailedThisSession: Bool = false
-
   public func handleXPCReplyFailed(_ ctx: XPCReplyFailureContext) {
-    resetStallFlagIfNewSession(ctx.sessionID)
-    xpcReplyFailedThisSession = true
-    SentryBreadcrumb.captureError(
-      HeartPathError.xpcReplyFailed(ctx: ctx),
-      category: .xpcServiceError,
-      stage: "audio",
-      extra: [
-        "xpc.reply_stage": ctx.replyStage,
-        "xpc.error_domain": ctx.errorDomain,
-        "xpc.error_code": ctx.errorCode,
-        "capture_session_id": Int(ctx.sessionID),
-      ]
-    )
+    telemetry.xpcReplyFailed(ctx: ctx)
   }
 
   public func handleCaptureStall(_ ctx: CaptureStallContext) {
-    resetStallFlagIfNewSession(ctx.sessionID)
-    guard !stallEventAlreadyCaptured else { return }
-    stallEventAlreadyCaptured = true
-    let extras = SentryAudioExtras.buildCaptureExtras(
-      route: ctx.route,
-      sourceType: ctx.sourceType,
-      sessionID: ctx.sessionID,
-      isActivelyCapturing: audioCapture.isActivelyCapturing,
-      inputDeviceUIDPreferred: ctx.inputDeviceUIDPreferred,
-      inputDeviceUIDSystemDefault: ctx.inputDeviceUIDSystemDefault,
-      failureMode: "stall_window_elapsed",
-      stallContext: ctx
-    )
-    SentryBreadcrumb.captureError(
-      HeartPathError.audioCaptureStalled(sessionID: ctx.sessionID, ctx: ctx),
-      category: .audioCaptureStalled,
-      stage: "recording",
-      extra: extras
+    let fired = telemetry.stallFired(
+      ctx: ctx,
+      isActivelyCapturing: audioCapture.isActivelyCapturing
     )
 
     // Issue #289: synchronous terminal-state flip before any await — see
     // TranscriptionPipeline.handleCaptureStall for the race-closure rationale.
+    // The emitter's per-session dedup already suppressed the captureError on
+    // re-entry; we still must guard the state flip the same way.
+    guard fired else { return }
     guard state == .recording else { return }
     isPreWarmed = false
     recordingStartTime = nil
@@ -280,49 +246,23 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
     _ = await audioCapture.stopCapture()
   }
 
-  private func resetStallFlagIfNewSession(_ sessionID: UInt64) {
-    guard sessionID != lastObservedCaptureSession else { return }
-    lastObservedCaptureSession = sessionID
-    stallEventAlreadyCaptured = false
-    xpcReplyFailedThisSession = false
-  }
-
   private func emitNoAudioCapturedEvent() {
     let sessionID = audioCapture.currentCaptureSessionID
-    resetStallFlagIfNewSession(sessionID)
     let durationMs: Int = {
       guard let start = recordingStartTime else { return 0 }
       return Int(Date().timeIntervalSince(start) * 1000)
     }()
-    let route = audioCapture.currentAudioRoute
-    if stallEventAlreadyCaptured || xpcReplyFailedThisSession {
-      let dedupedFrom =
-        stallEventAlreadyCaptured ? "audio_capture_stalled" : "xpc_reply_failed"
-      SentryBreadcrumb.add(
-        stage: "recording",
-        message: "No audio captured (WhisperKit, deduped)",
-        level: .warning,
-        data: [
-          "deduped_from": dedupedFrom,
-          "capture_session_id": Int(sessionID),
-        ]
-      )
-      return
-    }
-    SentryBreadcrumb.captureError(
-      HeartPathError.noAudioCaptured(
-        sessionID: sessionID, durationMs: durationMs, wasStreaming: false, route: route),
-      category: .audioCaptureFailed,
-      stage: "recording",
-      extra: SentryAudioExtras.buildCaptureExtras(
-        route: route,
-        sourceType: audioCapture.captureSourceType,
+    telemetry.noAudioCaptured(
+      ctx: NoAudioContext(
         sessionID: sessionID,
+        durationMs: durationMs,
+        wasStreaming: false,
+        route: audioCapture.currentAudioRoute,
         isActivelyCapturing: audioCapture.isActivelyCapturing,
+        captureSourceType: audioCapture.captureSourceType,
         inputDeviceUIDPreferred: audioCapture.preferredInputDeviceIDOverride.isEmpty
           ? nil : audioCapture.preferredInputDeviceIDOverride,
-        inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID(),
-        failureMode: "no_audio_captured"
+        inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID()
       )
     )
   }
@@ -1272,47 +1212,24 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
 
   // MARK: - Zombie engine telemetry (#302)
 
-  /// Emit a Sentry event when the VAD gate gets a full recording of exactly-zero
-  /// audio. That signature (`peak == 0.0` with non-empty samples) matches the
-  /// zombie-engine failure described in gotchas.md, not genuine silence (which
-  /// has a noise floor). Dedupes via captureTelemetry.
+  /// Issue #302: zombie-engine zero-peak emission. Pre-checks the trigger
+  /// shape (`peak == 0.0` with enough samples) here because the pipeline
+  /// owns the sample buffer; the emitter handles dedup + payload shape.
   private func emitZombieEngineEventIfNeeded(rawSamples: [Float], peakAudioLevel: Float) {
     guard peakAudioLevel == 0.0,
       rawSamples.count >= AudioConstants.minimumTranscriptionSamples
     else { return }
-
-    let route = audioCapture.currentAudioRoute
-    let sessionID = audioCapture.currentCaptureSessionID
-    let durationMs = rawSamples.count * 1000 / 16_000
-    let shouldEmit = captureTelemetry.shouldEmitZombie(
-      route: route, window: .seconds(30))
-    captureTelemetry.markZombieEmitted(route: route)
-
-    guard shouldEmit else { return }
-
-    let err = HeartPathError.zombieEngineZeroPeak(
-      sessionID: sessionID,
-      durationMs: durationMs,
-      route: route,
-      sampleCount: rawSamples.count
-    )
-    SentryBreadcrumb.captureError(
-      err,
-      category: .audioCaptureFailed,
-      stage: "recording",
-      extra: SentryAudioExtras.buildCaptureExtras(
-        route: route,
-        sourceType: audioCapture.captureSourceType,
-        sessionID: sessionID,
+    telemetry.zombieZeroPeak(
+      ctx: ZeroPeakContext(
+        sessionID: audioCapture.currentCaptureSessionID,
+        durationMs: rawSamples.count * 1000 / 16_000,
+        route: audioCapture.currentAudioRoute,
+        sampleCount: rawSamples.count,
         isActivelyCapturing: audioCapture.isActivelyCapturing,
+        captureSourceType: audioCapture.captureSourceType,
         inputDeviceUIDPreferred: audioCapture.preferredInputDeviceIDOverride.isEmpty
           ? nil : audioCapture.preferredInputDeviceIDOverride,
-        inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID(),
-        failureMode: "zombie_engine_zero_peak",
-        timeSinceLastSuccessfulRecordingMs:
-          captureTelemetry
-          .timeSinceLastSuccessfulRecordingMs(),
-        configChangeCountSinceLaunch: captureTelemetry.configurationChangeCount
+        inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID()
       )
     )
   }
