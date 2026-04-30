@@ -79,7 +79,10 @@ let package = Package(
         "EnviousWisprPostProcessing",
         "EnviousWisprServices",
         "EnviousWisprStorage",
-        "WhisperKit",
+        // R2 (#360): WhisperKit dependency dropped — Pipeline no longer
+        // references WhisperKit-typed values directly. The reach goes
+        // through `EnviousWisprASR`'s package-access seams
+        // (`makeIncrementalSession`, `observeLID`).
       ],
       path: "Sources/EnviousWisprPipeline"
     ),

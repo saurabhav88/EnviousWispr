@@ -6,7 +6,12 @@ import EnviousWisprLLM
 import EnviousWisprServices
 import EnviousWisprStorage
 import Foundation
-@preconcurrency import WhisperKit
+
+// R2 (#360): the pipeline holds no WhisperKit-typed values after the
+// Approach C session protocol + LID-button refactor, so it no longer
+// imports the vendor module directly. The dependency is also dropped from
+// the EnviousWisprPipeline target in `Package.swift`. All vendor reach now
+// goes through `EnviousWisprASR`'s package-access seams.
 
 /// Internal state machine for the WhisperKit highway — independent of PipelineState.
 public enum WhisperKitPipelineState: Equatable, Sendable {
@@ -675,13 +680,14 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
     // Multilingual v1 (W2): detect language on voiced audio before transcribe.
     // Heart protection: detector never throws; if it abstains, pass nil to
     // TranscriptionOptions.language so WhisperKit's internal LID runs.
-    // languageMode is captured lazily so a user toggling Auto<->Locked
-    // mid-recording is respected.
+    // languageMode comes from the frozen DictationSessionConfig captured at
+    // startRecording (Phase B refactor, PR #424); mid-recording user toggles
+    // are NOT applied to the in-flight session by design.
     let voicedDurationSec = Double(vadSpeechDurationMs) / 1000.0
-    // R2 (#360): closure-based observer. The non-Sendable `WhisperKit` handle
+    // R2 (#360): closure-based observer. The non-Sendable WhisperKit handle
     // stays inside the backend's actor isolation; only the Sendable
-    // `LIDObservationBatch` crosses to the LanguageDetector classifier.
-    // The previous `nonisolated(unsafe) let kitForLID` workaround is gone.
+    // LIDObservationBatch crosses to the LanguageDetector classifier.
+    // The previous unsafe-Sendable workaround is gone.
     // Snapshot `samples` into an immutable binding so the @Sendable observer
     // closure does not capture the surrounding `var samples` (would race).
     let observerSamples = samples
@@ -1125,8 +1131,8 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
 
   private func startIncrementalWorker() async {
     // R2 (#360): vended via opaque session protocol so Pipeline holds no
-    // WhisperKit-specific type. Returns nil iff backend's `whisperKit` is nil
-    // (model unloaded). Same gating as today's reach into `whisperKitInstance`.
+    // WhisperKit-specific type. Returns nil iff the backend's WhisperKit
+    // model is unloaded (same gating as the legacy reach this replaced).
     guard let session = await backend.makeIncrementalSession(options: transcriptionOptions)
     else { return }
     self.incrementalWorker = session

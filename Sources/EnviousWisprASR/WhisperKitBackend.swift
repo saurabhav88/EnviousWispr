@@ -27,22 +27,12 @@ public actor WhisperKitBackend: ASRBackend {
 
   /// Exposes the configured model variant name (e.g. `openai_whisper-large-v3-v20240930_turbo`).
   /// Read-only; used by telemetry to tag per-transcription events with the model in use.
-  public var modelVariantName: String { modelVariant }
+  package var modelVariantName: String { modelVariant }
 
-  /// Transitional reach for LanguageDetector LID call from `WhisperKitPipeline`.
-  /// R2 (#360) commit 3 narrows this to package/private after the LID
-  /// migration in commit 2 lands.
-  public var whisperKitInstance: WhisperKit? { whisperKit }
-
-  /// Transitional surface — no current consumer. The incremental worker no
-  /// longer takes a tokenizer parameter (R2 #360 commit 1). Removed in
-  /// commit 3 alongside `whisperKitInstance` narrowing.
-  public var whisperKitTokenizer: (any WhisperTokenizer)? { whisperKit?.tokenizer }
-
-  public init() {}
+  package init() {}
 
   /// Single source of truth for the shipped default model variant.
-  public static func defaultModelVariant() -> String {
+  package static func defaultModelVariant() -> String {
     "openai_whisper-large-v3-v20240930_turbo"
   }
 
@@ -69,7 +59,7 @@ public actor WhisperKitBackend: ASRBackend {
   /// `WhisperKitSetupService.getLocalModelPath`, so a non-nil path here implies
   /// the artifacts are all present. Used by silent/background warmup paths
   /// that must never trigger a network download.
-  public func prepareIfCached() async throws -> Bool {
+  package func prepareIfCached() async throws -> Bool {
     guard !isReady else { return true }
     guard let cached = WhisperKitSetupService.getLocalModelPath(variant: modelVariant) else {
       return false  // Model not cached or cache incomplete — skip silently.
