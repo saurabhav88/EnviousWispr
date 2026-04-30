@@ -1,7 +1,7 @@
 /download https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg 302
 /download/ https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg 302
-/pricing /how-it-works/#features 301
-/pricing/ /how-it-works/#features 301
+/pricing / 301
+/pricing/ / 301
 /changelog https://github.com/saurabhav88/EnviousWispr/releases 302
 /changelog/ https://github.com/saurabhav88/EnviousWispr/releases 302
 /docs /how-it-works/ 301

@@ -7,17 +7,31 @@ const year = new Date().getFullYear();
     <div class="footer-inner">
       <div>
         <a href="/" class="footer-logo" aria-label="EnviousWispr">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" aria-hidden="true" style="width:30px;height:30px;">
-            <g transform="translate(8,13)">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" aria-hidden="true" style="width:30px;height:22px;">
+            <defs>
+              <filter id="footer-glow" x="-30%" y="-30%" width="160%" height="160%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/>
+                <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+            </defs>
+            <g transform="translate(8,13)" filter="url(#footer-glow)">
               <rect x="16" y="84.2" width="14" height="20" rx="5" fill="#ff2a40" opacity="0.9"/>
+              <rect x="40" y="65.75" width="14" height="32" rx="5" fill="#ff8c00" opacity="0.9"/>
               <rect x="64" y="43.36" width="14" height="48" rx="5" fill="#ffd700" opacity="0.9"/>
+              <rect x="88" y="63.04" width="14" height="36" rx="5" fill="#adff2f" opacity="0.9"/>
               <rect x="112" y="81.43" width="14" height="24" rx="5" fill="#00fa9a" opacity="0.9"/>
+              <rect x="136" y="63.04" width="14" height="36" rx="5" fill="#00ffff" opacity="0.9"/>
               <rect x="160" y="43.36" width="14" height="48" rx="5" fill="#1e90ff" opacity="0.9"/>
+              <rect x="184" y="65.75" width="14" height="32" rx="5" fill="#4169e1" opacity="0.9"/>
               <rect x="208" y="84.2" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.9"/>
               <rect x="16" y="125.8" width="14" height="20" rx="5" fill="#4169e1" opacity="0.85"/>
+              <rect x="40" y="119.35" width="14" height="36" rx="5" fill="#1e90ff" opacity="0.85"/>
               <rect x="64" y="112.96" width="14" height="48" rx="5" fill="#00ffff" opacity="0.85"/>
+              <rect x="88" y="120.64" width="14" height="60" rx="5" fill="#00fa9a" opacity="0.85"/>
               <rect x="112" y="127.03" width="14" height="68" rx="5" fill="#adff2f" opacity="0.85"/>
+              <rect x="136" y="120.64" width="14" height="60" rx="5" fill="#ffd700" opacity="0.85"/>
               <rect x="160" y="112.96" width="14" height="48" rx="5" fill="#ff8c00" opacity="0.85"/>
+              <rect x="184" y="119.35" width="14" height="36" rx="5" fill="#ff2a40" opacity="0.85"/>
               <rect x="208" y="125.8" width="14" height="20" rx="5" fill="#8a2be2" opacity="0.85"/>
             </g>
           </svg>
@@ -27,8 +41,7 @@ const year = new Date().getFullYear();
       </div>
       <div class="footer-right">
         <nav class="footer-links" aria-label="Footer Navigation">
-          <a href="/#features">Features</a>
-          <a href="/how-it-works/">How It Works</a>
+          <a href="/how-it-works/">Under the Hood</a>
           <a href="/compare/">Compare</a>
           <a href="/blog/">Blog</a>
           <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg">Download</a>
