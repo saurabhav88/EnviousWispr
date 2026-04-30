@@ -29,10 +29,14 @@ public actor WhisperKitBackend: ASRBackend {
   /// Read-only; used by telemetry to tag per-transcription events with the model in use.
   public var modelVariantName: String { modelVariant }
 
-  /// Exposes the WhisperKit instance for background incremental transcription.
+  /// Transitional reach for LanguageDetector LID call from `WhisperKitPipeline`.
+  /// R2 (#360) commit 3 narrows this to package/private after the LID
+  /// migration in commit 2 lands.
   public var whisperKitInstance: WhisperKit? { whisperKit }
 
-  /// Exposes the tokenizer for prompt token encoding (used by incremental worker tail decode).
+  /// Transitional surface — no current consumer. The incremental worker no
+  /// longer takes a tokenizer parameter (R2 #360 commit 1). Removed in
+  /// commit 3 alongside `whisperKitInstance` narrowing.
   public var whisperKitTokenizer: (any WhisperTokenizer)? { whisperKit?.tokenizer }
 
   public init() {}
@@ -151,6 +155,21 @@ public actor WhisperKitBackend: ASRBackend {
   }
 
   // MARK: - Private
+
+  // R2 (#360): vend an opaque incremental session so Pipeline does not need
+  // the WhisperKit handle. Returns nil when the model is not loaded; caller
+  // must treat as "incremental unavailable" and fall back to batch transcribe
+  // (which itself will throw `ASRError.notReady` if the model is also nil —
+  // both paths gate on the same `whisperKit` reference). See
+  // `docs/feature-requests/issue-360-2026-04-30-r2-approach-c-plus-lid-split.md`
+  // §9 for the honest fallback semantics.
+  package func makeIncrementalSession(options: TranscriptionOptions)
+    async -> (any WhisperKitIncrementalSession)?
+  {
+    guard let kit = whisperKit else { return nil }
+    let opts = makeDecodeOptions(from: options, sampleCount: 0)
+    return WhisperKitIncrementalWorker(whisperKit: kit, decodingOptions: opts)
+  }
 
   // Called by WhisperKitPipeline in EnviousWisprPipeline. `package` access is
   // sufficient: both targets live in the same SPM package, so no `public`

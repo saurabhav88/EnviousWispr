@@ -151,7 +151,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
   private var vadMonitorTask: Task<Void, Never>?
   /// Frozen snapshot of recording state, built before teardown for post-recording error enrichment.
   private var frozenSnapshot: SentryBreadcrumb.RecordingSnapshot?
-  private var incrementalWorker: WhisperKitIncrementalWorker?
+  private var incrementalWorker: (any WhisperKitIncrementalSession)?
   private var modelUnloadTask: Task<Void, Never>?
 
   /// Issue #289 stall-recovery ownership token (see TranscriptionPipeline).
@@ -1119,15 +1119,12 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
   // MARK: - Incremental Worker
 
   private func startIncrementalWorker() async {
-    guard let kit = await backend.whisperKitInstance else { return }
-    let opts = await backend.makeDecodeOptions(from: transcriptionOptions, sampleCount: 0)
-    // BRAIN: gotcha id=nonisolated-unsafe-tokenizer
-    // nonisolated(unsafe): WhisperTokenizer is not Sendable but is safe to transfer —
-    // the backend is the sole owner and we pass it to a single actor that holds it for its lifetime.
-    nonisolated(unsafe) let tokenizer = await backend.whisperKitTokenizer
-    let worker = WhisperKitIncrementalWorker(
-      whisperKit: kit, decodingOptions: opts, tokenizer: tokenizer)
-    self.incrementalWorker = worker
+    // R2 (#360): vended via opaque session protocol so Pipeline holds no
+    // WhisperKit-specific type. Returns nil iff backend's `whisperKit` is nil
+    // (model unloaded). Same gating as today's reach into `whisperKitInstance`.
+    guard let session = await backend.makeIncrementalSession(options: transcriptionOptions)
+    else { return }
+    self.incrementalWorker = session
 
     let isXPCMode = audioCapture is AudioCaptureProxy
     let capture = audioCapture
@@ -1142,7 +1139,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
       // 5 min (max recording) = ~19MB. Bounded by TimingConstants.maxRecordingDuration.
       var nextIndex = 0
       var accumulated: [Float] = []
-      await worker.start(audioSamplesProvider: { @MainActor in
+      await session.start(audioSamplesProvider: { @MainActor in
         let (newSamples, totalCount) = await capture.getSamplesSnapshot(fromIndex: nextIndex)
         accumulated.append(contentsOf: newSamples)
         nextIndex = totalCount
@@ -1150,7 +1147,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
       })
     } else {
       // In-process mode: read directly from MainActor-isolated capturedSamples.
-      await worker.start(audioSamplesProvider: { @MainActor in
+      await session.start(audioSamplesProvider: { @MainActor in
         let samples = capture.capturedSamples
         return (samples: samples, count: samples.count)
       })

@@ -20,10 +20,9 @@ public struct IncrementalResult: Sendable {
 /// - Short recordings (<30s): re-transcribe full buffer each cycle (highest quality)
 /// - Long recordings (>30s): use clipTimestamps to only decode new audio (efficient)
 /// - On finalize: async tail decode covers speech after the last worker result
-public actor WhisperKitIncrementalWorker {
+public actor WhisperKitIncrementalWorker: WhisperKitIncrementalSession {
   private let whisperKit: WhisperKit
   private let baseDecodingOptions: DecodingOptions
-  private let tokenizer: (any WhisperTokenizer)?
   private let cadence: Duration = .seconds(3)
   private let longRecordingThreshold: Int = 16000 * 30
 
@@ -37,12 +36,9 @@ public actor WhisperKitIncrementalWorker {
   private var running = false
   private var loopTask: Task<Void, Never>?
 
-  public init(
-    whisperKit: WhisperKit, decodingOptions: DecodingOptions, tokenizer: (any WhisperTokenizer)?
-  ) {
+  public init(whisperKit: WhisperKit, decodingOptions: DecodingOptions) {
     self.whisperKit = whisperKit
     self.baseDecodingOptions = decodingOptions
-    self.tokenizer = tokenizer
   }
 
   public func start(
