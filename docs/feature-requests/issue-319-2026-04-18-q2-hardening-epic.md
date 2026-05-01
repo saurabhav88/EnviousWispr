@@ -626,7 +626,7 @@ Each refactor pattern carries its own test strategy.
 | 8 | **R4** | BT route log rotation | 1 | SMALL | #362 | SHIPPED (PR #476, 2026-04-26) | ~45 |
 | 9 | **R5** | HeartPathTelemetryEmitter | 1 | MEDIUM | #290 | SHIPPED (PR #511, 2026-04-30) | +1079 / −250 (mostly tests) |
 | 10 | **R6** | Prompt delimiter hardening (gated) | 1 | SMALL | #363 | GATED on V4 | ~60 |
-| 11 | **V1** | Cold bench + 3-hr memory profile | 2 | VALIDATION | #364 | PLANNED §18 | n/a |
+| 11 | **V1** | Production telemetry analysis (replaced cold bench + 3-hr profile) | 2 | VALIDATION | #364 | SHIPPED via V1a (2026-04-30) | n/a |
 | 12 | **V2** | MainActor/XPC fault injection matrix | 2 | VALIDATION | #291 (extended) | PLANNED §19 | n/a |
 | 13 | **V3** | Entitlement + PII audit | 2 | VALIDATION | #365 | PLANNED §20 | n/a |
 | 14 | **V4** | Prompt adversarial eval | 2 | VALIDATION | #366 | PLANNED §21 | n/a |
@@ -2275,48 +2275,41 @@ Why carry Phase G in this bible instead of only in #385: the #319 Hardening bibl
 
 ---
 
-## 18. Phase V1 — Heart-path cold bench + 3-hr memory profile
+## 18. Phase V1 — Production telemetry analysis (was: cold bench + 3-hr memory profile)
 
-**Issue:** #364 · **Status:** PLANNED (dispatch in Session 2)
+**Issue:** #364 · **Status:** SHIPPED 2026-04-30 via V1a
 **Goal:** Confirm or downgrade `Performance & latency: Medium Risk`.
 
-### 18.1 What this validates
+**Outcome:** confirmed acceptable. Performance & latency downgraded to **Low Risk** for the upcoming audit rerun. Evidence: `docs/audits/2026-04-30-v1a-cold-path-telemetry.md`.
 
-Three audit not-assessed items roll up here:
+**Original 3-hr metronome design retired.** Founder rule on 2026-04-30: no synthetic test longer than 5 min unless explicitly requested for a one-off (e.g., 100-sample TTS harness run). The 3-hr profile + 5-min metronome bench were built around a "users idle, then re-use causes cold-path slowdown" hypothesis traced to one #272 Gemma4 incident in April 2026. V1a tested that hypothesis against 30 days of production telemetry (16 active installs, 12 dictating users, 238 dictations, 150 polish events) and found it does not generalize:
 
-1. Cold-start latency and end-to-end dictation speed.
-2. Memory growth and leak behavior during long recordings and repeated backend switches.
-3. Concrete confirmation of REF-05's static latency hypothesis (transcript reload on completion).
+- 100% of production polish is Apple Intelligence (zero Gemini, zero OpenAI, zero Ollama in window). The cache-rotation mechanism the rule guarded against does not exist in `FoundationModels.LanguageModelSession.respond(to:)`.
+- Polish latency vs gap-since-previous-polish is flat. p50 stays 1.0–1.2s across every gap bucket from <30s to >4hr. p99 max never crosses 3.4s. No knee.
+- Sentry corroborates: 0 polish failures, 0 network failures, 0 cold-path-shaped events in 14 days.
 
-### 18.2 Recipe
+The "5-min idle between samples" prescription in `validation-discipline.md §9` was generalized from the same incident and is now slated for amendment (separate PR).
 
-Two passes.
+### 18.1 Replacement V1 shape (on demand, all probes <5 min)
 
-**Pass 1 — Cold-path latency bench.**
-```bash
-scripts/heart-path-bench.sh --cold   # per validation-discipline.md §9
-```
-Records p50, p90, p99 for capture → ASR → polish → paste. Compares against `.validation/latency-baselines.json`. No FAIL allowed (existing thresholds: polish_p50 > 2x baseline FAILS; total_p50 > 1.5x baseline AND > 1500ms FAILS).
+When V1 is needed in the future (e.g., a refactor reintroduces a cloud or local-LLM polish provider, or a heart-path-affecting change is shipped), use these instead of marathon profiles:
 
-**Pass 2 — 3-hour memory profile.**
-Instruments release build. Attach Allocations + Leaks templates. Dictate one sentence every 5 minutes for 3 hours (~36 dictations). Heap snapshots at t=0, 30min, 60min, 120min, 180min. Run on Bluetooth audio for at least 60 minutes to flush bt-route.log growth (R4 validation).
+- **V1a — production telemetry refresh.** Re-run the queries in `docs/audits/2026-04-30-v1a-cold-path-telemetry.md` §9. Zero app time. Pure observability check.
+- **V1b — cold-launch single dictation** (~3 min). Kill app, launch, dictate one sentence immediately, record full pipeline e2e. Captures cold process state without artificial idle.
+- **V1c — back-to-back stress, 50 dictations** (~5 min). Heap snapshot before/after via Instruments CLI. Catches per-dictation leak via linear allocation growth, not duration.
 
-### 18.3 Acceptance
+V1b and V1c are NOT obligatory. They are optional probes for confirming a specific suspicion. V1a is sufficient to maintain the Performance & latency = Low Risk classification on its own.
 
-- Cold latency within baselines (no FAIL per `scripts/heart-path-check.sh`).
-- Memory heap at t=3hr within 10% of t=30min (allow model warm-up in first 30 min).
-- `bt-route.log` size at end of 3hr: if R4 has shipped, within 15 MB; if R4 has not shipped, record size as reference data.
-- Report persisted to `docs/audits/YYYY-MM-DD-v1-performance.md`.
+### 18.2 Followups V1a surfaced (filed separately, not blocking V1 close)
 
-### 18.4 Outcome → grade action
+1. `cold_start=true` never registers in production `asr.completed`. Likely telemetry bug in `TelemetryService.swift` or `ASRManager`.
+2. E2E dictation tail past 2-min gaps. p90 jumps from 2.1s → 5–7s once gap exceeds 2 min, but ASR p50 is 100ms and polish p50 is 1.0s. Unattributed time lives in audio engine spinup or recording-duration variance. Worth instrumenting recording-start with a span.
+3. `paste_failed` rolling-window production count ~14 events (issues ENVIOUSWISPR-8 + ENVIOUSWISPR-M). Heart-path-adjacent. Investigate which apps the cascade is failing in.
+4. Sentry REST `/issues/` returns combined-environment counts. Production-only requires fetching `/organizations/<org>/issues/<id>/tags/` per issue. Knowledge-file note for `observability-operations.md`.
 
-- All acceptance passes → Performance & latency grade **downgraded to Low Risk** in audit rerun.
-- Any FAIL → open hotfix issue, grade stays Medium Risk, epic blocked on fix.
+### 18.3 Original recipe (preserved for history)
 
-### 18.5 Dependencies
-
-- Run AFTER R5 (#290) if R5 affects telemetry path (to avoid re-benchmarking).
-- Run BEFORE Phase C+D if reasonable, so the baseline reflects pre-decomposition state; alternatively AFTER, to measure the improvement. Run BOTH if feasible (pre-baseline + post-decomposition delta is strong signal).
+Two passes were originally planned: a `scripts/heart-path-bench.sh --cold` invocation (~25 min) and a 3-hour memory profile (one dictation every 5 minutes, heap snapshots at t=0, 30, 60, 120, 180 min, BT route for ≥60 min). Neither ran. V1a obviated both.
 
 ---
 
@@ -2918,6 +2911,8 @@ Only then does Phase B work start. Missing the decision capture in any of the th
 ---
 
 ## 30. Changelog
+
+- **2026-04-30 v1.27 · V1 shipped via V1a (production telemetry replaces marathon profile)** — Closes #364. Founder rule on 2026-04-30: no synthetic test longer than 5 min unless explicitly requested for a one-off. Original V1 design (3-hr metronome dictation profile + 25-min cold bench) was built around a "users idle, then re-use causes cold-path slowdown" hypothesis traced to one #272 Gemma4 incident in April 2026. Tested that hypothesis against 30 days of production telemetry: 16 active installs, 12 dictating users, 238 dictations, 150 polish events. Findings: 100% of production polish is Apple Intelligence (zero cloud providers in window — the cache-rotation mechanism the rule guarded against does not exist in `FoundationModels.LanguageModelSession`); polish latency vs gap is flat (p50 1.0–1.2s across all gaps from <30s to >4hr; p99 max never crosses 3.4s; no knee); Sentry corroborates with 0 polish failures, 0 network failures, 0 cold-path-shaped events in 14 days. **Performance & latency downgraded to Low Risk** for the upcoming audit rerun. Evidence: `docs/audits/2026-04-30-v1a-cold-path-telemetry.md`. §18 rewritten to retain a slim on-demand V1 (V1a telemetry refresh + optional V1b cold-launch single dictation + optional V1c 50-dictation stress, all <5 min); marathon designs retired. Four followups surfaced and filed separately, none blocking V1 close: cold_start telemetry bug, e2e tail past 2-min gaps, paste_failed production cluster (~14 events, heart-path-adjacent), Sentry env-tag knowledge note. Companion amendment to `validation-discipline.md §9` (drop "5-min idle between samples" prescription) drafted as a separate PR per workflow-process zero-blast-radius split.
 
 - **2026-04-30 v1.26 · R2 shipped — pipeline fully decoupled from WhisperKit (Approach C + LID split)** — Closes #360 via PR #524 (squash `abd1c6e`, merged 23:15:44Z). Two-PR sequence: PR #522 (squash `22b72ba`, merged earlier same day) shipped a 17-test characterization safety net + determinism harness in `Tests/EnviousWisprASRTests/R2/` against unchanged production code so PR #524's refactor had an unmovable yardstick — structurally enforces the GPT council concern that fixture + refactor in one PR is gameable. PR #524 then landed three commits: (1) opaque `WhisperKitIncrementalSession` package protocol + worker conformance + dead `tokenizer` parameter deletion, (2) LID button on backend (`observeLID` returning Sendable `LIDObservationBatch` enum with explicit `.unavailable` / `.cancelled` / `.noWindows` / `.error` / `.observations` cases; classifier consumes via `@Sendable` closure observerFn, aggregation moves to a small `aggregateObservations` helper), (3) cleanup (drop public `whisperKitInstance` + `whisperKitTokenizer` properties, drop `import WhisperKit` from Pipeline, drop WhisperKit dep from `EnviousWisprPipeline` target in `Package.swift`, narrow `WhisperKitIncrementalWorker` + `IncrementalResult` + four reach-only `WhisperKitBackend` methods from `public` to `package`). **Both `nonisolated(unsafe)` declarations in the heart-path stop sequence eliminated**: the kitForLID hop at WhisperKitPipeline.swift:681-684 and the tokenizer hop at :1125-1127. **Pipeline now compiles without WhisperKit dependency** — verified by removing `"WhisperKit"` from the SPM target and confirming clean build. **Three-reviewer council cycle on the plan** (GPT + Gemini + Codex grounded review at `docs/audits/2026-04-30-r2-avb-grounded-review.txt` and `docs/audits/2026-04-30-r2-plus-lid-grounded-review.txt`); Codex proposed Approach C as a sharpening of A; founder-directed long-term framing added the LID split. **Per-commit Codex code-diff review** — each of the 3 commits Codex-reviewed and amended locally before the next commit started, plus a final cumulative review. Five Codex review rounds total in PR #524; all sign-off PROCEED or PROCEED-WITH-REVISIONS, all revisions absorbed. **One intentional behavior change**: inner-await `CancellationError` from `WhisperKit.detectLangauge` now surfaces immediately as `.cancelled` instead of being swallowed by the per-window catch and continuing — faster cancel response, classifier-side abstain semantics unchanged. Documented in `LIDObservationBatch.cancelled` doc comment. **Pre-R2 cold latency baseline captured manually** with `ModelUnloadPolicy=immediately` + 5 raw dictations: decode p50 622ms / reload p50 0.60s. **Post-R2 decode comparison** (warm — measurement note that the unload setting didn't propagate to the running app on first re-test): apples-to-apples decode times within ±100ms across comparable audio lengths (7-12s), confirming no regression. Also two new global Claude Code hooks shipped to `~/.claude/check-bash-background-pattern.sh`: blocks `cmd &` + `run_in_background: true` double-backgrounding AND `codex exec` without `</dev/null` (both failure modes hit during this session and previously documented as prose rules; promoted to structural enforcement per `feedback_hooks_over_prose`). New durable feedback memory: `feedback_bash_background_pattern.md`. Resolves §27.4 R2-approach decision.
 
