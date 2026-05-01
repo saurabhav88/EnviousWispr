@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Testing
 
@@ -162,5 +163,128 @@ struct RotatingFileSinkTests {
       return s.contains(siblingMarker)
     }
     #expect(foundSomewhere)
+  }
+
+  // MARK: - writeAllBytes loop (Codex finding #478)
+
+  /// Issue #478: `write(2)` may return fewer bytes than requested, or fail
+  /// with `EINTR`, even on regular files. The previous append path discarded
+  /// the return value, silently truncating log lines and breaking the sink's
+  /// "no torn lines" invariant. These tests pin the retry loop's behaviour.
+
+  @Test("writeAllBytes succeeds when underlying write reports a full success")
+  func writeAllBytes_fullWriteSucceeds() throws {
+    let payload = Array("abcdefghij".utf8)
+    var calls = 0
+    let ok = payload.withUnsafeBufferPointer { buf -> Bool in
+      RotatingFileSink.writeAllBytes(
+        UnsafeRawPointer(buf.baseAddress!),
+        buf.count
+      ) { _, n in
+        calls += 1
+        return n
+      }
+    }
+    #expect(ok)
+    #expect(calls == 1)
+  }
+
+  @Test("writeAllBytes advances cursor across multiple short writes")
+  func writeAllBytes_shortWritesAdvanceCursor() throws {
+    let payload = Array(repeating: UInt8(0xAB), count: 256)
+    // Closure returns 100, 100, 56 — two short writes followed by the tail.
+    var schedule = [100, 100, 56]
+    var seen: [Int] = []
+    let ok = payload.withUnsafeBufferPointer { buf -> Bool in
+      let basePtr = UnsafeRawPointer(buf.baseAddress!)
+      return RotatingFileSink.writeAllBytes(basePtr, buf.count) { ptr, n in
+        let chunk = schedule.removeFirst()
+        // Each call should see a cursor advanced by the previous chunks.
+        let offset = ptr.distance(to: basePtr) * -1
+        seen.append(offset)
+        return min(chunk, n)
+      }
+    }
+    #expect(ok)
+    #expect(schedule.isEmpty)
+    #expect(seen == [0, 100, 200])
+  }
+
+  @Test("writeAllBytes retries on EINTR")
+  func writeAllBytes_retriesOnEINTR() throws {
+    let payload = Array("retry-payload".utf8)
+    var calls = 0
+    let ok = payload.withUnsafeBufferPointer { buf -> Bool in
+      RotatingFileSink.writeAllBytes(
+        UnsafeRawPointer(buf.baseAddress!),
+        buf.count
+      ) { _, n in
+        calls += 1
+        if calls == 1 {
+          errno = EINTR
+          return -1
+        }
+        return n
+      }
+    }
+    #expect(ok)
+    #expect(calls == 2)
+  }
+
+  @Test("writeAllBytes bails on a hard error (errno != EINTR)")
+  func writeAllBytes_failsOnHardError() throws {
+    let payload = Array("hard-error".utf8)
+    var calls = 0
+    let ok = payload.withUnsafeBufferPointer { buf -> Bool in
+      RotatingFileSink.writeAllBytes(
+        UnsafeRawPointer(buf.baseAddress!),
+        buf.count
+      ) { _, _ in
+        calls += 1
+        errno = EIO
+        return -1
+      }
+    }
+    #expect(!ok)
+    #expect(calls == 1)
+  }
+
+  @Test("writeAllBytes bails on a zero-byte return so it does not spin")
+  func writeAllBytes_failsOnZeroWrite() throws {
+    let payload = Array("zero-write".utf8)
+    var calls = 0
+    let ok = payload.withUnsafeBufferPointer { buf -> Bool in
+      RotatingFileSink.writeAllBytes(
+        UnsafeRawPointer(buf.baseAddress!),
+        buf.count
+      ) { _, _ in
+        calls += 1
+        return 0
+      }
+    }
+    #expect(!ok)
+    #expect(calls == 1)
+  }
+
+  // MARK: - Production-path integration (large buffer)
+
+  @Test("Large append lands intact through the production write loop")
+  func largeBufferAppendIsIntact() throws {
+    let dir = try Self.makeIsolatedDirectory("large-append")
+    defer { Self.cleanup(dir) }
+
+    let path = dir.appendingPathComponent("sink.log")
+    // Size cap large enough that no rotation fires; exercises the writeAll
+    // loop end-to-end through `RotatingFileSink.append`.
+    let sink = RotatingFileSink(path: path, maxSize: 8 * 1_024 * 1_024, maxFiles: 1)
+
+    // 256 KB single message — large enough that a real short write or
+    // signal interruption is plausible under load. We assert byte equality.
+    let body = String(repeating: "x", count: 256 * 1_024)
+    let payload = body + "\n"
+    sink.append(payload)
+
+    let read = try String(contentsOf: path, encoding: .utf8)
+    #expect(read == payload)
   }
 }
