@@ -1,5 +1,7 @@
 ---
 import BaseLayout from './BaseLayout.astro';
+import BlogSidebar from '../components/BlogSidebar.astro';
+import BlogShareRow from '../components/BlogShareRow.astro';
 
 interface RelatedPost {
   slug: string;
@@ -140,7 +142,10 @@ const breadcrumbJsonLd = JSON.stringify({
     {faqJsonLd && <script type="application/ld+json" set:html={faqJsonLd}></script>}
   </Fragment>
   <div class="blog-post-page">
-    <div class="blog-post-container">
+    <div class="blog-post-grid">
+      <div class="blog-post-main">
+
+      <a href="#blog-toc" class="skip-to-toc">Skip to On this page</a>
 
       <a href="/blog/" class="back-link">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
@@ -190,6 +195,10 @@ const breadcrumbJsonLd = JSON.stringify({
         </div>
       </section>
 
+      <BlogShareRow />
+
+      <div id="share-status" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
       <aside class="author-bio" aria-label="About the author">
         <div class="author-bio-inner">
           <div class="author-bio-text">
@@ -231,6 +240,10 @@ const breadcrumbJsonLd = JSON.stringify({
         </a>
       </nav>
 
+      </div><!-- /.blog-post-main -->
+
+      <BlogSidebar />
+
     </div>
   </div>
 </BaseLayout>
@@ -242,10 +255,71 @@ const breadcrumbJsonLd = JSON.stringify({
     z-index: 1;
   }
 
-  .blog-post-container {
+  .blog-post-grid {
     max-width: 720px;
     margin: 0 auto;
     padding: 0 32px;
+  }
+
+  .blog-post-main {
+    min-width: 0;
+  }
+
+  @media (min-width: 1080px) {
+    .blog-post-grid {
+      max-width: 1080px;
+      display: grid;
+      grid-template-columns: 720px 240px;
+      column-gap: 60px;
+      align-items: start;
+    }
+  }
+
+  /* Skip-link for keyboard users to reach the desktop TOC.
+     Removed from focus order entirely below 1080px (where the sidebar is hidden) and on
+     TOC-less posts (where BlogSidebar's script adds .toc-hidden to the <html> element).
+     Otherwise visible only when focused. */
+  .skip-to-toc {
+    display: none;
+  }
+  @media (min-width: 1080px) {
+    .skip-to-toc {
+      display: inline-block;
+      position: absolute;
+      left: -9999px;
+      top: auto;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+    }
+    .skip-to-toc:focus {
+      position: static;
+      width: auto;
+      height: auto;
+      padding: 8px 14px;
+      margin-bottom: 16px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+      border-radius: 6px;
+    }
+    :root.toc-hidden .skip-to-toc {
+      display: none;
+    }
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 
   /* Back link */
@@ -717,7 +791,7 @@ const breadcrumbJsonLd = JSON.stringify({
     .blog-post-page {
       padding: 100px 0 64px;
     }
-    .blog-post-container {
+    .blog-post-grid {
       padding: 0 20px;
     }
     .blog-title {
@@ -750,6 +824,94 @@ const breadcrumbJsonLd = JSON.stringify({
     });
     pre.appendChild(btn);
   });
+</script>
+
+<script>
+  // Share buttons — handles both BlogSidebar and BlogShareRow via event delegation.
+  // Telemetry fires AFTER success: clipboard write resolves, or window.open returns
+  // (popup blockers will swallow the open call but the click intent has already happened).
+  // For email (mailto:) we fire on click since the OS hands off and we can't observe.
+  (function () {
+    const slug = window.location.pathname.replace(/^\/blog\//, '').replace(/\/$/, '');
+    const title = document.title;
+
+    const fireTelemetry = (network: string) => {
+      const w = window as unknown as { posthog?: { capture?: (e: string, p: object) => void } };
+      if (typeof w.posthog !== 'undefined' && typeof w.posthog.capture === 'function') {
+        w.posthog.capture('share_clicked', { network, slug });
+      }
+    };
+
+    const status = document.getElementById('share-status');
+    const announce = (msg: string) => {
+      if (status) status.textContent = msg;
+    };
+
+    const composeUrl = () => {
+      // Prefer section-anchor when scroll-spy has marked an active heading.
+      const activeId = document.documentElement.dataset.tocActive;
+      const base = window.location.origin + window.location.pathname;
+      return activeId ? `${base}#${activeId}` : base;
+    };
+
+    const handleClick = async (btn: HTMLButtonElement) => {
+      const network = btn.getAttribute('data-share');
+      if (!network) return;
+      const url = composeUrl();
+
+      if (network === 'copy') {
+        try {
+          await navigator.clipboard.writeText(url);
+          fireTelemetry('copy');
+          announce('Link copied to clipboard');
+          flashSuccess(btn, 'Copied!');
+        } catch {
+          announce('Copy failed. Use your browser’s URL bar instead.');
+        }
+        return;
+      }
+
+      if (network === 'email') {
+        const subject = encodeURIComponent(title);
+        const body = encodeURIComponent(`${title}\n\n${url}`);
+        const href = `mailto:?subject=${subject}&body=${body}`;
+        fireTelemetry('email');
+        window.location.href = href;
+        return;
+      }
+
+      if (network === 'x') {
+        const intent = `https://x.com/intent/tweet?text=${encodeURIComponent(title)}&url=${encodeURIComponent(url)}`;
+        fireTelemetry('x');
+        window.open(intent, '_blank', 'noopener,noreferrer');
+        return;
+      }
+
+      if (network === 'linkedin') {
+        const intent = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`;
+        fireTelemetry('linkedin');
+        window.open(intent, '_blank', 'noopener,noreferrer');
+        return;
+      }
+    };
+
+    const flashSuccess = (btn: HTMLButtonElement, label: string) => {
+      const labelEl = btn.querySelector<HTMLElement>('[class$="-btn-label"]');
+      const original = labelEl?.textContent;
+      if (labelEl) labelEl.textContent = label;
+      btn.classList.add('share-btn-success');
+      setTimeout(() => {
+        if (labelEl && typeof original === 'string') labelEl.textContent = original;
+        btn.classList.remove('share-btn-success');
+      }, 1800);
+    };
+
+    document.querySelectorAll<HTMLButtonElement>('[data-share]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        void handleClick(btn);
+      });
+    });
+  })();
 </script>
 
 <script is:inline>
