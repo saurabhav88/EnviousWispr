@@ -45,6 +45,7 @@
 - [Meeting notes and polished summaries](https://enviouswispr.com/blog/meeting-notes-polished-summaries/): Post-meeting workflow.
 - [Podcast show notes to blog posts](https://enviouswispr.com/blog/podcast-show-notes-to-blog-posts/): Repurposing workflow.
 - [Async communication is better when you speak](https://enviouswispr.com/blog/async-communication-better-when-you-speak/): Async-first communication.
+- [macOS dictation for healthcare: on-device charting](https://enviouswispr.com/blog/dictation-for-healthcare-on-device-charting/): On-device clinical documentation, no BAA needed for the dictation step.
 
 ## Behind the scenes
 
