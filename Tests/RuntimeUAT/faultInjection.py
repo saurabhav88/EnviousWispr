@@ -188,17 +188,50 @@ def _import_wispr_eyes():
     return wispr_eyes
 
 
+_TERMINAL_TOKENS = (".idle", ".complete", ".error", ".ready")
+
+
+def _parse_query_state(reply: str) -> dict[str, str]:
+    """Parse `OK parakeet=<state> whisperkit=<state> backend=<X>` into a dict.
+    Returns `{}` if the reply doesn't match the expected shape."""
+    if not reply.startswith("OK "):
+        return {}
+    parts: dict[str, str] = {}
+    for token in reply[3:].split():
+        if "=" in token:
+            k, v = token.split("=", 1)
+            parts[k] = v
+    return parts
+
+
+def _backend_pipeline_key(backend: str) -> str:
+    # `backend=.parakeet` / `backend=.whisperKit` → which pipeline-state key matters
+    if "whisper" in backend.lower():
+        return "whisperkit"
+    return "parakeet"
+
+
 def assert_terminated(timeout_s: float = 5.0) -> dict:
-    """Poll `query_state` until both pipelines are terminal (.idle / .complete /
-    .error / .ready) or the budget expires."""
+    """Poll `query_state` until the ACTIVE backend's pipeline reaches a
+    terminal state (.idle / .complete / .error / .ready) or the budget
+    expires.
+
+    The `query_state` reply always carries both pipeline states; the
+    inactive backend is typically idle or ready while the active one is
+    still running. Checking "any pipeline terminal" would always return
+    True immediately and silently mask Lane A regressions (Codex P1
+    feedback on PR #544). We must check the active backend specifically.
+    """
     deadline = time.monotonic() + timeout_s
     last = ""
     while time.monotonic() < deadline:
         last = query_state()
-        # `query_state` returns a single line like
-        # `OK parakeet=.idle whisperkit=.idle backend=.parakeet`
-        if any(s in last for s in (".idle", ".complete", ".error", ".ready")):
-            return {"terminal": True, "state": last}
+        parsed = _parse_query_state(last)
+        backend = parsed.get("backend", "")
+        active_key = _backend_pipeline_key(backend)
+        active_state = parsed.get(active_key, "")
+        if active_state and any(t in active_state for t in _TERMINAL_TOKENS):
+            return {"terminal": True, "state": last, "active": active_state}
         time.sleep(0.1)
     return {"terminal": False, "state": last}
 

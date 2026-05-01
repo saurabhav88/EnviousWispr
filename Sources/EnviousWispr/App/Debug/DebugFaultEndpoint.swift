@@ -142,26 +142,57 @@
 
     // MARK: - Connection handling
 
+    /// Maximum bytes for a single fault-injection request. Tokens are 64
+    /// hex chars + "\n" + a short command + "\n" — well under 512.
+    private static let maxRequestBytes = 512
+
     private func accept(connection conn: NWConnection) {
       conn.start(queue: queue)
-      conn.receive(minimumIncompleteLength: 1, maximumLength: 256) {
-        [weak self] data, _, _, error in
+      readRequest(on: conn, accumulated: Data())
+    }
+
+    /// Drain the connection until we see the second newline (two-line
+    /// request) or the buffer cap. TCP can split a small request across
+    /// segments; the prior single `recv` parsed partial data as
+    /// malformed/auth-failed and closed the connection, causing
+    /// intermittent harness failures (Codex P2 feedback on PR #544).
+    private func readRequest(on conn: NWConnection, accumulated: Data) {
+      conn.receive(
+        minimumIncompleteLength: 1, maximumLength: Self.maxRequestBytes
+      ) { [weak self] data, _, isComplete, error in
         guard let self else {
           conn.cancel()
           return
         }
-        guard error == nil, let data, !data.isEmpty else {
+        guard error == nil else {
           conn.cancel()
           return
         }
-        let request = String(decoding: data, as: UTF8.self)
-        Task { @MainActor in
-          let reply = await self.handle(request: request)
-          let payload = (reply + "\n").data(using: .utf8) ?? Data()
-          conn.send(
-            content: payload,
-            completion: .contentProcessed { _ in conn.cancel() }
-          )
+        var buffer = accumulated
+        if let data, !data.isEmpty {
+          buffer.append(data)
+        }
+
+        let newlineCount = buffer.reduce(0) { $0 + ($1 == 0x0A ? 1 : 0) }
+        let isFull = newlineCount >= 2 || buffer.count >= Self.maxRequestBytes
+
+        if isFull || isComplete {
+          guard !buffer.isEmpty else {
+            conn.cancel()
+            return
+          }
+          let request = String(decoding: buffer, as: UTF8.self)
+          Task { @MainActor in
+            let reply = await self.handle(request: request)
+            let payload = (reply + "\n").data(using: .utf8) ?? Data()
+            conn.send(
+              content: payload,
+              completion: .contentProcessed { _ in conn.cancel() }
+            )
+          }
+        } else {
+          // Need more data; keep draining.
+          self.readRequest(on: conn, accumulated: buffer)
         }
       }
     }
