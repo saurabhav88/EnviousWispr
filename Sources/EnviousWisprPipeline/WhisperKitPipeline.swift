@@ -1299,4 +1299,22 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
     transcriptionOptions = opts
   }
 
+  // MARK: - V2 fault-injection (DEBUG only, issue #291)
+
+  #if DEBUG
+    /// Invokes the existing `cancelRecording()` unwind path. Drives Lane A
+    /// scenario A2 ("force-cancel mid-record") and Lane A scenario A8b
+    /// ("cancel during WhisperKit model load") via the DEBUG localhost
+    /// endpoint. Note that A8b validates state-unwind only — WhisperKit's
+    /// `prepare()` is awaited directly with no held task, so the underlying
+    /// load may still complete in the background after state has flipped.
+    /// See `Tests/RuntimeUAT/SCENARIOS.md` for the documented limitation.
+    ///
+    /// `package` access: callable from `DebugFaultEndpoint` in the app target.
+    /// Inert in release builds.
+    package func forceCancelNow() async {
+      await cancelRecording()
+    }
+  #endif
+
 }

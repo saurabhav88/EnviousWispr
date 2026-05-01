@@ -1326,4 +1326,21 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
     }
     transcriptionOptions = opts
   }
+
+  // MARK: - V2 fault-injection (DEBUG only, issue #291)
+
+  #if DEBUG
+    /// Invokes the existing `cancelRecording()` unwind path. Drives Lane A
+    /// scenario A2 ("force-cancel mid-record") and Lane A scenario A8a
+    /// ("cancel during Parakeet model load") via the DEBUG localhost
+    /// endpoint. Tests the pipeline's existing cancellation contract:
+    /// in-flight `modelLoadTask` is cancelled, audio capture stops, state
+    /// returns to `.idle` without `.error`.
+    ///
+    /// `package` access: callable from `DebugFaultEndpoint` in the app target.
+    /// Inert in release builds.
+    package func forceCancelNow() async {
+      await cancelRecording()
+    }
+  #endif
 }

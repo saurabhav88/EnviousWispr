@@ -114,6 +114,22 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
   /// Derived at startEnginePhase time from the same BT detection logic as CaptureRouteResolver.
   public private(set) var currentAudioRoute: String = "unknown"
 
+  #if DEBUG
+    /// V2 fault-injection seam (issue #291). When > 0, the next N captured
+    /// buffers are silently dropped before reaching the continuation or
+    /// `onBufferCaptured`. Decrements per drop until 0, then normal delivery
+    /// resumes. Drives Lane A scenario A5 ("forced audio buffer stall") via
+    /// the DEBUG localhost endpoint; can also be set directly from Lane C
+    /// tests via `@testable import EnviousWisprAudio`.
+    ///
+    /// `package` access: callable from `DebugFaultEndpoint` in the app target
+    /// (same SPM package). Inert in release builds — this property does not
+    /// exist outside DEBUG.
+    ///
+    /// See `Tests/RuntimeUAT/SCENARIOS.md` for negative-control documentation.
+    package var forceStallRemainingBuffers: Int = 0
+  #endif
+
   public init() {}
 
   // MARK: - Core lifecycle
@@ -550,6 +566,25 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     }
   }
 
+  // MARK: - V2 fault-injection (DEBUG only, issue #291)
+
+  #if DEBUG
+    /// Invalidates the active XPC connection synchronously. Fires the existing
+    /// `invalidationHandler` path, which sets `connection = nil`, flips
+    /// `isCapturing = false`, finishes the buffer continuation, and emits the
+    /// `onXPCServiceError(.invalidateCapturing)` telemetry callback.
+    ///
+    /// Drives Lane A scenario A4 ("audio XPC service kill") via the DEBUG
+    /// localhost endpoint. Equivalent in effect to a real audio service crash
+    /// mid-stream — but deterministic and synchronous.
+    ///
+    /// `package` access: callable from `DebugFaultEndpoint` in the app target.
+    /// Inert in release builds.
+    package func forceConnectionTerminationNow() {
+      connection?.invalidate()
+    }
+  #endif
+
   // MARK: - VAD Interface (Step 5)
 
   /// Stored VAD config — forwarded to service, replayed after crash via resendConfigIfNeeded().
@@ -690,6 +725,15 @@ extension AudioCaptureProxy: AudioServiceClientProtocol {
       guard self.isCapturing,
         self.captureGeneration == self.activeCaptureGeneration
       else { return }
+      #if DEBUG
+        // V2 fault-injection (issue #291): drop buffer if forced-stall is active.
+        // Intentionally does NOT flip `hasReceivedBufferThisSession` so the
+        // existing stall watchdog still fires after `audioCaptureStallWindowMs`.
+        if self.forceStallRemainingBuffers > 0 {
+          self.forceStallRemainingBuffers -= 1
+          return
+        }
+      #endif
       self.hasReceivedBufferThisSession = true
       self.audioLevel = audioLevel
       self.bufferContinuation?.yield(safeBuffer)
