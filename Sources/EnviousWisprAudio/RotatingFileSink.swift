@@ -24,6 +24,9 @@ import os
 ///   safety automatically. The path/maxSize/maxFiles are immutable; the only
 ///   mutable state is the on-disk file itself, which is protected by the two
 ///   locks above.
+/// - Writes loop on short returns from `write(2)` and retry on `EINTR` so a
+///   partial syscall never truncates a log line and still proceeds into
+///   rotation. See `writeAllBytes(_:_:_:)`.
 ///
 /// ## Rotation policy
 ///
@@ -103,13 +106,15 @@ public final class RotatingFileSink: @unchecked Sendable {
     guard flock(lockFd, LOCK_EX) == 0 else { return }
     defer { _ = flock(lockFd, LOCK_UN) }
 
-    // 2. Active log: open separately and write.
+    // 2. Active log: open separately and write. `writeAllBytes` loops on
+    // short writes and retries on EINTR so that a partial `write(2)` cannot
+    // truncate the message and still proceed into rotation logic.
     let logFd = path.path.withCString { open($0, O_WRONLY | O_APPEND | O_CREAT, 0o644) }
     guard logFd >= 0 else { return }
 
-    _ = data.withUnsafeBytes { (buf: UnsafeRawBufferPointer) -> Int in
-      guard let base = buf.baseAddress else { return 0 }
-      return write(logFd, base, buf.count)
+    _ = data.withUnsafeBytes { (buf: UnsafeRawBufferPointer) -> Bool in
+      guard let base = buf.baseAddress else { return false }
+      return Self.writeAllBytes(logFd, base, buf.count)
     }
 
     var st = stat()
@@ -122,6 +127,56 @@ public final class RotatingFileSink: @unchecked Sendable {
     if oversize {
       rotate(path: path, maxFiles: maxFiles)
     }
+  }
+
+  /// Writes `count` bytes from `base` to `fd` using `write(2)`, looping on
+  /// short writes and retrying on `EINTR`. Returns `true` if all bytes were
+  /// committed, `false` on a hard error (`errno != EINTR`) or a zero-byte
+  /// return (which on a regular file would otherwise spin indefinitely).
+  ///
+  /// `write(2)` is allowed to write fewer bytes than requested, even on
+  /// regular files, and may return `-1` with `errno == EINTR` if the call is
+  /// interrupted by a signal. The previous single-call site discarded the
+  /// return value and silently truncated log lines under those conditions.
+  private static func writeAllBytes(
+    _ fd: Int32,
+    _ base: UnsafeRawPointer,
+    _ count: Int
+  ) -> Bool {
+    writeAllBytes(base, count) { ptr, n in
+      write(fd, ptr, n)
+    }
+  }
+
+  /// Test seam for `writeAllBytes(_:_:_:)`. The syscall is injected as a
+  /// closure so unit tests can deterministically simulate short writes,
+  /// `EINTR`, hard errors, and zero-byte returns. Production callers go
+  /// through the `(fd:base:count:)` overload above.
+  ///
+  /// Behaviour matches a standard POSIX retry loop:
+  /// - `n > 0`: advance the cursor and continue until the buffer is drained.
+  /// - `n < 0` and `errno == EINTR`: retry without advancing.
+  /// - `n < 0` and `errno != EINTR`: hard error — bail with `false`.
+  /// - `n == 0`: bail with `false` (defensive — a regular file should never
+  ///   short-return zero, but the loop must not spin if it does).
+  internal static func writeAllBytes(
+    _ base: UnsafeRawPointer,
+    _ count: Int,
+    using writeFn: (UnsafeRawPointer, Int) -> Int
+  ) -> Bool {
+    var remaining = count
+    var cursor = base
+    while remaining > 0 {
+      let n = writeFn(cursor, remaining)
+      if n > 0 {
+        cursor = cursor.advanced(by: n)
+        remaining -= n
+        continue
+      }
+      if n < 0 && errno == EINTR { continue }
+      return false
+    }
+    return true
   }
 
   /// Drops the oldest archive, shifts each `.i` → `.i+1`, and renames the
