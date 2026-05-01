@@ -27,8 +27,9 @@ CLAUDE.md
 AGENTS.md
 .mcp.json
 
-# Test automation (local tooling, not shipped)
-Tests/UITests/
+# Test automation — Tests/RuntimeUAT/ is tracked (the harness IS load-bearing
+# infrastructure for Phase 3 validation; see Tests/RuntimeUAT/README.md).
+# Only the harness's runtime artifacts are ignored.
 
 # Task artifacts
 .needs-uat
@@ -65,8 +66,13 @@ __pycache__/
 .venv/
 venv/
 
-# UI test screenshots (captured at runtime)
-Tests/UITests/screenshots/
+# UI test artifacts (captured at runtime, not source)
+Tests/RuntimeUAT/screenshots/
+Tests/RuntimeUAT/artifacts/
+Tests/RuntimeUAT/logs/
+Tests/RuntimeUAT/__pycache__/
+Tests/RuntimeUAT/*.log
+Tests/RuntimeUAT/.local.env
 
 # Test resources (local audio fixtures, binary files)
 Tests/Resources/
