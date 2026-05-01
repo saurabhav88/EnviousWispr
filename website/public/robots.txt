@@ -1,4 +1,39 @@
+# Default: open to all crawlers, including search engines.
 User-agent: *
+Allow: /
+
+# Explicit AI crawler allows. We want to be cited by AI search.
+# (User-agent: * already permits these; explicit rules are an
+# affirmative signal that we welcome citation, not just access.)
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Perplexity-User
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: CCBot
 Allow: /
 
 Sitemap: https://enviouswispr.com/sitemap-index.xml
