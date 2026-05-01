@@ -1,0 +1,5 @@
+# Generated UAT tests — gitignored by default.
+# To promote a test to the permanent suite, move it to Tests/UITests/ and commit.
+*
+!.gitignore
+!__init__.py

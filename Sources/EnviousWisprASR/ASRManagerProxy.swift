@@ -297,6 +297,25 @@ public final class ASRManagerProxy: ASRManagerInterface {
     }
   }
 
+  // MARK: - V2 fault-injection (DEBUG only, issue #291)
+
+  #if DEBUG
+    /// Invalidates the active XPC connection synchronously. Fires the existing
+    /// `invalidationHandler` path, which clears `isModelLoaded`/`isStreaming`,
+    /// nils the connection, and emits `onServiceInterrupted` if the service
+    /// was active.
+    ///
+    /// Drives Lane A scenario A3 ("ASR XPC service mid-stream kill") via the
+    /// DEBUG localhost endpoint. Equivalent in effect to a real ASR service
+    /// crash during streaming or batch transcription — deterministic, synchronous.
+    ///
+    /// `package` access: callable from `DebugFaultEndpoint` in the app target.
+    /// Inert in release builds.
+    package func forceConnectionTerminationNow() {
+      connection?.invalidate()
+    }
+  #endif
+
   // MARK: - XPC Connection
 
   private func ensureConnection() {

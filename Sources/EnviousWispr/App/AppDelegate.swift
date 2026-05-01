@@ -5,6 +5,12 @@ import EnviousWisprServices
 @preconcurrency import Sparkle
 import SwiftUI
 
+#if DEBUG
+  import EnviousWisprASR
+  import EnviousWisprAudio
+  import EnviousWisprPipeline
+#endif
+
 /// AppDelegate that manages the menu bar status item using NSStatusItem.
 ///
 /// SwiftUI's MenuBarExtra has known click-routing issues when launched
@@ -33,6 +39,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /// Weak reference to the onboarding window so we can detect when user closes it early.
   private weak var onboardingWindow: NSWindow?
   private var onboardingCloseObserver: (any NSObjectProtocol)?
+
+  #if DEBUG
+    /// V2 fault-injection control surface (issue #291). Started only when
+    /// `EW_FAULT_INJECTION=1` is set in the launching environment. Stopped in
+    /// `applicationWillTerminate`. Compiled out of release entirely.
+    private var debugFaultEndpoint: DebugFaultEndpoint?
+  #endif
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     // Hide dock icon on launch — we're a menu bar utility.
@@ -144,6 +157,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Onboarding auto-open is handled by ActionWirer inside the main Window scene.
     // ActionWirer wires all callbacks first, then calls openOnboardingWindow() if needed.
     // No deferred dispatch required here.
+
+    #if DEBUG
+      // V2 fault-injection (issue #291). Only when explicitly opted in via env var.
+      if DebugFaultEndpoint.isRequested {
+        let endpoint = DebugFaultEndpoint(
+          audioProxy: appState.audioCapture as? AudioCaptureProxy,
+          asrProxy: appState.asrManager as? ASRManagerProxy,
+          parakeetPipeline: appState.pipeline,
+          whisperKitPipeline: appState.whisperKitPipeline,
+          activeBackend: { [weak self] in
+            self?.appState.settings.selectedBackend ?? .parakeet
+          }
+        )
+        endpoint.start()
+        debugFaultEndpoint = endpoint
+      }
+    #endif
   }
 
   func applicationDidBecomeActive(_ notification: Notification) {
@@ -417,6 +447,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     appState.setup.ollamaSetup.cleanup()
     appState.hotkeyService.stop()
     LLMNetworkSession.shared.invalidate()
+
+    #if DEBUG
+      debugFaultEndpoint?.stop()
+      debugFaultEndpoint = nil
+    #endif
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

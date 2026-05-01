@@ -1,0 +1,160 @@
+# V2 Fault-Injection Scenarios
+
+Standing menu of runtime fault scenarios for EnviousWispr (issue #291). On-demand only — no CI integration. Each scenario has a documented one-line negative control: a tiny code change that should make the scenario fail. PR demonstration runs per-mechanism red/green for at least seven families.
+
+## Prerequisites
+
+1. App built in DEBUG mode and launched with `EW_FAULT_INJECTION=1` set in its environment. The `DebugFaultEndpoint` only starts under that env var.
+2. `Tests/RuntimeUAT/` requirements (Accessibility permission, mic, OpenAI key for TTS) — see `README.md`.
+3. Per-launch token written by the app at `~/Library/Logs/EnviousWispr/fault-token-<pid>` (`0600` perms).
+
+Drive the harness from repo root:
+
+```bash
+python3 Tests/RuntimeUAT/faultInjection.py list             # print menu
+python3 Tests/RuntimeUAT/faultInjection.py run A5_forced_stall
+python3 Tests/RuntimeUAT/faultInjection.py query            # current state
+```
+
+Or via Python:
+
+```python
+import sys; sys.path.insert(0, "Tests/RuntimeUAT")
+from wispr_eyes import list_scenarios, run_scenario
+list_scenarios()
+run_scenario("A5_forced_stall")
+```
+
+## Index by symptom
+
+| Symptom (something broke in production?) | Scenario | Mechanism family |
+|---|---|---|
+| Recording stuck after audio drops | A5_forced_stall | stall |
+| Pipeline stuck after ASR service crash | A3_asr_xpc_kill | xpc |
+| Pipeline stuck after audio service crash | A4_audio_xpc_kill | xpc |
+| Cancel mid-record leaks task / state | A2_force_cancel | timing |
+| Rapid stop/start corrupts state | A1_rapid_stop_start | timing |
+| Live setting toggle doesn't apply mid-record | A6_settings_storm | settings |
+| Orphan helpers after force-quit | A7_app_quit | app-quit |
+| Cancel during Parakeet model load lingers | A8a_cancel_during_parakeet_load | model-load |
+| Cancel during WhisperKit model load leaves state inconsistent | A8b_cancel_during_whisperkit_load | model-load |
+| Switching backend mid-record aborts active recording | A9_backend_switch_mid_record | backend-switch |
+| BT codec switch mid-record corrupts state | B1_bluetooth_route_flip (founder-required) | bt-route |
+
+## Index by scenario name
+
+### A1_rapid_stop_start (Lane A — timing/cancel)
+Backends: both. Budget: 3s. Mechanism: timing.
+
+Three rapid Start→Stop cycles via the menu, 100ms apart. Pipeline must reach a terminal state within budget without leaking VAD monitor tasks or audio-engine state.
+
+**Negative control:** remove the recording-start debounce in `HotkeyService` / pipeline-start guards. The double-toggle no longer serializes; rapid restart corrupts streaming ASR state.
+
+### A2_force_cancel (Lane A — timing/cancel)
+Backends: both. Budget: 2s. Mechanism: timing.
+
+Start recording, wait 1s, dispatch `force_cancel` via the DEBUG endpoint. Pipeline reaches `.idle` within 2s. Equivalent in effect to a user pressing the cancel hotkey mid-record, but deterministic.
+
+**Negative control:** remove cancellation cleanup in `TranscriptionPipeline.cancelRecording()` — cancelled task lingers, audio capture not stopped, asserted via `assert_no_zombie()`.
+
+### A3_asr_xpc_kill (Lane A — XPC)
+Backends: parakeet (WhisperKit ASR is in-process). Budget: 5s. Mechanism: xpc.
+
+Start recording, wait 1s, dispatch `force_xpc_kill` to invalidate the active `ASRManagerProxy.connection` mid-stream. Pipeline transitions to `.error` within 5s; `assert_no_zombie` confirms no orphan ASR helper.
+
+**Negative control:** remove the ASR-crash handler at `WhisperKitPipeline.swift:1044` (or the Parakeet-side equivalent). Pipeline gets stuck; `assert_terminated` returns `terminal=False`.
+
+### A4_audio_xpc_kill (Lane A — XPC)
+Backends: both. Budget: 5s. Mechanism: xpc.
+
+Start recording, dispatch `force_audio_xpc_kill`. The audio service connection invalidates; pipeline reaches `.error` and audio engine is `.idle`.
+
+**Negative control:** remove the audio-XPC `invalidationHandler` body in `AudioCaptureProxy`. Pipeline doesn't observe the crash and stays stuck.
+
+### A5_forced_stall (Lane A — stall)
+Backends: both. Budget: 15s. Mechanism: stall.
+
+Start recording, dispatch `force_stall(1000)` so the next 1000 captured buffers are silently dropped. After `audioCaptureStallWindowMs`, the watchdog fires and pipeline reaches `.error("No audio detected — try again.")`.
+
+**Negative control:** remove the stall watchdog (`armCaptureStallWatchdog`). Buffers drop silently; pipeline remains in `.recording` indefinitely.
+
+### A6_settings_storm (Lane A — settings)
+Backends: both. Budget: 30s. Mechanism: settings.
+
+During an active recording, navigate to AI Polish settings. Toggle `wordCorrectionEnabled`, `fillerRemovalEnabled`, `writingStylePreset`, `customSystemPrompt`, and `useExtendedThinking`. Recording continues; toggles apply via `PipelineSettingsSync` live-sync.
+
+**Do NOT toggle:** `noiseSuppression` (cancels active Parakeet recording per `PipelineSettingsSync.swift:175-185`); frozen-at-start fields (`autoCopyToClipboard`, `restoreClipboardAfterPaste`, `vadAutoStop`, `vadSilenceTimeout`, `vadSensitivity`, `vadEnergyGate`, `languageMode`, `useStreamingASR`).
+
+**Negative control:** remove `wordCorrectionEnabled` live-sync from `PipelineSettingsSync.handleSettingChanged`. Setting takes no effect mid-record; observable via post-recording transcript word handling.
+
+### A7_app_quit (Lane A — app-quit)
+Backends: both. Budget: 10s. Mechanism: app-quit.
+
+During an active recording, invoke `Quit EnviousWispr` (Cocoa terminate via the menu). `applicationWillTerminate` runs, cleans up XPC helpers + audio engine. Next launch starts clean — no orphan helper processes from `pgrep -x EnviousWisprAudioService EnviousWisprASRService`.
+
+**Out of scope:** raw `SIGTERM`, `kill -9`, force-quit. No `signal` / `DispatchSourceSignal` handler exists in the codebase; A7 validates only the Cocoa terminate path.
+
+**Negative control:** remove `applicationWillTerminate` cleanup in `AppDelegate`. Orphan helpers persist; `assert_no_zombie` returns non-empty `orphan_pids`.
+
+### A8a_cancel_during_parakeet_load (Lane A — model-load)
+Backends: parakeet. Budget: 3s. Mechanism: model-load.
+
+Start recording while Parakeet model is loading; immediately dispatch `force_cancel`. Pipeline reaches `.idle` within 3s. `modelLoadTask?.cancel()` propagates cleanly.
+
+**Negative control:** remove `modelLoadTask?.cancel()` at `TranscriptionPipeline.swift:1091`. Cancelled load task lingers; pipeline state may briefly flicker to `.recording` after cancel.
+
+### A8b_cancel_during_whisperkit_load (Lane A — model-load)
+Backends: whisperKit. Budget: 3s. Mechanism: model-load.
+
+Start recording while WhisperKit prepare is running; dispatch `force_cancel`. Pipeline state reaches `.idle` and remains coherent. **Documented limitation:** WhisperKit's `prepare()` is awaited directly with no held task, so the underlying load may complete in the background after state has flipped — A8b validates state-unwind only, not true cancellation. True cancellation requires a Sources change to add a cancel API on the prepare path; tracked as a follow-up.
+
+**Negative control:** remove the WhisperKit prepare-state-flip at `WhisperKitPipeline.swift:1078-1084`. State stays inconsistent (e.g., `.transcribing` after cancel).
+
+### A9_backend_switch_mid_record (Lane A — backend-switch)
+Backends: both. Budget: 2s. Mechanism: backend-switch.
+
+During an active recording, attempt to flip `selectedBackend` via the Speech Engine settings tab. The `PipelineSettingsSync.handleSettingChanged` guard at `:86-98` rejects the switch; recording continues uninterrupted. Companion deterministic invariant in Lane C `BackendSwitchGuardTests`.
+
+**Negative control:** remove `if parakeetActive || whisperKitActive { break }` in `PipelineSettingsSync.handleSettingChanged(.selectedBackend, …)`. Active recording aborts on backend toggle.
+
+### B1_bluetooth_route_flip (Lane B — bt-route, founder-required)
+Backends: both. Budget: 15s. Mechanism: bt-route.
+
+Founder physically toggles AirPods (or other BT input) power off/on during an active recording. Pipeline either continues with new route or terminates cleanly via the existing capture-session-interruption path. No pipeline lockup.
+
+**Founder action required:** the harness prompts `"Founder action: toggle AirPods power off, wait 2s, power on. Press Enter when done."` — physically toggle the device. Re-run with `founder_present=True`.
+
+**Optional Lane B' (programmatic device flip):** `AudioObjectSetPropertyData` on `kAudioHardwarePropertyDefaultInputDevice` may exercise the same code path. Pending the spike documented in the V2 plan §3.2; if feasibility is confirmed, B1' joins Lane A and B1 becomes release-time-only.
+
+**Negative control:** remove the BT route handler in `AudioDeviceManager` / capture-session-interruption flow. Recording behaves incorrectly on real BT toggle (audio cuts out, pipeline stuck).
+
+## Wire protocol
+
+The DEBUG endpoint accepts text, line-delimited:
+
+```
+<token>\n
+<command>\n
+```
+
+Reply: `OK\n`, `OK <state>\n` (for `query_state`), or `ERR <reason>\n`.
+
+Token: per-launch random hex written by the app to `~/Library/Logs/EnviousWispr/fault-token-<pid>` with `0600` perms. The app deletes this file on `applicationWillTerminate`.
+
+Fixed command set (no arbitrary RPC):
+
+| Command | Effect |
+|---|---|
+| `force_stall(N)` | Drop next N captured buffers via `AudioCaptureProxy.forceStallRemainingBuffers` |
+| `force_cancel` | Invoke `forceCancelNow()` on the active backend's pipeline |
+| `force_xpc_kill` | Invalidate `ASRManagerProxy` connection mid-stream |
+| `force_audio_xpc_kill` | Invalidate `AudioCaptureProxy` connection mid-stream |
+| `query_state` | Return current pipeline + backend state (one line, no side effects) |
+
+## Adding a new scenario
+
+1. Add a `package`-access DEBUG seam on the type that owns the behavior. Gate everything in `#if DEBUG`.
+2. Add a command to the fixed set in `DebugFaultEndpoint.handle(request:)`.
+3. Add a `@scenario(...)`-decorated function in `faultInjection.py`. Document its negative control.
+4. Add a row to "Index by scenario name" above. Add an entry to "Index by symptom" if the scenario maps to a known production failure mode.
+5. Demonstrate red/green at PR time: revert the negative control, scenario fails. Restore, scenario passes.
