@@ -1,0 +1,289 @@
+---
+// Desktop-only sticky sidebar for blog posts.
+// - Auto-generated TOC from H2/H3 inside .blog-body, with IntersectionObserver scroll-spy.
+// - Sidebar share row (Copy / X / LinkedIn / Email) — duplicates BlogShareRow at bottom for desktop convenience.
+// - Hidden below 1080px viewport. Always-visible share lives in BlogShareRow at bottom of article.
+//
+// Accessibility:
+// - <nav aria-label="On this page"> for TOC.
+// - <button> elements for share actions (real interactive controls).
+// - aria-live="polite" status region updates on copy success.
+// - Skip-link is rendered by BlogPost.astro at the top of .blog-post-main, targeting #blog-toc.
+---
+<aside class="blog-post-sidebar" aria-label="Article side rail">
+  <nav class="toc" id="blog-toc" aria-label="On this page">
+    <p class="toc-label">On this page</p>
+    <ul id="toc-list" class="toc-list"></ul>
+  </nav>
+  <div class="sidebar-share-block">
+    <p class="sidebar-share-label">Share</p>
+    <div class="sidebar-share-buttons" data-share-block="sidebar">
+      <button type="button" class="sidebar-share-btn sidebar-share-btn-primary" data-share="copy" aria-label="Copy link">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        <span class="sidebar-share-btn-label">Copy link</span>
+      </button>
+      <button type="button" class="sidebar-share-btn" data-share="x" aria-label="Share on X">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+        <span class="sidebar-share-btn-label">X</span>
+      </button>
+      <button type="button" class="sidebar-share-btn" data-share="linkedin" aria-label="Share on LinkedIn">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13" aria-hidden="true"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.85 0-2.13 1.45-2.13 2.95v5.66H9.36V9h3.42v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.45v6.29zM5.34 7.43a2.06 2.06 0 1 1 0-4.13 2.06 2.06 0 0 1 0 4.13zM7.12 20.45H3.56V9h3.56v11.45z"/></svg>
+        <span class="sidebar-share-btn-label">LinkedIn</span>
+      </button>
+      <button type="button" class="sidebar-share-btn" data-share="email" aria-label="Share via email">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13" aria-hidden="true"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+        <span class="sidebar-share-btn-label">Email</span>
+      </button>
+    </div>
+  </div>
+</aside>
+
+<style>
+  .blog-post-sidebar {
+    display: none;
+  }
+
+  @media (min-width: 1080px) {
+    .blog-post-sidebar {
+      display: block;
+      position: sticky;
+      top: 100px;
+      max-height: calc(100vh - 120px);
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+  }
+
+  /* TOC */
+  .toc {
+    margin-bottom: 32px;
+  }
+
+  .toc-label,
+  .sidebar-share-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-3);
+    margin: 0 0 12px 0;
+  }
+
+  .toc-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    border-left: 1px solid var(--border);
+  }
+
+  .toc-item {
+    margin: 0;
+  }
+
+  .toc-list a {
+    display: block;
+    padding: 8px 12px;
+    min-height: 36px;
+    box-sizing: border-box;
+    margin-left: -1px;
+    border-left: 2px solid transparent;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--text-3);
+    text-decoration: none;
+    transition: color 0.15s ease, border-color 0.15s ease;
+  }
+
+  .toc-list a:hover {
+    color: var(--text);
+  }
+
+  .toc-list a[aria-current="location"] {
+    color: var(--accent);
+    font-weight: 600;
+    border-left-color: var(--accent);
+  }
+
+  .toc-h3 a {
+    padding-left: 28px;
+    font-size: 12.5px;
+  }
+
+  /* Share block in sidebar */
+  .sidebar-share-block {
+    border-top: 1px solid var(--border);
+    padding-top: 24px;
+  }
+
+  .sidebar-share-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .sidebar-share-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    min-height: 40px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text-2);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+    text-align: left;
+  }
+
+  .sidebar-share-btn:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .sidebar-share-btn-primary {
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-color: rgba(124, 58, 237, 0.18);
+    font-weight: 600;
+  }
+
+  .sidebar-share-btn-primary:hover {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+
+  .sidebar-share-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .sidebar-share-btn.share-btn-success {
+    background: rgba(110, 231, 183, 0.15);
+    color: #047857;
+    border-color: rgba(110, 231, 183, 0.4);
+  }
+</style>
+
+<script>
+  (function () {
+    const tocList = document.getElementById('toc-list');
+    if (!tocList) return;
+
+    const headings = Array.from(
+      document.querySelectorAll<HTMLHeadingElement>('.blog-body h2, .blog-body h3'),
+    );
+    if (headings.length < 3) {
+      // Sidebar still shows share block — TOC is the only thing hidden.
+      // If sidebar should disappear entirely on TOC-less posts, that's a v1.1 decision.
+      const tocBlock = tocList.closest('.toc') as HTMLElement | null;
+      if (tocBlock) tocBlock.style.display = 'none';
+      return;
+    }
+
+    const usedIds = new Set<string>();
+    const items: Array<{ id: string; link: HTMLAnchorElement; heading: HTMLHeadingElement }> = [];
+
+    headings.forEach((h) => {
+      let id = h.id;
+      if (!id) {
+        const base = (h.textContent || '')
+          .toLowerCase()
+          .replace(/[^\w\s-]/g, '')
+          .trim()
+          .replace(/\s+/g, '-')
+          .slice(0, 80) || 'section';
+        id = base;
+        let suffix = 2;
+        while (usedIds.has(id) || document.getElementById(id)) {
+          id = `${base}-${suffix}`;
+          suffix += 1;
+        }
+        h.id = id;
+      }
+      usedIds.add(id);
+
+      const li = document.createElement('li');
+      li.className = `toc-item toc-${h.tagName.toLowerCase()}`;
+      const a = document.createElement('a');
+      a.href = `#${id}`;
+      a.textContent = h.textContent || '';
+      a.dataset.tocTarget = id;
+      li.appendChild(a);
+      tocList.appendChild(li);
+      items.push({ id, link: a, heading: h });
+    });
+
+    if (!('IntersectionObserver' in window)) return;
+
+    const setActive = (id: string | null) => {
+      items.forEach((it) => {
+        if (it.id === id) {
+          it.link.setAttribute('aria-current', 'location');
+        } else {
+          it.link.removeAttribute('aria-current');
+        }
+      });
+      // Stash the active id so the share buttons can compose section-anchor URLs.
+      if (id) {
+        document.documentElement.dataset.tocActive = id;
+      } else {
+        delete document.documentElement.dataset.tocActive;
+      }
+    };
+
+    const intersecting = new Set<string>();
+
+    const recompute = () => {
+      // Prefer the topmost currently-intersecting heading.
+      const inZone = items.find((it) => intersecting.has(it.id));
+      if (inZone) {
+        setActive(inZone.id);
+        return;
+      }
+      // Otherwise pick the last heading that has scrolled above the active band — that's
+      // the section the reader is currently inside.
+      const ACTIVE_TOP = 100;
+      let lastPassed: typeof items[number] | null = null;
+      for (const it of items) {
+        if (it.heading.getBoundingClientRect().top < ACTIVE_TOP) lastPassed = it;
+      }
+      setActive(lastPassed ? lastPassed.id : null);
+    };
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          const id = (e.target as HTMLElement).id;
+          if (e.isIntersecting) intersecting.add(id);
+          else intersecting.delete(id);
+        });
+        recompute();
+      },
+      {
+        rootMargin: '-100px 0px -70% 0px',
+        threshold: 0,
+      },
+    );
+
+    items.forEach((it) => observer.observe(it.heading));
+
+    // Recompute on scroll for the "passed but no longer intersecting" fallback.
+    let scrollTick = false;
+    window.addEventListener(
+      'scroll',
+      () => {
+        if (scrollTick) return;
+        scrollTick = true;
+        requestAnimationFrame(() => {
+          scrollTick = false;
+          recompute();
+        });
+      },
+      { passive: true },
+    );
+  })();
+</script>

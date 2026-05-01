@@ -1,0 +1,117 @@
+---
+// Always-visible share row that lives below the article body and above related-posts.
+// Stays accessible at all viewport widths and at browser zoom > 100% where the desktop
+// sidebar would disappear. Same set of share networks as BlogSidebar (Copy / X / LinkedIn / Email).
+//
+// Behavior is wired by the shared share-buttons script in BlogPost.astro — both this row and
+// the sidebar use `data-share="..."` and the same script handles them with a single delegate.
+---
+<section class="blog-share-row" aria-label="Share this post">
+  <span class="share-row-label">Share</span>
+  <div class="share-row-buttons" data-share-block="row">
+    <button type="button" class="share-row-btn share-row-btn-primary" data-share="copy" aria-label="Copy link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      <span class="share-row-btn-label">Copy link</span>
+    </button>
+    <button type="button" class="share-row-btn" data-share="x" aria-label="Share on X">
+      <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+      <span class="share-row-btn-label">X</span>
+    </button>
+    <button type="button" class="share-row-btn" data-share="linkedin" aria-label="Share on LinkedIn">
+      <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14" aria-hidden="true"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.85 0-2.13 1.45-2.13 2.95v5.66H9.36V9h3.42v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.45v6.29zM5.34 7.43a2.06 2.06 0 1 1 0-4.13 2.06 2.06 0 0 1 0 4.13zM7.12 20.45H3.56V9h3.56v11.45z"/></svg>
+      <span class="share-row-btn-label">LinkedIn</span>
+    </button>
+    <button type="button" class="share-row-btn" data-share="email" aria-label="Share via email">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+      <span class="share-row-btn-label">Email</span>
+    </button>
+  </div>
+</section>
+
+<style>
+  .blog-share-row {
+    margin-top: 48px;
+    padding: 20px 24px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    background: var(--surface);
+  }
+
+  .share-row-label {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-3);
+  }
+
+  .share-row-buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .share-row-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    min-height: 44px;
+    box-sizing: border-box;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    background: #fff;
+    color: var(--text-2);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+  }
+
+  .share-row-btn:hover {
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
+  .share-row-btn-primary {
+    background: var(--text);
+    color: #fff;
+    border-color: var(--text);
+  }
+
+  .share-row-btn-primary:hover {
+    background: #2a2035;
+    border-color: #2a2035;
+    color: #fff;
+  }
+
+  .share-row-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .share-row-btn.share-btn-success {
+    background: rgba(110, 231, 183, 0.18);
+    color: #047857;
+    border-color: rgba(110, 231, 183, 0.5);
+  }
+
+  @media (max-width: 600px) {
+    .blog-share-row {
+      flex-direction: column;
+      align-items: flex-start;
+      padding: 16px 20px;
+    }
+    .share-row-buttons {
+      width: 100%;
+    }
+    .share-row-btn {
+      flex: 1 1 calc(50% - 6px);
+      justify-content: center;
+    }
+  }
+</style>
