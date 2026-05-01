@@ -69,6 +69,8 @@
     margin: 0 0 12px 0;
   }
 
+  /* TOC list items are created at runtime via document.createElement, so they don't
+     receive Astro's scoped class hashes. Use :global() so the styles match. */
   .toc-list {
     list-style: none;
     padding: 0;
@@ -76,37 +78,38 @@
     border-left: 1px solid var(--border);
   }
 
-  .toc-item {
+  .toc-list :global(li) {
     margin: 0;
+    padding: 0;
   }
 
-  .toc-list a {
+  .toc-list :global(a) {
     display: block;
-    padding: 8px 12px;
-    min-height: 36px;
-    box-sizing: border-box;
+    padding: 6px 14px;
     margin-left: -1px;
     border-left: 2px solid transparent;
-    font-size: 13px;
-    line-height: 1.45;
+    font-size: 12.5px;
+    line-height: 1.4;
     color: var(--text-3);
     text-decoration: none;
+    font-weight: 500;
     transition: color 0.15s ease, border-color 0.15s ease;
   }
 
-  .toc-list a:hover {
+  .toc-list :global(a:hover) {
     color: var(--text);
   }
 
-  .toc-list a[aria-current="location"] {
+  .toc-list :global(a[aria-current="location"]) {
     color: var(--accent);
     font-weight: 600;
     border-left-color: var(--accent);
   }
 
-  .toc-h3 a {
+  .toc-list :global(li.toc-h3 a) {
     padding-left: 28px;
-    font-size: 12.5px;
+    font-size: 12px;
+    color: var(--text-3);
   }
 
   /* Share block in sidebar */
