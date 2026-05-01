@@ -79,7 +79,7 @@ Apple's built-in dictation has improved significantly. On Apple Silicon Macs run
 Where it falls short:
 
 - **No post-processing.** What you say is what you get, filler words and all.
-- **Limited customization.** No writing style presets, no custom prompts, no way to adjust output formatting.
+- **Limited customization.** No custom prompts, no way to adjust output formatting.
 - **No hands-free mode.** You need to trigger it each time.
 - **No custom word dictionary.** No way to teach it your terminology.
 
@@ -147,9 +147,9 @@ EnviousWispr downloads its speech recognition model automatically on first launc
 
 If you want to avoid holding keys, just double-press your hotkey to lock recording. No settings change needed. Speak naturally, then press once to finish or triple-press to cancel.
 
-### Choose a Writing Style Preset
+### Tune the Polish Step
 
-EnviousWispr ships with four writing style presets (Standard, Formal, Friendly, and Custom) so you can match the tone of your output to the task at hand. Custom mode lets you write your own system prompt for full control over output formatting.
+EnviousWispr's polish step cleans up your dictation by default, removing filler words and fixing punctuation without flattening your voice. When you need a specific shape (a particular tone, format, or convention), a Custom prompt lets you write your own polish instructions and reuse them across dictations.
 
 ## A Tool That Works When You Need It
 

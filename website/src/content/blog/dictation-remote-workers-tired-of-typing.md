@@ -66,16 +66,17 @@ The ten minutes after a video call are the highest-value window for follow-up me
 
 These are repetitive and formulaic, perfect for dictation. You know what you worked on. Just say it. The post-processing handles formatting.
 
-## Writing Style Presets: Match the Tone to the Task
+## AI Polish: Match the Tone to the Task
 
-EnviousWispr ships with four writing style presets (Standard, Formal, Friendly, and Custom) that control how the LLM post-processor shapes your output. You switch between them with a click, matching the tone to what you're writing:
+EnviousWispr's polish step cleans up your dictation by stripping filler words, fixing punctuation, and tightening structure without flattening your voice. The default is calibrated to handle most remote-work writing well, so the same workflow handles a Slack reply, a ticket comment, and a status update.
 
-- **Friendly for Slack.** Casual and concise. Strips filler words but doesn't over-formalize. The result reads like a quick typed message, not a business memo.
-- **Formal for email and docs.** Polished tone, proper grammar, structured paragraphs. Your spoken brain dump comes out as something you'd be happy to send to a client.
-- **Standard for everything else.** The default. Cleans up your speech without pushing it in either direction. Works well for ticket comments, status updates, and general-purpose writing.
-- **Custom for specific needs.** Write your own processing instructions to get exactly the output format you want.
+When you need a specific shape (a more structured client email, a formatted standup, a postmortem timeline), the Custom prompt option lets you write your own polish instructions and reuse them across dictations:
 
-Switching takes a single click, and you'll quickly build a habit of toggling before you dictate.
+- "Casual and concise. Strip filler but don't over-formalize." Useful for Slack and team threads.
+- "Polished tone, proper grammar, structured paragraphs." Useful for client-facing email and docs.
+- "Output as a bulleted list grouped by project." Useful for daily standups.
+
+The Custom prompt sticks until you change it, so once you've dialled in a shape that fits your team, you can leave it in place and dictate against it for as long as you need.
 
 ## The Ergonomic Case for Mixing Voice and Keyboard
 
@@ -106,7 +107,7 @@ EnviousWispr is [free](https://github.com/saurabhav88/EnviousWispr). Works out o
 
 Start small. Pick one high-volume context (Slack replies or email) and commit to dictating instead of typing for a full day. You'll feel awkward for the first hour. By the end of the day, you'll notice how much less your hands hurt.
 
-Then get comfortable switching between Friendly (for Slack) and Formal (for email) as you move between tasks. Once that toggle becomes second nature, dictation stops being something you're "trying" and starts being how you work.
+Once that habit clicks, dictation stops being something you're "trying" and starts being how you work.
 
 ## Related Posts
 

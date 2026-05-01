@@ -32,8 +32,8 @@ Spoken in ten seconds. Polished, structured, ready to send. Your audio never lef
 A few things that make it worth using day-to-day:
 
 - **Hands-free mode.** Double-press your hotkey to lock recording for longer dictation sessions. Triple-press to cancel.
-- **Writing style presets.** Choose between Standard, Formal, Friendly, or Custom to control the tone of your output.
-- **Custom prompts.** Tell the post-processor to write in your style, translate on the fly, or format output as bullet points.
+- **AI polish that keeps your voice.** The default polish step removes filler words, fixes punctuation, and tightens structure without flattening your phrasing.
+- **Custom prompts.** Write your own polish instructions for any context: "format as bullet points," "translate to Spanish," "write in my style: short sentences, no semicolons." The polish step uses your prompt for every dictation until you change it.
 - **Custom word dictionary.** Add names, technical terms, and jargon so the app gets your words right every time.
 
 ## Getting started

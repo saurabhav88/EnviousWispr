@@ -31,9 +31,9 @@ But raw transcription isn't a script. It's a wall of text with filler words, fal
 
 ## Post-Processing: Your Script's Formatting Brain
 
-EnviousWispr's post-processing pipeline cleans up your speech after transcription: removing filler words, fixing punctuation, and producing polished text. You can choose between four writing style presets (Standard, Formal, Friendly, and Custom) to control the tone. For podcast scripting, the Friendly preset preserves your conversational voice while cleaning up the rough edges.
+EnviousWispr's post-processing pipeline cleans up your speech after transcription: removing filler words, fixing punctuation, and producing polished text. The default polish preserves your conversational voice while cleaning up the rough edges, which is what you want for podcast scripting.
 
-The Custom preset lets you write specific processing instructions, like "keep sentence fragments, add section breaks between topics, format with H2 headings." That level of control makes dictated scripts even more useful.
+When you need a specific shape (interview prep, solo script, show notes, cold open), the Custom prompt option lets you write processing instructions like "keep sentence fragments, add section breaks between topics, format with H2 headings." That level of control makes dictated scripts even more useful.
 
 The output has the structure you need: cleaned of "um" and "you know," but still sounding like you.
 
@@ -47,7 +47,7 @@ Here's what that looks like in practice, dictating a cold open for an episode ab
 
 That's a usable cold open. It sounds like you because it literally is you, just without the filler words and with proper punctuation. Read that back into the mic and it works immediately. The idea made it from your head to the page before it had a chance to evaporate.
 
-With the Custom preset, you can fine-tune output for different show formats: interview prep as numbered questions, solo scripts with paragraph breaks, show notes as bullet summaries, cold opens tightened to three punchy sentences.
+With a Custom prompt, you can fine-tune output for different show formats: interview prep as numbered questions, solo scripts with paragraph breaks, show notes as bullet summaries, cold opens tightened to three punchy sentences.
 
 Check [how EnviousWispr's pipeline works](/how-it-works/) for the full picture on how transcription and post-processing fit together.
 
@@ -83,7 +83,7 @@ This is the hardest habit to break. You'll say something awkward, and every inst
 
 ### Use Verbal Section Markers
 
-Say "new section" or "next topic" or "heading: [topic name]" as you dictate. The post-processing pipeline picks up on these verbal cues and uses them to add structure to your output. With the Custom preset, you have full control over how those markers get formatted.
+Say "new section" or "next topic" or "heading: [topic name]" as you dictate. The post-processing pipeline picks up on these verbal cues and uses them to add structure to your output. With a Custom prompt, you have full control over how those markers get formatted.
 
 ### Do a Read-Back Pass
 
@@ -94,7 +94,7 @@ After dictating, read the script out loud once. Not to edit the words, but to ed
 If you already have EnviousWispr installed, you can start dictating episode scripts right now:
 
 1. Open your writing app: whatever you use for scripts (Notion, Obsidian, Google Docs, a plain text editor)
-2. Choose the Friendly writing style preset to keep your conversational tone while cleaning up filler words
+2. Leave polish on the default; it keeps your conversational tone intact while cleaning up filler words
 3. Hold the hotkey and talk through your next episode's cold open
 4. Look at the output. Adjust the prompt. Try again
 

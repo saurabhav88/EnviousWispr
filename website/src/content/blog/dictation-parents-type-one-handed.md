@@ -75,7 +75,7 @@ Standing in the kitchen, checking what's left in the fridge: "We need milk, eggs
 
 ### Work messages during nap time
 
-The baby just fell asleep on you on the couch, Mac Mini running quietly in the corner hooked up to the TV. You can't move without waking them, but you need to reply to a few Slack messages. Push-to-talk at a low volume, and EnviousWispr handles the rest. You can pick a writing style preset (Standard, Formal, Friendly, or Custom) to match the tone you need.
+The baby just fell asleep on you on the couch, Mac Mini running quietly in the corner hooked up to the TV. You can't move without waking them, but you need to reply to a few Slack messages. Push-to-talk at a low volume, and EnviousWispr handles the rest. The on-device polish step cleans up your dictation, and a Custom prompt lets you lock in a specific tone if you need one.
 
 ### Capturing ideas before they vanish
 

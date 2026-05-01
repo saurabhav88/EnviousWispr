@@ -85,13 +85,13 @@ EnviousWispr works well with zero configuration, but if you want to tune it to y
 
 EnviousWispr downloads its speech recognition model automatically on first launch. The primary engine handles English with streaming transcription that overlaps with recording. A secondary engine is available for 100+ languages. The download takes a minute or two, and the model is cached locally from then on.
 
-### Writing style presets
+### AI polish
 
-EnviousWispr ships with four writing style presets (Standard, Formal, Friendly, and Custom) that control the tone of your post-processed output. Switch between them depending on the task: Formal for polished emails, Standard for general writing, Friendly for casual messages.
+EnviousWispr's polish step removes filler words, fixes punctuation, and tightens structure without flattening your voice. The default works well for most writing. When you need a specific shape (a more polished tone, a particular format, your personal style rules), a Custom prompt lets you write your own polish instructions and reuse them.
 
 ### Custom prompts
 
-Custom prompts let you tell the post-processor exactly how to handle your speech: "format as bullet points," "translate to Spanish," "write in my style: short sentences, no semicolons." Set your own system prompt in Settings under AI Polish.
+Custom prompts let you tell the post-processor exactly how to handle your speech: "format as bullet points," "translate to Spanish," "write in my style: short sentences, no semicolons." Set your own system prompt in Settings under AI Polish, and the polish step uses it for every dictation until you change it.
 
 ### Custom word dictionary
 

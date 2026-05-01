@@ -32,17 +32,15 @@ The shift is psychological as much as practical. When you dictate, you give your
 
 Most dictation tools were built for business users dictating emails and memos. Writers need something different. You need output that sounds like writing, not like a transcribed meeting. And you need it to land in your writing app, formatted the way you work.
 
-EnviousWispr handles this with writing style presets and LLM post-processing that matter specifically to writers.
+EnviousWispr handles this with on-device LLM post-processing tuned specifically for writers.
 
-### Writing Style Presets: Match Your Tone Instantly
+### Polish That Keeps Your Voice
 
-After EnviousWispr transcribes your speech, it runs the text through a local LLM for post-processing. You choose from four writing style presets (**Standard**, **Formal**, **Friendly**, and **Custom**) that shape how the AI polish cleans up your dictation. For first-draft prose, Friendly keeps your natural voice and conversational rhythm intact. Standard gives you clean, balanced output. Formal tightens everything up for professional contexts.
+After EnviousWispr transcribes your speech, it runs the text through a local LLM for post-processing. The default polish removes filler words, fixes punctuation, and tightens structure without flattening your phrasing into corporate prose. The result is a clean first draft that sounds like you, not like a robot or a memo.
 
-That processing can run fully on-device with Apple Intelligence or Ollama, without sending your words anywhere. The result is a clean first draft that sounds like you, not like a robot or a corporate memo.
+That processing can run fully on-device with Apple Intelligence or Ollama, without sending your words anywhere.
 
-Switching presets takes one click, so you can move between brainstorming (Friendly, loose and natural), blog drafting (Standard, clean but conversational), and client-facing work (Formal, polished) without friction.
-
-Custom prompts let you write your own post-processing instructions: "format as screenplay-style dialogue," "keep this as stream of consciousness with line breaks," or anything else you need. Set your custom system prompt in Settings under AI Polish.
+For writers who want explicit control over the output, the Custom prompt option lets you write your own post-processing instructions: "format as screenplay-style dialogue," "keep this as stream of consciousness with line breaks," "preserve em-dashes and parentheticals," or anything else you need. Set your custom system prompt in Settings under AI Polish, and the polish step uses it for every dictation until you change it.
 
 For a step-by-step look at how this works in a real writing session, see [Voice to Prose: A Realistic Writing Workflow](/blog/voice-to-prose-writing-workflow/).
 
@@ -109,7 +107,7 @@ You can read more about [how the pipeline works](/how-it-works/), from microphon
 
 ## Related Posts
 
-- [Dictate First Drafts That Sound Like You](/blog/dictate-first-drafts-sound-like-you/). How writing style presets preserve your voice during dictation.
+- [Dictate First Drafts That Sound Like You](/blog/dictate-first-drafts-sound-like-you/). How on-device polish preserves your voice during dictation.
 - [Voice to Prose: A Realistic Writing Workflow](/blog/voice-to-prose-writing-workflow/). A real before-and-after look at dictated prose.
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/). From download to first dictation.
 
@@ -117,7 +115,7 @@ You can read more about [how the pipeline works](/how-it-works/), from microphon
 
 EnviousWispr is free. You don't need an account, a subscription, or an API key.
 
-[Download EnviousWispr free](/#download) or grab the latest release from [GitHub](https://github.com/saurabhav88/EnviousWispr/releases). Install it, grant microphone and accessibility permissions, and you're dictating within a few minutes. The speech model downloads automatically. Pick a writing style preset that matches your voice, and try dictating your next first draft instead of typing it.
+[Download EnviousWispr free](/#download) or grab the latest release from [GitHub](https://github.com/saurabhav88/EnviousWispr/releases). Install it, grant microphone and accessibility permissions, and you're dictating within a few minutes. The speech model downloads automatically. Try dictating your next first draft instead of typing it, and write a Custom prompt later if you want output shaped to your specific style.
 
 The blank page problem doesn't go away. But when you can speak your way past it, it stops being the thing that kills your morning.
 

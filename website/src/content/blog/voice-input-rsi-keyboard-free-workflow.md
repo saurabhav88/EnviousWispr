@@ -48,13 +48,11 @@ Here's a real example, dictating a status update instead of typing one:
 
 That took about ten seconds to speak. Typing it, with RSI making every keystroke a negotiation, would have taken two or three painful minutes. Same information, zero keystrokes.
 
-## Writing Style Presets for Different Contexts
+## AI Polish for Different Contexts
 
-One concern people have about switching to voice input is that different contexts need different kinds of text. A Slack message should sound casual. A client email needs a professional tone.
+One concern people have about switching to voice input is that different contexts need different kinds of text. A Slack message should sound casual. A client email needs a more structured tone.
 
-EnviousWispr ships with four writing style presets (Standard, Formal, Friendly, and Custom) that control how the AI polish shapes your dictated text. Switch to Friendly for casual Slack messages, Formal for client emails, or use Custom to write your own system prompt with specific formatting rules. It takes one click to change.
-
-Toggling between presets is fast and keeps the rework cycle to a minimum.
+EnviousWispr's AI polish step cleans up your dictation by removing filler words, fixing punctuation, and tightening structure. The default polish handles most everyday writing well: Slack threads, internal notes, ticket comments. For contexts where you need a specific shape (more structured client emails, formatted lists, particular phrasing), the Custom prompt option lets you write your own polish instructions and reuse them across dictations.
 
 This matters for RSI because it reduces the need to go back to the keyboard and fix tone or formatting. When voice output is already close to what you need, you're not adding correction keystrokes on top.
 
@@ -100,7 +98,7 @@ If you're dealing with RSI, the last thing you need is a setup process that invo
 
 That's three steps from download to functional voice input. The speech model downloads automatically on first launch. Works out of the box with no account creation and no payment. EnviousWispr is free.
 
-If you want to fine-tune the experience later (switching between writing style presets, adding custom words, setting a custom prompt) that's all available in settings. But the default configuration produces clean, accurate text out of the box.
+If you want to fine-tune the experience later (adding custom words, setting a custom polish prompt) that's all available in settings. But the default configuration produces clean, accurate text out of the box.
 
 ## This Isn't Medical Advice, But It Is Practical Advice
 

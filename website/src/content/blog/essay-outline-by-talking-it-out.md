@@ -23,15 +23,15 @@ Speaking changes the dynamic. You're not editing as you go; you're just thinking
 
 There's a practical speed advantage too. Most people speak at 130-150 words per minute but type at 40-60. For the brainstorming phase of an outline, where volume of ideas matters more than polish, voice wins by a wide margin.
 
-## The setup: pick a preset, start talking
+## The setup: a Custom prompt, then start talking
 
-Here's how EnviousWispr fits in. Instead of dictating raw text and then manually reorganizing it, the LLM post-processor cleans up your spoken thoughts into polished, structured prose. Choose the **Formal** writing style preset for academic work; it tightens sentence structure and produces clean, organized output from your rambling.
+Here's how EnviousWispr fits in. Instead of dictating raw text and then manually reorganizing it, the LLM post-processor cleans up your spoken thoughts into structured prose. For academic work, set a Custom prompt that tightens sentence structure and produces clean, organized output from your rambling.
 
 Hold the hotkey, talk through your argument, and release. EnviousWispr transcribes your speech locally, runs it through the LLM post-processor, and delivers cleaned-up text. The whole thing takes a few seconds on any M-series chip.
 
-The Formal preset gives you the most structured output, but even Standard produces clean prose that's easy to reorganize into an outline. The key insight is that speaking your argument out loud forces you to linearize it, and the structure emerges from how you naturally explain things.
+The default polish already produces clean prose that's easy to reorganize into an outline. The key insight is that speaking your argument out loud forces you to linearize it, and the structure emerges from how you naturally explain things.
 
-The Custom writing style preset takes this even further. You can write specific instructions like "organize my thoughts into an essay outline with a thesis and three supporting points, Roman numeral formatting." That turns a one-minute ramble directly into a formatted outline without any manual reorganizing.
+A Custom prompt takes this further. You can write specific instructions like "organize my thoughts into an essay outline with a thesis and three supporting points, Roman numeral formatting." That turns a one-minute ramble directly into a formatted outline without any manual reorganizing.
 
 ## Walking through a real example
 
@@ -39,7 +39,7 @@ Let's say you're writing a paper on why public libraries remain relevant in the 
 
 > "Okay so I think my main argument is that public libraries are still important even though everything is online now. First because they provide free internet access to people who can't afford it at home, which is a huge equity issue. Second, they're community spaces, like, people go there for job help, ESL classes, after-school programs, stuff that has nothing to do with books. And third, they curate information in a way that algorithms don't. Librarians help people find trustworthy sources instead of just whatever shows up first on Google."
 
-Not exactly polished academic writing. But that's the point: you're thinking, not editing. After EnviousWispr processes it with the Formal preset, the LLM cleans it into structured prose. With a quick reorganization, you get something like:
+Not exactly polished academic writing. But that's the point: you're thinking, not editing. After EnviousWispr processes it with an academic Custom prompt, the LLM cleans it into structured prose. With a quick reorganization, you get something like:
 
 ---
 
@@ -70,15 +70,13 @@ Once you've got the basic pattern down, there are a few ways to build on it.
 
 Your first spoken pass gives you the skeleton. But you can refine it the same way. Look at what you've got, notice a weak point, hold the hotkey again: "Actually, for section two I should focus more on the employment statistics. Libraries in low-income areas have higher job placement rates for people who use their career services." The post-processor cleans it up, and you drop it into your outline where it fits.
 
-### Match the preset to the context
+### Match the prompt to the assignment
 
-For essay work, the Formal preset gives you the tightest, most structured output. But if you're brainstorming early ideas, try Friendly; it keeps your natural phrasing intact, which can help you find your argument before you formalize it. Switch between presets with one click as your thinking evolves from rough brainstorm to polished draft.
+A Custom prompt lets you save specific instructions for different assignment types, like "organize as compare-and-contrast with point-by-point structure" or "structure as a five-paragraph essay with topic sentences." Build a small library of prompts for different essay formats and swap them in as your assignment changes.
 
-The Custom preset lets you save specific instructions for different assignment types, like "organize as compare-and-contrast with point-by-point structure" or "structure as a five-paragraph essay with topic sentences." Build a small library of prompts for different essay formats.
+### Brainstorm with the default, structure with a Custom prompt
 
-### Switch presets as you switch tasks
-
-If you're dictating rough notes one minute and drafting polished outline text the next, flip between Friendly and Formal with one click. Friendly for raw brainstorming, Formal for structured output. It takes a second and keeps each task's output matching its purpose.
+If you're dictating rough notes one minute and drafting polished outline text the next, the default polish handles the brainstorm well, keeping your natural phrasing intact so you can find your argument before you formalize it. When you're ready to structure the outline, swap in your academic Custom prompt and the next dictation comes back organized.
 
 ## Why this works for students specifically
 
@@ -94,7 +92,7 @@ A few things make this approach a good fit for the student workflow.
 
 ## Get started
 
-If you've got a paper due and the outline isn't cooperating, try talking it out. [Get EnviousWispr free](/#download), or download it from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases). Set the writing style to Formal, and spend one minute speaking your argument out loud.
+If you've got a paper due and the outline isn't cooperating, try talking it out. [Get EnviousWispr free](/#download), or download it from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases). Set a Custom prompt for academic structure, and spend one minute speaking your argument out loud.
 
 ## Related Posts
 
