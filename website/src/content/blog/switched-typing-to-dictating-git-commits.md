@@ -1,6 +1,6 @@
 ---
 title: "Dictating Git Commits on macOS: Better Messages, Less Typing"
-description: "Dictating git commits produces better messages than typing. Here's how writing style presets and LLM post-processing make voice commit messages practical."
+description: "Dictating git commits produces better messages than typing. Here's how on-device polish and Custom prompts make voice commit messages practical."
 pubDate: 2026-03-16
 updatedDate: 2026-04-04
 tags: ["developer", "git", "workflow", "dictation"]
@@ -35,19 +35,21 @@ The other factor is speed. Speaking is roughly three to four times faster than t
 Developers who make this switch consistently report the same thing: looking back through their git history, the typed era is full of one-liners while the dictated era has context, reasoning, and descriptions that actually help when revisiting the code six months later.
 
 
-## Choosing the right writing style for commits
+## Shaping the polish for commit messages
 
-The key to making developer dictation practical is matching the tone to the context. For Slack replies, Friendly mode works well: natural, conversational. For documentation, Formal produces full prose with proper paragraphs.
+The key to making developer dictation practical is matching the output to the context. Slack replies want casual phrasing. Documentation wants full prose with proper paragraphs.
 
-But for commit messages, something stripped down works best: terse, technical, no fluff.
+For commit messages, something stripped down works best: terse, technical, no fluff.
 
-EnviousWispr ships with four writing style presets (Standard, Formal, Friendly, and Custom), and for terminal work, Standard hits the sweet spot. It cleans up filler words, fixes punctuation, and keeps output direct without over-formalizing. No "So basically what I did was..." making it into a commit message. The post-processor keeps things technical and to the point.
+EnviousWispr's default polish already keeps output direct and technical without over-formalizing. No "So basically what I did was..." making it into a commit message. For terminal work, that's usually enough.
+
+When you want exact formatting (conventional commits, specific scope tags, mandatory body structure), a Custom prompt locks it in. Write something like "output as a conventional commit with type, scope, and body" and the polish step uses it for every dictation until you change it.
 
 ## How the post-processor shapes commit messages
 
-This is where it gets good. EnviousWispr's LLM post-processing step cleans up your spoken words into properly structured text. The Standard preset strips filler, fixes punctuation, and keeps output direct, which already gets you most of the way to a good commit message.
+This is where it gets good. EnviousWispr's LLM post-processing step cleans up your spoken words into properly structured text. The default polish strips filler, fixes punctuation, and keeps output direct, which already gets you most of the way to a good commit message.
 
-With the Custom preset, you can go even further: define exact formatting rules like "output as a conventional commit with type, scope, and body." You tell the post-processor precisely how to structure your commits, changelogs, or any other output format.
+With a Custom prompt, you can go even further: define exact formatting rules like "output as a conventional commit with type, scope, and body." You tell the post-processor precisely how to structure your commits, changelogs, or any other output format.
 
 The results are surprisingly good. Hold the hotkey and say:
 
@@ -110,7 +112,7 @@ A few things worth knowing when using developer dictation daily.
 
 **You'll feel weird at first.** Talking to your Mac in an open office is awkward. Starting at home helps, and most teams wear headphones anyway. If self-consciousness is a concern, start with commit messages: they're short, private, and the improvement is immediately visible in your git log.
 
-**Switching presets becomes second nature.** You'll quickly build a habit of toggling between Standard for terminal work and Friendly for Slack before you dictate. It's a single click.
+**A Custom prompt for commits is worth setting once.** A "conventional commit" prompt produces consistent, well-structured messages across every dictation in your terminal. Set it once and forget it.
 
 **It helps with RSI.** After eight-plus hours of typing every day, being able to offload even a portion of that to voice makes a noticeable difference in wrist strain by end of day. If RSI is your primary motivation, there's a dedicated guide on [voice input for RSI](/blog/voice-input-rsi-keyboard-free-workflow/).
 
@@ -120,7 +122,7 @@ If you want to try dictating git commits, here's the minimal setup.
 
 1. [Download EnviousWispr free](/#download) or grab it directly from the [releases page](https://github.com/saurabhav88/EnviousWispr/releases) and grant it microphone and accessibility permissions on first launch
 2. The speech model downloads automatically on first launch. No model selection needed.
-3. Select the **Standard** writing style preset. It keeps output direct and technical, which works well for commit messages.
+3. Leave polish on the default for direct, technical output, or set a "conventional commit" Custom prompt for stricter formatting.
 4. Open your terminal, hold the hotkey, describe your change, release
 
 That's the whole workflow. Hold, speak, release. Your commit message lands formatted and ready to go. EnviousWispr is [free](https://github.com/saurabhav88/EnviousWispr): no account, no API key, no subscription.

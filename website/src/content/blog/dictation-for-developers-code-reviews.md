@@ -22,25 +22,19 @@ So you write something minimal. "Fixed race condition in queue handler." Your re
 
 The fix isn't writing better descriptions through sheer discipline. The fix is making it easier to produce them without breaking your train of thought. If you can just talk through what you did, the same way you'd explain it to a colleague at your desk, the description writes itself.
 
-## Writing style presets: match the tone to the task
+## AI polish: clean output that matches your task
 
-Not all developer writing sounds the same. A commit message is terse. A PR description is structured. A Slack reply is conversational. EnviousWispr ships with four writing style presets (**Standard**, **Formal**, **Friendly**, and **Custom**) that control how the AI polish shapes your dictated text.
+Not all developer writing sounds the same. A commit message is terse. A PR description is structured. A Slack reply is conversational. EnviousWispr's AI polish step cleans up your dictated text by removing filler words, fixing punctuation, and tightening structure, so what you say comes out the way you'd want a colleague to read it.
 
-Here's how each one maps to developer tasks:
+For most developer writing (review comments, ticket updates, README sections, Slack threads), the default polish handles the cleanup without over-formalizing or stripping your voice. You speak naturally and the output reads naturally.
 
-### Formal
+For specialized formatting, EnviousWispr's Custom prompt option lets you write your own instructions for the polish step. A few examples that work well for developer workflows:
 
-Best for PR descriptions, documentation, and design docs. Full sentences, proper punctuation, structured prose. You talk through your reasoning and the post-processor organizes it into clean, readable text. Markdown headers, bullet points, and code references stay intact.
+- "Format as a markdown bullet list with code references in backticks." Useful for changelog entries or release notes.
+- "Write in past tense and group changes by subsystem." Useful for postmortem timelines.
+- "Output API documentation with parameter and return descriptions." Useful for public method docs.
 
-### Standard
-
-The default. Works well for most developer writing: review comments, ticket updates, README sections. It cleans up filler words and fixes punctuation without over-formalizing.
-
-### Friendly
-
-Best for Slack messages and casual communication. Keeps things informal, closer to how you'd actually talk. "Hey, the deploy is blocked on that config change, can you merge it when you get a chance" comes out natural, not stiff.
-
-You switch between presets with a click. Pick the tone that matches what you're writing, and the post-processor handles the rest. With the Custom preset, you can write your own system prompt for specialized formatting like API docs or structured changelogs.
+The Custom prompt sticks until you change it, so once you have a prompt that fits your team's style, you can leave it in place and dictate against it for as long as you need.
 
 ## Real workflow: dictating a PR description
 
@@ -80,7 +74,7 @@ This works especially well for longer review comments, the kind where you need t
 
 Technical documentation has the highest typing-to-thinking ratio of anything developers write. You know what the system does. You just need to get it into words. Dictation makes this almost trivial.
 
-For documentation, the Formal writing style preset works well. It produces structured prose with proper punctuation and clean paragraphs. You talk through the architecture the way you'd explain it to a new team member, and the output lands polished and ready to commit. Custom prompts let you go even further: tell the post-processor to format output as API documentation with parameter descriptions, or to use specific header structures.
+For documentation, the polish step produces structured prose with proper punctuation and clean paragraphs. You talk through the architecture the way you'd explain it to a new team member, and the output lands polished and ready to commit. Custom prompts let you go further: tell the post-processor to format output as API documentation with parameter descriptions, or to use specific header structures.
 
 This is particularly useful for the kind of documentation that always gets skipped: the "how does this subsystem actually work" docs that everyone wishes existed but nobody wants to sit down and type out. Speaking is lower friction than typing for this kind of knowledge dump, and the difference is enough to make it actually happen.
 
@@ -100,15 +94,15 @@ For developers working on proprietary codebases, under NDA, or at companies with
 
 To set up for developer use:
 
-1. **Open Settings** and choose your writing style preset. Formal works well for PR descriptions and docs, Friendly for Slack.
-2. **Pick your hotkey.** Choose something that doesn't collide with your IDE shortcuts.
-3. **Switch presets as needed.** When you move from writing a PR description to replying in Slack, switch from Formal to Friendly with a click.
+1. **Pick your hotkey.** Choose something that doesn't collide with your IDE shortcuts.
+2. **Leave polish on.** Default polish handles most developer writing (review comments, ticket updates, README sections) without over-formalizing.
+3. **Set a Custom prompt for the niches.** API docs, changelog entries, structured postmortems. The Custom prompt sticks until you change it.
 
-It's fast to switch, and you'll quickly develop a habit of matching the preset to the task. Hold the hotkey in GitHub with Formal selected, get a detailed PR description. Switch to Friendly for Slack, get a casual reply.
+Hold the hotkey in GitHub, talk through your PR description, and the polished text lands ready to paste. Move to Slack and the same workflow handles a quick reply.
 
 ## Related Posts
 
-- [Why I Switched from Typing to Dictating Git Commits](/blog/switched-typing-to-dictating-git-commits/). A practical look at dictating commit messages with writing style presets.
+- [Why I Switched from Typing to Dictating Git Commits](/blog/switched-typing-to-dictating-git-commits/). A practical look at dictating commit messages with on-device polish.
 - [Voice Coding on macOS Without Cloud APIs](/blog/voice-coding-macos-without-cloud/). The full case for on-device voice input in dev workflows.
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/). Setup walkthrough from download to first dictation.
 

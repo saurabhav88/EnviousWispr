@@ -45,7 +45,7 @@ Getting started takes about five minutes:
 
 3. **Set your hotkey.** Pick a key combination that doesn't collide with your IDE shortcuts. Hold to record, release to transcribe; the cycle completes in a second or two.
 
-4. **Choose a writing style preset.** EnviousWispr ships with four writing style presets (Standard, Formal, Friendly, and Custom) that control how the LLM post-processor shapes your output. Use Formal for documentation and PR descriptions, Standard for general-purpose writing, and Friendly for Slack and casual messages. Switch between them with a click as you move between tasks. With the Custom preset, you can tell the post-processor exactly what you need: "Format as a markdown bullet list," "Write in past tense for a changelog entry," "Keep it under two sentences."
+4. **Tune the polish step.** EnviousWispr's polish removes filler words, fixes punctuation, and tightens structure without flattening your voice. The default works well across most developer writing (PRs, review comments, docs, Slack). For specialized formatting, a Custom prompt lets you tell the post-processor exactly what you need: "Format as a markdown bullet list," "Write in past tense for a changelog entry," "Keep it under two sentences." The Custom prompt sticks until you change it.
 
 ## Real examples: where voice dictation fits a dev workflow
 
@@ -53,7 +53,7 @@ Getting started takes about five minutes:
 
 Writing docs is one of the highest-friction tasks in software development. You know the architecture. You can explain it verbally in two minutes. But sitting down to type it out feels like a chore, so it doesn't get done. Dictation lets you capture that explanation while it's still sharp in your mind, before the details fade and the motivation disappears.
 
-With EnviousWispr, you can talk through the architecture the way you'd explain it to a new teammate, and the post-processor formats it as clean markdown. Switch to the Formal writing style preset and you get a solid first draft by speaking naturally: proper paragraphs, clean punctuation, structured prose.
+With EnviousWispr, you can talk through the architecture the way you'd explain it to a new teammate, and the post-processor formats it as clean markdown. Set a Custom prompt for documentation ("output as structured markdown with proper paragraphs and code references in backticks") and you get a solid first draft by speaking naturally: proper paragraphs, clean punctuation, structured prose.
 
 Here's what that looks like in practice:
 
@@ -83,7 +83,7 @@ The LLM post-processor smooths the phrasing and fixes any verbal artifacts. The 
 
 Instead of switching mental modes to write a structured bug report, just describe what happened: "When you click the export button with an empty dataset, the app throws an unhandled exception instead of showing the empty state. Expected behavior is the empty state view with a message saying no data to export. Repro steps: create a new project, don't add any data, click export."
 
-Use the Formal preset to keep the output structured and professional, and the result arrives clean and ready to paste into your issue tracker.
+A Custom prompt for bug reports ("output as steps to reproduce, expected behavior, actual behavior") keeps the output structured, and the result arrives clean and ready to paste into your issue tracker.
 
 ## Cloud vs. local: an honest comparison
 
@@ -100,7 +100,7 @@ It's worth being direct about the trade-offs.
 - **Data stays on your machine.** No audio leaves your Mac. Period. This isn't a policy; it's an architecture. There's no server to send to.
 - **No latency dependency.** Transcription speed depends on your hardware, not your internet connection. On Apple Silicon, the full pipeline runs in one to two seconds.
 - **No recurring cost.** No API usage fees, no subscription tiers, no per-minute billing. EnviousWispr is free.
-- **Customization.** Writing style presets, custom prompts, and choice of LLM provider: you control the pipeline. Cloud APIs give you an endpoint and a response format.
+- **Customization.** Custom polish prompts and choice of LLM provider: you control the pipeline. Cloud APIs give you an endpoint and a response format.
 - **Works offline.** Airplane, coffee shop with bad WiFi, or just a network outage. Local transcription doesn't care.
 
 We cover this comparison in much more depth in [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/). For developers specifically, the privacy argument usually closes the discussion. If you're dictating anywhere near proprietary code, internal discussions, or sensitive project details, sending that audio to an external API is a risk most security-conscious teams won't accept.
@@ -113,7 +113,7 @@ If you want to understand the full transcription and post-processing pipeline be
 
 ## Related Posts
 
-- [Dictation for Developers: Code Reviews and PRs](/blog/dictation-for-developers-code-reviews/). How to use writing style presets for PR descriptions, review comments, and docs.
+- [Dictation for Developers: Code Reviews and PRs](/blog/dictation-for-developers-code-reviews/). How on-device polish handles PR descriptions, review comments, and docs.
 - [Why I Switched from Typing to Dictating Git Commits](/blog/switched-typing-to-dictating-git-commits/). A real before-and-after comparison of typed vs. dictated commit messages.
 - [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/). A fair comparison of where your recordings go.
 

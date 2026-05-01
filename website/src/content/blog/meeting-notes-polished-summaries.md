@@ -26,9 +26,9 @@ But the real leverage comes from what happens next.
 
 ## From raw dictation to structured summary
 
-Out of the box, EnviousWispr cleans up filler words, fixes punctuation, and adjusts tone using one of four writing style presets (Standard, Formal, Friendly, and Custom). That alone transforms your dictation. But for meeting notes, the real unlock is structure.
+Out of the box, EnviousWispr cleans up filler words, fixes punctuation, and tightens structure. That alone transforms your dictation. But for meeting notes, the real unlock is structure.
 
-The Custom writing style preset lets you tell the post-processor exactly how to format your output. For meeting summaries, a prompt like this works well:
+A Custom prompt lets you tell the post-processor exactly how to format your output. For meeting summaries, a prompt like this works well:
 
 **"Format as a meeting summary. Include: attendees mentioned, key decisions, action items with owners and due dates, and open questions. Use bullet points. Keep it concise."**
 
@@ -69,7 +69,7 @@ For an exec who regularly discusses confidential business matters, this isn't a 
 
 Not every meeting summary goes to the same place. A quick standup recap might go straight into Slack. A board prep summary might go into Notion or a Google Doc. A one-on-one follow-up might become an email.
 
-You can switch between four writing style presets (Standard, Formal, Friendly, and Custom) to match the context. Toggling between presets takes a single click and gets you the right tone for each destination.
+For each destination, a Custom prompt tuned to that surface produces the right shape. Save a "board summary" prompt, a "Slack recap" prompt, an "email follow-up" prompt; swap them in as the destination changes and the polish step picks up the new instructions on your next dictation.
 
 ## Making it part of your routine
 
@@ -79,12 +79,12 @@ A few tips for getting started:
 
 - **Start with high-stakes meetings.** Board reviews, strategy sessions, client calls, wherever the cost of lost context is highest.
 - **Keep your dictation loose.** Don't try to speak in polished sentences. The LLM handles cleanup. Just get the facts out.
-- **Pick the right writing style preset.** Formal works well for board summaries, Standard for most internal recaps, Friendly for team Slack channels.
+- **Save a Custom prompt per destination.** Board summaries want structured prose; Slack recaps want bullet points; email follow-ups want a short paragraph plus action items. Build the prompts once and reuse them.
 - **Use hands-free mode for longer debriefs.** If you need to talk through a complex meeting for two or three minutes, double-press your hotkey to lock recording so you don't have to hold a key the entire time.
 
 ## Get started
 
-[Download EnviousWispr free](/#download), or grab it from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases). It's free; install it and start dictating. No registration, no payment. The speech model downloads automatically on first launch. Pick a writing style preset that fits your workflow.
+[Download EnviousWispr free](/#download), or grab it from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases). It's free; install it and start dictating. No registration, no payment. The speech model downloads automatically on first launch. Try the default polish first, and write a Custom prompt if you want output shaped to your specific workflow.
 
 ## Related Posts
 

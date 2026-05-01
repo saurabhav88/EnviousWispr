@@ -29,13 +29,13 @@ Switch to **hands-free mode** by double-pressing your hotkey. This locks recordi
 
 Hands-free mode detects natural pauses in your speech, so each thought gets processed as its own chunk. You'll see transcribed text appear as you go.
 
-## Step 3: Pick the right writing style preset
+## Step 3: Tune the polish step for lecture notes
 
 Raw transcription is useful, but the real power for students is in post-processing. EnviousWispr runs your transcribed text through an LLM that cleans it up, removing filler words like "um" and "uh," fixing punctuation, and producing polished output. Post-processing can run on-device (Apple Intelligence, Ollama) or via cloud providers (OpenAI, Gemini).
 
-The app ships with four writing style presets (Standard, Formal, Friendly, and Custom). For lecture notes, **Standard** works well: it cleans up your speech into clear, well-punctuated prose without making it overly stiff.
+The default polish works well for lecture notes: it cleans up your speech into clear, well-punctuated prose without making it overly stiff.
 
-With the Custom preset, you can tell the post-processor to format output as bullet points, bold key terms, or organize by topic. You can tailor post-processing per class: chronological formatting for history, emphasis on formulas for science. The built-in presets also turn your raw dictation into clean, readable notes without any manual formatting during the lecture.
+When you want more structure, a Custom prompt lets you tell the post-processor exactly how to shape the output: format as bullet points, bold key terms, organize by topic. You can tailor your prompt per class: chronological formatting for history, emphasis on formulas for science. Save one prompt per subject and swap them in as the lecture changes.
 
 ## Step 4: Position your microphone and speak naturally
 
@@ -89,7 +89,7 @@ If you're ready to try voice notes for students, the setup takes less than five 
 1. [Download EnviousWispr free](/#download) or grab it from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases)
 2. Grant microphone access on first launch (the speech model downloads automatically)
 3. Double-press your hotkey to activate hands-free mode
-5. Pick a writing style preset
+5. Leave polish on the default, or write a Custom prompt for your subject
 6. Start your next lecture
 
 ## Related Posts

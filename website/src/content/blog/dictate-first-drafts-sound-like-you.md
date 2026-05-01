@@ -1,6 +1,6 @@
 ---
 title: "Dictate First Drafts That Sound Like You"
-description: "Most dictation tools strip your voice. Here's how to dictate first drafts that keep your writing style intact using presets and LLM post-processing."
+description: "Most dictation tools strip your voice. Here's how to dictate first drafts that keep your writing style intact using on-device polish and Custom prompts."
 pubDate: 2026-03-14
 updatedDate: 2026-04-04
 tags: ["writing", "dictation", "workflow", "writing-style"]
@@ -30,12 +30,10 @@ EnviousWispr splits the work into two stages: transcription and post-processing.
 
 Here's what makes the difference for writers:
 
-- **Writing style presets.** Four built-in modes that shape how the LLM cleans up your dictation. **Friendly** keeps your natural voice and conversational rhythm intact (contractions, sentence fragments, the way you actually talk). **Standard** gives you clean, balanced prose. **Formal** tightens everything up for professional or academic contexts. **Custom** lets you write your own processing instructions.
-- **LLM post-processing.** Your on-device LLM (Apple Intelligence, Ollama) or a cloud API (OpenAI, Gemini) handles the cleanup. It strips filler words, fixes punctuation, and reshapes the text according to whichever preset you've selected. The result sounds like you wrote it, not like a template.
+- **On-device polish that keeps your voice.** Your local LLM (Apple Intelligence, Ollama) or a cloud API (OpenAI, Gemini) cleans up the raw transcription: filler words go, punctuation gets fixed, structure tightens, but your contractions, sentence fragments, and rhythm stay intact. The default polish is tuned for natural-sounding output, not corporate sameness.
+- **Custom prompts for explicit control.** When you want to lock in a specific style, write a Custom prompt and the polish step uses it for every dictation until you change it. Examples: "use em dashes, not semicolons", "keep sentence fragments, they're intentional", "format as Markdown with H2 headings".
 
-Switching presets takes one click, so you can move between freewriting and polished output without changing how you speak. You're in control.
-
-> **Tip:** The Custom preset lets you write your own post-processing instructions: things like "use em dashes, not semicolons" or "format as Markdown with H2 headings." Full control over how your dictation gets shaped.
+You can change the Custom prompt as your task changes (drafting one minute, client-facing prose the next), and the polish step picks it up on your next dictation. You're in control.
 
 For a deeper look at how the transcription and post-processing pipeline connects, see the [How It Works](/how-it-works/) page.
 
@@ -49,17 +47,18 @@ Download the latest `.dmg` from the [GitHub releases page](https://github.com/sa
 
 No account. No API key. No subscription. It's free.
 
-### Step 2: Pick Your Writing Style Preset
+### Step 2: Set Up Polish (and a Custom Prompt If You Need One)
 
-The speech model downloads automatically on first launch. Once that's done (a few minutes), open EnviousWispr's settings and choose the writing style preset that matches what you're working on:
+The speech model downloads automatically on first launch. Once that's done (a few minutes), open EnviousWispr's settings. The default polish is tuned to keep your voice intact while cleaning up filler words and punctuation. For most writing, that's the right starting point.
 
-**Friendly.** For novelists, bloggers, and freewriters who want their natural voice preserved. Filler words go away, but contractions, casual phrasing, and your sentence rhythm stay intact.
+If you want to lock in a specific shape, write a Custom prompt. Pick whichever pattern matches what you're working on:
 
-**Standard.** The balanced middle ground. Clean, readable prose that works for newsletters, articles, and general drafting. Your voice comes through, just a bit more polished.
+- "Keep my natural voice, contractions, and sentence rhythm. Don't formalize." For novels, blog drafts, freewriting.
+- "Output clean, readable prose with light polish. Keep my voice." For newsletters and articles.
+- "Tighten sentence structure, remove casual phrasing, produce polished prose." For academic papers, client deliverables.
+- "Use em dashes instead of semicolons. Preserve sentence fragments when intentional." For specific style preferences.
 
-**Formal.** For academic papers, client deliverables, and professional correspondence. Tighter sentence structure, no casual phrasing, polished output.
-
-**Custom.** Write your own post-processing instructions for full control: things like "use em dashes, not semicolons" or "keep sentence fragments, they're intentional."
+The Custom prompt sticks until you change it.
 
 Post-processing can run on-device (Apple Intelligence, Ollama) or through cloud APIs (OpenAI, Gemini). Your raw dictation never leaves your device unless you explicitly configure an external API.
 
@@ -67,7 +66,7 @@ Post-processing can run on-device (Apple Intelligence, Ollama) or through cloud 
 
 Hold your hotkey. Start talking. Don't edit in your head; just speak. Release the hotkey when you're done with a thought. A second or two later on Apple Silicon, polished text lands in your writing app, styled the way you specified.
 
-That's it. No copying and pasting. No switching apps. The text pastes into the app that has focus, cleaned up according to your chosen writing style.
+That's it. No copying and pasting. No switching apps. The text pastes into the app that has focus, cleaned up according to your polish settings.
 
 ## What the Difference Actually Looks Like
 
@@ -89,15 +88,15 @@ You open Ulysses. You hold the hotkey. You talk for three minutes about whatever
 
 ### Blog Drafting in iA Writer
 
-You have an outline. You dictate each section, one hotkey press at a time. Your writing style preset cleans up each chunk into polished prose. Each dictation chunk lands in iA Writer ready to edit. By the time you've walked through your outline, you have a 1,200-word rough draft that took fifteen minutes instead of an hour.
+You have an outline. You dictate each section, one hotkey press at a time. The polish step cleans up each chunk into prose that still sounds like you. Each dictation chunk lands in iA Writer ready to edit. By the time you've walked through your outline, you have a 1,200-word rough draft that took fifteen minutes instead of an hour.
 
 ### Quick Slack Replies Between Writing Sessions
 
-You switch to Slack. You flip your preset to Friendly (casual tone, natural phrasing). You dictate a reply to your editor. It reads like a quick message, not like a paragraph from your manuscript. Back to writing. One click to switch presets, no friction.
+You switch to Slack. The default polish keeps things conversational without over-formalizing. You dictate a reply to your editor. It reads like a quick message, not like a paragraph from your manuscript. Back to writing.
 
 ### Capturing Ideas on a Walk
 
-You're away from your desk but your Mac Mini is running at home. You come back, sit down, double-press your hotkey to lock recording, and dump every idea you had on your walk. The post-processor cleans it up with your Friendly preset: natural, lightly polished, captured. You'll shape it later.
+You're away from your desk but your Mac Mini is running at home. You come back, sit down, double-press your hotkey to lock recording, and dump every idea you had on your walk. The post-processor cleans it up while keeping your natural phrasing: lightly polished, captured. You'll shape it later.
 
 ## Why Privacy Matters for Writers
 
@@ -111,8 +110,8 @@ For a detailed look at how on-device processing compares to cloud alternatives, 
 
 Most writers who've tried dictation and quit had one of three problems:
 
-1. **The output didn't sound like them.** Solved by writing style presets that match your tone, plus the Custom preset for full control over processing instructions.
-2. **Switching between contexts was tedious.** One-click preset switching makes it fast.
+1. **The output didn't sound like them.** Solved by an on-device polish step tuned to keep your voice, plus a Custom prompt for full control over processing instructions.
+2. **Switching between contexts was tedious.** Edit the Custom prompt as your task changes; the polish step picks it up on your next dictation.
 3. **Privacy concerns with cloud tools.** Solved by on-device processing that never phones home.
 
 The first few sessions feel awkward. You'll over-explain, stumble, repeat yourself. That's normal. The post-processor catches most of it, and within a week you'll find a rhythm. Dictation isn't a replacement for writing; it's a way to get your first draft out of your head faster so you can spend your energy on editing, which is where the real writing happens anyway.
@@ -122,7 +121,7 @@ The first few sessions feel awkward. You'll over-explain, stumble, repeat yourse
 EnviousWispr is free and yours to keep. No strings.
 
 1. [Download EnviousWispr free](/#download), or grab the latest release from [GitHub](https://github.com/saurabhav88/EnviousWispr/releases)
-2. Pick the writing style preset that matches your voice: Friendly, Standard, Formal, or Custom
+2. Leave polish on the default, or write a Custom prompt that matches your voice
 3. Dictate your next first draft
 
 ## Related Posts

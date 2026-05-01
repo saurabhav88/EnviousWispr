@@ -46,16 +46,17 @@ Fifteen seconds of speaking. The teammate gets the full context: what was wrong,
 
 ## Right tone, right tool
 
-Not every message should sound the same. A Slack reply to your team is casual. An email to a client is professional. A project brief in Notion needs structure and detail.
+Not every message should sound the same. A Slack reply to your team is casual. A client email is more structured. A project brief in Notion needs structure and detail.
 
-EnviousWispr ships with four writing style presets (Standard, Formal, Friendly, and Custom) that shape how your dictation gets processed:
+EnviousWispr's polish step handles this in two layers. The default polish removes filler words, fixes punctuation, and tightens structure without flattening your voice into corporate prose. It works well across most async writing, so the same workflow handles a Slack reply and a status update.
 
-- **Friendly.** Keeps it concise and conversational. Filler words get removed, punctuation gets cleaned up, but the casual register stays intact. The result reads like you typed it quickly and naturally, not like you dictated into enterprise software. Great for Slack.
-- **Formal.** Shifts to a more polished tone. Sentences get tightened, and the overall structure reads like a professional email rather than a transcribed conversation. Ideal for client-facing messages.
-- **Standard.** A balanced middle ground that preserves your full train of thought, organizes it with reasonable structure, and keeps technical terms or project-specific language intact. Works well for project docs and updates.
-- **Custom.** Write your own processing instructions for full control over how your dictation gets cleaned up.
+When you need a specific shape, the Custom prompt option lets you write your own polish instructions. A few that work well:
 
-Switching between presets takes a single click in the menu bar. You speak naturally every time. The preset handles the translation to the right register.
+- "Keep this casual and concise. Don't formalize." For Slack and team threads.
+- "Tighten sentence structure and produce a polished tone with proper paragraphs." For client-facing email.
+- "Preserve technical terms and project-specific language. Output as a structured paragraph." For project docs and updates.
+
+You change the Custom prompt as your task changes, and the polish step picks it up on your next dictation. You speak naturally every time.
 
 ## Privacy: your work conversations stay on-device
 

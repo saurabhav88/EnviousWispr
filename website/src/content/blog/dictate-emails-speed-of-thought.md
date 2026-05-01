@@ -24,17 +24,17 @@ But raw speed only matters if the output is usable. Nobody wants to send an emai
 
 EnviousWispr handles this differently. After transcription, your text runs through an LLM that strips filler words, fixes punctuation, tightens sentence structure, and adjusts tone. You speak your thoughts loosely. What lands in your email client reads like you sat down and wrote it carefully. The whole cycle (record, transcribe, clean up, paste) takes a second or two on Apple Silicon.
 
-## Writing Style Presets for Every Email Type
+## AI Polish for Every Email Type
 
-Not every email sounds the same. A response to a board member requires different language than a quick delegation to your direct report. EnviousWispr's four writing style presets (Standard, Formal, Friendly, and Custom) let you shape the output to match the context.
-
-### Formal correspondence
-
-Switch to the Formal preset for structured, professional prose. Dictate your key points conversationally, and the LLM will output polished paragraphs with proper salutations and clear paragraph breaks. Useful for investor updates, client responses, and cross-functional announcements.
+Not every email sounds the same. A response to a board member requires different language than a quick delegation to your direct report. EnviousWispr's polish step adapts to what you're writing, and Custom prompts let you lock in a specific shape when you need one.
 
 ### Quick replies
 
-The Standard preset works well for brevity. Speak a few sentences, get back a clean, direct response. No fluff, no preamble. This is ideal for the Slack-style "acknowledged, here's the next step" messages that pile up between meetings.
+The default polish works well for brevity. Speak a few sentences, get back a clean, direct response. No fluff, no preamble. This is ideal for the Slack-style "acknowledged, here's the next step" messages that pile up between meetings.
+
+### Structured correspondence
+
+For investor updates, client responses, and cross-functional announcements, dictate your key points conversationally and the polish step outputs paragraphs with proper punctuation and clear breaks. Want consistent salutations and a sign-off across every email? Save those expectations as a Custom prompt and the polish step applies them every time until you change it.
 
 ### Delegation emails
 
@@ -42,7 +42,7 @@ The LLM post-processing step naturally formats action-oriented dictation into st
 
 ### Custom prompts
 
-The Custom preset lets you write your own processing instructions. Want your email client output to always include a greeting and sign-off? Want bullet points for action items? Write the prompt once and every dictation follows your rules.
+The Custom prompt option lets you write your own processing instructions. Want your email output to always include a greeting and sign-off? Want bullet points for action items? Write the prompt once and every dictation follows your rules until you change it.
 
 ## Sensitive Data Stays on Your MacBook
 
