@@ -1664,3 +1664,28 @@ def test_all(audio=None, sentence=None):
     print(f"  Total time:     {total:.1f}s")
     print(f"{'='*60}")
     return all_pass
+
+
+# ──────────────────────────── V2 fault-injection facades (issue #291) ────────────────────────────
+# Thin dispatchers — actual scenario logic lives in faultInjection.py per the
+# plan's §3.4 ("Pure dispatch — no scenario logic in wispr_eyes.py itself").
+
+def list_scenarios():
+    """Print the V2 fault-injection scenario menu."""
+    from faultInjection import print_scenarios
+    return print_scenarios()
+
+
+def run_scenario(name, **kwargs):
+    """Run a single V2 fault-injection scenario by name. Forwards kwargs to
+    the scenario function (e.g. `founder_present=True` for Lane B)."""
+    from faultInjection import run_scenario as _run
+    return _run(name, **kwargs)
+
+
+def record_with_fault(scenario_name, **kwargs):
+    """Convenience wrapper: connect to the app, run a Lane A scenario, return
+    the result dict. For ad-hoc dev use; production demonstrations route
+    through `run_scenario` directly."""
+    connect()
+    return run_scenario(scenario_name, **kwargs)
