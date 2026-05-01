@@ -177,8 +177,9 @@
       document.querySelectorAll<HTMLHeadingElement>('.blog-body h2, .blog-body h3'),
     );
     if (headings.length < 3) {
-      // Sidebar still shows share block — TOC is the only thing hidden.
-      // If sidebar should disappear entirely on TOC-less posts, that's a v1.1 decision.
+      // Sidebar still shows share block. Mark <html> so the skip-link in BlogPost.astro
+      // hides itself (otherwise keyboard users tab to a dead target).
+      document.documentElement.classList.add('toc-hidden');
       const tocBlock = tocList.closest('.toc') as HTMLElement | null;
       if (tocBlock) tocBlock.style.display = 'none';
       return;
@@ -187,21 +188,26 @@
     const usedIds = new Set<string>();
     const items: Array<{ id: string; link: HTMLAnchorElement; heading: HTMLHeadingElement }> = [];
 
+    const slugify = (text: string): string =>
+      text
+        .toLowerCase()
+        .replace(/[^\w\s-]/g, '')
+        .trim()
+        .replace(/\s+/g, '-')
+        .slice(0, 80) || 'section';
+
     headings.forEach((h) => {
-      let id = h.id;
-      if (!id) {
-        const base = (h.textContent || '')
-          .toLowerCase()
-          .replace(/[^\w\s-]/g, '')
-          .trim()
-          .replace(/\s+/g, '-')
-          .slice(0, 80) || 'section';
-        id = base;
-        let suffix = 2;
-        while (usedIds.has(id) || document.getElementById(id)) {
-          id = `${base}-${suffix}`;
-          suffix += 1;
-        }
+      // Dedupe every heading ID — including ones rehype-slug may have already generated —
+      // because authored markdown can produce repeat headings ("Setup", "Why this matters")
+      // that the markdown processor will assign the same id, breaking TOC anchors.
+      const baseId = h.id || slugify(h.textContent || '');
+      let id = baseId;
+      let suffix = 2;
+      while (usedIds.has(id)) {
+        id = `${baseId}-${suffix}`;
+        suffix += 1;
+      }
+      if (h.id !== id) {
         h.id = id;
       }
       usedIds.add(id);

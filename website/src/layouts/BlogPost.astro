@@ -276,29 +276,38 @@ const breadcrumbJsonLd = JSON.stringify({
   }
 
   /* Skip-link for keyboard users to reach the desktop TOC.
-     Visible only when focused; in DOM order it sits at the top of .blog-post-main,
-     before the back-link, so Tab from page chrome lands here first. */
+     Removed from focus order entirely below 1080px (where the sidebar is hidden) and on
+     TOC-less posts (where BlogSidebar's script adds .toc-hidden to the <html> element).
+     Otherwise visible only when focused. */
   .skip-to-toc {
-    position: absolute;
-    left: -9999px;
-    top: auto;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
+    display: none;
   }
-  .skip-to-toc:focus {
-    position: static;
-    width: auto;
-    height: auto;
-    display: inline-block;
-    padding: 8px 14px;
-    margin-bottom: 16px;
-    background: var(--accent);
-    color: #fff;
-    font-size: 13px;
-    font-weight: 600;
-    text-decoration: none;
-    border-radius: 6px;
+  @media (min-width: 1080px) {
+    .skip-to-toc {
+      display: inline-block;
+      position: absolute;
+      left: -9999px;
+      top: auto;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+    }
+    .skip-to-toc:focus {
+      position: static;
+      width: auto;
+      height: auto;
+      padding: 8px 14px;
+      margin-bottom: 16px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+      border-radius: 6px;
+    }
+    :root.toc-hidden .skip-to-toc {
+      display: none;
+    }
   }
 
   .sr-only {
