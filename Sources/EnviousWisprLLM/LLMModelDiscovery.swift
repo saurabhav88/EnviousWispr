@@ -198,6 +198,7 @@ public struct LLMModelDiscovery: Sendable {
       "model": modelID,
       "messages": [["role": "user", "content": "Hi"]],
       "max_tokens": 5,
+      "store": false,
     ]
 
     guard let url = URL(string: "https://api.openai.com/v1/chat/completions") else {
