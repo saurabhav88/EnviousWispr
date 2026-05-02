@@ -1,0 +1,473 @@
+{
+  "reader_guide": "Start with `refactor_targets`: those are the deduplicated engineering moves behind the per-dimension grades. Prioritize Medium severity with High confidence first because those findings are directly source-backed and have clear blast radius. Medium confidence findings still matter, but they need one targeted runtime or unit reproduction before they become merge-blocking work. The three Static Risk dimensions are provisional by definition: performance, lifecycle, and security posture require runtime validation with Instruments, heart-path benchmarks, network inspection, and release-build checks. Concurrency claims are intentionally conservative in this report; I found strong positive concurrency patterns and did not promote a race claim without a concrete interleaving. The phased roadmap is dependency-ordered, not preference-ordered: Phase 1 contains changes that stand alone, later phases depend on those surfaces being narrowed first. Treat clean dimensions as “no source-proven violation found in this static pass,” not as proof that runtime behavior is perfect.",
+  "overall_grade": {
+    "letter": "C",
+    "rationale": "This is shippable product engineering with real architecture, real isolation work, and several senior patterns. It is not AI slop, but it still carries central-coordinator debt, broad mutable API exposure, and a few failure-path gaps that deserve tracked cleanup.",
+    "confidence": "Medium",
+    "confidence_rationale": "I read the rubric files, module map, pipeline mechanics, package graph, source inventory, high-risk source paths, and sampled tests for coverage evidence. I did not run the app, benchmarks, tests, Instruments, or CI because this audit was static and the sandbox is read-only."
+  },
+  "dimensions": [
+    {
+      "name": "Architecture integrity",
+      "scale_type": "letter",
+      "grade": "C",
+      "justification": "The package graph is clean and the dependency-direction script reports no module-direction violations. The main architectural debt is still the app shell: `AppState` imports almost every product module and owns settings, permissions, audio, ASR, keychain, hotkeys, benchmark, overlay, setup, telemetry, both pipelines, transcript history, custom words, discovery, and AI availability. This is not a broken design, but it is still a central coordination mass that the project’s own anti-god-object rule warns against.",
+      "best_example": {
+        "file": "Package.swift",
+        "line_range": "L73-L87",
+        "snippet": "    .target(\n      name: \"EnviousWisprPipeline\",\n      dependencies: [\n        \"EnviousWisprCore\",\n        \"EnviousWisprASR\",\n        \"EnviousWisprAudio\",",
+        "why_exemplary": "The pipeline target depends downward through named modules instead of importing app/view state, and the local dependency-direction script returned clean across all modules."
+      },
+      "worst_violation": {
+        "file": "Sources/EnviousWispr/App/AppState.swift",
+        "line_range": "L14-L24",
+        "snippet": "  // Settings\n  var settings = SettingsManager()\n\n  // Sub-systems\n  let permissions = PermissionsService()\n  let audioCapture: any AudioCaptureInterface",
+        "rule_violated": ".claude/rules/architecture-rules.md §Anti-God-Object and §State Ownership",
+        "severity": "MEDIUM",
+        "confidence": "High",
+        "confidence_rationale": "The stored properties and imports show `AppState` directly owning many unrelated domains. The architecture knowledge file also names `AppState` as current debt, but this finding stands on the source lines.",
+        "counterfactual": "Keep `AppState` as the composition root only.\nMove hotkey-flow decisions into a recording coordinator.\nMove display-only derived state into view-facing adapters.\nKeep pipeline ownership and settings fanout behind narrow methods.",
+        "counterfactual_rationale": "This follows the existing extracted-coordinator pattern visible in `Sources/EnviousWispr/App/PipelineSettingsSync.swift:L9-L13`, where one narrow owner handles one live settings concern.",
+        "falsifiability": "Add a new per-recording setting that changes paste behavior. If implementation requires edits in `AppState`, `PipelineSettingsSync`, and both pipeline files instead of a single local owner plus tests, the centralization debt is exposed.",
+        "concurrency_interleaving": "N/A"
+      },
+      "top_refactor_target_ids": [
+        "REF-01",
+        "REF-02"
+      ]
+    },
+    {
+      "name": "Concurrency discipline",
+      "scale_type": "letter",
+      "grade": "B",
+      "justification": "The codebase shows deliberate Swift 6 isolation work: audio/XPC callbacks hop back to the main actor, pre-roll avoids callbacks under locks, and async recovery paths use token gates. I did not find a source-proven concurrency bug with a defensible interleaving in this static pass. Manual re-verification is still needed around hotkey cancellation and XPC callback timing because those are runtime interleavings.",
+      "best_example": {
+        "file": "Sources/EnviousWisprAudio/PreRollForwarder.swift",
+        "line_range": "L61-L65",
+        "snippet": "  /// Route converted audio samples. Called from the audio thread on every tap callback.\n  ///\n  /// Lock hold time is minimal: mode check + memcpy (preRolling/activating) or pointer\n  /// copy (capturing). Callbacks are invoked OUTSIDE the lock.\n  func route(samples: [Float], level: Float, buffer: AVAudioPCMBuffer) {",
+        "why_exemplary": "This is the right shape for audio-thread code: bounded lock work, no callback execution inside the lock, and a comment that states the real-time constraint plainly."
+      },
+      "worst_violation": {
+        "file": "NONE",
+        "line_range": "L0-L0",
+        "snippet": "No violation found.",
+        "rule_violated": "No violation found in this dimension.",
+        "severity": "LOW",
+        "confidence": "High",
+        "confidence_rationale": "I inspected high-risk concurrency patterns including audio-thread forwarding, XPC nonisolated handlers, `Task` usage, `OSAllocatedUnfairLock`, and actor isolation. I did not find a race claim that met the required concrete-interleaving bar.",
+        "counterfactual": "No violation found in this dimension.",
+        "counterfactual_rationale": "No violation found in this dimension.",
+        "falsifiability": "Run a stress test that alternates PTT press/release, backend switch, and XPC service kill while recording 100 times; a real concurrency defect would show stuck recording state, duplicate stop, missing paste, or leaked capture.",
+        "concurrency_interleaving": "N/A"
+      },
+      "top_refactor_target_ids": []
+    },
+    {
+      "name": "Error handling & observability",
+      "scale_type": "letter",
+      "grade": "C",
+      "justification": "The codebase has strong observability wrappers, Sentry redaction, structured pipeline breadcrumbs, and explicit heart-path error categories. The weak spot is that app-level heart controls still erase thrown pipeline errors with `try?` in several user-action paths. That is a contract smell: the protocol was widened to surface failures, but the caller discards them.",
+      "best_example": {
+        "file": "Sources/EnviousWisprServices/SentryBreadcrumb.swift",
+        "line_range": "L137-L149",
+        "snippet": "  public static func captureError(\n    _ error: any Error,\n    category: ErrorCategory,\n    stage: String,\n    extra: [String: Any]? = nil,",
+        "why_exemplary": "Handled errors flow through one typed helper with category, stage, extras, and optional recording snapshot instead of scattered ad hoc logging."
+      },
+      "worst_violation": {
+        "file": "Sources/EnviousWispr/App/AppState.swift",
+        "line_range": "L571-L574",
+        "snippet": "      // `.toggleRecording` is declared throws on the protocol, but today the\n      // underlying implementation doesn't throw. `try?` keeps the surface\n      // unchanged. If a future event grows a meaningful throw we revisit here.\n      try? await active.handle(event: .toggleRecording(makeDictationSessionConfig()))",
+        "rule_violated": ".claude/rules/architecture-rules.md §Heart & Limbs and .claude/rules/validation-discipline.md §5 Validate automated review findings against actual code",
+        "severity": "MEDIUM",
+        "confidence": "Medium",
+        "confidence_rationale": "The source proves the error is discarded. Current concrete pipeline implementations do not throw on `.toggleRecording`, so the current runtime defect requires a throwing implementation or later event change.",
+        "counterfactual": "Replace `try?` with `do/catch` at AppState heart-control boundaries.\nOn error, hide recording UI, clear lock state, call `setExternalError`, and emit a typed Sentry category.\nAdd one fake-pipeline unit test that throws on toggle.",
+        "counterfactual_rationale": "This matches the existing explicit preWarm handling in `Sources/EnviousWispr/App/AppState.swift:L532-L557`, where errors abort start and surface a user-visible failure.",
+        "falsifiability": "Inject a fake `DictationPipeline` whose `handle(.toggleRecording)` throws `XPCTransportError.serviceUnreachable`; call `toggleRecording()`, then assert the overlay is hidden, lock state is false, and a pipeline error is visible instead of a silent no-op.",
+        "concurrency_interleaving": "N/A"
+      },
+      "top_refactor_target_ids": [
+        "REF-03",
+        "REF-04"
+      ]
+    },
+    {
+      "name": "Testability",
+      "scale_type": "letter",
+      "grade": "B",
+      "justification": "There is meaningful testable design: injected log sinks, internal test initializers, fakeable protocols, and architecture ceiling tests. The main weakness is global persistence in `SettingsManager`, where every property writes directly to `UserDefaults.standard` and fires synchronous callbacks. That makes isolated settings tests and state-reset discipline harder than needed.",
+      "best_example": {
+        "file": "Sources/EnviousWisprPipeline/TextProcessingRunner.swift",
+        "line_range": "L20-L29",
+        "snippet": "/// Phase G1+G2: error-surface dispatch reads `step.errorSurfacePolicy` instead\n/// of matching `step.name == \"LLM Polish\"`, and the log sink is injectable via\n/// `PipelineLogging` so tests can verify side effects without disk reads.\n@MainActor\ninternal final class TextProcessingRunner {",
+        "why_exemplary": "The runner separates policy from string matching and injects logging, which lets tests verify behavior without reading debug logs."
+      },
+      "worst_violation": {
+        "file": "Sources/EnviousWisprServices/SettingsManager.swift",
+        "line_range": "L49-L69",
+        "snippet": "  public var selectedBackend: ASRBackendType {\n    didSet {\n      UserDefaults.standard.set(selectedBackend.rawValue, forKey: \"selectedBackend\")\n      onChange?(.selectedBackend)\n    }\n  }",
+        "rule_violated": ".claude/rules/validation-discipline.md §7 Use existing harness first and testability split principle",
+        "severity": "LOW",
+        "confidence": "High",
+        "confidence_rationale": "The snippet shows direct global persistence in a setter. This is a testability issue rather than a user-facing defect.",
+        "counterfactual": "Inject a small settings store abstraction or `UserDefaults` instance.\nKeep production defaulting to `.standard`.\nGive tests a suite-backed store and explicit reset.\nKeep `onChange` behavior unchanged.",
+        "counterfactual_rationale": "This mirrors `TranscriptStore` keeping production defaults while exposing an internal directory initializer for tests in `Sources/EnviousWisprStorage/TranscriptStore.swift:L24-L35`.",
+        "falsifiability": "Run two settings tests in randomized order where one changes `selectedBackend` and another asserts the launch default. Without a suite-scoped store and reset, order dependence appears through `UserDefaults.standard`.",
+        "concurrency_interleaving": "N/A"
+      },
+      "top_refactor_target_ids": [
+        "REF-06",
+        "REF-01"
+      ]
+    },
+    {
+      "name": "Code Hygiene & Maintainability",
+      "scale_type": "letter",
+      "grade": "C",
+      "justification": "The code contains many thoughtful local extractions, but several production files remain too large for easy review and change safety. The largest files include two 1,300-line pipelines, a 954-line app state, and 1,000-line SwiftUI views. The maintainability issue is not style; it is the cost of proving changes safe in files that mix orchestration, state, telemetry, and UI glue.",
+      "best_example": {
+        "file": "Sources/EnviousWispr/App/CustomWordsPropagator.swift",
+        "line_range": "L63-L75",
+        "snippet": "// MARK: - Wiring helper (extracted for testability)\n\n/// Wires a `CustomWordsPropagator` to its consumers and a coordinator using\n/// AppState's exact init ordering: seed via `update`, register all consumers\n/// (each receives the seed via initial-sync), then assign the coordinator's",
+        "why_exemplary": "This extraction names the ordering contract and makes the wiring testable instead of burying it in `AppState`."
+      },
+      "worst_violation": {
+        "file": "Sources/EnviousWispr/App/AppState.swift",
+        "line_range": "L37-L47",
+        "snippet": "  // Pipelines — initialized after sub-systems\n  let pipeline: TranscriptionPipeline\n  let whisperKitPipeline: WhisperKitPipeline\n\n  // Phase A (#196) — per-pipeline state-change behavior absorbed from the\n  // onStateChange closures. Each handler owns the effect execution; AppState",
+        "rule_violated": ".claude/rules/architecture-rules.md §Anti-God-Object and §State Ownership",
+        "severity": "MEDIUM",
+        "confidence": "High",
+        "confidence_rationale": "The source shows `AppState` still owns both concrete pipelines and cross-pipeline state-change behavior. File inventory also shows `AppState.swift` at 954 lines.",
+        "counterfactual": "Extract recording-session command handling from `AppState`.\nKeep only construction and user-facing derived state in `AppState`.\nMove cross-pipeline warning and hotkey ordering into a focused owner with tests.",
+        "counterfactual_rationale": "The existing `CustomWordsPropagator` pattern at `Sources/EnviousWispr/App/CustomWordsPropagator.swift:L63-L75` shows how ordering-sensitive AppState wiring can be extracted safely.",
+        "falsifiability": "Ask a new engineer to change post-completion warning timing. If they need to reason through `AppState`, both pipelines, overlay, and telemetry rather than one focused owner plus tests, the maintainability violation is active.",
+        "concurrency_interleaving": "N/A"
+      },
+      "top_refactor_target_ids": [
+        "REF-01",
+        "REF-06"
+      ]
+    },
+    {
+      "name": "API surface",
+      "scale_type": "letter",
+      "grade": "C",
+      "justification": "The codebase uses real modules, but the cross-module API surface is still wider than ideal. I counted 833 `public` or `package` declarations across the non-app modules, and some of that exposure leaks implementation objects instead of narrow commands. The clearest case is `TranscriptPolishService` exposing its mutable `LLMPolishStep` so app-level settings code can reach through and mutate internals.",
+      "best_example": {
+        "file": "Sources/EnviousWisprStorage/TranscriptStore.swift",
+        "line_range": "L24-L31",
+        "snippet": "  // Tests only. Reached via `@testable import EnviousWisprStorage`.\n  // Production uses the default `init()` so the store always points at\n  // `AppConstants.appSupportURL/transcripts`. Keeping this `internal`\n  // means a production call site cannot mis-point the store. Periphery",
+        "why_exemplary": "This is narrow visibility with an explicit test seam: production cannot misuse the alternate initializer, but tests still get control."
+      },
+      "worst_violation": {
+        "file": "Sources/EnviousWisprPipeline/TranscriptPolishService.swift",
+        "line_range": "L28-L33",
+        "snippet": "  // MARK: - Config Target\n\n  /// LLM configuration target for PipelineSettingsSync.\n  /// Mutable properties are synced by the settings system.\n  /// At call time, config is snapshotted into an immutable value for request safety.\n  public let llmPolishStep: LLMPolishStep",
+        "rule_violated": ".claude/rules/architecture-rules.md §Access Control",
+        "severity": "MEDIUM",
+        "confidence": "High",
+        "confidence_rationale": "The snippet exposes a mutable implementation object publicly, and `PipelineSettingsSync` directly mutates its properties.",
+        "counterfactual": "Make `llmPolishStep` private.\nExpose `applySettingsSnapshot(_:)` or `configurePolisher(provider:model:instructions:style:thinking:)`.\nKeep request-time snapshotting inside `TranscriptPolishService`.\nTest that settings changes update re-polish behavior through the narrow method.",
+        "counterfactual_rationale": "This follows the access-control rule and matches the narrow test-only initializer pattern in `Sources/EnviousWisprStorage/TranscriptStore.swift:L24-L35`.",
+        "falsifiability": "Create a caller in another module that sets `polishService.llmPolishStep.onWillProcess` or changes `backend` mid-enhancement; the current public surface permits that misuse.",
+        "concurrency_interleaving": "N/A"
+      },
+      "top_refactor_target_ids": [
+        "REF-02"
+      ]
+    },
+    {
+      "name": "Performance & latency (Static Risk Assessment)",
+      "scale_type": "risk",
+      "grade": "Medium Risk",
+      "justification": "Static code shows serious attention to hot-path latency: pre-roll is preallocated, ASR runs in XPC, streaming rescue exists, and the app avoids callbacks under audio locks. The main static risk is the LLM prewarm path: it sends real one-token inference requests on launch, foreground activation, and while ASR runs after capture. Runtime benchmarks and provider logs are required to decide whether this is a net win or wasted network/model work.",
+      "best_example": {
+        "file": "Sources/EnviousWisprPipeline/TranscriptionPipeline.swift",
+        "line_range": "L1193-L1199",
+        "snippet": "  /// Attempt streaming finalize, fall back to batch if streaming fails or returns empty\n  /// and VAD detected speech. Heart-level rescue: captured samples are already available,\n  /// and batch uses a separate AsrManager from streaming's SlidingWindowAsrManager.\n  private func transcribeWithStreamingRescue(\n    samples: [Float],",
+        "why_exemplary": "This protects latency and correctness by trying the fast streaming path while preserving a batch rescue path for heart completion."
+      },
+      "worst_violation": {
+        "file": "Sources/EnviousWisprLLM/LLMNetworkSession.swift",
+        "line_range": "L37-L43",
+        "snippet": "  /// Pre-warm the LLM backend with a real lightweight inference request.\n  /// Warms both the transport layer (QUIC/TLS) AND the provider's model routing.\n  /// Silently ignores errors — pre-warming is best-effort.\n  public func preWarmModel(\n    provider: LLMProvider, model: String, keychainManager: KeychainManager",
+        "rule_violated": ".claude/rules/architecture-rules.md §Heart & Limbs limb resource constraint and .claude/rules/validation-discipline.md §9 Test the cold path",
+        "severity": "MEDIUM",
+        "confidence": "Medium",
+        "confidence_rationale": "The source proves real inference prewarm exists and is called on user flows. Runtime provider metrics are required to prove net latency impact.",
+        "counterfactual": "Add a per-provider prewarm rate limiter and in-flight coalescing.\nSkip prewarm when the provider/model has warmed recently.\nRecord token cost, status, and effect on the following polish call.\nDisable prewarm automatically when it fails or adds no measured benefit.",
+        "counterfactual_rationale": "This applies the cold-path measurement rule in `validation-discipline.md §9` and keeps the limb from consuming resources without evidence.",
+        "falsifiability": "Configure OpenAI polish, launch the app, foreground it five times, then dictate three times. Provider logs should show whether eight one-token warmup calls occurred and whether the next polish latency improved versus a no-prewarm control.",
+        "concurrency_interleaving": "N/A"
+      },
+      "top_refactor_target_ids": [
+        "REF-05",
+        "REF-04"
+      ]
+    },
+    {
+      "name": "Resource lifecycle (Static Risk Assessment)",
+      "scale_type": "risk",
+      "grade": "Medium Risk",
+      "justification": "Most resource lifecycles are explicitly handled: hotkeys unregister on termination, XPC invalidation paths nil connections, audio sources cancel work items, and pipelines cancel VAD workers. One concrete leak path remains in the ASR XPC progress polling path: an error thrown during model load skips `stopProgressPolling()`. This is a static resource risk that a targeted fake-XPC test can confirm.",
+      "best_example": {
+        "file": "Sources/EnviousWispr/App/AppDelegate.swift",
+        "line_range": "L461-L472",
+        "snippet": "  func applicationWillTerminate(_ notification: Notification) {\n    if let observer = windowCloseObserver {\n      NotificationCenter.default.removeObserver(observer)\n      windowCloseObserver = nil\n    }\n    if let observer = onboardingCloseObserver {",
+        "why_exemplary": "Termination explicitly removes observers and later stops hotkeys and invalidates the shared LLM network session, which is the right lifecycle shape for a menu-bar app."
+      },
+      "worst_violation": {
+        "file": "Sources/EnviousWisprASR/ASRManagerProxy.swift",
+        "line_range": "L65-L87",
+        "snippet": "      // Start polling the XPC service for progress at 4 Hz.\n      self.startProgressPolling()\n\n      try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in\n        let guard_ = OneShotContinuationASR(cont)\n        self.serviceProxy { proxy in",
+        "rule_violated": ".claude/rules/architecture-rules.md §Audio/ASR Danger Zones and .claude/rules/validation-discipline.md §8 No blame toolchain",
+        "severity": "MEDIUM",
+        "confidence": "High",
+        "confidence_rationale": "The function starts a repeating timer before an awaited throwing operation and only stops polling after that operation succeeds. No `defer` exists inside the task.",
+        "counterfactual": "Add `defer { self.stopProgressPolling() }` immediately after `startProgressPolling()`.\nClear progress state in both success and failure branches.\nAdd a fake service test that returns an error from `loadModel`.",
+        "counterfactual_rationale": "This is the same cleanup-on-all-paths discipline already used by `TranscriptStore.save` cleanup in `Sources/EnviousWisprStorage/TranscriptStore.swift:L62-L65`.",
+        "falsifiability": "Stub the ASR XPC service so `loadModel` calls its completion with an error. After `loadModel()` throws, assert `progressPollTimer` is nil or observe that progress polling keeps firing at 4 Hz.",
+        "concurrency_interleaving": "N/A"
+      },
+      "top_refactor_target_ids": [
+        "REF-04",
+        "REF-05"
+      ]
+    },
+    {
+      "name": "Security & privacy (Static Risk Assessment)",
+      "scale_type": "risk",
+      "grade": "Low Risk",
+      "justification": "The static privacy posture is stronger than average for a dictation app: transcript files are owner-only, Spotlight indexing is disabled, Sentry/PostHog redaction exists, and telemetry uses counts rather than transcript text. I found no source-proven shipped-release privacy leak in this pass. This remains a static judgment; release-build log behavior and telemetry payloads need external verification.",
+      "best_example": {
+        "file": "Sources/EnviousWisprStorage/TranscriptStore.swift",
+        "line_range": "L4-L13",
+        "snippet": "/// Persists transcripts as JSON files in Application Support.\n///\n/// Privacy posture (V3 audit #561 / #562):\n/// - Directory created at 0700 (owner-only access). Re-enforced at every init\n///   in case a backup restore or user action loosened permissions.",
+        "why_exemplary": "The storage layer states and implements concrete transcript privacy controls: owner-only directory, owner-only files, and Spotlight exclusion."
+      },
+      "worst_violation": {
+        "file": "NONE",
+        "line_range": "L0-L0",
+        "snippet": "No violation found.",
+        "rule_violated": "No violation found in this dimension.",
+        "severity": "LOW",
+        "confidence": "High",
+        "confidence_rationale": "I inspected Sentry redaction, transcript storage, key handling call sites, and telemetry search results. I found no source-backed shipped-release privacy leak.",
+        "counterfactual": "No violation found in this dimension.",
+        "counterfactual_rationale": "No violation found in this dimension.",
+        "falsifiability": "Run a release build with a canary transcript containing an email address, API-key-shaped string, and long personal sentence; trigger Sentry and PostHog events, then verify no payload contains the canary.",
+        "concurrency_interleaving": "N/A"
+      },
+      "top_refactor_target_ids": []
+    }
+  ],
+  "refactor_targets": [
+    {
+      "id": "REF-01",
+      "title": "Continue AppState decomposition into focused recording and display owners",
+      "dimension": "Architecture integrity; Code Hygiene & Maintainability; Testability",
+      "tier": "REFACTOR",
+      "estimated_loc_delta": -300,
+      "rule_violated": ".claude/rules/architecture-rules.md §Anti-God-Object and §State Ownership",
+      "severity": "MEDIUM",
+      "confidence": "High",
+      "fix_shape": "Move recording command orchestration, cross-pipeline warning timing, and display-state derivation out of `AppState` into one or two focused owners. Keep construction in `AppState`, but make behavior changes land in smaller tested files.",
+      "depends_on": []
+    },
+    {
+      "id": "REF-02",
+      "title": "Hide TranscriptPolishService internals behind a narrow configuration API",
+      "dimension": "API surface; Architecture integrity",
+      "tier": "MEDIUM",
+      "estimated_loc_delta": 80,
+      "rule_violated": ".claude/rules/architecture-rules.md §Access Control",
+      "severity": "MEDIUM",
+      "confidence": "High",
+      "fix_shape": "Make `llmPolishStep` private and expose a method that applies the few settings the re-polish service needs. Keep snapshot creation inside `TranscriptPolishService` so other modules cannot mutate callbacks or backend routing.",
+      "depends_on": []
+    },
+    {
+      "id": "REF-03",
+      "title": "Replace AppState heart-control try? calls with explicit error handling",
+      "dimension": "Error handling & observability",
+      "tier": "SMALL",
+      "estimated_loc_delta": 45,
+      "rule_violated": ".claude/rules/architecture-rules.md §Heart & Limbs",
+      "severity": "MEDIUM",
+      "confidence": "Medium",
+      "fix_shape": "Wrap `handle(event:)` calls in `do/catch` at AppState heart-control boundaries. On failure, clear transient UI state, surface a pipeline error, and emit a typed breadcrumb.",
+      "depends_on": []
+    },
+    {
+      "id": "REF-04",
+      "title": "Guarantee ASR XPC progress polling cleanup on model-load failure",
+      "dimension": "Resource lifecycle (Static Risk Assessment); Performance & latency (Static Risk Assessment); Error handling & observability",
+      "tier": "SMALL",
+      "estimated_loc_delta": 10,
+      "rule_violated": ".claude/rules/architecture-rules.md §Audio/ASR Danger Zones",
+      "severity": "MEDIUM",
+      "confidence": "High",
+      "fix_shape": "Add a `defer` around `startProgressPolling()` in `ASRManagerProxy.loadModel()`. Cover the throwing XPC completion path with a fake service or injectable polling hook.",
+      "depends_on": []
+    },
+    {
+      "id": "REF-05",
+      "title": "Rate-limit and measure real-inference LLM prewarm",
+      "dimension": "Performance & latency (Static Risk Assessment); Resource lifecycle (Static Risk Assessment)",
+      "tier": "MEDIUM",
+      "estimated_loc_delta": 80,
+      "rule_violated": ".claude/rules/architecture-rules.md §Heart & Limbs limb resource constraint and .claude/rules/validation-discipline.md §9",
+      "severity": "MEDIUM",
+      "confidence": "Medium",
+      "fix_shape": "Add in-flight coalescing, a recent-warm timestamp, and telemetry that links prewarm to the next polish call. Keep the feature only if cold-path measurements show user-visible benefit.",
+      "depends_on": []
+    },
+    {
+      "id": "REF-06",
+      "title": "Inject settings persistence instead of hard-wiring UserDefaults.standard",
+      "dimension": "Testability; Code Hygiene & Maintainability",
+      "tier": "MEDIUM",
+      "estimated_loc_delta": 150,
+      "rule_violated": ".claude/rules/validation-discipline.md testability split principle",
+      "severity": "LOW",
+      "confidence": "High",
+      "fix_shape": "Give `SettingsManager` a store or `UserDefaults` dependency with `.standard` as the production default. Tests get a suite-backed store and explicit reset while production behavior remains unchanged.",
+      "depends_on": []
+    }
+  ],
+  "phased_roadmap": [
+    {
+      "phase": 1,
+      "title": "Small Correctness Fixes",
+      "refactor_ids": [
+        "REF-03",
+        "REF-04"
+      ],
+      "rationale": "These fixes are local, have no dependency on broader architecture work, and close concrete failure-path gaps first."
+    },
+    {
+      "phase": 2,
+      "title": "Narrow Mutable Surfaces",
+      "refactor_ids": [
+        "REF-02",
+        "REF-06"
+      ],
+      "rationale": "Narrowing the re-polish API and settings persistence reduces cross-module mutation before larger decomposition starts."
+    },
+    {
+      "phase": 3,
+      "title": "Measure Runtime Risk",
+      "refactor_ids": [
+        "REF-05"
+      ],
+      "rationale": "LLM prewarm policy needs measurement after the easy lifecycle and API fixes are out of the way. The output is a keep, throttle, or remove decision backed by provider and latency data."
+    },
+    {
+      "phase": 4,
+      "title": "Decompose AppState",
+      "refactor_ids": [
+        "REF-01"
+      ],
+      "rationale": "The large coordinator refactor benefits from the narrower APIs created earlier, which lowers the chance that decomposition creates another broad manager."
+    }
+  ],
+  "strengths": [
+    {
+      "file": "Sources/EnviousWisprAudio/PreRollForwarder.swift",
+      "line_range": "L61-L65",
+      "pattern_name": "Audio-thread lock discipline",
+      "why_preserve": "The code explicitly limits lock work and runs callbacks outside the lock; this is the right pattern for real-time audio paths. Snippet: `Lock hold time is minimal... Callbacks are invoked OUTSIDE the lock.`"
+    },
+    {
+      "file": "Sources/EnviousWisprPipeline/TextProcessingRunner.swift",
+      "line_range": "L91-L120",
+      "pattern_name": "Heart continues when limb processing fails",
+      "why_preserve": "Text-processing failures log and continue with input text, preserving raw transcription delivery. Snippet: `catch { ... \"skipping\" ... // Heart & Limbs: limb failed, continue with input text`."
+    },
+    {
+      "file": "Sources/EnviousWisprStorage/TranscriptStore.swift",
+      "line_range": "L37-L43",
+      "pattern_name": "Private transcript persistence",
+      "why_preserve": "Transcript writes use an owner-only temp file before rename, avoiding a permissions window around private dictation text. Snippet: `Writes to a temp file at 0600 first... avoids the brief world-readable window`."
+    },
+    {
+      "file": "Package.swift",
+      "line_range": "L73-L87",
+      "pattern_name": "Real module dependency direction",
+      "why_preserve": "The pipeline target depends on lower-level modules and no longer imports WhisperKit directly. This matches the architecture map and keeps ASR internals contained."
+    }
+  ],
+  "meta_recommendations": [
+    {
+      "recommendation": "Add a lightweight API-surface report to CI that counts `public` and `package` declarations by module and flags new public mutable implementation objects.",
+      "triggered_by": "REF-02 and the 833 cross-module public/package declarations found by static search."
+    },
+    {
+      "recommendation": "Add one failure-path unit test family for app-level heart controls using fake `DictationPipeline` implementations that throw on each event.",
+      "triggered_by": "REF-03: `AppState` discards `handle(event:)` errors even though the protocol is throwing."
+    },
+    {
+      "recommendation": "Add a fake-XPC lifecycle test for ASR model-load failure paths, including timer cleanup and progress reset.",
+      "triggered_by": "REF-04: `ASRManagerProxy.loadModel()` starts polling before a throwing continuation and stops only after success."
+    }
+  ],
+  "not_assessed": [
+    {
+      "area": "End-to-end heart-path completion on real macOS",
+      "reason": "Static source review cannot prove audio capture, ASR, paste, permissions, and target-app focus work together at runtime.",
+      "how_to_cover": "Run `scripts/heart-path-bench.sh --cold`, `scripts/heart-path-check.sh`, and Live UAT through `Tests/RuntimeUAT/wispr_eyes.py` on the signed app."
+    },
+    {
+      "area": "Performance and latency impact of LLM prewarm",
+      "reason": "Source proves real inference requests are sent, but source cannot prove latency benefit, token cost, provider throttling, or network contention.",
+      "how_to_cover": "Run A/B cold-path benchmarks with prewarm enabled and disabled, capture provider request logs, and compare next-polish p50/p95 latency."
+    },
+    {
+      "area": "Memory residency and leaks",
+      "reason": "Static review identifies lifecycle suspects but cannot measure retained ASR models, timers, XPC connections, or URLSession tasks.",
+      "how_to_cover": "Use Instruments Allocations/Leaks plus repeated backend switch, model load failure, dictation, and app foreground cycles."
+    },
+    {
+      "area": "Release-build privacy payloads",
+      "reason": "Static review found redaction and release logging gates, but payload contents require observing actual Sentry/PostHog events from a release build.",
+      "how_to_cover": "Use canary transcript strings and inspect Sentry/PostHog payloads from a signed release build with production configuration."
+    },
+    {
+      "area": "Concurrency interleavings around hotkeys and XPC callbacks",
+      "reason": "The code contains strong guards, but static review cannot exhaust event timing between key press/release, XPC interruption, backend switch, and audio callbacks.",
+      "how_to_cover": "Run a stress harness that randomizes PTT timing, service kills, backend switches, and device route changes while asserting no stuck recording state or missing paste."
+    },
+    {
+      "area": "Current CI and architecture-ceiling enforcement",
+      "reason": "I ran the local dependency-direction script, but I did not query GitHub Actions or run the full test suite.",
+      "how_to_cover": "Run `scripts/validate-pr.sh` or the project’s full CI lane and inspect architecture tests under `Tests/EnviousWisprTests/Architecture/`."
+    }
+  ],
+  "severity_confidence_distribution": {
+    "critical_high": 0,
+    "critical_medium": 0,
+    "critical_low": 0,
+    "high_high": 0,
+    "high_medium": 0,
+    "high_low": 0,
+    "medium_high": 3,
+    "medium_medium": 2,
+    "medium_low": 0,
+    "low_high": 1,
+    "low_medium": 0,
+    "low_low": 0
+  },
+  "internal_red_team": {
+    "least_confident_finding": {
+      "refactor_id_or_description": "REF-05: real-inference LLM prewarm as a performance risk",
+      "why_low_confidence": "The source proves warmup calls exist, but only runtime A/B data can show whether they improve or harm real dictation latency.",
+      "what_would_resolve_it": "A cold-path benchmark comparing prewarm enabled versus disabled, with provider request counts and next-polish latency tied to the same sessions."
+    },
+    "top_not_assessed_gap": {
+      "gap": "End-to-end heart-path runtime behavior across real audio, ASR, paste, permissions, and target-app focus.",
+      "runtime_test_required": "Run signed-app Live UAT using real microphone/speaker input across Parakeet and WhisperKit, with paste verification and logs captured for every stage.",
+      "why_this_matters_for_heart_limbs": "Heart/Limbs is a runtime doctrine: the code can look well layered while a permission prompt, XPC interruption, model load, or paste fallback still blocks the user from receiving raw text."
+    }
+  }
+}
