@@ -154,6 +154,27 @@ public final class TelemetryService {
       ])
   }
 
+  // MARK: - Audio System Events (issue #574)
+
+  /// Fired when an OS-level audio event (default-device change, capture-device
+  /// connect/disconnect) is observed during an active recording. Lets us
+  /// correlate route changes with active heart-path activity in PostHog so
+  /// future V2 Lane A scenarios are designed against actual user behavior.
+  ///
+  /// Idle-time events fire only as Sentry breadcrumbs (no PostHog event) so
+  /// we do not flood the dashboard with background route churn.
+  public func audioSystemEventDuringRecording(
+    event: String, backend: String, transport: String
+  ) {
+    PostHogSDK.shared.capture(
+      "audio.system_event_during_recording",
+      properties: [
+        "event": event,
+        "backend": backend,
+        "transport": transport,
+      ])
+  }
+
   // MARK: - Permissions
 
   public func permissionStatus(permission: String, status: String, context: String) {

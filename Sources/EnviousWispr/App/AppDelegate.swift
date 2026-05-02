@@ -1,13 +1,19 @@
 import AppKit
+import EnviousWisprASR
+import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprServices
 @preconcurrency import Sparkle
 import SwiftUI
 
+// Issue #574: `EnviousWisprAudio` and `EnviousWisprASR` were previously
+// DEBUG-only here for `DebugFaultEndpoint`. They are now needed in release
+// builds too because `AudioSystemEventReporter` (production telemetry)
+// references `AudioCaptureInterface` and `ASRManagerInterface` types from
+// those modules.
+
 #if DEBUG
-  import EnviousWisprASR
-  import EnviousWisprAudio
   import EnviousWisprPipeline
 #endif
 
@@ -46,6 +52,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// `applicationWillTerminate`. Compiled out of release entirely.
     private var debugFaultEndpoint: DebugFaultEndpoint?
   #endif
+
+  /// Production telemetry observer for OS-level audio events (issue #574).
+  /// Sentry breadcrumb on every fire; PostHog event on fire-during-recording.
+  /// Constructed in `applicationDidFinishLaunching` after AppState is ready;
+  /// torn down in `applicationWillTerminate` for clean observer removal.
+  private var audioSystemEventReporter: AudioSystemEventReporter?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     // Hide dock icon on launch — we're a menu bar utility.
@@ -174,6 +186,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         debugFaultEndpoint = endpoint
       }
     #endif
+
+    // Production telemetry: OS-level audio events (issue #574). Always on in
+    // release; ships to all users so we get cross-user data on what real
+    // devices/routes/connections users actually hit.
+    audioSystemEventReporter = AudioSystemEventReporter(
+      audioCapture: appState.audioCapture,
+      asrManager: appState.asrManager,
+      pipelineStateProvider: { [weak appState = self.appState] in
+        appState?.pipelineState ?? .idle
+      }
+    )
   }
 
   func applicationDidBecomeActive(_ notification: Notification) {
@@ -452,6 +475,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       debugFaultEndpoint?.stop()
       debugFaultEndpoint = nil
     #endif
+
+    // Issue #574: tear down audio-event observers cleanly.
+    audioSystemEventReporter = nil
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
