@@ -2,8 +2,11 @@
 V2 fault-injection harness for EnviousWispr (issue #291).
 
 Drives the DEBUG-only `DebugFaultEndpoint` in the running app via a localhost
-TCP listener. The app must be launched with `EW_FAULT_INJECTION=1` set in its
-environment so the endpoint starts; without it, the endpoint is inert.
+TCP listener. To run end-to-end: invoke the `wispr-rebuild-debug` skill, which
+compiles `-c debug` (so `#if DEBUG` seams are present) and launches the debug
+bundle with `EW_FAULT_INJECTION=1` set via `open --env`. Without both gates
+satisfied (DEBUG build AND env var), the endpoint is inert. The release path
+(`scripts/bundle-dev.sh`) does NOT contain the endpoint — by design.
 
 Wire protocol (per `Sources/EnviousWispr/App/Debug/DebugFaultEndpoint.swift`):
 
@@ -123,12 +126,14 @@ def _find_app_pid() -> int:
 
 def _read_token(pid: int) -> str:
     """Read the per-launch fault token. Raises if the file is missing — that
-    means the app was launched without `EW_FAULT_INJECTION=1`."""
+    means the app was not launched via `wispr-rebuild-debug` (or equivalent
+    debug-bundle path that sets `EW_FAULT_INJECTION=1`)."""
     path = TOKEN_DIR / f"fault-token-{pid}"
     if not path.exists():
         raise RuntimeError(
-            f"fault token not found at {path} — launch {APP_NAME} with "
-            "`EW_FAULT_INJECTION=1` in its environment so the DEBUG endpoint starts"
+            f"fault token not found at {path} — invoke the `wispr-rebuild-debug` "
+            "skill to build and launch the debug bundle with EW_FAULT_INJECTION=1 set. "
+            "The release path (`scripts/bundle-dev.sh`) does not contain the endpoint."
         )
     return path.read_text(encoding="utf-8").strip()
 

@@ -4,7 +4,7 @@ Standing menu of runtime fault scenarios for EnviousWispr (issue #291). On-deman
 
 ## Prerequisites
 
-1. App built in DEBUG mode and launched with `EW_FAULT_INJECTION=1` set in its environment. The `DebugFaultEndpoint` only starts under that env var.
+1. **Build and launch via `wispr-rebuild-debug`.** The skill compiles `-c debug` (so `#if DEBUG` seams are present) and launches `build/EnviousWispr Local.app` with `EW_FAULT_INJECTION=1` set via `open --env`. The `DebugFaultEndpoint` only starts when both gates are satisfied (DEBUG build + env var). Plain `scripts/bundle-dev.sh` produces a release build that does NOT contain the V2 endpoint — by design.
 2. `Tests/RuntimeUAT/` requirements (Accessibility permission, mic, OpenAI key for TTS) — see `README.md`.
 3. Per-launch token written by the app at `~/Library/Logs/EnviousWispr/fault-token-<pid>` (`0600` perms).
 
