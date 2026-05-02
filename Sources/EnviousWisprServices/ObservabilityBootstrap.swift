@@ -108,35 +108,60 @@ public enum ObservabilityBootstrap {
 
         // Redact extra context values
         if let extra = event.extra {
-          var redactedExtra: [String: Any] = [:]
-          for (key, value) in extra {
-            if let str = value as? String {
-              redactedExtra[key] = ObservabilityBootstrap.redactString(str)
-            } else {
-              redactedExtra[key] = value
-            }
-          }
-          event.extra = redactedExtra
+          event.extra = ObservabilityBootstrap.redactDict(extra)
         }
 
-        // Redact breadcrumb messages
+        // Redact breadcrumb messages and data
         if let crumbs = event.breadcrumbs {
           for crumb in crumbs {
             if let msg = crumb.message {
               crumb.message = ObservabilityBootstrap.redactString(msg)
             }
             if let data = crumb.data {
-              var redactedData: [String: Any] = [:]
-              for (key, value) in data {
-                if let str = value as? String {
-                  redactedData[key] = ObservabilityBootstrap.redactString(str)
-                } else {
-                  redactedData[key] = value
-                }
-              }
-              crumb.data = redactedData
+              crumb.data = ObservabilityBootstrap.redactDict(data)
             }
           }
+        }
+
+        // Redact exception value + mechanism data. Sentry's native crash
+        // handler captures the formatted exception message into
+        // `event.exceptions[].value`; without this pass, a future
+        // `fatalError("transcript=\(text)")` would leak. Verified during V3
+        // audit (#566): no current call sites interpolate transcript-typed
+        // values into fatal traps, but defense-in-depth — a regression
+        // would be invisible until users started crashing.
+        if let exceptions = event.exceptions {
+          for exception in exceptions {
+            if let value = exception.value {
+              exception.value = ObservabilityBootstrap.redactString(value)
+            }
+            if let mechData = exception.mechanism?.data {
+              exception.mechanism?.data = ObservabilityBootstrap.redactDict(mechData)
+            }
+          }
+        }
+
+        // Redact context dictionaries (arbitrary nested string values).
+        // Current contexts are diagnostic counts/statuses, but context is
+        // the natural place where future diagnostic strings would land —
+        // protect it now so a future change doesn't bypass redaction.
+        if let context = event.context {
+          var redactedContext: [String: [String: Any]] = [:]
+          for (key, inner) in context {
+            redactedContext[key] = ObservabilityBootstrap.redactDict(inner)
+          }
+          event.context = redactedContext
+        }
+
+        // Redact tag values. Current tags are low-cardinality strings
+        // (build_type, app_version), but cheap defense-in-depth against
+        // a future tag whose value bleeds transcript-shaped data.
+        if let tags = event.tags {
+          var redactedTags: [String: String] = [:]
+          for (key, value) in tags {
+            redactedTags[key] = ObservabilityBootstrap.redactString(value)
+          }
+          event.tags = redactedTags
         }
 
         return event
@@ -147,6 +172,22 @@ public enum ObservabilityBootstrap {
     SentrySDK.configureScope { scope in
       scope.setTag(value: environment == "development" ? "debug" : "release", key: "app.build_type")
     }
+  }
+
+  /// Redact every String value in a `[String: Any]` dictionary, leaving
+  /// non-string values untouched. Shared by Sentry beforeSend redaction
+  /// of `event.extra`, `breadcrumb.data`, `event.context`, and
+  /// `exception.mechanism.data`.
+  static func redactDict(_ input: [String: Any]) -> [String: Any] {
+    var output: [String: Any] = [:]
+    for (key, value) in input {
+      if let str = value as? String {
+        output[key] = redactString(str)
+      } else {
+        output[key] = value
+      }
+    }
+    return output
   }
 
   /// Redacts a string if it matches known PII patterns:
