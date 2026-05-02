@@ -38,7 +38,7 @@ PARAKEET_GAUNTLET = [
     "A2_esc_cancel",
     "A3_asr_xpc_kill",
     "A4_audio_xpc_kill",
-    "A5_forced_stall",
+    "A5_proxy_buffer_drop_watchdog",
     "A6_settings_storm",
     "A7_app_quit",
     "A9_backend_switch_mid_record",
@@ -49,7 +49,7 @@ WHISPERKIT_GAUNTLET = [
     "A2_esc_cancel",
     # A3 (ASR XPC kill) is Parakeet-only — WhisperKit ASR is in-process.
     "A4_audio_xpc_kill",
-    "A5_forced_stall",
+    "A5_proxy_buffer_drop_watchdog",
     "A6_settings_storm",
     "A7_app_quit",
     "A9_backend_switch_mid_record",

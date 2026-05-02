@@ -23,7 +23,7 @@
   ///   Every command must carry the matching token in its first line.
   ///   Token file is deleted on `stop()`.
   /// - Fixed command set (no arbitrary RPC, no method invocation, no shell escape):
-  ///   `force_stall(N)`, `force_cancel`, `force_xpc_kill`,
+  ///   `force_proxy_buffer_drop(N)`, `force_cancel`, `force_xpc_kill`,
   ///   `force_audio_xpc_kill`, `query_state`.
   /// - Each command dispatches to `@MainActor` via `Task { @MainActor in ... }`
   ///   so command handling matches the actor isolation of the seams it drives.
@@ -229,8 +229,15 @@
         return "OK parakeet=\(p) whisperkit=\(w) backend=\(activeBackend())"
 
       default:
-        // force_stall(N) is the only parameterized command.
-        if let n = parseForceStall(cmd) {
+        // force_proxy_buffer_drop(N) is the only parameterized command.
+        // Drops the next N buffers inside `AudioCaptureProxy.audioBufferCaptured`
+        // before they reach the app continuation. Tests the PROXY-side stall
+        // watchdog (XPC-channel buffer drop), NOT real OS-level audio
+        // interruption recovery in `AVAudioEngineSource.handleEngineConfigurationChange()`
+        // or `AVCaptureSessionSource` interruption handlers — those run in the
+        // service process and are not reachable from this host-process endpoint.
+        // For real audio-stack interruption testing see `docs/LANE_B_AUDIO_TESTS.md`.
+        if let n = parseForceProxyBufferDrop(cmd) {
           guard let audioProxy else { return "ERR no_dependency" }
           audioProxy.forceStallRemainingBuffers = n
           return "OK"
@@ -239,8 +246,8 @@
       }
     }
 
-    private func parseForceStall(_ cmd: String) -> Int? {
-      let prefix = "force_stall("
+    private func parseForceProxyBufferDrop(_ cmd: String) -> Int? {
+      let prefix = "force_proxy_buffer_drop("
       guard cmd.hasPrefix(prefix), cmd.hasSuffix(")") else { return nil }
       let inner = cmd.dropFirst(prefix.count).dropLast()
       return Int(inner)
