@@ -193,7 +193,7 @@ def _import_wispr_eyes():
     return wispr_eyes
 
 
-_TERMINAL_TOKENS = (".idle", ".complete", ".error", ".ready")
+_TERMINAL_TOKENS = ("idle", "complete", "error", "ready")
 
 
 def _parse_query_state(reply: str) -> dict[str, str]:
@@ -241,19 +241,335 @@ def assert_terminated(timeout_s: float = 5.0) -> dict:
     return {"terminal": False, "state": last}
 
 
-def assert_no_zombie() -> dict:
-    """Best-effort: check that no orphan ASR/audio service helpers exist for a
-    non-current session. Returns a dict with `orphan_pids`."""
+def list_xpc_service_pids() -> list[str]:
+    """Return PIDs of all live EnviousWispr XPC service helpers
+    (`EnviousWisprAudioService`, `EnviousWisprASRService`).
+
+    On macOS, XPC services are launchd-managed: invalidating the connection
+    does not terminate the helper process — launchd respawns it as needed.
+    The right "no leak" assertion is therefore a delta check: count after
+    the fault must not exceed count before.
+    """
     try:
         out = subprocess.check_output(
             ["pgrep", "-f", "EnviousWispr.*Service"],
             text=True,
             stderr=subprocess.DEVNULL,
         )
-        pids = [p.strip() for p in out.split() if p.strip()]
+        return [p.strip() for p in out.split() if p.strip()]
     except subprocess.CalledProcessError:
-        pids = []
+        return []
+
+
+def assert_no_xpc_leak(before: list[str]) -> dict:
+    """Confirm the XPC service helper count did not grow after a fault.
+
+    Returns `{"leaked": False, "before": [...], "after": [...]}` on a
+    pass; `leaked: True` if more service helpers exist now than before.
+    Identity changes (PID rotation) are expected and not a leak — only
+    a net increase is a leak.
+    """
+    after = list_xpc_service_pids()
+    return {"leaked": len(after) > len(before), "before": before, "after": after}
+
+
+# Backwards-compatible alias retained for existing scenarios that still call
+# the old name. New code should use `list_xpc_service_pids` + `assert_no_xpc_leak`.
+def assert_no_zombie() -> dict:
+    pids = list_xpc_service_pids()
     return {"orphan_pids": pids}
+
+
+# ──────────────────────────── recording control helpers ────────────────────
+
+
+_RIGHT_CMD_KEYCODE = 54
+_ESC_KEYCODE = 53
+
+
+def _import_simulate_input():
+    """Lazy import so this module loads even if Quartz isn't available."""
+    here = Path(__file__).resolve().parent
+    if str(here) not in sys.path:
+        sys.path.insert(0, str(here))
+    import simulate_input  # noqa: E402
+
+    return simulate_input
+
+
+def _active_state() -> str:
+    """Return the active backend's pipeline state string (e.g. `idle`,
+    `recording`, `transcribing`)."""
+    parsed = _parse_query_state(query_state())
+    return parsed.get(_backend_pipeline_key(parsed.get("backend", "")), "")
+
+
+def _tap_rcmd(hold_s: float = 0.05) -> None:
+    """Single Right-Cmd press+release. Hold time matches a quick PTT tap.
+
+    HotkeyService treats a single tap-and-release with a 500 ms debounce —
+    if no second press arrives, it fires onStopRecording. Use double-tap to
+    enter hands-free locked mode for sustained recording.
+    """
+    sim = _import_simulate_input()
+    sim.modifier_down(_RIGHT_CMD_KEYCODE)
+    time.sleep(hold_s)
+    sim.modifier_up(_RIGHT_CMD_KEYCODE)
+
+
+def _start_recording_locked(*, gap_s: float = 0.25, settle_s: float = 0.8,
+                            timeout_s: float = 4.0,
+                            post_lock_dwell_s: float = 0.6) -> bool:
+    """Enter hands-free locked recording via double-tap.
+
+    Two Right-Cmd taps within HotkeyService's 500 ms double-press window
+    transitions to `isRecordingLocked = true`, which suppresses the
+    debounced stop-on-release and keeps recording until the next single
+    tap. Verifies post-state and retries if the first attempt missed
+    (handles the first-of-process CGEvent ghost we observed 2026-05-02).
+
+    Timing safety (against HotkeyService's gestures):
+    - `gap_s = 250 ms` keeps both taps comfortably inside the 500 ms
+      double-press window without crowding the upper bound.
+    - `post_lock_dwell_s = 600 ms` lets HotkeyService's `lockTime`
+      cooldown elapse before any subsequent tap. Without this dwell, a
+      tap landing within 500 ms of `lockTime` is silently ignored
+      ('Press ignored — lock cooldown'), or worse, stacks with two
+      retry-loop taps to look like a triple-press cancel gesture.
+    """
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if "recording" in _active_state():
+            time.sleep(post_lock_dwell_s)
+            return True
+        _tap_rcmd()
+        time.sleep(gap_s)
+        _tap_rcmd()
+        time.sleep(settle_s)
+        if "recording" in _active_state():
+            time.sleep(post_lock_dwell_s)
+            return True
+        # Don't pile retry taps onto an unstable state — pause before
+        # the next attempt so the previous tap pair can fully settle.
+        time.sleep(0.4)
+    return "recording" in _active_state()
+
+
+def _stop_recording_locked(*, settle_s: float = 1.5) -> bool:
+    """Single tap to exit hands-free locked recording, then wait for terminal.
+
+    Returns True if pipeline reached idle/complete within `settle_s`.
+    """
+    _tap_rcmd()
+    deadline = time.monotonic() + settle_s
+    while time.monotonic() < deadline:
+        st = _active_state()
+        if any(t in st for t in _TERMINAL_TOKENS):
+            return True
+        time.sleep(0.1)
+    return any(t in _active_state() for t in _TERMINAL_TOKENS)
+
+
+def _activate_app() -> None:
+    """Bring the dev bundle to the foreground so keystrokes (ESC,
+    arrow keys, etc.) are routed to it.
+
+    Right-Cmd is registered by HotkeyService as a global Carbon hotkey
+    and fires regardless of focus, but bare-Escape is not a true
+    system-wide hotkey on macOS — the OS lets the foreground app
+    consume it first. Without explicit activation, an ESC keystroke
+    sent while Claude Code or another app is foreground would cancel
+    that app instead of the dictation. Confirmed empirically 2026-05-02.
+    """
+    subprocess.run(
+        ["osascript", "-e",
+         'tell application id "com.enviouswispr.app.dev" to activate'],
+        check=False, capture_output=True,
+    )
+    time.sleep(0.2)  # let WindowServer settle the focus change
+
+
+def _press_esc() -> None:
+    """Send a single Escape keystroke — the user-real cancel gesture for
+    an in-flight dictation. ESC is what the app binds for cancel; the
+    `force_cancel` debug endpoint command bypasses the keybind and would
+    not exercise the same code path."""
+    sim = _import_simulate_input()
+    # Escape is a regular (non-modifier) key — use the standard down/up via
+    # CGEventCreateKeyboardEvent rather than flagsChanged.
+    from Quartz import (  # type: ignore[import-not-found]
+        CGEventCreateKeyboardEvent,
+        CGEventPost,
+        kCGHIDEventTap,
+    )
+
+    down = CGEventCreateKeyboardEvent(None, _ESC_KEYCODE, True)
+    up = CGEventCreateKeyboardEvent(None, _ESC_KEYCODE, False)
+    CGEventPost(kCGHIDEventTap, down)
+    time.sleep(0.03)
+    CGEventPost(kCGHIDEventTap, up)
+
+
+def _assert_dictation_recovers(
+    *,
+    sentence: str = "recovery check the cat sat on the mat",
+    record_seconds: float = 2.5,
+    settle_timeout_s: float = 8.0,
+) -> dict:
+    """Run an end-to-end dictation cycle after a fault was injected, and
+    confirm the software actually recovered — not just that the previous
+    cycle reached a terminal state.
+
+    Sequence:
+      1. Force pipeline back to idle if it's still in error/recording
+         (a single rcmd tap clears most non-idle states; double-tap won't
+         enter lock from non-idle).
+      2. Double-tap to enter hands-free locked recording.
+      3. Play TTS audio for `record_seconds` so capture has real audio.
+      4. Single-tap to exit lock.
+      5. Wait up to `settle_timeout_s` for the pipeline to reach a non-
+         error terminal state (`complete` or `idle`).
+
+    Returns a dict capturing what happened so the caller can decide if
+    recovery passed:
+        {
+            "recovered": bool,                  # True if final state in {complete, idle} and not error
+            "second_cycle_reached_recording": bool,
+            "second_cycle_terminal_state": str,  # the active state at end
+            "second_cycle_elapsed_s": float,
+        }
+    """
+    t_start = time.monotonic()
+    # Step 1: clear any non-idle state so double-tap can enter lock.
+    state = _active_state()
+    if "error" in state or "recording" in state:
+        _tap_rcmd()
+        time.sleep(0.8)
+    # Step 2: enter locked recording.
+    locked = _start_recording_locked()
+    if not locked:
+        return {
+            "recovered": False,
+            "second_cycle_reached_recording": False,
+            "second_cycle_terminal_state": _active_state(),
+            "second_cycle_elapsed_s": time.monotonic() - t_start,
+        }
+    # Step 3: play TTS during the recording window.
+    with _TTSAudio(sentence):
+        time.sleep(record_seconds)
+    # Step 4: exit lock.
+    _stop_recording_locked(settle_s=0.5)
+    # Step 5: wait for terminal state.
+    deadline = time.monotonic() + settle_timeout_s
+    final = ""
+    while time.monotonic() < deadline:
+        final = _active_state()
+        # `complete` is the success signal; `idle` is acceptable when the
+        # backend short-circuits (e.g. nothing to transcribe). `error` is
+        # a recovery failure.
+        if "complete" in final or final == "idle":
+            break
+        if "error" in final:
+            break
+        time.sleep(0.1)
+    elapsed = time.monotonic() - t_start
+    recovered = ("complete" in final or final == "idle") and "error" not in final
+    return {
+        "recovered": recovered,
+        "second_cycle_reached_recording": True,
+        "second_cycle_terminal_state": final,
+        "second_cycle_elapsed_s": elapsed,
+    }
+
+
+def _wait_for_app_exit(timeout_s: float = 10.0) -> bool:
+    """Poll until no `EnviousWispr Local.app` main process remains."""
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        result = subprocess.run(
+            ["pgrep", "-f", "EnviousWispr Local.app/Contents/MacOS/EnviousWispr"],
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            return True
+        time.sleep(0.2)
+    return False
+
+
+def _wait_for_endpoint(timeout_s: float = 10.0) -> bool:
+    """Poll the DebugFaultEndpoint until it responds, after a relaunch.
+
+    The token file and the endpoint listener are both written by the
+    running app after `applicationDidFinishLaunching`. Until that path
+    completes, `query_state` raises (token missing) or the connection
+    refuses (endpoint not listening). Tolerate both as transient.
+    """
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        try:
+            reply = query_state()
+            if reply.startswith("OK "):
+                return True
+        except (RuntimeError, ConnectionError, OSError):
+            pass
+        time.sleep(0.3)
+    return False
+
+
+def _relaunch_app() -> dict:
+    """Re-open the dev bundle with EW_FAULT_INJECTION=1 set so the
+    DebugFaultEndpoint comes back up. Used by scenarios that terminate
+    the app (A7) and still need a recovery cycle.
+    """
+    bundle_path = (
+        "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr/build/"
+        "EnviousWispr Local.app"
+    )
+    subprocess.run(
+        ["open", "--env", "EW_FAULT_INJECTION=1", bundle_path],
+        check=False,
+    )
+    endpoint_up = _wait_for_endpoint(timeout_s=12.0)
+    return {"relaunched": endpoint_up}
+
+
+class _TTSAudio:
+    """Context manager that plays TTS audio in the background while the
+    `with` block runs, so capture-side scenarios have real audio flowing
+    through the heart path during fault injection.
+
+    Usage:
+        with _TTSAudio("the quick brown fox jumps over the lazy dog"):
+            # recording is active here, audio is being captured
+            force_xpc_kill()
+    """
+
+    def __init__(self, sentence: str = "the quick brown fox jumps over "
+                 "the lazy dog and the dog does not chase the fox"):
+        self.sentence = sentence
+        self._proc: Optional[subprocess.Popen] = None
+        self._wav: Optional[str] = None
+
+    def __enter__(self):
+        eyes = _import_wispr_eyes()
+        # Reuse the existing TTS helper (OpenAI echo by default, with
+        # macOS `say` fallback) — see Tests/RuntimeUAT/wispr_eyes.py.
+        self._wav = eyes.tts(self.sentence)
+        self._proc = subprocess.Popen(
+            ["afplay", self._wav],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return self
+
+    def __exit__(self, *_exc):
+        if self._proc is not None:
+            try:
+                self._proc.terminate()
+                self._proc.wait(timeout=1.0)
+            except Exception:
+                self._proc.kill()
+        return False
 
 
 # ──────────────────────────── Lane A scenarios ────────────────────────────
@@ -272,36 +588,77 @@ def assert_no_zombie() -> dict:
     )
 )
 def A1_rapid_stop_start(**_) -> dict:
-    eyes = _import_wispr_eyes()
-    eyes.connect()
-    # Fast toggle via the menu Start/Stop item, three times.
-    for _ in range(3):
-        eyes.tap("Start Recording")
+    """Spam Right-Cmd to fuzz the hotkey debounce, then verify the pipeline
+    can be cleanly stopped after the chaos.
+
+    Validate-then-automate (2026-05-02): menu taps ("Start Recording" /
+    "Stop Recording") cannot drive this scenario — macOS status-bar menu
+    items do not enumerate their children in the AX tree until the menu
+    is open. Hand-validation showed Right-Cmd CGEvent taps (keycode 54,
+    50 ms hold) reliably toggle recording, and that an even-tap-count
+    chaos phase can leave the pipeline stuck in `.recording` because
+    some taps are debounced. The scenario therefore needs an explicit
+    cleanup tap after a settle pause to guarantee `.idle`.
+    """
+    import random
+
+    # Phase 1 — boundary fuzz at 100 ms (debounce should swallow most).
+    for _ in range(6):
+        _tap_rcmd()
         time.sleep(0.1)
-        eyes.tap("Stop Recording")
-        time.sleep(0.1)
+    # Phase 2 — jittered fuzz (100–500 ms).
+    for _ in range(6):
+        _tap_rcmd()
+        time.sleep(random.uniform(0.1, 0.5))
+    # Phase 3 — settle past the debounce window so the next tap is honored.
+    time.sleep(1.0)
+    # Phase 4 — cleanup tap if the chaos left us stuck recording.
+    if "recording" in _active_state():
+        _tap_rcmd()
     return assert_terminated(timeout_s=3.0)
 
 
 @scenario(
     ScenarioMeta(
-        name="A2_force_cancel",
+        name="A2_esc_cancel",
         lane="A",
         family="timing",
         backends=["both"],
-        runtime_budget_seconds=2.0,
+        runtime_budget_seconds=4.0,
         founder_required=False,
         negative_control="Remove cancellation cleanup in TranscriptionPipeline.cancelRecording; scenario detects leaked task",
-        description="Force-cancel mid-record (1s into recording) — pipeline must reach .idle within budget",
+        description="ESC mid-record (1 s into recording, audio flowing) — pipeline must reach idle within budget",
     )
 )
-def A2_force_cancel(**_) -> dict:
-    eyes = _import_wispr_eyes()
-    eyes.connect()
-    eyes.tap("Start Recording")
-    time.sleep(1.0)
-    reply = force_cancel()
-    return {"reply": reply, **assert_terminated(timeout_s=2.0)}
+def A2_esc_cancel(**_) -> dict:
+    """User behavior: dictation in progress, audio is flowing, user hits
+    Escape to cancel. The keybind path (HotkeyService cancel hotkey) must
+    propagate to the pipeline and reach a terminal state.
+
+    Validate-then-automate notes (2026-05-02):
+    - Sustained recording requires double-tap → hands-free locked mode
+      (`_start_recording_locked`); a single tap auto-stops after the
+      500 ms PTT debounce window.
+    - ESC is the user-real cancel gesture. The `force_cancel` debug
+      endpoint command bypasses the keybind and would not exercise the
+      same wiring this scenario claims to test.
+    - TTS audio flows during the test so the cancel happens against an
+      active capture session, not silence.
+    """
+    if not _start_recording_locked():
+        return {"terminal": False, "reason": "could not enter recording", "state": query_state()}
+    with _TTSAudio():
+        time.sleep(1.0)  # let audio flow into the pipeline
+        _activate_app()  # ESC must reach EnviousWispr, not whatever else is foreground
+        _press_esc()
+        result = assert_terminated(timeout_s=4.0)
+    esc_landed = any(t in _active_state() for t in _TERMINAL_TOKENS)
+    result["esc_drove_cancel"] = esc_landed
+    if not esc_landed:
+        # safety-net cleanup if ESC was somehow swallowed
+        _tap_rcmd()
+        time.sleep(1.0)
+    return result
 
 
 @scenario(
@@ -310,20 +667,42 @@ def A2_force_cancel(**_) -> dict:
         lane="A",
         family="xpc",
         backends=["parakeet"],
-        runtime_budget_seconds=5.0,
+        runtime_budget_seconds=8.0,
         founder_required=False,
-        negative_control="Remove ASR-crash handler at WhisperKitPipeline.swift:1044 / TranscriptionPipeline equivalent; pipeline gets stuck",
-        description="ASR XPC service mid-stream kill (after 1s of audio captured)",
+        negative_control="Remove ASR-crash handler at WhisperKitPipeline.swift / TranscriptionPipeline equivalent; pipeline gets stuck",
+        description="ASR XPC connection invalidated mid-stream while TTS audio is flowing — pipeline must reach a terminal error state, no XPC helper leak",
     )
 )
 def A3_asr_xpc_kill(**_) -> dict:
-    eyes = _import_wispr_eyes()
-    eyes.connect()
-    eyes.tap("Start Recording")
-    time.sleep(1.0)
-    reply = force_xpc_kill()
-    terminated = assert_terminated(timeout_s=5.0)
-    return {"reply": reply, **terminated, **assert_no_zombie()}
+    """User behavior: dictation in progress with audio flowing, the ASR
+    XPC connection drops (helper crashed, sandbox revoked, kernel
+    pressure). The pipeline must surface an error and recover — the user
+    sees a "service crashed" message instead of a stuck spinner.
+
+    Notes 2026-05-02:
+    - "Kill" here means `forceConnectionTerminationNow()` — invalidates
+      the NSXPCConnection. The launchd-managed service helper itself
+      stays alive; macOS XPC respawns it on next connect. So the leak
+      assertion compares helper counts before/after, not "any helper
+      survives" (that would always be true and silently pass).
+    - TTS audio must be flowing so the connection drops while the ASR
+      side is actually streaming. Without audio, the connection sits
+      idle and the kill exercises only the disconnect path, not the
+      mid-stream error wiring this scenario claims to test.
+    """
+    pre_helpers = list_xpc_service_pids()
+    if not _start_recording_locked():
+        return {"terminal": False, "reason": "could not enter recording", "state": query_state()}
+    with _TTSAudio():
+        time.sleep(1.0)  # let audio stream into ASR
+        reply = force_xpc_kill()
+        terminated = assert_terminated(timeout_s=5.0)
+    leak = assert_no_xpc_leak(pre_helpers)
+    # Recovery check: a graceful failure that wedges the next dictation
+    # is indistinguishable from a crash. Confirm the user can actually
+    # keep dictating after the fault.
+    recovery = _assert_dictation_recovers()
+    return {"reply": reply, **terminated, **leak, **recovery}
 
 
 @scenario(
@@ -332,20 +711,28 @@ def A3_asr_xpc_kill(**_) -> dict:
         lane="A",
         family="xpc",
         backends=["both"],
-        runtime_budget_seconds=5.0,
+        runtime_budget_seconds=15.0,
         founder_required=False,
         negative_control="Remove audio-XPC-error handler in AudioCaptureProxy; pipeline gets stuck",
-        description="Audio XPC service kill (after capture started)",
+        description="Audio capture XPC connection invalidated mid-stream while TTS audio is flowing — pipeline must reach a terminal state, no helper leak, next dictation must succeed",
     )
 )
 def A4_audio_xpc_kill(**_) -> dict:
-    eyes = _import_wispr_eyes()
-    eyes.connect()
-    eyes.tap("Start Recording")
-    time.sleep(0.8)
-    reply = force_audio_xpc_kill()
-    terminated = assert_terminated(timeout_s=5.0)
-    return {"reply": reply, **terminated, **assert_no_zombie()}
+    """User behavior: dictation in progress with audio flowing, the
+    audio-capture XPC connection drops (sandbox revoked, helper crash,
+    HAL reset). Pipeline must surface a terminal state, the audio helper
+    must respawn cleanly, and the next dictation must work end-to-end.
+    """
+    pre_helpers = list_xpc_service_pids()
+    if not _start_recording_locked():
+        return {"terminal": False, "reason": "could not enter recording", "state": query_state()}
+    with _TTSAudio():
+        time.sleep(0.8)  # warm-up so capture buffers have started flowing
+        reply = force_audio_xpc_kill()
+        terminated = assert_terminated(timeout_s=5.0)
+    leak = assert_no_xpc_leak(pre_helpers)
+    recovery = _assert_dictation_recovers()
+    return {"reply": reply, **terminated, **leak, **recovery}
 
 
 @scenario(
@@ -361,12 +748,51 @@ def A4_audio_xpc_kill(**_) -> dict:
     )
 )
 def A5_forced_stall(**_) -> dict:
-    eyes = _import_wispr_eyes()
-    eyes.connect()
-    eyes.tap("Start Recording")
-    reply = force_stall(1000)
-    terminated = assert_terminated(timeout_s=12.0)
-    return {"reply": reply, **terminated}
+    """User behavior: dictation in progress with audio flowing, audio
+    buffers stop arriving (BT codec switch, USB mic glitch, HAL hiccup).
+    The capture stall watchdog must fire, the pipeline must reach a
+    terminal state, and the next dictation must work.
+
+    Notes 2026-05-02:
+    - The watchdog measures gaps between buffer arrivals — capture has
+      to be warm (buffer cadence established) before injecting the stall,
+      otherwise the watchdog has no baseline to compare against.
+    - Without TTS audio, the test injects a stall against a silent
+      capture session — the watchdog logic still runs but the user-real
+      shape isn't exercised.
+    - Recovery: stall is recoverable in principle (user can re-record);
+      the second cycle confirms capture re-arms cleanly.
+    """
+    if not _start_recording_locked():
+        return {"terminal": False, "reason": "could not enter recording", "state": query_state()}
+    with _TTSAudio():
+        time.sleep(0.5)  # warm-up: let buffer cadence establish
+        reply = force_stall(1000)
+        terminated = assert_terminated(timeout_s=12.0)
+    if "recording" in _active_state():
+        _stop_recording_locked()
+    recovery = _assert_dictation_recovers()
+    return {"reply": reply, **terminated, **recovery}
+
+
+_DEV_BUNDLE_ID = "com.enviouswispr.app.dev"
+_WRITING_STYLE_BUTTON_LABELS = {
+    "formal": "Formal — Professional tone, proper grammar",
+    "standard": "Standard — Clean up grammar and punctuation",
+    "friendly": "Friendly — Casual, conversational tone",
+}
+
+
+def _read_setting(key: str) -> Optional[str]:
+    """Read a UserDefaults value from the dev app's domain."""
+    try:
+        out = subprocess.check_output(
+            ["defaults", "read", _DEV_BUNDLE_ID, key],
+            text=True, stderr=subprocess.DEVNULL,
+        ).strip()
+        return out
+    except subprocess.CalledProcessError:
+        return None
 
 
 @scenario(
@@ -382,16 +808,81 @@ def A5_forced_stall(**_) -> dict:
     )
 )
 def A6_settings_storm(**_) -> dict:
+    """User behavior: dictation in progress, user opens Settings and
+    flips heart-side toggles whose live-sync runs *during* an active
+    recording — `wordCorrectionEnabled` (Your Words tab) and
+    `fillerRemovalEnabled` (Transcription tab). These two flow through
+    `PipelineSettingsSync` and modify the streaming-time inline post-
+    process; the negative control on this scenario specifically names
+    `wordCorrectionEnabled live-sync from PipelineSettingsSync`.
+
+    Notes 2026-05-02:
+    - Toggles in the AI Polish tab (writing style, Deep reasoning) are
+      LIMBS — their copy explicitly says "Changes made during a recording
+      apply to the next recording." So they do not exercise the live-sync
+      hot path and are not what this scenario is for.
+    - `noiseSuppression` is the heaviest live-sync (cancels recording +
+      rebuilds engine), but its deliberate user-visible side effect is
+      cancelling the in-flight recording. That belongs in a separate
+      scenario, not the settings-storm-without-cancel claim here.
+    - Pre-state is captured before the storm and restored after, so
+      successive runs do not accumulate side effects on the user's
+      configured custom-words / filler-removal preferences.
+    """
     eyes = _import_wispr_eyes()
     eyes.connect()
-    eyes.tap("Start Recording")
-    # Settings nav + toggles via wispr-eyes menu/UI affordances.
-    # Concrete toggle UI driving is left to the founder during PR demonstration;
-    # this scenario logs the precondition state and reaches the menu.
-    eyes.nav("AI Polish")
-    time.sleep(0.5)
-    eyes.tap("Stop Recording")
-    return assert_terminated(timeout_s=10.0)
+
+    # Capture pre-state so we can restore after the storm.
+    pre_word_correction = _read_setting("wordCorrectionEnabled")  # "0"/"1"/None
+    pre_filler_removal = _read_setting("fillerRemovalEnabled")
+
+    if not _start_recording_locked():
+        return {"terminal": False, "reason": "could not enter recording", "state": query_state()}
+    with _TTSAudio():
+        time.sleep(0.5)  # let audio flow into streaming ASR
+        # Storm 1: flip wordCorrectionEnabled twice on the Your Words tab.
+        eyes.nav("Your Words")
+        time.sleep(0.4)
+        eyes.tap("Enable custom words")
+        time.sleep(0.25)
+        eyes.tap("Enable custom words")
+        time.sleep(0.25)
+        # Storm 2: flip fillerRemovalEnabled twice on the Transcription tab.
+        eyes.nav("Transcription")
+        time.sleep(0.4)
+        eyes.tap("Remove filler words (um, uh, hmm...)")
+        time.sleep(0.25)
+        eyes.tap("Remove filler words (um, uh, hmm...)")
+        time.sleep(0.25)
+        # Continue recording briefly after the storm so the streaming
+        # path sees both states with audio still flowing.
+        time.sleep(0.5)
+    # Stop recording (single tap exits hands-free lock).
+    _stop_recording_locked(settle_s=2.0)
+    terminated = assert_terminated(timeout_s=10.0)
+    recovery = _assert_dictation_recovers()
+
+    # Restore pre-state so successive runs do not accumulate. The toggles
+    # were each flipped twice during the storm so they should already
+    # match pre-state, but read defaults to confirm and re-flip if not.
+    eyes.nav("Your Words")
+    time.sleep(0.4)
+    if (_read_setting("wordCorrectionEnabled") or "0") != (pre_word_correction or "0"):
+        eyes.tap("Enable custom words")
+        time.sleep(0.3)
+    eyes.nav("Transcription")
+    time.sleep(0.4)
+    if (_read_setting("fillerRemovalEnabled") or "0") != (pre_filler_removal or "0"):
+        eyes.tap("Remove filler words (um, uh, hmm...)")
+        time.sleep(0.3)
+
+    restored = {
+        "pre_word_correction": pre_word_correction,
+        "post_word_correction": _read_setting("wordCorrectionEnabled"),
+        "pre_filler_removal": pre_filler_removal,
+        "post_filler_removal": _read_setting("fillerRemovalEnabled"),
+    }
+    return {**terminated, **recovery, "settings_restored": restored}
 
 
 @scenario(
@@ -400,21 +891,62 @@ def A6_settings_storm(**_) -> dict:
         lane="A",
         family="app-quit",
         backends=["both"],
-        runtime_budget_seconds=10.0,
+        runtime_budget_seconds=30.0,
         founder_required=False,
         negative_control="Remove applicationWillTerminate cleanup in AppDelegate; orphan helper processes survive next launch",
-        description="App quit during active recording (Cocoa terminate, NOT raw SIGTERM)",
+        description="Cocoa quit mid-recording with audio flowing — no orphan helpers survive, app relaunches cleanly, next dictation works",
     )
 )
 def A7_app_quit(**_) -> dict:
-    eyes = _import_wispr_eyes()
-    eyes.connect()
-    eyes.tap("Start Recording")
-    time.sleep(0.8)
-    # Quit via the menu item; this triggers Cocoa applicationWillTerminate.
-    eyes.tap(f"Quit {APP_NAME}")
+    """User behavior: dictation in progress, user hits Cmd+Q. The app's
+    `applicationWillTerminate` must clean up audio + ASR helpers — no
+    orphan processes survive next launch. After relaunch the user must
+    be able to dictate again normally.
+
+    Notes 2026-05-02:
+    - Cocoa quit is the user-real path (osascript `quit`); SIGKILL
+      (`kill -9`) bypasses applicationWillTerminate and would not
+      exercise this scenario.
+    - TTS audio must be flowing so the quit happens against an active
+      capture session (helpers actively allocated + connected), not an
+      idle pipeline.
+    - After the quit, the harness relaunches the bundle with
+      EW_FAULT_INJECTION=1 so the recovery cycle can run end-to-end
+      through the normal dictation path.
+    """
+    pre_helpers = list_xpc_service_pids()
+    if not _start_recording_locked():
+        return {"terminal": False, "reason": "could not enter recording", "state": query_state()}
+    with _TTSAudio():
+        time.sleep(0.8)  # warm-up: audio flowing into pipeline
+        # Cocoa quit — triggers applicationWillTerminate cleanup.
+        subprocess.run(
+            ["osascript", "-e",
+             'tell application id "com.enviouswispr.app.dev" to quit'],
+            check=False, capture_output=True,
+        )
+        exited_cleanly = _wait_for_app_exit(timeout_s=10.0)
+    # Give launchd a moment to reap helpers.
     time.sleep(2.0)
-    return assert_no_zombie()
+    post_helpers = list_xpc_service_pids()
+    # Negative-control assertion: no orphan helpers from the killed
+    # session. Helpers from before the test (pre_helpers) should be
+    # gone too — the app's lifecycle owns them.
+    orphans_remain = bool(post_helpers)
+    # Relaunch + recovery cycle.
+    relaunched = _relaunch_app()
+    recovery = _assert_dictation_recovers() if relaunched["relaunched"] else {
+        "recovered": False,
+        "reason": "endpoint did not come up after relaunch",
+    }
+    return {
+        "exited_cleanly": exited_cleanly,
+        "pre_helpers": pre_helpers,
+        "post_helpers": post_helpers,
+        "orphans_remain": orphans_remain,
+        **relaunched,
+        **recovery,
+    }
 
 
 @scenario(
@@ -472,18 +1004,99 @@ def A8b_cancel_during_whisperkit_load(**_) -> dict:
     )
 )
 def A9_backend_switch_mid_record(**_) -> dict:
+    """User behavior: dictation in progress with audio flowing, user
+    opens Settings → Transcription and taps the OTHER engine button.
+    The PipelineSettingsSync guard at line 90 must drop the switch
+    silently (logs 'Backend switch blocked'), the active recording
+    must finalize on the original backend, and `query_state` must
+    show the original backend throughout.
+
+    Notes 2026-05-02:
+    - The UI text under the engine buttons says 'Changes made during
+      a recording apply to the next recording.' That text is mildly
+      misleading — the code (PipelineSettingsSync.swift:90 case) BLOCKS
+      and DISCARDS the switch entirely; it does not buffer it for the
+      next recording. UserDefaults `selectedBackend` does flip
+      (SwiftUI binding writes through), but the asrManager never
+      receives a `switchBackend(to:)` call.
+    - The harness restores `selectedBackend` after the test by
+      tapping the original engine button once recording has
+      finalized, so successive runs do not leave UserDefaults in a
+      lying state.
+    """
     eyes = _import_wispr_eyes()
     eyes.connect()
-    eyes.tap("Start Recording")
-    time.sleep(0.5)
-    # Drive a backend toggle via Settings; recording must continue.
-    # The Lane C BackendSwitchGuardTests covers the deterministic invariant —
-    # this Lane A variant drives it through the live UI.
-    eyes.nav("Speech Engine")
-    time.sleep(0.3)
-    state_after = query_state()
-    eyes.tap("Stop Recording")
-    return {"state_after_switch_attempt": state_after, **assert_terminated(timeout_s=3.0)}
+
+    # Pre-state: assert idle, capture starting backend.
+    if "idle" not in _active_state():
+        _stop_recording_locked(settle_s=2.0)
+    pre_backend = _read_setting("selectedBackend") or "parakeet"
+    target_button_for_switch_attempt = (
+        "Multi-Language" if pre_backend.lower() == "parakeet" else "Fast (English)"
+    )
+    target_button_for_restore = (
+        "Fast (English)" if pre_backend.lower() == "parakeet" else "Multi-Language"
+    )
+
+    if not _start_recording_locked():
+        return {"terminal": False, "reason": "could not enter recording", "state": query_state()}
+
+    pipeline_state_during = ""
+    pipeline_state_after_settle = ""
+    # Hold the switched state long enough for a human to actually
+    # perceive the visual flip in the Transcription tab. Without this
+    # dwell the buttons toggle and toggle back in <1s — the test passes
+    # in the data but a watching reviewer can't visually confirm it.
+    display_dwell_seconds = 3.0
+    with _TTSAudio():
+        time.sleep(0.5)  # let audio flow into the active backend
+        eyes.nav("Transcription")
+        time.sleep(0.4)
+        # Attempt the switch — should be blocked by the guard.
+        eyes.tap(target_button_for_switch_attempt)
+        time.sleep(0.3)
+        # Snapshot which PIPELINE is actually doing the work. The
+        # `backend=` field in query_state mirrors UserDefaults, which
+        # SwiftUI flips immediately. The truthful signal is which
+        # pipeline reports a non-idle state.
+        pipeline_state_during = query_state()
+        # Dwell so the swap is visible to a human reviewer.
+        time.sleep(display_dwell_seconds)
+
+    _stop_recording_locked(settle_s=2.0)
+    pipeline_state_after_settle = query_state()
+    terminated = assert_terminated(timeout_s=10.0)
+
+    # Restore: tap the original engine button so UserDefaults matches reality.
+    eyes.nav("Transcription")
+    time.sleep(0.4)
+    if (_read_setting("selectedBackend") or "").lower() != pre_backend.lower():
+        eyes.tap(target_button_for_restore)
+        time.sleep(0.4)
+
+    recovery = _assert_dictation_recovers()
+
+    # The truthful "switch_was_blocked" signal: during the recording,
+    # the ORIGINAL backend's pipeline state was non-idle, and the OTHER
+    # backend's pipeline state was idle. (If the switch had succeeded,
+    # the original would have torn down to idle and the other would
+    # have started recording.)
+    parsed_during = _parse_query_state(pipeline_state_during)
+    pre_backend_key = "parakeet" if pre_backend.lower() == "parakeet" else "whisperkit"
+    other_key = "whisperkit" if pre_backend_key == "parakeet" else "parakeet"
+    pre_backend_active = parsed_during.get(pre_backend_key, "") not in {"", "idle"}
+    other_idle = parsed_during.get(other_key, "") in {"idle", ""}
+    switch_was_blocked = pre_backend_active and other_idle
+
+    return {
+        **terminated,
+        **recovery,
+        "pre_backend": pre_backend,
+        "pipeline_state_during": pipeline_state_during,
+        "pipeline_state_after_settle": pipeline_state_after_settle,
+        "switch_was_blocked": switch_was_blocked,
+        "post_backend_userdefaults": _read_setting("selectedBackend"),
+    }
 
 
 # ──────────────────────────── Lane B scenarios ────────────────────────────
