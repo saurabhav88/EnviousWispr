@@ -23,7 +23,7 @@ import Foundation
 /// issues with stable grouping. See `.claude/knowledge/sentry-triage-pipeline.md`.
 ///
 /// The Sentry sink is injected as a closure callback rather than a protocol
-/// (per `feedback_no_actor_protocol_existential_hot_path.md`), keeping the
+/// (per `.claude/rules/swift-patterns.md` § Hot-path Existentials), keeping the
 /// emitter concrete and the test seam recording-closure-shaped.
 @MainActor
 final class HeartPathTelemetryEmitter {
