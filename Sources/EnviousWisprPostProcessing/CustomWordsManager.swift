@@ -27,13 +27,40 @@ public final class CustomWordsManager {
       // Application Support is always available on macOS, but guard defensively.
       let fallback = FileManager.default.temporaryDirectory.appendingPathComponent(
         "EnviousWispr", isDirectory: true)
-      try? FileManager.default.createDirectory(at: fallback, withIntermediateDirectories: true)
+      Self.prepareAppSupportDirectory(at: fallback)
       fileURL = fallback.appendingPathComponent("custom-words.json")
+      Self.tightenFileIfPresent(at: fileURL)
       return
     }
     let appSupport = baseURL.appendingPathComponent("EnviousWispr", isDirectory: true)
-    try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
+    Self.prepareAppSupportDirectory(at: appSupport)
     fileURL = appSupport.appendingPathComponent("custom-words.json")
+    Self.tightenFileIfPresent(at: fileURL)
+  }
+
+  /// Create the EnviousWispr Application Support directory at 0700 and drop a
+  /// `.metadata_never_index` Spotlight marker. Re-enforced on every init in
+  /// case a backup restore or user action loosened permissions. Soft-fails on
+  /// any filesystem operation. (V3 audit #561 / #562.)
+  private static func prepareAppSupportDirectory(at url: URL) {
+    let fm = FileManager.default
+    try? fm.createDirectory(at: url, withIntermediateDirectories: true)
+    try? fm.setAttributes(
+      [.posixPermissions: 0o700],
+      ofItemAtPath: url.path
+    )
+    let marker = url.appendingPathComponent(".metadata_never_index")
+    if !fm.fileExists(atPath: marker.path) {
+      fm.createFile(atPath: marker.path, contents: Data(), attributes: nil)
+    }
+  }
+
+  /// Force `custom-words.json` to 0600 if it already exists. Migrates installs
+  /// that pre-date this hardening.
+  private static func tightenFileIfPresent(at url: URL) {
+    let fm = FileManager.default
+    guard fm.fileExists(atPath: url.path) else { return }
+    try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
   }
 
   // MARK: - Built-in Defaults
@@ -275,11 +302,36 @@ public final class CustomWordsManager {
     return nil
   }
 
+  /// Persist the custom-words file at 0600.
+  ///
+  /// Writes to a temp file at 0600 first via `Foundation.open(... 0o600)`
+  /// then renames into place. Mirrors `KeychainManager.store` to avoid the
+  /// brief world-readable window that `Data.write(.atomic)` + post-write
+  /// chmod creates. (V3 audit #561.)
   private func saveFile(_ file: CustomWordsFile) throws {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     let data = try encoder.encode(file)
-    try data.write(to: fileURL, options: .atomic)
+    let tmpURL = fileURL.deletingLastPathComponent().appendingPathComponent(
+      ".custom-words.json.tmp")
+    let fm = FileManager.default
+    do {
+      let fd = Foundation.open(tmpURL.path, O_CREAT | O_WRONLY | O_TRUNC, 0o600)
+      guard fd >= 0 else {
+        throw CocoaError(.fileWriteUnknown)
+      }
+      let fh = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+      try fh.write(contentsOf: data)
+      try fh.close()
+      if fm.fileExists(atPath: fileURL.path) {
+        _ = try fm.replaceItemAt(fileURL, withItemAt: tmpURL)
+      } else {
+        try fm.moveItem(at: tmpURL, to: fileURL)
+      }
+    } catch {
+      try? fm.removeItem(at: tmpURL)
+      throw error
+    }
   }
 
   // MARK: - Runtime Merge
