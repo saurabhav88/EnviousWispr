@@ -1,4 +1,4 @@
-EnviousWispr uses Accessibility permission to paste transcribed text into your active app. Without it, text delivery (Tier 2 simulated keyboard paste and Tier 2b AppleScript paste) will silently fail.
+EnviousWispr uses Accessibility permission to paste transcribed text into your active app. Without it, Tier 1 direct insertion and Tier 2 simulated Cmd+V paste will silently fail. (Tier 2b AppleScript paste is governed separately by Automation / Apple Events permission, not Accessibility.)
 
 ## Granting Permission
 

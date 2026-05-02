@@ -27,7 +27,7 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>EnviousWispr uses Accessibility APIs to paste transcribed text into the active application.</string>
+	<string>EnviousWispr uses AppleScript to paste your dictated text into the active app when direct insertion is not available.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>

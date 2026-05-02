@@ -84,7 +84,7 @@ Both models run entirely on-device using CoreML. First launch downloads and comp
 
 1. Download [EnviousWispr.dmg](https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg) from the latest release
 2. Drag to Applications, launch
-3. Grant **Microphone** and **Accessibility** permissions when prompted
+3. Grant **Microphone**, **Accessibility**, and (on first paste fallback) **Automation** permissions when prompted
 4. Set your preferred hotkey in Settings > Shortcuts
 5. Start talking
 
