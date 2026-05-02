@@ -50,17 +50,21 @@ public struct WordCorrector: Sendable {
         if alias.contains(" ") {
           if let existing = multiAliasMap[key], existing != word.canonical {
             collisionCount += 1
-            Self.logger.debug(
-              "Alias collision #\(collisionCount): '\(key)' claimed by '\(existing)' and '\(word.canonical)', using '\(word.canonical)'"
-            )
+            #if DEBUG
+              Self.logger.debug(
+                "Alias collision #\(collisionCount): '\(key)' claimed by '\(existing)' and '\(word.canonical)', using '\(word.canonical)'"
+              )
+            #endif
           }
           multiAliasMap[key] = word.canonical
         } else {
           if let existing = singleAliasMap[key], existing != word.canonical {
             collisionCount += 1
-            Self.logger.debug(
-              "Alias collision #\(collisionCount): '\(key)' claimed by '\(existing)' and '\(word.canonical)', using '\(word.canonical)'"
-            )
+            #if DEBUG
+              Self.logger.debug(
+                "Alias collision #\(collisionCount): '\(key)' claimed by '\(existing)' and '\(word.canonical)', using '\(word.canonical)'"
+              )
+            #endif
           }
           singleAliasMap[key] = word.canonical
         }
@@ -73,8 +77,10 @@ public struct WordCorrector: Sendable {
       if !key.contains(" ") {
         if let existing = singleAliasMap[key] {
           if existing != word.canonical {
-            Self.logger.debug(
-              "Canonical '\(word.canonical)' skipped: key '\(key)' already maps to '\(existing)'")
+            #if DEBUG
+              Self.logger.debug(
+                "Canonical '\(word.canonical)' skipped: key '\(key)' already maps to '\(existing)'")
+            #endif
           }
         } else {
           singleAliasMap[key] = word.canonical
@@ -147,9 +153,11 @@ public struct WordCorrector: Sendable {
             tokens.replaceSubrange(i..<(i + n), with: [firstPrefix + canonical + lastSuffix])
             replacements += 1
             matched = true
-            Self.logger.debug(
-              "WordCorrector: type=ngram-compound source='\(rawConcat)' target='\(canonical)' n=\(n)"
-            )
+            #if DEBUG
+              Self.logger.debug(
+                "WordCorrector: type=ngram-compound source='\(rawConcat)' target='\(canonical)' n=\(n)"
+              )
+            #endif
             break
           }
         }
@@ -178,8 +186,10 @@ public struct WordCorrector: Sendable {
             tokens.replaceSubrange(i..<(i + span), with: [firstPrefix + canonical + lastSuffix])
             replacements += 1
             matched = true
-            Self.logger.debug(
-              "WordCorrector: type=multi-word-exact source='\(rawPhrase)' target='\(canonical)'")
+            #if DEBUG
+              Self.logger.debug(
+                "WordCorrector: type=multi-word-exact source='\(rawPhrase)' target='\(canonical)'")
+            #endif
             break
           }
         }
@@ -220,9 +230,11 @@ public struct WordCorrector: Sendable {
                   i..<(i + span), with: [firstPrefix + bestCanonical + lastSuffix])
                 replacements += 1
                 matched = true
-                Self.logger.debug(
-                  "WordCorrector: type=multi-word-fuzzy source='\(rawPhrase)' target='\(bestCanonical)' alias='\(bestAlias)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(margin, format: .fixed(precision: 3))"
-                )
+                #if DEBUG
+                  Self.logger.debug(
+                    "WordCorrector: type=multi-word-fuzzy source='\(rawPhrase)' target='\(bestCanonical)' alias='\(bestAlias)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(margin, format: .fixed(precision: 3))"
+                  )
+                #endif
                 break
               }
             }
@@ -243,7 +255,9 @@ public struct WordCorrector: Sendable {
       // Pass 3: exact single-word alias (includes canonical self-entries)
       if let canonical = singleAliasMap[coreLower], core != canonical {
         replacements += 1
-        Self.logger.debug("WordCorrector: type=alias source='\(core)' target='\(canonical)'")
+        #if DEBUG
+          Self.logger.debug("WordCorrector: type=alias source='\(core)' target='\(canonical)'")
+        #endif
         return prefix + canonical + suffix
       }
 
@@ -283,9 +297,11 @@ public struct WordCorrector: Sendable {
         core != bestMatch
       {
         replacements += 1
-        Self.logger.debug(
-          "WordCorrector: type=alias-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(bestScore - secondBest, format: .fixed(precision: 3))"
-        )
+        #if DEBUG
+          Self.logger.debug(
+            "WordCorrector: type=alias-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(bestScore - secondBest, format: .fixed(precision: 3))"
+          )
+        #endif
         return prefix + bestMatch + suffix
       }
 
@@ -314,9 +330,11 @@ public struct WordCorrector: Sendable {
         core != bestMatch
       {
         replacements += 1
-        Self.logger.debug(
-          "WordCorrector: type=canonical-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(bestScore - secondBest, format: .fixed(precision: 3))"
-        )
+        #if DEBUG
+          Self.logger.debug(
+            "WordCorrector: type=canonical-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(bestScore - secondBest, format: .fixed(precision: 3))"
+          )
+        #endif
         return prefix + bestMatch + suffix
       }
 
