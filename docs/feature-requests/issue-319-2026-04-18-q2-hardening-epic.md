@@ -502,7 +502,7 @@ Plus `settings = SettingsManager()`. Audit reported 11 (close; count includes in
 
 Both scripts referenced by the bible exist:
 - `scripts/heart-path-bench.sh` — present; runs cold/hot bench per `validation-discipline.md §9`.
-- `Tests/UITests/wispr_eyes.py` — present; `test_recording`, `tts`, etc. per `tools-and-apps.md §2`.
+- `Tests/RuntimeUAT/wispr_eyes.py` — present; `test_recording`, `tts`, etc. per `tools-and-apps.md §2`.
 
 No hallucinated tool paths.
 
@@ -2324,7 +2324,7 @@ Real-time concurrency under CoreAudio, MainActor, and XPC interleavings. The one
 
 ### 19.2 Recipe
 
-Author a deterministic harness in `Tests/UITests/faultInjection.py` that runs each scenario across both backends:
+Author a deterministic harness in `Tests/RuntimeUAT/faultInjection.py` that runs each scenario across both backends:
 
 | # | Scenario | Backend | Expectation |
 |---|---|---|---|
@@ -2356,7 +2356,7 @@ Extends #291. Runs against a build that includes Phase A (to simplify state-chan
 
 ### 19.6 Tool note
 
-Use existing `Tests/UITests/wispr_eyes.py` helpers per `.claude/rules/validation-discipline.md §7 Use existing harness first`. Extend `test_recording()` patterns; do not write a parallel TTS/audio-routing harness.
+Use existing `Tests/RuntimeUAT/wispr_eyes.py` helpers per `.claude/rules/validation-discipline.md §7 Use existing harness first`. Extend `test_recording()` patterns; do not write a parallel TTS/audio-routing harness.
 
 ---
 
@@ -2855,7 +2855,7 @@ Only then does Phase B work start. Missing the decision capture in any of the th
 
 **Zero-blast-radius exception** — a narrow workflow-process exception for changes ≤ 20 LOC, ≤ 3 files, ≤ enumerated surface list, that skip council but keep Codex + DoD. (`workflow-process.md §1`.)
 
-**wispr-eyes** — the project's UI verification tool. Python + PyObjC via macOS Accessibility API. Lives in `Tests/UITests/wispr_eyes.py`. High-level helpers: `look()`, `check()`, `verify()`, `scan()`, `test_recording()`, `test_hands_free()`, `tts()`. Used for runtime UAT without XCTest. See `.claude/rules/tools-and-apps.md §2` for discipline and recipes.
+**wispr-eyes** — the project's UI verification tool. Python + PyObjC via macOS Accessibility API. Lives in `Tests/RuntimeUAT/wispr_eyes.py`. High-level helpers: `look()`, `check()`, `verify()`, `scan()`, `test_recording()`, `test_hands_free()`, `tts()`. Used for runtime UAT without XCTest. See `.claude/rules/tools-and-apps.md §2` for discipline and recipes.
 
 **Characterization test pin** — a test that locks externally observable behavior BEFORE a refactor. Used to detect behavior drift during refactoring. Feathers' canonical technique; applied in Phases A, C, D, R5 to guard telemetry shapes and overlay intents.
 
@@ -2911,6 +2911,8 @@ Only then does Phase B work start. Missing the decision capture in any of the th
 ---
 
 ## 30. Changelog
+
+- **2026-05-01 v1.29 · V2 shipped untested — six-bypass workflow failure (P0/#548, P1/#549, follow-up #547)** — PR #544 (V2 fault-injection toolkit) merged via `gh pr merge --squash` with the runtime toolkit (Lane A scenarios + DebugFaultEndpoint) never exercised end-to-end on a real running app even once. Deterministic Lane C tests (4) passed on CI; release-binary symbol grep was clean; Codex on the PR caught two real bugs (P1 + P2) and signed off. **Founder asked to test it post-merge; the canonical run-the-thing path could not run the thing.** Two infrastructure gaps blocked the test (`bundle-dev.sh` hardcodes `swift build -c release` so `#if DEBUG` seams compile out; `open(1)` does not propagate `EW_FAULT_INJECTION=1` to the launched app). Six bypass points all had to fire in one session: (1) plan-template names a Live UAT Driver but does not require a "canonical bundle/launch path" sub-field; (2) council preamble lacks a "runtime path exists?" line; (3) grounded-review template lacks a Q3 on whether canonical run-the-thing supports running the plan's surfaces; (4) Phase 3 validation hook accepted a non-compliant skip-note (`v2-redgreen-skip-note.txt` deferred runtime UAT to a "founder-driven post-merge cycle" — exactly the third option `workflow-process.md §1 step 9` forbids); (5) `scripts/validate-pr.sh` was never invoked, push hook does not require populated `.validation/runs/<latest>/` for `Sources/` pushes; (6) **plan introduced a new gating mechanism (`#if DEBUG` + `EW_FAULT_INJECTION=1`) without enumerating existing equivalent infrastructure** — `state.settings.isDebugModeEnabled` is a runtime, persistent, hidden-Cmd+Shift+D-discoverable debug surface that ships in release builds and is plumbed through `DiagnosticsSettingsView.swift` + `SettingsSection.diagnostics`. V2 should have re-used the existing toggle, not built a parallel compile-time gate. **Auto-mode amplifier:** session ran in auto-mode + founder said "I won't manually review anything" — that signal got interpreted as license to relax workflow gates, when it only relaxes question-asking on routine decisions. **Weekend deliverables tracked in #548 (P0):** plan-template + council-preamble + grounded-review-template additions, push-discipline hook hardening (reject third-option skip-notes; require populated run dir for `Sources/` pushes), auto-mode prompt clarification, then land #547 (bundle-dev.sh `--debug` + `--env`) and #549 (re-gate V2 on `isDebugModeEnabled`). Lane C invariants on main are still verified — the deterministic backbone is solid; what's unverified is the runtime end of the toolkit, and #549 is the path to making that exercisable through the canonical install-and-run flow. **Lesson preserved at `.claude/knowledge/v2-uat-bypass-2026-05-01.md` so future sessions inherit the cluster shape.**
 
 - **2026-04-30 v1.28 · V2 plan finalized + ready for Gate 2 sign-off** — Plan at `docs/feature-requests/issue-291-2026-04-30-v2-fault-injection-toolkit.md`. Three-lane fault-injection toolkit: Lane A (9 wispr_eyes-driven runtime scenarios for capture stall, cancel, XPC kill, settings storms, app quit, model-load cancel, backend-switch guard, rapid-toggle fuzz), Lane B (1 founder-required Bluetooth scenario, optional B1' programmatic device-flip if 30-min spike confirms feasibility), Lane C (4 Swift `@Test` invariants on actual owners — 2 on pipeline, 1 on PipelineSettingsSync, 1 on HotkeyService). DEBUG-only seams (`internal + #if DEBUG + @testable import`) on `AudioCaptureProxy`, `ASRManagerProxy`, both pipelines. DEBUG-only localhost endpoint (`DebugFaultEndpoint` type retained by `AppDelegate`, env-gated `EW_FAULT_INJECTION=1`, per-launch token at `~/Library/Logs/EnviousWispr/fault-token-<pid>` with `0600` perms + atomic write). **Policy:** Lane A/B on-demand only (no CI, no nightly); Lane C runs on PR CI as standard Swift tests. **Self-test discipline:** per-mechanism red/green at PR demonstration time, NOT per-scenario regression+revert busywork ongoing. **Two rounds of Codex grounded review** (`docs/audits/2026-04-30-v2-grounded-review.txt` + `docs/audits/2026-04-30-v2-grounded-review-round2.txt`) + council from GPT 5.5 + Gemini 3.1 Pro. Round 1 absorbed 5 PIVOTs: A5 dropped (WhisperKit ASR is in-process), stall injection moved from pipelines → AudioCaptureProxy (capture-side concern, WhisperKit batch has no chunk handler), `package` → `internal+@testable` (SPM exposes `package` to app target), §10 file paths corrected throughout, Lane C reduced from 6 to 4 invariants on actual owners. Round 2 absorbed 3 precision revisions: C1 mechanism scope clarified (pipeline fixture covers pipeline dedup, NOT proxy seam — those are separate test surfaces), DEBUG endpoint owner pivoted from `EnviousWisprApp.swift` → small `DebugFaultEndpoint` type retained by AppDelegate, A7 narrowed to Cocoa terminate (no SIGTERM handler in code), A8 split into A8a Parakeet (true cancel propagation) + A8b WhisperKit (state-unwind only — no held task to cancel). Open Q1 fault-trigger mechanism: DEBUG-only localhost endpoint with tight gating selected (UserDefaults polling + DistributedNotificationCenter rejected). Two new scenarios added: A7 app-quit, A8 cancel-during-model-load. Out of V2 scope (filed as follow-ups): paste cascade fault injection (NG7 — heart-path-adjacent paste_failed cluster from V1a), fake `WhisperKitBackend` for testing (NG10 — needed for true zombie recovery test), V4 prompt adversarial (separate Track 2 phase). Tier LARGE confirmed (~1175 LOC across `Sources/{EnviousWisprAudio,EnviousWisprASR,EnviousWisprPipeline,EnviousWispr/App}` + `Tests/EnviousWisprTests/{Pipeline,App,Services}/V2/` + `Tests/UITests/`). Bible §6.1 V2 row stays PLANNED until V2 PR ships. Build deferred to next session per session-behavior §6 (one-release-per-session discipline + cognitive-mode-shift between planning and building).
 
@@ -3241,7 +3243,7 @@ Only then does Phase B work start. Missing the decision capture in any of the th
   **Council findings REJECTED with verified justification:**
   - GPT claimed §4.11 and §24 row #20 do not exist: they do (§4.11 at current lines ~501-508, §24 row #20 added in v1.1). GPT hallucinated the hallucination.
   - GPT claimed `Transcript` is not Sendable, threatening Phase C Option 2: `Transcript` IS `Sendable` (verified at `Sources/EnviousWisprCore/Transcript.swift:43`). The real Option 2 problem is `TranscriptStore` being `@MainActor`, which is what triggered the drop.
-  - GPT claimed `Tests/UITests/wispr_eyes.py` and `scripts/heart-path-bench.sh` might not exist: both verified present (§4.10).
+  - GPT claimed `Tests/RuntimeUAT/wispr_eyes.py` and `scripts/heart-path-bench.sh` might not exist: both verified present (§4.10).
   - GPT claimed `.claude/knowledge/session-log.md` path is wrong: verified present at that path; not `docs/session-log.md`.
   - GPT flagged `@MainActor` requirement on consumers as problematic: §4.11 verified both `WordCorrectionStep` and `LLMPolishStep` are already `@MainActor`; no current consumer is affected.
 
@@ -3278,7 +3280,7 @@ Only then does Phase B work start. Missing the decision capture in any of the th
   **Council findings REJECTED with verified justification:**
   - GPT claimed §4.11 and §24 row #20 do not exist: they do (§4.11 at current lines ~501-508, §24 row #20 added in v1.1). GPT hallucinated the hallucination.
   - GPT claimed `Transcript` is not Sendable, threatening Phase C Option 2: `Transcript` IS `Sendable` (verified at `Sources/EnviousWisprCore/Transcript.swift:43`). The real Option 2 problem is `TranscriptStore` being `@MainActor`, which is what triggered the drop.
-  - GPT claimed `Tests/UITests/wispr_eyes.py` and `scripts/heart-path-bench.sh` might not exist: both verified present (§4.10).
+  - GPT claimed `Tests/RuntimeUAT/wispr_eyes.py` and `scripts/heart-path-bench.sh` might not exist: both verified present (§4.10).
   - GPT claimed `.claude/knowledge/session-log.md` path is wrong: verified present at that path; not `docs/session-log.md`.
   - GPT flagged `@MainActor` requirement on consumers as problematic: §4.11 verified both `WordCorrectionStep` and `LLMPolishStep` are already `@MainActor`; no current consumer is affected.
 
@@ -3295,7 +3297,7 @@ Only then does Phase B work start. Missing the decision capture in any of the th
   - §4.4 — updated PipelineSettingsSync baseline from stale 290 to verified 398 lines / 41 handler branches. Phase B LOC target recalibrated.
   - §4.8 — expanded `RecordingOverlayPanel` note to acknowledge 859 lines and flag as post-epic candidate per Gemini review.
   - §4.9 NEW — verified AppState concrete-dep count = 12 (audit reported 11; both close to reality).
-  - §4.10 NEW — verified tool existence (`scripts/heart-path-bench.sh`, `Tests/UITests/wispr_eyes.py`).
+  - §4.10 NEW — verified tool existence (`scripts/heart-path-bench.sh`, `Tests/RuntimeUAT/wispr_eyes.py`).
   - §4.11 NEW — verified `WordCorrectionStep` and `LLMPolishStep` are both `@MainActor`; Phase D's protocol requirement is safe.
 
   **Methodology corrections:**
