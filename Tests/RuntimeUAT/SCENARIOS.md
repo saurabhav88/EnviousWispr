@@ -12,7 +12,7 @@ Drive the harness from repo root:
 
 ```bash
 python3 Tests/RuntimeUAT/faultInjection.py list             # print menu
-python3 Tests/RuntimeUAT/faultInjection.py run A5_forced_stall
+python3 Tests/RuntimeUAT/faultInjection.py run A5_proxy_buffer_drop_watchdog
 python3 Tests/RuntimeUAT/faultInjection.py query            # current state
 ```
 
@@ -22,14 +22,15 @@ Or via Python:
 import sys; sys.path.insert(0, "Tests/RuntimeUAT")
 from wispr_eyes import list_scenarios, run_scenario
 list_scenarios()
-run_scenario("A5_forced_stall")
+run_scenario("A5_proxy_buffer_drop_watchdog")
 ```
 
 ## Index by symptom
 
 | Symptom (something broke in production?) | Scenario | Mechanism family |
 |---|---|---|
-| Recording stuck after audio drops | A5_forced_stall | stall |
+| Proxy-side buffer-drop watchdog regression | A5_proxy_buffer_drop_watchdog | proxy-watchdog |
+| Real OS-level audio interruption (BT codec switch, Zoom mic-grab, AVAudioEngineConfigurationChange) | See `docs/LANE_B_AUDIO_TESTS.md` (HITL only — not synthetic-viable, see `docs/audits/2026-05-02-v2-synthetic-viability-codex.txt`) | hardware/HITL |
 | Pipeline stuck after ASR service crash | A3_asr_xpc_kill | xpc |
 | Pipeline stuck after audio service crash | A4_audio_xpc_kill | xpc |
 | Cancel mid-record leaks task / state | A2_force_cancel | timing |
@@ -71,12 +72,16 @@ Start recording, dispatch `force_audio_xpc_kill`. The audio service connection i
 
 **Negative control:** remove the audio-XPC `invalidationHandler` body in `AudioCaptureProxy`. Pipeline doesn't observe the crash and stays stuck.
 
-### A5_forced_stall (Lane A — stall)
-Backends: both. Budget: 15s. Mechanism: stall.
+### A5_proxy_buffer_drop_watchdog (Lane A — proxy-watchdog)
+Backends: both. Budget: 15s. Mechanism: proxy-watchdog.
 
-Start recording, dispatch `force_stall(1000)` so the next 1000 captured buffers are silently dropped. After `audioCaptureStallWindowMs`, the watchdog fires and pipeline reaches `.error("No audio detected — try again.")`.
+Start recording, dispatch `force_proxy_buffer_drop(1000)` so the next 1000 buffers are dropped inside `AudioCaptureProxy.audioBufferCaptured` before they reach the app continuation. After `audioCaptureStallWindowMs`, the proxy-side watchdog fires and pipeline reaches `.error`.
 
-**Negative control:** remove the stall watchdog (`armCaptureStallWatchdog`). Buffers drop silently; pipeline remains in `.recording` indefinitely.
+**This scenario does NOT test real OS-level audio interruption recovery.** Originally named `A5_forced_stall` and presented as audio-interruption testing — that was a lie. The endpoint pokes the host-side proxy buffer queue; the actual recovery paths in `AVAudioEngineSource.handleEngineConfigurationChange()` and `AVCaptureSessionSource` interruption handlers live in the `EnviousWisprAudioService` process and are not reachable from this host endpoint. Verified 2026-05-02: real-world Sentry shows zero `AVAudioEngineConfigurationChange` fires in 14d across BT codec switch (HFP↔A2DP), Zoom mic-grab/release, Spotify, Discord testing. See `docs/audits/2026-05-02-v2-synthetic-viability-codex.txt` and `docs/LANE_B_AUDIO_TESTS.md`.
+
+**What this scenario validates:** the proxy-side watchdog arms correctly, fires on buffer-arrival gap, pipeline reaches terminal state on watchdog fire, next dictation re-arms capture cleanly.
+
+**Negative control:** remove the proxy-side stall watchdog (`armCaptureStallWatchdog`). Buffers drop silently; pipeline remains in `.recording` indefinitely.
 
 ### A6_settings_storm (Lane A — settings)
 Backends: both. Budget: 30s. Mechanism: settings.
@@ -145,7 +150,7 @@ Fixed command set (no arbitrary RPC):
 
 | Command | Effect |
 |---|---|
-| `force_stall(N)` | Drop next N captured buffers via `AudioCaptureProxy.forceStallRemainingBuffers` |
+| `force_proxy_buffer_drop(N)` | Drop next N buffers inside `AudioCaptureProxy.audioBufferCaptured` (host-side proxy queue). Tests proxy watchdog only — does NOT exercise real audio-stack interruption recovery. |
 | `force_cancel` | Invoke `forceCancelNow()` on the active backend's pipeline |
 | `force_xpc_kill` | Invalidate `ASRManagerProxy` connection mid-stream |
 | `force_audio_xpc_kill` | Invalidate `AudioCaptureProxy` connection mid-stream |

@@ -176,8 +176,19 @@ def force_audio_xpc_kill() -> str:
     return send("force_audio_xpc_kill")
 
 
-def force_stall(n: int) -> str:
-    return send(f"force_stall({n})")
+def force_proxy_buffer_drop(n: int) -> str:
+    """Drop next N capture buffers inside AudioCaptureProxy.audioBufferCaptured.
+
+    Tests the PROXY-side stall watchdog (drops buffers before they reach the
+    app continuation, watchdog fires on the gap). Does NOT exercise the real
+    audio-stack interruption recovery path in AVAudioEngineSource or
+    AVCaptureSessionSource — those handlers live in the service process and
+    are not reachable from this host-side endpoint.
+
+    For real audio-stack interruption testing (BT codec switch, Zoom mic-grab,
+    AVAudioEngineConfigurationChange) see docs/LANE_B_AUDIO_TESTS.md.
+    """
+    return send(f"force_proxy_buffer_drop({n})")
 
 
 # ──────────────────────────── helpers ────────────────────────────
@@ -737,37 +748,48 @@ def A4_audio_xpc_kill(**_) -> dict:
 
 @scenario(
     ScenarioMeta(
-        name="A5_forced_stall",
+        name="A5_proxy_buffer_drop_watchdog",
         lane="A",
-        family="stall",
+        family="proxy-watchdog",
         backends=["both"],
         runtime_budget_seconds=15.0,
         founder_required=False,
-        negative_control="Remove the stall watchdog (armCaptureStallWatchdog); recording continues without audio",
-        description="Forced audio buffer stall: drop next 1000 capture buffers (well above stall threshold)",
+        negative_control="Remove the proxy-side stall watchdog (armCaptureStallWatchdog); buffer drops elapse without recovery",
+        description="Drop next 1000 buffers inside AudioCaptureProxy. Tests the PROXY watchdog firing on a buffer-arrival gap. Does NOT test real OS-level audio interruption recovery (those live in the service process).",
     )
 )
-def A5_forced_stall(**_) -> dict:
-    """User behavior: dictation in progress with audio flowing, audio
-    buffers stop arriving (BT codec switch, USB mic glitch, HAL hiccup).
-    The capture stall watchdog must fire, the pipeline must reach a
-    terminal state, and the next dictation must work.
+def A5_proxy_buffer_drop_watchdog(**_) -> dict:
+    """User behavior: NONE. This scenario does not correspond to a user-
+    triggerable flow. It tests an internal proxy-side defense.
 
-    Notes 2026-05-02:
-    - The watchdog measures gaps between buffer arrivals — capture has
-      to be warm (buffer cadence established) before injecting the stall,
-      otherwise the watchdog has no baseline to compare against.
-    - Without TTS audio, the test injects a stall against a silent
-      capture session — the watchdog logic still runs but the user-real
-      shape isn't exercised.
-    - Recovery: stall is recoverable in principle (user can re-record);
-      the second cycle confirms capture re-arms cleanly.
+    Originally named A5_forced_stall and described as "audio interruption
+    recovery", which was a lie. The endpoint pokes the host-side
+    AudioCaptureProxy buffer queue, dropping the next N buffers before
+    they reach the app continuation. The PROXY's stall watchdog fires on
+    the resulting buffer-arrival gap. The actual audio-stack recovery
+    paths in AVAudioEngineSource.handleEngineConfigurationChange() and
+    AVCaptureSessionSource interruption handlers live in the
+    EnviousWisprAudioService process and are NOT exercised here. Verified
+    2026-05-02 (issue #553 close-out + Codex grounded review at
+    docs/audits/2026-05-02-v2-synthetic-viability-codex.txt) — production
+    Sentry shows zero AVAudioEngineConfigurationChange fires in 14d
+    across BT/Zoom/Discord/Spotify real-world testing.
+
+    For real OS-level audio interruption testing see
+    docs/LANE_B_AUDIO_TESTS.md (Bluetooth route flip, Zoom/Discord
+    coexistence, system input flip).
+
+    What this scenario VALIDATES:
+    - The proxy-side watchdog arms on recording start.
+    - The watchdog fires when buffer cadence breaks.
+    - The pipeline reaches a terminal state on watchdog fire.
+    - The next dictation cycle re-arms capture cleanly.
     """
     if not _start_recording_locked():
         return {"terminal": False, "reason": "could not enter recording", "state": query_state()}
     with _TTSAudio():
         time.sleep(0.5)  # warm-up: let buffer cadence establish
-        reply = force_stall(1000)
+        reply = force_proxy_buffer_drop(1000)
         terminated = assert_terminated(timeout_s=12.0)
     if "recording" in _active_state():
         _stop_recording_locked()
