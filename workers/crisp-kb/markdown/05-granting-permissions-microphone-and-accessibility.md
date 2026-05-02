@@ -1,6 +1,6 @@
 ### Required permissions
 
-EnviousWispr needs two macOS permissions to function:
+EnviousWispr can prompt for up to three macOS permissions:
 
 #### 1. Microphone access
 
@@ -11,12 +11,21 @@ Required for recording your voice. macOS prompts you automatically on first use.
 
 #### 2. Accessibility access
 
-Required for pasting text into apps. EnviousWispr uses Accessibility APIs to insert text directly into text fields (Tier 1 paste) and to activate the correct app window before pasting.
+Required for pasting text into apps. EnviousWispr uses Accessibility APIs to insert text directly into text fields (Tier 1 paste), to activate the correct app window before pasting, and to dispatch a Cmd+V keystroke as a fallback (Tier 2 paste).
 
 1. Open **System Settings** > **Privacy & Security** > **Accessibility**.
 2. Click the **+** button and add EnviousWispr from your Applications folder.
 
 If Accessibility is not granted, EnviousWispr falls back to clipboard-only mode: text is placed on your clipboard, and you paste manually with Cmd+V.
+
+#### 3. Automation (Apple Events) access
+
+Prompted only the first time EnviousWispr's AppleScript paste fallback fires (Tier 2b — used when both direct insertion and Cmd+V keystroke fail). macOS shows a dialog asking whether EnviousWispr can control "System Events." Click **OK** to allow.
+
+1. To review or change later, open **System Settings** > **Privacy & Security** > **Automation**.
+2. Find EnviousWispr in the list and toggle the **System Events** entry on or off.
+
+If you decline this prompt, the paste cascade stops at Tier 2 (Cmd+V keystroke). For most apps, that's enough.
 
 ### Checking permission status
 
