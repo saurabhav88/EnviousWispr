@@ -28,6 +28,7 @@ public struct OpenAIConnector: TranscriptPolisher {
       "messages": messages,
       "max_completion_tokens": config.maxTokens,
       "temperature": config.temperature,
+      "store": false,
     ]
     if let reasoningEffort = config.reasoningEffort {
       body["reasoning_effort"] = reasoningEffort
