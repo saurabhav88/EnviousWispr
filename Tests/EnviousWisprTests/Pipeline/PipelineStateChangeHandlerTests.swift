@@ -136,6 +136,26 @@ struct PipelineStateChangeHandlerTests {
     #expect(calls.completedCalls.count == 1)
   }
 
+  @Test("complete + AX-denied paste tier routes to accessibilityToast overlay")
+  func completeAccessibilityDeniedRoutesToToast() {
+    let spy = OverlaySpy()
+    let calls = CallbackRecorder()
+    let handler = Self.makeHandler(overlay: spy, callbacks: calls)
+    let transcript = Self.makeTranscript(pasteTier: "clipboard_only_ax_denied")
+
+    handler.handle(
+      to: PipelineState.complete,
+      pipelineOverlayIntent: .hidden,
+      lastPolishError: nil,
+      currentTranscript: transcript
+    )
+
+    #expect(spy.calls == [OverlaySpy.Call(intent: .accessibilityToast)])
+    #expect(calls.scheduleWarningCount == 0)
+    #expect(calls.appendedCalls.count == 1)
+    #expect(calls.completedCalls.count == 1)
+  }
+
   // MARK: - Transcript-conditional guards
 
   @Test("complete without current transcript: neither append nor telemetry fires (Phase C)")
