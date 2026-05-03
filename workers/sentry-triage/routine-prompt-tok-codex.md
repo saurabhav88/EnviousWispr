@@ -350,7 +350,12 @@ AND the finding is CONCRETE and you can confidently explain why it is valid.
 Actions:
 1. Create a new issue via `mcp__github__issue_write`:
    - Title: `Codex finding: <one-line summary> (from #{pr_number})`
-   - Labels: `codex-review`, `auto-triaged` (these are the ONLY labels on a brand-new issue, so additive vs replace doesn't matter here — but on every subsequent label edit on this issue, use the additive rule from the ATTACH path).
+   - Labels: `codex-review`, `auto-triaged`, AND a default P-tier (see severity rule below). These are the ONLY labels on a brand-new issue, so additive vs replace doesn't matter here — but on every subsequent label edit on this issue, use the additive rule from the ATTACH path.
+   - Severity rule (deterministic; choose ONE P-tier label):
+     - `P2-medium` — finding touches heart-path code (`Sources/EnviousWisprPipeline/`, `Sources/EnviousWisprAudio/`, `Sources/EnviousWisprASR/`, paste cascade), CI / signing / release pipeline, security, or test integrity (test that doesn't actually validate the claimed behavior).
+     - `P3-low` — frontend / website visual bug, observability/telemetry gap, workflow-prompt refinement, or any code-level finding outside heart-path.
+     - `P4-backlog` — pure documentation / changelog / stale-reference / dead-link cleanup. No code or workflow impact.
+   - When uncertain between two tiers, pick the lower-impact tier. The founder can escalate; auto-routine should never inflate severity.
    - Body (template below — pick marker variant by finding type)
 2. Sub-issue link to Epic: Hardening & Refactors (#319):
    ```
