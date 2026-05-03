@@ -66,7 +66,9 @@ public final class PipelineStateChangeHandler {
     let plan = PipelineStateChangePlanner.plan(
       to: newState,
       pipelineOverlayIntent: pipelineOverlayIntent,
-      isClipboardFallback: currentTranscript?.metrics?.pasteTier == "clipboard_only",
+      isClipboardFallback: currentTranscript?.metrics?.pasteTier?.hasPrefix("clipboard_only")
+        ?? false,
+      isAccessibilityToast: currentTranscript?.metrics?.pasteTier == "clipboard_only_ax_denied",
       lastPolishError: lastPolishError,
       hasCurrentTranscript: currentTranscript != nil
     )

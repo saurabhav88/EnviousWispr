@@ -33,6 +33,7 @@ struct PipelineStateChangePlannerTests {
       to: PipelineState.complete,
       pipelineOverlayIntent: Self.hiddenIntent,
       isClipboardFallback: true,
+      isAccessibilityToast: false,
       lastPolishError: "polish failed for some reason",
       hasCurrentTranscript: true
     )
@@ -44,12 +45,69 @@ struct PipelineStateChangePlannerTests {
     #expect(!plan.effects.contains(.cancelPendingWarning))
   }
 
+  @Test("complete + accessibility toast + clipboard fallback -> accessibilityToast wins")
+  func completeAccessibilityToastWinsOverClipboardFallback() {
+    let plan = PipelineStateChangePlanner.plan(
+      to: PipelineState.complete,
+      pipelineOverlayIntent: Self.hiddenIntent,
+      isClipboardFallback: true,
+      isAccessibilityToast: true,
+      lastPolishError: nil,
+      hasCurrentTranscript: true
+    )
+    #expect(plan.effects.contains(.showOverlay(.accessibilityToast)))
+    #expect(!plan.effects.contains(.showOverlay(.clipboardFallback)))
+  }
+
+  @Test("complete + clipboard fallback without accessibility toast -> clipboardFallback")
+  func completeClipboardFallbackWithoutAccessibilityToast() {
+    let plan = PipelineStateChangePlanner.plan(
+      to: PipelineState.complete,
+      pipelineOverlayIntent: Self.hiddenIntent,
+      isClipboardFallback: true,
+      isAccessibilityToast: false,
+      lastPolishError: nil,
+      hasCurrentTranscript: true
+    )
+    #expect(plan.effects.contains(.showOverlay(.clipboardFallback)))
+    #expect(!plan.effects.contains(.showOverlay(.accessibilityToast)))
+  }
+
+  @Test("complete + accessibility toast without clipboard fallback -> accessibilityToast")
+  func completeAccessibilityToastStandalone() {
+    let plan = PipelineStateChangePlanner.plan(
+      to: PipelineState.complete,
+      pipelineOverlayIntent: Self.hiddenIntent,
+      isClipboardFallback: false,
+      isAccessibilityToast: true,
+      lastPolishError: nil,
+      hasCurrentTranscript: true
+    )
+    #expect(plan.effects.contains(.showOverlay(.accessibilityToast)))
+    #expect(!plan.effects.contains(.showOverlay(.clipboardFallback)))
+  }
+
+  @Test("non-complete + accessibility toast input does not emit accessibilityToast")
+  func nonCompleteAccessibilityToastInputDoesNotEmitToast() {
+    let plan = PipelineStateChangePlanner.plan(
+      to: PipelineState.recording,
+      pipelineOverlayIntent: Self.recordingIntent,
+      isClipboardFallback: true,
+      isAccessibilityToast: true,
+      lastPolishError: nil,
+      hasCurrentTranscript: true
+    )
+    #expect(!plan.effects.contains(.showOverlay(.accessibilityToast)))
+    #expect(plan.effects.contains(.showOverlay(Self.recordingIntent)))
+  }
+
   @Test("complete + polish failed (not clipboard) -> overlay + schedulePolishFailedWarning")
   func completePolishFailedSchedulesWarning() {
     let plan = PipelineStateChangePlanner.plan(
       to: PipelineState.complete,
       pipelineOverlayIntent: Self.hiddenIntent,
       isClipboardFallback: false,
+      isAccessibilityToast: false,
       lastPolishError: "openai 429 rate-limited",
       hasCurrentTranscript: true
     )
@@ -66,6 +124,7 @@ struct PipelineStateChangePlannerTests {
       to: PipelineState.complete,
       pipelineOverlayIntent: Self.hiddenIntent,
       isClipboardFallback: false,
+      isAccessibilityToast: false,
       lastPolishError: nil,
       hasCurrentTranscript: true
     )
@@ -88,6 +147,7 @@ struct PipelineStateChangePlannerTests {
       to: PipelineState.complete,
       pipelineOverlayIntent: Self.hiddenIntent,
       isClipboardFallback: false,
+      isAccessibilityToast: false,
       lastPolishError: nil,
       hasCurrentTranscript: false
     )
@@ -107,6 +167,7 @@ struct PipelineStateChangePlannerTests {
         to: state,
         pipelineOverlayIntent: Self.recordingIntent,
         isClipboardFallback: false,
+        isAccessibilityToast: false,
         lastPolishError: nil,
         hasCurrentTranscript: false
       )
@@ -130,6 +191,7 @@ struct PipelineStateChangePlannerTests {
       to: WhisperKitPipelineState.ready,
       pipelineOverlayIntent: Self.hiddenIntent,
       isClipboardFallback: false,
+      isAccessibilityToast: false,
       lastPolishError: nil,
       hasCurrentTranscript: false
     )
@@ -155,6 +217,7 @@ struct PipelineStateChangePlannerTests {
         to: state,
         pipelineOverlayIntent: intent,
         isClipboardFallback: false,
+        isAccessibilityToast: false,
         lastPolishError: nil,
         hasCurrentTranscript: false
       )
@@ -173,6 +236,7 @@ struct PipelineStateChangePlannerTests {
       to: WhisperKitPipelineState.startingUp,
       pipelineOverlayIntent: .processing(label: "Starting..."),
       isClipboardFallback: false,
+      isAccessibilityToast: false,
       lastPolishError: nil,
       hasCurrentTranscript: false
     )
@@ -180,6 +244,7 @@ struct PipelineStateChangePlannerTests {
       to: WhisperKitPipelineState.loadingModel,
       pipelineOverlayIntent: .processing(label: "Loading model..."),
       isClipboardFallback: false,
+      isAccessibilityToast: false,
       lastPolishError: nil,
       hasCurrentTranscript: false
     )
@@ -195,6 +260,7 @@ struct PipelineStateChangePlannerTests {
       to: PipelineState.error("mic_disconnected"),
       pipelineOverlayIntent: .error(message: "mic_disconnected"),
       isClipboardFallback: false,
+      isAccessibilityToast: false,
       lastPolishError: nil,
       hasCurrentTranscript: false
     )
@@ -212,6 +278,7 @@ struct PipelineStateChangePlannerTests {
       to: WhisperKitPipelineState.error("whisperkit_load_failed"),
       pipelineOverlayIntent: .error(message: "whisperkit_load_failed"),
       isClipboardFallback: false,
+      isAccessibilityToast: false,
       lastPolishError: nil,
       hasCurrentTranscript: false
     )
@@ -226,6 +293,7 @@ struct PipelineStateChangePlannerTests {
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
       isClipboardFallback: false,
+      isAccessibilityToast: false,
       lastPolishError: nil,
       hasCurrentTranscript: true
     )
@@ -245,6 +313,7 @@ struct PipelineStateChangePlannerTests {
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
       isClipboardFallback: false,
+      isAccessibilityToast: false,
       lastPolishError: "fail",
       hasCurrentTranscript: true
     )
@@ -263,6 +332,7 @@ struct PipelineStateChangePlannerTests {
       to: PipelineState.complete,
       pipelineOverlayIntent: .hidden,
       isClipboardFallback: true,
+      isAccessibilityToast: false,
       lastPolishError: "fail",
       hasCurrentTranscript: true
     )
@@ -280,6 +350,7 @@ struct PipelineStateChangePlannerTests {
       to: PipelineState.recording,
       pipelineOverlayIntent: .recording(audioLevel: 0),
       isClipboardFallback: false,
+      isAccessibilityToast: false,
       lastPolishError: nil,
       hasCurrentTranscript: false
     )
@@ -296,6 +367,7 @@ struct PipelineStateChangePlannerTests {
       to: PipelineState.error("bad"),
       pipelineOverlayIntent: .error(message: "bad"),
       isClipboardFallback: false,
+      isAccessibilityToast: false,
       lastPolishError: nil,
       hasCurrentTranscript: false
     )

@@ -923,7 +923,7 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
       transcript.metrics = ExecutionMetrics(
         asrLatencySeconds: asrEnd - asrStart,
         llmLatencySeconds: polishDuration,
-        pasteTier: finalizationResult.pasteResult?.tier.rawValue,
+        pasteTier: finalizationResult.pasteResult?.pasteTierLabel,
         pasteLatencyMs: finalizationResult.pasteResult?.durationMs,
         targetApp: pasteTargetApp,
         coldStart: false,
@@ -937,7 +937,7 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
           "e2e_s": String(format: "%.3f", pipelineEnd - pipelineStart),
           "asr_s": String(format: "%.3f", asrEnd - asrStart),
           "polish_s": String(format: "%.3f", polishDuration),
-          "paste_tier": finalizationResult.pasteResult?.tier.rawValue ?? "none",
+          "paste_tier": finalizationResult.pasteResult?.pasteTierLabel ?? "none",
           "backend": asrManager.activeBackendType.rawValue,
         ])
       captureTelemetry.recordSuccessfulRecording()

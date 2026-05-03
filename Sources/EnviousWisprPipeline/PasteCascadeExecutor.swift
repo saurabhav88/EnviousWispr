@@ -22,6 +22,7 @@ internal enum PasteDeliveryOutcome: Equatable, Sendable {
     focus: PasteFocusClassification,
     targetBundleID: String?
   )
+  case clipboardOnlyAccessibilityDenied(targetBundleID: String?)
   case cgEventCreationFailed(accessibilityTrusted: Bool)
 }
 
@@ -30,6 +31,13 @@ internal struct PasteDeliveryResult {
   let tier: PasteTier
   let durationMs: Int
   let outcome: PasteDeliveryOutcome
+
+  var pasteTierLabel: String {
+    if case .clipboardOnlyAccessibilityDenied = outcome {
+      return "clipboard_only_ax_denied"
+    }
+    return tier.rawValue
+  }
 }
 
 /// Three-way classification of the focused AX element at paste time.
@@ -243,6 +251,9 @@ internal final class PasteCascadeExecutor {
       outcome = .delivered(tier: tier, durationMs: durationMs)
     } else if let accessibilityTrusted = cgEventFailureAccessibilityTrusted {
       outcome = .cgEventCreationFailed(accessibilityTrusted: accessibilityTrusted)
+    } else if !axTrusted {
+      outcome = .clipboardOnlyAccessibilityDenied(
+        targetBundleID: request.targetApp?.bundleIdentifier)
     } else {
       outcome = .clipboardOnly(
         tiersAttempted: tiersAttempted,
@@ -296,6 +307,13 @@ internal final class PasteCascadeExecutor {
           "paste.cgevent_failed": true,
           "paste.tier_failures": tierFailures,
         ]
+      )
+    case .clipboardOnlyAccessibilityDenied(let targetBundleID):
+      SentryBreadcrumb.add(
+        stage: "paste",
+        message: "paste.outcome=clipboard_only_ax_denied",
+        level: .info,
+        data: ["target_bundle_id": targetBundleID ?? "unknown"]
       )
     }
   }
