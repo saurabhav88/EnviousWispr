@@ -16,7 +16,7 @@ let package = Package(
     .library(name: "EnviousWisprLLM", targets: ["EnviousWisprLLM"]),
   ],
   dependencies: [
-    .package(url: "https://github.com/argmaxinc/WhisperKit.git", from: "0.12.0"),
+    .package(url: "https://github.com/argmaxinc/argmax-oss-swift", from: "1.0.0"),
     .package(url: "https://github.com/saurabhav88/FluidAudio.git", revision: "46e96f4"),
     .package(url: "https://github.com/sparkle-project/Sparkle.git", from: "2.6.0"),
     .package(url: "https://github.com/PostHog/posthog-ios.git", from: "3.0.0"),
@@ -59,7 +59,7 @@ let package = Package(
       dependencies: [
         "EnviousWisprCore",
         "EnviousWisprAudio",
-        "WhisperKit",
+        .product(name: "WhisperKit", package: "argmax-oss-swift"),
         "FluidAudio",
       ],
       path: "Sources/EnviousWisprASR"
@@ -101,7 +101,7 @@ let package = Package(
         "EnviousWisprCore",
         "EnviousWisprASR",
         "EnviousWisprAudio",
-        "WhisperKit",
+        .product(name: "WhisperKit", package: "argmax-oss-swift"),
         "FluidAudio",
       ],
       path: "Sources/EnviousWisprASRService",
@@ -118,7 +118,7 @@ let package = Package(
         "EnviousWisprASR",
         "EnviousWisprLLM",
         "EnviousWisprPipeline",
-        "WhisperKit",
+        .product(name: "WhisperKit", package: "argmax-oss-swift"),
         "FluidAudio",
         "Sparkle",
       ],

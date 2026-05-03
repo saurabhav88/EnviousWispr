@@ -3,12 +3,11 @@ import Foundation
 @preconcurrency import WhisperKit
 
 /// Hardcoded compute options optimized for Apple Silicon dictation.
-/// Audio encoder + text decoder → Neural Engine, mel spectrogram → GPU, prefill → CPU only.
+/// Audio encoder + text decoder → Neural Engine, mel spectrogram → GPU.
 private let dictationComputeOptions = ModelComputeOptions(
   melCompute: .cpuAndGPU,
   audioEncoderCompute: .cpuAndNeuralEngine,
-  textDecoderCompute: .cpuAndNeuralEngine,
-  prefillCompute: .cpuOnly
+  textDecoderCompute: .cpuAndNeuralEngine
 )
 
 /// WhisperKit ASR backend — broad language support with hardcoded dictation-optimized quality.
@@ -257,7 +256,6 @@ public actor WhisperKitBackend: ASRBackend {
     opts.skipSpecialTokens = true
     opts.suppressBlank = true
     opts.usePrefillPrompt = true
-    opts.usePrefillCache = true
 
     // Use VAD chunking for long recordings to prevent hallucinated repetitions
     let thirtySeconds = 16000 * 30  // 480_000 samples
