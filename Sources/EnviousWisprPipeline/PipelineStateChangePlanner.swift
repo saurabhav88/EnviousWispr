@@ -66,6 +66,7 @@ enum PipelineStateChangePlanner {
     to newState: any PipelineStateProtocol,
     pipelineOverlayIntent: OverlayIntent,
     isClipboardFallback: Bool,
+    isAccessibilityToast: Bool,
     lastPolishError: String?,
     hasCurrentTranscript: Bool
   ) -> PipelineStateChangePlan {
@@ -77,7 +78,9 @@ enum PipelineStateChangePlanner {
     let resolvedOverlayIntent: OverlayIntent
     switch newState.activity {
     case .complete:
-      if isClipboardFallback {
+      if isAccessibilityToast {
+        resolvedOverlayIntent = .accessibilityToast
+      } else if isClipboardFallback {
         resolvedOverlayIntent = .clipboardFallback
       } else if lastPolishError != nil {
         resolvedOverlayIntent = pipelineOverlayIntent

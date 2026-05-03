@@ -46,7 +46,19 @@ final class RecordingOverlayPanel {
   /// Tracks lock state for flicker guard comparison.
   private var isRecordingLocked: Bool = false
 
+  private var accessibilityToastShownThisSession: Bool = false
+  private var grantHandler: (() -> Void)?
+  private var accessibilityWarningDismissedProvider: () -> Bool = { false }
+
   // MARK: - Intent-driven API
+
+  func setGrantHandler(_ handler: @escaping () -> Void) {
+    grantHandler = handler
+  }
+
+  func setAccessibilityWarningDismissedProvider(_ provider: @escaping () -> Bool) {
+    accessibilityWarningDismissedProvider = provider
+  }
 
   /// Unified entry point: render the overlay for the given intent.
   /// Guards against identical intents to prevent flicker.
@@ -97,6 +109,20 @@ final class RecordingOverlayPanel {
           .priority: NSAccessibilityPriorityLevel.high.rawValue as NSNumber,
         ])
       showClipboardFallback()
+    case .accessibilityToast:
+      NSAccessibility.post(
+        element: NSApp.mainWindow as Any,
+        notification: .announcementRequested,
+        userInfo: [
+          .announcement: "Accessibility permission needed for auto-paste",
+          .priority: NSAccessibilityPriorityLevel.high.rawValue as NSNumber,
+        ])
+      if accessibilityToastShownThisSession || accessibilityWarningDismissedProvider() {
+        showClipboardFallback()
+      } else {
+        accessibilityToastShownThisSession = true
+        showAccessibilityToast()
+      }
     case .warning(let message):
       NSAccessibility.post(
         element: NSApp.mainWindow as Any,
@@ -225,6 +251,35 @@ final class RecordingOverlayPanel {
     DispatchQueue.main.async(execute: work)
   }
 
+  /// Show a transient Accessibility permission notice that auto-dismisses after 6s.
+  func showAccessibilityToast() {
+    guard panel == nil else {
+      transitionToAccessibilityToast()
+      scheduleAutoDismiss(seconds: 6.0)
+      return
+    }
+    pendingCreateWork?.cancel()
+    pendingCreateWork = nil
+    generation &+= 1
+    let token = generation
+
+    let work = DispatchWorkItem { [weak self] in
+      guard let self, self.generation == token else { return }
+      self.pendingCreateWork = nil
+      self.showPanel(
+        content: AccessibilityToastView(onGrant: { [weak self] in
+          self?.grantHandler?()
+          self?.hide()
+        }).frame(width: 300, height: 56),
+        width: 300,
+        height: 56
+      )
+      self.scheduleAutoDismiss(seconds: 6.0)
+    }
+    pendingCreateWork = work
+    DispatchQueue.main.async(execute: work)
+  }
+
   /// Auto-dismiss timer for transient notices (clipboard fallback, errors).
   private var autoDismissTask: Task<Void, Never>?
 
@@ -307,6 +362,39 @@ final class RecordingOverlayPanel {
     guard panel == nil else { return }
 
     showPanel(content: PolishingOverlayView(label: label).frame(width: 185, height: 44), width: 185)
+  }
+
+  /// Transition an existing panel to the Accessibility permission notice.
+  private func transitionToAccessibilityToast() {
+    guard let existingPanel = panel else { return }
+    let y = existingPanel.frame.origin.y
+
+    panel = nil
+    autoDismissTask?.cancel()
+    autoDismissTask = nil
+    pendingCreateWork?.cancel()
+    pendingCreateWork = nil
+    CATransaction.flush()
+    existingPanel.close()
+
+    generation &+= 1
+    let token = generation
+
+    let work = DispatchWorkItem { [weak self] in
+      guard let self, self.generation == token else { return }
+      self.pendingCreateWork = nil
+      self.showPanel(
+        content: AccessibilityToastView(onGrant: { [weak self] in
+          self?.grantHandler?()
+          self?.hide()
+        }).frame(width: 300, height: 56),
+        width: 300,
+        height: 56,
+        y: y
+      )
+    }
+    pendingCreateWork = work
+    DispatchQueue.main.async(execute: work)
   }
 
   /// Transition an existing panel from recording to polishing mode.
@@ -855,5 +943,35 @@ struct NotificationOverlayView: View {
     .background(
       style.usesDistressLips
         ? AnyView(DistressCapsuleBackground()) : AnyView(OverlayCapsuleBackground()))
+  }
+}
+
+// MARK: - AccessibilityToastView
+
+struct AccessibilityToastView: View {
+  let onGrant: () -> Void
+
+  var body: some View {
+    HStack(spacing: 10) {
+      Image(systemName: "lock.shield.fill")
+        .foregroundStyle(.orange)
+        .font(.system(size: 16))
+      Text("Auto-paste needs Accessibility")
+        .font(.system(size: 13, weight: .medium))
+        .foregroundStyle(.white)
+      Spacer(minLength: 8)
+      Button(action: onGrant) {
+        Text("Grant")
+          .font(.system(size: 12, weight: .semibold))
+          .foregroundStyle(.white)
+          .padding(.horizontal, 12)
+          .padding(.vertical, 4)
+          .background(Capsule().fill(Color.orange.opacity(0.85)))
+      }
+      .buttonStyle(.plain)
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 10)
+    .background(OverlayCapsuleBackground())
   }
 }

@@ -229,6 +229,13 @@ final class AppState {
     )
     settingsSync.applyInitialSettings(settings)
 
+    recordingOverlay.setGrantHandler { [weak self] in
+      _ = self?.permissions.requestAccessibilityAccess()
+    }
+    recordingOverlay.setAccessibilityWarningDismissedProvider { [weak self] in
+      self?.permissions.accessibilityWarningDismissed ?? false
+    }
+
     // Wire dictation activity provider (after all stored properties initialized)
     polishService.setDictationActivity(self)
 
@@ -848,7 +855,15 @@ final class AppState {
         }
       }
     }()
-    let autoPaste = activePipelineIdle && permissions.hasAccessibilityPermission
+    // #500: drop the legacy `permissions.hasAccessibilityPermission` gate so the
+    // paste cascade always runs. The cascade already handles AX-not-trusted
+    // gracefully at PasteCascadeExecutor.swift:106-118 (forces `.nonText`,
+    // skips all tiers, falls through to clipboard) AND emits the
+    // `.clipboardOnlyAccessibilityDenied` outcome which routes to the
+    // educational `.accessibilityToast` overlay. The legacy gate bypassed
+    // the cascade entirely (TranscriptFinalizer:143 direct copyToClipboard),
+    // depriving AX-denied users of both the diagnostic and the toast.
+    let autoPaste = activePipelineIdle
     let resolvedModel: String = {
       switch settings.llmProvider {
       case .appleIntelligence: return "apple-intelligence"
