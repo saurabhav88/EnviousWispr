@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 
 /// Context passed through the text processing chain after ASR transcription.
@@ -14,10 +15,19 @@ public struct TextProcessingContext: Sendable {
   public var llmModel: String?
   /// Target app display name (e.g. "Terminal"). Nil if unknown or re-polish path.
   public var targetAppName: String?
+  /// Connector-source-of-truth metadata for AFM dual-mode polish (#429).
+  /// Cloud providers leave this nil.
+  public var polishMetadata: PolishMetadata?
+  /// Final pipeline-level fallback flag — true if EITHER the connector-side
+  /// `EnviousOutputFilter` OR the post-step `validatePolishOutput` fell back
+  /// to raw input. Computed in `LLMPolishStep` after validation; the connector
+  /// cannot know this. Telemetry surfaces this as `fell_back_to_raw`.
+  public var pipelineFellBackToRaw: Bool
 
   public init(text: String, language: String?) {
     self.text = text
     self.language = language
+    self.pipelineFellBackToRaw = false
   }
 }
 

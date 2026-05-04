@@ -6,6 +6,27 @@ import NaturalLanguage
   import FoundationModels
 #endif
 
+/// Typed AFM polish error wrapping a downstream throw with the router decision
+/// that produced it. Thrown by `AppleIntelligenceConnector.polish()` ONLY for
+/// errors that occur AFTER the router runs (i.e. after `ApplePolishRouter.decide`).
+/// Pre-router throws (preflight gate, framework unavailable, language gate)
+/// propagate untyped because the router never produced a decision to attribute.
+///
+/// Caught by `LLMPolishStep` so it can tag Sentry with `polish_mode` /
+/// `polish_router_basis` before propagating the underlying error to the
+/// existing fallback logic. (#429)
+public struct AFMPolishError: Error, Sendable {
+  public let underlying: Error
+  public let routerMode: String
+  public let routerBasis: String
+
+  public init(underlying: Error, routerMode: String, routerBasis: String) {
+    self.underlying = underlying
+    self.routerMode = routerMode
+    self.routerBasis = routerBasis
+  }
+}
+
 /// Normalizes language identifiers (ISO 639-1 or BCP-47) to lowercased base
 /// codes. Shared between the preflight gate and the output validator so both
 /// speak the same language vocabulary. Internal so `@testable import` can reach
@@ -312,27 +333,41 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       // mode-appropriate prompt. Router is deterministic and fast (<1ms).
       let decision = ApplePolishRouter.decide(text)
       let mode = decision.mode
+      let routerMode = mode.rawValue
+      let routerBasis = decision.basis.logDescription
       Self.logRouteTrace(decision: decision, inputChars: text.count)
 
-      let result = try await polishWithFoundationModels(
-        text: text,
-        instructions: instructions,
-        detectedLanguage: normalizedBase,
-        mode: mode
-      )
-
-      // Post-generation output-language validation. Skipped for English,
-      // short outputs, or recognizer ambiguity (see OutputLanguageValidator).
-      // Drift throws LLMError.outputLanguageDrift; LLMPolishStep catches
-      // and falls back to the original transcript silently.
-      if let expectedBase = normalizedBase, expectedBase != "en" {
-        try OutputLanguageValidator.validate(
-          polished: result.polishedText,
-          expectedBase: expectedBase
+      // After-router throws are wrapped in AFMPolishError so LLMPolishStep
+      // can tag Sentry with the router decision. Pre-router throws above
+      // propagate untyped.
+      do {
+        let result = try await polishWithFoundationModels(
+          text: text,
+          instructions: instructions,
+          detectedLanguage: normalizedBase,
+          mode: mode,
+          routerBasis: routerBasis
         )
-      }
 
-      return result
+        // Post-generation output-language validation. Skipped for English,
+        // short outputs, or recognizer ambiguity (see OutputLanguageValidator).
+        // Drift throws LLMError.outputLanguageDrift; LLMPolishStep catches
+        // and falls back to the original transcript silently.
+        if let expectedBase = normalizedBase, expectedBase != "en" {
+          try OutputLanguageValidator.validate(
+            polished: result.polishedText,
+            expectedBase: expectedBase
+          )
+        }
+
+        return result
+      } catch let afmErr as AFMPolishError {
+        // Re-throw untouched if already typed (defensive — shouldn't happen
+        // since polishWithFoundationModels currently only throws plain errors).
+        throw afmErr
+      } catch {
+        throw AFMPolishError(underlying: error, routerMode: routerMode, routerBasis: routerBasis)
+      }
     #else
       throw LLMError.frameworkUnavailable(
         "This build was compiled without Apple Intelligence support. Rebuild with the macOS 26 SDK, or use a different AI polish provider."
@@ -360,7 +395,8 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       text: String,
       instructions: PolishInstructions,
       detectedLanguage: String?,
-      mode: ApplePolishMode
+      mode: ApplePolishMode,
+      routerBasis: String
     ) async throws -> LLMResult {
       let session = try makeSession(
         instructions: instructions,
@@ -394,8 +430,15 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
         throw LLMError.emptyResponse
       }
 
+      let metadata = PolishMetadata(
+        routerMode: mode.rawValue,
+        routerBasis: routerBasis,
+        filterTripped: filtered.tripped,
+        filterFellBackToRaw: filtered.fellBackToRaw
+      )
       return LLMResult(
-        polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines)
+        polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines),
+        polishMetadata: metadata
       )
     }
 
@@ -410,7 +453,8 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
       text: String,
       instructions: PolishInstructions,
       detectedLanguage: String?,
-      mode: ApplePolishMode
+      mode: ApplePolishMode,
+      routerBasis: String
     ) async throws -> LLMResult {
       let session = try makeSession(
         instructions: instructions,
@@ -442,8 +486,15 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
         throw LLMError.emptyResponse
       }
 
+      let metadata = PolishMetadata(
+        routerMode: mode.rawValue,
+        routerBasis: routerBasis,
+        filterTripped: filtered.tripped,
+        filterFellBackToRaw: filtered.fellBackToRaw
+      )
       return LLMResult(
-        polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines)
+        polishedText: content.trimmingCharacters(in: .whitespacesAndNewlines),
+        polishMetadata: metadata
       )
     }
   #endif

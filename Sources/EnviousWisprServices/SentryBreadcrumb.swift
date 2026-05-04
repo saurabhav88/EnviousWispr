@@ -76,6 +76,17 @@ public enum SentryBreadcrumb {
     }
   }
 
+  /// Tag the current Sentry scope with the dual-mode polish router decision (#429).
+  /// Called from `LLMPolishStep` when an `AFMPolishError` is caught so any
+  /// subsequent error capture in the same scope window carries the router fields.
+  /// Pre-router AFM errors don't call this — their events correctly omit the tag.
+  public static func setPolishMode(routerMode: String, routerBasis: String) {
+    SentrySDK.configureScope { scope in
+      scope.setTag(value: routerMode, key: "polish_mode")
+      scope.setTag(value: routerBasis, key: "polish_router_basis")
+    }
+  }
+
   /// Update recording state on global scope. Present on fatal crashes.
   /// - Parameters:
   ///   - active: Whether recording is in progress.

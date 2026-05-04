@@ -31,6 +31,12 @@ internal struct FinalizationResult {
   let polishDurationSeconds: Double
   /// Time spent in paste (for metrics).
   let pasteDurationSeconds: Double
+  /// Connector-source-of-truth metadata for AFM dual-mode polish (#429).
+  /// Forwarded to pipeline so it can fold into `ExecutionMetrics` for telemetry.
+  let polishMetadata: PolishMetadata?
+  /// Final pipeline-level fallback flag (filter OR validator). See
+  /// `TextProcessingContext.pipelineFellBackToRaw`.
+  let pipelineFellBackToRaw: Bool
 }
 
 /// Typed errors so pipelines can decide the right fallback per category.
@@ -150,7 +156,9 @@ internal final class TranscriptFinalizer {
       pasteResult: pasteResult,
       polishError: processingResult.polishError,
       polishDurationSeconds: polishEnd - polishStart,
-      pasteDurationSeconds: pasteEnd - pasteStart
+      pasteDurationSeconds: pasteEnd - pasteStart,
+      polishMetadata: context.polishMetadata,
+      pipelineFellBackToRaw: context.pipelineFellBackToRaw
     )
   }
 }

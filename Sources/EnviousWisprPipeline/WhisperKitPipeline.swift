@@ -1046,7 +1046,12 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
         targetApp: pasteTargetApp,
         coldStart: false,
         streamingMode: false,
-        e2eSeconds: pipelineEnd - pipelineStart
+        e2eSeconds: pipelineEnd - pipelineStart,
+        polishRouterMode: finalizationResult.polishMetadata?.routerMode,
+        polishRouterBasis: finalizationResult.polishMetadata?.routerBasis,
+        polishFilterTripped: finalizationResult.polishMetadata?.filterTripped,
+        polishFellBackToRaw: finalizationResult.polishMetadata == nil
+          ? nil : finalizationResult.pipelineFellBackToRaw
       )
       currentTranscript = transcript
       SentryBreadcrumb.add(
