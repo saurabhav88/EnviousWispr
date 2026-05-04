@@ -156,43 +156,51 @@ public actor SilenceDetector {
     // 1. Write chunk to prebuffer (always)
     writeToPrebuffer(samples)
 
-    // 2. Determine raw probability
-    var rawProbability: Float = 0.0
+    // 2. Always run FluidAudio's streaming VAD on every chunk so its internal
+    //    sample clock (`VadStreamState.processedSamples`) stays in lock-step
+    //    with our buffer. Boundary events carry sample indices in that clock;
+    //    skipping a chunk would drift the two clocks apart and produce wrong
+    //    `SpeechSegment` boundaries downstream (issue #604 followup,
+    //    Codex-flagged 2026-05-04). The energy gate now only suppresses what
+    //    we feed into the smoothed-EMA auto-stop path; it must NOT bypass
+    //    `processStreamingChunk`.
+    let segConfig = VadSegmentationConfig(
+      minSpeechDuration: 0.3,
+      minSilenceDuration: silenceTimeout,
+      speechPadding: 0.0
+    )
 
+    let result: VadStreamResult
+    do {
+      result = try await vad.processStreamingChunk(
+        samples,
+        state: streamState,
+        config: segConfig
+      )
+    } catch {
+      Task {
+        await AppLogger.shared.log(
+          "VAD processChunk failed: \(error)",
+          level: .verbose, category: "VAD"
+        )
+      }
+      processedSampleCount += samples.count
+      return false
+    }
+
+    streamState = result.state
+    if let event = result.event {
+      applyStreamBoundary(event)
+    }
+
+    // 3. Energy gate: zero the smoothed-EMA input on quiet chunks. This affects
+    //    auto-stop only — boundary events were already applied above using
+    //    FluidAudio's authoritative clock.
+    let rawProbability: Float
     if vadConfig.energyGateThreshold > 0 && computeRMS(samples) < vadConfig.energyGateThreshold {
-      // Energy pre-gate: chunk is too quiet, skip VAD inference
       rawProbability = 0.0
     } else {
-      // Run Silero VAD to get raw probability
-      let segConfig = VadSegmentationConfig(
-        minSpeechDuration: 0.3,
-        minSilenceDuration: silenceTimeout,
-        speechPadding: 0.0
-      )
-
-      let result: VadStreamResult
-      do {
-        result = try await vad.processStreamingChunk(
-          samples,
-          state: streamState,
-          config: segConfig
-        )
-      } catch {
-        Task {
-          await AppLogger.shared.log(
-            "VAD processChunk failed: \(error)",
-            level: .verbose, category: "VAD"
-          )
-        }
-        processedSampleCount += samples.count
-        return false
-      }
-
-      streamState = result.state
       rawProbability = result.probability
-      if let event = result.event {
-        applyStreamBoundary(event)
-      }
     }
 
     return advanceStateMachine(rawProbability: rawProbability, samplesInChunk: samples.count)
