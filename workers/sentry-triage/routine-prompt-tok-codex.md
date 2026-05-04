@@ -310,8 +310,8 @@ If any condition fails, do NOT use ATTACH. Reclassify.
 
 Actions (in order):
 1. If source issue state is "closed", REOPEN via `mcp__github__issue_write`.
-2. **Read the existing labels first** (from the source issue's prior `issue_read` in Step 3.5). If `codex-review` is already present, skip step 3. Otherwise: write the **union** `existing_labels + ["codex-review"]` via `mcp__github__issue_write`. NEVER replace the label set with just `["codex-review"]` — that would strip P-tier, area, and other curated labels.
-3. Post a comment via `mcp__github__add_issue_comment` (template below) — the comment body carries the per-finding marker.
+2. **Read the existing labels first** (from the source issue's prior `issue_read` in Step 3.5). If `codex-review` is already present, SKIP THIS LABEL-WRITE STEP ONLY (do not skip steps 3 or 4 below). Otherwise: write the **union** `existing_labels + ["codex-review"]` via `mcp__github__issue_write`. NEVER replace the label set with just `["codex-review"]` — that would strip P-tier, area, and other curated labels. Always continue to step 3 regardless of whether the label-write fired.
+3. Post a comment via `mcp__github__add_issue_comment` (template below) — the comment body carries the per-finding marker. **REQUIRED — do not skip even when the label-write in step 2 was skipped.**
 4. **REQUIRED for dedup correctness:** APPEND the per-finding `codex-source` marker to the source issue body via `mcp__github__issue_write` (read existing body first, append the marker line, write back). Preserve all existing content. Step 0 scans bodies only — if this body-append is skipped, the next run will re-file the same finding as a duplicate comment. Failure to write the body marker MUST be treated as a per-finding failure: log + skip THAT finding (do not consider it triaged), continue to the next finding.
 
 Comment template — pick the marker variant matching the finding type (inline-comment vs top-level body):
