@@ -70,7 +70,7 @@ Both models run entirely on-device using CoreML. First launch downloads and comp
 
 ## Features
 
-- **Dual ASR engines** with [Parakeet v3](https://github.com/FluidInference/FluidAudio) (NVIDIA NeMo) and [WhisperKit](https://github.com/argmaxinc/WhisperKit) (OpenAI Whisper)
+- **Dual ASR engines** with [Parakeet v3](https://github.com/FluidInference/FluidAudio) (NVIDIA NeMo) and [WhisperKit](https://github.com/argmaxinc/argmax-oss-swift) (OpenAI Whisper)
 - **Voice Activity Detection** via Silero VAD for hands-free stop
 - **LLM polish** with OpenAI GPT or Google Gemini (bring your own API key)
 - **Custom vocabulary** for names, brands, and technical terms the ASR might miss

@@ -400,7 +400,7 @@ const breadcrumbJsonLd = JSON.stringify({
           </tr>
           <tr>
             <td>Speech engine</td>
-            <td><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> + <a href="https://github.com/argmaxinc/WhisperKit" style="color: var(--accent); text-decoration: underline;">WhisperKit</a> (Apple Silicon optimized)</td>
+            <td><a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> + <a href="https://github.com/argmaxinc/argmax-oss-swift" style="color: var(--accent); text-decoration: underline;">WhisperKit</a> (Apple Silicon optimized)</td>
             <td><a href="https://github.com/ggerganov/whisper.cpp" style="color: var(--accent); text-decoration: underline;">whisper.cpp</a> (C/C++ port of OpenAI Whisper)</td>
           </tr>
           <tr>
@@ -468,7 +468,7 @@ const breadcrumbJsonLd = JSON.stringify({
       <div class="advantage-card reveal">
         <div class="advantage-icon">⚡</div>
         <div class="advantage-title">Apple Silicon optimized</div>
-        <p class="advantage-desc">EnviousWispr uses <a href="https://github.com/argmaxinc/WhisperKit" style="color: var(--accent); text-decoration: underline;">WhisperKit</a> and <a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a>, both purpose-built for the Neural Engine on Apple Silicon. whisper.cpp targets broad hardware compatibility, not peak Mac performance. See <a href="/how-it-works/" style="color: var(--accent); text-decoration: underline;">how the pipeline works</a>.</p>
+        <p class="advantage-desc">EnviousWispr uses <a href="https://github.com/argmaxinc/argmax-oss-swift" style="color: var(--accent); text-decoration: underline;">WhisperKit</a> and <a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a>, both purpose-built for the Neural Engine on Apple Silicon. whisper.cpp targets broad hardware compatibility, not peak Mac performance. See <a href="/how-it-works/" style="color: var(--accent); text-decoration: underline;">how the pipeline works</a>.</p>
       </div>
       <div class="advantage-card reveal">
         <div class="advantage-icon">🔄</div>
@@ -667,7 +667,7 @@ const breadcrumbJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr use whisper.cpp internally?</div>
-        <p class="faq-a">No. EnviousWispr uses <a href="https://github.com/argmaxinc/WhisperKit" style="color: var(--accent); text-decoration: underline;">WhisperKit</a> (a Swift-native Whisper implementation optimized for Core ML and the Neural Engine) and <a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> (NVIDIA's CTC-based model). Both are optimized for Apple Silicon rather than broad hardware compatibility.</p>
+        <p class="faq-a">No. EnviousWispr uses <a href="https://github.com/argmaxinc/argmax-oss-swift" style="color: var(--accent); text-decoration: underline;">WhisperKit</a> (a Swift-native Whisper implementation optimized for Core ML and the Neural Engine) and <a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> (NVIDIA's CTC-based model). Both are optimized for Apple Silicon rather than broad hardware compatibility.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Is EnviousWispr faster than whisper.cpp?</div>
@@ -695,7 +695,7 @@ const breadcrumbJsonLd = JSON.stringify({
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Does EnviousWispr use whisper.cpp under the hood?</div>
-        <p class="faq-a">No. EnviousWispr uses two different engines: <a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> (NVIDIA's CTC-based model) and <a href="https://github.com/argmaxinc/WhisperKit" style="color: var(--accent); text-decoration: underline;">WhisperKit</a> (a Swift-native Whisper implementation). WhisperKit runs Whisper models via Core ML and the Neural Engine, which is a different implementation path than whisper.cpp's C/C++ approach. Both are valid ways to run on-device speech recognition, optimized for different goals.</p>
+        <p class="faq-a">No. EnviousWispr uses two different engines: <a href="https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2" style="color: var(--accent); text-decoration: underline;">Parakeet TDT</a> (NVIDIA's CTC-based model) and <a href="https://github.com/argmaxinc/argmax-oss-swift" style="color: var(--accent); text-decoration: underline;">WhisperKit</a> (a Swift-native Whisper implementation). WhisperKit runs Whisper models via Core ML and the Neural Engine, which is a different implementation path than whisper.cpp's C/C++ approach. Both are valid ways to run on-device speech recognition, optimized for different goals.</p>
       </div>
       <div class="faq-item reveal">
         <div class="faq-q">Can I use whisper.cpp and EnviousWispr together?</div>
