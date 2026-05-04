@@ -569,18 +569,34 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
         return langClause + modePrompt
       }()
 
-      // Issue #614, 2026-05-04: post-rip-out, every caller passes
-      // `PolishInstructions.default`. The dual-mode router's `basePrompt`
-      // (with optional language clause) is the only system prompt AFM
-      // ever sees. The `instructions` parameter is kept on the signature
-      // for protocol-shape parity with other connectors but goes unread
-      // here. Aligning all three connector signatures to drop the param
-      // is a separate refactor backlog item (#591).
-      _ = instructions
+      // Issue #616, 2026-05-04: extract the suffix that
+      // `LLMPolishStep.appleIntelligenceInstructions` appended on top of
+      // `PolishInstructions.default.systemPrompt` (the speech-to-text-awareness
+      // clause and, when non-empty, the user's Custom Words block) and
+      // concatenate it onto `basePrompt`. Production callers always pass a
+      // default-prefixed prompt (verified `SettingsManager.activePolishInstructions`
+      // hardcoded to `.default`). The defensive `else` branch is forward-safety
+      // for a future non-default caller; `assertionFailure` in debug catches
+      // such a caller at test time so the silent-empty-suffix path is loud.
+      // Aligning all three connector signatures to drop the `instructions`
+      // param entirely is a separate refactor backlog item (#591).
+      let defaultPrompt = PolishInstructions.default.systemPrompt
+      let suffix: String
+      if instructions.systemPrompt.hasPrefix(defaultPrompt) {
+        suffix = String(instructions.systemPrompt.dropFirst(defaultPrompt.count))
+      } else {
+        assertionFailure(
+          "AppleIntelligenceConnector: instructions.systemPrompt does not have the expected default prefix; "
+            + "suffix passthrough disabled. Update this connector if a new caller is intentionally passing "
+            + "non-default instructions."
+        )
+        suffix = ""
+      }
+      let systemPrompt = basePrompt + suffix
 
       return LanguageModelSession(
         model: model,
-        instructions: basePrompt
+        instructions: systemPrompt
       )
     }
   #endif
