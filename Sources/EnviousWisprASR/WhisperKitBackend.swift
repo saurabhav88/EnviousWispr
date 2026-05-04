@@ -244,6 +244,15 @@ public actor WhisperKitBackend: ASRBackend {
 
     // Shared options (from TranscriptionOptions)
     opts.language = options.language
+    // When the caller cannot specify a language, ask WhisperKit to detect it.
+    // WhisperKit's library default is `detectLanguage = !usePrefillPrompt`; with
+    // prefill on (we keep it on for performance on the known-language path) the
+    // default resolves to false, and nil-language silently English-prefills via
+    // `Constants.defaultLanguageCode` (TextDecoder.swift:183). Opt into detect
+    // explicitly only when language is nil. This mirrors WhisperKit's own
+    // auto-detect gate (TranscribeTask.swift:341 checks `language == nil`).
+    // BRAIN: gotcha id=detect-language-when-nil
+    opts.detectLanguage = (options.language == nil)
     opts.wordTimestamps = options.enableTimestamps
 
     // Hardcoded dictation-optimized defaults
