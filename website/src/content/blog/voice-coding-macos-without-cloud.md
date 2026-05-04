@@ -27,7 +27,7 @@ Apple's built-in dictation improved significantly with on-device processing in m
 
 ## How on-device transcription actually works
 
-EnviousWispr runs transcription locally using two backends: Parakeet, a streaming English model optimized for fast dictation, and [WhisperKit](https://github.com/argmaxinc/WhisperKit), which runs Apple's Whisper speech recognition model for multi-language support. Both compile to run via Core ML, which means they execute directly on your Mac's Neural Engine, the dedicated machine learning hardware built into every Apple Silicon chip.
+EnviousWispr runs transcription locally using two backends: Parakeet, a streaming English model optimized for fast dictation, and [WhisperKit](https://github.com/argmaxinc/argmax-oss-swift), which runs Apple's Whisper speech recognition model for multi-language support. Both compile to run via Core ML, which means they execute directly on your Mac's Neural Engine, the dedicated machine learning hardware built into every Apple Silicon chip.
 
 Here's what that means in practice: your audio goes from your microphone to a local model running on your hardware. No network request. No API call. No server. The transcription pipeline runs entirely within your Mac's process space, and the audio buffer is discarded after processing.
 
