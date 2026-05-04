@@ -71,6 +71,16 @@ enum SmoothedVADPhase: Sendable {
 /// Uses FluidAudio's Silero VAD model for raw probability, then applies EMA smoothing
 /// and a three-phase state machine (idle/speech/hangover) for robust onset/offset detection.
 /// Processes 4096-sample chunks (256ms at 16kHz).
+///
+/// Two-signal contract (do not conflate):
+///   - Segment boundaries (`speechSegments`) come from FluidAudio's
+///     `VadStreamResult.event` (`.speechStart` / `.speechEnd`). Authoritative.
+///     Closed at recording stop by `finalizeSegments` if `.speechEnd` did not fire.
+///   - Auto-stop (`shouldAutoStop` from `processChunk`) comes from the smoothed
+///     EMA + hangover state machine on raw probability.
+/// Migrating either signal onto the other path requires a deliberate decision —
+/// they have different timing, different thresholds, and serve different consumers
+/// (WhisperKit clipTimestamps vs recording-stop UX). See issue #604.
 public actor SilenceDetector {
   private var vadManager: VadManager?
   private var streamState: VadStreamState = .initial()
@@ -146,48 +156,78 @@ public actor SilenceDetector {
     // 1. Write chunk to prebuffer (always)
     writeToPrebuffer(samples)
 
-    // 2. Determine raw probability
-    var rawProbability: Float = 0.0
+    // 2. Always run FluidAudio's streaming VAD on every chunk so its internal
+    //    sample clock (`VadStreamState.processedSamples`) stays in lock-step
+    //    with our buffer. Boundary events carry sample indices in that clock;
+    //    skipping a chunk would drift the two clocks apart and produce wrong
+    //    `SpeechSegment` boundaries downstream (issue #604 followup,
+    //    Codex-flagged 2026-05-04). The energy gate now only suppresses what
+    //    we feed into the smoothed-EMA auto-stop path; it must NOT bypass
+    //    `processStreamingChunk`.
+    // `speechPadding: 0.0` puts the boundary exactly at the chunk where
+    // probability crossed threshold (no library-default 100ms back-dating).
+    // Codex round-2 (2026-05-04) flagged this as potentially clipping soft
+    // leading phonemes; the corpus run will validate empirically whether
+    // that hypothetical bites our `.validation/uat-602/corpus/multilingual/`
+    // cases. If the corpus shows clipping, flip back to FluidAudio's
+    // calibrated default (0.1) — the Parakeet batch path already uses
+    // equivalent 100ms boundary padding via `SampleFilter.filter(padding:)`.
+    let segConfig = VadSegmentationConfig(
+      minSpeechDuration: 0.3,
+      minSilenceDuration: silenceTimeout,
+      speechPadding: 0.0
+    )
 
+    let result: VadStreamResult
+    do {
+      result = try await vad.processStreamingChunk(
+        samples,
+        state: streamState,
+        config: segConfig
+      )
+    } catch {
+      Task {
+        await AppLogger.shared.log(
+          "VAD processChunk failed: \(error)",
+          level: .verbose, category: "VAD"
+        )
+      }
+      processedSampleCount += samples.count
+      return false
+    }
+
+    streamState = result.state
+    if let event = result.event {
+      applyStreamBoundary(event)
+    }
+
+    // 3. Energy gate: zero the smoothed-EMA input on quiet chunks. This affects
+    //    auto-stop only — boundary events were already applied above using
+    //    FluidAudio's authoritative clock.
+    let rawProbability: Float
     if vadConfig.energyGateThreshold > 0 && computeRMS(samples) < vadConfig.energyGateThreshold {
-      // Energy pre-gate: chunk is too quiet, skip VAD inference
       rawProbability = 0.0
     } else {
-      // Run Silero VAD to get raw probability
-      let segConfig = VadSegmentationConfig(
-        minSpeechDuration: 0.3,
-        minSilenceDuration: silenceTimeout,
-        speechPadding: 0.1
-      )
-
-      let result: VadStreamResult
-      do {
-        result = try await vad.processStreamingChunk(
-          samples,
-          state: streamState,
-          config: segConfig
-        )
-      } catch {
-        Task {
-          await AppLogger.shared.log(
-            "VAD processChunk failed: \(error)",
-            level: .verbose, category: "VAD"
-          )
-        }
-        processedSampleCount += samples.count
-        return false
-      }
-
-      streamState = result.state
       rawProbability = result.probability
     }
 
-    // 3. EMA smoothing
+    return advanceStateMachine(rawProbability: rawProbability, samplesInChunk: samples.count)
+  }
+
+  /// Drives the smoothed-EMA + hangover state machine for one chunk's worth of
+  /// processed samples. Separated from `processChunk` so unit tests can exercise
+  /// the auto-stop path with synthetic probability streams without a real VAD model.
+  ///
+  /// Internal access for `@testable` unit tests; not part of the public contract.
+  ///
+  /// Two-signal contract: this function MUST NOT touch `speechSegments`. Segment
+  /// boundaries are owned by `applyStreamBoundary`. See actor doc comment.
+  internal func advanceStateMachine(rawProbability: Float, samplesInChunk: Int) -> Bool {
+    // EMA smoothing
     let smoothed =
       vadConfig.emaAlpha * rawProbability + (1.0 - vadConfig.emaAlpha) * emaSmoothedProbability
     emaSmoothedProbability = smoothed
 
-    // 4. State machine transitions
     var shouldAutoStop = false
 
     switch phase {
@@ -197,9 +237,12 @@ public actor SilenceDetector {
         if consecutiveAboveOnset >= vadConfig.onsetConfirmationChunks {
           phase = .speech
           speechDetected = true
-          currentSpeechStart = processedSampleCount
 
-          // Drain prebuffer so it resets for the next segment
+          // Reset prebuffer ring on phase entry. Vestigial side-effect from
+          // the pre-#604 design where the prebuffer drove segment start
+          // backdating; segment boundaries now come from FluidAudio events
+          // (see actor doc comment + `applyStreamBoundary`). Kept to avoid
+          // unbounded prebuffer growth across multiple segments.
           _ = drainPrebuffer()
         }
       } else {
@@ -218,17 +261,13 @@ public actor SilenceDetector {
       } else {
         let next = remaining - 1
         if next <= 0 {
-          // Hangover expired: close segment and signal auto-stop
+          // Hangover expired: signal auto-stop. Segment boundaries are owned
+          // by FluidAudio events (see actor doc comment) — do NOT close the
+          // segment here. Any open `currentSpeechStart` will be closed either
+          // by a subsequent `.speechEnd` event or by `finalizeSegments` when
+          // the caller stops recording in response to `shouldAutoStop`.
           phase = .idle
           consecutiveAboveOnset = 0
-          if let start = currentSpeechStart {
-            speechSegments.append(
-              SpeechSegment(
-                startSample: start,
-                endSample: processedSampleCount + samples.count
-              ))
-            currentSpeechStart = nil
-          }
           shouldAutoStop = true
         } else {
           phase = .hangover(chunksRemaining: next)
@@ -236,7 +275,7 @@ public actor SilenceDetector {
       }
     }
 
-    processedSampleCount += samples.count
+    processedSampleCount += samplesInChunk
 
     return shouldAutoStop
   }
@@ -279,6 +318,34 @@ public actor SilenceDetector {
   }
 
   // MARK: - Private Helpers
+
+  /// Applies a FluidAudio streaming VAD boundary event to `speechSegments`.
+  ///
+  /// FluidAudio's streaming state machine emits `.speechStart` / `.speechEnd`
+  /// with a back-dated `sampleIndex` (see
+  /// `.build/checkouts/FluidAudio/Sources/FluidAudio/VAD/VadManager+Streaming.swift`).
+  /// This is the authoritative source of truth for segment boundaries; the
+  /// smoothed-EMA phase machine in `processChunk` does NOT touch `speechSegments`.
+  ///
+  /// Internal access for `@testable` unit tests; not part of the public contract.
+  internal func applyStreamBoundary(_ event: VadStreamEvent) {
+    switch event.kind {
+    case .speechStart:
+      currentSpeechStart = event.sampleIndex
+    case .speechEnd:
+      guard let start = currentSpeechStart else { return }
+      guard event.sampleIndex > start else {
+        currentSpeechStart = nil
+        return
+      }
+      speechSegments.append(
+        SpeechSegment(
+          startSample: start,
+          endSample: event.sampleIndex
+        ))
+      currentSpeechStart = nil
+    }
+  }
 
   private func computeRMS(_ samples: [Float]) -> Float {
     guard !samples.isEmpty else { return 0.0 }
