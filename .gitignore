@@ -45,7 +45,8 @@ playwright-report/
 
 # Local build/runtime caches
 .wrangler/
-.validation/
+.validation/*
+!.validation/lid-perf-baseline.json
 
 # Historical benchmark output — regenerable, untracked
 benchmark-results/
@@ -123,6 +124,8 @@ scripts/*
 !scripts/test-validation.sh
 !scripts/validate-pr.sh
 !scripts/validation-status.sh
+!scripts/lid-perf-bench.sh
+!scripts/lid-perf-bench.py
 # Polish eval harness — PUBLIC tracked files only (see .claude/knowledge/polish-eval.md for scope rules)
 !scripts/eval/
 scripts/eval/*
