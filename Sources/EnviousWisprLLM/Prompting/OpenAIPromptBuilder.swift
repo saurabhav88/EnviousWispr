@@ -10,11 +10,6 @@ public struct OpenAIPromptBuilder: PromptBuilder {
   public init() {}
 
   public func build(input: PromptBuildInput, mode: PolishMode) -> PromptEnvelope {
-    // legacyTemplate: minimal wrapping, preserve user intent. Opts out of V2 defense.
-    if input.customPromptMode == .legacyTemplate, let customPrompt = input.customSystemPrompt {
-      return buildLegacyTemplate(customPrompt: customPrompt, language: input.language)
-    }
-
     var system = ""
 
     // Language override (prepended for non-English transcripts).
@@ -117,30 +112,4 @@ public struct OpenAIPromptBuilder: PromptBuilder {
     ])
   }
 
-  /// Minimal wrapping for the `${transcript}` placeholder path
-  /// (`customPromptMode == .legacyTemplate`). The caller supplied a custom system prompt
-  /// with a literal `${transcript}` placeholder that `LLMPolishStep` substitutes with
-  /// the raw transcript before this call. This mode EXPLICITLY OPTS OUT OF V2
-  /// ANTI-INSTRUCTION DEFENSE: we do not wrap in `<transcript>` tags, we do not add
-  /// allowed-edits or multilingual clauses. The user owns prompt safety for their custom
-  /// prompt.
-  ///
-  /// Wrapping we still apply: optional language prefix (non-English transcripts) and a
-  /// trailing "Return only the final text." sentence as a minimum format safety net.
-  /// See docs/feature-requests/polish-prompt-v2.md §3.5 and
-  /// Sources/EnviousWisprCore/PolishStyleConfig.swift for `CustomPromptMode.legacyTemplate`.
-  private func buildLegacyTemplate(customPrompt: String, language: String?) -> PromptEnvelope {
-    var system = ""
-    if let language = language, !language.isEmpty {
-      system += "LANGUAGE: This transcript is in \(language).\n"
-      system += "Clean it in \(language). Do NOT translate to English.\n\n"
-    }
-    system += customPrompt
-    system += "\nReturn only the final text."
-
-    return PromptEnvelope(messages: [
-      PromptMessage(role: .system, content: system),
-      PromptMessage(role: .user, content: ""),
-    ])
-  }
 }

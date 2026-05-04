@@ -8,11 +8,6 @@ public struct GemmaPromptBuilder: PromptBuilder {
   public init() {}
 
   public func build(input: PromptBuildInput, mode: PolishMode) -> PromptEnvelope {
-    // legacyTemplate: minimal wrapping, preserve user intent
-    if input.customPromptMode == .legacyTemplate, let customPrompt = input.customSystemPrompt {
-      return buildLegacyTemplate(customPrompt: customPrompt, language: input.language)
-    }
-
     // Weak model override: simplified prompt, no formatting, no few-shot
     if OllamaSetupService.isWeakModel(input.modelID) {
       return buildWeakModel(transcript: input.transcript)
@@ -89,17 +84,4 @@ public struct GemmaPromptBuilder: PromptBuilder {
     ])
   }
 
-  private func buildLegacyTemplate(customPrompt: String, language: String?) -> PromptEnvelope {
-    var system = ""
-    if let language = language, !language.isEmpty {
-      system += "LANGUAGE: \(language). Keep the same language.\n\n"
-    }
-    system += customPrompt
-    system += "\nReturn only the final text."
-
-    return PromptEnvelope(messages: [
-      PromptMessage(role: .system, content: system),
-      PromptMessage(role: .user, content: ""),
-    ])
-  }
 }

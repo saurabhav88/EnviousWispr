@@ -17,11 +17,6 @@ extension DictationSessionConfig {
     llmProvider: LLMProvider = .none,
     llmModel: String = "",
     polishInstructions: PolishInstructions = .default,
-    styleConfig: PolishStyleConfig = PolishStyleConfig(
-      writingStylePreset: .standard,
-      customSystemPrompt: "",
-      customPromptMode: .normal
-    ),
     useExtendedThinking: Bool = false,
     selectedInputDeviceUID: String = "",
     preferredInputDeviceIDOverride: String = ""
@@ -40,7 +35,6 @@ extension DictationSessionConfig {
       llmProvider: llmProvider,
       llmModel: llmModel,
       polishInstructions: polishInstructions,
-      styleConfig: styleConfig,
       useExtendedThinking: useExtendedThinking,
       selectedInputDeviceUID: selectedInputDeviceUID,
       preferredInputDeviceIDOverride: preferredInputDeviceIDOverride

@@ -13,17 +13,12 @@ struct OpenAIPromptBuilderTests {
     transcript: String = "hey um I was thinking we should ship this feature behind a flag",
     appName: String? = "Slack",
     language: String? = nil,
-    customWords: [CustomWord] = [],
-    customPromptMode: CustomPromptMode = .normal,
-    customSystemPrompt: String? = nil
+    customWords: [CustomWord] = []
   ) -> PromptBuildInput {
     PromptBuildInput(
       transcript: transcript,
       provider: .openAI,
       modelID: "gpt-4o-mini",
-      stylePreset: .standard,
-      customSystemPrompt: customSystemPrompt,
-      customPromptMode: customPromptMode,
       appName: appName,
       language: language,
       customWords: customWords
@@ -99,27 +94,6 @@ struct OpenAIPromptBuilderTests {
     #expect(system.contains("CUSTOM VOCABULARY"))
   }
 
-  // MARK: - Language
-  // MARK: - Legacy template
-
-  @Test("legacyTemplate wraps custom prompt minimally")
-  func legacyTemplate() {
-    let envelope = builder.build(
-      input: makeInput(
-        customPromptMode: .legacyTemplate,
-        customSystemPrompt: "Custom instructions here"
-      ),
-      mode: .message
-    )
-    let system = envelope.messages[0].content
-    #expect(system.contains("Custom instructions here"))
-    #expect(system.contains("Return only the final text."))
-    // Must NOT contain builder's own instruction
-    #expect(!system.contains("Clean up this dictated transcript"))
-    // User message must be empty
-    #expect(envelope.messages[1].content.isEmpty)
-  }
-
   // MARK: - Nil/empty inputs
 
   @Test("all optional fields nil -> valid prompt")
@@ -128,8 +102,6 @@ struct OpenAIPromptBuilderTests {
       transcript: "hello world",
       provider: .openAI,
       modelID: "gpt-4o-mini",
-      stylePreset: .standard,
-      customSystemPrompt: nil,
       appName: nil,
       language: nil,
       customWords: []

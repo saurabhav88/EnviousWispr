@@ -74,8 +74,6 @@ struct ConnectorContractTests {
       transcript: "test text",
       provider: .openAI,
       modelID: "gpt-4o-mini",
-      stylePreset: .standard,
-      customSystemPrompt: nil,
       appName: "Slack",
       language: nil,
       customWords: []
@@ -95,8 +93,6 @@ struct ConnectorContractTests {
       transcript: "test text",
       provider: .gemini,
       modelID: "gemini-2.5-flash",
-      stylePreset: .standard,
-      customSystemPrompt: nil,
       appName: "Slack",
       language: nil,
       customWords: []
@@ -113,37 +109,4 @@ struct ConnectorContractTests {
   }
 
   // MARK: - Ollama/Gemma envelope contract
-  // MARK: - Legacy template envelope
-
-  @Test("legacyTemplate produces system + empty user for all providers")
-  func legacyTemplateShape() {
-    let providers: [(LLMProvider, String)] = [
-      (.gemini, "gemini-2.0-flash"),
-      (.openAI, "gpt-4o-mini"),
-      (.ollama, "gemma3:4b"),
-    ]
-    for (provider, modelID) in providers {
-      let input = PromptBuildInput(
-        transcript: "some text",
-        provider: provider,
-        modelID: modelID,
-        stylePreset: .custom,
-        customSystemPrompt: "My custom prompt",
-        customPromptMode: .legacyTemplate,
-        appName: nil,
-        language: nil,
-        customWords: []
-      )
-      let plan = DefaultPromptPlanner().plan(input: input)
-      #expect(
-        plan.envelope.messages.count == 2, "Provider \(provider.rawValue) should have 2 messages")
-      #expect(plan.envelope.messages[0].role == .system)
-      #expect(plan.envelope.messages[1].role == .user)
-      #expect(
-        plan.envelope.messages[1].content.isEmpty,
-        "Provider \(provider.rawValue) user should be empty")
-      #expect(plan.envelope.messages[0].content.contains("My custom prompt"))
-      #expect(plan.mode == .message, "legacyTemplate forces .message mode")
-    }
-  }
 }

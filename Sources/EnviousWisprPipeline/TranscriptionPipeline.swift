@@ -1302,7 +1302,6 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
     llmPolishStep.llmProvider = config.llmProvider
     llmPolishStep.llmModel = config.llmModel
     llmPolishStep.polishInstructions = config.polishInstructions
-    llmPolishStep.styleConfig = config.styleConfig
     llmPolishStep.useExtendedThinking = config.useExtendedThinking
 
     // XPC audio service holds its own VAD state across the process boundary —

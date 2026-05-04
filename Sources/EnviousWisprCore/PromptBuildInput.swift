@@ -4,9 +4,6 @@ public struct PromptBuildInput: Sendable {
   public let transcript: String
   public let provider: LLMProvider
   public let modelID: String
-  public let stylePreset: WritingStylePreset
-  public let customSystemPrompt: String?
-  public let customPromptMode: CustomPromptMode
   public let appName: String?
   public let language: String?
 
@@ -45,9 +42,6 @@ public struct PromptBuildInput: Sendable {
     transcript: String,
     provider: LLMProvider,
     modelID: String,
-    stylePreset: WritingStylePreset,
-    customSystemPrompt: String?,
-    customPromptMode: CustomPromptMode = .normal,
     appName: String?,
     language: String?,
     customWords: [CustomWord],
@@ -59,9 +53,6 @@ public struct PromptBuildInput: Sendable {
     self.transcript = transcript
     self.provider = provider
     self.modelID = modelID
-    self.stylePreset = stylePreset
-    self.customSystemPrompt = customSystemPrompt
-    self.customPromptMode = customPromptMode
     self.appName = appName
     self.language = language
     self.customWords = customWords
@@ -81,9 +72,6 @@ public struct PromptBuildInput: Sendable {
       transcript: transcript,
       provider: provider,
       modelID: modelID,
-      stylePreset: stylePreset,
-      customSystemPrompt: customSystemPrompt,
-      customPromptMode: customPromptMode,
       appName: appName,
       language: language,
       customWords: newCustomWords,

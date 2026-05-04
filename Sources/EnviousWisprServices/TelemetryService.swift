@@ -74,7 +74,6 @@ public final class TelemetryService {
       inputMode: inputMode,
       asrBackend: t.backendType.rawValue,
       llmProvider: t.llmProvider,
-      stylePreset: nil,
       fillerRemoval: false,
       targetApp: m?.targetApp,
       pasteResult: m?.pasteTier,
@@ -94,7 +93,7 @@ public final class TelemetryService {
     }
     if let llmLat = m?.llmLatencySeconds, llmLat > 0, t.llmProvider != nil {
       llmPolishCompleted(
-        provider: t.llmProvider ?? "unknown", model: t.llmModel, stylePreset: nil,
+        provider: t.llmProvider ?? "unknown", model: t.llmModel,
         result: t.polishedText != nil ? "success" : "skipped", latencySeconds: llmLat,
         routerMode: m?.polishRouterMode,
         routerBasis: m?.polishRouterBasis,
@@ -202,7 +201,7 @@ public final class TelemetryService {
 
   public func dictationCompleted(
     result: String, inputMode: String, asrBackend: String,
-    llmProvider: String?, stylePreset: String?, fillerRemoval: Bool,
+    llmProvider: String?, fillerRemoval: Bool,
     targetApp: String?, pasteResult: String?,
     e2eSeconds: Double, asrSeconds: Double?, llmSeconds: Double?
   ) {
@@ -215,7 +214,6 @@ public final class TelemetryService {
       "$value": e2eSeconds,
     ]
     if let p = llmProvider { props["llm_provider"] = p }
-    if let s = stylePreset { props["style_preset"] = s }
     if let a = targetApp { props["target_app"] = a }
     if let pr = pasteResult { props["paste_result"] = pr }
     if let asr = asrSeconds { props["asr_seconds"] = String(format: "%.3f", asr) }
@@ -250,7 +248,7 @@ public final class TelemetryService {
   }
 
   public func llmPolishCompleted(
-    provider: String, model: String?, stylePreset: String?,
+    provider: String, model: String?,
     result: String, latencySeconds: Double,
     routerMode: String? = nil,
     routerBasis: String? = nil,
@@ -264,7 +262,6 @@ public final class TelemetryService {
       "$value": latencySeconds,
     ]
     if let m = model { props["model"] = m }
-    if let s = stylePreset { props["style_preset"] = s }
     if let rm = routerMode { props["router_mode"] = rm }
     if let rb = routerBasis { props["router_basis"] = rb }
     if let ft = filterTripped { props["filter_tripped"] = ft }
@@ -274,7 +271,6 @@ public final class TelemetryService {
         "provider": provider, "result": result,
       ]
       if let m = model { stringProps["model"] = m }
-      if let s = stylePreset { stringProps["style_preset"] = s }
       if let rm = routerMode { stringProps["router_mode"] = rm }
       if let rb = routerBasis { stringProps["router_basis"] = rb }
       if let ft = filterTripped { stringProps["filter_tripped"] = ft }
@@ -334,7 +330,7 @@ public final class TelemetryService {
 
   public func settingsSnapshot(
     asrBackend: String, llmProvider: String, recordingMode: String,
-    writingStyle: String, fillerRemoval: Bool, customWordsCount: Int,
+    fillerRemoval: Bool, customWordsCount: Int,
     hasApiKeys: Bool, noiseSuppression: Bool
   ) {
     PostHogSDK.shared.capture(
@@ -343,7 +339,6 @@ public final class TelemetryService {
         "asr_backend": asrBackend,
         "llm_provider": llmProvider,
         "recording_mode": recordingMode,
-        "writing_style": writingStyle,
         "filler_removal": fillerRemoval,
         "custom_words_count": customWordsCount,
         "has_api_keys": hasApiKeys,

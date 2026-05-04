@@ -885,7 +885,6 @@ final class AppState {
       llmProvider: settings.llmProvider,
       llmModel: resolvedModel,
       polishInstructions: settings.activePolishInstructions,
-      styleConfig: settings.activePolishStyleConfig,
       useExtendedThinking: settings.useExtendedThinking,
       selectedInputDeviceUID: settings.selectedInputDeviceUID,
       preferredInputDeviceIDOverride: settings.preferredInputDeviceIDOverride

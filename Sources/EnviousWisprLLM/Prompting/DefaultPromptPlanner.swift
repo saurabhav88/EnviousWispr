@@ -7,16 +7,10 @@ public struct DefaultPromptPlanner: PromptPlanning {
   public init() {}
 
   public func plan(input: PromptBuildInput) -> PolishPlan {
-    // legacyTemplate mode defaults to .message for validator thresholds
-    let mode: PolishMode
-    if input.customPromptMode == .legacyTemplate {
-      mode = .message
-    } else {
-      mode = TranscriptAnalyzer.analyzeMode(
-        transcript: input.transcript,
-        appName: input.appName
-      )
-    }
+    let mode = TranscriptAnalyzer.analyzeMode(
+      transcript: input.transcript,
+      appName: input.appName
+    )
 
     // Multilingual v1 (W3): filter custom vocabulary for the active
     // confidence tier + script guardrail BEFORE handing it to the builder.

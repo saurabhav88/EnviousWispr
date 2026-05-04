@@ -134,9 +134,6 @@ final class PipelineSettingsSync {
     case .environmentPreset:
       // Cascade into `vadSensitivity` for the next recording's snapshot.
       settings.vadSensitivity = settings.environmentPreset.vadSensitivity
-    case .writingStylePreset, .customSystemPrompt:
-      polishService.llmPolishStep.polishInstructions = settings.activePolishInstructions
-      polishService.llmPolishStep.styleConfig = settings.activePolishStyleConfig
     case .cancelKeyCode:
       hotkeyService.cancelKeyCode = settings.cancelKeyCode
     case .cancelModifiers:
@@ -203,7 +200,6 @@ final class PipelineSettingsSync {
     polishService.llmPolishStep.llmProvider = settings.llmProvider
     polishService.llmPolishStep.llmModel = resolvedModel(settings)
     polishService.llmPolishStep.polishInstructions = settings.activePolishInstructions
-    polishService.llmPolishStep.styleConfig = settings.activePolishStyleConfig
     polishService.llmPolishStep.useExtendedThinking = settings.useExtendedThinking
   }
 

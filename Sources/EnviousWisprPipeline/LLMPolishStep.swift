@@ -16,9 +16,6 @@ public final class LLMPolishStep: TextProcessingStep, CustomWordsConsumer {
   public var llmProvider: LLMProvider = .none
   public var llmModel: String = LLMProvider.defaultModel(for: .openAI)
   public var polishInstructions: PolishInstructions = .default
-  public var styleConfig: PolishStyleConfig = PolishStyleConfig(
-    writingStylePreset: .standard, customSystemPrompt: "", customPromptMode: .normal
-  )
   public var useExtendedThinking: Bool = false
   public var customWords: [CustomWord] = []
 
@@ -252,13 +249,6 @@ public final class LLMPolishStep: TextProcessingStep, CustomWordsConsumer {
     }
 
     // All other providers: PromptPlanner path.
-    // Resolve ${transcript} placeholder before passing to planner.
-    let resolvedCustomPrompt: String? = {
-      guard styleConfig.customPromptMode == .legacyTemplate,
-        let prompt = styleConfig.customSystemPrompt.nilIfEmpty
-      else { return styleConfig.customSystemPrompt.nilIfEmpty }
-      return prompt.replacingOccurrences(of: "${transcript}", with: context.text)
-    }()
 
     // Multilingual v1 (W3): snapshot the active vocabulary at construction
     // time so the planner/builders see a stable list even if the user edits
@@ -269,9 +259,6 @@ public final class LLMPolishStep: TextProcessingStep, CustomWordsConsumer {
       transcript: context.text,
       provider: llmProvider,
       modelID: llmModel,
-      stylePreset: styleConfig.writingStylePreset,
-      customSystemPrompt: resolvedCustomPrompt,
-      customPromptMode: styleConfig.customPromptMode,
       appName: context.targetAppName,
       language: context.language,
       customWords: customWords,
@@ -296,7 +283,6 @@ public final class LLMPolishStep: TextProcessingStep, CustomWordsConsumer {
       extraData: [
         "polish_mode": plan.mode.rawValue,
         "prompt_family": family.rawValue,
-        "custom_prompt_mode": styleConfig.customPromptMode.rawValue,
       ])
 
     let validatedText = validatePolishOutput(
