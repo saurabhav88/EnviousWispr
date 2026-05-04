@@ -157,7 +157,7 @@ public actor SilenceDetector {
       let segConfig = VadSegmentationConfig(
         minSpeechDuration: 0.3,
         minSilenceDuration: silenceTimeout,
-        speechPadding: 0.1
+        speechPadding: 0.0
       )
 
       let result: VadStreamResult
@@ -180,6 +180,9 @@ public actor SilenceDetector {
 
       streamState = result.state
       rawProbability = result.probability
+      if let event = result.event {
+        applyStreamBoundary(event)
+      }
     }
 
     // 3. EMA smoothing
@@ -197,7 +200,6 @@ public actor SilenceDetector {
         if consecutiveAboveOnset >= vadConfig.onsetConfirmationChunks {
           phase = .speech
           speechDetected = true
-          currentSpeechStart = processedSampleCount
 
           // Drain prebuffer so it resets for the next segment
           _ = drainPrebuffer()
@@ -279,6 +281,25 @@ public actor SilenceDetector {
   }
 
   // MARK: - Private Helpers
+
+  func applyStreamBoundary(_ event: VadStreamEvent) {
+    switch event.kind {
+    case .speechStart:
+      currentSpeechStart = event.sampleIndex
+    case .speechEnd:
+      guard let start = currentSpeechStart else { return }
+      guard event.sampleIndex > start else {
+        currentSpeechStart = nil
+        return
+      }
+      speechSegments.append(
+        SpeechSegment(
+          startSample: start,
+          endSample: event.sampleIndex
+        ))
+      currentSpeechStart = nil
+    }
+  }
 
   private func computeRMS(_ samples: [Float]) -> Float {
     guard !samples.isEmpty else { return 0.0 }
