@@ -49,7 +49,6 @@ jobs:
               - 'Sources/EnviousWisprPostProcessing/CustomWordsManager.swift'
               - 'Sources/EnviousWisprCore/PolishMode.swift'
               - 'Sources/EnviousWisprCore/PolishPlan.swift'
-              - 'Sources/EnviousWisprCore/PolishStyleConfig.swift'
               - 'Sources/EnviousWisprCore/PromptEnvelope.swift'
               - 'Sources/EnviousWisprCore/PromptBuildInput.swift'
               - 'scripts/eval/**'
