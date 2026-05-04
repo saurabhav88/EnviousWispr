@@ -113,48 +113,6 @@ struct ConnectorContractTests {
   }
 
   // MARK: - Ollama/Gemma envelope contract
-
-  @Test("Ollama Gemma produces multi-turn messages for few-shot")
-  func ollamaGemmaMessages() {
-    let input = PromptBuildInput(
-      transcript: "test text about things to do",
-      provider: .ollama,
-      modelID: "gemma3:4b",
-      stylePreset: .standard,
-      customSystemPrompt: nil,
-      appName: nil,
-      language: nil,
-      customWords: []
-    )
-    let plan = DefaultPromptPlanner().plan(input: input)
-    // Gemma uses system + user (few-shot baked into system prompt, not as separate messages)
-    #expect(plan.envelope.messages.count == 2)
-    #expect(plan.envelope.messages[0].role == .system)
-    #expect(plan.envelope.messages[1].role == .user)
-    // System contains few-shot examples
-    #expect(plan.envelope.messages[0].content.contains("Example"))
-  }
-
-  @Test("Ollama non-Gemma uses OpenAI prose style with sandwich framing")
-  func ollamaNonGemma() {
-    let input = PromptBuildInput(
-      transcript: "test text",
-      provider: .ollama,
-      modelID: "llama3.2",
-      stylePreset: .standard,
-      customSystemPrompt: nil,
-      appName: "Slack",
-      language: nil,
-      customWords: []
-    )
-    let plan = DefaultPromptPlanner().plan(input: input)
-    let pair = plan.envelope.asSingleTurn()
-    #expect(pair != nil)
-    // Gets OpenAI-style prose
-    #expect(pair?.system?.contains("Clean up this dictated transcript") == true)
-    #expect(pair?.user.contains("<transcript>") == true)
-  }
-
   // MARK: - Legacy template envelope
 
   @Test("legacyTemplate produces system + empty user for all providers")

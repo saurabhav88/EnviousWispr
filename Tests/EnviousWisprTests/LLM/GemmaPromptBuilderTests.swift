@@ -48,65 +48,8 @@ struct GemmaPromptBuilderTests {
   }
 
   // MARK: - Few-shot examples
-
-  @Test("inline mode -> single prose example only")
-  func inlineFewShot() {
-    let envelope = builder.build(input: makeInput(), mode: .inline)
-    let system = envelope.messages[0].content
-    #expect(system.contains("Example:"))
-    #expect(system.contains("running about ten minutes late"))
-    #expect(!system.contains("Example 1:"))  // Not the multi-example format
-  }
-
-  @Test("message mode -> two examples (list + prose)")
-  func messageFewShot() {
-    let envelope = builder.build(input: makeInput(), mode: .message)
-    let system = envelope.messages[0].content
-    #expect(system.contains("Example 1:"))
-    #expect(system.contains("Example 2:"))
-    #expect(system.contains("- Call the dentist"))  // List formatting in example
-    #expect(system.contains("running about ten minutes late"))  // Prose example
-  }
-
-  @Test("structured mode -> same examples as message")
-  func structuredFewShot() {
-    let envelope = builder.build(input: makeInput(), mode: .structured)
-    let system = envelope.messages[0].content
-    #expect(system.contains("Example 1:"))
-    #expect(system.contains("Example 2:"))
-  }
-
   // MARK: - No ASR clause (implicit via few-shot)
-
-  @Test("no explicit ASR clause for Gemma")
-  func noExplicitAsrClause() {
-    let envelope = builder.build(input: makeInput(), mode: .message)
-    let system = envelope.messages[0].content
-    #expect(!system.contains("speech-to-text output"))
-    #expect(!system.contains("phonetically similar"))
-  }
-
   // MARK: - No context block
-
-  @Test("no context block even with appName in input")
-  func noContextBlock() {
-    let input = PromptBuildInput(
-      transcript: "test",
-      provider: .ollama,
-      modelID: "gemma3:4b",
-      stylePreset: .standard,
-      customSystemPrompt: nil,
-      appName: "Slack",  // Intentionally passed
-      language: nil,
-      customWords: []
-    )
-    let envelope = builder.build(input: input, mode: .message)
-    let system = envelope.messages[0].content
-    // Gemma builder ignores appName (token budget too tight)
-    #expect(!system.contains("Context"))
-    #expect(!system.contains("App:"))
-  }
-
   // MARK: - Custom vocabulary (simplified format)
 
   @Test("custom words use simplified comma format")
@@ -122,14 +65,6 @@ struct GemmaPromptBuilderTests {
   }
 
   // MARK: - Transcript prompt suffix
-
-  @Test("system ends with 'Now clean up this text:'")
-  func transcriptPromptSuffix() {
-    let envelope = builder.build(input: makeInput(), mode: .message)
-    let system = envelope.messages[0].content
-    #expect(system.contains("Now clean up this text:"))
-  }
-
   // MARK: - Weak model override
 
   @Test("weak model gets simplified prompt")

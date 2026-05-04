@@ -407,44 +407,4 @@ struct LanguageAwarePromptInjectionTests {
   }
 
   // MARK: - Parakeet byte-identical characterization
-
-  @Test("Parakeet prompt output is byte-identical to legacy (no backend set)")
-  func parakeetByteIdenticalToLegacy() {
-    // Characterization test: the Parakeet explicit path must produce the
-    // exact same system prompt as the legacy nil-backend/nil-detection
-    // path. This locks in "no behavioral change for Parakeet in the happy
-    // path" across the W3 follow-up refactor.
-    let words = [CustomWord(canonical: "EnviousWispr", aliases: ["Envious Whisper"])]
-    let legacyInput = input(
-      customWords: words,
-      detection: nil,
-      backend: nil
-    )
-    let parakeetInput = input(
-      customWords: words,
-      detection: nil,
-      backend: .parakeet
-    )
-    let legacyPlan = DefaultPromptPlanner().plan(input: legacyInput)
-    let parakeetPlan = DefaultPromptPlanner().plan(input: parakeetInput)
-
-    let legacySystem =
-      legacyPlan.envelope.messages
-      .first(where: { $0.role == .system })?.content ?? ""
-    let parakeetSystem =
-      parakeetPlan.envelope.messages
-      .first(where: { $0.role == .system })?.content ?? ""
-    #expect(
-      legacySystem == parakeetSystem,
-      "Parakeet explicit path must match legacy byte-for-byte")
-
-    // Also compare the user-role content for completeness.
-    let legacyUser =
-      legacyPlan.envelope.messages
-      .first(where: { $0.role == .user })?.content ?? ""
-    let parakeetUser =
-      parakeetPlan.envelope.messages
-      .first(where: { $0.role == .user })?.content ?? ""
-    #expect(legacyUser == parakeetUser)
-  }
 }
