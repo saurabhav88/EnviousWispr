@@ -35,50 +35,6 @@ public enum WhisperKitPipelineState: Equatable, Sendable {
   }
 }
 
-internal enum WhisperKitPipelineSpeechRouting {
-  static func hasSpeechEvidence(vadSegments: [SpeechSegment]?) -> Bool {
-    vadSegments.map { !$0.isEmpty } ?? true
-  }
-
-  static func paddedASRSamples(
-    rawSamples: [Float],
-    minimumSamples: Int = AudioConstants.minimumTranscriptionSamples
-  ) -> [Float] {
-    padIfShort(rawSamples, minimumSamples: minimumSamples)
-  }
-
-  static func paddedLIDSamples(
-    filteredSamples: [Float],
-    rawSamples: [Float],
-    minimumSamples: Int = AudioConstants.minimumTranscriptionSamples
-  ) -> [Float] {
-    var samples = filteredSamples
-    if samples.count < minimumSamples && rawSamples.count >= minimumSamples {
-      samples = rawSamples
-    }
-    return padIfShort(samples, minimumSamples: minimumSamples)
-  }
-
-  static func transcriptionOptions(
-    from base: TranscriptionOptions,
-    speechSegments: [SpeechSegment]
-  ) -> TranscriptionOptions {
-    TranscriptionOptions(
-      language: base.language,
-      enableTimestamps: base.enableTimestamps,
-      speechSegments: speechSegments
-    )
-  }
-
-  private static func padIfShort(
-    _ samples: [Float],
-    minimumSamples: Int
-  ) -> [Float] {
-    guard samples.count > 0 && samples.count < minimumSamples else { return samples }
-    return samples + [Float](repeating: 0, count: minimumSamples - samples.count)
-  }
-}
-
 // MARK: - PipelineStateProtocol conformance
 
 extension WhisperKitPipelineState: PipelineStateProtocol {
@@ -551,6 +507,11 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
   }
 
   public func requestStop() async {
+    logLIDPerfSignpost(
+      "t_release",
+      timestamp: CFAbsoluteTimeGetCurrent(),
+      sessionID: audioCapture.currentCaptureSessionID
+    )
     switch state {
     case .recording:
       await stopAndTranscribe()
@@ -730,6 +691,21 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
       from: transcriptionOptions,
       speechSegments: speechSegments
     )
+    let voicedDurationSec = Double(vadSpeechDurationMs) / 1000.0
+    let lidWindowCount = WhisperKitPipelineSpeechRouting.lidWindowCount(
+      forVoicedDuration: voicedDurationSec
+    )
+    let clipKind = lidWindowCount == 1 ? "short" : "normal"
+
+    state = .transcribing
+    logLIDPerfSignpost(
+      "t_state_flip",
+      timestamp: CFAbsoluteTimeGetCurrent(),
+      sessionID: audioCapture.currentCaptureSessionID,
+      voicedDuration: voicedDurationSec,
+      lidWindowCount: lidWindowCount,
+      clipKind: clipKind
+    )
 
     // Multilingual v1 (W2): detect language on voiced audio before transcribe.
     // Heart protection: detector never throws; if it abstains, pass nil to
@@ -737,7 +713,6 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
     // languageMode comes from the frozen DictationSessionConfig captured at
     // startRecording (Phase B refactor, PR #424); mid-recording user toggles
     // are NOT applied to the in-flight session by design.
-    let voicedDurationSec = Double(vadSpeechDurationMs) / 1000.0
     // R2 (#360): closure-based observer. The non-Sendable WhisperKit handle
     // stays inside the backend's actor isolation; only the Sendable
     // LIDObservationBatch crosses to the LanguageDetector classifier.
@@ -749,9 +724,17 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
       samples: lidSamples,
       voicedDuration: voicedDurationSec,
       observerFn: { [backend] in
-        await backend.observeLID(samples: observerSamples, maxWindows: 4)
+        await backend.observeLID(samples: observerSamples, maxWindows: lidWindowCount)
       },
       mode: languageMode
+    )
+    logLIDPerfSignpost(
+      "t_lid_settled",
+      timestamp: CFAbsoluteTimeGetCurrent(),
+      sessionID: audioCapture.currentCaptureSessionID,
+      voicedDuration: voicedDurationSec,
+      lidWindowCount: lidWindowCount,
+      clipKind: clipKind
     )
     lastLanguageDetection = lidResult
     // Multilingual v1 (W3): forward the detection to the polish step so the
@@ -793,7 +776,8 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
       voicedDuration: lidResult.voicedDuration,
       abstained: lidResult.abstained,
       sessionPreferredLang: sessionPreferredSnapshot,
-      usedSticky: lidResult.usedSessionPrior
+      usedSticky: lidResult.usedSessionPrior,
+      lidWindowCount: lidWindowCount
     )
     if lidResult.abstained {
       // Classify the abstain reason per spec § Telemetry table.
@@ -815,7 +799,6 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
       )
     }
 
-    state = .transcribing
     SentryBreadcrumb.add(
       stage: "asr", message: "WhisperKit transcription started", data: ["backend": "whisperKit"])
 
@@ -863,9 +846,26 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
           }
 
           let batchStart = CFAbsoluteTimeGetCurrent()
+          logLIDPerfSignpost(
+            "t_asr_start",
+            timestamp: batchStart,
+            sessionID: audioCapture.currentCaptureSessionID,
+            voicedDuration: voicedDurationSec,
+            lidWindowCount: lidWindowCount,
+            clipKind: clipKind
+          )
           let batchResult = try await backend.transcribe(
             audioSamples: asrSamples, options: transcriptionOptions)
-          let batchMs = Int((CFAbsoluteTimeGetCurrent() - batchStart) * 1000)
+          let batchEnd = CFAbsoluteTimeGetCurrent()
+          logLIDPerfSignpost(
+            "t_asr_end",
+            timestamp: batchEnd,
+            sessionID: audioCapture.currentCaptureSessionID,
+            voicedDuration: voicedDurationSec,
+            lidWindowCount: lidWindowCount,
+            clipKind: clipKind
+          )
+          let batchMs = Int((batchEnd - batchStart) * 1000)
           asrText = batchResult.text.trimmingCharacters(in: .whitespacesAndNewlines)
           asrLanguage = batchResult.language
 
@@ -878,8 +878,24 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
           }
         }
       } else {
+        logLIDPerfSignpost(
+          "t_asr_start",
+          timestamp: CFAbsoluteTimeGetCurrent(),
+          sessionID: audioCapture.currentCaptureSessionID,
+          voicedDuration: voicedDurationSec,
+          lidWindowCount: lidWindowCount,
+          clipKind: clipKind
+        )
         let batchResult = try await backend.transcribe(
           audioSamples: asrSamples, options: transcriptionOptions)
+        logLIDPerfSignpost(
+          "t_asr_end",
+          timestamp: CFAbsoluteTimeGetCurrent(),
+          sessionID: audioCapture.currentCaptureSessionID,
+          voicedDuration: voicedDurationSec,
+          lidWindowCount: lidWindowCount,
+          clipKind: clipKind
+        )
         asrText = batchResult.text.trimmingCharacters(in: .whitespacesAndNewlines)
         asrLanguage = batchResult.language
       }
@@ -986,6 +1002,14 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
             restoreClipboardAfterPaste: restoreClipboardAfterPaste,
             steps: textProcessingSteps
           ))
+        logLIDPerfSignpost(
+          "t_clipboard_write",
+          timestamp: CFAbsoluteTimeGetCurrent(),
+          sessionID: audioCapture.currentCaptureSessionID,
+          voicedDuration: voicedDurationSec,
+          lidWindowCount: lidWindowCount,
+          clipKind: clipKind
+        )
       } catch is CancellationError {
         frozenSnapshot = nil
         return
@@ -1299,6 +1323,35 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
         inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID()
       )
     )
+  }
+
+  private func logLIDPerfSignpost(
+    _ name: String,
+    timestamp: CFAbsoluteTime,
+    sessionID: UInt64,
+    voicedDuration: TimeInterval? = nil,
+    lidWindowCount: Int? = nil,
+    clipKind: String? = nil
+  ) {
+    var fields = [
+      "lid_perf_signpost",
+      "name=\(name)",
+      "timestamp_s=\(String(format: "%.6f", timestamp))",
+      "session_id=\(sessionID)",
+    ]
+    if let voicedDuration {
+      fields.append("voiced_duration_s=\(String(format: "%.3f", voicedDuration))")
+    }
+    if let lidWindowCount {
+      fields.append("lid_window_count=\(lidWindowCount)")
+    }
+    if let clipKind {
+      fields.append("clip_kind=\(clipKind)")
+    }
+    let message = fields.joined(separator: " ")
+    Task {
+      await AppLogger.shared.log(message, level: .info, category: "WhisperKitPipeline")
+    }
   }
 
   // MARK: - Model Lifecycle

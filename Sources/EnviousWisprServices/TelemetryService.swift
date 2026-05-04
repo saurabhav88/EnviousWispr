@@ -405,7 +405,8 @@ public final class TelemetryService {
     voicedDuration: TimeInterval,
     abstained: Bool,
     sessionPreferredLang: String?,
-    usedSticky: Bool
+    usedSticky: Bool,
+    lidWindowCount: Int
   ) {
     var props: [String: Any] = [
       "lang": lang ?? "nil",
@@ -415,6 +416,7 @@ public final class TelemetryService {
       "voiced_duration_s": String(format: "%.2f", voicedDuration),
       "abstained": abstained,
       "used_sticky": usedSticky,
+      "lid_window_count": lidWindowCount,
     ]
     if let pref = sessionPreferredLang {
       props["session_preferred_lang"] = pref

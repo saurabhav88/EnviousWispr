@@ -55,4 +55,18 @@ struct WhisperKitPipelineSpeechSegmentsTests {
     #expect(lidSamples == expectedLIDSamples)
     #expect(lidSamples.count < asrSamples.count)
   }
+
+  @Test("LID window routing uses one window below 3 seconds")
+  func lidWindowCountUsesSingleWindowForShortClips() {
+    for duration in [0.5, 1.0, 2.5, 2.99] {
+      #expect(WhisperKitPipelineSpeechRouting.lidWindowCount(forVoicedDuration: duration) == 1)
+    }
+  }
+
+  @Test("LID window routing uses four windows at and above 3 seconds")
+  func lidWindowCountUsesFourWindowsForNormalClips() {
+    for duration in [3.0, 5.0, 15.0] {
+      #expect(WhisperKitPipelineSpeechRouting.lidWindowCount(forVoicedDuration: duration) == 4)
+    }
+  }
 }

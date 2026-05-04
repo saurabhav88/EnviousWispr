@@ -227,6 +227,7 @@ public enum LanguageDetectorThresholds {
   // Layer 1: speech gate (voiced duration, seconds)
   public static let shortClipMinSec: TimeInterval = 1.0  // below this: abstain, no LID
   public static let confidentMinSec: TimeInterval = 2.5  // below this: provisional/stricter
+  public static let singleWindowMaxSec: TimeInterval = 3.0  // below this: one LID window
 
   // Layer 2 normal thresholds (voicedDuration >= 2.5s)
   public static let normalProb: Double = 0.65

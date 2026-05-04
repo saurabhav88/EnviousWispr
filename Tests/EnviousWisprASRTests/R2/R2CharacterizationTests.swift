@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import Darwin
 import Foundation
 import Testing
 
@@ -363,6 +364,51 @@ struct R2CharacterizationTests {
   /// observable through this test seam. PR 2 must rely on existing
   /// `LanguageDetectorTests` end-to-end paths to keep the chip contract intact.
   /// This comment is intentionally a documented gap, not a TODO.
+
+  // MARK: - Single-window observations
+
+  @Test("R2-CHAR-070: single-window observation passes strict-tier acceptance bar")
+  func singleWindowObservationPassesStrictTierAcceptanceBar() async {
+    let (detector, _) = r2MakeDetector()
+
+    let result = await detector.detect(
+      samples: [0.1],
+      voicedDuration: 1.5,
+      observerFn: {
+        .observations([
+          RawLIDObservation(argmaxLang: "en", logProb: log(0.85))
+        ])
+      },
+      mode: .auto
+    )
+
+    #expect(result.lang == "en")
+    #expect(result.tier == .highAuto)
+    #expect(result.confidence >= LanguageDetectorThresholds.strictProb)
+    #expect(result.margin >= LanguageDetectorThresholds.strictMargin)
+    #expect(result.abstained == false)
+  }
+
+  @Test("R2-CHAR-071: single-window observation below strict bar abstains cleanly")
+  func singleWindowObservationBelowStrictBarAbstainsCleanly() async {
+    let (detector, _) = r2MakeDetector()
+
+    let result = await detector.detect(
+      samples: [0.1],
+      voicedDuration: 1.5,
+      observerFn: {
+        .observations([
+          RawLIDObservation(argmaxLang: "en", logProb: log(0.79))
+        ])
+      },
+      mode: .auto
+    )
+
+    #expect(result.lang == nil)
+    #expect(result.tier == .abstain)
+    #expect(result.confidence < LanguageDetectorThresholds.strictProb)
+    #expect(result.abstained)
+  }
 }
 
 /// Test-side recorder for `onLanguageFlip` events. Sendable so it can survive
