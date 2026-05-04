@@ -14,6 +14,7 @@ public struct LLMModelDiscovery: Sendable {
   private static let excludePatterns = [
     "tts", "image", "robotics", "computer-use", "deep-research",
     "gemma", "exp-", "embedding", "aqa", "vision", "nano-banana",
+    "lyria",
   ]
 
   /// Suffixes that indicate versioned duplicates (keep only the base model).
