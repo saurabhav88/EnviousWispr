@@ -36,9 +36,11 @@ import Foundation
   ///   - sampleCount: Number of Float32 samples in data.
   ///   - language: ISO 639-1 language code, or empty string for auto-detect.
   ///   - enableTimestamps: Whether to generate word-level timestamps.
+  ///   - speechSegmentsData: JSON-encoded [SpeechSegment], or nil when no VAD segments exist.
   ///   - reply: (Codable-encoded ASRResult as Data, or nil) + (NSError or nil).
   func transcribeSamples(
     _ data: Data, sampleCount: Int, language: String, enableTimestamps: Bool,
+    speechSegmentsData: Data?,
     reply: @escaping (Data?, NSError?) -> Void)
 
   // MARK: - Streaming Transcription (Parakeet)

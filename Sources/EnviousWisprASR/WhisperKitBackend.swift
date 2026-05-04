@@ -266,14 +266,27 @@ public actor WhisperKitBackend: ASRBackend {
     opts.suppressBlank = true
     opts.usePrefillPrompt = true
 
-    // Use VAD chunking for long recordings to prevent hallucinated repetitions
-    let thirtySeconds = 16000 * 30  // 480_000 samples
+    // VAD-driven clip seek: feed only voiced ranges to the decoder.
+    // Each pair is (startSec, endSec) in WhisperKit's expected sample-rate space.
+    if !options.speechSegments.isEmpty {
+      let sampleRate = Float(WhisperKit.sampleRate)
+      var clipTimestamps: [Float] = []
+      clipTimestamps.reserveCapacity(options.speechSegments.count * 2)
+      for segment in options.speechSegments {
+        clipTimestamps.append(Float(segment.startSample) / sampleRate)
+        clipTimestamps.append(Float(segment.endSample) / sampleRate)
+      }
+      opts.clipTimestamps = clipTimestamps
+    }
+
+    // Use VAD chunking for long recordings to prevent hallucinated repetitions.
+    let thirtySeconds = Int(WhisperKit.sampleRate) * 30
     // BRAIN: gotcha id=vad-chunking-30s
     opts.chunkingStrategy = sampleCount > thirtySeconds ? .vad : ChunkingStrategy.none
 
-    // Disable windowClipTime (default 1.0s) which skips the last 1s of audio.
-    // We pad audio with silence instead, which provides the look-ahead context
-    // the decoder needs without sacrificing real content.
+    // Keep current behavior for this PR: WhisperKit's default 1.0 subtracts time
+    // from the end of every seek clip, which can clip legitimate trailing speech
+    // when clipTimestamps come from raw VAD segment ends.
     // BRAIN: gotcha id=window-clip-time-zero
     opts.windowClipTime = 0
 

@@ -35,7 +35,7 @@ public enum AppConstants {
 // MARK: - Speech Segment
 
 /// A contiguous range of audio samples identified as speech by VAD.
-public struct SpeechSegment: Sendable {
+public struct SpeechSegment: Sendable, Codable {
   public let startSample: Int
   public let endSample: Int
   public init(startSample: Int, endSample: Int) {

@@ -35,6 +35,50 @@ public enum WhisperKitPipelineState: Equatable, Sendable {
   }
 }
 
+internal enum WhisperKitPipelineSpeechRouting {
+  static func hasSpeechEvidence(vadSegments: [SpeechSegment]?) -> Bool {
+    vadSegments.map { !$0.isEmpty } ?? true
+  }
+
+  static func paddedASRSamples(
+    rawSamples: [Float],
+    minimumSamples: Int = AudioConstants.minimumTranscriptionSamples
+  ) -> [Float] {
+    padIfShort(rawSamples, minimumSamples: minimumSamples)
+  }
+
+  static func paddedLIDSamples(
+    filteredSamples: [Float],
+    rawSamples: [Float],
+    minimumSamples: Int = AudioConstants.minimumTranscriptionSamples
+  ) -> [Float] {
+    var samples = filteredSamples
+    if samples.count < minimumSamples && rawSamples.count >= minimumSamples {
+      samples = rawSamples
+    }
+    return padIfShort(samples, minimumSamples: minimumSamples)
+  }
+
+  static func transcriptionOptions(
+    from base: TranscriptionOptions,
+    speechSegments: [SpeechSegment]
+  ) -> TranscriptionOptions {
+    TranscriptionOptions(
+      language: base.language,
+      enableTimestamps: base.enableTimestamps,
+      speechSegments: speechSegments
+    )
+  }
+
+  private static func padIfShort(
+    _ samples: [Float],
+    minimumSamples: Int
+  ) -> [Float] {
+    guard samples.count > 0 && samples.count < minimumSamples else { return samples }
+    return samples + [Float](repeating: 0, count: minimumSamples - samples.count)
+  }
+}
+
 // MARK: - PipelineStateProtocol conformance
 
 extension WhisperKitPipelineState: PipelineStateProtocol {
@@ -588,8 +632,11 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
       return
     }
 
-    // Post-capture VAD filtering — remove silence segments
-    var samples: [Float]
+    // Post-capture VAD routing: ASR gets raw audio + segment metadata; LID keeps
+    // the current voiced-only filtered buffer.
+    let speechSegments: [SpeechSegment]
+    var lidSamples: [Float]
+    var asrSamples = rawSamples
     var hasSpeechEvidence = false
     var vadSegmentCount = 0
     var vadSpeechDurationMs = 0
@@ -597,44 +644,47 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
     if isXPCMode {
       // XPC mode: VAD segments returned atomically with samples from stopCapture() (#226).
       let segments = captureResult.vadSegments
-      hasSpeechEvidence = !segments.isEmpty
+      speechSegments = segments
+      hasSpeechEvidence = WhisperKitPipelineSpeechRouting.hasSpeechEvidence(vadSegments: segments)
       vadSegmentCount = segments.count
       vadSpeechDurationMs =
         segments.reduce(0) { $0 + ($1.endSample - $1.startSample) } * 1000 / 16000
       if !segments.isEmpty {
-        samples = SampleFilter.filter(from: rawSamples, segments: segments)
+        lidSamples = SampleFilter.filter(from: rawSamples, segments: segments)
         let pct = String(
-          format: "%.1f", Double(samples.count) / Double(max(rawSamples.count, 1)) * 100)
+          format: "%.1f", Double(lidSamples.count) / Double(max(rawSamples.count, 1)) * 100)
         Task {
           await AppLogger.shared.log(
-            "WhisperKit VAD (XPC) filtered to \(samples.count) samples (\(pct)% voiced)",
+            "WhisperKit VAD (XPC): \(vadSegmentCount) speech segments, totalVoicedMs=\(vadSpeechDurationMs), asrSamples=raw(\(rawSamples.count)), lidSamples=\(lidSamples.count) (\(pct)% voiced)",
             level: .info, category: "WhisperKitPipeline"
           )
         }
       } else {
-        samples = rawSamples
+        lidSamples = rawSamples
       }
     } else if let detector = silenceDetector {
       await detector.finalizeSegments(totalSampleCount: rawSamples.count)
       let segments = await detector.speechSegments
-      hasSpeechEvidence = !segments.isEmpty
+      speechSegments = segments
+      hasSpeechEvidence = WhisperKitPipelineSpeechRouting.hasSpeechEvidence(vadSegments: segments)
       vadSegmentCount = segments.count
       vadSpeechDurationMs =
         segments.reduce(0) { $0 + ($1.endSample - $1.startSample) } * 1000 / 16000
-      samples = await detector.filterSamples(from: rawSamples)
+      lidSamples = await detector.filterSamples(from: rawSamples)
       let pct = String(
-        format: "%.1f", Double(samples.count) / Double(max(rawSamples.count, 1)) * 100)
+        format: "%.1f", Double(lidSamples.count) / Double(max(rawSamples.count, 1)) * 100)
       Task {
         await AppLogger.shared.log(
-          "WhisperKit VAD filtered to \(samples.count) samples (\(pct)% voiced)",
+          "WhisperKit VAD: \(vadSegmentCount) speech segments, totalVoicedMs=\(vadSpeechDurationMs), asrSamples=raw(\(rawSamples.count)), lidSamples=\(lidSamples.count) (\(pct)% voiced)",
           level: .info, category: "WhisperKitPipeline"
         )
       }
     } else {
-      samples = rawSamples
+      speechSegments = []
+      lidSamples = rawSamples
       // No VAD detector available -- default to true so empty ASR results
       // still fire Sentry errors (fail toward visibility).
-      hasSpeechEvidence = true
+      hasSpeechEvidence = WhisperKitPipelineSpeechRouting.hasSpeechEvidence(vadSegments: nil)
     }
     let peakAudioLevel = rawSamples.reduce(Float(0)) { max($0, abs($1)) }
 
@@ -666,16 +716,20 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
       return
     }
 
-    // Fallback: if VAD was too aggressive, use raw
     let minimumSamples = AudioConstants.minimumTranscriptionSamples
-    if samples.count < minimumSamples && rawSamples.count >= minimumSamples {
-      samples = rawSamples
-    }
-
-    // Pad short recordings
-    if samples.count > 0 && samples.count < minimumSamples {
-      samples.append(contentsOf: [Float](repeating: 0, count: minimumSamples - samples.count))
-    }
+    asrSamples = WhisperKitPipelineSpeechRouting.paddedASRSamples(
+      rawSamples: rawSamples,
+      minimumSamples: minimumSamples
+    )
+    lidSamples = WhisperKitPipelineSpeechRouting.paddedLIDSamples(
+      filteredSamples: lidSamples,
+      rawSamples: rawSamples,
+      minimumSamples: minimumSamples
+    )
+    transcriptionOptions = WhisperKitPipelineSpeechRouting.transcriptionOptions(
+      from: transcriptionOptions,
+      speechSegments: speechSegments
+    )
 
     // Multilingual v1 (W2): detect language on voiced audio before transcribe.
     // Heart protection: detector never throws; if it abstains, pass nil to
@@ -688,11 +742,11 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
     // stays inside the backend's actor isolation; only the Sendable
     // LIDObservationBatch crosses to the LanguageDetector classifier.
     // The previous unsafe-Sendable workaround is gone.
-    // Snapshot `samples` into an immutable binding so the @Sendable observer
-    // closure does not capture the surrounding `var samples` (would race).
-    let observerSamples = samples
+    // Snapshot `lidSamples` into an immutable binding so the @Sendable observer
+    // closure does not capture the surrounding `var lidSamples` (would race).
+    let observerSamples = lidSamples
     let lidResult = await languageDetector.detect(
-      samples: samples,
+      samples: lidSamples,
       voicedDuration: voicedDurationSec,
       observerFn: { [backend] in
         await backend.observeLID(samples: observerSamples, maxWindows: 4)
@@ -810,7 +864,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
 
           let batchStart = CFAbsoluteTimeGetCurrent()
           let batchResult = try await backend.transcribe(
-            audioSamples: samples, options: transcriptionOptions)
+            audioSamples: asrSamples, options: transcriptionOptions)
           let batchMs = Int((CFAbsoluteTimeGetCurrent() - batchStart) * 1000)
           asrText = batchResult.text.trimmingCharacters(in: .whitespacesAndNewlines)
           asrLanguage = batchResult.language
@@ -825,7 +879,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
         }
       } else {
         let batchResult = try await backend.transcribe(
-          audioSamples: samples, options: transcriptionOptions)
+          audioSamples: asrSamples, options: transcriptionOptions)
         asrText = batchResult.text.trimmingCharacters(in: .whitespacesAndNewlines)
         asrLanguage = batchResult.language
       }

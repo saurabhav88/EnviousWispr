@@ -183,6 +183,8 @@ public final class ASRManagerProxy: ASRManagerInterface {
   {
     let data = audioSamples.withUnsafeBytes { Data($0) }
     let language = options.language ?? ""
+    let speechSegmentsData =
+      options.speechSegments.isEmpty ? nil : try JSONEncoder().encode(options.speechSegments)
 
     let (resultData, error): (Data?, NSError?) = try await withCheckedThrowingContinuation {
       (cont: CheckedContinuation<(Data?, NSError?), any Error>) in
@@ -190,7 +192,8 @@ public final class ASRManagerProxy: ASRManagerInterface {
       serviceProxy { proxy in
         proxy.transcribeSamples(
           data, sampleCount: audioSamples.count,
-          language: language, enableTimestamps: options.enableTimestamps
+          language: language, enableTimestamps: options.enableTimestamps,
+          speechSegmentsData: speechSegmentsData
         ) { resultData, nsError in
           guard_.resume(returning: (resultData, nsError))
         }
