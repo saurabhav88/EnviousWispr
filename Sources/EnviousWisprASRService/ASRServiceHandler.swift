@@ -114,6 +114,7 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
 
   func transcribeSamples(
     _ data: Data, sampleCount: Int, language: String, enableTimestamps: Bool,
+    speechSegmentsData: Data?,
     reply: @escaping (Data?, NSError?) -> Void
   ) {
     nonisolated(unsafe) let safeReply = reply
@@ -139,9 +140,17 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
           return Array(raw.bindMemory(to: Float.self))
         }
 
-        var options = TranscriptionOptions()
-        options.language = language.isEmpty ? nil : language
-        options.enableTimestamps = enableTimestamps
+        let speechSegments =
+          if let speechSegmentsData {
+            try JSONDecoder().decode([SpeechSegment].self, from: speechSegmentsData)
+          } else {
+            [SpeechSegment]()
+          }
+        let options = TranscriptionOptions(
+          language: language.isEmpty ? nil : language,
+          enableTimestamps: enableTimestamps,
+          speechSegments: speechSegments
+        )
 
         // Route to the active backend
         let result: EnviousWisprCore.ASRResult

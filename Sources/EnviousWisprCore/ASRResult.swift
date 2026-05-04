@@ -37,11 +37,17 @@ public struct ASRResult: Sendable, Codable {
 public struct TranscriptionOptions: Sendable, Codable {
   public var language: String?
   public var enableTimestamps: Bool = true
+  public var speechSegments: [SpeechSegment] = []
 
   public static let `default` = TranscriptionOptions()
 
-  public init(language: String? = nil, enableTimestamps: Bool = true) {
+  public init(
+    language: String? = nil,
+    enableTimestamps: Bool = true,
+    speechSegments: [SpeechSegment] = []
+  ) {
     self.language = language
     self.enableTimestamps = enableTimestamps
+    self.speechSegments = speechSegments
   }
 }
