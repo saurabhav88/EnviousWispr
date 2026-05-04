@@ -485,13 +485,3 @@ public final class LLMPolishStep: TextProcessingStep, CustomWordsConsumer {
     }
   }
 }
-
-// MARK: - String helpers
-
-extension String {
-  /// Returns nil if the string is empty or whitespace-only.
-  var nilIfEmpty: String? {
-    let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
-    return trimmed.isEmpty ? nil : self
-  }
-}
