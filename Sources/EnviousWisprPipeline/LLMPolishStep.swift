@@ -223,12 +223,19 @@ public final class LLMPolishStep: TextProcessingStep, CustomWordsConsumer {
       // surfaces them to the user so they can retry with another
       // provider instead of the transcript being mislabeled AI-polished.
       let llmStart = CFAbsoluteTimeGetCurrent()
-      let result = try await polisher.polish(
-        text: userText,
-        instructions: resolvedInstructions,
-        config: config,
-        onToken: onToken
-      )
+      let result: LLMResult
+      do {
+        result = try await polisher.polish(
+          text: userText,
+          instructions: resolvedInstructions,
+          config: config,
+          onToken: onToken
+        )
+      } catch let afmErr as AFMPolishError {
+        SentryBreadcrumb.setPolishMode(
+          routerMode: afmErr.routerMode, routerBasis: afmErr.routerBasis)
+        throw afmErr.underlying
+      }
       let llmEnd = CFAbsoluteTimeGetCurrent()
       logPolishCompletion(result: result, duration: llmEnd - llmStart)
       let validatedText = validatePolishOutput(
@@ -238,6 +245,9 @@ public final class LLMPolishStep: TextProcessingStep, CustomWordsConsumer {
       ctx.polishedText = validatedText
       ctx.llmProvider = llmProvider.rawValue
       ctx.llmModel = llmModel
+      ctx.polishMetadata = result.polishMetadata
+      ctx.pipelineFellBackToRaw =
+        (result.polishMetadata?.filterFellBackToRaw ?? false) || (validatedText == context.text)
       return ctx
     }
 
@@ -299,6 +309,9 @@ public final class LLMPolishStep: TextProcessingStep, CustomWordsConsumer {
     ctx.polishedText = validatedText
     ctx.llmProvider = llmProvider.rawValue
     ctx.llmModel = llmModel
+    ctx.polishMetadata = result.polishMetadata
+    ctx.pipelineFellBackToRaw =
+      (result.polishMetadata?.filterFellBackToRaw ?? false) || (validatedText == context.text)
     return ctx
   }
 

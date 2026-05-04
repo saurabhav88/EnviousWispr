@@ -95,7 +95,12 @@ public final class TelemetryService {
     if let llmLat = m?.llmLatencySeconds, llmLat > 0, t.llmProvider != nil {
       llmPolishCompleted(
         provider: t.llmProvider ?? "unknown", model: t.llmModel, stylePreset: nil,
-        result: t.polishedText != nil ? "success" : "skipped", latencySeconds: llmLat)
+        result: t.polishedText != nil ? "success" : "skipped", latencySeconds: llmLat,
+        routerMode: m?.polishRouterMode,
+        routerBasis: m?.polishRouterBasis,
+        filterTripped: m?.polishFilterTripped,
+        fellBackToRaw: m?.polishFellBackToRaw
+      )
     }
     if let tier = m?.pasteTier, let ms = m?.pasteLatencyMs {
       pasteCompleted(tier: tier, targetApp: m?.targetApp, result: "success", latencyMs: ms)
@@ -246,7 +251,11 @@ public final class TelemetryService {
 
   public func llmPolishCompleted(
     provider: String, model: String?, stylePreset: String?,
-    result: String, latencySeconds: Double
+    result: String, latencySeconds: Double,
+    routerMode: String? = nil,
+    routerBasis: String? = nil,
+    filterTripped: String? = nil,
+    fellBackToRaw: Bool? = nil
   ) {
     var props: [String: Any] = [
       "provider": provider,
@@ -256,6 +265,27 @@ public final class TelemetryService {
     ]
     if let m = model { props["model"] = m }
     if let s = stylePreset { props["style_preset"] = s }
+    if let rm = routerMode { props["router_mode"] = rm }
+    if let rb = routerBasis { props["router_basis"] = rb }
+    if let ft = filterTripped { props["filter_tripped"] = ft }
+    if let fb = fellBackToRaw { props["fell_back_to_raw"] = fb }
+    #if DEBUG
+      var stringProps: [String: String] = [
+        "provider": provider, "result": result,
+      ]
+      if let m = model { stringProps["model"] = m }
+      if let s = stylePreset { stringProps["style_preset"] = s }
+      if let rm = routerMode { stringProps["router_mode"] = rm }
+      if let rb = routerBasis { stringProps["router_basis"] = rb }
+      if let ft = filterTripped { stringProps["filter_tripped"] = ft }
+      var boolProps: [String: Bool] = [:]
+      if let fb = fellBackToRaw { boolProps["fell_back_to_raw"] = fb }
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "llm.polish_completed",
+          stringProps: stringProps,
+          boolProps: boolProps))
+    #endif
     PostHogSDK.shared.capture("llm.polish_completed", properties: props)
   }
 

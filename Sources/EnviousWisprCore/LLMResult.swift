@@ -46,12 +46,39 @@ extension LLMProvider {
   }
 }
 
+/// Per-polish telemetry sidecar produced by AFM dual-mode polishing.
+/// Cloud providers leave this nil; only `AppleIntelligenceConnector` populates.
+///
+/// `filterFellBackToRaw` is the narrowly-scoped `EnviousOutputFilter` outcome.
+/// The PostHog event property `fell_back_to_raw` is the broader pipeline-level
+/// OR (filter || validator), computed in `LLMPolishStep` after `validatePolishOutput`.
+public struct PolishMetadata: Codable, Sendable, Equatable {
+  public let routerMode: String?
+  public let routerBasis: String?
+  public let filterTripped: String?
+  public let filterFellBackToRaw: Bool
+
+  public init(
+    routerMode: String? = nil,
+    routerBasis: String? = nil,
+    filterTripped: String? = nil,
+    filterFellBackToRaw: Bool = false
+  ) {
+    self.routerMode = routerMode
+    self.routerBasis = routerBasis
+    self.filterTripped = filterTripped
+    self.filterFellBackToRaw = filterFellBackToRaw
+  }
+}
+
 /// Result from LLM transcript polishing.
 public struct LLMResult: Sendable {
   public let polishedText: String
+  public let polishMetadata: PolishMetadata?
 
-  public init(polishedText: String) {
+  public init(polishedText: String, polishMetadata: PolishMetadata? = nil) {
     self.polishedText = polishedText
+    self.polishMetadata = polishMetadata
   }
 }
 
