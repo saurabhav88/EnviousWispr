@@ -13,17 +13,12 @@ struct GemmaPromptBuilderTests {
     transcript: String = "hey um I was thinking we should ship this feature behind a flag",
     modelID: String = "gemma3:4b",
     language: String? = nil,
-    customWords: [CustomWord] = [],
-    customPromptMode: CustomPromptMode = .normal,
-    customSystemPrompt: String? = nil
+    customWords: [CustomWord] = []
   ) -> PromptBuildInput {
     PromptBuildInput(
       transcript: transcript,
       provider: .ollama,
       modelID: modelID,
-      stylePreset: .standard,
-      customSystemPrompt: customSystemPrompt,
-      customPromptMode: customPromptMode,
       appName: nil,  // Gemma: no appName (eval showed no quality difference)
       language: language,
       customWords: customWords
@@ -85,24 +80,6 @@ struct GemmaPromptBuilderTests {
     let envelope = builder.build(input: makeInput(language: "es"), mode: .message)
     let system = envelope.messages[0].content
     #expect(system.contains("LANGUAGE: es. Keep the same language."))
-  }
-
-  // MARK: - Legacy template
-
-  @Test("legacyTemplate wraps minimally")
-  func legacyTemplate() {
-    let envelope = builder.build(
-      input: makeInput(
-        customPromptMode: .legacyTemplate,
-        customSystemPrompt: "Custom prompt text"
-      ),
-      mode: .message
-    )
-    let system = envelope.messages[0].content
-    #expect(system.contains("Custom prompt text"))
-    #expect(system.contains("Return only the final text."))
-    #expect(!system.contains("Example"))
-    #expect(envelope.messages[1].content.isEmpty)
   }
 
   // MARK: - No sandwich framing

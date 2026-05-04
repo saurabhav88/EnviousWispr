@@ -26,7 +26,6 @@ public final class SettingsManager {
     case pushToTalkModifiers
     case modelUnloadPolicy
     case restoreClipboardAfterPaste
-    case customSystemPrompt
     case wordCorrectionEnabled
     case fillerRemovalEnabled
     case isDebugModeEnabled
@@ -38,7 +37,6 @@ public final class SettingsManager {
     case noiseSuppression
     case preferredInputDeviceIDOverride
     case environmentPreset
-    case writingStylePreset
     case useXPCAudioService
     case useStreamingASR
     case warmEnginePolicy
@@ -203,13 +201,6 @@ public final class SettingsManager {
     }
   }
 
-  public var customSystemPrompt: String {
-    didSet {
-      UserDefaults.standard.set(customSystemPrompt, forKey: "customSystemPrompt")
-      onChange?(.customSystemPrompt)
-    }
-  }
-
   public var wordCorrectionEnabled: Bool {
     didSet {
       UserDefaults.standard.set(wordCorrectionEnabled, forKey: "wordCorrectionEnabled")
@@ -312,13 +303,6 @@ public final class SettingsManager {
     }
   }
 
-  public var writingStylePreset: WritingStylePreset {
-    didSet {
-      UserDefaults.standard.set(writingStylePreset.rawValue, forKey: "writingStylePreset")
-      onChange?(.writingStylePreset)
-    }
-  }
-
   /// Use XPC audio service instead of in-process AudioCaptureManager.
   /// Default: true (Step 7 — XPC is the standard path).
   /// Cold flag — read at launch only. Changing requires app restart.
@@ -349,34 +333,7 @@ public final class SettingsManager {
 
   // MARK: - Computed Configurations
 
-  public var activePolishInstructions: PolishInstructions {
-    switch writingStylePreset {
-    case .formal:
-      return PolishInstructions(systemPrompt: PromptPreset.formal.systemPrompt)
-    case .standard:
-      return .default
-    case .friendly:
-      return PolishInstructions(systemPrompt: PromptPreset.casual.systemPrompt)
-    case .custom:
-      // Legacy: if someone had a custom prompt saved, honor it
-      let trimmed = customSystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
-      return trimmed.isEmpty ? .default : .custom(systemPrompt: customSystemPrompt)
-    }
-  }
-
-  /// Build a PolishStyleConfig from current settings.
-  /// Detects CustomPromptMode (${transcript} placeholder) at config construction time.
-  public var activePolishStyleConfig: PolishStyleConfig {
-    let mode: CustomPromptMode =
-      (writingStylePreset == .custom && customSystemPrompt.contains("${transcript}"))
-      ? .legacyTemplate
-      : .normal
-    return PolishStyleConfig(
-      writingStylePreset: writingStylePreset,
-      customSystemPrompt: customSystemPrompt,
-      customPromptMode: mode
-    )
-  }
+  public var activePolishInstructions: PolishInstructions { .default }
 
   public var isPushToTalk: Bool {
     get { recordingMode == .pushToTalk }
@@ -448,7 +405,6 @@ public final class SettingsManager {
       ) ?? .never
     restoreClipboardAfterPaste =
       defaults.object(forKey: "restoreClipboardAfterPaste") as? Bool ?? true
-    customSystemPrompt = defaults.string(forKey: "customSystemPrompt") ?? ""
     wordCorrectionEnabled = defaults.object(forKey: "wordCorrectionEnabled") as? Bool ?? true
     fillerRemovalEnabled = defaults.object(forKey: "fillerRemovalEnabled") as? Bool ?? true
     isDebugModeEnabled = defaults.object(forKey: "isDebugModeEnabled") as? Bool ?? false
@@ -499,9 +455,13 @@ public final class SettingsManager {
     preferredInputDeviceIDOverride = defaults.string(forKey: "preferredInputDeviceIDOverride") ?? ""
     environmentPreset =
       EnvironmentPreset(rawValue: defaults.string(forKey: "environmentPreset") ?? "") ?? .normal
-    writingStylePreset =
-      WritingStylePreset(rawValue: defaults.string(forKey: "writingStylePreset") ?? "") ?? .standard
     useXPCAudioService = defaults.object(forKey: "useXPCAudioService") as? Bool ?? true
+
+    // Migration (issue #614, 2026-05-04): the Formal/Standard/Friendly preset axis and the
+    // hidden custom-prompt path were removed. Drop their orphaned UserDefaults keys so the
+    // next load is clean. Idempotent: removeObject on an absent key is a no-op.
+    defaults.removeObject(forKey: "writingStylePreset")
+    defaults.removeObject(forKey: "customSystemPrompt")
     useStreamingASR = defaults.object(forKey: "useStreamingASR") as? Bool ?? false
     warmEnginePolicy =
       WarmEnginePolicy(

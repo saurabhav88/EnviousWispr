@@ -129,7 +129,6 @@ struct DualModePolishTelemetryTests {
       TelemetryService.shared.llmPolishCompleted(
         provider: "appleIntelligence",
         model: "apple-intelligence",
-        stylePreset: nil,
         result: "success",
         latencySeconds: 0.873,
         routerMode: "technical",
@@ -161,7 +160,7 @@ struct DualModePolishTelemetryTests {
       defer { TelemetryService.shared.testEventHook = nil }
 
       TelemetryService.shared.llmPolishCompleted(
-        provider: "openai", model: "gpt-4o-mini", stylePreset: nil,
+        provider: "openai", model: "gpt-4o-mini",
         result: "success", latencySeconds: 1.2
       )
 
@@ -187,7 +186,7 @@ struct DualModePolishTelemetryTests {
       defer { TelemetryService.shared.testEventHook = nil }
 
       TelemetryService.shared.llmPolishCompleted(
-        provider: "appleIntelligence", model: "apple-intelligence", stylePreset: nil,
+        provider: "appleIntelligence", model: "apple-intelligence",
         result: "success", latencySeconds: 0.5,
         routerMode: "natural", routerBasis: "scored",
         filterTripped: nil,

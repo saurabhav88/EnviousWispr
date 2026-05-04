@@ -826,7 +826,7 @@ def _read_setting(key: str) -> Optional[str]:
         runtime_budget_seconds=30.0,
         founder_required=False,
         negative_control="Remove wordCorrectionEnabled live-sync from PipelineSettingsSync; setting takes no effect mid-record",
-        description="Toggle wordCorrectionEnabled / fillerRemovalEnabled / writingStylePreset during active recording",
+        description="Toggle wordCorrectionEnabled / fillerRemovalEnabled / useExtendedThinking during active recording",
     )
 )
 def A6_settings_storm(**_) -> dict:

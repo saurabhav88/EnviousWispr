@@ -13,17 +13,12 @@ struct GeminiPromptBuilderTests {
     transcript: String = "hey um I was thinking we should ship this feature behind a flag",
     appName: String? = "Slack",
     language: String? = nil,
-    customWords: [CustomWord] = [],
-    customPromptMode: CustomPromptMode = .normal,
-    customSystemPrompt: String? = nil
+    customWords: [CustomWord] = []
   ) -> PromptBuildInput {
     PromptBuildInput(
       transcript: transcript,
       provider: .gemini,
       modelID: "gemini-2.5-flash",
-      stylePreset: .standard,
-      customSystemPrompt: customSystemPrompt,
-      customPromptMode: customPromptMode,
       appName: appName,
       language: language,
       customWords: customWords
@@ -125,42 +120,4 @@ struct GeminiPromptBuilderTests {
   }
 
   // MARK: - Language handling (V2: removed English-biased override)
-  // MARK: - Legacy template
-
-  @Test("legacyTemplate wraps custom prompt minimally and opts out of V2")
-  func legacyTemplate() {
-    let customPrompt = "Rewrite this in pirate speak: ${transcript}"
-    let envelope = builder.build(
-      input: makeInput(
-        customPromptMode: .legacyTemplate,
-        customSystemPrompt: customPrompt
-      ),
-      mode: .message
-    )
-    let system = envelope.messages[0].content
-    // Must contain the custom prompt
-    #expect(system.contains("Rewrite this in pirate speak"))
-    // Must have safety net
-    #expect(system.contains("Return only the final text."))
-    // Must NOT contain V2 base (custom prompt = user opts out of V2 by design)
-    #expect(!system.contains("You are a transcript polisher for direct paste."))
-    #expect(!system.contains("speech-to-text output"))
-    // User message must be empty
-    #expect(envelope.messages[1].content.isEmpty)
-  }
-
-  @Test("legacyTemplate with non-English prepends language")
-  func legacyTemplateWithLanguage() {
-    let envelope = builder.build(
-      input: makeInput(
-        language: "fr",
-        customPromptMode: .legacyTemplate,
-        customSystemPrompt: "Custom prompt"
-      ),
-      mode: .message
-    )
-    let system = envelope.messages[0].content
-    #expect(system.hasPrefix("LANGUAGE:"))
-    #expect(system.contains("Custom prompt"))
-  }
 }

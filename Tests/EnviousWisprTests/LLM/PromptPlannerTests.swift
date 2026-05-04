@@ -13,17 +13,12 @@ struct PromptPlannerTests {
     transcript: String = "hey um I was thinking we should ship this feature behind a flag",
     provider: LLMProvider = .gemini,
     modelID: String = "gemini-2.0-flash",
-    appName: String? = "Slack",
-    customPromptMode: CustomPromptMode = .normal,
-    customSystemPrompt: String? = nil
+    appName: String? = "Slack"
   ) -> PromptBuildInput {
     PromptBuildInput(
       transcript: transcript,
       provider: provider,
       modelID: modelID,
-      stylePreset: .standard,
-      customSystemPrompt: customSystemPrompt,
-      customPromptMode: customPromptMode,
       appName: appName,
       language: nil,
       customWords: []
@@ -89,33 +84,6 @@ struct PromptPlannerTests {
     let words = Array(repeating: "word", count: 120).joined(separator: " ")
     let plan = planner.plan(input: makeInput(transcript: words))
     #expect(plan.mode == .structured)
-  }
-
-  // MARK: - legacyTemplate mode routing
-
-  @Test("legacyTemplate forces .message mode regardless of transcript length")
-  func legacyTemplateForcesMessage() {
-    let longText = Array(repeating: "word", count: 200).joined(separator: " ")
-    let plan = planner.plan(
-      input: makeInput(
-        transcript: longText,
-        customPromptMode: .legacyTemplate,
-        customSystemPrompt: "Custom prompt with ${transcript}"
-      )
-    )
-    #expect(plan.mode == .message)
-  }
-
-  @Test("legacyTemplate produces envelope with custom prompt, not builder default")
-  func legacyTemplateContent() {
-    let plan = planner.plan(
-      input: makeInput(
-        customPromptMode: .legacyTemplate,
-        customSystemPrompt: "My custom instructions"
-      )
-    )
-    let system = plan.envelope.messages[0].content
-    #expect(system.contains("My custom instructions"))
   }
 
   // MARK: - Plan produces valid envelope

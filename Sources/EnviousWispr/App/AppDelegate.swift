@@ -119,7 +119,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         asrBackend: s.selectedBackend.rawValue,
         llmProvider: s.llmProvider.rawValue,
         recordingMode: s.recordingMode.rawValue,
-        writingStyle: s.writingStylePreset.rawValue,
         fillerRemoval: s.fillerRemovalEnabled,
         customWordsCount: appState.customWordsCoordinator.customWords.count,
         hasApiKeys: hasKeys,

@@ -22,10 +22,3 @@ public enum EnvironmentPreset: String, CaseIterable, Codable, Sendable {
     }
   }
 }
-
-public enum WritingStylePreset: String, CaseIterable, Codable, Sendable {
-  case formal = "formal"
-  case standard = "standard"
-  case friendly = "friendly"
-  case custom = "custom"
-}

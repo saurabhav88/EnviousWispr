@@ -30,10 +30,6 @@ struct AIPolishSettingsView: View {
     }
   }
 
-  private var showWritingStyleSection: Bool {
-    appState.settings.llmProvider != .none
-  }
-
   var body: some View {
     @Bindable var state = appState
 
@@ -99,22 +95,6 @@ struct AIPolishSettingsView: View {
             }
           }
         })
-
-      // ── Section 2: Writing Style ──────────────────────────────
-      if showWritingStyleSection {
-        BrandedSection(header: "Writing Style") {
-          BrandedRow {
-            writingStylePresetCards
-          }
-          BrandedRow(showDivider: false) {
-            Text("Controls how your dictation is cleaned up and formatted.")
-              .font(.stHelper)
-              .foregroundStyle(Color.stTextTertiary)
-          }
-        } footer: {
-          FrozenPerRecordingFootnote()
-        }
-      }
 
       // ── Section 3: Model ──────────────────────────────────────
       if showModelSection {
@@ -289,72 +269,6 @@ struct AIPolishSettingsView: View {
         appState.setup.ollamaSetup.warmUpModel(newModel)
       }
     }
-  }
-
-  // MARK: - Writing Style Preset Cards
-
-  @ViewBuilder
-  private var writingStylePresetCards: some View {
-    @Bindable var state = appState
-    HStack(spacing: 8) {
-      writingStyleCard(
-        preset: .formal, emoji: "👔", name: "Formal", desc: "Professional tone, proper grammar",
-        binding: $state.settings.writingStylePreset)
-      writingStyleCard(
-        preset: .standard, emoji: "✨", name: "Standard", desc: "Clean up grammar and punctuation",
-        binding: $state.settings.writingStylePreset)
-      writingStyleCard(
-        preset: .friendly, emoji: "💬", name: "Friendly", desc: "Casual, conversational tone",
-        binding: $state.settings.writingStylePreset)
-    }
-    .padding(.vertical, 4)
-  }
-
-  @ViewBuilder
-  private func writingStyleCard(
-    preset: WritingStylePreset,
-    emoji: String,
-    name: String,
-    desc: String,
-    binding: Binding<WritingStylePreset>
-  ) -> some View {
-    let isSelected = binding.wrappedValue == preset
-    Button {
-      binding.wrappedValue = preset
-    } label: {
-      VStack(spacing: 5) {
-        Text(emoji)
-          .font(.title2)
-        Text(name)
-          .font(.caption)
-          .fontWeight(.semibold)
-          .foregroundStyle(isSelected ? Color.stAccent : .primary)
-        Text(desc)
-          .font(.caption2)
-          .foregroundStyle(.secondary)
-          .multilineTextAlignment(.center)
-          .lineLimit(2)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-      .frame(maxWidth: .infinity)
-      .padding(.vertical, 10)
-      .padding(.horizontal, 6)
-      .contentShape(Rectangle())
-      .background(
-        RoundedRectangle(cornerRadius: 9)
-          .fill(isSelected ? Color.stAccent.opacity(0.08) : Color.clear)
-      )
-      .overlay(
-        RoundedRectangle(cornerRadius: 9)
-          .strokeBorder(
-            isSelected ? Color.stAccent : Color.primary.opacity(0.12),
-            lineWidth: isSelected ? 1.5 : 1
-          )
-      )
-    }
-    .buttonStyle(.plain)
-    .accessibilityLabel("\(name) — \(desc)")
-    .accessibilityValue(isSelected ? "selected" : "")
   }
 
   // MARK: - API Key Row

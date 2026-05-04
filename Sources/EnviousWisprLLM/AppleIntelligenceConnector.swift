@@ -569,26 +569,18 @@ public struct AppleIntelligenceConnector: TranscriptPolisher {
         return langClause + modePrompt
       }()
 
-      // Preserve the existing custom-vocab branch semantics. When the
-      // caller passed the default PolishInstructions, substitute
-      // `basePrompt` (which may include the language clause). When the
-      // caller appended a custom vocab suffix onto the default, keep the
-      // suffix but swap the prefix. A fully custom prompt is respected
-      // as-is with no language injection (same as today).
-      let defaultPrompt = PolishInstructions.default.systemPrompt
-      let systemPrompt: String
-      if instructions.systemPrompt == defaultPrompt {
-        systemPrompt = basePrompt
-      } else if instructions.systemPrompt.hasPrefix(defaultPrompt) {
-        let suffix = String(instructions.systemPrompt.dropFirst(defaultPrompt.count))
-        systemPrompt = basePrompt + suffix
-      } else {
-        systemPrompt = instructions.systemPrompt
-      }
+      // Issue #614, 2026-05-04: post-rip-out, every caller passes
+      // `PolishInstructions.default`. The dual-mode router's `basePrompt`
+      // (with optional language clause) is the only system prompt AFM
+      // ever sees. The `instructions` parameter is kept on the signature
+      // for protocol-shape parity with other connectors but goes unread
+      // here. Aligning all three connector signatures to drop the param
+      // is a separate refactor backlog item (#591).
+      _ = instructions
 
       return LanguageModelSession(
         model: model,
-        instructions: systemPrompt
+        instructions: basePrompt
       )
     }
   #endif

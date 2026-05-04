@@ -27,6 +27,18 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v1.9.5
+
+    Entry(
+      id: "single-quality-tuned-polish",
+      icon: "sparkles",
+      title: "AI Polish is now a single quality-tuned default",
+      description:
+        "We removed the Formal, Standard, and Friendly buttons. They did not change polish output on most providers and quietly bypassed the smart routing on Apple Intelligence. A polish intensity slider is on the way that will replace them with a control that actually does something.",
+      category: .smarterAIPolish,
+      version: "1.9.5"
+    ),
+
     // MARK: - v1.9.4
 
     Entry(
