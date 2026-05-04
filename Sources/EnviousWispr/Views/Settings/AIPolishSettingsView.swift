@@ -3,6 +3,42 @@ import EnviousWisprCore
 import EnviousWisprLLM
 import SwiftUI
 
+// MARK: - Model Recommendation Classifier (#617)
+
+/// Token-based classifier deciding whether a discovered model should land in the
+/// "Recommended for cleanup" group of the AI Polish picker. Pure function, no
+/// view dependencies. **Lives at file scope (not private to `AIPolishSettingsView`)
+/// solely so that `AIPolishClassifierTests` in `Tests/EnviousWisprTests/Settings/`
+/// can reach it via `@testable import EnviousWispr`.** Has no other consumers
+/// inside the app module; do not adopt it elsewhere without revisiting placement.
+///
+/// A model is recommended when its lowercased id (split on `-./_/`) contains a
+/// positive token (mini, nano, flash) AND no disqualifier token. Disqualifiers
+/// rule out specialized variants that would polish poorly (code, audio, image,
+/// realtime, search, transcribe, native/live audio variants, music gen).
+///
+/// Live validation against OpenAI + Gemini APIs (2026-05-04):
+/// `docs/audits/2026-05-04-issue-617-classifier-validation.txt`.
+enum AIPolishModelClassifier {
+  static let positives: Set<String> = ["mini", "nano", "flash"]
+  static let disqualifiers: Set<String> = [
+    "realtime", "audio", "native", "live",
+    "tts", "image", "search", "transcribe", "banana", "codex",
+  ]
+
+  /// Returns true if the model id is a Mini/Nano/Flash variant suitable for
+  /// transcript cleanup.
+  static func isRecommendedForCleanup(_ id: String) -> Bool {
+    let tokens = Set(
+      id.lowercased()
+        .split(whereSeparator: { "-._/".contains($0) })
+        .map(String.init)
+    )
+    return !tokens.isDisjoint(with: positives)
+      && tokens.isDisjoint(with: disqualifiers)
+  }
+}
+
 /// LLM provider configuration, API keys, Ollama wizard, and prompt editing.
 struct AIPolishSettingsView: View {
   @Environment(AppState.self) private var appState
@@ -99,7 +135,7 @@ struct AIPolishSettingsView: View {
       // ── Section 3: Model ──────────────────────────────────────
       if showModelSection {
         BrandedSection(header: "Model") {
-          BrandedRow {
+          BrandedRow(showDivider: false) {
             HStack {
               Picker("Model", selection: $state.settings.llmModel) {
                 if appState.llmDiscovery.discoveredModels.isEmpty
@@ -115,16 +151,7 @@ struct AIPolishSettingsView: View {
                   .tag(appState.settings.llmModel)
                 }
 
-                ForEach(appState.llmDiscovery.discoveredModels) { model in
-                  HStack {
-                    Text(model.displayName)
-                    if !model.isAvailable {
-                      Image(systemName: "lock.fill")
-                        .font(.caption2)
-                    }
-                  }
-                  .tag(model.id)
-                }
+                modelPickerSections
               }
 
               if appState.settings.llmProvider == .ollama {
@@ -146,27 +173,17 @@ struct AIPolishSettingsView: View {
               }
             }
           }
-
-          if let selectedModel = appState.llmDiscovery.discoveredModels.first(where: {
-            $0.id == appState.settings.llmModel
-          }),
-            !selectedModel.isAvailable
-          {
-            BrandedRow {
-              Text("This model requires a paid API plan.")
-                .font(.stHelper)
-                .foregroundStyle(.stWarning)
-            }
-          }
-
-          // Model recommendation cards (cloud providers only)
-          if appState.settings.llmProvider != .ollama {
-            BrandedRow(showDivider: false) {
-              modelRecommendationCards
-            }
-          }
         } footer: {
           FrozenPerRecordingFootnote()
+        }
+      }
+
+      // ── Section 3.5: Why use <Provider> (cloud only) ─────────
+      if isCloudProvider {
+        BrandedSection(header: cloudProviderExplainerHeader) {
+          BrandedRow(showDivider: false) {
+            cloudProviderExplainer
+          }
         }
       }
 
@@ -367,116 +384,118 @@ struct AIPolishSettingsView: View {
     }
   }
 
-  // MARK: - Model Recommendation Cards
+  // MARK: - Model Picker Sections (#617)
 
+  /// Three labeled groups of discovered models. Empty groups are suppressed.
+  /// Locked rows are disabled so a user can't pick something the API will reject.
   @ViewBuilder
-  private var modelRecommendationCards: some View {
-    let cards = modelCards(for: appState.settings.llmProvider)
-    if !cards.isEmpty {
-      VStack(spacing: 0) {
-        ForEach(cards.indices, id: \.self) { index in
-          let card = cards[index]
-          HStack(spacing: 10) {
-            ZStack {
-              RoundedRectangle(cornerRadius: 7)
-                .fill(card.iconBg)
-                .frame(width: 28, height: 28)
-              Text(card.icon)
-                .font(.system(size: 13))
-            }
+  private var modelPickerSections: some View {
+    let discovered = appState.llmDiscovery.discoveredModels
+    let recommended = discovered.filter {
+      $0.isAvailable && AIPolishModelClassifier.isRecommendedForCleanup($0.id)
+    }
+    let other = discovered.filter {
+      $0.isAvailable && !AIPolishModelClassifier.isRecommendedForCleanup($0.id)
+    }
+    let locked = discovered.filter { !$0.isAvailable }
 
-            VStack(alignment: .leading, spacing: 1) {
-              Text(card.name)
-                .font(.caption)
-                .fontWeight(.medium)
-              Text(card.desc)
-                .font(.caption2)
-                .foregroundStyle(Color.stTextTertiary)
-            }
-
-            Spacer()
-
-            Text(card.badge)
-              .font(.caption2)
-              .fontWeight(.semibold)
-              .padding(.horizontal, 7)
-              .padding(.vertical, 2)
-              .background(
-                Capsule().fill(card.badgeBg)
-              )
-              .overlay(
-                Capsule().strokeBorder(card.badgeBorder, lineWidth: 1)
-              )
-              .foregroundStyle(card.badgeFg)
-          }
-          .padding(.vertical, 6)
-
-          if index < cards.count - 1 {
-            Divider()
-          }
+    if !recommended.isEmpty {
+      Section("Recommended for cleanup") {
+        ForEach(recommended) { model in
+          Text(model.displayName).tag(model.id)
         }
       }
-
-      Text(
-        "Transcript cleanup is straightforward — smaller models handle it well at a fraction of the cost."
-      )
-      .font(.stHelper)
-      .foregroundStyle(Color.stTextTertiary)
-      .fixedSize(horizontal: false, vertical: true)
+    }
+    if !other.isEmpty {
+      Section("Other available models") {
+        ForEach(other) { model in
+          Text(model.displayName).tag(model.id)
+        }
+      }
+    }
+    if !locked.isEmpty {
+      Section("Not available with your API key") {
+        ForEach(locked) { model in
+          HStack {
+            Image(systemName: "lock.fill").font(.caption2)
+            Text(model.displayName)
+          }
+          .tag(model.id)
+          .selectionDisabled(true)
+        }
+      }
     }
   }
 
-  private struct ModelCardInfo {
-    let name: String
-    let desc: String
-    let badge: String
-    let icon: String
-    let iconBg: Color
-    let badgeBg: Color
-    let badgeBorder: Color
-    let badgeFg: Color
+  // MARK: - Cloud Provider Explainer (#617)
+
+  private var cloudProviderExplainerHeader: String {
+    appState.settings.llmProvider == .openAI ? "Why use OpenAI" : "Why use Gemini"
   }
 
-  private func modelCards(for provider: LLMProvider) -> [ModelCardInfo] {
-    switch provider {
-    case .openAI:
-      return [
-        ModelCardInfo(
-          name: "GPT-4o Mini", desc: "Fast · Affordable · Great quality", badge: "Best value",
-          icon: "⚡", iconBg: Color.stSuccess.opacity(0.10), badgeBg: Color.stSuccess.opacity(0.12),
-          badgeBorder: Color.stSuccess.opacity(0.22), badgeFg: Color(hex: "007a4d")),
-        ModelCardInfo(
-          name: "GPT-4.1 Mini", desc: "Fast · Affordable · Newer", badge: "Also great", icon: "✦",
-          iconBg: Color.cyan.opacity(0.10), badgeBg: Color.cyan.opacity(0.12),
-          badgeBorder: Color.cyan.opacity(0.22), badgeFg: Color(hex: "006f7a")),
-        ModelCardInfo(
-          name: "GPT-4o / 4.1", desc: "Slower · Higher cost", badge: "Premium", icon: "◈",
-          iconBg: Color.primary.opacity(0.05), badgeBg: Color.primary.opacity(0.05),
-          badgeBorder: Color.primary.opacity(0.09), badgeFg: Color.secondary),
-        ModelCardInfo(
-          name: "GPT-3.5 Turbo", desc: "Cheapest · Lower quality", badge: "Budget", icon: "◇",
-          iconBg: Color.primary.opacity(0.05), badgeBg: Color.primary.opacity(0.05),
-          badgeBorder: Color.primary.opacity(0.09), badgeFg: Color.secondary),
-      ]
-    case .gemini:
-      return [
-        ModelCardInfo(
-          name: "Gemini 2.0 Flash", desc: "Fast · Affordable · Great quality", badge: "Best value",
-          icon: "⚡", iconBg: Color.stSuccess.opacity(0.10), badgeBg: Color.stSuccess.opacity(0.12),
-          badgeBorder: Color.stSuccess.opacity(0.22), badgeFg: Color(hex: "007a4d")),
-        ModelCardInfo(
-          name: "Gemini 1.5 Flash", desc: "Fast · Stable · Proven", badge: "Also great", icon: "✦",
-          iconBg: Color.cyan.opacity(0.10), badgeBg: Color.cyan.opacity(0.12),
-          badgeBorder: Color.cyan.opacity(0.22), badgeFg: Color(hex: "006f7a")),
-        ModelCardInfo(
-          name: "Gemini 2.0 Pro", desc: "Slower · Higher cost", badge: "Premium", icon: "◈",
-          iconBg: Color.primary.opacity(0.05), badgeBg: Color.primary.opacity(0.05),
-          badgeBorder: Color.primary.opacity(0.09), badgeFg: Color.secondary),
-      ]
-    case .ollama:
-      return []  // Ollama uses the dynamic Manage Models list instead
-    default:
-      return []
+  @ViewBuilder
+  private var cloudProviderExplainer: some View {
+    if appState.settings.llmProvider == .openAI {
+      VStack(alignment: .leading, spacing: 10) {
+        Text(
+          "Apple Intelligence cleans up short dictation well. OpenAI is a step up for longer recordings, lists, and code. You bring your own API key, you only pay OpenAI for what you use, and most cleanup runs land in well under a second. Cloud polish sends the transcript to OpenAI under your API account."
+        )
+        .font(.stHelper)
+        .foregroundStyle(Color.stTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+        Text(
+          "Picking the right model. OpenAI sells several sizes inside each generation. For dictation cleanup, look for Mini in the name. Those are tuned for fast, light tasks and run roughly 3 to 10 times cheaper than the flagships. Nano is even smaller and faster. The unsuffixed flagships (GPT-5, GPT-4.1) and anything labeled Pro are overkill for this job."
+        )
+        .font(.stHelper)
+        .foregroundStyle(Color.stTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+        Text(
+          "Locked models? Those aren't blocked by EnviousWispr. Your OpenAI API key doesn't currently have access to them. OpenAI gates some models behind spend tier or organization verification."
+        )
+        .font(.stHelper)
+        .foregroundStyle(Color.stTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+        Link(
+          "How OpenAI model availability works by usage tier",
+          destination: URL(
+            string:
+              "https://help.openai.com/en/articles/10362446-api-model-availability-by-usage-tier-and-verification-status"
+          )!
+        )
+        .font(.stHelper)
+      }
+    } else if appState.settings.llmProvider == .gemini {
+      VStack(alignment: .leading, spacing: 10) {
+        Text(
+          "Apple Intelligence cleans up short dictation well. Gemini is a step up for longer recordings, lists, and code. You bring your own API key, the free tier is generous for personal use, and most cleanup runs land in well under a second. Cloud polish sends the transcript to Google under your Gemini API account."
+        )
+        .font(.stHelper)
+        .foregroundStyle(Color.stTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+        Text(
+          "Picking the right model. Gemini sells two sizes inside each generation. For dictation cleanup, look for Flash in the name. Those are tuned for fast, light tasks. Pro models are overkill: slightly smarter on hard reasoning, slower and pricier on a job that doesn't need it."
+        )
+        .font(.stHelper)
+        .foregroundStyle(Color.stTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+        Text(
+          "Locked models? Those aren't blocked by EnviousWispr. Your Gemini API key doesn't currently have access to them. Some Gemini models are gated by region, billing tier, or preview status."
+        )
+        .font(.stHelper)
+        .foregroundStyle(Color.stTextSecondary)
+        .fixedSize(horizontal: false, vertical: true)
+
+        Link(
+          "Gemini API rate limits by tier",
+          destination: URL(string: "https://ai.google.dev/gemini-api/docs/rate-limits")!
+        )
+        .font(.stHelper)
+      }
     }
   }
 
