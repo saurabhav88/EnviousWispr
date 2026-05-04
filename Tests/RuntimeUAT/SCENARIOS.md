@@ -86,7 +86,7 @@ Start recording, dispatch `force_proxy_buffer_drop(1000)` so the next 1000 buffe
 ### A6_settings_storm (Lane A — settings)
 Backends: both. Budget: 30s. Mechanism: settings.
 
-During an active recording, navigate to AI Polish settings. Toggle `wordCorrectionEnabled`, `fillerRemovalEnabled`, `writingStylePreset`, `customSystemPrompt`, and `useExtendedThinking`. Recording continues; toggles apply via `PipelineSettingsSync` live-sync.
+During an active recording, navigate to AI Polish settings. Toggle `wordCorrectionEnabled` and `fillerRemovalEnabled`. Recording continues; toggles apply via `PipelineSettingsSync` live-sync.
 
 **Do NOT toggle:** `noiseSuppression` (cancels active Parakeet recording per `PipelineSettingsSync.swift:175-185`); frozen-at-start fields (`autoCopyToClipboard`, `restoreClipboardAfterPaste`, `vadAutoStop`, `vadSilenceTimeout`, `vadSensitivity`, `vadEnergyGate`, `languageMode`, `useStreamingASR`).
 
