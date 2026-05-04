@@ -164,6 +164,14 @@ public actor SilenceDetector {
     //    Codex-flagged 2026-05-04). The energy gate now only suppresses what
     //    we feed into the smoothed-EMA auto-stop path; it must NOT bypass
     //    `processStreamingChunk`.
+    // `speechPadding: 0.0` puts the boundary exactly at the chunk where
+    // probability crossed threshold (no library-default 100ms back-dating).
+    // Codex round-2 (2026-05-04) flagged this as potentially clipping soft
+    // leading phonemes; the corpus run will validate empirically whether
+    // that hypothetical bites our `.validation/uat-602/corpus/multilingual/`
+    // cases. If the corpus shows clipping, flip back to FluidAudio's
+    // calibrated default (0.1) — the Parakeet batch path already uses
+    // equivalent 100ms boundary padding via `SampleFilter.filter(padding:)`.
     let segConfig = VadSegmentationConfig(
       minSpeechDuration: 0.3,
       minSilenceDuration: silenceTimeout,
