@@ -291,20 +291,33 @@ internal func forceCancelNow() { /* cancels in-flight transcription Task */ }
 - **Semantics:** **Bypass.** Cancels the in-flight transcription Task with a synthetic `CancellationError`. Tests the pipeline's existing cancellation unwind path.
 - **Invariants:** `@MainActor` (matches pipeline isolation per Codex review §5 — `TranscriptionPipeline.swift:10-13`, `WhisperKitPipeline.swift:48-54`).
 
-### 4.4 New DEBUG-only Lane A endpoint listener in `EnviousWisprApp.swift`
+### 4.4 New DEBUG-only Lane A endpoint listener — `DebugFaultEndpoint` owned by `AppDelegate`
+
+> **Round 2 pivot — see §3.7 Owner choice.** Originally drafted as a private function on `EnviousWisprApp`; per round 2 grounded review the listener is a dedicated `DebugFaultEndpoint` type (DEBUG-only, ~80 LOC at `Sources/EnviousWispr/App/Debug/DebugFaultEndpoint.swift`) retained as a property on `AppDelegate`. `EnviousWisprApp.swift` has no `appState` access at startup; `AppDelegate.applicationDidFinishLaunching` (lines 37-86) is the real runtime startup hook with `applicationWillTerminate` (lines 408-420) for cleanup.
 
 ```swift
+// Sources/EnviousWispr/App/Debug/DebugFaultEndpoint.swift
 #if DEBUG
-private func startFaultInjectionEndpointIfRequested() {
-    guard ProcessInfo.processInfo.environment["EW_FAULT_INJECTION"] == "1" else { return }
-    // Bind 127.0.0.1, write per-launch token to ~/Library/Logs/EnviousWispr/fault-token-<pid>,
-    // accept fixed command set, dispatch to owning actor.
+final class DebugFaultEndpoint {
+    func start() {
+        guard ProcessInfo.processInfo.environment["EW_FAULT_INJECTION"] == "1" else { return }
+        // Bind 127.0.0.1, write per-launch token to ~/Library/Logs/EnviousWispr/fault-token-<pid>,
+        // accept fixed command set, dispatch to owning actor via Task { @MainActor in ... }.
+    }
+    func stop() { /* close listener, delete token file */ }
 }
+#endif
+
+// Sources/EnviousWispr/App/AppDelegate.swift (wiring, all #if DEBUG-gated)
+#if DEBUG
+private let debugFaultEndpoint = DebugFaultEndpoint()
+// in applicationDidFinishLaunching: debugFaultEndpoint.start()
+// in applicationWillTerminate:    debugFaultEndpoint.stop()
 #endif
 ```
 
 - **Semantics:** **Bypass.** Off by default in DEBUG; on only when env var set. Production: compiled out.
-- **Invariants:** Single-purpose, fixed command set, no arbitrary RPC.
+- **Invariants:** Single-purpose, fixed command set, no arbitrary RPC. Lifecycle bound to `AppDelegate`, not `EnviousWisprApp` (the SwiftUI scene root has no startup hook).
 
 ### 4.5 New Lane C Swift `@Test` functions
 
@@ -369,7 +382,9 @@ grep -rn "forceStallRemainingBuffers\|forceConnectionTerminationNow\|forceCancel
 
 # Endpoint listener consumer grep:
 grep -rn "EW_FAULT_INJECTION\|fault-token" Sources/
-# Should match only EnviousWispr/App/EnviousWisprApp.swift, all under #if DEBUG.
+# Should match only Sources/EnviousWispr/App/Debug/DebugFaultEndpoint.swift
+# plus the DEBUG-gated start/stop wiring lines in Sources/EnviousWispr/App/AppDelegate.swift,
+# all under #if DEBUG.
 
 # Test consumers grep:
 grep -rn "forceStallRemainingBuffers\|forceConnectionTerminationNow\|forceCancelNow\|EW_FAULT_INJECTION" Tests/
