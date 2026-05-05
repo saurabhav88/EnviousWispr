@@ -68,6 +68,15 @@ public final class WordCorrectionStep: TextProcessingStep, CorrectorVocabularyCo
     let lookups = ensureLookups(for: snapshot)
 
     let inputText = context.text
+    let vocabCount = snapshot.terms.count
+    let generation = snapshot.generation
+    let inputChars = inputText.count
+    Task {
+      await AppLogger.shared.log(
+        "WordCorrection enter: vocab_count=\(vocabCount) generation=\(generation) input_chars=\(inputChars)",
+        level: .info, category: "Pipeline"
+      )
+    }
     let result: (corrected: String, replacements: [WordCorrector.Replacement])
     let startTime = CFAbsoluteTimeGetCurrent()
     do {

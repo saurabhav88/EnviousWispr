@@ -443,9 +443,31 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       "\nThis is speech-to-text output. Remove false starts. "
       + "Preserve the speaker's tone and formality level. If unsure about a correction, leave unchanged."
 
+    let termsCount = polishVocabulary.terms.count
+    Task {
+      await AppLogger.shared.log(
+        "AFM polish vocab inject: termsCount=\(termsCount)",
+        level: .info, category: "LLM"
+      )
+    }
     if !polishVocabulary.terms.isEmpty {
       if let vocab = CustomVocabularyFormatter.render(polishVocabulary.terms) {
+        let renderedChars = vocab.count
+        let preview = String(vocab.prefix(180))
+        Task {
+          await AppLogger.shared.log(
+            "AFM polish vocab rendered: chars=\(renderedChars) preview=\"\(preview)\"",
+            level: .info, category: "LLM"
+          )
+        }
         systemPrompt += "\n\n" + vocab
+      } else {
+        Task {
+          await AppLogger.shared.log(
+            "AFM polish vocab render returned nil despite termsCount=\(termsCount)",
+            level: .info, category: "LLM"
+          )
+        }
       }
     }
 
