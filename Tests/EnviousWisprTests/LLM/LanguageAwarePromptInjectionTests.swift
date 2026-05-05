@@ -51,7 +51,7 @@ struct LanguageAwarePromptInjectionTests {
       modelID: modelID,
       appName: nil,
       language: nil,
-      customWords: customWords,
+      polishVocabulary: PolishVocabulary(terms: customWords, generation: 0),
       focusSnapshot: nil,
       customVocabulary: customVocabulary,
       languageDetection: detection,

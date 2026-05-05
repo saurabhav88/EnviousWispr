@@ -60,15 +60,21 @@ internal final class TranscriptFinalizer {
   private let save: @MainActor (Transcript) throws -> Void
   private let textProcessingRunner: TextProcessingRunner
   private let deliverPaste: @MainActor (PasteDeliveryRequest) async -> PasteDeliveryResult
+  /// Phase 0 (#640) — receives `PasteCompletionEvent` after every successful
+  /// dictation auto-paste. Nil means "no observers wired" (acceptable; events
+  /// are dropped silently). Phase 7 (#629) is the first planned subscriber.
+  private let pasteCompletionRegistry: PasteCompletionRegistry?
 
   init(
     transcriptStore: TranscriptStore,
     textProcessingRunner: TextProcessingRunner = TextProcessingRunner(),
-    pasteExecutor: PasteCascadeExecutor = PasteCascadeExecutor()
+    pasteExecutor: PasteCascadeExecutor = PasteCascadeExecutor(),
+    pasteCompletionRegistry: PasteCompletionRegistry? = nil
   ) {
     self.save = { try transcriptStore.save($0) }
     self.textProcessingRunner = textProcessingRunner
     self.deliverPaste = { await pasteExecutor.deliver($0) }
+    self.pasteCompletionRegistry = pasteCompletionRegistry
   }
 
   // Test-only seam: contract tests construct the finalizer with fake closures
@@ -81,11 +87,13 @@ internal final class TranscriptFinalizer {
   init(
     save: @escaping @MainActor (Transcript) throws -> Void,
     textProcessingRunner: TextProcessingRunner = TextProcessingRunner(),
-    deliverPaste: @escaping @MainActor (PasteDeliveryRequest) async -> PasteDeliveryResult
+    deliverPaste: @escaping @MainActor (PasteDeliveryRequest) async -> PasteDeliveryResult,
+    pasteCompletionRegistry: PasteCompletionRegistry? = nil
   ) {
     self.save = save
     self.textProcessingRunner = textProcessingRunner
     self.deliverPaste = deliverPaste
+    self.pasteCompletionRegistry = pasteCompletionRegistry
   }
 
   /// Finalize a transcription: process text, store transcript, paste to target.
@@ -146,6 +154,20 @@ internal final class TranscriptFinalizer {
           targetElement: request.targetElement,
           restoreClipboardAfterPaste: request.restoreClipboardAfterPaste
         ))
+      // Phase 0 (#640): emit paste-complete event for downstream observers
+      // (Phase 7 auto-learn). Only fires on the dictation auto-paste path AND
+      // only when the cascade actually delivered (not when it fell back to
+      // clipboard-only). An auto-learn observer that saw clipboard-only
+      // fallbacks would start watching a destination where the text never
+      // landed — false-positive learning. Codex review revision 2026-05-05.
+      if let pasteResult, case .delivered = pasteResult.outcome {
+        pasteCompletionRegistry?.emit(
+          PasteCompletionEvent(
+            pastedText: text,
+            destinationBundleID: request.targetApp?.bundleIdentifier
+          )
+        )
+      }
     } else if request.autoCopyToClipboard {
       PasteService.copyToClipboard(transcript.displayText)
     }

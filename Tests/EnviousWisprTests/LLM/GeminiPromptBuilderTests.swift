@@ -21,7 +21,7 @@ struct GeminiPromptBuilderTests {
       modelID: "gemini-2.5-flash",
       appName: appName,
       language: language,
-      customWords: customWords
+      polishVocabulary: PolishVocabulary(terms: customWords, generation: 0)
     )
   }
 

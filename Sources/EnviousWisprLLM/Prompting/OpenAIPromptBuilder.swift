@@ -99,7 +99,7 @@ public struct OpenAIPromptBuilder: PromptBuilder {
     }
 
     // Custom vocabulary
-    if let vocab = CustomVocabularyFormatter.render(input.customWords) {
+    if let vocab = CustomVocabularyFormatter.render(input.polishVocabulary.terms) {
       system += "\n\n\(vocab)"
     }
 

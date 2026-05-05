@@ -21,7 +21,7 @@ struct OpenAIPromptBuilderTests {
       modelID: "gpt-4o-mini",
       appName: appName,
       language: language,
-      customWords: customWords
+      polishVocabulary: PolishVocabulary(terms: customWords, generation: 0)
     )
   }
 
@@ -104,7 +104,7 @@ struct OpenAIPromptBuilderTests {
       modelID: "gpt-4o-mini",
       appName: nil,
       language: nil,
-      customWords: []
+      polishVocabulary: PolishVocabulary(terms: [], generation: 0)
     )
     let envelope = builder.build(input: input, mode: .inline)
     #expect(envelope.messages.count == 2)

@@ -32,6 +32,13 @@ public final class TranscriptPolishService {
   /// At call time, config is snapshotted into an immutable value for request safety.
   public let llmPolishStep: LLMPolishStep
 
+  /// Phase 0 (#640) — single shared registry. Constructed here so AppState
+  /// avoids breaching the 19-collaborator ceiling (the registry would
+  /// otherwise need its own top-level `let`). Both pipeline finalizers
+  /// receive this same instance via init injection. Phase 7 (#629)
+  /// auto-learn subscribes here.
+  public let pasteCompletionRegistry: PasteCompletionRegistry
+
   // MARK: - Private
 
   private let transcriptStore: TranscriptStore
@@ -45,6 +52,7 @@ public final class TranscriptPolishService {
     dictationActivity: DictationActivityProviding? = nil
   ) {
     self.llmPolishStep = LLMPolishStep(keychainManager: keychainManager)
+    self.pasteCompletionRegistry = PasteCompletionRegistry()
     self.transcriptStore = transcriptStore
     self.dictationActivity = dictationActivity
     // Standalone: no pipeline callbacks needed.

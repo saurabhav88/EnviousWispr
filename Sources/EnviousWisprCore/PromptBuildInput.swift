@@ -1,5 +1,9 @@
 /// All inputs needed by the prompt planner to produce a PolishPlan.
 /// Bundles user settings, transcript, and context into a single immutable snapshot.
+///
+/// Phase 0 (#640) — `customWords: [CustomWord]` removed; replaced by
+/// `polishVocabulary: PolishVocabulary` so a pack-to-prompt leak is a compile
+/// error. Bible §2.2.
 public struct PromptBuildInput: Sendable {
   public let transcript: String
   public let provider: LLMProvider
@@ -7,13 +11,10 @@ public struct PromptBuildInput: Sendable {
   public let appName: String?
   public let language: String?
 
-  /// Legacy flat list of user-configured custom words (with aliases, priority).
-  /// Kept for rollback safety and because existing builders render aliases.
-  /// Deprecated: prefer `customVocabulary` + `languageDetection` so the planner
-  /// can apply confidence-tiered, language-aware injection. Builders still read
-  /// `customWords` after the planner has already filtered it to the set
-  /// permitted by the active tier.
-  public let customWords: [CustomWord]
+  /// Polish-prompt vocabulary. Built-in defaults + user-typed terms only;
+  /// pack terms are NEVER included by construction (Phase 0, bible §2.2).
+  /// Builders read `polishVocabulary.terms`.
+  public let polishVocabulary: PolishVocabulary
 
   public let focusSnapshot: FocusSnapshot?
 
@@ -44,7 +45,7 @@ public struct PromptBuildInput: Sendable {
     modelID: String,
     appName: String?,
     language: String?,
-    customWords: [CustomWord],
+    polishVocabulary: PolishVocabulary,
     focusSnapshot: FocusSnapshot? = nil,
     customVocabulary: PromptVocabulary? = nil,
     languageDetection: LanguageDetectionResult? = nil,
@@ -55,26 +56,27 @@ public struct PromptBuildInput: Sendable {
     self.modelID = modelID
     self.appName = appName
     self.language = language
-    self.customWords = customWords
+    self.polishVocabulary = polishVocabulary
     self.focusSnapshot = focusSnapshot
-    // Migration default: if no explicit customVocabulary is passed, fall
-    // back to deriving a global-only PromptVocabulary from customWords.
-    self.customVocabulary = customVocabulary ?? PromptVocabulary.fromLegacy(customWords)
+    // Migration default: if no explicit customVocabulary is passed, derive it
+    // from the polish lane terms (built-in + user). Pack terms (corrector
+    // lane only) deliberately do NOT influence the polish-side vocabulary.
+    self.customVocabulary = customVocabulary ?? PromptVocabulary.fromLegacy(polishVocabulary.terms)
     self.languageDetection = languageDetection
     self.backend = backend
   }
 
-  /// Returns a copy of this input with `customWords` replaced. Used by the
-  /// planner to hand the builders a filtered list after applying the
-  /// confidence-tiered + script-guardrail policy.
-  public func withCustomWords(_ newCustomWords: [CustomWord]) -> PromptBuildInput {
+  /// Returns a copy of this input with `polishVocabulary` replaced. Used by
+  /// the planner to hand the builders a filtered vocabulary after applying
+  /// the confidence-tiered + script-guardrail policy.
+  public func withPolishVocabulary(_ newPolishVocabulary: PolishVocabulary) -> PromptBuildInput {
     PromptBuildInput(
       transcript: transcript,
       provider: provider,
       modelID: modelID,
       appName: appName,
       language: language,
-      customWords: newCustomWords,
+      polishVocabulary: newPolishVocabulary,
       focusSnapshot: focusSnapshot,
       customVocabulary: customVocabulary,
       languageDetection: languageDetection,

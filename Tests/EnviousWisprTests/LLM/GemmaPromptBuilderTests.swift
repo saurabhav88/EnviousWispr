@@ -21,7 +21,7 @@ struct GemmaPromptBuilderTests {
       modelID: modelID,
       appName: nil,  // Gemma: no appName (eval showed no quality difference)
       language: language,
-      customWords: customWords
+      polishVocabulary: PolishVocabulary(terms: customWords, generation: 0)
     )
   }
 
