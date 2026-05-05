@@ -645,4 +645,97 @@ public final class TelemetryService {
   public func flushTelemetry() {
     PostHogSDK.shared.flush()
   }
+
+  // MARK: - Custom Words v2 (Phase 8a — distributed event backfill, bible §14.1)
+  //
+  // Privacy: NEVER include term strings, alias strings, or any contact-derived
+  // data in these events. Only counts, booleans, category labels, latency
+  // buckets. Bible §14.3.
+
+  /// Phase 0 (#640) — fired by `CustomWordsPropagator.update(corrector:polish:)`
+  /// once per atomic broadcast. `lane` is "corrector" or "polish".
+  public func customWordsPropagatorBroadcast(
+    lane: String, generation: UInt64, consumerCount: Int, termCount: Int
+  ) {
+    PostHogSDK.shared.capture(
+      "custom_words.propagator_broadcast",
+      properties: [
+        "lane": lane,
+        "generation": Int(generation),
+        "consumer_count": consumerCount,
+        "term_count": termCount,
+      ]
+    )
+  }
+
+  /// Phase 1 (#637) — fired by `WordSuggestionService.suggest(for:)` after
+  /// the degeneration filter. `degenerated == true` means raw was non-empty
+  /// but post-filter list was empty (model returned only self-echoes).
+  /// `categorySuggested` is the category enum raw value or nil if call failed.
+  public func customWordsAfmAliasFilled(
+    resultCount: Int, degenerated: Bool, categorySuggested: String?
+  ) {
+    var props: [String: Any] = [
+      "result_count": resultCount,
+      "degenerated": degenerated,
+    ]
+    if let category = categorySuggested {
+      props["category_suggested"] = category
+    }
+    PostHogSDK.shared.capture("custom_words.afm_alias_filled", properties: props)
+  }
+
+  /// Phase 2 (#638) — fired by `WordCorrectionStep.process(...)` after a
+  /// successful correction batch. Single summary event per process() call;
+  /// per-replacement breakdown deferred to full Phase 8 (bible v1.3 will note
+  /// this scope reduction). `latencyBucket` quantizes wall-clock duration.
+  public func customWordsReplacementBatch(
+    replacementCount: Int,
+    vocabSize: Int,
+    hadPackTerm: Bool,
+    hadUserTerm: Bool,
+    hadBuiltinTerm: Bool,
+    latencyBucket: String
+  ) {
+    PostHogSDK.shared.capture(
+      "custom_words.replacement_applied",
+      properties: [
+        "replacement_count": replacementCount,
+        "vocab_size": vocabSize,
+        "had_pack_term": hadPackTerm,
+        "had_user_term": hadUserTerm,
+        "had_builtin_term": hadBuiltinTerm,
+        "latency_bucket": latencyBucket,
+      ]
+    )
+  }
+
+  /// Phase 2 (#638) — fired by `WordCorrectionStep.process(...)` when the
+  /// 10ms heart-path timeout cap fires.
+  public func customWordsTimeoutFired(vocabSize: Int) {
+    PostHogSDK.shared.capture(
+      "custom_words.timeout_fired",
+      properties: [
+        "vocab_size": vocabSize
+      ]
+    )
+  }
+}
+
+// MARK: - Latency bucket helper (Phase 8a)
+
+/// Quantize a wall-clock latency into a coarse bucket for telemetry.
+/// Buckets are chosen to surface the heart-path 10ms boundary.
+public enum LatencyBucket {
+  public static func of(milliseconds: Double) -> String {
+    switch milliseconds {
+    case ..<1: return "under_1ms"
+    case 1..<5: return "1_to_5ms"
+    case 5..<10: return "5_to_10ms"
+    case 10..<25: return "10_to_25ms"
+    case 25..<50: return "25_to_50ms"
+    case 50..<100: return "50_to_100ms"
+    default: return "over_100ms"
+    }
+  }
 }

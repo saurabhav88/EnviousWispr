@@ -69,6 +69,7 @@ public final class WordCorrectionStep: TextProcessingStep, CorrectorVocabularyCo
 
     let inputText = context.text
     let result: (corrected: String, replacements: [WordCorrector.Replacement])
+    let startTime = CFAbsoluteTimeGetCurrent()
     do {
       // Phase 2b (#638) bible §2.2.1: hard 10ms cap. WordCorrector.correct is
       // pure CPU work; we run it OFF MainActor inside the timeout closure so
@@ -83,13 +84,38 @@ public final class WordCorrectionStep: TextProcessingStep, CorrectorVocabularyCo
         message: "WordCorrector timeout (10ms cap exceeded)",
         data: ["vocab_size": String(snapshot.terms.count)]
       )
+      // Phase 8a (#620): emit timeout event. Bible §14.1.
+      TelemetryService.shared.customWordsTimeoutFired(vocabSize: snapshot.terms.count)
       return context  // raw text passes through; heart path unaffected
     }
+    let elapsedMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000.0
 
     let (fixed, replacements) = result
     if !replacements.isEmpty {
       customWordsManager?.recordReplacements(replacements.map(\.sourceID))
       let count = replacements.count
+      // Phase 8a (#620): emit one summary event per process() call. Bible §14.1.
+      // Privacy-safe: counts + booleans + latency bucket. No term strings.
+      let sourceIDs = Set(replacements.map(\.sourceID))
+      var hadPack = false
+      var hadUser = false
+      var hadBuiltin = false
+      for term in snapshot.terms where sourceIDs.contains(term.id) {
+        switch term.source {
+        case .pack: hadPack = true
+        case .user: hadUser = true
+        case .builtin: hadBuiltin = true
+        case .observedAX: hadUser = true  // observedAX -> persists as user
+        }
+      }
+      TelemetryService.shared.customWordsReplacementBatch(
+        replacementCount: count,
+        vocabSize: snapshot.terms.count,
+        hadPackTerm: hadPack,
+        hadUserTerm: hadUser,
+        hadBuiltinTerm: hadBuiltin,
+        latencyBucket: LatencyBucket.of(milliseconds: elapsedMs)
+      )
       Task {
         await AppLogger.shared.log(
           "WordCorrector applied \(count) correction(s)",
