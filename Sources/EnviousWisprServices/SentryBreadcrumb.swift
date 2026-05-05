@@ -76,17 +76,6 @@ public enum SentryBreadcrumb {
     }
   }
 
-  /// Tag the current Sentry scope with the dual-mode polish router decision (#429).
-  /// Called from `LLMPolishStep` when an `AFMPolishError` is caught so any
-  /// subsequent error capture in the same scope window carries the router fields.
-  /// Pre-router AFM errors don't call this — their events correctly omit the tag.
-  public static func setPolishMode(routerMode: String, routerBasis: String) {
-    SentrySDK.configureScope { scope in
-      scope.setTag(value: routerMode, key: "polish_mode")
-      scope.setTag(value: routerBasis, key: "polish_router_basis")
-    }
-  }
-
   /// Update recording state on global scope. Present on fatal crashes.
   /// - Parameters:
   ///   - active: Whether recording is in progress.
@@ -150,17 +139,22 @@ public enum SentryBreadcrumb {
     category: ErrorCategory,
     stage: String,
     extra: [String: Any]? = nil,
-    snapshot: RecordingSnapshot? = nil
+    snapshot: RecordingSnapshot? = nil,
+    tags: [String: String] = [:]
   ) {
-    // Test spy hook — invoked synchronously before SDK dispatch. Production sets nil.
-    Self.captureErrorDelegate?(error, category, stage, extra)
-
     let event = Event(level: .error)
     event.message = SentryMessage(formatted: "\(category.rawValue): \(error.localizedDescription)")
-    event.tags = [
+    var eventTags = [
       "pipeline.stage": stage,
       "error.category": category.rawValue,
     ]
+    for (key, value) in tags {
+      eventTags[key] = value
+    }
+    // Test spy hooks — invoked synchronously before SDK dispatch. Production sets nil.
+    Self.captureErrorTagsDelegate?(eventTags)
+    Self.captureErrorDelegate?(error, category, stage, extra)
+    event.tags = eventTags
     if let extra {
       event.extra = extra
     }
@@ -180,6 +174,31 @@ public enum SentryBreadcrumb {
     } else {
       SentrySDK.capture(event: event)
     }
+  }
+
+  /// Capture a post-router Apple Intelligence polish failure with router
+  /// fields on this event only. Do not write these to global Sentry scope:
+  /// router attribution belongs to the failing polish event, not later
+  /// unrelated errors.
+  public static func captureAFMPolishError(
+    _ error: any Error,
+    routerMode: String,
+    routerBasis: String
+  ) {
+    let fields: [String: Any] = [
+      "polish_mode": routerMode,
+      "polish_router_basis": routerBasis,
+    ]
+    captureError(
+      error,
+      category: .generationFailed,
+      stage: "polish",
+      extra: fields,
+      tags: [
+        "polish_mode": routerMode,
+        "polish_router_basis": routerBasis,
+      ]
+    )
   }
 
   // MARK: - Apple Intelligence Diagnostics
@@ -248,4 +267,9 @@ extension SentryBreadcrumb {
   /// protocol wrapper for SDK-less unit testing.
   public nonisolated(unsafe) static var captureErrorDelegate:
     (@Sendable (any Error, ErrorCategory, String, [String: Any]?) -> Void)?
+
+  /// Optional test-only delegate for the exact tag payload that will be attached
+  /// to the captured Sentry event.
+  public nonisolated(unsafe) static var captureErrorTagsDelegate:
+    (@Sendable ([String: String]) -> Void)?
 }
