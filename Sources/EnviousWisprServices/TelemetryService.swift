@@ -512,4 +512,137 @@ public final class TelemetryService {
     default: return "15s+"
     }
   }
+
+  // MARK: - Update banner (issue #343)
+
+  public func updateBannerShown(
+    version: String,
+    isCritical: Bool,
+    dismissedPreviously: Bool,
+    secondsSinceAvailable: Int
+  ) {
+    PostHogSDK.shared.capture(
+      "update.banner_shown",
+      properties: [
+        "version": version,
+        "is_critical": isCritical,
+        "dismissed_for_version_previously": dismissedPreviously,
+        "seconds_since_available": secondsSinceAvailable,
+      ]
+    )
+  }
+
+  public func updateBannerClicked(version: String, isCritical: Bool, secondsVisible: Int) {
+    PostHogSDK.shared.capture(
+      "update.banner_clicked",
+      properties: [
+        "version": version,
+        "is_critical": isCritical,
+        "seconds_visible": secondsVisible,
+      ]
+    )
+  }
+
+  public func updateBannerDismissed(version: String, isCritical: Bool, secondsVisible: Int) {
+    PostHogSDK.shared.capture(
+      "update.banner_dismissed",
+      properties: [
+        "version": version,
+        "is_critical": isCritical,
+        "seconds_visible": secondsVisible,
+      ]
+    )
+  }
+
+  public func updateSparkleDefaultShown(version: String, isCritical: Bool, reason: String) {
+    PostHogSDK.shared.capture(
+      "update.sparkle_default_shown",
+      properties: [
+        "version": version,
+        "is_critical": isCritical,
+        "reason": reason,
+      ]
+    )
+  }
+
+  public func updateInstallStarted(version: String, isCritical: Bool, source: String) {
+    PostHogSDK.shared.capture(
+      "update.install_started",
+      properties: [
+        "version": version,
+        "is_critical": isCritical,
+        "source": source,
+      ]
+    )
+  }
+
+  public func updateSparkleCycleFinished(
+    version: String,
+    isCritical: Bool,
+    source: String,
+    errorCode: String?
+  ) {
+    var props: [String: Any] = [
+      "version": version,
+      "is_critical": isCritical,
+      "source": source,
+    ]
+    if let errorCode { props["error_code"] = errorCode }
+    PostHogSDK.shared.capture("update.sparkle_cycle_finished", properties: props)
+  }
+
+  public func updateInstallCompleted(version: String, isCritical: Bool, source: String) {
+    PostHogSDK.shared.capture(
+      "update.install_completed",
+      properties: [
+        "version": version,
+        "is_critical": isCritical,
+        "source": source,
+      ]
+    )
+  }
+
+  public func updateInstallFailed(
+    version: String,
+    isCritical: Bool,
+    source: String,
+    errorCode: String
+  ) {
+    PostHogSDK.shared.capture(
+      "update.install_failed",
+      properties: [
+        "version": version,
+        "is_critical": isCritical,
+        "source": source,
+        "error_code": errorCode,
+      ]
+    )
+  }
+
+  public func updateInstallCancelled(version: String, isCritical: Bool, source: String) {
+    PostHogSDK.shared.capture(
+      "update.install_cancelled",
+      properties: [
+        "version": version,
+        "is_critical": isCritical,
+        "source": source,
+      ]
+    )
+  }
+
+  public func updateWatchdogFired(version: String, isCritical: Bool) {
+    PostHogSDK.shared.capture(
+      "update.watchdog_fired",
+      properties: [
+        "version": version,
+        "is_critical": isCritical,
+      ]
+    )
+  }
+
+  /// Synchronously flushes buffered events. Called before triggering install
+  /// so click/start events survive Sparkle's relaunch.
+  public func flushTelemetry() {
+    PostHogSDK.shared.flush()
+  }
 }

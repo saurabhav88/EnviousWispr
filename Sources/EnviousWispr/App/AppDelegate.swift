@@ -26,6 +26,7 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
   private var statusItem: NSStatusItem?
   private(set) var updaterController: SPUStandardUpdaterController?
+  private(set) var updateCoordinator: UpdateCoordinator?
   private let iconAnimator = MenuBarIconAnimator()
   private weak var mainWindow: NSWindow?
   private var windowCloseObserver: (any NSObjectProtocol)?
@@ -92,15 +93,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     updaterController = SPUStandardUpdaterController(
       startingUpdater: true,
-      updaterDelegate: nil,
+      updaterDelegate: self,
       userDriverDelegate: self
     )
 
+    // Issue #343: in-app update banner. Constructed AFTER the updater so the
+    // install closure can capture it. Limb classification — does NOT live on
+    // AppState (collaborator ceiling).
+    updateCoordinator = UpdateCoordinator(updaterController: updaterController)
+
+    // Issue #343: cross-launch correlation. Fire install_completed /
+    // install_cancelled if the prior launch attempted an install.
+    evaluateUpdateInstallAttemptOnLaunch()
+
     setupStatusItem()
 
-    // Update menu bar icon whenever pipeline state or accessibility changes
-    appState.onPipelineStateChange = { [weak self] _ in
-      self?.updateIcon()
+    // Update menu bar icon whenever pipeline state or accessibility changes.
+    // Also forwards recording state to the update coordinator so the banner
+    // hides during recording + 3s post-recording grace (issue #343).
+    appState.onPipelineStateChange = { [weak self] state in
+      guard let self else { return }
+      self.updateIcon()
+      self.updateCoordinator?.handlePipelineStateChange(isRecording: state == .recording)
     }
     appState.permissions.onAccessibilityChange = { [weak self] in
       self?.updateIcon()
@@ -381,14 +395,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     settingsItem.target = self
     menu.addItem(settingsItem)
 
-    // Check for Updates
-    if let updaterController {
+    // Check for Updates — retargeted to AppDelegate wrapper so we can tag
+    // the install source as "menu" for telemetry attribution (issue #343).
+    if updaterController != nil {
       let updateItem = NSMenuItem(
         title: "Check for Updates…",
-        action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)), keyEquivalent: "")
+        action: #selector(openUpdateCheckFromMenu(_:)), keyEquivalent: "")
       updateItem.image = NSImage(
         systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: "Update")
-      updateItem.target = updaterController
+      updateItem.target = self
       menu.addItem(updateItem)
     }
 
@@ -457,6 +472,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     showWindow()
   }
 
+  /// Issue #343: menu-bar "Check for Updates…" wrapper. Tags the install source
+  /// as "menu" so cross-launch correlation can attribute install_completed /
+  /// install_cancelled correctly, then forwards to Sparkle's standard handler.
+  @objc private func openUpdateCheckFromMenu(_ sender: Any?) {
+    updateCoordinator?.lastInstallSource = "menu"
+    updaterController?.checkForUpdates(sender)
+  }
+
+  /// Issue #343: cross-launch correlation entry point. Called from
+  /// applicationDidFinishLaunching after the coordinator is constructed.
+  /// Compares the current bundle version to a persisted "we just attempted
+  /// to install" marker and fires install_completed / install_cancelled
+  /// telemetry. Independent of whether the click-time event made it through.
+  private func evaluateUpdateInstallAttemptOnLaunch() {
+    guard let coordinator = updateCoordinator else { return }
+    let outcome = coordinator.evaluateLastInstallAttempt(
+      currentBundleVersion: AppConstants.appVersion
+    )
+    switch outcome {
+    case .completed(let version, let source):
+      TelemetryService.shared.updateInstallCompleted(
+        version: version, isCritical: false, source: source
+      )
+    case .cancelled(let version, let source):
+      TelemetryService.shared.updateInstallCancelled(
+        version: version, isCritical: false, source: source
+      )
+    case .none, .unattributable, .stale:
+      break
+    }
+  }
+
   func applicationWillTerminate(_ notification: Notification) {
     if let observer = windowCloseObserver {
       NotificationCenter.default.removeObserver(observer)
@@ -508,6 +555,11 @@ extension AppDelegate: NSMenuDelegate {
 // MARK: - SPUStandardUserDriverDelegate
 
 extension AppDelegate: @preconcurrency SPUStandardUserDriverDelegate {
+  /// Issue #343: declares support for gentle scheduled update reminders.
+  /// Sparkle logs an error if a background app does not declare this.
+  /// (sparkle-project.org/documentation/gentle-reminders)
+  var supportsGentleScheduledUpdateReminders: Bool { true }
+
   /// Bring app to front when Sparkle shows an update dialog (LSUIElement fix).
   func standardUserDriverWillShowModalAlert() {
     NSApp.setActivationPolicy(.regular)
@@ -517,5 +569,144 @@ extension AppDelegate: @preconcurrency SPUStandardUserDriverDelegate {
   /// Return to accessory mode when the entire update session ends.
   func standardUserDriverWillFinishUpdateSession() {
     NSApp.setActivationPolicy(.accessory)
+  }
+
+  /// Issue #343: pure yes/no decision per Sparkle's documented gentle-reminder
+  /// pattern. NO side effects — all state mutation happens in
+  /// `standardUserDriverWillHandleShowingUpdate`.
+  /// Sparkle's contract: YES = Sparkle handles, NO = delegate handles.
+  func standardUserDriverShouldHandleShowingScheduledUpdate(
+    _ update: SUAppcastItem,
+    andInImmediateFocus immediateFocus: Bool
+  ) -> Bool {
+    let hasMainWindow = NSApp.windows.contains { $0.isVisible && $0.canBecomeMain }
+    if !hasMainWindow { return true }  // no banner mount → Sparkle handles
+    if update.isCriticalUpdate { return true }  // critical → Sparkle's full UX
+    if immediateFocus { return true }  // Sparkle wants front-and-center
+    return false  // we own the gentle UX via the banner
+  }
+
+  /// Issue #343: side-effect callback that fires after the yes/no decision.
+  /// Captures availability state into the service and (if Sparkle handles)
+  /// tags the install source for telemetry attribution.
+  /// Sparkle's contract: handleShowingUpdate == true → Sparkle handles,
+  /// false → delegate (us) handles.
+  func standardUserDriverWillHandleShowingUpdate(
+    _ handleShowingUpdate: Bool,
+    forUpdate update: SUAppcastItem,
+    state: SPUUserUpdateState
+  ) {
+    let available = UpdateAvailabilityService.AvailableUpdate(
+      versionString: update.versionString,
+      displayVersion: update.displayVersionString,
+      buildString: update.versionString,
+      isCriticalUpdate: update.isCriticalUpdate
+    )
+    updateCoordinator?.service.noteAvailable(available)
+
+    if handleShowingUpdate {
+      // Sparkle owns UX. Tag source + fire diagnostic event.
+      let reason: String = {
+        if !NSApp.windows.contains(where: { $0.isVisible && $0.canBecomeMain }) {
+          return "no_main_window"
+        }
+        if update.isCriticalUpdate { return "critical" }
+        return "immediate_focus"
+      }()
+      updateCoordinator?.lastInstallSource = "sparkle_default"
+      TelemetryService.shared.updateSparkleDefaultShown(
+        version: update.versionString,
+        isCritical: update.isCriticalUpdate,
+        reason: reason
+      )
+    }
+    // Else: banner owns UX; source set by `triggerInstall` when user clicks.
+  }
+
+  /// Issue #343: dismiss our banner when the user has engaged with Sparkle's
+  /// UI directly (e.g., used the menu while the banner was visible).
+  /// Prevents two competing UIs for the same update.
+  func standardUserDriverDidReceiveUserAttention(forUpdate update: SUAppcastItem) {
+    updateCoordinator?.service.dismissForSession()
+  }
+}
+
+// MARK: - SPUUpdaterDelegate
+
+extension AppDelegate: @preconcurrency SPUUpdaterDelegate {
+  /// Issue #343: fires when the user has accepted an update and Sparkle is
+  /// about to begin install. Persists the install attempt for cross-launch
+  /// correlation, fires `update.install_started`, flushes telemetry so the
+  /// event survives Sparkle's relaunch.
+  func updater(_ updater: SPUUpdater, willInstallUpdate item: SUAppcastItem) {
+    let source = updateCoordinator?.lastInstallSource ?? "unknown"
+    updateCoordinator?.recordInstallAttempt(version: item.versionString, source: source)
+    TelemetryService.shared.updateInstallStarted(
+      version: item.versionString,
+      isCritical: item.isCriticalUpdate,
+      source: source
+    )
+    TelemetryService.shared.flushTelemetry()
+  }
+
+  /// Issue #343: silent install-on-quit path. This is a separate Sparkle
+  /// driver from `willInstallUpdate` — for automatically-downloaded updates
+  /// that install when the user quits. Tag source explicitly so we can
+  /// distinguish it from banner / menu / sparkle_default attribution.
+  func updater(
+    _ updater: SPUUpdater,
+    willInstallUpdateOnQuit item: SUAppcastItem,
+    immediateInstallationBlock immediateInstallHandler: @escaping () -> Void
+  ) -> Bool {
+    updateCoordinator?.lastInstallSource = "install_on_quit"
+    updateCoordinator?.recordInstallAttempt(version: item.versionString, source: "install_on_quit")
+    TelemetryService.shared.updateInstallStarted(
+      version: item.versionString,
+      isCritical: item.isCriticalUpdate,
+      source: "install_on_quit"
+    )
+    TelemetryService.shared.flushTelemetry()
+    // Returning false lets Sparkle's automatic install-on-quit proceed normally.
+    return false
+  }
+
+  /// Issue #343: terminal "the cycle ended" hook. Fires diagnostic event,
+  /// resolves service state, clears install-source.
+  func updater(
+    _ updater: SPUUpdater,
+    didFinishUpdateCycleFor updateCheck: SPUUpdateCheck,
+    error: (any Error)?
+  ) {
+    let source = updateCoordinator?.lastInstallSource ?? "unknown"
+    let pendingVersion: String? = {
+      if case .available(let u) = updateCoordinator?.service.state ?? .none {
+        return u.versionString
+      }
+      return nil
+    }()
+    let version = pendingVersion ?? "unknown"
+    let isCritical: Bool = {
+      if case .available(let u) = updateCoordinator?.service.state ?? .none {
+        return u.isCriticalUpdate
+      }
+      return false
+    }()
+    let errorCode = (error as NSError?).map { "\($0.domain).\($0.code)" }
+    TelemetryService.shared.updateSparkleCycleFinished(
+      version: version,
+      isCritical: isCritical,
+      source: source,
+      errorCode: errorCode
+    )
+    if error != nil {
+      TelemetryService.shared.updateInstallFailed(
+        version: version,
+        isCritical: isCritical,
+        source: source,
+        errorCode: errorCode ?? "unknown"
+      )
+    }
+    updateCoordinator?.service.noteResolved(installedVersion: nil)
+    updateCoordinator?.lastInstallSource = nil
   }
 }
