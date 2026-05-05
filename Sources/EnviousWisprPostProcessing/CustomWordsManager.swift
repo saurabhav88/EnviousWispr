@@ -164,16 +164,90 @@ public final class CustomWordsManager {
     return mergedWords(file: file)
   }
 
-  /// Phase 3a (#631): no-op stub. Phase 3b implements the debounced writer
-  /// (max 1 disk write per 30s OR 50 increments) that bumps `frequencyUsed`
-  /// and `lastUsed` on each source `CustomWord`. Bible §9.3.
+  /// Phase 3b (#631): debounced writer that bumps `frequencyUsed` and
+  /// `lastUsed` on each source `CustomWord`. Bible §9.3.
   ///
-  /// `WordCorrectionStep.process(...)` calls this after each correction with
-  /// the IDs returned by `WordCorrector.correct(...)`. In Phase 3a the call
-  /// site exists and is exercised by tests; the writer side is intentionally
-  /// inert so Phase 4 can ship the redesign without depending on counting.
+  /// Debounce policy:
+  /// - Aggregate increments in `pendingIncrements` (per UUID).
+  /// - Flush sync when total pending count >= 50.
+  /// - Otherwise schedule a 30s timer flush (cancel + reschedule on each call).
+  /// - On flush: load file → bump frequencyUsed and set lastUsed for each
+  ///   pending UUID found in `file.words` → save → clear pending.
+  ///
+  /// IDs not found in `file.words` (rare: file edited concurrently, built-in
+  /// term not yet in file) are skipped silently. Errors during save are
+  /// logged + the pending state is cleared (best-effort writer; the next
+  /// correction will start a fresh accumulator).
   public func recordReplacements(_ ids: [UUID]) {
-    // no-op (Phase 3b)
+    guard !ids.isEmpty else { return }
+    let now = Date()
+    for id in ids {
+      var entry = pendingIncrements[id] ?? PendingIncrement(count: 0, lastTimestamp: now)
+      entry.count += 1
+      entry.lastTimestamp = now
+      pendingIncrements[id] = entry
+    }
+    let totalPending = pendingIncrements.values.reduce(0) { $0 + $1.count }
+    if totalPending >= Self.flushCountThreshold {
+      flushPendingIncrements()
+    } else {
+      schedulePendingFlush()
+    }
+  }
+
+  /// Phase 3b (#631): test seam — synchronously flush any pending increments.
+  /// Production code never calls this; tests use it to validate the writer
+  /// without waiting for the 30s debounce timer.
+  package func flushPendingIncrementsForTesting() {
+    flushPendingIncrements()
+  }
+
+  private struct PendingIncrement {
+    var count: Int
+    var lastTimestamp: Date
+  }
+
+  private static let flushCountThreshold = 50
+  private static let flushDebounceSeconds: Double = 30
+
+  private var pendingIncrements: [UUID: PendingIncrement] = [:]
+  private var pendingFlushTask: Task<Void, Never>?
+
+  private func schedulePendingFlush() {
+    pendingFlushTask?.cancel()
+    pendingFlushTask = Task { @MainActor [weak self] in
+      try? await Task.sleep(for: .seconds(Self.flushDebounceSeconds))
+      guard !Task.isCancelled, let self else { return }
+      self.flushPendingIncrements()
+    }
+  }
+
+  private func flushPendingIncrements() {
+    pendingFlushTask?.cancel()
+    pendingFlushTask = nil
+    let snapshot = pendingIncrements
+    pendingIncrements.removeAll()
+    guard !snapshot.isEmpty else { return }
+
+    var file = loadFile() ?? CustomWordsFile()
+    var changed = false
+    for (id, increment) in snapshot {
+      guard let idx = file.words.firstIndex(where: { $0.id == id }) else { continue }
+      file.words[idx].frequencyUsed += increment.count
+      file.words[idx].lastUsed = increment.lastTimestamp
+      changed = true
+    }
+    guard changed else { return }
+    do {
+      try saveFile(file)
+    } catch {
+      Task {
+        await AppLogger.shared.log(
+          "CustomWordsManager: recordReplacements flush failed: \(error.localizedDescription)",
+          level: .info, category: "CustomWords"
+        )
+      }
+    }
   }
 
   public func add(canonical: String, to words: inout [CustomWord]) throws {
