@@ -17,6 +17,10 @@ import os
 /// stricter threshold for short tokens (<= 4 chars).
 public struct WordCorrector: Sendable {
   public static let threshold: Double = 0.82
+  /// Curated packs are an explicit install signal. Keep short-token safety,
+  /// ambiguity margin, and per-term overrides, but do not let large pack size
+  /// erase known ASR-near-miss corrections like "Viper" -> "Vyper".
+  public static let packSourceThreshold: Double = 0.70
   public static let multiWordThreshold: Double = 0.85
   public static let shortTokenThreshold: Double = 0.90
   public static let ambiguityMargin: Double = 0.05
@@ -62,6 +66,23 @@ public struct WordCorrector: Sendable {
   /// Bible §8.2 item 3.
   public static func lengthAwareAdjustment(candidateLength: Int) -> Double {
     return min(0.04, 0.005 * Double(max(0, candidateLength - 8)))
+  }
+
+  private static func fuzzyThreshold(
+    for word: CustomWord?,
+    baseThreshold: Double,
+    vocabPenalty: Double,
+    lengthAdjustment: Double
+  ) -> Double {
+    if let override = word?.minSimilarityOverride {
+      return override
+    }
+
+    let defaultThreshold = baseThreshold + vocabPenalty - lengthAdjustment
+    if word?.source == .pack, baseThreshold == Self.threshold {
+      return min(defaultThreshold, Self.packSourceThreshold)
+    }
+    return defaultThreshold
   }
 
   // MARK: - Phase 2b (#638) lookup-map cache
@@ -439,9 +460,13 @@ public struct WordCorrector: Sendable {
       // applied per-candidate. Per-term override wins absolutely if set.
       let pass4VocabPenalty = Self.largeVocabPenalty(poolSize: singleFuzzyCandidates.count)
       let pass4LengthAdj = Self.lengthAwareAdjustment(candidateLength: bestMatch.count)
-      let pass4Override = canonicalToWord[bestMatch.lowercased()]?.minSimilarityOverride
-      let pass4Threshold =
-        pass4Override ?? (effectiveThreshold + pass4VocabPenalty - pass4LengthAdj)
+      let pass4Word = canonicalToWord[bestMatch.lowercased()]
+      let pass4Threshold = Self.fuzzyThreshold(
+        for: pass4Word,
+        baseThreshold: effectiveThreshold,
+        vocabPenalty: pass4VocabPenalty,
+        lengthAdjustment: pass4LengthAdj
+      )
       if bestScore >= pass4Threshold,
         bestScore - secondBest >= Self.ambiguityMargin,
         core != bestMatch
@@ -493,9 +518,13 @@ public struct WordCorrector: Sendable {
       // Phase 2 (#638) §8.2: same hardening for Pass 5.
       let pass5VocabPenalty = Self.largeVocabPenalty(poolSize: lowercasedCanonicals.count)
       let pass5LengthAdj = Self.lengthAwareAdjustment(candidateLength: bestMatch.count)
-      let pass5Override = canonicalToWord[bestMatch.lowercased()]?.minSimilarityOverride
-      let pass5Threshold =
-        pass5Override ?? (effectiveThreshold + pass5VocabPenalty - pass5LengthAdj)
+      let pass5Word = canonicalToWord[bestMatch.lowercased()]
+      let pass5Threshold = Self.fuzzyThreshold(
+        for: pass5Word,
+        baseThreshold: effectiveThreshold,
+        vocabPenalty: pass5VocabPenalty,
+        lengthAdjustment: pass5LengthAdj
+      )
       if bestScore >= pass5Threshold,
         bestScore - secondBest >= Self.ambiguityMargin,
         core != bestMatch

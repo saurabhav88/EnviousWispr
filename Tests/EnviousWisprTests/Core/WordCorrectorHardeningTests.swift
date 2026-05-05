@@ -77,6 +77,11 @@ struct WordCorrectorHardeningTests {
     #expect(WordCorrector.lengthAwareAdjustment(candidateLength: 100) == 0.04)
   }
 
+  @Test("packSourceThreshold — pack terms use the curated-pack fuzzy bar")
+  func packSourceThresholdValue() {
+    #expect(WordCorrector.packSourceThreshold == 0.70)
+  }
+
   // MARK: - Item 4: Per-term threshold override
 
   @Test("Override — Loose (0.72) accepts what global 0.82 would reject")
@@ -116,5 +121,40 @@ struct WordCorrectorHardeningTests {
     let (result, replacements) = corrector.correct("I used chatgpt today", against: words)
     #expect(result == "I used ChatGPT today")
     #expect(replacements.count == 1)
+  }
+
+  @Test("Pack source — large vocab still corrects ASR-mangled pack terms")
+  func packSourceLargeVocabStillCorrectsASRMangledPackTerms() {
+    let filler = (1...1_120).map { CustomWord(canonical: "SyntheticPackTerm\($0)", source: .pack) }
+    let vyper = CustomWord(canonical: "Vyper", source: .pack)
+    let kustomize = CustomWord(canonical: "Kustomize", source: .pack)
+    let tendis = CustomWord(canonical: "Tendis", source: .pack)
+    let helidon = CustomWord(canonical: "Helidon", source: .pack)
+    let yugabyte = CustomWord(canonical: "YugabyteDB", source: .pack)
+
+    let (result, replacements) = corrector.correct(
+      "Viper customize Tendas Helodon UgabyteDB",
+      against: filler + [vyper, kustomize, tendis, helidon, yugabyte]
+    )
+
+    #expect(result == "Vyper Kustomize Tendis Helidon YugabyteDB")
+    #expect(replacements.count == 5)
+    #expect(Set(replacements.map(\.sourceID)) == Set([
+      vyper.id, kustomize.id, tendis.id, helidon.id, yugabyte.id,
+    ]))
+  }
+
+  @Test("Pack source — unrelated real words remain unchanged")
+  func packSourceUnrelatedRealWordsRemainUnchanged() {
+    let filler = (1...1_120).map { CustomWord(canonical: "SyntheticPackTerm\($0)", source: .pack) }
+    let kustomize = CustomWord(canonical: "Kustomize", source: .pack)
+
+    let (result, replacements) = corrector.correct(
+      "the customer is happy",
+      against: filler + [kustomize]
+    )
+
+    #expect(result == "the customer is happy")
+    #expect(replacements.isEmpty)
   }
 }
