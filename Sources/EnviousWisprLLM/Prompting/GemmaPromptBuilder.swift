@@ -60,7 +60,7 @@ public struct GemmaPromptBuilder: PromptBuilder {
     }
 
     // 4. Custom vocabulary (simplified format for small models)
-    if let vocab = CustomVocabularyFormatter.renderSimplified(input.customWords) {
+    if let vocab = CustomVocabularyFormatter.renderSimplified(input.polishVocabulary.terms) {
       system += "\n\n\(vocab)"
     }
 

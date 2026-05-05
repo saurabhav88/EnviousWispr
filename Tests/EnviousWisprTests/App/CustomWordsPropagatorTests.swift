@@ -4,143 +4,191 @@ import Testing
 
 @testable import EnviousWispr
 
-/// Phase D (#496) — pins the `CustomWordsPropagator` contract around the new
-/// registry pattern that replaces AppState's 5-way custom-words fanout.
+/// Phase 0 (#640) — pins the `CustomWordsPropagator` contract around the
+/// split-lane registry pattern. Replaces Phase D (#496) tests after the
+/// `CustomWordsConsumer` protocol was split into `CorrectorVocabularyConsumer`
+/// and `PolishVocabularyConsumer`.
 ///
 /// Tests assert observable behavior on conforming spy consumers. Spies are
 /// plain `@MainActor final class` types — no actor indirection.
-///
-/// Coverage shape (after Codex truth-audit, 2026-04-29):
-/// - Unit: weak storage (deinit probe), initial-sync, dup-register idempotence.
-/// - Integration via `wireCustomWords`: AppState's exact wire ordering
-///   exercised against spy consumers + a real `CustomWordsCoordinator`. This
-///   is the test that catches "future AppState refactor drops a register()
-///   call" or "wire ordering reversed."
 @MainActor
-@Suite("CustomWordsPropagator — Phase D registry contract")
+@Suite("CustomWordsPropagator — Phase 0 split-lane registry contract")
 struct CustomWordsPropagatorTests {
 
   // MARK: - Fixtures
 
-  /// Plain spy. Records every assignment to `customWords` so tests can pin
-  /// invocation count and final value at the consumer level.
-  private final class SpyConsumer: CustomWordsConsumer {
-    var customWords: [CustomWord] = [] {
+  /// Plain corrector-lane spy.
+  private final class CorrectorSpy: CorrectorVocabularyConsumer {
+    var correctorVocabulary: CorrectorVocabulary = .empty {
+      didSet { setCount += 1 }
+    }
+    var setCount: Int = 0
+  }
+
+  /// Plain polish-lane spy.
+  private final class PolishSpy: PolishVocabularyConsumer {
+    var polishVocabulary: PolishVocabulary = .empty {
       didSet { setCount += 1 }
     }
     var setCount: Int = 0
   }
 
   /// Reference holder for cross-isolation flag access from a nonisolated
-  /// `deinit`. Marked `@unchecked Sendable` because all writes happen during
-  /// synchronous deallocation on the test's @MainActor thread (autoreleasepool
-  /// drain is synchronous), and reads happen from the same actor afterward.
+  /// `deinit`.
   private final class DeinitFlag: @unchecked Sendable {
     var fired: Bool = false
   }
 
-  /// Spy that flips a flag in `deinit`. Used to actually prove weak storage
-  /// in the propagator: a strong-storing buggy implementation would keep
-  /// this alive past the autoreleasepool boundary, the flag would stay
-  /// false, and the test would fail.
-  private final class DeinitProbeSpy: CustomWordsConsumer {
-    var customWords: [CustomWord] = []
+  /// Spy that flips a flag in `deinit`. Used to actually prove weak storage.
+  private final class CorrectorDeinitProbe: CorrectorVocabularyConsumer {
+    var correctorVocabulary: CorrectorVocabulary = .empty
     let flag: DeinitFlag
     init(flag: DeinitFlag) { self.flag = flag }
     deinit { flag.fired = true }
   }
 
-  private static func makeWord(_ canonical: String) -> CustomWord {
-    CustomWord(canonical: canonical)
+  private static func makeWord(_ canonical: String, source: WordSource = .user) -> CustomWord {
+    CustomWord(canonical: canonical, source: source)
   }
 
-  // MARK: - Unit: weak storage proven via deinit probe
+  // MARK: - Unit: weak storage
 
-  /// Substantive proof of weak storage: registers a probe consumer in an
-  /// autoreleasepool, asserts its `deinit` fires after the pool exits.
-  /// A buggy propagator that stored consumers strongly would keep the probe
-  /// alive past the autoreleasepool, the deinit closure would never fire,
-  /// and `deinitFired` would stay false.
-  @Test("Weak storage — transient consumer is deinit'd after autoreleasepool exits")
+  @Test("Weak storage — corrector consumer is deinit'd after autoreleasepool exits")
   func weakStorageDeinitProbe() {
     let propagator = CustomWordsPropagator()
     let flag = DeinitFlag()
     autoreleasepool {
-      let probe = DeinitProbeSpy(flag: flag)
+      let probe = CorrectorDeinitProbe(flag: flag)
       propagator.register(probe)
-      // Sanity: probe received initial-sync before going out of scope.
-      #expect(probe.customWords.isEmpty)
+      #expect(probe.correctorVocabulary.terms.isEmpty)
     }
     #expect(
       flag.fired,
       "Probe consumer must be deallocated after the autoreleasepool exits — proves the propagator stores it weakly."
     )
 
-    // After deallocation, a subsequent update must not crash and must prune
-    // the dead box. Surviving consumer registered AFTER probe death sees
-    // the broadcast cleanly.
-    let survivor = SpyConsumer()
+    let survivor = CorrectorSpy()
     propagator.register(survivor)
     let words = [Self.makeWord("survivor")]
-    propagator.update(words)
-    #expect(survivor.customWords == words)
+    propagator.update(
+      corrector: CorrectorVocabulary(terms: words, generation: 1),
+      polish: PolishVocabulary(terms: words, generation: 1)
+    )
+    #expect(survivor.correctorVocabulary.terms == words)
   }
 
-  // MARK: - Unit: initial-sync on register
+  // MARK: - Unit: initial-sync on register (both lanes)
 
-  /// `register(_:)` writes the propagator's current `words` to the consumer
-  /// before returning. AppState init relies on this for "all consumers have
-  /// the seed before the first user mutation."
-  @Test("Initial-sync on register — late registrant gets current words")
-  func initialSyncOnRegister() {
+  @Test("Initial-sync on register — corrector consumer gets current vocabulary")
+  func initialSyncCorrectorOnRegister() {
     let propagator = CustomWordsPropagator()
 
-    let early = SpyConsumer()
+    let early = CorrectorSpy()
     propagator.register(early)
-    #expect(early.customWords.isEmpty)
+    #expect(early.correctorVocabulary.terms.isEmpty)
     #expect(early.setCount == 1)
 
     let updated = [Self.makeWord("alpha"), Self.makeWord("beta")]
-    propagator.update(updated)
-    #expect(early.customWords == updated)
-    #expect(early.setCount == 2)
+    propagator.update(
+      corrector: CorrectorVocabulary(terms: updated, generation: 1),
+      polish: PolishVocabulary(terms: updated, generation: 1)
+    )
+    #expect(early.correctorVocabulary.terms == updated)
 
-    // Late-registered consumer must receive `updated` via initial-sync, NOT
-    // the empty initial seed and NOT a subsequent broadcast.
-    let late = SpyConsumer()
+    let late = CorrectorSpy()
     propagator.register(late)
-    #expect(late.customWords == updated)
+    #expect(late.correctorVocabulary.terms == updated)
     #expect(late.setCount == 1)
   }
 
-  // MARK: - Unit: duplicate-register idempotence
-
-  /// Registering the same instance twice must not double-write on broadcast.
-  @Test("Duplicate-register idempotence — same instance written once per update")
-  func duplicateRegisterIdempotent() {
+  @Test("Initial-sync on register — polish consumer gets current vocabulary")
+  func initialSyncPolishOnRegister() {
     let propagator = CustomWordsPropagator()
-    let consumer = SpyConsumer()
+
+    let early = PolishSpy()
+    propagator.register(early)
+    #expect(early.polishVocabulary.terms.isEmpty)
+
+    let updated = [Self.makeWord("alpha"), Self.makeWord("beta")]
+    propagator.update(
+      corrector: CorrectorVocabulary(terms: updated, generation: 1),
+      polish: PolishVocabulary(terms: updated, generation: 1)
+    )
+    #expect(early.polishVocabulary.terms == updated)
+  }
+
+  // MARK: - Unit: pack-distribution law (the whole point of Phase 0)
+
+  @Test("Pack terms reach corrector lane only — never polish lane")
+  func packTermsExcludedFromPolish() {
+    let propagator = CustomWordsPropagator()
+    let corrSpy = CorrectorSpy()
+    let polishSpy = PolishSpy()
+    propagator.register(corrSpy)
+    propagator.register(polishSpy)
+
+    let userTerm = Self.makeWord("EnviousWispr", source: .user)
+    let packTerm = Self.makeWord("Snowflake", source: .pack)
+    let allTerms = [userTerm, packTerm]
+    let polishOnly = allTerms.filter { $0.source != .pack }
+
+    propagator.update(
+      corrector: CorrectorVocabulary(terms: allTerms, generation: 1),
+      polish: PolishVocabulary(terms: polishOnly, generation: 1)
+    )
+
+    #expect(
+      corrSpy.correctorVocabulary.terms.contains(where: { $0.canonical == "Snowflake" }),
+      "Pack term must reach corrector lane")
+    #expect(
+      !polishSpy.polishVocabulary.terms.contains(where: { $0.canonical == "Snowflake" }),
+      "Pack term must NOT reach polish lane (bible §2.2)")
+    #expect(
+      polishSpy.polishVocabulary.terms.contains(where: { $0.canonical == "EnviousWispr" }),
+      "User term must reach polish lane")
+  }
+
+  // MARK: - Unit: shared generation across lanes
+
+  @Test("Shared generation — both lanes get same generation per atomic update")
+  func sharedGenerationAcrossLanes() {
+    let propagator = CustomWordsPropagator()
+    let corrSpy = CorrectorSpy()
+    let polishSpy = PolishSpy()
+    propagator.register(corrSpy)
+    propagator.register(polishSpy)
+
+    propagator.update(
+      corrector: CorrectorVocabulary(terms: [], generation: 42),
+      polish: PolishVocabulary(terms: [], generation: 42)
+    )
+    #expect(corrSpy.correctorVocabulary.generation == 42)
+    #expect(polishSpy.polishVocabulary.generation == 42)
+  }
+
+  // MARK: - Unit: duplicate-register idempotence (both lanes)
+
+  @Test("Duplicate-register idempotence — corrector consumer written once per update")
+  func duplicateCorrectorRegisterIdempotent() {
+    let propagator = CustomWordsPropagator()
+    let consumer = CorrectorSpy()
     propagator.register(consumer)
-    propagator.register(consumer)  // second call is a no-op
+    propagator.register(consumer)
 
     let baseline = consumer.setCount
     let word = Self.makeWord("x")
-    propagator.update([word])
+    propagator.update(
+      corrector: CorrectorVocabulary(terms: [word], generation: 1),
+      polish: PolishVocabulary(terms: [word], generation: 1)
+    )
     #expect(consumer.setCount == baseline + 1)
-    #expect(consumer.customWords == [word])
   }
 
-  // MARK: - Integration: wireCustomWords exact AppState ordering
+  // MARK: - Integration: wireCustomWords with both consumer lists
 
-  /// Highest-risk regression test (per Codex grounded review). Drives
-  /// `wireCustomWords` — the exact helper AppState's init calls — with spy
-  /// consumers + a real `CustomWordsCoordinator`. Catches:
-  ///   - someone dropping a `register()` call from AppState's wiring
-  ///   - reordering (assigning `onWordsChanged` before registers, or
-  ///     registering before the seed)
-  ///   - the coordinator's onWordsChanged closure failing to broadcast
   @Test(
-    "Integration — wireCustomWords seeds all 5 spy consumers + coordinator broadcast reaches them")
+    "Integration — wireCustomWords seeds 2 corrector spies + 3 polish spies, coordinator broadcast reaches all"
+  )
   func wireCustomWordsIntegration() {
     let coordinator = CustomWordsCoordinator()
     let preloaded = [
@@ -148,61 +196,74 @@ struct CustomWordsPropagatorTests {
       Self.makeWord("preload-two"),
     ]
 
-    // Five spies stand in for the five real production consumers
-    // (pipeline × 2 × 2 + polishService).
-    let spies: [SpyConsumer] = (0..<5).map { _ in SpyConsumer() }
+    let correctorSpies: [CorrectorSpy] = (0..<2).map { _ in CorrectorSpy() }
+    let polishSpies: [PolishSpy] = (0..<3).map { _ in PolishSpy() }
     let propagator = CustomWordsPropagator()
 
     wireCustomWords(
       propagator: propagator,
       initialWords: preloaded,
-      consumers: spies,
+      correctorConsumers: correctorSpies,
+      polishConsumers: polishSpies,
       coordinator: coordinator
     )
 
-    // After wiring, every spy must hold the preloaded words via
-    // register()'s initial-sync, BEFORE any user interaction.
-    for (i, spy) in spies.enumerated() {
+    for (i, spy) in correctorSpies.enumerated() {
       #expect(
-        spy.customWords == preloaded,
-        "spy[\(i)] missed the preloaded seed; check register() initial-sync ordering")
+        spy.correctorVocabulary.terms == preloaded,
+        "corrector spy[\(i)] missed the preloaded seed")
+    }
+    for (i, spy) in polishSpies.enumerated() {
+      #expect(
+        spy.polishVocabulary.terms == preloaded,
+        "polish spy[\(i)] missed the preloaded seed (no pack terms in seed)")
     }
 
-    // Now fire the coordinator callback that wireCustomWords installed.
-    // Every spy must receive the new list. Catches "onWordsChanged was
-    // assigned but doesn't actually broadcast through propagator."
     let updated = preloaded + [Self.makeWord("user-added")]
     coordinator.onWordsChanged?(updated)
-    for (i, spy) in spies.enumerated() {
+    for (i, spy) in correctorSpies.enumerated() {
       #expect(
-        spy.customWords == updated,
-        "spy[\(i)] missed the broadcast triggered through coordinator.onWordsChanged")
+        spy.correctorVocabulary.terms == updated,
+        "corrector spy[\(i)] missed the broadcast")
+    }
+    for (i, spy) in polishSpies.enumerated() {
+      #expect(
+        spy.polishVocabulary.terms == updated,
+        "polish spy[\(i)] missed the broadcast")
     }
   }
 
-  // MARK: - Integration: late-register receives current words
+  // MARK: - Integration: pack term added via coordinator only reaches corrector
 
-  /// Pins the contract that a consumer registered AFTER an `update()` still
-  /// gets the most-recent broadcast value. Future surface for AI-driven custom
-  /// words / word-pack sources that may register their own consumers at
-  /// runtime.
-  @Test("Integration — consumer registered after update receives current words")
-  func lateRegisterReceivesCurrent() {
+  @Test("Integration — pack term flows to corrector consumers only via wireCustomWords")
+  func packTermFlowsCorrectorOnly() {
+    let coordinator = CustomWordsCoordinator()
+    let correctorSpy = CorrectorSpy()
+    let polishSpy = PolishSpy()
     let propagator = CustomWordsPropagator()
-    let alpha = SpyConsumer()
-    propagator.register(alpha)
 
-    let firstBatch = [Self.makeWord("one")]
-    propagator.update(firstBatch)
-    #expect(alpha.customWords == firstBatch)
+    wireCustomWords(
+      propagator: propagator,
+      initialWords: [],
+      correctorConsumers: [correctorSpy],
+      polishConsumers: [polishSpy],
+      coordinator: coordinator
+    )
 
-    let beta = SpyConsumer()
-    propagator.register(beta)
-    #expect(beta.customWords == firstBatch)
+    let mixed = [
+      Self.makeWord("EnviousWispr", source: .user),
+      Self.makeWord("Snowflake", source: .pack),
+    ]
+    coordinator.onWordsChanged?(mixed)
 
-    let secondBatch = [Self.makeWord("one"), Self.makeWord("two")]
-    propagator.update(secondBatch)
-    #expect(alpha.customWords == secondBatch)
-    #expect(beta.customWords == secondBatch)
+    #expect(
+      correctorSpy.correctorVocabulary.terms.count == 2,
+      "Corrector should see both user + pack terms")
+    #expect(
+      polishSpy.polishVocabulary.terms.count == 1,
+      "Polish should see only the user term")
+    #expect(
+      polishSpy.polishVocabulary.terms.first?.canonical == "EnviousWispr",
+      "Polish lane received the user term, not the pack term")
   }
 }

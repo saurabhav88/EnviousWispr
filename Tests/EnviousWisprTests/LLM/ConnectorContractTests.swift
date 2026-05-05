@@ -76,7 +76,7 @@ struct ConnectorContractTests {
       modelID: "gpt-4o-mini",
       appName: "Slack",
       language: nil,
-      customWords: []
+      polishVocabulary: PolishVocabulary(terms: [], generation: 0)
     )
     let plan = DefaultPromptPlanner().plan(input: input)
     let pair = plan.envelope.asSingleTurn()
@@ -95,7 +95,7 @@ struct ConnectorContractTests {
       modelID: "gemini-2.5-flash",
       appName: "Slack",
       language: nil,
-      customWords: []
+      polishVocabulary: PolishVocabulary(terms: [], generation: 0)
     )
     let plan = DefaultPromptPlanner().plan(input: input)
     let pair = plan.envelope.asSingleTurn()

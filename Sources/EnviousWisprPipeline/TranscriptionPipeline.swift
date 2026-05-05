@@ -138,7 +138,8 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
     asrManager: any ASRManagerInterface,
     transcriptStore: TranscriptStore,
     keychainManager: KeychainManager = KeychainManager(),
-    captureTelemetry: CaptureTelemetryState = CaptureTelemetryState()
+    captureTelemetry: CaptureTelemetryState = CaptureTelemetryState(),
+    pasteCompletionRegistry: PasteCompletionRegistry? = nil
   ) {
     self.init(
       audioCapture: audioCapture,
@@ -146,7 +147,10 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
       transcriptStore: transcriptStore,
       keychainManager: keychainManager,
       captureTelemetry: captureTelemetry,
-      transcriptFinalizer: TranscriptFinalizer(transcriptStore: transcriptStore))
+      transcriptFinalizer: TranscriptFinalizer(
+        transcriptStore: transcriptStore,
+        pasteCompletionRegistry: pasteCompletionRegistry
+      ))
   }
 
   /// Phase G3 — `internal` overload that accepts a pre-built finalizer so

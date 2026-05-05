@@ -26,7 +26,7 @@ public struct GeminiPromptBuilder: PromptBuilder {
     }
 
     // Custom vocabulary
-    if let vocab = CustomVocabularyFormatter.render(input.customWords) {
+    if let vocab = CustomVocabularyFormatter.render(input.polishVocabulary.terms) {
       system += "\n\n\(vocab)"
     }
 

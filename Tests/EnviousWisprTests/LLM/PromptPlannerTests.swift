@@ -21,7 +21,7 @@ struct PromptPlannerTests {
       modelID: modelID,
       appName: appName,
       language: nil,
-      customWords: []
+      polishVocabulary: PolishVocabulary(terms: [], generation: 0)
     )
   }
 

@@ -12,10 +12,11 @@ public struct DefaultPromptPlanner: PromptPlanning {
       appName: input.appName
     )
 
-    // Multilingual v1 (W3): filter custom vocabulary for the active
+    // Multilingual v1 (W3): filter polish vocabulary for the active
     // confidence tier + script guardrail BEFORE handing it to the builder.
-    // Builders continue to read `input.customWords`, but the planner hands
-    // them a tier-appropriate list.
+    // Builders read `input.polishVocabulary.terms`; the planner hands them a
+    // tier-appropriate list. Phase 0 (#640) renamed `customWords` →
+    // `polishVocabulary` so pack terms can never reach this path.
     let filtered = applyVocabularyPolicy(to: input)
 
     let builder = Self.builder(for: input.provider, modelID: input.modelID)
@@ -54,8 +55,9 @@ public struct DefaultPromptPlanner: PromptPlanning {
   // MARK: - Multilingual v1 (W3): tiered vocabulary policy
 
   /// Apply the confidence-tiered + script-guardrail policy to the
-  /// PromptBuildInput's vocabulary, returning a copy whose `customWords` list
-  /// contains only the entries permitted by the active tier.
+  /// PromptBuildInput's vocabulary, returning a copy whose
+  /// `polishVocabulary.terms` list contains only the entries permitted by the
+  /// active tier.
   ///
   /// Dispatch is driven by the explicit `backend` field so engine identity is
   /// never inferred from `languageDetection == nil`:
@@ -85,7 +87,9 @@ public struct DefaultPromptPlanner: PromptPlanning {
     // detector must not silently fall through to the English-centric
     // legacy prompt and corrupt non-English output.
     if input.backend == .whisperKit, input.languageDetection == nil {
-      return input.withCustomWords([])
+      return input.withPolishVocabulary(
+        PolishVocabulary(terms: [], generation: input.polishVocabulary.generation)
+      )
     }
 
     guard let detection = input.languageDetection else {
@@ -99,12 +103,14 @@ public struct DefaultPromptPlanner: PromptPlanning {
       tier: detection.tier
     )
     let filteredCustomWords = Self.filterCustomWords(
-      input.customWords,
+      input.polishVocabulary.terms,
       tier: detection.tier,
       detectedLang: detection.lang,
       allowedStrings: Set(effectiveStrings)
     )
-    return input.withCustomWords(filteredCustomWords)
+    return input.withPolishVocabulary(
+      PolishVocabulary(terms: filteredCustomWords, generation: input.polishVocabulary.generation)
+    )
   }
 
   /// Filter the legacy `[CustomWord]` list to match the tier policy.

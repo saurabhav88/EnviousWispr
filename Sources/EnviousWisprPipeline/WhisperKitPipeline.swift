@@ -168,7 +168,8 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
     transcriptStore: TranscriptStore,
     keychainManager: KeychainManager,
     languageDetector: LanguageDetector = LanguageDetector(),
-    captureTelemetry: CaptureTelemetryState = CaptureTelemetryState()
+    captureTelemetry: CaptureTelemetryState = CaptureTelemetryState(),
+    pasteCompletionRegistry: PasteCompletionRegistry? = nil
   ) {
     self.audioCapture = audioCapture
     self.backend = backend
@@ -179,7 +180,10 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
       backend: .whisperKit,
       captureTelemetry: captureTelemetry
     )
-    self.transcriptFinalizer = TranscriptFinalizer(transcriptStore: transcriptStore)
+    self.transcriptFinalizer = TranscriptFinalizer(
+      transcriptStore: transcriptStore,
+      pasteCompletionRegistry: pasteCompletionRegistry
+    )
     self.llmPolishStep = LLMPolishStep(keychainManager: keychainManager)
     // Explicit engine identity: prevents a future codepath that skips the
     // language detector from silently falling through to the legacy

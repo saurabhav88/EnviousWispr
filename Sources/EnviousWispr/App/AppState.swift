@@ -165,6 +165,17 @@ final class AppState {
     transcriptCoordinator = TranscriptCoordinator(store: transcriptStore)
     llmDiscovery = LLMModelDiscoveryCoordinator(keychainManager: keychainManager)
 
+    // Phase 0 (#640) — single shared paste-completion registry. Constructed
+    // first so both pipelines and the polish service receive the same
+    // instance. NOT promoted to a top-level `let` collaborator (would breach
+    // the AppState concrete-collaborator ceiling at 19); the polish service
+    // exposes it as `polishService.pasteCompletionRegistry` for Phase 7
+    // (#629) auto-learn subscription.
+    polishService = TranscriptPolishService(
+      keychainManager: keychainManager,
+      transcriptStore: transcriptStore
+    )
+
     // Both pipeline properties must be initialized before `self` can be used.
     // WhisperKitBackend default is large-v3-turbo; reconfigured from settings below.
     pipeline = TranscriptionPipeline(
@@ -172,7 +183,8 @@ final class AppState {
       asrManager: asrManager,
       transcriptStore: transcriptStore,
       keychainManager: keychainManager,
-      captureTelemetry: captureTelemetry
+      captureTelemetry: captureTelemetry,
+      pasteCompletionRegistry: polishService.pasteCompletionRegistry
     )
     // W6: wire language-flip telemetry into the detector via a closure so
     // `EnviousWisprASR` (which cannot import PostHog) stays vendor-contained.
@@ -198,12 +210,8 @@ final class AppState {
       transcriptStore: transcriptStore,
       keychainManager: keychainManager,
       languageDetector: languageDetector,
-      captureTelemetry: captureTelemetry
-    )
-    // Transcript polish service (re-polish from detail view, decoupled from pipelines)
-    polishService = TranscriptPolishService(
-      keychainManager: keychainManager,
-      transcriptStore: transcriptStore
+      captureTelemetry: captureTelemetry,
+      pasteCompletionRegistry: polishService.pasteCompletionRegistry
     )
 
     // Phase F (#501) — construct SetupCoordinator after asrManager + whisperKitPipeline
@@ -402,10 +410,12 @@ final class AppState {
     wireCustomWords(
       propagator: customWordsPropagator,
       initialWords: customWordsCoordinator.customWords,
-      consumers: [
+      correctorConsumers: [
         pipeline.wordCorrection,
-        pipeline.llmPolish,
         whisperKitPipeline.wordCorrection,
+      ],
+      polishConsumers: [
+        pipeline.llmPolish,
         whisperKitPipeline.llmPolish,
         polishService.llmPolishStep,
       ],

@@ -4,8 +4,12 @@ import EnviousWisprServices
 import Foundation
 
 /// Polishes transcribed text using an LLM provider.
+///
+/// Phase 0 (#640) — receives the polish lane (built-in + user terms only;
+/// pack terms NEVER reach this step). Adopts `PolishVocabularyConsumer`
+/// instead of the prior `CustomWordsConsumer`. Bible §2.2.
 @MainActor
-public final class LLMPolishStep: TextProcessingStep, CustomWordsConsumer {
+public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   public let name = "LLM Polish"
 
   /// LLM polish failures are user-visible: surface them to `polishError` so
@@ -17,7 +21,7 @@ public final class LLMPolishStep: TextProcessingStep, CustomWordsConsumer {
   public var llmModel: String = LLMProvider.defaultModel(for: .openAI)
   public var polishInstructions: PolishInstructions = .default
   public var useExtendedThinking: Bool = false
-  public var customWords: [CustomWord] = []
+  public var polishVocabulary: PolishVocabulary = .empty
 
   // MARK: - Multilingual v1 (W3)
 
@@ -253,7 +257,7 @@ public final class LLMPolishStep: TextProcessingStep, CustomWordsConsumer {
     // Multilingual v1 (W3): snapshot the active vocabulary at construction
     // time so the planner/builders see a stable list even if the user edits
     // custom words mid-polish. Migration default: all entries tagged global.
-    let vocabularySnapshot = PromptVocabulary.fromLegacy(customWords)
+    let vocabularySnapshot = PromptVocabulary.fromLegacy(polishVocabulary.terms)
 
     let input = PromptBuildInput(
       transcript: context.text,
@@ -261,7 +265,7 @@ public final class LLMPolishStep: TextProcessingStep, CustomWordsConsumer {
       modelID: llmModel,
       appName: context.targetAppName,
       language: context.language,
-      customWords: customWords,
+      polishVocabulary: polishVocabulary,
       focusSnapshot: nil,  // PR 3
       customVocabulary: vocabularySnapshot,
       languageDetection: languageDetection,
@@ -439,8 +443,8 @@ public final class LLMPolishStep: TextProcessingStep, CustomWordsConsumer {
       "\nThis is speech-to-text output. Remove false starts. "
       + "Preserve the speaker's tone and formality level. If unsure about a correction, leave unchanged."
 
-    if !customWords.isEmpty {
-      if let vocab = CustomVocabularyFormatter.render(customWords) {
+    if !polishVocabulary.terms.isEmpty {
+      if let vocab = CustomVocabularyFormatter.render(polishVocabulary.terms) {
         systemPrompt += "\n\n" + vocab
       }
     }

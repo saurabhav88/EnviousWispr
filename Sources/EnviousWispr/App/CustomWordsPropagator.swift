@@ -1,49 +1,72 @@
 import EnviousWisprCore
 import Foundation
 
-/// Broadcasts the active custom-words list to all registered consumers.
+/// Phase 0 (#640) — broadcasts the active vocabulary to consumers via two
+/// typed lanes: corrector and polish. Pack-sourced terms reach corrector
+/// only, never polish (bible §2.2). The lane split makes pack-to-prompt
+/// leakage a Swift compile error.
 ///
 /// AppState constructs one propagator at init, registers the known consumers
-/// (pipeline word-correction + polish steps for both backends + the re-polish
-/// service), and forwards `CustomWordsCoordinator.onWordsChanged` into
-/// `update(_:)`. Replaces the prior 5-way fanout in AppState plus 5 setter
-/// lines in `PipelineSettingsSync`.
+/// (pipeline word-correction × 2, pipeline llmPolish × 2, polishService.llmPolishStep
+/// = 5 total), and forwards `CustomWordsCoordinator.onWordsChanged` into
+/// `update(corrector:polish:)`.
 ///
 /// Re-entrancy is contracted out: a consumer's setter must not call
-/// `propagator.update(_:)` synchronously. DEBUG builds trap on violation.
+/// `propagator.update(...)` synchronously. DEBUG builds trap on violation.
 @MainActor
 final class CustomWordsPropagator {
-  private final class WeakBox {
-    weak var value: (any CustomWordsConsumer)?
-    init(_ value: any CustomWordsConsumer) { self.value = value }
+  private final class CorrectorBox {
+    weak var value: (any CorrectorVocabularyConsumer)?
+    init(_ value: any CorrectorVocabularyConsumer) { self.value = value }
+  }
+  private final class PolishBox {
+    weak var value: (any PolishVocabularyConsumer)?
+    init(_ value: any PolishVocabularyConsumer) { self.value = value }
   }
 
-  private var consumers: [WeakBox] = []
-  private(set) var words: [CustomWord]
+  private var correctorConsumers: [CorrectorBox] = []
+  private var polishConsumers: [PolishBox] = []
+  private(set) var corrector: CorrectorVocabulary
+  private(set) var polish: PolishVocabulary
   #if DEBUG
     private var isBroadcasting: Bool = false
   #endif
 
-  init(initialWords: [CustomWord] = []) {
-    self.words = initialWords
+  init(corrector: CorrectorVocabulary = .empty, polish: PolishVocabulary = .empty) {
+    self.corrector = corrector
+    self.polish = polish
   }
 
-  /// Add a consumer to the registry. Idempotent on object identity. The
-  /// consumer's `customWords` is initial-synced to the propagator's current
-  /// `words` value before this call returns.
-  func register(_ consumer: any CustomWordsConsumer) {
-    let alreadyRegistered = consumers.contains { box in
+  /// Add a corrector-lane consumer. Idempotent on object identity. The
+  /// consumer's `correctorVocabulary` is initial-synced to the propagator's
+  /// current `corrector` value before this call returns.
+  func register(_ consumer: any CorrectorVocabularyConsumer) {
+    let already = correctorConsumers.contains { box in
       guard let existing = box.value else { return false }
       return ObjectIdentifier(existing) == ObjectIdentifier(consumer)
     }
-    guard !alreadyRegistered else { return }
-    consumers.append(WeakBox(consumer))
-    consumer.customWords = words
+    guard !already else { return }
+    correctorConsumers.append(CorrectorBox(consumer))
+    consumer.correctorVocabulary = corrector
   }
 
-  /// Broadcast `words` to all live consumers. Dead weak references are
+  /// Add a polish-lane consumer. Idempotent on object identity. The
+  /// consumer's `polishVocabulary` is initial-synced to the propagator's
+  /// current `polish` value before this call returns.
+  func register(_ consumer: any PolishVocabularyConsumer) {
+    let already = polishConsumers.contains { box in
+      guard let existing = box.value else { return false }
+      return ObjectIdentifier(existing) == ObjectIdentifier(consumer)
+    }
+    guard !already else { return }
+    polishConsumers.append(PolishBox(consumer))
+    consumer.polishVocabulary = polish
+  }
+
+  /// Broadcast `corrector` and `polish` to all live consumers atomically.
+  /// Both lanes share the same generation for this call. Dead weak refs are
   /// pruned during this call.
-  func update(_ words: [CustomWord]) {
+  func update(corrector: CorrectorVocabulary, polish: PolishVocabulary) {
     #if DEBUG
       precondition(
         !isBroadcasting,
@@ -52,10 +75,15 @@ final class CustomWordsPropagator {
       isBroadcasting = true
       defer { isBroadcasting = false }
     #endif
-    self.words = words
-    consumers.removeAll { $0.value == nil }
-    for box in consumers {
-      box.value?.customWords = words
+    self.corrector = corrector
+    self.polish = polish
+    correctorConsumers.removeAll { $0.value == nil }
+    polishConsumers.removeAll { $0.value == nil }
+    for box in correctorConsumers {
+      box.value?.correctorVocabulary = corrector
+    }
+    for box in polishConsumers {
+      box.value?.polishVocabulary = polish
     }
   }
 }
@@ -78,16 +106,46 @@ final class CustomWordsPropagator {
 func wireCustomWords(
   propagator: CustomWordsPropagator,
   initialWords: [CustomWord],
-  consumers: [any CustomWordsConsumer],
+  correctorConsumers: [any CorrectorVocabularyConsumer],
+  polishConsumers: [any PolishVocabularyConsumer],
   coordinator: CustomWordsCoordinator
 ) -> ([CustomWord]) -> Void {
-  propagator.update(initialWords)
-  for consumer in consumers {
+  let seed = LanePartitioner.split(initialWords, generation: 0)
+  propagator.update(corrector: seed.corrector, polish: seed.polish)
+  for consumer in correctorConsumers {
+    propagator.register(consumer)
+  }
+  for consumer in polishConsumers {
     propagator.register(consumer)
   }
   let onChange: ([CustomWord]) -> Void = { [weak propagator] words in
-    propagator?.update(words)
+    guard let propagator else { return }
+    let next = LanePartitioner.split(words, generation: propagator.corrector.generation &+ 1)
+    propagator.update(corrector: next.corrector, polish: next.polish)
   }
   coordinator.onWordsChanged = onChange
   return onChange
+}
+
+/// Splits a flat `[CustomWord]` (as produced by `CustomWordsCoordinator`,
+/// which holds the user's editable list + any merged sources) into the two
+/// typed lanes.
+///
+/// Phase 0 simple rule: pack-sourced terms go to corrector lane only;
+/// everything else goes to both lanes. Phase 5 may extend this when actual
+/// `VocabularyPacksManager` exists. Today, no pack terms ever flow through
+/// `CustomWordsCoordinator` because Phase 5 hasn't shipped, so both lanes
+/// receive identical content. The split-by-source logic is here so the
+/// lane-distinction code path is exercised from day one.
+@MainActor
+enum LanePartitioner {
+  static func split(_ words: [CustomWord], generation: UInt64) -> (
+    corrector: CorrectorVocabulary, polish: PolishVocabulary
+  ) {
+    let polishTerms = words.filter { $0.source != .pack }
+    return (
+      corrector: CorrectorVocabulary(terms: words, generation: generation),
+      polish: PolishVocabulary(terms: polishTerms, generation: generation)
+    )
+  }
 }
