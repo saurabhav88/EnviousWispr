@@ -89,10 +89,7 @@ public final class LLMNetworkSession: Sendable {
       request.setValue("application/json", forHTTPHeaderField: "Content-Type")
       request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
       request.timeoutInterval = 5
-      let body: [String: Any] = [
-        "contents": [["parts": [["text": "."]]]],
-        "generationConfig": ["maxOutputTokens": 1],
-      ]
+      let body = Self.makeGeminiWarmupRequestBody()
       request.httpBody = try? JSONSerialization.data(withJSONObject: body)
       return request
 
@@ -123,5 +120,13 @@ public final class LLMNetworkSession: Sendable {
   /// Uses finishTasksAndInvalidate to allow in-flight requests to complete.
   public func invalidate() {
     session.finishTasksAndInvalidate()
+  }
+
+  static func makeGeminiWarmupRequestBody() -> [String: Any] {
+    [
+      "contents": [["parts": [["text": "."]]]],
+      "generationConfig": ["maxOutputTokens": 1],
+      "store": false,
+    ]
   }
 }

@@ -126,10 +126,7 @@ public struct LLMModelDiscovery: Sendable {
       "https://generativelanguage.googleapis.com/v1beta/models/\(modelID):generateContent"
     guard let url = URL(string: urlString) else { return false }
 
-    let body: [String: Any] = [
-      "contents": [["parts": [["text": "Hi"]]]],
-      "generationConfig": ["maxOutputTokens": 5],
-    ]
+    let body = Self.makeGeminiProbeRequestBody()
 
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
@@ -151,6 +148,14 @@ public struct LLMModelDiscovery: Sendable {
       return true
     }
     return false
+  }
+
+  static func makeGeminiProbeRequestBody() -> [String: Any] {
+    [
+      "contents": [["parts": [["text": "Hi"]]]],
+      "generationConfig": ["maxOutputTokens": 5],
+      "store": false,
+    ]
   }
 
   // MARK: - OpenAI
