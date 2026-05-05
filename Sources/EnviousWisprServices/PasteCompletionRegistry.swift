@@ -8,8 +8,12 @@ import Foundation
 /// the just-pasted text and surfaces them as custom-word suggestions.
 ///
 /// **Scope of emission** (intentional, see plan §3.5):
-/// - YES: dictation auto-paste via `TranscriptFinalizer.deliverPaste`.
-/// - NO: dictation copy-only branch (no paste happened).
+/// - YES: dictation auto-paste via `TranscriptFinalizer.deliverPaste` when
+///   the cascade outcome is `.delivered` (paste actually landed).
+/// - NO: dictation auto-paste that fell back to clipboard-only (e.g. AX
+///   denied, CGEvent failed) — observers would falsely learn from a paste
+///   that did not happen.
+/// - NO: dictation copy-only branch (no paste attempted).
 /// - NO: saved-transcript Copy/Paste buttons (manual UI gesture, not dictation).
 public struct PasteCompletionEvent: Sendable {
   public let pastedText: String

@@ -1,4 +1,5 @@
 import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 import Testing
 
@@ -182,6 +183,65 @@ struct TranscriptFinalizerTests {
     #expect(
       pasteCount.value == 0,
       "paste must not run when store fails (locks store-before-paste ordering)")
+  }
+
+  // MARK: - Phase 0 (#640) — paste-completion event gating
+
+  private final class CapturingObserver: PasteCompletionObserver {
+    var events: [PasteCompletionEvent] = []
+    func pasteCompleted(_ event: PasteCompletionEvent) {
+      events.append(event)
+    }
+  }
+
+  @Test("PasteCompletionEvent emitted ONCE on .delivered outcome")
+  func pasteCompleteEmitsOnDelivered() async throws {
+    let registry = PasteCompletionRegistry()
+    let observer = CapturingObserver()
+    registry.subscribe(observer)
+    let finalizer = TranscriptFinalizer(
+      save: { _ in },
+      deliverPaste: { _ in Self.deliveredResult() },
+      pasteCompletionRegistry: registry
+    )
+    _ = try await finalizer.finalize(Self.request(asrText: "hello", steps: []))
+    #expect(observer.events.count == 1, "Delivered paste must emit exactly one event")
+    #expect(observer.events.first?.pastedText.contains("hello") == true)
+  }
+
+  @Test("PasteCompletionEvent NOT emitted on .clipboardOnly fallback (Codex P2)")
+  func pasteCompleteSilentOnClipboardOnly() async throws {
+    let registry = PasteCompletionRegistry()
+    let observer = CapturingObserver()
+    registry.subscribe(observer)
+    let finalizer = TranscriptFinalizer(
+      save: { _ in },
+      deliverPaste: { _ in Self.clipboardOnlyResult() },
+      pasteCompletionRegistry: registry
+    )
+    _ = try await finalizer.finalize(Self.request(asrText: "hello", steps: []))
+    #expect(
+      observer.events.isEmpty,
+      "Clipboard-only fallback must not emit — Phase 7 auto-learn would falsely watch a destination where nothing was pasted"
+    )
+  }
+
+  @Test("PasteCompletionEvent NOT emitted on copy-only branch")
+  func pasteCompleteSilentOnCopyOnly() async throws {
+    let registry = PasteCompletionRegistry()
+    let observer = CapturingObserver()
+    registry.subscribe(observer)
+    let finalizer = TranscriptFinalizer(
+      save: { _ in },
+      deliverPaste: { _ in
+        Issue.record("deliverPaste must not be called on copy-only path")
+        return Self.deliveredResult()
+      },
+      pasteCompletionRegistry: registry
+    )
+    _ = try await finalizer.finalize(
+      Self.request(asrText: "hello", steps: [], autoPaste: false))
+    #expect(observer.events.isEmpty, "Copy-only path must not emit")
   }
 
   // MARK: - Helpers

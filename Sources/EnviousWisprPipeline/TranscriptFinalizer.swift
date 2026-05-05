@@ -155,15 +155,19 @@ internal final class TranscriptFinalizer {
           restoreClipboardAfterPaste: request.restoreClipboardAfterPaste
         ))
       // Phase 0 (#640): emit paste-complete event for downstream observers
-      // (Phase 7 auto-learn). Only fires on the dictation auto-paste path —
-      // copy-only and saved-transcript manual paste are intentionally not
-      // observed (different gestures).
-      pasteCompletionRegistry?.emit(
-        PasteCompletionEvent(
-          pastedText: text,
-          destinationBundleID: request.targetApp?.bundleIdentifier
+      // (Phase 7 auto-learn). Only fires on the dictation auto-paste path AND
+      // only when the cascade actually delivered (not when it fell back to
+      // clipboard-only). An auto-learn observer that saw clipboard-only
+      // fallbacks would start watching a destination where the text never
+      // landed — false-positive learning. Codex review revision 2026-05-05.
+      if let pasteResult, case .delivered = pasteResult.outcome {
+        pasteCompletionRegistry?.emit(
+          PasteCompletionEvent(
+            pastedText: text,
+            destinationBundleID: request.targetApp?.bundleIdentifier
+          )
         )
-      )
+      }
     } else if request.autoCopyToClipboard {
       PasteService.copyToClipboard(transcript.displayText)
     }
