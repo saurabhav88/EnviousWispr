@@ -8,14 +8,98 @@ RAW_LOG="$RUN_DIR/lid-perf-signposts.log"
 RESULT_JSON="$RUN_DIR/lid-perf-results.json"
 SKIP_UAT=0
 INPUT_LOG=""
+APP_LOG="${HOME}/Library/Logs/EnviousWispr/app.log"
+APP_BUNDLE_ID="com.enviouswispr.app.dev"
+DEV_APP_PATH="$ROOT_DIR/build/EnviousWispr Local.app"
+DEBUG_BINARY="$ROOT_DIR/.build/debug/EnviousWispr"
+DEV_APP_BINARY="$DEV_APP_PATH/Contents/MacOS/EnviousWispr"
+DEBUG_AUDIO_SERVICE_BINARY="$ROOT_DIR/.build/debug/EnviousWisprAudioService"
+DEBUG_ASR_SERVICE_BINARY="$ROOT_DIR/.build/debug/EnviousWisprASRService"
+DEV_AUDIO_SERVICE_BINARY="$DEV_APP_PATH/Contents/XPCServices/com.enviouswispr.audioservice.xpc/Contents/MacOS/EnviousWisprAudioService"
+DEV_ASR_SERVICE_BINARY="$DEV_APP_PATH/Contents/XPCServices/com.enviouswispr.asrservice.xpc/Contents/MacOS/EnviousWisprASRService"
+LOG_PIPE="$RUN_DIR/lid-perf-signposts.pipe"
+TAIL_PID=""
+GREP_PID=""
 
 usage() {
   cat <<'USAGE'
-Usage: scripts/lid-perf-bench.sh [--baseline PATH] [--log-file PATH] [--skip-uat]
+Usage: scripts/lid-perf-bench.sh [--baseline PATH] [--log-file PATH] [--app-log PATH] [--skip-uat]
 
-Runs a release build, drives the 10-clip LID corpus through wispr_eyes,
-captures lid_perf_signpost log lines, then compares metrics to baseline.
+Verifies the debug target, drives the 10-clip LID corpus through wispr_eyes,
+captures lid_perf_signpost lines from the debug app log, then compares metrics
+to baseline.
 USAGE
+}
+
+cleanup_log_capture() {
+  if [[ -n "$GREP_PID" ]]; then
+    kill "$GREP_PID" >/dev/null 2>&1 || true
+    wait "$GREP_PID" 2>/dev/null || true
+    GREP_PID=""
+  fi
+  if [[ -n "$TAIL_PID" ]]; then
+    kill "$TAIL_PID" >/dev/null 2>&1 || true
+    wait "$TAIL_PID" 2>/dev/null || true
+    TAIL_PID=""
+  fi
+  rm -f "$LOG_PIPE"
+}
+
+enable_app_file_logging() {
+  defaults write "$APP_BUNDLE_ID" isDebugModeEnabled -bool true
+  defaults write "$APP_BUNDLE_ID" debugLogLevel -string info
+
+  if [[ ! -d "$DEV_APP_PATH" ]]; then
+    echo "debug app bundle not found at $DEV_APP_PATH" >&2
+    echo "Build and launch the debug dev app first, then rerun this script." >&2
+    exit 2
+  fi
+
+  if [[ ! -x "$DEBUG_BINARY" || ! -x "$DEV_APP_BINARY" ||
+    ! -x "$DEBUG_AUDIO_SERVICE_BINARY" || ! -x "$DEV_AUDIO_SERVICE_BINARY" ||
+    ! -x "$DEBUG_ASR_SERVICE_BINARY" || ! -x "$DEV_ASR_SERVICE_BINARY" ]]; then
+    echo "debug binary or app bundle executable is missing." >&2
+    echo "Build and launch the debug dev app first, then rerun this script." >&2
+    exit 2
+  fi
+
+  EXPECTED_VERSION="$(git -C "$ROOT_DIR" describe --tags --always 2>/dev/null || echo '0.0.0')-debug"
+  APP_VERSION="$(plutil -extract CFBundleShortVersionString raw "$DEV_APP_PATH/Contents/Info.plist" 2>/dev/null || true)"
+  if [[ "$APP_VERSION" != "$EXPECTED_VERSION" ]]; then
+    echo "lid-perf-bench needs the current debug dev app so AppLogger writes app.log." >&2
+    echo "Found version '${APP_VERSION:-unknown}' at $DEV_APP_PATH." >&2
+    echo "Expected version '$EXPECTED_VERSION'." >&2
+    echo "Build and launch the debug dev app first, then rerun this script." >&2
+    exit 2
+  fi
+
+  if [[ "$DEBUG_BINARY" -nt "$DEV_APP_BINARY" ]]; then
+    echo "debug app bundle is older than the freshly built debug binary." >&2
+    echo "Build and launch the debug dev app first, then rerun this script." >&2
+    exit 2
+  fi
+  if [[ "$DEBUG_AUDIO_SERVICE_BINARY" -nt "$DEV_AUDIO_SERVICE_BINARY" ||
+    "$DEBUG_ASR_SERVICE_BINARY" -nt "$DEV_ASR_SERVICE_BINARY" ]]; then
+    echo "debug app bundle has stale XPC helper executables." >&2
+    echo "Build and launch the debug dev app first, then rerun this script." >&2
+    exit 2
+  fi
+
+  osascript <<OSA 2>/dev/null || true
+if application id "$APP_BUNDLE_ID" is running then
+  tell application id "$APP_BUNDLE_ID" to quit
+end if
+OSA
+
+  for _ in $(seq 1 30); do
+    if ! pgrep -f "EnviousWispr Local.app/Contents/MacOS/EnviousWispr" >/dev/null 2>&1; then
+      break
+    fi
+    sleep 0.1
+  done
+
+  open "$DEV_APP_PATH"
+  sleep 3
 }
 
 while [[ $# -gt 0 ]]; do
@@ -26,6 +110,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --log-file)
       INPUT_LOG="$2"
+      shift 2
+      ;;
+    --app-log)
+      APP_LOG="$2"
       shift 2
       ;;
     --skip-uat)
@@ -47,8 +135,8 @@ done
 mkdir -p "$RUN_DIR"
 cd "$ROOT_DIR"
 
-echo "==> Building release target"
-swift build -c release
+echo "==> Verifying debug target"
+swift build -c debug
 
 if [[ -n "$INPUT_LOG" ]]; then
   cp "$INPUT_LOG" "$RAW_LOG"
@@ -56,10 +144,19 @@ elif [[ "$SKIP_UAT" -eq 1 ]]; then
   echo "--skip-uat requires --log-file" >&2
   exit 2
 else
+  enable_app_file_logging
+
   echo "==> Capturing signpost logs"
-  log stream --style compact --predicate 'eventMessage CONTAINS "lid_perf_signpost"' > "$RAW_LOG" &
-  LOG_PID=$!
-  trap 'kill "$LOG_PID" >/dev/null 2>&1 || true' EXIT
+  mkdir -p "$(dirname "$APP_LOG")"
+  touch "$APP_LOG"
+  : > "$RAW_LOG"
+  rm -f "$LOG_PIPE"
+  mkfifo "$LOG_PIPE"
+  tail -n 0 -F "$APP_LOG" > "$LOG_PIPE" &
+  TAIL_PID=$!
+  grep --line-buffered 'lid_perf_signpost' < "$LOG_PIPE" > "$RAW_LOG" &
+  GREP_PID=$!
+  trap cleanup_log_capture EXIT
   sleep 1
 
   echo "==> Running 10-clip corpus through wispr_eyes (OpenAI TTS)"
@@ -98,7 +195,7 @@ if failures:
     raise SystemExit(1)
 PY
 
-  kill "$LOG_PID" >/dev/null 2>&1 || true
+  cleanup_log_capture
   trap - EXIT
 fi
 

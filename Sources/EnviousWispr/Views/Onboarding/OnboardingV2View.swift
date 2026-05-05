@@ -162,8 +162,8 @@ final class OnboardingV2ViewModel {
     stopProgressPolling()
     let progressFile = ProgressFile.shared
     let timer = Timer(timeInterval: 0.125, repeats: true) { [weak self] _ in
-      guard let self else { return }
-      if let state = progressFile.read() {
+      MainActor.assumeIsolated {
+        guard let self, let state = progressFile.read() else { return }
         self.downloadProgress = state.fraction
         self.downloadPhase = state.phase
         self.downloadDetail = state.detail
@@ -190,9 +190,11 @@ final class OnboardingV2ViewModel {
     quipIndex = 0
     installQuip = Self.installQuips[0]
     let timer = Timer(timeInterval: 2.5, repeats: true) { [weak self] _ in
-      guard let self else { return }
-      self.quipIndex = (self.quipIndex + 1) % Self.installQuips.count
-      self.installQuip = Self.installQuips[self.quipIndex]
+      MainActor.assumeIsolated {
+        guard let self else { return }
+        self.quipIndex = (self.quipIndex + 1) % Self.installQuips.count
+        self.installQuip = Self.installQuips[self.quipIndex]
+      }
     }
     RunLoop.main.add(timer, forMode: .common)
     quipTimer = timer

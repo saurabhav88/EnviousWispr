@@ -361,7 +361,7 @@ No production source. Verified by grep before each PR (§6 Discovery method).
 | `ASRManagerProxy.forceConnectionTerminationNow()` (DEBUG) | A3 (Parakeet ASR XPC kill) | n/a | Endpoint dispatches `force_xpc_kill` → invalidate active ASR connection mid-stream → pipeline reaches `.error` | Yes (~5 LOC ASRManagerProxy) | A3 negative control |
 | `WhisperKitPipeline.forceCancelNow()` (DEBUG) | A2 + (no Lane C — cancellation Lane C is Parakeet only via fixture pattern from `HeartPathIntegrationTests.swift:70-128`) | n/a | Endpoint dispatches `force_cancel` → cancels active Task → pipeline reaches `.idle` | Yes (~5 LOC) | A2 negative control |
 | `TranscriptionPipeline.forceCancelNow()` (DEBUG) | A2 + C2 testCancellationSilentUnwind | n/a | Same as above for Parakeet | Yes (~5 LOC) | A2 + C2 |
-| Lane A endpoint listener | A1, A6, A7, A8, A9 use existing wispr_eyes accessibility/menu drivers (no new seam needed) | n/a | Listener accepts fixed commands when `EW_FAULT_INJECTION=1` | Yes (~50 LOC EnviousWisprApp.swift) | All Lane A scenarios |
+| Lane A endpoint listener | A1, A6, A7, A8, A9 use existing wispr_eyes accessibility/menu drivers (no new seam needed) | n/a | Listener accepts fixed commands when `EW_FAULT_INJECTION=1` | Yes (~80 LOC `DebugFaultEndpoint` + ~15 LOC `AppDelegate` wiring) | All Lane A scenarios |
 
 **Discovery method.** Two separate greps (per GPT review §7.2 — original was confused because XPCServiceClient.swift didn't exist; corrected paths below):
 
@@ -492,7 +492,7 @@ Test subtotal: ~1050 LOC + docs.
 - `EnviousWisprAudio` (`AudioCaptureProxy.swift`)
 - `EnviousWisprASR` (`ASRManagerProxy.swift`)
 - `EnviousWisprPipeline` (`WhisperKitPipeline.swift`, `TranscriptionPipeline.swift`)
-- `EnviousWispr` (`App/EnviousWisprApp.swift` — DEBUG endpoint listener)
+- `EnviousWispr` (`App/Debug/DebugFaultEndpoint.swift` + `App/AppDelegate.swift` — DEBUG endpoint listener and lifecycle wiring)
 - `EnviousWisprTests` (new V2/ subdirs under Pipeline, App, Services)
 - `UITests` (Python harness + SCENARIOS.md)
 
@@ -551,7 +551,7 @@ For Gate 2 sign-off:
 - [x] Every new failure mode has a row in §7
 - [x] No new persisted fields → §4 legacy data row says "DEBUG flags in-memory only; per-launch token file deleted on exit"
 - [x] Fallback audit (§9) explicitly states no fallback branches introduced
-- [x] File paths in §10 reference existing files (verified by grep before plan finalized — `AudioCaptureProxy.swift`, `ASRManagerProxy.swift`, `WhisperKitPipeline.swift`, `TranscriptionPipeline.swift`, `EnviousWisprApp.swift`, `wispr_eyes.py` all exist)
+- [x] File paths in §10 reference existing files (verified by grep before plan finalized — `AudioCaptureProxy.swift`, `ASRManagerProxy.swift`, `WhisperKitPipeline.swift`, `TranscriptionPipeline.swift`, `DebugFaultEndpoint.swift`, `AppDelegate.swift`, `wispr_eyes.py` all exist)
 - [x] Testing section names actual test files to be added or modified
 - [x] All three reviewers' PIVOTs absorbed: A5 dropped, stall moved to AudioCaptureProxy, internal+@testable instead of package, real XPC client paths, Lane C rewritten to actual owners, Lane A endpoint replaces UserDefaults polling, no-CI corrected to apply only to Lane A/B (Lane C runs on PR CI), self-test discipline reframed per-mechanism-red/green not per-scenario-regression-revert
 - [x] Stored property in type body (NOT in extension) per GPT correction
