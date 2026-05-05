@@ -363,6 +363,20 @@ public struct WordCorrector: Sendable {
                   )
                 #endif
                 break
+              } else if bestScore > 0 {
+                #if DEBUG
+                  let reason: String
+                  if bestScore < multiThreshold {
+                    reason = "below_threshold"
+                  } else if margin < Self.ambiguityMargin {
+                    reason = "below_margin"
+                  } else {
+                    reason = "same_as_input"
+                  }
+                  Self.logger.debug(
+                    "WordCorrector: REJECT pass=multi-word-fuzzy source='\(rawPhrase)' best_target='\(bestCanonical)' alias='\(bestAlias)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(margin, format: .fixed(precision: 3)) threshold=\(multiThreshold, format: .fixed(precision: 3)) stopword=\(hasStopword) reason=\(reason)"
+                  )
+                #endif
               }
             }
           }
@@ -439,6 +453,21 @@ public struct WordCorrector: Sendable {
           )
         #endif
         return prefix + bestMatch + suffix
+      } else if bestScore > 0 {
+        #if DEBUG
+          let pass4Margin = bestScore - secondBest
+          let reason: String
+          if bestScore < pass4Threshold {
+            reason = "below_threshold"
+          } else if pass4Margin < Self.ambiguityMargin {
+            reason = "below_margin"
+          } else {
+            reason = "same_as_input"
+          }
+          Self.logger.debug(
+            "WordCorrector: REJECT pass=alias-fuzzy source='\(core)' best_target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(pass4Margin, format: .fixed(precision: 3)) threshold=\(pass4Threshold, format: .fixed(precision: 3)) reason=\(reason)"
+          )
+        #endif
       }
 
       // Pass 5: fuzzy single-word against canonicals as fallback
@@ -478,6 +507,21 @@ public struct WordCorrector: Sendable {
           )
         #endif
         return prefix + bestMatch + suffix
+      } else if bestScore > 0 {
+        #if DEBUG
+          let pass5Margin = bestScore - secondBest
+          let reason: String
+          if bestScore < pass5Threshold {
+            reason = "below_threshold"
+          } else if pass5Margin < Self.ambiguityMargin {
+            reason = "below_margin"
+          } else {
+            reason = "same_as_input"
+          }
+          Self.logger.debug(
+            "WordCorrector: REJECT pass=canonical-fuzzy source='\(core)' best_target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(pass5Margin, format: .fixed(precision: 3)) threshold=\(pass5Threshold, format: .fixed(precision: 3)) reason=\(reason)"
+          )
+        #endif
       }
 
       return token
