@@ -354,6 +354,49 @@ public final class WordSuggestionService: Sendable {
     return aliases
   }
 
+  /// Deterministic classification by syntax. Returns nil when AFM should
+  /// classify (proper-noun shapes and CamelCase compounds, where brand
+  /// vs person vs domain vs general needs semantic judgment).
+  /// Catches obvious all-caps acronyms (CRM, JSON, SQL, API) and obvious
+  /// domains with digits/dots/symbols (S3, OAuth2, github.com, K8s) and
+  /// lowercase-start-with-uppercase patterns (gRPC, iOS).
+  static func classifyByHeuristic(_ word: String) -> WordCategory? {
+    let trimmed = word.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return nil }
+
+    let hasLetter = trimmed.contains(where: { $0.isLetter })
+    let hasUpper = trimmed.contains(where: { $0.isUppercase })
+    let hasLower = trimmed.contains(where: { $0.isLowercase })
+    let hasDigit = trimmed.contains(where: { $0.isNumber })
+    let hasDot = trimmed.contains(".")
+    let hasOtherSymbol =
+      trimmed.contains(where: { $0 == "/" || $0 == ":" || $0 == "-" || $0 == "_" })
+
+    // All-caps short word with no digits/symbols -> acronym.
+    if hasLetter && hasUpper && !hasLower && !hasDigit && !hasDot && !hasOtherSymbol
+      && trimmed.count >= 2 && trimmed.count <= 8
+    {
+      return .acronym
+    }
+
+    // Has digit OR dot OR symbol like /, :, -, _ -> domain (S3, OAuth2,
+    // github.com, K8s, multi-word-handle).
+    if hasDigit || hasDot || hasOtherSymbol {
+      return .domain
+    }
+
+    // Starts lowercase but contains uppercase -> domain (gRPC, iOS, npm
+    // is all lower so doesn't match here).
+    if let first = trimmed.first, first.isLowercase, hasUpper {
+      return .domain
+    }
+
+    // CamelCase starting uppercase, all-lowercase, or capitalized first +
+    // lowercase rest: ambiguous between person, brand, general, even
+    // domain (WebSocket vs Kubernetes vs DigitalOcean). Let AFM decide.
+    return nil
+  }
+
   /// Pool aliases from multiple AFM calls, preserving order, deduplicating
   /// by normalized lowercase form. Returns up to `max` unique aliases.
   static func dedupePool(_ lists: [[String]], max: Int) -> [String] {
@@ -399,45 +442,63 @@ public final class WordSuggestionService: Sendable {
     private func runRawSuggestion(
       for word: String
     ) async throws -> (category: WordCategory, aliases: [String]) {
-      let classificationSession = LanguageModelSession(
-        model: SystemLanguageModel.default,
-        instructions: Self.classificationInstructions
-      )
-      let classificationResponse = try await classificationSession.respond(
-        to: "Word: \(word)",
-        generating: ClassificationResult.self
-      )
-      let category =
-        WordCategory(rawValue: classificationResponse.category.lowercased()) ?? .general
+      // Heuristic classification first — skips one AFM call for clear-cut
+      // cases (all-caps short = acronym; mixed-case or digits/dots = domain).
+      // The AFM classifier has been observed to misclassify obvious acronyms
+      // like CRM, JSON, SQL, API as brand/general/domain.
+      let category: WordCategory
+      if let heuristic = Self.classifyByHeuristic(word) {
+        category = heuristic
+      } else {
+        let classificationSession = LanguageModelSession(
+          model: SystemLanguageModel.default,
+          instructions: Self.classificationInstructions
+        )
+        let classificationResponse = try await classificationSession.respond(
+          to: "Word: \(word)",
+          generating: ClassificationResult.self
+        )
+        category =
+          WordCategory(rawValue: classificationResponse.category.lowercased()) ?? .general
+      }
 
-      // Multi-call pooling: 2 sequential AFM calls with the same prompt,
+      // Multi-call pooling: 3 sequential AFM calls with the same prompt,
       // dedup by normalized form, take up to 8 unique outputs. AFM
       // single-call mode-collapses on hard inputs; pooling rescues those.
-      let aliasSession1 = LanguageModelSession(
-        model: SystemLanguageModel.default,
-        instructions: Self.aliasInstructions(for: category)
-      )
+      // 3 calls was the empirical sweet spot; 4 calls regressed brand.
       let aliasUserPrompt = """
         Word: \(word)
         Forbidden: "\(word)", "\(word.lowercased())".
         """
-      let response1 = try await aliasSession1.respond(
-        to: aliasUserPrompt,
-        options: GenerationOptions(maximumResponseTokens: 120)
-      )
-      let aliases1 = Self.parsePlainStringAliases(response1.content)
+      var pooled: [[String]] = []
+      for _ in 0..<3 {
+        let aliases = await Self.singleAliasCall(
+          instructions: Self.aliasInstructions(for: category),
+          prompt: aliasUserPrompt
+        )
+        pooled.append(aliases)
+      }
+      return (category, Self.dedupePool(pooled, max: 8))
+    }
 
-      let aliasSession2 = LanguageModelSession(
+    @available(macOS 26, *)
+    private static func singleAliasCall(
+      instructions: String,
+      prompt: String
+    ) async -> [String] {
+      let session = LanguageModelSession(
         model: SystemLanguageModel.default,
-        instructions: Self.aliasInstructions(for: category)
+        instructions: instructions
       )
-      let response2 = try await aliasSession2.respond(
-        to: aliasUserPrompt,
-        options: GenerationOptions(maximumResponseTokens: 120)
-      )
-      let aliases2 = Self.parsePlainStringAliases(response2.content)
-
-      return (category, Self.dedupePool([aliases1, aliases2], max: 8))
+      do {
+        let response = try await session.respond(
+          to: prompt,
+          options: GenerationOptions(maximumResponseTokens: 120)
+        )
+        return parsePlainStringAliases(response.content)
+      } catch {
+        return []
+      }
     }
 
     @available(macOS 26, *)
@@ -465,59 +526,71 @@ public final class WordSuggestionService: Sendable {
     private func runRawSuggestion(
       for word: String
     ) async throws -> (category: WordCategory, aliases: [String]) {
-      // Step 1 — classification.
-      let classificationSession = LanguageModelSession(
-        model: SystemLanguageModel.default,
-        instructions: Self.classificationInstructions
-      )
-      let classificationDynamic = DynamicGenerationSchema(
-        name: "Classification",
-        properties: [
-          DynamicGenerationSchema.Property(
-            name: "category",
-            schema: DynamicGenerationSchema(type: String.self)
-          )
-        ]
-      )
-      let classificationSchema = try GenerationSchema(
-        root: classificationDynamic, dependencies: []
-      )
-      let classificationResponse = try await classificationSession.respond(
-        to: "Word: \(word)",
-        schema: classificationSchema
-      )
-      let categoryStr = try classificationResponse.content.value(
-        String.self, forProperty: "category"
-      )
-      let category = WordCategory(rawValue: categoryStr.lowercased()) ?? .general
+      // Step 1 — heuristic classification first, AFM as fallback.
+      let category: WordCategory
+      if let heuristic = Self.classifyByHeuristic(word) {
+        category = heuristic
+      } else {
+        let classificationSession = LanguageModelSession(
+          model: SystemLanguageModel.default,
+          instructions: Self.classificationInstructions
+        )
+        let classificationDynamic = DynamicGenerationSchema(
+          name: "Classification",
+          properties: [
+            DynamicGenerationSchema.Property(
+              name: "category",
+              schema: DynamicGenerationSchema(type: String.self)
+            )
+          ]
+        )
+        let classificationSchema = try GenerationSchema(
+          root: classificationDynamic, dependencies: []
+        )
+        let classificationResponse = try await classificationSession.respond(
+          to: "Word: \(word)",
+          schema: classificationSchema
+        )
+        let categoryStr = try classificationResponse.content.value(
+          String.self, forProperty: "category"
+        )
+        category = WordCategory(rawValue: categoryStr.lowercased()) ?? .general
+      }
 
-      // Step 2 — alias generation (plain-string output, polish-style,
-      // multi-call pooling).
-      let aliasSession1 = LanguageModelSession(
-        model: SystemLanguageModel.default,
-        instructions: Self.aliasInstructions(for: category)
-      )
+      // Step 2 — alias generation (plain-string output, 3-call pooling).
       let aliasUserPrompt = """
         Word: \(word)
         Forbidden: "\(word)", "\(word.lowercased())".
         """
-      let response1 = try await aliasSession1.respond(
-        to: aliasUserPrompt,
-        options: GenerationOptions(maximumResponseTokens: 120)
-      )
-      let aliases1 = Self.parsePlainStringAliases(response1.content)
+      var pooled: [[String]] = []
+      for _ in 0..<3 {
+        let aliases = await Self.singleAliasCallDynamic(
+          instructions: Self.aliasInstructions(for: category),
+          prompt: aliasUserPrompt
+        )
+        pooled.append(aliases)
+      }
+      return (category, Self.dedupePool(pooled, max: 8))
+    }
 
-      let aliasSession2 = LanguageModelSession(
+    @available(macOS 26, *)
+    private static func singleAliasCallDynamic(
+      instructions: String,
+      prompt: String
+    ) async -> [String] {
+      let session = LanguageModelSession(
         model: SystemLanguageModel.default,
-        instructions: Self.aliasInstructions(for: category)
+        instructions: instructions
       )
-      let response2 = try await aliasSession2.respond(
-        to: aliasUserPrompt,
-        options: GenerationOptions(maximumResponseTokens: 120)
-      )
-      let aliases2 = Self.parsePlainStringAliases(response2.content)
-
-      return (category, Self.dedupePool([aliases1, aliases2], max: 8))
+      do {
+        let response = try await session.respond(
+          to: prompt,
+          options: GenerationOptions(maximumResponseTokens: 120)
+        )
+        return parsePlainStringAliases(response.content)
+      } catch {
+        return []
+      }
     }
 
     @available(macOS 26, *)
