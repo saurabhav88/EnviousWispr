@@ -14,12 +14,15 @@ import Foundation
 /// Phase 3b implements the debounced writer; this call is exercised but
 /// inert until then.
 ///
-/// Phase 2b (#638) — heart-path 10ms hard cap on `WordCorrector.correct(...)`
-/// invocation (bible §2.2.1) + generation-keyed cache of the lookup maps so
-/// they are rebuilt only when the vocabulary generation changes (bible §17
-/// R19). The correction runs OFF MainActor inside the timeout closure so
-/// the timer task can preempt; on timeout we return the raw text and emit a
-/// Sentry breadcrumb (no escalation).
+/// Phase 2b (#638) — generation-keyed cache of the lookup maps so they are
+/// rebuilt only when the vocabulary generation changes (bible §17 R19).
+///
+/// #657 (2026-05-05) — heart-path inner 10ms cap removed: it was firing during
+/// cold-cache lookup-map builds and on long-input scoring, causing silent
+/// discard of the corrector result via the runner's outer timeout. The single
+/// remaining bound is the runner-level `maxDuration` cap below (3 seconds).
+/// Cap-trip telemetry now lives in `TextProcessingRunner` where the actual
+/// discard happens.
 @MainActor
 public final class WordCorrectionStep: TextProcessingStep, CorrectorVocabularyConsumer {
   public let name = "Word Correction"
@@ -39,10 +42,14 @@ public final class WordCorrectionStep: TextProcessingStep, CorrectorVocabularyCo
     wordCorrectionEnabled && !correctorVocabulary.terms.isEmpty
   }
 
-  /// Outer runner cap (unchanged). Phase 2b adds a tighter inner 10ms cap
-  /// that fires before this would, protecting the heart path from runaway
-  /// matcher cost on pathological vocab + transcript combinations.
-  public var maxDuration: Duration { .milliseconds(100) }
+  /// Runner-level safety net. #657 (2026-05-05) raised this from 100ms to 3
+  /// seconds after empirical evidence showed the previous cap silently
+  /// discarded corrector output on paragraph-length input. The cap is now a
+  /// true runaway-protection ceiling, not a steady-state budget. When it
+  /// fires, `TextProcessingRunner` emits `custom_words.timeout_fired` with
+  /// vocabSize / elapsedMs / inputChars so we have feedback signal in
+  /// production.
+  public var maxDuration: Duration { .seconds(3) }
 
   /// Phase 3a (#631): manager handle for replacement attribution. Optional
   /// because pre-Phase-3a callers (and tests) construct the step with no
@@ -77,25 +84,16 @@ public final class WordCorrectionStep: TextProcessingStep, CorrectorVocabularyCo
         level: .info, category: "Pipeline"
       )
     }
-    let result: (corrected: String, replacements: [WordCorrector.Replacement])
     let startTime = CFAbsoluteTimeGetCurrent()
-    do {
-      // Phase 2b (#638) bible §2.2.1: hard 10ms cap. WordCorrector.correct is
-      // pure CPU work; we run it OFF MainActor inside the timeout closure so
-      // the timer Task can preempt. On timeout, raw text passes through.
-      result = try await withThrowingTimeout(seconds: 0.010) {
-        let corrector = WordCorrector()
-        return corrector.correct(inputText, using: lookups)
-      }
-    } catch is TimeoutError {
-      SentryBreadcrumb.add(
-        stage: "wordcorrector",
-        message: "WordCorrector timeout (10ms cap exceeded)",
-        data: ["vocab_size": String(snapshot.terms.count)]
-      )
-      // Phase 8a (#620): emit timeout event. Bible §14.1.
-      TelemetryService.shared.customWordsTimeoutFired(vocabSize: snapshot.terms.count)
-      return context  // raw text passes through; heart path unaffected
+    // #657: corrector runs OFF MainActor (the WordCorrector matcher is pure
+    // CPU; running it inline on @MainActor would stall the UI on long input).
+    // The only meaningful cap is the runner's outer 3s `maxDuration`; this
+    // 5-second inner wrapper exists solely to preserve the Phase 2b
+    // off-actor execution pattern. When the runner trips its 3s cap, child
+    // task cancellation propagates here too. Cap-trip telemetry now lives in
+    // `TextProcessingRunner` where the actual discard happens.
+    let result = try await withThrowingTimeout(seconds: 5.0) {
+      WordCorrector().correct(inputText, using: lookups)
     }
     let elapsedMs = (CFAbsoluteTimeGetCurrent() - startTime) * 1000.0
 

@@ -1,5 +1,7 @@
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprPostProcessing
+import EnviousWisprServices
 import Foundation
 
 /// Result of running the text processing chain.
@@ -90,7 +92,8 @@ internal final class TextProcessingRunner {
         throw CancellationError()
       } catch {
         let stepMs = (CFAbsoluteTimeGetCurrent() - stepStart) * 1000
-        let reason = error is TimeoutError ? "timed out" : "failed: \(error.localizedDescription)"
+        let isTimeout = error is TimeoutError
+        let reason = isTimeout ? "timed out" : "failed: \(error.localizedDescription)"
         // Apple Intelligence language-gate skips (unsupported input
         // language, output-language drift) are expected no-ops, not
         // polish failures. Log and continue with raw text; do not
@@ -110,11 +113,29 @@ internal final class TextProcessingRunner {
         if step.errorSurfacePolicy == .surface && !isLanguageGateSkip {
           polishError = error.localizedDescription
         }
-        Task {
-          await logger.log(
-            "\(stepName) \(reason) after \(String(format: "%.1f", stepMs))ms — skipping",
-            level: .info, category: "TextProcessing"
+        // #657 (2026-05-05): emit cap-trip telemetry when WordCorrectionStep
+        // exceeds its 3s `maxDuration`. The step's result was discarded; raw
+        // text passes through. The runner is the right owner because this is
+        // where the actual discard happens.
+        let logCapMessage: String
+        if isTimeout, stepName == "Word Correction",
+          let wcStep = step as? WordCorrectionStep
+        {
+          let capMs = budgetSeconds * 1000
+          let inputChars = input.text.count
+          TelemetryService.shared.customWordsTimeoutFired(
+            vocabSize: wcStep.correctorVocabulary.terms.count,
+            elapsedMs: stepMs,
+            inputChars: inputChars
           )
+          logCapMessage =
+            "\(stepName) timed out at \(String(format: "%.0f", capMs))ms cap after \(String(format: "%.1f", stepMs))ms — skipping"
+        } else {
+          logCapMessage =
+            "\(stepName) \(reason) after \(String(format: "%.1f", stepMs))ms — skipping"
+        }
+        Task {
+          await logger.log(logCapMessage, level: .info, category: "TextProcessing")
         }
         // Heart & Limbs: limb failed, continue with input text
       }
