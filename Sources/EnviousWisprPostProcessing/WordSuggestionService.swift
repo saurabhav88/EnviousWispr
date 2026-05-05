@@ -142,6 +142,13 @@ public final class WordSuggestionService: Sendable {
     """
 
   // Step 2 — generation, given a known category.
+  // Style: Restored exp4 baseline (prose + per-category examples, no MUST
+  // language). This is the proven 18.2% configuration. All three minimal
+  // styles (JSON-only, Bare Schema, Wrong/Right Contrast) regressed below
+  // this; AFM needs both task definition and concrete examples for this
+  // task. Examples use IN-CORPUS words intentionally so AFM's prior
+  // knowledge of those words helps; the corpus is intentionally distinct
+  // from the example words for unfamiliar items.
   private static func aliasInstructions(for category: WordCategory) -> String {
     switch category {
     case .acronym:
@@ -150,35 +157,49 @@ public final class WordSuggestionService: Sendable {
         ACRONYM wrong. The acronym is spelled letter-by-letter aloud. Each \
         letter is heard as a syllable.
 
-        Output 3-5 phonetic mistranscriptions. Each output must be \
-        SUBSTANTIVELY different from the input -- never echo the input, never \
-        just lowercase it. Examples of the pattern (do not copy these tokens):
-        - OKR -> ["okay are", "oh K R", "okayer"]
-        - PR -> ["pee are", "peer"]
-        - RSI -> ["are S I", "arr S I"]
-        - HIPAA -> ["hippa", "hip ah", "hipper"]
+        Output 3 to 5 phonetic mistranscriptions, ONE PER LINE, no numbering, \
+        no quotes, no JSON, no surrounding brackets. Each output must be \
+        SUBSTANTIVELY different from the input. Never echo the input. \
+        Example for "OKR":
+        okay are
+        oh K R
+        okayer
+        Example for "PR":
+        pee are
+        peer
+        pee R
+        Example for "HIPAA":
+        hippa
+        hip ah
+        hipper
 
-        Vary your outputs; never return the same string twice. If you cannot \
-        produce 3 substantively different mistranscriptions, return [].
+        Never return the same line twice. If you cannot produce 3 \
+        substantively different mistranscriptions, return an empty response.
         """
     case .domain:
       return """
         You predict how speech-to-text engines (Whisper, Parakeet) write a \
-        TECHNICAL TERM wrong. The term mixes letters and words; ASR splits it \
-        into chunks or letter-syllables.
+        TECHNICAL TERM wrong. The term mixes letters and words; ASR splits \
+        it into chunks or letter-syllables.
 
-        Output 3-5 phonetic mistranscriptions. Each output must be \
+        Output 3 to 5 phonetic mistranscriptions, ONE PER LINE, no numbering, \
+        no quotes, no JSON, no surrounding brackets. Each output must be \
         SUBSTANTIVELY different from the canonical -- NOT just a space \
-        inserted, NOT just casing changed. Examples of the pattern (do not \
-        copy these tokens):
-        - gRPC -> ["gee R P C", "jee R P C"]
-        - GraphQL -> ["graph Q L", "graf Q L"]
-        - OAuth2 -> ["oh auth two", "O auth 2"]
-        - WebSocket -> ["wep sock it", "wep socket"]
+        inserted, NOT just casing changed. Example for "gRPC":
+        gee R P C
+        jee R P C
+        gee are pee see
+        Example for "GraphQL":
+        graph Q L
+        graf Q L
+        graph queue ell
+        Example for "WebSocket":
+        wep sock it
+        wep socket
+        web sok it
 
         Never output the canonical term with only added or removed spaces. \
-        If you cannot produce 3 substantively different mistranscriptions, \
-        return [].
+        If you cannot produce 3 distinct mistranscriptions, return empty.
         """
     case .person:
       return """
@@ -186,15 +207,23 @@ public final class WordSuggestionService: Sendable {
         PERSON'S NAME wrong. ASR mishears via vowel and consonant swaps and \
         word-boundary errors.
 
-        Output 3-5 phonetic mistranscriptions. Never output honorifics, \
-        relatives, last names, or alternate identities. Examples of the \
-        pattern (do not copy these tokens):
-        - Parvati -> ["par vati", "poor vati", "pavathi"]
-        - Saurabh -> ["Sourabh", "Sorab", "Sarab"]
-        - Miyamoto -> ["me ya moto", "mia motto", "miyomoto"]
+        Output 3 to 5 phonetic mistranscriptions, ONE PER LINE, no numbering, \
+        no quotes, no JSON, no surrounding brackets. Never output honorifics, \
+        relatives, last names, or alternate identities. Example for "Parvati":
+        par vati
+        poor vati
+        pavathi
+        Example for "Saurabh":
+        Sourabh
+        Sorab
+        Sarab
+        Example for "Miyamoto":
+        me ya moto
+        mia motto
+        miyomoto
 
         If you cannot produce 3 substantively different mistranscriptions, \
-        return [].
+        return empty.
         """
     case .brand:
       return """
@@ -202,15 +231,23 @@ public final class WordSuggestionService: Sendable {
         BRAND NAME wrong. ASR splits the brand into phonetic chunks of how \
         it is pronounced.
 
-        Output 3-5 phonetic mistranscriptions. Each must be SUBSTANTIVELY \
-        different from the canonical -- NOT a suffix-strip, NOT just a space. \
-        Examples of the pattern (do not copy these tokens):
-        - Kubernetes -> ["kuber netties", "cube ernetes"]
-        - Postgres -> ["post grass", "post gress"]
-        - Tailwind -> ["tail wind", "tail ind"]
+        Output 3 to 5 phonetic mistranscriptions, ONE PER LINE, no numbering, \
+        no quotes, no JSON, no surrounding brackets. Each must be \
+        SUBSTANTIVELY different from the canonical -- NOT a suffix-strip, \
+        NOT just a space. Example for "Kubernetes":
+        kuber netties
+        cube ernetes
+        cooper nettys
+        Example for "Postgres":
+        post grass
+        post gress
+        post grease
+        Example for "Tailwind":
+        tail wind
+        tail ind
+        tale wynd
 
-        If you cannot produce 3 substantively different mistranscriptions, \
-        return [].
+        If you cannot produce 3 distinct mistranscriptions, return empty.
         """
     case .general:
       return """
@@ -218,14 +255,21 @@ public final class WordSuggestionService: Sendable {
         REGULAR WORD wrong. ASR splits at word boundaries or swaps vowels \
         and consonants.
 
-        Output 3-5 phonetic mistranscriptions. Examples of the pattern (do \
-        not copy these tokens):
-        - webhook -> ["web hook", "web hooke"]
-        - async -> ["a sync", "a sink"]
-        - middleware -> ["middle ware", "middle wear"]
+        Output 3 to 5 phonetic mistranscriptions, ONE PER LINE, no numbering, \
+        no quotes, no JSON, no surrounding brackets. Example for "webhook":
+        web hook
+        web hooke
+        wuh book
+        Example for "async":
+        a sync
+        a sink
+        ay sync
+        Example for "middleware":
+        middle ware
+        middle wear
+        midware
 
-        If you cannot produce 3 substantively different mistranscriptions, \
-        return [].
+        If you cannot produce 3 distinct mistranscriptions, return empty.
         """
     }
   }
@@ -262,6 +306,54 @@ public final class WordSuggestionService: Sendable {
     return kept
   }
 
+  /// Parse plain-string AFM output into an array of alias candidates.
+  /// Accepts numbered, dashed, or newline-separated outputs. Strips leading
+  /// numbering, surrounding quotes (straight or curly), bracket artifacts,
+  /// and whitespace. Drops obvious meta-commentary lines (model often
+  /// produces "Note:", "Example for X:", "If you cannot..." etc.).
+  /// Used by the plain-string alias-generation path (mirroring the polish
+  /// path's plain-string + post-filter pattern).
+  static func parsePlainStringAliases(_ raw: String) -> [String] {
+    var aliases: [String] = []
+    let metaTokens = [
+      "note:", "example for", "example:", "if you", "the input", "forbidden",
+      "mistranscription", "cannot produce", "phonetic", "speech-to-text",
+      "asr", "i have ", "i did not", "no mistranscript", "no aliases",
+      "return empty", "explanation",
+    ]
+    for line in raw.components(separatedBy: .newlines) {
+      var s = line.trimmingCharacters(in: .whitespacesAndNewlines)
+      if s.isEmpty { continue }
+      s = s.trimmingCharacters(in: CharacterSet(charactersIn: "[]()"))
+      s = s.trimmingCharacters(in: .whitespacesAndNewlines)
+      if s.isEmpty { continue }
+      if let regex = try? NSRegularExpression(
+        pattern: #"^(?:\d+[.)]\s*|[-*•]\s*)"#
+      ) {
+        let range = NSRange(s.startIndex..., in: s)
+        s = regex.stringByReplacingMatches(in: s, range: range, withTemplate: "")
+      }
+      s = s.trimmingCharacters(
+        in: CharacterSet(charactersIn: "\"'\u{201C}\u{201D}\u{2018}\u{2019},."))
+      s = s.trimmingCharacters(in: .whitespacesAndNewlines)
+      if s.isEmpty { continue }
+      // Drop meta-commentary by token match.
+      let lower = s.lowercased()
+      var isMeta = false
+      for tok in metaTokens where lower.contains(tok) {
+        isMeta = true
+        break
+      }
+      if isMeta { continue }
+      // Drop lines that look like full sentences (4+ words AND contains a colon).
+      if s.contains(":") { continue }
+      // Drop very long lines (aliases are short).
+      if s.count > 40 { continue }
+      aliases.append(s)
+    }
+    return aliases
+  }
+
   // MARK: - Guided generation with @Generable (full Xcode toolchain)
 
   #if canImport(FoundationModels) && hasAttribute(Generable)
@@ -275,7 +367,10 @@ public final class WordSuggestionService: Sendable {
     @Generable
     @available(macOS 26.0, *)
     struct AliasesResult {
-      @Guide(description: "3 to 5 phonetic mistranscriptions of the input")
+      @Guide(
+        description:
+          "3 to 5 distinct phonetic mistranscriptions of the input. Each must differ from the input."
+      )
       var suggestedAliases: [String]
     }
 
@@ -298,11 +393,19 @@ public final class WordSuggestionService: Sendable {
         model: SystemLanguageModel.default,
         instructions: Self.aliasInstructions(for: category)
       )
+      let aliasUserPrompt = """
+        Word: \(word)
+        Forbidden: "\(word)", "\(word.lowercased())".
+        """
+      // Plain-string output. Polish path uses this pattern (see
+      // AppleIntelligenceConnector). Schema-constrained array output appears
+      // to push AFM to pad with echoes when it has fewer than 3 ideas.
+      // Plain-string lets it return a natural list, which we parse.
       let aliasResponse = try await aliasSession.respond(
-        to: "Word: \(word)",
-        generating: AliasesResult.self
+        to: aliasUserPrompt,
+        options: GenerationOptions(maximumResponseTokens: 120)
       )
-      return (category, aliasResponse.suggestedAliases)
+      return (category, Self.parsePlainStringAliases(aliasResponse.content))
     }
 
     @available(macOS 26, *)
@@ -356,27 +459,20 @@ public final class WordSuggestionService: Sendable {
       )
       let category = WordCategory(rawValue: categoryStr.lowercased()) ?? .general
 
-      // Step 2 — alias generation.
+      // Step 2 — alias generation (plain-string output, polish-style).
       let aliasSession = LanguageModelSession(
         model: SystemLanguageModel.default,
         instructions: Self.aliasInstructions(for: category)
       )
-      let aliasDynamic = DynamicGenerationSchema(
-        name: "Aliases",
-        properties: [
-          DynamicGenerationSchema.Property(
-            name: "suggestedAliases",
-            schema: DynamicGenerationSchema(arrayOf: DynamicGenerationSchema(type: String.self))
-          )
-        ]
-      )
-      let aliasSchema = try GenerationSchema(root: aliasDynamic, dependencies: [])
+      let aliasUserPrompt = """
+        Word: \(word)
+        Forbidden: "\(word)", "\(word.lowercased())".
+        """
       let aliasResponse = try await aliasSession.respond(
-        to: "Word: \(word)",
-        schema: aliasSchema
+        to: aliasUserPrompt,
+        options: GenerationOptions(maximumResponseTokens: 120)
       )
-      let raw = try aliasResponse.content.value([String].self, forProperty: "suggestedAliases")
-      return (category, raw)
+      return (category, Self.parsePlainStringAliases(aliasResponse.content))
     }
 
     @available(macOS 26, *)
