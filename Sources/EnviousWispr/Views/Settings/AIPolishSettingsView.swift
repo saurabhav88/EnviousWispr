@@ -343,6 +343,13 @@ struct AIPolishSettingsView: View {
         .controlSize(.small)
         .foregroundStyle(.stError)
       }
+
+      Text(
+        "\(isOpenAI ? "OpenAI" : "Gemini") polish sends only transcribed text, never audio. EnviousWispr also sends store: false so the provider is asked not to retain the request or response."
+      )
+      .font(.stHelper)
+      .foregroundStyle(Color.stTextTertiary)
+      .fixedSize(horizontal: false, vertical: true)
     }
   }
 
