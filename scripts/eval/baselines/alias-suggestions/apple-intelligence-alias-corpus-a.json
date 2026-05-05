@@ -1,0 +1,3211 @@
+{
+  "captured_at": "2026-05-05T211806",
+  "case_results": [
+    {
+      "canonical": "Saurabh",
+      "case_id": "A-PERSON-001",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 1,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [],
+      "latency_ms": 1118,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 0,
+      "raw_aliases": [
+        "saurabh",
+        "saurabh",
+        "saurabh"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Parvati",
+      "case_id": "A-PERSON-002",
+      "case_pass": true,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "par vati",
+        "poor vati",
+        "pavathi",
+        "par vathy"
+      ],
+      "latency_ms": 615,
+      "matched_groups": [
+        "par-vati"
+      ],
+      "no_alias_expected": false,
+      "precision": 2,
+      "raw_aliases": [
+        "par vati",
+        "poor vati",
+        "pavathi",
+        "par vathy"
+      ],
+      "recall": 2,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Aiyana",
+      "case_id": "A-PERSON-003",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "i ayana",
+        "aiyan",
+        "a ayana"
+      ],
+      "latency_ms": 649,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "i ayana",
+        "aiyan",
+        "a ayana"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Malavika",
+      "case_id": "A-PERSON-004",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 1,
+      "error": null,
+      "filtered_aliases": [
+        "malavi ka",
+        "malavi kaa"
+      ],
+      "latency_ms": 692,
+      "matched_groups": [
+        "mala"
+      ],
+      "no_alias_expected": false,
+      "precision": 1,
+      "raw_aliases": [
+        "malavi ka",
+        "malavi kaa",
+        "malavi kaa",
+        "malavi kaa"
+      ],
+      "recall": 3,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Arvind",
+      "case_id": "A-PERSON-005",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 1,
+      "error": null,
+      "filtered_aliases": [
+        "arvindh"
+      ],
+      "latency_ms": 578,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "arvindh",
+        "arvindh",
+        "arvindh"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Miyamoto",
+      "case_id": "A-PERSON-006",
+      "case_pass": true,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "me ya moto",
+        "mia motto",
+        "me amoto",
+        "miyomoto"
+      ],
+      "latency_ms": 619,
+      "matched_groups": [
+        "miya"
+      ],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "me ya moto",
+        "mia motto",
+        "me amoto",
+        "miyomoto"
+      ],
+      "recall": 3,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Aleksandr",
+      "case_id": "A-PERSON-007",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "aleksan",
+        "alexanndr",
+        "alexanrdr"
+      ],
+      "latency_ms": 691,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "aleksan",
+        "alexanndr",
+        "alexanrdr"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Nikhil",
+      "case_id": "A-PERSON-008",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 1,
+      "error": null,
+      "filtered_aliases": [
+        "nikil"
+      ],
+      "latency_ms": 587,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "nikhil",
+        "nikil",
+        "nikhil"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Aoife",
+      "case_id": "A-PERSON-009",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 1,
+      "error": null,
+      "filtered_aliases": [
+        "aoifie"
+      ],
+      "latency_ms": 602,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "aoife",
+        "aoifie",
+        "aoifie"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Siobhan",
+      "case_id": "A-PERSON-010",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 2,
+      "error": null,
+      "filtered_aliases": [
+        "shobhan",
+        "shobhanah"
+      ],
+      "latency_ms": 685,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "shobhan",
+        "shobhanah",
+        "shobhanah",
+        "shobhanah"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Xochitl",
+      "case_id": "A-PERSON-011",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 1,
+      "error": null,
+      "filtered_aliases": [
+        "xochi tl"
+      ],
+      "latency_ms": 598,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 0,
+      "raw_aliases": [
+        "xochi tl",
+        "xochi tl",
+        "xochi tl"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Quincy",
+      "case_id": "A-PERSON-012",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 1,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [],
+      "latency_ms": 550,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 0,
+      "raw_aliases": [
+        "quincy",
+        "quincy",
+        "quincy"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Bjork",
+      "case_id": "A-PERSON-013",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 2,
+      "error": null,
+      "filtered_aliases": [
+        "bjorki",
+        "bjorkie"
+      ],
+      "latency_ms": 571,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "bjorki",
+        "bjorkie",
+        "bjorkie"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Naveen",
+      "case_id": "A-PERSON-014",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 1,
+      "error": null,
+      "filtered_aliases": [
+        "naween"
+      ],
+      "latency_ms": 680,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "naveen",
+        "naween",
+        "naveen",
+        "naveen"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Yusuf",
+      "case_id": "A-PERSON-015",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "yusufu",
+        "yussuf",
+        "yusufi",
+        "yussif"
+      ],
+      "latency_ms": 767,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "yusuf",
+        "yusufu",
+        "yussuf",
+        "yusufi",
+        "yussif"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Genevieve",
+      "case_id": "A-PERSON-016",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 2,
+      "error": null,
+      "filtered_aliases": [
+        "genievie",
+        "geniieve"
+      ],
+      "latency_ms": 635,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "genievie",
+        "geniieve",
+        "geniieve"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Padmavati",
+      "case_id": "A-PERSON-017",
+      "case_pass": true,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 2,
+      "error": null,
+      "filtered_aliases": [
+        "pad ma vati",
+        "poor ma vati",
+        "pav ma vati",
+        "par ma vati"
+      ],
+      "latency_ms": 716,
+      "matched_groups": [
+        "padma"
+      ],
+      "no_alias_expected": false,
+      "precision": 2,
+      "raw_aliases": [
+        "pad ma vati",
+        "poor ma vati",
+        "pav ma vati",
+        "par ma vati"
+      ],
+      "recall": 3,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Kwame",
+      "case_id": "A-PERSON-018",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 1,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [],
+      "latency_ms": 634,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 0,
+      "raw_aliases": [
+        "kwame",
+        "kwame",
+        "kwame",
+        "kwame",
+        "kwame"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Tomasz",
+      "case_id": "A-PERSON-019",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 2,
+      "error": null,
+      "filtered_aliases": [
+        "tomas",
+        "tomaszki"
+      ],
+      "latency_ms": 598,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "tomas",
+        "tomasz",
+        "tomaszki"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Devansh",
+      "case_id": "A-PERSON-020",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 1,
+      "error": null,
+      "filtered_aliases": [
+        "devans"
+      ],
+      "latency_ms": 600,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "devans",
+        "devansh",
+        "devansh",
+        "devansh"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Imani",
+      "case_id": "A-PERSON-021",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 2,
+      "error": null,
+      "filtered_aliases": [
+        "ami ni",
+        "ani mi"
+      ],
+      "latency_ms": 608,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 1,
+      "raw_aliases": [
+        "ami ni",
+        "imani",
+        "ani mi"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Beyonc\u00e9",
+      "case_id": "A-PERSON-022",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "beyoncay",
+        "beyoncy",
+        "beyonna"
+      ],
+      "latency_ms": 656,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "beyoncay",
+        "beyoncy",
+        "beyonna"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Caoimhe",
+      "case_id": "A-PERSON-023",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "caime",
+        "caimeh",
+        "caimei",
+        "caimea"
+      ],
+      "latency_ms": 648,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "caime",
+        "caimeh",
+        "caimei",
+        "caimea"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Ezekiel",
+      "case_id": "A-PERSON-024",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 1,
+      "error": null,
+      "filtered_aliases": [
+        "ezekie"
+      ],
+      "latency_ms": 655,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "ezekiel",
+        "ezekie",
+        "ezekiel",
+        "ezekiel"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Anastasia",
+      "case_id": "A-PERSON-025",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 2,
+      "error": null,
+      "filtered_aliases": [
+        "anastasi",
+        "anastasiia",
+        "anastasiaa"
+      ],
+      "latency_ms": 619,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "anastasi",
+        "anastasiia",
+        "anastasiaa"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Smith",
+      "case_id": "A-PERSON-026",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [
+        "smiith",
+        "smithy",
+        "smiithy"
+      ],
+      "latency_ms": 654,
+      "matched_groups": [],
+      "no_alias_expected": true,
+      "precision": 0,
+      "raw_aliases": [
+        "smiith",
+        "smithy",
+        "smiithy",
+        "smiithy"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Robert",
+      "case_id": "A-PERSON-027",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [
+        "robert i",
+        "robert w",
+        "robert j"
+      ],
+      "latency_ms": 640,
+      "matched_groups": [],
+      "no_alias_expected": true,
+      "precision": 0,
+      "raw_aliases": [
+        "robert",
+        "robert i",
+        "robert w",
+        "robert j"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Maria",
+      "case_id": "A-PERSON-028",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [
+        "mariah"
+      ],
+      "latency_ms": 637,
+      "matched_groups": [],
+      "no_alias_expected": true,
+      "precision": 0,
+      "raw_aliases": [
+        "maria",
+        "mariah",
+        "mariah",
+        "mariah"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Sarah",
+      "case_id": "A-PERSON-029",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [
+        "sarah m",
+        "sarah w",
+        "sarah h"
+      ],
+      "latency_ms": 681,
+      "matched_groups": [],
+      "no_alias_expected": true,
+      "precision": 0,
+      "raw_aliases": [
+        "sarah",
+        "sarah m",
+        "sarah w",
+        "sarah h"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Ali",
+      "case_id": "A-PERSON-030",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "person",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [
+        "al",
+        "alii",
+        "aliya"
+      ],
+      "latency_ms": 597,
+      "matched_groups": [],
+      "no_alias_expected": true,
+      "precision": 0,
+      "raw_aliases": [
+        "al",
+        "alii",
+        "aliya"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Kubernetes",
+      "case_id": "A-BRAND-001",
+      "case_pass": true,
+      "category": 3,
+      "category_expected": "brand",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "kuber netties",
+        "cube ernetes",
+        "cooper nettys"
+      ],
+      "latency_ms": 594,
+      "matched_groups": [
+        "kuber"
+      ],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "kuber netties",
+        "cube ernetes",
+        "cooper nettys"
+      ],
+      "recall": 3,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Postgres",
+      "case_id": "A-BRAND-002",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "brand",
+      "category_predicted": "general",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 1,
+      "error": null,
+      "filtered_aliases": [
+        "postgresql"
+      ],
+      "latency_ms": 644,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "postgresql",
+        "postgresql",
+        "postgresql",
+        "postgresql"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Tailwind",
+      "case_id": "A-BRAND-003",
+      "case_pass": true,
+      "category": 3,
+      "category_expected": "brand",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "taw ind",
+        "tawi ind",
+        "tail wind"
+      ],
+      "latency_ms": 771,
+      "matched_groups": [
+        "tailwind"
+      ],
+      "no_alias_expected": false,
+      "precision": 2,
+      "raw_aliases": [
+        "taw ind",
+        "tawi ind",
+        "tail wind",
+        "tail wind"
+      ],
+      "recall": 3,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Vercel",
+      "case_id": "A-BRAND-004",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "brand",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 2,
+      "error": null,
+      "filtered_aliases": [
+        "vercel.io",
+        "vercel.com"
+      ],
+      "latency_ms": 637,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "vercel",
+        "vercel.io",
+        "vercel.com"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Vyper",
+      "case_id": "A-BRAND-005",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "brand",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 2,
+      "error": null,
+      "filtered_aliases": [
+        "viper",
+        "yper"
+      ],
+      "latency_ms": 571,
+      "matched_groups": [
+        "viper"
+      ],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "vyper",
+        "viper",
+        "yper"
+      ],
+      "recall": 3,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Kustomize",
+      "case_id": "A-BRAND-006",
+      "case_pass": true,
+      "category": 3,
+      "category_expected": "brand",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "kustome",
+        "customize",
+        "kustomiz"
+      ],
+      "latency_ms": 666,
+      "matched_groups": [
+        "customize"
+      ],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "kustome",
+        "customize",
+        "kustomiz"
+      ],
+      "recall": 3,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Tendis",
+      "case_id": "A-BRAND-007",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "brand",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 2,
+      "error": null,
+      "filtered_aliases": [
+        "tandis",
+        "tendais"
+      ],
+      "latency_ms": 694,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "tendis",
+        "tandis",
+        "tendais",
+        "tendis"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Helidon",
+      "case_id": "A-BRAND-008",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "brand",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "helitond",
+        "heliton",
+        "helitonn"
+      ],
+      "latency_ms": 632,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "helitond",
+        "heliton",
+        "helitonn"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "YugabyteDB",
+      "case_id": "A-BRAND-009",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "brand",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 2,
+      "error": null,
+      "filtered_aliases": [
+        "yugabeetab",
+        "yugabyted"
+      ],
+      "latency_ms": 747,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "yugabeetab",
+        "yugabytedb",
+        "yugabyted"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Nginx",
+      "case_id": "A-BRAND-010",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "brand",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "ngeni",
+        "ngin",
+        "nginxx"
+      ],
+      "latency_ms": 658,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "ngeni",
+        "ngin",
+        "nginx",
+        "nginxx"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Pinia",
+      "case_id": "A-BRAND-011",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "brand",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "pina",
+        "pinie",
+        "pini"
+      ],
+      "latency_ms": 604,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "pina",
+        "pinie",
+        "pini"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Astro",
+      "case_id": "A-BRAND-012",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "brand",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 1,
+      "error": null,
+      "filtered_aliases": [
+        "astroworld",
+        "astroworlds"
+      ],
+      "latency_ms": 663,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "astro",
+        "astroworld",
+        "astroworlds"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Wrangler",
+      "case_id": "A-BRAND-013",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "brand",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 1,
+      "error": null,
+      "filtered_aliases": [
+        "rangler"
+      ],
+      "latency_ms": 632,
+      "matched_groups": [
+        "wrangler"
+      ],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "rangler",
+        "wrangler",
+        "rangler",
+        "rangler"
+      ],
+      "recall": 3,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Resend",
+      "case_id": "A-BRAND-014",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "brand",
+      "category_predicted": "general",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 2,
+      "error": null,
+      "filtered_aliases": [
+        "reseant",
+        "reseand"
+      ],
+      "latency_ms": 596,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "resend",
+        "reseant",
+        "reseand"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Linear",
+      "case_id": "A-BRAND-015",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "brand",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 2,
+      "error": null,
+      "filtered_aliases": [
+        "line",
+        "linea"
+      ],
+      "latency_ms": 541,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "line",
+        "linea",
+        "linea"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Notion",
+      "case_id": "A-BRAND-016",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "brand",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 1,
+      "error": null,
+      "filtered_aliases": [
+        "noition"
+      ],
+      "latency_ms": 543,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "noition",
+        "noition",
+        "noition"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Stripe",
+      "case_id": "A-BRAND-017",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "brand",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [
+        "strippe"
+      ],
+      "latency_ms": 602,
+      "matched_groups": [],
+      "no_alias_expected": true,
+      "precision": 0,
+      "raw_aliases": [
+        "stripe",
+        "strippe",
+        "strippe",
+        "strippe"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Sentry",
+      "case_id": "A-BRAND-018",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "brand",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [
+        "sentr",
+        "sentryr"
+      ],
+      "latency_ms": 619,
+      "matched_groups": [],
+      "no_alias_expected": true,
+      "precision": 0,
+      "raw_aliases": [
+        "sentry",
+        "sentr",
+        "sentryr"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Anthropic",
+      "case_id": "A-BRAND-019",
+      "case_pass": true,
+      "category": 3,
+      "category_expected": "brand",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "anthrop",
+        "anthropie",
+        "anthropics",
+        "anthro",
+        "anthroplogy"
+      ],
+      "latency_ms": 743,
+      "matched_groups": [
+        "anthropic"
+      ],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "anthrop",
+        "anthropie",
+        "anthropics",
+        "anthro",
+        "anthroplogy"
+      ],
+      "recall": 3,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "OpenAI",
+      "case_id": "A-BRAND-020",
+      "case_pass": true,
+      "category": 3,
+      "category_expected": "brand",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "opentai",
+        "openey",
+        "open ai"
+      ],
+      "latency_ms": 666,
+      "matched_groups": [
+        "openai"
+      ],
+      "no_alias_expected": false,
+      "precision": 2,
+      "raw_aliases": [
+        "opentai",
+        "openey",
+        "open ai",
+        "open ai"
+      ],
+      "recall": 3,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Perplexity",
+      "case_id": "A-BRAND-021",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "brand",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 2,
+      "error": null,
+      "filtered_aliases": [
+        "perplexite",
+        "perplexi"
+      ],
+      "latency_ms": 616,
+      "matched_groups": [
+        "perplexity"
+      ],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "perplexite",
+        "perplexi",
+        "perplexite"
+      ],
+      "recall": 3,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Hugging Face",
+      "case_id": "A-BRAND-022",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "brand",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 1,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [],
+      "latency_ms": 571,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 0,
+      "raw_aliases": [
+        "hugging face",
+        "hugging face",
+        "hugging face"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Cloudflare",
+      "case_id": "A-BRAND-023",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "brand",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 2,
+      "error": null,
+      "filtered_aliases": [
+        "cfwlr",
+        "cfwl"
+      ],
+      "latency_ms": 668,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 0,
+      "raw_aliases": [
+        "cfwlr",
+        "cfwl",
+        "cfwlr",
+        "cfwlr"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "DigitalOcean",
+      "case_id": "A-BRAND-024",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "brand",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 2,
+      "error": null,
+      "filtered_aliases": [
+        "digital ocean",
+        "digital oce"
+      ],
+      "latency_ms": 624,
+      "matched_groups": [
+        "digital"
+      ],
+      "no_alias_expected": false,
+      "precision": 1,
+      "raw_aliases": [
+        "digital ocean",
+        "digital ocean",
+        "digital oce"
+      ],
+      "recall": 3,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "Datadog",
+      "case_id": "A-BRAND-025",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "brand",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 1,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [],
+      "latency_ms": 573,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 0,
+      "raw_aliases": [
+        "datadog",
+        "datadog",
+        "datadog"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "OKR",
+      "case_id": "A-ACRONYM-001",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "acronym",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 1,
+      "error": null,
+      "filtered_aliases": [
+        "okre"
+      ],
+      "latency_ms": 579,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "okre",
+        "okre",
+        "okre"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "RSI",
+      "case_id": "A-ACRONYM-002",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "acronym",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 2,
+      "error": null,
+      "filtered_aliases": [
+        "Rsi-tech",
+        "Rsi-gear"
+      ],
+      "latency_ms": 643,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 0,
+      "raw_aliases": [
+        "Rsi",
+        "Rsi-tech",
+        "Rsi-gear"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "PR",
+      "case_id": "A-ACRONYM-003",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "acronym",
+      "category_predicted": "general",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "princess",
+        "prince",
+        "prankster",
+        "prank"
+      ],
+      "latency_ms": 760,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 1,
+      "raw_aliases": [
+        "princess",
+        "prince",
+        "prankster",
+        "prank",
+        "prankster"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "CRM",
+      "case_id": "A-ACRONYM-004",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "acronym",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 1,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [],
+      "latency_ms": 614,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 0,
+      "raw_aliases": [
+        "crm",
+        "crm",
+        "crm",
+        "crm"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "HIPAA",
+      "case_id": "A-ACRONYM-005",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "acronym",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 1,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [],
+      "latency_ms": 605,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 0,
+      "raw_aliases": [
+        "hipaa",
+        "hipaa",
+        "hipaa",
+        "hipaa"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "NATO",
+      "case_id": "A-ACRONYM-006",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "acronym",
+      "category_predicted": "general",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 2,
+      "error": null,
+      "filtered_aliases": [
+        "nat",
+        "naot"
+      ],
+      "latency_ms": 617,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "nat",
+        "naot",
+        "naot",
+        "nat"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "AWS",
+      "case_id": "A-ACRONYM-007",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "acronym",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "aww",
+        "awwz",
+        "awwzz"
+      ],
+      "latency_ms": 592,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "aww",
+        "awwz",
+        "awwzz"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "GDPR",
+      "case_id": "A-ACRONYM-008",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "acronym",
+      "category_predicted": "general",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 1,
+      "error": null,
+      "filtered_aliases": [
+        "gdprg"
+      ],
+      "latency_ms": 605,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "gdprg",
+        "gdprg",
+        "gdprg"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "OAuth",
+      "case_id": "A-ACRONYM-009",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "acronym",
+      "category_predicted": "general",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "oauth2",
+        "oauth3",
+        "oauth1"
+      ],
+      "latency_ms": 603,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "oauth2",
+        "oauth3",
+        "oauth1"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "YAML",
+      "case_id": "A-ACRONYM-010",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "acronym",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 1,
+      "error": null,
+      "filtered_aliases": [
+        "yam"
+      ],
+      "latency_ms": 571,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "yam",
+        "yaml",
+        "yaml"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "JSON",
+      "case_id": "A-ACRONYM-011",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "acronym",
+      "category_predicted": "general",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "json-like",
+        "json-format",
+        "json-syntax",
+        "json-structure"
+      ],
+      "latency_ms": 725,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 1,
+      "raw_aliases": [
+        "json-like",
+        "json-format",
+        "json-syntax",
+        "json-structure"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "SQL",
+      "case_id": "A-ACRONYM-012",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "acronym",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "SQLite",
+        "SQL Server",
+        "SQLite3",
+        "SQLite4"
+      ],
+      "latency_ms": 661,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 2,
+      "raw_aliases": [
+        "SQLite",
+        "SQL Server",
+        "SQLite3",
+        "SQLite4"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "REST",
+      "case_id": "A-ACRONYM-013",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "acronym",
+      "category_predicted": "general",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [
+        "rests",
+        "resting",
+        "restful",
+        "restless"
+      ],
+      "latency_ms": 651,
+      "matched_groups": [],
+      "no_alias_expected": true,
+      "precision": 0,
+      "raw_aliases": [
+        "rest",
+        "rests",
+        "resting",
+        "restful",
+        "restless"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "API",
+      "case_id": "A-ACRONYM-014",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "acronym",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [
+        "api net",
+        "apie",
+        "apiee"
+      ],
+      "latency_ms": 620,
+      "matched_groups": [],
+      "no_alias_expected": true,
+      "precision": 0,
+      "raw_aliases": [
+        "api net",
+        "apie",
+        "apiee"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "URL",
+      "case_id": "A-ACRONYM-015",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "acronym",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [
+        "urlnet",
+        "urlnets"
+      ],
+      "latency_ms": 618,
+      "matched_groups": [],
+      "no_alias_expected": true,
+      "precision": 0,
+      "raw_aliases": [
+        "urlnet",
+        "urlnets",
+        "urlnet"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "CTO",
+      "case_id": "A-ACRONYM-016",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "acronym",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 2,
+      "error": null,
+      "filtered_aliases": [
+        "coot",
+        "coto"
+      ],
+      "latency_ms": 675,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "cto",
+        "coot",
+        "coot",
+        "coto"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "DAU",
+      "case_id": "A-ACRONYM-017",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "acronym",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 2,
+      "error": null,
+      "filtered_aliases": [
+        "dah",
+        "daui"
+      ],
+      "latency_ms": 591,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "dah",
+        "dau",
+        "daui"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "MAU",
+      "case_id": "A-ACRONYM-018",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "acronym",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 2,
+      "error": null,
+      "filtered_aliases": [
+        "maw",
+        "mou"
+      ],
+      "latency_ms": 592,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "mau",
+        "maw",
+        "mou"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "NPS",
+      "case_id": "A-ACRONYM-019",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "acronym",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 1,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [],
+      "latency_ms": 544,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 0,
+      "raw_aliases": [
+        "nps",
+        "nps",
+        "nps"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "KPI",
+      "case_id": "A-ACRONYM-020",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "acronym",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 2,
+      "error": null,
+      "filtered_aliases": [
+        "kipi",
+        "kipa"
+      ],
+      "latency_ms": 582,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "kipi",
+        "kipa",
+        "kipi"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "gRPC",
+      "case_id": "A-DOMAIN-001",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "domain",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "g-r-pc",
+        "grp c",
+        "grpc-"
+      ],
+      "latency_ms": 820,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 2,
+      "raw_aliases": [
+        "grpc",
+        "g-r-pc",
+        "grp c",
+        "grpc-"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "GraphQL",
+      "case_id": "A-DOMAIN-002",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "domain",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 1,
+      "error": null,
+      "filtered_aliases": [
+        "graphqljs"
+      ],
+      "latency_ms": 641,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "graphql",
+        "graphqljs",
+        "graphqljs",
+        "graphqljs"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "WebSocket",
+      "case_id": "A-DOMAIN-003",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "domain",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 1,
+      "error": null,
+      "filtered_aliases": [
+        "web socket"
+      ],
+      "latency_ms": 603,
+      "matched_groups": [
+        "websocket"
+      ],
+      "no_alias_expected": false,
+      "precision": 0,
+      "raw_aliases": [
+        "web socket",
+        "websocket",
+        "websocket",
+        "websocket"
+      ],
+      "recall": 3,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "WebRTC",
+      "case_id": "A-DOMAIN-004",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "domain",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 2,
+      "error": null,
+      "filtered_aliases": [
+        "web rtc",
+        "web rtci"
+      ],
+      "latency_ms": 647,
+      "matched_groups": [
+        "webrtc"
+      ],
+      "no_alias_expected": false,
+      "precision": 1,
+      "raw_aliases": [
+        "web rtc",
+        "web rtci",
+        "web rtc"
+      ],
+      "recall": 3,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "OAuth2",
+      "case_id": "A-DOMAIN-005",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "domain",
+      "category_predicted": "general",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "oauth",
+        "oauth 2",
+        "oauth 2.0"
+      ],
+      "latency_ms": 693,
+      "matched_groups": [
+        "oauth2"
+      ],
+      "no_alias_expected": false,
+      "precision": 2,
+      "raw_aliases": [
+        "oauth",
+        "oauth2",
+        "oauth 2",
+        "oauth 2.0"
+      ],
+      "recall": 3,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "S3",
+      "case_id": "A-DOMAIN-006",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "domain",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 1,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [],
+      "latency_ms": 548,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 0,
+      "raw_aliases": [
+        "S3",
+        "S3",
+        "S3"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "K8s",
+      "case_id": "A-DOMAIN-007",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "domain",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "kuber netties",
+        "cube ernetes",
+        "cooper nettys"
+      ],
+      "latency_ms": 619,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 0,
+      "raw_aliases": [
+        "kuber netties",
+        "cube ernetes",
+        "cooper nettys"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "i18n",
+      "case_id": "A-DOMAIN-008",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "domain",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 1,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [],
+      "latency_ms": 748,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 0,
+      "raw_aliases": [
+        "i18n",
+        "i18n",
+        "i18n",
+        "i18n",
+        "i18n"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "a11y",
+      "case_id": "A-DOMAIN-009",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "domain",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 1,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [],
+      "latency_ms": 758,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 0,
+      "raw_aliases": [
+        "a11y",
+        "a11y",
+        "a11y",
+        "a11y",
+        "a11y"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "DevOps",
+      "case_id": "A-DOMAIN-010",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "domain",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "devo",
+        "dev",
+        "devot",
+        "devotee"
+      ],
+      "latency_ms": 653,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "devo",
+        "dev",
+        "devot",
+        "devotee"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "FinTech",
+      "case_id": "A-DOMAIN-011",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "domain",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 2,
+      "error": null,
+      "filtered_aliases": [
+        "fin tech",
+        "fin techs"
+      ],
+      "latency_ms": 657,
+      "matched_groups": [
+        "fintech"
+      ],
+      "no_alias_expected": false,
+      "precision": 1,
+      "raw_aliases": [
+        "fin tech",
+        "fin techs",
+        "fin techs",
+        "fin techs"
+      ],
+      "recall": 3,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "SaaS",
+      "case_id": "A-DOMAIN-012",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "domain",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 1,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [],
+      "latency_ms": 568,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 0,
+      "raw_aliases": [
+        "saas",
+        "saas",
+        "saas"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "PaaS",
+      "case_id": "A-DOMAIN-013",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "domain",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 1,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [],
+      "latency_ms": 659,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 0,
+      "raw_aliases": [
+        "paas",
+        "paas",
+        "paas",
+        "paas",
+        "paas"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "IaaS",
+      "case_id": "A-DOMAIN-014",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "domain",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "in-a-s",
+        "in-a-s-s",
+        "in-a-s-s-s",
+        "in-a-s-s-s-s"
+      ],
+      "latency_ms": 880,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 1,
+      "raw_aliases": [
+        "in-a-s",
+        "in-a-s-s",
+        "in-a-s-s-s",
+        "in-a-s-s-s-s"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "MLOps",
+      "case_id": "A-DOMAIN-015",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "domain",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 1,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [],
+      "latency_ms": 634,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 0,
+      "raw_aliases": [
+        "mlops",
+        "mlops",
+        "mlops",
+        "mlops"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "LLMOps",
+      "case_id": "A-DOMAIN-016",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "domain",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "llmoops",
+        "llm ops",
+        "llmoop",
+        "lmo ops"
+      ],
+      "latency_ms": 741,
+      "matched_groups": [
+        "llmops"
+      ],
+      "no_alias_expected": false,
+      "precision": 2,
+      "raw_aliases": [
+        "llmoops",
+        "llm ops",
+        "llmoop",
+        "lmo ops"
+      ],
+      "recall": 3,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "GitOps",
+      "case_id": "A-DOMAIN-017",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "domain",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 1,
+      "error": null,
+      "filtered_aliases": [
+        "git ops"
+      ],
+      "latency_ms": 630,
+      "matched_groups": [
+        "gitops"
+      ],
+      "no_alias_expected": false,
+      "precision": 0,
+      "raw_aliases": [
+        "git ops",
+        "git ops",
+        "git ops",
+        "git ops"
+      ],
+      "recall": 3,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "NoSQL",
+      "case_id": "A-DOMAIN-018",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "domain",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "no soql",
+        "no sql",
+        "noql"
+      ],
+      "latency_ms": 669,
+      "matched_groups": [
+        "no-sql"
+      ],
+      "no_alias_expected": false,
+      "precision": 2,
+      "raw_aliases": [
+        "no soql",
+        "no sql",
+        "noql",
+        "no soql"
+      ],
+      "recall": 3,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "NewSQL",
+      "case_id": "A-DOMAIN-019",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "domain",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 2,
+      "error": null,
+      "filtered_aliases": [
+        "new sql",
+        "new sqlite",
+        "new sqlite3",
+        "new sqlite4"
+      ],
+      "latency_ms": 652,
+      "matched_groups": [
+        "newsql"
+      ],
+      "no_alias_expected": false,
+      "precision": 2,
+      "raw_aliases": [
+        "new sql",
+        "new sqlite",
+        "new sqlite3",
+        "new sqlite4"
+      ],
+      "recall": 3,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "WebAssembly",
+      "case_id": "A-DOMAIN-020",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "domain",
+      "category_predicted": "general",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 2,
+      "error": null,
+      "filtered_aliases": [
+        "web assem",
+        "web assemb",
+        "web assembler",
+        "web assembl"
+      ],
+      "latency_ms": 764,
+      "matched_groups": [
+        "wasm"
+      ],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "web assem",
+        "web assemb",
+        "web assembler",
+        "web assembl"
+      ],
+      "recall": 3,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "async",
+      "case_id": "A-GENERAL-001",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "general",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 2,
+      "error": null,
+      "filtered_aliases": [
+        "asyn",
+        "asyncio"
+      ],
+      "latency_ms": 591,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "async",
+        "asyn",
+        "asyncio"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "webhook",
+      "case_id": "A-GENERAL-002",
+      "case_pass": true,
+      "category": 3,
+      "category_expected": "general",
+      "category_predicted": "general",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "web hook",
+        "web hooke",
+        "web hooky"
+      ],
+      "latency_ms": 610,
+      "matched_groups": [
+        "webhook"
+      ],
+      "no_alias_expected": false,
+      "precision": 2,
+      "raw_aliases": [
+        "web hook",
+        "web hooke",
+        "web hooky"
+      ],
+      "recall": 3,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "middleware",
+      "case_id": "A-GENERAL-003",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "general",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 1,
+      "error": null,
+      "filtered_aliases": [
+        "midleware"
+      ],
+      "latency_ms": 673,
+      "matched_groups": [
+        "middleware"
+      ],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "midleware",
+        "midleware",
+        "midleware",
+        "midleware"
+      ],
+      "recall": 3,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "backend",
+      "case_id": "A-GENERAL-004",
+      "case_pass": true,
+      "category": 0,
+      "category_expected": "general",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 1,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [],
+      "latency_ms": 552,
+      "matched_groups": [],
+      "no_alias_expected": true,
+      "precision": 3,
+      "raw_aliases": [
+        "backend",
+        "backend",
+        "backend"
+      ],
+      "recall": 3,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "frontend",
+      "case_id": "A-GENERAL-005",
+      "case_pass": true,
+      "category": 0,
+      "category_expected": "general",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 1,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [],
+      "latency_ms": 542,
+      "matched_groups": [],
+      "no_alias_expected": true,
+      "precision": 3,
+      "raw_aliases": [
+        "frontend",
+        "frontend",
+        "frontend"
+      ],
+      "recall": 3,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "refactor",
+      "case_id": "A-GENERAL-006",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "general",
+      "category_predicted": "general",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [
+        "refacto",
+        "reftor"
+      ],
+      "latency_ms": 684,
+      "matched_groups": [],
+      "no_alias_expected": true,
+      "precision": 0,
+      "raw_aliases": [
+        "refacto",
+        "reftor",
+        "refacto",
+        "refacto"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "idempotent",
+      "case_id": "A-GENERAL-007",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "general",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 1,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [],
+      "latency_ms": 720,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 0,
+      "raw_aliases": [
+        "idempotent",
+        "idempotent",
+        "idempotent",
+        "idempotent",
+        "idempotent"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "cron",
+      "case_id": "A-GENERAL-008",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "general",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "cronies",
+        "croney",
+        "croniey"
+      ],
+      "latency_ms": 669,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "cronies",
+        "croney",
+        "croniey"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "regex",
+      "case_id": "A-GENERAL-009",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "general",
+      "category_predicted": "brand",
+      "cold_start": false,
+      "degeneration": 1,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [],
+      "latency_ms": 556,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 0,
+      "raw_aliases": [
+        "regex",
+        "regex",
+        "regex"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "OAuth2",
+      "case_id": "A-GENERAL-010",
+      "case_pass": true,
+      "category": 3,
+      "category_expected": "general",
+      "category_predicted": "general",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "OAuth",
+        "OAuth 2",
+        "OAuth 2.0"
+      ],
+      "latency_ms": 743,
+      "matched_groups": [
+        "oauth2"
+      ],
+      "no_alias_expected": false,
+      "precision": 2,
+      "raw_aliases": [
+        "OAuth",
+        "OAuth2",
+        "OAuth 2",
+        "OAuth 2.0"
+      ],
+      "recall": 3,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "polyglot",
+      "case_id": "A-GENERAL-011",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "general",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 3,
+      "error": null,
+      "filtered_aliases": [
+        "polyglo",
+        "poly glot",
+        "polygloat"
+      ],
+      "latency_ms": 708,
+      "matched_groups": [
+        "polyglot"
+      ],
+      "no_alias_expected": false,
+      "precision": 2,
+      "raw_aliases": [
+        "polyglo",
+        "poly glot",
+        "polygloat"
+      ],
+      "recall": 3,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "orchestrate",
+      "case_id": "A-GENERAL-012",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "general",
+      "category_predicted": "general",
+      "cold_start": false,
+      "degeneration": 1,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [],
+      "latency_ms": 666,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 0,
+      "raw_aliases": [
+        "orchestrate",
+        "orchestrate",
+        "orchestrate"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "deserialize",
+      "case_id": "A-GENERAL-013",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "general",
+      "category_predicted": "general",
+      "cold_start": false,
+      "degeneration": 1,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [],
+      "latency_ms": 736,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 0,
+      "raw_aliases": [
+        "deserialize",
+        "deserialize",
+        "deserialize",
+        "deserialize",
+        "deserialize"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "transpile",
+      "case_id": "A-GENERAL-014",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "general",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 1,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [],
+      "latency_ms": 580,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 0,
+      "raw_aliases": [
+        "transpile",
+        "transpile",
+        "transpile"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "git",
+      "case_id": "A-GENERAL-015",
+      "case_pass": false,
+      "category": 0,
+      "category_expected": "general",
+      "category_predicted": "person",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 0,
+      "error": null,
+      "filtered_aliases": [
+        "git git"
+      ],
+      "latency_ms": 563,
+      "matched_groups": [],
+      "no_alias_expected": true,
+      "precision": 0,
+      "raw_aliases": [
+        "git git",
+        "git git",
+        "git git"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    }
+  ],
+  "corpus": "alias-corpus-a",
+  "reason": "initial alias benchmark capture against corpus-a (#637)",
+  "summary": {
+    "category_accuracy": 0.5364,
+    "cold_latency_p50_ms": null,
+    "corpus_name": "alias-corpus-a",
+    "degeneration_rate": 0.1979,
+    "failures": [
+      "category general pass rate 26.67% < 90%",
+      "category person pass rate 10.00% < 90%",
+      "category brand pass rate 20.00% < 90%",
+      "category acronym pass rate 0.00% < 90%",
+      "category domain pass rate 0.00% < 90%",
+      "degeneration rate 19.79% > 5%",
+      "category accuracy 53.64% < 90%"
+    ],
+    "latency_p50_ms": 634,
+    "latency_p95_ms": 764,
+    "n_cases": 110,
+    "pass_rate": 0.1091,
+    "per_category_count": {
+      "acronym": 20,
+      "brand": 25,
+      "domain": 20,
+      "general": 15,
+      "person": 30
+    },
+    "per_category_pass": {
+      "acronym": 0.0,
+      "brand": 0.2,
+      "domain": 0.0,
+      "general": 0.2667,
+      "person": 0.1
+    },
+    "refusal_rate": 0.0,
+    "side_gates_pass": false
+  }
+}

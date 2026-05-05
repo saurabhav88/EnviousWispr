@@ -36,6 +36,91 @@ public final class WordSuggestionService: Sendable {
     #endif
   }
 
+  /// Benchmark-only entry point for the alias-eval harness (#637).
+  ///
+  /// Returns BOTH raw (pre-filter) and filtered aliases plus timing/error
+  /// metadata so the eval scorer can grade the degeneration axis. When
+  /// `disableTimeout=true`, the 5-second wrapper is omitted so the harness
+  /// can measure true latency without censoring slow responses.
+  ///
+  /// NEVER call from production code. Production reads `suggest(for:)`,
+  /// which is byte-identical in behavior to the pre-#637 ship.
+  public func benchmarkSuggest(
+    for word: String,
+    disableTimeout: Bool = false
+  ) async -> WordSuggestionBenchmarkRecord {
+    let startTime = Date()
+    #if canImport(FoundationModels)
+      guard #available(macOS 26, *),
+        case .available = SystemLanguageModel.default.availability
+      else {
+        return WordSuggestionBenchmarkRecord(
+          category: .general,
+          rawAliases: [],
+          filteredAliases: [],
+          timedOut: false,
+          errorDescription: "framework_unavailable",
+          latencyMs: Self.elapsedMs(since: startTime)
+        )
+      }
+      let raw: (category: WordCategory, aliases: [String])?
+      var timedOut = false
+      var errorDescription: String?
+      if disableTimeout {
+        do {
+          raw = try await self.runRawSuggestion(for: word)
+        } catch {
+          raw = nil
+          errorDescription = "\(error)"
+        }
+      } else {
+        do {
+          raw = try await withThrowingTimeout(seconds: 5) {
+            try await self.runRawSuggestion(for: word)
+          }
+        } catch is TimeoutError {
+          raw = nil
+          timedOut = true
+        } catch {
+          raw = nil
+          errorDescription = "\(error)"
+        }
+      }
+      guard let resolved = raw else {
+        return WordSuggestionBenchmarkRecord(
+          category: .general,
+          rawAliases: [],
+          filteredAliases: [],
+          timedOut: timedOut,
+          errorDescription: errorDescription,
+          latencyMs: Self.elapsedMs(since: startTime)
+        )
+      }
+      let filtered = Self.filterDegeneratedAliases(resolved.aliases, canonical: word)
+      return WordSuggestionBenchmarkRecord(
+        category: resolved.category,
+        rawAliases: resolved.aliases,
+        filteredAliases: filtered,
+        timedOut: false,
+        errorDescription: nil,
+        latencyMs: Self.elapsedMs(since: startTime)
+      )
+    #else
+      return WordSuggestionBenchmarkRecord(
+        category: .general,
+        rawAliases: [],
+        filteredAliases: [],
+        timedOut: false,
+        errorDescription: "framework_unavailable",
+        latencyMs: Self.elapsedMs(since: startTime)
+      )
+    #endif
+  }
+
+  private static func elapsedMs(since start: Date) -> Int {
+    Int((Date().timeIntervalSince(start) * 1000.0).rounded())
+  }
+
   private static let suggestionInstructions = """
     You predict how speech-to-text engines (Whisper, Parakeet) misrecognize a spoken word.
     Focus on: wrong word boundaries ("par vati"), vowel/consonant swaps ("pavathi"), \
@@ -95,20 +180,26 @@ public final class WordSuggestionService: Sendable {
     }
 
     @available(macOS 26, *)
-    private func runSuggestion(for word: String) async -> WordSuggestions? {
+    private func runRawSuggestion(
+      for word: String
+    ) async throws -> (category: WordCategory, aliases: [String]) {
       let session = LanguageModelSession(
         model: SystemLanguageModel.default,
         instructions: Self.suggestionInstructions
       )
+      let response = try await session.respond(
+        to: "Word: \(word)",
+        generating: WordSuggestionsResult.self
+      )
+      let category = WordCategory(rawValue: response.category.lowercased()) ?? .general
+      return (category, response.suggestedAliases)
+    }
 
+    @available(macOS 26, *)
+    private func runSuggestion(for word: String) async -> WordSuggestions? {
       do {
-        let response = try await session.respond(
-          to: "Word: \(word)",
-          generating: WordSuggestionsResult.self
-        )
-        let category = WordCategory(rawValue: response.category.lowercased()) ?? .general
-        let raw = response.suggestedAliases
-        let filtered = Self.filterDegeneratedAliases(raw, canonical: word)
+        let raw = try await runRawSuggestion(for: word)
+        let filtered = Self.filterDegeneratedAliases(raw.aliases, canonical: word)
         // Empty after filter (with non-empty raw) means AFM degenerated into self-echoes.
         // Treat as model failure so the UI can render "No suggestions available" instead
         // of zero or duplicate chips.
@@ -116,7 +207,7 @@ public final class WordSuggestionService: Sendable {
         // import EnviousWisprServices per the dep-direction guard. Phase 8 proper
         // will inject a telemetry callback at the call site.
         guard !filtered.isEmpty else { return nil }
-        return WordSuggestions(category: category, suggestedAliases: filtered)
+        return WordSuggestions(category: raw.category, suggestedAliases: filtered)
       } catch {
         return nil
       }
@@ -126,40 +217,45 @@ public final class WordSuggestionService: Sendable {
 
   #elseif canImport(FoundationModels)
     @available(macOS 26, *)
-    private func runSuggestion(for word: String) async -> WordSuggestions? {
+    private func runRawSuggestion(
+      for word: String
+    ) async throws -> (category: WordCategory, aliases: [String]) {
       let session = LanguageModelSession(
         model: SystemLanguageModel.default,
         instructions: Self.suggestionInstructions
       )
+      let dynamicSchema = DynamicGenerationSchema(
+        name: "WordSuggestion",
+        properties: [
+          DynamicGenerationSchema.Property(
+            name: "category",
+            schema: DynamicGenerationSchema(type: String.self)
+          ),
+          DynamicGenerationSchema.Property(
+            name: "suggestedAliases",
+            schema: DynamicGenerationSchema(arrayOf: DynamicGenerationSchema(type: String.self))
+          ),
+        ]
+      )
+      let schema = try GenerationSchema(root: dynamicSchema, dependencies: [])
 
+      let response = try await session.respond(
+        to: "Word: \(word)",
+        schema: schema
+      )
+      let categoryStr = try response.content.value(String.self, forProperty: "category")
+      let raw = try response.content.value([String].self, forProperty: "suggestedAliases")
+      let category = WordCategory(rawValue: categoryStr.lowercased()) ?? .general
+      return (category, raw)
+    }
+
+    @available(macOS 26, *)
+    private func runSuggestion(for word: String) async -> WordSuggestions? {
       do {
-        let dynamicSchema = DynamicGenerationSchema(
-          name: "WordSuggestion",
-          properties: [
-            DynamicGenerationSchema.Property(
-              name: "category",
-              schema: DynamicGenerationSchema(type: String.self)
-            ),
-            DynamicGenerationSchema.Property(
-              name: "suggestedAliases",
-              schema: DynamicGenerationSchema(arrayOf: DynamicGenerationSchema(type: String.self))
-            ),
-          ]
-        )
-        let schema = try GenerationSchema(root: dynamicSchema, dependencies: [])
-
-        let response = try await session.respond(
-          to: "Word: \(word)",
-          schema: schema
-        )
-        let categoryStr = try response.content.value(String.self, forProperty: "category")
-        let raw = try response.content.value([String].self, forProperty: "suggestedAliases")
-
-        let category = WordCategory(rawValue: categoryStr.lowercased()) ?? .general
-        let filtered = Self.filterDegeneratedAliases(raw, canonical: word)
-        // Phase 8 (#620) telemetry hook deferred — see comment in Generable variant.
+        let raw = try await runRawSuggestion(for: word)
+        let filtered = Self.filterDegeneratedAliases(raw.aliases, canonical: word)
         guard !filtered.isEmpty else { return nil }
-        return WordSuggestions(category: category, suggestedAliases: filtered)
+        return WordSuggestions(category: raw.category, suggestedAliases: filtered)
       } catch {
         return nil
       }
@@ -170,4 +266,32 @@ public final class WordSuggestionService: Sendable {
 public struct WordSuggestions: Sendable {
   public let category: WordCategory
   public let suggestedAliases: [String]
+}
+
+/// Benchmark-only carrier for the alias-eval harness (#637). Returned by
+/// `WordSuggestionService.benchmarkSuggest(for:disableTimeout:)`. NEVER
+/// persisted, NEVER consumed by production code.
+public struct WordSuggestionBenchmarkRecord: Sendable {
+  public let category: WordCategory
+  public let rawAliases: [String]
+  public let filteredAliases: [String]
+  public let timedOut: Bool
+  public let errorDescription: String?
+  public let latencyMs: Int
+
+  public init(
+    category: WordCategory,
+    rawAliases: [String],
+    filteredAliases: [String],
+    timedOut: Bool,
+    errorDescription: String?,
+    latencyMs: Int
+  ) {
+    self.category = category
+    self.rawAliases = rawAliases
+    self.filteredAliases = filteredAliases
+    self.timedOut = timedOut
+    self.errorDescription = errorDescription
+    self.latencyMs = latencyMs
+  }
 }
