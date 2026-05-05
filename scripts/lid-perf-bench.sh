@@ -62,12 +62,10 @@ elif [[ "$SKIP_UAT" -eq 1 ]]; then
   exit 2
 else
   echo "==> Capturing signpost logs"
-  if [[ ! -f "$APP_LOG" ]]; then
-    echo "app log not found: $APP_LOG" >&2
-    exit 2
-  fi
+  mkdir -p "$(dirname "$APP_LOG")"
+  touch "$APP_LOG"
   : > "$RAW_LOG"
-  tail -n 0 -f "$APP_LOG" | grep --line-buffered 'lid_perf_signpost' > "$RAW_LOG" &
+  tail -n 0 -F "$APP_LOG" | grep --line-buffered 'lid_perf_signpost' > "$RAW_LOG" &
   LOG_PID=$!
   trap 'kill "$LOG_PID" >/dev/null 2>&1 || true' EXIT
   sleep 1
