@@ -195,7 +195,12 @@ struct RunnerMain {
         for: caseItem.canonical,
         disableTimeout: args.disableTimeout
       )
-      let categoryStr: String? = (record.errorDescription == nil) ? record.category.rawValue : nil
+      // Gate on BOTH errorDescription nil AND timedOut false so timeouts
+      // don't fabricate a synthetic category that inflates category accuracy
+      // for cases where `general` happens to be in acceptable_categories.
+      // Codex review #674 (2026-05-05).
+      let categoryStr: String? =
+        (record.errorDescription == nil && !record.timedOut) ? record.category.rawValue : nil
       let out = OutRecord(
         id: caseItem.id,
         canonical: caseItem.canonical,
