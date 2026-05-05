@@ -83,7 +83,7 @@ struct UnifiedWindowView: View {
     case .aiPolish:
       AIPolishSettingsView()
     case .wordCorrection:
-      WordFixSettingsView()
+      YourWordsView()
     case .clipboard:
       ClipboardSettingsView()
     case .memory:
