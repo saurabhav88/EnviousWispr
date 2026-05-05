@@ -67,6 +67,14 @@ public enum EnviousOutputFilter {
         polished: rawInput, fellBackToRaw: true, tripped: "aggressive_shortening_guard")
     }
 
+    if let restored = restoringLeadingHeyIfDropped(input: rawInput, output: stripped) {
+      return Result(
+        polished: restored,
+        fellBackToRaw: false,
+        tripped: "leading_hey_restored"
+      )
+    }
+
     return Result(
       polished: stripped,
       fellBackToRaw: false,
@@ -85,6 +93,25 @@ public enum EnviousOutputFilter {
       with: "",
       options: [.regularExpression, .caseInsensitive]
     ).trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  private static func restoringLeadingHeyIfDropped(input: String, output: String) -> String? {
+    guard !output.isEmpty else { return nil }
+
+    let inputLower = input.lowercased()
+    let outputLower = output.lowercased()
+    guard inputLower.range(of: #"^hey(?:[\s,]+)"#, options: .regularExpression) != nil else {
+      return nil
+    }
+    guard outputLower.range(of: #"^hey(?:\b|[\s,])"#, options: .regularExpression) == nil else {
+      return nil
+    }
+
+    let joinedOutput =
+      output.hasPrefix("Sure,")
+      ? "sure," + output.dropFirst("Sure,".count)
+      : output
+    return "Hey, \(joinedOutput)"
   }
 
   private static func looksLikeCode(_ text: String) -> Bool {

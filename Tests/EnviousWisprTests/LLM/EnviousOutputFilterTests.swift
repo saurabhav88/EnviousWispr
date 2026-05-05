@@ -128,4 +128,29 @@ struct EnviousOutputFilterTests {
     #expect(filtered.tripped == "imperative_execution_guard")
     #expect(filtered.polished == input)
   }
+
+  @Test("leading hey is restored when Apple polish drops it")
+  func leadingHeyIsRestoredWhenDropped() {
+    let input =
+      "Hey can you check the pull request I just pushed to the main branch there's a bug in the cash layer."
+    let output = "Sure, I'll check the pull request you just pushed to the main branch."
+
+    let filtered = EnviousOutputFilter.filter(input: input, output: output)
+
+    #expect(filtered.fellBackToRaw == false)
+    #expect(filtered.tripped == "leading_hey_restored")
+    #expect(filtered.polished == "Hey, sure, I'll check the pull request you just pushed to the main branch.")
+  }
+
+  @Test("leading hey is not duplicated")
+  func leadingHeyIsNotDuplicated() {
+    let input = "Hey, what's next on the Bible?"
+    let output = "Hey, what's next on the Bible?"
+
+    let filtered = EnviousOutputFilter.filter(input: input, output: output)
+
+    #expect(filtered.fellBackToRaw == false)
+    #expect(filtered.tripped == nil)
+    #expect(filtered.polished == output)
+  }
 }
