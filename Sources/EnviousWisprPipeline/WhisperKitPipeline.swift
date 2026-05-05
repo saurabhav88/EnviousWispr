@@ -616,11 +616,12 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
         segments.reduce(0) { $0 + ($1.endSample - $1.startSample) } * 1000 / 16000
       if !segments.isEmpty {
         lidSamples = SampleFilter.filter(from: rawSamples, segments: segments)
+        let loggedLIDSamples = lidSamples
         let pct = String(
-          format: "%.1f", Double(lidSamples.count) / Double(max(rawSamples.count, 1)) * 100)
+          format: "%.1f", Double(loggedLIDSamples.count) / Double(max(rawSamples.count, 1)) * 100)
         Task {
           await AppLogger.shared.log(
-            "WhisperKit VAD (XPC): \(vadSegmentCount) speech segments, totalVoicedMs=\(vadSpeechDurationMs), asrSamples=raw(\(rawSamples.count)), lidSamples=\(lidSamples.count) (\(pct)% voiced)",
+            "WhisperKit VAD (XPC): \(vadSegmentCount) speech segments, totalVoicedMs=\(vadSpeechDurationMs), asrSamples=raw(\(rawSamples.count)), lidSamples=\(loggedLIDSamples.count) (\(pct)% voiced)",
             level: .info, category: "WhisperKitPipeline"
           )
         }
@@ -636,11 +637,12 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
       vadSpeechDurationMs =
         segments.reduce(0) { $0 + ($1.endSample - $1.startSample) } * 1000 / 16000
       lidSamples = await detector.filterSamples(from: rawSamples)
+      let loggedLIDSamples = lidSamples
       let pct = String(
-        format: "%.1f", Double(lidSamples.count) / Double(max(rawSamples.count, 1)) * 100)
+        format: "%.1f", Double(loggedLIDSamples.count) / Double(max(rawSamples.count, 1)) * 100)
       Task {
         await AppLogger.shared.log(
-          "WhisperKit VAD: \(vadSegmentCount) speech segments, totalVoicedMs=\(vadSpeechDurationMs), asrSamples=raw(\(rawSamples.count)), lidSamples=\(lidSamples.count) (\(pct)% voiced)",
+          "WhisperKit VAD: \(vadSegmentCount) speech segments, totalVoicedMs=\(vadSpeechDurationMs), asrSamples=raw(\(rawSamples.count)), lidSamples=\(loggedLIDSamples.count) (\(pct)% voiced)",
           level: .info, category: "WhisperKitPipeline"
         )
       }

@@ -8,10 +8,11 @@ RAW_LOG="$RUN_DIR/lid-perf-signposts.log"
 RESULT_JSON="$RUN_DIR/lid-perf-results.json"
 SKIP_UAT=0
 INPUT_LOG=""
+APP_LOG="${HOME}/Library/Logs/EnviousWispr/app.log"
 
 usage() {
   cat <<'USAGE'
-Usage: scripts/lid-perf-bench.sh [--baseline PATH] [--log-file PATH] [--skip-uat]
+Usage: scripts/lid-perf-bench.sh [--baseline PATH] [--log-file PATH] [--app-log PATH] [--skip-uat]
 
 Runs a release build, drives the 10-clip LID corpus through wispr_eyes,
 captures lid_perf_signpost log lines, then compares metrics to baseline.
@@ -26,6 +27,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --log-file)
       INPUT_LOG="$2"
+      shift 2
+      ;;
+    --app-log)
+      APP_LOG="$2"
       shift 2
       ;;
     --skip-uat)
@@ -57,7 +62,12 @@ elif [[ "$SKIP_UAT" -eq 1 ]]; then
   exit 2
 else
   echo "==> Capturing signpost logs"
-  log stream --style compact --predicate 'eventMessage CONTAINS "lid_perf_signpost"' > "$RAW_LOG" &
+  if [[ ! -f "$APP_LOG" ]]; then
+    echo "app log not found: $APP_LOG" >&2
+    exit 2
+  fi
+  : > "$RAW_LOG"
+  tail -n 0 -f "$APP_LOG" | grep --line-buffered 'lid_perf_signpost' > "$RAW_LOG" &
   LOG_PID=$!
   trap 'kill "$LOG_PID" >/dev/null 2>&1 || true' EXIT
   sleep 1
