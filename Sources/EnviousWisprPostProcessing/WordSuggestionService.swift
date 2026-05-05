@@ -121,19 +121,114 @@ public final class WordSuggestionService: Sendable {
     Int((Date().timeIntervalSince(start) * 1000.0).rounded())
   }
 
-  private static let suggestionInstructions = """
-    You predict how speech-to-text engines (Whisper, Parakeet) misrecognize a spoken word.
-    Focus on: wrong word boundaries ("par vati"), vowel/consonant swaps ("pavathi"), \
-    phonetic spellings ("poor vati"), and homophones ("partee").
-    Do NOT suggest honorifics, suffixes, or cultural variants — only ASR errors.
-    Examples:
-    - "Kubernetes" → category: brand, aliases: ["kuber netties", "cube ernetes", "cooper nettys"]
-    - "Miyamoto" → category: person, aliases: ["me ya moto", "mia motto", "me amoto", "miyomoto"]
-    - "Parvati" → category: person, aliases: ["par vati", "poor vati", "pavathi", "par vathy"]
-    - "Gemini" → category: brand, aliases: ["jeh meh nee", "jamini", "gemenai"]
-    Always provide 3-5 realistic ASR misrecognitions.
-    If you cannot produce at least 3 distinct misrecognitions different from the input, return an empty list.
+  // Step 1 — classification only.
+  private static let classificationInstructions = """
+    Classify the input word into ONE of these categories. Return only the \
+    category name. Pick the FIRST rule that matches.
+
+    1. acronym  -- the input is ALL CAPITAL LETTERS only, no lowercase, no \
+    digits, no punctuation. Examples: OKR, PR, KPI, RSI, AWS, NATO, HIPAA, CRM.
+    2. domain   -- the input mixes lowercase and uppercase letters OR contains \
+    a digit, dot, or other symbol. Examples: gRPC, GraphQL, OAuth2, WebSocket, \
+    WebRTC, S3, github.com.
+    3. person   -- the input is a human name (capitalized first letter, \
+    otherwise lowercase). Examples: Parvati, Saurabh, Miyamoto, Aiyana.
+    4. brand    -- the input is a product, company, or framework name. \
+    Examples: Kubernetes, Postgres, Tailwind, Linear, DigitalOcean, Slack.
+    5. general  -- everything else (regular vocabulary). Examples: webhook, \
+    async, middleware.
+
+    Output exactly one of: acronym, domain, person, brand, general.
     """
+
+  // Step 2 — generation, given a known category.
+  private static func aliasInstructions(for category: WordCategory) -> String {
+    switch category {
+    case .acronym:
+      return """
+        You predict how speech-to-text engines (Whisper, Parakeet) write an \
+        ACRONYM wrong. The acronym is spelled letter-by-letter aloud. Each \
+        letter is heard as a syllable.
+
+        Output 3-5 phonetic mistranscriptions. Each output must be \
+        SUBSTANTIVELY different from the input -- never echo the input, never \
+        just lowercase it. Examples of the pattern (do not copy these tokens):
+        - OKR -> ["okay are", "oh K R", "okayer"]
+        - PR -> ["pee are", "peer"]
+        - RSI -> ["are S I", "arr S I"]
+        - HIPAA -> ["hippa", "hip ah", "hipper"]
+
+        Vary your outputs; never return the same string twice. If you cannot \
+        produce 3 substantively different mistranscriptions, return [].
+        """
+    case .domain:
+      return """
+        You predict how speech-to-text engines (Whisper, Parakeet) write a \
+        TECHNICAL TERM wrong. The term mixes letters and words; ASR splits it \
+        into chunks or letter-syllables.
+
+        Output 3-5 phonetic mistranscriptions. Each output must be \
+        SUBSTANTIVELY different from the canonical -- NOT just a space \
+        inserted, NOT just casing changed. Examples of the pattern (do not \
+        copy these tokens):
+        - gRPC -> ["gee R P C", "jee R P C"]
+        - GraphQL -> ["graph Q L", "graf Q L"]
+        - OAuth2 -> ["oh auth two", "O auth 2"]
+        - WebSocket -> ["wep sock it", "wep socket"]
+
+        Never output the canonical term with only added or removed spaces. \
+        If you cannot produce 3 substantively different mistranscriptions, \
+        return [].
+        """
+    case .person:
+      return """
+        You predict how speech-to-text engines (Whisper, Parakeet) write a \
+        PERSON'S NAME wrong. ASR mishears via vowel and consonant swaps and \
+        word-boundary errors.
+
+        Output 3-5 phonetic mistranscriptions. Never output honorifics, \
+        relatives, last names, or alternate identities. Examples of the \
+        pattern (do not copy these tokens):
+        - Parvati -> ["par vati", "poor vati", "pavathi"]
+        - Saurabh -> ["Sourabh", "Sorab", "Sarab"]
+        - Miyamoto -> ["me ya moto", "mia motto", "miyomoto"]
+
+        If you cannot produce 3 substantively different mistranscriptions, \
+        return [].
+        """
+    case .brand:
+      return """
+        You predict how speech-to-text engines (Whisper, Parakeet) write a \
+        BRAND NAME wrong. ASR splits the brand into phonetic chunks of how \
+        it is pronounced.
+
+        Output 3-5 phonetic mistranscriptions. Each must be SUBSTANTIVELY \
+        different from the canonical -- NOT a suffix-strip, NOT just a space. \
+        Examples of the pattern (do not copy these tokens):
+        - Kubernetes -> ["kuber netties", "cube ernetes"]
+        - Postgres -> ["post grass", "post gress"]
+        - Tailwind -> ["tail wind", "tail ind"]
+
+        If you cannot produce 3 substantively different mistranscriptions, \
+        return [].
+        """
+    case .general:
+      return """
+        You predict how speech-to-text engines (Whisper, Parakeet) write a \
+        REGULAR WORD wrong. ASR splits at word boundaries or swaps vowels \
+        and consonants.
+
+        Output 3-5 phonetic mistranscriptions. Examples of the pattern (do \
+        not copy these tokens):
+        - webhook -> ["web hook", "web hooke"]
+        - async -> ["a sync", "a sink"]
+        - middleware -> ["middle ware", "middle wear"]
+
+        If you cannot produce 3 substantively different mistranscriptions, \
+        return [].
+        """
+    }
+  }
 
   // MARK: - Degeneration filter (Phase 1 #637)
 
@@ -172,10 +267,15 @@ public final class WordSuggestionService: Sendable {
   #if canImport(FoundationModels) && hasAttribute(Generable)
     @Generable
     @available(macOS 26.0, *)
-    struct WordSuggestionsResult {
-      @Guide(description: "Category: general, person, brand, acronym, or domain")
+    struct ClassificationResult {
+      @Guide(description: "One of: acronym, domain, person, brand, general")
       var category: String
-      @Guide(description: "3 to 5 ways speech recognition might mishear this word")
+    }
+
+    @Generable
+    @available(macOS 26.0, *)
+    struct AliasesResult {
+      @Guide(description: "3 to 5 phonetic mistranscriptions of the input")
       var suggestedAliases: [String]
     }
 
@@ -183,16 +283,26 @@ public final class WordSuggestionService: Sendable {
     private func runRawSuggestion(
       for word: String
     ) async throws -> (category: WordCategory, aliases: [String]) {
-      let session = LanguageModelSession(
+      let classificationSession = LanguageModelSession(
         model: SystemLanguageModel.default,
-        instructions: Self.suggestionInstructions
+        instructions: Self.classificationInstructions
       )
-      let response = try await session.respond(
+      let classificationResponse = try await classificationSession.respond(
         to: "Word: \(word)",
-        generating: WordSuggestionsResult.self
+        generating: ClassificationResult.self
       )
-      let category = WordCategory(rawValue: response.category.lowercased()) ?? .general
-      return (category, response.suggestedAliases)
+      let category =
+        WordCategory(rawValue: classificationResponse.category.lowercased()) ?? .general
+
+      let aliasSession = LanguageModelSession(
+        model: SystemLanguageModel.default,
+        instructions: Self.aliasInstructions(for: category)
+      )
+      let aliasResponse = try await aliasSession.respond(
+        to: "Word: \(word)",
+        generating: AliasesResult.self
+      )
+      return (category, aliasResponse.suggestedAliases)
     }
 
     @available(macOS 26, *)
@@ -220,32 +330,52 @@ public final class WordSuggestionService: Sendable {
     private func runRawSuggestion(
       for word: String
     ) async throws -> (category: WordCategory, aliases: [String]) {
-      let session = LanguageModelSession(
+      // Step 1 — classification.
+      let classificationSession = LanguageModelSession(
         model: SystemLanguageModel.default,
-        instructions: Self.suggestionInstructions
+        instructions: Self.classificationInstructions
       )
-      let dynamicSchema = DynamicGenerationSchema(
-        name: "WordSuggestion",
+      let classificationDynamic = DynamicGenerationSchema(
+        name: "Classification",
         properties: [
           DynamicGenerationSchema.Property(
             name: "category",
             schema: DynamicGenerationSchema(type: String.self)
-          ),
+          )
+        ]
+      )
+      let classificationSchema = try GenerationSchema(
+        root: classificationDynamic, dependencies: []
+      )
+      let classificationResponse = try await classificationSession.respond(
+        to: "Word: \(word)",
+        schema: classificationSchema
+      )
+      let categoryStr = try classificationResponse.content.value(
+        String.self, forProperty: "category"
+      )
+      let category = WordCategory(rawValue: categoryStr.lowercased()) ?? .general
+
+      // Step 2 — alias generation.
+      let aliasSession = LanguageModelSession(
+        model: SystemLanguageModel.default,
+        instructions: Self.aliasInstructions(for: category)
+      )
+      let aliasDynamic = DynamicGenerationSchema(
+        name: "Aliases",
+        properties: [
           DynamicGenerationSchema.Property(
             name: "suggestedAliases",
             schema: DynamicGenerationSchema(arrayOf: DynamicGenerationSchema(type: String.self))
-          ),
+          )
         ]
       )
-      let schema = try GenerationSchema(root: dynamicSchema, dependencies: [])
-
-      let response = try await session.respond(
+      let aliasSchema = try GenerationSchema(root: aliasDynamic, dependencies: [])
+      let aliasResponse = try await aliasSession.respond(
         to: "Word: \(word)",
-        schema: schema
+        schema: aliasSchema
       )
-      let categoryStr = try response.content.value(String.self, forProperty: "category")
-      let raw = try response.content.value([String].self, forProperty: "suggestedAliases")
-      let category = WordCategory(rawValue: categoryStr.lowercased()) ?? .general
+      let raw = try aliasResponse.content.value([String].self, forProperty: "suggestedAliases")
       return (category, raw)
     }
 
