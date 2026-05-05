@@ -30,6 +30,40 @@ public struct WordCorrector: Sendable {
 
   public init() {}
 
+  // MARK: - Phase 2 (#638) hardening helpers — bible §8.2
+
+  /// Common stopwords that lift the multi-word fuzzy threshold by +0.05 when
+  /// they appear in a candidate span. Prevents "and we said" → "Andre",
+  /// "at this" → "Matthew", "or who" → "Orhul" type degeneration as vocab
+  /// grows past 100 terms.
+  static let stopwords: Set<String> = [
+    "the", "and", "or", "is", "to", "for", "in",
+    "a", "at", "on", "of", "we", "you", "it",
+  ]
+
+  /// Lift threshold in proportion to candidate-pool density. The chance of a
+  /// coincidental near-match grows roughly linearly with candidate density;
+  /// this penalty restores precision-at-scale without changing the scoring
+  /// shape. Bible §8.2 item 2.
+  ///
+  /// Pool size ≤ 100 → no penalty.
+  /// Pool size 101-600 → +0.02.
+  /// Pool size 601-1100 → +0.04.
+  /// Pool size 1101+ → +0.06 (capped).
+  public static func largeVocabPenalty(poolSize: Int) -> Double {
+    guard poolSize > 100 else { return 0 }
+    let bumps = (poolSize - 100) / 500
+    return min(0.06, Double(bumps) * 0.02)
+  }
+
+  /// Loosen threshold for longer candidates. A one-character edit in a 5-char
+  /// term costs 20% similarity; the same edit in a 20-char phrase costs 5%.
+  /// Subtracts up to 0.04 from the threshold for terms longer than 8 chars.
+  /// Bible §8.2 item 3.
+  public static func lengthAwareAdjustment(candidateLength: Int) -> Double {
+    return min(0.04, 0.005 * Double(max(0, candidateLength - 8)))
+  }
+
   // MARK: - Replacement attribution (Phase 3a #631)
 
   /// Per-replacement attribution: which `CustomWord.id` this replacement
@@ -58,8 +92,12 @@ public struct WordCorrector: Sendable {
     // `CustomWordsManager.add(canonical:)` (case-insensitive uniqueness
     // enforced at line 171-180), so a single-source-per-canonical map is safe.
     var canonicalToID: [String: UUID] = [:]
+    // Phase 2 (#638): same map but → CustomWord, so the acceptance loops can
+    // honor `minSimilarityOverride` per term.
+    var canonicalToWord: [String: CustomWord] = [:]
     for word in words {
       canonicalToID[word.canonical.lowercased()] = word.id
+      canonicalToWord[word.canonical.lowercased()] = word
     }
 
     // 1. Build alias maps with collision detection
@@ -247,7 +285,18 @@ public struct WordCorrector: Sendable {
               }
 
               let margin = bestScore - secondBest
-              if bestScore >= Self.multiWordThreshold,
+              // Phase 2 (#638) §8.2 item 1: lift multi-word threshold by +0.05
+              // when the candidate span includes any common stopword. Prevents
+              // "and we said" → "Andre" type degeneration.
+              let phraseTokens = Set(phrase.components(separatedBy: " "))
+              let hasStopword = !phraseTokens.isDisjoint(with: Self.stopwords)
+              let stopwordPenalty = hasStopword ? 0.05 : 0.0
+              // Phase 2 (#638) §8.2 item 4: per-term override for the matched
+              // canonical, if any. Override is the absolute bar.
+              let multiOverride = canonicalToWord[bestCanonical.lowercased()]?
+                .minSimilarityOverride
+              let multiThreshold = multiOverride ?? (Self.multiWordThreshold + stopwordPenalty)
+              if bestScore >= multiThreshold,
                 margin >= Self.ambiguityMargin,
                 rawPhrase != bestCanonical
               {
@@ -259,7 +308,7 @@ public struct WordCorrector: Sendable {
                 matched = true
                 #if DEBUG
                   Self.logger.debug(
-                    "WordCorrector: type=multi-word-fuzzy source='\(rawPhrase)' target='\(bestCanonical)' alias='\(bestAlias)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(margin, format: .fixed(precision: 3))"
+                    "WordCorrector: type=multi-word-fuzzy source='\(rawPhrase)' target='\(bestCanonical)' alias='\(bestAlias)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(margin, format: .fixed(precision: 3)) stopword=\(hasStopword) override=\(multiOverride.map { String($0) } ?? "nil")"
                   )
                 #endif
                 break
@@ -319,14 +368,21 @@ public struct WordCorrector: Sendable {
         }
       }
 
-      if bestScore >= effectiveThreshold,
+      // Phase 2 (#638) §8.2: vocab-size penalty + length-aware adjustment
+      // applied per-candidate. Per-term override wins absolutely if set.
+      let pass4VocabPenalty = Self.largeVocabPenalty(poolSize: singleFuzzyCandidates.count)
+      let pass4LengthAdj = Self.lengthAwareAdjustment(candidateLength: bestMatch.count)
+      let pass4Override = canonicalToWord[bestMatch.lowercased()]?.minSimilarityOverride
+      let pass4Threshold =
+        pass4Override ?? (effectiveThreshold + pass4VocabPenalty - pass4LengthAdj)
+      if bestScore >= pass4Threshold,
         bestScore - secondBest >= Self.ambiguityMargin,
         core != bestMatch
       {
         appendReplacement(forCanonical: bestMatch)
         #if DEBUG
           Self.logger.debug(
-            "WordCorrector: type=alias-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(bestScore - secondBest, format: .fixed(precision: 3))"
+            "WordCorrector: type=alias-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(bestScore - secondBest, format: .fixed(precision: 3)) threshold=\(pass4Threshold, format: .fixed(precision: 3))"
           )
         #endif
         return prefix + bestMatch + suffix
@@ -352,14 +408,20 @@ public struct WordCorrector: Sendable {
         }
       }
 
-      if bestScore >= effectiveThreshold,
+      // Phase 2 (#638) §8.2: same hardening for Pass 5.
+      let pass5VocabPenalty = Self.largeVocabPenalty(poolSize: lowercasedCanonicals.count)
+      let pass5LengthAdj = Self.lengthAwareAdjustment(candidateLength: bestMatch.count)
+      let pass5Override = canonicalToWord[bestMatch.lowercased()]?.minSimilarityOverride
+      let pass5Threshold =
+        pass5Override ?? (effectiveThreshold + pass5VocabPenalty - pass5LengthAdj)
+      if bestScore >= pass5Threshold,
         bestScore - secondBest >= Self.ambiguityMargin,
         core != bestMatch
       {
         appendReplacement(forCanonical: bestMatch)
         #if DEBUG
           Self.logger.debug(
-            "WordCorrector: type=canonical-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(bestScore - secondBest, format: .fixed(precision: 3))"
+            "WordCorrector: type=canonical-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(bestScore - secondBest, format: .fixed(precision: 3)) threshold=\(pass5Threshold, format: .fixed(precision: 3))"
           )
         #endif
         return prefix + bestMatch + suffix

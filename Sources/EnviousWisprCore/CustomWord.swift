@@ -37,6 +37,12 @@ public struct CustomWord: Codable, Identifiable, Sendable, Hashable {
   /// Phase 3a (#631) adds the field; Phase 3b ships the writer. Pre-Phase-3a
   /// entries decode as nil.
   public var lastUsed: Date?
+  /// Per-term similarity threshold override. When non-nil, replaces the global
+  /// `WordCorrector.threshold` for this term's fuzzy-pass acceptance check.
+  /// Phase 2 (#638) adds the field; Phase 4 (#634) surfaces it as
+  /// "Match strictness: Loose / Default / Strict" radio. Pre-Phase-2 entries
+  /// decode as nil (use global threshold).
+  public var minSimilarityOverride: Double?
 
   public init(
     id: UUID = UUID(),
@@ -48,7 +54,8 @@ public struct CustomWord: Codable, Identifiable, Sendable, Hashable {
     caseSensitive: Bool = false,
     source: WordSource = .user,
     frequencyUsed: Int = 0,
-    lastUsed: Date? = nil
+    lastUsed: Date? = nil,
+    minSimilarityOverride: Double? = nil
   ) {
     self.id = id
     self.canonical = canonical
@@ -60,6 +67,7 @@ public struct CustomWord: Codable, Identifiable, Sendable, Hashable {
     self.source = source
     self.frequencyUsed = frequencyUsed
     self.lastUsed = lastUsed
+    self.minSimilarityOverride = minSimilarityOverride
   }
 
   // `source` deliberately omitted — keeps persisted JSON byte-equivalent to the
@@ -67,9 +75,11 @@ public struct CustomWord: Codable, Identifiable, Sendable, Hashable {
   // `frequencyUsed` + `lastUsed` ARE persisted (Phase 3a, bible §9.2). Forward-
   // compatible: older app versions ignore the new keys; backward-compatible:
   // pre-Phase-3a JSON files decode the new fields via `decodeIfPresent`.
+  // `minSimilarityOverride` is persisted (Phase 2, bible §8.2 item 4). Same
+  // additive forward/backward-compat semantics.
   private enum CodingKeys: String, CodingKey {
     case id, canonical, aliases, category, priority, forceReplace, caseSensitive
-    case frequencyUsed, lastUsed
+    case frequencyUsed, lastUsed, minSimilarityOverride
   }
 
   public init(from decoder: Decoder) throws {
@@ -83,6 +93,7 @@ public struct CustomWord: Codable, Identifiable, Sendable, Hashable {
     self.caseSensitive = try c.decodeIfPresent(Bool.self, forKey: .caseSensitive) ?? false
     self.frequencyUsed = try c.decodeIfPresent(Int.self, forKey: .frequencyUsed) ?? 0
     self.lastUsed = try c.decodeIfPresent(Date.self, forKey: .lastUsed)
+    self.minSimilarityOverride = try c.decodeIfPresent(Double.self, forKey: .minSimilarityOverride)
     self.source = .user
   }
 
@@ -97,6 +108,7 @@ public struct CustomWord: Codable, Identifiable, Sendable, Hashable {
     try c.encode(caseSensitive, forKey: .caseSensitive)
     try c.encode(frequencyUsed, forKey: .frequencyUsed)
     try c.encodeIfPresent(lastUsed, forKey: .lastUsed)
+    try c.encodeIfPresent(minSimilarityOverride, forKey: .minSimilarityOverride)
     // source intentionally NOT encoded.
   }
 }
