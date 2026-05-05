@@ -126,9 +126,9 @@ struct WordCorrectorTests {
   @Test("exact multi-word alias replacement")
   func exactMultiWord() {
     let words = [CustomWord(canonical: "Visual Studio Code", aliases: ["vs code"])]
-    let (result, count) = corrector.correct("I opened vs code", against: words)
+    let (result, replacements) = corrector.correct("I opened vs code", against: words)
     #expect(result == "I opened Visual Studio Code")
-    #expect(count == 1)
+    #expect(replacements.count == 1)
   }
 
   // MARK: - Pass 3: Exact single-word alias
@@ -136,33 +136,33 @@ struct WordCorrectorTests {
   @Test("exact alias match corrects casing")
   func exactAliasMatch() {
     let words = [CustomWord(canonical: "ChatGPT", aliases: ["chatgpt"])]
-    let (result, count) = corrector.correct("I used chatgpt today", against: words)
+    let (result, replacements) = corrector.correct("I used chatgpt today", against: words)
     #expect(result == "I used ChatGPT today")
-    #expect(count == 1)
+    #expect(replacements.count == 1)
   }
 
   @Test("canonical self-entry fixes casing")
   func canonicalSelfEntry() {
     let words = [CustomWord(canonical: "iPhone")]
-    let (result, count) = corrector.correct("I have an iphone", against: words)
+    let (result, replacements) = corrector.correct("I have an iphone", against: words)
     #expect(result == "I have an iPhone")
-    #expect(count == 1)
+    #expect(replacements.count == 1)
   }
 
   @Test("short token exact alias")
   func shortTokenExactAlias() {
     let words = [CustomWord(canonical: "API", aliases: ["api"])]
-    let (result, count) = corrector.correct("the api is fast", against: words)
+    let (result, replacements) = corrector.correct("the api is fast", against: words)
     #expect(result == "the API is fast")
-    #expect(count == 1)
+    #expect(replacements.count == 1)
   }
 
   @Test("already correct text unchanged")
   func alreadyCorrect() {
     let words = [CustomWord(canonical: "ChatGPT", aliases: ["chatgpt"])]
-    let (result, count) = corrector.correct("I used ChatGPT today", against: words)
+    let (result, replacements) = corrector.correct("I used ChatGPT today", against: words)
     #expect(result == "I used ChatGPT today")
-    #expect(count == 0)
+    #expect(replacements.count == 0)
   }
 
   // MARK: - Pass 4: Fuzzy single-word against aliases
@@ -171,9 +171,9 @@ struct WordCorrectorTests {
   func fuzzyAliasMatch() {
     // "kuberntes" is NOT in the alias list but close to canonical self-entry "kubernetes"
     let words = [CustomWord(canonical: "Kubernetes", aliases: ["k8s"])]
-    let (result, count) = corrector.correct("deployed to kuberntes", against: words)
+    let (result, replacements) = corrector.correct("deployed to kuberntes", against: words)
     #expect(result == "deployed to Kubernetes")
-    #expect(count == 1)
+    #expect(replacements.count == 1)
   }
 
   // MARK: - Pass 5: Fuzzy canonical fallback
@@ -181,9 +181,9 @@ struct WordCorrectorTests {
   @Test("fuzzy canonical fallback for words with no aliases")
   func fuzzyCanonicalFallback() {
     let words = [CustomWord(canonical: "Kubernetes")]
-    let (result, count) = corrector.correct("deployed to kuberntes", against: words)
+    let (result, replacements) = corrector.correct("deployed to kuberntes", against: words)
     #expect(result == "deployed to Kubernetes")
-    #expect(count == 1)
+    #expect(replacements.count == 1)
   }
 
   // MARK: - Guards and edge cases
@@ -191,25 +191,25 @@ struct WordCorrectorTests {
   @Test("empty word list returns unchanged text")
   func emptyWordList() {
     let empty: [CustomWord] = []
-    let (result, count) = corrector.correct("hello world", against: empty)
+    let (result, replacements) = corrector.correct("hello world", against: empty)
     #expect(result == "hello world")
-    #expect(count == 0)
+    #expect(replacements.count == 0)
   }
 
   @Test("no match when input is too different")
   func noFuzzyMatchWhenTooFar() {
     let words = [CustomWord(canonical: "Kubernetes")]
-    let (result, count) = corrector.correct("I like bananas", against: words)
+    let (result, replacements) = corrector.correct("I like bananas", against: words)
     #expect(result == "I like bananas")
-    #expect(count == 0)
+    #expect(replacements.count == 0)
   }
 
   @Test("preserves surrounding punctuation")
   func preservesPunctuation() {
     let words = [CustomWord(canonical: "ChatGPT", aliases: ["chatgpt"])]
-    let (result, count) = corrector.correct("I used chatgpt, and it worked!", against: words)
+    let (result, replacements) = corrector.correct("I used chatgpt, and it worked!", against: words)
     #expect(result == "I used ChatGPT, and it worked!")
-    #expect(count == 1)
+    #expect(replacements.count == 1)
   }
 
   @Test("multiple replacements in one pass")
@@ -218,9 +218,9 @@ struct WordCorrectorTests {
       CustomWord(canonical: "ChatGPT", aliases: ["chatgpt"]),
       CustomWord(canonical: "OpenAI", aliases: ["openai"]),
     ]
-    let (result, count) = corrector.correct("openai made chatgpt", against: words)
+    let (result, replacements) = corrector.correct("openai made chatgpt", against: words)
     #expect(result == "OpenAI made ChatGPT")
-    #expect(count == 2)
+    #expect(replacements.count == 2)
   }
 
   // MARK: - Scoring primitives
@@ -256,44 +256,45 @@ struct WordCorrectorTests {
   @Test("n-gram compound fixes casing: chat gpt -> ChatGPT")
   func ngramCompoundCasingFix() {
     let words = [CustomWord(canonical: "ChatGPT")]
-    let (result, count) = corrector.correct("I used chat gpt today", against: words)
+    let (result, replacements) = corrector.correct("I used chat gpt today", against: words)
     #expect(result == "I used ChatGPT today")
-    #expect(count == 1)
+    #expect(replacements.count == 1)
   }
 
   @Test("n-gram compound: open a i -> OpenAI (3 tokens, max window)")
   func ngramCompoundOpenAI() {
     let words = [CustomWord(canonical: "OpenAI")]
-    let (result, count) = corrector.correct("open a i is great", against: words)
+    let (result, replacements) = corrector.correct("open a i is great", against: words)
     #expect(result == "OpenAI is great")
-    #expect(count == 1)
+    #expect(replacements.count == 1)
   }
 
   @Test("n-gram already correct casing not replaced")
   func ngramAlreadyCorrect() {
     // When raw concat matches canonical nospace (case-sensitive), no replacement
     let words = [CustomWord(canonical: "ChatGPT")]
-    let (result, count) = corrector.correct("I used ChatGPT today", against: words)
+    let (result, replacements) = corrector.correct("I used ChatGPT today", against: words)
     #expect(result == "I used ChatGPT today")
-    #expect(count == 0)
+    #expect(replacements.count == 0)
   }
 
   @Test("n-gram compound preserves surrounding punctuation")
   func ngramPreservesPunctuation() {
     let words = [CustomWord(canonical: "ChatGPT")]
-    let (result, count) = corrector.correct("I used chat gpt, and it worked!", against: words)
+    let (result, replacements) = corrector.correct(
+      "I used chat gpt, and it worked!", against: words)
     #expect(result == "I used ChatGPT, and it worked!")
-    #expect(count == 1)
+    #expect(replacements.count == 1)
   }
 
   @Test("n-gram single token casing fix")
   func ngramSingleTokenCasingFix() {
     // N-gram pass also handles n=1 for single-token compound words
     let words = [CustomWord(canonical: "ChatGPT")]
-    let (result, count) = corrector.correct("I used chatgpt", against: words)
+    let (result, replacements) = corrector.correct("I used chatgpt", against: words)
     // Single token "chatgpt" matches nospace "chatgpt" -> "ChatGPT"
     #expect(result == "I used ChatGPT")
-    #expect(count == 1)
+    #expect(replacements.count == 1)
   }
 
   // MARK: - Threshold boundaries
@@ -303,9 +304,9 @@ struct WordCorrectorTests {
     // "api" (3 chars) vs "apt" -- should NOT correct because it's a short token
     // and the score won't meet the 0.90 short token threshold
     let words = [CustomWord(canonical: "API")]
-    let (result, count) = corrector.correct("use apt to install", against: words)
+    let (result, replacements) = corrector.correct("use apt to install", against: words)
     #expect(result == "use apt to install")
-    #expect(count == 0)
+    #expect(replacements.count == 0)
   }
 
   @Test("ambiguity margin prevents correction when two candidates are close")
