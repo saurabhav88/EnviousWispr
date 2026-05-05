@@ -4,8 +4,12 @@ import Testing
 
 @testable import EnviousWisprPipeline
 
-/// Phase 2b (#638) — pins the lookup-map cache + heart-path 10ms timeout
-/// contracts on `WordCorrectionStep`. Bible §8.2 items 5-6, §17 R19, §2.2.1.
+/// Phase 2b (#638) — pins the lookup-map cache contract on
+/// `WordCorrectionStep`. Bible §8.2 items 5-6, §17 R19.
+///
+/// #657 (2026-05-05) — the inner 10ms timeout was removed; the only remaining
+/// bound is the runner-level 3-second `maxDuration` safety net. Cap-trip
+/// telemetry is owned by `TextProcessingRunner`, not this step.
 @MainActor
 @Suite("WordCorrectionStep — Phase 2b cache + timeout")
 struct WordCorrectionStepCacheTests {
@@ -96,5 +100,13 @@ struct WordCorrectionStepCacheTests {
     #expect(result.text == "hello world")
     // empty terms still builds an empty Lookups (cheap), so 1 build expected
     #expect(step.lookupCacheBuilds == 1)
+  }
+
+  // MARK: - #657 cap value pin
+
+  @Test("Outer cap is 3 seconds (#657)")
+  func outerCapIsThreeSeconds() {
+    let step = WordCorrectionStep()
+    #expect(step.maxDuration == .seconds(3))
   }
 }

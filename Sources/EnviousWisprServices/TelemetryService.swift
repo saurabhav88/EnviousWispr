@@ -710,13 +710,21 @@ public final class TelemetryService {
     )
   }
 
-  /// Phase 2 (#638) — fired by `WordCorrectionStep.process(...)` when the
-  /// 10ms heart-path timeout cap fires.
-  public func customWordsTimeoutFired(vocabSize: Int) {
+  /// #657 (2026-05-05) — fired by `TextProcessingRunner` when the
+  /// `WordCorrectionStep` exceeds its 3-second `maxDuration` cap and the
+  /// corrector result is discarded. Properties expanded from the prior
+  /// vocab-only shape so dashboards can slice cap-trips by input size.
+  public func customWordsTimeoutFired(
+    vocabSize: Int,
+    elapsedMs: Double,
+    inputChars: Int
+  ) {
     PostHogSDK.shared.capture(
       "custom_words.timeout_fired",
       properties: [
-        "vocab_size": vocabSize
+        "vocab_size": vocabSize,
+        "elapsed_ms": elapsedMs,
+        "input_chars": inputChars,
       ]
     )
   }
