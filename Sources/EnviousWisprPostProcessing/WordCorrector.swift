@@ -64,43 +64,49 @@ public struct WordCorrector: Sendable {
     return min(0.04, 0.005 * Double(max(0, candidateLength - 8)))
   }
 
-  // MARK: - Replacement attribution (Phase 3a #631)
+  // MARK: - Phase 2b (#638) lookup-map cache
 
-  /// Per-replacement attribution: which `CustomWord.id` this replacement
-  /// originated from. Phase 3b consumes the list to bump `frequencyUsed` /
-  /// `lastUsed` on each source. Phase 7 may extend with `pass: Int, span:
-  /// Range<String.Index>` if needed (currently unused per bible §13).
-  public struct Replacement: Sendable, Equatable {
-    public let sourceID: UUID
-    public init(sourceID: UUID) { self.sourceID = sourceID }
+  /// Pre-built lookup structures for one `WordCorrector.correct(...)` call.
+  /// Phase 2b (#638) extracts what was previously rebuilt on every call so
+  /// `WordCorrectionStep` can cache it across calls of the same vocabulary
+  /// generation. Bible §17 R19 (matcher rebuild risk).
+  ///
+  /// Sendable so callers can hop the value across actors (e.g. running
+  /// `correct(...)` off MainActor inside the heart-path 10ms timeout).
+  public struct Lookups: Sendable {
+    public struct SurfaceCanonical: Sendable {
+      public let surface: String
+      public let canonical: String
+    }
+    public struct AliasCanonical: Sendable {
+      public let alias: String
+      public let canonical: String
+    }
+    public let singleAliasMap: [String: String]
+    public let multiAliasMap: [String: String]
+    public let nospaceCanonicalMap: [String: String]
+    public let canonicalToID: [String: UUID]
+    public let canonicalToWord: [String: CustomWord]
+    public let canonicals: [String]
+    public let lowercasedCanonicals: [String]
+    public let singleFuzzyCandidates: [SurfaceCanonical]
+    public let multiAliasByCount: [Int: [AliasCanonical]]
   }
 
-  // MARK: - Main Correction
-
-  public func correct(_ text: String, against words: [CustomWord]) -> (
-    corrected: String, replacements: [Replacement]
-  ) {
-    guard !words.isEmpty else { return (text, []) }
-
-    // --- Build lookup structures (once per call) ---
-
+  /// Build the lookup structures for a given vocabulary. Pure function.
+  /// `WordCorrectionStep` calls this once per generation change and reuses
+  /// the result across many `correct(...)` calls.
+  public static func buildLookups(words: [CustomWord]) -> Lookups {
     var singleAliasMap: [String: String] = [:]
     var multiAliasMap: [String: String] = [:]
     var collisionCount = 0
-    // Phase 3a (#631): lookup map for replacement attribution. Lowercased
-    // canonical → source `CustomWord.id`. Canonicals are unique per
-    // `CustomWordsManager.add(canonical:)` (case-insensitive uniqueness
-    // enforced at line 171-180), so a single-source-per-canonical map is safe.
     var canonicalToID: [String: UUID] = [:]
-    // Phase 2 (#638): same map but → CustomWord, so the acceptance loops can
-    // honor `minSimilarityOverride` per term.
     var canonicalToWord: [String: CustomWord] = [:]
     for word in words {
       canonicalToID[word.canonical.lowercased()] = word.id
       canonicalToWord[word.canonical.lowercased()] = word
     }
 
-    // 1. Build alias maps with collision detection
     for word in words {
       for alias in word.aliases {
         let key = alias.lowercased()
@@ -128,7 +134,6 @@ public struct WordCorrector: Sendable {
       }
     }
 
-    // 2. Add canonical self-entries (explicit aliases win)
     for word in words {
       let key = word.canonical.lowercased()
       if !key.contains(" ") {
@@ -145,21 +150,81 @@ public struct WordCorrector: Sendable {
       }
     }
 
-    // 3. Pre-index for fuzzy passes
     let canonicals = words.map(\.canonical)
     let lowercasedCanonicals = canonicals.map { $0.lowercased() }
-
-    // Single-word fuzzy candidates: all entries in singleAliasMap
-    let singleFuzzyCandidates = singleAliasMap.map { (surface: $0.key, canonical: $0.value) }
-
-    // Multi-word fuzzy candidates indexed by token count
-    var multiAliasByCount: [Int: [(alias: String, canonical: String)]] = [:]
+    let singleFuzzyCandidates = singleAliasMap.map {
+      Lookups.SurfaceCanonical(surface: $0.key, canonical: $0.value)
+    }
+    var multiAliasByCount: [Int: [Lookups.AliasCanonical]] = [:]
     for (alias, canonical) in multiAliasMap {
       let count = alias.components(separatedBy: " ").count
-      multiAliasByCount[count, default: []].append((alias, canonical))
+      multiAliasByCount[count, default: []].append(
+        Lookups.AliasCanonical(alias: alias, canonical: canonical))
     }
 
-    // --- Correction passes ---
+    var nospaceCanonicalMap: [String: String] = [:]
+    for word in words {
+      let nospace = word.canonical.replacingOccurrences(of: " ", with: "").lowercased()
+      nospaceCanonicalMap[nospace] = word.canonical
+      for alias in word.aliases {
+        let aliasNospace = alias.replacingOccurrences(of: " ", with: "").lowercased()
+        if nospaceCanonicalMap[aliasNospace] == nil {
+          nospaceCanonicalMap[aliasNospace] = word.canonical
+        }
+      }
+    }
+
+    return Lookups(
+      singleAliasMap: singleAliasMap,
+      multiAliasMap: multiAliasMap,
+      nospaceCanonicalMap: nospaceCanonicalMap,
+      canonicalToID: canonicalToID,
+      canonicalToWord: canonicalToWord,
+      canonicals: canonicals,
+      lowercasedCanonicals: lowercasedCanonicals,
+      singleFuzzyCandidates: singleFuzzyCandidates,
+      multiAliasByCount: multiAliasByCount
+    )
+  }
+
+  // MARK: - Replacement attribution (Phase 3a #631)
+
+  /// Per-replacement attribution: which `CustomWord.id` this replacement
+  /// originated from. Phase 3b consumes the list to bump `frequencyUsed` /
+  /// `lastUsed` on each source. Phase 7 may extend with `pass: Int, span:
+  /// Range<String.Index>` if needed (currently unused per bible §13).
+  public struct Replacement: Sendable, Equatable {
+    public let sourceID: UUID
+    public init(sourceID: UUID) { self.sourceID = sourceID }
+  }
+
+  // MARK: - Main Correction
+
+  /// Convenience overload — builds lookups inline. Use this when you only
+  /// call `correct` once per vocabulary (legacy callers, tests).
+  public func correct(_ text: String, against words: [CustomWord]) -> (
+    corrected: String, replacements: [Replacement]
+  ) {
+    guard !words.isEmpty else { return (text, []) }
+    let lookups = Self.buildLookups(words: words)
+    return correct(text, using: lookups)
+  }
+
+  /// Phase 2b (#638) primary entry point. Accepts pre-built lookups so
+  /// `WordCorrectionStep` can cache the build cost across calls of the same
+  /// vocabulary generation. Pure function — safe to call off any actor.
+  public func correct(_ text: String, using lookups: Lookups) -> (
+    corrected: String, replacements: [Replacement]
+  ) {
+    let singleAliasMap = lookups.singleAliasMap
+    let multiAliasMap = lookups.multiAliasMap
+    let nospaceCanonicalMap = lookups.nospaceCanonicalMap
+    let canonicalToID = lookups.canonicalToID
+    let canonicalToWord = lookups.canonicalToWord
+    let canonicals = lookups.canonicals
+    let lowercasedCanonicals = lookups.lowercasedCanonicals
+    let singleFuzzyCandidates = lookups.singleFuzzyCandidates
+    let multiAliasByCount = lookups.multiAliasByCount
 
     var replacements: [Replacement] = []
     var tokens = text.components(separatedBy: .whitespaces)
@@ -169,22 +234,6 @@ public struct WordCorrector: Sendable {
     func appendReplacement(forCanonical canonical: String) {
       if let id = canonicalToID[canonical.lowercased()] {
         replacements.append(Replacement(sourceID: id))
-      }
-    }
-
-    // Build nospace lookup for Pass 0 (n-gram compound matching)
-    // Maps lowercase-nospace canonical -> original canonical
-    // e.g., "chatgpt" -> "ChatGPT", "openai" -> "OpenAI", "vscode" -> "VS Code"
-    var nospaceCanonicalMap: [String: String] = [:]
-    for word in words {
-      let nospace = word.canonical.replacingOccurrences(of: " ", with: "").lowercased()
-      nospaceCanonicalMap[nospace] = word.canonical
-      // Also index aliases without spaces
-      for alias in word.aliases {
-        let aliasNospace = alias.replacingOccurrences(of: " ", with: "").lowercased()
-        if nospaceCanonicalMap[aliasNospace] == nil {
-          nospaceCanonicalMap[aliasNospace] = word.canonical
-        }
       }
     }
 
@@ -272,7 +321,9 @@ public struct WordCorrector: Sendable {
               var bestCanonical = ""
               var bestAlias = ""
 
-              for (alias, canonical) in candidates {
+              for entry in candidates {
+                let alias = entry.alias
+                let canonical = entry.canonical
                 let s = score(phrase, against: alias)
                 if s > bestScore {
                   if bestCanonical != canonical { secondBest = bestScore }
@@ -352,7 +403,9 @@ public struct WordCorrector: Sendable {
       var secondBest = 0.0
       var bestMatch = ""
 
-      for (surface, canonical) in singleFuzzyCandidates {
+      for entry in singleFuzzyCandidates {
+        let surface = entry.surface
+        let canonical = entry.canonical
         // Length-ratio pruning: skip if lengths differ too much for threshold
         let surfLen = surface.count
         let lenRatio = Double(min(coreLen, surfLen)) / Double(max(coreLen, surfLen))
