@@ -354,6 +354,27 @@ public final class WordSuggestionService: Sendable {
     return aliases
   }
 
+  /// Pool aliases from multiple AFM calls, preserving order, deduplicating
+  /// by normalized lowercase form. Returns up to `max` unique aliases.
+  static func dedupePool(_ lists: [[String]], max: Int) -> [String] {
+    var seen = Set<String>()
+    var pooled: [String] = []
+    for list in lists {
+      for s in list {
+        let key =
+          s
+          .trimmingCharacters(in: .whitespacesAndNewlines)
+          .lowercased()
+        if key.isEmpty { continue }
+        if seen.contains(key) { continue }
+        seen.insert(key)
+        pooled.append(s)
+        if pooled.count >= max { return pooled }
+      }
+    }
+    return pooled
+  }
+
   // MARK: - Guided generation with @Generable (full Xcode toolchain)
 
   #if canImport(FoundationModels) && hasAttribute(Generable)
@@ -389,7 +410,10 @@ public final class WordSuggestionService: Sendable {
       let category =
         WordCategory(rawValue: classificationResponse.category.lowercased()) ?? .general
 
-      let aliasSession = LanguageModelSession(
+      // Multi-call pooling: 2 sequential AFM calls with the same prompt,
+      // dedup by normalized form, take up to 8 unique outputs. AFM
+      // single-call mode-collapses on hard inputs; pooling rescues those.
+      let aliasSession1 = LanguageModelSession(
         model: SystemLanguageModel.default,
         instructions: Self.aliasInstructions(for: category)
       )
@@ -397,15 +421,23 @@ public final class WordSuggestionService: Sendable {
         Word: \(word)
         Forbidden: "\(word)", "\(word.lowercased())".
         """
-      // Plain-string output. Polish path uses this pattern (see
-      // AppleIntelligenceConnector). Schema-constrained array output appears
-      // to push AFM to pad with echoes when it has fewer than 3 ideas.
-      // Plain-string lets it return a natural list, which we parse.
-      let aliasResponse = try await aliasSession.respond(
+      let response1 = try await aliasSession1.respond(
         to: aliasUserPrompt,
         options: GenerationOptions(maximumResponseTokens: 120)
       )
-      return (category, Self.parsePlainStringAliases(aliasResponse.content))
+      let aliases1 = Self.parsePlainStringAliases(response1.content)
+
+      let aliasSession2 = LanguageModelSession(
+        model: SystemLanguageModel.default,
+        instructions: Self.aliasInstructions(for: category)
+      )
+      let response2 = try await aliasSession2.respond(
+        to: aliasUserPrompt,
+        options: GenerationOptions(maximumResponseTokens: 120)
+      )
+      let aliases2 = Self.parsePlainStringAliases(response2.content)
+
+      return (category, Self.dedupePool([aliases1, aliases2], max: 8))
     }
 
     @available(macOS 26, *)
@@ -459,8 +491,9 @@ public final class WordSuggestionService: Sendable {
       )
       let category = WordCategory(rawValue: categoryStr.lowercased()) ?? .general
 
-      // Step 2 — alias generation (plain-string output, polish-style).
-      let aliasSession = LanguageModelSession(
+      // Step 2 — alias generation (plain-string output, polish-style,
+      // multi-call pooling).
+      let aliasSession1 = LanguageModelSession(
         model: SystemLanguageModel.default,
         instructions: Self.aliasInstructions(for: category)
       )
@@ -468,11 +501,23 @@ public final class WordSuggestionService: Sendable {
         Word: \(word)
         Forbidden: "\(word)", "\(word.lowercased())".
         """
-      let aliasResponse = try await aliasSession.respond(
+      let response1 = try await aliasSession1.respond(
         to: aliasUserPrompt,
         options: GenerationOptions(maximumResponseTokens: 120)
       )
-      return (category, Self.parsePlainStringAliases(aliasResponse.content))
+      let aliases1 = Self.parsePlainStringAliases(response1.content)
+
+      let aliasSession2 = LanguageModelSession(
+        model: SystemLanguageModel.default,
+        instructions: Self.aliasInstructions(for: category)
+      )
+      let response2 = try await aliasSession2.respond(
+        to: aliasUserPrompt,
+        options: GenerationOptions(maximumResponseTokens: 120)
+      )
+      let aliases2 = Self.parsePlainStringAliases(response2.content)
+
+      return (category, Self.dedupePool([aliases1, aliases2], max: 8))
     }
 
     @available(macOS 26, *)
