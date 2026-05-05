@@ -192,6 +192,10 @@ private struct CustomWordEditSheet: View {
   @State private var newAlias: String = ""
   @State private var isLoadingSuggestions = false
   @State private var suggestionsApplied = false
+  /// Phase 1 (#637): true when AFM returned nil after a non-empty raw response
+  /// (degeneration). Surfaces a "No suggestions available" caption so the user
+  /// sees feedback instead of a silent no-op.
+  @State private var noSuggestionsAvailable = false
   let wordSuggestionService: WordSuggestionService?
   let onSave: (CustomWord) -> Void
   @Environment(\.dismiss) private var dismiss
@@ -300,13 +304,21 @@ private struct CustomWordEditSheet: View {
         }
         .padding(.leading, 20)
         .padding(.bottom, 28)
+      } else if noSuggestionsAvailable {
+        Text("No suggestions available")
+          .font(.stHelper)
+          .foregroundStyle(.stTextTertiary)
+          .padding(.leading, 20)
+          .padding(.bottom, 28)
       }
     }
     .task {
       guard word.aliases.isEmpty, !suggestionsApplied else { return }
       guard let service = wordSuggestionService, service.isAvailable else { return }
       isLoadingSuggestions = true
-      if let suggestions = await service.suggest(for: word.canonical) {
+      noSuggestionsAvailable = false
+      let suggestions = await service.suggest(for: word.canonical)
+      if let suggestions {
         if word.aliases.isEmpty {
           word.aliases = suggestions.suggestedAliases
         }
@@ -314,6 +326,10 @@ private struct CustomWordEditSheet: View {
           word.category = suggestions.category
         }
         suggestionsApplied = true
+      } else {
+        // Phase 1 (#637): nil now also covers AFM degeneration. Surface to
+        // user instead of silently leaving the chips area empty.
+        noSuggestionsAvailable = true
       }
       isLoadingSuggestions = false
     }
