@@ -120,4 +120,24 @@ struct PromptPlannerTests {
     let user = plan.envelope.messages[1].content
     #expect(user.contains("<transcript>"))
   }
+
+  @Test("Ollama Gemma plan uses few-shot prompt style")
+  func ollamaGemmaPlanStyle() {
+    let plan = planner.plan(input: makeInput(provider: .ollama, modelID: "gemma3:4b"))
+    let system = plan.envelope.messages[0].content
+    let user = plan.envelope.messages[1].content
+    #expect(system.contains("Example"))
+    #expect(system.contains("Now clean up this text:"))
+    #expect(!user.contains("<transcript>"))
+  }
+
+  @Test("Ollama non-Gemma plan uses OpenAI prose prompt style")
+  func ollamaNonGemmaPlanStyle() {
+    let plan = planner.plan(input: makeInput(provider: .ollama, modelID: "llama3.2"))
+    let system = plan.envelope.messages[0].content
+    let user = plan.envelope.messages[1].content
+    #expect(system.contains("Clean up this dictated transcript"))
+    #expect(!system.contains("Now clean up this text:"))
+    #expect(user.contains("<transcript>"))
+  }
 }
