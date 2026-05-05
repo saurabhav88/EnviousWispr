@@ -99,8 +99,7 @@ struct TranscriptCoordinatorTests {
     let coordinator = TranscriptCoordinator(store: store)
 
     coordinator.load()
-    // load() runs on a Task; wait for it.
-    try await Task.sleep(nanoseconds: 200_000_000)
+    await coordinator.waitForLoadForTesting()
 
     #expect(coordinator.transcripts.count == 3)
     let loadedIDs = Set(coordinator.transcripts.map(\.id))
@@ -123,7 +122,7 @@ struct TranscriptCoordinatorTests {
     let newRow = Self.makeTranscript(text: "appended")
     coordinator.append(newRow)
     coordinator.load()
-    try await Task.sleep(nanoseconds: 200_000_000)
+    await coordinator.waitForLoadForTesting()
 
     let ids = coordinator.transcripts.map(\.id)
     #expect(ids.count == 2)
@@ -151,7 +150,7 @@ struct TranscriptCoordinatorTests {
     coordinator.append(r2)
     coordinator.append(r3)
     coordinator.load()
-    try await Task.sleep(nanoseconds: 200_000_000)
+    await coordinator.waitForLoadForTesting()
 
     // Pre-merge in-memory order was [r3, r2, r1] (each append inserts at 0).
     // After merge: in-memory rows first (order preserved), then disk row.
@@ -170,7 +169,7 @@ struct TranscriptCoordinatorTests {
     let store = TranscriptStore(directory: dir)
     let coordinator = TranscriptCoordinator(store: store)
     coordinator.load()
-    try await Task.sleep(nanoseconds: 200_000_000)
+    await coordinator.waitForLoadForTesting()
 
     coordinator.delete(row)
     #expect(coordinator.transcripts.isEmpty)
