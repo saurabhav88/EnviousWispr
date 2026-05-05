@@ -95,7 +95,7 @@ final class AVCaptureSessionSource: AudioInputSource {
 
     let input = try AVCaptureDeviceInput(device: mic)
     guard captureSession.canAddInput(input) else {
-      throw AudioError.formatCreationFailed
+      throw AudioError.formatCreationFailed(source: "AVCaptureSessionSource.prepare.can_add_input")
     }
     captureSession.addInput(input)
 
@@ -113,7 +113,7 @@ final class AVCaptureSessionSource: AudioInputSource {
     ]
 
     guard captureSession.canAddOutput(output) else {
-      throw AudioError.formatCreationFailed
+      throw AudioError.formatCreationFailed(source: "AVCaptureSessionSource.prepare.can_add_output")
     }
     captureSession.addOutput(output)
 
@@ -148,7 +148,7 @@ final class AVCaptureSessionSource: AudioInputSource {
     }
 
     guard started else {
-      throw AudioError.formatCreationFailed
+      throw AudioError.formatCreationFailed(source: "AVCaptureSessionSource.prepare.start_running")
     }
 
     AudioCaptureManager.btRouteLog(
@@ -160,7 +160,8 @@ final class AVCaptureSessionSource: AudioInputSource {
       throw AudioError.alreadyCapturing
     }
     guard let fwd = forwarder else {
-      throw AudioError.formatCreationFailed
+      throw AudioError.formatCreationFailed(
+        source: "AVCaptureSessionSource.startCapture.missing_forwarder")
     }
 
     let stream = AsyncStream<AVAudioPCMBuffer> { continuation in

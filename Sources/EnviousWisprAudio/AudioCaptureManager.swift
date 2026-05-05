@@ -156,7 +156,8 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
   public func beginCapturePhase() async throws -> AsyncStream<AVAudioPCMBuffer> {
     guard let source = activeSource else {
-      throw AudioError.formatCreationFailed
+      throw AudioError.formatCreationFailed(
+        source: "AudioCaptureManager.beginCapturePhase.no_active_source")
     }
 
     // Pre-allocate sample buffer
