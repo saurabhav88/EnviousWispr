@@ -38,6 +38,17 @@ public final class CustomWordsManager {
     Self.tightenFileIfPresent(at: fileURL)
   }
 
+  /// Test seam (#648): inject an explicit file URL so unit tests can hit a
+  /// per-test temp file instead of the production Application Support path.
+  /// Production code always uses the zero-arg `init()`. Bible §9.3 disk
+  /// round-trip coverage was missing from Phase 3b; this seam closes it.
+  package init(fileURL: URL) {
+    self.fileURL = fileURL
+    let directory = fileURL.deletingLastPathComponent()
+    Self.prepareAppSupportDirectory(at: directory)
+    Self.tightenFileIfPresent(at: fileURL)
+  }
+
   /// Create the EnviousWispr Application Support directory at 0700 and drop a
   /// `.metadata_never_index` Spotlight marker. Re-enforced on every init in
   /// case a backup restore or user action loosened permissions. Soft-fails on
