@@ -45,8 +45,42 @@ public final class WordSuggestionService: Sendable {
     - "Kubernetes" → category: brand, aliases: ["kuber netties", "cube ernetes", "cooper nettys"]
     - "Miyamoto" → category: person, aliases: ["me ya moto", "mia motto", "me amoto", "miyomoto"]
     - "Parvati" → category: person, aliases: ["par vati", "poor vati", "pavathi", "par vathy"]
+    - "Gemini" → category: brand, aliases: ["jeh meh nee", "jamini", "gemenai"]
     Always provide 3-5 realistic ASR misrecognitions.
+    If you cannot produce at least 3 distinct misrecognitions different from the input, return an empty list.
     """
+
+  // MARK: - Degeneration filter (Phase 1 #637)
+
+  /// Drops AFM responses that degenerate into echoes of the canonical word.
+  /// Filter rules:
+  /// - Drop empty entries (after trim).
+  /// - Drop entries equal to canonical (case + whitespace insensitive).
+  /// - Drop near-duplicates of canonical (`WordCorrector.score >= 0.95`).
+  /// - De-dupe (case + whitespace insensitive).
+  ///
+  /// Returns the surviving aliases. Callers should treat an empty result
+  /// from a non-empty input as model degeneration (return nil).
+  ///
+  /// Threshold 0.95 sits inside bible §17 R1 tunable range (0.85-0.99).
+  static func filterDegeneratedAliases(_ raw: [String], canonical: String) -> [String] {
+    let canonicalNormalized = canonical.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !canonicalNormalized.isEmpty else { return [] }
+    var seen = Set<String>()
+    var kept: [String] = []
+    let scorer = WordCorrector()
+    for alias in raw {
+      let trimmed = alias.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !trimmed.isEmpty else { continue }
+      let normalized = trimmed.lowercased()
+      if normalized == canonicalNormalized { continue }
+      if seen.contains(normalized) { continue }
+      if scorer.score(trimmed, against: canonical) >= 0.95 { continue }
+      seen.insert(normalized)
+      kept.append(trimmed)
+    }
+    return kept
+  }
 
   // MARK: - Guided generation with @Generable (full Xcode toolchain)
 
@@ -73,8 +107,13 @@ public final class WordSuggestionService: Sendable {
           generating: WordSuggestionsResult.self
         )
         let category = WordCategory(rawValue: response.category.lowercased()) ?? .general
-        let aliases = response.suggestedAliases.filter { !$0.isEmpty }
-        return WordSuggestions(category: category, suggestedAliases: aliases)
+        let raw = response.suggestedAliases
+        let filtered = Self.filterDegeneratedAliases(raw, canonical: word)
+        // Empty after filter (with non-empty raw) means AFM degenerated into self-echoes.
+        // Treat as model failure so the UI can render "No suggestions available" instead
+        // of zero or duplicate chips.
+        guard !filtered.isEmpty else { return nil }
+        return WordSuggestions(category: category, suggestedAliases: filtered)
       } catch {
         return nil
       }
@@ -111,10 +150,12 @@ public final class WordSuggestionService: Sendable {
           schema: schema
         )
         let categoryStr = try response.content.value(String.self, forProperty: "category")
-        let aliases = try response.content.value([String].self, forProperty: "suggestedAliases")
+        let raw = try response.content.value([String].self, forProperty: "suggestedAliases")
 
         let category = WordCategory(rawValue: categoryStr.lowercased()) ?? .general
-        return WordSuggestions(category: category, suggestedAliases: aliases.filter { !$0.isEmpty })
+        let filtered = Self.filterDegeneratedAliases(raw, canonical: word)
+        guard !filtered.isEmpty else { return nil }
+        return WordSuggestions(category: category, suggestedAliases: filtered)
       } catch {
         return nil
       }
