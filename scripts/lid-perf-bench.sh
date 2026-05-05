@@ -13,6 +13,10 @@ APP_BUNDLE_ID="com.enviouswispr.app.dev"
 DEV_APP_PATH="$ROOT_DIR/build/EnviousWispr Local.app"
 DEBUG_BINARY="$ROOT_DIR/.build/debug/EnviousWispr"
 DEV_APP_BINARY="$DEV_APP_PATH/Contents/MacOS/EnviousWispr"
+DEBUG_AUDIO_SERVICE_BINARY="$ROOT_DIR/.build/debug/EnviousWisprAudioService"
+DEBUG_ASR_SERVICE_BINARY="$ROOT_DIR/.build/debug/EnviousWisprASRService"
+DEV_AUDIO_SERVICE_BINARY="$DEV_APP_PATH/Contents/XPCServices/com.enviouswispr.audioservice.xpc/Contents/MacOS/EnviousWisprAudioService"
+DEV_ASR_SERVICE_BINARY="$DEV_APP_PATH/Contents/XPCServices/com.enviouswispr.asrservice.xpc/Contents/MacOS/EnviousWisprASRService"
 LOG_PIPE="$RUN_DIR/lid-perf-signposts.pipe"
 TAIL_PID=""
 GREP_PID=""
@@ -51,7 +55,9 @@ enable_app_file_logging() {
     exit 2
   fi
 
-  if [[ ! -x "$DEBUG_BINARY" || ! -x "$DEV_APP_BINARY" ]]; then
+  if [[ ! -x "$DEBUG_BINARY" || ! -x "$DEV_APP_BINARY" ||
+    ! -x "$DEBUG_AUDIO_SERVICE_BINARY" || ! -x "$DEV_AUDIO_SERVICE_BINARY" ||
+    ! -x "$DEBUG_ASR_SERVICE_BINARY" || ! -x "$DEV_ASR_SERVICE_BINARY" ]]; then
     echo "debug binary or app bundle executable is missing." >&2
     echo "Build and launch the debug dev app first, then rerun this script." >&2
     exit 2
@@ -69,6 +75,12 @@ enable_app_file_logging() {
 
   if [[ "$DEBUG_BINARY" -nt "$DEV_APP_BINARY" ]]; then
     echo "debug app bundle is older than the freshly built debug binary." >&2
+    echo "Build and launch the debug dev app first, then rerun this script." >&2
+    exit 2
+  fi
+  if [[ "$DEBUG_AUDIO_SERVICE_BINARY" -nt "$DEV_AUDIO_SERVICE_BINARY" ||
+    "$DEBUG_ASR_SERVICE_BINARY" -nt "$DEV_ASR_SERVICE_BINARY" ]]; then
+    echo "debug app bundle has stale XPC helper executables." >&2
     echo "Build and launch the debug dev app first, then rerun this script." >&2
     exit 2
   fi
