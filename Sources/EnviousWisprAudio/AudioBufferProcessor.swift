@@ -26,7 +26,7 @@ enum AudioBufferProcessor {
 
 /// Errors that can occur during audio operations.
 public enum AudioError: LocalizedError, Sendable {
-  case formatCreationFailed
+  case formatCreationFailed(source: String = "unknown")
   case alreadyCapturing
   case noBuiltInMicrophoneFound
 
@@ -35,6 +35,15 @@ public enum AudioError: LocalizedError, Sendable {
     case .formatCreationFailed: return "Failed to create audio format."
     case .alreadyCapturing: return "Audio capture is already active."
     case .noBuiltInMicrophoneFound: return "No built-in microphone found."
+    }
+  }
+
+  public var diagnosticSource: String? {
+    switch self {
+    case .formatCreationFailed(let source):
+      return source
+    case .alreadyCapturing, .noBuiltInMicrophoneFound:
+      return nil
     }
   }
 }

@@ -315,7 +315,8 @@ final class AVAudioEngineSource: AudioInputSource {
 
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
     guard let fwd = forwarder else {
-      throw AudioError.formatCreationFailed
+      throw AudioError.formatCreationFailed(
+        source: "AVAudioEngineSource.startCapture.missing_forwarder")
     }
 
     // Reset stoppedFlag in case a config change happened during pre-roll
@@ -642,22 +643,24 @@ final class AVAudioEngineSource: AudioInputSource {
           interleaved: false
         )
       else {
-        throw AudioError.formatCreationFailed
+        throw AudioError.formatCreationFailed(source: "AVAudioEngineSource.recover.target_format")
       }
 
       guard let audioConverter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
-        throw AudioError.formatCreationFailed
+        throw AudioError.formatCreationFailed(source: "AVAudioEngineSource.recover.converter")
       }
       self.converter = audioConverter
 
       guard let stoppedFlag = tapStoppedFlag else {
-        throw AudioError.formatCreationFailed
+        throw AudioError.formatCreationFailed(
+          source: "AVAudioEngineSource.recover.missing_stop_token")
       }
       stoppedFlag.reset()
       btCrashLogger.info("Recovery: stop token reset for new tap")
 
       guard let fwd = forwarder else {
-        throw AudioError.formatCreationFailed
+        throw AudioError.formatCreationFailed(
+          source: "AVAudioEngineSource.recover.missing_forwarder")
       }
 
       // Validate format before reinstalling tap.
@@ -666,7 +669,8 @@ final class AVAudioEngineSource: AudioInputSource {
         btCrashLogger.error(
           "Recovery: invalid input format \(inputFormat.sampleRate)Hz/\(inputFormat.channelCount)ch — emergency teardown"
         )
-        throw AudioError.formatCreationFailed
+        throw AudioError.formatCreationFailed(
+          source: "AVAudioEngineSource.recover.invalid_input_format")
       }
 
       // Safety: remove tap again before reinstalling.

@@ -218,26 +218,27 @@ final class BenchmarkSuite {
 
     guard let sourceBuffer = AVAudioPCMBuffer(pcmFormat: sourceFormat, frameCapacity: frameCount)
     else {
-      throw AudioError.formatCreationFailed
+      throw AudioError.formatCreationFailed(source: "BenchmarkSuite.loadAudioFile.source_buffer")
     }
     try file.read(into: sourceBuffer)
 
     // Resample if needed
     if sourceFormat.sampleRate == AudioConstants.sampleRate && sourceFormat.channelCount == 1 {
       guard let channelData = sourceBuffer.floatChannelData else {
-        throw AudioError.formatCreationFailed
+        throw AudioError.formatCreationFailed(
+          source: "BenchmarkSuite.loadAudioFile.source_channel_data")
       }
       return Array(UnsafeBufferPointer(start: channelData[0], count: Int(sourceBuffer.frameLength)))
     }
 
     guard let converter = AVAudioConverter(from: sourceFormat, to: format) else {
-      throw AudioError.formatCreationFailed
+      throw AudioError.formatCreationFailed(source: "BenchmarkSuite.loadAudioFile.converter")
     }
 
     let ratio = AudioConstants.sampleRate / sourceFormat.sampleRate
     let outputFrames = AVAudioFrameCount(Double(frameCount) * ratio)
     guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: outputFrames) else {
-      throw AudioError.formatCreationFailed
+      throw AudioError.formatCreationFailed(source: "BenchmarkSuite.loadAudioFile.output_buffer")
     }
 
     var error: NSError?
@@ -255,7 +256,8 @@ final class BenchmarkSuite {
     }
 
     guard error == nil, let channelData = outputBuffer.floatChannelData else {
-      throw AudioError.formatCreationFailed
+      throw AudioError.formatCreationFailed(
+        source: "BenchmarkSuite.loadAudioFile.output_channel_data")
     }
 
     return Array(UnsafeBufferPointer(start: channelData[0], count: Int(outputBuffer.frameLength)))

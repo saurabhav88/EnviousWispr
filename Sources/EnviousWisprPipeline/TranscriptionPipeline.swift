@@ -514,14 +514,9 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
         error,
         category: .audioCaptureFailed,
         stage: "recording",
-        extra: SentryAudioExtras.buildCaptureExtras(
-          route: audioCapture.currentAudioRoute,
-          sourceType: audioCapture.captureSourceType,
-          sessionID: audioCapture.currentCaptureSessionID,
-          isActivelyCapturing: audioCapture.isActivelyCapturing,
-          inputDeviceUIDPreferred: audioCapture.preferredInputDeviceIDOverride.isEmpty
-            ? nil : audioCapture.preferredInputDeviceIDOverride,
-          inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID(),
+        extra: AudioCaptureFailureExtras.build(
+          error: error,
+          audioCapture: audioCapture,
           failureMode: "thrown_start"
         )
       )

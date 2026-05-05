@@ -493,17 +493,12 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
         )
       }
     } catch {
-      var extras = SentryAudioExtras.buildCaptureExtras(
-        route: audioCapture.currentAudioRoute,
-        sourceType: audioCapture.captureSourceType,
-        sessionID: audioCapture.currentCaptureSessionID,
-        isActivelyCapturing: audioCapture.isActivelyCapturing,
-        inputDeviceUIDPreferred: audioCapture.preferredInputDeviceIDOverride.isEmpty
-          ? nil : audioCapture.preferredInputDeviceIDOverride,
-        inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID(),
-        failureMode: "thrown_start"
+      let extras = AudioCaptureFailureExtras.build(
+        error: error,
+        audioCapture: audioCapture,
+        failureMode: "thrown_start",
+        backend: "whisperKit"
       )
-      extras["backend"] = "whisperKit"
       SentryBreadcrumb.captureError(
         error, category: .audioCaptureFailed, stage: "recording", extra: extras)
       state = .error("Recording failed: \(error.localizedDescription)")
