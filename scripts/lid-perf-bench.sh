@@ -11,6 +11,8 @@ INPUT_LOG=""
 APP_LOG="${HOME}/Library/Logs/EnviousWispr/app.log"
 APP_BUNDLE_ID="com.enviouswispr.app.dev"
 DEV_APP_PATH="$ROOT_DIR/build/EnviousWispr Local.app"
+DEBUG_BINARY="$ROOT_DIR/.build/debug/EnviousWispr"
+DEV_APP_BINARY="$DEV_APP_PATH/Contents/MacOS/EnviousWispr"
 LOG_PIPE="$RUN_DIR/lid-perf-signposts.pipe"
 TAIL_PID=""
 GREP_PID=""
@@ -49,10 +51,24 @@ enable_app_file_logging() {
     exit 2
   fi
 
+  if [[ ! -x "$DEBUG_BINARY" || ! -x "$DEV_APP_BINARY" ]]; then
+    echo "debug binary or app bundle executable is missing." >&2
+    echo "Build and launch the debug dev app first, then rerun this script." >&2
+    exit 2
+  fi
+
+  EXPECTED_VERSION="$(git -C "$ROOT_DIR" describe --tags --always 2>/dev/null || echo '0.0.0')-debug"
   APP_VERSION="$(plutil -extract CFBundleShortVersionString raw "$DEV_APP_PATH/Contents/Info.plist" 2>/dev/null || true)"
-  if [[ "$APP_VERSION" != *"-debug"* ]]; then
-    echo "lid-perf-bench needs a debug dev app so AppLogger writes app.log." >&2
+  if [[ "$APP_VERSION" != "$EXPECTED_VERSION" ]]; then
+    echo "lid-perf-bench needs the current debug dev app so AppLogger writes app.log." >&2
     echo "Found version '${APP_VERSION:-unknown}' at $DEV_APP_PATH." >&2
+    echo "Expected version '$EXPECTED_VERSION'." >&2
+    echo "Build and launch the debug dev app first, then rerun this script." >&2
+    exit 2
+  fi
+
+  if [[ "$DEBUG_BINARY" -nt "$DEV_APP_BINARY" ]]; then
+    echo "debug app bundle is older than the freshly built debug binary." >&2
     echo "Build and launch the debug dev app first, then rerun this script." >&2
     exit 2
   fi
