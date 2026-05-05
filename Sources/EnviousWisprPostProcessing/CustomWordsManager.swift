@@ -164,6 +164,18 @@ public final class CustomWordsManager {
     return mergedWords(file: file)
   }
 
+  /// Phase 3a (#631): no-op stub. Phase 3b implements the debounced writer
+  /// (max 1 disk write per 30s OR 50 increments) that bumps `frequencyUsed`
+  /// and `lastUsed` on each source `CustomWord`. Bible §9.3.
+  ///
+  /// `WordCorrectionStep.process(...)` calls this after each correction with
+  /// the IDs returned by `WordCorrector.correct(...)`. In Phase 3a the call
+  /// site exists and is exercised by tests; the writer side is intentionally
+  /// inert so Phase 4 can ship the redesign without depending on counting.
+  public func recordReplacements(_ ids: [UUID]) {
+    // no-op (Phase 3b)
+  }
+
   public func add(canonical: String, to words: inout [CustomWord]) throws {
     let trimmed = canonical.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return }

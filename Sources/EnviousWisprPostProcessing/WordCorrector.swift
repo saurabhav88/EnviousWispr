@@ -30,18 +30,37 @@ public struct WordCorrector: Sendable {
 
   public init() {}
 
+  // MARK: - Replacement attribution (Phase 3a #631)
+
+  /// Per-replacement attribution: which `CustomWord.id` this replacement
+  /// originated from. Phase 3b consumes the list to bump `frequencyUsed` /
+  /// `lastUsed` on each source. Phase 7 may extend with `pass: Int, span:
+  /// Range<String.Index>` if needed (currently unused per bible §13).
+  public struct Replacement: Sendable, Equatable {
+    public let sourceID: UUID
+    public init(sourceID: UUID) { self.sourceID = sourceID }
+  }
+
   // MARK: - Main Correction
 
   public func correct(_ text: String, against words: [CustomWord]) -> (
-    corrected: String, replacements: Int
+    corrected: String, replacements: [Replacement]
   ) {
-    guard !words.isEmpty else { return (text, 0) }
+    guard !words.isEmpty else { return (text, []) }
 
     // --- Build lookup structures (once per call) ---
 
     var singleAliasMap: [String: String] = [:]
     var multiAliasMap: [String: String] = [:]
     var collisionCount = 0
+    // Phase 3a (#631): lookup map for replacement attribution. Lowercased
+    // canonical → source `CustomWord.id`. Canonicals are unique per
+    // `CustomWordsManager.add(canonical:)` (case-insensitive uniqueness
+    // enforced at line 171-180), so a single-source-per-canonical map is safe.
+    var canonicalToID: [String: UUID] = [:]
+    for word in words {
+      canonicalToID[word.canonical.lowercased()] = word.id
+    }
 
     // 1. Build alias maps with collision detection
     for word in words {
@@ -104,8 +123,16 @@ public struct WordCorrector: Sendable {
 
     // --- Correction passes ---
 
-    var replacements = 0
+    var replacements: [Replacement] = []
     var tokens = text.components(separatedBy: .whitespaces)
+    // Phase 3a (#631) helper: append a Replacement for the given canonical.
+    // Falls through silently if the canonical lookup misses (shouldn't happen
+    // with valid input — defensive only).
+    func appendReplacement(forCanonical canonical: String) {
+      if let id = canonicalToID[canonical.lowercased()] {
+        replacements.append(Replacement(sourceID: id))
+      }
+    }
 
     // Build nospace lookup for Pass 0 (n-gram compound matching)
     // Maps lowercase-nospace canonical -> original canonical
@@ -151,7 +178,7 @@ public struct WordCorrector: Sendable {
             let (firstPrefix, _, _) = splitPunctuation(tokens[i])
             let (_, _, lastSuffix) = splitPunctuation(tokens[i + n - 1])
             tokens.replaceSubrange(i..<(i + n), with: [firstPrefix + canonical + lastSuffix])
-            replacements += 1
+            appendReplacement(forCanonical: canonical)
             matched = true
             #if DEBUG
               Self.logger.debug(
@@ -184,7 +211,7 @@ public struct WordCorrector: Sendable {
             let (firstPrefix, _, _) = splitPunctuation(tokens[i])
             let (_, _, lastSuffix) = splitPunctuation(tokens[i + span - 1])
             tokens.replaceSubrange(i..<(i + span), with: [firstPrefix + canonical + lastSuffix])
-            replacements += 1
+            appendReplacement(forCanonical: canonical)
             matched = true
             #if DEBUG
               Self.logger.debug(
@@ -228,7 +255,7 @@ public struct WordCorrector: Sendable {
                 let (_, _, lastSuffix) = splitPunctuation(tokens[i + span - 1])
                 tokens.replaceSubrange(
                   i..<(i + span), with: [firstPrefix + bestCanonical + lastSuffix])
-                replacements += 1
+                appendReplacement(forCanonical: bestCanonical)
                 matched = true
                 #if DEBUG
                   Self.logger.debug(
@@ -254,7 +281,7 @@ public struct WordCorrector: Sendable {
 
       // Pass 3: exact single-word alias (includes canonical self-entries)
       if let canonical = singleAliasMap[coreLower], core != canonical {
-        replacements += 1
+        appendReplacement(forCanonical: canonical)
         #if DEBUG
           Self.logger.debug("WordCorrector: type=alias source='\(core)' target='\(canonical)'")
         #endif
@@ -296,7 +323,7 @@ public struct WordCorrector: Sendable {
         bestScore - secondBest >= Self.ambiguityMargin,
         core != bestMatch
       {
-        replacements += 1
+        appendReplacement(forCanonical: bestMatch)
         #if DEBUG
           Self.logger.debug(
             "WordCorrector: type=alias-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(bestScore - secondBest, format: .fixed(precision: 3))"
@@ -329,7 +356,7 @@ public struct WordCorrector: Sendable {
         bestScore - secondBest >= Self.ambiguityMargin,
         core != bestMatch
       {
-        replacements += 1
+        appendReplacement(forCanonical: bestMatch)
         #if DEBUG
           Self.logger.debug(
             "WordCorrector: type=canonical-fuzzy source='\(core)' target='\(bestMatch)' score=\(bestScore, format: .fixed(precision: 3)) margin=\(bestScore - secondBest, format: .fixed(precision: 3))"
