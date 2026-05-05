@@ -404,4 +404,30 @@ struct LanguageAwarePromptInjectionTests {
   }
 
   // MARK: - Parakeet byte-identical characterization
+
+  @Test("Parakeet prompt output is byte-identical to legacy nil-backend output")
+  func parakeetByteIdenticalToLegacy() {
+    let words = [CustomWord(canonical: "EnviousWispr", aliases: ["Envious Whisper"])]
+    let legacyInput = input(
+      customWords: words,
+      detection: nil,
+      backend: nil
+    )
+    let parakeetInput = input(
+      customWords: words,
+      detection: nil,
+      backend: .parakeet
+    )
+
+    let legacyPlan = DefaultPromptPlanner().plan(input: legacyInput)
+    let parakeetPlan = DefaultPromptPlanner().plan(input: parakeetInput)
+
+    #expect(
+      legacyPlan.envelope.messages.map(\.role.rawValue)
+        == parakeetPlan.envelope.messages.map(\.role.rawValue),
+      "Explicit Parakeet must match legacy nil-backend prompt roles exactly")
+    #expect(
+      legacyPlan.envelope.messages.map(\.content) == parakeetPlan.envelope.messages.map(\.content),
+      "Explicit Parakeet must match legacy nil-backend prompt text byte-for-byte")
+  }
 }
