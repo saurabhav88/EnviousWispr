@@ -36,23 +36,11 @@ public struct GeminiConnector: TranscriptPolisher {
       generationConfig["thinkingConfig"] = ["thinkingBudget": budget]
     }
 
-    var body: [String: Any] = [
-      "systemInstruction": [
-        "parts": [["text": instructions.systemPrompt]]
-      ],
-      "generationConfig": generationConfig,
-    ]
-
-    // When ${transcript} placeholder is used, LLMPolishStep resolves the full
-    // prompt into systemPrompt and passes text as "". In that case we send a
-    // minimal contents array; otherwise the transcript goes in contents.
-    if text.isEmpty {
-      body["contents"] = [
-        ["parts": [["text": "Polish the transcript per the system instructions."]]]
-      ]
-    } else {
-      body["contents"] = [["parts": [["text": text]]]]
-    }
+    let body = Self.makeRequestBody(
+      text: text,
+      systemPrompt: instructions.systemPrompt,
+      generationConfig: generationConfig
+    )
 
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
@@ -102,6 +90,33 @@ public struct GeminiConnector: TranscriptPolisher {
       config: config,
       onToken: onToken
     )
+  }
+
+  static func makeRequestBody(
+    text: String,
+    systemPrompt: String,
+    generationConfig: [String: Any]
+  ) -> [String: Any] {
+    var body: [String: Any] = [
+      "systemInstruction": [
+        "parts": [["text": systemPrompt]]
+      ],
+      "generationConfig": generationConfig,
+      "store": false,
+    ]
+
+    // When ${transcript} placeholder is used, LLMPolishStep resolves the full
+    // prompt into systemPrompt and passes text as "". In that case we send a
+    // minimal contents array; otherwise the transcript goes in contents.
+    if text.isEmpty {
+      body["contents"] = [
+        ["parts": [["text": "Polish the transcript per the system instructions."]]]
+      ]
+    } else {
+      body["contents"] = [["parts": [["text": text]]]]
+    }
+
+    return body
   }
 
   // MARK: - SSE Streaming
