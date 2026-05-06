@@ -24,7 +24,11 @@ Release the hotkey. EnviousWispr transcribes your audio on-device using speech r
 
 But the real leverage comes from what happens next.
 
-## From raw dictation to structured summary
+## How do you turn dictated meeting notes into a structured summary?
+
+A structured meeting summary on Mac comes from two steps: dictate a 30-second voice dump while context is fresh, then let an LLM polish step shape that audio into bullet sections. EnviousWispr handles both. Hold a hotkey, talk through what happened (decisions, owners, deadlines, open questions), and release. On-device speech recognition transcribes the audio in a second or two on Apple Silicon.
+
+The polish step turns that raw text into a usable summary. The default polish removes filler and fixes punctuation, which already produces something cleaner than most people type. For a tighter shape, set a Custom prompt like "format as a meeting summary with attendees, key decisions, action items with owners and due dates, and open questions." The polish step uses that instruction on every dictation until you change it. Save different prompts for board updates, Slack recaps, or email follow-ups.
 
 Out of the box, EnviousWispr cleans up filler words, fixes punctuation, and tightens structure. That alone transforms your dictation. But for meeting notes, the real unlock is structure.
 
@@ -57,7 +61,7 @@ Even today, the LLM post-processing step does a remarkable job of structuring yo
 
 That's the difference between a wall of text you'll never revisit and a summary you can paste straight into Slack, email to your team, or drop into Notion. There's a real pride in sending a meeting summary that looks like you spent ten minutes on it, knowing it took thirty seconds. The whole process, from speaking to structured output, takes less time than opening a new document and typing a subject line.
 
-## Why on-device matters for meeting content
+## Why does on-device dictation matter for sensitive meetings?
 
 Here's where this gets practical for anyone handling sensitive discussions. Board updates, personnel decisions, M&A conversations, compensation reviews, strategic pivots. This is exactly the kind of content that shouldn't be routed through a third-party cloud service.
 

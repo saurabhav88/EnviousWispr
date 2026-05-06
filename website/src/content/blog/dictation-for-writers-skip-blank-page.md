@@ -12,7 +12,11 @@ What if the blank page wasn't the starting point? What if, instead of sitting do
 
 That's not a fantasy workflow. It's what happens when you speak your first draft instead of typing it. The blank page problem doesn't go away. You just stop starting there.
 
-## Why Speaking Unlocks What Typing Can't
+## Why does speaking unlock writing that typing can't?
+
+Speaking unlocks writing that typing can't because typing and speaking use different cognitive paths. Typing forces simultaneous language generation and character-by-character transcription, which wakes up the inner editor before the first paragraph is finished. Speaking commits to the sentence as it leaves your mouth: no backspace key, no hovering over a word to second-guess it. The result is rougher prose, but it exists on the page in real time.
+
+This is why writer's block usually shows up at the keyboard, not in conversation. Most writers can explain their article to a friend over coffee without hesitating. Sit them down to type the same thing and the gap between thought and text feels enormous. Henry James and Barbara Cartland dictated entire novels for the same reason. Removing the physical act of typing changes how words flow, more naturally, closer to how you actually think. Get the rough draft out first. Edit later.
 
 Typing and speaking use different cognitive paths. When you type, you're doing two things at once: generating language and transcribing it character by character. That transcription step (watching letters appear, noticing a typo, deciding whether to fix it now or later) creates a constant feedback loop. Your inner editor wakes up before your first paragraph is done.
 
@@ -20,7 +24,7 @@ Speaking doesn't have that problem. When you talk, you commit to the sentence as
 
 This isn't just anecdotal. Writers have known this for decades. Before dictation software existed, authors like Henry James and Barbara Cartland dictated entire novels to human transcribers. The mechanism is the same: remove the physical act of typing, and the words flow differently. More naturally. Closer to how you actually think.
 
-## Writer's Block Is a Typing Problem
+## Is writer's block really a typing problem?
 
 Here's the reframe: most of what we call writer's block isn't a thinking problem. It's a *typing* problem. You have ideas. You can explain your article to a friend over coffee without hesitating. But sitting at the keyboard, the gap between thought and text feels enormous.
 

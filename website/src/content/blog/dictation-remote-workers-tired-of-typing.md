@@ -14,7 +14,11 @@ This is the quiet tax of remote work. When you're not in a meeting, you're writi
 
 Dictation can absorb a real share of that typing load, if it's fast enough, accurate enough, and private enough to trust with work conversations. Most people who've tried it gave up after a few attempts with clunky tools. But the technology has caught up.
 
-## The Typing Volume Problem
+## How much typing does a typical remote worker do per day?
+
+A typical remote worker produces thousands of words of text spread across many small surfaces every day. The conservative shape: 40 to 80 Slack messages across channels, threads, and DMs; 15 to 30 email replies, some multi-paragraph; project updates, meeting notes, and process docs in wikis; ticket comments, scope clarifications, and status updates; and a daily async standup. None of those individually feel large. Stacked across a workweek, they rival the daily output of a professional writer.
+
+What makes this hard on the body is rhythm, not volume. A novelist drafts in long sessions and then steps away. Remote workers are expected to respond in minutes, all day, every day. The keyboard never really cools down. Wrist strain, forearm tension, and shoulder tightness are the predictable result of eight-plus hours of continuous typing five days a week. Voice input can absorb a real share of that load if it is accurate and private enough to trust.
 
 Think about what a typical remote workday actually looks like in terms of raw text output. A conservative estimate:
 
@@ -36,7 +40,7 @@ EnviousWispr makes this practical. Hold a hotkey, say what you need to say, rele
 
 That privacy piece matters more than you might think. Remote workers discuss sensitive topics all day: hiring decisions, performance feedback, product strategy, client details. If you wouldn't paste a message into a random web form, you probably shouldn't route it through a cloud transcription service either.
 
-## Fitting Dictation into Your Existing Workflow
+## Where does dictation fit into your existing remote workflow?
 
 The practical question is: where does dictation actually slot into the apps and habits you already have?
 
