@@ -29,10 +29,9 @@ import Testing
 ///       pipelineFellBackToRaw` is correct in isolation. Call sites at
 ///       TranscriptionPipeline.swift:932 + WhisperKitPipeline.swift:1050 are
 ///       verified by Codex production inspection.
-///   5. AFMPolishError is a Sendable typed wrapper preserving underlying.
-///       Its catch site at LLMPolishStep.swift:234 (calling
-///       SentryBreadcrumb.setPolishMode and rethrowing underlying) is
-///       verified by Codex production inspection.
+///   5. AFMPolishError is a Sendable typed wrapper preserving underlying, and
+///      SentryBreadcrumb captures post-router AFM failures with router fields
+///      on the event instead of the global scope.
 @MainActor
 @Suite("Dual-mode polish telemetry — #429")
 struct DualModePolishTelemetryTests {
@@ -325,6 +324,72 @@ struct DualModePolishTelemetryTests {
     } else {
       Issue.record("AFMPolishError did not preserve underlying error type")
     }
+  }
+
+  @Test("AFM polish error capture includes router metadata on the event")
+  func afmPolishErrorCaptureIncludesRouterMetadata() {
+    struct Captured {
+      let category: SentryBreadcrumb.ErrorCategory
+      let stage: String
+      let extra: [String: Any]
+      let tags: [String: String]
+    }
+    final class CaptureBox: @unchecked Sendable {
+      private let lock = NSLock()
+      private var _value: Captured?
+      private var _tags: [String: String] = [:]
+
+      var value: Captured? {
+        lock.lock()
+        defer { lock.unlock() }
+        return _value
+      }
+
+      func recordTags(_ tags: [String: String]) {
+        lock.lock()
+        defer { lock.unlock() }
+        _tags = tags
+      }
+
+      func record(_ captured: Captured) {
+        lock.lock()
+        defer { lock.unlock() }
+        _value = Captured(
+          category: captured.category,
+          stage: captured.stage,
+          extra: captured.extra,
+          tags: _tags
+        )
+      }
+    }
+
+    let box = CaptureBox()
+    let prior = SentryBreadcrumb.captureErrorDelegate
+    let priorTags = SentryBreadcrumb.captureErrorTagsDelegate
+    SentryBreadcrumb.captureErrorTagsDelegate = { tags in
+      box.recordTags(tags)
+    }
+    SentryBreadcrumb.captureErrorDelegate = { _, category, stage, extra in
+      box.record(Captured(category: category, stage: stage, extra: extra ?? [:], tags: [:]))
+    }
+    defer { SentryBreadcrumb.captureErrorDelegate = prior }
+    defer { SentryBreadcrumb.captureErrorTagsDelegate = priorTags }
+
+    SentryBreadcrumb.captureAFMPolishError(
+      LLMError.emptyResponse,
+      routerMode: "technical",
+      routerBasis: "tier1"
+    )
+
+    let captured = box.value
+    #expect(captured?.category == .generationFailed)
+    #expect(captured?.stage == "polish")
+    #expect(captured?.extra["polish_mode"] as? String == "technical")
+    #expect(captured?.extra["polish_router_basis"] as? String == "tier1")
+    #expect(captured?.tags["pipeline.stage"] == "polish")
+    #expect(captured?.tags["error.category"] == "generation_failed")
+    #expect(captured?.tags["polish_mode"] == "technical")
+    #expect(captured?.tags["polish_router_basis"] == "tier1")
   }
 
   // MARK: - 6. PolishMetadata Codable roundtrip
