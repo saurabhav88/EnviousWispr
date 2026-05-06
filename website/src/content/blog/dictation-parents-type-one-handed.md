@@ -93,7 +93,7 @@ The first model download takes a few minutes. After that, you're set. Download i
 
 ## Related Posts
 
-- [Hands-Free Typing While Your Toddler Climbs You](/blog/hands-free-typing-toddler-climbs-you/). Hands-free mode for when you can't touch the keyboard at all.
+- [Dictate Emails at the Speed of Thought](/blog/dictate-emails-speed-of-thought/). Voice replies for the school emails and family logistics that pile up in your inbox.
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/). Step-by-step setup guide.
 - [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/). Why your family's background audio should stay on your Mac.
 

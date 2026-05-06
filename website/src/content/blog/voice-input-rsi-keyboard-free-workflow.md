@@ -14,7 +14,11 @@ Repetitive strain injury doesn't announce itself with a single dramatic moment. 
 
 Voice input changes that math entirely. Not as a novelty, but as a genuine reduction in the repetitive motion that causes the damage.
 
-## Why Voice Input Is the Most Direct RSI Mitigation
+## How does voice input help reduce RSI from typing?
+
+Voice input helps reduce RSI because repetitive strain injury is caused by repetitive motion, and typing is the highest-volume repetitive motion in most knowledge work. Knowledge workers produce roughly 5,000 to 10,000 words a day across email, messages, docs, and tickets, which translates to 125,000 to 250,000 keystrokes. Removing even part of that load directly reduces the activity causing the damage.
+
+Other ergonomic interventions like split keyboards, wrist braces, and scheduled breaks help, but they all still involve typing. They reduce the cost per keystroke without removing keystrokes. Dictation removes them. With on-device transcription accurate enough to skip the corrections marathon, you can speak a paragraph in seconds, get clean text in your working app, and never touch a key. That is not symptom management; it is the closest thing to a structural change in how text gets produced, and it is why voice input is more direct than ergonomic accessories alone.
 
 The logic is straightforward. RSI is caused by repetitive motion. Typing is repetitive motion. Remove the typing, and you remove the primary aggravator.
 
@@ -26,7 +30,7 @@ That's where modern on-device transcription changes the equation. EnviousWispr u
 
 The result: you speak a paragraph, and a second or two later on Apple Silicon, clean text lands in whatever app you're working in. No server round-trip, no cloud dependency, no corrections marathon. The tension leaves your shoulders. You realize you've been bracing for pain with every keystroke, and now you don't have to.
 
-## Hands-Free Mode: No Keys to Hold at All
+## How does hands-free mode work for keyboard-free dictation?
 
 Most dictation tools use a push-to-talk model. Hold a hotkey, speak, release. That works well for short bursts like a Slack reply, a quick note, or a search query. But if typing is painful, holding a key combination for extended periods isn't much better.
 

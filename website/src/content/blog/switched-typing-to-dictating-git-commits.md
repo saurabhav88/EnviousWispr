@@ -12,7 +12,11 @@ Imagine going back through six months of git history. The first three months are
 
 The improvement isn't accidental. It's structural. Speaking and typing produce different kinds of output, and for commit messages, where explaining *why* matters as much as describing *what*, speaking wins by a wide margin.
 
-## The one-line commit message problem
+## Why do typed git commit messages turn into useless one-liners?
+
+Typed git commit messages turn into useless one-liners because typing optimizes for keystrokes and speaking optimizes for explanation. When a developer types `git commit -m "fix bug"`, they have just spent forty-five minutes refactoring a module and understand every change intimately. The terse message is not laziness. It is friction. Switching from code-brain to prose-brain at a terminal prompt feels wrong, and fingers are already positioned for the next file.
+
+Speaking removes that friction. When someone asks what just changed, the explanation comes out in complete thoughts: "I pulled the token validation out of the auth middleware and into its own service because we need to reuse it in the WebSocket handler." That is a useful commit message, and it takes about four seconds to say. Dictation lets a developer stay in flow, capture the why while it is fresh, and never break the loop with a context switch back to prose mode.
 
 Here's a pattern most developers recognize. You've just spent forty-five minutes refactoring a module. You understand every change intimately: which functions moved, why the interface changed, what edge case you finally handled. The diff is clean. You're proud of it.
 
@@ -24,7 +28,7 @@ Speaking, though, is different. When someone asks what just changed, the explana
 
 That's a good commit message. And it takes about four seconds to say. The developer stays in the flow. The code is still alive in their head, and the explanation comes out while it's fresh, not after a context switch back to prose mode.
 
-## Why speaking produces better commit messages
+## Why does speaking produce better commit messages than typing?
 
 There's a mechanical reason dictating git commits works better than typing them. When you type, you optimize for keystrokes. Fewer words means less typing. Your brain unconsciously edits for brevity before your fingers even move, and the result is terse to the point of useless.
 
