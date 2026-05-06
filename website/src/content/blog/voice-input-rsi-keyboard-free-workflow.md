@@ -116,6 +116,7 @@ EnviousWispr gives you a way to listen to that signal without losing your abilit
 
 - [macOS Dictation That Works Offline and Stays Private](/blog/macos-dictation-offline-private/). How EnviousWispr compares to other macOS dictation options for accessibility.
 - [Dictation for Remote Workers Tired of Typing](/blog/dictation-remote-workers-tired-of-typing/). The ergonomic case for mixing voice and keyboard input.
+- [Dictating Git Commits on macOS: Better Messages, Less Typing](/blog/switched-typing-to-dictating-git-commits/). For developers offloading the prose part of coding work to voice.
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/). Minimal-typing setup guide from download to first dictation.
 
 Your hands will thank you.

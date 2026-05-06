@@ -161,6 +161,8 @@ For people who rely on voice input as their primary way of writing, those aren't
 
 - [Voice Input for RSI: A Keyboard-Free Workflow](/blog/voice-input-rsi-keyboard-free-workflow/). A practical guide for people whose hands need a break from typing.
 - [On-Device vs Cloud Dictation: What Stays Private](/blog/on-device-vs-cloud-dictation-privacy/). A detailed comparison of where your recordings go with different tools.
+- [Dictate Meeting Notes to Polished Summaries on Mac](/blog/meeting-notes-polished-summaries/). Why on-device matters for board updates, M&A discussions, and personnel reviews.
+- [Dictation for Remote Workers Tired of Typing](/blog/dictation-remote-workers-tired-of-typing/). On-device speech-to-text fits naturally into Slack, email, and ticket workflows.
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/). From download to first dictation.
 
 If you want to try it, [download EnviousWispr free](/#download) and start dictating, or grab it from the [GitHub releases page](https://github.com/saurabhav88/EnviousWispr/releases). Skip the sign-up form. There isn't one. Just the app and your voice, with no audio leaving your Mac.
