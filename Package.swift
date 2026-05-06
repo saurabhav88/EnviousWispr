@@ -14,6 +14,10 @@ let package = Package(
     // dependency. Purely additive — no production code imports these.
     .library(name: "EnviousWisprCore", targets: ["EnviousWisprCore"]),
     .library(name: "EnviousWisprLLM", targets: ["EnviousWisprLLM"]),
+    // Exposed for the alias-suggestion eval harness at
+    // scripts/eval/alias_runner. Purely additive — no production code
+    // imports change. (#637)
+    .library(name: "EnviousWisprPostProcessing", targets: ["EnviousWisprPostProcessing"]),
   ],
   dependencies: [
     .package(url: "https://github.com/argmaxinc/argmax-oss-swift", from: "1.0.0"),

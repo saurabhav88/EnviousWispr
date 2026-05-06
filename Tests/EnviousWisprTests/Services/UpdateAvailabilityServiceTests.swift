@@ -153,8 +153,7 @@ struct UpdateAvailabilityServiceTests {
     let (s, _) = Self.makeService()
     s.handlePipelineStateChange(isRecording: false)
     #expect(s.inPostRecordingGrace == true)
-    // postRecordingGraceDuration is 3.0s; we wait slightly longer.
-    try await Task.sleep(for: .seconds(3.5))
+    await s.waitForPostRecordingGraceForTesting()
     #expect(s.inPostRecordingGrace == false)
   }
 

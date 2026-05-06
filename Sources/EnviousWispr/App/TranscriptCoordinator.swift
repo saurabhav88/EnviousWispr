@@ -48,6 +48,10 @@ final class TranscriptCoordinator {
     }
   }
 
+  func waitForLoadForTesting() async {
+    await loadTask?.value
+  }
+
   /// Append a just-completed transcript to the in-memory cache.
   ///
   /// Precondition: the transcript has already been persisted by

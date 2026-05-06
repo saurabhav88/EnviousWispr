@@ -1,0 +1,152 @@
+[
+  {
+    "case": {
+      "id": "GOLDEN-001-aliasable-perfect",
+      "canonical": "Saurabh",
+      "category": "person",
+      "acceptable_categories": ["person"],
+      "no_alias_expected": false,
+      "expected_alias_groups": [
+        {"id": "sourabh", "variants": ["Sourabh", "Sorab", "Sourab"], "weight": 1, "source": "founder"},
+        {"id": "saurav", "variants": ["Saurav", "Sorov"], "weight": 1, "source": "founder"}
+      ]
+    },
+    "runner_record": {
+      "predicted_category": "person",
+      "raw_aliases": ["Sourabh", "Sorab", "Saurav"],
+      "filtered_aliases": ["Sourabh", "Sorab", "Saurav"],
+      "latency_ms": 1200,
+      "cold_start": false,
+      "timed_out": false,
+      "error": null
+    },
+    "expected_axes": {
+      "recall": 3,
+      "precision": 3,
+      "diversity": 3,
+      "category": 3,
+      "degeneration": 0,
+      "refusal": 0,
+      "case_pass": true
+    }
+  },
+  {
+    "case": {
+      "id": "GOLDEN-002-degeneration",
+      "canonical": "Kubernetes",
+      "category": "brand",
+      "acceptable_categories": ["brand"],
+      "no_alias_expected": false,
+      "expected_alias_groups": [
+        {"id": "kuber", "variants": ["kuber netties", "cube ernetes"], "weight": 1, "source": "founder"}
+      ]
+    },
+    "runner_record": {
+      "predicted_category": "brand",
+      "raw_aliases": ["Kubernetes", "kubernetes", "KUBERNETES"],
+      "filtered_aliases": [],
+      "latency_ms": 800,
+      "cold_start": false,
+      "timed_out": false,
+      "error": null
+    },
+    "expected_axes": {
+      "recall": 0,
+      "precision": 0,
+      "diversity": 0,
+      "category": 3,
+      "degeneration": 1,
+      "refusal": 0,
+      "case_pass": false
+    }
+  },
+  {
+    "case": {
+      "id": "GOLDEN-003-refusal",
+      "canonical": "Parvati",
+      "category": "person",
+      "acceptable_categories": ["person"],
+      "no_alias_expected": false,
+      "expected_alias_groups": [
+        {"id": "par", "variants": ["par vati", "poor vati", "pavathi"], "weight": 1, "source": "founder"}
+      ]
+    },
+    "runner_record": {
+      "predicted_category": null,
+      "raw_aliases": [],
+      "filtered_aliases": [],
+      "latency_ms": 5000,
+      "cold_start": false,
+      "timed_out": true,
+      "error": "TimeoutError"
+    },
+    "expected_axes": {
+      "recall": 0,
+      "precision": 0,
+      "diversity": 0,
+      "category": 0,
+      "degeneration": 0,
+      "refusal": 1,
+      "case_pass": false
+    }
+  },
+  {
+    "case": {
+      "id": "GOLDEN-004-no-alias-clean",
+      "canonical": "John",
+      "category": "person",
+      "acceptable_categories": ["person"],
+      "no_alias_expected": true,
+      "expected_alias_groups": [],
+      "expected_empty_reason": "Common short name"
+    },
+    "runner_record": {
+      "predicted_category": "person",
+      "raw_aliases": [],
+      "filtered_aliases": [],
+      "latency_ms": 600,
+      "cold_start": false,
+      "timed_out": false,
+      "error": null
+    },
+    "expected_axes": {
+      "recall": 3,
+      "precision": 3,
+      "diversity": 3,
+      "category": 3,
+      "degeneration": 0,
+      "refusal": 0,
+      "case_pass": true
+    }
+  },
+  {
+    "case": {
+      "id": "GOLDEN-005-wrong-category",
+      "canonical": "Postgres",
+      "category": "brand",
+      "acceptable_categories": ["brand"],
+      "no_alias_expected": false,
+      "expected_alias_groups": [
+        {"id": "post", "variants": ["postgress", "post gres", "postgres ess"], "weight": 1, "source": "founder"}
+      ]
+    },
+    "runner_record": {
+      "predicted_category": "general",
+      "raw_aliases": ["postgress", "post gres", "postgres ess"],
+      "filtered_aliases": ["postgress", "post gres", "postgres ess"],
+      "latency_ms": 950,
+      "cold_start": false,
+      "timed_out": false,
+      "error": null
+    },
+    "expected_axes": {
+      "recall": 3,
+      "precision": 2,
+      "diversity": 3,
+      "category": 0,
+      "degeneration": 0,
+      "refusal": 0,
+      "case_pass": false
+    }
+  }
+]
