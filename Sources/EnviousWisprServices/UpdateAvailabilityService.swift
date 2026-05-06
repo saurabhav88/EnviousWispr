@@ -165,6 +165,10 @@ public final class UpdateAvailabilityService {
     }
   }
 
+  func waitForPostRecordingGraceForTesting() async {
+    await graceTask?.value
+  }
+
   // MARK: - Persistence helpers
 
   func persist(_ update: AvailableUpdate) {
