@@ -128,6 +128,7 @@ EnviousWispr is free and yours to keep. No strings.
 
 - [Dictation for Writers: Skip the Blank Page](/blog/dictation-for-writers-skip-blank-page/). How speaking your first draft bypasses writer's block entirely.
 - [Voice to Prose: A Realistic Writing Workflow](/blog/voice-to-prose-writing-workflow/). A practical guide to building a full voice-to-prose session.
+- [Dictate Meeting Notes to Polished Summaries on Mac](/blog/meeting-notes-polished-summaries/). Apply the same dictate-then-polish loop to post-meeting recaps and exec briefings.
 - [On-Device vs Cloud Dictation: What Stays Private](/blog/macos-dictation-offline-private/). A fair comparison of where your recordings go.
 
 Your words, your style, your Mac. Nothing leaves the building.

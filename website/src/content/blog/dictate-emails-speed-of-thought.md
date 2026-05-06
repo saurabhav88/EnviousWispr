@@ -10,7 +10,7 @@ author: "Saurabh Vaish"
 
 The average executive types around 40 words per minute. They speak 130 to 150. That's roughly 3-4x throughput on the single activity that dominates their day: writing emails. That's a rough estimate, not a measured fact, but the gap is real and it compounds across dozens of messages a day.
 
-Between meetings, most leaders face a growing backlog of follow-up messages: updates, decisions, delegation, context for people who weren't in the room. The decisions happen fast. Writing them down doesn't. And dictating into a cloud tool that routes every word through someone else's servers isn't an option when you're handling sensitive strategy, personnel decisions, or M&A discussions.
+Between meetings, most leaders face a growing backlog of follow-up messages: updates, decisions, delegation, context for people who weren't in the room. The decisions happen fast. Writing them down doesn't. The same volume problem is true at the individual contributor level, where [remote workers tired of typing](/blog/dictation-remote-workers-tired-of-typing/) burn through Slack threads, ticket comments, and async updates all day. And dictating into a cloud tool that routes every word through someone else's servers isn't an option when you're handling sensitive strategy, personnel decisions, or M&A discussions.
 
 There's a faster, more private way.
 
@@ -93,6 +93,7 @@ The speech model downloads automatically on first launch. After that initial set
 
 - [Meeting Notes to Polished Summaries in Seconds](/blog/meeting-notes-polished-summaries/). Turn post-meeting chaos into structured summaries with action items.
 - [Async Communication Is Better When You Speak It](/blog/async-communication-better-when-you-speak/). Why dictating Slack messages and async updates beats typing them.
+- [Dictation for Remote Workers Tired of Typing](/blog/dictation-remote-workers-tired-of-typing/). The same speed gain across Slack, tickets, docs, and async standups.
 - [Getting Started with EnviousWispr in Under 2 Minutes](/blog/getting-started-enviouswispr-under-2-minutes/). From download to first dictation.
 
 Set your hotkey. Open your email client. Hold, speak, release. Your first dictated email will be done before you finish reading this sentence.
