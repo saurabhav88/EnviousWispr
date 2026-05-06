@@ -23,7 +23,8 @@ struct CustomTermsSection: View {
   }
 
   private var pagedWords: [CustomWord] {
-    CustomTermListPolicy.paged(filteredWords, page: currentPage)
+    let safePage = max(0, min(currentPage, pageCount - 1))
+    return CustomTermListPolicy.paged(filteredWords, page: safePage)
   }
 
   var body: some View {
@@ -37,6 +38,9 @@ struct CustomTermsSection: View {
           TextField("Search by name, alias, or category", text: $searchQuery)
             .textFieldStyle(.plain)
             .onChange(of: searchQuery) { _, _ in currentPage = 0 }
+            .onChange(of: pageCount) { _, newCount in
+              if currentPage >= newCount { currentPage = max(0, newCount - 1) }
+            }
           if !searchQuery.isEmpty {
             Button {
               searchQuery = ""
@@ -112,10 +116,14 @@ struct CustomTermsSection: View {
     .sheet(item: $editingWord) { word in
       CustomWordEditSheet(
         word: word,
-        wordSuggestionService: appState.customWordsCoordinator.suggestionService
-      ) { updated in
-        appState.customWordsCoordinator.update(updated)
-      }
+        wordSuggestionService: appState.customWordsCoordinator.suggestionService,
+        onSave: { updated in
+          appState.customWordsCoordinator.update(updated)
+        },
+        onDelete: {
+          appState.customWordsCoordinator.remove(id: word.id)
+        }
+      )
     }
   }
 

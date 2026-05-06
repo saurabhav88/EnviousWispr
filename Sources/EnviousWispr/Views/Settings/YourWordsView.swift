@@ -67,17 +67,18 @@ struct YourWordsView: View {
       ) { newWord in
         let trimmedCanonical = newWord.canonical.trimmingCharacters(in: .whitespaces)
         guard !trimmedCanonical.isEmpty else { return }
-        // Phase 4 §16.2 (Codex revision) + Codex P2 audit fix:
-        // add(canonical:) is a no-op for case-insensitive duplicates. Snapshot
-        // existing IDs first; only enrich if add actually INSERTED a new word.
-        // Without this guard, typing an existing canonical like "GitHub" would
-        // overwrite its built-in aliases ("git hub", "get hub") with the blank
-        // sheet defaults — a silent regression of correction quality.
+        // Skip enrichment in two cases:
+        //  1. `add()` was a no-op because the canonical already exists as a user
+        //     word — `existingIDs` catches that.
+        //  2. `add()` restored a previously-deleted built-in (e.g. "GitHub")
+        //     whose curated aliases must not be overwritten by sheet defaults.
+        //     Detected by the restored entry already carrying aliases.
         let existingIDs = Set(appState.customWordsCoordinator.customWords.map(\.id))
         appState.customWordsCoordinator.add(trimmedCanonical)
         if let added = appState.customWordsCoordinator.customWords.first(where: {
           $0.canonical.caseInsensitiveCompare(trimmedCanonical) == .orderedSame
             && !existingIDs.contains($0.id)
+            && $0.aliases.isEmpty
         }) {
           var enriched = added
           enriched.aliases = newWord.aliases

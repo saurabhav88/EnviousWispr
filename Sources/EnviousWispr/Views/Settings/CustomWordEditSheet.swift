@@ -18,17 +18,21 @@ struct CustomWordEditSheet: View {
   @State private var isLoadingSuggestions = false
   @State private var suggestionsApplied = false
   @State private var noSuggestionsAvailable = false
+  @State private var showingDeleteConfirmation = false
   let wordSuggestionService: WordSuggestionService?
   let onSave: (CustomWord) -> Void
+  let onDelete: (() -> Void)?
   @Environment(\.dismiss) private var dismiss
 
   init(
     word: CustomWord, wordSuggestionService: WordSuggestionService? = nil,
-    onSave: @escaping (CustomWord) -> Void
+    onSave: @escaping (CustomWord) -> Void,
+    onDelete: (() -> Void)? = nil
   ) {
     _word = State(initialValue: word)
     self.wordSuggestionService = wordSuggestionService
     self.onSave = onSave
+    self.onDelete = onDelete
   }
 
   /// Round-trip binding for the Match Strictness picker.
@@ -126,6 +130,13 @@ struct CustomWordEditSheet: View {
 
       // Actions
       HStack {
+        if onDelete != nil {
+          Button(role: .destructive) {
+            showingDeleteConfirmation = true
+          } label: {
+            Text("Delete")
+          }
+        }
         Spacer()
         Button("Cancel") { dismiss() }
           .keyboardShortcut(.cancelAction)
@@ -136,6 +147,19 @@ struct CustomWordEditSheet: View {
         .keyboardShortcut(.defaultAction)
         .disabled(word.canonical.trimmingCharacters(in: .whitespaces).isEmpty)
       }
+    }
+    .confirmationDialog(
+      "Delete \"\(word.canonical)\"?",
+      isPresented: $showingDeleteConfirmation,
+      titleVisibility: .visible
+    ) {
+      Button("Delete", role: .destructive) {
+        onDelete?()
+        dismiss()
+      }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("Removes this word and its aliases. Can't be undone.")
     }
     .padding(20)
     .frame(width: 400, height: 480)
