@@ -1,28 +1,39 @@
 {
-  "captured_at": "2026-05-05T211806",
+  "captured_at": "2026-05-06T021906",
   "case_results": [
     {
       "canonical": "Saurabh",
       "case_id": "A-PERSON-001",
-      "case_pass": false,
+      "case_pass": true,
       "category": 3,
       "category_expected": "person",
       "category_predicted": "person",
       "cold_start": false,
-      "degeneration": 1,
-      "diversity": 0,
+      "degeneration": 0,
+      "diversity": 3,
       "error": null,
-      "filtered_aliases": [],
-      "latency_ms": 1118,
-      "matched_groups": [],
-      "no_alias_expected": false,
-      "precision": 0,
-      "raw_aliases": [
-        "saurabh",
-        "saurabh",
-        "saurabh"
+      "filtered_aliases": [
+        "Sorabh",
+        "Sarab",
+        "Sorbha",
+        "Sourabh",
+        "Sorab"
       ],
-      "recall": 0,
+      "latency_ms": 2034,
+      "matched_groups": [
+        "sarab",
+        "sourabh"
+      ],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "Sorabh",
+        "Sarab",
+        "Sorbha",
+        "Sourabh",
+        "Sorab"
+      ],
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
@@ -38,22 +49,21 @@
       "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "par vati",
         "poor vati",
         "pavathi",
-        "par vathy"
+        "par vati"
       ],
-      "latency_ms": 615,
+      "latency_ms": 1358,
       "matched_groups": [
         "par-vati"
       ],
       "no_alias_expected": false,
       "precision": 2,
       "raw_aliases": [
-        "par vati",
+        "Parvati",
         "poor vati",
         "pavathi",
-        "par vathy"
+        "par vati"
       ],
       "recall": 2,
       "refusal": 0,
@@ -62,7 +72,7 @@
     {
       "canonical": "Aiyana",
       "case_id": "A-PERSON-003",
-      "case_pass": false,
+      "case_pass": true,
       "category": 3,
       "category_expected": "person",
       "category_predicted": "person",
@@ -71,49 +81,51 @@
       "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "i ayana",
         "aiyan",
-        "a ayana"
+        "aiyna",
+        "ayana"
       ],
-      "latency_ms": 649,
-      "matched_groups": [],
+      "latency_ms": 1450,
+      "matched_groups": [
+        "iana"
+      ],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
-        "i ayana",
         "aiyan",
-        "a ayana"
+        "aiyna",
+        "ayana",
+        "aiyana"
       ],
-      "recall": 0,
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
     {
       "canonical": "Malavika",
       "case_id": "A-PERSON-004",
-      "case_pass": false,
+      "case_pass": true,
       "category": 3,
       "category_expected": "person",
       "category_predicted": "person",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 1,
+      "diversity": 2,
       "error": null,
       "filtered_aliases": [
-        "malavi ka",
-        "malavi kaa"
+        "malaviki",
+        "malavi"
       ],
-      "latency_ms": 692,
+      "latency_ms": 1505,
       "matched_groups": [
         "mala"
       ],
       "no_alias_expected": false,
-      "precision": 1,
+      "precision": 3,
       "raw_aliases": [
-        "malavi ka",
-        "malavi kaa",
-        "malavi kaa",
-        "malavi kaa"
+        "Malavika",
+        "malaviki",
+        "malavi"
       ],
       "recall": 3,
       "refusal": 0,
@@ -128,19 +140,28 @@
       "category_predicted": "person",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 1,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "arvindh"
+        "Arind",
+        "ardin",
+        "ardan",
+        "ar vinnd",
+        "ar vinnnd",
+        "ar vinndh"
       ],
-      "latency_ms": 578,
+      "latency_ms": 1531,
       "matched_groups": [],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
-        "arvindh",
-        "arvindh",
-        "arvindh"
+        "Arind",
+        "Arvind",
+        "ardin",
+        "ardan",
+        "ar vinnd",
+        "ar vinnnd",
+        "ar vinndh"
       ],
       "recall": 0,
       "refusal": 0,
@@ -160,10 +181,9 @@
       "filtered_aliases": [
         "me ya moto",
         "mia motto",
-        "me amoto",
         "miyomoto"
       ],
-      "latency_ms": 619,
+      "latency_ms": 1301,
       "matched_groups": [
         "miya"
       ],
@@ -172,7 +192,6 @@
       "raw_aliases": [
         "me ya moto",
         "mia motto",
-        "me amoto",
         "miyomoto"
       ],
       "recall": 3,
@@ -182,29 +201,29 @@
     {
       "canonical": "Aleksandr",
       "case_id": "A-PERSON-007",
-      "case_pass": false,
+      "case_pass": true,
       "category": 3,
       "category_expected": "person",
       "category_predicted": "person",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 3,
+      "diversity": 2,
       "error": null,
       "filtered_aliases": [
-        "aleksan",
-        "alexanndr",
-        "alexanrdr"
+        "aleksander",
+        "alexander"
       ],
-      "latency_ms": 691,
-      "matched_groups": [],
+      "latency_ms": 1455,
+      "matched_groups": [
+        "alex"
+      ],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
-        "aleksan",
-        "alexanndr",
-        "alexanrdr"
+        "aleksander",
+        "alexander"
       ],
-      "recall": 0,
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
@@ -217,19 +236,20 @@
       "category_predicted": "person",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 1,
+      "diversity": 2,
       "error": null,
       "filtered_aliases": [
+        "ni khil",
         "nikil"
       ],
-      "latency_ms": 587,
+      "latency_ms": 1500,
       "matched_groups": [],
       "no_alias_expected": false,
-      "precision": 3,
+      "precision": 1,
       "raw_aliases": [
+        "ni khil",
         "nikhil",
-        "nikil",
-        "nikhil"
+        "nikil"
       ],
       "recall": 0,
       "refusal": 0,
@@ -249,13 +269,12 @@
       "filtered_aliases": [
         "aoifie"
       ],
-      "latency_ms": 602,
+      "latency_ms": 1442,
       "matched_groups": [],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
         "aoife",
-        "aoifie",
         "aoifie"
       ],
       "recall": 0,
@@ -271,21 +290,30 @@
       "category_predicted": "person",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 2,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
         "shobhan",
-        "shobhanah"
+        "Siobh",
+        "Siobhana",
+        "shivon",
+        "shivna",
+        "shivann",
+        "shivana"
       ],
-      "latency_ms": 685,
+      "latency_ms": 1568,
       "matched_groups": [],
       "no_alias_expected": false,
-      "precision": 3,
+      "precision": 1,
       "raw_aliases": [
         "shobhan",
-        "shobhanah",
-        "shobhanah",
-        "shobhanah"
+        "Siobh",
+        "Siobhan",
+        "Siobhana",
+        "shivon",
+        "shivna",
+        "shivann",
+        "shivana"
       ],
       "recall": 0,
       "refusal": 0,
@@ -300,19 +328,22 @@
       "category_predicted": "person",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 1,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "xochi tl"
+        "xochit",
+        "xochiti",
+        "Xochitla"
       ],
-      "latency_ms": 598,
+      "latency_ms": 1585,
       "matched_groups": [],
       "no_alias_expected": false,
-      "precision": 0,
+      "precision": 3,
       "raw_aliases": [
-        "xochi tl",
-        "xochi tl",
-        "xochi tl"
+        "xochitl",
+        "xochit",
+        "xochiti",
+        "Xochitla"
       ],
       "recall": 0,
       "refusal": 0,
@@ -326,18 +357,21 @@
       "category_expected": "person",
       "category_predicted": "person",
       "cold_start": false,
-      "degeneration": 1,
-      "diversity": 0,
+      "degeneration": 0,
+      "diversity": 2,
       "error": null,
-      "filtered_aliases": [],
-      "latency_ms": 550,
+      "filtered_aliases": [
+        "quinncy",
+        "qincy"
+      ],
+      "latency_ms": 1383,
       "matched_groups": [],
       "no_alias_expected": false,
-      "precision": 0,
+      "precision": 3,
       "raw_aliases": [
+        "quinncy",
         "quincy",
-        "quincy",
-        "quincy"
+        "qincy"
       ],
       "recall": 0,
       "refusal": 0,
@@ -346,28 +380,32 @@
     {
       "canonical": "Bjork",
       "case_id": "A-PERSON-013",
-      "case_pass": false,
+      "case_pass": true,
       "category": 3,
       "category_expected": "person",
       "category_predicted": "person",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 2,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "bjorki",
-        "bjorkie"
+        "brok",
+        "bork",
+        "byork"
       ],
-      "latency_ms": 571,
-      "matched_groups": [],
+      "latency_ms": 1394,
+      "matched_groups": [
+        "byork"
+      ],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
-        "bjorki",
-        "bjorkie",
-        "bjorkie"
+        "bjork",
+        "brok",
+        "bork",
+        "byork"
       ],
-      "recall": 0,
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
@@ -380,20 +418,26 @@
       "category_predicted": "person",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 1,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "naween"
+        "naevn",
+        "naven",
+        "naive",
+        "naveeen",
+        "nevin"
       ],
-      "latency_ms": 680,
+      "latency_ms": 1412,
       "matched_groups": [],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
+        "naevn",
+        "naven",
+        "naive",
         "naveen",
-        "naween",
-        "naveen",
-        "naveen"
+        "naveeen",
+        "nevin"
       ],
       "recall": 0,
       "refusal": 0,
@@ -411,21 +455,19 @@
       "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "yusufu",
-        "yussuf",
-        "yusufi",
-        "yussif"
+        "yusoif",
+        "yusef",
+        "yusufu"
       ],
-      "latency_ms": 767,
+      "latency_ms": 1453,
       "matched_groups": [],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
         "yusuf",
-        "yusufu",
-        "yussuf",
-        "yusufi",
-        "yussif"
+        "yusoif",
+        "yusef",
+        "yusufu"
       ],
       "recall": 0,
       "refusal": 0,
@@ -440,20 +482,30 @@
       "category_predicted": "person",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 2,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "genievie",
-        "geniieve"
+        "e nevie",
+        "nevevie",
+        "enevie",
+        "genieve",
+        "genieveve",
+        "genevive",
+        "ge vieve"
       ],
-      "latency_ms": 635,
+      "latency_ms": 1682,
       "matched_groups": [],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
-        "genievie",
-        "geniieve",
-        "geniieve"
+        "e nevie",
+        "nevevie",
+        "enevie",
+        "genevieve",
+        "genieve",
+        "genieveve",
+        "genevive",
+        "ge vieve"
       ],
       "recall": 0,
       "refusal": 0,
@@ -468,25 +520,29 @@
       "category_predicted": "person",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 2,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
+        "padma vat",
+        "padma vati",
         "pad ma vati",
-        "poor ma vati",
-        "pav ma vati",
-        "par ma vati"
+        "pad mavi",
+        "pad ma",
+        "padma vaati"
       ],
-      "latency_ms": 716,
+      "latency_ms": 2602,
       "matched_groups": [
         "padma"
       ],
       "no_alias_expected": false,
       "precision": 2,
       "raw_aliases": [
+        "padma vat",
+        "padma vati",
         "pad ma vati",
-        "poor ma vati",
-        "pav ma vati",
-        "par ma vati"
+        "pad mavi",
+        "pad ma",
+        "padma vaati"
       ],
       "recall": 3,
       "refusal": 0,
@@ -495,55 +551,74 @@
     {
       "canonical": "Kwame",
       "case_id": "A-PERSON-018",
-      "case_pass": false,
+      "case_pass": true,
       "category": 3,
       "category_expected": "person",
       "category_predicted": "person",
       "cold_start": false,
-      "degeneration": 1,
-      "diversity": 0,
+      "degeneration": 0,
+      "diversity": 3,
       "error": null,
-      "filtered_aliases": [],
-      "latency_ms": 634,
-      "matched_groups": [],
-      "no_alias_expected": false,
-      "precision": 0,
-      "raw_aliases": [
-        "kwame",
-        "kwame",
-        "kwame",
-        "kwame",
+      "filtered_aliases": [
+        "kwam",
+        "kwa me",
+        "kwame e",
+        "kweame",
+        "kwaame"
+      ],
+      "latency_ms": 2575,
+      "matched_groups": [
         "kwame"
       ],
-      "recall": 0,
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "kwam",
+        "kwame",
+        "kwa me",
+        "kwame e",
+        "kweame",
+        "kwaame"
+      ],
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
     {
       "canonical": "Tomasz",
       "case_id": "A-PERSON-019",
-      "case_pass": false,
+      "case_pass": true,
       "category": 3,
       "category_expected": "person",
       "category_predicted": "person",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 2,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
         "tomas",
-        "tomaszki"
+        "tomasza",
+        "tomaz",
+        "tomazh",
+        "tomash",
+        "tomashy"
       ],
-      "latency_ms": 598,
-      "matched_groups": [],
+      "latency_ms": 1643,
+      "matched_groups": [
+        "tomash"
+      ],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
-        "tomas",
         "tomasz",
-        "tomaszki"
+        "tomas",
+        "tomasza",
+        "tomaz",
+        "tomazh",
+        "tomash",
+        "tomashy"
       ],
-      "recall": 0,
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
@@ -556,20 +631,26 @@
       "category_predicted": "person",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 1,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "devans"
+        "devans",
+        "dvanish",
+        "dvanshi",
+        "devanshi",
+        "Devashn"
       ],
-      "latency_ms": 600,
+      "latency_ms": 1648,
       "matched_groups": [],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
         "devans",
-        "devansh",
-        "devansh",
-        "devansh"
+        "dvanish",
+        "dvanshi",
+        "devanshi",
+        "Devansh",
+        "Devashn"
       ],
       "recall": 0,
       "refusal": 0,
@@ -584,20 +665,24 @@
       "category_predicted": "person",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 2,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "ami ni",
-        "ani mi"
+        "mani",
+        "ani",
+        "anii",
+        "imi ni"
       ],
-      "latency_ms": 608,
+      "latency_ms": 1366,
       "matched_groups": [],
       "no_alias_expected": false,
-      "precision": 1,
+      "precision": 3,
       "raw_aliases": [
-        "ami ni",
-        "imani",
-        "ani mi"
+        "Imani",
+        "mani",
+        "ani",
+        "anii",
+        "imi ni"
       ],
       "recall": 0,
       "refusal": 0,
@@ -606,7 +691,7 @@
     {
       "canonical": "Beyonc\u00e9",
       "case_id": "A-PERSON-022",
-      "case_pass": false,
+      "case_pass": true,
       "category": 3,
       "category_expected": "person",
       "category_predicted": "person",
@@ -615,20 +700,30 @@
       "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "beyoncay",
-        "beyoncy",
-        "beyonna"
+        "beyonce",
+        "beneyce",
+        "byonce",
+        "byonse",
+        "Beyonsee",
+        "Beyoncy",
+        "Beyoncey"
       ],
-      "latency_ms": 656,
-      "matched_groups": [],
+      "latency_ms": 1571,
+      "matched_groups": [
+        "beyonce"
+      ],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
-        "beyoncay",
-        "beyoncy",
-        "beyonna"
+        "beyonce",
+        "beneyce",
+        "byonce",
+        "byonse",
+        "Beyonsee",
+        "Beyoncy",
+        "Beyoncey"
       ],
-      "recall": 0,
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
@@ -644,20 +739,28 @@
       "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "caime",
-        "caimeh",
-        "caimei",
-        "caimea"
+        "cao imhe",
+        "caw imhe",
+        "caw imha",
+        "caiohe",
+        "coimehe",
+        "cauimeh",
+        "caimhe",
+        "caemhe"
       ],
-      "latency_ms": 648,
+      "latency_ms": 1658,
       "matched_groups": [],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
-        "caime",
-        "caimeh",
-        "caimei",
-        "caimea"
+        "cao imhe",
+        "caw imhe",
+        "caw imha",
+        "caiohe",
+        "coimehe",
+        "cauimeh",
+        "caimhe",
+        "caemhe"
       ],
       "recall": 0,
       "refusal": 0,
@@ -675,17 +778,15 @@
       "diversity": 1,
       "error": null,
       "filtered_aliases": [
-        "ezekie"
+        "ezekiah"
       ],
-      "latency_ms": 655,
+      "latency_ms": 2469,
       "matched_groups": [],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
         "ezekiel",
-        "ezekie",
-        "ezekiel",
-        "ezekiel"
+        "ezekiah"
       ],
       "recall": 0,
       "refusal": 0,
@@ -694,29 +795,36 @@
     {
       "canonical": "Anastasia",
       "case_id": "A-PERSON-025",
-      "case_pass": false,
+      "case_pass": true,
       "category": 3,
       "category_expected": "person",
       "category_predicted": "person",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 2,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "anastasi",
-        "anastasiia",
-        "anastasiaa"
+        "anastazia",
+        "anastassia",
+        "ana stasia",
+        "astasia",
+        "anastasi"
       ],
-      "latency_ms": 619,
-      "matched_groups": [],
+      "latency_ms": 1498,
+      "matched_groups": [
+        "anastasia"
+      ],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
-        "anastasi",
-        "anastasiia",
-        "anastasiaa"
+        "anastazia",
+        "anastasia",
+        "anastassia",
+        "ana stasia",
+        "astasia",
+        "anastasi"
       ],
-      "recall": 0,
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
@@ -732,19 +840,23 @@
       "diversity": 0,
       "error": null,
       "filtered_aliases": [
-        "smiith",
-        "smithy",
-        "smiithy"
+        "smth",
+        "smthw",
+        "smt",
+        "shimm",
+        "smithy"
       ],
-      "latency_ms": 654,
+      "latency_ms": 1495,
       "matched_groups": [],
       "no_alias_expected": true,
       "precision": 0,
       "raw_aliases": [
-        "smiith",
-        "smithy",
-        "smiithy",
-        "smiithy"
+        "smith",
+        "smth",
+        "smthw",
+        "smt",
+        "shimm",
+        "smithy"
       ],
       "recall": 0,
       "refusal": 0,
@@ -762,19 +874,15 @@
       "diversity": 0,
       "error": null,
       "filtered_aliases": [
-        "robert i",
-        "robert w",
-        "robert j"
+        "rob ert"
       ],
-      "latency_ms": 640,
+      "latency_ms": 1235,
       "matched_groups": [],
       "no_alias_expected": true,
       "precision": 0,
       "raw_aliases": [
         "robert",
-        "robert i",
-        "robert w",
-        "robert j"
+        "rob ert"
       ],
       "recall": 0,
       "refusal": 0,
@@ -792,17 +900,17 @@
       "diversity": 0,
       "error": null,
       "filtered_aliases": [
-        "mariah"
+        "maia",
+        "mari"
       ],
-      "latency_ms": 637,
+      "latency_ms": 1309,
       "matched_groups": [],
       "no_alias_expected": true,
       "precision": 0,
       "raw_aliases": [
-        "maria",
-        "mariah",
-        "mariah",
-        "mariah"
+        "Maria",
+        "maia",
+        "mari"
       ],
       "recall": 0,
       "refusal": 0,
@@ -811,59 +919,46 @@
     {
       "canonical": "Sarah",
       "case_id": "A-PERSON-029",
-      "case_pass": false,
+      "case_pass": true,
       "category": 3,
       "category_expected": "person",
       "category_predicted": "person",
       "cold_start": false,
-      "degeneration": 0,
-      "diversity": 0,
+      "degeneration": 1,
+      "diversity": 3,
       "error": null,
-      "filtered_aliases": [
-        "sarah m",
-        "sarah w",
-        "sarah h"
-      ],
-      "latency_ms": 681,
+      "filtered_aliases": [],
+      "latency_ms": 1244,
       "matched_groups": [],
       "no_alias_expected": true,
-      "precision": 0,
+      "precision": 3,
       "raw_aliases": [
-        "sarah",
-        "sarah m",
-        "sarah w",
-        "sarah h"
+        "sarah"
       ],
-      "recall": 0,
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
     {
       "canonical": "Ali",
       "case_id": "A-PERSON-030",
-      "case_pass": false,
+      "case_pass": true,
       "category": 3,
       "category_expected": "person",
       "category_predicted": "person",
       "cold_start": false,
-      "degeneration": 0,
-      "diversity": 0,
+      "degeneration": 1,
+      "diversity": 3,
       "error": null,
-      "filtered_aliases": [
-        "al",
-        "alii",
-        "aliya"
-      ],
-      "latency_ms": 597,
+      "filtered_aliases": [],
+      "latency_ms": 1142,
       "matched_groups": [],
       "no_alias_expected": true,
-      "precision": 0,
+      "precision": 3,
       "raw_aliases": [
-        "al",
-        "alii",
-        "aliya"
+        "ali"
       ],
-      "recall": 0,
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
@@ -881,9 +976,10 @@
       "filtered_aliases": [
         "kuber netties",
         "cube ernetes",
-        "cooper nettys"
+        "cooper nettys",
+        "kube netsies"
       ],
-      "latency_ms": 594,
+      "latency_ms": 1565,
       "matched_groups": [
         "kuber"
       ],
@@ -892,7 +988,8 @@
       "raw_aliases": [
         "kuber netties",
         "cube ernetes",
-        "cooper nettys"
+        "cooper nettys",
+        "kube netsies"
       ],
       "recall": 3,
       "refusal": 0,
@@ -901,28 +998,31 @@
     {
       "canonical": "Postgres",
       "case_id": "A-BRAND-002",
-      "case_pass": false,
-      "category": 0,
+      "case_pass": true,
+      "category": 3,
       "category_expected": "brand",
-      "category_predicted": "general",
+      "category_predicted": "brand",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 1,
+      "diversity": 2,
       "error": null,
       "filtered_aliases": [
-        "postgresql"
+        "post grass",
+        "post gress",
+        "post grease"
       ],
-      "latency_ms": 644,
-      "matched_groups": [],
+      "latency_ms": 1312,
+      "matched_groups": [
+        "post"
+      ],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
-        "postgresql",
-        "postgresql",
-        "postgresql",
-        "postgresql"
+        "post grass",
+        "post gress",
+        "post grease"
       ],
-      "recall": 0,
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
@@ -938,21 +1038,20 @@
       "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "taw ind",
-        "tawi ind",
-        "tail wind"
+        "tail wind",
+        "tail ind",
+        "tale wynd"
       ],
-      "latency_ms": 771,
+      "latency_ms": 1325,
       "matched_groups": [
         "tailwind"
       ],
       "no_alias_expected": false,
       "precision": 2,
       "raw_aliases": [
-        "taw ind",
-        "tawi ind",
         "tail wind",
-        "tail wind"
+        "tail ind",
+        "tale wynd"
       ],
       "recall": 3,
       "refusal": 0,
@@ -966,21 +1065,16 @@
       "category_expected": "brand",
       "category_predicted": "brand",
       "cold_start": false,
-      "degeneration": 0,
-      "diversity": 2,
+      "degeneration": 1,
+      "diversity": 0,
       "error": null,
-      "filtered_aliases": [
-        "vercel.io",
-        "vercel.com"
-      ],
-      "latency_ms": 637,
+      "filtered_aliases": [],
+      "latency_ms": 1293,
       "matched_groups": [],
       "no_alias_expected": false,
-      "precision": 3,
+      "precision": 0,
       "raw_aliases": [
-        "vercel",
-        "vercel.io",
-        "vercel.com"
+        "vercel"
       ],
       "recall": 0,
       "refusal": 0,
@@ -995,13 +1089,18 @@
       "category_predicted": "person",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 2,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
+        "pypir",
+        "pyper",
         "viper",
-        "yper"
+        "vipper",
+        "vypter",
+        "yper",
+        "ypur"
       ],
-      "latency_ms": 571,
+      "latency_ms": 1575,
       "matched_groups": [
         "viper"
       ],
@@ -1009,8 +1108,13 @@
       "precision": 3,
       "raw_aliases": [
         "vyper",
+        "pypir",
+        "pyper",
         "viper",
-        "yper"
+        "vipper",
+        "vypter",
+        "yper",
+        "ypur"
       ],
       "recall": 3,
       "refusal": 0,
@@ -1028,20 +1132,21 @@
       "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "kustome",
+        "kustomizze",
         "customize",
-        "kustomiz"
+        "kustomise"
       ],
-      "latency_ms": 666,
+      "latency_ms": 1577,
       "matched_groups": [
         "customize"
       ],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
-        "kustome",
+        "kustomizze",
+        "kustomize",
         "customize",
-        "kustomiz"
+        "kustomise"
       ],
       "recall": 3,
       "refusal": 0,
@@ -1056,21 +1161,26 @@
       "category_predicted": "person",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 2,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "tandis",
-        "tendais"
+        "tendise",
+        "tendsis",
+        "tensis",
+        "tenis",
+        "dends"
       ],
-      "latency_ms": 694,
+      "latency_ms": 1461,
       "matched_groups": [],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
         "tendis",
-        "tandis",
-        "tendais",
-        "tendis"
+        "tendise",
+        "tendsis",
+        "tensis",
+        "tenis",
+        "dends"
       ],
       "recall": 0,
       "refusal": 0,
@@ -1088,20 +1198,25 @@
       "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "helitond",
-        "heliton",
-        "helitonn"
+        "he lidon",
+        "helido",
+        "helidoh",
+        "hello"
       ],
-      "latency_ms": 632,
-      "matched_groups": [],
+      "latency_ms": 1564,
+      "matched_groups": [
+        "helidon"
+      ],
       "no_alias_expected": false,
-      "precision": 3,
+      "precision": 2,
       "raw_aliases": [
-        "helitond",
-        "heliton",
-        "helitonn"
+        "he lidon",
+        "helidon",
+        "helido",
+        "helidoh",
+        "hello"
       ],
-      "recall": 0,
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
@@ -1114,20 +1229,26 @@
       "category_predicted": "brand",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 2,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "yugabeetab",
-        "yugabyted"
+        "ugrabyte db",
+        "yugabyte db",
+        "yugbytede",
+        "yugbytde",
+        "yugbytedb"
       ],
-      "latency_ms": 747,
+      "latency_ms": 1808,
       "matched_groups": [],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
-        "yugabeetab",
         "yugabytedb",
-        "yugabyted"
+        "ugrabyte db",
+        "yugabyte db",
+        "yugbytede",
+        "yugbytde",
+        "yugbytedb"
       ],
       "recall": 0,
       "refusal": 0,
@@ -1145,19 +1266,23 @@
       "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "ngeni",
-        "ngin",
-        "nginxx"
+        "ingx",
+        "ngix",
+        "ingix",
+        "ginx",
+        "nigx"
       ],
-      "latency_ms": 658,
+      "latency_ms": 1437,
       "matched_groups": [],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
-        "ngeni",
-        "ngin",
+        "ingx",
+        "ngix",
+        "ingix",
         "nginx",
-        "nginxx"
+        "ginx",
+        "nigx"
       ],
       "recall": 0,
       "refusal": 0,
@@ -1167,26 +1292,30 @@
       "canonical": "Pinia",
       "case_id": "A-BRAND-011",
       "case_pass": false,
-      "category": 3,
+      "category": 0,
       "category_expected": "brand",
-      "category_predicted": "brand",
+      "category_predicted": "person",
       "cold_start": false,
       "degeneration": 0,
       "diversity": 3,
       "error": null,
       "filtered_aliases": [
         "pina",
-        "pinie",
-        "pini"
+        "piia",
+        "piio",
+        "pini",
+        "pinai"
       ],
-      "latency_ms": 604,
+      "latency_ms": 1434,
       "matched_groups": [],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
         "pina",
-        "pinie",
-        "pini"
+        "piia",
+        "piio",
+        "pini",
+        "pinai"
       ],
       "recall": 0,
       "refusal": 0,
@@ -1196,25 +1325,31 @@
       "canonical": "Astro",
       "case_id": "A-BRAND-012",
       "case_pass": false,
-      "category": 3,
+      "category": 0,
       "category_expected": "brand",
-      "category_predicted": "brand",
+      "category_predicted": "person",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 1,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "astroworld",
-        "astroworlds"
+        "stro",
+        "storo",
+        "straw",
+        "stau",
+        "astoo"
       ],
-      "latency_ms": 663,
+      "latency_ms": 1449,
       "matched_groups": [],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
         "astro",
-        "astroworld",
-        "astroworlds"
+        "stro",
+        "storo",
+        "straw",
+        "stau",
+        "astoo"
       ],
       "recall": 0,
       "refusal": 0,
@@ -1223,28 +1358,28 @@
     {
       "canonical": "Wrangler",
       "case_id": "A-BRAND-013",
-      "case_pass": false,
+      "case_pass": true,
       "category": 3,
       "category_expected": "brand",
       "category_predicted": "brand",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 1,
+      "diversity": 2,
       "error": null,
       "filtered_aliases": [
-        "rangler"
+        "rangler",
+        "ranglerr"
       ],
-      "latency_ms": 632,
+      "latency_ms": 1473,
       "matched_groups": [
         "wrangler"
       ],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
-        "rangler",
         "wrangler",
         "rangler",
-        "rangler"
+        "ranglerr"
       ],
       "recall": 3,
       "refusal": 0,
@@ -1258,21 +1393,16 @@
       "category_expected": "brand",
       "category_predicted": "general",
       "cold_start": false,
-      "degeneration": 0,
-      "diversity": 2,
+      "degeneration": 1,
+      "diversity": 0,
       "error": null,
-      "filtered_aliases": [
-        "reseant",
-        "reseand"
-      ],
-      "latency_ms": 596,
+      "filtered_aliases": [],
+      "latency_ms": 1322,
       "matched_groups": [],
       "no_alias_expected": false,
-      "precision": 3,
+      "precision": 0,
       "raw_aliases": [
-        "resend",
-        "reseant",
-        "reseand"
+        "RESEND"
       ],
       "recall": 0,
       "refusal": 0,
@@ -1287,20 +1417,26 @@
       "category_predicted": "brand",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 2,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "line",
-        "linea"
+        "linera",
+        "linerae",
+        "linean",
+        "lineary",
+        "linearly"
       ],
-      "latency_ms": 541,
+      "latency_ms": 1422,
       "matched_groups": [],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
-        "line",
-        "linea",
-        "linea"
+        "linera",
+        "linerae",
+        "linean",
+        "linear",
+        "lineary",
+        "linearly"
       ],
       "recall": 0,
       "refusal": 0,
@@ -1312,22 +1448,23 @@
       "case_pass": false,
       "category": 3,
       "category_expected": "brand",
-      "category_predicted": "brand",
+      "category_predicted": "general",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 1,
+      "diversity": 2,
       "error": null,
       "filtered_aliases": [
-        "noition"
+        "Notio",
+        "Notioin"
       ],
-      "latency_ms": 543,
+      "latency_ms": 1395,
       "matched_groups": [],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
-        "noition",
-        "noition",
-        "noition"
+        "Notio",
+        "Notioin",
+        "Notion"
       ],
       "recall": 0,
       "refusal": 0,
@@ -1345,17 +1482,19 @@
       "diversity": 0,
       "error": null,
       "filtered_aliases": [
-        "strippe"
+        "strips",
+        "stripey",
+        "strip"
       ],
-      "latency_ms": 602,
+      "latency_ms": 1437,
       "matched_groups": [],
       "no_alias_expected": true,
       "precision": 0,
       "raw_aliases": [
         "stripe",
-        "strippe",
-        "strippe",
-        "strippe"
+        "strips",
+        "stripey",
+        "strip"
       ],
       "recall": 0,
       "refusal": 0,
@@ -1365,25 +1504,29 @@
       "canonical": "Sentry",
       "case_id": "A-BRAND-018",
       "case_pass": false,
-      "category": 0,
+      "category": 3,
       "category_expected": "brand",
-      "category_predicted": "person",
+      "category_predicted": "brand",
       "cold_start": false,
       "degeneration": 0,
       "diversity": 0,
       "error": null,
       "filtered_aliases": [
-        "sentr",
-        "sentryr"
+        "sentryy",
+        "senti",
+        "sentie",
+        "sentary"
       ],
-      "latency_ms": 619,
+      "latency_ms": 1408,
       "matched_groups": [],
       "no_alias_expected": true,
       "precision": 0,
       "raw_aliases": [
         "sentry",
-        "sentr",
-        "sentryr"
+        "sentryy",
+        "senti",
+        "sentie",
+        "sentary"
       ],
       "recall": 0,
       "refusal": 0,
@@ -1392,33 +1535,26 @@
     {
       "canonical": "Anthropic",
       "case_id": "A-BRAND-019",
-      "case_pass": true,
-      "category": 3,
+      "case_pass": false,
+      "category": 0,
       "category_expected": "brand",
-      "category_predicted": "brand",
+      "category_predicted": "general",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 3,
+      "diversity": 1,
       "error": null,
       "filtered_aliases": [
-        "anthrop",
-        "anthropie",
-        "anthropics",
-        "anthro",
-        "anthroplogy"
+        "Anthropie"
       ],
-      "latency_ms": 743,
+      "latency_ms": 1373,
       "matched_groups": [
         "anthropic"
       ],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
-        "anthrop",
-        "anthropie",
-        "anthropics",
-        "anthro",
-        "anthroplogy"
+        "anthropic",
+        "Anthropie"
       ],
       "recall": 3,
       "refusal": 0,
@@ -1427,29 +1563,28 @@
     {
       "canonical": "OpenAI",
       "case_id": "A-BRAND-020",
-      "case_pass": true,
-      "category": 3,
+      "case_pass": false,
+      "category": 0,
       "category_expected": "brand",
-      "category_predicted": "brand",
+      "category_predicted": "acronym",
       "cold_start": false,
       "degeneration": 0,
       "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "opentai",
-        "openey",
+        "Open air",
+        "Open eye",
         "open ai"
       ],
-      "latency_ms": 666,
+      "latency_ms": 1373,
       "matched_groups": [
         "openai"
       ],
       "no_alias_expected": false,
       "precision": 2,
       "raw_aliases": [
-        "opentai",
-        "openey",
-        "open ai",
+        "Open air",
+        "Open eye",
         "open ai"
       ],
       "recall": 3,
@@ -1465,106 +1600,133 @@
       "category_predicted": "person",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 2,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "perplexite",
-        "perplexi"
+        "pelexity",
+        "plexity",
+        "pleksey",
+        "perplexie"
       ],
-      "latency_ms": 616,
-      "matched_groups": [
-        "perplexity"
-      ],
+      "latency_ms": 1591,
+      "matched_groups": [],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
-        "perplexite",
-        "perplexi",
-        "perplexite"
+        "Perplexity",
+        "pelexity",
+        "plexity",
+        "pleksey",
+        "perplexie"
       ],
-      "recall": 3,
+      "recall": 0,
       "refusal": 0,
       "timed_out": false
     },
     {
       "canonical": "Hugging Face",
       "case_id": "A-BRAND-022",
-      "case_pass": false,
+      "case_pass": true,
       "category": 3,
       "category_expected": "brand",
       "category_predicted": "brand",
       "cold_start": false,
-      "degeneration": 1,
-      "diversity": 0,
+      "degeneration": 0,
+      "diversity": 3,
       "error": null,
-      "filtered_aliases": [],
-      "latency_ms": 571,
-      "matched_groups": [],
-      "no_alias_expected": false,
-      "precision": 0,
-      "raw_aliases": [
-        "hugging face",
-        "hugging face",
-        "hugging face"
+      "filtered_aliases": [
+        "hugg face",
+        "huggin face",
+        "hugging fas"
       ],
-      "recall": 0,
+      "latency_ms": 1531,
+      "matched_groups": [
+        "hugging-face"
+      ],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "hugg face",
+        "hugging face",
+        "huggin face",
+        "hugging fas"
+      ],
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
     {
       "canonical": "Cloudflare",
       "case_id": "A-BRAND-023",
-      "case_pass": false,
+      "case_pass": true,
       "category": 3,
       "category_expected": "brand",
       "category_predicted": "brand",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 2,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "cfwlr",
-        "cfwl"
+        "cloudflair",
+        "cloud flare",
+        "cloudfier",
+        "cloud ferr",
+        "cloudfer",
+        "cloudferr"
       ],
-      "latency_ms": 668,
-      "matched_groups": [],
+      "latency_ms": 1546,
+      "matched_groups": [
+        "cloudflare"
+      ],
       "no_alias_expected": false,
-      "precision": 0,
+      "precision": 3,
       "raw_aliases": [
-        "cfwlr",
-        "cfwl",
-        "cfwlr",
-        "cfwlr"
+        "cloudflair",
+        "cloudflare",
+        "cloud flare",
+        "cloudfier",
+        "cloud ferr",
+        "cloudfer",
+        "cloudferr"
       ],
-      "recall": 0,
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
     {
       "canonical": "DigitalOcean",
       "case_id": "A-BRAND-024",
-      "case_pass": false,
+      "case_pass": true,
       "category": 3,
       "category_expected": "brand",
       "category_predicted": "brand",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 2,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
+        "digital oceon",
         "digital ocean",
-        "digital oce"
+        "digitool",
+        "digitalion",
+        "digitalon",
+        "digitaloon",
+        "digital eon"
       ],
-      "latency_ms": 624,
+      "latency_ms": 1521,
       "matched_groups": [
         "digital"
       ],
       "no_alias_expected": false,
-      "precision": 1,
+      "precision": 3,
       "raw_aliases": [
+        "digital oceon",
         "digital ocean",
-        "digital ocean",
-        "digital oce"
+        "digitool",
+        "digitalion",
+        "digitalon",
+        "digitaloon",
+        "digital eon"
       ],
       "recall": 3,
       "refusal": 0,
@@ -1582,13 +1744,11 @@
       "diversity": 0,
       "error": null,
       "filtered_aliases": [],
-      "latency_ms": 573,
+      "latency_ms": 1422,
       "matched_groups": [],
       "no_alias_expected": false,
       "precision": 0,
       "raw_aliases": [
-        "datadog",
-        "datadog",
         "datadog"
       ],
       "recall": 0,
@@ -1598,27 +1758,31 @@
     {
       "canonical": "OKR",
       "case_id": "A-ACRONYM-001",
-      "case_pass": false,
-      "category": 0,
+      "case_pass": true,
+      "category": 3,
       "category_expected": "acronym",
-      "category_predicted": "brand",
+      "category_predicted": "acronym",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 1,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "okre"
+        "okay are",
+        "oh K R",
+        "okayer"
       ],
-      "latency_ms": 579,
-      "matched_groups": [],
+      "latency_ms": 993,
+      "matched_groups": [
+        "okay-r"
+      ],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
-        "okre",
-        "okre",
-        "okre"
+        "okay are",
+        "oh K R",
+        "okayer"
       ],
-      "recall": 0,
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
@@ -1626,25 +1790,36 @@
       "canonical": "RSI",
       "case_id": "A-ACRONYM-002",
       "case_pass": false,
-      "category": 0,
+      "category": 3,
       "category_expected": "acronym",
-      "category_predicted": "brand",
+      "category_predicted": "acronym",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 2,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "Rsi-tech",
-        "Rsi-gear"
+        "Riss",
+        "Ris",
+        "Log In",
+        "Log in with Facebook",
+        "Log in with Google",
+        "Email",
+        "Password",
+        "Remember me on this computer"
       ],
-      "latency_ms": 643,
+      "latency_ms": 2352,
       "matched_groups": [],
       "no_alias_expected": false,
-      "precision": 0,
+      "precision": 1,
       "raw_aliases": [
-        "Rsi",
-        "Rsi-tech",
-        "Rsi-gear"
+        "Riss",
+        "Ris",
+        "Log In",
+        "Log in with Facebook",
+        "Log in with Google",
+        "Email",
+        "Password",
+        "Remember me on this computer"
       ],
       "recall": 0,
       "refusal": 0,
@@ -1653,32 +1828,31 @@
     {
       "canonical": "PR",
       "case_id": "A-ACRONYM-003",
-      "case_pass": false,
-      "category": 0,
+      "case_pass": true,
+      "category": 3,
       "category_expected": "acronym",
-      "category_predicted": "general",
+      "category_predicted": "acronym",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 3,
+      "diversity": 2,
       "error": null,
       "filtered_aliases": [
-        "princess",
-        "prince",
-        "prankster",
-        "prank"
+        "pee are",
+        "peer",
+        "pee R"
       ],
-      "latency_ms": 760,
-      "matched_groups": [],
+      "latency_ms": 1049,
+      "matched_groups": [
+        "pee-are"
+      ],
       "no_alias_expected": false,
-      "precision": 1,
+      "precision": 3,
       "raw_aliases": [
-        "princess",
-        "prince",
-        "prankster",
-        "prank",
-        "prankster"
+        "pee are",
+        "peer",
+        "pee R"
       ],
-      "recall": 0,
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
@@ -1686,23 +1860,29 @@
       "canonical": "CRM",
       "case_id": "A-ACRONYM-004",
       "case_pass": false,
-      "category": 0,
+      "category": 3,
       "category_expected": "acronym",
-      "category_predicted": "brand",
+      "category_predicted": "acronym",
       "cold_start": false,
-      "degeneration": 1,
-      "diversity": 0,
+      "degeneration": 0,
+      "diversity": 3,
       "error": null,
-      "filtered_aliases": [],
-      "latency_ms": 614,
+      "filtered_aliases": [
+        "crumb",
+        "crr",
+        "cramp",
+        "crampy"
+      ],
+      "latency_ms": 1576,
       "matched_groups": [],
       "no_alias_expected": false,
-      "precision": 0,
+      "precision": 3,
       "raw_aliases": [
+        "crumb",
+        "crr",
         "crm",
-        "crm",
-        "crm",
-        "crm"
+        "cramp",
+        "crampy"
       ],
       "recall": 0,
       "refusal": 0,
@@ -1711,26 +1891,33 @@
     {
       "canonical": "HIPAA",
       "case_id": "A-ACRONYM-005",
-      "case_pass": false,
-      "category": 0,
+      "case_pass": true,
+      "category": 3,
       "category_expected": "acronym",
-      "category_predicted": "person",
+      "category_predicted": "acronym",
       "cold_start": false,
-      "degeneration": 1,
-      "diversity": 0,
+      "degeneration": 0,
+      "diversity": 3,
       "error": null,
-      "filtered_aliases": [],
-      "latency_ms": 605,
-      "matched_groups": [],
-      "no_alias_expected": false,
-      "precision": 0,
-      "raw_aliases": [
-        "hipaa",
-        "hipaa",
-        "hipaa",
-        "hipaa"
+      "filtered_aliases": [
+        "hipper",
+        "hip ah",
+        "hippa",
+        "hippah"
       ],
-      "recall": 0,
+      "latency_ms": 1447,
+      "matched_groups": [
+        "hipa"
+      ],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "hipper",
+        "hip ah",
+        "hippa",
+        "hippah"
+      ],
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
@@ -1738,25 +1925,26 @@
       "canonical": "NATO",
       "case_id": "A-ACRONYM-006",
       "case_pass": false,
-      "category": 0,
+      "category": 3,
       "category_expected": "acronym",
-      "category_predicted": "general",
+      "category_predicted": "acronym",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 2,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "nat",
-        "naot"
+        "Notta",
+        "na",
+        "nat"
       ],
-      "latency_ms": 617,
+      "latency_ms": 1109,
       "matched_groups": [],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
-        "nat",
-        "naot",
-        "naot",
+        "Notta",
+        "nato",
+        "na",
         "nat"
       ],
       "recall": 0,
@@ -1767,26 +1955,32 @@
       "canonical": "AWS",
       "case_id": "A-ACRONYM-007",
       "case_pass": false,
-      "category": 0,
+      "category": 3,
       "category_expected": "acronym",
-      "category_predicted": "brand",
+      "category_predicted": "acronym",
       "cold_start": false,
       "degeneration": 0,
       "diversity": 3,
       "error": null,
       "filtered_aliases": [
         "aww",
-        "awwz",
-        "awwzz"
+        "awsa",
+        "awz",
+        "awws",
+        "aww ww",
+        "awww"
       ],
-      "latency_ms": 592,
+      "latency_ms": 1179,
       "matched_groups": [],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
         "aww",
-        "awwz",
-        "awwzz"
+        "awsa",
+        "awz",
+        "awws",
+        "aww ww",
+        "awww"
       ],
       "recall": 0,
       "refusal": 0,
@@ -1795,27 +1989,32 @@
     {
       "canonical": "GDPR",
       "case_id": "A-ACRONYM-008",
-      "case_pass": false,
-      "category": 0,
+      "case_pass": true,
+      "category": 3,
       "category_expected": "acronym",
-      "category_predicted": "general",
+      "category_predicted": "acronym",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 1,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "gdprg"
+        "GDRP",
+        "gdp r",
+        "gdp rp"
       ],
-      "latency_ms": 605,
-      "matched_groups": [],
+      "latency_ms": 1427,
+      "matched_groups": [
+        "g-d-p-r"
+      ],
       "no_alias_expected": false,
-      "precision": 3,
+      "precision": 2,
       "raw_aliases": [
-        "gdprg",
-        "gdprg",
-        "gdprg"
+        "GDPR",
+        "GDRP",
+        "gdp r",
+        "gdp rp"
       ],
-      "recall": 0,
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
@@ -1825,26 +2024,27 @@
       "case_pass": false,
       "category": 0,
       "category_expected": "acronym",
-      "category_predicted": "general",
+      "category_predicted": "domain",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 3,
+      "diversity": 2,
       "error": null,
       "filtered_aliases": [
-        "oauth2",
-        "oauth3",
-        "oauth1"
+        "oaut",
+        "oAtH"
       ],
-      "latency_ms": 603,
-      "matched_groups": [],
+      "latency_ms": 1608,
+      "matched_groups": [
+        "oh-auth"
+      ],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
-        "oauth2",
-        "oauth3",
-        "oauth1"
+        "oauth",
+        "oaut",
+        "oAtH"
       ],
-      "recall": 0,
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
@@ -1852,24 +2052,29 @@
       "canonical": "YAML",
       "case_id": "A-ACRONYM-010",
       "case_pass": false,
-      "category": 0,
+      "category": 3,
       "category_expected": "acronym",
-      "category_predicted": "brand",
+      "category_predicted": "acronym",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 1,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "yam"
+        "yamm",
+        "yamla",
+        "yamly",
+        "yammy"
       ],
-      "latency_ms": 571,
+      "latency_ms": 1284,
       "matched_groups": [],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
-        "yam",
         "yaml",
-        "yaml"
+        "yamm",
+        "yamla",
+        "yamly",
+        "yammy"
       ],
       "recall": 0,
       "refusal": 0,
@@ -1879,28 +2084,35 @@
       "canonical": "JSON",
       "case_id": "A-ACRONYM-011",
       "case_pass": false,
-      "category": 0,
+      "category": 3,
       "category_expected": "acronym",
-      "category_predicted": "general",
+      "category_predicted": "acronym",
       "cold_start": false,
       "degeneration": 0,
       "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "json-like",
-        "json-format",
-        "json-syntax",
-        "json-structure"
+        "Joun",
+        "Joine",
+        "Jone",
+        "Jouni",
+        "JooN",
+        "JooN-I",
+        "JooN-E"
       ],
-      "latency_ms": 725,
+      "latency_ms": 1252,
       "matched_groups": [],
       "no_alias_expected": false,
-      "precision": 1,
+      "precision": 3,
       "raw_aliases": [
-        "json-like",
-        "json-format",
-        "json-syntax",
-        "json-structure"
+        "json",
+        "Joun",
+        "Joine",
+        "Jone",
+        "Jouni",
+        "JooN",
+        "JooN-I",
+        "JooN-E"
       ],
       "recall": 0,
       "refusal": 0,
@@ -1910,28 +2122,35 @@
       "canonical": "SQL",
       "case_id": "A-ACRONYM-012",
       "case_pass": false,
-      "category": 0,
+      "category": 3,
       "category_expected": "acronym",
-      "category_predicted": "brand",
+      "category_predicted": "acronym",
       "cold_start": false,
       "degeneration": 0,
       "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "SQLite",
-        "SQL Server",
-        "SQLite3",
-        "SQLite4"
+        "slick",
+        "slack",
+        "slacky",
+        "slackey",
+        "oatl",
+        "sloq",
+        "silq"
       ],
-      "latency_ms": 661,
+      "latency_ms": 1308,
       "matched_groups": [],
       "no_alias_expected": false,
-      "precision": 2,
+      "precision": 1,
       "raw_aliases": [
-        "SQLite",
-        "SQL Server",
-        "SQLite3",
-        "SQLite4"
+        "slick",
+        "slack",
+        "slacky",
+        "slackey",
+        "Sql",
+        "oatl",
+        "sloq",
+        "silq"
       ],
       "recall": 0,
       "refusal": 0,
@@ -1943,27 +2162,25 @@
       "case_pass": false,
       "category": 3,
       "category_expected": "acronym",
-      "category_predicted": "general",
+      "category_predicted": "acronym",
       "cold_start": false,
       "degeneration": 0,
       "diversity": 0,
       "error": null,
       "filtered_aliases": [
-        "rests",
-        "resting",
-        "restful",
-        "restless"
+        "reast",
+        "reste",
+        "ret"
       ],
-      "latency_ms": 651,
+      "latency_ms": 964,
       "matched_groups": [],
       "no_alias_expected": true,
       "precision": 0,
       "raw_aliases": [
         "rest",
-        "rests",
-        "resting",
-        "restful",
-        "restless"
+        "reast",
+        "reste",
+        "ret"
       ],
       "recall": 0,
       "refusal": 0,
@@ -1973,26 +2190,27 @@
       "canonical": "API",
       "case_id": "A-ACRONYM-014",
       "case_pass": false,
-      "category": 0,
+      "category": 3,
       "category_expected": "acronym",
-      "category_predicted": "brand",
+      "category_predicted": "acronym",
       "cold_start": false,
       "degeneration": 0,
       "diversity": 0,
       "error": null,
       "filtered_aliases": [
-        "api net",
         "apie",
-        "apiee"
+        "apiee",
+        "api-i"
       ],
-      "latency_ms": 620,
+      "latency_ms": 1142,
       "matched_groups": [],
       "no_alias_expected": true,
       "precision": 0,
       "raw_aliases": [
-        "api net",
         "apie",
-        "apiee"
+        "apiee",
+        "api",
+        "api-i"
       ],
       "recall": 0,
       "refusal": 0,
@@ -2002,25 +2220,29 @@
       "canonical": "URL",
       "case_id": "A-ACRONYM-015",
       "case_pass": false,
-      "category": 0,
+      "category": 3,
       "category_expected": "acronym",
-      "category_predicted": "brand",
+      "category_predicted": "acronym",
       "cold_start": false,
       "degeneration": 0,
       "diversity": 0,
       "error": null,
       "filtered_aliases": [
-        "urlnet",
-        "urlnets"
+        "ulr",
+        "urr",
+        "urlr",
+        "rurl"
       ],
-      "latency_ms": 618,
+      "latency_ms": 1094,
       "matched_groups": [],
       "no_alias_expected": true,
       "precision": 0,
       "raw_aliases": [
-        "urlnet",
-        "urlnets",
-        "urlnet"
+        "ulr",
+        "urr",
+        "url",
+        "urlr",
+        "rurl"
       ],
       "recall": 0,
       "refusal": 0,
@@ -2030,26 +2252,27 @@
       "canonical": "CTO",
       "case_id": "A-ACRONYM-016",
       "case_pass": false,
-      "category": 0,
+      "category": 3,
       "category_expected": "acronym",
-      "category_predicted": "person",
+      "category_predicted": "acronym",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 2,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "coot",
-        "coto"
+        "Coo-to",
+        "To-co",
+        "Coo-to-o"
       ],
-      "latency_ms": 675,
+      "latency_ms": 1662,
       "matched_groups": [],
       "no_alias_expected": false,
-      "precision": 3,
+      "precision": 1,
       "raw_aliases": [
         "cto",
-        "coot",
-        "coot",
-        "coto"
+        "Coo-to",
+        "To-co",
+        "Coo-to-o"
       ],
       "recall": 0,
       "refusal": 0,
@@ -2059,25 +2282,30 @@
       "canonical": "DAU",
       "case_id": "A-ACRONYM-017",
       "case_pass": false,
-      "category": 0,
+      "category": 3,
       "category_expected": "acronym",
-      "category_predicted": "person",
+      "category_predicted": "acronym",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 2,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
+        "daw",
+        "daw-uh",
         "dah",
-        "daui"
+        "daub",
+        "daww"
       ],
-      "latency_ms": 591,
+      "latency_ms": 1141,
       "matched_groups": [],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
+        "daw",
+        "daw-uh",
         "dah",
-        "dau",
-        "daui"
+        "daub",
+        "daww"
       ],
       "recall": 0,
       "refusal": 0,
@@ -2087,25 +2315,29 @@
       "canonical": "MAU",
       "case_id": "A-ACRONYM-018",
       "case_pass": false,
-      "category": 0,
+      "category": 3,
       "category_expected": "acronym",
-      "category_predicted": "brand",
+      "category_predicted": "acronym",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 2,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
         "maw",
-        "mou"
+        "maw-uh",
+        "maw-uh-uh",
+        "muh"
       ],
-      "latency_ms": 592,
+      "latency_ms": 1124,
       "matched_groups": [],
       "no_alias_expected": false,
-      "precision": 3,
+      "precision": 1,
       "raw_aliases": [
-        "mau",
         "maw",
-        "mou"
+        "maw-uh",
+        "maw-uh-uh",
+        "MAU",
+        "muh"
       ],
       "recall": 0,
       "refusal": 0,
@@ -2115,22 +2347,33 @@
       "canonical": "NPS",
       "case_id": "A-ACRONYM-019",
       "case_pass": false,
-      "category": 0,
+      "category": 3,
       "category_expected": "acronym",
-      "category_predicted": "brand",
+      "category_predicted": "acronym",
       "cold_start": false,
-      "degeneration": 1,
-      "diversity": 0,
+      "degeneration": 0,
+      "diversity": 3,
       "error": null,
-      "filtered_aliases": [],
-      "latency_ms": 544,
+      "filtered_aliases": [
+        "nips",
+        "nipp",
+        "nipss",
+        "Nip",
+        "Nipsy",
+        "Nipsy-tastic"
+      ],
+      "latency_ms": 1432,
       "matched_groups": [],
       "no_alias_expected": false,
-      "precision": 0,
+      "precision": 2,
       "raw_aliases": [
         "nps",
-        "nps",
-        "nps"
+        "nips",
+        "nipp",
+        "nipss",
+        "Nip",
+        "Nipsy",
+        "Nipsy-tastic"
       ],
       "recall": 0,
       "refusal": 0,
@@ -2140,25 +2383,25 @@
       "canonical": "KPI",
       "case_id": "A-ACRONYM-020",
       "case_pass": false,
-      "category": 0,
+      "category": 3,
       "category_expected": "acronym",
-      "category_predicted": "person",
+      "category_predicted": "acronym",
       "cold_start": false,
       "degeneration": 0,
       "diversity": 2,
       "error": null,
       "filtered_aliases": [
-        "kipi",
-        "kipa"
+        "Key point",
+        "ki pi"
       ],
-      "latency_ms": 582,
+      "latency_ms": 1120,
       "matched_groups": [],
       "no_alias_expected": false,
-      "precision": 3,
+      "precision": 1,
       "raw_aliases": [
-        "kipi",
-        "kipa",
-        "kipi"
+        "Key point",
+        "ki pi",
+        "kpi"
       ],
       "recall": 0,
       "refusal": 0,
@@ -2170,27 +2413,38 @@
       "case_pass": false,
       "category": 3,
       "category_expected": "domain",
-      "category_predicted": "brand",
+      "category_predicted": "domain",
       "cold_start": false,
       "degeneration": 0,
       "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "g-r-pc",
-        "grp c",
-        "grpc-"
+        "gee R P C",
+        "jee R P C",
+        "gee are pee see",
+        "graph Q L",
+        "graf Q L",
+        "graph queue ell",
+        "graf queue ell",
+        "wep sock it"
       ],
-      "latency_ms": 820,
-      "matched_groups": [],
+      "latency_ms": 2200,
+      "matched_groups": [
+        "jee-rpc"
+      ],
       "no_alias_expected": false,
-      "precision": 2,
+      "precision": 1,
       "raw_aliases": [
-        "grpc",
-        "g-r-pc",
-        "grp c",
-        "grpc-"
+        "gee R P C",
+        "jee R P C",
+        "gee are pee see",
+        "graph Q L",
+        "graf Q L",
+        "graph queue ell",
+        "graf queue ell",
+        "wep sock it"
       ],
-      "recall": 0,
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
@@ -2200,53 +2454,63 @@
       "case_pass": false,
       "category": 3,
       "category_expected": "domain",
-      "category_predicted": "brand",
+      "category_predicted": "domain",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 1,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "graphqljs"
+        "graph Q L",
+        "graf Q L",
+        "graph queue ell",
+        "graf queue ell"
       ],
-      "latency_ms": 641,
-      "matched_groups": [],
+      "latency_ms": 1496,
+      "matched_groups": [
+        "graph-q-l"
+      ],
       "no_alias_expected": false,
-      "precision": 3,
+      "precision": 1,
       "raw_aliases": [
-        "graphql",
-        "graphqljs",
-        "graphqljs",
-        "graphqljs"
+        "graph Q L",
+        "graf Q L",
+        "graph queue ell",
+        "graf queue ell"
       ],
-      "recall": 0,
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
     {
       "canonical": "WebSocket",
       "case_id": "A-DOMAIN-003",
-      "case_pass": false,
-      "category": 0,
+      "case_pass": true,
+      "category": 3,
       "category_expected": "domain",
-      "category_predicted": "brand",
+      "category_predicted": "domain",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 1,
+      "diversity": 2,
       "error": null,
       "filtered_aliases": [
-        "web socket"
+        "web sock it",
+        "web socket",
+        "web sok it",
+        "wep sock it",
+        "wep socket"
       ],
-      "latency_ms": 603,
+      "latency_ms": 1499,
       "matched_groups": [
         "websocket"
       ],
       "no_alias_expected": false,
-      "precision": 0,
+      "precision": 3,
       "raw_aliases": [
+        "web sock it",
         "web socket",
-        "websocket",
-        "websocket",
-        "websocket"
+        "web sok it",
+        "wep sock it",
+        "wep socket"
       ],
       "recall": 3,
       "refusal": 0,
@@ -2256,27 +2520,31 @@
       "canonical": "WebRTC",
       "case_id": "A-DOMAIN-004",
       "case_pass": false,
-      "category": 0,
+      "category": 3,
       "category_expected": "domain",
-      "category_predicted": "brand",
+      "category_predicted": "domain",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 2,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "web rtc",
-        "web rtci"
+        "web RTC",
+        "wep sock it",
+        "wep socket",
+        "web sok it"
       ],
-      "latency_ms": 647,
+      "latency_ms": 1537,
       "matched_groups": [
         "webrtc"
       ],
       "no_alias_expected": false,
-      "precision": 1,
+      "precision": 0,
       "raw_aliases": [
-        "web rtc",
-        "web rtci",
-        "web rtc"
+        "web RTC",
+        "webrtc",
+        "wep sock it",
+        "wep socket",
+        "web sok it"
       ],
       "recall": 3,
       "refusal": 0,
@@ -2286,29 +2554,25 @@
       "canonical": "OAuth2",
       "case_id": "A-DOMAIN-005",
       "case_pass": false,
-      "category": 0,
+      "category": 3,
       "category_expected": "domain",
-      "category_predicted": "general",
+      "category_predicted": "domain",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 3,
+      "diversity": 1,
       "error": null,
       "filtered_aliases": [
-        "oauth",
-        "oauth 2",
-        "oauth 2.0"
+        "oAuth 2"
       ],
-      "latency_ms": 693,
+      "latency_ms": 1145,
       "matched_groups": [
         "oauth2"
       ],
       "no_alias_expected": false,
-      "precision": 2,
+      "precision": 0,
       "raw_aliases": [
-        "oauth",
-        "oauth2",
-        "oauth 2",
-        "oauth 2.0"
+        "oAuth2",
+        "oAuth 2"
       ],
       "recall": 3,
       "refusal": 0,
@@ -2320,20 +2584,25 @@
       "case_pass": false,
       "category": 3,
       "category_expected": "domain",
-      "category_predicted": "brand",
+      "category_predicted": "domain",
       "cold_start": false,
-      "degeneration": 1,
-      "diversity": 0,
+      "degeneration": 0,
+      "diversity": 3,
       "error": null,
-      "filtered_aliases": [],
-      "latency_ms": 548,
+      "filtered_aliases": [
+        "s3t",
+        "s3n",
+        "s3w"
+      ],
+      "latency_ms": 2168,
       "matched_groups": [],
       "no_alias_expected": false,
-      "precision": 0,
+      "precision": 3,
       "raw_aliases": [
-        "S3",
-        "S3",
-        "S3"
+        "s3",
+        "s3t",
+        "s3n",
+        "s3w"
       ],
       "recall": 0,
       "refusal": 0,
@@ -2345,26 +2614,31 @@
       "case_pass": false,
       "category": 3,
       "category_expected": "domain",
-      "category_predicted": "brand",
+      "category_predicted": "domain",
       "cold_start": false,
       "degeneration": 0,
       "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "kuber netties",
-        "cube ernetes",
-        "cooper nettys"
+        "ks 8",
+        "k 8s",
+        "ks 8s",
+        "K7s"
       ],
-      "latency_ms": 619,
-      "matched_groups": [],
+      "latency_ms": 1311,
+      "matched_groups": [
+        "k-eights"
+      ],
       "no_alias_expected": false,
-      "precision": 0,
+      "precision": 1,
       "raw_aliases": [
-        "kuber netties",
-        "cube ernetes",
-        "cooper nettys"
+        "K8s",
+        "ks 8",
+        "k 8s",
+        "ks 8s",
+        "K7s"
       ],
-      "recall": 0,
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
@@ -2372,23 +2646,19 @@
       "canonical": "i18n",
       "case_id": "A-DOMAIN-008",
       "case_pass": false,
-      "category": 0,
+      "category": 3,
       "category_expected": "domain",
-      "category_predicted": "brand",
+      "category_predicted": "domain",
       "cold_start": false,
       "degeneration": 1,
       "diversity": 0,
       "error": null,
       "filtered_aliases": [],
-      "latency_ms": 748,
+      "latency_ms": 1309,
       "matched_groups": [],
       "no_alias_expected": false,
       "precision": 0,
       "raw_aliases": [
-        "i18n",
-        "i18n",
-        "i18n",
-        "i18n",
         "i18n"
       ],
       "recall": 0,
@@ -2399,24 +2669,23 @@
       "canonical": "a11y",
       "case_id": "A-DOMAIN-009",
       "case_pass": false,
-      "category": 0,
+      "category": 3,
       "category_expected": "domain",
-      "category_predicted": "person",
+      "category_predicted": "domain",
       "cold_start": false,
-      "degeneration": 1,
-      "diversity": 0,
+      "degeneration": 0,
+      "diversity": 1,
       "error": null,
-      "filtered_aliases": [],
-      "latency_ms": 758,
+      "filtered_aliases": [
+        "a11y-a11y"
+      ],
+      "latency_ms": 1684,
       "matched_groups": [],
       "no_alias_expected": false,
-      "precision": 0,
+      "precision": 3,
       "raw_aliases": [
-        "a11y",
-        "a11y",
-        "a11y",
-        "a11y",
-        "a11y"
+        "A11Y",
+        "a11y-a11y"
       ],
       "recall": 0,
       "refusal": 0,
@@ -2428,28 +2697,29 @@
       "case_pass": false,
       "category": 0,
       "category_expected": "domain",
-      "category_predicted": "person",
+      "category_predicted": "brand",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 3,
+      "diversity": 2,
       "error": null,
       "filtered_aliases": [
-        "devo",
-        "dev",
-        "devot",
-        "devotee"
+        "devopz",
+        "dev ops",
+        "devop s"
       ],
-      "latency_ms": 653,
-      "matched_groups": [],
+      "latency_ms": 1442,
+      "matched_groups": [
+        "devops"
+      ],
       "no_alias_expected": false,
-      "precision": 3,
+      "precision": 1,
       "raw_aliases": [
-        "devo",
-        "dev",
-        "devot",
-        "devotee"
+        "devopz",
+        "devops",
+        "dev ops",
+        "devop s"
       ],
-      "recall": 0,
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
@@ -2462,23 +2732,19 @@
       "category_predicted": "brand",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 2,
+      "diversity": 1,
       "error": null,
       "filtered_aliases": [
-        "fin tech",
-        "fin techs"
+        "fin tech"
       ],
-      "latency_ms": 657,
+      "latency_ms": 1388,
       "matched_groups": [
         "fintech"
       ],
       "no_alias_expected": false,
-      "precision": 1,
+      "precision": 0,
       "raw_aliases": [
-        "fin tech",
-        "fin techs",
-        "fin techs",
-        "fin techs"
+        "fin tech"
       ],
       "recall": 3,
       "refusal": 0,
@@ -2492,20 +2758,25 @@
       "category_expected": "domain",
       "category_predicted": "brand",
       "cold_start": false,
-      "degeneration": 1,
-      "diversity": 0,
+      "degeneration": 0,
+      "diversity": 2,
       "error": null,
-      "filtered_aliases": [],
-      "latency_ms": 568,
-      "matched_groups": [],
+      "filtered_aliases": [
+        "sass",
+        "saasw"
+      ],
+      "latency_ms": 1345,
+      "matched_groups": [
+        "sass"
+      ],
       "no_alias_expected": false,
-      "precision": 0,
+      "precision": 3,
       "raw_aliases": [
         "saas",
-        "saas",
-        "saas"
+        "sass",
+        "saasw"
       ],
-      "recall": 0,
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
@@ -2515,21 +2786,17 @@
       "case_pass": false,
       "category": 0,
       "category_expected": "domain",
-      "category_predicted": "brand",
+      "category_predicted": "general",
       "cold_start": false,
       "degeneration": 1,
       "diversity": 0,
       "error": null,
       "filtered_aliases": [],
-      "latency_ms": 659,
+      "latency_ms": 1189,
       "matched_groups": [],
       "no_alias_expected": false,
       "precision": 0,
       "raw_aliases": [
-        "paas",
-        "paas",
-        "paas",
-        "paas",
         "paas"
       ],
       "recall": 0,
@@ -2542,28 +2809,29 @@
       "case_pass": false,
       "category": 0,
       "category_expected": "domain",
-      "category_predicted": "brand",
+      "category_predicted": "general",
       "cold_start": false,
       "degeneration": 0,
       "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "in-a-s",
-        "in-a-s-s",
-        "in-a-s-s-s",
-        "in-a-s-s-s-s"
+        "i as",
+        "ia as",
+        "i a"
       ],
-      "latency_ms": 880,
-      "matched_groups": [],
+      "latency_ms": 1365,
+      "matched_groups": [
+        "i-a-a-s"
+      ],
       "no_alias_expected": false,
-      "precision": 1,
+      "precision": 2,
       "raw_aliases": [
-        "in-a-s",
-        "in-a-s-s",
-        "in-a-s-s-s",
-        "in-a-s-s-s-s"
+        "iaas",
+        "i as",
+        "ia as",
+        "i a"
       ],
-      "recall": 0,
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
@@ -2573,21 +2841,25 @@
       "case_pass": false,
       "category": 0,
       "category_expected": "domain",
-      "category_predicted": "brand",
+      "category_predicted": "general",
       "cold_start": false,
-      "degeneration": 1,
-      "diversity": 0,
+      "degeneration": 0,
+      "diversity": 3,
       "error": null,
-      "filtered_aliases": [],
-      "latency_ms": 634,
+      "filtered_aliases": [
+        "MLopss",
+        "MLopsx",
+        "MLopsz"
+      ],
+      "latency_ms": 1392,
       "matched_groups": [],
       "no_alias_expected": false,
-      "precision": 0,
+      "precision": 3,
       "raw_aliases": [
-        "mlops",
-        "mlops",
-        "mlops",
-        "mlops"
+        "MLops",
+        "MLopss",
+        "MLopsx",
+        "MLopsz"
       ],
       "recall": 0,
       "refusal": 0,
@@ -2599,30 +2871,23 @@
       "case_pass": false,
       "category": 0,
       "category_expected": "domain",
-      "category_predicted": "brand",
+      "category_predicted": "general",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 3,
+      "diversity": 1,
       "error": null,
       "filtered_aliases": [
-        "llmoops",
-        "llm ops",
-        "llmoop",
-        "lmo ops"
+        "LLmoops"
       ],
-      "latency_ms": 741,
-      "matched_groups": [
-        "llmops"
-      ],
+      "latency_ms": 1637,
+      "matched_groups": [],
       "no_alias_expected": false,
-      "precision": 2,
+      "precision": 3,
       "raw_aliases": [
-        "llmoops",
-        "llm ops",
-        "llmoop",
-        "lmo ops"
+        "LLmoops",
+        "LLMOps"
       ],
-      "recall": 3,
+      "recall": 0,
       "refusal": 0,
       "timed_out": false
     },
@@ -2640,16 +2905,13 @@
       "filtered_aliases": [
         "git ops"
       ],
-      "latency_ms": 630,
+      "latency_ms": 1408,
       "matched_groups": [
         "gitops"
       ],
       "no_alias_expected": false,
       "precision": 0,
       "raw_aliases": [
-        "git ops",
-        "git ops",
-        "git ops",
         "git ops"
       ],
       "recall": 3,
@@ -2662,27 +2924,29 @@
       "case_pass": false,
       "category": 0,
       "category_expected": "domain",
-      "category_predicted": "brand",
+      "category_predicted": "general",
       "cold_start": false,
       "degeneration": 0,
       "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "no soql",
         "no sql",
-        "noql"
+        "nql",
+        "nsoql",
+        "sql"
       ],
-      "latency_ms": 669,
+      "latency_ms": 1291,
       "matched_groups": [
         "no-sql"
       ],
       "no_alias_expected": false,
       "precision": 2,
       "raw_aliases": [
-        "no soql",
         "no sql",
-        "noql",
-        "no soql"
+        "NoSQL",
+        "nql",
+        "nsoql",
+        "sql"
       ],
       "recall": 3,
       "refusal": 0,
@@ -2697,25 +2961,29 @@
       "category_predicted": "brand",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 2,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
+        "new syl",
         "new sql",
-        "new sqlite",
-        "new sqlite3",
-        "new sqlite4"
+        "new syll",
+        "new scl",
+        "new sl",
+        "new slq"
       ],
-      "latency_ms": 652,
+      "latency_ms": 1667,
       "matched_groups": [
         "newsql"
       ],
       "no_alias_expected": false,
-      "precision": 2,
+      "precision": 3,
       "raw_aliases": [
+        "new syl",
         "new sql",
-        "new sqlite",
-        "new sqlite3",
-        "new sqlite4"
+        "new syll",
+        "new scl",
+        "new sl",
+        "new slq"
       ],
       "recall": 3,
       "refusal": 0,
@@ -2733,22 +3001,24 @@
       "diversity": 2,
       "error": null,
       "filtered_aliases": [
-        "web assem",
-        "web assemb",
-        "web assembler",
-        "web assembl"
+        "web assembl",
+        "web assemble",
+        "web asembly",
+        "web asemly",
+        "web asemlye"
       ],
-      "latency_ms": 764,
+      "latency_ms": 1715,
       "matched_groups": [
         "wasm"
       ],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
-        "web assem",
-        "web assemb",
-        "web assembler",
-        "web assembl"
+        "web assembl",
+        "web assemble",
+        "web asembly",
+        "web asemly",
+        "web asemlye"
       ],
       "recall": 3,
       "refusal": 0,
@@ -2757,35 +3027,38 @@
     {
       "canonical": "async",
       "case_id": "A-GENERAL-001",
-      "case_pass": false,
-      "category": 0,
+      "case_pass": true,
+      "category": 3,
       "category_expected": "general",
-      "category_predicted": "brand",
+      "category_predicted": "general",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 2,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "asyn",
-        "asyncio"
+        "a sink",
+        "a sync",
+        "ay sync"
       ],
-      "latency_ms": 591,
-      "matched_groups": [],
+      "latency_ms": 1279,
+      "matched_groups": [
+        "async"
+      ],
       "no_alias_expected": false,
-      "precision": 3,
+      "precision": 2,
       "raw_aliases": [
-        "async",
-        "asyn",
-        "asyncio"
+        "a sink",
+        "a sync",
+        "ay sync"
       ],
-      "recall": 0,
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
     {
       "canonical": "webhook",
       "case_id": "A-GENERAL-002",
-      "case_pass": true,
+      "case_pass": false,
       "category": 3,
       "category_expected": "general",
       "category_predicted": "general",
@@ -2796,18 +3069,28 @@
       "filtered_aliases": [
         "web hook",
         "web hooke",
-        "web hooky"
+        "wuh book",
+        "a sync",
+        "a sink",
+        "ay sync",
+        "middle ware",
+        "middle wear"
       ],
-      "latency_ms": 610,
+      "latency_ms": 1834,
       "matched_groups": [
         "webhook"
       ],
       "no_alias_expected": false,
-      "precision": 2,
+      "precision": 1,
       "raw_aliases": [
         "web hook",
         "web hooke",
-        "web hooky"
+        "wuh book",
+        "a sync",
+        "a sink",
+        "ay sync",
+        "middle ware",
+        "middle wear"
       ],
       "recall": 3,
       "refusal": 0,
@@ -2816,28 +3099,29 @@
     {
       "canonical": "middleware",
       "case_id": "A-GENERAL-003",
-      "case_pass": false,
-      "category": 0,
+      "case_pass": true,
+      "category": 3,
       "category_expected": "general",
-      "category_predicted": "brand",
+      "category_predicted": "general",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 1,
+      "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "midleware"
+        "middle ware",
+        "middle wear",
+        "midware"
       ],
-      "latency_ms": 673,
+      "latency_ms": 1342,
       "matched_groups": [
         "middleware"
       ],
       "no_alias_expected": false,
-      "precision": 3,
+      "precision": 2,
       "raw_aliases": [
-        "midleware",
-        "midleware",
-        "midleware",
-        "midleware"
+        "middle ware",
+        "middle wear",
+        "midware"
       ],
       "recall": 3,
       "refusal": 0,
@@ -2846,50 +3130,51 @@
     {
       "canonical": "backend",
       "case_id": "A-GENERAL-004",
-      "case_pass": true,
-      "category": 0,
+      "case_pass": false,
+      "category": 3,
       "category_expected": "general",
-      "category_predicted": "brand",
+      "category_predicted": "general",
       "cold_start": false,
-      "degeneration": 1,
-      "diversity": 3,
+      "degeneration": 0,
+      "diversity": 0,
       "error": null,
-      "filtered_aliases": [],
-      "latency_ms": 552,
+      "filtered_aliases": [
+        "back end"
+      ],
+      "latency_ms": 1267,
       "matched_groups": [],
       "no_alias_expected": true,
-      "precision": 3,
+      "precision": 0,
       "raw_aliases": [
         "backend",
-        "backend",
-        "backend"
+        "back end"
       ],
-      "recall": 3,
+      "recall": 0,
       "refusal": 0,
       "timed_out": false
     },
     {
       "canonical": "frontend",
       "case_id": "A-GENERAL-005",
-      "case_pass": true,
-      "category": 0,
+      "case_pass": false,
+      "category": 3,
       "category_expected": "general",
-      "category_predicted": "brand",
+      "category_predicted": "general",
       "cold_start": false,
-      "degeneration": 1,
-      "diversity": 3,
+      "degeneration": 0,
+      "diversity": 0,
       "error": null,
-      "filtered_aliases": [],
-      "latency_ms": 542,
+      "filtered_aliases": [
+        "front end"
+      ],
+      "latency_ms": 1397,
       "matched_groups": [],
       "no_alias_expected": true,
-      "precision": 3,
+      "precision": 0,
       "raw_aliases": [
-        "frontend",
-        "frontend",
-        "frontend"
+        "front end"
       ],
-      "recall": 3,
+      "recall": 0,
       "refusal": 0,
       "timed_out": false
     },
@@ -2906,17 +3191,20 @@
       "error": null,
       "filtered_aliases": [
         "refacto",
-        "reftor"
+        "refact",
+        "refract",
+        "reffactor"
       ],
-      "latency_ms": 684,
+      "latency_ms": 1402,
       "matched_groups": [],
       "no_alias_expected": true,
       "precision": 0,
       "raw_aliases": [
+        "refactor",
         "refacto",
-        "reftor",
-        "refacto",
-        "refacto"
+        "refact",
+        "refract",
+        "reffactor"
       ],
       "recall": 0,
       "refusal": 0,
@@ -2930,20 +3218,21 @@
       "category_expected": "general",
       "category_predicted": "person",
       "cold_start": false,
-      "degeneration": 1,
-      "diversity": 0,
+      "degeneration": 0,
+      "diversity": 2,
       "error": null,
-      "filtered_aliases": [],
-      "latency_ms": 720,
+      "filtered_aliases": [
+        "idopent",
+        "idopentent"
+      ],
+      "latency_ms": 1584,
       "matched_groups": [],
       "no_alias_expected": false,
-      "precision": 0,
+      "precision": 3,
       "raw_aliases": [
+        "idopent",
         "idempotent",
-        "idempotent",
-        "idempotent",
-        "idempotent",
-        "idempotent"
+        "idopentent"
       ],
       "recall": 0,
       "refusal": 0,
@@ -2953,28 +3242,27 @@
       "canonical": "cron",
       "case_id": "A-GENERAL-008",
       "case_pass": false,
-      "category": 0,
+      "category": 3,
       "category_expected": "general",
-      "category_predicted": "brand",
+      "category_predicted": "general",
       "cold_start": false,
       "degeneration": 0,
-      "diversity": 3,
+      "diversity": 1,
       "error": null,
       "filtered_aliases": [
-        "cronies",
-        "croney",
-        "croniey"
+        "crone"
       ],
-      "latency_ms": 669,
-      "matched_groups": [],
+      "latency_ms": 1965,
+      "matched_groups": [
+        "cron"
+      ],
       "no_alias_expected": false,
       "precision": 3,
       "raw_aliases": [
-        "cronies",
-        "croney",
-        "croniey"
+        "crone",
+        "cron"
       ],
-      "recall": 0,
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
@@ -2982,22 +3270,27 @@
       "canonical": "regex",
       "case_id": "A-GENERAL-009",
       "case_pass": false,
-      "category": 0,
+      "category": 3,
       "category_expected": "general",
-      "category_predicted": "brand",
+      "category_predicted": "general",
       "cold_start": false,
-      "degeneration": 1,
-      "diversity": 0,
+      "degeneration": 0,
+      "diversity": 3,
       "error": null,
-      "filtered_aliases": [],
-      "latency_ms": 556,
+      "filtered_aliases": [
+        "regexe",
+        "regexo",
+        "regexy"
+      ],
+      "latency_ms": 1419,
       "matched_groups": [],
       "no_alias_expected": false,
-      "precision": 0,
+      "precision": 3,
       "raw_aliases": [
         "regex",
-        "regex",
-        "regex"
+        "regexe",
+        "regexo",
+        "regexy"
       ],
       "recall": 0,
       "refusal": 0,
@@ -3006,6 +3299,32 @@
     {
       "canonical": "OAuth2",
       "case_id": "A-GENERAL-010",
+      "case_pass": false,
+      "category": 3,
+      "category_expected": "general",
+      "category_predicted": "domain",
+      "cold_start": false,
+      "degeneration": 0,
+      "diversity": 1,
+      "error": null,
+      "filtered_aliases": [
+        "Oawht2"
+      ],
+      "latency_ms": 1341,
+      "matched_groups": [],
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "Oauth2",
+        "Oawht2"
+      ],
+      "recall": 0,
+      "refusal": 0,
+      "timed_out": false
+    },
+    {
+      "canonical": "polyglot",
+      "case_id": "A-GENERAL-011",
       "case_pass": true,
       "category": 3,
       "category_expected": "general",
@@ -3015,52 +3334,23 @@
       "diversity": 3,
       "error": null,
       "filtered_aliases": [
-        "OAuth",
-        "OAuth 2",
-        "OAuth 2.0"
-      ],
-      "latency_ms": 743,
-      "matched_groups": [
-        "oauth2"
-      ],
-      "no_alias_expected": false,
-      "precision": 2,
-      "raw_aliases": [
-        "OAuth",
-        "OAuth2",
-        "OAuth 2",
-        "OAuth 2.0"
-      ],
-      "recall": 3,
-      "refusal": 0,
-      "timed_out": false
-    },
-    {
-      "canonical": "polyglot",
-      "case_id": "A-GENERAL-011",
-      "case_pass": false,
-      "category": 0,
-      "category_expected": "general",
-      "category_predicted": "person",
-      "cold_start": false,
-      "degeneration": 0,
-      "diversity": 3,
-      "error": null,
-      "filtered_aliases": [
-        "polyglo",
         "poly glot",
-        "polygloat"
+        "poly glote",
+        "polyglo",
+        "polygot"
       ],
-      "latency_ms": 708,
+      "latency_ms": 1485,
       "matched_groups": [
         "polyglot"
       ],
       "no_alias_expected": false,
       "precision": 2,
       "raw_aliases": [
-        "polyglo",
         "poly glot",
-        "polygloat"
+        "poly glote",
+        "polyglo",
+        "polyglot",
+        "polygot"
       ],
       "recall": 3,
       "refusal": 0,
@@ -3069,52 +3359,62 @@
     {
       "canonical": "orchestrate",
       "case_id": "A-GENERAL-012",
-      "case_pass": false,
+      "case_pass": true,
       "category": 3,
       "category_expected": "general",
       "category_predicted": "general",
       "cold_start": false,
-      "degeneration": 1,
-      "diversity": 0,
+      "degeneration": 0,
+      "diversity": 2,
       "error": null,
-      "filtered_aliases": [],
-      "latency_ms": 666,
-      "matched_groups": [],
-      "no_alias_expected": false,
-      "precision": 0,
-      "raw_aliases": [
-        "orchestrate",
-        "orchestrate",
+      "filtered_aliases": [
+        "orchestra",
+        "orchestrated",
+        "orchestrater"
+      ],
+      "latency_ms": 1481,
+      "matched_groups": [
         "orchestrate"
       ],
-      "recall": 0,
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "orchestrate",
+        "orchestra",
+        "orchestrated",
+        "orchestrater"
+      ],
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
     {
       "canonical": "deserialize",
       "case_id": "A-GENERAL-013",
-      "case_pass": false,
+      "case_pass": true,
       "category": 3,
       "category_expected": "general",
       "category_predicted": "general",
       "cold_start": false,
-      "degeneration": 1,
-      "diversity": 0,
+      "degeneration": 0,
+      "diversity": 2,
       "error": null,
-      "filtered_aliases": [],
-      "latency_ms": 736,
-      "matched_groups": [],
-      "no_alias_expected": false,
-      "precision": 0,
-      "raw_aliases": [
-        "deserialize",
-        "deserialize",
-        "deserialize",
-        "deserialize",
+      "filtered_aliases": [
+        "deserialise",
+        "deserializze"
+      ],
+      "latency_ms": 1660,
+      "matched_groups": [
         "deserialize"
       ],
-      "recall": 0,
+      "no_alias_expected": false,
+      "precision": 3,
+      "raw_aliases": [
+        "deserialise",
+        "deserializze",
+        "deserialize"
+      ],
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     },
@@ -3122,21 +3422,19 @@
       "canonical": "transpile",
       "case_id": "A-GENERAL-014",
       "case_pass": false,
-      "category": 0,
+      "category": 3,
       "category_expected": "general",
-      "category_predicted": "person",
+      "category_predicted": "general",
       "cold_start": false,
       "degeneration": 1,
       "diversity": 0,
       "error": null,
       "filtered_aliases": [],
-      "latency_ms": 580,
+      "latency_ms": 1688,
       "matched_groups": [],
       "no_alias_expected": false,
       "precision": 0,
       "raw_aliases": [
-        "transpile",
-        "transpile",
         "transpile"
       ],
       "recall": 0,
@@ -3146,51 +3444,47 @@
     {
       "canonical": "git",
       "case_id": "A-GENERAL-015",
-      "case_pass": false,
-      "category": 0,
+      "case_pass": true,
+      "category": 3,
       "category_expected": "general",
-      "category_predicted": "person",
+      "category_predicted": "general",
       "cold_start": false,
-      "degeneration": 0,
-      "diversity": 0,
+      "degeneration": 1,
+      "diversity": 3,
       "error": null,
-      "filtered_aliases": [
-        "git git"
-      ],
-      "latency_ms": 563,
+      "filtered_aliases": [],
+      "latency_ms": 1197,
       "matched_groups": [],
       "no_alias_expected": true,
-      "precision": 0,
+      "precision": 3,
       "raw_aliases": [
-        "git git",
-        "git git",
-        "git git"
+        "git"
       ],
-      "recall": 0,
+      "recall": 3,
       "refusal": 0,
       "timed_out": false
     }
   ],
   "corpus": "alias-corpus-a",
-  "reason": "initial alias benchmark capture against corpus-a (#637)",
+  "reason": "Plain-string output + 3-call pool + heuristic classifier (#637 follow-up). Pass rate 10.91% -> 27% on corpus-a. Founder-approved 2026-05-06.",
   "summary": {
-    "category_accuracy": 0.5364,
+    "category_accuracy": 0.8091,
     "cold_latency_p50_ms": null,
     "corpus_name": "alias-corpus-a",
-    "degeneration_rate": 0.1979,
+    "degeneration_rate": 0.0625,
     "failures": [
-      "category general pass rate 26.67% < 90%",
-      "category person pass rate 10.00% < 90%",
-      "category brand pass rate 20.00% < 90%",
-      "category acronym pass rate 0.00% < 90%",
-      "category domain pass rate 0.00% < 90%",
-      "degeneration rate 19.79% > 5%",
-      "category accuracy 53.64% < 90%"
+      "category general pass rate 40.00% < 90%",
+      "category person pass rate 46.67% < 90%",
+      "category brand pass rate 32.00% < 90%",
+      "category acronym pass rate 20.00% < 90%",
+      "category domain pass rate 5.00% < 90%",
+      "degeneration rate 6.25% > 5%",
+      "category accuracy 80.91% < 90%"
     ],
-    "latency_p50_ms": 634,
-    "latency_p95_ms": 764,
+    "latency_p50_ms": 1437,
+    "latency_p95_ms": 2168,
     "n_cases": 110,
-    "pass_rate": 0.1091,
+    "pass_rate": 0.3,
     "per_category_count": {
       "acronym": 20,
       "brand": 25,
@@ -3199,11 +3493,11 @@
       "person": 30
     },
     "per_category_pass": {
-      "acronym": 0.0,
-      "brand": 0.2,
-      "domain": 0.0,
-      "general": 0.2667,
-      "person": 0.1
+      "acronym": 0.2,
+      "brand": 0.32,
+      "domain": 0.05,
+      "general": 0.4,
+      "person": 0.4667
     },
     "refusal_rate": 0.0,
     "side_gates_pass": false
