@@ -44,7 +44,8 @@ public final class WordSuggestionService: Sendable {
   /// can measure true latency without censoring slow responses.
   ///
   /// NEVER call from production code. Production reads `suggest(for:)`,
-  /// which is byte-identical in behavior to the pre-#637 ship.
+  /// which shares the same `runRawSuggestion` core but wraps a 5s timeout
+  /// and returns `WordSuggestions?` after running the degeneration filter.
   public func benchmarkSuggest(
     for word: String,
     disableTimeout: Bool = false
@@ -345,7 +346,8 @@ public final class WordSuggestionService: Sendable {
         break
       }
       if isMeta { continue }
-      // Drop lines that look like full sentences (4+ words AND contains a colon).
+      // Drop any line containing a colon (sentence/header/JSON-key guard).
+      // Aliases are short tokens; a colon is a strong signal of meta text.
       if s.contains(":") { continue }
       // Drop very long lines (aliases are short).
       if s.count > 40 { continue }
@@ -358,35 +360,32 @@ public final class WordSuggestionService: Sendable {
   /// classify (proper-noun shapes and CamelCase compounds, where brand
   /// vs person vs domain vs general needs semantic judgment).
   /// Catches obvious all-caps acronyms (CRM, JSON, SQL, API) and obvious
-  /// domains with digits/dots/symbols (S3, OAuth2, github.com, K8s) and
-  /// lowercase-start-with-uppercase patterns (gRPC, iOS).
+  /// domains with digits/dots/symbols (S3, OAuth2, github.com, K8s,
+  /// C++, C#, F#, R&D) and lowercase-start-with-uppercase patterns
+  /// (gRPC, iOS).
   static func classifyByHeuristic(_ word: String) -> WordCategory? {
     let trimmed = word.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return nil }
 
-    let hasLetter = trimmed.contains(where: { $0.isLetter })
     let hasUpper = trimmed.contains(where: { $0.isUppercase })
     let hasLower = trimmed.contains(where: { $0.isLowercase })
-    let hasDigit = trimmed.contains(where: { $0.isNumber })
-    let hasDot = trimmed.contains(".")
-    let hasOtherSymbol =
-      trimmed.contains(where: { $0 == "/" || $0 == ":" || $0 == "-" || $0 == "_" })
+    let allLetters = trimmed.allSatisfy({ $0.isLetter })
 
-    // All-caps short word with no digits/symbols -> acronym.
-    if hasLetter && hasUpper && !hasLower && !hasDigit && !hasDot && !hasOtherSymbol
-      && trimmed.count >= 2 && trimmed.count <= 8
-    {
+    // All-letters all-uppercase (no lowercase, no digits, no punctuation,
+    // no symbols of any kind) and 2-8 long -> acronym. CRM, JSON, SQL.
+    if allLetters && hasUpper && !hasLower && trimmed.count >= 2 && trimmed.count <= 8 {
       return .acronym
     }
 
-    // Has digit OR dot OR symbol like /, :, -, _ -> domain (S3, OAuth2,
-    // github.com, K8s, multi-word-handle).
-    if hasDigit || hasDot || hasOtherSymbol {
+    // Anything containing a non-letter character (digit, dot, slash, dash,
+    // underscore, plus, hash, ampersand, etc.) -> domain. Covers S3,
+    // OAuth2, github.com, K8s, multi-word-handle, C++, C#, F#, R&D.
+    if !allLetters {
       return .domain
     }
 
-    // Starts lowercase but contains uppercase -> domain (gRPC, iOS, npm
-    // is all lower so doesn't match here).
+    // Pure letters at this point. Lowercase-first with internal uppercase
+    // -> domain (gRPC, iOS).
     if let first = trimmed.first, first.isLowercase, hasUpper {
       return .domain
     }
