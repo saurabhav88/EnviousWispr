@@ -394,6 +394,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
     case .idle, .ready, .complete, .error:
       await startRecording(config: config)
     case .recording:
+      logLIDReleaseSignpost()
       await stopAndTranscribe()
     case .loadingModel, .startingUp, .transcribing, .polishing:
       break
@@ -506,11 +507,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
   }
 
   public func requestStop() async {
-    logLIDPerfSignpost(
-      "t_release",
-      timestamp: CFAbsoluteTimeGetCurrent(),
-      sessionID: audioCapture.currentCaptureSessionID
-    )
+    logLIDReleaseSignpost()
     switch state {
     case .recording:
       await stopAndTranscribe()
@@ -1323,6 +1320,14 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
           ? nil : audioCapture.preferredInputDeviceIDOverride,
         inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID()
       )
+    )
+  }
+
+  private func logLIDReleaseSignpost() {
+    logLIDPerfSignpost(
+      "t_release",
+      timestamp: CFAbsoluteTimeGetCurrent(),
+      sessionID: audioCapture.currentCaptureSessionID
     )
   }
 
