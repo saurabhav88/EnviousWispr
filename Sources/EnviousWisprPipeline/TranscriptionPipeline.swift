@@ -364,15 +364,54 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
         try await asrManager.loadModel()
       }
       modelLoadTask = loadTask
-      do {
+      // Issue #445: watchdog. The bare `try await loadTask.value` could hang
+      // indefinitely if the underlying load wedges (XPC service stuck, CoreML
+      // load stuck). Bound it. On timeout, trigger service-level recovery
+      // via `asrManager.cancelInFlightLoad()` — for production XPC backend,
+      // this invalidates the connection (terminating the service-side load);
+      // for in-process, this just cancels the host task. Then surface a
+      // recoverable error so the user can retry.
+      let outcome = await raceWithTimeout(milliseconds: ModelLoadWatchdog.deadlineMs) {
         try await loadTask.value
-      } catch is CancellationError {
-        // User cancelled during model load. Return to idle.
-        stopRequested = false
+      }
+      switch outcome {
+      case .completed:
         modelLoadTask = nil
-        state = .idle
+        // Late-completion guard: if state changed while we were loading (e.g., cancel),
+        // do not proceed. The cancel handler already set state to .idle.
+        guard state == .loadingModel else { return }
+        guard !Task.isCancelled else { return }
+      case .timedOut:
+        SentryBreadcrumb.captureError(
+          ModelLoadWatchdog.WedgeError(),
+          category: .modelLoadWedged, stage: "asr",
+          extra: [
+            "backend": asrManager.activeBackendType.rawValue,
+            "deadline_ms": ModelLoadWatchdog.deadlineMs,
+          ])
+        TelemetryService.shared.modelLoadWedged(
+          backend: asrManager.activeBackendType.rawValue,
+          stage: "loading_model",
+          deadlineMs: Int(ModelLoadWatchdog.deadlineMs)
+        )
+        asrManager.cancelInFlightLoad()
+        // Codex pass 2: prewarm succeeded before the load wedged; the audio
+        // engine is still primed. Abort it so the next press takes the normal
+        // engine-start path against fresh state.
+        audioCapture.abortPreWarm()
+        isPreWarmed = false
+        modelLoadTask = nil
+        stopRequested = false
+        state = .error(ModelLoadWatchdog.userMessage)
         return
-      } catch {
+      case .threw(let error):
+        if error is CancellationError {
+          // User cancelled during model load. Return to idle.
+          stopRequested = false
+          modelLoadTask = nil
+          state = .idle
+          return
+        }
         SentryBreadcrumb.captureError(
           error, category: .modelLoadFailed, stage: "asr",
           extra: ["backend": asrManager.activeBackendType.rawValue])
@@ -381,11 +420,6 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
         state = .error("Model load failed: \(error.localizedDescription)")
         return
       }
-      modelLoadTask = nil
-      // Late-completion guard: if state changed while we were loading (e.g., cancel),
-      // do not proceed. The cancel handler already set state to .idle.
-      guard state == .loadingModel else { return }
-      guard !Task.isCancelled else { return }
     }
 
     // Remember the frontmost app and focused text field so we can paste back

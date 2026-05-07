@@ -106,15 +106,25 @@ public final class ASRManager: ASRManagerInterface {
 
   /// Silent warmup: load the model in the background without mutating UI-visible download state.
   /// Used at app launch. If a user-initiated load is already in progress, awaits it.
+  /// Issue #445: launch-time telemetry callback. Mirror of `ASRManagerProxy`.
+  public nonisolated(unsafe) static var launchPreloadReporter:
+    (@Sendable (String, String, Int) -> Void)?
+
   public func loadModelSilently() async {
-    guard !isModelLoaded else { return }
-    // If a load is already in progress, just await it silently.
+    let start = ContinuousClock.now
+    let backendTag = activeBackendType.rawValue
+    if isModelLoaded {
+      Self.report(backend: backendTag, result: "already_loaded", start: start)
+      return
+    }
     if let existing = inFlightLoadTask {
       try? await existing.value
+      Self.report(backend: backendTag, result: "joined_in_flight", start: start)
       return
     }
     do {
       try await loadModel()
+      Self.report(backend: backendTag, result: "success", start: start)
     } catch {
       // Silent warmup failure is non-fatal. Record button triggers lazy-load as fallback.
       Task {
@@ -123,7 +133,17 @@ public final class ASRManager: ASRManagerInterface {
           level: .info, category: "ASRManager"
         )
       }
+      Self.report(backend: backendTag, result: "failed", start: start)
     }
+  }
+
+  private static func report(
+    backend: String, result: String, start: ContinuousClock.Instant
+  ) {
+    let elapsed = ContinuousClock.now - start
+    let (s, a) = elapsed.components
+    let ms = Int(s) * 1_000 + Int(a / 1_000_000_000_000_000)
+    launchPreloadReporter?(backend, result, ms)
   }
 
   /// Transcribe raw audio samples (16kHz mono Float32).
@@ -185,6 +205,16 @@ public final class ASRManager: ASRManagerInterface {
       return
     }
     await activeBackend.unload()
+    isModelLoaded = false
+  }
+
+  /// Issue #445: in-process variant of the watchdog recovery. No XPC connection
+  /// to invalidate; just cancels the host-side task and resets state. The
+  /// next press triggers a fresh load. Mostly used in tests; production runs
+  /// against `ASRManagerProxy` which has the full connection-invalidate path.
+  public func cancelInFlightLoad() {
+    inFlightLoadTask?.cancel()
+    inFlightLoadTask = nil
     isModelLoaded = false
   }
 

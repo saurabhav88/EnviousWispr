@@ -217,6 +217,7 @@ private final class NoOpASRManagerV2: ASRManagerInterface {
   func cancelStreaming() async {}
   func noteTranscriptionComplete(policy: ModelUnloadPolicy) {}
   func cancelIdleTimer() {}
+  func cancelInFlightLoad() {}
 
   enum V2StubError: Error { case unexpected }
 }

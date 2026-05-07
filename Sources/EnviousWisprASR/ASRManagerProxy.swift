@@ -90,14 +90,23 @@ public final class ASRManagerProxy: ASRManagerInterface {
   /// Silent warmup: load the model in the background without mutating UI-visible download state.
   /// Used at app launch. If a user-initiated load is already in progress, awaits it.
   public func loadModelSilently() async {
-    guard !isModelLoaded else { return }
+    let start = ContinuousClock.now
+    let backendTag = activeBackendType.rawValue
+    if isModelLoaded {
+      Self.emitLaunchPreloadTelemetry(
+        backend: backendTag, result: "already_loaded", start: start)
+      return
+    }
     // If a load is already in progress, just await it silently.
     if let existing = inFlightLoadTask {
       try? await existing.value
+      Self.emitLaunchPreloadTelemetry(
+        backend: backendTag, result: "joined_in_flight", start: start)
       return
     }
     do {
       try await loadModel()
+      Self.emitLaunchPreloadTelemetry(backend: backendTag, result: "success", start: start)
     } catch {
       // Silent warmup failure is non-fatal. Record button triggers lazy-load as fallback.
       Task {
@@ -106,7 +115,32 @@ public final class ASRManagerProxy: ASRManagerInterface {
           level: .info, category: "ASRManagerProxy"
         )
       }
+      Self.emitLaunchPreloadTelemetry(backend: backendTag, result: "failed", start: start)
     }
+  }
+
+  /// Issue #445: launch-time telemetry callback. Set at app startup by
+  /// AppDelegate (one-line assignment, no AppState collaborator growth).
+  /// `EnviousWisprASR` cannot depend on `EnviousWisprServices` per
+  /// architecture-rules.md dependency direction, so the actual PostHog
+  /// emission lives outside this module — we just hand off the timing.
+  ///
+  /// Signature: `(backend, result, durationMs) -> Void`
+  /// `result` is one of "success", "already_loaded", "joined_in_flight", "failed".
+  public nonisolated(unsafe) static var launchPreloadReporter:
+    (@Sendable (String, String, Int) -> Void)?
+
+  /// Self-contained — does NOT grow AppState. Emits a PostHog event so we can
+  /// finally see launch-time model-load behavior in production (success,
+  /// duration, failure rate). Pre-#445 this path was completely silent on
+  /// success by design.
+  private static func emitLaunchPreloadTelemetry(
+    backend: String, result: String, start: ContinuousClock.Instant
+  ) {
+    let elapsed = ContinuousClock.now - start
+    let (s, a) = elapsed.components
+    let ms = Int(s) * 1_000 + Int(a / 1_000_000_000_000_000)
+    launchPreloadReporter?(backend, result, ms)
   }
 
   private func startProgressPolling() {
@@ -298,6 +332,46 @@ public final class ASRManagerProxy: ASRManagerInterface {
         _ = Task<Void, Never> { await self?.unloadModel() }
       }
     }
+  }
+
+  // MARK: - Issue #445 model-load wedge recovery
+
+  /// Cancel a wedged in-flight model load and force a service-level reset.
+  ///
+  /// Called by `TranscriptionPipeline`'s watchdog when `loadModel()` exceeds
+  /// the recovery deadline. Three actions:
+  ///
+  /// 1. Cancel `inFlightLoadTask`. Host-side cooperative cancellation. Helps
+  ///    in the rare case the underlying load path observes `Task.isCancelled`
+  ///    (FluidAudio's load path does not, but the cancel still drains the
+  ///    host-side await).
+  /// 2. Invalidate the XPC connection. Fires the existing `invalidationHandler`,
+  ///    which terminates the service process. CoreML's synchronous `MLModel.load`
+  ///    is killed when its hosting process dies. Next call auto-respawns the
+  ///    service via `ensureConnection()`.
+  /// 3. Reset host-side load state so the next press triggers a fresh load
+  ///    against the freshly-respawned service.
+  ///
+  /// This is the programmatic equivalent of the user manually quitting and
+  /// relaunching the app — same recovery mechanism, no user effort required.
+  public func cancelInFlightLoad() {
+    inFlightLoadTask?.cancel()
+    inFlightLoadTask = nil
+    connection?.invalidate()
+    // Codex pass 3: clear `connection` synchronously. `invalidate()`
+    // schedules its handler asynchronously; if the user retries before the
+    // handler runs, `ensureConnection()` would return early on a non-nil
+    // pointer to the dead connection. Nil it now so the next call respawns.
+    connection = nil
+    isModelLoaded = false
+    needsReinit = true
+    // Codex pass 2: the 4 Hz progress poller was started by `loadModel()` but
+    // its end-of-load cleanup never runs when the load is wedged. Stop it and
+    // clear the visible progress fields so the next press starts fresh.
+    stopProgressPolling()
+    downloadProgress = 0
+    downloadPhase = ""
+    downloadDetail = ""
   }
 
   // MARK: - V2 fault-injection (DEBUG only, issue #291)

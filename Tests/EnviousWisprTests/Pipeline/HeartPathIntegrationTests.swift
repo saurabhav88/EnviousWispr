@@ -612,6 +612,7 @@ internal final class MockASRManager: ASRManagerInterface {
   func cancelStreaming() async {}
   func noteTranscriptionComplete(policy: ModelUnloadPolicy) {}
   func cancelIdleTimer() {}
+  func cancelInFlightLoad() {}
 }
 
 @MainActor

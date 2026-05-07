@@ -158,6 +158,12 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
   private var frozenSnapshot: SentryBreadcrumb.RecordingSnapshot?
   private var incrementalWorker: (any WhisperKitIncrementalSession)?
   private var modelUnloadTask: Task<Void, Never>?
+  /// Issue #445: held task wrapping `backend.prepare()` so the watchdog can
+  /// cancel the host await on timeout. Cancel here is best-effort (CoreML's
+  /// `MLModel.load` does not observe Swift cooperative cancellation), but
+  /// `WhisperKitBackend.prepare()` has its own single-flight guard so the
+  /// orphaned in-flight load is not duplicated by a subsequent press.
+  private var prepareTask: Task<Void, Error>?
 
   /// Issue #289 stall-recovery ownership token (see TranscriptionPipeline).
   private var pendingStallRecoveryToken: UInt64?
@@ -430,16 +436,58 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
     if !isBackendReady {
       state = .loadingModel
       SentryBreadcrumb.add(stage: "asr", message: "WhisperKit model loading")
-      do {
-        try await backend.prepare()
-      } catch {
+      // Issue #445: hold the prepare task so the watchdog can cancel its host
+      // await on timeout, and so cancelRecording()/reset() can clean it up.
+      let captured = backend
+      let task = Task<Void, Error> {
+        try await captured.prepare()
+      }
+      prepareTask = task
+      let outcome = await raceWithTimeout(milliseconds: ModelLoadWatchdog.deadlineMs) {
+        try await task.value
+      }
+      switch outcome {
+      case .completed:
+        prepareTask = nil
+        guard state == .loadingModel else { return }  // cancelled during model load
+        state = .startingUp  // back to startingUp for engine setup
+      case .timedOut:
+        SentryBreadcrumb.captureError(
+          ModelLoadWatchdog.WedgeError(),
+          category: .modelLoadWedged, stage: "asr",
+          extra: [
+            "backend": "whisperKit",
+            "deadline_ms": ModelLoadWatchdog.deadlineMs,
+          ])
+        TelemetryService.shared.modelLoadWedged(
+          backend: "whisperKit",
+          stage: "loading_model",
+          deadlineMs: Int(ModelLoadWatchdog.deadlineMs)
+        )
+        task.cancel()
+        prepareTask = nil
+        // Codex pass 3: drop the WhisperKit backend's held loadTask too,
+        // otherwise the next prepare() awaits the same wedged task via
+        // backend single-flight and the retry never gets a fresh load.
+        await backend.resetLoadState()
+        // Codex pass 2: prewarm may have run before the load wedged; abort
+        // and reset so the next press takes the normal engine-start path.
+        audioCapture.abortPreWarm()
+        isPreWarmed = false
+        state = .error(ModelLoadWatchdog.userMessage)
+        return
+      case .threw(let error):
+        prepareTask = nil
+        if error is CancellationError {
+          // Cancelled (e.g. by cancelRecording during load). Return to idle.
+          state = .idle
+          return
+        }
         SentryBreadcrumb.captureError(
           error, category: .modelLoadFailed, stage: "asr", extra: ["backend": "whisperKit"])
         state = .error("Model load failed: \(error.localizedDescription)")
         return
       }
-      guard state == .loadingModel else { return }  // cancelled during model load
-      state = .startingUp  // back to startingUp for engine setup
     }
 
     // Capture target app for paste-back
@@ -1170,7 +1218,12 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
   public func cancelRecording() async {
     pendingStallRecoveryToken = nil
     if state == .startingUp || state == .loadingModel {
-      // Cancel during startup or model load — transition to idle
+      // Cancel during startup or model load — transition to idle.
+      // Issue #445: also cancel the held prepare task so its host await
+      // unwinds. Backend's single-flight guard handles any orphan that
+      // continues running because CoreML's load is uncancellable.
+      prepareTask?.cancel()
+      prepareTask = nil
       state = .idle
       return
     }
@@ -1192,6 +1245,11 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
     pendingStallRecoveryToken = nil
     vadMonitorTask?.cancel()
     vadMonitorTask = nil
+    // Issue #445: clean up any held prepare task on reset (cleanup symmetry
+    // for the watchdog flow). Backend's single-flight prevents duplicate
+    // loads even if the orphan keeps grinding.
+    prepareTask?.cancel()
+    prepareTask = nil
     // Fire-and-forget cancel — reset() is synchronous, worker cancel is safe to defer
     if let worker = incrementalWorker {
       incrementalWorker = nil

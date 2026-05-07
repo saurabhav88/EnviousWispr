@@ -250,11 +250,14 @@ public enum SentryBreadcrumb {
     case stateMismatch = "state_mismatch"
     case xpcServiceError = "xpc_service_error"
     case modelLoadFailed = "model_load_failed"
+    case modelLoadWedged = "model_load_wedged"
     case audioCaptureFailed = "audio_capture_failed"
     case audioCaptureStalled = "audio_capture_stalled"
     case asrFailed = "asr_failed"
     case asrEmptyResult = "asr_empty_result"
     case heartPathFinalization = "heart_path_finalization"
+    case pipelineDispatchFailed = "pipeline_dispatch_failed"
+    case pipelinePostConditionFailed = "pipeline_post_condition_failed"
   }
 }
 

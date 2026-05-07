@@ -24,6 +24,14 @@ public actor WhisperKitBackend: ASRBackend {
   private let modelVariant: String = WhisperKitBackend.defaultModelVariant()
   private var whisperKit: WhisperKit?
 
+  /// Issue #445: single-flight guard for `prepare()`. Prevents duplicate
+  /// `MLModel.load` work when the pipeline watchdog cancels its host await
+  /// and a subsequent press calls `prepare()` again before the first one's
+  /// background load returns. CoreML model loading is uncancellable
+  /// cooperatively, so we cannot stop the in-flight load — but we can stop
+  /// it from doubling.
+  private var loadTask: Task<Void, Error>?
+
   /// Exposes the configured model variant name (e.g. `openai_whisper-large-v3-v20240930_turbo`).
   /// Read-only; used by telemetry to tag per-transcription events with the model in use.
   package var modelVariantName: String { modelVariant }
@@ -35,21 +43,51 @@ public actor WhisperKitBackend: ASRBackend {
     "openai_whisper-large-v3-v20240930_turbo"
   }
 
+  /// Issue #445 / Codex pass 3: drop the held `loadTask` reference so the
+  /// next `prepare()` starts a fresh task instead of awaiting the wedged
+  /// one. The wedged task itself cannot be cancelled (CoreML's `MLModel.load`
+  /// is synchronous and ignores cooperative cancel) — it leaks until it
+  /// returns. But the `isReady` flag stays false, so the next call enters the
+  /// new-task branch and the user gets a clean retry.
+  public func resetLoadState() {
+    loadTask?.cancel()
+    loadTask = nil
+  }
+
   public func prepare() async throws {
     guard !isReady else { return }  // Idempotent — skip if already loaded
 
-    // Use cached model path from WhisperKitSetupService (no network call).
-    // Falls back to WhisperKit.download() if path not found (handles edge cases
-    // like user-initiated record when cache was cleared).
-    let modelPath: String
-    if let cached = WhisperKitSetupService.getLocalModelPath(variant: modelVariant) {
-      modelPath = cached
-    } else {
-      let folder = try await WhisperKit.download(variant: modelVariant, progressCallback: nil)
-      modelPath = folder.path
+    // Issue #445: single-flight. If a prior prepare() call is still loading
+    // (e.g. its host await was cancelled by the pipeline watchdog but the
+    // underlying CoreML load is still grinding), await the existing task
+    // instead of spawning a parallel load.
+    if let existing = loadTask {
+      try await existing.value
+      return
     }
 
-    try await loadFromPath(modelPath)
+    let task = Task<Void, Error> {
+      // Use cached model path from WhisperKitSetupService (no network call).
+      // Falls back to WhisperKit.download() if path not found (handles edge cases
+      // like user-initiated record when cache was cleared).
+      let modelPath: String
+      if let cached = WhisperKitSetupService.getLocalModelPath(variant: modelVariant) {
+        modelPath = cached
+      } else {
+        let folder = try await WhisperKit.download(variant: modelVariant, progressCallback: nil)
+        modelPath = folder.path
+      }
+
+      try await loadFromPath(modelPath)
+    }
+    loadTask = task
+    do {
+      try await task.value
+      loadTask = nil
+    } catch {
+      loadTask = nil
+      throw error
+    }
   }
 
   /// Load model from local cache only. Returns false if model is not cached

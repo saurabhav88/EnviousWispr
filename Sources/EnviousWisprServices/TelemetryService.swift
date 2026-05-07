@@ -232,6 +232,41 @@ public final class TelemetryService {
 
   // MARK: - Pipeline Steps
 
+  /// Issue #445: emit a `wedge_detected` PostHog event when the pipeline
+  /// watchdog fires on a wedged model load. Companion to the Sentry event
+  /// captured by `SentryBreadcrumb.captureError(category: .modelLoadWedged)`
+  /// at the same call site. Sentry gives breadcrumb-chain diagnostic depth;
+  /// PostHog gives population-level counting and per-user retention joins.
+  public func modelLoadWedged(backend: String, stage: String, deadlineMs: Int) {
+    PostHogSDK.shared.capture(
+      "wedge_detected",
+      properties: [
+        "backend": backend,
+        "stage": stage,
+        "deadline_ms": deadlineMs,
+      ])
+  }
+
+  /// Issue #445: launch-time telemetry. Emits when `loadModelSilently()`
+  /// completes (success, already-loaded, or failed) so we can finally see
+  /// what happens during launch warming. Pre-#445 the launch path was
+  /// invisible: `loadModelSilently()` is silent on success by design and
+  /// only logs on failure, so we had zero visibility into how long the
+  /// preload takes, whether it succeeds, or whether different users hit
+  /// different cold-path durations.
+  public func launchModelPreloadCompleted(
+    backend: String, result: String, durationMs: Int
+  ) {
+    PostHogSDK.shared.capture(
+      "launch.model_preload_completed",
+      properties: [
+        "backend": backend,
+        "result": result,
+        "duration_ms": durationMs,
+        "$value": Double(durationMs) / 1000.0,
+      ])
+  }
+
   public func asrCompleted(
     backend: String, result: String, coldStart: Bool, latencySeconds: Double, charCount: Int
   ) {

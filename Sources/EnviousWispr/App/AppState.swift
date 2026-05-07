@@ -585,14 +585,77 @@ final class AppState {
         let (s, a) = (ContinuousClock.now - pttStart).components
         return Int(s) * 1000 + Int(a / 1_000_000_000_000_000)
       }()
-      // `.toggleRecording` is declared throws on the protocol, but today the
-      // underlying implementation doesn't throw. `try?` keeps the surface
-      // unchanged. If a future event grows a meaningful throw we revisit here.
-      try? await active.handle(event: .toggleRecording(makeDictationSessionConfig()))
+      // Issue #445: drop the silent `try?` so a thrown error from `.handle`
+      // surfaces to a recoverable error path. CancellationError is the
+      // documented silent-unwind case (mirrors preWarm catch above).
+      do {
+        try await active.handle(event: .toggleRecording(makeDictationSessionConfig()))
+      } catch is CancellationError {
+        self.recordingOverlay.show(intent: .hidden)
+        self.isRecordingLocked = false
+        return
+      } catch {
+        SentryBreadcrumb.captureError(
+          error, category: .pipelineDispatchFailed, stage: "recording",
+          extra: ["backend": isWhisperKit ? "whisperkit" : "parakeet"]
+        )
+        self.recordingOverlay.show(intent: .hidden)
+        self.isRecordingLocked = false
+        active.setExternalError(ModelLoadWatchdog.userMessage)
+        return
+      }
       let totalMs = {
         let (s, a) = (ContinuousClock.now - pttStart).components
         return Int(s) * 1000 + Int(a / 1_000_000_000_000_000)
       }()
+      // Issue #445: post-condition guard. If `.handle` returned without putting
+      // the pipeline into an active state AND the pipeline didn't already
+      // surface its own `.error(...)`, treat as a silent failure and recover.
+      // Per Codex Q4: do NOT overwrite an existing `.error(...)` (the watchdog
+      // path already set it with the right message); only recover for
+      // inactive non-error states.
+      let pipelineActive: Bool
+      let pipelineInError: Bool
+      if isWhisperKit {
+        pipelineActive = self.whisperKitPipeline.state.isActive
+        if case .error = self.whisperKitPipeline.state {
+          pipelineInError = true
+        } else {
+          pipelineInError = false
+        }
+      } else {
+        pipelineActive = self.pipelineState.isActive
+        if case .error = self.pipelineState {
+          pipelineInError = true
+        } else {
+          pipelineInError = false
+        }
+      }
+      // Issue #445 / Codex P2: user-initiated stop during this start drives
+      // the pipeline to idle through the expected `.requestStop` path, not a
+      // wedge. Skip the wedge recovery if a stop request arrived after
+      // pttStart — the pipeline is correctly idle for the right reason.
+      let userStoppedDuringStart: Bool = {
+        guard let lastStop = self.lastUserStopRequest else { return false }
+        return lastStop > pttStart
+      }()
+      if !pipelineActive && !pipelineInError && !userStoppedDuringStart {
+        SentryBreadcrumb.captureError(
+          ModelLoadWatchdog.WedgeError(stage: "post_condition"),
+          category: .pipelinePostConditionFailed, stage: "recording",
+          extra: ["backend": isWhisperKit ? "whisperkit" : "parakeet"]
+        )
+        self.recordingOverlay.show(intent: .hidden)
+        self.isRecordingLocked = false
+        active.setExternalError(ModelLoadWatchdog.userMessage)
+        return
+      }
+      if !pipelineActive && !pipelineInError && userStoppedDuringStart {
+        // Expected stop. Quietly clean up overlay; no error surface.
+        self.recordingOverlay.show(intent: .hidden)
+        self.isRecordingLocked = false
+        return
+      }
       Task {
         await AppLogger.shared.log(
           "COLD-START [AppState] PTT-to-recording: total=\(totalMs)ms preWarm=\(preWarmMs)ms startRecording=\(totalMs - preWarmMs)ms backend=\(isWhisperKit ? "whisperkit" : "parakeet")",
@@ -603,11 +666,13 @@ final class AppState {
     hotkeyService.onStopRecording = { [weak self] in
       guard let self else { return }
       self.isRecordingLocked = false
+      self.lastUserStopRequest = ContinuousClock.now
       try? await self.activePipeline.handle(event: .requestStop)
     }
 
     hotkeyService.onCancelRecording = { [weak self] in
       self?.isRecordingLocked = false
+      self?.lastUserStopRequest = ContinuousClock.now
       await self?.cancelRecording()
     }
 
@@ -711,6 +776,10 @@ final class AppState {
   // after a different backend acquired the shared capture.
   private var prevParakeetActive: Bool = false
   private var prevWhisperKitActive: Bool = false
+
+  /// Issue #445: most recent user stop/cancel timestamp; suppresses the
+  /// post-condition wedge guard when the user released PTT mid-start.
+  private var lastUserStopRequest: ContinuousClock.Instant?
 
   /// Issue #285 — resolve which backend owns the shared audio capture right
   /// now. Returns nil when both pipelines are fully idle. Shared helper for

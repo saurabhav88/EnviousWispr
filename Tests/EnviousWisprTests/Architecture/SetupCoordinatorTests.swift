@@ -104,4 +104,5 @@ private final class FakeASRManager: ASRManagerInterface {
     fatalError("not used in SetupCoordinatorTests")
   }
   func cancelIdleTimer() { fatalError("not used in SetupCoordinatorTests") }
+  func cancelInFlightLoad() { fatalError("not used in SetupCoordinatorTests") }
 }
