@@ -69,6 +69,7 @@ enable_app_file_logging() {
     echo "lid-perf-bench needs the current debug dev app so AppLogger writes app.log." >&2
     echo "Found version '${APP_VERSION:-unknown}' at $DEV_APP_PATH." >&2
     echo "Expected version '$EXPECTED_VERSION'." >&2
+    echo "Note: scripts/bundle-dev.sh creates a release-style '-dev' bundle; this benchmark needs a debug '-debug' bundle." >&2
     echo "Build and launch the debug dev app first, then rerun this script." >&2
     exit 2
   fi
