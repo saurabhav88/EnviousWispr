@@ -172,6 +172,12 @@ public final class LoadProgressWatcher {
     }
   }
 
+  /// Whether the trigger has fired this attempt. Stays `true` until `start()`
+  /// resets the watcher. Useful for deterministic assertions in tests
+  /// (instead of awaiting `wedged()` and hoping the scheduler resumes it
+  /// within the test runner's deadline).
+  public var hasFired: Bool { fired }
+
   /// Snapshot of the watcher's per-attempt state. Used by the pipeline to
   /// stamp the `wedge_detected` telemetry payload with diagnostic context.
   public var snapshot: WatcherSnapshot {

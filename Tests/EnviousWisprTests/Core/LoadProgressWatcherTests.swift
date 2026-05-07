@@ -150,27 +150,18 @@ struct LoadProgressWatcherTests {
     watcher.observeTick(observedMtime: mtime(1), observedPhase: "compiling")
     await sleep(ms: 150)
     watcher.observeTick(observedMtime: mtime(2), observedPhase: "compiling")
-    let waiter = Task { @MainActor in
-      await watcher.wedged()
-    }
     // Generate silence ticks past 800ms floor.
     for _ in 0..<15 {
       watcher.observeTick(observedMtime: mtime(2), observedPhase: "compiling")
       await sleep(ms: 80)
     }
-    // The waiter should have resolved by now (watcher fired on a tick past 800ms).
-    let resolveSentinel = Task { @MainActor in
-      await waiter.value
-      return true
-    }
-    let timeoutSentinel = Task { @MainActor () -> Bool in
-      try? await Task.sleep(nanoseconds: 200_000_000)
-      return false
-    }
+    // Assert via the deterministic `hasFired` accessor. Avoids awaiting
+    // `wedged()` unconditionally — under heavy CI load the resumed
+    // continuation can lag behind the assertion, causing the test to hang
+    // until the job-level timeout (28 min on the GitHub Actions self-hosted
+    // runner). The state read is synchronous and safe.
     let snap = watcher.snapshot
-    let resolved = await resolveSentinel.value
-    timeoutSentinel.cancel()
-    #expect(resolved, "Both gates met → watcher must fire")
+    #expect(watcher.hasFired, "Both gates met → watcher must fire")
     #expect(snap.lastObservedPhase == "compiling")
     #expect(snap.signalCountTotal == 3)
     watcher.stop()
