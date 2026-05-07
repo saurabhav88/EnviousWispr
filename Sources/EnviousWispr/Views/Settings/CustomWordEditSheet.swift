@@ -19,14 +19,15 @@ struct CustomWordEditSheet: View {
   @State private var suggestionsApplied = false
   @State private var noSuggestionsAvailable = false
   @State private var showingDeleteConfirmation = false
+  @State private var saveError: String?
   let wordSuggestionService: WordSuggestionService?
-  let onSave: (CustomWord) -> Void
+  let onSave: (CustomWord) -> String?
   let onDelete: (() -> Void)?
   @Environment(\.dismiss) private var dismiss
 
   init(
     word: CustomWord, wordSuggestionService: WordSuggestionService? = nil,
-    onSave: @escaping (CustomWord) -> Void,
+    onSave: @escaping (CustomWord) -> String?,
     onDelete: (() -> Void)? = nil
   ) {
     _word = State(initialValue: word)
@@ -126,6 +127,13 @@ struct CustomWordEditSheet: View {
       Toggle("Force replace (always apply, skip scoring)", isOn: $word.forceReplace)
         .toggleStyle(BrandedToggleStyle())
 
+      if let saveError {
+        Label(saveError, systemImage: "exclamationmark.triangle.fill")
+          .font(.stHelper)
+          .foregroundStyle(.red)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+
       Spacer()
 
       // Actions
@@ -141,8 +149,12 @@ struct CustomWordEditSheet: View {
         Button("Cancel") { dismiss() }
           .keyboardShortcut(.cancelAction)
         Button("Save") {
-          onSave(word)
-          dismiss()
+          if let error = onSave(word) {
+            saveError = error
+          } else {
+            saveError = nil
+            dismiss()
+          }
         }
         .keyboardShortcut(.defaultAction)
         .disabled(word.canonical.trimmingCharacters(in: .whitespaces).isEmpty)

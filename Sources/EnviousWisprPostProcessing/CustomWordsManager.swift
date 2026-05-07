@@ -262,7 +262,11 @@ public final class CustomWordsManager {
   }
 
   public func add(canonical: String, to words: inout [CustomWord]) throws {
-    let trimmed = canonical.trimmingCharacters(in: .whitespacesAndNewlines)
+    try add(word: CustomWord(canonical: canonical), to: &words)
+  }
+
+  public func add(word: CustomWord, to words: inout [CustomWord]) throws {
+    let trimmed = word.canonical.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return }
     guard
       !words.contains(where: {
@@ -282,7 +286,12 @@ public final class CustomWordsManager {
       return
     }
 
-    file.words.append(CustomWord(canonical: trimmed))
+    var sanitized = word
+    sanitized.canonical = trimmed
+    sanitized.aliases = sanitized.aliases
+      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty }
+    file.words.append(sanitized)
     try saveFile(file)
     words = mergedWords(file: file)
   }

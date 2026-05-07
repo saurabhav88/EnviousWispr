@@ -66,27 +66,13 @@ struct YourWordsView: View {
         wordSuggestionService: appState.customWordsCoordinator.suggestionService
       ) { newWord in
         let trimmedCanonical = newWord.canonical.trimmingCharacters(in: .whitespaces)
-        guard !trimmedCanonical.isEmpty else { return }
-        // Skip enrichment in two cases:
-        //  1. `add()` was a no-op because the canonical already exists as a user
-        //     word — `existingIDs` catches that.
-        //  2. `add()` restored a previously-deleted built-in (e.g. "GitHub")
-        //     whose curated aliases must not be overwritten by sheet defaults.
-        //     Detected by the restored entry already carrying aliases.
-        let existingIDs = Set(appState.customWordsCoordinator.customWords.map(\.id))
-        appState.customWordsCoordinator.add(trimmedCanonical)
-        if let added = appState.customWordsCoordinator.customWords.first(where: {
-          $0.canonical.caseInsensitiveCompare(trimmedCanonical) == .orderedSame
-            && !existingIDs.contains($0.id)
-            && $0.aliases.isEmpty
-        }) {
-          var enriched = added
-          enriched.aliases = newWord.aliases
-          enriched.category = newWord.category
-          enriched.forceReplace = newWord.forceReplace
-          enriched.minSimilarityOverride = newWord.minSimilarityOverride
-          appState.customWordsCoordinator.update(enriched)
+        guard !trimmedCanonical.isEmpty else { return nil }
+        var wordToSave = newWord
+        wordToSave.canonical = trimmedCanonical
+        if let error = appState.customWordsCoordinator.add(wordToSave) {
+          return error
         }
+        return nil
       }
     }
   }

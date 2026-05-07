@@ -129,6 +129,34 @@ struct CustomWordsManagerDiskRoundTripTests {
     #expect(after.first?.frequencyUsed == 1)
   }
 
+  @Test("add persists aliases and matching policy in one write")
+  func addPersistsFullCustomWord() throws {
+    let path = Self.tempFileURL()
+    defer { Self.cleanup(path) }
+
+    let manager = CustomWordsManager(fileURL: path)
+    var words: [CustomWord] = []
+    let word = CustomWord(
+      canonical: "  GitLab  ",
+      aliases: [" git lab ", ""],
+      category: .brand,
+      forceReplace: true,
+      minSimilarityOverride: 0.92
+    )
+
+    try manager.add(word: word, to: &words)
+
+    let after = try Self.readWords(at: path)
+    #expect(after.count == 1)
+    #expect(after.first?.canonical == "GitLab")
+    #expect(after.first?.aliases == ["git lab"])
+    #expect(after.first?.category == .brand)
+    #expect(after.first?.forceReplace == true)
+    #expect(after.first?.minSimilarityOverride == 0.92)
+    let runtimeAdded = words.first { $0.canonical == "GitLab" }
+    #expect(runtimeAdded?.aliases == ["git lab"])
+  }
+
   @Test("Multiple flushes accumulate frequencyUsed across writes")
   func multipleFlushesAccumulate() throws {
     let path = Self.tempFileURL()
