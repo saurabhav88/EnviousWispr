@@ -34,7 +34,7 @@ if [ "${1:-}" = "--self-test" ]; then
   mkdir -p "$case_passing"
   HEAD_SHA=$(git -C "$PROJECT_ROOT" rev-parse HEAD 2>/dev/null || echo "fixturesha0000000000000000000000000")
   cat > "$case_passing/run.json" <<JSON
-{"schema_version":1,"head_sha":"$HEAD_SHA","branch":"fixture","declared_lane":"Docs/dev-tooling","detected_lanes":["Docs/dev-tooling"],"is_mixed_pr":false,"started_at":"2026-04-29T00:00:00Z","completed_at":"2026-04-29T00:00:01Z","obligations_satisfied":["codex-prose","broken-refs"],"obligations_skipped":[],"skip_notes":[]}
+{"schema_version":1,"head_sha":"$HEAD_SHA","branch":"fixture","declared_lane":"Docs/dev-tooling","detected_lanes":["Docs/dev-tooling"],"changed_files":[],"is_mixed_pr":false,"started_at":"2026-04-29T00:00:00Z","completed_at":"2026-04-29T00:00:01Z","obligations_satisfied":["codex-prose","broken-refs"],"obligations_skipped":[],"skip_notes":[]}
 JSON
   echo "fixture prose review" > "$case_passing/codex-prose.txt"
   echo "no broken refs" > "$case_passing/broken-refs-grep.txt"
@@ -49,7 +49,7 @@ JSON
   case_missing="$TMPDIR/missing-artifact"
   mkdir -p "$case_missing"
   cat > "$case_missing/run.json" <<JSON
-{"schema_version":1,"head_sha":"$HEAD_SHA","branch":"fixture","declared_lane":"Docs/dev-tooling","detected_lanes":["Docs/dev-tooling"],"is_mixed_pr":false,"started_at":"2026-04-29T00:00:00Z","completed_at":"2026-04-29T00:00:01Z","obligations_satisfied":[],"obligations_skipped":[],"skip_notes":[]}
+{"schema_version":1,"head_sha":"$HEAD_SHA","branch":"fixture","declared_lane":"Docs/dev-tooling","detected_lanes":["Docs/dev-tooling"],"changed_files":[],"is_mixed_pr":false,"started_at":"2026-04-29T00:00:00Z","completed_at":"2026-04-29T00:00:01Z","obligations_satisfied":[],"obligations_skipped":[],"skip_notes":[]}
 JSON
   if "$0" "$case_missing" >/dev/null 2>&1; then
     fail=$((fail + 1))
@@ -62,7 +62,7 @@ JSON
   case_mismatch="$TMPDIR/head-mismatch"
   mkdir -p "$case_mismatch"
   cat > "$case_mismatch/run.json" <<'JSON'
-{"schema_version":1,"head_sha":"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef","branch":"fixture","declared_lane":"Docs/dev-tooling","detected_lanes":["Docs/dev-tooling"],"is_mixed_pr":false,"started_at":"2026-04-29T00:00:00Z","completed_at":"2026-04-29T00:00:01Z","obligations_satisfied":["codex-prose","broken-refs"],"obligations_skipped":[],"skip_notes":[]}
+{"schema_version":1,"head_sha":"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef","branch":"fixture","declared_lane":"Docs/dev-tooling","detected_lanes":["Docs/dev-tooling"],"changed_files":[],"is_mixed_pr":false,"started_at":"2026-04-29T00:00:00Z","completed_at":"2026-04-29T00:00:01Z","obligations_satisfied":["codex-prose","broken-refs"],"obligations_skipped":[],"skip_notes":[]}
 JSON
   echo "x" > "$case_mismatch/codex-prose.txt"
   echo "x" > "$case_mismatch/broken-refs-grep.txt"
@@ -72,6 +72,52 @@ JSON
   else
     pass=$((pass + 1))
     echo "self-test PASS: head-mismatch fixture exits non-zero in strict mode"
+  fi
+
+  case_docs_scripts="$TMPDIR/docs-scripts-missing-checks"
+  mkdir -p "$case_docs_scripts"
+  cat > "$case_docs_scripts/run.json" <<JSON
+{"schema_version":1,"head_sha":"$HEAD_SHA","branch":"fixture","declared_lane":"Docs/dev-tooling","detected_lanes":["Docs/dev-tooling"],"changed_files":["scripts/check-validation.sh"],"is_mixed_pr":false,"started_at":"2026-04-29T00:00:00Z","completed_at":"2026-04-29T00:00:01Z","obligations_satisfied":["codex-prose","broken-refs"],"obligations_skipped":[],"skip_notes":[]}
+JSON
+  echo "x" > "$case_docs_scripts/codex-prose.txt"
+  echo "x" > "$case_docs_scripts/broken-refs-grep.txt"
+  if "$0" "$case_docs_scripts" >/dev/null 2>&1; then
+    fail=$((fail + 1))
+    echo "self-test FAIL: Docs/dev-tooling script-change fixture should require shellcheck + self-test"
+  else
+    pass=$((pass + 1))
+    echo "self-test PASS: Docs/dev-tooling script-change fixture requires shellcheck + self-test"
+  fi
+
+  case_missing_changed_files="$TMPDIR/docs-missing-changed-files"
+  mkdir -p "$case_missing_changed_files"
+  cat > "$case_missing_changed_files/run.json" <<JSON
+{"schema_version":1,"head_sha":"$HEAD_SHA","branch":"fixture","declared_lane":"Docs/dev-tooling","detected_lanes":["Docs/dev-tooling"],"is_mixed_pr":false,"started_at":"2026-04-29T00:00:00Z","completed_at":"2026-04-29T00:00:01Z","obligations_satisfied":["codex-prose","broken-refs"],"obligations_skipped":[],"skip_notes":[]}
+JSON
+  echo "x" > "$case_missing_changed_files/codex-prose.txt"
+  echo "x" > "$case_missing_changed_files/broken-refs-grep.txt"
+  if "$0" "$case_missing_changed_files" --strict >/dev/null 2>&1; then
+    fail=$((fail + 1))
+    echo "self-test FAIL: Docs/dev-tooling strict fixture should require changed_files metadata"
+  else
+    pass=$((pass + 1))
+    echo "self-test PASS: Docs/dev-tooling strict fixture requires changed_files metadata"
+  fi
+
+  case_worker_missing="$TMPDIR/worker-missing-deploy-obligation"
+  mkdir -p "$case_worker_missing"
+  cat > "$case_worker_missing/run.json" <<JSON
+{"schema_version":1,"head_sha":"$HEAD_SHA","branch":"fixture","declared_lane":"Worker","detected_lanes":["Worker"],"changed_files":["workers/sentry-triage/src/index.js"],"is_mixed_pr":false,"started_at":"2026-04-29T00:00:00Z","completed_at":"2026-04-29T00:00:01Z","obligations_satisfied":["worker-test","endpoint-smoke"],"obligations_skipped":[],"skip_notes":[]}
+JSON
+  echo "tests passed" > "$case_worker_missing/worker-test.log"
+  echo "deployment-id" > "$case_worker_missing/deploy-id.txt"
+  echo "{}" > "$case_worker_missing/endpoint-response.json"
+  if "$0" "$case_worker_missing" >/dev/null 2>&1; then
+    fail=$((fail + 1))
+    echo "self-test FAIL: Worker fixture should require deploy-smoke obligation"
+  else
+    pass=$((pass + 1))
+    echo "self-test PASS: Worker fixture requires deploy-smoke obligation"
   fi
 
   echo "self-test results: $pass passed, $fail failed"
@@ -182,17 +228,32 @@ case "$LANE" in
   "Docs/dev-tooling")
     # Always required for Docs/dev-tooling lane.
     required_artifacts="codex-prose.txt broken-refs-grep.txt"
-    # Per Codex round 6: requiring shellcheck.txt + self-test.txt only when
-    # the files exist is gameable — a manually-assembled run dir could omit
-    # both. Detect "scripts changed" from the run.json's branch + diff and
-    # require both files when ANY scripts/*.sh changed in the PR. Falls back
-    # to "if file exists, require it" only when git is unavailable.
-    SCRIPTS_TOUCHED=""
-    BRANCH_FROM_RUN=$(jq -r '.branch // empty' "$RUN_JSON" 2>/dev/null || echo "")
-    if [ -n "$BRANCH_FROM_RUN" ] && command -v git >/dev/null 2>&1; then
+    # Per Codex review: derive "scripts changed" from this run directory's
+    # recorded changed_files, not from the current checkout's HEAD.
+    if ! jq -e '(.changed_files | type) == "array"' "$RUN_JSON" >/dev/null 2>&1; then
+      msg="run.json missing changed_files array; cannot prove whether Docs/dev-tooling shell scripts changed"
+      if $STRICT; then
+        echo "FAIL: $msg" >&2
+        exit 2
+      else
+        warn "$msg"
+      fi
+      SCRIPTS_TOUCHED=""
+    else
+      SCRIPTS_TOUCHED=$(jq -r '.changed_files[] | select(test("^scripts/[^/]+\\.sh$"))' "$RUN_JSON" 2>/dev/null | head -1 || echo "")
+    fi
+    if $STRICT; then
       MERGE_BASE_LOCAL=$(git -C "$PROJECT_ROOT" merge-base origin/main HEAD 2>/dev/null || echo "")
-      if [ -n "$MERGE_BASE_LOCAL" ]; then
-        SCRIPTS_TOUCHED=$(git -C "$PROJECT_ROOT" diff --name-only "$MERGE_BASE_LOCAL"..HEAD -- 'scripts/*.sh' 2>/dev/null | head -1 || echo "")
+      if [ -z "$MERGE_BASE_LOCAL" ]; then
+        echo "FAIL: strict Docs/dev-tooling validation cannot verify changed_files without origin/main merge-base" >&2
+        exit 2
+      fi
+      STRICT_COMMITTED_SCRIPTS=$(git -C "$PROJECT_ROOT" diff --name-only "$MERGE_BASE_LOCAL"..HEAD -- 'scripts/*.sh' 2>/dev/null | head -1 || echo "")
+      STRICT_DIRTY_SCRIPTS=$(git -C "$PROJECT_ROOT" diff --name-only HEAD -- 'scripts/*.sh' 2>/dev/null | head -1 || echo "")
+      STRICT_SCRIPTS_TOUCHED="${STRICT_COMMITTED_SCRIPTS:-$STRICT_DIRTY_SCRIPTS}"
+      if [ -n "$STRICT_SCRIPTS_TOUCHED" ] && [ -z "$SCRIPTS_TOUCHED" ]; then
+        echo "FAIL: run.json changed_files omits script changes present in HEAD diff; first missing script: $STRICT_SCRIPTS_TOUCHED" >&2
+        exit 2
       fi
     fi
     if [ -n "$SCRIPTS_TOUCHED" ]; then
@@ -265,6 +326,7 @@ for artifact in $required_artifacts; do
     acceptance-gate.json) required_obligations="$required_obligations acceptance-gate" ;;
     metric-delta.txt) required_obligations="$required_obligations metric-delta" ;;
     worker-test.log) required_obligations="$required_obligations worker-test" ;;
+    deploy-id.txt) required_obligations="$required_obligations deploy-smoke" ;;
     endpoint-response.json) required_obligations="$required_obligations endpoint-smoke" ;;
   esac
 done

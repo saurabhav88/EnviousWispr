@@ -47,7 +47,7 @@ if [ "${1:-}" = "--self-test" ]; then
   mkdir -p "$fixture_run"
   HEAD_SHA=$(git -C "$PROJECT_ROOT" rev-parse HEAD 2>/dev/null || echo "fixturesha000000000000000000000000000000")
   cat > "$fixture_run/run.json" <<JSON
-{"schema_version":$SCHEMA_VERSION,"head_sha":"$HEAD_SHA","branch":"fixture","declared_lane":"Docs/dev-tooling","detected_lanes":["Docs/dev-tooling"],"is_mixed_pr":false,"started_at":"2026-04-29T00:00:00Z","completed_at":"2026-04-29T00:00:01Z","obligations_satisfied":["codex-prose","broken-refs"],"obligations_skipped":[],"skip_notes":[]}
+{"schema_version":$SCHEMA_VERSION,"head_sha":"$HEAD_SHA","branch":"fixture","declared_lane":"Docs/dev-tooling","detected_lanes":["Docs/dev-tooling"],"changed_files":[],"is_mixed_pr":false,"started_at":"2026-04-29T00:00:00Z","completed_at":"2026-04-29T00:00:01Z","obligations_satisfied":["codex-prose","broken-refs"],"obligations_skipped":[],"skip_notes":[]}
 JSON
   echo "x" > "$fixture_run/codex-prose.txt"
   echo "x" > "$fixture_run/broken-refs-grep.txt"
@@ -304,6 +304,7 @@ fi
 # --- Write run.json ---
 COMPLETED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 DETECTED_JSON=$(echo "$DETECTED" | tr ',' '\n' | jq -R . | jq -s .)
+CHANGED_JSON=$(printf '%s\n' "$CHANGED" | jq -R . | jq -s 'map(select(. != ""))')
 SATISFIED_JSON=$(printf '%s\n' "${SATISFIED[@]}" | jq -R . | jq -s 'map(select(. != ""))')
 SKIPPED_JSON=$(printf '%s\n' "${SKIPPED[@]}" | jq -R . | jq -s 'map(select(. != ""))')
 SKIP_NOTES_JSON=$(printf '%s\n' "${SKIP_NOTES[@]}" | jq -R . | jq -s 'map(select(. != ""))')
@@ -314,6 +315,7 @@ jq -n \
   --arg branch "$BRANCH" \
   --arg lane "$DECLARED" \
   --argjson detected "$DETECTED_JSON" \
+  --argjson changed "$CHANGED_JSON" \
   --argjson mixed "$IS_MIXED" \
   --arg started "$STARTED_AT" \
   --arg completed "$COMPLETED_AT" \
@@ -326,6 +328,7 @@ jq -n \
     branch: $branch,
     declared_lane: $lane,
     detected_lanes: $detected,
+    changed_files: $changed,
     is_mixed_pr: $mixed,
     started_at: $started,
     completed_at: $completed,
