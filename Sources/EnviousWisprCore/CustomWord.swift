@@ -14,7 +14,6 @@ public enum WordCategory: String, Codable, CaseIterable, Sendable {
 public enum WordSource: String, Sendable, CaseIterable {
   case builtin  // ships in app bundle (CustomWordsManager.builtinDefaults)
   case user  // user-typed via Custom Terms UI; default for any decoded CustomWord
-  case pack  // installed via VocabularyPacksManager (Phase 5, #635) — runtime-only
   case observedAX  // auto-learned via AX observation (Phase 7, #629)
 }
 

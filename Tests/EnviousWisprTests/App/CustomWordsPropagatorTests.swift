@@ -117,37 +117,6 @@ struct CustomWordsPropagatorTests {
     #expect(early.polishVocabulary.terms == updated)
   }
 
-  // MARK: - Unit: pack-distribution law (the whole point of Phase 0)
-
-  @Test("Pack terms reach corrector lane only — never polish lane")
-  func packTermsExcludedFromPolish() {
-    let propagator = CustomWordsPropagator()
-    let corrSpy = CorrectorSpy()
-    let polishSpy = PolishSpy()
-    propagator.register(corrSpy)
-    propagator.register(polishSpy)
-
-    let userTerm = Self.makeWord("EnviousWispr", source: .user)
-    let packTerm = Self.makeWord("Snowflake", source: .pack)
-    let allTerms = [userTerm, packTerm]
-    let polishOnly = allTerms.filter { $0.source != .pack }
-
-    propagator.update(
-      corrector: CorrectorVocabulary(terms: allTerms, generation: 1),
-      polish: PolishVocabulary(terms: polishOnly, generation: 1)
-    )
-
-    #expect(
-      corrSpy.correctorVocabulary.terms.contains(where: { $0.canonical == "Snowflake" }),
-      "Pack term must reach corrector lane")
-    #expect(
-      !polishSpy.polishVocabulary.terms.contains(where: { $0.canonical == "Snowflake" }),
-      "Pack term must NOT reach polish lane (bible §2.2)")
-    #expect(
-      polishSpy.polishVocabulary.terms.contains(where: { $0.canonical == "EnviousWispr" }),
-      "User term must reach polish lane")
-  }
-
   // MARK: - Unit: shared generation across lanes
 
   @Test("Shared generation — both lanes get same generation per atomic update")
@@ -216,7 +185,7 @@ struct CustomWordsPropagatorTests {
     for (i, spy) in polishSpies.enumerated() {
       #expect(
         spy.polishVocabulary.terms == preloaded,
-        "polish spy[\(i)] missed the preloaded seed (no pack terms in seed)")
+        "polish spy[\(i)] missed the preloaded seed")
     }
 
     let updated = preloaded + [Self.makeWord("user-added")]
@@ -233,37 +202,4 @@ struct CustomWordsPropagatorTests {
     }
   }
 
-  // MARK: - Integration: pack term added via coordinator only reaches corrector
-
-  @Test("Integration — pack term flows to corrector consumers only via wireCustomWords")
-  func packTermFlowsCorrectorOnly() {
-    let coordinator = CustomWordsCoordinator()
-    let correctorSpy = CorrectorSpy()
-    let polishSpy = PolishSpy()
-    let propagator = CustomWordsPropagator()
-
-    wireCustomWords(
-      propagator: propagator,
-      initialWords: [],
-      correctorConsumers: [correctorSpy],
-      polishConsumers: [polishSpy],
-      coordinator: coordinator
-    )
-
-    let mixed = [
-      Self.makeWord("EnviousWispr", source: .user),
-      Self.makeWord("Snowflake", source: .pack),
-    ]
-    coordinator.onWordsChanged?(mixed)
-
-    #expect(
-      correctorSpy.correctorVocabulary.terms.count == 2,
-      "Corrector should see both user + pack terms")
-    #expect(
-      polishSpy.polishVocabulary.terms.count == 1,
-      "Polish should see only the user term")
-    #expect(
-      polishSpy.polishVocabulary.terms.first?.canonical == "EnviousWispr",
-      "Polish lane received the user term, not the pack term")
-  }
 }
