@@ -1,5 +1,5 @@
 {
-  "originHash" : "d3940a05a3620310f494b12fdf32882e9cff86fe942701d2590fe7462b8ce7d5",
+  "originHash" : "957ce0300fc302d634b4343e99fd58a50f53928c9c5c463b8c4272c8a1a0dbf5",
   "pins" : [
     {
       "identity" : "argmax-oss-swift",
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/PostHog/posthog-ios.git",
       "state" : {
-        "revision" : "218fb6fe016a27baa3651613d53dae5c6e36af15",
-        "version" : "3.57.3"
+        "revision" : "a604c96d138a2d73d2227241a9026536479c551f",
+        "version" : "3.57.6"
       }
     },
     {
@@ -33,8 +33,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/getsentry/sentry-cocoa.git",
       "state" : {
-        "revision" : "0baded16c4bd1f2471949e89bf36289ca2b93080",
-        "version" : "9.12.0"
+        "revision" : "54d5fbcdea46c37a5de01bab5fef48dc78baec84",
+        "version" : "9.12.1"
       }
     },
     {
@@ -51,8 +51,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-argument-parser.git",
       "state" : {
-        "revision" : "c5d11a805e765f52ba34ec7284bd4fcd6ba68615",
-        "version" : "1.7.0"
+        "revision" : "626b5b7b2f45e1b0b1c6f4a309296d1d21d7311b",
+        "version" : "1.7.1"
       }
     }
   ],
