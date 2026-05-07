@@ -82,7 +82,7 @@ if [ -z "$LATEST_RUN" ]; then
     --arg head "$head_sha" \
     --arg branch "$branch" \
     --arg started "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
-    '{schema_version:$schema, head_sha:$head, branch:$branch, declared_lane:"unknown", detected_lanes:[], is_mixed_pr:false, started_at:$started, completed_at:null, obligations_satisfied:[], obligations_skipped:[], skip_notes:[]}' \
+    '{schema_version:$schema, head_sha:$head, branch:$branch, declared_lane:"unknown", detected_lanes:[], changed_files:[], is_mixed_pr:false, started_at:$started, completed_at:null, obligations_satisfied:[], obligations_skipped:[], skip_notes:[]}' \
     > "$LATEST_RUN/run.json"
 fi
 
