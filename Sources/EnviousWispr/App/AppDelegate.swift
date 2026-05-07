@@ -68,6 +68,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       NSApp.setActivationPolicy(.accessory)
     }
 
+    // Issue #445: launch-time telemetry callback wiring. Single line, no
+    // AppState collaborator growth. ASRManagerProxy/ASRManager fire this
+    // closure from inside `loadModelSilently()` so the launch-warming path
+    // (previously silent on success by design) becomes visible in PostHog.
+    ASRManagerProxy.launchPreloadReporter = { backend, result, durationMs in
+      TelemetryService.shared.launchModelPreloadCompleted(
+        backend: backend, result: result, durationMs: durationMs)
+    }
+    ASRManager.launchPreloadReporter = { backend, result, durationMs in
+      TelemetryService.shared.launchModelPreloadCompleted(
+        backend: backend, result: result, durationMs: durationMs)
+    }
+
     // When the unified window closes, revert to .accessory immediately.
     // There's only one window now, so no need for the 200ms re-check delay.
     // Store token so we can remove on termination (H11 observer leak fix).

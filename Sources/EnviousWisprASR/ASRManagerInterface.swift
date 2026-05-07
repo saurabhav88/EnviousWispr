@@ -42,6 +42,21 @@ public protocol ASRManagerInterface: AnyObject {
   func noteTranscriptionComplete(policy: ModelUnloadPolicy)
   func cancelIdleTimer()
 
+  /// Issue #445: cancel a wedged in-flight model load and trigger service-level
+  /// reset. Called by pipeline watchdog when `loadModel()` exceeds the recovery
+  /// deadline. For in-process `ASRManager` this just cancels the host task;
+  /// for `ASRManagerProxy` (XPC, production) this invalidates the connection
+  /// to terminate the service-side load. Equivalent to manual app restart.
+  func cancelInFlightLoad()
+
+  /// Issue #445: per-tick callback for the load-progress polling stream.
+  /// Set by `TranscriptionPipeline` for the duration of one `loadModel()`
+  /// call so the pipeline-owned `LoadProgressWatcher` receives mtime + phase
+  /// observations from the proxy's existing 8Hz timer. Cleared after the
+  /// load resolves. Closure-callback shape matches `swift-patterns.md` hot-
+  /// path guidance (closure beats `any Protocol` existential dispatch).
+  var loadProgressTickReporter: (@MainActor @Sendable (Date?, String) -> Void)? { get set }
+
   // Crash notification — fires when XPC ASR service dies during an active session.
   // Wired by AppState to route to the active pipeline (same pattern as AudioCaptureProxy.onEngineInterrupted).
   var onServiceInterrupted: (() -> Void)? { get set }

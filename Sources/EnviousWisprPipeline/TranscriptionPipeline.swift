@@ -364,15 +364,74 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
         try await asrManager.loadModel()
       }
       modelLoadTask = loadTask
-      do {
+      // Issue #445: signal-based wedge watcher. The bare `try await loadTask.value`
+      // could hang indefinitely if the underlying load wedges (XPC service stuck,
+      // CoreML load stuck). Replaces the prior 20-second wall-clock deadline with
+      // a self-calibrating ratio against the load's own observed cadence — see
+      // `LoadProgressWatcher`. On wedge, trigger service-level recovery via
+      // `asrManager.cancelInFlightLoad()`: for production XPC backend this
+      // invalidates the connection (terminating the service-side load); for
+      // in-process this just cancels the host task. Then surface a recoverable
+      // error so the user can retry.
+      let watcher = LoadProgressWatcher()
+      watcher.start()
+      asrManager.loadProgressTickReporter = { mtime, phase in
+        watcher.observeTick(observedMtime: mtime, observedPhase: phase)
+      }
+      let outcome = await raceWithSignalWatcher(watcher: watcher) {
         try await loadTask.value
-      } catch is CancellationError {
-        // User cancelled during model load. Return to idle.
-        stopRequested = false
+      }
+      asrManager.loadProgressTickReporter = nil
+      watcher.stop()
+      switch outcome {
+      case .completed:
         modelLoadTask = nil
-        state = .idle
+        // Late-completion guard: if state changed while we were loading (e.g., cancel),
+        // do not proceed. The cancel handler already set state to .idle.
+        guard state == .loadingModel else { return }
+        guard !Task.isCancelled else { return }
+      case .wedged:
+        let snap = watcher.snapshot
+        SentryBreadcrumb.captureError(
+          ModelLoadWatchdog.WedgeError(),
+          category: .modelLoadWedged, stage: "asr",
+          extra: [
+            "backend": asrManager.activeBackendType.rawValue,
+            "silence_ms": snap.silenceMs,
+            "observed_max_gap_ms": snap.maxGapMs,
+            "observed_phase": snap.lastObservedPhase,
+            "signal_count_total": snap.signalCountTotal,
+            "first_signal_latency_ms": snap.firstSignalLatencyMs ?? -1,
+            "total_attempt_duration_ms": snap.totalAttemptDurationMs,
+          ])
+        TelemetryService.shared.modelLoadWedged(
+          backend: asrManager.activeBackendType.rawValue,
+          stage: "loading_model",
+          silenceMs: snap.silenceMs,
+          observedMaxGapMs: snap.maxGapMs,
+          observedPhase: snap.lastObservedPhase,
+          signalCountTotal: snap.signalCountTotal,
+          firstSignalLatencyMs: snap.firstSignalLatencyMs,
+          totalAttemptDurationMs: snap.totalAttemptDurationMs
+        )
+        asrManager.cancelInFlightLoad()
+        // Codex pass 2: prewarm succeeded before the load wedged; the audio
+        // engine is still primed. Abort it so the next press takes the normal
+        // engine-start path against fresh state.
+        audioCapture.abortPreWarm()
+        isPreWarmed = false
+        modelLoadTask = nil
+        stopRequested = false
+        state = .error(ModelLoadWatchdog.userMessage)
         return
-      } catch {
+      case .threw(let error):
+        if error is CancellationError {
+          // User cancelled during model load. Return to idle.
+          stopRequested = false
+          modelLoadTask = nil
+          state = .idle
+          return
+        }
         SentryBreadcrumb.captureError(
           error, category: .modelLoadFailed, stage: "asr",
           extra: ["backend": asrManager.activeBackendType.rawValue])
@@ -381,11 +440,6 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
         state = .error("Model load failed: \(error.localizedDescription)")
         return
       }
-      modelLoadTask = nil
-      // Late-completion guard: if state changed while we were loading (e.g., cancel),
-      // do not proceed. The cancel handler already set state to .idle.
-      guard state == .loadingModel else { return }
-      guard !Task.isCancelled else { return }
     }
 
     // Remember the frontmost app and focused text field so we can paste back

@@ -201,6 +201,7 @@ private final class NoOpASRManagerV2: ASRManagerInterface {
   var downloadPhase: String = "idle"
   var downloadDetail: String = ""
   var onServiceInterrupted: (() -> Void)?
+  var loadProgressTickReporter: (@MainActor @Sendable (Date?, String) -> Void)?
 
   func loadModel() async throws {}
   func loadModelSilently() async {}
@@ -217,6 +218,7 @@ private final class NoOpASRManagerV2: ASRManagerInterface {
   func cancelStreaming() async {}
   func noteTranscriptionComplete(policy: ModelUnloadPolicy) {}
   func cancelIdleTimer() {}
+  func cancelInFlightLoad() {}
 
   enum V2StubError: Error { case unexpected }
 }

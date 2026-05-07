@@ -563,6 +563,7 @@ internal final class MockASRManager: ASRManagerInterface {
   var downloadPhase: String = "ready"
   var downloadDetail: String = ""
   var onServiceInterrupted: (() -> Void)?
+  var loadProgressTickReporter: (@MainActor @Sendable (Date?, String) -> Void)?
 
   private let transcribeBehavior: TranscribeBehavior
   private(set) var transcribeCallCount = 0
@@ -612,6 +613,7 @@ internal final class MockASRManager: ASRManagerInterface {
   func cancelStreaming() async {}
   func noteTranscriptionComplete(policy: ModelUnloadPolicy) {}
   func cancelIdleTimer() {}
+  func cancelInFlightLoad() {}
 }
 
 @MainActor

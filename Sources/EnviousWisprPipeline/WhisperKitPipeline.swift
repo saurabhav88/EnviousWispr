@@ -158,6 +158,12 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
   private var frozenSnapshot: SentryBreadcrumb.RecordingSnapshot?
   private var incrementalWorker: (any WhisperKitIncrementalSession)?
   private var modelUnloadTask: Task<Void, Never>?
+  /// Issue #445: held task wrapping `backend.prepare()` so the watchdog can
+  /// cancel the host await on timeout. Cancel here is best-effort (CoreML's
+  /// `MLModel.load` does not observe Swift cooperative cancellation), but
+  /// `WhisperKitBackend.prepare()` has its own single-flight guard so the
+  /// orphaned in-flight load is not duplicated by a subsequent press.
+  private var prepareTask: Task<Void, Error>?
 
   /// Issue #289 stall-recovery ownership token (see TranscriptionPipeline).
   private var pendingStallRecoveryToken: UInt64?
@@ -430,16 +436,37 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
     if !isBackendReady {
       state = .loadingModel
       SentryBreadcrumb.add(stage: "asr", message: "WhisperKit model loading")
+      // Issue #445: WhisperKit's `MLModel.load` is a black box with no
+      // progress signal source — there is nothing the signal-based watcher
+      // can observe. The parked branch's 20-second wall-clock wrap is reverted
+      // here because it has the indefensible-number problem the rule forbids.
+      // Wedge coverage for WhisperKit needs a different signal source (XPC
+      // service heartbeat or process-state observation) and is a separate
+      // design. The held `prepareTask` and `WhisperKitBackend.resetLoadState`
+      // are still useful for cancellation hygiene from `cancelRecording()`,
+      // so keep them — just no watchdog race here.
+      let captured = backend
+      let task = Task<Void, Error> {
+        try await captured.prepare()
+      }
+      prepareTask = task
       do {
-        try await backend.prepare()
+        try await task.value
+        prepareTask = nil
+        guard state == .loadingModel else { return }  // cancelled during model load
+        state = .startingUp  // back to startingUp for engine setup
       } catch {
+        prepareTask = nil
+        if error is CancellationError {
+          // Cancelled (e.g. by cancelRecording during load). Return to idle.
+          state = .idle
+          return
+        }
         SentryBreadcrumb.captureError(
           error, category: .modelLoadFailed, stage: "asr", extra: ["backend": "whisperKit"])
         state = .error("Model load failed: \(error.localizedDescription)")
         return
       }
-      guard state == .loadingModel else { return }  // cancelled during model load
-      state = .startingUp  // back to startingUp for engine setup
     }
 
     // Capture target app for paste-back
@@ -1170,7 +1197,12 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
   public func cancelRecording() async {
     pendingStallRecoveryToken = nil
     if state == .startingUp || state == .loadingModel {
-      // Cancel during startup or model load — transition to idle
+      // Cancel during startup or model load — transition to idle.
+      // Issue #445: also cancel the held prepare task so its host await
+      // unwinds. Backend's single-flight guard handles any orphan that
+      // continues running because CoreML's load is uncancellable.
+      prepareTask?.cancel()
+      prepareTask = nil
       state = .idle
       return
     }
@@ -1192,6 +1224,11 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
     pendingStallRecoveryToken = nil
     vadMonitorTask?.cancel()
     vadMonitorTask = nil
+    // Issue #445: clean up any held prepare task on reset (cleanup symmetry
+    // for the watchdog flow). Backend's single-flight prevents duplicate
+    // loads even if the orphan keeps grinding.
+    prepareTask?.cancel()
+    prepareTask = nil
     // Fire-and-forget cancel — reset() is synchronous, worker cancel is safe to defer
     if let worker = incrementalWorker {
       incrementalWorker = nil

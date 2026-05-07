@@ -232,6 +232,60 @@ public final class TelemetryService {
 
   // MARK: - Pipeline Steps
 
+  /// Issue #445: emit a `wedge_detected` PostHog event when the pipeline
+  /// watcher fires on a wedged model load. Companion to the Sentry event
+  /// captured by `SentryBreadcrumb.captureError(category: .modelLoadWedged)`
+  /// at the same call site. Sentry gives breadcrumb-chain diagnostic depth;
+  /// PostHog gives population-level counting and per-user retention joins.
+  ///
+  /// Snapshot fields are optional and additive (sourced from
+  /// `LoadProgressWatcher.snapshot`). Pre-snapshot callers omit them; the
+  /// PostHog dashboard treats them as nullable.
+  public func modelLoadWedged(
+    backend: String,
+    stage: String,
+    silenceMs: Int? = nil,
+    observedMaxGapMs: Int? = nil,
+    observedPhase: String? = nil,
+    signalCountTotal: Int? = nil,
+    firstSignalLatencyMs: Int? = nil,
+    totalAttemptDurationMs: Int? = nil
+  ) {
+    var properties: [String: Any] = [
+      "backend": backend,
+      "stage": stage,
+    ]
+    if let silenceMs { properties["silence_ms"] = silenceMs }
+    if let observedMaxGapMs { properties["observed_max_gap_ms"] = observedMaxGapMs }
+    if let observedPhase { properties["observed_phase"] = observedPhase }
+    if let signalCountTotal { properties["signal_count_total"] = signalCountTotal }
+    if let firstSignalLatencyMs { properties["first_signal_latency_ms"] = firstSignalLatencyMs }
+    if let totalAttemptDurationMs {
+      properties["total_attempt_duration_ms"] = totalAttemptDurationMs
+    }
+    PostHogSDK.shared.capture("wedge_detected", properties: properties)
+  }
+
+  /// Issue #445: launch-time telemetry. Emits when `loadModelSilently()`
+  /// completes (success, already-loaded, or failed) so we can finally see
+  /// what happens during launch warming. Pre-#445 the launch path was
+  /// invisible: `loadModelSilently()` is silent on success by design and
+  /// only logs on failure, so we had zero visibility into how long the
+  /// preload takes, whether it succeeds, or whether different users hit
+  /// different cold-path durations.
+  public func launchModelPreloadCompleted(
+    backend: String, result: String, durationMs: Int
+  ) {
+    PostHogSDK.shared.capture(
+      "launch.model_preload_completed",
+      properties: [
+        "backend": backend,
+        "result": result,
+        "duration_ms": durationMs,
+        "$value": Double(durationMs) / 1000.0,
+      ])
+  }
+
   public func asrCompleted(
     backend: String, result: String, coldStart: Bool, latencySeconds: Double, charCount: Int
   ) {
