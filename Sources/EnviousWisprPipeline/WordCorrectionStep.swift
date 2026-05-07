@@ -104,12 +104,10 @@ public final class WordCorrectionStep: TextProcessingStep, CorrectorVocabularyCo
       // Phase 8a (#620): emit one summary event per process() call. Bible §14.1.
       // Privacy-safe: counts + booleans + latency bucket. No term strings.
       let sourceIDs = Set(replacements.map(\.sourceID))
-      var hadPack = false
       var hadUser = false
       var hadBuiltin = false
       for term in snapshot.terms where sourceIDs.contains(term.id) {
         switch term.source {
-        case .pack: hadPack = true
         case .user: hadUser = true
         case .builtin: hadBuiltin = true
         case .observedAX: hadUser = true  // observedAX -> persists as user
@@ -118,7 +116,7 @@ public final class WordCorrectionStep: TextProcessingStep, CorrectorVocabularyCo
       TelemetryService.shared.customWordsReplacementBatch(
         replacementCount: count,
         vocabSize: snapshot.terms.count,
-        hadPackTerm: hadPack,
+        hadPackTerm: false,
         hadUserTerm: hadUser,
         hadBuiltinTerm: hadBuiltin,
         latencyBucket: LatencyBucket.of(milliseconds: elapsedMs)

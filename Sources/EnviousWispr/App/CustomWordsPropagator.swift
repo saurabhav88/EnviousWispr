@@ -153,25 +153,18 @@ func wireCustomWords(
   return onChange
 }
 
-/// Splits a flat `[CustomWord]` (as produced by `CustomWordsCoordinator`,
-/// which holds the user's editable list + any merged sources) into the two
-/// typed lanes.
-///
-/// Phase 0 simple rule: pack-sourced terms go to corrector lane only;
-/// everything else goes to both lanes. Phase 5 may extend this when actual
-/// `VocabularyPacksManager` exists. Today, no pack terms ever flow through
-/// `CustomWordsCoordinator` because Phase 5 hasn't shipped, so both lanes
-/// receive identical content. The split-by-source logic is here so the
-/// lane-distinction code path is exercised from day one.
+/// Splits a flat `[CustomWord]` (as produced by `CustomWordsCoordinator`)
+/// into the two typed lanes. Both lanes currently receive the same terms;
+/// the type distinction (`CorrectorVocabulary` vs `PolishVocabulary`) is the
+/// architectural seam that prevents accidental cross-wiring at compile time.
 @MainActor
 enum LanePartitioner {
   static func split(_ words: [CustomWord], generation: UInt64) -> (
     corrector: CorrectorVocabulary, polish: PolishVocabulary
   ) {
-    let polishTerms = words.filter { $0.source != .pack }
     return (
       corrector: CorrectorVocabulary(terms: words, generation: generation),
-      polish: PolishVocabulary(terms: polishTerms, generation: generation)
+      polish: PolishVocabulary(terms: words, generation: generation)
     )
   }
 }

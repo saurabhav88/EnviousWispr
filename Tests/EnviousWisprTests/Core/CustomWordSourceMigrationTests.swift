@@ -38,7 +38,7 @@ struct CustomWordSourceMigrationTests {
       priority: 0,
       forceReplace: false,
       caseSensitive: false,
-      source: .pack  // runtime-only; should NOT survive encode
+      source: .observedAX  // runtime-only; should NOT survive encode
     )
     let data = try JSONEncoder().encode(word)
     let serialized = String(data: data, encoding: .utf8) ?? ""
@@ -74,10 +74,8 @@ struct CustomWordSourceMigrationTests {
 
   @Test("Explicit source param is honored at construction")
   func explicitSourceHonored() {
-    let p = CustomWord(canonical: "Pack", source: .pack)
     let b = CustomWord(canonical: "Builtin", source: .builtin)
     let o = CustomWord(canonical: "Observed", source: .observedAX)
-    #expect(p.source == .pack)
     #expect(b.source == .builtin)
     #expect(o.source == .observedAX)
   }
