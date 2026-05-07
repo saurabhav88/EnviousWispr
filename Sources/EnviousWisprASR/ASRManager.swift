@@ -15,6 +15,9 @@ public final class ASRManager: ASRManagerInterface {
   public private(set) var downloadPhase: String = ""
   public private(set) var downloadDetail: String = ""
   public var onServiceInterrupted: (() -> Void)?  // No-op for in-process — no XPC crash path
+  /// Issue #445: in-process variant. Tests do not drive a progress-file stream,
+  /// so this stays unset at runtime; the protocol requires it.
+  public var loadProgressTickReporter: (@MainActor @Sendable (Date?, String) -> Void)?
   private var idleTimer: Timer?
   private var lastTranscriptionTime: Date?
   /// Single-flight guard: if a load is already in progress, callers await it instead of starting a new one.

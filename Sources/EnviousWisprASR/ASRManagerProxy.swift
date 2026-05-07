@@ -33,6 +33,10 @@ public final class ASRManagerProxy: ASRManagerInterface {
   /// Fires when the ASR XPC service crashes during an active session (streaming or batch in-flight).
   public var onServiceInterrupted: (() -> Void)?
 
+  /// Issue #445: per-tick callback wired by `TranscriptionPipeline` to feed
+  /// its `LoadProgressWatcher` from the existing 8Hz polling timer.
+  public var loadProgressTickReporter: (@MainActor @Sendable (Date?, String) -> Void)?
+
   // MARK: - Idle timer (stays in proxy — same as ASRManager)
 
   private var idleTimer: Timer?
@@ -54,7 +58,7 @@ public final class ASRManagerProxy: ASRManagerInterface {
 
     let task = Task { @MainActor [weak self] in
       guard let self else { return }
-      // Reset progress state before starting
+      // Reset progress state before starting.
       self.downloadProgress = 0
       self.downloadPhase = "Preparing download..."
       self.downloadDetail = ""
@@ -62,8 +66,19 @@ public final class ASRManagerProxy: ASRManagerInterface {
       self.ensureConnection()
       self.resendConfigIfNeeded()
 
-      // Start polling the XPC service for progress at 4 Hz.
+      // Codex finding (2026-05-07): clear any stale progress file from a
+      // previous load before the host starts polling. The XPC service also
+      // clears on its side (`ASRServiceHandler.loadModel`), but a brief
+      // window exists between host startProgressPolling() and the service
+      // clear during which a leftover mtime could mis-arm the watcher.
+      ProgressFile.shared.clear()
+
+      // Start polling the XPC service for progress at 8 Hz.
       self.startProgressPolling()
+      // Codex finding (2026-05-07): defer stop so the polling timer never
+      // leaks on a thrown continuation. Previously stopProgressPolling() ran
+      // only on the success path; an XPC error left the timer alive forever.
+      defer { self.stopProgressPolling() }
 
       try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
         let guard_ = OneShotContinuationASR(cont)
@@ -75,8 +90,8 @@ public final class ASRManagerProxy: ASRManagerInterface {
           guard_.resume(throwing: XPCASRTransportError.serviceUnreachable)
         }
       }
-      // Stop polling and clear progress on completion
-      self.stopProgressPolling()
+      // Success path — clear progress and mark loaded. (stopProgressPolling
+      // runs from the defer above on every exit.)
       self.downloadProgress = 1.0
       self.downloadPhase = ""
       self.downloadDetail = ""
@@ -149,11 +164,22 @@ public final class ASRManagerProxy: ASRManagerInterface {
     // XPC serializes replies, so polling via XPC is blocked behind loadModel's pending reply.
     let progressFile = ProgressFile.shared
     let timer = Timer(timeInterval: 0.125, repeats: true) { [weak self] _ in
-      guard let self, !self.isModelLoaded else { return }
-      if let state = progressFile.read() {
-        self.downloadProgress = state.fraction
-        self.downloadPhase = state.phase
-        self.downloadDetail = state.detail
+      // Timer schedules on `RunLoop.main`, so the closure body runs on the
+      // main thread. `assumeIsolated` bridges that runtime guarantee to the
+      // compile-time `@MainActor` isolation of the proxy's mutable state.
+      MainActor.assumeIsolated {
+        guard let self, !self.isModelLoaded else { return }
+        let observedMtime = progressFile.modificationTime()
+        var observedPhase = ""
+        if let state = progressFile.read() {
+          self.downloadProgress = state.fraction
+          self.downloadPhase = state.phase
+          self.downloadDetail = state.detail
+          observedPhase = state.phase
+        }
+        // Issue #445: feed the pipeline-owned load-progress watcher even on
+        // ticks where the file hasn't moved, so it can re-evaluate silence.
+        self.loadProgressTickReporter?(observedMtime, observedPhase)
       }
     }
     RunLoop.main.add(timer, forMode: .common)

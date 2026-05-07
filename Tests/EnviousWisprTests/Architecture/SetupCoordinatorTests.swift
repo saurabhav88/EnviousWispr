@@ -79,6 +79,7 @@ private final class FakeASRManager: ASRManagerInterface {
   var downloadDetail: String { "" }
   var activeBackendSupportsStreaming: Bool { false }
   var onServiceInterrupted: (() -> Void)?
+  var loadProgressTickReporter: (@MainActor @Sendable (Date?, String) -> Void)?
 
   func loadModel() async throws { fatalError("not used in SetupCoordinatorTests") }
   func loadModelSilently() async { fatalError("not used in SetupCoordinatorTests") }

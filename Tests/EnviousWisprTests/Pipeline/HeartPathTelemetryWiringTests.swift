@@ -353,6 +353,7 @@ private final class NoOpASRManager: ASRManagerInterface {
   var downloadPhase: String = "idle"
   var downloadDetail: String = ""
   var onServiceInterrupted: (() -> Void)?
+  var loadProgressTickReporter: (@MainActor @Sendable (Date?, String) -> Void)?
 
   func loadModel() async throws {}
   func loadModelSilently() async {}

@@ -2,25 +2,22 @@ import Foundation
 
 /// Issue #445: shared constants and types for the model-load watchdog.
 ///
-/// Both `TranscriptionPipeline` (Parakeet) and `WhisperKitPipeline` (WhisperKit)
-/// wrap their model-load `await` in a `raceWithTimeout` against this deadline,
-/// surface a Sentry/PostHog event on timeout, and trigger service-level
-/// recovery (XPC connection invalidate for Parakeet, backend single-flight
-/// for WhisperKit).
+/// `TranscriptionPipeline` (Parakeet) wraps its model-load `await` in
+/// `raceWithSignalWatcher` against a `LoadProgressWatcher`, surfaces a
+/// Sentry/PostHog event on wedge, and triggers service-level recovery via
+/// `asrManager.cancelInFlightLoad()` (XPC connection invalidate, host task
+/// cancel, fresh helper on next press).
+///
+/// The wall-clock `deadlineMs` constant from the prior design is gone; the
+/// trigger is now signal-based (`LoadProgressWatcher`). `WedgeError` and
+/// `userMessage` remain because the recovery surface (Sentry event +
+/// user-visible "tap to retry" overlay) is unchanged.
 public enum ModelLoadWatchdog {
-  /// Deadline for the model-load `await` before the watchdog fires.
-  ///
-  /// 20 seconds is a conservative threshold above the 13.966-second cold-load
-  /// reference observed in `AppState.swift:950` (single sample, not population
-  /// data). With service-level recovery on timeout, a false-positive on a
-  /// legitimate slow load just surfaces "tap to retry" — recovery is cheap.
-  public static let deadlineMs: UInt64 = 20_000
-
-  /// User-visible recovery message shown when the watchdog fires.
+  /// User-visible recovery message shown when the watcher fires.
   /// Set on the active pipeline via `setExternalError(...)` after recovery.
   public static let userMessage: String = "Speech engine isn't responding, tap to retry."
 
-  /// Synthetic error type used when capturing the watchdog event to Sentry.
+  /// Synthetic error type used when capturing the wedge to Sentry.
   /// The wedge is silent (no thrown error from the underlying call); we
   /// fabricate one so the existing `SentryBreadcrumb.captureError(...)` API
   /// can record the event with a stable type and category.

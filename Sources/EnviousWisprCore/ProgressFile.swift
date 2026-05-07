@@ -55,4 +55,12 @@ public final class ProgressFile: Sendable {
   public func clear() {
     try? FileManager.default.removeItem(atPath: filePath)
   }
+
+  /// Issue #445: file modification timestamp. Used by `LoadProgressWatcher`
+  /// to detect "real" progress writes (mtime advances) without false-positives
+  /// from poll-tick repetition. Returns nil if the file does not yet exist.
+  public func modificationTime() -> Date? {
+    let attrs = try? FileManager.default.attributesOfItem(atPath: filePath)
+    return attrs?[.modificationDate] as? Date
+  }
 }

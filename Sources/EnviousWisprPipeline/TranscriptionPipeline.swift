@@ -364,16 +364,25 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
         try await asrManager.loadModel()
       }
       modelLoadTask = loadTask
-      // Issue #445: watchdog. The bare `try await loadTask.value` could hang
-      // indefinitely if the underlying load wedges (XPC service stuck, CoreML
-      // load stuck). Bound it. On timeout, trigger service-level recovery
-      // via `asrManager.cancelInFlightLoad()` — for production XPC backend,
-      // this invalidates the connection (terminating the service-side load);
-      // for in-process, this just cancels the host task. Then surface a
-      // recoverable error so the user can retry.
-      let outcome = await raceWithTimeout(milliseconds: ModelLoadWatchdog.deadlineMs) {
+      // Issue #445: signal-based wedge watcher. The bare `try await loadTask.value`
+      // could hang indefinitely if the underlying load wedges (XPC service stuck,
+      // CoreML load stuck). Replaces the prior 20-second wall-clock deadline with
+      // a self-calibrating ratio against the load's own observed cadence — see
+      // `LoadProgressWatcher`. On wedge, trigger service-level recovery via
+      // `asrManager.cancelInFlightLoad()`: for production XPC backend this
+      // invalidates the connection (terminating the service-side load); for
+      // in-process this just cancels the host task. Then surface a recoverable
+      // error so the user can retry.
+      let watcher = LoadProgressWatcher()
+      watcher.start()
+      asrManager.loadProgressTickReporter = { mtime, phase in
+        watcher.observeTick(observedMtime: mtime, observedPhase: phase)
+      }
+      let outcome = await raceWithSignalWatcher(watcher: watcher) {
         try await loadTask.value
       }
+      asrManager.loadProgressTickReporter = nil
+      watcher.stop()
       switch outcome {
       case .completed:
         modelLoadTask = nil
@@ -381,18 +390,29 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
         // do not proceed. The cancel handler already set state to .idle.
         guard state == .loadingModel else { return }
         guard !Task.isCancelled else { return }
-      case .timedOut:
+      case .wedged:
+        let snap = watcher.snapshot
         SentryBreadcrumb.captureError(
           ModelLoadWatchdog.WedgeError(),
           category: .modelLoadWedged, stage: "asr",
           extra: [
             "backend": asrManager.activeBackendType.rawValue,
-            "deadline_ms": ModelLoadWatchdog.deadlineMs,
+            "silence_ms": snap.silenceMs,
+            "observed_max_gap_ms": snap.maxGapMs,
+            "observed_phase": snap.lastObservedPhase,
+            "signal_count_total": snap.signalCountTotal,
+            "first_signal_latency_ms": snap.firstSignalLatencyMs ?? -1,
+            "total_attempt_duration_ms": snap.totalAttemptDurationMs,
           ])
         TelemetryService.shared.modelLoadWedged(
           backend: asrManager.activeBackendType.rawValue,
           stage: "loading_model",
-          deadlineMs: Int(ModelLoadWatchdog.deadlineMs)
+          silenceMs: snap.silenceMs,
+          observedMaxGapMs: snap.maxGapMs,
+          observedPhase: snap.lastObservedPhase,
+          signalCountTotal: snap.signalCountTotal,
+          firstSignalLatencyMs: snap.firstSignalLatencyMs,
+          totalAttemptDurationMs: snap.totalAttemptDurationMs
         )
         asrManager.cancelInFlightLoad()
         // Codex pass 2: prewarm succeeded before the load wedged; the audio

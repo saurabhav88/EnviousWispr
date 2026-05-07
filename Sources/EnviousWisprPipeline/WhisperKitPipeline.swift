@@ -436,47 +436,26 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
     if !isBackendReady {
       state = .loadingModel
       SentryBreadcrumb.add(stage: "asr", message: "WhisperKit model loading")
-      // Issue #445: hold the prepare task so the watchdog can cancel its host
-      // await on timeout, and so cancelRecording()/reset() can clean it up.
+      // Issue #445: WhisperKit's `MLModel.load` is a black box with no
+      // progress signal source — there is nothing the signal-based watcher
+      // can observe. The parked branch's 20-second wall-clock wrap is reverted
+      // here because it has the indefensible-number problem the rule forbids.
+      // Wedge coverage for WhisperKit needs a different signal source (XPC
+      // service heartbeat or process-state observation) and is a separate
+      // design. The held `prepareTask` and `WhisperKitBackend.resetLoadState`
+      // are still useful for cancellation hygiene from `cancelRecording()`,
+      // so keep them — just no watchdog race here.
       let captured = backend
       let task = Task<Void, Error> {
         try await captured.prepare()
       }
       prepareTask = task
-      let outcome = await raceWithTimeout(milliseconds: ModelLoadWatchdog.deadlineMs) {
+      do {
         try await task.value
-      }
-      switch outcome {
-      case .completed:
         prepareTask = nil
         guard state == .loadingModel else { return }  // cancelled during model load
         state = .startingUp  // back to startingUp for engine setup
-      case .timedOut:
-        SentryBreadcrumb.captureError(
-          ModelLoadWatchdog.WedgeError(),
-          category: .modelLoadWedged, stage: "asr",
-          extra: [
-            "backend": "whisperKit",
-            "deadline_ms": ModelLoadWatchdog.deadlineMs,
-          ])
-        TelemetryService.shared.modelLoadWedged(
-          backend: "whisperKit",
-          stage: "loading_model",
-          deadlineMs: Int(ModelLoadWatchdog.deadlineMs)
-        )
-        task.cancel()
-        prepareTask = nil
-        // Codex pass 3: drop the WhisperKit backend's held loadTask too,
-        // otherwise the next prepare() awaits the same wedged task via
-        // backend single-flight and the retry never gets a fresh load.
-        await backend.resetLoadState()
-        // Codex pass 2: prewarm may have run before the load wedged; abort
-        // and reset so the next press takes the normal engine-start path.
-        audioCapture.abortPreWarm()
-        isPreWarmed = false
-        state = .error(ModelLoadWatchdog.userMessage)
-        return
-      case .threw(let error):
+      } catch {
         prepareTask = nil
         if error is CancellationError {
           // Cancelled (e.g. by cancelRecording during load). Return to idle.
