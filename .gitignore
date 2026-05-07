@@ -167,3 +167,4 @@ Brand Assets/
 .beads/
 workers/weekly-digest/.wrangler/
 routine-session-logs/
+routine-session-logs-*/
