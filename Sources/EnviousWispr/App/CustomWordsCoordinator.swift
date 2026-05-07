@@ -19,33 +19,55 @@ final class CustomWordsCoordinator {
     customWords = manager.load() ?? []
   }
 
-  func add(_ word: String) {
+  @discardableResult
+  func add(_ word: String) -> String? {
     do {
       try manager.add(canonical: word, to: &customWords)
       onWordsChanged?(customWords)
       customWordError = nil
+      return nil
     } catch {
       customWordError = error.localizedDescription
+      return customWordError
     }
   }
 
-  func remove(id: UUID) {
+  @discardableResult
+  func add(_ word: CustomWord) -> String? {
+    do {
+      try manager.add(word: word, to: &customWords)
+      onWordsChanged?(customWords)
+      customWordError = nil
+      return nil
+    } catch {
+      customWordError = error.localizedDescription
+      return customWordError
+    }
+  }
+
+  @discardableResult
+  func remove(id: UUID) -> String? {
     do {
       try manager.remove(id: id, from: &customWords)
       onWordsChanged?(customWords)
       customWordError = nil
+      return nil
     } catch {
       customWordError = error.localizedDescription
+      return customWordError
     }
   }
 
-  func update(_ word: CustomWord) {
+  @discardableResult
+  func update(_ word: CustomWord) -> String? {
     do {
       try manager.update(word: word, in: &customWords)
       onWordsChanged?(customWords)
       customWordError = nil
+      return nil
     } catch {
       customWordError = error.localizedDescription
+      return customWordError
     }
   }
 }
