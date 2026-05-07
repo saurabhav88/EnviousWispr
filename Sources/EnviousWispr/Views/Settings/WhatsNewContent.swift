@@ -12,6 +12,7 @@ enum WhatsNewContent {
     case betterOllamaSupport = "Better Ollama Support"
     case fasterAndMoreReliable = "Faster and More Reliable"
     case qualityOfLife = "Quality of Life"
+    case privacyAndSecurity = "Privacy and Security"
 
     var id: String { rawValue }
     var title: String { rawValue }
@@ -27,16 +28,151 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
-    // MARK: - v1.9.5
+    // MARK: - v2.0.0
 
     Entry(
-      id: "single-quality-tuned-polish",
+      id: "welcome-to-2-0",
       icon: "sparkles",
-      title: "AI Polish is now a single quality-tuned default",
+      title: "Welcome to EnviousWispr 2.0",
       description:
-        "We removed the Formal, Standard, and Friendly buttons. They did not change polish output on most providers and quietly bypassed the smart routing on Apple Intelligence. A polish intensity slider is on the way that will replace them with a control that actually does something.",
+        "EnviousWispr 2.0 is about trust. Better text on the first try, sharper memory for your words, and fewer moments where you have to step in.",
+      category: .newFeatures,
+      version: "2.0.0"
+    ),
+    Entry(
+      id: "your-words-has-a-real-home",
+      icon: "books.vertical",
+      title: "\"Your Words\" has a real home now",
+      description:
+        "Learning, Vocab Packs, and Custom Terms each have their own section in Settings. Easier to see what EnviousWispr remembers, what you added yourself, and where to tune it.",
+      category: .newFeatures,
+      version: "2.0.0"
+    ),
+    Entry(
+      id: "afm-dual-mode-polish",
+      icon: "wand.and.stars",
+      title: "Apple Intelligence keeps your voice and your precision",
+      description:
+        "On-device polish now reads what you dictated and picks the right pass. Casual notes keep your tone. Code, jargon, and careful business writing keep their precision. Six months of tuning underpins this.",
       category: .smarterAIPolish,
-      version: "1.9.5"
+      version: "2.0.0"
+    ),
+    Entry(
+      id: "custom-terms-survive-on-device-polish",
+      icon: "tag.circle",
+      title: "Your custom terms now survive on-device polish",
+      description:
+        "Words you teach EnviousWispr now carry through to Apple Intelligence polish, not just cloud polish. Product names, client names, and domain terms are far less likely to get cleaned into the wrong thing.",
+      category: .smarterAIPolish,
+      version: "2.0.0"
+    ),
+    Entry(
+      id: "less-fiddling-better-polish",
+      icon: "slider.horizontal.3",
+      title: "Less fiddling, better polished text",
+      description:
+        "Formal, Standard, and Friendly are gone. They rarely changed the result and could quietly bypass smart routing on Apple Intelligence. There is now one quality-tuned default that delivers more consistently.",
+      category: .smarterAIPolish,
+      version: "2.0.0"
+    ),
+    Entry(
+      id: "pick-polish-model-faster",
+      icon: "list.bullet.rectangle",
+      title: "Pick the right polish model faster",
+      description:
+        "Polish models are now grouped by provider with a short note on what each one is good at. Less hunting, better choices.",
+      category: .smarterAIPolish,
+      version: "2.0.0"
+    ),
+    Entry(
+      id: "smarter-new-word-suggestions",
+      icon: "quote.bubble",
+      title: "Adding a new word is smarter now",
+      description:
+        "When you add a custom term, EnviousWispr suggests likely spellings and pronunciations to catch. Repetitive or low-quality suggestions are filtered out more aggressively.",
+      category: .smarterAIPolish,
+      version: "2.0.0"
+    ),
+    Entry(
+      id: "cleaner-transcription-before-polish",
+      icon: "waveform",
+      title: "Cleaner transcription before polish",
+      description:
+        "The speech engine is now faster and steadier, especially on longer recordings. Fewer odd substitutions and cleaner raw text before polish even runs.",
+      category: .fasterAndMoreReliable,
+      version: "2.0.0"
+    ),
+    Entry(
+      id: "no-more-phantom-thank-you",
+      icon: "speaker.slash",
+      title: "No more phantom \"Thank you\"",
+      description:
+        "Silent endings used to occasionally produce a fake \"Thank you.\" That hallucination is now suppressed at the source.",
+      category: .fasterAndMoreReliable,
+      version: "2.0.0"
+    ),
+    Entry(
+      id: "first-word-stays",
+      icon: "text.cursor",
+      title: "Your first word stays in the transcript",
+      description:
+        "The opening word of a recording could sometimes disappear. Fixed. Dictation now starts where you start.",
+      category: .fasterAndMoreReliable,
+      version: "2.0.0"
+    ),
+    Entry(
+      id: "auto-language-actually-works",
+      icon: "globe",
+      title: "Auto language detection actually works",
+      description:
+        "Leave language on Auto and EnviousWispr will detect what you spoke instead of assuming English. Short clips also decide faster, so quick commands feel snappier.",
+      category: .fasterAndMoreReliable,
+      version: "2.0.0"
+    ),
+    Entry(
+      id: "stuck-model-loads-recover-sooner",
+      icon: "arrow.clockwise.circle",
+      title: "Stuck model loads recover sooner",
+      description:
+        "If a speech model gets wedged while loading, EnviousWispr now notices earlier and recovers without the long wait. Slow but healthy loads are left alone.",
+      category: .fasterAndMoreReliable,
+      version: "2.0.0"
+    ),
+    Entry(
+      id: "custom-words-fast-at-scale",
+      icon: "speedometer",
+      title: "Custom Words stays fast at scale",
+      description:
+        "Even very large custom-word lists now stay responsive during polish. Long replacements that used to get dropped now apply correctly, and a failed save no longer throws away what you typed.",
+      category: .fasterAndMoreReliable,
+      version: "2.0.0"
+    ),
+    Entry(
+      id: "auto-paste-clear-help",
+      icon: "hand.raised",
+      title: "Clear help when auto-paste needs access",
+      description:
+        "If Accessibility permission is missing, EnviousWispr now tells you exactly why paste could not happen and gives you a quick path to fix it. No more silent fallback to the clipboard.",
+      category: .qualityOfLife,
+      version: "2.0.0"
+    ),
+    Entry(
+      id: "update-when-ready",
+      icon: "arrow.down.circle",
+      title: "Update when you are ready",
+      description:
+        "New versions show up as a quiet in-app banner instead of an interrupting popup. You stay in flow, then update on your schedule.",
+      category: .qualityOfLife,
+      version: "2.0.0"
+    ),
+    Entry(
+      id: "stronger-privacy-by-default",
+      icon: "lock.shield",
+      title: "Stronger privacy, by default",
+      description:
+        "Cloud polish now opts out of training storage where supported. Crash reports scrub sensitive details before they leave your Mac. Stored files have tighter permissions. Gemini request logging is off. The Privacy section explains what each cloud provider keeps.",
+      category: .privacyAndSecurity,
+      version: "2.0.0"
     ),
 
     // MARK: - v1.9.4
