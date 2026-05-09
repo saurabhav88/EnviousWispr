@@ -31,13 +31,18 @@ public enum SentryAudioExtras {
       "capture.is_actively_capturing": isActivelyCapturing,
       "capture_session_id": Int(sessionID),
     ]
-    extras["capture.input_device_uid_preferred"] =
-      (inputDeviceUIDPreferred?.isEmpty == false) ? inputDeviceUIDPreferred! : NSNull()
-    extras["capture.input_device_uid_system_default"] =
-      (inputDeviceUIDSystemDefault?.isEmpty == false)
-      ? inputDeviceUIDSystemDefault! : NSNull()
-    extras["capture.input_device_divergence"] =
-      inputDeviceUIDPreferred != inputDeviceUIDSystemDefault
+    let normalizedPreferredUID = normalizeDeviceUID(inputDeviceUIDPreferred)
+    let normalizedSystemDefaultUID = normalizeDeviceUID(inputDeviceUIDSystemDefault)
+    let preferredInputSet = normalizedPreferredUID != nil
+    let inputDeviceDivergence =
+      normalizedPreferredUID != nil
+      && normalizedSystemDefaultUID != nil
+      && normalizedPreferredUID != normalizedSystemDefaultUID
+
+    extras["capture.input_device_uid_preferred"] = normalizedPreferredUID ?? NSNull()
+    extras["capture.input_device_uid_system_default"] = normalizedSystemDefaultUID ?? NSNull()
+    extras["capture.preferred_input_set"] = preferredInputSet
+    extras["capture.input_device_divergence"] = inputDeviceDivergence
 
     if let ctx = stallContext {
       extras["capture.stall.armed_at_uptime_ns"] = Int(ctx.armedAtUptimeNs)
@@ -62,5 +67,10 @@ public enum SentryAudioExtras {
     }
 
     return extras
+  }
+
+  private static func normalizeDeviceUID(_ uid: String?) -> String? {
+    guard let uid, !uid.isEmpty else { return nil }
+    return uid
   }
 }
