@@ -24,6 +24,23 @@ public enum PasteTier: String, Sendable {
   case clipboardOnly = "clipboard_only"
 }
 
+public struct PasteElementDiagnostics: Equatable, Sendable {
+  public let role: String?
+  public let subrole: String?
+  public let roleSource: String
+
+  public init(role: String?, subrole: String?, roleSource: String) {
+    self.role = role
+    self.subrole = subrole
+    self.roleSource = roleSource
+  }
+
+  public static let missing = PasteElementDiagnostics(
+    role: nil, subrole: nil, roleSource: "missing")
+  public static let unavailable = PasteElementDiagnostics(
+    role: nil, subrole: nil, roleSource: "unavailable")
+}
+
 /// Handles copying text to clipboard and pasting into the active app.
 public enum PasteService {
 
@@ -43,6 +60,32 @@ public enum PasteService {
     )
     guard err == .success, let role = roleRef as? String else { return false }
     return textRoles.contains(role)
+  }
+
+  /// Reads privacy-safe role metadata from the captured AX element handle.
+  /// This is queried at paste time, not snapshotted at recording start.
+  public static func capturedElementDiagnostics(_ element: AXUIElement?) -> PasteElementDiagnostics {
+    guard let element else { return .missing }
+
+    var roleRef: CFTypeRef?
+    let roleErr = AXUIElementCopyAttributeValue(
+      element, kAXRoleAttribute as CFString, &roleRef
+    )
+    guard roleErr == .success, let role = roleRef as? String else {
+      return .unavailable
+    }
+
+    var subroleRef: CFTypeRef?
+    let subroleErr = AXUIElementCopyAttributeValue(
+      element, kAXSubroleAttribute as CFString, &subroleRef
+    )
+    let subrole = subroleErr == .success ? subroleRef as? String : nil
+
+    return PasteElementDiagnostics(
+      role: role,
+      subrole: subrole,
+      roleSource: "captured_target"
+    )
   }
 
   /// Copy text to the system clipboard.
