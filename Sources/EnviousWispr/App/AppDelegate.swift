@@ -59,6 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /// Constructed in `applicationDidFinishLaunching` after AppState is ready;
   /// torn down in `applicationWillTerminate` for clean observer removal.
   private var audioSystemEventReporter: AudioSystemEventReporter?
+  private var audioEnvironmentSnapshotter: AudioEnvironmentSnapshotter?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     // Hide dock icon on launch — we're a menu bar utility.
@@ -128,6 +129,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       guard let self else { return }
       self.updateIcon()
       self.updateCoordinator?.handlePipelineStateChange(isRecording: state == .recording)
+      if state == .recording {
+        self.audioEnvironmentSnapshotter?.recordingStarted()
+      }
     }
     appState.permissions.onAccessibilityChange = { [weak self] in
       self?.updateIcon()
@@ -213,6 +217,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       }
     #endif
 
+    audioEnvironmentSnapshotter = AudioEnvironmentSnapshotter(
+      routeProvider: { [weak appState = self.appState] in
+        appState?.audioCapture.currentAudioRoute
+      }
+    )
+    SentryBreadcrumb.audioEnvironmentProvider = { [weak self] in
+      self?.audioEnvironmentSnapshotter?.latestForError()
+    }
+
     // Production telemetry: OS-level audio events (issue #574). Always on in
     // release; ships to all users so we get cross-user data on what real
     // devices/routes/connections users actually hit.
@@ -221,11 +234,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       asrManager: appState.asrManager,
       pipelineStateProvider: { [weak appState = self.appState] in
         appState?.pipelineState ?? .idle
+      },
+      onAudioDeviceEvent: { [weak self] in
+        self?.audioEnvironmentSnapshotter?.audioDeviceEventOccurred()
       }
     )
   }
 
   func applicationDidBecomeActive(_ notification: Notification) {
+    audioEnvironmentSnapshotter?.applicationBecameActive()
+
     // Re-warm LLM backend when app comes to foreground.
     LLMNetworkSession.shared.preWarmModel(
       provider: appState.settings.llmProvider,
@@ -537,6 +555,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // Issue #574: tear down audio-event observers cleanly.
     audioSystemEventReporter = nil
+    SentryBreadcrumb.audioEnvironmentProvider = nil
+    audioEnvironmentSnapshotter = nil
   }
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
