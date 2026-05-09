@@ -144,7 +144,7 @@
 
     /// Maximum bytes for a single fault-injection request. Tokens are 64
     /// hex chars + "\n" + a short command + "\n" — well under 512.
-    private static let maxRequestBytes = 512
+    private nonisolated static let maxRequestBytes = 512
 
     private func accept(connection conn: NWConnection) {
       conn.start(queue: queue)
@@ -192,7 +192,9 @@
           }
         } else {
           // Need more data; keep draining.
-          self.readRequest(on: conn, accumulated: buffer)
+          Task { @MainActor in
+            self.readRequest(on: conn, accumulated: buffer)
+          }
         }
       }
     }

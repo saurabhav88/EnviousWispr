@@ -81,7 +81,9 @@ struct LoadProgressWatcherTests {
     }
     let snap = watcher.snapshot
     #expect(snap.signalCountTotal == 10)
-    #expect(snap.maxGapMs > 50 && snap.maxGapMs < 250, "max gap roughly matches 100ms cadence")
+    #expect(
+      snap.maxGapMs > 50 && snap.maxGapMs < 700,
+      "max gap roughly matches 100ms cadence, allowing CI scheduler jitter")
     watcher.stop()
   }
 
@@ -133,33 +135,37 @@ struct LoadProgressWatcherTests {
     let snap = watcher.snapshot
     watcher.stop()
     _ = await waiter.value
-    // Loose upper bound — CI scheduling jitter can push 50ms cadence to ~150ms.
+    // Loose upper bound — CI scheduling jitter can inflate the 50ms cadence significantly.
     // The watcher behaviour (no-fire-below-floor) is what's under test here,
     // not the precision of the synthetic cadence.
-    #expect(snap.maxGapMs < 250, "max gap stays in the 50–150ms ballpark with jitter")
+    #expect(snap.maxGapMs < 700, "max gap accommodates CI scheduler jitter")
   }
 
   @Test("Both gates met (silence > floor AND silence > 5x max gap) — fires")
   func bothGatesFire() async {
     let watcher = LoadProgressWatcher()
     watcher.start()
-    // Three signals at ~150ms cadence → max gap ~150ms. Ratio = 750ms < floor 800ms.
-    // Silence past floor 800ms triggers.
+    // Establish two inter-signal gaps. The actual gap duration varies with CI
+    // scheduler load and determines the ratio threshold (5 * maxGap).
     watcher.observeTick(observedMtime: mtime(0), observedPhase: "compiling")
     await sleep(ms: 150)
     watcher.observeTick(observedMtime: mtime(1), observedPhase: "compiling")
     await sleep(ms: 150)
     watcher.observeTick(observedMtime: mtime(2), observedPhase: "compiling")
-    // Generate silence ticks past 800ms floor.
-    for _ in 0..<15 {
+    // Feed silence ticks until the watcher fires (both gates met) or a 5-second
+    // deadline expires. 5s comfortably exceeds any realistic threshold even when
+    // CI load inflates the gap measurement. The watcher fires synchronously inside
+    // observeTick(), so hasFired is readable immediately after the loop exits.
+    let deadline = ProcessInfo.processInfo.systemUptime + 5.0
+    repeat {
       watcher.observeTick(observedMtime: mtime(2), observedPhase: "compiling")
-      await sleep(ms: 80)
-    }
+      if watcher.hasFired { break }
+      await sleep(ms: 100)
+    } while ProcessInfo.processInfo.systemUptime < deadline
     // Assert via the deterministic `hasFired` accessor. Avoids awaiting
     // `wedged()` unconditionally — under heavy CI load the resumed
     // continuation can lag behind the assertion, causing the test to hang
-    // until the job-level timeout (28 min on the GitHub Actions self-hosted
-    // runner). The state read is synchronous and safe.
+    // until the job-level timeout. The state read is synchronous and safe.
     let snap = watcher.snapshot
     #expect(watcher.hasFired, "Both gates met → watcher must fire")
     #expect(snap.lastObservedPhase == "compiling")

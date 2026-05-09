@@ -50,7 +50,7 @@ for arg in "$@"; do
 done
 
 if [[ $NO_RUN -eq 1 ]]; then
-    exec swift build --build-tests "${CLT_FLAGS[@]}" "${REMAINING_ARGS[@]}"
+    exec swift build --build-tests "${CLT_FLAGS[@]}" "${REMAINING_ARGS[@]+"${REMAINING_ARGS[@]}"}"
 fi
 
-exec swift test "${CLT_FLAGS[@]}" "${REMAINING_ARGS[@]}"
+exec swift test "${CLT_FLAGS[@]}" "${REMAINING_ARGS[@]+"${REMAINING_ARGS[@]}"}"
