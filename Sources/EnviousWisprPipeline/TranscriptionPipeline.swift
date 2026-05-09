@@ -724,12 +724,14 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
     var hasSpeechEvidence = false
     var vadSegmentCount = 0
     var vadSpeechDurationMs = 0
+    var speechSegmentsForDiagnostics: [SpeechSegment] = []
     let isXPCMode = audioCapture is AudioCaptureProxy
     if isXPCMode {
       // XPC mode: VAD segments are returned atomically with samples from stopCapture().
       // This eliminates the call-order bug where separate getVADSegments() read
       // capturedSamples.count as 0 after stopCapture() cleared the buffer (#226).
       let segments = captureResult.vadSegments
+      speechSegmentsForDiagnostics = segments
       hasSpeechEvidence = !segments.isEmpty
       vadSegmentCount = segments.count
       vadSpeechDurationMs =
@@ -742,6 +744,7 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
     } else if let detector = silenceDetector {
       await detector.finalizeSegments(totalSampleCount: rawSamples.count)
       let segments = await detector.speechSegments
+      speechSegmentsForDiagnostics = segments
       hasSpeechEvidence = !segments.isEmpty
       vadSegmentCount = segments.count
       vadSpeechDurationMs =
@@ -796,13 +799,18 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
     // ASR backends require >= 1 second of audio.
     // If VAD filtering was too aggressive, fall back to raw samples.
     let minimumSamples = AudioConstants.minimumTranscriptionSamples
+    let vadFilteredSampleCount = samples.count
+    var usedRawFallbackAfterVAD = false
+    var samplesPaddedToMinimum = false
     if samples.count < minimumSamples && rawSamples.count >= minimumSamples {
       samples = rawSamples
+      usedRawFallbackAfterVAD = true
     }
 
     // Pad short recordings with silence so single-word inputs ("hey", "hi") work.
     if samples.count > 0 && samples.count < minimumSamples {
       samples.append(contentsOf: [Float](repeating: 0, count: minimumSamples - samples.count))
+      samplesPaddedToMinimum = true
     }
 
     state = .transcribing
@@ -822,14 +830,38 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
       // Streaming mode includes batch rescue: if finalize fails or returns empty
       // despite VAD speech evidence, retry with batch decode using captured samples.
       let result: ASRResult
+      var asrEmptyDiagnostics = ASREmptyResultDiagnostics(
+        backend: asrManager.activeBackendType.rawValue,
+        mode: wasStreaming ? "streaming" : "batch",
+        hasSpeechEvidence: hasSpeechEvidence,
+        rawSampleCount: rawSamples.count,
+        vadSegmentCount: vadSegmentCount,
+        vadSpeechDurationMs: vadSpeechDurationMs,
+        peakAudioLevel: peakAudioLevel,
+        vadFilteredSampleCount: vadFilteredSampleCount,
+        finalSampleCount: samples.count,
+        samplesPaddedToMinimum: samplesPaddedToMinimum,
+        usedRawFallbackAfterVAD: usedRawFallbackAfterVAD,
+        speechSegments: speechSegmentsForDiagnostics
+      )
       if wasStreaming {
-        result = try await transcribeWithStreamingRescue(
+        let rescue = try await transcribeWithStreamingRescue(
           samples: samples,
           hasSpeechEvidence: hasSpeechEvidence
         )
+        result = rescue.result
+        asrEmptyDiagnostics.streamingResultChars = rescue.diagnostics.streamingResultChars
+        asrEmptyDiagnostics.streamingFinalizeFailed = rescue.diagnostics.streamingFinalizeFailed
+        asrEmptyDiagnostics.streamingFinalizeErrorType =
+          rescue.diagnostics.streamingFinalizeErrorType
+        asrEmptyDiagnostics.batchRescueAttempted = rescue.diagnostics.batchRescueAttempted
+        asrEmptyDiagnostics.batchRescueResultChars = rescue.diagnostics.batchRescueResultChars
+        asrEmptyDiagnostics.streamingBuffersDispatched = streamingBuffersDispatched
+        asrEmptyDiagnostics.streamingBuffersFed = streamingBuffersFed
       } else {
         result = try await asrManager.transcribe(
           audioSamples: samples, options: transcriptionOptions)
+        asrEmptyDiagnostics.batchRescueAttempted = false
       }
 
       let asrEnd = CFAbsoluteTimeGetCurrent()
@@ -845,15 +877,7 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
                 NSLocalizedDescriptionKey: "ASR returned empty text despite speech evidence"
               ]),
             category: .asrEmptyResult, stage: "asr",
-            extra: [
-              "backend": asrManager.activeBackendType.rawValue,
-              "mode": wasStreaming ? "streaming" : "batch",
-              "has_speech_evidence": true,
-              "raw_sample_count": rawSamples.count,
-              "vad_segment_count": vadSegmentCount,
-              "vad_speech_duration_ms": vadSpeechDurationMs,
-              "peak_audio_level": peakAudioLevel,
-            ],
+            extra: asrEmptyDiagnostics.sentryExtra(),
             snapshot: frozenSnapshot
           )
           state = .error("Couldn't catch that -- try again")
@@ -1248,24 +1272,43 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
 
   // MARK: - Streaming Rescue
 
+  private struct StreamingRescueDiagnostics {
+    var streamingResultChars: Int?
+    var streamingFinalizeFailed = false
+    var streamingFinalizeErrorType: String?
+    var batchRescueAttempted = false
+    var batchRescueResultChars: Int?
+  }
+
+  private struct StreamingRescueResult {
+    var result: ASRResult
+    var diagnostics: StreamingRescueDiagnostics
+  }
+
   /// Attempt streaming finalize, fall back to batch if streaming fails or returns empty
   /// and VAD detected speech. Heart-level rescue: captured samples are already available,
   /// and batch uses a separate AsrManager from streaming's SlidingWindowAsrManager.
   private func transcribeWithStreamingRescue(
     samples: [Float],
     hasSpeechEvidence: Bool
-  ) async throws -> ASRResult {
+  ) async throws -> StreamingRescueResult {
+    var diagnostics = StreamingRescueDiagnostics()
+
     // 1. Try streaming finalize (happy path)
     do {
       let result = try await asrManager.finalizeStreaming()
       let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+      diagnostics.streamingResultChars = text.count
       if !text.isEmpty {
-        return result
+        diagnostics.batchRescueAttempted = false
+        return StreamingRescueResult(result: result, diagnostics: diagnostics)
       }
       // Streaming returned empty -- check rescue eligibility below
     } catch is CancellationError {
       throw CancellationError()
     } catch {
+      diagnostics.streamingFinalizeFailed = true
+      diagnostics.streamingFinalizeErrorType = String(reflecting: type(of: error))
       await AppLogger.shared.log(
         "Streaming finalize failed: \(error.localizedDescription), checking rescue eligibility",
         level: .info, category: "Pipeline"
@@ -1275,11 +1318,14 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
     // 2. No speech evidence means genuine silence, not a rescue candidate.
     // Return an empty result so the caller handles it with the appropriate message.
     guard hasSpeechEvidence else {
-      return ASRResult(
+      diagnostics.batchRescueAttempted = false
+      let result = ASRResult(
         text: "", language: "en", duration: 0, processingTime: 0, backendType: .parakeet)
+      return StreamingRescueResult(result: result, diagnostics: diagnostics)
     }
 
     // 3. Batch rescue: speech was detected but streaming failed to decode it.
+    diagnostics.batchRescueAttempted = true
     await AppLogger.shared.log(
       "Streaming rescue: speech evidence found, retrying batch (\(samples.count) samples)",
       level: .info, category: "Pipeline"
@@ -1287,13 +1333,15 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
 
     let result = try await asrManager.transcribe(
       audioSamples: samples, options: transcriptionOptions)
+    diagnostics.batchRescueResultChars =
+      result.text.trimmingCharacters(in: .whitespacesAndNewlines).count
 
     await AppLogger.shared.log(
       "Streaming rescue: batch produced \(result.text.count) chars",
       level: .info, category: "Pipeline"
     )
 
-    return result
+    return StreamingRescueResult(result: result, diagnostics: diagnostics)
   }
 
   // MARK: - DictationPipeline Conformance
