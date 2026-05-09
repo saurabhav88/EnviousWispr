@@ -96,6 +96,83 @@ struct ASREmptyResultDiagnosticsTests {
     assertNoContentLikeKeys(extra)
   }
 
+  @Test("batch diagnostics omit streaming fields")
+  func batchDiagnosticsOmitStreamingFields() {
+    let diagnostics = ASREmptyResultDiagnostics(
+      backend: "parakeet",
+      mode: "batch",
+      hasSpeechEvidence: true,
+      rawSampleCount: 24_000,
+      vadSegmentCount: 1,
+      vadSpeechDurationMs: 900,
+      peakAudioLevel: 0.25,
+      vadFilteredSampleCount: 18_000,
+      finalSampleCount: 24_000,
+      samplesPaddedToMinimum: false,
+      usedRawFallbackAfterVAD: false,
+      batchRescueAttempted: false,
+      speechSegments: [SpeechSegment(startSample: 4_000, endSample: 12_000)]
+    )
+
+    let extra = diagnostics.sentryExtra()
+
+    #expect(extra["backend"] as? String == "parakeet")
+    #expect(extra["mode"] as? String == "batch")
+    #expect(extra["asr.batch_rescue_attempted"] as? Bool == false)
+    #expect(extra["asr.streaming_result_chars"] == nil)
+    #expect(extra["asr.streaming_finalize_failed"] == nil)
+    #expect(extra["asr.streaming_finalize_error_type"] == nil)
+    #expect(extra["asr.streaming_buffers_dispatched"] == nil)
+    #expect(extra["asr.streaming_buffers_fed"] == nil)
+    assertNoContentLikeKeys(extra)
+  }
+
+  @Test("zero speech segments do not emit segment bounds")
+  func zeroSpeechSegmentsDoNotEmitBounds() {
+    let diagnostics = ASREmptyResultDiagnostics(
+      backend: "parakeet",
+      mode: "batch",
+      hasSpeechEvidence: true,
+      rawSampleCount: 16_000,
+      vadSegmentCount: 0,
+      vadSpeechDurationMs: 0,
+      peakAudioLevel: 0.2,
+      speechSegments: []
+    )
+
+    let extra = diagnostics.sentryExtra()
+
+    #expect(extra["asr.speech_segment_count"] as? Int == 0)
+    #expect(extra["asr.speech_segment_first_start_ms"] == nil)
+    #expect(extra["asr.speech_segment_first_end_ms"] == nil)
+    #expect(extra["asr.speech_segment_last_start_ms"] == nil)
+    #expect(extra["asr.speech_segment_last_end_ms"] == nil)
+    assertNoContentLikeKeys(extra)
+  }
+
+  @Test("single speech segment emits first bounds only")
+  func singleSpeechSegmentEmitsFirstBoundsOnly() {
+    let diagnostics = ASREmptyResultDiagnostics(
+      backend: "parakeet",
+      mode: "streaming",
+      hasSpeechEvidence: true,
+      rawSampleCount: 16_000,
+      vadSegmentCount: 1,
+      vadSpeechDurationMs: 500,
+      peakAudioLevel: 0.2,
+      speechSegments: [SpeechSegment(startSample: 2_000, endSample: 10_000)]
+    )
+
+    let extra = diagnostics.sentryExtra()
+
+    #expect(extra["asr.speech_segment_count"] as? Int == 1)
+    #expect(extra["asr.speech_segment_first_start_ms"] as? Int == 125)
+    #expect(extra["asr.speech_segment_first_end_ms"] as? Int == 625)
+    #expect(extra["asr.speech_segment_last_start_ms"] == nil)
+    #expect(extra["asr.speech_segment_last_end_ms"] == nil)
+    assertNoContentLikeKeys(extra)
+  }
+
   private func assertNoContentLikeKeys(_ extra: [String: Any]) {
     for key in extra.keys {
       let lower = key.lowercased()
@@ -107,4 +184,3 @@ struct ASREmptyResultDiagnosticsTests {
     }
   }
 }
-
