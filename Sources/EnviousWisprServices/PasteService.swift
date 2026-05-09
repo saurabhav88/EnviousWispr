@@ -24,6 +24,41 @@ public enum PasteTier: String, Sendable {
   case clipboardOnly = "clipboard_only"
 }
 
+public struct PasteElementDiagnostics: Equatable, Sendable {
+  private static let maxAttributeLength = 128
+  private static let allowedAttributeCharacters = CharacterSet.alphanumerics.union(
+    CharacterSet(charactersIn: "._:-"))
+
+  public let role: String?
+  public let subrole: String?
+  public let roleSource: String
+  public let subroleStatus: String
+
+  public init(role: String?, subrole: String?, roleSource: String, subroleStatus: String) {
+    self.role = Self.sanitizedAXAttribute(role)
+    self.subrole = Self.sanitizedAXAttribute(subrole)
+    self.roleSource = roleSource
+    self.subroleStatus = subroleStatus
+  }
+
+  public static let missing = PasteElementDiagnostics(
+    role: nil, subrole: nil, roleSource: "missing", subroleStatus: "missing")
+  public static let unavailable = PasteElementDiagnostics(
+    role: nil, subrole: nil, roleSource: "unavailable", subroleStatus: "unavailable")
+
+  public static func sanitizedAXAttribute(_ value: String?) -> String? {
+    guard let value else { return nil }
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return nil }
+
+    let sanitizedScalars = trimmed.unicodeScalars.map { scalar in
+      Self.allowedAttributeCharacters.contains(scalar) ? Character(scalar) : "_"
+    }
+    let sanitized = String(sanitizedScalars).prefix(Self.maxAttributeLength)
+    return sanitized.isEmpty ? nil : String(sanitized)
+  }
+}
+
 /// Handles copying text to clipboard and pasting into the active app.
 public enum PasteService {
 
@@ -43,6 +78,41 @@ public enum PasteService {
     )
     guard err == .success, let role = roleRef as? String else { return false }
     return textRoles.contains(role)
+  }
+
+  /// Reads privacy-safe role metadata from the captured AX element handle.
+  /// This is queried at paste time, not snapshotted at recording start.
+  public static func capturedElementDiagnostics(_ element: AXUIElement?) -> PasteElementDiagnostics {
+    guard let element else { return .missing }
+
+    var roleRef: CFTypeRef?
+    let roleErr = AXUIElementCopyAttributeValue(
+      element, kAXRoleAttribute as CFString, &roleRef
+    )
+    guard
+      roleErr == .success,
+      let role = PasteElementDiagnostics.sanitizedAXAttribute(roleRef as? String)
+    else {
+      return .unavailable
+    }
+
+    var subroleRef: CFTypeRef?
+    let subroleErr = AXUIElementCopyAttributeValue(
+      element, kAXSubroleAttribute as CFString, &subroleRef
+    )
+    let subrole = subroleErr == .success
+      ? PasteElementDiagnostics.sanitizedAXAttribute(subroleRef as? String)
+      : nil
+    let subroleStatus: String = subroleErr == .success
+      ? (subrole == nil ? "missing" : "present")
+      : "unavailable"
+
+    return PasteElementDiagnostics(
+      role: role,
+      subrole: subrole,
+      roleSource: "captured_target",
+      subroleStatus: subroleStatus
+    )
   }
 
   /// Copy text to the system clipboard.

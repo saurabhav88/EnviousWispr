@@ -47,7 +47,9 @@ struct PasteDeliveryResultLabelTests {
         outcome: .clipboardOnly(
           tiersAttempted: [],
           focus: .missing,
-          targetBundleID: nil
+          targetBundleID: nil,
+          accessibilityTrusted: true,
+          targetDiagnostics: .missing
         )
       ),
       PasteDeliveryResult(

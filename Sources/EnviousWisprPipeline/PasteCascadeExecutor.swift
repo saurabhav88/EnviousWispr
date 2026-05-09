@@ -20,7 +20,9 @@ internal enum PasteDeliveryOutcome: Equatable, Sendable {
   case clipboardOnly(
     tiersAttempted: [PasteTier],
     focus: PasteFocusClassification,
-    targetBundleID: String?
+    targetBundleID: String?,
+    accessibilityTrusted: Bool,
+    targetDiagnostics: PasteElementDiagnostics
   )
   case clipboardOnlyAccessibilityDenied(targetBundleID: String?)
   case cgEventCreationFailed(accessibilityTrusted: Bool)
@@ -113,15 +115,20 @@ internal final class PasteCascadeExecutor {
     // keystrokes that go nowhere.
     let axTrusted = AXIsProcessTrusted()
     let classification: PasteFocusClassification
+    let targetDiagnostics: PasteElementDiagnostics
     if !axTrusted {
       classification = classifyPasteFocus(elementPresent: true, roleIsTextField: false)
+      targetDiagnostics = .unavailable
     } else if let element = request.targetElement {
       classification = classifyPasteFocus(
         elementPresent: true,
         roleIsTextField: PasteService.isTextFieldRole(element)
       )
+      // Role/subrole are read at paste time from the captured AXUIElement handle.
+      targetDiagnostics = PasteService.capturedElementDiagnostics(element)
     } else {
       classification = classifyPasteFocus(elementPresent: false, roleIsTextField: false)
+      targetDiagnostics = .missing
     }
     let canAttemptKeyPaste = classification.canAttemptKeyPaste
 
@@ -258,7 +265,9 @@ internal final class PasteCascadeExecutor {
       outcome = .clipboardOnly(
         tiersAttempted: tiersAttempted,
         focus: classification,
-        targetBundleID: request.targetApp?.bundleIdentifier
+        targetBundleID: request.targetApp?.bundleIdentifier,
+        accessibilityTrusted: axTrusted,
+        targetDiagnostics: targetDiagnostics
       )
     }
 
@@ -275,7 +284,7 @@ internal final class PasteCascadeExecutor {
     switch outcome {
     case .delivered:
       return
-    case .clipboardOnly(let tiers, let focus, let bundle):
+    case .clipboardOnly(let tiers, let focus, let bundle, let accessibilityTrusted, let diagnostics):
       let tierStrings = tiers.map(\.rawValue)
       let err = HeartPathError.pasteCascadeClipboardFallback(
         tiersAttempted: tierStrings,
@@ -286,13 +295,14 @@ internal final class PasteCascadeExecutor {
         err,
         category: .pasteFailed,
         stage: "paste",
-        extra: [
-          "paste.tiers_attempted": tierStrings,
-          "paste.focus_classification": focus.telemetryLabel,
-          "paste.target_bundle_id": bundle ?? NSNull(),
-          "paste.outcome": "clipboard_only",
-          "paste.tier_failures": tierFailures,
-        ]
+        extra: Self.clipboardOnlyTelemetryExtra(
+          tiersAttempted: tierStrings,
+          focus: focus,
+          targetBundleID: bundle,
+          accessibilityTrusted: accessibilityTrusted,
+          targetDiagnostics: diagnostics,
+          tierFailures: tierFailures
+        )
       )
     case .cgEventCreationFailed(let accessibilityTrusted):
       let err = HeartPathError.pasteCGEventCreationFailed(
@@ -313,9 +323,34 @@ internal final class PasteCascadeExecutor {
         stage: "paste",
         message: "paste.outcome=clipboard_only_ax_denied",
         level: .info,
-        data: ["target_bundle_id": targetBundleID ?? "unknown"]
+        data: [
+          "target_bundle_id": targetBundleID ?? "unknown",
+          "paste.accessibility_trusted": false,
+        ]
       )
     }
+  }
+
+  internal static func clipboardOnlyTelemetryExtra(
+    tiersAttempted: [String],
+    focus: PasteFocusClassification,
+    targetBundleID: String?,
+    accessibilityTrusted: Bool,
+    targetDiagnostics: PasteElementDiagnostics,
+    tierFailures: [String: String]
+  ) -> [String: Any] {
+    [
+      "paste.tiers_attempted": tiersAttempted,
+      "paste.focus_classification": focus.telemetryLabel,
+      "paste.target_bundle_id": targetBundleID ?? NSNull(),
+      "paste.outcome": "clipboard_only",
+      "paste.tier_failures": tierFailures,
+      "paste.accessibility_trusted": accessibilityTrusted,
+      "paste.target_element_role": targetDiagnostics.role ?? NSNull(),
+      "paste.target_element_subrole": targetDiagnostics.subrole ?? NSNull(),
+      "paste.target_element_role_source": targetDiagnostics.roleSource,
+      "paste.target_element_subrole_status": targetDiagnostics.subroleStatus,
+    ]
   }
 
   /// Emit a non-blocking Sentry breadcrumb for a single tier failure. The
