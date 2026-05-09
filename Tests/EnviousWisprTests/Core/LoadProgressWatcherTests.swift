@@ -145,26 +145,24 @@ struct LoadProgressWatcherTests {
   func bothGatesFire() async {
     let watcher = LoadProgressWatcher()
     watcher.start()
-    // Three signals at ~150ms cadence → max gap ~150ms. Ratio = 750ms < floor 800ms.
-    // Silence past floor 800ms triggers.
+    // Three signals at 150ms cadence → max gap T (actual CI-dependent).
+    // Silence loop uses the same 150ms cadence so silence = N*T and
+    // threshold = max(floor, 5*T). After 7 iterations silence = 6T:
+    //   ratio gate: 6T > 5T ✓ (always, independent of CI load)
+    //   floor gate: 6T >= 6*150ms = 900ms > 800ms ✓ (Task.sleep guarantees >=150ms)
     watcher.observeTick(observedMtime: mtime(0), observedPhase: "compiling")
     await sleep(ms: 150)
     watcher.observeTick(observedMtime: mtime(1), observedPhase: "compiling")
     await sleep(ms: 150)
     watcher.observeTick(observedMtime: mtime(2), observedPhase: "compiling")
-    // Generate silence ticks past 800ms floor.
-    for _ in 0..<15 {
+    for _ in 0..<7 {
       watcher.observeTick(observedMtime: mtime(2), observedPhase: "compiling")
-      await sleep(ms: 80)
+      await sleep(ms: 150)
     }
-    // Yield to let the MainActor fire task run before reading hasFired.
-    // On heavily-loaded CI runners the fire task can lag behind the loop.
-    await Task.yield()
     // Assert via the deterministic `hasFired` accessor. Avoids awaiting
     // `wedged()` unconditionally — under heavy CI load the resumed
     // continuation can lag behind the assertion, causing the test to hang
-    // until the job-level timeout (28 min on the GitHub Actions self-hosted
-    // runner). The state read is synchronous and safe.
+    // until the job-level timeout. The state read is synchronous and safe.
     let snap = watcher.snapshot
     #expect(watcher.hasFired, "Both gates met → watcher must fire")
     #expect(snap.lastObservedPhase == "compiling")
