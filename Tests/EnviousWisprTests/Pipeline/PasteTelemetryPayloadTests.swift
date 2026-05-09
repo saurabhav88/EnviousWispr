@@ -10,9 +10,7 @@ struct PasteTelemetryPayloadTests {
 
   @Test("clipboard-only payload includes captured target diagnostics")
   func clipboardOnlyPayloadIncludesTargetDiagnostics() {
-    let executor = PasteCascadeExecutor()
-
-    let extra = executor.clipboardOnlyTelemetryExtra(
+    let extra = PasteCascadeExecutor.clipboardOnlyTelemetryExtra(
       tiersAttempted: [],
       focus: .nonText,
       targetBundleID: "us.zoom.xos",
@@ -20,7 +18,8 @@ struct PasteTelemetryPayloadTests {
       targetDiagnostics: PasteElementDiagnostics(
         role: "AXGroup",
         subrole: "AXUnknown",
-        roleSource: "captured_target"
+        roleSource: "captured_target",
+        subroleStatus: "present"
       ),
       tierFailures: [:]
     )
@@ -33,14 +32,13 @@ struct PasteTelemetryPayloadTests {
     #expect(extra["paste.target_element_role"] as? String == "AXGroup")
     #expect(extra["paste.target_element_subrole"] as? String == "AXUnknown")
     #expect(extra["paste.target_element_role_source"] as? String == "captured_target")
+    #expect(extra["paste.target_element_subrole_status"] as? String == "present")
     assertNoContentLikeKeys(extra)
   }
 
   @Test("clipboard-only payload records missing target without changing fallback shape")
   func clipboardOnlyPayloadRecordsMissingTarget() {
-    let executor = PasteCascadeExecutor()
-
-    let extra = executor.clipboardOnlyTelemetryExtra(
+    let extra = PasteCascadeExecutor.clipboardOnlyTelemetryExtra(
       tiersAttempted: ["cgevent"],
       focus: .missing,
       targetBundleID: nil,
@@ -55,14 +53,13 @@ struct PasteTelemetryPayloadTests {
     #expect(extra["paste.target_element_role"] is NSNull)
     #expect(extra["paste.target_element_subrole"] is NSNull)
     #expect(extra["paste.target_element_role_source"] as? String == "missing")
+    #expect(extra["paste.target_element_subrole_status"] as? String == "missing")
     #expect((extra["paste.tier_failures"] as? [String: String])?["activation"] == "timeout_ms=1000")
   }
 
   @Test("AX-denied path is distinguishable from trusted non-text fallback")
   func axDeniedPathIsDistinguishable() {
-    let executor = PasteCascadeExecutor()
-
-    let extra = executor.clipboardOnlyTelemetryExtra(
+    let extra = PasteCascadeExecutor.clipboardOnlyTelemetryExtra(
       tiersAttempted: [],
       focus: .nonText,
       targetBundleID: "com.example.target",
@@ -74,6 +71,33 @@ struct PasteTelemetryPayloadTests {
     #expect(extra["paste.focus_classification"] as? String == "non_text")
     #expect(extra["paste.accessibility_trusted"] as? Bool == false)
     #expect(extra["paste.target_element_role_source"] as? String == "unavailable")
+    #expect(extra["paste.target_element_subrole_status"] as? String == "unavailable")
+  }
+
+  @Test("AX role diagnostics are capped and scrubbed before telemetry")
+  func axRoleDiagnosticsAreCappedAndScrubbed() {
+    let longRole = "AX" + String(repeating: "VeryLongRole", count: 20)
+    let extra = PasteCascadeExecutor.clipboardOnlyTelemetryExtra(
+      tiersAttempted: [],
+      focus: .nonText,
+      targetBundleID: "com.example.target",
+      accessibilityTrusted: true,
+      targetDiagnostics: PasteElementDiagnostics(
+        role: longRole,
+        subrole: " AXSubrole With Spaces 🚨 ",
+        roleSource: "captured_target",
+        subroleStatus: "present"
+      ),
+      tierFailures: [:]
+    )
+
+    let role = extra["paste.target_element_role"] as? String
+    let subrole = extra["paste.target_element_subrole"] as? String
+
+    #expect(role?.count == 128)
+    #expect(subrole == "AXSubrole_With_Spaces__")
+    #expect(extra["paste.target_element_subrole_status"] as? String == "present")
+    assertNoContentLikeKeys(extra)
   }
 
   private func assertNoContentLikeKeys(_ extra: [String: Any]) {
@@ -87,4 +111,3 @@ struct PasteTelemetryPayloadTests {
     }
   }
 }
-

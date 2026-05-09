@@ -295,7 +295,7 @@ internal final class PasteCascadeExecutor {
         err,
         category: .pasteFailed,
         stage: "paste",
-        extra: clipboardOnlyTelemetryExtra(
+        extra: Self.clipboardOnlyTelemetryExtra(
           tiersAttempted: tierStrings,
           focus: focus,
           targetBundleID: bundle,
@@ -331,7 +331,7 @@ internal final class PasteCascadeExecutor {
     }
   }
 
-  internal func clipboardOnlyTelemetryExtra(
+  internal static func clipboardOnlyTelemetryExtra(
     tiersAttempted: [String],
     focus: PasteFocusClassification,
     targetBundleID: String?,
@@ -349,6 +349,7 @@ internal final class PasteCascadeExecutor {
       "paste.target_element_role": targetDiagnostics.role ?? NSNull(),
       "paste.target_element_subrole": targetDiagnostics.subrole ?? NSNull(),
       "paste.target_element_role_source": targetDiagnostics.roleSource,
+      "paste.target_element_subrole_status": targetDiagnostics.subroleStatus,
     ]
   }
 
