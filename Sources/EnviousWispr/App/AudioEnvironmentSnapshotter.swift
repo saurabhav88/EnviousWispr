@@ -8,7 +8,7 @@ protocol AudioEnvironmentCollecting: Sendable {
     reason: AudioEnvironmentSnapshot.Reason,
     route: String?,
     frontmostAppBundleID: String?,
-    deviceEventRecentMs: Int?,
+    deviceEventAt: Date?,
     capturedAt: Date
   ) -> AudioEnvironmentSnapshot
 }
@@ -55,9 +55,7 @@ final class AudioEnvironmentSnapshotter {
     let capturedAt = now()
     let route = routeProvider()
     let frontmostAppBundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-    let deviceEventRecentMs = lastDeviceEventAt.map {
-      max(0, Int(capturedAt.timeIntervalSince($0) * 1000))
-    }
+    let deviceEventAt = lastDeviceEventAt
     let collector = self.collector
 
     Task.detached(priority: .utility) { [weak self] in
@@ -65,12 +63,11 @@ final class AudioEnvironmentSnapshotter {
         reason: reason,
         route: route,
         frontmostAppBundleID: frontmostAppBundleID,
-        deviceEventRecentMs: deviceEventRecentMs,
+        deviceEventAt: deviceEventAt,
         capturedAt: capturedAt
       )
       await MainActor.run { [weak self] in
-        guard let self, generation >= self.latestGeneration else { return }
-        self.latestGeneration = generation
+        guard let self, generation == self.latestGeneration else { return }
         self.latestSnapshot = snapshot
       }
     }
@@ -82,7 +79,7 @@ struct CoreAudioEnvironmentCollector: AudioEnvironmentCollecting {
     reason: AudioEnvironmentSnapshot.Reason,
     route: String?,
     frontmostAppBundleID: String?,
-    deviceEventRecentMs: Int?,
+    deviceEventAt: Date?,
     capturedAt: Date
   ) -> AudioEnvironmentSnapshot {
     guard let processIDs = Self.processObjectIDs() else {
@@ -91,7 +88,7 @@ struct CoreAudioEnvironmentCollector: AudioEnvironmentCollecting {
         capturedAt: capturedAt,
         route: route,
         frontmostAppBundleID: frontmostAppBundleID,
-        deviceEventRecentMs: deviceEventRecentMs,
+        deviceEventAt: deviceEventAt,
         unavailableReason: "process_object_list_unavailable"
       )
     }
@@ -140,11 +137,11 @@ struct CoreAudioEnvironmentCollector: AudioEnvironmentCollecting {
       inputBundleIDs: inputBundles,
       outputBundleIDs: outputBundles,
       frontmostAppBundleID: frontmostAppBundleID,
-      inputDeviceUIDDefault: inputDeviceID.flatMap(Self.deviceUID),
-      outputDeviceUIDDefault: outputDeviceID.flatMap(Self.deviceUID),
+      inputDeviceTransport: inputDeviceID.flatMap(Self.deviceTransport),
+      outputDeviceTransport: outputDeviceID.flatMap(Self.deviceTransport),
       route: route,
       bluetoothOutputActive: outputDeviceID.map(Self.isBluetoothDevice) ?? false,
-      deviceEventRecentMs: deviceEventRecentMs
+      deviceEventAt: deviceEventAt
     )
   }
 
@@ -182,11 +179,43 @@ struct CoreAudioEnvironmentCollector: AudioEnvironmentCollecting {
     return deviceID
   }
 
-  private static func deviceUID(_ deviceID: AudioDeviceID) -> String? {
-    stringProperty(objectID: deviceID, selector: kAudioDevicePropertyDeviceUID)
+  private static func isBluetoothDevice(_ deviceID: AudioDeviceID) -> Bool {
+    let transport = deviceTransportRaw(deviceID)
+    return transport == kAudioDeviceTransportTypeBluetooth
+      || transport == kAudioDeviceTransportTypeBluetoothLE
   }
 
-  private static func isBluetoothDevice(_ deviceID: AudioDeviceID) -> Bool {
+  private static func deviceTransport(_ deviceID: AudioDeviceID) -> String? {
+    guard let transport = deviceTransportRaw(deviceID) else { return nil }
+    switch transport {
+    case kAudioDeviceTransportTypeBuiltIn:
+      return "built_in"
+    case kAudioDeviceTransportTypeBluetooth, kAudioDeviceTransportTypeBluetoothLE:
+      return "bluetooth"
+    case kAudioDeviceTransportTypeUSB:
+      return "usb"
+    case kAudioDeviceTransportTypeAggregate:
+      return "aggregate"
+    case kAudioDeviceTransportTypeVirtual:
+      return "virtual"
+    case kAudioDeviceTransportTypeDisplayPort:
+      return "display_port"
+    case kAudioDeviceTransportTypeHDMI:
+      return "hdmi"
+    case kAudioDeviceTransportTypeAirPlay:
+      return "air_play"
+    case kAudioDeviceTransportTypePCI:
+      return "pci"
+    case kAudioDeviceTransportTypeFireWire:
+      return "fire_wire"
+    case kAudioDeviceTransportTypeThunderbolt:
+      return "thunderbolt"
+    default:
+      return "unknown"
+    }
+  }
+
+  private static func deviceTransportRaw(_ deviceID: AudioDeviceID) -> UInt32? {
     var transport: UInt32 = 0
     var size = UInt32(MemoryLayout<UInt32>.size)
     var address = AudioObjectPropertyAddress(
@@ -194,9 +223,9 @@ struct CoreAudioEnvironmentCollector: AudioEnvironmentCollecting {
       mScope: kAudioObjectPropertyScopeGlobal,
       mElement: kAudioObjectPropertyElementMain
     )
-    AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &transport)
-    return transport == kAudioDeviceTransportTypeBluetooth
-      || transport == kAudioDeviceTransportTypeBluetoothLE
+    let status = AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &transport)
+    guard status == noErr else { return nil }
+    return transport
   }
 
   private static func boolProperty(

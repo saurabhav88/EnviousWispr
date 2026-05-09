@@ -1,10 +1,10 @@
-import CryptoKit
 import Foundation
 
 /// Metadata-only view of the user's audio environment near dictation.
 ///
-/// Privacy boundary: this value never renders raw bundle IDs, process names,
-/// window titles, URLs, file paths, audio samples, or dictated text.
+/// Privacy boundary: this value never renders raw bundle IDs, deterministic
+/// bundle hashes, process names, raw device IDs, window titles, URLs, file
+/// paths, audio samples, or dictated text.
 public struct AudioEnvironmentSnapshot: Sendable, Equatable {
   public enum Status: String, Sendable {
     case fresh
@@ -19,21 +19,20 @@ public struct AudioEnvironmentSnapshot: Sendable, Equatable {
     case manualTest = "manual_test"
   }
 
-  public static let bundleHashCap = 8
   public static let freshnessWindowMs = 10_000
 
   public let reason: Reason
   public let capturedAt: Date
   public let inputProcessCount: Int
   public let outputProcessCount: Int
-  public let inputBundleIDHashes: [String]
-  public let outputBundleIDHashes: [String]
-  public let frontmostAppBundleIDHash: String?
-  public let inputDeviceUIDDefault: String?
-  public let outputDeviceUIDDefault: String?
+  public let inputAppCategoryCounts: [AudioAppCategory: Int]
+  public let outputAppCategoryCounts: [AudioAppCategory: Int]
+  public let frontmostAppCategory: AudioAppCategory?
+  public let inputDeviceTransport: String?
+  public let outputDeviceTransport: String?
   public let route: String?
   public let bluetoothOutputActive: Bool
-  public let deviceEventRecentMs: Int?
+  public let deviceEventAt: Date?
   public let unavailableReason: String?
 
   public init(
@@ -44,25 +43,25 @@ public struct AudioEnvironmentSnapshot: Sendable, Equatable {
     inputBundleIDs: [String] = [],
     outputBundleIDs: [String] = [],
     frontmostAppBundleID: String? = nil,
-    inputDeviceUIDDefault: String? = nil,
-    outputDeviceUIDDefault: String? = nil,
+    inputDeviceTransport: String? = nil,
+    outputDeviceTransport: String? = nil,
     route: String? = nil,
     bluetoothOutputActive: Bool = false,
-    deviceEventRecentMs: Int? = nil,
+    deviceEventAt: Date? = nil,
     unavailableReason: String? = nil
   ) {
     self.reason = reason
     self.capturedAt = capturedAt
     self.inputProcessCount = max(0, inputProcessCount)
     self.outputProcessCount = max(0, outputProcessCount)
-    self.inputBundleIDHashes = Self.hashBundleIDs(inputBundleIDs)
-    self.outputBundleIDHashes = Self.hashBundleIDs(outputBundleIDs)
-    self.frontmostAppBundleIDHash = frontmostAppBundleID.flatMap(Self.hashBundleID)
-    self.inputDeviceUIDDefault = Self.sanitizedShortString(inputDeviceUIDDefault)
-    self.outputDeviceUIDDefault = Self.sanitizedShortString(outputDeviceUIDDefault)
+    self.inputAppCategoryCounts = Self.categoryCounts(inputBundleIDs)
+    self.outputAppCategoryCounts = Self.categoryCounts(outputBundleIDs)
+    self.frontmostAppCategory = frontmostAppBundleID.map(AudioAppCategory.categorize)
+    self.inputDeviceTransport = Self.sanitizedShortString(inputDeviceTransport)
+    self.outputDeviceTransport = Self.sanitizedShortString(outputDeviceTransport)
     self.route = Self.sanitizedShortString(route)
     self.bluetoothOutputActive = bluetoothOutputActive
-    self.deviceEventRecentMs = deviceEventRecentMs.map { max(0, $0) }
+    self.deviceEventAt = deviceEventAt
     self.unavailableReason = Self.sanitizedShortString(unavailableReason)
   }
 
@@ -71,7 +70,7 @@ public struct AudioEnvironmentSnapshot: Sendable, Equatable {
     capturedAt: Date,
     route: String?,
     frontmostAppBundleID: String?,
-    deviceEventRecentMs: Int?,
+    deviceEventAt: Date?,
     unavailableReason: String
   ) -> Self {
     Self(
@@ -79,7 +78,7 @@ public struct AudioEnvironmentSnapshot: Sendable, Equatable {
       capturedAt: capturedAt,
       frontmostAppBundleID: frontmostAppBundleID,
       route: route,
-      deviceEventRecentMs: deviceEventRecentMs,
+      deviceEventAt: deviceEventAt,
       unavailableReason: unavailableReason
     )
   }
@@ -97,25 +96,25 @@ public struct AudioEnvironmentSnapshot: Sendable, Equatable {
       "snapshot_age_ms": ageMs,
       "input_process_count": inputProcessCount,
       "output_process_count": outputProcessCount,
-      "input_bundle_id_hashes": inputBundleIDHashes,
-      "output_bundle_id_hashes": outputBundleIDHashes,
+      "input_app_category_counts": Self.renderCategoryCounts(inputAppCategoryCounts),
+      "output_app_category_counts": Self.renderCategoryCounts(outputAppCategoryCounts),
       "bluetooth_output_active": bluetoothOutputActive,
     ]
 
-    if let frontmostAppBundleIDHash {
-      context["frontmost_app_bundle_id_hash"] = frontmostAppBundleIDHash
+    if let frontmostAppCategory {
+      context["frontmost_app_category"] = frontmostAppCategory.rawValue
     }
-    if let inputDeviceUIDDefault {
-      context["input_device_uid_default"] = inputDeviceUIDDefault
+    if let inputDeviceTransport {
+      context["input_device_transport"] = inputDeviceTransport
     }
-    if let outputDeviceUIDDefault {
-      context["output_device_uid_default"] = outputDeviceUIDDefault
+    if let outputDeviceTransport {
+      context["output_device_transport"] = outputDeviceTransport
     }
     if let route {
       context["route"] = route
     }
-    if let deviceEventRecentMs {
-      context["device_event_recent_ms"] = deviceEventRecentMs
+    if let deviceEventAt {
+      context["device_event_recent_ms"] = max(0, Int(now.timeIntervalSince(deviceEventAt) * 1000))
     }
     if let unavailableReason {
       context["unavailable_reason"] = unavailableReason
@@ -124,16 +123,19 @@ public struct AudioEnvironmentSnapshot: Sendable, Equatable {
     return context
   }
 
-  private static func hashBundleIDs(_ bundleIDs: [String]) -> [String] {
-    Array(Set(bundleIDs.compactMap(hashBundleID)).sorted().prefix(bundleHashCap))
+  private static func categoryCounts(_ bundleIDs: [String]) -> [AudioAppCategory: Int] {
+    bundleIDs.reduce(into: [:]) { counts, bundleID in
+      counts[AudioAppCategory.categorize(bundleID: bundleID), default: 0] += 1
+    }
   }
 
-  private static func hashBundleID(_ bundleID: String) -> String? {
-    let trimmed = bundleID.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { return nil }
-
-    let digest = SHA256.hash(data: Data(trimmed.utf8))
-    return digest.prefix(8).map { String(format: "%02x", $0) }.joined()
+  private static func renderCategoryCounts(
+    _ counts: [AudioAppCategory: Int]
+  ) -> [String: Int] {
+    counts.reduce(into: [:]) { rendered, item in
+      guard item.value > 0 else { return }
+      rendered[item.key.rawValue] = item.value
+    }
   }
 
   private static func sanitizedShortString(_ input: String?) -> String? {

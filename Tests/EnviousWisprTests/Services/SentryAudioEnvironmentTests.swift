@@ -80,6 +80,54 @@ struct SentryAudioEnvironmentTests {
     #expect(environment?["snapshot_status"] as? String == "caller")
   }
 
+  @Test("nil provider preserves caller extra without audio environment")
+  func nilProviderPreservesCallerExtra() {
+    let capturedExtra = ExtraBox()
+
+    SentryBreadcrumb.withAudioEnvironmentProvider(nil) {
+      let prior = SentryBreadcrumb.captureErrorDelegate
+      SentryBreadcrumb.captureErrorDelegate = { _, _, _, extra in
+        capturedExtra.set(extra)
+      }
+      defer { SentryBreadcrumb.captureErrorDelegate = prior }
+
+      SentryBreadcrumb.captureError(
+        DummyError(),
+        category: .audioCaptureFailed,
+        stage: "audio",
+        extra: ["caller": "kept"]
+      )
+    }
+
+    let extra = capturedExtra.get()
+    #expect(extra?["caller"] as? String == "kept")
+    #expect(extra?["audio_environment"] == nil)
+  }
+
+  @Test("empty provider preserves baseline extra")
+  func emptyProviderPreservesBaselineExtra() {
+    let capturedExtra = ExtraBox()
+
+    SentryBreadcrumb.withAudioEnvironmentProvider({ [:] }) {
+      let prior = SentryBreadcrumb.captureErrorDelegate
+      SentryBreadcrumb.captureErrorDelegate = { _, _, _, extra in
+        capturedExtra.set(extra)
+      }
+      defer { SentryBreadcrumb.captureErrorDelegate = prior }
+
+      SentryBreadcrumb.captureError(
+        DummyError(),
+        category: .audioCaptureFailed,
+        stage: "audio",
+        extra: ["caller": "kept"]
+      )
+    }
+
+    let extra = capturedExtra.get()
+    #expect(extra?["caller"] as? String == "kept")
+    #expect(extra?["audio_environment"] == nil)
+  }
+
   @Test("scoped provider helper restores prior provider")
   func providerScopeRestoresPriorProvider() {
     SentryBreadcrumb.audioEnvironmentProvider = { ["snapshot_status": "outer"] }
