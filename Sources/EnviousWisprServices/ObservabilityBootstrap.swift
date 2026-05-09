@@ -46,11 +46,7 @@ public enum ObservabilityBootstrap {
       // This is a limb — must never throw or crash. Heart is unaffected if this fails.
       var redactedProperties: [String: Any] = [:]
       for (key, value) in event.properties {
-        if let str = value as? String {
-          redactedProperties[key] = ObservabilityBootstrap.redactString(str)
-        } else {
-          redactedProperties[key] = value
-        }
+        redactedProperties[key] = ObservabilityBootstrap.redactValue(value)
       }
       event.properties = redactedProperties
       return event
@@ -174,20 +170,29 @@ public enum ObservabilityBootstrap {
     }
   }
 
-  /// Redact every String value in a `[String: Any]` dictionary, leaving
-  /// non-string values untouched. Shared by Sentry beforeSend redaction
+  /// Redact every String value in a `[String: Any]` dictionary recursively,
+  /// leaving non-string scalar values untouched. Shared by Sentry beforeSend redaction
   /// of `event.extra`, `breadcrumb.data`, `event.context`, and
   /// `exception.mechanism.data`.
   static func redactDict(_ input: [String: Any]) -> [String: Any] {
     var output: [String: Any] = [:]
     for (key, value) in input {
-      if let str = value as? String {
-        output[key] = redactString(str)
-      } else {
-        output[key] = value
-      }
+      output[key] = redactValue(value)
     }
     return output
+  }
+
+  static func redactValue(_ value: Any) -> Any {
+    if let str = value as? String {
+      return redactString(str)
+    }
+    if let dict = value as? [String: Any] {
+      return redactDict(dict)
+    }
+    if let array = value as? [Any] {
+      return array.map(redactValue)
+    }
+    return value
   }
 
   /// Redacts a string if it matches known PII patterns:

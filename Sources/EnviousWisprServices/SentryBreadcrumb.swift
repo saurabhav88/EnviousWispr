@@ -151,12 +151,15 @@ public enum SentryBreadcrumb {
     for (key, value) in tags {
       eventTags[key] = value
     }
+
+    let eventExtra = mergedExtra(extra)
+
     // Test spy hooks — invoked synchronously before SDK dispatch. Production sets nil.
     Self.captureErrorTagsDelegate?(eventTags)
-    Self.captureErrorDelegate?(error, category, stage, extra)
+    Self.captureErrorDelegate?(error, category, stage, eventExtra)
     event.tags = eventTags
-    if let extra {
-      event.extra = extra
+    if let eventExtra {
+      event.extra = eventExtra
     }
 
     // Also add a breadcrumb so the error appears in the trail
@@ -164,7 +167,7 @@ public enum SentryBreadcrumb {
       stage: stage,
       message: "ERROR: \(category.rawValue)",
       level: .error,
-      data: extra
+      data: eventExtra
     )
 
     if let snapshot {
@@ -174,6 +177,17 @@ public enum SentryBreadcrumb {
     } else {
       SentrySDK.capture(event: event)
     }
+  }
+
+  private static func mergedExtra(_ extra: [String: Any]?) -> [String: Any]? {
+    let providedEnvironment = Self.audioEnvironmentProvider?()
+    guard let providedEnvironment, !providedEnvironment.isEmpty else { return extra }
+
+    var merged = extra ?? [:]
+    if merged["audio_environment"] == nil {
+      merged["audio_environment"] = providedEnvironment
+    }
+    return merged
   }
 
   /// Capture a post-router Apple Intelligence polish failure with router
@@ -264,6 +278,24 @@ public enum SentryBreadcrumb {
 // MARK: - Test Delegate Hook
 
 extension SentryBreadcrumb {
+  public typealias AudioEnvironmentProvider = @MainActor @Sendable () -> [String: Any]?
+
+  /// Cached audio-environment provider for handled Sentry errors.
+  ///
+  /// The provider must return already-collected plain data only. It must not
+  /// query Core Audio, await work, or take locks on the Sentry capture path.
+  public nonisolated(unsafe) static var audioEnvironmentProvider: AudioEnvironmentProvider?
+
+  public static func withAudioEnvironmentProvider<T>(
+    _ provider: AudioEnvironmentProvider?,
+    _ body: () throws -> T
+  ) rethrows -> T {
+    let prior = audioEnvironmentProvider
+    audioEnvironmentProvider = provider
+    defer { audioEnvironmentProvider = prior }
+    return try body()
+  }
+
   /// Optional test-only delegate invoked synchronously on every `captureError` call
   /// before the real Sentry SDK is touched. Tests set this in `setUp`, nil in
   /// `tearDown`. Production code never reads it. Cheap alternative to a full

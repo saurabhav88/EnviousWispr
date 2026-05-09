@@ -41,6 +41,7 @@ final class AudioSystemEventReporter {
   private let audioCapture: any AudioCaptureInterface
   private let asrManager: any ASRManagerInterface
   private let pipelineStateProvider: @MainActor () -> PipelineState
+  private let onAudioDeviceEvent: @MainActor @Sendable () -> Void
 
   /// CoreAudio property listener blocks. Stored as instance state so the same
   /// reference can be passed to `AudioObjectRemovePropertyListenerBlock` in
@@ -63,11 +64,13 @@ final class AudioSystemEventReporter {
   init(
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface,
-    pipelineStateProvider: @escaping @MainActor () -> PipelineState
+    pipelineStateProvider: @escaping @MainActor () -> PipelineState,
+    onAudioDeviceEvent: @escaping @MainActor @Sendable () -> Void = {}
   ) {
     self.audioCapture = audioCapture
     self.asrManager = asrManager
     self.pipelineStateProvider = pipelineStateProvider
+    self.onAudioDeviceEvent = onAudioDeviceEvent
     registerCoreAudioListeners()
     registerCaptureDeviceObservers()
   }
@@ -184,6 +187,8 @@ final class AudioSystemEventReporter {
   // MARK: - Emission
 
   private func emit(event: String, context: [String: String]) {
+    onAudioDeviceEvent()
+
     // Snapshot collaborators on MainActor.
     let route = audioCapture.currentAudioRoute  // built_in_mic / capture_session_bt / unknown
     let backend = asrManager.activeBackendType.rawValue  // parakeet / whisperKit
