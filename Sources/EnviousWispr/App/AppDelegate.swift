@@ -74,12 +74,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // closure from inside `loadModelSilently()` so the launch-warming path
     // (previously silent on success by design) becomes visible in PostHog.
     ASRManagerProxy.launchPreloadReporter = { backend, result, durationMs in
-      TelemetryService.shared.launchModelPreloadCompleted(
-        backend: backend, result: result, durationMs: durationMs)
+      Task { @MainActor in
+        TelemetryService.shared.launchModelPreloadCompleted(
+          backend: backend, result: result, durationMs: durationMs)
+      }
     }
     ASRManager.launchPreloadReporter = { backend, result, durationMs in
-      TelemetryService.shared.launchModelPreloadCompleted(
-        backend: backend, result: result, durationMs: durationMs)
+      Task { @MainActor in
+        TelemetryService.shared.launchModelPreloadCompleted(
+          backend: backend, result: result, durationMs: durationMs)
+      }
     }
 
     // When the unified window closes, revert to .accessory immediately.
@@ -666,7 +670,7 @@ extension AppDelegate: @preconcurrency SPUStandardUserDriverDelegate {
 
 // MARK: - SPUUpdaterDelegate
 
-extension AppDelegate: @preconcurrency SPUUpdaterDelegate {
+extension AppDelegate: SPUUpdaterDelegate {
   /// Issue #343: fires when the user has accepted an update and Sparkle is
   /// about to begin install. Persists the install attempt for cross-launch
   /// correlation, fires `update.install_started`, flushes telemetry so the
