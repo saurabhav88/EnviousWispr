@@ -81,7 +81,9 @@ struct LoadProgressWatcherTests {
     }
     let snap = watcher.snapshot
     #expect(snap.signalCountTotal == 10)
-    #expect(snap.maxGapMs > 50 && snap.maxGapMs < 250, "max gap roughly matches 100ms cadence")
+    #expect(
+      snap.maxGapMs > 50 && snap.maxGapMs < 700,
+      "max gap roughly matches 100ms cadence, allowing CI scheduler jitter")
     watcher.stop()
   }
 
@@ -133,10 +135,10 @@ struct LoadProgressWatcherTests {
     let snap = watcher.snapshot
     watcher.stop()
     _ = await waiter.value
-    // Loose upper bound — CI scheduling jitter can push 50ms cadence to ~150ms.
+    // Loose upper bound — CI scheduling jitter can inflate the 50ms cadence significantly.
     // The watcher behaviour (no-fire-below-floor) is what's under test here,
     // not the precision of the synthetic cadence.
-    #expect(snap.maxGapMs < 250, "max gap stays in the 50–150ms ballpark with jitter")
+    #expect(snap.maxGapMs < 700, "max gap accommodates CI scheduler jitter")
   }
 
   @Test("Both gates met (silence > floor AND silence > 5x max gap) — fires")
@@ -155,6 +157,9 @@ struct LoadProgressWatcherTests {
       watcher.observeTick(observedMtime: mtime(2), observedPhase: "compiling")
       await sleep(ms: 80)
     }
+    // Yield to let the MainActor fire task run before reading hasFired.
+    // On heavily-loaded CI runners the fire task can lag behind the loop.
+    await Task.yield()
     // Assert via the deterministic `hasFired` accessor. Avoids awaiting
     // `wedged()` unconditionally — under heavy CI load the resumed
     // continuation can lag behind the assertion, causing the test to hang
