@@ -703,6 +703,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
     }
 
     let minimumSamples = AudioConstants.minimumTranscriptionSamples
+    let vadFilteredSampleCount = lidSamples.count
     asrSamples = WhisperKitPipelineSpeechRouting.paddedASRSamples(
       rawSamples: rawSamples,
       minimumSamples: minimumSamples
@@ -721,6 +722,20 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
       forVoicedDuration: voicedDurationSec
     )
     let clipKind = lidWindowCount == 1 ? "short" : "normal"
+    var asrEmptyDiagnostics = ASREmptyResultDiagnostics(
+      backend: "whisperKit",
+      hasSpeechEvidence: hasSpeechEvidence,
+      rawSampleCount: rawSamples.count,
+      vadSegmentCount: vadSegmentCount,
+      vadSpeechDurationMs: vadSpeechDurationMs,
+      peakAudioLevel: peakAudioLevel,
+      vadFilteredSampleCount: vadFilteredSampleCount,
+      finalSampleCount: asrSamples.count,
+      samplesPaddedToMinimum: rawSamples.count > 0 && rawSamples.count < minimumSamples,
+      usedRawFallbackAfterVAD: false,
+      batchRescueAttempted: false,
+      speechSegments: speechSegments
+    )
 
     state = .transcribing
     logLIDPerfSignpost(
@@ -839,6 +854,14 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
         let segments = await silenceDetector?.speechSegments ?? []
         let result = await worker.finalize(finalSamples: rawSamples, speechSegments: segments)
         incrementalWorker = nil
+        asrEmptyDiagnostics.incrementalAccepted = result.accepted
+        asrEmptyDiagnostics.incrementalResultChars =
+          result.text?.trimmingCharacters(in: .whitespacesAndNewlines).count
+        asrEmptyDiagnostics.incrementalDecodeCount = result.decodeCount
+        asrEmptyDiagnostics.incrementalSamplesCovered = result.samplesCovered
+        asrEmptyDiagnostics.incrementalStrategy = result.strategy
+        asrEmptyDiagnostics.incrementalMode = result.mode
+        asrEmptyDiagnostics.incrementalTailDecodeMs = result.tailDecodeMs
 
         let coveragePct =
           rawSamples.count > 0
@@ -882,6 +905,9 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
           let batchResult = try await backend.transcribe(
             audioSamples: asrSamples, options: transcriptionOptions)
           let batchEnd = CFAbsoluteTimeGetCurrent()
+          asrEmptyDiagnostics.batchRescueAttempted = true
+          asrEmptyDiagnostics.batchRescueResultChars =
+            batchResult.text.trimmingCharacters(in: .whitespacesAndNewlines).count
           logLIDPerfSignpost(
             "t_asr_end",
             timestamp: batchEnd,
@@ -913,6 +939,9 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
         )
         let batchResult = try await backend.transcribe(
           audioSamples: asrSamples, options: transcriptionOptions)
+        asrEmptyDiagnostics.batchRescueAttempted = false
+        asrEmptyDiagnostics.batchRescueResultChars =
+          batchResult.text.trimmingCharacters(in: .whitespacesAndNewlines).count
         logLIDPerfSignpost(
           "t_asr_end",
           timestamp: CFAbsoluteTimeGetCurrent(),
@@ -955,17 +984,13 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
               userInfo: [
                 NSLocalizedDescriptionKey:
                   "WhisperKit ASR returned empty text despite speech evidence"
-              ]),
+            ]),
             category: .asrEmptyResult, stage: "asr",
-            extra: [
-              "backend": "whisperKit",
-              "incremental": usedIncremental,
-              "has_speech_evidence": true,
-              "raw_sample_count": rawSamples.count,
-              "vad_segment_count": vadSegmentCount,
-              "vad_speech_duration_ms": vadSpeechDurationMs,
-              "peak_audio_level": peakAudioLevel,
-            ],
+            extra: {
+              var extra = asrEmptyDiagnostics.sentryExtra()
+              extra["incremental"] = usedIncremental
+              return extra
+            }(),
             snapshot: frozenSnapshot
           )
           state = .error("Couldn't catch that -- try again")
