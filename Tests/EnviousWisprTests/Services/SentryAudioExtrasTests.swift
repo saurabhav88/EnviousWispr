@@ -24,6 +24,7 @@ struct SentryAudioExtrasTests {
     #expect(extras["capture.failure_mode"] as? String == "stalled")
     #expect(extras["capture.is_actively_capturing"] as? Bool == true)
     #expect(extras["capture_session_id"] as? Int == 3)
+    #expect(extras["capture.preferred_input_set"] as? Bool == true)
     #expect(extras["capture.input_device_divergence"] as? Bool == false)
   }
 
@@ -38,7 +39,58 @@ struct SentryAudioExtrasTests {
       inputDeviceUIDSystemDefault: "AirPodsPro",
       failureMode: "no_audio_captured"
     )
+    #expect(extras["capture.preferred_input_set"] as? Bool == true)
     #expect(extras["capture.input_device_divergence"] as? Bool == true)
+  }
+
+  @Test("divergence false when no preferred input is set")
+  func noPreferredInputIsNotDivergence() {
+    let extras = SentryAudioExtras.buildCaptureExtras(
+      route: "built_in_mic",
+      sourceType: "xpc_proxy",
+      sessionID: 1,
+      isActivelyCapturing: false,
+      inputDeviceUIDPreferred: nil,
+      inputDeviceUIDSystemDefault: "BuiltInMicrophoneDevice",
+      failureMode: "zombie_engine_zero_peak"
+    )
+    #expect(extras["capture.preferred_input_set"] as? Bool == false)
+    #expect(extras["capture.input_device_uid_preferred"] is NSNull)
+    #expect(extras["capture.input_device_uid_system_default"] as? String == "BuiltInMicrophoneDevice")
+    #expect(extras["capture.input_device_divergence"] as? Bool == false)
+  }
+
+  @Test("divergence false when both input UIDs are unknown")
+  func bothUnknownInputUIDsAreNotDivergence() {
+    let extras = SentryAudioExtras.buildCaptureExtras(
+      route: "built_in_mic",
+      sourceType: "xpc_proxy",
+      sessionID: 1,
+      isActivelyCapturing: false,
+      inputDeviceUIDPreferred: nil,
+      inputDeviceUIDSystemDefault: nil,
+      failureMode: "zombie_engine_zero_peak"
+    )
+    #expect(extras["capture.preferred_input_set"] as? Bool == false)
+    #expect(extras["capture.input_device_uid_preferred"] is NSNull)
+    #expect(extras["capture.input_device_uid_system_default"] is NSNull)
+    #expect(extras["capture.input_device_divergence"] as? Bool == false)
+  }
+
+  @Test("empty preferred input behaves like no preferred input")
+  func emptyPreferredInputUIDIsNotSet() {
+    let extras = SentryAudioExtras.buildCaptureExtras(
+      route: "built_in_mic",
+      sourceType: "xpc_proxy",
+      sessionID: 1,
+      isActivelyCapturing: false,
+      inputDeviceUIDPreferred: "",
+      inputDeviceUIDSystemDefault: "BuiltInMicrophoneDevice",
+      failureMode: "zombie_engine_zero_peak"
+    )
+    #expect(extras["capture.preferred_input_set"] as? Bool == false)
+    #expect(extras["capture.input_device_uid_preferred"] is NSNull)
+    #expect(extras["capture.input_device_divergence"] as? Bool == false)
   }
 
   @Test("stall context adds stall-specific keys + window ms math")
@@ -67,6 +119,7 @@ struct SentryAudioExtrasTests {
       polishModelSwapMs: 4500
     )
     #expect(extras["capture.stall.window_ms"] as? Int == 800)
+    #expect(extras["capture.preferred_input_set"] as? Bool == false)
     #expect(extras["capture.format_mismatch"] as? Bool == true)
     #expect(extras["capture.tap_installed"] as? Bool == true)
     #expect(extras["polish.recent_model_swap_ms"] as? Int == 4500)

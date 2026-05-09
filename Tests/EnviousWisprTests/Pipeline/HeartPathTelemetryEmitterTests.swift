@@ -77,6 +77,7 @@ struct HeartPathTelemetryEmitterTests {
     "capture_session_id",
     "capture.input_device_uid_preferred",
     "capture.input_device_uid_system_default",
+    "capture.preferred_input_set",
     "capture.input_device_divergence",
   ]
 
