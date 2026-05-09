@@ -145,20 +145,23 @@ struct LoadProgressWatcherTests {
   func bothGatesFire() async {
     let watcher = LoadProgressWatcher()
     watcher.start()
-    // Three signals at 150ms cadence → max gap T (actual CI-dependent).
-    // Silence loop uses the same 150ms cadence so silence = N*T and
-    // threshold = max(floor, 5*T). After 7 iterations silence = 6T:
-    //   ratio gate: 6T > 5T ✓ (always, independent of CI load)
-    //   floor gate: 6T >= 6*150ms = 900ms > 800ms ✓ (Task.sleep guarantees >=150ms)
+    // Establish two inter-signal gaps. The actual gap duration varies with CI
+    // scheduler load and determines the ratio threshold (5 * maxGap).
     watcher.observeTick(observedMtime: mtime(0), observedPhase: "compiling")
     await sleep(ms: 150)
     watcher.observeTick(observedMtime: mtime(1), observedPhase: "compiling")
     await sleep(ms: 150)
     watcher.observeTick(observedMtime: mtime(2), observedPhase: "compiling")
-    for _ in 0..<7 {
+    // Feed silence ticks until the watcher fires (both gates met) or a 5-second
+    // deadline expires. 5s comfortably exceeds any realistic threshold even when
+    // CI load inflates the gap measurement. The watcher fires synchronously inside
+    // observeTick(), so hasFired is readable immediately after the loop exits.
+    let deadline = ProcessInfo.processInfo.systemUptime + 5.0
+    repeat {
       watcher.observeTick(observedMtime: mtime(2), observedPhase: "compiling")
-      await sleep(ms: 150)
-    }
+      if watcher.hasFired { break }
+      await sleep(ms: 100)
+    } while ProcessInfo.processInfo.systemUptime < deadline
     // Assert via the deterministic `hasFired` accessor. Avoids awaiting
     // `wedged()` unconditionally — under heavy CI load the resumed
     // continuation can lag behind the assertion, causing the test to hang
