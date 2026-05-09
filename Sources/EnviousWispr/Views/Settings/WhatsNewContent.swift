@@ -28,6 +28,18 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.0.1
+
+    Entry(
+      id: "better-error-logging",
+      icon: "doc.text.magnifyingglass",
+      title: "Better error logging",
+      description:
+        "Improved our error logging so we can spot issues and enhance your experience faster.",
+      category: .fasterAndMoreReliable,
+      version: "2.0.1"
+    ),
+
     // MARK: - v2.0.0
 
     Entry(
