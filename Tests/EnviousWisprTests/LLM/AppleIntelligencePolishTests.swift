@@ -206,6 +206,8 @@ struct OutputLanguageValidatorTests {
 // MARK: - Preflight gate (FoundationModels-conditional)
 
 #if canImport(FoundationModels)
+  import FoundationModels
+
   @Suite(.serialized)
   struct AppleIntelligencePreflightGateTests {
 
@@ -239,6 +241,7 @@ struct OutputLanguageValidatorTests {
     @Test("preflight gate throws unsupportedInputLanguage for language not in allowlist")
     func preflightRejectsUnsupported() async throws {
       guard #available(macOS 26.0, *) else { return }
+      guard SystemLanguageModel.default.availability == .available else { return }
       try await withSupportedLanguages(["en", "fr"]) {
         let connector = AppleIntelligenceConnector()
         let config = makeConfig(detectedLanguage: "ar")
@@ -261,6 +264,7 @@ struct OutputLanguageValidatorTests {
     @Test("preflight gate normalizes BCP-47 before allowlist lookup")
     func preflightNormalizesBCP47() async throws {
       guard #available(macOS 26.0, *) else { return }
+      guard SystemLanguageModel.default.availability == .available else { return }
       try await withSupportedLanguages(["en", "de"]) {
         let connector = AppleIntelligenceConnector()
         let config = makeConfig(detectedLanguage: "ar-SA")
