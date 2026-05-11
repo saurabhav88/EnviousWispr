@@ -48,9 +48,8 @@ public final class TelemetryService {
 
   #if DEBUG
     /// Test-only observation seam. Fired at the entry of each top-level facade
-    /// method (currently `reportDictationCompleted` and `pipelineFailed`) with
-    /// a typed summary. Nil in release builds; tests set this to capture
-    /// emissions without reaching PostHog.
+    /// method selected for focused tests. Nil in release builds; tests set this
+    /// to capture emissions without reaching PostHog.
     public var testEventHook: (@Sendable (CapturedTelemetryEvent) -> Void)?
   #endif
 
@@ -196,6 +195,12 @@ public final class TelemetryService {
   public func dictationInvoked(triggerSource: String, inputMode: String, targetApp: String?) {
     var props: [String: Any] = ["trigger_source": triggerSource, "input_mode": inputMode]
     if let app = targetApp { props["target_app"] = app }
+    #if DEBUG
+      var stringProps = ["trigger_source": triggerSource, "input_mode": inputMode]
+      if let app = targetApp { stringProps["target_app"] = app }
+      testEventHook?(
+        CapturedTelemetryEvent(name: "dictation.invoked", stringProps: stringProps))
+    #endif
     PostHogSDK.shared.capture("dictation.invoked", properties: props)
   }
 
