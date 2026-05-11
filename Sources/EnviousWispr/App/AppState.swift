@@ -526,8 +526,6 @@ final class AppState {
       } else {
         guard !self.pipelineState.isActive else { return }
       }
-      self.emitDictationInvoked()
-
       // Refresh AX status so `makeDictationSessionConfig` sees the right
       // paste capability. The session snapshot is captured fresh at
       // `.toggleRecording` dispatch below.
@@ -891,31 +889,7 @@ final class AppState {
       permissions.restartMonitoringIfNeeded()
     }
 
-    // Fire dictation.invoked when starting, before engine/ASR work begins.
-    // Check that the active pipeline is not already recording or processing.
-    let alreadyActive: Bool
-    if active is WhisperKitPipeline {
-      let s = whisperKitPipeline.state
-      alreadyActive =
-        s == .recording || s == .transcribing || s == .polishing || s == .loadingModel
-        || s == .startingUp
-    } else {
-      let s = pipeline.state
-      alreadyActive = s == .recording || s == .transcribing || s == .polishing || s == .loadingModel
-    }
-    if !alreadyActive {
-      emitDictationInvoked()
-    }
-
     try? await active.handle(event: .toggleRecording(makeDictationSessionConfig()))
-  }
-
-  private func emitDictationInvoked() {
-    TelemetryService.shared.dictationInvoked(
-      triggerSource: settings.recordingMode.rawValue,
-      inputMode: settings.recordingMode.rawValue,
-      targetApp: NSWorkspace.shared.frontmostApplication?.localizedName
-    )
   }
 
   /// Build the per-recording config snapshot from settings and paste intent.
@@ -954,6 +928,7 @@ final class AppState {
     }()
     return DictationSessionConfig(
       autoCopyToClipboard: settings.autoCopyToClipboard,
+      inputMode: settings.recordingMode,
       autoPasteToActiveApp: autoPaste,
       restoreClipboardAfterPaste: settings.restoreClipboardAfterPaste,
       vadAutoStop: settings.vadAutoStop,

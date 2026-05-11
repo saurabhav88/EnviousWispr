@@ -5,6 +5,7 @@ extension DictationSessionConfig {
   /// Mirrors the `SettingsManager` defaults at construction time.
   static func testDefault(
     autoCopyToClipboard: Bool = true,
+    inputMode: RecordingMode = .pushToTalk,
     autoPasteToActiveApp: Bool = false,
     restoreClipboardAfterPaste: Bool = false,
     vadAutoStop: Bool = false,
@@ -23,6 +24,7 @@ extension DictationSessionConfig {
   ) -> DictationSessionConfig {
     DictationSessionConfig(
       autoCopyToClipboard: autoCopyToClipboard,
+      inputMode: inputMode,
       autoPasteToActiveApp: autoPasteToActiveApp,
       restoreClipboardAfterPaste: restoreClipboardAfterPaste,
       vadAutoStop: vadAutoStop,
