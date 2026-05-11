@@ -3,7 +3,7 @@ Reference copy of the TIK Routine prompt (Sentry-only, daily morning).
 
 Source of truth: the Routine config in claude.ai/code/routines/trig_01Crr6qjS5HyQ1i3KbrezPfK
 This file may drift from the live prompt. To sync, copy from the Routine
-edit dialog. Documented in .claude/knowledge/sentry-triage-pipeline.md.
+edit dialog.
 
 Live schedule: once daily on cron `7 13 * * *` (9:07am ET / 13:07 UTC).
 

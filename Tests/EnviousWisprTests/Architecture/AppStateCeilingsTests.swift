@@ -8,8 +8,8 @@ import Testing
 /// constructing an AppState instance — AppState's init pulls in real audio
 /// capture, ASR, pipelines, and Tasks that should not run inside a unit test.
 ///
-/// Ceilings are documented in `.claude/rules/architecture-rules.md` under
-/// `Architectural Ceilings`. Raising a ceiling requires a Bible changelog entry.
+/// Ceilings: concrete-collaborator count ≤ 19, total line count ≤ 1050.
+/// Raising a ceiling requires a Bible changelog entry, not a silent bump.
 @Suite struct AppStateCeilingsTests {
 
   /// Concrete-collaborator count ceiling. Locked at post-Phase-F baseline = 19.
@@ -22,7 +22,7 @@ import Testing
       count <= 19,
       """
       AppState concrete-collaborator ceiling exceeded: \(count) > 19. \
-      See .claude/rules/architecture-rules.md `Architectural Ceilings`.
+      Raising the ceiling requires a Bible changelog entry, not a silent bump.
       """)
   }
 
@@ -36,7 +36,7 @@ import Testing
       lineCount <= 1050,
       """
       AppState line count exceeded: \(lineCount) > 1050. \
-      See .claude/rules/architecture-rules.md `Architectural Ceilings`.
+      Raising the ceiling requires a Bible changelog entry, not a silent bump.
       """)
   }
 }

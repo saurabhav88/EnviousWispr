@@ -3,11 +3,11 @@ Reference copy of the Sentry Triage Routine prompt (v3 interim, 2026-04-25).
 
 Source of truth: the Routine config in claude.ai/code/routines/trig_01Crr6qjS5HyQ1i3KbrezPfK
 This file may drift from the live prompt. To sync, copy from the Routine
-edit dialog. Documented in .claude/knowledge/sentry-triage-pipeline.md.
+edit dialog.
 
 Live schedule: every 4 hours on cron `7 */4 * * *`.
 
-v3 changes (interim, 2026-04-25): all GitHub reads via authenticated MCP (was unauthenticated curl); MCP-auth-expiry hard policy; identity marker carries decision + severity + last_seen for durable memory across runs; Step 2.5 cross-reference search; per-run idempotency key; banned tools (mcp__github__authenticate, Discord); Sentry Issue Alert handles raw P0 fast-path independently. See docs/audits/2026-04-25-routine-triage-full-audit.md and .claude/knowledge/sentry-triage-redesign-research-2026-04-25.md.
+v3 changes (interim, 2026-04-25): all GitHub reads via authenticated MCP (was unauthenticated curl); MCP-auth-expiry hard policy; identity marker carries decision + severity + last_seen for durable memory across runs; Step 2.5 cross-reference search; per-run idempotency key; banned tools (mcp__github__authenticate, Discord); Sentry Issue Alert handles raw P0 fast-path independently. See docs/audits/2026-04-25-routine-triage-full-audit.md.
 
 v3.1 changes (2026-04-25, fixes #459 + Codex grounded-review revisions): (1) replaced absolute fail-fast rule with typed default-vs-per-step recovery list — single transient errors no longer terminate the whole run when the prompt documents skip-and-continue, list is exhaustive and authoritative; auth-expiry remains the one BROADER policy that exits the run; (2) Step 2.5 now gates on issue-state BEFORE applying the throttle — closed-issue regressions route to Path C (reopen) instead of being silently swallowed; (3) Step 2.6 cross-reference search now uses Sentry list-time fields (`metadata.function`, `metadata.filename`, `metadata.type`, `culprit`) that are bound at this step, with explicit per-field non-empty guards and a non-elif fallback to `culprit` only when all three metadata keys are empty; Step 1 field doc expanded to document these; (4) Per-run idempotency reframed as branch-entry check (not per-write) so multi-step branches don't self-block; Path A and Path C reordered to add the idempotency key at end-of-sequence; (5) Path C now fetches the Sentry event BEFORE reopen with explicit fail-soft regression-comment template when the event fetch fails or evidence is insufficient, so reopens never leave an issue without the regression comment.
 -->
