@@ -1,60 +1,182 @@
 import Foundation
+import OSLog
+import Security
 
-/// Manages API key storage and retrieval using secure file-based storage.
+/// Manages customer API key storage for OpenAI and Gemini polish providers.
 ///
-/// Keys are stored in `~/.enviouswispr-keys/` with restrictive POSIX permissions:
-/// - Directory: 0700 (owner-only access)
-/// - Files: 0600 (owner read/write only)
-///
-/// This approach is used instead of the macOS Keychain because:
-/// - The Data Protection Keychain (`kSecUseDataProtectionKeychain`) requires entitlements
-///   that are unavailable to non-sandboxed, ad-hoc-signed apps built with SPM CLI tools
-///   (fails with errSecMissingEntitlement / -34018).
-/// - The legacy Keychain's partition list / cdhash-based ACLs cause password prompts on
-///   every rebuild because each build produces a new cdhash.
-/// - File-based storage with strict permissions is standard practice for non-sandboxed
-///   macOS developer tools and provides adequate protection for API keys.
+/// Debug builds keep the historical file-based store at `~/.enviouswispr-keys/`
+/// so local rebuilds do not trigger Keychain ACL prompts. Release builds use
+/// Apple Keychain generic-password items and lazily migrate the two customer
+/// API-key files from the legacy directory.
 public struct KeychainManager: Sendable {
   public static let openAIKeyID = "openai-api-key"
   public static let geminiKeyID = "gemini-api-key"
 
-  public init() {}
+  private static let productionService = "com.enviouswispr.app.api-keys"
+  private static let supportedReleaseKeys: Set<String> = [openAIKeyID, geminiKeyID]
+  private static let logger = Logger(subsystem: "com.enviouswispr.app", category: "Keychain")
 
-  // MARK: - Secure File Storage
+  private let backend: KeyStorageBackend
+  private let legacyStore: any LegacyKeyFileStorage
+  private let keychainStore: any KeychainItemStorage
 
-  /// Directory where key files are stored.
-  private var storageDirectory: URL {
-    FileManager.default.homeDirectoryForCurrentUser
-      .appendingPathComponent(".enviouswispr-keys", isDirectory: true)
-  }
-
-  /// URL for a specific key file.
-  private func fileURL(for key: String) -> URL {
-    storageDirectory.appendingPathComponent(key)
-  }
-
-  /// Ensure the storage directory exists with restrictive permissions.
-  /// Always enforces 0700 — even if the directory was loosened by a backup restore.
-  private func ensureDirectoryExists() throws {
-    let fm = FileManager.default
-    let dir = storageDirectory
-    do {
-      if !fm.fileExists(atPath: dir.path) {
-        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
-      }
-      try fm.setAttributes(
-        [.posixPermissions: 0o700],
-        ofItemAtPath: dir.path
+  public init() {
+    let legacyStore = FileLegacyKeyStore()
+    if Self.usesLegacyFilesForDefaultRuntime {
+      self.init(
+        backend: .legacyFiles,
+        legacyStore: legacyStore,
+        keychainStore: SecurityKeychainItemStore()
       )
-    } catch {
-      throw KeyStoreError.storeFailed(-1)
+    } else {
+      self.init(
+        backend: .keychain(service: Self.productionService),
+        legacyStore: legacyStore,
+        keychainStore: SecurityKeychainItemStore()
+      )
     }
   }
 
-  /// Store a value securely to a file.
-  /// Writes to a temp file at 0600 first, then renames — avoids a TOCTOU window
-  /// where the file is briefly world-readable.
+  init(
+    backend: KeyStorageBackend,
+    legacyStore: any LegacyKeyFileStorage = FileLegacyKeyStore(),
+    keychainStore: any KeychainItemStorage = SecurityKeychainItemStore()
+  ) {
+    self.backend = backend
+    self.legacyStore = legacyStore
+    self.keychainStore = keychainStore
+  }
+
   public func store(key: String, value: String) throws {
+    switch backend {
+    case .legacyFiles:
+      try legacyStore.store(key: key, value: value)
+    case .keychain(let service):
+      try ensureReleaseKeySupported(key)
+      let previousValue = try existingKeychainValue(service: service, key: key)
+      try keychainStore.store(service: service, account: key, value: value)
+      do {
+        try legacyStore.delete(key: key)
+      } catch {
+        try restoreKeychainValue(previousValue, service: service, key: key)
+        throw error
+      }
+    }
+  }
+
+  public func retrieve(key: String) throws -> String {
+    switch backend {
+    case .legacyFiles:
+      return try legacyStore.retrieve(key: key)
+    case .keychain(let service):
+      try ensureReleaseKeySupported(key)
+      do {
+        let value = try keychainStore.retrieve(service: service, account: key)
+        deleteLegacyFileOrLog(key: key)
+        return value
+      } catch KeyStoreError.retrieveFailed(let status) where status == errSecItemNotFound {
+        return try retrieveLegacyAndMigrate(key: key, service: service)
+      } catch {
+        throw error
+      }
+    }
+  }
+
+  public func delete(key: String) throws {
+    switch backend {
+    case .legacyFiles:
+      try legacyStore.delete(key: key)
+    case .keychain(let service):
+      try ensureReleaseKeySupported(key)
+      try legacyStore.delete(key: key)
+      try keychainStore.delete(service: service, account: key)
+    }
+  }
+
+  private func retrieveLegacyAndMigrate(key: String, service: String) throws -> String {
+    let legacyValue = try legacyStore.retrieve(key: key)
+
+    do {
+      try keychainStore.store(service: service, account: key, value: legacyValue)
+    } catch {
+      return legacyValue
+    }
+
+    deleteLegacyFileOrLog(key: key)
+    return legacyValue
+  }
+
+  private func deleteLegacyFileOrLog(key: String) {
+    do {
+      try legacyStore.delete(key: key)
+    } catch {
+      Self.logger.warning(
+        "Unable to remove legacy API key file after Keychain migration account=\(key, privacy: .public)"
+      )
+    }
+  }
+
+  private func existingKeychainValue(service: String, key: String) throws -> String? {
+    do {
+      return try keychainStore.retrieve(service: service, account: key)
+    } catch KeyStoreError.retrieveFailed(let status) where status == errSecItemNotFound {
+      return nil
+    } catch {
+      throw error
+    }
+  }
+
+  private func restoreKeychainValue(_ value: String?, service: String, key: String) throws {
+    if let value {
+      try keychainStore.store(service: service, account: key, value: value)
+    } else {
+      try keychainStore.delete(service: service, account: key)
+    }
+  }
+
+  private func ensureReleaseKeySupported(_ key: String) throws {
+    guard Self.supportedReleaseKeys.contains(key) else {
+      throw KeyStoreError.unsupportedKey(key)
+    }
+  }
+
+  private static var usesLegacyFilesForDefaultRuntime: Bool {
+    #if DEBUG
+      return true
+    #else
+      return Bundle.main.bundleIdentifier == "com.enviouswispr.app.dev"
+    #endif
+  }
+}
+
+enum KeyStorageBackend: Sendable {
+  case legacyFiles
+  case keychain(service: String)
+}
+
+protocol LegacyKeyFileStorage: Sendable {
+  func store(key: String, value: String) throws
+  func retrieve(key: String) throws -> String
+  func delete(key: String) throws
+}
+
+protocol KeychainItemStorage: Sendable {
+  func store(service: String, account: String, value: String) throws
+  func retrieve(service: String, account: String) throws -> String
+  func delete(service: String, account: String) throws
+}
+
+struct FileLegacyKeyStore: LegacyKeyFileStorage {
+  private let storageDirectory: URL
+
+  init(
+    storageDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+      .appendingPathComponent(".enviouswispr-keys", isDirectory: true)
+  ) {
+    self.storageDirectory = storageDirectory
+  }
+
+  func store(key: String, value: String) throws {
     guard let data = value.data(using: .utf8) else {
       throw KeyStoreError.storeFailed(-1)
     }
@@ -65,13 +187,11 @@ public struct KeychainManager: Sendable {
     let tmpURL = storageDirectory.appendingPathComponent(".\(key).tmp")
     let fm = FileManager.default
     do {
-      // Create temp file at 0600 from the start — no world-readable window
       let fd = Foundation.open(tmpURL.path, O_CREAT | O_WRONLY | O_TRUNC, 0o600)
       guard fd >= 0 else { throw KeyStoreError.storeFailed(-1) }
       let fh = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
       fh.write(data)
       try fh.close()
-      // Replace target atomically (overwrite if exists)
       if fm.fileExists(atPath: url.path) {
         _ = try fm.replaceItemAt(url, withItemAt: tmpURL)
       } else {
@@ -83,19 +203,15 @@ public struct KeychainManager: Sendable {
     }
   }
 
-  /// Retrieve a value from a file.
-  /// Re-enforces directory and file permissions on every read.
-  public func retrieve(key: String) throws -> String {
+  func retrieve(key: String) throws -> String {
     try ensureDirectoryExists()
 
     let url = fileURL(for: key)
     let fm = FileManager.default
-
     guard fm.fileExists(atPath: url.path) else {
       throw KeyStoreError.retrieveFailed(-1)
     }
 
-    // Re-enforce file permissions on read
     try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
 
     do {
@@ -111,8 +227,7 @@ public struct KeychainManager: Sendable {
     }
   }
 
-  /// Delete a key file.
-  public func delete(key: String) throws {
+  func delete(key: String) throws {
     let url = fileURL(for: key)
     let fm = FileManager.default
 
@@ -126,18 +241,98 @@ public struct KeychainManager: Sendable {
       throw KeyStoreError.deleteFailed(-1)
     }
   }
+
+  private func fileURL(for key: String) -> URL {
+    storageDirectory.appendingPathComponent(key)
+  }
+
+  private func ensureDirectoryExists() throws {
+    let fm = FileManager.default
+    do {
+      if !fm.fileExists(atPath: storageDirectory.path) {
+        try fm.createDirectory(at: storageDirectory, withIntermediateDirectories: true)
+      }
+      try fm.setAttributes(
+        [.posixPermissions: 0o700],
+        ofItemAtPath: storageDirectory.path
+      )
+    } catch {
+      throw KeyStoreError.storeFailed(-1)
+    }
+  }
+}
+
+struct SecurityKeychainItemStore: KeychainItemStorage {
+  func store(service: String, account: String, value: String) throws {
+    guard let data = value.data(using: .utf8) else {
+      throw KeyStoreError.storeFailed(-1)
+    }
+
+    let query = baseQuery(service: service, account: account)
+    let updateAttributes = [kSecValueData as String: data] as CFDictionary
+    let updateStatus = SecItemUpdate(query as CFDictionary, updateAttributes)
+    switch updateStatus {
+    case errSecSuccess:
+      return
+    case errSecItemNotFound:
+      var addQuery = query
+      addQuery[kSecValueData as String] = data
+      let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+      guard addStatus == errSecSuccess else {
+        throw KeyStoreError.storeFailed(addStatus)
+      }
+    default:
+      throw KeyStoreError.storeFailed(updateStatus)
+    }
+  }
+
+  func retrieve(service: String, account: String) throws -> String {
+    var query = baseQuery(service: service, account: account)
+    query[kSecReturnData as String] = kCFBooleanTrue
+    query[kSecMatchLimit as String] = kSecMatchLimitOne
+
+    var result: CFTypeRef?
+    let status = SecItemCopyMatching(query as CFDictionary, &result)
+    guard status == errSecSuccess else {
+      throw KeyStoreError.retrieveFailed(status)
+    }
+    guard let data = result as? Data,
+      let value = String(data: data, encoding: .utf8)
+    else {
+      throw KeyStoreError.retrieveFailed(-1)
+    }
+    return value
+  }
+
+  func delete(service: String, account: String) throws {
+    let status = SecItemDelete(baseQuery(service: service, account: account) as CFDictionary)
+    guard status == errSecSuccess || status == errSecItemNotFound else {
+      throw KeyStoreError.deleteFailed(status)
+    }
+  }
+
+  private func baseQuery(service: String, account: String) -> [String: Any] {
+    [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: service,
+      kSecAttrAccount as String: account,
+      kSecAttrSynchronizable as String: kCFBooleanFalse as Any,
+    ]
+  }
 }
 
 enum KeyStoreError: LocalizedError, Sendable {
   case storeFailed(OSStatus)
   case retrieveFailed(OSStatus)
   case deleteFailed(OSStatus)
+  case unsupportedKey(String)
 
   var errorDescription: String? {
     switch self {
     case .storeFailed(let s): return "Key store failed: \(s)"
     case .retrieveFailed(let s): return "Key retrieve failed: \(s)"
     case .deleteFailed(let s): return "Key delete failed: \(s)"
+    case .unsupportedKey(let key): return "Unsupported key store item: \(key)"
     }
   }
 }
