@@ -230,14 +230,6 @@ jobs:
 
           echo "==> FoundationModels compile probe PASSED"
 
-      - name: Cache SPM dependencies
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: .build
-          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-spm-
-
       - name: Install create-dmg
         run: brew install create-dmg
 
