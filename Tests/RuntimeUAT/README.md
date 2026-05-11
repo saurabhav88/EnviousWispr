@@ -57,9 +57,9 @@ The `uat_runner.py run` command **must** be invoked with `run_in_background: tru
 
 ## How this fits the workflow
 
-- Phase 3 validation (`scripts/validate-pr.sh`) Live UAT step calls into this harness for the Code lane. See `.claude/knowledge/pr498-phase3-validation.md`.
-- Tier rules in `.claude/rules/validation-discipline.md §6` mandate runtime UAT before declaring a feature ship-ready.
-- Tool boundaries are documented in `.claude/rules/tools-and-apps.md §2`.
+- Phase 3 validation (`scripts/validate-pr.sh`) Live UAT step calls into this harness for the Code lane.
+- Runtime UAT is mandatory before declaring a feature ship-ready.
+- Drive UAT directly via `wispr_eyes.py` from the main thread; agent-dispatched UAT is not reliable for end-to-end dictation flows.
 
 ## Why this directory is tracked
 

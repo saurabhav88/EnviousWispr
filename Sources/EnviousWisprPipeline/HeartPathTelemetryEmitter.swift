@@ -20,10 +20,10 @@ import Foundation
 /// Sentry payload shapes (category, tags, extras keys, breadcrumb messages)
 /// are reproduced exactly from the prior in-pipeline implementations so the
 /// triage Routine that polls Sentry every 4 hours continues filing GitHub
-/// issues with stable grouping. See `.claude/knowledge/sentry-triage-pipeline.md`.
+/// issues with stable grouping.
 ///
 /// The Sentry sink is injected as a closure callback rather than a protocol
-/// (per `.claude/rules/swift-patterns.md` § Hot-path Existentials), keeping the
+/// to avoid existential dispatch on a `@MainActor` hot path, keeping the
 /// emitter concrete and the test seam recording-closure-shaped.
 @MainActor
 final class HeartPathTelemetryEmitter {

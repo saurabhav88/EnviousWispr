@@ -3,7 +3,7 @@ Reference copy of the TOK Routine prompt (Codex PR triage, daily evening).
 
 Source of truth: the Routine config in claude.ai/code/routines/<NEW_TRIGGER_ID>
 This file may drift from the live prompt. To sync, copy from the Routine
-edit dialog. Documented in .claude/knowledge/sentry-triage-pipeline.md.
+edit dialog.
 
 Live schedule: once daily on cron `7 1 * * *` (9:07pm ET / 01:07 UTC next day,
 12 hours after TIK).

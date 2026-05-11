@@ -7,8 +7,8 @@ import Testing
 ///
 /// Cases drawn from live OpenAI + Gemini API validation
 /// (`docs/audits/2026-05-04-issue-617-classifier-validation.txt`) plus the
-/// adversarial set Codex grounded review demanded for matcher-broadening
-/// tests (`.claude/rules/workflow-process.md §9`).
+/// adversarial set required for matcher-broadening tests (exercise each
+/// entry in its non-intended semantic class, not just the happy path).
 @Suite("AIPolishModelClassifier — recommended-for-cleanup classifier")
 struct AIPolishClassifierTests {
 
