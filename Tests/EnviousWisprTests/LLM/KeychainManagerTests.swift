@@ -168,8 +168,13 @@ struct KeychainManagerTests {
       try manager.store(key: KeychainManager.openAIKeyID, value: "new-key")
       Issue.record("Expected store to throw")
     } catch let error as KeyStoreError {
-      if case .rollbackFailed = error {
+      switch error {
+      case .deleteFailed:
+        break  // expected — the original legacy-cleanup error surfaces unchanged
+      case .rollbackFailed:
         Issue.record("Cleanup-only failure surfaced as rollbackFailed: \(error)")
+      default:
+        Issue.record("Expected KeyStoreError.deleteFailed, got \(error)")
       }
     } catch {
       Issue.record("Expected KeyStoreError, got \(error)")
@@ -193,8 +198,13 @@ struct KeychainManagerTests {
       try manager.store(key: KeychainManager.openAIKeyID, value: "new-key")
       Issue.record("Expected store to throw")
     } catch let error as KeyStoreError {
-      if case .rollbackFailed = error {
+      switch error {
+      case .deleteFailed:
+        break  // expected — the original legacy-cleanup error surfaces unchanged
+      case .rollbackFailed:
         Issue.record("Cleanup-only failure surfaced as rollbackFailed: \(error)")
+      default:
+        Issue.record("Expected KeyStoreError.deleteFailed, got \(error)")
       }
     } catch {
       Issue.record("Expected KeyStoreError, got \(error)")

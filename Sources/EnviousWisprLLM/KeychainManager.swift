@@ -124,12 +124,21 @@ public struct KeychainManager: Sendable {
     return legacyValue
   }
 
+  /// Best-effort legacy-file cleanup AFTER a successful Keychain write.
+  /// Failure here is logged at ERROR level (not warning) because the user-
+  /// visible polish path keeps working from the Keychain value, so without a
+  /// loud signal a stale plaintext file can sit on disk indefinitely — the
+  /// exact failure mode the migration was meant to prevent. The next retrieve
+  /// retries cleanup; persistent failure is a UAT/support escalation.
+  ///
+  /// Surfacing this caller-visibly (banner in Settings, diagnostics flag) is
+  /// tracked separately; see the follow-up referenced in the plan.
   private func deleteLegacyFileOrLog(key: String) {
     do {
       try legacyStore.delete(key: key)
     } catch {
-      Self.logger.warning(
-        "Unable to remove legacy API key file after Keychain migration account=\(key, privacy: .public)"
+      Self.logger.error(
+        "Legacy plaintext API key file remained on disk after Keychain migration; user-visible polish is unaffected but the security goal is not met. Will retry on next retrieve. account=\(key, privacy: .public) error=\(String(describing: error), privacy: .public)"
       )
     }
   }
