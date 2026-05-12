@@ -60,7 +60,6 @@ public struct KeychainManager: Sendable {
       } catch let cleanupError {
         do {
           try restoreKeychainValue(previousValue, service: service, key: key)
-          throw cleanupError
         } catch let restoreError {
           Self.logger.error(
             "Keychain rollback failed after legacy-file cleanup error account=\(key, privacy: .public) cleanup=\(String(describing: cleanupError), privacy: .public) rollback=\(String(describing: restoreError), privacy: .public)"
@@ -68,6 +67,10 @@ public struct KeychainManager: Sendable {
           throw KeyStoreError.rollbackFailed(
             cleanup: cleanupError, rollback: restoreError)
         }
+        // Rollback succeeded; surface the original cleanup failure so the
+        // caller knows the legacy file is still on disk. Keychain is restored
+        // to its previous state.
+        throw cleanupError
       }
     }
   }

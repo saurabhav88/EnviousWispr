@@ -164,8 +164,15 @@ struct KeychainManagerTests {
       keychainStore: keychainStore
     )
 
-    #expect(throws: Error.self) {
+    do {
       try manager.store(key: KeychainManager.openAIKeyID, value: "new-key")
+      Issue.record("Expected store to throw")
+    } catch let error as KeyStoreError {
+      if case .rollbackFailed = error {
+        Issue.record("Cleanup-only failure surfaced as rollbackFailed: \(error)")
+      }
+    } catch {
+      Issue.record("Expected KeyStoreError, got \(error)")
     }
     #expect(throws: Error.self) {
       _ = try keychainStore.retrieve(service: testService, account: KeychainManager.openAIKeyID)
@@ -182,8 +189,15 @@ struct KeychainManagerTests {
     try keychainStore.store(
       service: testService, account: KeychainManager.openAIKeyID, value: "old-key")
 
-    #expect(throws: Error.self) {
+    do {
       try manager.store(key: KeychainManager.openAIKeyID, value: "new-key")
+      Issue.record("Expected store to throw")
+    } catch let error as KeyStoreError {
+      if case .rollbackFailed = error {
+        Issue.record("Cleanup-only failure surfaced as rollbackFailed: \(error)")
+      }
+    } catch {
+      Issue.record("Expected KeyStoreError, got \(error)")
     }
     #expect(
       try keychainStore.retrieve(service: testService, account: KeychainManager.openAIKeyID)
