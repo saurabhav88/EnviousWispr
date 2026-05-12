@@ -331,10 +331,10 @@ struct AIPolishSettingsView: View {
 
         Button("Clear") {
           if isOpenAI {
-            clearKey(keychainId: KeychainManager.openAIKeyID)
+            guard clearKey(keychainId: KeychainManager.openAIKeyID) else { return }
             openAIKey = ""
           } else {
-            clearKey(keychainId: KeychainManager.geminiKeyID)
+            guard clearKey(keychainId: KeychainManager.geminiKeyID) else { return }
             geminiKey = ""
           }
           appState.llmDiscovery.reset()
@@ -357,36 +357,42 @@ struct AIPolishSettingsView: View {
 
   @ViewBuilder
   private var validationBadge: some View {
-    switch appState.llmDiscovery.keyValidationState {
-    case .idle:
-      if !validationStatus.isEmpty {
-        Text(validationStatus)
-          .font(.caption)
-          .foregroundStyle(validationStatus.contains("Saved") ? .stSuccess : .stError)
-      }
-    case .validating:
-      HStack(spacing: 4) {
-        ProgressView()
-          .controlSize(.mini)
-        Text("Validating…")
-          .font(.stHelper)
-          .foregroundStyle(Color.stTextTertiary)
-      }
-    case .valid:
-      HStack(spacing: 4) {
-        Image(systemName: "checkmark.circle.fill")
-          .foregroundStyle(.stSuccess)
-        Text("Valid")
-          .font(.caption)
-          .foregroundStyle(.stSuccess)
-      }
-    case .invalid(let message):
-      HStack(spacing: 4) {
-        Image(systemName: "xmark.circle.fill")
-          .foregroundStyle(.stError)
-        Text(message)
-          .font(.caption)
-          .foregroundStyle(.stError)
+    if validationStatus.hasPrefix("Failed") {
+      Text(validationStatus)
+        .font(.caption)
+        .foregroundStyle(.stError)
+    } else {
+      switch appState.llmDiscovery.keyValidationState {
+      case .idle:
+        if !validationStatus.isEmpty {
+          Text(validationStatus)
+            .font(.caption)
+            .foregroundStyle(validationStatus.contains("Saved") ? .stSuccess : .stError)
+        }
+      case .validating:
+        HStack(spacing: 4) {
+          ProgressView()
+            .controlSize(.mini)
+          Text("Validating…")
+            .font(.stHelper)
+            .foregroundStyle(Color.stTextTertiary)
+        }
+      case .valid:
+        HStack(spacing: 4) {
+          Image(systemName: "checkmark.circle.fill")
+            .foregroundStyle(.stSuccess)
+          Text("Valid")
+            .font(.caption)
+            .foregroundStyle(.stSuccess)
+        }
+      case .invalid(let message):
+        HStack(spacing: 4) {
+          Image(systemName: "xmark.circle.fill")
+            .foregroundStyle(.stError)
+          Text(message)
+            .font(.caption)
+            .foregroundStyle(.stError)
+        }
       }
     }
   }
@@ -892,9 +898,16 @@ struct AIPolishSettingsView: View {
     }
   }
 
-  private func clearKey(keychainId: String) {
-    try? appState.keychainManager.delete(key: keychainId)
-    validationStatus = ""
+  @discardableResult
+  private func clearKey(keychainId: String) -> Bool {
+    do {
+      try appState.keychainManager.delete(key: keychainId)
+      validationStatus = ""
+      return true
+    } catch {
+      validationStatus = "Failed: \(error.localizedDescription)"
+      return false
+    }
   }
 
   @ViewBuilder
