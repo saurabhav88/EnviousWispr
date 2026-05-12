@@ -27,7 +27,9 @@ struct KeychainManagerTests {
     #expect(filePermissions == 0o600)
 
     try manager.delete(key: KeychainManager.openAIKeyID)
-    #expect(!FileManager.default.fileExists(atPath: dir.appendingPathComponent(KeychainManager.openAIKeyID).path))
+    #expect(
+      !FileManager.default.fileExists(
+        atPath: dir.appendingPathComponent(KeychainManager.openAIKeyID).path))
   }
 
   @Test("Security Keychain store can round-trip with a unique test service")
@@ -36,9 +38,12 @@ struct KeychainManagerTests {
     let store = SecurityKeychainItemStore()
     defer { try? store.delete(service: service, account: KeychainManager.openAIKeyID) }
 
-    try store.store(service: service, account: KeychainManager.openAIKeyID, value: "fake-openai-key")
+    try store.store(
+      service: service, account: KeychainManager.openAIKeyID, value: "fake-openai-key")
 
-    #expect(try store.retrieve(service: service, account: KeychainManager.openAIKeyID) == "fake-openai-key")
+    #expect(
+      try store.retrieve(service: service, account: KeychainManager.openAIKeyID)
+        == "fake-openai-key")
 
     try store.delete(service: service, account: KeychainManager.openAIKeyID)
     #expect(throws: Error.self) {
@@ -57,8 +62,12 @@ struct KeychainManagerTests {
     try legacyStore.store(key: KeychainManager.openAIKeyID, value: "legacy-value")
 
     #expect(try manager.retrieve(key: KeychainManager.openAIKeyID) == "legacy-value")
-    #expect(try keychainStore.retrieve(service: testService, account: KeychainManager.openAIKeyID) == "legacy-value")
-    #expect(!FileManager.default.fileExists(atPath: dir.appendingPathComponent(KeychainManager.openAIKeyID).path))
+    #expect(
+      try keychainStore.retrieve(service: testService, account: KeychainManager.openAIKeyID)
+        == "legacy-value")
+    #expect(
+      !FileManager.default.fileExists(
+        atPath: dir.appendingPathComponent(KeychainManager.openAIKeyID).path))
   }
 
   @Test("release retrieve prefers Keychain and removes stale legacy file")
@@ -70,10 +79,13 @@ struct KeychainManagerTests {
     let manager = releaseStyleManager(legacyStore: legacyStore, keychainStore: keychainStore)
 
     try legacyStore.store(key: KeychainManager.openAIKeyID, value: "stale-file-value")
-    try keychainStore.store(service: testService, account: KeychainManager.openAIKeyID, value: "keychain-value")
+    try keychainStore.store(
+      service: testService, account: KeychainManager.openAIKeyID, value: "keychain-value")
 
     #expect(try manager.retrieve(key: KeychainManager.openAIKeyID) == "keychain-value")
-    #expect(!FileManager.default.fileExists(atPath: dir.appendingPathComponent(KeychainManager.openAIKeyID).path))
+    #expect(
+      !FileManager.default.fileExists(
+        atPath: dir.appendingPathComponent(KeychainManager.openAIKeyID).path))
   }
 
   @Test("release retrieve surfaces non-missing Keychain failures")
@@ -89,7 +101,9 @@ struct KeychainManagerTests {
     #expect(throws: KeyStoreError.self) {
       _ = try manager.retrieve(key: KeychainManager.openAIKeyID)
     }
-    #expect(FileManager.default.fileExists(atPath: dir.appendingPathComponent(KeychainManager.openAIKeyID).path))
+    #expect(
+      FileManager.default.fileExists(
+        atPath: dir.appendingPathComponent(KeychainManager.openAIKeyID).path))
   }
 
   @Test("release store writes Keychain and removes stale legacy file")
@@ -103,8 +117,12 @@ struct KeychainManagerTests {
     try legacyStore.store(key: KeychainManager.geminiKeyID, value: "old-gemini")
     try manager.store(key: KeychainManager.geminiKeyID, value: "new-gemini")
 
-    #expect(try keychainStore.retrieve(service: testService, account: KeychainManager.geminiKeyID) == "new-gemini")
-    #expect(!FileManager.default.fileExists(atPath: dir.appendingPathComponent(KeychainManager.geminiKeyID).path))
+    #expect(
+      try keychainStore.retrieve(service: testService, account: KeychainManager.geminiKeyID)
+        == "new-gemini")
+    #expect(
+      !FileManager.default.fileExists(
+        atPath: dir.appendingPathComponent(KeychainManager.geminiKeyID).path))
   }
 
   @Test("release store surfaces previous Keychain read failures before writing")
@@ -118,7 +136,8 @@ struct KeychainManagerTests {
     #expect(throws: KeyStoreError.self) {
       try manager.store(key: KeychainManager.geminiKeyID, value: "new-gemini")
     }
-    #expect(keychainStore.storedValue(service: testService, account: KeychainManager.geminiKeyID) == nil)
+    #expect(
+      keychainStore.storedValue(service: testService, account: KeychainManager.geminiKeyID) == nil)
   }
 
   @Test("migration write failure returns legacy value and preserves legacy file")
@@ -132,7 +151,9 @@ struct KeychainManagerTests {
     try legacyStore.store(key: KeychainManager.openAIKeyID, value: "legacy-still-works")
 
     #expect(try manager.retrieve(key: KeychainManager.openAIKeyID) == "legacy-still-works")
-    #expect(FileManager.default.fileExists(atPath: dir.appendingPathComponent(KeychainManager.openAIKeyID).path))
+    #expect(
+      FileManager.default.fileExists(
+        atPath: dir.appendingPathComponent(KeychainManager.openAIKeyID).path))
   }
 
   @Test("release store rolls back new Keychain item when legacy cleanup fails")
@@ -158,12 +179,36 @@ struct KeychainManagerTests {
       legacyStore: FailingDeleteLegacyStore(),
       keychainStore: keychainStore
     )
-    try keychainStore.store(service: testService, account: KeychainManager.openAIKeyID, value: "old-key")
+    try keychainStore.store(
+      service: testService, account: KeychainManager.openAIKeyID, value: "old-key")
 
     #expect(throws: Error.self) {
       try manager.store(key: KeychainManager.openAIKeyID, value: "new-key")
     }
-    #expect(try keychainStore.retrieve(service: testService, account: KeychainManager.openAIKeyID) == "old-key")
+    #expect(
+      try keychainStore.retrieve(service: testService, account: KeychainManager.openAIKeyID)
+        == "old-key")
+  }
+
+  @Test("release store surfaces rollbackFailed when both legacy cleanup and Keychain rollback fail")
+  func releaseStoreSurfacesCompoundRollbackFailure() throws {
+    let keychainStore = InMemoryKeychainStore(deleteStatus: errSecAuthFailed)
+    let manager = releaseStyleManager(
+      legacyStore: FailingDeleteLegacyStore(),
+      keychainStore: keychainStore
+    )
+
+    do {
+      try manager.store(key: KeychainManager.openAIKeyID, value: "new-key")
+      Issue.record("Expected store to throw")
+    } catch let error as KeyStoreError {
+      guard case .rollbackFailed = error else {
+        Issue.record("Expected rollbackFailed, got \(error)")
+        return
+      }
+    } catch {
+      Issue.record("Expected KeyStoreError.rollbackFailed, got \(error)")
+    }
   }
 
   @Test("release delete removes legacy file and Keychain item")
@@ -175,11 +220,14 @@ struct KeychainManagerTests {
     let manager = releaseStyleManager(legacyStore: legacyStore, keychainStore: keychainStore)
 
     try legacyStore.store(key: KeychainManager.openAIKeyID, value: "legacy")
-    try keychainStore.store(service: testService, account: KeychainManager.openAIKeyID, value: "keychain")
+    try keychainStore.store(
+      service: testService, account: KeychainManager.openAIKeyID, value: "keychain")
 
     try manager.delete(key: KeychainManager.openAIKeyID)
 
-    #expect(!FileManager.default.fileExists(atPath: dir.appendingPathComponent(KeychainManager.openAIKeyID).path))
+    #expect(
+      !FileManager.default.fileExists(
+        atPath: dir.appendingPathComponent(KeychainManager.openAIKeyID).path))
     #expect(throws: Error.self) {
       _ = try keychainStore.retrieve(service: testService, account: KeychainManager.openAIKeyID)
     }
@@ -191,12 +239,15 @@ struct KeychainManagerTests {
     let keychainStore = InMemoryKeychainStore()
     let manager = releaseStyleManager(legacyStore: legacyStore, keychainStore: keychainStore)
 
-    try keychainStore.store(service: testService, account: KeychainManager.openAIKeyID, value: "keychain")
+    try keychainStore.store(
+      service: testService, account: KeychainManager.openAIKeyID, value: "keychain")
 
     #expect(throws: Error.self) {
       try manager.delete(key: KeychainManager.openAIKeyID)
     }
-    #expect(try keychainStore.retrieve(service: testService, account: KeychainManager.openAIKeyID) == "keychain")
+    #expect(
+      try keychainStore.retrieve(service: testService, account: KeychainManager.openAIKeyID)
+        == "keychain")
   }
 
   @Test("release flows do not touch unrelated legacy files")
@@ -254,10 +305,16 @@ private final class InMemoryKeychainStore: KeychainItemStorage, @unchecked Senda
   private var items: [String: String] = [:]
   private let storeStatus: OSStatus?
   private let retrieveStatus: OSStatus?
+  private let deleteStatus: OSStatus?
 
-  init(storeStatus: OSStatus? = nil, retrieveStatus: OSStatus? = nil) {
+  init(
+    storeStatus: OSStatus? = nil,
+    retrieveStatus: OSStatus? = nil,
+    deleteStatus: OSStatus? = nil
+  ) {
     self.storeStatus = storeStatus
     self.retrieveStatus = retrieveStatus
+    self.deleteStatus = deleteStatus
   }
 
   func store(service: String, account: String, value: String) throws {
@@ -282,6 +339,9 @@ private final class InMemoryKeychainStore: KeychainItemStorage, @unchecked Senda
   }
 
   func delete(service: String, account: String) throws {
+    if let deleteStatus {
+      throw KeyStoreError.deleteFailed(deleteStatus)
+    }
     _ = lock.withLock {
       items.removeValue(forKey: key(service: service, account: account))
     }

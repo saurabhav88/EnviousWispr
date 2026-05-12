@@ -57,9 +57,17 @@ public struct KeychainManager: Sendable {
       try keychainStore.store(service: service, account: key, value: value)
       do {
         try legacyStore.delete(key: key)
-      } catch {
-        try restoreKeychainValue(previousValue, service: service, key: key)
-        throw error
+      } catch let cleanupError {
+        do {
+          try restoreKeychainValue(previousValue, service: service, key: key)
+          throw cleanupError
+        } catch let restoreError {
+          Self.logger.error(
+            "Keychain rollback failed after legacy-file cleanup error account=\(key, privacy: .public) cleanup=\(String(describing: cleanupError), privacy: .public) rollback=\(String(describing: restoreError), privacy: .public)"
+          )
+          throw KeyStoreError.rollbackFailed(
+            cleanup: cleanupError, rollback: restoreError)
+        }
       }
     }
   }
@@ -99,6 +107,13 @@ public struct KeychainManager: Sendable {
     do {
       try keychainStore.store(service: service, account: key, value: legacyValue)
     } catch {
+      // Plan §3 step 6: return the legacy value so LLM polish keeps working
+      // this session; the legacy file stays in place so the next retrieve
+      // retries migration. The failure MUST be visible — otherwise release
+      // UAT cannot detect a Keychain write that silently never lands.
+      Self.logger.error(
+        "Keychain migration write failed; returning legacy value and preserving legacy file for retry account=\(key, privacy: .public) error=\(String(describing: error), privacy: .public)"
+      )
       return legacyValue
     }
 
@@ -140,11 +155,20 @@ public struct KeychainManager: Sendable {
     }
   }
 
+  /// Production-bundle allowlist for the Apple Keychain backend.
+  /// Anything not in this set — DEBUG, the `.dev` bundle, unknown / mis-stamped
+  /// release builds — falls back to the file backend. Failing closed avoids
+  /// a UAT or beta build silently touching the production Keychain service.
+  private static let productionKeychainBundleIDs: Set<String> = [
+    "com.enviouswispr.app"
+  ]
+
   private static var usesLegacyFilesForDefaultRuntime: Bool {
     #if DEBUG
       return true
     #else
-      return Bundle.main.bundleIdentifier == "com.enviouswispr.app.dev"
+      guard let bundleID = Bundle.main.bundleIdentifier else { return true }
+      return !productionKeychainBundleIDs.contains(bundleID)
     #endif
   }
 }
@@ -326,6 +350,11 @@ enum KeyStoreError: LocalizedError, Sendable {
   case retrieveFailed(OSStatus)
   case deleteFailed(OSStatus)
   case unsupportedKey(String)
+  /// Both the legacy-cleanup AND the Keychain rollback failed during `store`.
+  /// State is indeterminate; surface compound context so support / UAT can
+  /// reconcile by hand. `cleanup` is the original failure that triggered the
+  /// rollback; `rollback` is the secondary failure from the restore attempt.
+  case rollbackFailed(cleanup: Error, rollback: Error)
 
   var errorDescription: String? {
     switch self {
@@ -333,6 +362,9 @@ enum KeyStoreError: LocalizedError, Sendable {
     case .retrieveFailed(let s): return "Key retrieve failed: \(s)"
     case .deleteFailed(let s): return "Key delete failed: \(s)"
     case .unsupportedKey(let key): return "Unsupported key store item: \(key)"
+    case .rollbackFailed(let cleanup, let rollback):
+      return
+        "Key store rollback failed: cleanup=\(cleanup.localizedDescription) rollback=\(rollback.localizedDescription)"
     }
   }
 }
