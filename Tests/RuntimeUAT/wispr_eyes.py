@@ -994,52 +994,129 @@ def verify(tab, expectations):
 
 _APP_LOG_PATH = os.path.expanduser("~/Library/Logs/EnviousWispr/app.log")
 
+# Both pipeline backends emit a completion line; only the prefix differs.
+# Parakeet:   "Pipeline timing TOTAL: ..."
+# WhisperKit: "WhisperKit pipeline TOTAL: ..."
+_COMPLETION_MARKERS = ("Pipeline timing TOTAL", "WhisperKit pipeline TOTAL")
+
+
+def _log_inode():
+    """Return (inode, size) for app.log, or None if absent. Used to detect
+    log rotation (inode change) and truncation (size shrinks below seek)."""
+    try:
+        st = os.stat(_APP_LOG_PATH)
+        return (st.st_ino, st.st_size)
+    except OSError:
+        return None
+
+
+def _snapshot_log_state():
+    """Capture the pre-test state of app.log: (inode, size, mtime).
+    Returns None if the file doesn't exist. The mtime is used later to
+    detect a stale app.log left behind by an earlier debug run."""
+    try:
+        st = os.stat(_APP_LOG_PATH)
+        return (st.st_ino, st.st_size, st.st_mtime)
+    except OSError:
+        return None
+
+
+def _read_new_log_lines(log_state):
+    """Yield new lines from app.log since the captured snapshot.
+    Handles rotation (inode change → start from byte 0 of the new file) and
+    truncation (size shrinks → start from byte 0). Returns the updated
+    (inode, size) so the caller can advance its cursor. Silently no-op if
+    the file is missing during a rotation race."""
+    if log_state is None:
+        return [], log_state
+    try:
+        st = os.stat(_APP_LOG_PATH)
+    except OSError:
+        return [], log_state
+    inode, size, _ = log_state
+    if st.st_ino != inode or st.st_size < size:
+        # Rotation or truncation: read the new file from the start.
+        seek_to = 0
+    else:
+        seek_to = size
+    try:
+        with open(_APP_LOG_PATH, "r") as f:
+            f.seek(seek_to)
+            new_lines = f.readlines()
+    except OSError:
+        return [], log_state
+    return new_lines, (st.st_ino, st.st_size, st.st_mtime)
+
 
 def _snapshot_log_size():
-    """Return current size of app.log, or None if it doesn't exist.
-    Used as a before-marker so we only read lines written during the test.
-    Returns None when Debug mode is off (file not written) — callers should
-    fall back to clipboard polling and warn the user."""
-    return os.path.getsize(_APP_LOG_PATH) if os.path.exists(_APP_LOG_PATH) else None
+    """Compatibility shim — returns (inode, size, mtime) tuple or None.
+    Callers should treat None as 'Debug mode off, fall back to clipboard'."""
+    return _snapshot_log_state()
 
 
-def _wait_for_pipeline_completion(log_size_before, clip_before, timeout):
-    """Block until the pipeline emits 'Pipeline timing TOTAL' in app.log, or
-    timeout. Falls back to clipboard delta when app.log isn't being written
-    (Debug mode off). Prints state transitions and the success path.
+def _wait_for_pipeline_completion(log_state_before, clip_before, timeout):
+    """Block until the pipeline emits a completion marker in app.log, or
+    timeout. Handles rotation/truncation mid-test. Falls back to clipboard
+    polling if app.log isn't actually growing (Debug mode off but a stale
+    file exists from a previous session). Captures the transient clipboard
+    value AT detection time so a 'restore clipboard after paste' cycle
+    doesn't wipe it before extract.
 
-    Returns: (completed, signal, completion_line, states_seen)
+    Returns: (completed, signal, completion_line, states_seen, clip_seen)
         signal in {"log", "clipboard", None}
+        clip_seen: the clipboard value at the moment we detected change, or None
     """
     states_seen = []
     t_stop = time.time()
     completion_line = None
     signal = None
-    use_log = log_size_before is not None
+    clip_seen = None
 
-    mode = "log" if use_log else "clipboard fallback — enable Debug mode in Settings -> Diagnostics"
+    log_state = log_state_before
+    log_has_grown = False
+    log_stale_warned = False
+
+    mode = "log" if log_state is not None else "clipboard fallback — enable Debug mode in Settings -> Diagnostics"
     print(f"Watching pipeline ({mode})...")
+
     while time.time() - t_stop < timeout:
         for label in ("Transcribing", "Loading model", "Polishing", "Starting"):
             if _text_visible(label) and label not in states_seen:
                 states_seen.append(label)
                 print(f"  [{time.time() - t_stop:.1f}s] {label}...")
 
-        if use_log:
-            with open(_APP_LOG_PATH, "r") as f:
-                f.seek(log_size_before)
-                for line in f:
-                    if "Pipeline timing TOTAL" in line:
+        # Log path
+        if log_state is not None:
+            new_lines, log_state = _read_new_log_lines(log_state)
+            if new_lines:
+                log_has_grown = True
+                for line in new_lines:
+                    if any(m in line for m in _COMPLETION_MARKERS):
                         completion_line = line.strip()
                         signal = "log"
                         break
-            if signal == "log":
-                print(f"  [{time.time() - t_stop:.1f}s] Pipeline complete (log)")
-                break
-        else:
+                if signal == "log":
+                    print(f"  [{time.time() - t_stop:.1f}s] Pipeline complete (log)")
+                    break
+
+            # Stale-log detection: if 1.5s passed with a state label seen
+            # but the log file never grew, Debug mode is probably off. Warn
+            # once and enable clipboard fallback for the rest of this run.
+            if (
+                not log_has_grown
+                and states_seen
+                and (time.time() - t_stop) > 1.5
+                and not log_stale_warned
+            ):
+                print(f"  [{time.time() - t_stop:.1f}s] app.log not growing — falling back to clipboard. Toggle Debug mode in Settings -> Diagnostics to fix.")
+                log_stale_warned = True
+
+        # Clipboard path (primary if no log; fallback if log went stale)
+        if log_state is None or log_stale_warned:
             clip_now = get_clipboard_text() or ""
             if clip_now != clip_before:
                 signal = "clipboard"
+                clip_seen = clip_now  # capture before any restore-after-paste reverts it
                 print(f"  [{time.time() - t_stop:.1f}s] Clipboard updated!")
                 break
 
@@ -1047,27 +1124,67 @@ def _wait_for_pipeline_completion(log_size_before, clip_before, timeout):
     else:
         print(f"  [{time.time() - t_stop:.1f}s] TIMEOUT — pipeline did not complete")
 
-    return (signal is not None, signal, completion_line, states_seen)
+    return (signal is not None, signal, completion_line, states_seen, clip_seen)
 
 
-def _extract_transcript_text(signal, log_size_before):
-    """Extract the dictated text from app.log when log-based detection won,
-    else from the clipboard. Polished text wins when polish made a change;
-    otherwise raw ASR is the final text. Returns None if unavailable."""
-    if signal == "log" and os.path.exists(_APP_LOG_PATH):
+def _extract_transcript_text(signal, log_state_before, clip_seen=None):
+    """Extract the dictated text. For log-mode: parse CORRECTION_DEBUG lines
+    from new content since log_state_before, handling rotation. For
+    clipboard-mode: prefer clip_seen captured at detection time (in case
+    restore-after-paste reverted the clipboard since), else read current."""
+    if signal == "log" and log_state_before is not None:
+        new_lines, _ = _read_new_log_lines(log_state_before)
         raw_asr = None
         polished = None
-        with open(_APP_LOG_PATH, "r") as f:
-            f.seek(log_size_before)
-            for line in f:
-                if "CORRECTION_DEBUG [RAW ASR]" in line:
-                    raw_asr = line.split("CORRECTION_DEBUG [RAW ASR]", 1)[1].strip()
-                elif "CORRECTION_DEBUG [LLM Polish] OUT:" in line:
-                    polished = line.split("CORRECTION_DEBUG [LLM Polish] OUT:", 1)[1].strip()
+        for line in new_lines:
+            if "CORRECTION_DEBUG [RAW ASR]" in line:
+                raw_asr = line.split("CORRECTION_DEBUG [RAW ASR]", 1)[1].strip()
+            elif "CORRECTION_DEBUG [LLM Polish] OUT:" in line:
+                polished = line.split("CORRECTION_DEBUG [LLM Polish] OUT:", 1)[1].strip()
         return polished or raw_asr
     if signal == "clipboard":
+        # Prefer the value we saw mid-loop — restore-after-paste may have
+        # reverted the clipboard between then and now.
+        if clip_seen is not None:
+            return clip_seen.strip()
         return (get_clipboard_text() or "").strip()
     return None
+
+
+# Settings UI labels for the two ASR engines. Source of truth for switch_backend.
+# Updated when the buttons in Settings -> Transcription change copy.
+_BACKEND_LABELS = {
+    "parakeet": "Fast (English)",
+    "whisperkit": "Multi-Language",
+}
+
+
+def switch_backend(name, wait=3.0):
+    """Switch the active ASR engine via the Settings UI.
+
+    Args:
+        name: "parakeet" or "whisperkit".
+        wait: seconds to let the model load after switching.
+
+    Settings -> Transcription has two buttons:
+        Fast (English)   -> Parakeet (PR #720-era label)
+        Multi-Language   -> WhisperKit
+
+    Usage:
+        switch_backend("whisperkit")
+        test_recording(sentence="...")  # now runs on WhisperKit
+    """
+    if name not in _BACKEND_LABELS:
+        raise ValueError(f"Unknown backend '{name}'. Use one of: {list(_BACKEND_LABELS)}")
+    connect()
+    nav("Transcription")
+    time.sleep(0.3)
+    label = _BACKEND_LABELS[name]
+    if not tap(label):
+        raise RuntimeError(f"Could not tap '{label}' button in Settings -> Transcription")
+    print(f"Switched backend to {name} ({label}); waiting {wait:.0f}s for model load...")
+    time.sleep(wait)
+    return True
 
 
 def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.0):
@@ -1154,7 +1271,7 @@ def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.
 
     # Phase 4: Wait for completion (log-based with clipboard fallback)
     t_stop = time.time()
-    completed, signal, completion_line, states_seen = _wait_for_pipeline_completion(
+    completed, signal, completion_line, states_seen, clip_seen = _wait_for_pipeline_completion(
         log_size_before, clip_before, timeout
     )
     pipeline_time = time.time() - t_stop
@@ -1170,7 +1287,7 @@ def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.
     if completion_line:
         print(f"Log line:       {completion_line}")
 
-    result_text = _extract_transcript_text(signal, log_size_before)
+    result_text = _extract_transcript_text(signal, log_size_before, clip_seen)
 
     if completed:
         if result_text:
@@ -1337,7 +1454,7 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
 
     # Phase 5: Wait for completion (log-based with clipboard fallback)
     t_stop = time.time()
-    completed, signal, completion_line, states_seen = _wait_for_pipeline_completion(
+    completed, signal, completion_line, states_seen, clip_seen = _wait_for_pipeline_completion(
         log_size_before, clip_before, timeout
     )
     pipeline_time = time.time() - t_stop
@@ -1355,7 +1472,7 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     if completion_line:
         print(f"Log line:       {completion_line}")
 
-    result_text = _extract_transcript_text(signal, log_size_before)
+    result_text = _extract_transcript_text(signal, log_size_before, clip_seen)
 
     if completed:
         if result_text:
@@ -1466,11 +1583,11 @@ def test_ptt(key="rcmd", audio=None, sentence=None, expect=None, timeout=10.0):
 
     # Phase 5: Wait for completion (log-based with clipboard fallback)
     t_stop = time.time()
-    completed, signal, completion_line, states_seen = _wait_for_pipeline_completion(
+    completed, signal, completion_line, states_seen, clip_seen = _wait_for_pipeline_completion(
         log_size_before, clip_before, timeout
     )
     pipeline_time = time.time() - t_stop
-    transcription = _extract_transcript_text(signal, log_size_before)
+    transcription = _extract_transcript_text(signal, log_size_before, clip_seen)
 
     # Phase 6: Report
     print(f"\n{'=' * 60}")
