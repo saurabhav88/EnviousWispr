@@ -4,7 +4,7 @@ import Testing
 
 #if DEBUG
 
-  @Suite("Dictation invoked telemetry")
+  @Suite("Dictation invoked telemetry", .serialized)
   struct DictationInvokedTelemetryTests {
 
     final class EventBox: @unchecked Sendable {
