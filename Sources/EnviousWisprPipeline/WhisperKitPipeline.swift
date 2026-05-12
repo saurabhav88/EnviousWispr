@@ -495,6 +495,11 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
       state = .recording
       recordingStartTime = Date()
       currentTranscript = nil
+      TelemetryService.shared.dictationInvoked(
+        triggerSource: config.inputMode.rawValue,
+        inputMode: config.inputMode.rawValue,
+        targetApp: targetApp?.localizedName
+      )
       SentryBreadcrumb.add(
         stage: "recording", message: "WhisperKit recording started", data: ["backend": "whisperKit"]
       )

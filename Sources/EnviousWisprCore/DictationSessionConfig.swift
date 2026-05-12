@@ -10,6 +10,8 @@ public struct DictationSessionConfig: Sendable {
   // MARK: Paste / clipboard
 
   public let autoCopyToClipboard: Bool
+  /// Input mode active when the recording request was accepted.
+  public let inputMode: RecordingMode
   /// Input-mode-derived at `startRecording`. True when the user triggered via hotkey
   /// or push-to-talk with accessibility permission available; false for menu-triggered
   /// recordings or when the paste target cannot be resolved. Consolidates the previously
@@ -54,6 +56,7 @@ public struct DictationSessionConfig: Sendable {
 
   public init(
     autoCopyToClipboard: Bool,
+    inputMode: RecordingMode,
     autoPasteToActiveApp: Bool,
     restoreClipboardAfterPaste: Bool,
     vadAutoStop: Bool,
@@ -71,6 +74,7 @@ public struct DictationSessionConfig: Sendable {
     preferredInputDeviceIDOverride: String
   ) {
     self.autoCopyToClipboard = autoCopyToClipboard
+    self.inputMode = inputMode
     self.autoPasteToActiveApp = autoPasteToActiveApp
     self.restoreClipboardAfterPaste = restoreClipboardAfterPaste
     self.vadAutoStop = vadAutoStop

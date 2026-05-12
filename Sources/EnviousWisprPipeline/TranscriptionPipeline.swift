@@ -533,6 +533,11 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
       state = .recording
       recordingStartTime = Date()
       currentTranscript = nil
+      TelemetryService.shared.dictationInvoked(
+        triggerSource: config.inputMode.rawValue,
+        inputMode: config.inputMode.rawValue,
+        targetApp: targetApp?.localizedName
+      )
       SentryBreadcrumb.add(
         stage: "recording", message: "Recording started",
         data: [

@@ -526,7 +526,6 @@ final class AppState {
       } else {
         guard !self.pipelineState.isActive else { return }
       }
-
       // Refresh AX status so `makeDictationSessionConfig` sees the right
       // paste capability. The session snapshot is captured fresh at
       // `.toggleRecording` dispatch below.
@@ -890,33 +889,10 @@ final class AppState {
       permissions.restartMonitoringIfNeeded()
     }
 
-    // Fire dictation.invoked telemetry when starting (not stopping).
-    // Intent event: captures user action before engine/ASR work begins.
-    // Check that the active pipeline is NOT already in a recording/processing state.
-    let alreadyActive: Bool
-    if active is WhisperKitPipeline {
-      let s = whisperKitPipeline.state
-      alreadyActive =
-        s == .recording || s == .transcribing || s == .polishing || s == .loadingModel
-        || s == .startingUp
-    } else {
-      let s = pipeline.state
-      alreadyActive = s == .recording || s == .transcribing || s == .polishing || s == .loadingModel
-    }
-    if !alreadyActive {
-      let targetApp = NSWorkspace.shared.frontmostApplication?.localizedName
-      TelemetryService.shared.dictationInvoked(
-        triggerSource: settings.recordingMode.rawValue,
-        inputMode: settings.recordingMode.rawValue,
-        targetApp: targetApp
-      )
-    }
-
     try? await active.handle(event: .toggleRecording(makeDictationSessionConfig()))
   }
 
-  /// Build the per-recording `DictationSessionConfig` snapshot. Captures the
-  /// current `SettingsManager` state plus the input-mode-derived paste intent.
+  /// Build the per-recording config snapshot from settings and paste intent.
   /// Called at `.toggleRecording` dispatch; the recording's pipeline freezes
   /// the snapshot for its lifetime via `startRecording(config:)`.
   private func makeDictationSessionConfig() -> DictationSessionConfig {
@@ -952,6 +928,7 @@ final class AppState {
     }()
     return DictationSessionConfig(
       autoCopyToClipboard: settings.autoCopyToClipboard,
+      inputMode: settings.recordingMode,
       autoPasteToActiveApp: autoPaste,
       restoreClipboardAfterPaste: settings.restoreClipboardAfterPaste,
       vadAutoStop: settings.vadAutoStop,
