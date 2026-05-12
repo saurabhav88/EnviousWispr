@@ -992,6 +992,84 @@ def verify(tab, expectations):
     close_window()
 
 
+_APP_LOG_PATH = os.path.expanduser("~/Library/Logs/EnviousWispr/app.log")
+
+
+def _snapshot_log_size():
+    """Return current size of app.log, or None if it doesn't exist.
+    Used as a before-marker so we only read lines written during the test.
+    Returns None when Debug mode is off (file not written) — callers should
+    fall back to clipboard polling and warn the user."""
+    return os.path.getsize(_APP_LOG_PATH) if os.path.exists(_APP_LOG_PATH) else None
+
+
+def _wait_for_pipeline_completion(log_size_before, clip_before, timeout):
+    """Block until the pipeline emits 'Pipeline timing TOTAL' in app.log, or
+    timeout. Falls back to clipboard delta when app.log isn't being written
+    (Debug mode off). Prints state transitions and the success path.
+
+    Returns: (completed, signal, completion_line, states_seen)
+        signal in {"log", "clipboard", None}
+    """
+    states_seen = []
+    t_stop = time.time()
+    completion_line = None
+    signal = None
+    use_log = log_size_before is not None
+
+    mode = "log" if use_log else "clipboard fallback — enable Debug mode in Settings -> Diagnostics"
+    print(f"Watching pipeline ({mode})...")
+    while time.time() - t_stop < timeout:
+        for label in ("Transcribing", "Loading model", "Polishing", "Starting"):
+            if _text_visible(label) and label not in states_seen:
+                states_seen.append(label)
+                print(f"  [{time.time() - t_stop:.1f}s] {label}...")
+
+        if use_log:
+            with open(_APP_LOG_PATH, "r") as f:
+                f.seek(log_size_before)
+                for line in f:
+                    if "Pipeline timing TOTAL" in line:
+                        completion_line = line.strip()
+                        signal = "log"
+                        break
+            if signal == "log":
+                print(f"  [{time.time() - t_stop:.1f}s] Pipeline complete (log)")
+                break
+        else:
+            clip_now = get_clipboard_text() or ""
+            if clip_now != clip_before:
+                signal = "clipboard"
+                print(f"  [{time.time() - t_stop:.1f}s] Clipboard updated!")
+                break
+
+        time.sleep(0.2)
+    else:
+        print(f"  [{time.time() - t_stop:.1f}s] TIMEOUT — pipeline did not complete")
+
+    return (signal is not None, signal, completion_line, states_seen)
+
+
+def _extract_transcript_text(signal, log_size_before):
+    """Extract the dictated text from app.log when log-based detection won,
+    else from the clipboard. Polished text wins when polish made a change;
+    otherwise raw ASR is the final text. Returns None if unavailable."""
+    if signal == "log" and os.path.exists(_APP_LOG_PATH):
+        raw_asr = None
+        polished = None
+        with open(_APP_LOG_PATH, "r") as f:
+            f.seek(log_size_before)
+            for line in f:
+                if "CORRECTION_DEBUG [RAW ASR]" in line:
+                    raw_asr = line.split("CORRECTION_DEBUG [RAW ASR]", 1)[1].strip()
+                elif "CORRECTION_DEBUG [LLM Polish] OUT:" in line:
+                    polished = line.split("CORRECTION_DEBUG [LLM Polish] OUT:", 1)[1].strip()
+        return polished or raw_asr
+    if signal == "clipboard":
+        return (get_clipboard_text() or "").strip()
+    return None
+
+
 def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.0):
     """End-to-end recording test: menu start -> TTS/audio playback -> menu stop -> verify pipeline.
 
@@ -1033,7 +1111,10 @@ def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.
         else:
             print(f"Audio: {audio} (duration unknown, using hold={hold}s)")
 
-    # Snapshot clipboard before
+    # Snapshot app.log size + clipboard before the test. Log-based detection
+    # is primary (clipboard-free, doesn't race with the user's activity);
+    # clipboard is a fallback when Debug mode is off.
+    log_size_before = _snapshot_log_size()
     clip_before = get_clipboard_text() or ""
 
     # Phase 1: Start recording via menu
@@ -1071,30 +1152,14 @@ def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.
     print(f"\n--- STOP RECORDING ---")
     tap("Stop Recording")
 
-    # Phase 4: Watch pipeline states
-    states_seen = []
+    # Phase 4: Wait for completion (log-based with clipboard fallback)
     t_stop = time.time()
-
-    print("Watching pipeline...")
-    while time.time() - t_stop < timeout:
-        for label in ("Transcribing", "Loading model", "Polishing", "Starting"):
-            if _text_visible(label) and label not in states_seen:
-                states_seen.append(label)
-                print(f"  [{time.time() - t_stop:.1f}s] {label}...")
-
-        clip_now = get_clipboard_text() or ""
-        if clip_now != clip_before:
-            print(f"  [{time.time() - t_stop:.1f}s] Clipboard updated!")
-            break
-
-        time.sleep(0.2)
-    else:
-        print(f"  [{time.time() - t_stop:.1f}s] TIMEOUT — pipeline did not complete")
-
-    # Phase 5: Report
-    clip_final = get_clipboard_text() or ""
+    completed, signal, completion_line, states_seen = _wait_for_pipeline_completion(
+        log_size_before, clip_before, timeout
+    )
     pipeline_time = time.time() - t_stop
 
+    # Phase 5: Report
     print(f"\n{'='*60}")
     print(f"RECORDING TEST RESULTS")
     print(f"{'='*60}")
@@ -1102,23 +1167,29 @@ def test_recording(audio=None, sentence=None, hold=3.0, expect=None, timeout=30.
     print(f"Record time:    {hold:.1f}s")
     print(f"States seen:    {' → '.join(states_seen) if states_seen else '(none detected)'}")
     print(f"Pipeline time:  {pipeline_time:.1f}s")
+    if completion_line:
+        print(f"Log line:       {completion_line}")
 
-    if clip_final != clip_before:
-        result_text = clip_final.strip()
-        print(f"Transcription:  \"{result_text[:200]}{'...' if len(result_text)>200 else ''}\"")
-        if expect:
-            if expect.lower() in result_text.lower():
-                print(f"Content check:  PASS (found '{expect}')")
-            else:
-                print(f"Content check:  FAIL (expected '{expect}' not found)")
+    result_text = _extract_transcript_text(signal, log_size_before)
+
+    if completed:
+        if result_text:
+            print(f"Transcription:  \"{result_text[:200]}{'...' if len(result_text)>200 else ''}\"")
+            if expect:
+                if expect.lower() in result_text.lower():
+                    print(f"Content check:  PASS (found '{expect}')")
+                else:
+                    print(f"Content check:  FAIL (expected '{expect}' not found)")
+        else:
+            print(f"Transcription:  (completion confirmed, content not captured)")
         print(f"Result:         PASS")
     else:
-        print(f"Transcription:  (clipboard unchanged)")
+        print(f"Transcription:  (pipeline did not complete)")
         print(f"Result:         {'EXPECTED (silence)' if not audio else 'FAIL'}")
 
     print(f"{'='*60}")
     end_test()
-    return clip_final != clip_before
+    return completed
 
 
 def test_cancel(hold=2.0):
@@ -1206,6 +1277,7 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
         else:
             print(f"Audio: {audio} (duration unknown, using hold={hold}s)")
 
+    log_size_before = _snapshot_log_size()
     clip_before = get_clipboard_text() or ""
 
     # Phase 1: Start recording via menu
@@ -1263,27 +1335,14 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     print(f"\n--- STOP RECORDING ---")
     tap("Stop Recording")
 
-    # Phase 5: Watch pipeline
-    states_seen = []
+    # Phase 5: Wait for completion (log-based with clipboard fallback)
     t_stop = time.time()
-    print("Watching pipeline...")
-    while time.time() - t_stop < timeout:
-        for label in ("Transcribing", "Loading model", "Polishing", "Starting"):
-            if _text_visible(label) and label not in states_seen:
-                states_seen.append(label)
-                print(f"  [{time.time() - t_stop:.1f}s] {label}...")
-        clip_now = get_clipboard_text() or ""
-        if clip_now != clip_before:
-            print(f"  [{time.time() - t_stop:.1f}s] Clipboard updated!")
-            break
-        time.sleep(0.2)
-    else:
-        print(f"  [{time.time() - t_stop:.1f}s] TIMEOUT — pipeline did not complete")
-
-    # Phase 6: Report
-    clip_final = get_clipboard_text() or ""
+    completed, signal, completion_line, states_seen = _wait_for_pipeline_completion(
+        log_size_before, clip_before, timeout
+    )
     pipeline_time = time.time() - t_stop
 
+    # Phase 6: Report
     print(f"\n{'='*60}")
     print(f"HANDS-FREE RECORDING TEST RESULTS")
     print(f"{'='*60}")
@@ -1293,23 +1352,29 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     print(f"Record time:    {hold:.1f}s")
     print(f"States seen:    {' → '.join(states_seen) if states_seen else '(none detected)'}")
     print(f"Pipeline time:  {pipeline_time:.1f}s")
+    if completion_line:
+        print(f"Log line:       {completion_line}")
 
-    if clip_final != clip_before:
-        result_text = clip_final.strip()
-        print(f"Transcription:  \"{result_text[:200]}{'...' if len(result_text)>200 else ''}\"")
-        if expect:
-            if expect.lower() in result_text.lower():
-                print(f"Content check:  PASS (found '{expect}')")
-            else:
-                print(f"Content check:  FAIL (expected '{expect}' not found)")
+    result_text = _extract_transcript_text(signal, log_size_before)
+
+    if completed:
+        if result_text:
+            print(f"Transcription:  \"{result_text[:200]}{'...' if len(result_text)>200 else ''}\"")
+            if expect:
+                if expect.lower() in result_text.lower():
+                    print(f"Content check:  PASS (found '{expect}')")
+                else:
+                    print(f"Content check:  FAIL (expected '{expect}' not found)")
+        else:
+            print(f"Transcription:  (completion confirmed, content not captured)")
         print(f"Result:         PASS")
     else:
-        print(f"Transcription:  (clipboard unchanged)")
+        print(f"Transcription:  (pipeline did not complete)")
         print(f"Result:         {'EXPECTED (silence)' if not audio else 'FAIL'}")
 
     print(f"{'='*60}")
     end_test()
-    return clip_final != clip_before
+    return completed
 
 
 def test_ptt(key="rcmd", audio=None, sentence=None, expect=None, timeout=10.0):
@@ -1353,7 +1418,7 @@ def test_ptt(key="rcmd", audio=None, sentence=None, expect=None, timeout=10.0):
     audio_dur = _audio_duration(audio) or 3.0
     print(f"Audio: {audio} ({audio_dur:.2f}s)")
 
-    # Snapshot clipboard
+    log_size_before = _snapshot_log_size()
     clip_before = get_clipboard_text() or ""
 
     # Phase 1: Key down (recording starts)
@@ -1399,43 +1464,13 @@ def test_ptt(key="rcmd", audio=None, sentence=None, expect=None, timeout=10.0):
         up = CGEventCreateKeyboardEvent(None, kc, False)
         CGEventPost(kCGHIDEventTap, up)
 
-    # Phase 5: Watch pipeline
-    # Note: "Restore clipboard after paste" may reset clipboard, so we also
-    # detect clipboard changing then changing back as a success signal.
-    states_seen = []
-    clip_changed = False
-    clip_intermediate = None
+    # Phase 5: Wait for completion (log-based with clipboard fallback)
     t_stop = time.time()
-
-    print("Watching pipeline...")
-    while time.time() - t_stop < timeout:
-        for label in ("Transcribing", "Loading model", "Polishing", "Starting"):
-            if _text_visible(label) and label not in states_seen:
-                states_seen.append(label)
-                print(f"  [{time.time() - t_stop:.1f}s] {label}...")
-
-        clip_now = get_clipboard_text() or ""
-        if clip_now != clip_before and not clip_changed:
-            clip_changed = True
-            clip_intermediate = clip_now
-            print(f"  [{time.time() - t_stop:.1f}s] Clipboard changed!")
-            # Give a moment for paste + restore cycle
-            time.sleep(0.5)
-            break
-        time.sleep(0.2)
-
-    # Also check: pipeline states appeared (even if clipboard was restored)
-    pipeline_ran = len(states_seen) > 0
-
-    # If clipboard was restored, the intermediate value is the transcription
-    clip_final = get_clipboard_text() or ""
-    transcription = None
-    if clip_changed and clip_intermediate:
-        transcription = clip_intermediate.strip()
-    elif clip_final != clip_before:
-        transcription = clip_final.strip()
-
+    completed, signal, completion_line, states_seen = _wait_for_pipeline_completion(
+        log_size_before, clip_before, timeout
+    )
     pipeline_time = time.time() - t_stop
+    transcription = _extract_transcript_text(signal, log_size_before)
 
     # Phase 6: Report
     print(f"\n{'=' * 60}")
@@ -1446,34 +1481,27 @@ def test_ptt(key="rcmd", audio=None, sentence=None, expect=None, timeout=10.0):
     print(f"Hold duration:  {total_hold:.1f}s")
     print(f"States seen:    {' -> '.join(states_seen) if states_seen else '(none)'}")
     print(f"Pipeline time:  {pipeline_time:.1f}s")
-    print(f"Clip changed:   {'YES' if clip_changed else 'NO'}")
-    print(f"Clip restored:  {'YES' if clip_changed and clip_final == clip_before else 'NO'}")
+    if completion_line:
+        print(f"Log line:       {completion_line}")
 
-    success = clip_changed or pipeline_ran
-    if transcription:
-        print(f"Transcription:  \"{transcription[:200]}\"")
-        if expect and expect.lower() in transcription.lower():
-            print(f"Content check:  PASS (found '{expect}')")
-        elif expect:
-            print(f"Content check:  FAIL (expected '{expect}')")
-    elif pipeline_ran:
-        print(f"Transcription:  (clipboard restored before capture, but pipeline ran)")
-        print(f"Result:         LIKELY PASS (pipeline completed, paste went to active field)")
+    if completed:
+        if transcription:
+            print(f"Transcription:  \"{transcription[:200]}\"")
+            if expect and expect.lower() in transcription.lower():
+                print(f"Content check:  PASS (found '{expect}')")
+            elif expect:
+                print(f"Content check:  FAIL (expected '{expect}')")
+            print(f"Result:         PASS")
+        else:
+            print(f"Transcription:  (completion confirmed, content not captured)")
+            print(f"Result:         PASS")
     else:
-        print(f"Transcription:  (no pipeline activity detected)")
+        print(f"Transcription:  (pipeline did not complete)")
         print(f"Result:         FAIL")
-
-    if success and (not expect or (transcription and expect.lower() in transcription.lower())):
-        print(f"Result:         PASS")
-    elif success:
-        print(f"Result:         PARTIAL (pipeline ran but content check inconclusive)")
 
     print(f"{'=' * 60}")
     end_test()
-    return success
-
-
-_APP_LOG_PATH = os.path.expanduser("~/Library/Logs/EnviousWispr/app.log")
+    return completed
 
 
 def record_tts(sentence="The quick brown fox jumps over the lazy dog", key="rcmd",
