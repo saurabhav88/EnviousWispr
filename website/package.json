@@ -20,7 +20,7 @@
     "@astrojs/sitemap": "^3.7.1",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@fontsource/plus-jakarta-sans": "^5.2.8",
-    "astro": "^6.1.6"
+    "astro": "^6.1.10"
   },
   "devDependencies": {
     "wrangler": "^4.81.1"
