@@ -12,7 +12,7 @@
     "astro": "astro"
   },
   "overrides": {
-    "devalue": ">=5.6.4",
+    "devalue": ">=5.8.1",
     "undici": ">=7.24.0"
   },
   "dependencies": {
