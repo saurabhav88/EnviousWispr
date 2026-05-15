@@ -84,11 +84,11 @@ public final class HotkeyService {
 
   public var recordingMode: RecordingMode = .toggle
 
-  /// Toggle-mode hotkey key code (default: Space = 49).
-  public var toggleKeyCode: UInt16 = 49
+  /// Toggle-mode hotkey key code (default: Right Option = 61, modifier-only).
+  public var toggleKeyCode: UInt16 = ModifierKeyCodes.rightOption
 
-  /// Toggle-mode required modifiers (default: Control).
-  public var toggleModifiers: NSEvent.ModifierFlags = [.control]
+  /// Toggle-mode required modifiers (default: none — modifier-only hotkey).
+  public var toggleModifiers: NSEvent.ModifierFlags = []
 
   /// Key code for the cancel hotkey. Default: Escape (53).
   public var cancelKeyCode: UInt16 = 53
