@@ -17,12 +17,12 @@
   },
   "dependencies": {
     "@astrojs/rss": "^4.0.17",
-    "@astrojs/sitemap": "^3.7.1",
+    "@astrojs/sitemap": "^3.7.2",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@fontsource/plus-jakarta-sans": "^5.2.8",
-    "astro": "^6.1.10"
+    "astro": "^6.3.3"
   },
   "devDependencies": {
-    "wrangler": "^4.81.1"
+    "wrangler": "^4.92.0"
   }
 }
