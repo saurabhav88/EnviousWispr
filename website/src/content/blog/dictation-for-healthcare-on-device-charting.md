@@ -2,6 +2,7 @@
 title: "macOS Dictation for Healthcare: On-Device Charting Without the Cloud"
 description: "On-device voice dictation for clinicians. Patient notes, referrals, and discharge summaries on your Mac. No cloud uploads, no BAA gymnastics."
 pubDate: 2026-04-30
+updatedDate: 2026-05-15
 tags: ["healthcare", "dictation", "privacy", "charting", "hipaa"]
 draft: false
 author: "Saurabh Vaish"

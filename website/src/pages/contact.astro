@@ -1,13 +1,49 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+
+const siteUrl = 'https://enviouswispr.com';
+
+const contactPageJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "ContactPage",
+  "name": "Contact EnviousWispr",
+  "description": "Send us feedback, report a bug, or ask a question about EnviousWispr.",
+  "url": `${siteUrl}/contact/`,
+  "isPartOf": { "@type": "WebSite", "url": siteUrl, "name": "EnviousWispr" },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Envious Labs LLC",
+    "url": "https://enviouslabs.co",
+    "email": "hello@enviouslabs.co",
+    "contactPoint": {
+      "@type": "ContactPoint",
+      "contactType": "customer support",
+      "email": "hello@enviouslabs.co"
+    }
+  },
+  "inLanguage": "en"
+});
+
+const breadcrumbJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Home", "item": siteUrl },
+    { "@type": "ListItem", "position": 2, "name": "Contact", "item": `${siteUrl}/contact/` },
+  ],
+});
 ---
 
 <BaseLayout
-  title="Contact — EnviousWispr"
+  title="Contact | EnviousWispr"
   description="Send us feedback, report a bug, or ask a question about EnviousWispr."
   activePage="contact"
   canonicalPath="/contact/"
 >
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={contactPageJsonLd}></script>
+    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
+  </Fragment>
 
 <style>
 .contact-header { padding: 120px 0 48px; text-align: center; position: relative; z-index: 1; }
@@ -59,7 +95,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 <section class="contact-header">
   <div class="container">
     <h1>Get in touch</h1>
-    <p>Bug reports, feature requests, or just saying hi. We read everything.</p>
+    <p>Bug reports, feature requests, or just saying hi. We read everything and reply within 24 hours.</p>
   </div>
 </section>
 

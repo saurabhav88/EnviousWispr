@@ -8,12 +8,17 @@ const jsonLd = JSON.stringify({
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "EnviousWispr",
-  "operatingSystem": "macOS",
-  "applicationCategory": "UtilitiesApplication",
+  "operatingSystem": "macOS 14+",
+  "applicationCategory": "ProductivityApplication",
   "description": "Private AI dictation for macOS. On-device speech-to-text with AI polish. Your voice never leaves your Mac.",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
   "downloadUrl": "https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg",
-  "author": { "@type": "Organization", "name": "Envious Labs" },
+  "image": "https://enviouswispr.com/og-image.png",
+  "author": {
+    "@type": "Organization",
+    "name": "Envious Labs LLC",
+    "url": "https://enviouslabs.co"
+  },
   "url": "https://enviouswispr.com/"
 });
 
@@ -21,14 +26,66 @@ const jsonLdOrg = JSON.stringify({
   "@context": "https://schema.org",
   "@type": "Organization",
   "name": "Envious Labs",
+  "legalName": "Envious Labs LLC",
   "url": "https://enviouslabs.co",
   "logo": "https://enviouswispr.com/favicon.svg",
+  "address": {
+    "@type": "PostalAddress",
+    "streetAddress": "9 High Plains Rd",
+    "addressLocality": "Shelton",
+    "addressRegion": "CT",
+    "postalCode": "06484",
+    "addressCountry": "US"
+  },
+  "contactPoint": {
+    "@type": "ContactPoint",
+    "contactType": "customer support",
+    "email": "hello@enviouslabs.co",
+    "url": "https://enviouswispr.com/contact/"
+  },
+  "founder": {
+    "@type": "Person",
+    "name": "Saurabh Vaish",
+    "url": "https://enviouswispr.com/authors/saurabh-vaish/"
+  },
   "sameAs": [
     "https://x.com/EnviousLabs",
     "https://www.youtube.com/@EnviousLabs",
     "https://www.linkedin.com/company/envious-labs/",
-    "https://github.com/Envious-Labs-LLC"
+    "https://github.com/Envious-Labs-LLC",
+    "https://github.com/saurabhav88/EnviousWispr"
   ]
+});
+
+const jsonLdPerson = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "Person",
+  "name": "Saurabh Vaish",
+  "jobTitle": "Founder, Envious Labs",
+  "url": "https://enviouswispr.com/authors/saurabh-vaish/",
+  "image": "https://enviouswispr.com/images/authors/saurabh-vaish.jpg",
+  "worksFor": {
+    "@type": "Organization",
+    "name": "Envious Labs LLC",
+    "url": "https://enviouslabs.co"
+  },
+  "sameAs": [
+    "https://x.com/saurabhav88",
+    "https://www.linkedin.com/in/saurabhvaish/",
+    "https://github.com/saurabhav88"
+  ]
+});
+
+const jsonLdWebSite = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "EnviousWispr",
+  "url": "https://enviouswispr.com/",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Envious Labs LLC",
+    "url": "https://enviouslabs.co"
+  }
 });
 
 const jsonLdFaq = JSON.stringify({
@@ -107,6 +164,8 @@ const jsonLdFaq = JSON.stringify({
   <Fragment slot="head">
     <script type="application/ld+json" set:html={jsonLd}></script>
     <script type="application/ld+json" set:html={jsonLdOrg}></script>
+    <script type="application/ld+json" set:html={jsonLdPerson}></script>
+    <script type="application/ld+json" set:html={jsonLdWebSite}></script>
     <script type="application/ld+json" set:html={jsonLdFaq}></script>
   </Fragment>
 
@@ -149,7 +208,7 @@ const jsonLdFaq = JSON.stringify({
       </div>
 
       <h1>Talk naturally. <br/>Paste perfectly.</h1>
-      <p class="hero-sub">The fastest way to turn your voice into polished text on Mac. Private by design: your voice never leaves your device.</p>
+      <p class="hero-sub">Free private AI dictation for macOS. The fastest way to turn your voice into polished text on Mac. On-device, on Apple Silicon, your voice never leaves your device.</p>
 
       <div class="hero-ctas reveal" style="--i:3">
         <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="btn-primary">

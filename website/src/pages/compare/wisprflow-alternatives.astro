@@ -1,0 +1,369 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const siteUrl = 'https://enviouswispr.com';
+
+const articleJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "WisprFlow Alternatives for Mac: 9 Free and On-Device Options",
+  "description": "Looking for a WisprFlow alternative on Mac? Nine options compared on price, privacy, offline support, and use case. Free and on-device picks lead the list.",
+  "url": `${siteUrl}/compare/wisprflow-alternatives/`,
+  "image": `${siteUrl}/images/og/wisprflow.png`,
+  "datePublished": "2026-05-15",
+  "dateModified": "2026-05-15",
+  "author": {
+    "@type": "Person",
+    "name": "Saurabh Vaish",
+    "url": `${siteUrl}/authors/saurabh-vaish/`,
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Envious Labs",
+    "url": siteUrl,
+  },
+  "isPartOf": {
+    "@type": "WebSite",
+    "url": siteUrl,
+    "name": "EnviousWispr",
+  },
+});
+
+const breadcrumbJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Home", "item": siteUrl },
+    { "@type": "ListItem", "position": 2, "name": "Comparisons", "item": `${siteUrl}/compare/` },
+    { "@type": "ListItem", "position": 3, "name": "WisprFlow Alternatives", "item": `${siteUrl}/compare/wisprflow-alternatives/` },
+  ],
+});
+
+const alternatives = [
+  {
+    rank: 1,
+    name: "EnviousWispr",
+    slug: "/",
+    badge: "Editor's pick",
+    price: "Free",
+    privacy: "On-device, Apple Silicon",
+    bestFor: "Anyone who wants WisprFlow's real-time push-to-talk feel without a subscription or cloud upload.",
+    pros: [
+      "Free, no subscription, no account",
+      "Audio never leaves your Mac (transcription is fully on-device on Apple Silicon)",
+      "AI polish defaults to Apple Intelligence on-device; optional BYOK for OpenAI or Gemini",
+      "Works offline on a plane or in a basement",
+      "Source-available under BSL 1.1 on GitHub, so you can verify every privacy claim",
+    ],
+    cons: [
+      "macOS 14+ on Apple Silicon only. No Windows, no Linux, no Intel Mac, no iOS/Android",
+      "WisprFlow is more feature-rich today: snippets, backtrack, per-app tones, command mode, syntax awareness",
+      "English by default via Parakeet; 90+ languages available by switching the backend to WhisperKit",
+    ],
+    cta: { label: "Download EnviousWispr Free", href: "https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" },
+    deepLink: { label: "Full EnviousWispr vs WisprFlow comparison", href: "/compare/wisprflow/" },
+  },
+  {
+    rank: 2,
+    name: "Superwhisper",
+    slug: "/compare/superwhisper/",
+    price: "Free trial, then $8.49/mo or $84/yr",
+    privacy: "On-device by default",
+    bestFor: "Power users who want configurable models and don't mind a subscription.",
+    pros: [
+      "On-device Whisper-based transcription",
+      "Multiple model sizes and language packs",
+      "Optional BYOK cloud cleanup",
+      "Active development on the Mac",
+    ],
+    cons: [
+      "Paid after the trial. WisprFlow refugees who switched for the price feel that",
+      "Closed source. You take the privacy claim on faith",
+      "Cleanup quality varies by chosen model",
+    ],
+  },
+  {
+    rank: 3,
+    name: "VoiceInk",
+    slug: "/compare/voiceink/",
+    price: "Free",
+    privacy: "On-device, open-source community fork",
+    bestFor: "Open-source-leaning users who want a free, on-device option and are comfortable with a less polished experience than WisprFlow.",
+    pros: [
+      "Free and open-source",
+      "On-device Whisper backend",
+      "Active community",
+    ],
+    cons: [
+      "Polish and convenience features lag the commercial apps",
+      "Less reliable as a daily-driver replacement for WisprFlow",
+    ],
+  },
+  {
+    rank: 4,
+    name: "MacWhisper",
+    slug: "/compare/macwhisper/",
+    price: "Free; Pro $59 one-time",
+    privacy: "On-device Whisper",
+    bestFor: "Transcribing audio and video files, not real-time push-to-talk dictation.",
+    pros: [
+      "Excellent for batch-transcribing existing audio files",
+      "On-device Whisper, no cloud",
+      "One-time price",
+    ],
+    cons: [
+      "Not a system-wide hotkey dictation tool. If you want WisprFlow's real-time PTT feel, this is the wrong category",
+      "No AI polish layer",
+    ],
+  },
+  {
+    rank: 5,
+    name: "Willow Voice",
+    slug: "/compare/willow-voice/",
+    price: "Subscription, see willowvoice.com",
+    privacy: "Cloud-first",
+    bestFor: "Users who want a polished commercial product and are fine with cloud transcription.",
+    pros: [
+      "Marketed strongly around accessibility and hands-free use",
+      "Cross-platform reach",
+    ],
+    cons: [
+      "Cloud architecture. Your audio leaves your device",
+      "Subscription priced similar to WisprFlow",
+    ],
+  },
+  {
+    rank: 6,
+    name: "Apple Dictation",
+    slug: "/compare/apple-dictation/",
+    price: "Free, built-in",
+    privacy: "Mostly on-device; enhanced features use cloud",
+    bestFor: "Users who only need occasional dictation and don't want to install another app.",
+    pros: [
+      "Already on your Mac",
+      "Zero install effort",
+      "Apple Intelligence integration on supported Macs",
+    ],
+    cons: [
+      "No AI polish or grammar repair",
+      "No filler-word removal",
+      "Enhanced dictation features still rely on cloud round-trips on some macOS versions",
+    ],
+  },
+  {
+    rank: 7,
+    name: "whisper.cpp / OpenAI Whisper",
+    slug: "/compare/whisper-cpp/",
+    price: "Free, open source",
+    privacy: "Local CLI",
+    bestFor: "Developers who want a library or CLI, not a Mac app.",
+    pros: [
+      "Fully local",
+      "Free and open-source",
+      "Highly customizable",
+    ],
+    cons: [
+      "Not a consumer app. You build the dictation flow yourself",
+      "No global hotkey, no paste-to-app, no UI",
+    ],
+  },
+  {
+    rank: 8,
+    name: "Otter.ai",
+    slug: "/compare/otter-ai/",
+    price: "Free tier; Pro $8.33/mo and up",
+    privacy: "Cloud",
+    bestFor: "Meeting transcription and team note-sharing, not personal dictation.",
+    pros: [
+      "Strong meeting-recording features",
+      "Team and collaboration features",
+      "Polished web experience",
+    ],
+    cons: [
+      "Built for meetings, not real-time dictation. Wrong category for WisprFlow refugees",
+      "Cloud architecture",
+    ],
+  },
+  {
+    rank: 9,
+    name: "Dragon Dictate / Dragon NaturallySpeaking",
+    slug: "/compare/dragon/",
+    price: "Legacy pricing, Mac version discontinued",
+    privacy: "Local",
+    bestFor: "Long-form professional dictation in legal, medical, or accessibility-mandated contexts. Mostly historical at this point on Mac.",
+    pros: [
+      "Decades of accuracy tuning for long-form dictation",
+      "Industry footprint in legal and medical",
+    ],
+    cons: [
+      "Mac version is discontinued. Nuance pulled it",
+      "Heavy footprint, dated UI",
+      "No modern Apple Silicon optimization",
+    ],
+  },
+];
+
+const faqJsonLd = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What is the best free alternative to WisprFlow on Mac?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "EnviousWispr is the closest free, on-device equivalent to WisprFlow's real-time push-to-talk dictation on macOS. It runs fully on Apple Silicon, requires no account, and works offline. Superwhisper and VoiceInk are also worth a look. Superwhisper is paid; VoiceInk is free and open source but less polished."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Why would someone leave WisprFlow?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Three reasons come up most often: the $12 to $15 per month subscription feels steep for personal use; the cloud architecture sends every dictation to a remote server, which is a deal-breaker for privacy-sensitive work; and some users want an app that works offline, which WisprFlow does not."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is WisprFlow private?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "WisprFlow's own privacy page states that transcription always happens in the cloud. Audio leaves your device to be transcribed on WisprFlow's servers. Whether that counts as 'private' depends on your threshold. If you want audio to stay on your machine, you need an on-device alternative."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What features does WisprFlow have that on-device alternatives don't?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "WisprFlow has shipped snippets, backtrack, per-app tone presets, command mode, whisper mode, syntax awareness, and cross-platform support (Mac, Windows, iPhone, Android). On-device alternatives like EnviousWispr have a smaller feature set today but win on price, privacy, and offline capability. The gap is narrowing as on-device polish models improve."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I run WisprFlow offline?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. WisprFlow's transcription is cloud-based. If you lose internet, dictation stops working. If offline support matters to you, choose an on-device alternative."
+      }
+    },
+  ],
+});
+---
+
+<BaseLayout
+  title="WisprFlow Alternatives for Mac: 9 Free and On-Device Options (2026)"
+  description="Looking for a WisprFlow alternative? Nine Mac dictation apps compared on price, privacy, offline support, and real use case. Free and on-device options lead the list."
+  activePage="compare"
+  canonicalPath="/compare/wisprflow-alternatives/"
+  ogImage="/images/og/wisprflow.png"
+>
+  <Fragment slot="head">
+    <script type="application/ld+json" set:html={articleJsonLd}></script>
+    <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
+    <script type="application/ld+json" set:html={faqJsonLd}></script>
+  </Fragment>
+
+<style>
+.alt-hero { padding: 100px 0 32px; text-align: center; }
+.alt-hero h1 { font-size: 44px; font-weight: 800; letter-spacing: -2px; line-height: 1.1; color: var(--text); margin-bottom: 14px; }
+.alt-hero .alt-lede { font-size: 18px; color: var(--text-2); max-width: 660px; margin: 0 auto 16px; line-height: 1.6; }
+.alt-hero .alt-meta { font-size: 13px; color: var(--text-3); margin-bottom: 24px; }
+.alt-hero .alt-cta {
+  display: inline-flex; align-items: center; gap: 8px;
+  margin-top: 8px; padding: 12px 24px; border-radius: 100px;
+  font-size: 15px; font-weight: 700;
+  background: var(--accent); color: #fff; text-decoration: none;
+  transition: background 0.15s;
+}
+.alt-hero .alt-cta:hover { background: var(--accent-hover); }
+
+.alt-intro { max-width: 760px; margin: 0 auto; padding: 0 20px 48px; font-size: 16px; line-height: 1.75; color: var(--text); }
+.alt-intro p { margin-bottom: 16px; }
+
+.alt-item { max-width: 800px; margin: 0 auto 56px; padding: 32px; background: #fff; border: 1px solid var(--border-hover); border-radius: var(--radius-card); }
+.alt-item-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.alt-rank { font-size: 28px; font-weight: 800; color: var(--accent); line-height: 1; }
+.alt-name { font-size: 26px; font-weight: 800; letter-spacing: -1px; color: var(--text); margin: 0; }
+.alt-badge { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; padding: 4px 10px; border-radius: 100px; background: rgba(124,58,237,0.12); color: var(--accent); }
+.alt-meta-row { font-size: 13px; color: var(--text-3); margin-bottom: 16px; }
+.alt-meta-row strong { color: var(--text-2); font-weight: 600; }
+.alt-best-for { font-size: 16px; color: var(--text); line-height: 1.6; margin-bottom: 20px; padding: 16px; background: rgba(124,58,237,0.04); border-left: 3px solid var(--accent); border-radius: 4px; }
+.alt-pros-cons { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 20px; }
+@media (max-width: 640px) { .alt-pros-cons { grid-template-columns: 1fr; } }
+.alt-pros h4, .alt-cons h4 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; margin: 0 0 10px; }
+.alt-pros h4 { color: #00804a; }
+.alt-cons h4 { color: #c0222e; }
+.alt-pros ul, .alt-cons ul { margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.55; color: var(--text); }
+.alt-pros li, .alt-cons li { margin-bottom: 6px; }
+.alt-cta-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+.alt-cta-row a { display: inline-flex; align-items: center; gap: 6px; padding: 10px 18px; border-radius: 100px; font-size: 14px; font-weight: 600; text-decoration: none; transition: background 0.15s, border-color 0.15s; }
+.alt-cta-row .primary { background: var(--accent); color: #fff; }
+.alt-cta-row .primary:hover { background: var(--accent-hover); }
+.alt-cta-row .secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+.alt-cta-row .secondary:hover { background: rgba(124,58,237,0.05); }
+
+.alt-bottom-cta { text-align: center; padding: 48px 20px 96px; max-width: 720px; margin: 0 auto; }
+.alt-bottom-cta h2 { font-size: 30px; font-weight: 800; letter-spacing: -1px; color: var(--text); margin-bottom: 12px; }
+.alt-bottom-cta p { font-size: 16px; color: var(--text-2); margin-bottom: 24px; }
+</style>
+
+<section class="alt-hero">
+  <div class="container">
+    <h1>WisprFlow alternatives for Mac in 2026</h1>
+    <p class="alt-lede">Nine ways to get WisprFlow's real-time, push-to-talk dictation on your Mac, ranked by how well they fit a WisprFlow refugee's actual needs: free, private, fast, and works offline.</p>
+    <p class="alt-meta">Updated 2026-05-15. Sources verified from each tool's official website.</p>
+    <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="alt-cta" data-download-source="alternatives-hero">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Try our #1 pick, EnviousWispr, free
+    </a>
+  </div>
+</section>
+
+<div class="alt-intro">
+  <p>WisprFlow popularized the keep-the-hotkey-pressed-and-just-talk workflow on Mac. It works well. The friction is the $12-15 per month subscription, the cloud architecture that sends every dictation to a server, and the lack of offline support. If you came here looking for an alternative, you are probably trying to solve at least one of those three.</p>
+  <p>This list ranks alternatives by how directly they replace WisprFlow's real-time push-to-talk dictation use case. Tools built for a different category (file transcription, meeting notes) are included but ranked lower so you know to skip them if you want a true WisprFlow replacement.</p>
+  <p>Disclosure: EnviousWispr is the tool we make. The ranking is honest about what WisprFlow still does better. We are not feature-parity yet on snippets, backtrack, or per-app tones. We are ahead on price, privacy, and offline.</p>
+</div>
+
+{alternatives.map(alt => (
+  <article class="alt-item" id={`alt-${alt.rank}`}>
+    <div class="alt-item-head">
+      <span class="alt-rank">#{alt.rank}</span>
+      <h2 class="alt-name">{alt.name}</h2>
+      {alt.badge && <span class="alt-badge">{alt.badge}</span>}
+    </div>
+    <div class="alt-meta-row">
+      <strong>Price:</strong> {alt.price} &nbsp;·&nbsp; <strong>Privacy:</strong> {alt.privacy}
+    </div>
+    <p class="alt-best-for"><strong>Best for:</strong> {alt.bestFor}</p>
+    <div class="alt-pros-cons">
+      <div class="alt-pros">
+        <h4>Strengths</h4>
+        <ul>{alt.pros.map(p => <li>{p}</li>)}</ul>
+      </div>
+      <div class="alt-cons">
+        <h4>Trade-offs</h4>
+        <ul>{alt.cons.map(c => <li>{c}</li>)}</ul>
+      </div>
+    </div>
+    {(alt.cta || alt.deepLink) && (
+      <div class="alt-cta-row">
+        {alt.cta && <a href={alt.cta.href} class="primary" data-download-source={`alternatives-rank-${alt.rank}`}>{alt.cta.label}</a>}
+        {alt.deepLink && <a href={alt.deepLink.href} class="secondary">{alt.deepLink.label} &rarr;</a>}
+        {!alt.cta && alt.slug && alt.slug !== '/' && <a href={alt.slug} class="secondary">Full {alt.name} comparison &rarr;</a>}
+      </div>
+    )}
+  </article>
+))}
+
+<section class="alt-bottom-cta">
+  <h2>Try the free, private, on-device pick</h2>
+  <p>EnviousWispr keeps your audio on your Mac, takes no subscription, and works offline. No account, no signup, no friction.</p>
+  <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="alt-cta" data-download-source="alternatives-bottom">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    Download EnviousWispr Free
+  </a>
+</section>
+
+</BaseLayout>

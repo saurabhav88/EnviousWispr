@@ -73,6 +73,18 @@ const itemListJsonLd = JSON.stringify({
 .compare-hero h1 { font-size: 48px; font-weight: 800; letter-spacing: -2.5px; line-height: 1.1; color: var(--text); margin-bottom: 14px; }
 .compare-hero p { font-size: 18px; color: var(--text-2); max-width: 560px; margin: 0 auto; line-height: 1.6; }
 .compare-hero .compare-intro { font-size: 16px; max-width: 720px; margin-top: 24px; text-align: left; }
+.compare-hero-cta {
+  display: inline-flex; align-items: center; gap: 8px;
+  margin-top: 20px; padding: 12px 24px; border-radius: 100px;
+  font-size: 15px; font-weight: 700;
+  background: var(--accent); color: #fff; text-decoration: none;
+  transition: background 0.15s;
+}
+.compare-hero-cta:hover { background: var(--accent-hover); }
+.compare-hero-cta-sub {
+  display: block; margin-top: 10px;
+  font-size: 13px; color: var(--text-3);
+}
 
 .compare-group { margin-bottom: 48px; }
 .compare-group-label {
@@ -86,6 +98,8 @@ const itemListJsonLd = JSON.stringify({
   display: block; padding: 24px; border-radius: var(--radius-card);
   border: 1px solid var(--border-hover); background: #fff;
   text-decoration: none; transition: border-color 0.15s, box-shadow 0.15s;
+  min-height: 158px; /* reserve height to prevent CLS as cards lazy-render */
+  contain: layout style;
 }
 .compare-card:hover {
   border-color: var(--accent); box-shadow: 0 2px 12px rgba(124,58,237,0.08);
@@ -98,6 +112,60 @@ const itemListJsonLd = JSON.stringify({
 }
 .compare-card-arrow {
   display: inline-block; margin-top: 12px; font-size: 13px; font-weight: 600; color: var(--accent);
+}
+
+/* Feature comparison table */
+.compare-table-section { padding: 24px 0 56px; }
+.compare-table-section h2 {
+  font-size: 28px; font-weight: 800; letter-spacing: -1px;
+  color: var(--text); margin-bottom: 10px; text-align: center;
+}
+.compare-table-section .compare-table-intro {
+  font-size: 15px; color: var(--text-2); margin-bottom: 24px;
+  text-align: center; max-width: 720px; margin-left: auto; margin-right: auto;
+}
+.compare-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.compare-table {
+  width: 100%; border-collapse: collapse;
+  background: #fff; border-radius: var(--radius-card);
+  border: 1px solid var(--border-hover); overflow: hidden;
+  font-size: 14px;
+}
+.compare-table th, .compare-table td {
+  padding: 12px 14px; text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.compare-table thead th {
+  background: rgba(124,58,237,0.04);
+  font-size: 13px; font-weight: 700; color: var(--text);
+  position: sticky; top: 0;
+}
+.compare-table thead th.tool-ew {
+  background: rgba(124,58,237,0.12);
+  color: var(--accent);
+}
+.compare-table tbody tr:last-child td { border-bottom: none; }
+.compare-table tbody td:first-child {
+  font-weight: 600; color: var(--text);
+  background: rgba(0,0,0,0.015);
+  min-width: 130px;
+}
+.compare-table td.col-ew { background: rgba(124,58,237,0.05); font-weight: 500; }
+.compare-table td .yes { color: #00804a; font-weight: 700; }
+.compare-table td .no { color: #c0222e; font-weight: 600; }
+.compare-table td .partial { color: #b87a00; font-weight: 600; }
+.compare-table-foot {
+  font-size: 12px; color: var(--text-3); margin-top: 12px;
+  text-align: center;
+}
+@media (max-width: 760px) {
+  .compare-table { min-width: 720px; }
+  .compare-table-wrap::after {
+    content: '← scroll →';
+    display: block; text-align: center;
+    font-size: 11px; color: var(--text-3); padding: 6px 0;
+  }
 }
 
 .compare-cta { text-align: center; padding: 48px 0 80px; }
@@ -115,9 +183,120 @@ const itemListJsonLd = JSON.stringify({
   <div class="container">
     <h1>Free dictation software for Mac, compared</h1>
     <p>Honest, side-by-side breakdowns of EnviousWispr against the 11 major Mac dictation apps people actually use.</p>
+    <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="compare-hero-cta" data-download-source="compare-hero">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download EnviousWispr Free
+    </a>
+    <span class="compare-hero-cta-sub">macOS 14+, Apple Silicon. No account. Works offline.</span>
     <p class="compare-intro">Mac dictation tools split into three groups: cloud-based services that send your audio to a server (<a href="/compare/wisprflow/">WisprFlow</a>, <a href="/compare/otter-ai/">Otter.ai</a>, <a href="/compare/notta/">Notta</a>, <a href="/compare/google-docs-voice-typing/">Google Docs Voice Typing</a>), on-device apps that keep audio local (<a href="/compare/superwhisper/">Superwhisper</a>, <a href="/compare/macwhisper/">MacWhisper</a>, <a href="/compare/voiceink/">VoiceInk</a>, <a href="/compare/willow-voice/">Willow Voice</a>), and legacy or developer-focused tools (<a href="/compare/dragon/">Dragon</a>, <a href="/compare/apple-dictation/">Apple Dictation</a>, <a href="/compare/whisper-cpp/">whisper.cpp</a>). Pricing ranges from free to $144 a year. Each comparison below covers price, accuracy, latency, privacy architecture, and the specific use case the tool fits best, so you can pick the right one without trying all 11.</p>
   </div>
 </div>
+
+<section class="compare-table-section" aria-label="Feature comparison table">
+  <div class="container">
+    <h2>Mac dictation apps at a glance</h2>
+    <p class="compare-table-intro">Side-by-side on the criteria that actually matter: price, where audio is processed, offline support, and language coverage. Sources verified from each tool's official site.</p>
+    <div class="compare-table-wrap">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th scope="col">Feature</th>
+            <th scope="col" class="tool-ew">EnviousWispr</th>
+            <th scope="col">WisprFlow</th>
+            <th scope="col">Superwhisper</th>
+            <th scope="col">MacWhisper</th>
+            <th scope="col">Apple Dictation</th>
+            <th scope="col">Dragon</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Price</td>
+            <td class="col-ew"><span class="yes">Free</span></td>
+            <td>Free 2k words/wk; <strong>$12-15/mo</strong> Pro</td>
+            <td>Free trial; <strong>$8.49/mo</strong></td>
+            <td>Free; <strong>$59</strong> one-time Pro</td>
+            <td>Free (built-in)</td>
+            <td>$200 one-time (discontinued for Mac)</td>
+          </tr>
+          <tr>
+            <td>Audio stays on Mac</td>
+            <td class="col-ew"><span class="yes">Yes, fully on-device</span></td>
+            <td><span class="no">No, cloud transcription</span></td>
+            <td><span class="yes">Yes</span></td>
+            <td><span class="yes">Yes</span></td>
+            <td><span class="partial">Mostly (enhanced uses cloud)</span></td>
+            <td><span class="yes">Yes</span></td>
+          </tr>
+          <tr>
+            <td>Works offline</td>
+            <td class="col-ew"><span class="yes">Yes</span></td>
+            <td><span class="no">No</span></td>
+            <td><span class="yes">Yes</span></td>
+            <td><span class="yes">Yes</span></td>
+            <td><span class="partial">Enhanced needs internet</span></td>
+            <td><span class="yes">Yes</span></td>
+          </tr>
+          <tr>
+            <td>Account required</td>
+            <td class="col-ew"><span class="yes">No</span></td>
+            <td><span class="no">Yes, email signup</span></td>
+            <td><span class="yes">No</span></td>
+            <td><span class="yes">No</span></td>
+            <td><span class="yes">No</span></td>
+            <td><span class="yes">No</span></td>
+          </tr>
+          <tr>
+            <td>Languages</td>
+            <td class="col-ew">English (Parakeet) + 90+ via WhisperKit</td>
+            <td>100+ languages</td>
+            <td>100+ via Whisper</td>
+            <td>100+ via Whisper</td>
+            <td>~60</td>
+            <td>~6</td>
+          </tr>
+          <tr>
+            <td>Use case</td>
+            <td class="col-ew">Real-time push-to-talk dictation anywhere on macOS</td>
+            <td>Real-time PTT dictation, cross-platform</td>
+            <td>PTT dictation; configurable models</td>
+            <td>Audio file transcription, not live PTT</td>
+            <td>Built-in OS dictation</td>
+            <td>Long-form professional dictation (Mac version discontinued)</td>
+          </tr>
+          <tr>
+            <td>AI polish (cleanup)</td>
+            <td class="col-ew"><span class="yes">Yes, on-device Apple Intelligence default; BYOK cloud optional</span></td>
+            <td><span class="yes">Yes, cloud</span></td>
+            <td><span class="partial">Optional GPT cleanup, BYOK</span></td>
+            <td><span class="no">No</span></td>
+            <td><span class="no">No</span></td>
+            <td><span class="no">No</span></td>
+          </tr>
+          <tr>
+            <td>Source-available</td>
+            <td class="col-ew"><span class="yes">Yes, BSL on GitHub</span></td>
+            <td><span class="no">No, closed</span></td>
+            <td><span class="no">No, closed</span></td>
+            <td><span class="no">No, closed</span></td>
+            <td><span class="no">No, closed</span></td>
+            <td><span class="no">No, closed</span></td>
+          </tr>
+          <tr>
+            <td>Apple Silicon optimized</td>
+            <td class="col-ew"><span class="yes">Yes, Neural Engine</span></td>
+            <td>n/a (cloud)</td>
+            <td><span class="yes">Yes</span></td>
+            <td><span class="yes">Yes</span></td>
+            <td><span class="yes">Yes</span></td>
+            <td><span class="no">No, Intel-era</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="compare-table-foot">Detailed breakdowns of each comparison live below. Sources verified 2026-04 and re-checked 2026-05-15.</p>
+  </div>
+</section>
 
 <div class="container">
   <div class="compare-group">
