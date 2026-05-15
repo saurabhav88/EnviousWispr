@@ -375,11 +375,10 @@ public final class SettingsManager {
     cancelModifiers = NSEvent.ModifierFlags(rawValue: savedCancelModRaw ?? 0)
 
     let savedToggleKeyCode = defaults.object(forKey: "toggleKeyCode") as? Int
-    toggleKeyCode = UInt16(savedToggleKeyCode ?? 49)
+    toggleKeyCode = UInt16(savedToggleKeyCode ?? Int(ModifierKeyCodes.rightOption))
 
     let savedToggleModRaw = defaults.object(forKey: "toggleModifiersRaw") as? UInt
-    toggleModifiers = NSEvent.ModifierFlags(
-      rawValue: savedToggleModRaw ?? NSEvent.ModifierFlags.control.rawValue)
+    toggleModifiers = NSEvent.ModifierFlags(rawValue: savedToggleModRaw ?? 0)
 
     // PTT migration: old modifier-only → new key+modifier format
     let legacyPTTModRaw = defaults.object(forKey: "pushToTalkModifierRaw") as? UInt

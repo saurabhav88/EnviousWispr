@@ -1,3 +1,4 @@
+import EnviousWisprServices
 import SwiftUI
 
 /// Global hotkey configuration.
@@ -13,8 +14,8 @@ struct ShortcutsSettingsView: View {
           HotkeyRecorderView(
             keyCode: $state.settings.toggleKeyCode,
             modifiers: $state.settings.toggleModifiers,
-            defaultKeyCode: 49,
-            defaultModifiers: .control,
+            defaultKeyCode: ModifierKeyCodes.rightOption,
+            defaultModifiers: [],
             label: "Shortcut"
           )
         }
