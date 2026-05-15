@@ -893,7 +893,7 @@ def scan(toggle=False):
         ("Transcription",
          ["Stop recording on silence", "Remove filler words"],
          [], ["engine", "environment"], []),
-        ("Microphone", ["Noise suppression"], ["Input"], [], []),
+        ("Microphone", [], ["Input"], [], []),
         ("Shortcuts", [], [], [], []),
         ("AI Polish", ["Deep reasoning"], ["Provider", "Model"],
          ["style"], ["Save", "Clear", "Refresh", "Copy Diagnostics"]),

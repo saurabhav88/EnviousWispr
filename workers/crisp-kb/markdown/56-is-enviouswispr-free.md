@@ -8,7 +8,6 @@ Yes. EnviousWispr is currently **completely free** with all features included.
 * All recording modes (push-to-talk, toggle, hands-free)
 * Unlimited transcription history
 * All environment presets and VAD auto-stop
-* Noise suppression
 * Fully customizable hotkeys
 
 ### No Subscription

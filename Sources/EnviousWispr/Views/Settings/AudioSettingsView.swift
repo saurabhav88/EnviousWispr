@@ -41,20 +41,6 @@ struct AudioSettingsView: View {
         FrozenPerRecordingFootnote()
       }
 
-      BrandedSection(header: "Audio Processing") {
-        BrandedRow(showDivider: false) {
-          VStack(alignment: .leading, spacing: 4) {
-            Toggle("Noise suppression", isOn: $state.settings.noiseSuppression)
-              .toggleStyle(BrandedToggleStyle())
-            Text(
-              "Reduces background noise during recording using Apple Voice Processing. May not work with all audio devices."
-            )
-            .font(.stHelper)
-            .foregroundStyle(.stTextTertiary)
-          }
-        }
-      }
-
       BrandedSection(header: "Microphone Readiness") {
         BrandedRow {
           Picker("Keep microphone ready", selection: $state.settings.warmEnginePolicy) {

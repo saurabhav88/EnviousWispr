@@ -450,7 +450,7 @@ public final class SettingsManager {
     }()
     languageMode = resolvedLanguageMode
     selectedInputDeviceUID = defaults.string(forKey: "selectedInputDeviceUID") ?? ""
-    noiseSuppression = defaults.object(forKey: "noiseSuppression") as? Bool ?? false
+    noiseSuppression = false
     preferredInputDeviceIDOverride = defaults.string(forKey: "preferredInputDeviceIDOverride") ?? ""
     environmentPreset =
       EnvironmentPreset(rawValue: defaults.string(forKey: "environmentPreset") ?? "") ?? .normal
@@ -461,6 +461,11 @@ public final class SettingsManager {
     // next load is clean. Idempotent: removeObject on an absent key is a no-op.
     defaults.removeObject(forKey: "writingStylePreset")
     defaults.removeObject(forKey: "customSystemPrompt")
+    // Migration (issue #734, 2026-05-15): noise-suppression toggle removed. Apple Voice
+    // Processing was hostile to dictation accuracy and engine stability. Drop the persisted
+    // key so existing users with `noiseSuppression=true` are migrated to raw audio on first
+    // launch after upgrade. Idempotent: removeObject on an absent key is a no-op.
+    defaults.removeObject(forKey: "noiseSuppression")
     useStreamingASR = defaults.object(forKey: "useStreamingASR") as? Bool ?? false
     warmEnginePolicy =
       WarmEnginePolicy(

@@ -843,10 +843,10 @@ def A6_settings_storm(**_) -> dict:
       LIMBS — their copy explicitly says "Changes made during a recording
       apply to the next recording." So they do not exercise the live-sync
       hot path and are not what this scenario is for.
-    - `noiseSuppression` is the heaviest live-sync (cancels recording +
-      rebuilds engine), but its deliberate user-visible side effect is
-      cancelling the in-flight recording. That belongs in a separate
-      scenario, not the settings-storm-without-cancel claim here.
+    - `noiseSuppression` was the heaviest live-sync (cancelled recording +
+      rebuilt engine), but the toggle was removed in #734 because the rebuild
+      path was structurally hostile to the heart and Apple Voice Processing
+      was empirically unhelpful for ASR. No longer relevant to this scenario.
     - Pre-state is captured before the storm and restored after, so
       successive runs do not accumulate side effects on the user's
       configured custom-words / filler-removal preferences.
