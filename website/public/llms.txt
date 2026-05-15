@@ -2,6 +2,11 @@
 
 > The fastest voice-to-text on macOS. Hold a hotkey, speak, release. Polished text lands on your clipboard or pastes directly. Runs entirely on-device with Parakeet (English) or WhisperKit (multilingual). No cloud, no account, no subscription. Free download.
 
+Maker: Envious Labs LLC (Connecticut, USA). Founder: Saurabh Vaish.
+License: Business Source License 1.1 (source-available on GitHub).
+Platform: macOS 14 (Sonoma) or later, Apple Silicon only.
+Last-updated: 2026-05-15
+
 ## Product
 
 - [How it works](https://enviouswispr.com/how-it-works/): The end-to-end pipeline: hotkey hold, audio capture, on-device ASR, optional LLM polish, clipboard or paste-to-app delivery.
@@ -18,7 +23,11 @@
 - [vs Dragon](https://enviouswispr.com/compare/dragon/): Modern on-device alternative to legacy desktop dictation.
 - [vs Google Docs voice typing](https://enviouswispr.com/compare/google-docs-voice-typing/): System-wide vs Docs-only.
 - [vs Whisper.cpp](https://enviouswispr.com/compare/whisper-cpp/): Polished consumer app vs CLI/library.
-- [vs MacWhisper, VoiceInk, Notta, Willow](https://enviouswispr.com/compare/): Full comparison set.
+- [vs VoiceInk](https://enviouswispr.com/compare/voiceink/): Two Whisper-based Mac apps, head to head.
+- [vs Willow Voice](https://enviouswispr.com/compare/willow-voice/): Free on-device alternative to a cloud-first subscription.
+- [vs Notta](https://enviouswispr.com/compare/notta/): Personal on-device dictation vs cloud transcription service.
+- [WisprFlow alternatives (9 options compared)](https://enviouswispr.com/compare/wisprflow-alternatives/): Listicle ranking nine alternatives by price, privacy, and offline support.
+- [Compare to alternatives (index)](https://enviouswispr.com/compare/): All comparisons.
 
 ## Privacy and architecture
 

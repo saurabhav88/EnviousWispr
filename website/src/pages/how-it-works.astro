@@ -6,8 +6,8 @@ const siteUrl = 'https://enviouswispr.com';
 const webPageJsonLd = JSON.stringify({
   "@context": "https://schema.org",
   "@type": "WebPage",
-  "name": "Under the Hood: How EnviousWispr Turns Voice Into Text",
-  "description": "Technical walkthrough of the EnviousWispr pipeline: audio capture, on-device transcription on Apple Silicon, AI polish, and paste in under two seconds.",
+  "name": "On-Device Speech to Text on macOS: How EnviousWispr Works",
+  "description": "On-device dictation on Apple Silicon. Zero audio uploaded. About two seconds from voice to paste. See how the EnviousWispr pipeline records, transcribes, polishes, and pastes without sending your voice to a server.",
   "url": `${siteUrl}/how-it-works/`,
   "isPartOf": {
     "@type": "WebSite",
@@ -29,76 +29,97 @@ const breadcrumbJsonLd = JSON.stringify({
     {
       "@type": "ListItem",
       "position": 2,
-      "name": "Under the Hood",
+      "name": "How It Works",
       "item": `${siteUrl}/how-it-works/`,
     },
   ],
 });
 
-const howToJsonLd = JSON.stringify({
+const faqJsonLd = JSON.stringify({
   "@context": "https://schema.org",
-  "@type": "HowTo",
-  "name": "How to Dictate Text on macOS with EnviousWispr",
-  "description": "Use EnviousWispr to turn speech into polished, paste-ready text on your Mac. Everything runs on-device using Apple Silicon.",
-  "totalTime": "PT5M",
-  "tool": [
-    { "@type": "HowToTool", "name": "EnviousWispr for macOS" },
-    { "@type": "HowToTool", "name": "Microphone (built-in or external)" },
-  ],
-  "supply": [
-    { "@type": "HowToSupply", "name": "Mac with Apple Silicon (M1 or later)" },
-    { "@type": "HowToSupply", "name": "macOS 14 Sonoma or later" },
-  ],
-  "step": [
+  "@type": "FAQPage",
+  "mainEntity": [
     {
-      "@type": "HowToStep",
-      "position": 1,
-      "name": "Download and install EnviousWispr",
-      "text": "Download the free .dmg from the EnviousWispr website or GitHub releases page. Drag the app to Applications and launch it. Grant microphone access when macOS prompts you.",
-      "url": `${siteUrl}/how-it-works/#step-install`,
+      "@type": "Question",
+      "name": "Does EnviousWispr work without internet?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. All speech recognition runs on-device using Apple Silicon and the Parakeet or WhisperKit model. Your audio never leaves your Mac. AI polish is optional. The default polish provider is Apple Intelligence, which is also on-device on supported Macs. If you bring your own OpenAI or Gemini API key, only the transcribed text (not the audio) is sent to that provider for polishing."
+      }
     },
     {
-      "@type": "HowToStep",
-      "position": 2,
-      "name": "Hold the hotkey and speak",
-      "text": "Press and hold your designated hotkey, then talk naturally. No need to slow down or speak formally. Just say what you mean.",
-      "url": `${siteUrl}/how-it-works/#step-record`,
+      "@type": "Question",
+      "name": "What Mac do I need to run EnviousWispr?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "EnviousWispr requires macOS 14 Sonoma or later, running on an Apple Silicon Mac (M1, M2, M3, M4 or newer). It does not run on Intel Macs. The Neural Engine on Apple Silicon is what makes on-device transcription fast enough to feel instant."
+      }
     },
     {
-      "@type": "HowToStep",
-      "position": 3,
-      "name": "Release to transcribe",
-      "text": "When you release the hotkey, EnviousWispr transcribes your speech on-device using Apple Silicon. Your audio never leaves your Mac. AI polish cleans up grammar and filler words automatically.",
-      "url": `${siteUrl}/how-it-works/#step-transcribe`,
+      "@type": "Question",
+      "name": "How fast is voice-to-text with EnviousWispr?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Typical dictation completes in under two seconds from the moment you stop speaking to the moment polished text pastes into your active app. Recording, transcription, and AI polish run in parallel rather than in sequence, which is why the perceived latency is sub-second on warm runs."
+      }
     },
     {
-      "@type": "HowToStep",
-      "position": 4,
-      "name": "Paste polished text",
-      "text": "Clean, polished text is pasted directly into whatever app you are using. Works in any text field, any app, without switching windows.",
-      "url": `${siteUrl}/how-it-works/#step-paste`,
+      "@type": "Question",
+      "name": "What is the difference between push-to-talk and hands-free mode?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Push-to-talk means you hold a hotkey while speaking and release to transcribe. It is the default and the most precise mode. Hands-free mode listens continuously and transcribes when you pause. It is useful when typing is not an option, for example during accessibility-driven dictation or when both hands are occupied."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does EnviousWispr send my voice or text anywhere?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Audio never leaves your Mac. Transcription is fully on-device. AI polish runs on-device by default through Apple Intelligence on supported Macs. If you opt into cloud polish by adding your own OpenAI or Gemini API key, only the transcribed text is sent to the provider you chose. No raw audio is ever uploaded."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Which languages does EnviousWispr support?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "The default Parakeet engine handles English. Switching the backend to WhisperKit unlocks 90+ languages. Both run on-device on Apple Silicon."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does EnviousWispr work in every app?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "EnviousWispr pastes into any macOS app that accepts text input. That includes Slack, VS Code, Gmail, Notion, Google Docs, Terminal, Messages, browser forms, and any other text field. There is no per-app configuration."
+      }
     },
   ],
 });
 ---
 
 <BaseLayout
-  title="Under the Hood: How EnviousWispr Turns Voice Into Text"
-  description="Technical walkthrough of the EnviousWispr pipeline: audio capture, on-device transcription on Apple Silicon, AI polish, and paste in under two seconds."
+  title="On-Device Speech to Text on macOS: How EnviousWispr Works"
+  description="On-device dictation on Apple Silicon. Zero audio uploaded. About two seconds from voice to paste. See how the EnviousWispr pipeline records, transcribes, polishes, and pastes without sending your voice to a server."
   activePage="how-it-works"
   canonicalPath="/how-it-works/"
 >
   <Fragment slot="head">
     <script type="application/ld+json" set:html={webPageJsonLd}></script>
     <script type="application/ld+json" set:html={breadcrumbJsonLd}></script>
-    <script type="application/ld+json" set:html={howToJsonLd}></script>
+    <script type="application/ld+json" set:html={faqJsonLd}></script>
   </Fragment>
 
 <style>
 /* ── Page Header ── */
-.page-header { padding: 120px 0 64px; text-align: center; position: relative; z-index: 1; }
-.page-header h1 { font-size: 60px; font-weight: 800; letter-spacing: -3px; line-height: 1.05; color: var(--text); margin-bottom: 16px; }
-.page-header-sub { font-size: 20px; font-weight: 400; color: var(--text-2); }
+.page-header { padding: 120px 0 32px; text-align: center; position: relative; z-index: 1; }
+.page-header h1 { font-size: 60px; font-weight: 800; letter-spacing: -3px; line-height: 1.05; color: var(--text); margin-bottom: 16px; max-width: 780px; margin-left: auto; margin-right: auto; }
+.page-header-sub { font-size: 20px; font-weight: 400; color: var(--text-2); max-width: 620px; margin: 0 auto; }
+.hero-trust-row { display: inline-flex; align-items: center; gap: 16px; margin-top: 18px; padding: 8px 18px; border: 1px solid var(--border-hover); border-radius: 100px; background: #fff; font-size: 13px; color: var(--text-2); flex-wrap: wrap; justify-content: center; }
+.hero-trust-row strong { color: var(--text); font-weight: 700; }
+.hero-trust-row .sep { width: 4px; height: 4px; border-radius: 50%; background: var(--text-3); }
+@media (max-width: 640px) { .hero-trust-row { display: flex; gap: 10px; font-size: 12px; } }
 
 /* ── Pipeline Steps ── */
 .steps-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
@@ -241,8 +262,15 @@ const howToJsonLd = JSON.stringify({
 <!-- Page Header -->
 <header class="page-header">
   <div class="container">
-    <h1 class="reveal">Under the Hood</h1>
-    <p class="page-header-sub reveal">The technical walkthrough. Four pipeline steps. Under two seconds.</p>
+    <h1 class="reveal">On-device, on Apple Silicon. Your voice never leaves your Mac.</h1>
+    <p class="page-header-sub reveal">Four pipeline steps. Zero audio uploaded. About two seconds from voice to paste.</p>
+    <div class="hero-trust-row reveal" aria-label="Privacy signals">
+      <span><strong>0</strong> audio uploaded</span>
+      <span class="sep" aria-hidden="true"></span>
+      <span><strong>~2s</strong> voice to paste</span>
+      <span class="sep" aria-hidden="true"></span>
+      <span>Free, on-device</span>
+    </div>
   </div>
 </header>
 
@@ -254,25 +282,25 @@ const howToJsonLd = JSON.stringify({
         <div class="step-number">Step 01</div>
         <div class="step-icon">🎙</div>
         <div class="step-title">Record</div>
-        <p class="step-desc">Press your hotkey and talk naturally. No need to slow down or speak formally — just say what you mean.</p>
+        <p class="step-desc">Press your hotkey and talk naturally. No need to slow down or speak formally. Just say what you mean.</p>
       </div>
       <div class="step-card reveal" id="step-record">
         <div class="step-number">Step 02</div>
         <div class="step-icon">⚡</div>
         <div class="step-title">Transcribe</div>
-        <p class="step-desc">AI on your Mac converts speech to text instantly. Everything runs locally — your voice never leaves your device.</p>
+        <p class="step-desc">AI on your Mac converts speech to text instantly. Everything runs locally. Your voice never leaves your device.</p>
       </div>
       <div class="step-card reveal" id="step-transcribe">
         <div class="step-number">Step 03</div>
         <div class="step-icon">✨</div>
         <div class="step-title">Polish</div>
-        <p class="step-desc">Grammar is fixed, filler words are removed, and your meaning is preserved — automatically, in the tone you choose.</p>
+        <p class="step-desc">Grammar is fixed, filler words are removed, and your meaning is preserved automatically, in the tone you choose.</p>
       </div>
       <div class="step-card reveal" id="step-paste">
         <div class="step-number">Step 04</div>
         <div class="step-icon">📋</div>
         <div class="step-title">Paste</div>
-        <p class="step-desc">Clean, polished text appears wherever you're typing — any app, any field, without switching windows.</p>
+        <p class="step-desc">Clean, polished text appears wherever you're typing, in any app, any field, without switching windows.</p>
       </div>
     </div>
   </div>
@@ -284,7 +312,7 @@ const howToJsonLd = JSON.stringify({
     <div class="section-head reveal">
       <div class="section-label-pill">Live Pipeline Demo</div>
       <h2 class="section-title">Everything happens in parallel</h2>
-      <p class="section-sub">Recording, transcription, and polishing overlap — that's how EnviousWispr delivers results so fast.</p>
+      <p class="section-sub">Recording, transcription, and polishing overlap. That's how EnviousWispr delivers results so fast.</p>
     </div>
     <div class="demo-wrapper reveal" id="demoWrapper">
       <div class="demo-header">
@@ -431,7 +459,7 @@ const howToJsonLd = JSON.stringify({
       <div class="feat-card reveal">
         <div class="feat-icon">🖥</div>
         <div class="feat-title">Works in any app</div>
-        <p class="feat-desc">Polished text pastes into any macOS application — email, Slack, Notes, browser forms, terminals — everything.</p>
+        <p class="feat-desc">Polished text pastes into any macOS application: email, Slack, Notes, browser forms, terminals. Everything.</p>
       </div>
       <div class="feat-card reveal">
         <div class="feat-icon">🔒</div>
@@ -456,7 +484,7 @@ const howToJsonLd = JSON.stringify({
       <div class="feat-card reveal">
         <div class="feat-icon">⚙️</div>
         <div class="feat-title">Streaming pipeline</div>
-        <p class="feat-desc">Recording, transcription, and AI polishing run in parallel — the result arrives almost the moment you stop speaking.</p>
+        <p class="feat-desc">Recording, transcription, and AI polishing run in parallel. The result arrives almost the moment you stop speaking.</p>
       </div>
     </div>
   </div>

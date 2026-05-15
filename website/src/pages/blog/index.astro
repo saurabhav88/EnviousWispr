@@ -50,6 +50,11 @@ const breadcrumbJsonLd = JSON.stringify({
         <p class="blog-page-sub">
           Deep dives on voice-to-text, on-device speech recognition, and keyboard-free productivity for Mac.
         </p>
+        <a href="https://github.com/saurabhav88/EnviousWispr/releases/latest/download/EnviousWispr.dmg" class="blog-page-cta" data-download-source="blog-index-hero">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download EnviousWispr Free
+        </a>
+        <span class="blog-page-cta-sub">macOS 14+, Apple Silicon. No account. Works offline.</span>
       </header>
 
       <!-- Search + Filters -->
@@ -65,11 +70,12 @@ const breadcrumbJsonLd = JSON.stringify({
           />
         </div>
         {allTags.length > 0 && (
-          <div class="blog-filters" role="group" aria-label="Filter by tag">
+          <div class="blog-filters" role="group" aria-label="Filter by tag" id="blog-filters">
             <button class="blog-filter-tag active" data-tag="all">All</button>
             {allTags.map(tag => (
               <button class="blog-filter-tag" data-tag={tag}>{tag}</button>
             ))}
+            <button type="button" class="blog-filter-more" id="blog-filter-more" aria-controls="blog-filters">+ More tags</button>
           </div>
         )}
       </div>
@@ -138,6 +144,15 @@ const breadcrumbJsonLd = JSON.stringify({
   const magazine = document.getElementById('blog-magazine');
   const noResults = document.getElementById('blog-no-results');
   const cards = magazine ? Array.from(magazine.querySelectorAll<HTMLAnchorElement>('.blog-card')) : [];
+
+  // Mobile tag-cloud expand toggle (only meaningful at <=720px viewport).
+  const moreBtn = document.getElementById('blog-filter-more');
+  const filtersRow = document.getElementById('blog-filters');
+  if (moreBtn && filtersRow) {
+    moreBtn.addEventListener('click', () => {
+      filtersRow.classList.add('tags-expanded');
+    });
+  }
 
   let activeTag = 'all';
 
@@ -211,6 +226,20 @@ const breadcrumbJsonLd = JSON.stringify({
     line-height: 1.65;
   }
 
+  .blog-page-cta {
+    display: inline-flex; align-items: center; gap: 8px;
+    margin-top: 20px; padding: 12px 24px;
+    border-radius: 100px;
+    font-size: 15px; font-weight: 700;
+    background: var(--accent); color: #fff; text-decoration: none;
+    transition: background 0.15s;
+  }
+  .blog-page-cta:hover { background: var(--accent-hover); }
+  .blog-page-cta-sub {
+    display: block; margin-top: 10px;
+    font-size: 13px; color: var(--text-3);
+  }
+
   /* Toolbar: search + filters */
   .blog-toolbar {
     max-width: 900px;
@@ -263,6 +292,30 @@ const breadcrumbJsonLd = JSON.stringify({
     gap: 8px;
     flex-wrap: wrap;
     justify-content: center;
+  }
+  /* Mobile: collapse tag cloud to first 6 + "More tags" toggle */
+  @media (max-width: 720px) {
+    .blog-filters:not(.tags-expanded) .blog-filter-tag:nth-of-type(n+8) {
+      display: none;
+    }
+    .blog-filters .blog-filter-more {
+      display: inline-flex;
+    }
+    .blog-filters.tags-expanded .blog-filter-more {
+      display: none;
+    }
+  }
+  .blog-filter-more {
+    display: none;
+    padding: 5px 14px;
+    border: 1px dashed var(--border-hover);
+    border-radius: var(--radius-pill);
+    background: transparent;
+    font-family: var(--font-body);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    cursor: pointer;
   }
 
   .blog-filter-tag {

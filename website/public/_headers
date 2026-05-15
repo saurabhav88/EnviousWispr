@@ -3,7 +3,9 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=()
-  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+  Cross-Origin-Opener-Policy: same-origin
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://us.i.posthog.com https://us-assets.i.posthog.com https://client.crisp.chat https://*.crisp.chat https://app.termly.io https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self' https://us.i.posthog.com https://us-assets.i.posthog.com https://*.crisp.chat wss://*.crisp.chat https://comments.enviouswispr.com https://api.github.com; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://client.crisp.chat https://app.termly.io; font-src 'self' data: https://client.crisp.chat; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://app.termly.io https://game.crisp.chat; media-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self' https://comments.enviouswispr.com; frame-ancestors 'none'; upgrade-insecure-requests
 
 /_astro/*
   Cache-Control: public, max-age=31536000, immutable

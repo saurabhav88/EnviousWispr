@@ -6,64 +6,105 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const SITE = 'https://enviouswispr.com';
 
-// Static lastmod dates for core pages (update when content changes significantly)
-const CORE_PAGE_DATES = {
-  'https://enviouswispr.com/': '2026-03-18',
-  'https://enviouswispr.com/how-it-works/': '2026-03-18',
-  'https://enviouswispr.com/blog/': '2026-03-18',
-  'https://enviouswispr.com/compare/': '2026-04-03',
-  'https://enviouswispr.com/compare/wisprflow/': '2026-04-03',
-  'https://enviouswispr.com/compare/superwhisper/': '2026-04-04',
-  'https://enviouswispr.com/compare/macwhisper/': '2026-04-04',
-  'https://enviouswispr.com/compare/dragon/': '2026-04-04',
-  'https://enviouswispr.com/compare/apple-dictation/': '2026-04-04',
-  'https://enviouswispr.com/compare/voiceink/': '2026-04-04',
-  'https://enviouswispr.com/compare/willow-voice/': '2026-04-04',
-  'https://enviouswispr.com/compare/whisper-cpp/': '2026-04-04',
-  'https://enviouswispr.com/compare/notta/': '2026-04-04',
-  'https://enviouswispr.com/compare/google-docs-voice-typing/': '2026-04-04',
-  'https://enviouswispr.com/compare/otter-ai/': '2026-04-04',
-  'https://enviouswispr.com/privacy-policy/': '2026-04-10',
-  'https://enviouswispr.com/terms-of-service/': '2026-04-12',
-};
+// Format a Date or YYYY-MM-DD string as an ISO date (YYYY-MM-DD).
+function toIsoDate(d) {
+  if (!d) return null;
+  if (typeof d === 'string') {
+    const m = d.match(/^(\d{4}-\d{2}-\d{2})/);
+    return m ? m[1] : null;
+  }
+  return new Date(d).toISOString().slice(0, 10);
+}
 
-// Build a URL→pubDate map by reading blog post frontmatter at config time.
-// Regex-parses only the pubDate field — no external dep needed.
+// Walk the blog frontmatter and pick max(updatedDate, pubDate) for each post.
 const BLOG_POST_DATES = (() => {
   const blogDir = path.join(__dirname, 'src/content/blog');
   const map = {};
-  if (!fs.existsSync(blogDir)) return map;
+  let latest = null;
+  if (!fs.existsSync(blogDir)) return { map, latest };
   for (const file of fs.readdirSync(blogDir)) {
     if (!file.endsWith('.md') && !file.endsWith('.mdx')) continue;
     const content = fs.readFileSync(path.join(blogDir, file), 'utf8');
-    const match = content.match(/^pubDate:\s*["']?(\d{4}-\d{2}-\d{2})["']?/m);
-    if (!match) continue;
+    const pub = content.match(/^pubDate:\s*["']?(\d{4}-\d{2}-\d{2})["']?/m);
+    const upd = content.match(/^updatedDate:\s*["']?(\d{4}-\d{2}-\d{2})["']?/m);
+    const date = upd ? upd[1] : (pub ? pub[1] : null);
+    if (!date) continue;
     const slug = file.replace(/\.mdx?$/, '');
-    map[`https://enviouswispr.com/blog/${slug}/`] = match[1];
+    map[`${SITE}/blog/${slug}/`] = date;
+    if (!latest || date > latest) latest = date;
   }
-  return map;
+  return { map, latest };
 })();
 
+// File mtime → ISO date for any source path on disk.
+function mtimeIso(absPath) {
+  try {
+    return fs.statSync(absPath).mtime.toISOString().slice(0, 10);
+  } catch {
+    return null;
+  }
+}
+
+// Map a sitemap URL to its source .astro file path on disk.
+function sourceForUrl(url) {
+  // Strip site prefix and trailing slash.
+  let p = url.replace(SITE, '').replace(/\/$/, '');
+  if (p === '') p = '/index';
+  // Author pages: /authors/<slug>/ → dynamic route, no single source file. Skip.
+  if (p.startsWith('/authors/')) return null;
+  // Tag pages: /tags/<slug>/ → dynamic route. Skip.
+  if (p.startsWith('/tags/')) return null;
+  // /blog/<slug>/ → handled by BLOG_POST_DATES.
+  if (p.startsWith('/blog/') && p !== '/blog') return null;
+  // /blog/ index → src/pages/blog/index.astro
+  if (p === '/blog') return path.join(__dirname, 'src/pages/blog/index.astro');
+  // /compare/ index → src/pages/compare/index.astro
+  if (p === '/compare') return path.join(__dirname, 'src/pages/compare/index.astro');
+  // /compare/<slug>/ → src/pages/compare/<slug>.astro
+  if (p.startsWith('/compare/')) {
+    const slug = p.replace('/compare/', '');
+    return path.join(__dirname, `src/pages/compare/${slug}.astro`);
+  }
+  // /index → src/pages/index.astro
+  if (p === '/index') return path.join(__dirname, 'src/pages/index.astro');
+  // /<page>/ → src/pages/<page>.astro
+  const slug = p.replace(/^\//, '');
+  return path.join(__dirname, `src/pages/${slug}.astro`);
+}
+
 export default defineConfig({
-  site: 'https://enviouswispr.com',
+  site: SITE,
   output: 'static',
   trailingSlash: 'always',
   integrations: [
     sitemap({
       serialize(item) {
-        const staticDate = CORE_PAGE_DATES[item.url];
-        if (staticDate) {
-          item.lastmod = staticDate;
-          return item;
-        }
-        const blogDate = BLOG_POST_DATES[item.url];
+        // Blog posts: use the frontmatter-driven date map.
+        const blogDate = BLOG_POST_DATES.map[item.url];
         if (blogDate) {
           item.lastmod = blogDate;
           return item;
         }
-        // Fallback for any pages not covered above
-        item.lastmod = '2026-03-18';
+        // Blog index: max of all post dates.
+        if (item.url === `${SITE}/blog/`) {
+          if (BLOG_POST_DATES.latest) {
+            item.lastmod = BLOG_POST_DATES.latest;
+            return item;
+          }
+        }
+        // Static pages: use the source file mtime on disk.
+        const src = sourceForUrl(item.url);
+        if (src) {
+          const mtime = mtimeIso(src);
+          if (mtime) {
+            item.lastmod = mtime;
+            return item;
+          }
+        }
+        // Final fallback: today's date.
+        item.lastmod = new Date().toISOString().slice(0, 10);
         return item;
       },
     }),

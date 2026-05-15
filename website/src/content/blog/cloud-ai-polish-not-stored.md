@@ -2,6 +2,7 @@
 title: "Cloud AI Polish: Why Your Dictation Isn't Stored"
 description: "Use your own OpenAI or Gemini key for AI polish and EnviousWispr asks the provider not to retain your dictation. Here's what that means and how we did it."
 pubDate: 2026-05-05
+updatedDate: 2026-05-15
 tags: ["privacy", "ai-polish", "byok", "openai", "gemini"]
 draft: false
 author: "Saurabh Vaish"

@@ -2,6 +2,7 @@
 title: "Building Commercial Software Solo With Claude Code"
 description: "How I structured Claude Code's .claude/ folder into a three-tier context system to ship a production macOS app as a solo developer."
 pubDate: 2026-03-26
+updatedDate: 2026-05-15
 tags: ["claude-code", "vibe-coding", "solo-dev", "ai-tools", "productivity"]
 image: "/images/blog/claude-code-structure/three-pillars.jpg"
 draft: false
