@@ -81,9 +81,8 @@ struct LoadProgressWatcherTests {
     }
     let snap = watcher.snapshot
     #expect(snap.signalCountTotal == 10)
-    #expect(
-      snap.maxGapMs > 50 && snap.maxGapMs < 700,
-      "max gap roughly matches 100ms cadence, allowing CI scheduler jitter")
+    #expect(snap.maxGapMs > 50, "max gap observed; precise value depends on CI scheduler")
+    #expect(!watcher.hasFired, "steady cadence stays below floor — watcher must not fire")
     watcher.stop()
   }
 
@@ -132,13 +131,10 @@ struct LoadProgressWatcherTests {
       return true
     }
     await sleep(ms: 100)
-    let snap = watcher.snapshot
+    let firedBeforeStop = watcher.hasFired
     watcher.stop()
     _ = await waiter.value
-    // Loose upper bound — CI scheduling jitter can inflate the 50ms cadence significantly.
-    // The watcher behaviour (no-fire-below-floor) is what's under test here,
-    // not the precision of the synthetic cadence.
-    #expect(snap.maxGapMs < 700, "max gap accommodates CI scheduler jitter")
+    #expect(!firedBeforeStop, "silence below 800ms floor must not fire even when ratio is met")
   }
 
   @Test("Both gates met (silence > floor AND silence > 5x max gap) — fires")
