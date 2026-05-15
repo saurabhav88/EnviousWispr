@@ -1,26 +1,15 @@
-EnviousWispr offers Apple Voice Processing noise suppression to produce cleaner audio input, especially useful in noisy environments.
+The noise suppression toggle was removed in EnviousWispr 2.0.2. The app now records raw audio from your microphone and lets the speech recognition model handle background noise.
 
-### How It Works
+### Why We Removed It
 
-When enabled, the AVAudioEngine is configured with Apple's Voice Processing I/O audio unit, which applies noise suppression at the system level before audio reaches the speech recognition model.
+EnviousWispr's transcription models (Parakeet and WhisperKit) are trained on real-world audio that already includes background noise. Adding the operating system's voice processing on top often hurt transcription accuracy more than it helped, by altering the audio in ways the models were not trained for. The processing also added startup latency to every recording and was the source of intermittent recording failures when toggled.
 
-### Configuration
+Removing it makes recordings start faster, behave more reliably, and produce more accurate transcripts in most environments.
 
-Noise suppression can be toggled in **Settings > Microphone**.
+### What If My Environment Is Very Noisy
 
-### Bluetooth Limitation
+In our testing the on-device transcription models handle typical office, cafe, and home noise without help. If you find a specific noisy setup where transcription quality drops noticeably, please report it through Help and Feedback so we can evaluate whether to add a different noise reduction approach in the future.
 
-Noise suppression is unavailable when Bluetooth audio output is active (e.g., AirPods). When Bluetooth output is detected, EnviousWispr routes audio capture through a different path that does not support Voice Processing. This is a system-level constraint, not a bug. If you need noise suppression, use your Mac's built-in speakers for output or a wired headset.
+### What Changed In Settings
 
-### Default State
-
-Noise suppression is off by default.
-
-### Important Note
-
-Changing the noise suppression setting requires rebuilding the audio engine internally. EnviousWispr handles this automatically, but the change takes effect on the next recording, not mid-recording.
-
-### Troubleshooting
-
-* **Noise suppression has no effect with Bluetooth headphones:** This is expected. Noise suppression requires the standard audio engine path, which is not used when Bluetooth output is active. See the Bluetooth and AirPods article for details.
-* **Toggle does not seem to change anything:** The change applies on your next recording, not the current one.
+The Noise suppression toggle is no longer present in **Settings > Microphone**. If you previously had it turned on, it is automatically turned off the first time you open EnviousWispr 2.0.2.
