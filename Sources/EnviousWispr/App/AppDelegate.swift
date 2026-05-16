@@ -498,7 +498,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   @objc private func toggleRecording() {
     Task {
-      await appState.toggleRecording()
+      await appState.toggleRecording(source: .menuBar)
       updateIcon()
     }
   }

@@ -511,7 +511,7 @@ final class AppState {
     hotkeyService.toggleModifiers = settings.toggleModifiers
     hotkeyService.onToggleRecording = { [weak self] in
       guard let self else { return }
-      await self.toggleRecording()
+      await self.toggleRecording(source: .toggleHotkey)
     }
     hotkeyService.onStartRecording = { [weak self] in
       guard let self else { return }
@@ -588,7 +588,8 @@ final class AppState {
       // surfaces to a recoverable error path. CancellationError is the
       // documented silent-unwind case (mirrors preWarm catch above).
       do {
-        try await active.handle(event: .toggleRecording(makeDictationSessionConfig()))
+        try await active.handle(
+          event: .toggleRecording(makeDictationSessionConfig(triggerSource: .pttHotkey)))
       } catch is CancellationError {
         self.recordingOverlay.show(intent: .hidden)
         self.isRecordingLocked = false
@@ -877,7 +878,11 @@ final class AppState {
   }
 
   /// Toggle recording on/off (plain, no forced LLM).
-  func toggleRecording() async {
+  ///
+  /// `source` distinguishes the invocation surface for `dictation.invoked` telemetry
+  /// (issue #723). Production callers MUST specify; there is no default to prevent
+  /// silent fallthrough to a generic value.
+  func toggleRecording(source: TriggerSource) async {
     postCompletionWarningTask?.cancel()
     let active = activePipeline
 
@@ -889,13 +894,14 @@ final class AppState {
       permissions.restartMonitoringIfNeeded()
     }
 
-    try? await active.handle(event: .toggleRecording(makeDictationSessionConfig()))
+    try? await active.handle(
+      event: .toggleRecording(makeDictationSessionConfig(triggerSource: source)))
   }
 
   /// Build the per-recording config snapshot from settings and paste intent.
   /// Called at `.toggleRecording` dispatch; the recording's pipeline freezes
   /// the snapshot for its lifetime via `startRecording(config:)`.
-  private func makeDictationSessionConfig() -> DictationSessionConfig {
+  private func makeDictationSessionConfig(triggerSource: TriggerSource) -> DictationSessionConfig {
     let isWhisperKit = asrManager.activeBackendType == .whisperKit
     let activePipelineIdle: Bool = {
       if isWhisperKit {
@@ -929,6 +935,7 @@ final class AppState {
     return DictationSessionConfig(
       autoCopyToClipboard: settings.autoCopyToClipboard,
       inputMode: settings.recordingMode,
+      triggerSource: triggerSource,
       autoPasteToActiveApp: autoPaste,
       restoreClipboardAfterPaste: settings.restoreClipboardAfterPaste,
       vadAutoStop: settings.vadAutoStop,

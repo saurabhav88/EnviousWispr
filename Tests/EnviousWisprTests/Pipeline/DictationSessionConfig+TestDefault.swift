@@ -6,6 +6,7 @@ extension DictationSessionConfig {
   static func testDefault(
     autoCopyToClipboard: Bool = true,
     inputMode: RecordingMode = .pushToTalk,
+    triggerSource: TriggerSource = .programmatic,
     autoPasteToActiveApp: Bool = false,
     restoreClipboardAfterPaste: Bool = false,
     vadAutoStop: Bool = false,
@@ -25,6 +26,7 @@ extension DictationSessionConfig {
     DictationSessionConfig(
       autoCopyToClipboard: autoCopyToClipboard,
       inputMode: inputMode,
+      triggerSource: triggerSource,
       autoPasteToActiveApp: autoPasteToActiveApp,
       restoreClipboardAfterPaste: restoreClipboardAfterPaste,
       vadAutoStop: vadAutoStop,

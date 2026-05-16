@@ -1,5 +1,33 @@
 import Foundation
 
+/// The invocation surface that initiated this dictation session.
+///
+/// Distinct from `RecordingMode` (pushToTalk vs toggle): `RecordingMode` is the
+/// user's configured recording behavior, while `TriggerSource` is the surface
+/// the request arrived through. PostHog `dictation.invoked` events carry both:
+/// `input_mode` (configured behavior) and `trigger_source` (invoking surface),
+/// so analyst funnels can separate "user pressed PTT" from "user clicked the
+/// toolbar Record button while configured for toggle."
+///
+/// Raw values are snake-case to match the PostHog property convention.
+public enum TriggerSource: String, Sendable, CaseIterable {
+  /// PTT hotkey held down (key-down → start). Distinct from `toggleHotkey`.
+  case pttHotkey = "ptt_hotkey"
+  /// Discrete toggle hotkey (Carbon-registered, e.g. F5). Distinct from `pttHotkey`.
+  case toggleHotkey = "toggle_hotkey"
+  /// Record/Stop button inside the main window (toolbar or in-window control).
+  case toolbar = "toolbar"
+  /// macOS menu bar item (system menu bar at top of screen, NOT a status bar tray).
+  case menuBar = "menu_bar"
+  /// First-run onboarding triggered the dictation. Forward-compatible; no
+  /// production caller today (OnboardingV2View's `recording` method is hotkey
+  /// capture, not dictation).
+  case onboarding = "onboarding"
+  /// Internal / test / future automation. Reserve value. Used by
+  /// `DictationSessionConfig.testDefault()`; do NOT use from production UI code.
+  case programmatic = "programmatic"
+}
+
 /// Per-recording configuration snapshot. Captured at `startRecording`; immutable for the
 /// duration of the recording. Settings mutated mid-recording apply to the NEXT recording.
 ///
@@ -10,8 +38,15 @@ public struct DictationSessionConfig: Sendable {
   // MARK: Paste / clipboard
 
   public let autoCopyToClipboard: Bool
-  /// Input mode active when the recording request was accepted.
+  /// Input mode active when the recording request was accepted. Configured
+  /// recording behavior (pushToTalk vs toggle). NOT the invoking surface; see
+  /// `triggerSource`.
   public let inputMode: RecordingMode
+  /// Invocation surface that initiated this dictation session. Distinct from
+  /// `inputMode`: a user configured for `toggle` who clicks the toolbar Record
+  /// button has `inputMode == .toggle` and `triggerSource == .toolbar`.
+  /// Issue #723.
+  public let triggerSource: TriggerSource
   /// Input-mode-derived at `startRecording`. True when the user triggered via hotkey
   /// or push-to-talk with accessibility permission available; false for menu-triggered
   /// recordings or when the paste target cannot be resolved. Consolidates the previously
@@ -57,6 +92,7 @@ public struct DictationSessionConfig: Sendable {
   public init(
     autoCopyToClipboard: Bool,
     inputMode: RecordingMode,
+    triggerSource: TriggerSource,
     autoPasteToActiveApp: Bool,
     restoreClipboardAfterPaste: Bool,
     vadAutoStop: Bool,
@@ -75,6 +111,7 @@ public struct DictationSessionConfig: Sendable {
   ) {
     self.autoCopyToClipboard = autoCopyToClipboard
     self.inputMode = inputMode
+    self.triggerSource = triggerSource
     self.autoPasteToActiveApp = autoPasteToActiveApp
     self.restoreClipboardAfterPaste = restoreClipboardAfterPaste
     self.vadAutoStop = vadAutoStop

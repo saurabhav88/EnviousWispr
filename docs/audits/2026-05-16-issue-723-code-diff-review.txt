@@ -1,0 +1,2292 @@
+OpenAI Codex v0.130.0
+--------
+workdir: /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-723-trigger-source
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: workspace-write [workdir, /tmp, $TMPDIR, /Users/m4pro_sv/.codex/memories]
+reasoning effort: high
+reasoning summaries: none
+session id: 019e2f79-c9ed-71e3-a867-84d2c6cb2a28
+--------
+user
+current changes
+exec
+/bin/zsh -lc 'git status --short && git diff --stat && git diff --cached --stat' in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-723-trigger-source
+ succeeded in 0ms:
+ M Sources/EnviousWispr/App/AppDelegate.swift
+ M Sources/EnviousWispr/App/AppState.swift
+ M Sources/EnviousWispr/Views/Main/MainWindowView.swift
+ M Sources/EnviousWisprCore/DictationSessionConfig.swift
+ M Sources/EnviousWisprPipeline/TranscriptionPipeline.swift
+ M Sources/EnviousWisprPipeline/WhisperKitPipeline.swift
+ M Tests/EnviousWisprTests/Pipeline/DictationInvokedPipelineWiringTests.swift
+ M Tests/EnviousWisprTests/Pipeline/DictationSessionConfig+TestDefault.swift
+ M Tests/EnviousWisprTests/Services/DictationInvokedTelemetryTests.swift
+ Sources/EnviousWispr/App/AppDelegate.swift         |  2 +-
+ Sources/EnviousWispr/App/AppState.swift            | 17 +++++++---
+ .../EnviousWispr/Views/Main/MainWindowView.swift   |  4 +--
+ .../EnviousWisprCore/DictationSessionConfig.swift  | 39 +++++++++++++++++++++-
+ .../TranscriptionPipeline.swift                    |  2 +-
+ .../EnviousWisprPipeline/WhisperKitPipeline.swift  |  4 +--
+ .../DictationInvokedPipelineWiringTests.swift      | 11 ++++--
+ .../DictationSessionConfig+TestDefault.swift       |  2 ++
+ .../Services/DictationInvokedTelemetryTests.swift  | 34 +++++++++++++++++--
+ 9 files changed, 98 insertions(+), 17 deletions(-)
+
+exec
+/bin/zsh -lc 'git diff -- Sources/EnviousWisprCore/DictationSessionConfig.swift Sources/EnviousWispr/App/AppState.swift Sources/EnviousWispr/App/AppDelegate.swift Sources/EnviousWispr/Views/Main/MainWindowView.swift Sources/EnviousWisprPipeline/TranscriptionPipeline.swift Sources/EnviousWisprPipeline/WhisperKitPipeline.swift Tests/EnviousWisprTests/Pipeline/DictationInvokedPipelineWiringTests.swift Tests/EnviousWisprTests/Pipeline/DictationSessionConfig+TestDefault.swift Tests/EnviousWisprTests/Services/DictationInvokedTelemetryTests.swift' in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-723-trigger-source
+ succeeded in 0ms:
+diff --git a/Sources/EnviousWispr/App/AppDelegate.swift b/Sources/EnviousWispr/App/AppDelegate.swift
+index 1de27d0..f3897a8 100644
+--- a/Sources/EnviousWispr/App/AppDelegate.swift
++++ b/Sources/EnviousWispr/App/AppDelegate.swift
+@@ -498,7 +498,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
+ 
+   @objc private func toggleRecording() {
+     Task {
+-      await appState.toggleRecording()
++      await appState.toggleRecording(source: .menuBar)
+       updateIcon()
+     }
+   }
+diff --git a/Sources/EnviousWispr/App/AppState.swift b/Sources/EnviousWispr/App/AppState.swift
+index e80c14f..3b060a5 100644
+--- a/Sources/EnviousWispr/App/AppState.swift
++++ b/Sources/EnviousWispr/App/AppState.swift
+@@ -511,7 +511,7 @@ final class AppState {
+     hotkeyService.toggleModifiers = settings.toggleModifiers
+     hotkeyService.onToggleRecording = { [weak self] in
+       guard let self else { return }
+-      await self.toggleRecording()
++      await self.toggleRecording(source: .toggleHotkey)
+     }
+     hotkeyService.onStartRecording = { [weak self] in
+       guard let self else { return }
+@@ -588,7 +588,8 @@ final class AppState {
+       // surfaces to a recoverable error path. CancellationError is the
+       // documented silent-unwind case (mirrors preWarm catch above).
+       do {
+-        try await active.handle(event: .toggleRecording(makeDictationSessionConfig()))
++        try await active.handle(
++          event: .toggleRecording(makeDictationSessionConfig(triggerSource: .pttHotkey)))
+       } catch is CancellationError {
+         self.recordingOverlay.show(intent: .hidden)
+         self.isRecordingLocked = false
+@@ -877,7 +878,11 @@ final class AppState {
+   }
+ 
+   /// Toggle recording on/off (plain, no forced LLM).
+-  func toggleRecording() async {
++  ///
++  /// `source` distinguishes the invocation surface for `dictation.invoked` telemetry
++  /// (issue #723). Production callers MUST specify; there is no default to prevent
++  /// silent fallthrough to a generic value.
++  func toggleRecording(source: TriggerSource) async {
+     postCompletionWarningTask?.cancel()
+     let active = activePipeline
+ 
+@@ -889,13 +894,14 @@ final class AppState {
+       permissions.restartMonitoringIfNeeded()
+     }
+ 
+-    try? await active.handle(event: .toggleRecording(makeDictationSessionConfig()))
++    try? await active.handle(
++      event: .toggleRecording(makeDictationSessionConfig(triggerSource: source)))
+   }
+ 
+   /// Build the per-recording config snapshot from settings and paste intent.
+   /// Called at `.toggleRecording` dispatch; the recording's pipeline freezes
+   /// the snapshot for its lifetime via `startRecording(config:)`.
+-  private func makeDictationSessionConfig() -> DictationSessionConfig {
++  private func makeDictationSessionConfig(triggerSource: TriggerSource) -> DictationSessionConfig {
+     let isWhisperKit = asrManager.activeBackendType == .whisperKit
+     let activePipelineIdle: Bool = {
+       if isWhisperKit {
+@@ -929,6 +935,7 @@ final class AppState {
+     return DictationSessionConfig(
+       autoCopyToClipboard: settings.autoCopyToClipboard,
+       inputMode: settings.recordingMode,
++      triggerSource: triggerSource,
+       autoPasteToActiveApp: autoPaste,
+       restoreClipboardAfterPaste: settings.restoreClipboardAfterPaste,
+       vadAutoStop: settings.vadAutoStop,
+diff --git a/Sources/EnviousWispr/Views/Main/MainWindowView.swift b/Sources/EnviousWispr/Views/Main/MainWindowView.swift
+index fd0007d..ebdd9e2 100644
+--- a/Sources/EnviousWispr/Views/Main/MainWindowView.swift
++++ b/Sources/EnviousWispr/Views/Main/MainWindowView.swift
+@@ -78,7 +78,7 @@ struct StatusView: View {
+           // Action buttons
+           HStack(spacing: 16) {
+             Button {
+-              Task { await appState.toggleRecording() }
++              Task { await appState.toggleRecording(source: .toolbar) }
+             } label: {
+               HStack(spacing: 4) {
+                 Image(systemName: "stop.fill")
+@@ -310,7 +310,7 @@ struct RecordButton: View {
+   var body: some View {
+     Button {
+       Task {
+-        await appState.toggleRecording()
++        await appState.toggleRecording(source: .toolbar)
+       }
+     } label: {
+       Label(
+diff --git a/Sources/EnviousWisprCore/DictationSessionConfig.swift b/Sources/EnviousWisprCore/DictationSessionConfig.swift
+index 3a8b5fd..cd4d529 100644
+--- a/Sources/EnviousWisprCore/DictationSessionConfig.swift
++++ b/Sources/EnviousWisprCore/DictationSessionConfig.swift
+@@ -1,5 +1,33 @@
+ import Foundation
+ 
++/// The invocation surface that initiated this dictation session.
++///
++/// Distinct from `RecordingMode` (pushToTalk vs toggle): `RecordingMode` is the
++/// user's configured recording behavior, while `TriggerSource` is the surface
++/// the request arrived through. PostHog `dictation.invoked` events carry both:
++/// `input_mode` (configured behavior) and `trigger_source` (invoking surface),
++/// so analyst funnels can separate "user pressed PTT" from "user clicked the
++/// toolbar Record button while configured for toggle."
++///
++/// Raw values are snake-case to match the PostHog property convention.
++public enum TriggerSource: String, Sendable, CaseIterable {
++  /// PTT hotkey held down (key-down → start). Distinct from `toggleHotkey`.
++  case pttHotkey = "ptt_hotkey"
++  /// Discrete toggle hotkey (Carbon-registered, e.g. F5). Distinct from `pttHotkey`.
++  case toggleHotkey = "toggle_hotkey"
++  /// Record/Stop button inside the main window (toolbar or in-window control).
++  case toolbar = "toolbar"
++  /// macOS menu bar item (system menu bar at top of screen, NOT a status bar tray).
++  case menuBar = "menu_bar"
++  /// First-run onboarding triggered the dictation. Forward-compatible; no
++  /// production caller today (OnboardingV2View's `recording` method is hotkey
++  /// capture, not dictation).
++  case onboarding = "onboarding"
++  /// Internal / test / future automation. Reserve value. Used by
++  /// `DictationSessionConfig.testDefault()`; do NOT use from production UI code.
++  case programmatic = "programmatic"
++}
++
+ /// Per-recording configuration snapshot. Captured at `startRecording`; immutable for the
+ /// duration of the recording. Settings mutated mid-recording apply to the NEXT recording.
+ ///
+@@ -10,8 +38,15 @@ public struct DictationSessionConfig: Sendable {
+   // MARK: Paste / clipboard
+ 
+   public let autoCopyToClipboard: Bool
+-  /// Input mode active when the recording request was accepted.
++  /// Input mode active when the recording request was accepted. Configured
++  /// recording behavior (pushToTalk vs toggle). NOT the invoking surface; see
++  /// `triggerSource`.
+   public let inputMode: RecordingMode
++  /// Invocation surface that initiated this dictation session. Distinct from
++  /// `inputMode`: a user configured for `toggle` who clicks the toolbar Record
++  /// button has `inputMode == .toggle` and `triggerSource == .toolbar`.
++  /// Issue #723.
++  public let triggerSource: TriggerSource
+   /// Input-mode-derived at `startRecording`. True when the user triggered via hotkey
+   /// or push-to-talk with accessibility permission available; false for menu-triggered
+   /// recordings or when the paste target cannot be resolved. Consolidates the previously
+@@ -57,6 +92,7 @@ public struct DictationSessionConfig: Sendable {
+   public init(
+     autoCopyToClipboard: Bool,
+     inputMode: RecordingMode,
++    triggerSource: TriggerSource,
+     autoPasteToActiveApp: Bool,
+     restoreClipboardAfterPaste: Bool,
+     vadAutoStop: Bool,
+@@ -75,6 +111,7 @@ public struct DictationSessionConfig: Sendable {
+   ) {
+     self.autoCopyToClipboard = autoCopyToClipboard
+     self.inputMode = inputMode
++    self.triggerSource = triggerSource
+     self.autoPasteToActiveApp = autoPasteToActiveApp
+     self.restoreClipboardAfterPaste = restoreClipboardAfterPaste
+     self.vadAutoStop = vadAutoStop
+diff --git a/Sources/EnviousWisprPipeline/TranscriptionPipeline.swift b/Sources/EnviousWisprPipeline/TranscriptionPipeline.swift
+index a0f1a7c..8302a8f 100644
+--- a/Sources/EnviousWisprPipeline/TranscriptionPipeline.swift
++++ b/Sources/EnviousWisprPipeline/TranscriptionPipeline.swift
+@@ -534,7 +534,7 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
+       recordingStartTime = Date()
+       currentTranscript = nil
+       TelemetryService.shared.dictationInvoked(
+-        triggerSource: config.inputMode.rawValue,
++        triggerSource: config.triggerSource.rawValue,
+         inputMode: config.inputMode.rawValue,
+         targetApp: targetApp?.localizedName
+       )
+diff --git a/Sources/EnviousWisprPipeline/WhisperKitPipeline.swift b/Sources/EnviousWisprPipeline/WhisperKitPipeline.swift
+index 530ac12..90372e5 100644
+--- a/Sources/EnviousWisprPipeline/WhisperKitPipeline.swift
++++ b/Sources/EnviousWisprPipeline/WhisperKitPipeline.swift
+@@ -496,7 +496,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
+       recordingStartTime = Date()
+       currentTranscript = nil
+       TelemetryService.shared.dictationInvoked(
+-        triggerSource: config.inputMode.rawValue,
++        triggerSource: config.triggerSource.rawValue,
+         inputMode: config.inputMode.rawValue,
+         targetApp: targetApp?.localizedName
+       )
+@@ -989,7 +989,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
+               userInfo: [
+                 NSLocalizedDescriptionKey:
+                   "WhisperKit ASR returned empty text despite speech evidence"
+-            ]),
++              ]),
+             category: .asrEmptyResult, stage: "asr",
+             extra: {
+               var extra = asrEmptyDiagnostics.sentryExtra()
+diff --git a/Tests/EnviousWisprTests/Pipeline/DictationInvokedPipelineWiringTests.swift b/Tests/EnviousWisprTests/Pipeline/DictationInvokedPipelineWiringTests.swift
+index 7dc595e..6263034 100644
+--- a/Tests/EnviousWisprTests/Pipeline/DictationInvokedPipelineWiringTests.swift
++++ b/Tests/EnviousWisprTests/Pipeline/DictationInvokedPipelineWiringTests.swift
+@@ -32,7 +32,9 @@ struct DictationInvokedPipelineWiringTests {
+     let telemetryIndex = try Self.require("TelemetryService.shared.dictationInvoked(", in: body)
+ 
+     #expect(stateIndex < telemetryIndex)
+-    #expect(body.contains("triggerSource: config.inputMode.rawValue"))
++    // #723: trigger_source and input_mode are distinct schema slots; pipeline
++    // must read them from distinct config fields.
++    #expect(body.contains("triggerSource: config.triggerSource.rawValue"))
+     #expect(body.contains("inputMode: config.inputMode.rawValue"))
+     #expect(body.contains("targetApp: targetApp?.localizedName"))
+   }
+@@ -50,7 +52,9 @@ struct DictationInvokedPipelineWiringTests {
+     let telemetryIndex = try Self.require("TelemetryService.shared.dictationInvoked(", in: body)
+ 
+     #expect(stateIndex < telemetryIndex)
+-    #expect(body.contains("triggerSource: config.inputMode.rawValue"))
++    // #723: trigger_source and input_mode are distinct schema slots; pipeline
++    // must read them from distinct config fields.
++    #expect(body.contains("triggerSource: config.triggerSource.rawValue"))
+     #expect(body.contains("inputMode: config.inputMode.rawValue"))
+     #expect(body.contains("targetApp: targetApp?.localizedName"))
+   }
+@@ -68,7 +72,8 @@ struct DictationInvokedPipelineWiringTests {
+     guard let startRange = source.range(of: start) else {
+       throw TestFailure("Missing start marker: \(start)")
+     }
+-    guard let endRange = source.range(of: end, range: startRange.upperBound..<source.endIndex) else {
++    guard let endRange = source.range(of: end, range: startRange.upperBound..<source.endIndex)
++    else {
+       throw TestFailure("Missing end marker: \(end)")
+     }
+     return String(source[startRange.lowerBound..<endRange.lowerBound])
+diff --git a/Tests/EnviousWisprTests/Pipeline/DictationSessionConfig+TestDefault.swift b/Tests/EnviousWisprTests/Pipeline/DictationSessionConfig+TestDefault.swift
+index ce81e70..0eb2f82 100644
+--- a/Tests/EnviousWisprTests/Pipeline/DictationSessionConfig+TestDefault.swift
++++ b/Tests/EnviousWisprTests/Pipeline/DictationSessionConfig+TestDefault.swift
+@@ -6,6 +6,7 @@ extension DictationSessionConfig {
+   static func testDefault(
+     autoCopyToClipboard: Bool = true,
+     inputMode: RecordingMode = .pushToTalk,
++    triggerSource: TriggerSource = .programmatic,
+     autoPasteToActiveApp: Bool = false,
+     restoreClipboardAfterPaste: Bool = false,
+     vadAutoStop: Bool = false,
+@@ -25,6 +26,7 @@ extension DictationSessionConfig {
+     DictationSessionConfig(
+       autoCopyToClipboard: autoCopyToClipboard,
+       inputMode: inputMode,
++      triggerSource: triggerSource,
+       autoPasteToActiveApp: autoPasteToActiveApp,
+       restoreClipboardAfterPaste: restoreClipboardAfterPaste,
+       vadAutoStop: vadAutoStop,
+diff --git a/Tests/EnviousWisprTests/Services/DictationInvokedTelemetryTests.swift b/Tests/EnviousWisprTests/Services/DictationInvokedTelemetryTests.swift
+index 6aac2b8..9dbe37d 100644
+--- a/Tests/EnviousWisprTests/Services/DictationInvokedTelemetryTests.swift
++++ b/Tests/EnviousWisprTests/Services/DictationInvokedTelemetryTests.swift
+@@ -30,7 +30,7 @@ import Testing
+       defer { TelemetryService.shared.testEventHook = nil }
+ 
+       TelemetryService.shared.dictationInvoked(
+-        triggerSource: "pushToTalk",
++        triggerSource: "ptt_hotkey",
+         inputMode: "pushToTalk",
+         targetApp: "Terminal"
+       )
+@@ -40,10 +40,40 @@ import Testing
+         return
+       }
+       #expect(event.name == "dictation.invoked")
+-      #expect(event.stringProps["trigger_source"] == "pushToTalk")
++      // #723: trigger_source and input_mode are distinct fields now.
++      // trigger_source = invocation surface; input_mode = configured recording mode.
++      #expect(event.stringProps["trigger_source"] == "ptt_hotkey")
+       #expect(event.stringProps["input_mode"] == "pushToTalk")
+       #expect(event.stringProps["target_app"] == "Terminal")
+     }
++
++    @MainActor
++    @Test(
++      "trigger_source and input_mode are independent — toolbar invocation on toggle-configured user (#723)"
++    )
++    func triggerSourceIndependentFromInputMode() {
++      let box = EventBox()
++      TelemetryService.shared.testEventHook = { @Sendable event in
++        if event.name == "dictation.invoked" { box.set(event) }
++      }
++      defer { TelemetryService.shared.testEventHook = nil }
++
++      // A user configured for `toggle` clicks the toolbar Record button:
++      // trigger_source should reflect "toolbar", NOT "toggle".
++      TelemetryService.shared.dictationInvoked(
++        triggerSource: "toolbar",
++        inputMode: "toggle",
++        targetApp: "Safari"
++      )
++
++      guard let event = box.value else {
++        Issue.record("Expected dictation.invoked event")
++        return
++      }
++      #expect(event.stringProps["trigger_source"] == "toolbar")
++      #expect(event.stringProps["input_mode"] == "toggle")
++      #expect(event.stringProps["trigger_source"] != event.stringProps["input_mode"])
++    }
+   }
+ 
+ #endif
+
+exec
+/bin/zsh -lc "rg \"DictationSessionConfig\\(\" -n . && rg \"toggleRecording\\(\" -n Sources Tests | head -200" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-723-trigger-source
+ succeeded in 0ms:
+./Tests/EnviousWisprTests/Pipeline/DictationSessionConfig+TestDefault.swift:26:    DictationSessionConfig(
+./Sources/EnviousWispr/App/AppState.swift:592:          event: .toggleRecording(makeDictationSessionConfig(triggerSource: .pttHotkey)))
+./Sources/EnviousWispr/App/AppState.swift:898:      event: .toggleRecording(makeDictationSessionConfig(triggerSource: source)))
+./Sources/EnviousWispr/App/AppState.swift:904:  private func makeDictationSessionConfig(triggerSource: TriggerSource) -> DictationSessionConfig {
+./Sources/EnviousWispr/App/AppState.swift:935:    return DictationSessionConfig(
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:313:    case .toggleRecording(let config):
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:314:      await toggleRecording(config: config)
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:398:  public func toggleRecording(config: DictationSessionConfig) async {
+Sources/EnviousWisprPipeline/DictationPipeline.swift:15:  case toggleRecording(DictationSessionConfig)
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:323:  public func toggleRecording(config: DictationSessionConfig) async {
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:1378:    case .toggleRecording(let config):
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:1379:      await toggleRecording(config: config)
+Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift:972:          .onTapGesture { toggleRecording() }
+Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift:1124:  private func toggleRecording() {
+Sources/EnviousWispr/Views/Main/MainWindowView.swift:81:              Task { await appState.toggleRecording(source: .toolbar) }
+Sources/EnviousWispr/Views/Main/MainWindowView.swift:313:        await appState.toggleRecording(source: .toolbar)
+Sources/EnviousWispr/Views/Components/HotkeyRecorderView.swift:151:        toggleRecording()
+Sources/EnviousWispr/Views/Components/HotkeyRecorderView.swift:169:  private func toggleRecording() {
+Sources/EnviousWispr/App/AppState.swift:514:      await self.toggleRecording(source: .toggleHotkey)
+Sources/EnviousWispr/App/AppState.swift:592:          event: .toggleRecording(makeDictationSessionConfig(triggerSource: .pttHotkey)))
+Sources/EnviousWispr/App/AppState.swift:885:  func toggleRecording(source: TriggerSource) async {
+Sources/EnviousWispr/App/AppState.swift:898:      event: .toggleRecording(makeDictationSessionConfig(triggerSource: source)))
+Sources/EnviousWispr/App/AppDelegate.swift:499:  @objc private func toggleRecording() {
+Sources/EnviousWispr/App/AppDelegate.swift:501:      await appState.toggleRecording(source: .menuBar)
+
+exec
+/bin/zsh -lc "sed -n '460,620p' Sources/EnviousWispr/App/AppState.swift && sed -n '860,950p' Sources/EnviousWispr/App/AppState.swift" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-723-trigger-source
+ succeeded in 0ms:
+        self.hotkeyService.unregisterCancelHotkey()
+        // Session ended — retry any Ollama eviction deferred because the
+        // frozen session pinned the old model.
+        self.settingsSync.retryDeferredOllamaEviction(settings: self.settings)
+      }
+      let nowActive = newState.isActive
+      if nowActive && !self.prevParakeetActive {
+        self.lastCapturingBackend = .parakeet
+      }
+      self.prevParakeetActive = nowActive
+      self.parakeetStateHandler.handle(
+        to: newState,
+        pipelineOverlayIntent: self.pipeline.overlayIntent,
+        lastPolishError: self.pipeline.lastPolishError,
+        currentTranscript: self.pipeline.currentTranscript
+      )
+    }
+
+    // Wire WhisperKit pipeline state changes to overlay and icon.
+    whisperKitPipeline.onStateChange = { [weak self] newState in
+      guard let self else { return }
+      self.onPipelineStateChange?(self.pipelineState)
+      switch newState {
+      case .recording:
+        self.hotkeyService.registerCancelHotkey()
+      case .startingUp, .loadingModel, .transcribing, .polishing:
+        self.isRecordingLocked = false
+        self.hotkeyService.unregisterCancelHotkey()
+      case .error, .idle, .ready, .complete:
+        self.isRecordingLocked = false
+        self.hotkeyService.unregisterCancelHotkey()
+        self.settingsSync.retryDeferredOllamaEviction(settings: self.settings)
+      }
+      let nowActive = newState.isActive
+      if nowActive && !self.prevWhisperKitActive {
+        self.lastCapturingBackend = .whisperKit
+      }
+      self.prevWhisperKitActive = nowActive
+      self.whisperKitStateHandler.handle(
+        to: newState,
+        pipelineOverlayIntent: self.whisperKitPipeline.overlayIntent,
+        lastPolishError: self.whisperKitPipeline.lastPolishError,
+        currentTranscript: self.whisperKitPipeline.currentTranscript
+      )
+    }
+
+    // Wire hotkey callbacks
+    hotkeyService.recordingMode = settings.recordingMode
+    hotkeyService.cancelKeyCode = settings.cancelKeyCode
+    hotkeyService.cancelModifiers = settings.cancelModifiers
+    hotkeyService.toggleKeyCode = settings.toggleKeyCode
+    hotkeyService.toggleModifiers = settings.toggleModifiers
+    hotkeyService.onToggleRecording = { [weak self] in
+      guard let self else { return }
+      await self.toggleRecording(source: .toggleHotkey)
+    }
+    hotkeyService.onStartRecording = { [weak self] in
+      guard let self else { return }
+      // Cancel any pending post-completion warning from the previous session
+      // before showing the new recording overlay.
+      self.postCompletionWarningTask?.cancel()
+      let isWhisperKit = self.asrManager.activeBackendType == .whisperKit
+      let active = self.activePipeline
+
+      if isWhisperKit {
+        guard !self.whisperKitPipeline.state.isActive else { return }
+      } else {
+        guard !self.pipelineState.isActive else { return }
+      }
+      // Refresh AX status so `makeDictationSessionConfig` sees the right
+      // paste capability. The session snapshot is captured fresh at
+      // `.toggleRecording` dispatch below.
+      self.permissions.refreshAccessibilityStatus()
+      if !self.permissions.hasAccessibilityPermission {
+        self.permissions.restartMonitoringIfNeeded()
+      }
+
+      // Show recording overlay IMMEDIATELY for instant visual feedback.
+      // The pipeline hasn't started yet, but the user needs to see the
+      // overlay now — especially for double-press detection where they
+      // need visual confirmation before tapping again.
+      self.recordingOverlay.show(
+        intent: .recording(audioLevel: 0),
+        audioLevelProvider: { self.audioCapture.audioLevel },
+        isRecordingLocked: false
+      )
+
+      let pttStart = ContinuousClock.now
+      do {
+        try await active.handle(event: .preWarm)
+      } catch is CancellationError {
+        // Issue #289: PTT release mid-preWarm threw CancellationError (silent
+        // unwind). Not a user-visible failure — just clean up. The existing
+        // `Task.isCancelled` guard below no longer fires because the throw
+        // short-circuits past it, so this catch is load-bearing.
+        self.audioCapture.abortPreWarm()
+        self.recordingOverlay.show(intent: .hidden)
+        self.isRecordingLocked = false
+        return
+      } catch {
+        // Issue #289: real preWarm failure (XPC transport dead, AVAudioEngine
+        // `'what?'`, etc.). Abort the start cleanly — never call
+        // `.toggleRecording` against a dead capture path — and surface a brief
+        // user-visible error. Telemetry-free here: the lower layers already
+        // breadcrumbed the root cause; this is the user-facing UX.
+        self.audioCapture.abortPreWarm()
+        self.recordingOverlay.show(intent: .hidden)
+        self.isRecordingLocked = false
+        SentryBreadcrumb.add(
+          stage: "recording", message: "preWarm failed — start aborted",
+          level: .warning, data: ["error": String(describing: error)]
+        )
+        active.setExternalError("Microphone unavailable — try again.")
+        return
+      }
+      guard !Task.isCancelled else {
+        // Non-throwing cancellation path (e.g. outer Task cancel between
+        // preWarm return and .toggleRecording dispatch).
+        self.audioCapture.abortPreWarm()
+        self.recordingOverlay.show(intent: .hidden)
+        self.isRecordingLocked = false
+        return
+      }
+      let preWarmMs = {
+        let (s, a) = (ContinuousClock.now - pttStart).components
+        return Int(s) * 1000 + Int(a / 1_000_000_000_000_000)
+      }()
+      // Issue #445: drop the silent `try?` so a thrown error from `.handle`
+      // surfaces to a recoverable error path. CancellationError is the
+      // documented silent-unwind case (mirrors preWarm catch above).
+      do {
+        try await active.handle(
+          event: .toggleRecording(makeDictationSessionConfig(triggerSource: .pttHotkey)))
+      } catch is CancellationError {
+        self.recordingOverlay.show(intent: .hidden)
+        self.isRecordingLocked = false
+        return
+      } catch {
+        SentryBreadcrumb.captureError(
+          error, category: .pipelineDispatchFailed, stage: "recording",
+          extra: ["backend": isWhisperKit ? "whisperkit" : "parakeet"]
+        )
+        self.recordingOverlay.show(intent: .hidden)
+        self.isRecordingLocked = false
+        active.setExternalError(ModelLoadWatchdog.userMessage)
+        return
+      }
+      let totalMs = {
+        let (s, a) = (ContinuousClock.now - pttStart).components
+        return Int(s) * 1000 + Int(a / 1_000_000_000_000_000)
+      }()
+      // Issue #445: post-condition guard. If `.handle` returned without putting
+      // the pipeline into an active state AND the pipeline didn't already
+      // surface its own `.error(...)`, treat as a silent failure and recover.
+      // Per Codex Q4: do NOT overwrite an existing `.error(...)` (the watchdog
+      // path already set it with the right message); only recover for
+      // inactive non-error states.
+      let pipelineActive: Bool
+      let pipelineInError: Bool
+      if isWhisperKit {
+        pipelineActive = self.whisperKitPipeline.state.isActive
+  /// Model status text for sidebar display.
+  var modelStatusText: String {
+    if asrManager.activeBackendType == .whisperKit {
+      switch whisperKitPipeline.state {
+      case .loadingModel: return "Loading Model"
+      case .recording: return "Recording"
+      case .transcribing: return "Transcribing"
+      case .polishing: return "Polishing"
+      case .error: return "Error"
+      default: break
+      }
+    } else {
+      if pipelineState == .recording { return "Recording" }
+      if pipelineState == .transcribing { return "Transcribing" }
+      if pipelineState == .polishing { return "Polishing" }
+      if case .error = pipelineState { return "Error" }
+    }
+    return asrManager.isModelLoaded ? "Loaded" : "Unloaded"
+  }
+
+  /// Toggle recording on/off (plain, no forced LLM).
+  ///
+  /// `source` distinguishes the invocation surface for `dictation.invoked` telemetry
+  /// (issue #723). Production callers MUST specify; there is no default to prevent
+  /// silent fallthrough to a generic value.
+  func toggleRecording(source: TriggerSource) async {
+    postCompletionWarningTask?.cancel()
+    let active = activePipeline
+
+    // Refresh AX status before snapshotting — `makeDictationSessionConfig`
+    // derives `autoPasteToActiveApp` from the active pipeline's idle state
+    // plus the current AX permission.
+    permissions.refreshAccessibilityStatus()
+    if !permissions.hasAccessibilityPermission {
+      permissions.restartMonitoringIfNeeded()
+    }
+
+    try? await active.handle(
+      event: .toggleRecording(makeDictationSessionConfig(triggerSource: source)))
+  }
+
+  /// Build the per-recording config snapshot from settings and paste intent.
+  /// Called at `.toggleRecording` dispatch; the recording's pipeline freezes
+  /// the snapshot for its lifetime via `startRecording(config:)`.
+  private func makeDictationSessionConfig(triggerSource: TriggerSource) -> DictationSessionConfig {
+    let isWhisperKit = asrManager.activeBackendType == .whisperKit
+    let activePipelineIdle: Bool = {
+      if isWhisperKit {
+        switch whisperKitPipeline.state {
+        case .idle, .ready, .complete, .error: return true
+        default: return false
+        }
+      } else {
+        switch pipeline.state {
+        case .idle, .complete, .error: return true
+        default: return false
+        }
+      }
+    }()
+    // #500: drop the legacy `permissions.hasAccessibilityPermission` gate so the
+    // paste cascade always runs. The cascade already handles AX-not-trusted
+    // gracefully at PasteCascadeExecutor.swift:106-118 (forces `.nonText`,
+    // skips all tiers, falls through to clipboard) AND emits the
+    // `.clipboardOnlyAccessibilityDenied` outcome which routes to the
+    // educational `.accessibilityToast` overlay. The legacy gate bypassed
+    // the cascade entirely (TranscriptFinalizer:143 direct copyToClipboard),
+    // depriving AX-denied users of both the diagnostic and the toast.
+    let autoPaste = activePipelineIdle
+    let resolvedModel: String = {
+      switch settings.llmProvider {
+      case .appleIntelligence: return "apple-intelligence"
+      case .ollama: return settings.ollamaModel
+      default: return settings.llmModel
+      }
+    }()
+    return DictationSessionConfig(
+      autoCopyToClipboard: settings.autoCopyToClipboard,
+      inputMode: settings.recordingMode,
+      triggerSource: triggerSource,
+      autoPasteToActiveApp: autoPaste,
+      restoreClipboardAfterPaste: settings.restoreClipboardAfterPaste,
+      vadAutoStop: settings.vadAutoStop,
+      vadSilenceTimeout: settings.vadSilenceTimeout,
+      vadSensitivity: settings.vadSensitivity,
+      vadEnergyGate: settings.vadEnergyGate,
+      languageMode: settings.languageMode,
+      useStreamingASR: settings.useStreamingASR,
+      modelUnloadPolicy: settings.modelUnloadPolicy,
+      llmProvider: settings.llmProvider,
+      llmModel: resolvedModel,
+      polishInstructions: settings.activePolishInstructions,
+
+exec
+/bin/zsh -lc "sed -n '1,80p' Sources/EnviousWispr/App/AppState.swift && sed -n '1,60p' Sources/EnviousWisprPipeline/TranscriptionPipeline.swift && sed -n '1,40p' Sources/EnviousWisprPipeline/WhisperKitPipeline.swift" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-723-trigger-source
+ succeeded in 0ms:
+import EnviousWisprASR
+import EnviousWisprAudio
+import EnviousWisprCore
+import EnviousWisprLLM
+import EnviousWisprPipeline
+import EnviousWisprServices
+import EnviousWisprStorage
+import SwiftUI
+
+/// Root observable state for the entire application.
+@MainActor
+@Observable
+final class AppState {
+  // Settings
+  var settings = SettingsManager()
+
+  // Sub-systems
+  let permissions = PermissionsService()
+  let audioCapture: any AudioCaptureInterface
+  let asrManager: any ASRManagerInterface
+  let keychainManager = KeychainManager()
+  let hotkeyService = HotkeyService()
+  let benchmark = BenchmarkSuite()
+  let recordingOverlay = RecordingOverlayPanel()
+  // Phase F (#501) — setup-orchestration cluster moved out of AppState.
+  // Holds ollamaSetup, whisperKitSetup, and the WhisperKit preload-observation
+  // task. Constructed in init() after asrManager and whisperKitPipeline exist
+  // (it needs both to drive the preload observer).
+  let setup: SetupCoordinator
+  let audioDeviceList = AudioDeviceList()
+  let captureTelemetry = CaptureTelemetryState()
+
+  /// Cancellable task for showing a deferred post-completion warning (e.g. polish failed).
+  /// Cancelled when a new recording starts or a higher-priority notification is shown.
+  private var postCompletionWarningTask: Task<Void, Never>?
+
+  // Pipelines — initialized after sub-systems
+  let pipeline: TranscriptionPipeline
+  let whisperKitPipeline: WhisperKitPipeline
+
+  // Phase A (#196) — per-pipeline state-change behavior absorbed from the
+  // onStateChange closures. Each handler owns the effect execution; AppState
+  // still owns the cross-pipeline warning Task + tiebreaker + hotkey ordering.
+  // Lazy so the callback closures can capture `self` after stored-property
+  // assignment completes. First access is inside `onStateChange`, well after
+  // `init()` returns.
+  @ObservationIgnored
+  private lazy var parakeetStateHandler: PipelineStateChangeHandler = {
+    makeStateChangeHandler(backendLabel: "parakeet")
+  }()
+  @ObservationIgnored
+  private lazy var whisperKitStateHandler: PipelineStateChangeHandler = {
+    makeStateChangeHandler(backendLabel: "whisperKit")
+  }()
+
+  private func makeStateChangeHandler(backendLabel: String) -> PipelineStateChangeHandler {
+    PipelineStateChangeHandler(
+      showOverlay: { [weak self] intent in
+        guard let self else { return }
+        self.recordingOverlay.show(
+          intent: intent,
+          audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 },
+          isRecordingLocked: self.isRecordingLocked
+        )
+      },
+      cancelPendingWarning: { [weak self] in self?.postCompletionWarningTask?.cancel() },
+      schedulePolishFailedWarning: { [weak self] in
+        self?.schedulePostCompletionWarning(message: "Polish failed -- using raw text")
+      },
+      appendCompletedTranscript: { [weak self] t in self?.transcriptCoordinator.append(t) },
+      reportDictationCompleted: { [weak self] t in
+        guard let self else { return }
+        TelemetryService.shared.reportDictationCompleted(
+          transcript: t, inputMode: self.settings.recordingMode.rawValue)
+      },
+      reportPipelineFailed: { msg in
+        TelemetryService.shared.pipelineFailed(
+          stage: "transcription", errorCategory: "pipeline_error", errorCode: msg,
+          recoverable: false, backend: backendLabel)
+      }
+import AppKit
+import EnviousWisprASR
+import EnviousWisprAudio
+import EnviousWisprCore
+import EnviousWisprLLM
+import EnviousWisprServices
+import EnviousWisprStorage
+import Foundation
+
+/// Orchestrates the full dictation pipeline: record → transcribe → (correct) → (polish) → store → copy/paste.
+@MainActor
+@Observable
+public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryTarget {
+  private let audioCapture: any AudioCaptureInterface
+  private let asrManager: any ASRManagerInterface
+  private let transcriptStore: TranscriptStore
+  private let keychainManager: KeychainManager
+
+  public private(set) var state: PipelineState = .idle {
+    didSet {
+      // Honor the `currentSessionConfig` contract: nil when no recording is
+      // in flight. Clear on every transition to a terminal state BEFORE
+      // firing `onStateChange` so observer code (e.g. `reconcileOllamaEviction`
+      // on the AppState side) sees the cleared session and does not treat the
+      // just-finished recording as still pinning a model. (#426 — Codex)
+      switch state {
+      case .idle, .complete, .error:
+        currentSessionConfig = nil
+      case .loadingModel, .recording, .transcribing, .polishing:
+        break
+      }
+      if state != oldValue {
+        onStateChange?(state)
+      }
+    }
+  }
+  public var onStateChange: ((PipelineState) -> Void)?
+  public private(set) var currentTranscript: Transcript?
+  public var lastPolishError: String?
+
+  /// Per-recording session config snapshot. Captured at `startRecording`; immutable
+  /// for the duration of the recording. Settings mutated mid-recording apply to the
+  /// NEXT recording. `nil` when no recording is in flight.
+  public private(set) var currentSessionConfig: DictationSessionConfig?
+
+  // MARK: - Session-scoped accessors (backed by `currentSessionConfig`)
+  //
+  // These reads are guaranteed to happen inside a recording's lifecycle
+  // (from `startRecording` through `stopAndTranscribe`/`cancelRecording`),
+  // so `currentSessionConfig` is set. The `??` fallbacks mirror the prior
+  // public-property defaults and exist only as defense-in-depth.
+
+  private var autoCopyToClipboard: Bool { currentSessionConfig?.autoCopyToClipboard ?? true }
+  private var autoPasteToActiveApp: Bool { currentSessionConfig?.autoPasteToActiveApp ?? false }
+  private var restoreClipboardAfterPaste: Bool {
+    currentSessionConfig?.restoreClipboardAfterPaste ?? false
+  }
+  private var vadAutoStop: Bool { currentSessionConfig?.vadAutoStop ?? false }
+  private var vadSilenceTimeout: Double { currentSessionConfig?.vadSilenceTimeout ?? 1.5 }
+  private var vadSensitivity: Float { currentSessionConfig?.vadSensitivity ?? 0.5 }
+import AppKit
+import EnviousWisprASR
+import EnviousWisprAudio
+import EnviousWisprCore
+import EnviousWisprLLM
+import EnviousWisprServices
+import EnviousWisprStorage
+import Foundation
+
+// R2 (#360): the pipeline holds no WhisperKit-typed values after the
+// Approach C session protocol + LID-button refactor, so it no longer
+// imports the vendor module directly. The dependency is also dropped from
+// the EnviousWisprPipeline target in `Package.swift`. All vendor reach now
+// goes through `EnviousWisprASR`'s package-access seams.
+
+/// Internal state machine for the WhisperKit highway — independent of PipelineState.
+public enum WhisperKitPipelineState: Equatable, Sendable {
+  case idle
+  case startingUp  // engine warm-up / pre-capture setup
+  case loadingModel
+  case ready
+  case recording
+  case transcribing
+  case polishing
+  case complete
+  case error(String)
+
+  public var isActive: Bool {
+    switch self {
+    case .startingUp, .recording, .transcribing, .polishing, .loadingModel:
+      return true
+    default:
+      return false
+    }
+  }
+}
+
+// MARK: - PipelineStateProtocol conformance
+
+extension WhisperKitPipelineState: PipelineStateProtocol {
+
+exec
+/bin/zsh -lc 'rg "onStartRecording|onToggleRecording|recordingMode" -n Sources/EnviousWispr* | head -100 && rg "enum RecordingMode" -n Sources' in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-723-trigger-source
+ succeeded in 0ms:
+Sources/EnviousWisprServices/SettingsManager.swift:9:    case recordingMode
+Sources/EnviousWisprServices/SettingsManager.swift:54:  public var recordingMode: RecordingMode {
+Sources/EnviousWisprServices/SettingsManager.swift:56:      UserDefaults.standard.set(recordingMode.rawValue, forKey: "recordingMode")
+Sources/EnviousWisprServices/SettingsManager.swift:57:      onChange?(.recordingMode)
+Sources/EnviousWisprServices/SettingsManager.swift:339:    get { recordingMode == .pushToTalk }
+Sources/EnviousWisprServices/SettingsManager.swift:340:    set { recordingMode = newValue ? .pushToTalk : .toggle }
+Sources/EnviousWisprServices/SettingsManager.swift:347:    recordingMode =
+Sources/EnviousWisprServices/SettingsManager.swift:348:      RecordingMode(rawValue: defaults.string(forKey: "recordingMode") ?? "") ?? .pushToTalk
+Sources/EnviousWisprServices/TelemetryService.swift:151:  public func onboardingCompleted(asrBackend: String, recordingMode: String) {
+Sources/EnviousWisprServices/TelemetryService.swift:156:        "recording_mode": recordingMode,
+Sources/EnviousWisprServices/TelemetryService.swift:391:    asrBackend: String, llmProvider: String, recordingMode: String,
+Sources/EnviousWisprServices/TelemetryService.swift:400:        "recording_mode": recordingMode,
+Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift:268:      asrBackend: settings.selectedBackend.rawValue, recordingMode: settings.recordingMode.rawValue)
+Sources/EnviousWisprServices/HotkeyService.swift:71:  public var onToggleRecording: (@MainActor () async -> Void)?
+Sources/EnviousWisprServices/HotkeyService.swift:72:  public var onStartRecording: (@MainActor () async -> Void)?
+Sources/EnviousWisprServices/HotkeyService.swift:85:  public var recordingMode: RecordingMode = .toggle
+Sources/EnviousWisprServices/HotkeyService.swift:212:      recordingTask = Task { await onStartRecording?() }
+Sources/EnviousWisprServices/HotkeyService.swift:437:        "Carbon hotkey event: id=\(id), isRelease=\(isRelease), mode=\(recordingMode)",
+Sources/EnviousWisprServices/HotkeyService.swift:443:      if recordingMode == .toggle {
+Sources/EnviousWisprServices/HotkeyService.swift:445:        Task { await onToggleRecording?() }
+Sources/EnviousWisprServices/HotkeyService.swift:487:    if recordingMode == .toggle {
+Sources/EnviousWisprServices/HotkeyService.swift:494:      Task { await onToggleRecording?() }
+Sources/EnviousWisprServices/HotkeyService.swift:527:    return recordingMode == .pushToTalk ? "Hold \(formatted)" : formatted
+Sources/EnviousWispr/App/AppDelegate.swift:177:        recordingMode: s.recordingMode.rawValue,
+Sources/EnviousWispr/App/PipelineSettingsSync.swift:113:    case .recordingMode:
+Sources/EnviousWispr/App/PipelineSettingsSync.swift:114:      hotkeyService.recordingMode = settings.recordingMode
+Sources/EnviousWispr/App/AppState.swift:74:          transcript: t, inputMode: self.settings.recordingMode.rawValue)
+Sources/EnviousWispr/App/AppState.swift:507:    hotkeyService.recordingMode = settings.recordingMode
+Sources/EnviousWispr/App/AppState.swift:512:    hotkeyService.onToggleRecording = { [weak self] in
+Sources/EnviousWispr/App/AppState.swift:516:    hotkeyService.onStartRecording = { [weak self] in
+Sources/EnviousWispr/App/AppState.swift:937:      inputMode: settings.recordingMode,
+Sources/EnviousWisprCore/AppSettings.swift:4:public enum RecordingMode: String, Codable, CaseIterable, Sendable {
+
+exec
+/bin/zsh -lc "sed -n '1,25p' Sources/EnviousWisprCore/AppSettings.swift && sed -n '180,235p' Sources/EnviousWisprServices/HotkeyService.swift && sed -n '430,505p' Sources/EnviousWisprServices/HotkeyService.swift" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-723-trigger-source
+ succeeded in 0ms:
+import Foundation
+
+/// Recording mode for dictation.
+public enum RecordingMode: String, Codable, CaseIterable, Sendable {
+  case pushToTalk
+  case toggle
+
+  public var shortLabel: String {
+    switch self {
+    case .pushToTalk: return "PTT"
+    case .toggle: return "Toggle"
+    }
+  }
+}
+
+/// Pipeline processing state.
+public enum PipelineState: Equatable, Sendable {
+  case idle
+  case loadingModel
+  case recording
+  case transcribing
+  case polishing
+  case complete
+  case error(String)
+
+    } else {
+      handleRecordRelease()
+    }
+  }
+
+  private func handleRecordPress() {
+    // Guard: if already held (duplicate press event), ignore
+    guard !isModifierHeld else { return }
+    isModifierHeld = true
+
+    // Anti-spam Layer 1: Block new recordings while pipeline is processing.
+    if let isProcessing = onIsProcessing, isProcessing() {
+      Task {
+        await AppLogger.shared.log(
+          "Key press ignored — pipeline is still processing",
+          level: .info, category: "HotkeyService"
+        )
+      }
+      isModifierHeld = false
+      return
+    }
+
+    let isRecording = recordingStartTime != nil
+
+    if !isRecording {
+      // Not recording → start fresh
+      stateGeneration &+= 1
+      isRecordingLocked = false
+      recordingStartTime = Date()
+      debounceTask?.cancel()
+      debounceTask = nil
+      recordingTask?.cancel()
+      recordingTask = Task { await onStartRecording?() }
+    } else if let startTime = recordingStartTime,
+      Date().timeIntervalSince(startTime) <= Double(TimingConstants.handsFreeDebounceDelayMs)
+        / 1000.0
+    {
+      // Within 500ms window
+      if isRecordingLocked {
+        // Triple press → cancel
+        Task {
+          await AppLogger.shared.log(
+            "Triple press — cancelling hands-free recording",
+            level: .info, category: "HotkeyService"
+          )
+        }
+        performCleanup()
+        isModifierHeld = false
+        recordingTask?.cancel()
+        recordingTask = Task { await onCancelRecording?() }
+      } else {
+        // Double press → lock into hands-free
+        Task {
+          await AppLogger.shared.log(
+            "Double press — locking into hands-free mode",
+            level: .info, category: "HotkeyService"
+
+  // MARK: - Event Dispatch
+
+  /// Called from the Carbon event handler on the main thread for RegisterEventHotKey events.
+  public func handleCarbonHotkey(id: UInt32, isRelease: Bool) {
+    Task {
+      await AppLogger.shared.log(
+        "Carbon hotkey event: id=\(id), isRelease=\(isRelease), mode=\(recordingMode)",
+        level: .info, category: "HotkeyService"
+      )
+    }
+    switch id {
+    case HotkeyID.toggle.rawValue:
+      if recordingMode == .toggle {
+        guard !isRelease else { return }
+        Task { await onToggleRecording?() }
+      } else {
+        // Push-to-talk mode with hands-free support
+        handleRecordAction(isPress: !isRelease)
+      }
+
+    case HotkeyID.cancel.rawValue:
+      guard !isRelease else { return }
+      performCleanup()
+      Task { await onCancelRecording?() }
+
+    default:
+      break
+    }
+  }
+
+  /// Called from the NSEvent flagsChanged monitors for modifier-only hotkeys.
+  ///
+  /// NSEvent gives us the exact keyCode that changed, so we know precisely which
+  /// modifier was pressed or released without needing to diff against a previous state.
+  private func handleFlagsChanged(_ event: NSEvent) {
+    handleFlagsChangedValues(keyCode: event.keyCode, flags: event.modifierFlags)
+  }
+
+  /// Processes modifier key changes from pre-extracted values.
+  /// Used by the global monitor (which dispatches to main thread with raw values)
+  /// and directly by the local monitor via handleFlagsChanged.
+  private func handleFlagsChangedValues(keyCode: UInt16, flags: NSEvent.ModifierFlags) {
+    guard !isSuspended else { return }
+
+    let currentFlags = flags.intersection(.deviceIndependentFlagsMask)
+
+    // Only process known modifier key codes
+    guard ModifierKeyCodes.isModifierOnly(keyCode) else { return }
+
+    // Determine press vs. release by checking whether the flag is present
+    let flag = flagForKeyCode(keyCode)
+    let isPress = currentFlags.contains(flag)
+
+    // Unified shortcut — both modes use toggleKeyCode
+    guard keyCode == toggleKeyCode else { return }
+
+    if recordingMode == .toggle {
+      guard isPress else { return }
+      Task {
+        await AppLogger.shared.log(
+          "Modifier-only toggle: keyCode=\(keyCode)", level: .info, category: "HotkeyService"
+        )
+      }
+      Task { await onToggleRecording?() }
+    } else {
+      // Push-to-talk mode with hands-free support
+      handleRecordAction(isPress: isPress)
+    }
+  }
+
+  private func flagForKeyCode(_ keyCode: UInt16) -> NSEvent.ModifierFlags {
+    switch keyCode {
+    case 55, 54: return .command
+    case 58, 61: return .option
+    case 59, 62: return .control
+
+exec
+/bin/zsh -lc 'git diff --check' in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-723-trigger-source
+ succeeded in 0ms:
+exec
+/bin/zsh -lc 'swift test --filter DictationInvoked' in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-723-trigger-source
+ exited 1 in 6203ms:
+warning: /Users/m4pro_sv/Library/org.swift.swiftpm/configuration is not accessible or not writable, disabling user-level cache features.
+warning: /Users/m4pro_sv/Library/org.swift.swiftpm/security is not accessible or not writable, disabling user-level cache features.
+warning: /Users/m4pro_sv/Library/Caches/org.swift.swiftpm is not accessible or not writable, disabling user-level cache features.
+error: 'issue-723-trigger-source': Invalid manifest (compiled with: ["/Library/Developer/CommandLineTools/usr/bin/swiftc", "-vfsoverlay", "/var/folders/t0/1pnvt1n158gfwl6vbb4fb0v40000gn/T/TemporaryDirectory.k8Wt6I/vfs.yaml", "-L", "/Library/Developer/CommandLineTools/usr/lib/swift/pm/ManifestAPI", "-lPackageDescription", "-Xlinker", "-rpath", "-Xlinker", "/Library/Developer/CommandLineTools/usr/lib/swift/pm/ManifestAPI", "-target", "arm64-apple-macosx14.0", "-I", "/Library/Developer/CommandLineTools/Library/Developer/Frameworks", "-L", "/Library/Developer/CommandLineTools/Library/Developer/Frameworks", "-plugin-path", "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing", "-sdk", "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk", "-swift-version", "6", "-I", "/Library/Developer/CommandLineTools/usr/lib/swift/pm/ManifestAPI", "-sdk", "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk", "-package-description-version", "6.0.0", "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-723-trigger-source/Package.swift", "-o", "/var/folders/t0/1pnvt1n158gfwl6vbb4fb0v40000gn/T/TemporaryDirectory.SOorVt/issue-723-trigger-source-manifest"])
+<unknown>:0: error: unable to open output file '/Users/m4pro_sv/.cache/clang/ModuleCache/16FE8S6R1GMN7/SwiftShims-JX1COEH18DAN.pcm': 'Operation not permitted'
+/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib/swift/Swift.swiftmodule/arm64e-apple-macos.swiftinterface:5:8: error: could not build Objective-C module 'SwiftShims'
+    3 | // swift-module-flags: -target arm64e-apple-macosx26.4 -target-variant arm64e-apple-ios26.4-macabi -enable-objc-interop -enable-library-evolution -module-link-name swiftCore -parse-stdlib -swift-version 5 -O -library-level api -enforce-exclusivity=unchecked -target-min-inlining-version min -enable-experimental-concise-pound-file -disable-objc-attr-requires-foundation-module -enable-experimental-feature NoncopyableGenerics2 -enable-experimental-feature SuppressedAssociatedTypes -enable-experimental-feature SE427NoInferenceOnExtension -enable-experimental-feature NonescapableTypes -enable-experimental-feature LifetimeDependence -enable-experimental-feature InoutLifetimeDependence -enable-experimental-feature LifetimeDependenceMutableAccessors -enable-experimental-feature MemberImportVisibility -enable-experimental-feature TypedThrows -enable-experimental-feature Macros -enable-experimental-feature FreestandingMacros -enable-experimental-feature BitwiseCopyable -enable-experimental-feature Extern -enable-experimental-feature AllowUnsafeAttribute -enable-experimental-feature ValueGenerics -enable-experimental-feature AddressableParameters -enable-experimental-feature AddressableTypes -user-module-version 6.3.0.123.11 -module-name Swift
+    4 | // swift-module-flags-ignorable: -enable-lexical-lifetimes=false -strict-memory-safety -formal-cxx-interoperability-mode=off -interface-compiler-version 6.3
+    5 | import SwiftShims
+      |        `- error: could not build Objective-C module 'SwiftShims'
+    6 | @inlinable public func min<T>(_ x: T, _ y: T) -> T where T : Swift.Comparable {
+    7 |    
+
+/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib/swift/Swift.swiftmodule/arm64e-apple-macos.swiftinterface:1:1: error: failed to build module 'Swift'; this SDK is not supported by the compiler (the SDK is built with 'Apple Swift version 6.3 effective-5.10 (swiftlang-6.3.0.123.4 clang-2100.0.123.2)', while this compiler is 'Apple Swift version 6.3.1 effective-5.10 (swiftlang-6.3.1.1.2 clang-2100.0.123.102)'). Please select a toolchain which matches the SDK.
+    1 | // swift-interface-format-version: 1.0
+      | `- error: failed to build module 'Swift'; this SDK is not supported by the compiler (the SDK is built with 'Apple Swift version 6.3 effective-5.10 (swiftlang-6.3.0.123.4 clang-2100.0.123.2)', while this compiler is 'Apple Swift version 6.3.1 effective-5.10 (swiftlang-6.3.1.1.2 clang-2100.0.123.102)'). Please select a toolchain which matches the SDK.
+    2 | // swift-compiler-version: Apple Swift version 6.3 effective-5.10 (swiftlang-6.3.0.123.4 clang-2100.0.123.2)
+    3 | // swift-module-flags: -target arm64e-apple-macosx26.4 -target-variant arm64e-apple-ios26.4-macabi -enable-objc-interop -enable-library-evolution -module-link-name swiftCore -parse-stdlib -swift-version 5 -O -library-level api -enforce-exclusivity=unchecked -target-min-inlining-version min -enable-experimental-concise-pound-file -disable-objc-attr-requires-foundation-module -enable-experimental-feature NoncopyableGenerics2 -enable-experimental-feature SuppressedAssociatedTypes -enable-experimental-feature SE427NoInferenceOnExtension -enable-experimental-feature NonescapableTypes -enable-experimental-feature LifetimeDependence -enable-experimental-feature InoutLifetimeDependence -enable-experimental-feature LifetimeDependenceMutableAccessors -enable-experimental-feature MemberImportVisibility -enable-experimental-feature TypedThrows -enable-experimental-feature Macros -enable-experimental-feature FreestandingMacros -enable-experimental-feature BitwiseCopyable -enable-experimental-feature Extern -enable-experimental-feature AllowUnsafeAttribute -enable-experimental-feature ValueGenerics -enable-experimental-feature AddressableParameters -enable-experimental-feature AddressableTypes -user-module-version 6.3.0.123.11 -module-name Swift
+error: 'issue-723-trigger-source': Invalid manifest (compiled with: ["/Library/Developer/CommandLineTools/usr/bin/swiftc", "-vfsoverlay", "/var/folders/t0/1pnvt1n158gfwl6vbb4fb0v40000gn/T/TemporaryDirectory.7tHsF8/vfs.yaml", "-L", "/Library/Developer/CommandLineTools/usr/lib/swift/pm/ManifestAPI", "-lPackageDescription", "-Xlinker", "-rpath", "-Xlinker", "/Library/Developer/CommandLineTools/usr/lib/swift/pm/ManifestAPI", "-target", "arm64-apple-macosx14.0", "-I", "/Library/Developer/CommandLineTools/Library/Developer/Frameworks", "-L", "/Library/Developer/CommandLineTools/Library/Developer/Frameworks", "-plugin-path", "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing", "-sdk", "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk", "-swift-version", "6", "-I", "/Library/Developer/CommandLineTools/usr/lib/swift/pm/ManifestAPI", "-sdk", "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk", "-package-description-version", "6.0.0", "/Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-723-trigger-source/Package.swift", "-o", "/var/folders/t0/1pnvt1n158gfwl6vbb4fb0v40000gn/T/TemporaryDirectory.ED962G/issue-723-trigger-source-manifest"])
+<unknown>:0: error: unable to open output file '/Users/m4pro_sv/.cache/clang/ModuleCache/16FE8S6R1GMN7/SwiftShims-JX1COEH18DAN.pcm': 'Operation not permitted'
+/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib/swift/Swift.swiftmodule/arm64e-apple-macos.swiftinterface:5:8: error: could not build Objective-C module 'SwiftShims'
+    3 | // swift-module-flags: -target arm64e-apple-macosx26.4 -target-variant arm64e-apple-ios26.4-macabi -enable-objc-interop -enable-library-evolution -module-link-name swiftCore -parse-stdlib -swift-version 5 -O -library-level api -enforce-exclusivity=unchecked -target-min-inlining-version min -enable-experimental-concise-pound-file -disable-objc-attr-requires-foundation-module -enable-experimental-feature NoncopyableGenerics2 -enable-experimental-feature SuppressedAssociatedTypes -enable-experimental-feature SE427NoInferenceOnExtension -enable-experimental-feature NonescapableTypes -enable-experimental-feature LifetimeDependence -enable-experimental-feature InoutLifetimeDependence -enable-experimental-feature LifetimeDependenceMutableAccessors -enable-experimental-feature MemberImportVisibility -enable-experimental-feature TypedThrows -enable-experimental-feature Macros -enable-experimental-feature FreestandingMacros -enable-experimental-feature BitwiseCopyable -enable-experimental-feature Extern -enable-experimental-feature AllowUnsafeAttribute -enable-experimental-feature ValueGenerics -enable-experimental-feature AddressableParameters -enable-experimental-feature AddressableTypes -user-module-version 6.3.0.123.11 -module-name Swift
+    4 | // swift-module-flags-ignorable: -enable-lexical-lifetimes=false -strict-memory-safety -formal-cxx-interoperability-mode=off -interface-compiler-version 6.3
+    5 | import SwiftShims
+      |        `- error: could not build Objective-C module 'SwiftShims'
+    6 | @inlinable public func min<T>(_ x: T, _ y: T) -> T where T : Swift.Comparable {
+    7 |    
+
+/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib/swift/Swift.swiftmodule/arm64e-apple-macos.swiftinterface:1:1: error: failed to build module 'Swift'; this SDK is not supported by the compiler (the SDK is built with 'Apple Swift version 6.3 effective-5.10 (swiftlang-6.3.0.123.4 clang-2100.0.123.2)', while this compiler is 'Apple Swift version 6.3.1 effective-5.10 (swiftlang-6.3.1.1.2 clang-2100.0.123.102)'). Please select a toolchain which matches the SDK.
+    1 | // swift-interface-format-version: 1.0
+      | `- error: failed to build module 'Swift'; this SDK is not supported by the compiler (the SDK is built with 'Apple Swift version 6.3 effective-5.10 (swiftlang-6.3.0.123.4 clang-2100.0.123.2)', while this compiler is 'Apple Swift version 6.3.1 effective-5.10 (swiftlang-6.3.1.1.2 clang-2100.0.123.102)'). Please select a toolchain which matches the SDK.
+    2 | // swift-compiler-version: Apple Swift version 6.3 effective-5.10 (swiftlang-6.3.0.123.4 clang-2100.0.123.2)
+    3 | // swift-module-flags: -target arm64e-apple-macosx26.4 -target-variant arm64e-apple-ios26.4-macabi -enable-objc-interop -enable-library-evolution -module-link-name swiftCore -parse-stdlib -swift-version 5 -O -library-level api -enforce-exclusivity=unchecked -target-min-inlining-version min -enable-experimental-concise-pound-file -disable-objc-attr-requires-foundation-module -enable-experimental-feature NoncopyableGenerics2 -enable-experimental-feature SuppressedAssociatedTypes -enable-experimental-feature SE427NoInferenceOnExtension -enable-experimental-feature NonescapableTypes -enable-experimental-feature LifetimeDependence -enable-experimental-feature InoutLifetimeDependence -enable-experimental-feature LifetimeDependenceMutableAccessors -enable-experimental-feature MemberImportVisibility -enable-experimental-feature TypedThrows -enable-experimental-feature Macros -enable-experimental-feature FreestandingMacros -enable-experimental-feature BitwiseCopyable -enable-experimental-feature Extern -enable-experimental-feature AllowUnsafeAttribute -enable-experimental-feature ValueGenerics -enable-experimental-feature AddressableParameters -enable-experimental-feature AddressableTypes -user-module-version 6.3.0.123.11 -module-name Swift
+error: ExitCode(rawValue: 1)
+[0/1] Planning build
+
+exec
+/bin/zsh -lc "sed -n '450,520p' Sources/EnviousWispr/App/AppDelegate.swift && rg \"toggleRecording\" -n Sources/EnviousWispr/App/AppDelegate.swift" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-723-trigger-source
+ succeeded in 0ms:
+      systemSymbolName: "gearshape", accessibilityDescription: "Settings")
+    settingsItem.target = self
+    menu.addItem(settingsItem)
+
+    // Check for Updates — retargeted to AppDelegate wrapper so we can tag
+    // the install source as "menu" for telemetry attribution (issue #343).
+    if updaterController != nil {
+      let updateItem = NSMenuItem(
+        title: "Check for Updates…",
+        action: #selector(openUpdateCheckFromMenu(_:)), keyEquivalent: "")
+      updateItem.image = NSImage(
+        systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: "Update")
+      updateItem.target = self
+      menu.addItem(updateItem)
+    }
+
+    menu.addItem(.separator())
+
+    // Quit
+    let quitItem = NSMenuItem(
+      title: "Quit \(AppConstants.appName)", action: #selector(quitApp), keyEquivalent: "q")
+    quitItem.image = NSImage(systemSymbolName: "power", accessibilityDescription: "Quit")
+    quitItem.target = self
+    menu.addItem(quitItem)
+  }
+
+  /// Update the status item icon based on pipeline state.
+  func updateIcon() {
+    let state = appState.pipelineState
+    let needsAccessWarning = state == .idle && appState.permissions.shouldShowAccessibilityWarning
+    let onboardingIncomplete = appState.settings.onboardingState != .completed
+
+    if needsAccessWarning || (onboardingIncomplete && state == .idle) {
+      iconAnimator.transition(to: .error)
+    } else if case .error = state {
+      iconAnimator.transition(to: .error)
+    } else if state == .recording {
+      iconAnimator.transition(to: .recording)
+    } else if state == .transcribing || state == .polishing || state == .loadingModel {
+      iconAnimator.transition(to: .processing)
+    } else {
+      iconAnimator.transition(to: .idle)
+    }
+  }
+
+  @objc private func continueOnboarding() {
+    openOnboardingWindow()
+  }
+
+  @objc private func toggleRecording() {
+    Task {
+      await appState.toggleRecording(source: .menuBar)
+      updateIcon()
+    }
+  }
+
+  /// Show the unified window: bring it to front, set .regular, activate.
+  private func showWindow() {
+    if let action = openMainWindowAction {
+      action()
+    } else {
+      // Fallback: find and show an existing window
+      for window in NSApp.windows where window.title == AppConstants.appName {
+        window.makeKeyAndOrderFront(nil)
+        break
+      }
+    }
+    NSApp.setActivationPolicy(.regular)
+    NSApp.activate(ignoringOtherApps: true)
+  }
+
+410:      title: recordTitle, action: #selector(toggleRecording), keyEquivalent: "")
+499:  @objc private func toggleRecording() {
+501:      await appState.toggleRecording(source: .menuBar)
+
+exec
+/bin/zsh -lc "sed -n '380,420p' Sources/EnviousWispr/App/AppDelegate.swift" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-723-trigger-source
+ succeeded in 0ms:
+        keyEquivalent: ""
+      )
+      setupItem.image = NSImage(
+        systemSymbolName: "exclamationmark.circle.fill", accessibilityDescription: "Setup required")
+      setupItem.target = self
+      menu.addItem(setupItem)
+      menu.addItem(.separator())
+    }
+
+    // Status: ASR model — LLM model
+    let asrModel = appState.activeModelName
+    let llmInfo = appState.activeLLMDisplayName
+    let statusTitle = "\(asrModel) — \(llmInfo)"
+    let statusItem = NSMenuItem(title: statusTitle, action: nil, keyEquivalent: "")
+    statusItem.isEnabled = false
+    menu.addItem(statusItem)
+
+    // Version
+    let versionItem = NSMenuItem(
+      title: "Version: \(AppConstants.appVersion)", action: nil, keyEquivalent: "")
+    versionItem.isEnabled = false
+    menu.addItem(versionItem)
+
+    menu.addItem(.separator())
+
+    // Record / Stop
+    let recordTitle = state == .recording ? "Stop Recording" : "Start Recording"
+    let recordSymbol = state == .recording ? "stop.circle" : "mic.fill"
+    let recordDescription = state == .recording ? "Stop" : "Record"
+    let recordItem = NSMenuItem(
+      title: recordTitle, action: #selector(toggleRecording), keyEquivalent: "")
+    recordItem.image = NSImage(
+      systemSymbolName: recordSymbol, accessibilityDescription: recordDescription)
+    recordItem.target = self
+    recordItem.isEnabled = !(state.isActive && state != .recording)
+    menu.addItem(recordItem)
+
+    // Auto-stop on silence indicator
+    if appState.settings.vadAutoStop {
+      let autoStopTitle =
+        state == .recording
+
+exec
+/bin/zsh -lc 'rg "EnviousWisprCore" -n Package.swift' in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-723-trigger-source
+ succeeded in 0ms:
+15:    .library(name: "EnviousWisprCore", targets: ["EnviousWisprCore"]),
+31:      name: "EnviousWisprCore",
+32:      path: "Sources/EnviousWisprCore"
+36:      dependencies: ["EnviousWisprCore"],
+41:      dependencies: ["EnviousWisprCore"],
+47:        "EnviousWisprCore",
+55:        "EnviousWisprCore",
+64:        "EnviousWisprCore",
+73:      dependencies: ["EnviousWisprCore"],
+79:        "EnviousWisprCore",
+96:        "EnviousWisprCore",
+105:        "EnviousWisprCore",
+117:        "EnviousWisprCore",
+135:        "EnviousWisprCore",
+148:        "EnviousWisprCore",
+
+exec
+/bin/zsh -lc "rg \"testDefault\\(\" -n Tests Sources | head -200 && rg \"trigger_source|dictationInvoked|input_mode\" -n Sources Tests | head -200" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-723-trigger-source
+ succeeded in 0ms:
+Tests/EnviousWisprTests/App/V2/BackendSwitchGuardTests.swift:83:    let config = DictationSessionConfig.testDefault(
+Tests/EnviousWisprTests/Pipeline/V2/DedupSurvivesStallTests.swift:40:    let config = DictationSessionConfig.testDefault(
+Tests/EnviousWisprTests/Pipeline/V2/CancellationSilentUnwindTests.swift:81:    let config = DictationSessionConfig.testDefault(
+Tests/EnviousWisprTests/Pipeline/HeartPathTelemetryWiringTests.swift:251:    let config = DictationSessionConfig.testDefault(
+Tests/EnviousWisprTests/Pipeline/DictationSessionConfig+TestDefault.swift:6:  static func testDefault(
+Tests/EnviousWisprTests/Pipeline/HeartPathIntegrationTests.swift:97:    let config = DictationSessionConfig.testDefault(
+Tests/EnviousWisprTests/Pipeline/DictationSessionConfigTests.swift:9:    let config = DictationSessionConfig.testDefault()
+Tests/EnviousWisprTests/Pipeline/DictationSessionConfigTests.swift:31:    let config = DictationSessionConfig.testDefault(
+Tests/EnviousWisprTests/Pipeline/DictationSessionConfigTests.swift:63:    let config = DictationSessionConfig.testDefault(autoCopyToClipboard: sourceFlag)
+Sources/EnviousWisprCore/DictationSessionConfig.swift:27:  /// `DictationSessionConfig.testDefault()`; do NOT use from production UI code.
+Sources/EnviousWisprServices/TelemetryService.swift:65:            "input_mode": inputMode,
+Sources/EnviousWisprServices/TelemetryService.swift:195:  public func dictationInvoked(triggerSource: String, inputMode: String, targetApp: String?) {
+Sources/EnviousWisprServices/TelemetryService.swift:196:    var props: [String: Any] = ["trigger_source": triggerSource, "input_mode": inputMode]
+Sources/EnviousWisprServices/TelemetryService.swift:199:      var stringProps = ["trigger_source": triggerSource, "input_mode": inputMode]
+Sources/EnviousWisprServices/TelemetryService.swift:215:      "input_mode": inputMode,
+Sources/EnviousWisprServices/TelemetryService.swift:438:      "input_mode": inputMode,
+Tests/EnviousWisprTests/Services/DictationInvokedTelemetryTests.swift:24:    @Test("dictationInvoked exposes exact event payload through DEBUG hook")
+Tests/EnviousWisprTests/Services/DictationInvokedTelemetryTests.swift:25:    func dictationInvokedPayloadIsObservable() {
+Tests/EnviousWisprTests/Services/DictationInvokedTelemetryTests.swift:32:      TelemetryService.shared.dictationInvoked(
+Tests/EnviousWisprTests/Services/DictationInvokedTelemetryTests.swift:43:      // #723: trigger_source and input_mode are distinct fields now.
+Tests/EnviousWisprTests/Services/DictationInvokedTelemetryTests.swift:44:      // trigger_source = invocation surface; input_mode = configured recording mode.
+Tests/EnviousWisprTests/Services/DictationInvokedTelemetryTests.swift:45:      #expect(event.stringProps["trigger_source"] == "ptt_hotkey")
+Tests/EnviousWisprTests/Services/DictationInvokedTelemetryTests.swift:46:      #expect(event.stringProps["input_mode"] == "pushToTalk")
+Tests/EnviousWisprTests/Services/DictationInvokedTelemetryTests.swift:52:      "trigger_source and input_mode are independent — toolbar invocation on toggle-configured user (#723)"
+Tests/EnviousWisprTests/Services/DictationInvokedTelemetryTests.swift:62:      // trigger_source should reflect "toolbar", NOT "toggle".
+Tests/EnviousWisprTests/Services/DictationInvokedTelemetryTests.swift:63:      TelemetryService.shared.dictationInvoked(
+Tests/EnviousWisprTests/Services/DictationInvokedTelemetryTests.swift:73:      #expect(event.stringProps["trigger_source"] == "toolbar")
+Tests/EnviousWisprTests/Services/DictationInvokedTelemetryTests.swift:74:      #expect(event.stringProps["input_mode"] == "toggle")
+Tests/EnviousWisprTests/Services/DictationInvokedTelemetryTests.swift:75:      #expect(event.stringProps["trigger_source"] != event.stringProps["input_mode"])
+Tests/EnviousWisprTests/Pipeline/DictationInvokedPipelineWiringTests.swift:9:    #expect(!source.contains("dictationInvoked("))
+Tests/EnviousWisprTests/Pipeline/DictationInvokedPipelineWiringTests.swift:32:    let telemetryIndex = try Self.require("TelemetryService.shared.dictationInvoked(", in: body)
+Tests/EnviousWisprTests/Pipeline/DictationInvokedPipelineWiringTests.swift:35:    // #723: trigger_source and input_mode are distinct schema slots; pipeline
+Tests/EnviousWisprTests/Pipeline/DictationInvokedPipelineWiringTests.swift:52:    let telemetryIndex = try Self.require("TelemetryService.shared.dictationInvoked(", in: body)
+Tests/EnviousWisprTests/Pipeline/DictationInvokedPipelineWiringTests.swift:55:    // #723: trigger_source and input_mode are distinct schema slots; pipeline
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:498:      TelemetryService.shared.dictationInvoked(
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:536:      TelemetryService.shared.dictationInvoked(
+Sources/EnviousWisprCore/DictationSessionConfig.swift:8:/// `input_mode` (configured behavior) and `trigger_source` (invoking surface),
+
+exec
+/bin/zsh -lc "sed -n '1,110p' Tests/EnviousWisprTests/Pipeline/DictationSessionConfigTests.swift && sed -n '180,220p' Sources/EnviousWisprServices/TelemetryService.swift" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-723-trigger-source
+ succeeded in 0ms:
+import EnviousWisprCore
+import Testing
+
+@Suite("DictationSessionConfig — per-recording snapshot")
+struct DictationSessionConfigTests {
+
+  @Test("testDefault factory returns SettingsManager-default-shaped values")
+  func testDefaultIsShapedLikeSettingsDefaults() {
+    let config = DictationSessionConfig.testDefault()
+
+    #expect(config.autoCopyToClipboard == true)
+    #expect(config.autoPasteToActiveApp == false)
+    #expect(config.restoreClipboardAfterPaste == false)
+    #expect(config.vadAutoStop == false)
+    #expect(config.vadSilenceTimeout == 1.5)
+    #expect(config.vadSensitivity == 0.5)
+    #expect(config.vadEnergyGate == false)
+    #expect(config.languageMode == .auto)
+    #expect(config.useStreamingASR == true)
+    #expect(config.modelUnloadPolicy == .never)
+    #expect(config.llmProvider == .none)
+    #expect(config.llmModel == "")
+    #expect(config.polishInstructions.systemPrompt == PolishInstructions.default.systemPrompt)
+    #expect(config.useExtendedThinking == false)
+    #expect(config.selectedInputDeviceUID == "")
+    #expect(config.preferredInputDeviceIDOverride == "")
+  }
+
+  @Test("per-field overrides survive construction intact")
+  func testFieldOverridesHonored() {
+    let config = DictationSessionConfig.testDefault(
+      autoCopyToClipboard: false,
+      autoPasteToActiveApp: true,
+      vadAutoStop: true,
+      vadSilenceTimeout: 3.0,
+      vadSensitivity: 0.8,
+      languageMode: .locked("es"),
+      useStreamingASR: false,
+      llmProvider: .appleIntelligence,
+      llmModel: "apple-intelligence",
+      useExtendedThinking: true,
+      selectedInputDeviceUID: "BuiltInMic",
+      preferredInputDeviceIDOverride: "ExternalMic"
+    )
+
+    #expect(config.autoCopyToClipboard == false)
+    #expect(config.autoPasteToActiveApp == true)
+    #expect(config.vadAutoStop == true)
+    #expect(config.vadSilenceTimeout == 3.0)
+    #expect(config.vadSensitivity == 0.8)
+    #expect(config.languageMode == LanguageMode.locked("es"))
+    #expect(config.useStreamingASR == false)
+    #expect(config.llmProvider == LLMProvider.appleIntelligence)
+    #expect(config.llmModel == "apple-intelligence")
+    #expect(config.useExtendedThinking == true)
+    #expect(config.selectedInputDeviceUID == "BuiltInMic")
+    #expect(config.preferredInputDeviceIDOverride == "ExternalMic")
+  }
+
+  @Test("Sendable value semantics — modifying a copy's source does not mutate the snapshot")
+  func testValueSemantics() {
+    var sourceFlag = true
+    let config = DictationSessionConfig.testDefault(autoCopyToClipboard: sourceFlag)
+    sourceFlag = false
+    #expect(config.autoCopyToClipboard == true)
+  }
+}
+
+  // MARK: - Permissions
+
+  public func permissionStatus(permission: String, status: String, context: String) {
+    PostHogSDK.shared.capture(
+      "permission.status",
+      properties: [
+        "permission": permission,
+        "status": status,
+        "context": context,
+      ])
+  }
+
+  // MARK: - Dictation Lifecycle
+
+  public func dictationInvoked(triggerSource: String, inputMode: String, targetApp: String?) {
+    var props: [String: Any] = ["trigger_source": triggerSource, "input_mode": inputMode]
+    if let app = targetApp { props["target_app"] = app }
+    #if DEBUG
+      var stringProps = ["trigger_source": triggerSource, "input_mode": inputMode]
+      if let app = targetApp { stringProps["target_app"] = app }
+      testEventHook?(
+        CapturedTelemetryEvent(name: "dictation.invoked", stringProps: stringProps))
+    #endif
+    PostHogSDK.shared.capture("dictation.invoked", properties: props)
+  }
+
+  public func dictationCompleted(
+    result: String, inputMode: String, asrBackend: String,
+    llmProvider: String?, fillerRemoval: Bool,
+    targetApp: String?, pasteResult: String?,
+    e2eSeconds: Double, asrSeconds: Double?, llmSeconds: Double?
+  ) {
+    var props: [String: Any] = [
+      "result": result,
+      "input_mode": inputMode,
+      "asr_backend": asrBackend,
+      "filler_removal": fillerRemoval,
+      "e2e_seconds": String(format: "%.3f", e2eSeconds),
+      "$value": e2eSeconds,
+    ]
+
+exec
+/bin/zsh -lc "sed -n '1,110p' Tests/EnviousWisprTests/Pipeline/DictationInvokedPipelineWiringTests.swift" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-723-trigger-source
+ succeeded in 0ms:
+import Foundation
+import Testing
+
+struct DictationInvokedPipelineWiringTests {
+  @Test("AppState does not own dictation.invoked telemetry")
+  func appStateDoesNotEmitDictationInvoked() throws {
+    let source = try Self.read("Sources/EnviousWispr/App/AppState.swift")
+
+    #expect(!source.contains("dictationInvoked("))
+    #expect(!source.contains("emitDictationInvoked"))
+  }
+
+  @Test("session config carries input mode into pipeline start")
+  func sessionConfigCarriesInputMode() throws {
+    let configSource = try Self.read("Sources/EnviousWisprCore/DictationSessionConfig.swift")
+    let appStateSource = try Self.read("Sources/EnviousWispr/App/AppState.swift")
+
+    #expect(configSource.contains("public let inputMode: RecordingMode"))
+    #expect(appStateSource.contains("inputMode: settings.recordingMode"))
+  }
+
+  @Test("Parakeet emits dictation.invoked after capture enters recording")
+  func parakeetPipelineEmitsAfterRecordingStarts() throws {
+    let source = try Self.read("Sources/EnviousWisprPipeline/TranscriptionPipeline.swift")
+    let body = try Self.slice(
+      source,
+      from: "public func startRecording(config: DictationSessionConfig) async {",
+      to: "/// Stop recording"
+    )
+
+    let stateIndex = try Self.require("state = .recording", in: body)
+    let telemetryIndex = try Self.require("TelemetryService.shared.dictationInvoked(", in: body)
+
+    #expect(stateIndex < telemetryIndex)
+    // #723: trigger_source and input_mode are distinct schema slots; pipeline
+    // must read them from distinct config fields.
+    #expect(body.contains("triggerSource: config.triggerSource.rawValue"))
+    #expect(body.contains("inputMode: config.inputMode.rawValue"))
+    #expect(body.contains("targetApp: targetApp?.localizedName"))
+  }
+
+  @Test("WhisperKit emits dictation.invoked after capture enters recording")
+  func whisperKitPipelineEmitsAfterRecordingStarts() throws {
+    let source = try Self.read("Sources/EnviousWisprPipeline/WhisperKitPipeline.swift")
+    let body = try Self.slice(
+      source,
+      from: "public func startRecording(config: DictationSessionConfig) async {",
+      to: "public func requestStop() async {"
+    )
+
+    let stateIndex = try Self.require("state = .recording", in: body)
+    let telemetryIndex = try Self.require("TelemetryService.shared.dictationInvoked(", in: body)
+
+    #expect(stateIndex < telemetryIndex)
+    // #723: trigger_source and input_mode are distinct schema slots; pipeline
+    // must read them from distinct config fields.
+    #expect(body.contains("triggerSource: config.triggerSource.rawValue"))
+    #expect(body.contains("inputMode: config.inputMode.rawValue"))
+    #expect(body.contains("targetApp: targetApp?.localizedName"))
+  }
+
+  private static func read(_ relativePath: String) throws -> String {
+    let root = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+    return try String(contentsOf: root.appending(path: relativePath), encoding: .utf8)
+  }
+
+  private static func slice(_ source: String, from start: String, to end: String) throws -> String {
+    guard let startRange = source.range(of: start) else {
+      throw TestFailure("Missing start marker: \(start)")
+    }
+    guard let endRange = source.range(of: end, range: startRange.upperBound..<source.endIndex)
+    else {
+      throw TestFailure("Missing end marker: \(end)")
+    }
+    return String(source[startRange.lowerBound..<endRange.lowerBound])
+  }
+
+  @discardableResult
+  private static func require(_ needle: String, in haystack: String) throws -> String.Index {
+    guard let range = haystack.range(of: needle) else {
+      throw TestFailure("Missing expected text: \(needle)")
+    }
+    return range.lowerBound
+  }
+
+  private struct TestFailure: Error, CustomStringConvertible {
+    let description: String
+
+    init(_ description: String) {
+      self.description = description
+    }
+  }
+}
+
+exec
+/bin/zsh -lc "sed -n '300,555p' Sources/EnviousWisprPipeline/TranscriptionPipeline.swift && sed -n '380,515p' Sources/EnviousWisprPipeline/WhisperKitPipeline.swift" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-723-trigger-source
+ succeeded in 0ms:
+    // `.toggleRecording`). Same-pipeline retry only; cross-pipeline backend
+    // switch is a narrower window handled by the sessionID gate once
+    // `beginCapturePhase()` runs on the other pipeline.
+    pendingStallRecoveryToken = nil
+    stopRequested = false
+    let start = ContinuousClock.now
+    // Issue #289: propagate preWarm failures. `isPreWarmed` is only flipped
+    // to true on a real success — never against a dead capture path.
+    try await audioCapture.preWarm()
+    guard !Task.isCancelled else { return }
+    isPreWarmed = true
+    let totalMs = PipelineUtils.durationMs(ContinuousClock.now - start)
+    Task {
+      await AppLogger.shared.log(
+        "COLD-START [Parakeet] preWarmAudioInput total=\(totalMs)ms",
+        level: .info, category: "Pipeline"
+      )
+    }
+  }
+
+  /// Toggle recording: start if idle, stop if recording. On start transitions,
+  /// the provided session config is captured; on stop transitions the config
+  /// is ignored (the in-flight recording continues to use its original snapshot).
+  public func toggleRecording(config: DictationSessionConfig) async {
+    switch state {
+    case .idle, .complete, .error:
+      await startRecording(config: config)
+    case .recording:
+      await stopAndTranscribe()
+    case .loadingModel, .transcribing, .polishing:
+      break  // Don't interrupt processing
+    }
+  }
+
+  /// Start recording audio from the microphone. `config` freezes per-recording
+  /// settings (auto-paste, VAD config, polish provider/model, etc.) for the
+  /// duration of this recording. Mid-recording setting changes apply to the
+  /// NEXT recording's snapshot.
+  public func startRecording(config: DictationSessionConfig) async {
+    currentSessionConfig = config
+    applySessionConfig(config)
+    // Issue #289: new attempt takes ownership — any pending stall recovery
+    // from a prior session must not tear down the fresh source.
+    pendingStallRecoveryToken = nil
+    guard !Task.isCancelled else { return }
+    guard !isStarting else { return }
+    guard !state.isActive || state == .complete else { return }
+    isStarting = true
+    defer { isStarting = false }
+
+    lastPolishError = nil
+    deactivateStreamingForwarding()
+
+    // Cancel idle timer so model stays loaded during recording.
+    asrManager.cancelIdleTimer()
+
+    // Ensure model is loaded (model should already be warm from launch-time preload).
+    // Wrap in a cancellable task so cancelRecording() can abort a cold-start load.
+    if !asrManager.isModelLoaded {
+      state = .loadingModel
+      SentryBreadcrumb.add(
+        stage: "asr", message: "Model loading",
+        data: ["backend": asrManager.activeBackendType.rawValue])
+      let loadTask = Task {
+        try await asrManager.loadModel()
+      }
+      modelLoadTask = loadTask
+      // Issue #445: signal-based wedge watcher. The bare `try await loadTask.value`
+      // could hang indefinitely if the underlying load wedges (XPC service stuck,
+      // CoreML load stuck). Replaces the prior 20-second wall-clock deadline with
+      // a self-calibrating ratio against the load's own observed cadence — see
+      // `LoadProgressWatcher`. On wedge, trigger service-level recovery via
+      // `asrManager.cancelInFlightLoad()`: for production XPC backend this
+      // invalidates the connection (terminating the service-side load); for
+      // in-process this just cancels the host task. Then surface a recoverable
+      // error so the user can retry.
+      let watcher = LoadProgressWatcher()
+      watcher.start()
+      asrManager.loadProgressTickReporter = { mtime, phase in
+        watcher.observeTick(observedMtime: mtime, observedPhase: phase)
+      }
+      let outcome = await raceWithSignalWatcher(watcher: watcher) {
+        try await loadTask.value
+      }
+      asrManager.loadProgressTickReporter = nil
+      watcher.stop()
+      switch outcome {
+      case .completed:
+        modelLoadTask = nil
+        // Late-completion guard: if state changed while we were loading (e.g., cancel),
+        // do not proceed. The cancel handler already set state to .idle.
+        guard state == .loadingModel else { return }
+        guard !Task.isCancelled else { return }
+      case .wedged:
+        let snap = watcher.snapshot
+        SentryBreadcrumb.captureError(
+          ModelLoadWatchdog.WedgeError(),
+          category: .modelLoadWedged, stage: "asr",
+          extra: [
+            "backend": asrManager.activeBackendType.rawValue,
+            "silence_ms": snap.silenceMs,
+            "observed_max_gap_ms": snap.maxGapMs,
+            "observed_phase": snap.lastObservedPhase,
+            "signal_count_total": snap.signalCountTotal,
+            "first_signal_latency_ms": snap.firstSignalLatencyMs ?? -1,
+            "total_attempt_duration_ms": snap.totalAttemptDurationMs,
+          ])
+        TelemetryService.shared.modelLoadWedged(
+          backend: asrManager.activeBackendType.rawValue,
+          stage: "loading_model",
+          silenceMs: snap.silenceMs,
+          observedMaxGapMs: snap.maxGapMs,
+          observedPhase: snap.lastObservedPhase,
+          signalCountTotal: snap.signalCountTotal,
+          firstSignalLatencyMs: snap.firstSignalLatencyMs,
+          totalAttemptDurationMs: snap.totalAttemptDurationMs
+        )
+        asrManager.cancelInFlightLoad()
+        // Codex pass 2: prewarm succeeded before the load wedged; the audio
+        // engine is still primed. Abort it so the next press takes the normal
+        // engine-start path against fresh state.
+        audioCapture.abortPreWarm()
+        isPreWarmed = false
+        modelLoadTask = nil
+        stopRequested = false
+        state = .error(ModelLoadWatchdog.userMessage)
+        return
+      case .threw(let error):
+        if error is CancellationError {
+          // User cancelled during model load. Return to idle.
+          stopRequested = false
+          modelLoadTask = nil
+          state = .idle
+          return
+        }
+        SentryBreadcrumb.captureError(
+          error, category: .modelLoadFailed, stage: "asr",
+          extra: ["backend": asrManager.activeBackendType.rawValue])
+        stopRequested = false
+        modelLoadTask = nil
+        state = .error("Model load failed: \(error.localizedDescription)")
+        return
+      }
+    }
+
+    // Remember the frontmost app and focused text field so we can paste back
+    // (LLM polishing can take seconds, during which focus may shift)
+    targetApp = NSWorkspace.shared.frontmostApplication
+    targetElement = PasteService.captureFocusedElement()
+
+    // BRAIN: gotcha id=pipeline-timing-misconception
+    // Start streaming ASR if the backend supports it — feed audio buffers
+    // to the ASR model during recording so transcription overlaps with capture.
+    var streamingSetupSucceeded = false
+    defer { if !streamingSetupSucceeded { deactivateStreamingForwarding() } }
+
+    let supportsStreaming = await asrManager.activeBackendSupportsStreaming
+    if supportsStreaming && useStreamingASR {
+      do {
+        try await asrManager.startStreaming(options: transcriptionOptions)
+        streamingASRActive = true
+        streamingBuffersDispatched = 0
+        streamingBuffersFed = 0
+        SentryBreadcrumb.add(
+          stage: "asr", message: "Streaming ASR started",
+          data: ["backend": asrManager.activeBackendType.rawValue])
+
+        // Wire audio buffer forwarding: each converted buffer goes to streaming ASR.
+        // The streamingASRActive flag gates delivery — deactivateStreamingForwarding()
+        // sets it to false and nils onBufferCaptured, so in-flight tasks exit quickly.
+        //
+        // NOTE: This callback runs on the real-time audio thread. The TapStoppedFlag
+        // in AudioCaptureManager prevents this from being called after teardown starts.
+        // The nonisolated(unsafe) is safe because the buffer is created on the audio
+        // thread, transferred to the main thread via Task, and never accessed from
+        // both threads simultaneously.
+        audioCapture.onBufferCaptured = { [weak self] buffer in
+          guard let self else { return }
+          nonisolated(unsafe) let safeBuffer = buffer
+          Task { @MainActor in
+            self.streamingBuffersDispatched += 1
+            guard self.streamingASRActive, self.state == .recording else { return }
+            try? await self.asrManager.feedAudio(safeBuffer)
+            self.streamingBuffersFed += 1
+          }
+        }
+
+        Task {
+          await AppLogger.shared.log(
+            "Streaming ASR started during recording",
+            level: .info, category: "Pipeline"
+          )
+        }
+      } catch {
+        // Streaming init failed — fall back to batch after recording
+        deactivateStreamingForwarding()
+        SentryBreadcrumb.add(
+          stage: "asr", message: "Streaming start failed, will use batch", level: .warning)
+        Task {
+          await AppLogger.shared.log(
+            "Streaming ASR failed to start, will use batch: \(error.localizedDescription)",
+            level: .info, category: "Pipeline"
+          )
+        }
+      }
+    }
+
+    do {
+      // Two-phase start: phase 1 triggers any Bluetooth codec switch
+      if !isPreWarmed {
+        try await audioCapture.startEnginePhase()
+
+        // Wait for format to stabilize (Bluetooth) or pass immediately (built-in mic)
+        let stabilized = await audioCapture.waitForFormatStabilization(
+          maxWait: 1.5,
+          pollInterval: 0.2
+        )
+        guard !Task.isCancelled else {
+          isPreWarmed = false
+          return
+        }
+
+        // If format never settled, rebuild engine once and retry
+        if !stabilized {
+          audioCapture.rebuildEngine()
+          try await audioCapture.startEnginePhase()
+        }
+      }
+      isPreWarmed = false
+
+      // Phase 2: install tap and start capture
+      _ = try await audioCapture.beginCapturePhase()
+      streamingSetupSucceeded = true
+      state = .recording
+      recordingStartTime = Date()
+      currentTranscript = nil
+      TelemetryService.shared.dictationInvoked(
+        triggerSource: config.triggerSource.rawValue,
+        inputMode: config.inputMode.rawValue,
+        targetApp: targetApp?.localizedName
+      )
+      SentryBreadcrumb.add(
+        stage: "recording", message: "Recording started",
+        data: [
+          "backend": asrManager.activeBackendType.rawValue,
+          "streaming": streamingASRActive,
+        ])
+      SentryBreadcrumb.updateRecordingState(
+        active: true, backend: "parakeet", isStreaming: streamingASRActive)
+      SentryBreadcrumb.updateAudioRoute(audioCapture.currentAudioRoute)
+
+      if stopRequested {
+        stopRequested = false
+        await stopAndTranscribe()
+        return
+      }
+    try await audioCapture.preWarm()
+    guard !Task.isCancelled else { return }
+    isPreWarmed = true
+    let totalMs = PipelineUtils.durationMs(ContinuousClock.now - start)
+    Task {
+      await AppLogger.shared.log(
+        "COLD-START [WhisperKit] preWarmAudioInput total=\(totalMs)ms",
+        level: .info, category: "Pipeline"
+      )
+    }
+    // Defense-in-depth: ensure model is loaded from cache (no download).
+    // If not cached, startRecording() handles the full load with user-visible UI.
+    Task { _ = try? await backend.prepareIfCached() }
+  }
+
+  /// Toggle recording: start if idle, stop if recording. On start transitions,
+  /// the provided session config is captured; on stop transitions the config
+  /// is ignored.
+  public func toggleRecording(config: DictationSessionConfig) async {
+    switch state {
+    case .idle, .ready, .complete, .error:
+      await startRecording(config: config)
+    case .recording:
+      logLIDReleaseSignpost()
+      await stopAndTranscribe()
+    case .loadingModel, .startingUp, .transcribing, .polishing:
+      break
+    }
+  }
+
+  /// Guards against concurrent startRecording calls (e.g., rapid toggle presses).
+  private var isStarting = false
+
+  public func startRecording(config: DictationSessionConfig) async {
+    currentSessionConfig = config
+    applySessionConfig(config)
+    // Issue #289: new attempt takes ownership — invalidate any pending stall
+    // recovery token so an in-flight cleanup cannot tear down this session.
+    pendingStallRecoveryToken = nil
+    guard !isStarting else { return }
+    guard !state.isActive || state == .complete || state == .ready else { return }
+    isStarting = true
+    defer { isStarting = false }
+
+    // Cancel any pending model unload — keep model loaded during recording.
+    modelUnloadTask?.cancel()
+    modelUnloadTask = nil
+
+    state = .startingUp
+    lastPolishError = nil
+    SentryBreadcrumb.add(stage: "whisperkit", message: "Pipeline starting up")
+
+    // Load model if not ready
+    let isBackendReady = await backend.isReady
+    guard state == .startingUp else { return }  // cancelled during await
+
+    if !isBackendReady {
+      state = .loadingModel
+      SentryBreadcrumb.add(stage: "asr", message: "WhisperKit model loading")
+      // Issue #445: WhisperKit's `MLModel.load` is a black box with no
+      // progress signal source — there is nothing the signal-based watcher
+      // can observe. The parked branch's 20-second wall-clock wrap is reverted
+      // here because it has the indefensible-number problem the rule forbids.
+      // Wedge coverage for WhisperKit needs a different signal source (XPC
+      // service heartbeat or process-state observation) and is a separate
+      // design. The held `prepareTask` and `WhisperKitBackend.resetLoadState`
+      // are still useful for cancellation hygiene from `cancelRecording()`,
+      // so keep them — just no watchdog race here.
+      let captured = backend
+      let task = Task<Void, Error> {
+        try await captured.prepare()
+      }
+      prepareTask = task
+      do {
+        try await task.value
+        prepareTask = nil
+        guard state == .loadingModel else { return }  // cancelled during model load
+        state = .startingUp  // back to startingUp for engine setup
+      } catch {
+        prepareTask = nil
+        if error is CancellationError {
+          // Cancelled (e.g. by cancelRecording during load). Return to idle.
+          state = .idle
+          return
+        }
+        SentryBreadcrumb.captureError(
+          error, category: .modelLoadFailed, stage: "asr", extra: ["backend": "whisperKit"])
+        state = .error("Model load failed: \(error.localizedDescription)")
+        return
+      }
+    }
+
+    // Capture target app for paste-back
+    targetApp = NSWorkspace.shared.frontmostApplication
+    targetElement = PasteService.captureFocusedElement()
+
+    // No streaming buffer forwarding for batch mode
+    audioCapture.onBufferCaptured = nil
+
+    do {
+      if !isPreWarmed {
+        try await audioCapture.startEnginePhase()
+        let stabilized = await audioCapture.waitForFormatStabilization(
+          maxWait: 1.5,
+          pollInterval: 0.2
+        )
+        guard state == .startingUp else { return }  // cancelled during stabilization
+        if !stabilized {
+          audioCapture.rebuildEngine()
+          try await audioCapture.startEnginePhase()
+        }
+      }
+      isPreWarmed = false
+
+      _ = try await audioCapture.beginCapturePhase()
+      state = .recording
+      recordingStartTime = Date()
+      currentTranscript = nil
+      TelemetryService.shared.dictationInvoked(
+        triggerSource: config.triggerSource.rawValue,
+        inputMode: config.inputMode.rawValue,
+        targetApp: targetApp?.localizedName
+      )
+      SentryBreadcrumb.add(
+        stage: "recording", message: "WhisperKit recording started", data: ["backend": "whisperKit"]
+      )
+      SentryBreadcrumb.updateRecordingState(active: true, backend: "whisperkit")
+      SentryBreadcrumb.updateAudioRoute(audioCapture.currentAudioRoute)
+      startVADMonitoring()
+      // Multilingual v1: the incremental worker snapshots transcriptionOptions.language
+      // at recording start. In .auto mode, language is unknown until LID runs at
+      // recording stop, so the worker would decode with the stale/legacy language.
+      // Skip the worker in .auto mode; batch decode at finalize picks up the
+      // post-LID language. .locked mode is safe because the language is known upfront.
+      let workerEnabled: Bool
+      if case .locked = languageMode {
+
+exec
+/bin/zsh -lc "rg \"startRecording\\(|handle\\(event: \\.toggleRecording|\\.toggleRecording\\(\" -n Sources Tests | head -300" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-723-trigger-source
+ succeeded in 0ms:
+Tests/EnviousWisprTests/App/V2/BackendSwitchGuardTests.swift:90:    await pipeline.startRecording(config: config)
+Tests/EnviousWisprTests/Pipeline/HeartPathIntegrationTests.swift:104:    await pipeline.startRecording(config: config)
+Tests/EnviousWisprTests/Pipeline/HeartPathTelemetryWiringTests.swift:31:/// below, which uses `FixtureAudioCapture` + `startRecording(...)` to
+Tests/EnviousWisprTests/Pipeline/HeartPathTelemetryWiringTests.swift:204:  ///   2. Drive into `.recording` via `startRecording(...)`.
+Tests/EnviousWisprTests/Pipeline/HeartPathTelemetryWiringTests.swift:258:    await pipeline.startRecording(config: config)
+Tests/EnviousWisprTests/Pipeline/V2/DedupSurvivesStallTests.swift:49:    await pipeline.startRecording(config: config)
+Tests/EnviousWisprTests/Pipeline/V2/DedupSurvivesStallTests.swift:70:    await pipeline.startRecording(config: config)
+Tests/EnviousWisprTests/Pipeline/DictationInvokedPipelineWiringTests.swift:27:      from: "public func startRecording(config: DictationSessionConfig) async {",
+Tests/EnviousWisprTests/Pipeline/DictationInvokedPipelineWiringTests.swift:47:      from: "public func startRecording(config: DictationSessionConfig) async {",
+Tests/EnviousWisprTests/Pipeline/V2/CancellationSilentUnwindTests.swift:90:      await pipeline.startRecording(config: config)
+Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift:1125:    if isRecording { stopRecording() } else { startRecording() }
+Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift:1128:  private func startRecording() {
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:111:  /// Set by key-up when startRecording() is still in-flight; checked after .recording is entered.
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:291:  /// Sets `isPreWarmed` so `startRecording()` skips engine phase 1.
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:326:      await startRecording(config: config)
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:338:  public func startRecording(config: DictationSessionConfig) async {
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:587:  /// Stop recording, or set a flag if startRecording() is still in-flight.
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:1378:    case .toggleRecording(let config):
+Sources/EnviousWispr/App/AppDelegate.swift:501:      await appState.toggleRecording(source: .menuBar)
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:313:    case .toggleRecording(let config):
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:340:  /// If user presses record before this finishes, startRecording() handles it with its own .loadingModel flow.
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:391:    // If not cached, startRecording() handles the full load with user-visible UI.
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:401:      await startRecording(config: config)
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:413:  public func startRecording(config: DictationSessionConfig) async {
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:547:      // Clean abort — startRecording() checks state after each await suspension point.
+Sources/EnviousWispr/Views/Components/HotkeyRecorderView.swift:173:      startRecording()
+Sources/EnviousWispr/Views/Components/HotkeyRecorderView.swift:177:  private func startRecording() {
+Sources/EnviousWispr/App/AppState.swift:514:      await self.toggleRecording(source: .toggleHotkey)
+Sources/EnviousWispr/App/AppState.swift:592:          event: .toggleRecording(makeDictationSessionConfig(triggerSource: .pttHotkey)))
+Sources/EnviousWispr/App/AppState.swift:898:      event: .toggleRecording(makeDictationSessionConfig(triggerSource: source)))
+Sources/EnviousWispr/App/AppState.swift:903:  /// the snapshot for its lifetime via `startRecording(config:)`.
+Sources/EnviousWispr/Views/Main/MainWindowView.swift:81:              Task { await appState.toggleRecording(source: .toolbar) }
+Sources/EnviousWispr/Views/Main/MainWindowView.swift:313:        await appState.toggleRecording(source: .toolbar)
+
+exec
+/bin/zsh -lc "sed -n '940,1160p' Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift && sed -n '130,190p' Sources/EnviousWispr/Views/Components/HotkeyRecorderView.swift" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-723-trigger-source
+ succeeded in 0ms:
+  var body: some View {
+    // Outer unified card — matches .hotkey-unified-card (max-width: 360px)
+    VStack(spacing: 0) {
+      // --- Keycap + "Change" chip ---
+      ZStack(alignment: .topTrailing) {
+        // Keycap shell — fixed size, NOT expanding to fill card
+        keycapShell
+          .frame(width: 160, height: 70)
+          .clipShape(RoundedRectangle(cornerRadius: 18))
+          .overlay(
+            RoundedRectangle(cornerRadius: 18)
+              .strokeBorder(
+                isRecording ? Color.obAccent : Color.obAccent.opacity(0.18),
+                lineWidth: isRecording ? 2 : 1.5
+              )
+          )
+          // Default: 0 3px 10px rgba(124,58,237,0.12), 0 1px 3px rgba(15,10,26,0.07)
+          .shadow(
+            color: Color.obAccent.opacity(isRecording ? (pulsePhase ? 0.10 : 0.18) : 0.12),
+            radius: isRecording ? (pulsePhase ? 10 : 6) : 5,
+            y: isRecording ? 0 : 3
+          )
+          .shadow(
+            color: isRecording ? .clear : Color.obTextPrimary.opacity(0.07),
+            radius: 2, y: 1
+          )
+          .overlay(
+            KeyCaptureView(isRecording: isRecording, onKeyEvent: handleKeyEvent)
+              .frame(width: 0, height: 0)
+              .allowsHitTesting(false)
+          )
+          .contentShape(Rectangle())
+          .onTapGesture { toggleRecording() }
+
+        // "Change" chip — overlaps top-right corner
+        if !isRecording {
+          Text("Change")
+            .font(.system(size: 10, weight: .bold))
+            .kerning(0.4)
+            .textCase(.uppercase)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Color.obAccent, in: Capsule())
+            .shadow(color: Color.obAccent.opacity(0.35), radius: 3, y: 2)
+            .offset(x: 12, y: -4)
+            .allowsHitTesting(false)
+        }
+      }
+      .padding(.top, 4)  // breathing room for chip
+
+      // Key name label
+      Text(isRecording ? "Listening for input" : keyNameLabel)
+        .font(.system(size: 11, weight: .semibold))
+        .kerning(0.55)
+        .foregroundStyle(
+          isRecording ? Color.obAccent.opacity(0.7) : Color.obTextTertiary
+        )
+        .padding(.top, 7)
+        .padding(.bottom, 14)
+
+      // Divider
+      Rectangle()
+        .fill(Color.obBorder)
+        .frame(height: 1)
+
+      // Usage hint / cancel hint
+      Group {
+        if isRecording {
+          (Text("Press ").foregroundStyle(Color.obTextSecondary)
+            + Text("Esc").fontWeight(.semibold).foregroundStyle(Color.obTextPrimary)
+            + Text(" to cancel without changing your hotkey.").foregroundStyle(
+              Color.obTextSecondary))
+            .font(.system(size: 12))
+        } else {
+          VStack(spacing: 4) {
+            Text("Hold to dictate. Release to transcribe.")
+              .font(.system(size: 12.5))
+              .foregroundStyle(Color.obTextSecondary)
+            Text("Double-press to go hands-free.")
+              .font(.system(size: 12))
+              .foregroundStyle(Color.obAccent.opacity(0.72))
+          }
+        }
+      }
+      .multilineTextAlignment(.center)
+      .padding(.vertical, 14)
+      .padding(.horizontal, 4)
+    }
+    .padding(.top, 20)
+    .padding(.horizontal, 20)
+    .padding(.bottom, 18)
+    .frame(maxWidth: 320)  // constrain card width like mockup
+    .background(Color.obCardBg, in: RoundedRectangle(cornerRadius: 16))
+    .overlay(
+      RoundedRectangle(cornerRadius: 16)
+        .strokeBorder(
+          isRecording ? Color.obAccent : Color.obBorder,
+          lineWidth: 1
+        )
+    )
+    // Card shadow: default subtle, recording = purple glow ring
+    .shadow(
+      color: isRecording
+        ? Color.obAccent.opacity(0.12)
+        : Color.obTextPrimary.opacity(0.04),
+      radius: isRecording ? 6 : 2,
+      y: isRecording ? 0 : 1
+    )
+    .animation(.spring(duration: 0.25), value: isRecording)
+    .onDisappear { if isRecording { stopRecording() } }
+    .onChange(of: isRecording) { _, recording in
+      if recording {
+        cursorOpacity = 0.0
+        pulsePhase = false
+        Task { @MainActor in
+          try? await Task.sleep(nanoseconds: 50_000_000)
+          cursorOpacity = 1.0
+          withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+            pulsePhase = true
+          }
+        }
+      } else {
+        cursorOpacity = 1.0
+        pulsePhase = false
+      }
+    }
+  }
+
+  /// The keycap interior — gradient + inset shadow + content
+  @ViewBuilder
+  private var keycapShell: some View {
+    ZStack {
+      // Background
+      if isRecording {
+        Color.obAccent.opacity(0.10)
+      } else {
+        LinearGradient(
+          colors: [.white, Color.obSurface],
+          startPoint: .top,
+          endPoint: .bottom
+        )
+      }
+
+      // Inset bottom shadow (simulate inset 0 -3px 0)
+      if !isRecording {
+        VStack {
+          Spacer()
+          LinearGradient(
+            colors: [Color.clear, Color.obAccent.opacity(0.09)],
+            startPoint: .top,
+            endPoint: .bottom
+          )
+          .frame(height: 6)
+        }
+        .allowsHitTesting(false)
+      }
+
+      // Content
+      if isRecording {
+        HStack(spacing: 6) {
+          Text("Press keys…")
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(Color.obAccent)
+          RoundedRectangle(cornerRadius: 1)
+            .fill(Color.obAccent)
+            .frame(width: 2, height: 18)
+            .opacity(cursorOpacity)
+            .animation(
+              .easeInOut(duration: 0.5).repeatForever(autoreverses: true),
+              value: cursorOpacity
+            )
+        }
+      } else {
+        Text(displayLabel)
+          .font(.system(size: 28, weight: .bold))
+          .foregroundStyle(Color.obAccent)
+          .minimumScaleFactor(0.5)
+          .lineLimit(1)
+          .padding(.horizontal, 12)
+      }
+    }
+  }
+
+  private func toggleRecording() {
+    if isRecording { stopRecording() } else { startRecording() }
+  }
+
+  private func startRecording() {
+    isRecording = true
+    appState.hotkeyService.suspend()
+  }
+
+  private func stopRecording() {
+    isRecording = false
+    appState.hotkeyService.resume()
+  }
+
+  private func handleKeyEvent(_ event: NSEvent) {
+    // Escape with no modifiers cancels
+    if event.type != .flagsChanged,
+      event.keyCode == 53,
+      event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty
+    {
+      Task { @MainActor in stopRecording() }
+      return
+    }
+
+    let newKeyCode = event.keyCode
+
+    // Modifier-only hotkey (e.g. bare Option)
+    if event.type == .flagsChanged, ModifierKeyCodes.isModifierOnly(newKeyCode) {
+      Task { @MainActor in
+        keyCode = newKeyCode
+        modifiers = []
+        stopRecording()
+      }
+      return
+    }
+
+    let newModifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        }
+      }
+      .frame(minWidth: 100)
+      .padding(.horizontal, 8)
+      .padding(.vertical, 4)
+      .background(isRecording ? colors.recordingBackground : colors.fieldBackground)
+      .cornerRadius(6)
+      .overlay(
+        RoundedRectangle(cornerRadius: 6)
+          .stroke(isRecording ? colors.recordingBorder : Color.clear, lineWidth: 1)
+      )
+      // Overlay a zero-size KeyCaptureView so it can steal first responder
+      // without affecting visual layout.
+      .overlay(
+        KeyCaptureView(isRecording: isRecording, onKeyEvent: handleKeyEvent)
+          .frame(width: 0, height: 0)
+          .allowsHitTesting(false),
+        alignment: .center
+      )
+      .contentShape(Rectangle())
+      .onTapGesture {
+        toggleRecording()
+      }
+
+      // Reset button
+      if keyCode != defaultKeyCode || modifiers != defaultModifiers {
+        Button(action: resetToDefault) {
+          Image(systemName: "arrow.counterclockwise")
+            .foregroundStyle(colors.resetIcon)
+        }
+        .buttonStyle(.plain)
+        .help("Reset to default")
+      }
+    }
+    .onDisappear {
+      stopRecording()
+    }
+  }
+
+  private func toggleRecording() {
+    if isRecording {
+      stopRecording()
+    } else {
+      startRecording()
+    }
+  }
+
+  private func startRecording() {
+    isRecording = true
+    // Suspend all Carbon hotkeys so they don't swallow key combos during recording
+    appState.hotkeyService.suspend()
+  }
+
+  private func stopRecording() {
+    isRecording = false
+    // Resume Carbon hotkeys
+    appState.hotkeyService.resume()
+  }
+
+  private func handleKeyEvent(_ event: NSEvent) {
+    // Escape with no modifiers cancels recording (only from keyDown / performKeyEquivalent)
+
+exec
+/bin/zsh -lc "sed -n '40,105p' Sources/EnviousWispr/Views/Main/MainWindowView.swift && sed -n '285,325p' Sources/EnviousWispr/Views/Main/MainWindowView.swift" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-723-trigger-source
+ succeeded in 0ms:
+          // Pulsing rings + mic icon + timer
+          HStack(spacing: 16) {
+            ZStack {
+              PulsingRingsView()
+                .frame(width: 80, height: 80)
+
+              Image(systemName: "mic.fill")
+                .font(.system(size: 32))
+                .foregroundStyle(.stError)
+            }
+
+            Text(FormattingConstants.formatDuration(elapsed))
+              .font(.system(size: 40, weight: .bold, design: .monospaced))
+              .foregroundStyle(.primary)
+          }
+
+          Text("Recording · \(appState.activeModelName)")
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+
+          // Waveform visualizer
+          WaveformView(level: appState.audioLevel)
+            .frame(height: 36)
+            .padding(.horizontal, 40)
+
+          // VAD status bar
+          VStack(spacing: 4) {
+            AudioLevelBar(level: appState.audioLevel)
+              .frame(width: 240, height: 6)
+              .accessibilityHidden(true)
+
+            if appState.settings.vadAutoStop {
+              Text("VAD: Active")
+                .font(.caption2)
+                .foregroundStyle(.stSuccess)
+            }
+          }
+
+          // Action buttons
+          HStack(spacing: 16) {
+            Button {
+              Task { await appState.toggleRecording(source: .toolbar) }
+            } label: {
+              HStack(spacing: 4) {
+                Image(systemName: "stop.fill")
+                Text("Stop")
+              }
+              .font(.body.weight(.medium))
+              .padding(.horizontal, 16)
+              .padding(.vertical, 8)
+              .contentShape(Rectangle())
+              .background(
+                RoundedRectangle(cornerRadius: 8)
+                  .stroke(.stError, lineWidth: 1.5)
+              )
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.stError)
+
+            Button {
+              Task { await appState.cancelRecording() }
+            } label: {
+              HStack(spacing: 4) {
+                Text("Esc")
+                  .font(.caption.monospaced())
+                Text("Cancel")
+        progressLabel("Transcribing\u{2026}")
+
+      case .polishing:
+        progressLabel("Polishing\u{2026}")
+
+      case .idle, .complete, .error:
+        EmptyView()
+      }
+    }
+    .animation(.easeInOut(duration: 0.2), value: appState.pipelineState)
+  }
+
+  private func progressLabel(_ text: String) -> some View {
+    HStack(spacing: 4) {
+      ProgressView().controlSize(.small)
+      Text(text).foregroundStyle(.secondary)
+    }
+    .font(.caption)
+  }
+}
+
+/// Record/stop button in the toolbar.
+struct RecordButton: View {
+  @Environment(AppState.self) private var appState
+
+  var body: some View {
+    Button {
+      Task {
+        await appState.toggleRecording(source: .toolbar)
+      }
+    } label: {
+      Label(
+        appState.pipelineState == .recording ? "Stop" : "Record",
+        systemImage: appState.pipelineState == .recording ? "stop.circle.fill" : "mic.circle.fill"
+      )
+      .foregroundStyle(appState.pipelineState == .recording ? Color.stError : Color.stAccent)
+    }
+    .labelStyle(.titleAndIcon)
+    .disabled(appState.pipelineState.isActive && appState.pipelineState != .recording)
+    .help(appState.pipelineState == .recording ? "Stop recording" : "Start recording")
+  }
+
+exec
+/bin/zsh -lc 'git diff --cached --name-only && git ls-files --others --exclude-standard' in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-723-trigger-source
+ succeeded in 0ms:
+codex
+No actionable defects were found in the current diff. The trigger source is passed through AppState into the session config and used by both pipelines for dictation.invoked telemetry.
+No actionable defects were found in the current diff. The trigger source is passed through AppState into the session config and used by both pipelines for dictation.invoked telemetry.

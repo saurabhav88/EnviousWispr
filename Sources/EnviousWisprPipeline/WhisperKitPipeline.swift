@@ -496,7 +496,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
       recordingStartTime = Date()
       currentTranscript = nil
       TelemetryService.shared.dictationInvoked(
-        triggerSource: config.inputMode.rawValue,
+        triggerSource: config.triggerSource.rawValue,
         inputMode: config.inputMode.rawValue,
         targetApp: targetApp?.localizedName
       )
@@ -989,7 +989,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
               userInfo: [
                 NSLocalizedDescriptionKey:
                   "WhisperKit ASR returned empty text despite speech evidence"
-            ]),
+              ]),
             category: .asrEmptyResult, stage: "asr",
             extra: {
               var extra = asrEmptyDiagnostics.sentryExtra()
