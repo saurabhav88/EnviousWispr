@@ -78,6 +78,19 @@ final class PipelineSettingsSync {
     lastEvictableOllamaModel = OllamaConnector.effectiveOllamaModel(
       provider: settings.llmProvider, model: resolvedModel(settings)
     )
+
+    // #728: AppLogger defaults to debug=off / level=.info. Sync the persisted
+    // values at launch so the file handle opens (or stays closed) according
+    // to the user's saved preference instead of requiring a toggle off-then-on.
+    // Capture values upfront so the unstructured Task is not racing settings
+    // mutation. Level is set first so the file-open log line in `setDebugMode`
+    // is not filtered out when the saved level is more permissive than .info.
+    let logLevel = settings.debugLogLevel
+    let debugEnabled = settings.isDebugModeEnabled
+    Task {
+      await AppLogger.shared.setLogLevel(logLevel)
+      await AppLogger.shared.setDebugMode(debugEnabled)
+    }
   }
 
   /// Handle a settings change by forwarding to the appropriate subsystem.

@@ -422,11 +422,9 @@ final class AppState {
       coordinator: customWordsCoordinator
     )
 
-    // Initialize logger
-    Task {
-      await AppLogger.shared.setLogLevel(settings.debugLogLevel)
-      await AppLogger.shared.setDebugMode(settings.isDebugModeEnabled)
-    }
+    // AppLogger initial seed lives in PipelineSettingsSync.applyInitialSettings
+    // (called above at line 238) — single owner for settings-driven side effects.
+    // See #728.
 
     // Restore persisted backend selection synchronously (no race with first record).
     // setInitialBackendType is safe at startup: nothing loaded, no unload needed.
