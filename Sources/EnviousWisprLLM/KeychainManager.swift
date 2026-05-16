@@ -57,6 +57,7 @@ public struct KeychainManager: Sendable {
       try keychainStore.store(service: service, account: key, value: value)
       do {
         try legacyStore.delete(key: key)
+        KeychainCleanupDiagnostics.recordSuccess(keyID: key)
       } catch let cleanupError {
         do {
           try restoreKeychainValue(previousValue, service: service, key: key)
@@ -100,6 +101,7 @@ public struct KeychainManager: Sendable {
     case .keychain(let service):
       try ensureReleaseKeySupported(key)
       try legacyStore.delete(key: key)
+      KeychainCleanupDiagnostics.recordSuccess(keyID: key)
       try keychainStore.delete(service: service, account: key)
     }
   }
@@ -136,10 +138,12 @@ public struct KeychainManager: Sendable {
   private func deleteLegacyFileOrLog(key: String) {
     do {
       try legacyStore.delete(key: key)
+      KeychainCleanupDiagnostics.recordSuccess(keyID: key)
     } catch {
       Self.logger.error(
         "Legacy plaintext API key file remained on disk after Keychain migration; user-visible polish is unaffected but the security goal is not met. Will retry on next retrieve. account=\(key, privacy: .public) error=\(String(describing: error), privacy: .public)"
       )
+      KeychainCleanupDiagnostics.recordFailure(keyID: key, error: error)
     }
   }
 
@@ -188,6 +192,75 @@ public struct KeychainManager: Sendable {
 enum KeyStorageBackend: Sendable {
   case legacyFiles
   case keychain(service: String)
+}
+
+/// Persistent diagnostics for the legacy-plaintext-cleanup step of the API-key
+/// migration. After a successful Keychain write, if the legacy plaintext file
+/// cannot be deleted, the user-visible polish path keeps working from the new
+/// Keychain value — but the security goal is not met. The unified-log error
+/// line is easy to miss, so we also persist a marker per key that the AI Polish
+/// settings view reads to surface a non-blocking warning. See #725.
+///
+/// Storage is `UserDefaults.standard` — small, simple, no new actors needed.
+/// Keys are namespaced with the `kcCleanupFail.` prefix so they do not collide
+/// with `SettingsManager` keys (which use unprefixed names).
+public enum KeychainCleanupDiagnostics {
+  private static let dateKeyPrefix = "kcCleanupFail.date."
+  private static let summaryKeyPrefix = "kcCleanupFail.summary."
+
+  /// Snapshot of a single cleanup-failure record.
+  public struct FailureRecord: Sendable, Equatable {
+    public let keyID: String
+    public let date: Date
+    public let summary: String
+
+    public init(keyID: String, date: Date, summary: String) {
+      self.keyID = keyID
+      self.date = date
+      self.summary = summary
+    }
+  }
+
+  /// Returns the most recent unresolved cleanup failure across all supported
+  /// API-key IDs, or nil if every key cleaned up successfully or was never
+  /// migrated. The settings banner uses this as the single read.
+  public static func latestFailure(
+    defaults: UserDefaults = .standard,
+    keyIDs: [String] = [KeychainManager.openAIKeyID, KeychainManager.geminiKeyID]
+  ) -> FailureRecord? {
+    var latest: FailureRecord?
+    for keyID in keyIDs {
+      guard let date = defaults.object(forKey: dateKeyPrefix + keyID) as? Date else { continue }
+      let summary = defaults.string(forKey: summaryKeyPrefix + keyID) ?? "Unknown error"
+      let record = FailureRecord(keyID: keyID, date: date, summary: summary)
+      if let existing = latest, existing.date >= date { continue }
+      latest = record
+    }
+    return latest
+  }
+
+  /// Records a cleanup failure for `keyID`. Truncates the error description
+  /// to bound UserDefaults growth even for pathological error strings.
+  static func recordFailure(
+    keyID: String,
+    error: any Error,
+    now: Date = Date(),
+    defaults: UserDefaults = .standard
+  ) {
+    let summary = String(String(describing: error).prefix(240))
+    defaults.set(now, forKey: dateKeyPrefix + keyID)
+    defaults.set(summary, forKey: summaryKeyPrefix + keyID)
+  }
+
+  /// Records that cleanup succeeded for `keyID` — clears any prior failure
+  /// marker so the banner does not stick after a successful retry. Idempotent.
+  static func recordSuccess(
+    keyID: String,
+    defaults: UserDefaults = .standard
+  ) {
+    defaults.removeObject(forKey: dateKeyPrefix + keyID)
+    defaults.removeObject(forKey: summaryKeyPrefix + keyID)
+  }
 }
 
 protocol LegacyKeyFileStorage: Sendable {

@@ -47,6 +47,10 @@ struct AIPolishSettingsView: View {
   @State private var geminiKey: String = ""
   @State private var validationStatus: String = ""
 
+  /// Snapshot of the most recent unresolved Keychain-migration cleanup failure.
+  /// Read on appear; reset to nil when no failure is recorded. See #725.
+  @State private var cleanupFailure: KeychainCleanupDiagnostics.FailureRecord?
+
   private var isCloudProvider: Bool {
     appState.settings.llmProvider == .openAI || appState.settings.llmProvider == .gemini
   }
@@ -70,6 +74,19 @@ struct AIPolishSettingsView: View {
     @Bindable var state = appState
 
     SettingsContentView {
+      // ── Banner: legacy-plaintext cleanup still pending (#725) ────
+      // Shown when a previous Keychain migration left the plaintext file on
+      // disk. Non-blocking: polish is unaffected; the security goal is what
+      // is at risk. The banner clears the moment any successful cleanup
+      // happens (next retrieve or explicit Save/Clear in this view).
+      if let failure = cleanupFailure {
+        BrandedSection(header: "Security") {
+          BrandedRow(showDivider: false) {
+            keychainCleanupBanner(failure: failure)
+          }
+        }
+      }
+
       // ── Section 1: LLM Provider ───────────────────────────────
       BrandedSection(
         header: "LLM Provider",
@@ -217,8 +234,12 @@ struct AIPolishSettingsView: View {
       }
     }
     .onAppear {
+      // Read keys first — the retrieve calls below may resolve a pending
+      // legacy-file cleanup, which would clear the diagnostics flag. Re-read
+      // after, so the banner reflects the post-resolution state.
       openAIKey = (try? appState.keychainManager.retrieve(key: KeychainManager.openAIKeyID)) ?? ""
       geminiKey = (try? appState.keychainManager.retrieve(key: KeychainManager.geminiKeyID)) ?? ""
+      cleanupFailure = KeychainCleanupDiagnostics.latestFailure()
       if appState.settings.llmProvider == .ollama {
         appState.llmDiscovery.loadCachedModels(for: .ollama)
         Task {
@@ -286,6 +307,71 @@ struct AIPolishSettingsView: View {
         appState.setup.ollamaSetup.warmUpModel(newModel)
       }
     }
+  }
+
+  // MARK: - Keychain cleanup banner (#725)
+
+  /// Non-blocking warning shown when a previous Keychain migration write
+  /// succeeded but the legacy plaintext file could not be deleted. The polish
+  /// path keeps working from the Keychain value; the banner exists because the
+  /// security goal of the migration was not met until the file is gone.
+  ///
+  /// "Restart the app" is the retry path: on next launch, the polish path
+  /// retrieves the key from the Keychain and calls `deleteLegacyFileOrLog`
+  /// again, which clears the flag on success.
+  @ViewBuilder
+  private func keychainCleanupBanner(
+    failure: KeychainCleanupDiagnostics.FailureRecord
+  ) -> some View {
+    let providerName: String = {
+      switch failure.keyID {
+      case KeychainManager.openAIKeyID: return "OpenAI"
+      case KeychainManager.geminiKeyID: return "Google Gemini"
+      default: return failure.keyID
+      }
+    }()
+    HStack(alignment: .top, spacing: 10) {
+      Image(systemName: "exclamationmark.shield.fill")
+        .foregroundStyle(.orange)
+        .imageScale(.medium)
+        .padding(.top, 2)
+
+      VStack(alignment: .leading, spacing: 4) {
+        Text(
+          "\(providerName) API key was saved to the Keychain, but a previous plaintext copy could not be removed."
+        )
+        .font(.callout)
+        .foregroundStyle(.primary)
+        .fixedSize(horizontal: false, vertical: true)
+        Text(
+          "Polish still works. To complete the cleanup, restart EnviousWispr. The app retries on the next launch."
+        )
+        .font(.stHelper)
+        .foregroundStyle(Color.stTextTertiary)
+        .fixedSize(horizontal: false, vertical: true)
+      }
+
+      Spacer(minLength: 12)
+
+      Button("Retry now") {
+        // Re-attempt retrieve which triggers the cleanup retry path. Update
+        // the local snapshot immediately so the banner clears on success.
+        _ = try? appState.keychainManager.retrieve(key: failure.keyID)
+        cleanupFailure = KeychainCleanupDiagnostics.latestFailure()
+      }
+      .buttonStyle(.bordered)
+      .controlSize(.small)
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 10)
+    .background(
+      RoundedRectangle(cornerRadius: 8)
+        .fill(.orange.opacity(0.12))
+        .overlay(
+          RoundedRectangle(cornerRadius: 8)
+            .strokeBorder(.orange.opacity(0.3), lineWidth: 1)
+        )
+    )
   }
 
   // MARK: - API Key Row
@@ -887,6 +973,9 @@ struct AIPolishSettingsView: View {
     do {
       try appState.keychainManager.store(key: keychainId, value: key)
       validationStatus = "Saved!"
+      // #725: store success path clears any prior cleanup-failure marker for
+      // this key. Refresh the banner so it disappears immediately.
+      cleanupFailure = KeychainCleanupDiagnostics.latestFailure()
       Task {
         try? await Task.sleep(for: .seconds(2))
         validationStatus = ""
@@ -903,6 +992,9 @@ struct AIPolishSettingsView: View {
     do {
       try appState.keychainManager.delete(key: keychainId)
       validationStatus = ""
+      // #725: delete success path clears any prior cleanup-failure marker for
+      // this key. Refresh the banner so it disappears immediately.
+      cleanupFailure = KeychainCleanupDiagnostics.latestFailure()
       return true
     } catch {
       validationStatus = "Failed: \(error.localizedDescription)"
