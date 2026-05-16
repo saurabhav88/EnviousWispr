@@ -86,6 +86,13 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
   /// Set in beginCapturePhase, compared in audioBufferCaptured.
   private var activeCaptureGeneration: UInt64 = 0
 
+  /// #455: uptime-ns at the moment `beginCapturePhase` flipped `isCapturing`
+  /// to true. Read in the XPC interrupt/invalidate handlers to surface
+  /// `recording_duration_ms` in the captureError breadcrumb. Reset to 0 on
+  /// every clean stop / interrupt / invalidate so a stale value cannot bleed
+  /// into the next session.
+  private var captureStartUptimeNs: UInt64 = 0
+
   // MARK: - Capture-liveness watchdog (issue #285)
 
   /// Private serial queue that fires the stall `DispatchWorkItem`.
@@ -187,6 +194,7 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     }
 
     isCapturing = true
+    captureStartUptimeNs = DispatchTime.now().uptimeNanoseconds  // #455
     hasReceivedBufferThisSession = false
     armCaptureStallWatchdog()
     return stream
@@ -291,6 +299,7 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     }
 
     isCapturing = false
+    captureStartUptimeNs = 0  // #455
     audioLevel = 0
     bufferContinuation?.finish()
     bufferContinuation = nil
@@ -511,7 +520,14 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
           proxy.stallWorkItem?.cancel()
           proxy.stallWorkItem = nil
           let endingSession = proxy.activeCaptureGeneration
+          // #455: compute duration BEFORE flipping isCapturing / resetting
+          // captureStartUptimeNs so the breadcrumb has a real number.
+          let firedAt = DispatchTime.now().uptimeNanoseconds
+          let durationNs: UInt64? =
+            proxy.captureStartUptimeNs > 0 && firedAt >= proxy.captureStartUptimeNs
+            ? (firedAt - proxy.captureStartUptimeNs) : nil
           proxy.isCapturing = false
+          proxy.captureStartUptimeNs = 0  // #455
           proxy.audioLevel = 0
           proxy.captureGeneration &+= 1
           proxy.bufferContinuation?.finish()
@@ -522,7 +538,8 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
             XPCErrorContext(
               kind: .interruptCapturing,
               sessionID: endingSession,
-              timestampNs: DispatchTime.now().uptimeNanoseconds
+              timestampNs: firedAt,
+              recordingDurationNs: durationNs
             )
           )
         }
@@ -543,10 +560,19 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
         proxy.connection = nil
         let wasCapturing = proxy.isCapturing
         let endingSession = proxy.activeCaptureGeneration
+        // #455: compute duration BEFORE flipping isCapturing / resetting
+        // captureStartUptimeNs so the breadcrumb has a real number. Idle
+        // invalidations have no active session and so no duration to report.
+        let firedAt = DispatchTime.now().uptimeNanoseconds
+        let durationNs: UInt64? =
+          wasCapturing && proxy.captureStartUptimeNs > 0
+            && firedAt >= proxy.captureStartUptimeNs
+          ? (firedAt - proxy.captureStartUptimeNs) : nil
         if wasCapturing {
           proxy.stallWorkItem?.cancel()
           proxy.stallWorkItem = nil
           proxy.isCapturing = false
+          proxy.captureStartUptimeNs = 0  // #455
           proxy.audioLevel = 0
           proxy.captureGeneration &+= 1
           proxy.bufferContinuation?.finish()
@@ -559,7 +585,8 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
           XPCErrorContext(
             kind: wasCapturing ? .invalidateCapturing : .invalidateIdle,
             sessionID: wasCapturing ? endingSession : nil,
-            timestampNs: DispatchTime.now().uptimeNanoseconds
+            timestampNs: firedAt,
+            recordingDurationNs: durationNs
           )
         )
       }
@@ -751,6 +778,7 @@ extension AudioCaptureProxy: AudioServiceClientProtocol {
         self.stallWorkItem?.cancel()
         self.stallWorkItem = nil
         self.isCapturing = false
+        self.captureStartUptimeNs = 0  // #455
         self.audioLevel = 0
         self.captureGeneration &+= 1
         self.bufferContinuation?.finish()
