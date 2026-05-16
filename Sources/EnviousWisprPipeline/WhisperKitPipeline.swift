@@ -989,7 +989,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
               userInfo: [
                 NSLocalizedDescriptionKey:
                   "WhisperKit ASR returned empty text despite speech evidence"
-            ]),
+              ]),
             category: .asrEmptyResult, stage: "asr",
             extra: {
               var extra = asrEmptyDiagnostics.sentryExtra()
@@ -1071,6 +1071,12 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
       } catch let error as FinalizationError {
         switch error {
         case .emptyAfterProcessing:
+          // #393 HYBRID per council: keep the guard + telemetry, but show a
+          // graceful user-facing message instead of a scary "Error." The user
+          // either didn't speak or audio capture produced nothing usable; the
+          // clipboard is intentionally unchanged. Telemetry retained so we can
+          // detect if this rate spikes (e.g., a future macOS update breaking
+          // capture).
           SentryBreadcrumb.captureError(
             HeartPathError.emptyAfterProcessing(
               route: audioCapture.currentAudioRoute,
@@ -1085,7 +1091,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
               "capture_session_id": Int(audioCapture.currentCaptureSessionID),
             ]
           )
-          state = .error("No text after processing")
+          state = .error("No speech detected. Your clipboard is unchanged. Try again.")
           frozenSnapshot = nil
           return
         case .storageFailed(let underlying):

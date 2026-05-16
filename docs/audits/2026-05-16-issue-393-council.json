@@ -1,0 +1,38 @@
+{
+  "run_id": "run-1778913288-e6759ae7",
+  "run_dir": "/Users/m4pro_sv/.local/state/council/runs/run-1778913288-e6759ae7",
+  "providers": {
+    "openai": {
+      "content": "Sign-off: HYBRID \u2014 keep the finalizer guard, do not paste empty text or a sentinel, but treat this as a graceful \u201cno usable speech detected\u201d outcome rather than a scary terminal error.\n\nRationale:\n\n1. **Heart-path-never-fails should mean \u201cno destructive surprise,\u201d not \u201calways return success.\u201d**  \n   Option A technically makes the function succeed, but violates the user promise. Pasting/writing an empty result is not \u201csomething useful.\u201d For Priya, Marcus, Aaron, and especially Dr. Vasquez, silent emptiness feels like data loss or app malfunction.\n\n2. **Option B\u2019s sentinel is better than empty, but still risky if pasted silently.**  \n   `\"[transcription unavailable]\"` is non-empty, telemetry-friendly, and honest \u2014 but silently inserting it into Slack, an IDE, Pages, Mail, or an EHR field can be worse than doing nothing. It creates cleanup work and, in clinical/legal contexts, could be alarming. A sentinel is acceptable in logs/history/internal state, but not automatically pasted into the active app unless the user explicitly chooses that behavior.\n\n3. **The finalizer is the right final safety gate.**  \n   If all limbs/fallbacks produce empty text, the finalizer should refuse to mutate clipboard/app state. That is a good last line of defense. The issue is not the guard; it is the user-facing classification.\n\n4. **Recommended behavior:**\n   - Keep `emptyAfterProcessing`.\n   - Do not paste.\n   - Do not overwrite clipboard.\n   - Show a friendly overlay/toast:  \n     **\u201cNothing detected \u2014 try again\u201d**  \n     Optional secondary text: \u201cNo speech was transcribed, so your clipboard was left unchanged.\u201d\n   - Record telemetry as a distinct graceful heart-path outcome, not just a generic error.\n\n5. **Telemetry implication:**  \n   Removing the gate in Option A would erase a valuable signal. This rare condition is exactly the kind of edge case you want counted: ASR empty + fallbacks empty + processing empty. Keep `HeartPathError.emptyAfterProcessing` or rename/classify it as something like `noUsableTranscript`, but preserve the Sentry/PostHog event.\n\n6. **Customer/onboarding messaging:**  \n   No big process needed at this scale. If mentioned anywhere, phrase it as: \u201cIf EnviousWispr doesn\u2019t detect speech, it leaves your clipboard and app unchanged.\u201d That is reassuring and aligns with all personas.\n\nVerdict:\n\n- **A:** Reject. Silent empty success is misleading and clipboard-hostile.  \n- **B:** Reject for automatic paste. Sentinel may be useful internally, not in the active app.  \n- **C:** Mostly correct mechanically, but UX wording should improve.  \n- **HYBRID:** Best fit. Keep the guard and telemetry, but make the user experience graceful/non-destructive.",
+      "latest_response_id": "resp_0a3fbbde3716ef7c006a081009bd24819cb15e0cd40a700a32",
+      "model": "gpt-5.5-2026-04-23",
+      "provider": "openai",
+      "session": "issue-393-finalizer-empty-2026-05-16-6797656a-gpt",
+      "status": "ok",
+      "usage": {
+        "completion_tokens": 724,
+        "cost_usd": 0.03039,
+        "latency_ms": 15350,
+        "prompt_tokens": 960,
+        "reasoning_tokens": 129,
+        "total_tokens": 1684
+      }
+    },
+    "gemini": {
+      "content": "**Decision Review: TranscriptFinalizer empty-after-processing (#393)**\n\n**Premise Check & Missing Perspectives:**\n1. **The Clipboard is Sacred State:** Options A and B assume the destination of the pipeline (the clipboard/active cursor) is a safe place to dump failures. For your personas, overwriting the clipboard with an empty string (Option A) is functional data loss. Pasting an error sentinel like `\"[transcription unavailable]\"` (Option B) into an EHR or terminal forces the user to manually highlight and delete it. Both break flow.\n2. **\"Never Fails\" Definition:** For a 2-person startup, the heart-path \"never fails\" rule shouldn't mean \"never throws an exception.\" It means \"the user's trust is never broken.\" Protecting their clipboard and active document when no audio is detected is a feature, not a failure.\n\n**Evaluation of Options:**\n\n*   **Option A (Empty valid):** Destructive UX. Wipes the user's clipboard silently. Kills Sentry telemetry (you will no longer know if a macOS update breaks your audio capture and causes 100% empty returns).\n*   **Option B (Sentinel):** Annoying UX. Forcing Priya or Dr. Vasquez to backspace `[transcription unavailable]` out of a legal/medical document feels like a punishment for dictating too quietly. \n*   **Option C (Status Quo):** Safest UX (clipboard preserved), retains telemetry, but framing it as a strict \"HeartPathError\" might feel too severe for \"you didn't speak loud enough.\"\n\n**Recommendation: HYBRID**\n\n**Keep the finalizer guard, preserve the telemetry, but soften the user-facing UI.** \n\n1. **Keep the throw:** `guard !finalText.isEmpty else { throw FinalizationError.emptyAfterProcessing }` is correct. It successfully halts the pipeline *before* the destructive save/paste step.\n2. **Retain Telemetry:** This ensures Sentry/PostHog still capture `emptyAfterProcessing`. For Saurabh, this metric is vital: if this spikes across your 5 users, your VAD (Voice Activity Detection) or whisper model is broken. \n3. **Change the UX treatment:** Catch `HeartPathError.emptyAfterProcessing` at the UI layer and map it to an \"Info\" or \"Warning\" state rather than a critical red \"Error.\" Show a gentle overlay: *\"No speech detected \u2014 nothing pasted.\"* \n\n**Why this fits your constraints:**\nIt requires almost zero code changes from Claude Code (just UI text/color mapping at the top level), keeps the heart path safe from silent data-loss bugs, aligns perfectly with all four personas' needs to protect their active documents, and preserves Saurabh's visibility into model regressions.",
+      "latest_interaction_id": "v1_ChdDQkFJYXJyME43YVMxTWtQMm9HczBRZxIXQ0JBSWFycjBON2FTMU1rUDJvR3MwUWc",
+      "model": "gemini-3.1-pro-preview",
+      "provider": "gemini",
+      "session": "issue-393-finalizer-empty-2026-05-16-6797656a-gemini",
+      "status": "ok",
+      "usage": {
+        "prompt_tokens": 1037,
+        "completion_tokens": 598,
+        "reasoning_tokens": 811,
+        "total_tokens": 2446,
+        "cost_usd": 0.00727625,
+        "latency_ms": 16096
+      }
+    }
+  }
+}
