@@ -1,3 +1,4 @@
+import AppKit
 import EnviousWisprCore
 import EnviousWisprServices
 import Foundation
@@ -10,7 +11,7 @@ import Testing
 // fail. See `docs/feature-requests/issue-326-2026-04-18-transcript-finalizer-contract-tests.md`.
 
 @MainActor
-@Suite("TranscriptFinalizer contracts")
+@Suite("TranscriptFinalizer contracts", .serialized)
 struct TranscriptFinalizerTests {
 
   // MARK: - 1. Step failures do not prevent finalization
@@ -228,6 +229,11 @@ struct TranscriptFinalizerTests {
 
   @Test("PasteCompletionEvent NOT emitted on copy-only branch")
   func pasteCompleteSilentOnCopyOnly() async throws {
+    // Copy-only path writes to NSPasteboard.general — snapshot + restore so
+    // a developer's clipboard isn't replaced with the test text.
+    let priorSnapshot = PasteService.saveClipboard()
+    var endChangeCount = NSPasteboard.general.changeCount
+    defer { Self.restorePasteboard(priorSnapshot, expectedChangeCount: endChangeCount) }
     let registry = PasteCompletionRegistry()
     let observer = CapturingObserver()
     registry.subscribe(observer)
@@ -240,16 +246,150 @@ struct TranscriptFinalizerTests {
       pasteCompletionRegistry: registry
     )
     _ = try await finalizer.finalize(
-      Self.request(asrText: "hello", steps: [], autoPaste: false))
+      Self.request(asrText: "hello", steps: [], autoPaste: false, autoCopy: true))
+    endChangeCount = NSPasteboard.general.changeCount
     #expect(observer.events.isEmpty, "Copy-only path must not emit")
+  }
+
+  // MARK: - #726: Clipboard wiring — settings → finalizer → PasteService
+
+  /// Verifies the auto-paste path forwards `restoreClipboardAfterPaste` from
+  /// the request into the `PasteDeliveryRequest`. The PasteCascadeExecutor
+  /// itself honors the flag; this asserts the wiring upstream of it.
+  @Test("autoPasteToActiveApp ON + restoreClipboardAfterPaste ON forwards restore=true to paste")
+  func restoreFlagForwardsToPasteRequestWhenOn() async throws {
+    let captured = Box<Bool?>(nil)
+    let finalizer = TranscriptFinalizer(
+      save: { _ in },
+      deliverPaste: { request in
+        captured.value = request.restoreClipboardAfterPaste
+        return Self.deliveredResult()
+      }
+    )
+    _ = try await finalizer.finalize(
+      Self.request(
+        asrText: "hello", steps: [], autoPaste: true,
+        autoCopy: false, restore: true))
+    #expect(captured.value == true)
+  }
+
+  @Test("autoPasteToActiveApp ON + restoreClipboardAfterPaste OFF forwards restore=false to paste")
+  func restoreFlagForwardsToPasteRequestWhenOff() async throws {
+    let captured = Box<Bool?>(nil)
+    let finalizer = TranscriptFinalizer(
+      save: { _ in },
+      deliverPaste: { request in
+        captured.value = request.restoreClipboardAfterPaste
+        return Self.deliveredResult()
+      }
+    )
+    _ = try await finalizer.finalize(
+      Self.request(
+        asrText: "hello", steps: [], autoPaste: true,
+        autoCopy: true, restore: false))
+    #expect(captured.value == false)
+  }
+
+  /// Verifies the copy-only branch: when `autoPasteToActiveApp` is false and
+  /// `autoCopyToClipboard` is true, the finalizer writes the polished text to
+  /// the system clipboard (skipping the paste cascade entirely).
+  @Test("autoPaste OFF + autoCopy ON writes the polished text to the system clipboard")
+  func autoCopyOnlyWritesPolishedTextToClipboard() async throws {
+    // Capture full pasteboard contents (images, file URLs, rich text — not just
+    // .string) so a developer's clipboard isn't destroyed when this test runs.
+    let pasteboard = NSPasteboard.general
+    let priorSnapshot = PasteService.saveClipboard()
+    let sentinel = "issue-726-prior-\(UUID().uuidString)"
+    pasteboard.clearContents()
+    pasteboard.setString(sentinel, forType: .string)
+    var endChangeCount = pasteboard.changeCount
+    defer { Self.restorePasteboard(priorSnapshot, expectedChangeCount: endChangeCount) }
+
+    // Inject a fake polish step that emits a value distinct from the raw ASR
+    // text — proves the finalizer copies `transcript.displayText` (polished),
+    // not `transcript.text` (raw). Without this distinction, a regression to
+    // raw-text copy would silently pass.
+    let polishedSentinel = "POLISHED-\(UUID().uuidString)"
+    let polishStep = FakeStep(name: "FakePolish") { ctx in
+      var copy = ctx
+      copy.polishedText = polishedSentinel
+      return copy
+    }
+    let finalizer = TranscriptFinalizer(
+      save: { _ in },
+      deliverPaste: { _ in
+        Issue.record("deliverPaste must not be called when autoPaste is OFF")
+        return Self.deliveredResult()
+      }
+    )
+    _ = try await finalizer.finalize(
+      Self.request(
+        asrText: "raw input", steps: [polishStep], autoPaste: false,
+        autoCopy: true, restore: false))
+    endChangeCount = pasteboard.changeCount
+
+    let after = pasteboard.string(forType: .string)
+    #expect(
+      after == polishedSentinel, "clipboard should contain the POLISHED text, not the raw ASR text")
+    #expect(after != "raw input", "raw ASR text must NOT land on the clipboard")
+    #expect(after != sentinel, "sentinel should have been replaced")
+  }
+
+  @Test("autoPaste OFF + autoCopy OFF leaves the clipboard untouched")
+  func neitherFlagLeavesClipboardUntouched() async throws {
+    // Full snapshot — defer restores every pasteboard type, not just .string.
+    let pasteboard = NSPasteboard.general
+    let priorSnapshot = PasteService.saveClipboard()
+    let sentinel = "issue-726-untouched-\(UUID().uuidString)"
+    pasteboard.clearContents()
+    pasteboard.setString(sentinel, forType: .string)
+    var endChangeCount = pasteboard.changeCount
+    defer { Self.restorePasteboard(priorSnapshot, expectedChangeCount: endChangeCount) }
+
+    let finalizer = TranscriptFinalizer(
+      save: { _ in },
+      deliverPaste: { _ in
+        Issue.record("deliverPaste must not be called when autoPaste is OFF")
+        return Self.deliveredResult()
+      }
+    )
+    _ = try await finalizer.finalize(
+      Self.request(
+        asrText: "hello", steps: [], autoPaste: false,
+        autoCopy: false, restore: false))
+    endChangeCount = pasteboard.changeCount
+
+    #expect(
+      pasteboard.string(forType: .string) == sentinel,
+      "clipboard must remain at the sentinel when both flags are off")
   }
 
   // MARK: - Helpers
 
+  /// Restore the pasteboard to a previously captured snapshot, ONLY if no
+  /// third-party tool wrote to it after our last test mutation. Mirrors the
+  /// production `restoreClipboard` guard: if the change count has advanced
+  /// past what we expected, leave the new content alone.
+  ///
+  /// When the prior snapshot was empty (developer's clipboard had nothing),
+  /// we clear contents instead of no-oping — so our sentinel doesn't persist.
+  private static func restorePasteboard(
+    _ snapshot: ClipboardSnapshot, expectedChangeCount: Int
+  ) {
+    let pasteboard = NSPasteboard.general
+    if snapshot.items.isEmpty {
+      if pasteboard.changeCount == expectedChangeCount { pasteboard.clearContents() }
+      return
+    }
+    PasteService.restoreClipboard(snapshot, changeCountAfterPaste: expectedChangeCount)
+  }
+
   private static func request(
     asrText: String,
     steps: [any TextProcessingStep],
-    autoPaste: Bool = true
+    autoPaste: Bool = true,
+    autoCopy: Bool = false,
+    restore: Bool = false
   ) -> FinalizationRequest {
     FinalizationRequest(
       asrText: asrText,
@@ -259,9 +399,9 @@ struct TranscriptFinalizerTests {
       backendType: .parakeet,
       targetApp: nil,
       targetElement: nil,
-      autoCopyToClipboard: false,
+      autoCopyToClipboard: autoCopy,
       autoPasteToActiveApp: autoPaste,
-      restoreClipboardAfterPaste: false,
+      restoreClipboardAfterPaste: restore,
       steps: steps
     )
   }
