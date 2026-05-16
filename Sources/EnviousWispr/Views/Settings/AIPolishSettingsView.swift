@@ -1,7 +1,101 @@
 import AppKit
 import EnviousWisprCore
 import EnviousWisprLLM
+import OSLog
+import Security
 import SwiftUI
+
+/// Unified log for Save/Clear key failures in the AI Polish settings UI.
+/// The user-facing badge intentionally omits the raw OSStatus (#724), so this
+/// log keeps the numeric code observable for support and Sentry triage. Never
+/// log the key value itself.
+private let aiPolishKeychainUILog = Logger(
+  subsystem: "com.enviouswispr.app", category: "AIPolishSettings")
+
+// MARK: - Keychain failure → user-facing message (#724)
+
+/// Maps `KeyStoreError` (and the OSStatus values it wraps) to short, action-
+/// oriented user-facing text for the API-key field's validation badge.
+///
+/// Lives at file scope (not private to `AIPolishSettingsView`) so the unit
+/// test in `AIPolishKeychainFailureMessageTests` can reach it via
+/// `@testable import EnviousWispr`. No other consumers inside the app module;
+/// do not adopt elsewhere without revisiting placement.
+///
+/// Background: `KeyStoreError.errorDescription` returns engineering text like
+/// `"Key delete failed: -25291"` which is meaningless to end users. The raw
+/// codes still log via Sentry/OSLog from the underlying call sites; the badge
+/// only needs to tell the user what to try next. Per #724 / PR #720 review.
+enum AIPolishKeychainFailureMessage {
+  /// Returns a single short sentence prefixed with `"Failed: "` so existing
+  /// `validationStatus.hasPrefix("Failed")` checks in the view still light up
+  /// the error styling.
+  static func text(for error: any Error, action: Action) -> String {
+    "Failed: " + body(for: error, action: action)
+  }
+
+  /// The verb the message should suggest. `clear` is the Clear button path;
+  /// `save` is the Save button path. The verb only matters for the generic
+  /// fallback; specific OSStatus mappings are action-agnostic.
+  enum Action {
+    case save
+    case clear
+  }
+
+  private static func body(for error: any Error, action: Action) -> String {
+    if let keyStoreError = error as? KeyStoreError {
+      switch keyStoreError {
+      case .storeFailed(let status), .retrieveFailed(let status), .deleteFailed(let status):
+        return message(for: status, action: action)
+      case .unsupportedKey:
+        // Internal misuse — only the two supported keys ever pass the gate. If
+        // a user-facing message ever appears here, it is an engineering bug,
+        // not a Keychain state the user can fix.
+        return "This key store item is not supported. Please contact support."
+      case .rollbackFailed:
+        return "We could not finish saving. Restart EnviousWispr and try again."
+      }
+    }
+    // Unexpected error type — generic fallback.
+    return genericMessage(for: action)
+  }
+
+  /// Maps known Keychain OSStatus values to user-actionable copy. Anything
+  /// outside this allowlist falls back to a generic message that omits the
+  /// numeric code.
+  private static func message(for status: OSStatus, action: Action) -> String {
+    switch status {
+    case errSecUserCanceled:
+      return "Cancelled."
+    case errSecAuthFailed:
+      return "Could not access the Keychain. Unlock it from Keychain Access and try again."
+    case errSecInteractionNotAllowed, errSecInteractionRequired:
+      return "Keychain is locked. Unlock it and try again."
+    case errSecMissingEntitlement:
+      return "EnviousWispr is missing Keychain entitlements. Reinstall the app."
+    case errSecNotAvailable:
+      return "Keychain is unavailable. Restart EnviousWispr and try again."
+    case errSecItemNotFound:
+      // Hit only on Save (retrieve path during store's previous-value lookup);
+      // the delete path treats not-found as success, so Clear cannot reach
+      // here in normal flows.
+      return "Key not found. Try again."
+    case errSecDuplicateItem:
+      return "A duplicate key is already saved. Clear it and try again."
+    default:
+      return genericMessage(for: action)
+    }
+  }
+
+  private static func genericMessage(for action: Action) -> String {
+    switch action {
+    case .save:
+      return "Could not save the key. Try again, or restart the app."
+    case .clear:
+      return "Could not clear the saved key. Try again, or restart the app."
+    }
+  }
+}
 
 // MARK: - Model Recommendation Classifier (#617)
 
@@ -302,10 +396,16 @@ struct AIPolishSettingsView: View {
           SecureField("sk-proj-…", text: $openAIKey)
             .textFieldStyle(.roundedBorder)
             .accessibilityLabel("OpenAI API Key")
+            .onChange(of: openAIKey) { _, _ in
+              dismissStaleFailureStatus()
+            }
         } else {
           SecureField("AI…", text: $geminiKey)
             .textFieldStyle(.roundedBorder)
             .accessibilityLabel("Google Gemini API Key")
+            .onChange(of: geminiKey) { _, _ in
+              dismissStaleFailureStatus()
+            }
         }
 
         validationBadge
@@ -893,8 +993,21 @@ struct AIPolishSettingsView: View {
       }
       return true
     } catch {
-      validationStatus = "Failed: \(error.localizedDescription)"
+      aiPolishKeychainUILog.error(
+        "Save key failed action=save keyID=\(keychainId, privacy: .public) error=\(String(describing: error), privacy: .public)"
+      )
+      validationStatus = AIPolishKeychainFailureMessage.text(for: error, action: .save)
       return false
+    }
+  }
+
+  /// Clears any "Failed: …" validation badge the moment the user resumes
+  /// typing in either key field. Without this, a stale clear-failure from a
+  /// prior attempt sits next to fresh input until the next save/clear runs.
+  /// See #724.
+  private func dismissStaleFailureStatus() {
+    if validationStatus.hasPrefix("Failed") {
+      validationStatus = ""
     }
   }
 
@@ -905,7 +1018,10 @@ struct AIPolishSettingsView: View {
       validationStatus = ""
       return true
     } catch {
-      validationStatus = "Failed: \(error.localizedDescription)"
+      aiPolishKeychainUILog.error(
+        "Clear key failed action=clear keyID=\(keychainId, privacy: .public) error=\(String(describing: error), privacy: .public)"
+      )
+      validationStatus = AIPolishKeychainFailureMessage.text(for: error, action: .clear)
       return false
     }
   }
