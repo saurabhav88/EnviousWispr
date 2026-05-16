@@ -158,7 +158,13 @@ public final class ASRManagerProxy: ASRManagerInterface {
     launchPreloadReporter?(backend, result, ms)
   }
 
-  private func startProgressPolling() {
+  /// Whether the progress-polling timer is currently scheduled. Internal only
+  /// for the #586 regression test that exercises the polling lifecycle without
+  /// going through the (XPC-coupled) `loadModel` happy path. Tests reach it
+  /// via `@testable import EnviousWisprASR`.
+  internal var isProgressPollingActiveForTesting: Bool { progressPollTimer != nil }
+
+  internal func startProgressPolling() {
     stopProgressPolling()
     // Read progress from shared file — bypasses XPC entirely.
     // XPC serializes replies, so polling via XPC is blocked behind loadModel's pending reply.
@@ -186,7 +192,7 @@ public final class ASRManagerProxy: ASRManagerInterface {
     progressPollTimer = timer
   }
 
-  private func stopProgressPolling() {
+  internal func stopProgressPolling() {
     progressPollTimer?.invalidate()
     progressPollTimer = nil
   }
