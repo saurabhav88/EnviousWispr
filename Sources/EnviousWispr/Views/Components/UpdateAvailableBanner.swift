@@ -2,11 +2,13 @@ import EnviousWisprServices
 import SwiftUI
 
 /// In-app banner shown at the bottom of the Settings sidebar when Sparkle has
-/// downloaded a non-critical update (issue #343). Click-anywhere installs;
-/// right-click for Dismiss. 3pt rainbow stripe along the top edge matches the
+/// downloaded a non-critical update (issue #343). Click-anywhere installs.
+/// Stays visible until the bundle version on disk catches up to the pending
+/// version (issue #739). 3pt rainbow stripe along the top edge matches the
 /// EnviousWispr brand mark.
 struct UpdateAvailableBanner: View {
-  @Environment(\.updateCoordinator) private var coordinator
+  @Environment(UpdateCoordinatorHolder.self) private var coordinatorHolder
+  private var coordinator: UpdateCoordinator? { coordinatorHolder.coordinator }
   let update: UpdateAvailabilityService.AvailableUpdate
 
   // Telemetry: track when the banner first appeared (for `seconds_visible`
@@ -45,14 +47,6 @@ struct UpdateAvailableBanner: View {
         version: update.versionString,
         isCritical: update.isCriticalUpdate,
         secondsVisible: secondsVisible())
-    }
-    .contextMenu {
-      Button(LocalizedStringResource("Dismiss")) {
-        coordinator?.handleBannerDismissed(
-          version: update.versionString,
-          isCritical: update.isCriticalUpdate,
-          secondsVisible: secondsVisible())
-      }
     }
     .padding(.horizontal, 12)
     .padding(.vertical, 12)

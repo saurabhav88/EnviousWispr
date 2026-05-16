@@ -602,17 +602,6 @@ public final class TelemetryService {
     )
   }
 
-  public func updateBannerDismissed(version: String, isCritical: Bool, secondsVisible: Int) {
-    PostHogSDK.shared.capture(
-      "update.banner_dismissed",
-      properties: [
-        "version": version,
-        "is_critical": isCritical,
-        "seconds_visible": secondsVisible,
-      ]
-    )
-  }
-
   public func updateSparkleDefaultShown(version: String, isCritical: Bool, reason: String) {
     PostHogSDK.shared.capture(
       "update.sparkle_default_shown",

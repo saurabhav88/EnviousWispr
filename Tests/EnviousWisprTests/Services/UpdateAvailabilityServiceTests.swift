@@ -127,34 +127,20 @@ struct UpdateAvailabilityServiceTests {
     #expect(d.string(forKey: UpdateAvailabilityService.kDismissedVersion) == nil)
   }
 
-  @Test("init seeds dismissedForSession when persisted dismissed matches pending")
-  func rehydrateSeedsDismissal() {
+  @Test(
+    "rehydratePendingIfNewer clears kDismissedVersion and forces dismissedForSession=false when pending > current (issue #739)"
+  )
+  func rehydrateClearsDismissalWhenPendingGreater() {
     let d = Self.freshDefaults()
     d.set("2.4.0", forKey: UpdateAvailabilityService.kPendingVersion)
     d.set("2.4.0", forKey: UpdateAvailabilityService.kPendingBuild)
     d.set(Date().timeIntervalSince1970, forKey: UpdateAvailabilityService.kPendingTimestamp)
+    // Pre-#739 buggy didReceiveUserAttention callback could persist this.
     d.set("2.4.0", forKey: UpdateAvailabilityService.kDismissedVersion)
     let (s, _) = Self.makeService(bundle: "1.9.4", defaults: d)
-    #expect(s.dismissedForSession == true)
-  }
-
-  // MARK: - Pipeline-state guard
-
-  @Test("handlePipelineStateChange(true) cancels grace and clears flag")
-  func recordingCancelsGrace() {
-    let (s, _) = Self.makeService()
-    s.handlePipelineStateChange(isRecording: true)
-    #expect(s.inPostRecordingGrace == false)
-    #expect(s.isRecording == true)
-  }
-
-  @Test("handlePipelineStateChange(false) sets grace; clears after duration")
-  func graceClearsAfterDuration() async throws {
-    let (s, _) = Self.makeService()
-    s.handlePipelineStateChange(isRecording: false)
-    #expect(s.inPostRecordingGrace == true)
-    await s.waitForPostRecordingGraceForTesting()
-    #expect(s.inPostRecordingGrace == false)
+    // Post-#739: rehydrate purges the historical dismissal.
+    #expect(s.dismissedForSession == false)
+    #expect(d.string(forKey: UpdateAvailabilityService.kDismissedVersion) == nil)
   }
 
   // MARK: - shouldShowBanner predicate
@@ -177,14 +163,6 @@ struct UpdateAvailabilityServiceTests {
     let (s, _) = Self.makeService()
     s.noteAvailable(Self.makeUpdate())
     s.dismissForSession()
-    #expect(s.shouldShowBanner == false)
-  }
-
-  @Test("shouldShowBanner is false during recording")
-  func predicateRecording() {
-    let (s, _) = Self.makeService()
-    s.noteAvailable(Self.makeUpdate())
-    s.handlePipelineStateChange(isRecording: true)
     #expect(s.shouldShowBanner == false)
   }
 

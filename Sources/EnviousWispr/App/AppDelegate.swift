@@ -27,6 +27,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var statusItem: NSStatusItem?
   private(set) var updaterController: SPUStandardUpdaterController?
   private(set) var updateCoordinator: UpdateCoordinator?
+  /// Issue #739: stable env-carrier — non-optional `@Observable` holder
+  /// whose `coordinator` property is set once the AppDelegate finishes init.
+  /// SwiftUI captures THIS instance in env; the inner coordinator flip
+  /// (nil → non-nil) triggers re-evaluation of dependent views.
+  let updateCoordinatorHolder = UpdateCoordinatorHolder()
   private let iconAnimator = MenuBarIconAnimator()
   private weak var mainWindow: NSWindow?
   private var windowCloseObserver: (any NSObjectProtocol)?
@@ -60,6 +65,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /// torn down in `applicationWillTerminate` for clean observer removal.
   private var audioSystemEventReporter: AudioSystemEventReporter?
   private var audioEnvironmentSnapshotter: AudioEnvironmentSnapshotter?
+
+  /// Issue #739: instantiate the updater + update-banner coordinator BEFORE
+  /// SwiftUI mounts the App's scenes. SwiftUI snapshots the env value
+  /// `\.updateCoordinator` (bound to `appDelegate.updateCoordinator` in
+  /// `EnviousWisprApp.swift`) when the scene body is first evaluated, and
+  /// that snapshot is final — the App struct's `@State` doesn't change, so
+  /// SwiftUI never re-fetches. If we wait until `applicationDidFinishLaunching`,
+  /// the env value is nil forever and the banner never renders.
+  func applicationWillFinishLaunching(_ notification: Notification) {
+    updaterController = SPUStandardUpdaterController(
+      startingUpdater: true,
+      updaterDelegate: self,
+      userDriverDelegate: self
+    )
+    updateCoordinator = UpdateCoordinator(updaterController: updaterController)
+    // Issue #739: publish the coordinator into the @Observable holder so any
+    // SwiftUI view bound to the holder's env value sees the flip from nil to
+    // non-nil and re-renders. The holder itself is created inline as a stable
+    // stored property, so SwiftUI's first env capture is non-nil.
+    updateCoordinatorHolder.coordinator = updateCoordinator
+    // Cross-launch correlation runs here (was in didFinishLaunching) so the
+    // attribution event fires before any UI is shown.
+    evaluateUpdateInstallAttemptOnLaunch()
+  }
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     // Hide dock icon on launch — we're a menu bar utility.
@@ -109,20 +138,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       }
     }
 
-    updaterController = SPUStandardUpdaterController(
-      startingUpdater: true,
-      updaterDelegate: self,
-      userDriverDelegate: self
-    )
-
-    // Issue #343: in-app update banner. Constructed AFTER the updater so the
-    // install closure can capture it. Limb classification — does NOT live on
-    // AppState (collaborator ceiling).
-    updateCoordinator = UpdateCoordinator(updaterController: updaterController)
-
-    // Issue #343: cross-launch correlation. Fire install_completed /
-    // install_cancelled if the prior launch attempted an install.
-    evaluateUpdateInstallAttemptOnLaunch()
+    // Issue #739: updaterController + updateCoordinator + cross-launch
+    // correlation moved to applicationWillFinishLaunching so SwiftUI's env
+    // value snapshot is non-nil when the App body first evaluates.
 
     setupStatusItem()
 
@@ -132,7 +150,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     appState.onPipelineStateChange = { [weak self] state in
       guard let self else { return }
       self.updateIcon()
-      self.updateCoordinator?.handlePipelineStateChange(isRecording: state == .recording)
+      // Issue #739: do NOT forward pipeline state to the update widget. The
+      // widget is now bundle-version-driven only — visible whenever an update
+      // is pending, period. Matches Claude Desktop / Slack / Cursor update-prompt
+      // conventions (no auto-hide during active work).
       if state == .recording {
         self.audioEnvironmentSnapshotter?.recordingStarted()
       }
@@ -660,11 +681,13 @@ extension AppDelegate: @preconcurrency SPUStandardUserDriverDelegate {
     // Else: banner owns UX; source set by `triggerInstall` when user clicks.
   }
 
-  /// Issue #343: dismiss our banner when the user has engaged with Sparkle's
-  /// UI directly (e.g., used the menu while the banner was visible).
-  /// Prevents two competing UIs for the same update.
+  /// Issue #739: Sparkle fires this on alert focus AND user choice; it is NOT
+  /// a dismissal signal. Widget visibility is governed solely by bundle
+  /// version on disk. User engagement with the Sparkle alert does not hide
+  /// the widget. Method retained as no-op so Sparkle's delegate conformance
+  /// continues to register interest in the callback (needsToObserveUserAttention
+  /// gates other Sparkle internals; see SPUStandardUserDriver.m:370).
   func standardUserDriverDidReceiveUserAttention(forUpdate update: SUAppcastItem) {
-    updateCoordinator?.service.dismissForSession()
   }
 }
 
@@ -743,7 +766,12 @@ extension AppDelegate: SPUUpdaterDelegate {
         errorCode: errorCode ?? "unknown"
       )
     }
-    updateCoordinator?.service.noteResolved(installedVersion: nil)
+    // Issue #739: do NOT call noteResolved here. Sparkle's "cycle finished"
+    // fires on cancel/skip/error/install-on-quit-scheduled alike. Widget state
+    // is cleared only when bundle version catches up (rehydratePendingIfNewer
+    // on next launch). In-session, the existing 5s resolvingWatchdog in
+    // triggerInstall restores .available if the user clicked the widget but
+    // did not complete an install.
     updateCoordinator?.lastInstallSource = nil
   }
 }

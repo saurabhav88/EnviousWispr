@@ -20,7 +20,7 @@ struct EnviousWisprApp: App {
       UnifiedWindowView()
         .frame(minWidth: 580, minHeight: 400)
         .environment(appDelegate.appState)
-        .environment(\.updateCoordinator, appDelegate.updateCoordinator)
+        .environment(appDelegate.updateCoordinatorHolder)
         .background(
           ActionWirer(
             appDelegate: appDelegate,

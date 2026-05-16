@@ -40,15 +40,6 @@ final class UpdateCoordinator {
     )
   }
 
-  // MARK: - Pipeline-state forwarding
-
-  /// Called from the AppDelegate `onPipelineStateChange` callback (next to
-  /// the existing icon-update path). Forwards to the service so the banner
-  /// hides during recording + 3s post-recording grace.
-  func handlePipelineStateChange(isRecording: Bool) {
-    service.handlePipelineStateChange(isRecording: isRecording)
-  }
-
   // MARK: - Install-attempt persistence (cross-launch correlation)
 
   /// Persists "we just kicked off an install" so the next launch can decide
@@ -130,16 +121,6 @@ final class UpdateCoordinator {
     service.triggerInstall()
   }
 
-  /// Banner dismissed via context menu.
-  func handleBannerDismissed(version: String, isCritical: Bool, secondsVisible: Int) {
-    TelemetryService.shared.updateBannerDismissed(
-      version: version,
-      isCritical: isCritical,
-      secondsVisible: secondsVisible
-    )
-    service.dismissForSession()
-  }
-
   enum InstallAttemptOutcome: Equatable {
     case none
     case completed(version: String, source: String)
@@ -149,15 +130,19 @@ final class UpdateCoordinator {
   }
 }
 
-// MARK: - SwiftUI Environment injection
+// MARK: - SwiftUI Environment injection (issue #739)
 
-private struct UpdateCoordinatorKey: EnvironmentKey {
-  static let defaultValue: UpdateCoordinator? = nil
-}
-
-extension EnvironmentValues {
-  var updateCoordinator: UpdateCoordinator? {
-    get { self[UpdateCoordinatorKey.self] }
-    set { self[UpdateCoordinatorKey.self] = newValue }
-  }
+/// Stable `@Observable` wrapper around the coordinator instance. We can't pass
+/// the optional coordinator directly into SwiftUI's environment because
+/// `appDelegate.updateCoordinator` is nil at the moment SwiftUI evaluates the
+/// App body and captures the env value (delegate methods run after scene
+/// construction). The holder is a stable instance whose `coordinator`
+/// property goes from nil → non-nil once AppDelegate finishes init; the
+/// `@Observable` macro guarantees SwiftUI re-evaluates dependent views when
+/// the property changes.
+@Observable
+@MainActor
+public final class UpdateCoordinatorHolder {
+  var coordinator: UpdateCoordinator?
+  public init() {}
 }

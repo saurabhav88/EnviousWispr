@@ -37,7 +37,6 @@ public final class UpdateAvailabilityService {
 
   // MARK: - Constants
 
-  public static let postRecordingGraceDuration: TimeInterval = 3.0
   static let resolvingWatchdogDuration: TimeInterval = 5.0
 
   // Namespaced UserDefaults keys (issue #343).
@@ -45,17 +44,19 @@ public final class UpdateAvailabilityService {
   public static let kPendingBuild = "com.enviouswispr.updateBanner.pendingBuild"
   public static let kPendingTimestamp = "com.enviouswispr.updateBanner.pendingTimestamp"
   public static let kDismissedVersion = "com.enviouswispr.updateBanner.dismissedVersion"
+  /// Issue #739: persist the critical-update flag so rehydrate on next launch
+  /// can correctly leave the UX to Sparkle (banner is suppressed for critical
+  /// updates per `shouldShowBanner`). Pre-#739 the flag was lost across
+  /// launches and a critical update could surface as a gentle banner.
+  public static let kPendingCritical = "com.enviouswispr.updateBanner.pendingCritical"
 
   // MARK: - Observable state
 
   public private(set) var state: UpdateState = .none
   public private(set) var dismissedForSession: Bool = false
-  public private(set) var inPostRecordingGrace: Bool = false
-  public private(set) var isRecording: Bool = false
 
   // MARK: - Internal storage (not observed)
 
-  @ObservationIgnored private var graceTask: Task<Void, Never>?
   @ObservationIgnored private var resolvingWatchdog: Task<Void, Never>?
   @ObservationIgnored private let installAction: @MainActor () -> Void
   @ObservationIgnored private let defaults: UserDefaults
@@ -79,7 +80,11 @@ public final class UpdateAvailabilityService {
   public var shouldShowBanner: Bool {
     guard case .available(let u) = state else { return false }
     if u.isCriticalUpdate { return false }  // critical → Sparkle owns UX
-    return !dismissedForSession && !inPostRecordingGrace && !isRecording
+    // Issue #739: widget visibility is bundle-version-driven only. No
+    // recording-hide, no grace timer, no flicker. dismissedForSession is
+    // retained as defense-in-depth against legacy kDismissedVersion residue
+    // (rehydratePendingIfNewer purges it on launch).
+    return !dismissedForSession
   }
 
   // MARK: - Sparkle-driven mutations
@@ -105,13 +110,12 @@ public final class UpdateAvailabilityService {
     persist(update)
   }
 
-  /// Called from `updater(_:didFinishUpdateCycleForUpdateCheck:error:)`.
+  /// Public API retained for tests; no in-app caller post-#739. Sparkle's
+  /// cycle-finish callback no longer invokes this — widget state is cleared by
+  /// `rehydratePendingIfNewer` when the bundle version catches up to pending.
   public func noteResolved(installedVersion: String?) {
     state = .none
     dismissedForSession = false
-    inPostRecordingGrace = false
-    graceTask?.cancel()
-    graceTask = nil
     resolvingWatchdog?.cancel()
     resolvingWatchdog = nil
     clearPersisted()
@@ -144,47 +148,28 @@ public final class UpdateAvailabilityService {
     }
   }
 
-  // MARK: - Pipeline-state hook (called from AppDelegate's onPipelineStateChange)
-
-  public func handlePipelineStateChange(isRecording: Bool) {
-    self.isRecording = isRecording
-
-    if isRecording {
-      graceTask?.cancel()
-      graceTask = nil
-      inPostRecordingGrace = false
-      return
-    }
-
-    graceTask?.cancel()
-    inPostRecordingGrace = true
-    graceTask = Task { [weak self] in
-      try? await Task.sleep(for: .seconds(Self.postRecordingGraceDuration))
-      guard !Task.isCancelled else { return }
-      await MainActor.run { self?.inPostRecordingGrace = false }
-    }
-  }
-
-  func waitForPostRecordingGraceForTesting() async {
-    await graceTask?.value
-  }
-
   // MARK: - Persistence helpers
 
   func persist(_ update: AvailableUpdate) {
     defaults.set(update.versionString, forKey: Self.kPendingVersion)
     defaults.set(update.displayVersion, forKey: Self.kPendingBuild)
     defaults.set(Date().timeIntervalSince1970, forKey: Self.kPendingTimestamp)
+    // Issue #739: persist the critical flag so Sparkle's heavy UX path is
+    // preserved across launches; the gentle banner stays suppressed.
+    defaults.set(update.isCriticalUpdate, forKey: Self.kPendingCritical)
   }
 
   func persistedPending() -> AvailableUpdate? {
     guard let v = defaults.string(forKey: Self.kPendingVersion) else { return nil }
     let display = defaults.string(forKey: Self.kPendingBuild) ?? v
+    // Issue #739: rehydrate the critical flag. Defaults to false if the key
+    // is absent (older builds, never-persisted updates) — keeps backward-compat.
+    let isCritical = defaults.bool(forKey: Self.kPendingCritical)
     return AvailableUpdate(
       versionString: v,
       displayVersion: display,
       buildString: v,
-      isCriticalUpdate: false  // critical-flag not persisted; rehydrated state is non-critical
+      isCriticalUpdate: isCritical
     )
   }
 
@@ -193,6 +178,7 @@ public final class UpdateAvailabilityService {
     defaults.removeObject(forKey: Self.kPendingBuild)
     defaults.removeObject(forKey: Self.kPendingTimestamp)
     defaults.removeObject(forKey: Self.kDismissedVersion)
+    defaults.removeObject(forKey: Self.kPendingCritical)
   }
 
   func rehydratePendingIfNewer() {
@@ -200,8 +186,12 @@ public final class UpdateAvailabilityService {
     let cmp = compareVersions(pending.versionString, currentBundleVersion)
     if cmp > 0 {
       state = .available(pending)
-      dismissedForSession =
-        (defaults.string(forKey: Self.kDismissedVersion) == pending.versionString)
+      // Issue #739: post-#739 no in-app caller invokes dismissForSession, so
+      // kDismissedVersion can only exist as residue from a pre-#739 buggy
+      // didReceiveUserAttention callback. Purge it on rehydrate so the widget
+      // is not silently suppressed by historical state.
+      defaults.removeObject(forKey: Self.kDismissedVersion)
+      dismissedForSession = false
     } else {
       // Bundle has caught up to or surpassed pending — user installed by some path.
       clearPersisted()
