@@ -534,7 +534,7 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
       recordingStartTime = Date()
       currentTranscript = nil
       TelemetryService.shared.dictationInvoked(
-        triggerSource: config.inputMode.rawValue,
+        triggerSource: config.triggerSource.rawValue,
         inputMode: config.inputMode.rawValue,
         targetApp: targetApp?.localizedName
       )

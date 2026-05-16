@@ -78,7 +78,7 @@ struct StatusView: View {
           // Action buttons
           HStack(spacing: 16) {
             Button {
-              Task { await appState.toggleRecording() }
+              Task { await appState.toggleRecording(source: .toolbar) }
             } label: {
               HStack(spacing: 4) {
                 Image(systemName: "stop.fill")
@@ -310,7 +310,7 @@ struct RecordButton: View {
   var body: some View {
     Button {
       Task {
-        await appState.toggleRecording()
+        await appState.toggleRecording(source: .toolbar)
       }
     } label: {
       Label(

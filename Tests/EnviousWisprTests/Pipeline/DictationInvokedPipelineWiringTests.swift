@@ -32,7 +32,9 @@ struct DictationInvokedPipelineWiringTests {
     let telemetryIndex = try Self.require("TelemetryService.shared.dictationInvoked(", in: body)
 
     #expect(stateIndex < telemetryIndex)
-    #expect(body.contains("triggerSource: config.inputMode.rawValue"))
+    // #723: trigger_source and input_mode are distinct schema slots; pipeline
+    // must read them from distinct config fields.
+    #expect(body.contains("triggerSource: config.triggerSource.rawValue"))
     #expect(body.contains("inputMode: config.inputMode.rawValue"))
     #expect(body.contains("targetApp: targetApp?.localizedName"))
   }
@@ -50,7 +52,9 @@ struct DictationInvokedPipelineWiringTests {
     let telemetryIndex = try Self.require("TelemetryService.shared.dictationInvoked(", in: body)
 
     #expect(stateIndex < telemetryIndex)
-    #expect(body.contains("triggerSource: config.inputMode.rawValue"))
+    // #723: trigger_source and input_mode are distinct schema slots; pipeline
+    // must read them from distinct config fields.
+    #expect(body.contains("triggerSource: config.triggerSource.rawValue"))
     #expect(body.contains("inputMode: config.inputMode.rawValue"))
     #expect(body.contains("targetApp: targetApp?.localizedName"))
   }
@@ -68,7 +72,8 @@ struct DictationInvokedPipelineWiringTests {
     guard let startRange = source.range(of: start) else {
       throw TestFailure("Missing start marker: \(start)")
     }
-    guard let endRange = source.range(of: end, range: startRange.upperBound..<source.endIndex) else {
+    guard let endRange = source.range(of: end, range: startRange.upperBound..<source.endIndex)
+    else {
       throw TestFailure("Missing end marker: \(end)")
     }
     return String(source[startRange.lowerBound..<endRange.lowerBound])
