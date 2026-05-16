@@ -79,6 +79,7 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
   // Text processing steps
   private let wordCorrectionStep = WordCorrectionStep()
   private let fillerRemovalStep = FillerRemovalStep()
+  private let emojiFormatterStep = EmojiFormatterStep()
   private let llmPolishStep: LLMPolishStep
   private var textProcessingSteps: [any TextProcessingStep] = []
 
@@ -86,6 +87,8 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
   public var wordCorrection: WordCorrectionStep { wordCorrectionStep }
   /// Access filler removal step for configuration.
   public var fillerRemoval: FillerRemovalStep { fillerRemovalStep }
+  /// Access emoji formatter step for configuration (#341).
+  public var emojiFormatter: EmojiFormatterStep { emojiFormatterStep }
   /// Access LLM polish step for configuration.
   public var llmPolish: LLMPolishStep { llmPolishStep }
 
@@ -192,7 +195,9 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
     // to use streamGenerateContent instead of batch generateContent.
     // No-op callback is correct; live token display in overlay is a future follow-up.
     llmPolishStep.onToken = { _ in }
-    textProcessingSteps = [wordCorrectionStep, fillerRemovalStep, llmPolishStep]
+    textProcessingSteps = [
+      wordCorrectionStep, fillerRemovalStep, emojiFormatterStep, llmPolishStep,
+    ]
 
     // Issue #285 — telemetry callbacks on `audioCapture` are single-owner
     // properties and both pipelines share the same instance. `AppState`

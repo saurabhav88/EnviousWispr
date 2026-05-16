@@ -156,21 +156,13 @@ final class AppState {
       asrManager = ASRManager()
     }
 
-    // Phase C (#428) — composition-root for transcript storage.
-    // One `TranscriptStore` instance is constructed here and threaded
-    // into every consumer (coordinator + both pipelines + polish service).
-    // AppState does NOT retain this as a property; each consumer keeps
-    // the reference it received via init. No accessor is exposed on the
-    // coordinator; no consumer constructs its own. The shared-store
-    // invariant is verifiable by grep: exactly one `TranscriptStore(`
-    // call in `Sources/` outside `EnviousWisprStorage/TranscriptStore.swift`.
+    // Composition-root for transcript storage. One `TranscriptStore` is threaded
+    // to every consumer (coordinator + both pipelines + polish service); AppState
+    // does NOT retain it. Invariant: exactly one `TranscriptStore(` call in
+    // `Sources/` outside `EnviousWisprStorage/TranscriptStore.swift`.
     let transcriptStore = TranscriptStore()
-    // Production invariant: the app has always written transcripts to
-    // AppConstants.appSupportURL/transcripts. Verified via grep 2026-04-20.
-    // No legacy path, no group container, no iCloud. Phase C Invariant
-    // safeguard #4 (Option B — plan §11): a concrete migrator would be a
-    // no-op, so we rely on the default init's directory-create-on-miss
-    // plus founder dogfood (safeguard #3) to catch any future path shift.
+    // Transcripts always live at AppConstants.appSupportURL/transcripts.
+    // No legacy path, no group container, no iCloud. Default init creates dir on miss.
     transcriptCoordinator = TranscriptCoordinator(store: transcriptStore)
     llmDiscovery = LLMModelDiscoveryCoordinator(keychainManager: keychainManager)
 

@@ -147,13 +147,25 @@ struct SpeechEngineSettingsView: View {
 
       // ── Section 5: Cleanup ────────────────────────────────────────────
       BrandedSection(header: "Cleanup") {
-        BrandedRow(showDivider: false) {
+        BrandedRow(showDivider: true) {
           VStack(alignment: .leading, spacing: 4) {
             Toggle(
               "Remove filler words (um, uh, hmm...)", isOn: $state.settings.fillerRemovalEnabled
             )
             .toggleStyle(BrandedToggleStyle())
             Text("Strips common filler words from transcriptions.")
+              .font(.stHelper)
+              .foregroundStyle(.stTextTertiary)
+          }
+        }
+        BrandedRow(showDivider: false) {
+          VStack(alignment: .leading, spacing: 4) {
+            Toggle(
+              "Convert spoken emoji (e.g. \"thumbs up emoji\" → 👍)",
+              isOn: $state.settings.emojiFormatterEnabled
+            )
+            .toggleStyle(BrandedToggleStyle())
+            Text("Say \"<phrase> emoji\" to get the glyph. Bare words never convert.")
               .font(.stHelper)
               .foregroundStyle(.stTextTertiary)
           }
