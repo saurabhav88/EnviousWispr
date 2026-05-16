@@ -46,9 +46,12 @@ human changes should go through PRs.
 
 ## Release flow
 
-1. `./scripts/release-preflight.sh` — validates branch, clean state, release build, tests
-2. Version bump + commit
-3. Annotated tag + push (triggers `release.yml`)
+Branch protection on `main` blocks direct pushes — every change goes through a PR with
+`build-check` passing. The release flow:
+
+1. Worktree from `origin/main`, bump version + What's New, commit on `release/v<version>`
+2. Open PR → auto-merge once `build-check` passes
+3. Sync local main, annotated tag the merge commit, push tag (triggers `release.yml`)
 4. `release.yml` runs a 4-job idempotent pipeline:
    - **Preflight** — validates tag format (semver), required secrets, probes existing release/appcast state
    - **Build** — SDK probe → build → sign → notarize → DMG → Sparkle sign → upload artifacts (30-day retention)

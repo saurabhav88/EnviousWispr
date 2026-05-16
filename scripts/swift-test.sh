@@ -16,7 +16,7 @@
 # Usage:
 #   scripts/swift-test.sh              # run all tests
 #   scripts/swift-test.sh --filter Foo # filter to tests matching "Foo"
-#   scripts/swift-test.sh --no-run     # compile tests only (used by release-preflight)
+#   scripts/swift-test.sh --no-run     # compile tests only (no test execution)
 
 set -euo pipefail
 
