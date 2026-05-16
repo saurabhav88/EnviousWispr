@@ -29,7 +29,6 @@ final class OnboardingV2ViewModel {
 
   var micGranted = false
   var accessibilityGranted = false
-  var showSkipLink = false
 
   var downloadError: String?
   /// Raw error details for support diagnostics (hidden behind "Copy error details" button).
@@ -679,12 +678,59 @@ private struct PermissionsPhaseView: View {
           isGranted: viewModel.accessibilityGranted,
           onGrant: { viewModel.openAccessibilitySettings(permissions: appState.permissions) }
         )
+
+        // #735: trust-builder banner. "Accessibility" is the scariest-sounding
+        // permission on macOS for non-technical users — same flag a keylogger
+        // would request. Defuse the fear by saying exactly what we use it for
+        // and exactly what we don't. Shown only while AX is ungranted; vanishes
+        // the moment the user grants it.
+        if !viewModel.accessibilityGranted {
+          VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
+              Image(systemName: "exclamationmark.shield.fill")
+                .foregroundStyle(Color.obWarning)
+                .font(.system(size: 16, weight: .semibold))
+              VStack(alignment: .leading, spacing: 6) {
+                Text("Required to paste your dictation")
+                  .font(.obLabel)
+                  .foregroundStyle(Color.obTextPrimary)
+                Text(
+                  "macOS calls this permission \"Accessibility,\" but EnviousWispr uses it for exactly one thing: pasting your transcript into the app you're typing in. Without it, every dictation lands in the clipboard and you'd have to paste manually."
+                )
+                .font(.obCaption)
+                .foregroundStyle(Color.obTextSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+                Text(
+                  "We only use Accessibility at the moment we paste your transcript. Never to read your keystrokes, never to watch what happens in other apps."
+                )
+                .font(.obCaption)
+                .foregroundStyle(Color.obTextSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+              }
+            }
+          }
+          .padding(14)
+          .background(Color.obWarning.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
+          .overlay(
+            RoundedRectangle(cornerRadius: 12)
+              .stroke(Color.obWarning.opacity(0.25), lineWidth: 1)
+          )
+          .transition(.opacity.combined(with: .move(edge: .top)))
+        }
       }
       .padding(.bottom, 20)
+      .animation(.easeInOut(duration: 0.30), value: viewModel.accessibilityGranted)
 
       Spacer()
 
+      // #735: gate Continue on BOTH mic AND accessibility. PostHog (60d prod)
+      // showed 17% of completers (3 of 18) denied accessibility, pressed past,
+      // and never dictated again — auto-paste fails silently without AX. The
+      // "Skip for now" backdoor and the no-AX-required Continue both fed that
+      // silent-failure population. Gate the user here, never on the Ready
+      // screen — by then they've committed to a hotkey.
       VStack(spacing: 8) {
+        let bothGranted = viewModel.micGranted && viewModel.accessibilityGranted
         Button {
           viewModel.currentScreen = .ready
         } label: {
@@ -694,22 +740,12 @@ private struct PermissionsPhaseView: View {
             .frame(maxWidth: 360)
             .padding(.vertical, 13)
             .background(
-              viewModel.micGranted ? Color.obTextPrimary : Color.obTextPrimary.opacity(0.4),
+              bothGranted ? Color.obTextPrimary : Color.obTextPrimary.opacity(0.4),
               in: RoundedRectangle(cornerRadius: 12)
             )
         }
         .buttonStyle(.plain)
-        .disabled(!viewModel.micGranted)
-
-        if viewModel.showSkipLink && !viewModel.accessibilityGranted {
-          Button("Skip for now") {
-            viewModel.currentScreen = .ready
-          }
-          .font(.obCaption)
-          .foregroundStyle(Color.obTextTertiary)
-          .buttonStyle(.plain)
-          .transition(.opacity)
-        }
+        .disabled(!bothGranted)
       }
     }
     .onAppear {
@@ -724,7 +760,7 @@ private struct PermissionsPhaseView: View {
   }
 
   /// Polls both mic and accessibility status every 2 seconds.
-  /// Shows "Skip for now" link after 10 seconds if accessibility not granted.
+  /// Continue gates on BOTH grants (#735) — no Skip backdoor.
   /// Auto-cancelled when the view disappears via .task modifier.
   private func pollPermissions() async {
     var elapsed = 0
@@ -746,10 +782,9 @@ private struct PermissionsPhaseView: View {
         viewModel.micGranted = true
         TelemetryService.shared.onboardingStepCompleted(step: "mic_permission", result: "granted")
       }
-
-      if elapsed >= 10 && !viewModel.showSkipLink {
-        withAnimation { viewModel.showSkipLink = true }
-      }
+      // #735: showSkipLink no longer used (Skip-for-now backdoor removed); `elapsed` retained
+      // so future telemetry can re-attach a "time-on-permissions-screen" event if needed.
+      _ = elapsed
     }
   }
 }
