@@ -123,6 +123,15 @@ final class AppState {
   // Apple Intelligence availability — dedicated coordinator (replaces KeyValidationState proxy)
   let aiAvailability = AIAvailabilityCoordinator()
 
+  // #585: heart-control dispatch recovery (lazy var so closures capture self; ignored by Observation).
+  @ObservationIgnored
+  private(set) lazy var heartControlRecovery: HeartControlRecovery = HeartControlRecovery(
+    hideOverlay: { [recordingOverlay] in recordingOverlay.show(intent: .hidden) },
+    setLocked: { [weak self] locked in self?.isRecordingLocked = locked },
+    backend: { [weak self] in
+      self?.asrManager.activeBackendType == .whisperKit ? "whisperkit" : "parakeet"
+    })
+
   init() {
     // XPC audio service — default ON (Step 7). Audio capture runs in a separate XPC
     // service process for crash isolation. Escape hatch: `defaults write ... useXPCAudioService -bool false`
@@ -582,24 +591,15 @@ final class AppState {
         let (s, a) = (ContinuousClock.now - pttStart).components
         return Int(s) * 1000 + Int(a / 1_000_000_000_000_000)
       }()
-      // Issue #445: drop the silent `try?` so a thrown error from `.handle`
-      // surfaces to a recoverable error path. CancellationError is the
-      // documented silent-unwind case (mirrors preWarm catch above).
+      // #445 + #585: surface dispatch failures (CancellationError is the silent-unwind
+      // case; HeartControlRecovery handles both shapes internally).
       do {
         try await active.handle(
           event: .toggleRecording(makeDictationSessionConfig(triggerSource: .pttHotkey)))
-      } catch is CancellationError {
-        self.recordingOverlay.show(intent: .hidden)
-        self.isRecordingLocked = false
-        return
       } catch {
-        SentryBreadcrumb.captureError(
-          error, category: .pipelineDispatchFailed, stage: "recording",
-          extra: ["backend": isWhisperKit ? "whisperkit" : "parakeet"]
-        )
-        self.recordingOverlay.show(intent: .hidden)
-        self.isRecordingLocked = false
-        active.setExternalError(ModelLoadWatchdog.userMessage)
+        self.heartControlRecovery.recover(
+          error: error, pipeline: active, op: "toggle-from-prewarm",
+          message: ModelLoadWatchdog.userMessage)
         return
       }
       let totalMs = {
@@ -665,7 +665,14 @@ final class AppState {
       guard let self else { return }
       self.isRecordingLocked = false
       self.lastUserStopRequest = ContinuousClock.now
-      try? await self.activePipeline.handle(event: .requestStop)
+      // #585: snapshot active pipeline so a backend switch mid-await
+      // cannot surface the error on the wrong pipeline's UI.
+      let active = self.activePipeline
+      do {
+        try await active.handle(event: .requestStop)
+      } catch {
+        self.heartControlRecovery.logDispatchFailure(error, op: "stop")
+      }
     }
 
     hotkeyService.onCancelRecording = { [weak self] in
@@ -892,8 +899,16 @@ final class AppState {
       permissions.restartMonitoringIfNeeded()
     }
 
-    try? await active.handle(
-      event: .toggleRecording(makeDictationSessionConfig(triggerSource: source)))
+    // #585: surface dispatch failure via Sentry + clear UI lock + visible error
+    // on the pipeline. Recovery type handles CancellationError silently.
+    do {
+      try await active.handle(
+        event: .toggleRecording(makeDictationSessionConfig(triggerSource: source)))
+    } catch {
+      heartControlRecovery.recover(
+        error: error, pipeline: active, op: "toggle",
+        message: ModelLoadWatchdog.userMessage)
+    }
   }
 
   /// Build the per-recording config snapshot from settings and paste intent.
@@ -964,7 +979,11 @@ final class AppState {
       guard wkState == .recording || wkState == .loadingModel || wkState == .startingUp else {
         return
       }
-      try? await whisperKitPipeline.handle(event: .cancelRecording)
+      do {
+        try await whisperKitPipeline.handle(event: .cancelRecording)
+      } catch {
+        heartControlRecovery.logDispatchFailure(error, op: "cancel-whisperkit")
+      }
     } else {
       guard pipelineState == .recording || pipelineState == .loadingModel else { return }
       await pipeline.cancelRecording()
