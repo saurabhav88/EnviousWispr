@@ -10,9 +10,16 @@
 
 set -euo pipefail
 HOST="enviouswispr.com"
-KEY="92397c9600e144958cb267c661aedfab"
+# Canonical key per .claude/knowledge/seo-operations.md.
+# Older keys (92397c9..., 3e345c..., cfdd789a...) remain live in website/public/
+# and stay valid under the IndexNow protocol, but new manual pings and tooling
+# should standardize on the key below to match the recipe in the knowledge file.
+KEY="6fc34b01458140c49f7781aea4ada3bf"
 KEY_LOCATION="https://${HOST}/${KEY}.txt"
-ENDPOINT="https://api.indexnow.org/IndexNow"
+# Lowercase endpoint path is what api.indexnow.org documents and what Bing's
+# IndexNow tab attributes to "Self" submissions. The previous mixed-case form
+# also works but matches no public example.
+ENDPOINT="https://api.indexnow.org/indexnow"
 
 submit_one() {
   local url="$1"
