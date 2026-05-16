@@ -55,12 +55,41 @@ internal enum PasteFocusClassification: Equatable {
 }
 
 /// Pure classification helper. Extracted for unit testing — the live cascade
-/// provides the two inputs from `request.targetElement` and `isTextFieldRole`.
-internal func classifyPasteFocus(elementPresent: Bool, roleIsTextField: Bool)
-  -> PasteFocusClassification
-{
+/// provides the inputs from `request.targetElement` and `isTextFieldRole`.
+///
+/// #729: when the focused element is non-text AND the target app is a known
+/// web-wrapper packager (Pake / Tauri), classify as `.missing` instead of
+/// `.nonText` so Tier 2 Cmd+V is still attempted. The wrapper's outer AX
+/// tree exposes an `AXGroup` container, but the inner web view's
+/// contenteditable accepts CGEvent paste — same shape as the Chromium /
+/// Electron lazy-AX case. Native Mac apps with a focused non-text element
+/// (button, image, page body) continue to fall through to clipboard-only.
+internal func classifyPasteFocus(
+  elementPresent: Bool,
+  roleIsTextField: Bool,
+  targetBundleID: String? = nil
+) -> PasteFocusClassification {
   guard elementPresent else { return .missing }
-  return roleIsTextField ? .textField : .nonText
+  if roleIsTextField { return .textField }
+  if isKnownWebWrapperBundle(targetBundleID) { return .missing }  // #729
+  return .nonText
+}
+
+/// #729 — bundle-id prefixes for known web-wrapper packagers. Conservative
+/// list: only prefixes that no native macOS app uses in practice. Each
+/// addition needs a real signal (Sentry event or user report) — not
+/// speculative widening, because a false positive fires Cmd+V into a void.
+///
+/// - `com.pake.*` — Pake (github.com/tw93/Pake). Production format is
+///   `com.pake.<hash>` (e.g. `com.pake.c6796d` from #729's Sentry event).
+/// - `com.tauri.*` — Tauri (tauri.app) default/dev builds. Production Tauri
+///   apps usually rebrand to a custom bundle id, so this only catches the
+///   un-rebranded subset.
+internal func isKnownWebWrapperBundle(_ bundleID: String?) -> Bool {
+  guard let bundleID else { return false }
+  if bundleID.hasPrefix("com.pake.") { return true }
+  if bundleID.hasPrefix("com.tauri.") { return true }
+  return false
 }
 
 extension PasteFocusClassification {
@@ -116,18 +145,29 @@ internal final class PasteCascadeExecutor {
     let axTrusted = AXIsProcessTrusted()
     let classification: PasteFocusClassification
     let targetDiagnostics: PasteElementDiagnostics
+    // #729: thread the target app's bundle id through the classifier so known
+    // web-wrapper packagers (Pake, Tauri) don't fall to clipboard-only on
+    // their outer AXGroup container. ONLY applied when AX is trusted —
+    // promoting to `.missing` in the AX-denied branch would attempt Cmd+V
+    // anyway (it can't paste without AX) and would bypass the educational
+    // accessibility-denied toast that AppState surfaces via the existing
+    // `.clipboardOnlyAccessibilityDenied` outcome.
+    let targetBundleID = request.targetApp?.bundleIdentifier
     if !axTrusted {
-      classification = classifyPasteFocus(elementPresent: true, roleIsTextField: false)
+      classification = classifyPasteFocus(
+        elementPresent: true, roleIsTextField: false, targetBundleID: nil)
       targetDiagnostics = .unavailable
     } else if let element = request.targetElement {
       classification = classifyPasteFocus(
         elementPresent: true,
-        roleIsTextField: PasteService.isTextFieldRole(element)
+        roleIsTextField: PasteService.isTextFieldRole(element),
+        targetBundleID: targetBundleID
       )
       // Role/subrole are read at paste time from the captured AXUIElement handle.
       targetDiagnostics = PasteService.capturedElementDiagnostics(element)
     } else {
-      classification = classifyPasteFocus(elementPresent: false, roleIsTextField: false)
+      classification = classifyPasteFocus(
+        elementPresent: false, roleIsTextField: false, targetBundleID: targetBundleID)
       targetDiagnostics = .missing
     }
     let canAttemptKeyPaste = classification.canAttemptKeyPaste
