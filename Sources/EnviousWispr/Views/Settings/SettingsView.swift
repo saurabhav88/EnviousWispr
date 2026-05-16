@@ -4,7 +4,7 @@ import SwiftUI
 /// Unified single-window view: History + all settings tabs in one sidebar.
 struct UnifiedWindowView: View {
   @Environment(AppState.self) private var appState
-  @Environment(\.updateCoordinator) private var updateCoordinator
+  @Environment(UpdateCoordinatorHolder.self) private var updateCoordinatorHolder
   @State private var selectedSection: SettingsSection = .history
 
   var body: some View {
@@ -32,7 +32,7 @@ struct UnifiedWindowView: View {
         // Issue #343: in-app update banner. Fixed sibling of the sidebar List
         // (NOT a list-footer row, which would scroll). Bottom-leading mount
         // per Saurabh's mockup v2.
-        if let coordinator = updateCoordinator,
+        if let coordinator = updateCoordinatorHolder.coordinator,
           coordinator.service.shouldShowBanner,
           case .available(let u) = coordinator.service.state
         {
