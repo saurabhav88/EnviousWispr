@@ -1,72 +1,8008 @@
 [
-  { "phrase": "thumbs up", "emoji": "👍", "synonyms": ["thumb up", "thumbsup"] },
-  { "phrase": "thumbs down", "emoji": "👎", "synonyms": ["thumb down", "thumbsdown"] },
-  { "phrase": "red heart", "emoji": "❤️", "synonyms": ["heart"] },
-  { "phrase": "sparkling heart", "emoji": "💖", "synonyms": ["sparkle heart"] },
-  { "phrase": "heart eyes", "emoji": "😍", "synonyms": ["love eyes", "heart eyed face"] },
-  { "phrase": "fire", "emoji": "🔥", "synonyms": ["flame"] },
-  { "phrase": "rocket", "emoji": "🚀", "synonyms": ["rocket ship", "spaceship"] },
-  { "phrase": "smiling face", "emoji": "🙂", "synonyms": ["smile", "smiley face", "happy face", "smiley", "slight smile"] },
-  { "phrase": "smiling face with open mouth", "emoji": "😀", "synonyms": ["big smile"] },
-  { "phrase": "grinning face", "emoji": "😀", "synonyms": ["grin"] },
-  { "phrase": "laughing face", "emoji": "😂", "synonyms": ["lol", "tears of joy", "face with tears of joy", "laughing crying"] },
-  { "phrase": "wink", "emoji": "😉", "synonyms": ["winking face"] },
-  { "phrase": "sad face", "emoji": "😢", "synonyms": ["crying face", "tear face", "sob", "sad", "crying"] },
-  { "phrase": "loud crying", "emoji": "😭", "synonyms": ["loud crying face", "loudly crying", "ugly cry"] },
-  { "phrase": "angry face", "emoji": "😠", "synonyms": ["angry", "mad", "mad face"] },
-  { "phrase": "pouting face", "emoji": "😡", "synonyms": ["enraged", "raging"] },
-  { "phrase": "angry face with horns", "emoji": "👿", "synonyms": ["devil face"] },
-  { "phrase": "skull", "emoji": "💀", "synonyms": ["skull face"] },
-  { "phrase": "ghost", "emoji": "👻", "synonyms": ["spooky"] },
-  { "phrase": "alien", "emoji": "👽", "synonyms": ["alien face"] },
-  { "phrase": "alien monster", "emoji": "👾", "synonyms": ["space invader", "video game"] },
-  { "phrase": "thinking face", "emoji": "🤔", "synonyms": ["thinking", "think"] },
-  { "phrase": "shrug", "emoji": "🤷", "synonyms": ["shrugging"] },
-  { "phrase": "pleading face", "emoji": "🥺", "synonyms": ["puppy eyes", "pleading"] },
-  { "phrase": "sleeping face", "emoji": "😴", "synonyms": ["sleeping", "asleep"] },
-  { "phrase": "yawning face", "emoji": "🥱", "synonyms": ["yawn", "tired face"] },
-  { "phrase": "exploding head", "emoji": "🤯", "synonyms": ["mind blown"] },
-  { "phrase": "face with rolling eyes", "emoji": "🙄", "synonyms": ["eye roll", "rolling eyes"] },
-  { "phrase": "facepalm", "emoji": "🤦", "synonyms": ["face palm"] },
-  { "phrase": "okay hand", "emoji": "👌", "synonyms": ["ok hand", "ok sign"] },
-  { "phrase": "raised hand", "emoji": "✋", "synonyms": ["hand up", "high five"] },
-  { "phrase": "waving hand", "emoji": "👋", "synonyms": ["wave"] },
-  { "phrase": "clapping hands", "emoji": "👏", "synonyms": ["clap", "clapped hands", "applause"] },
-  { "phrase": "folded hands", "emoji": "🙏", "synonyms": ["pray", "praying hands", "prayer", "thank you", "please"] },
-  { "phrase": "muscle", "emoji": "💪", "synonyms": ["flexed biceps", "strong"] },
-  { "phrase": "eyes", "emoji": "👀", "synonyms": ["looking"] },
-  { "phrase": "party popper", "emoji": "🎉", "synonyms": ["party", "celebration", "celebrate"] },
-  { "phrase": "balloon", "emoji": "🎈", "synonyms": [] },
-  { "phrase": "tada", "emoji": "🎉", "synonyms": [] },
-  { "phrase": "trophy", "emoji": "🏆", "synonyms": ["winner"] },
-  { "phrase": "checkmark", "emoji": "✅", "synonyms": ["check", "check mark", "green check", "tick"] },
-  { "phrase": "cross mark", "emoji": "❌", "synonyms": ["x mark", "red x", "no"] },
-  { "phrase": "warning", "emoji": "⚠️", "synonyms": ["warning sign", "caution"] },
-  { "phrase": "stop sign", "emoji": "🛑", "synonyms": ["stop"] },
-  { "phrase": "hundred", "emoji": "💯", "synonyms": ["100", "hundred points"] },
-  { "phrase": "star", "emoji": "⭐", "synonyms": [] },
-  { "phrase": "sparkles", "emoji": "✨", "synonyms": ["sparkle"] },
-  { "phrase": "money bag", "emoji": "💰", "synonyms": ["money"] },
-  { "phrase": "calendar", "emoji": "📅", "synonyms": [] },
-  { "phrase": "alarm clock", "emoji": "⏰", "synonyms": ["alarm"] },
-  { "phrase": "lightbulb", "emoji": "💡", "synonyms": ["light bulb", "idea"] },
-  { "phrase": "bomb", "emoji": "💣", "synonyms": [] },
-  { "phrase": "snowflake", "emoji": "❄️", "synonyms": ["snow"] },
-  { "phrase": "umbrella", "emoji": "☂️", "synonyms": [] },
-  { "phrase": "sun", "emoji": "☀️", "synonyms": ["sunshine"] },
-  { "phrase": "rainbow", "emoji": "🌈", "synonyms": [] },
-  { "phrase": "moon", "emoji": "🌙", "synonyms": ["crescent moon"] },
-  { "phrase": "coffee", "emoji": "☕", "synonyms": ["hot beverage"] },
-  { "phrase": "beer", "emoji": "🍺", "synonyms": ["beer mug"] },
-  { "phrase": "cake", "emoji": "🎂", "synonyms": ["birthday cake"] },
-  { "phrase": "pizza", "emoji": "🍕", "synonyms": [] },
-  { "phrase": "taco", "emoji": "🌮", "synonyms": [] },
-  { "phrase": "burger", "emoji": "🍔", "synonyms": ["hamburger"] },
-  { "phrase": "popcorn", "emoji": "🍿", "synonyms": [] },
-  { "phrase": "milk", "emoji": "🥛", "synonyms": ["glass of milk"] },
-  { "phrase": "dog", "emoji": "🐶", "synonyms": ["puppy", "dog face"] },
-  { "phrase": "cat", "emoji": "🐱", "synonyms": ["kitty", "cat face"] },
-  { "phrase": "unicorn", "emoji": "🦄", "synonyms": ["unicorn face"] },
-  { "phrase": "snake", "emoji": "🐍", "synonyms": [] },
-  { "phrase": "octopus", "emoji": "🐙", "synonyms": [] }
+  {
+    "phrase": "thumbs up",
+    "emoji": "👍",
+    "synonyms": [
+      "thumb up",
+      "thumbsup"
+    ]
+  },
+  {
+    "phrase": "thumbs down",
+    "emoji": "👎",
+    "synonyms": [
+      "thumb down",
+      "thumbsdown"
+    ]
+  },
+  {
+    "phrase": "red heart",
+    "emoji": "❤️",
+    "synonyms": [
+      "heart"
+    ]
+  },
+  {
+    "phrase": "sparkling heart",
+    "emoji": "💖",
+    "synonyms": [
+      "sparkle heart"
+    ]
+  },
+  {
+    "phrase": "heart eyes",
+    "emoji": "😍",
+    "synonyms": [
+      "love eyes",
+      "heart eyed face"
+    ]
+  },
+  {
+    "phrase": "fire",
+    "emoji": "🔥",
+    "synonyms": [
+      "flame"
+    ]
+  },
+  {
+    "phrase": "rocket",
+    "emoji": "🚀",
+    "synonyms": [
+      "rocket ship",
+      "spaceship"
+    ]
+  },
+  {
+    "phrase": "smiling face",
+    "emoji": "🙂",
+    "synonyms": [
+      "smile",
+      "smiley face",
+      "happy face",
+      "smiley",
+      "slight smile"
+    ]
+  },
+  {
+    "phrase": "smiling face with open mouth",
+    "emoji": "😀",
+    "synonyms": [
+      "big smile"
+    ]
+  },
+  {
+    "phrase": "grinning face",
+    "emoji": "😀",
+    "synonyms": [
+      "grin"
+    ]
+  },
+  {
+    "phrase": "laughing face",
+    "emoji": "😂",
+    "synonyms": [
+      "lol",
+      "tears of joy",
+      "face with tears of joy",
+      "laughing crying"
+    ]
+  },
+  {
+    "phrase": "wink",
+    "emoji": "😉",
+    "synonyms": [
+      "winking face"
+    ]
+  },
+  {
+    "phrase": "sad face",
+    "emoji": "😢",
+    "synonyms": [
+      "crying face",
+      "tear face",
+      "sob",
+      "sad",
+      "crying"
+    ]
+  },
+  {
+    "phrase": "loud crying",
+    "emoji": "😭",
+    "synonyms": [
+      "loud crying face",
+      "loudly crying",
+      "ugly cry"
+    ]
+  },
+  {
+    "phrase": "angry face",
+    "emoji": "😠",
+    "synonyms": [
+      "angry",
+      "mad",
+      "mad face"
+    ]
+  },
+  {
+    "phrase": "pouting face",
+    "emoji": "😡",
+    "synonyms": [
+      "enraged",
+      "raging"
+    ]
+  },
+  {
+    "phrase": "angry face with horns",
+    "emoji": "👿",
+    "synonyms": [
+      "devil face"
+    ]
+  },
+  {
+    "phrase": "skull",
+    "emoji": "💀",
+    "synonyms": [
+      "skull face"
+    ]
+  },
+  {
+    "phrase": "ghost",
+    "emoji": "👻",
+    "synonyms": [
+      "spooky"
+    ]
+  },
+  {
+    "phrase": "alien",
+    "emoji": "👽",
+    "synonyms": [
+      "alien face"
+    ]
+  },
+  {
+    "phrase": "alien monster",
+    "emoji": "👾",
+    "synonyms": [
+      "space invader",
+      "video game"
+    ]
+  },
+  {
+    "phrase": "thinking face",
+    "emoji": "🤔",
+    "synonyms": [
+      "thinking",
+      "think"
+    ]
+  },
+  {
+    "phrase": "shrug",
+    "emoji": "🤷",
+    "synonyms": [
+      "shrugging"
+    ]
+  },
+  {
+    "phrase": "pleading face",
+    "emoji": "🥺",
+    "synonyms": [
+      "puppy eyes",
+      "pleading"
+    ]
+  },
+  {
+    "phrase": "sleeping face",
+    "emoji": "😴",
+    "synonyms": [
+      "sleeping",
+      "asleep"
+    ]
+  },
+  {
+    "phrase": "yawning face",
+    "emoji": "🥱",
+    "synonyms": [
+      "yawn",
+      "tired face"
+    ]
+  },
+  {
+    "phrase": "exploding head",
+    "emoji": "🤯",
+    "synonyms": [
+      "mind blown",
+      "head exploding"
+    ]
+  },
+  {
+    "phrase": "face with rolling eyes",
+    "emoji": "🙄",
+    "synonyms": [
+      "eye roll",
+      "rolling eyes"
+    ]
+  },
+  {
+    "phrase": "facepalm",
+    "emoji": "🤦",
+    "synonyms": [
+      "face palm"
+    ]
+  },
+  {
+    "phrase": "okay hand",
+    "emoji": "👌",
+    "synonyms": [
+      "ok hand",
+      "ok sign"
+    ]
+  },
+  {
+    "phrase": "raised hand",
+    "emoji": "✋",
+    "synonyms": [
+      "hand up",
+      "high five"
+    ]
+  },
+  {
+    "phrase": "waving hand",
+    "emoji": "👋",
+    "synonyms": [
+      "wave"
+    ]
+  },
+  {
+    "phrase": "clapping hands",
+    "emoji": "👏",
+    "synonyms": [
+      "clap",
+      "clapped hands",
+      "applause"
+    ]
+  },
+  {
+    "phrase": "folded hands",
+    "emoji": "🙏",
+    "synonyms": [
+      "pray",
+      "praying hands",
+      "prayer",
+      "thank you",
+      "please"
+    ]
+  },
+  {
+    "phrase": "muscle",
+    "emoji": "💪",
+    "synonyms": [
+      "flexed biceps",
+      "strong"
+    ]
+  },
+  {
+    "phrase": "eyes",
+    "emoji": "👀",
+    "synonyms": [
+      "looking"
+    ]
+  },
+  {
+    "phrase": "party popper",
+    "emoji": "🎉",
+    "synonyms": [
+      "party",
+      "celebration",
+      "celebrate"
+    ]
+  },
+  {
+    "phrase": "balloon",
+    "emoji": "🎈",
+    "synonyms": []
+  },
+  {
+    "phrase": "tada",
+    "emoji": "🎉",
+    "synonyms": []
+  },
+  {
+    "phrase": "trophy",
+    "emoji": "🏆",
+    "synonyms": [
+      "winner"
+    ]
+  },
+  {
+    "phrase": "checkmark",
+    "emoji": "✅",
+    "synonyms": [
+      "check",
+      "check mark",
+      "green check",
+      "tick"
+    ]
+  },
+  {
+    "phrase": "cross mark",
+    "emoji": "❌",
+    "synonyms": [
+      "x mark",
+      "red x",
+      "no"
+    ]
+  },
+  {
+    "phrase": "warning",
+    "emoji": "⚠️",
+    "synonyms": [
+      "warning sign",
+      "caution"
+    ]
+  },
+  {
+    "phrase": "stop sign",
+    "emoji": "🛑",
+    "synonyms": [
+      "stop"
+    ]
+  },
+  {
+    "phrase": "hundred",
+    "emoji": "💯",
+    "synonyms": [
+      "100",
+      "hundred points"
+    ]
+  },
+  {
+    "phrase": "star",
+    "emoji": "⭐",
+    "synonyms": []
+  },
+  {
+    "phrase": "sparkles",
+    "emoji": "✨",
+    "synonyms": [
+      "sparkle"
+    ]
+  },
+  {
+    "phrase": "money bag",
+    "emoji": "💰",
+    "synonyms": [
+      "money"
+    ]
+  },
+  {
+    "phrase": "calendar",
+    "emoji": "📅",
+    "synonyms": []
+  },
+  {
+    "phrase": "alarm clock",
+    "emoji": "⏰",
+    "synonyms": [
+      "alarm"
+    ]
+  },
+  {
+    "phrase": "lightbulb",
+    "emoji": "💡",
+    "synonyms": [
+      "light bulb",
+      "idea"
+    ]
+  },
+  {
+    "phrase": "bomb",
+    "emoji": "💣",
+    "synonyms": []
+  },
+  {
+    "phrase": "snowflake",
+    "emoji": "❄️",
+    "synonyms": [
+      "snow"
+    ]
+  },
+  {
+    "phrase": "umbrella",
+    "emoji": "☂️",
+    "synonyms": []
+  },
+  {
+    "phrase": "sun",
+    "emoji": "☀️",
+    "synonyms": [
+      "sunshine"
+    ]
+  },
+  {
+    "phrase": "rainbow",
+    "emoji": "🌈",
+    "synonyms": []
+  },
+  {
+    "phrase": "moon",
+    "emoji": "🌙",
+    "synonyms": [
+      "crescent moon"
+    ]
+  },
+  {
+    "phrase": "coffee",
+    "emoji": "☕",
+    "synonyms": [
+      "hot beverage"
+    ]
+  },
+  {
+    "phrase": "beer",
+    "emoji": "🍺",
+    "synonyms": [
+      "beer mug"
+    ]
+  },
+  {
+    "phrase": "cake",
+    "emoji": "🎂",
+    "synonyms": [
+      "birthday cake"
+    ]
+  },
+  {
+    "phrase": "pizza",
+    "emoji": "🍕",
+    "synonyms": []
+  },
+  {
+    "phrase": "taco",
+    "emoji": "🌮",
+    "synonyms": []
+  },
+  {
+    "phrase": "burger",
+    "emoji": "🍔",
+    "synonyms": [
+      "hamburger"
+    ]
+  },
+  {
+    "phrase": "popcorn",
+    "emoji": "🍿",
+    "synonyms": []
+  },
+  {
+    "phrase": "milk",
+    "emoji": "🥛",
+    "synonyms": [
+      "glass of milk"
+    ]
+  },
+  {
+    "phrase": "dog",
+    "emoji": "🐶",
+    "synonyms": [
+      "puppy",
+      "dog face"
+    ]
+  },
+  {
+    "phrase": "cat",
+    "emoji": "🐱",
+    "synonyms": [
+      "kitty",
+      "cat face"
+    ]
+  },
+  {
+    "phrase": "unicorn",
+    "emoji": "🦄",
+    "synonyms": [
+      "unicorn face"
+    ]
+  },
+  {
+    "phrase": "snake",
+    "emoji": "🐍",
+    "synonyms": []
+  },
+  {
+    "phrase": "octopus",
+    "emoji": "🐙",
+    "synonyms": []
+  },
+  {
+    "phrase": "eighth note",
+    "emoji": "♪",
+    "synonyms": []
+  },
+  {
+    "phrase": "flat",
+    "emoji": "♭",
+    "synonyms": []
+  },
+  {
+    "phrase": "sharp",
+    "emoji": "♯",
+    "synonyms": []
+  },
+  {
+    "phrase": "grinning face with big eyes",
+    "emoji": "😃",
+    "synonyms": []
+  },
+  {
+    "phrase": "grinning face with smiling eyes",
+    "emoji": "😄",
+    "synonyms": []
+  },
+  {
+    "phrase": "beaming face with smiling eyes",
+    "emoji": "😁",
+    "synonyms": []
+  },
+  {
+    "phrase": "grinning squinting face",
+    "emoji": "😆",
+    "synonyms": []
+  },
+  {
+    "phrase": "grinning face with sweat",
+    "emoji": "😅",
+    "synonyms": []
+  },
+  {
+    "phrase": "rolling on the floor laughing",
+    "emoji": "🤣",
+    "synonyms": []
+  },
+  {
+    "phrase": "slightly smiling face",
+    "emoji": "🙂",
+    "synonyms": []
+  },
+  {
+    "phrase": "upside-down face",
+    "emoji": "🙃",
+    "synonyms": []
+  },
+  {
+    "phrase": "melting face",
+    "emoji": "🫠",
+    "synonyms": []
+  },
+  {
+    "phrase": "smiling face with smiling eyes",
+    "emoji": "😊",
+    "synonyms": []
+  },
+  {
+    "phrase": "smiling face with halo",
+    "emoji": "😇",
+    "synonyms": [
+      "angel face"
+    ]
+  },
+  {
+    "phrase": "smiling face with hearts",
+    "emoji": "🥰",
+    "synonyms": [
+      "love face"
+    ]
+  },
+  {
+    "phrase": "smiling face with heart-eyes",
+    "emoji": "😍",
+    "synonyms": []
+  },
+  {
+    "phrase": "star-struck",
+    "emoji": "🤩",
+    "synonyms": [
+      "starry eyes"
+    ]
+  },
+  {
+    "phrase": "face blowing a kiss",
+    "emoji": "😘",
+    "synonyms": []
+  },
+  {
+    "phrase": "kissing face",
+    "emoji": "😗",
+    "synonyms": []
+  },
+  {
+    "phrase": "kissing face with closed eyes",
+    "emoji": "😚",
+    "synonyms": []
+  },
+  {
+    "phrase": "kissing face with smiling eyes",
+    "emoji": "😙",
+    "synonyms": []
+  },
+  {
+    "phrase": "smiling face with tear",
+    "emoji": "🥲",
+    "synonyms": []
+  },
+  {
+    "phrase": "face savoring food",
+    "emoji": "😋",
+    "synonyms": []
+  },
+  {
+    "phrase": "face with tongue",
+    "emoji": "😛",
+    "synonyms": []
+  },
+  {
+    "phrase": "winking face with tongue",
+    "emoji": "😜",
+    "synonyms": []
+  },
+  {
+    "phrase": "zany face",
+    "emoji": "🤪",
+    "synonyms": [
+      "crazy face"
+    ]
+  },
+  {
+    "phrase": "squinting face with tongue",
+    "emoji": "😝",
+    "synonyms": []
+  },
+  {
+    "phrase": "money-mouth face",
+    "emoji": "🤑",
+    "synonyms": [
+      "money face"
+    ]
+  },
+  {
+    "phrase": "smiling face with open hands",
+    "emoji": "🤗",
+    "synonyms": []
+  },
+  {
+    "phrase": "face with hand over mouth",
+    "emoji": "🤭",
+    "synonyms": []
+  },
+  {
+    "phrase": "face with open eyes and hand over mouth",
+    "emoji": "🫢",
+    "synonyms": []
+  },
+  {
+    "phrase": "face with peeking eye",
+    "emoji": "🫣",
+    "synonyms": []
+  },
+  {
+    "phrase": "shushing face",
+    "emoji": "🤫",
+    "synonyms": [
+      "shush",
+      "quiet"
+    ]
+  },
+  {
+    "phrase": "saluting face",
+    "emoji": "🫡",
+    "synonyms": [
+      "salute"
+    ]
+  },
+  {
+    "phrase": "zipper-mouth face",
+    "emoji": "🤐",
+    "synonyms": []
+  },
+  {
+    "phrase": "face with raised eyebrow",
+    "emoji": "🤨",
+    "synonyms": []
+  },
+  {
+    "phrase": "neutral face",
+    "emoji": "😐",
+    "synonyms": []
+  },
+  {
+    "phrase": "expressionless face",
+    "emoji": "😑",
+    "synonyms": []
+  },
+  {
+    "phrase": "face without mouth",
+    "emoji": "😶",
+    "synonyms": []
+  },
+  {
+    "phrase": "dotted line face",
+    "emoji": "🫥",
+    "synonyms": []
+  },
+  {
+    "phrase": "face in clouds",
+    "emoji": "😶‍🌫",
+    "synonyms": []
+  },
+  {
+    "phrase": "smirking face",
+    "emoji": "😏",
+    "synonyms": []
+  },
+  {
+    "phrase": "unamused face",
+    "emoji": "😒",
+    "synonyms": []
+  },
+  {
+    "phrase": "grimacing face",
+    "emoji": "😬",
+    "synonyms": []
+  },
+  {
+    "phrase": "face exhaling",
+    "emoji": "😮‍💨",
+    "synonyms": []
+  },
+  {
+    "phrase": "lying face",
+    "emoji": "🤥",
+    "synonyms": []
+  },
+  {
+    "phrase": "shaking face",
+    "emoji": "🫨",
+    "synonyms": []
+  },
+  {
+    "phrase": "head shaking horizontally",
+    "emoji": "🙂‍↔",
+    "synonyms": []
+  },
+  {
+    "phrase": "head shaking vertically",
+    "emoji": "🙂‍↕",
+    "synonyms": []
+  },
+  {
+    "phrase": "relieved face",
+    "emoji": "😌",
+    "synonyms": []
+  },
+  {
+    "phrase": "pensive face",
+    "emoji": "😔",
+    "synonyms": []
+  },
+  {
+    "phrase": "sleepy face",
+    "emoji": "😪",
+    "synonyms": []
+  },
+  {
+    "phrase": "drooling face",
+    "emoji": "🤤",
+    "synonyms": [
+      "yum face"
+    ]
+  },
+  {
+    "phrase": "face with bags under eyes",
+    "emoji": "🫩",
+    "synonyms": []
+  },
+  {
+    "phrase": "face with medical mask",
+    "emoji": "😷",
+    "synonyms": []
+  },
+  {
+    "phrase": "face with thermometer",
+    "emoji": "🤒",
+    "synonyms": [
+      "fever"
+    ]
+  },
+  {
+    "phrase": "face with head-bandage",
+    "emoji": "🤕",
+    "synonyms": []
+  },
+  {
+    "phrase": "nauseated face",
+    "emoji": "🤢",
+    "synonyms": [
+      "sick",
+      "queasy",
+      "ill"
+    ]
+  },
+  {
+    "phrase": "face vomiting",
+    "emoji": "🤮",
+    "synonyms": [
+      "throw up",
+      "puke"
+    ]
+  },
+  {
+    "phrase": "sneezing face",
+    "emoji": "🤧",
+    "synonyms": []
+  },
+  {
+    "phrase": "hot face",
+    "emoji": "🥵",
+    "synonyms": [
+      "sweating face"
+    ]
+  },
+  {
+    "phrase": "cold face",
+    "emoji": "🥶",
+    "synonyms": [
+      "freezing",
+      "frozen face"
+    ]
+  },
+  {
+    "phrase": "woozy face",
+    "emoji": "🥴",
+    "synonyms": []
+  },
+  {
+    "phrase": "face with crossed-out eyes",
+    "emoji": "😵",
+    "synonyms": []
+  },
+  {
+    "phrase": "face with spiral eyes",
+    "emoji": "😵‍💫",
+    "synonyms": []
+  },
+  {
+    "phrase": "cowboy hat face",
+    "emoji": "🤠",
+    "synonyms": []
+  },
+  {
+    "phrase": "partying face",
+    "emoji": "🥳",
+    "synonyms": [
+      "party face"
+    ]
+  },
+  {
+    "phrase": "disguised face",
+    "emoji": "🥸",
+    "synonyms": []
+  },
+  {
+    "phrase": "smiling face with sunglasses",
+    "emoji": "😎",
+    "synonyms": [
+      "cool"
+    ]
+  },
+  {
+    "phrase": "nerd face",
+    "emoji": "🤓",
+    "synonyms": []
+  },
+  {
+    "phrase": "face with monocle",
+    "emoji": "🧐",
+    "synonyms": []
+  },
+  {
+    "phrase": "confused face",
+    "emoji": "😕",
+    "synonyms": []
+  },
+  {
+    "phrase": "face with diagonal mouth",
+    "emoji": "🫤",
+    "synonyms": []
+  },
+  {
+    "phrase": "worried face",
+    "emoji": "😟",
+    "synonyms": []
+  },
+  {
+    "phrase": "slightly frowning face",
+    "emoji": "🙁",
+    "synonyms": []
+  },
+  {
+    "phrase": "frowning face",
+    "emoji": "☹",
+    "synonyms": []
+  },
+  {
+    "phrase": "face with open mouth",
+    "emoji": "😮",
+    "synonyms": []
+  },
+  {
+    "phrase": "hushed face",
+    "emoji": "😯",
+    "synonyms": []
+  },
+  {
+    "phrase": "astonished face",
+    "emoji": "😲",
+    "synonyms": []
+  },
+  {
+    "phrase": "flushed face",
+    "emoji": "😳",
+    "synonyms": []
+  },
+  {
+    "phrase": "distorted face",
+    "emoji": "🫪",
+    "synonyms": []
+  },
+  {
+    "phrase": "face holding back tears",
+    "emoji": "🥹",
+    "synonyms": []
+  },
+  {
+    "phrase": "frowning face with open mouth",
+    "emoji": "😦",
+    "synonyms": []
+  },
+  {
+    "phrase": "anguished face",
+    "emoji": "😧",
+    "synonyms": []
+  },
+  {
+    "phrase": "fearful face",
+    "emoji": "😨",
+    "synonyms": []
+  },
+  {
+    "phrase": "anxious face with sweat",
+    "emoji": "😰",
+    "synonyms": []
+  },
+  {
+    "phrase": "sad but relieved face",
+    "emoji": "😥",
+    "synonyms": []
+  },
+  {
+    "phrase": "loudly crying face",
+    "emoji": "😭",
+    "synonyms": [
+      "bawling"
+    ]
+  },
+  {
+    "phrase": "face screaming in fear",
+    "emoji": "😱",
+    "synonyms": []
+  },
+  {
+    "phrase": "confounded face",
+    "emoji": "😖",
+    "synonyms": []
+  },
+  {
+    "phrase": "persevering face",
+    "emoji": "😣",
+    "synonyms": []
+  },
+  {
+    "phrase": "disappointed face",
+    "emoji": "😞",
+    "synonyms": []
+  },
+  {
+    "phrase": "downcast face with sweat",
+    "emoji": "😓",
+    "synonyms": []
+  },
+  {
+    "phrase": "weary face",
+    "emoji": "😩",
+    "synonyms": []
+  },
+  {
+    "phrase": "face with steam from nose",
+    "emoji": "😤",
+    "synonyms": []
+  },
+  {
+    "phrase": "enraged face",
+    "emoji": "😡",
+    "synonyms": []
+  },
+  {
+    "phrase": "face with symbols on mouth",
+    "emoji": "🤬",
+    "synonyms": []
+  },
+  {
+    "phrase": "smiling face with horns",
+    "emoji": "😈",
+    "synonyms": []
+  },
+  {
+    "phrase": "skull and crossbones",
+    "emoji": "☠",
+    "synonyms": []
+  },
+  {
+    "phrase": "pile of poo",
+    "emoji": "💩",
+    "synonyms": []
+  },
+  {
+    "phrase": "clown face",
+    "emoji": "🤡",
+    "synonyms": []
+  },
+  {
+    "phrase": "ogre",
+    "emoji": "👹",
+    "synonyms": []
+  },
+  {
+    "phrase": "goblin",
+    "emoji": "👺",
+    "synonyms": []
+  },
+  {
+    "phrase": "robot",
+    "emoji": "🤖",
+    "synonyms": []
+  },
+  {
+    "phrase": "grinning cat",
+    "emoji": "😺",
+    "synonyms": []
+  },
+  {
+    "phrase": "grinning cat with smiling eyes",
+    "emoji": "😸",
+    "synonyms": []
+  },
+  {
+    "phrase": "cat with tears of joy",
+    "emoji": "😹",
+    "synonyms": []
+  },
+  {
+    "phrase": "smiling cat with heart-eyes",
+    "emoji": "😻",
+    "synonyms": []
+  },
+  {
+    "phrase": "cat with wry smile",
+    "emoji": "😼",
+    "synonyms": []
+  },
+  {
+    "phrase": "kissing cat",
+    "emoji": "😽",
+    "synonyms": []
+  },
+  {
+    "phrase": "weary cat",
+    "emoji": "🙀",
+    "synonyms": []
+  },
+  {
+    "phrase": "crying cat",
+    "emoji": "😿",
+    "synonyms": []
+  },
+  {
+    "phrase": "pouting cat",
+    "emoji": "😾",
+    "synonyms": []
+  },
+  {
+    "phrase": "see-no-evil monkey",
+    "emoji": "🙈",
+    "synonyms": []
+  },
+  {
+    "phrase": "hear-no-evil monkey",
+    "emoji": "🙉",
+    "synonyms": []
+  },
+  {
+    "phrase": "speak-no-evil monkey",
+    "emoji": "🙊",
+    "synonyms": []
+  },
+  {
+    "phrase": "love letter",
+    "emoji": "💌",
+    "synonyms": []
+  },
+  {
+    "phrase": "heart with arrow",
+    "emoji": "💘",
+    "synonyms": []
+  },
+  {
+    "phrase": "heart with ribbon",
+    "emoji": "💝",
+    "synonyms": []
+  },
+  {
+    "phrase": "growing heart",
+    "emoji": "💗",
+    "synonyms": []
+  },
+  {
+    "phrase": "beating heart",
+    "emoji": "💓",
+    "synonyms": []
+  },
+  {
+    "phrase": "revolving hearts",
+    "emoji": "💞",
+    "synonyms": []
+  },
+  {
+    "phrase": "two hearts",
+    "emoji": "💕",
+    "synonyms": []
+  },
+  {
+    "phrase": "heart decoration",
+    "emoji": "💟",
+    "synonyms": []
+  },
+  {
+    "phrase": "heart exclamation",
+    "emoji": "❣",
+    "synonyms": []
+  },
+  {
+    "phrase": "broken heart",
+    "emoji": "💔",
+    "synonyms": []
+  },
+  {
+    "phrase": "heart on fire",
+    "emoji": "❤‍🔥",
+    "synonyms": []
+  },
+  {
+    "phrase": "mending heart",
+    "emoji": "❤‍🩹",
+    "synonyms": []
+  },
+  {
+    "phrase": "pink heart",
+    "emoji": "🩷",
+    "synonyms": []
+  },
+  {
+    "phrase": "orange heart",
+    "emoji": "🧡",
+    "synonyms": []
+  },
+  {
+    "phrase": "yellow heart",
+    "emoji": "💛",
+    "synonyms": []
+  },
+  {
+    "phrase": "green heart",
+    "emoji": "💚",
+    "synonyms": []
+  },
+  {
+    "phrase": "blue heart",
+    "emoji": "💙",
+    "synonyms": []
+  },
+  {
+    "phrase": "light blue heart",
+    "emoji": "🩵",
+    "synonyms": []
+  },
+  {
+    "phrase": "purple heart",
+    "emoji": "💜",
+    "synonyms": []
+  },
+  {
+    "phrase": "brown heart",
+    "emoji": "🤎",
+    "synonyms": []
+  },
+  {
+    "phrase": "black heart",
+    "emoji": "🖤",
+    "synonyms": []
+  },
+  {
+    "phrase": "grey heart",
+    "emoji": "🩶",
+    "synonyms": []
+  },
+  {
+    "phrase": "white heart",
+    "emoji": "🤍",
+    "synonyms": []
+  },
+  {
+    "phrase": "kiss mark",
+    "emoji": "💋",
+    "synonyms": []
+  },
+  {
+    "phrase": "anger symbol",
+    "emoji": "💢",
+    "synonyms": []
+  },
+  {
+    "phrase": "fight cloud",
+    "emoji": "🫯",
+    "synonyms": []
+  },
+  {
+    "phrase": "collision",
+    "emoji": "💥",
+    "synonyms": []
+  },
+  {
+    "phrase": "dizzy",
+    "emoji": "💫",
+    "synonyms": []
+  },
+  {
+    "phrase": "sweat droplets",
+    "emoji": "💦",
+    "synonyms": []
+  },
+  {
+    "phrase": "dashing away",
+    "emoji": "💨",
+    "synonyms": []
+  },
+  {
+    "phrase": "hole",
+    "emoji": "🕳",
+    "synonyms": []
+  },
+  {
+    "phrase": "speech balloon",
+    "emoji": "💬",
+    "synonyms": []
+  },
+  {
+    "phrase": "eye in speech bubble",
+    "emoji": "👁‍🗨",
+    "synonyms": []
+  },
+  {
+    "phrase": "left speech bubble",
+    "emoji": "🗨",
+    "synonyms": []
+  },
+  {
+    "phrase": "right anger bubble",
+    "emoji": "🗯",
+    "synonyms": []
+  },
+  {
+    "phrase": "thought balloon",
+    "emoji": "💭",
+    "synonyms": []
+  },
+  {
+    "phrase": "ZZZ",
+    "emoji": "💤",
+    "synonyms": []
+  },
+  {
+    "phrase": "raised back of hand",
+    "emoji": "🤚",
+    "synonyms": []
+  },
+  {
+    "phrase": "hand with fingers splayed",
+    "emoji": "🖐",
+    "synonyms": []
+  },
+  {
+    "phrase": "vulcan salute",
+    "emoji": "🖖",
+    "synonyms": []
+  },
+  {
+    "phrase": "rightwards hand",
+    "emoji": "🫱",
+    "synonyms": []
+  },
+  {
+    "phrase": "leftwards hand",
+    "emoji": "🫲",
+    "synonyms": []
+  },
+  {
+    "phrase": "palm down hand",
+    "emoji": "🫳",
+    "synonyms": []
+  },
+  {
+    "phrase": "palm up hand",
+    "emoji": "🫴",
+    "synonyms": []
+  },
+  {
+    "phrase": "leftwards pushing hand",
+    "emoji": "🫷",
+    "synonyms": []
+  },
+  {
+    "phrase": "rightwards pushing hand",
+    "emoji": "🫸",
+    "synonyms": []
+  },
+  {
+    "phrase": "pinched fingers",
+    "emoji": "🤌",
+    "synonyms": []
+  },
+  {
+    "phrase": "pinching hand",
+    "emoji": "🤏",
+    "synonyms": []
+  },
+  {
+    "phrase": "victory hand",
+    "emoji": "✌",
+    "synonyms": []
+  },
+  {
+    "phrase": "crossed fingers",
+    "emoji": "🤞",
+    "synonyms": []
+  },
+  {
+    "phrase": "hand with index finger and thumb crossed",
+    "emoji": "🫰",
+    "synonyms": []
+  },
+  {
+    "phrase": "love-you gesture",
+    "emoji": "🤟",
+    "synonyms": []
+  },
+  {
+    "phrase": "sign of the horns",
+    "emoji": "🤘",
+    "synonyms": []
+  },
+  {
+    "phrase": "call me hand",
+    "emoji": "🤙",
+    "synonyms": []
+  },
+  {
+    "phrase": "backhand index pointing left",
+    "emoji": "👈",
+    "synonyms": []
+  },
+  {
+    "phrase": "backhand index pointing right",
+    "emoji": "👉",
+    "synonyms": []
+  },
+  {
+    "phrase": "backhand index pointing up",
+    "emoji": "👆",
+    "synonyms": []
+  },
+  {
+    "phrase": "middle finger",
+    "emoji": "🖕",
+    "synonyms": []
+  },
+  {
+    "phrase": "backhand index pointing down",
+    "emoji": "👇",
+    "synonyms": []
+  },
+  {
+    "phrase": "index pointing up",
+    "emoji": "☝",
+    "synonyms": []
+  },
+  {
+    "phrase": "index pointing at the viewer",
+    "emoji": "🫵",
+    "synonyms": []
+  },
+  {
+    "phrase": "raised fist",
+    "emoji": "✊",
+    "synonyms": []
+  },
+  {
+    "phrase": "oncoming fist",
+    "emoji": "👊",
+    "synonyms": []
+  },
+  {
+    "phrase": "left-facing fist",
+    "emoji": "🤛",
+    "synonyms": []
+  },
+  {
+    "phrase": "right-facing fist",
+    "emoji": "🤜",
+    "synonyms": []
+  },
+  {
+    "phrase": "raising hands",
+    "emoji": "🙌",
+    "synonyms": []
+  },
+  {
+    "phrase": "heart hands",
+    "emoji": "🫶",
+    "synonyms": []
+  },
+  {
+    "phrase": "open hands",
+    "emoji": "👐",
+    "synonyms": []
+  },
+  {
+    "phrase": "palms up together",
+    "emoji": "🤲",
+    "synonyms": []
+  },
+  {
+    "phrase": "handshake",
+    "emoji": "🤝",
+    "synonyms": []
+  },
+  {
+    "phrase": "writing hand",
+    "emoji": "✍",
+    "synonyms": []
+  },
+  {
+    "phrase": "nail polish",
+    "emoji": "💅",
+    "synonyms": []
+  },
+  {
+    "phrase": "selfie",
+    "emoji": "🤳",
+    "synonyms": []
+  },
+  {
+    "phrase": "mechanical arm",
+    "emoji": "🦾",
+    "synonyms": []
+  },
+  {
+    "phrase": "mechanical leg",
+    "emoji": "🦿",
+    "synonyms": []
+  },
+  {
+    "phrase": "leg",
+    "emoji": "🦵",
+    "synonyms": []
+  },
+  {
+    "phrase": "foot",
+    "emoji": "🦶",
+    "synonyms": []
+  },
+  {
+    "phrase": "ear",
+    "emoji": "👂",
+    "synonyms": []
+  },
+  {
+    "phrase": "ear with hearing aid",
+    "emoji": "🦻",
+    "synonyms": []
+  },
+  {
+    "phrase": "nose",
+    "emoji": "👃",
+    "synonyms": []
+  },
+  {
+    "phrase": "brain",
+    "emoji": "🧠",
+    "synonyms": []
+  },
+  {
+    "phrase": "anatomical heart",
+    "emoji": "🫀",
+    "synonyms": []
+  },
+  {
+    "phrase": "lungs",
+    "emoji": "🫁",
+    "synonyms": []
+  },
+  {
+    "phrase": "tooth",
+    "emoji": "🦷",
+    "synonyms": []
+  },
+  {
+    "phrase": "bone",
+    "emoji": "🦴",
+    "synonyms": []
+  },
+  {
+    "phrase": "eye",
+    "emoji": "👁",
+    "synonyms": []
+  },
+  {
+    "phrase": "tongue",
+    "emoji": "👅",
+    "synonyms": []
+  },
+  {
+    "phrase": "mouth",
+    "emoji": "👄",
+    "synonyms": []
+  },
+  {
+    "phrase": "biting lip",
+    "emoji": "🫦",
+    "synonyms": []
+  },
+  {
+    "phrase": "baby",
+    "emoji": "👶",
+    "synonyms": []
+  },
+  {
+    "phrase": "child",
+    "emoji": "🧒",
+    "synonyms": []
+  },
+  {
+    "phrase": "boy",
+    "emoji": "👦",
+    "synonyms": []
+  },
+  {
+    "phrase": "girl",
+    "emoji": "👧",
+    "synonyms": []
+  },
+  {
+    "phrase": "person",
+    "emoji": "🧑",
+    "synonyms": []
+  },
+  {
+    "phrase": "person: blond hair",
+    "emoji": "👱",
+    "synonyms": []
+  },
+  {
+    "phrase": "man",
+    "emoji": "👨",
+    "synonyms": []
+  },
+  {
+    "phrase": "person: beard",
+    "emoji": "🧔",
+    "synonyms": []
+  },
+  {
+    "phrase": "man: beard",
+    "emoji": "🧔‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "man: blond hair",
+    "emoji": "👱‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman",
+    "emoji": "👩",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman: beard",
+    "emoji": "🧔‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman: blond hair",
+    "emoji": "👱‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "older person",
+    "emoji": "🧓",
+    "synonyms": []
+  },
+  {
+    "phrase": "old man",
+    "emoji": "👴",
+    "synonyms": []
+  },
+  {
+    "phrase": "old woman",
+    "emoji": "👵",
+    "synonyms": []
+  },
+  {
+    "phrase": "person frowning",
+    "emoji": "🙍",
+    "synonyms": []
+  },
+  {
+    "phrase": "man frowning",
+    "emoji": "🙍‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman frowning",
+    "emoji": "🙍‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person pouting",
+    "emoji": "🙎",
+    "synonyms": []
+  },
+  {
+    "phrase": "man pouting",
+    "emoji": "🙎‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman pouting",
+    "emoji": "🙎‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person gesturing NO",
+    "emoji": "🙅",
+    "synonyms": []
+  },
+  {
+    "phrase": "man gesturing NO",
+    "emoji": "🙅‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman gesturing NO",
+    "emoji": "🙅‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person gesturing OK",
+    "emoji": "🙆",
+    "synonyms": []
+  },
+  {
+    "phrase": "man gesturing OK",
+    "emoji": "🙆‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman gesturing OK",
+    "emoji": "🙆‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person tipping hand",
+    "emoji": "💁",
+    "synonyms": []
+  },
+  {
+    "phrase": "man tipping hand",
+    "emoji": "💁‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman tipping hand",
+    "emoji": "💁‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person raising hand",
+    "emoji": "🙋",
+    "synonyms": []
+  },
+  {
+    "phrase": "man raising hand",
+    "emoji": "🙋‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman raising hand",
+    "emoji": "🙋‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "deaf person",
+    "emoji": "🧏",
+    "synonyms": []
+  },
+  {
+    "phrase": "deaf man",
+    "emoji": "🧏‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "deaf woman",
+    "emoji": "🧏‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person bowing",
+    "emoji": "🙇",
+    "synonyms": []
+  },
+  {
+    "phrase": "man bowing",
+    "emoji": "🙇‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman bowing",
+    "emoji": "🙇‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person facepalming",
+    "emoji": "🤦",
+    "synonyms": []
+  },
+  {
+    "phrase": "man facepalming",
+    "emoji": "🤦‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman facepalming",
+    "emoji": "🤦‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person shrugging",
+    "emoji": "🤷",
+    "synonyms": []
+  },
+  {
+    "phrase": "man shrugging",
+    "emoji": "🤷‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman shrugging",
+    "emoji": "🤷‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "health worker",
+    "emoji": "🧑‍⚕",
+    "synonyms": []
+  },
+  {
+    "phrase": "man health worker",
+    "emoji": "👨‍⚕",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman health worker",
+    "emoji": "👩‍⚕",
+    "synonyms": []
+  },
+  {
+    "phrase": "student",
+    "emoji": "🧑‍🎓",
+    "synonyms": []
+  },
+  {
+    "phrase": "man student",
+    "emoji": "👨‍🎓",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman student",
+    "emoji": "👩‍🎓",
+    "synonyms": []
+  },
+  {
+    "phrase": "teacher",
+    "emoji": "🧑‍🏫",
+    "synonyms": []
+  },
+  {
+    "phrase": "man teacher",
+    "emoji": "👨‍🏫",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman teacher",
+    "emoji": "👩‍🏫",
+    "synonyms": []
+  },
+  {
+    "phrase": "judge",
+    "emoji": "🧑‍⚖",
+    "synonyms": []
+  },
+  {
+    "phrase": "man judge",
+    "emoji": "👨‍⚖",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman judge",
+    "emoji": "👩‍⚖",
+    "synonyms": []
+  },
+  {
+    "phrase": "farmer",
+    "emoji": "🧑‍🌾",
+    "synonyms": []
+  },
+  {
+    "phrase": "man farmer",
+    "emoji": "👨‍🌾",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman farmer",
+    "emoji": "👩‍🌾",
+    "synonyms": []
+  },
+  {
+    "phrase": "cook",
+    "emoji": "🧑‍🍳",
+    "synonyms": []
+  },
+  {
+    "phrase": "man cook",
+    "emoji": "👨‍🍳",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman cook",
+    "emoji": "👩‍🍳",
+    "synonyms": []
+  },
+  {
+    "phrase": "mechanic",
+    "emoji": "🧑‍🔧",
+    "synonyms": []
+  },
+  {
+    "phrase": "man mechanic",
+    "emoji": "👨‍🔧",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman mechanic",
+    "emoji": "👩‍🔧",
+    "synonyms": []
+  },
+  {
+    "phrase": "factory worker",
+    "emoji": "🧑‍🏭",
+    "synonyms": []
+  },
+  {
+    "phrase": "man factory worker",
+    "emoji": "👨‍🏭",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman factory worker",
+    "emoji": "👩‍🏭",
+    "synonyms": []
+  },
+  {
+    "phrase": "office worker",
+    "emoji": "🧑‍💼",
+    "synonyms": []
+  },
+  {
+    "phrase": "man office worker",
+    "emoji": "👨‍💼",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman office worker",
+    "emoji": "👩‍💼",
+    "synonyms": []
+  },
+  {
+    "phrase": "scientist",
+    "emoji": "🧑‍🔬",
+    "synonyms": []
+  },
+  {
+    "phrase": "man scientist",
+    "emoji": "👨‍🔬",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman scientist",
+    "emoji": "👩‍🔬",
+    "synonyms": []
+  },
+  {
+    "phrase": "technologist",
+    "emoji": "🧑‍💻",
+    "synonyms": []
+  },
+  {
+    "phrase": "man technologist",
+    "emoji": "👨‍💻",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman technologist",
+    "emoji": "👩‍💻",
+    "synonyms": []
+  },
+  {
+    "phrase": "singer",
+    "emoji": "🧑‍🎤",
+    "synonyms": []
+  },
+  {
+    "phrase": "man singer",
+    "emoji": "👨‍🎤",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman singer",
+    "emoji": "👩‍🎤",
+    "synonyms": []
+  },
+  {
+    "phrase": "artist",
+    "emoji": "🧑‍🎨",
+    "synonyms": []
+  },
+  {
+    "phrase": "man artist",
+    "emoji": "👨‍🎨",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman artist",
+    "emoji": "👩‍🎨",
+    "synonyms": []
+  },
+  {
+    "phrase": "pilot",
+    "emoji": "🧑‍✈",
+    "synonyms": []
+  },
+  {
+    "phrase": "man pilot",
+    "emoji": "👨‍✈",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman pilot",
+    "emoji": "👩‍✈",
+    "synonyms": []
+  },
+  {
+    "phrase": "astronaut",
+    "emoji": "🧑‍🚀",
+    "synonyms": []
+  },
+  {
+    "phrase": "man astronaut",
+    "emoji": "👨‍🚀",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman astronaut",
+    "emoji": "👩‍🚀",
+    "synonyms": []
+  },
+  {
+    "phrase": "firefighter",
+    "emoji": "🧑‍🚒",
+    "synonyms": []
+  },
+  {
+    "phrase": "man firefighter",
+    "emoji": "👨‍🚒",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman firefighter",
+    "emoji": "👩‍🚒",
+    "synonyms": []
+  },
+  {
+    "phrase": "police officer",
+    "emoji": "👮",
+    "synonyms": []
+  },
+  {
+    "phrase": "man police officer",
+    "emoji": "👮‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman police officer",
+    "emoji": "👮‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "detective",
+    "emoji": "🕵",
+    "synonyms": []
+  },
+  {
+    "phrase": "man detective",
+    "emoji": "🕵‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman detective",
+    "emoji": "🕵‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "guard",
+    "emoji": "💂",
+    "synonyms": []
+  },
+  {
+    "phrase": "man guard",
+    "emoji": "💂‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman guard",
+    "emoji": "💂‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "ninja",
+    "emoji": "🥷",
+    "synonyms": []
+  },
+  {
+    "phrase": "construction worker",
+    "emoji": "👷",
+    "synonyms": []
+  },
+  {
+    "phrase": "man construction worker",
+    "emoji": "👷‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman construction worker",
+    "emoji": "👷‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person with crown",
+    "emoji": "🫅",
+    "synonyms": []
+  },
+  {
+    "phrase": "prince",
+    "emoji": "🤴",
+    "synonyms": []
+  },
+  {
+    "phrase": "princess",
+    "emoji": "👸",
+    "synonyms": []
+  },
+  {
+    "phrase": "person wearing turban",
+    "emoji": "👳",
+    "synonyms": []
+  },
+  {
+    "phrase": "man wearing turban",
+    "emoji": "👳‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman wearing turban",
+    "emoji": "👳‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person with skullcap",
+    "emoji": "👲",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman with headscarf",
+    "emoji": "🧕",
+    "synonyms": []
+  },
+  {
+    "phrase": "person in tuxedo",
+    "emoji": "🤵",
+    "synonyms": []
+  },
+  {
+    "phrase": "man in tuxedo",
+    "emoji": "🤵‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman in tuxedo",
+    "emoji": "🤵‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person with veil",
+    "emoji": "👰",
+    "synonyms": []
+  },
+  {
+    "phrase": "man with veil",
+    "emoji": "👰‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman with veil",
+    "emoji": "👰‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "pregnant woman",
+    "emoji": "🤰",
+    "synonyms": []
+  },
+  {
+    "phrase": "pregnant man",
+    "emoji": "🫃",
+    "synonyms": []
+  },
+  {
+    "phrase": "pregnant person",
+    "emoji": "🫄",
+    "synonyms": []
+  },
+  {
+    "phrase": "breast-feeding",
+    "emoji": "🤱",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman feeding baby",
+    "emoji": "👩‍🍼",
+    "synonyms": []
+  },
+  {
+    "phrase": "man feeding baby",
+    "emoji": "👨‍🍼",
+    "synonyms": []
+  },
+  {
+    "phrase": "person feeding baby",
+    "emoji": "🧑‍🍼",
+    "synonyms": []
+  },
+  {
+    "phrase": "baby angel",
+    "emoji": "👼",
+    "synonyms": []
+  },
+  {
+    "phrase": "Santa Claus",
+    "emoji": "🎅",
+    "synonyms": []
+  },
+  {
+    "phrase": "Mrs. Claus",
+    "emoji": "🤶",
+    "synonyms": []
+  },
+  {
+    "phrase": "Mx Claus",
+    "emoji": "🧑‍🎄",
+    "synonyms": []
+  },
+  {
+    "phrase": "superhero",
+    "emoji": "🦸",
+    "synonyms": []
+  },
+  {
+    "phrase": "man superhero",
+    "emoji": "🦸‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman superhero",
+    "emoji": "🦸‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "supervillain",
+    "emoji": "🦹",
+    "synonyms": []
+  },
+  {
+    "phrase": "man supervillain",
+    "emoji": "🦹‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman supervillain",
+    "emoji": "🦹‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "mage",
+    "emoji": "🧙",
+    "synonyms": []
+  },
+  {
+    "phrase": "man mage",
+    "emoji": "🧙‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman mage",
+    "emoji": "🧙‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "fairy",
+    "emoji": "🧚",
+    "synonyms": []
+  },
+  {
+    "phrase": "man fairy",
+    "emoji": "🧚‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman fairy",
+    "emoji": "🧚‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "vampire",
+    "emoji": "🧛",
+    "synonyms": []
+  },
+  {
+    "phrase": "man vampire",
+    "emoji": "🧛‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman vampire",
+    "emoji": "🧛‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "merperson",
+    "emoji": "🧜",
+    "synonyms": []
+  },
+  {
+    "phrase": "merman",
+    "emoji": "🧜‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "mermaid",
+    "emoji": "🧜‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "elf",
+    "emoji": "🧝",
+    "synonyms": []
+  },
+  {
+    "phrase": "man elf",
+    "emoji": "🧝‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman elf",
+    "emoji": "🧝‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "genie",
+    "emoji": "🧞",
+    "synonyms": []
+  },
+  {
+    "phrase": "man genie",
+    "emoji": "🧞‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman genie",
+    "emoji": "🧞‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "zombie",
+    "emoji": "🧟",
+    "synonyms": []
+  },
+  {
+    "phrase": "man zombie",
+    "emoji": "🧟‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman zombie",
+    "emoji": "🧟‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "troll",
+    "emoji": "🧌",
+    "synonyms": []
+  },
+  {
+    "phrase": "hairy creature",
+    "emoji": "🫈",
+    "synonyms": []
+  },
+  {
+    "phrase": "person getting massage",
+    "emoji": "💆",
+    "synonyms": []
+  },
+  {
+    "phrase": "man getting massage",
+    "emoji": "💆‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman getting massage",
+    "emoji": "💆‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person getting haircut",
+    "emoji": "💇",
+    "synonyms": []
+  },
+  {
+    "phrase": "man getting haircut",
+    "emoji": "💇‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman getting haircut",
+    "emoji": "💇‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person walking",
+    "emoji": "🚶",
+    "synonyms": []
+  },
+  {
+    "phrase": "man walking",
+    "emoji": "🚶‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman walking",
+    "emoji": "🚶‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person standing",
+    "emoji": "🧍",
+    "synonyms": []
+  },
+  {
+    "phrase": "man standing",
+    "emoji": "🧍‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman standing",
+    "emoji": "🧍‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person kneeling",
+    "emoji": "🧎",
+    "synonyms": []
+  },
+  {
+    "phrase": "man kneeling",
+    "emoji": "🧎‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman kneeling",
+    "emoji": "🧎‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person with white cane",
+    "emoji": "🧑‍🦯",
+    "synonyms": []
+  },
+  {
+    "phrase": "man with white cane",
+    "emoji": "👨‍🦯",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman with white cane",
+    "emoji": "👩‍🦯",
+    "synonyms": []
+  },
+  {
+    "phrase": "person in motorized wheelchair",
+    "emoji": "🧑‍🦼",
+    "synonyms": []
+  },
+  {
+    "phrase": "man in motorized wheelchair",
+    "emoji": "👨‍🦼",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman in motorized wheelchair",
+    "emoji": "👩‍🦼",
+    "synonyms": []
+  },
+  {
+    "phrase": "person in manual wheelchair",
+    "emoji": "🧑‍🦽",
+    "synonyms": []
+  },
+  {
+    "phrase": "man in manual wheelchair",
+    "emoji": "👨‍🦽",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman in manual wheelchair",
+    "emoji": "👩‍🦽",
+    "synonyms": []
+  },
+  {
+    "phrase": "person running",
+    "emoji": "🏃",
+    "synonyms": []
+  },
+  {
+    "phrase": "man running",
+    "emoji": "🏃‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman running",
+    "emoji": "🏃‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "ballet dancer",
+    "emoji": "🧑‍🩰",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman dancing",
+    "emoji": "💃",
+    "synonyms": []
+  },
+  {
+    "phrase": "man dancing",
+    "emoji": "🕺",
+    "synonyms": []
+  },
+  {
+    "phrase": "person in suit levitating",
+    "emoji": "🕴",
+    "synonyms": []
+  },
+  {
+    "phrase": "people with bunny ears",
+    "emoji": "👯",
+    "synonyms": []
+  },
+  {
+    "phrase": "men with bunny ears",
+    "emoji": "👯‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "women with bunny ears",
+    "emoji": "👯‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person in steamy room",
+    "emoji": "🧖",
+    "synonyms": []
+  },
+  {
+    "phrase": "man in steamy room",
+    "emoji": "🧖‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman in steamy room",
+    "emoji": "🧖‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person climbing",
+    "emoji": "🧗",
+    "synonyms": []
+  },
+  {
+    "phrase": "man climbing",
+    "emoji": "🧗‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman climbing",
+    "emoji": "🧗‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person fencing",
+    "emoji": "🤺",
+    "synonyms": []
+  },
+  {
+    "phrase": "horse racing",
+    "emoji": "🏇",
+    "synonyms": []
+  },
+  {
+    "phrase": "skier",
+    "emoji": "⛷",
+    "synonyms": []
+  },
+  {
+    "phrase": "snowboarder",
+    "emoji": "🏂",
+    "synonyms": []
+  },
+  {
+    "phrase": "person golfing",
+    "emoji": "🏌",
+    "synonyms": []
+  },
+  {
+    "phrase": "man golfing",
+    "emoji": "🏌‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman golfing",
+    "emoji": "🏌‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person surfing",
+    "emoji": "🏄",
+    "synonyms": []
+  },
+  {
+    "phrase": "man surfing",
+    "emoji": "🏄‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman surfing",
+    "emoji": "🏄‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person rowing boat",
+    "emoji": "🚣",
+    "synonyms": []
+  },
+  {
+    "phrase": "man rowing boat",
+    "emoji": "🚣‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman rowing boat",
+    "emoji": "🚣‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person swimming",
+    "emoji": "🏊",
+    "synonyms": []
+  },
+  {
+    "phrase": "man swimming",
+    "emoji": "🏊‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman swimming",
+    "emoji": "🏊‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person bouncing ball",
+    "emoji": "⛹",
+    "synonyms": []
+  },
+  {
+    "phrase": "man bouncing ball",
+    "emoji": "⛹‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman bouncing ball",
+    "emoji": "⛹‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person lifting weights",
+    "emoji": "🏋",
+    "synonyms": []
+  },
+  {
+    "phrase": "man lifting weights",
+    "emoji": "🏋‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman lifting weights",
+    "emoji": "🏋‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person biking",
+    "emoji": "🚴",
+    "synonyms": []
+  },
+  {
+    "phrase": "man biking",
+    "emoji": "🚴‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman biking",
+    "emoji": "🚴‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person mountain biking",
+    "emoji": "🚵",
+    "synonyms": []
+  },
+  {
+    "phrase": "man mountain biking",
+    "emoji": "🚵‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman mountain biking",
+    "emoji": "🚵‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person cartwheeling",
+    "emoji": "🤸",
+    "synonyms": []
+  },
+  {
+    "phrase": "man cartwheeling",
+    "emoji": "🤸‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman cartwheeling",
+    "emoji": "🤸‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "people wrestling",
+    "emoji": "🤼",
+    "synonyms": []
+  },
+  {
+    "phrase": "men wrestling",
+    "emoji": "🤼‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "women wrestling",
+    "emoji": "🤼‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person playing water polo",
+    "emoji": "🤽",
+    "synonyms": []
+  },
+  {
+    "phrase": "man playing water polo",
+    "emoji": "🤽‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman playing water polo",
+    "emoji": "🤽‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person playing handball",
+    "emoji": "🤾",
+    "synonyms": []
+  },
+  {
+    "phrase": "man playing handball",
+    "emoji": "🤾‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman playing handball",
+    "emoji": "🤾‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person juggling",
+    "emoji": "🤹",
+    "synonyms": []
+  },
+  {
+    "phrase": "man juggling",
+    "emoji": "🤹‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman juggling",
+    "emoji": "🤹‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person in lotus position",
+    "emoji": "🧘",
+    "synonyms": []
+  },
+  {
+    "phrase": "man in lotus position",
+    "emoji": "🧘‍♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman in lotus position",
+    "emoji": "🧘‍♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person taking bath",
+    "emoji": "🛀",
+    "synonyms": []
+  },
+  {
+    "phrase": "person in bed",
+    "emoji": "🛌",
+    "synonyms": []
+  },
+  {
+    "phrase": "people holding hands",
+    "emoji": "🧑‍🤝‍🧑",
+    "synonyms": []
+  },
+  {
+    "phrase": "women holding hands",
+    "emoji": "👭",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman and man holding hands",
+    "emoji": "👫",
+    "synonyms": []
+  },
+  {
+    "phrase": "men holding hands",
+    "emoji": "👬",
+    "synonyms": []
+  },
+  {
+    "phrase": "kiss",
+    "emoji": "💏",
+    "synonyms": []
+  },
+  {
+    "phrase": "couple with heart",
+    "emoji": "💑",
+    "synonyms": []
+  },
+  {
+    "phrase": "speaking head",
+    "emoji": "🗣",
+    "synonyms": []
+  },
+  {
+    "phrase": "bust in silhouette",
+    "emoji": "👤",
+    "synonyms": []
+  },
+  {
+    "phrase": "busts in silhouette",
+    "emoji": "👥",
+    "synonyms": []
+  },
+  {
+    "phrase": "people hugging",
+    "emoji": "🫂",
+    "synonyms": []
+  },
+  {
+    "phrase": "family",
+    "emoji": "👪",
+    "synonyms": []
+  },
+  {
+    "phrase": "family: adult, adult, child",
+    "emoji": "🧑‍🧑‍🧒",
+    "synonyms": []
+  },
+  {
+    "phrase": "family: adult, adult, child, child",
+    "emoji": "🧑‍🧑‍🧒‍🧒",
+    "synonyms": []
+  },
+  {
+    "phrase": "family: adult, child",
+    "emoji": "🧑‍🧒",
+    "synonyms": []
+  },
+  {
+    "phrase": "family: adult, child, child",
+    "emoji": "🧑‍🧒‍🧒",
+    "synonyms": []
+  },
+  {
+    "phrase": "footprints",
+    "emoji": "👣",
+    "synonyms": []
+  },
+  {
+    "phrase": "fingerprint",
+    "emoji": "🫆",
+    "synonyms": []
+  },
+  {
+    "phrase": "red hair",
+    "emoji": "🦰",
+    "synonyms": []
+  },
+  {
+    "phrase": "curly hair",
+    "emoji": "🦱",
+    "synonyms": []
+  },
+  {
+    "phrase": "white hair",
+    "emoji": "🦳",
+    "synonyms": []
+  },
+  {
+    "phrase": "bald",
+    "emoji": "🦲",
+    "synonyms": []
+  },
+  {
+    "phrase": "monkey face",
+    "emoji": "🐵",
+    "synonyms": []
+  },
+  {
+    "phrase": "monkey",
+    "emoji": "🐒",
+    "synonyms": []
+  },
+  {
+    "phrase": "gorilla",
+    "emoji": "🦍",
+    "synonyms": []
+  },
+  {
+    "phrase": "orangutan",
+    "emoji": "🦧",
+    "synonyms": []
+  },
+  {
+    "phrase": "guide dog",
+    "emoji": "🦮",
+    "synonyms": []
+  },
+  {
+    "phrase": "service dog",
+    "emoji": "🐕‍🦺",
+    "synonyms": []
+  },
+  {
+    "phrase": "poodle",
+    "emoji": "🐩",
+    "synonyms": []
+  },
+  {
+    "phrase": "wolf",
+    "emoji": "🐺",
+    "synonyms": []
+  },
+  {
+    "phrase": "fox",
+    "emoji": "🦊",
+    "synonyms": []
+  },
+  {
+    "phrase": "raccoon",
+    "emoji": "🦝",
+    "synonyms": []
+  },
+  {
+    "phrase": "black cat",
+    "emoji": "🐈‍⬛",
+    "synonyms": []
+  },
+  {
+    "phrase": "lion",
+    "emoji": "🦁",
+    "synonyms": []
+  },
+  {
+    "phrase": "tiger face",
+    "emoji": "🐯",
+    "synonyms": []
+  },
+  {
+    "phrase": "tiger",
+    "emoji": "🐅",
+    "synonyms": []
+  },
+  {
+    "phrase": "leopard",
+    "emoji": "🐆",
+    "synonyms": []
+  },
+  {
+    "phrase": "horse face",
+    "emoji": "🐴",
+    "synonyms": []
+  },
+  {
+    "phrase": "moose",
+    "emoji": "🫎",
+    "synonyms": []
+  },
+  {
+    "phrase": "donkey",
+    "emoji": "🫏",
+    "synonyms": []
+  },
+  {
+    "phrase": "horse",
+    "emoji": "🐎",
+    "synonyms": []
+  },
+  {
+    "phrase": "zebra",
+    "emoji": "🦓",
+    "synonyms": []
+  },
+  {
+    "phrase": "deer",
+    "emoji": "🦌",
+    "synonyms": []
+  },
+  {
+    "phrase": "bison",
+    "emoji": "🦬",
+    "synonyms": []
+  },
+  {
+    "phrase": "cow face",
+    "emoji": "🐮",
+    "synonyms": []
+  },
+  {
+    "phrase": "ox",
+    "emoji": "🐂",
+    "synonyms": []
+  },
+  {
+    "phrase": "water buffalo",
+    "emoji": "🐃",
+    "synonyms": []
+  },
+  {
+    "phrase": "cow",
+    "emoji": "🐄",
+    "synonyms": []
+  },
+  {
+    "phrase": "pig face",
+    "emoji": "🐷",
+    "synonyms": []
+  },
+  {
+    "phrase": "pig",
+    "emoji": "🐖",
+    "synonyms": []
+  },
+  {
+    "phrase": "boar",
+    "emoji": "🐗",
+    "synonyms": []
+  },
+  {
+    "phrase": "pig nose",
+    "emoji": "🐽",
+    "synonyms": []
+  },
+  {
+    "phrase": "ram",
+    "emoji": "🐏",
+    "synonyms": []
+  },
+  {
+    "phrase": "ewe",
+    "emoji": "🐑",
+    "synonyms": []
+  },
+  {
+    "phrase": "goat",
+    "emoji": "🐐",
+    "synonyms": []
+  },
+  {
+    "phrase": "camel",
+    "emoji": "🐪",
+    "synonyms": []
+  },
+  {
+    "phrase": "two-hump camel",
+    "emoji": "🐫",
+    "synonyms": []
+  },
+  {
+    "phrase": "llama",
+    "emoji": "🦙",
+    "synonyms": []
+  },
+  {
+    "phrase": "giraffe",
+    "emoji": "🦒",
+    "synonyms": []
+  },
+  {
+    "phrase": "elephant",
+    "emoji": "🐘",
+    "synonyms": []
+  },
+  {
+    "phrase": "mammoth",
+    "emoji": "🦣",
+    "synonyms": []
+  },
+  {
+    "phrase": "rhinoceros",
+    "emoji": "🦏",
+    "synonyms": []
+  },
+  {
+    "phrase": "hippopotamus",
+    "emoji": "🦛",
+    "synonyms": []
+  },
+  {
+    "phrase": "mouse face",
+    "emoji": "🐭",
+    "synonyms": []
+  },
+  {
+    "phrase": "mouse",
+    "emoji": "🐁",
+    "synonyms": []
+  },
+  {
+    "phrase": "rat",
+    "emoji": "🐀",
+    "synonyms": []
+  },
+  {
+    "phrase": "hamster",
+    "emoji": "🐹",
+    "synonyms": []
+  },
+  {
+    "phrase": "rabbit face",
+    "emoji": "🐰",
+    "synonyms": []
+  },
+  {
+    "phrase": "rabbit",
+    "emoji": "🐇",
+    "synonyms": []
+  },
+  {
+    "phrase": "chipmunk",
+    "emoji": "🐿",
+    "synonyms": []
+  },
+  {
+    "phrase": "beaver",
+    "emoji": "🦫",
+    "synonyms": []
+  },
+  {
+    "phrase": "hedgehog",
+    "emoji": "🦔",
+    "synonyms": []
+  },
+  {
+    "phrase": "bat",
+    "emoji": "🦇",
+    "synonyms": []
+  },
+  {
+    "phrase": "bear",
+    "emoji": "🐻",
+    "synonyms": []
+  },
+  {
+    "phrase": "polar bear",
+    "emoji": "🐻‍❄",
+    "synonyms": []
+  },
+  {
+    "phrase": "koala",
+    "emoji": "🐨",
+    "synonyms": []
+  },
+  {
+    "phrase": "panda",
+    "emoji": "🐼",
+    "synonyms": []
+  },
+  {
+    "phrase": "sloth",
+    "emoji": "🦥",
+    "synonyms": []
+  },
+  {
+    "phrase": "otter",
+    "emoji": "🦦",
+    "synonyms": []
+  },
+  {
+    "phrase": "skunk",
+    "emoji": "🦨",
+    "synonyms": []
+  },
+  {
+    "phrase": "kangaroo",
+    "emoji": "🦘",
+    "synonyms": []
+  },
+  {
+    "phrase": "badger",
+    "emoji": "🦡",
+    "synonyms": []
+  },
+  {
+    "phrase": "paw prints",
+    "emoji": "🐾",
+    "synonyms": []
+  },
+  {
+    "phrase": "turkey",
+    "emoji": "🦃",
+    "synonyms": []
+  },
+  {
+    "phrase": "chicken",
+    "emoji": "🐔",
+    "synonyms": []
+  },
+  {
+    "phrase": "rooster",
+    "emoji": "🐓",
+    "synonyms": []
+  },
+  {
+    "phrase": "hatching chick",
+    "emoji": "🐣",
+    "synonyms": []
+  },
+  {
+    "phrase": "baby chick",
+    "emoji": "🐤",
+    "synonyms": []
+  },
+  {
+    "phrase": "front-facing baby chick",
+    "emoji": "🐥",
+    "synonyms": []
+  },
+  {
+    "phrase": "bird",
+    "emoji": "🐦",
+    "synonyms": []
+  },
+  {
+    "phrase": "penguin",
+    "emoji": "🐧",
+    "synonyms": []
+  },
+  {
+    "phrase": "dove",
+    "emoji": "🕊",
+    "synonyms": []
+  },
+  {
+    "phrase": "eagle",
+    "emoji": "🦅",
+    "synonyms": []
+  },
+  {
+    "phrase": "duck",
+    "emoji": "🦆",
+    "synonyms": []
+  },
+  {
+    "phrase": "swan",
+    "emoji": "🦢",
+    "synonyms": []
+  },
+  {
+    "phrase": "owl",
+    "emoji": "🦉",
+    "synonyms": []
+  },
+  {
+    "phrase": "dodo",
+    "emoji": "🦤",
+    "synonyms": []
+  },
+  {
+    "phrase": "feather",
+    "emoji": "🪶",
+    "synonyms": []
+  },
+  {
+    "phrase": "flamingo",
+    "emoji": "🦩",
+    "synonyms": []
+  },
+  {
+    "phrase": "peacock",
+    "emoji": "🦚",
+    "synonyms": []
+  },
+  {
+    "phrase": "parrot",
+    "emoji": "🦜",
+    "synonyms": []
+  },
+  {
+    "phrase": "wing",
+    "emoji": "🪽",
+    "synonyms": []
+  },
+  {
+    "phrase": "black bird",
+    "emoji": "🐦‍⬛",
+    "synonyms": []
+  },
+  {
+    "phrase": "goose",
+    "emoji": "🪿",
+    "synonyms": []
+  },
+  {
+    "phrase": "phoenix",
+    "emoji": "🐦‍🔥",
+    "synonyms": []
+  },
+  {
+    "phrase": "frog",
+    "emoji": "🐸",
+    "synonyms": []
+  },
+  {
+    "phrase": "crocodile",
+    "emoji": "🐊",
+    "synonyms": []
+  },
+  {
+    "phrase": "turtle",
+    "emoji": "🐢",
+    "synonyms": []
+  },
+  {
+    "phrase": "lizard",
+    "emoji": "🦎",
+    "synonyms": []
+  },
+  {
+    "phrase": "dragon face",
+    "emoji": "🐲",
+    "synonyms": []
+  },
+  {
+    "phrase": "dragon",
+    "emoji": "🐉",
+    "synonyms": []
+  },
+  {
+    "phrase": "sauropod",
+    "emoji": "🦕",
+    "synonyms": []
+  },
+  {
+    "phrase": "T-Rex",
+    "emoji": "🦖",
+    "synonyms": []
+  },
+  {
+    "phrase": "spouting whale",
+    "emoji": "🐳",
+    "synonyms": []
+  },
+  {
+    "phrase": "whale",
+    "emoji": "🐋",
+    "synonyms": []
+  },
+  {
+    "phrase": "dolphin",
+    "emoji": "🐬",
+    "synonyms": []
+  },
+  {
+    "phrase": "orca",
+    "emoji": "🫍",
+    "synonyms": []
+  },
+  {
+    "phrase": "seal",
+    "emoji": "🦭",
+    "synonyms": []
+  },
+  {
+    "phrase": "fish",
+    "emoji": "🐟",
+    "synonyms": []
+  },
+  {
+    "phrase": "tropical fish",
+    "emoji": "🐠",
+    "synonyms": []
+  },
+  {
+    "phrase": "blowfish",
+    "emoji": "🐡",
+    "synonyms": []
+  },
+  {
+    "phrase": "shark",
+    "emoji": "🦈",
+    "synonyms": []
+  },
+  {
+    "phrase": "spiral shell",
+    "emoji": "🐚",
+    "synonyms": []
+  },
+  {
+    "phrase": "coral",
+    "emoji": "🪸",
+    "synonyms": []
+  },
+  {
+    "phrase": "jellyfish",
+    "emoji": "🪼",
+    "synonyms": []
+  },
+  {
+    "phrase": "crab",
+    "emoji": "🦀",
+    "synonyms": []
+  },
+  {
+    "phrase": "lobster",
+    "emoji": "🦞",
+    "synonyms": []
+  },
+  {
+    "phrase": "shrimp",
+    "emoji": "🦐",
+    "synonyms": []
+  },
+  {
+    "phrase": "squid",
+    "emoji": "🦑",
+    "synonyms": []
+  },
+  {
+    "phrase": "oyster",
+    "emoji": "🦪",
+    "synonyms": []
+  },
+  {
+    "phrase": "snail",
+    "emoji": "🐌",
+    "synonyms": []
+  },
+  {
+    "phrase": "butterfly",
+    "emoji": "🦋",
+    "synonyms": []
+  },
+  {
+    "phrase": "bug",
+    "emoji": "🐛",
+    "synonyms": []
+  },
+  {
+    "phrase": "ant",
+    "emoji": "🐜",
+    "synonyms": []
+  },
+  {
+    "phrase": "honeybee",
+    "emoji": "🐝",
+    "synonyms": []
+  },
+  {
+    "phrase": "beetle",
+    "emoji": "🪲",
+    "synonyms": []
+  },
+  {
+    "phrase": "lady beetle",
+    "emoji": "🐞",
+    "synonyms": []
+  },
+  {
+    "phrase": "cricket",
+    "emoji": "🦗",
+    "synonyms": []
+  },
+  {
+    "phrase": "cockroach",
+    "emoji": "🪳",
+    "synonyms": []
+  },
+  {
+    "phrase": "spider",
+    "emoji": "🕷",
+    "synonyms": []
+  },
+  {
+    "phrase": "spider web",
+    "emoji": "🕸",
+    "synonyms": []
+  },
+  {
+    "phrase": "scorpion",
+    "emoji": "🦂",
+    "synonyms": []
+  },
+  {
+    "phrase": "mosquito",
+    "emoji": "🦟",
+    "synonyms": []
+  },
+  {
+    "phrase": "fly",
+    "emoji": "🪰",
+    "synonyms": []
+  },
+  {
+    "phrase": "worm",
+    "emoji": "🪱",
+    "synonyms": []
+  },
+  {
+    "phrase": "microbe",
+    "emoji": "🦠",
+    "synonyms": []
+  },
+  {
+    "phrase": "bouquet",
+    "emoji": "💐",
+    "synonyms": []
+  },
+  {
+    "phrase": "cherry blossom",
+    "emoji": "🌸",
+    "synonyms": []
+  },
+  {
+    "phrase": "white flower",
+    "emoji": "💮",
+    "synonyms": []
+  },
+  {
+    "phrase": "lotus",
+    "emoji": "🪷",
+    "synonyms": []
+  },
+  {
+    "phrase": "rosette",
+    "emoji": "🏵",
+    "synonyms": []
+  },
+  {
+    "phrase": "rose",
+    "emoji": "🌹",
+    "synonyms": []
+  },
+  {
+    "phrase": "wilted flower",
+    "emoji": "🥀",
+    "synonyms": []
+  },
+  {
+    "phrase": "hibiscus",
+    "emoji": "🌺",
+    "synonyms": []
+  },
+  {
+    "phrase": "sunflower",
+    "emoji": "🌻",
+    "synonyms": []
+  },
+  {
+    "phrase": "blossom",
+    "emoji": "🌼",
+    "synonyms": []
+  },
+  {
+    "phrase": "tulip",
+    "emoji": "🌷",
+    "synonyms": []
+  },
+  {
+    "phrase": "hyacinth",
+    "emoji": "🪻",
+    "synonyms": []
+  },
+  {
+    "phrase": "seedling",
+    "emoji": "🌱",
+    "synonyms": []
+  },
+  {
+    "phrase": "potted plant",
+    "emoji": "🪴",
+    "synonyms": []
+  },
+  {
+    "phrase": "evergreen tree",
+    "emoji": "🌲",
+    "synonyms": []
+  },
+  {
+    "phrase": "deciduous tree",
+    "emoji": "🌳",
+    "synonyms": []
+  },
+  {
+    "phrase": "palm tree",
+    "emoji": "🌴",
+    "synonyms": []
+  },
+  {
+    "phrase": "cactus",
+    "emoji": "🌵",
+    "synonyms": []
+  },
+  {
+    "phrase": "sheaf of rice",
+    "emoji": "🌾",
+    "synonyms": []
+  },
+  {
+    "phrase": "herb",
+    "emoji": "🌿",
+    "synonyms": []
+  },
+  {
+    "phrase": "shamrock",
+    "emoji": "☘",
+    "synonyms": []
+  },
+  {
+    "phrase": "four leaf clover",
+    "emoji": "🍀",
+    "synonyms": []
+  },
+  {
+    "phrase": "maple leaf",
+    "emoji": "🍁",
+    "synonyms": []
+  },
+  {
+    "phrase": "fallen leaf",
+    "emoji": "🍂",
+    "synonyms": []
+  },
+  {
+    "phrase": "leaf fluttering in wind",
+    "emoji": "🍃",
+    "synonyms": []
+  },
+  {
+    "phrase": "empty nest",
+    "emoji": "🪹",
+    "synonyms": []
+  },
+  {
+    "phrase": "nest with eggs",
+    "emoji": "🪺",
+    "synonyms": []
+  },
+  {
+    "phrase": "mushroom",
+    "emoji": "🍄",
+    "synonyms": []
+  },
+  {
+    "phrase": "leafless tree",
+    "emoji": "🪾",
+    "synonyms": []
+  },
+  {
+    "phrase": "grapes",
+    "emoji": "🍇",
+    "synonyms": []
+  },
+  {
+    "phrase": "melon",
+    "emoji": "🍈",
+    "synonyms": []
+  },
+  {
+    "phrase": "watermelon",
+    "emoji": "🍉",
+    "synonyms": []
+  },
+  {
+    "phrase": "tangerine",
+    "emoji": "🍊",
+    "synonyms": []
+  },
+  {
+    "phrase": "lemon",
+    "emoji": "🍋",
+    "synonyms": []
+  },
+  {
+    "phrase": "lime",
+    "emoji": "🍋‍🟩",
+    "synonyms": []
+  },
+  {
+    "phrase": "banana",
+    "emoji": "🍌",
+    "synonyms": []
+  },
+  {
+    "phrase": "pineapple",
+    "emoji": "🍍",
+    "synonyms": []
+  },
+  {
+    "phrase": "mango",
+    "emoji": "🥭",
+    "synonyms": []
+  },
+  {
+    "phrase": "red apple",
+    "emoji": "🍎",
+    "synonyms": []
+  },
+  {
+    "phrase": "green apple",
+    "emoji": "🍏",
+    "synonyms": []
+  },
+  {
+    "phrase": "pear",
+    "emoji": "🍐",
+    "synonyms": []
+  },
+  {
+    "phrase": "peach",
+    "emoji": "🍑",
+    "synonyms": []
+  },
+  {
+    "phrase": "cherries",
+    "emoji": "🍒",
+    "synonyms": []
+  },
+  {
+    "phrase": "strawberry",
+    "emoji": "🍓",
+    "synonyms": []
+  },
+  {
+    "phrase": "blueberries",
+    "emoji": "🫐",
+    "synonyms": []
+  },
+  {
+    "phrase": "kiwi fruit",
+    "emoji": "🥝",
+    "synonyms": []
+  },
+  {
+    "phrase": "tomato",
+    "emoji": "🍅",
+    "synonyms": []
+  },
+  {
+    "phrase": "olive",
+    "emoji": "🫒",
+    "synonyms": []
+  },
+  {
+    "phrase": "coconut",
+    "emoji": "🥥",
+    "synonyms": []
+  },
+  {
+    "phrase": "avocado",
+    "emoji": "🥑",
+    "synonyms": []
+  },
+  {
+    "phrase": "eggplant",
+    "emoji": "🍆",
+    "synonyms": []
+  },
+  {
+    "phrase": "potato",
+    "emoji": "🥔",
+    "synonyms": []
+  },
+  {
+    "phrase": "carrot",
+    "emoji": "🥕",
+    "synonyms": []
+  },
+  {
+    "phrase": "ear of corn",
+    "emoji": "🌽",
+    "synonyms": []
+  },
+  {
+    "phrase": "hot pepper",
+    "emoji": "🌶",
+    "synonyms": []
+  },
+  {
+    "phrase": "bell pepper",
+    "emoji": "🫑",
+    "synonyms": []
+  },
+  {
+    "phrase": "cucumber",
+    "emoji": "🥒",
+    "synonyms": []
+  },
+  {
+    "phrase": "leafy green",
+    "emoji": "🥬",
+    "synonyms": []
+  },
+  {
+    "phrase": "broccoli",
+    "emoji": "🥦",
+    "synonyms": []
+  },
+  {
+    "phrase": "garlic",
+    "emoji": "🧄",
+    "synonyms": []
+  },
+  {
+    "phrase": "onion",
+    "emoji": "🧅",
+    "synonyms": []
+  },
+  {
+    "phrase": "peanuts",
+    "emoji": "🥜",
+    "synonyms": []
+  },
+  {
+    "phrase": "beans",
+    "emoji": "🫘",
+    "synonyms": []
+  },
+  {
+    "phrase": "chestnut",
+    "emoji": "🌰",
+    "synonyms": []
+  },
+  {
+    "phrase": "ginger root",
+    "emoji": "🫚",
+    "synonyms": []
+  },
+  {
+    "phrase": "pea pod",
+    "emoji": "🫛",
+    "synonyms": []
+  },
+  {
+    "phrase": "brown mushroom",
+    "emoji": "🍄‍🟫",
+    "synonyms": []
+  },
+  {
+    "phrase": "root vegetable",
+    "emoji": "🫜",
+    "synonyms": []
+  },
+  {
+    "phrase": "bread",
+    "emoji": "🍞",
+    "synonyms": []
+  },
+  {
+    "phrase": "croissant",
+    "emoji": "🥐",
+    "synonyms": []
+  },
+  {
+    "phrase": "baguette bread",
+    "emoji": "🥖",
+    "synonyms": []
+  },
+  {
+    "phrase": "flatbread",
+    "emoji": "🫓",
+    "synonyms": []
+  },
+  {
+    "phrase": "pretzel",
+    "emoji": "🥨",
+    "synonyms": []
+  },
+  {
+    "phrase": "bagel",
+    "emoji": "🥯",
+    "synonyms": []
+  },
+  {
+    "phrase": "pancakes",
+    "emoji": "🥞",
+    "synonyms": []
+  },
+  {
+    "phrase": "waffle",
+    "emoji": "🧇",
+    "synonyms": []
+  },
+  {
+    "phrase": "cheese wedge",
+    "emoji": "🧀",
+    "synonyms": []
+  },
+  {
+    "phrase": "meat on bone",
+    "emoji": "🍖",
+    "synonyms": []
+  },
+  {
+    "phrase": "poultry leg",
+    "emoji": "🍗",
+    "synonyms": []
+  },
+  {
+    "phrase": "cut of meat",
+    "emoji": "🥩",
+    "synonyms": []
+  },
+  {
+    "phrase": "bacon",
+    "emoji": "🥓",
+    "synonyms": []
+  },
+  {
+    "phrase": "french fries",
+    "emoji": "🍟",
+    "synonyms": []
+  },
+  {
+    "phrase": "hot dog",
+    "emoji": "🌭",
+    "synonyms": []
+  },
+  {
+    "phrase": "sandwich",
+    "emoji": "🥪",
+    "synonyms": []
+  },
+  {
+    "phrase": "burrito",
+    "emoji": "🌯",
+    "synonyms": []
+  },
+  {
+    "phrase": "tamale",
+    "emoji": "🫔",
+    "synonyms": []
+  },
+  {
+    "phrase": "stuffed flatbread",
+    "emoji": "🥙",
+    "synonyms": []
+  },
+  {
+    "phrase": "falafel",
+    "emoji": "🧆",
+    "synonyms": []
+  },
+  {
+    "phrase": "egg",
+    "emoji": "🥚",
+    "synonyms": []
+  },
+  {
+    "phrase": "cooking",
+    "emoji": "🍳",
+    "synonyms": []
+  },
+  {
+    "phrase": "shallow pan of food",
+    "emoji": "🥘",
+    "synonyms": []
+  },
+  {
+    "phrase": "pot of food",
+    "emoji": "🍲",
+    "synonyms": []
+  },
+  {
+    "phrase": "fondue",
+    "emoji": "🫕",
+    "synonyms": []
+  },
+  {
+    "phrase": "bowl with spoon",
+    "emoji": "🥣",
+    "synonyms": []
+  },
+  {
+    "phrase": "green salad",
+    "emoji": "🥗",
+    "synonyms": []
+  },
+  {
+    "phrase": "butter",
+    "emoji": "🧈",
+    "synonyms": []
+  },
+  {
+    "phrase": "salt",
+    "emoji": "🧂",
+    "synonyms": []
+  },
+  {
+    "phrase": "canned food",
+    "emoji": "🥫",
+    "synonyms": []
+  },
+  {
+    "phrase": "bento box",
+    "emoji": "🍱",
+    "synonyms": []
+  },
+  {
+    "phrase": "rice cracker",
+    "emoji": "🍘",
+    "synonyms": []
+  },
+  {
+    "phrase": "rice ball",
+    "emoji": "🍙",
+    "synonyms": []
+  },
+  {
+    "phrase": "cooked rice",
+    "emoji": "🍚",
+    "synonyms": []
+  },
+  {
+    "phrase": "curry rice",
+    "emoji": "🍛",
+    "synonyms": []
+  },
+  {
+    "phrase": "steaming bowl",
+    "emoji": "🍜",
+    "synonyms": []
+  },
+  {
+    "phrase": "spaghetti",
+    "emoji": "🍝",
+    "synonyms": []
+  },
+  {
+    "phrase": "roasted sweet potato",
+    "emoji": "🍠",
+    "synonyms": []
+  },
+  {
+    "phrase": "oden",
+    "emoji": "🍢",
+    "synonyms": []
+  },
+  {
+    "phrase": "sushi",
+    "emoji": "🍣",
+    "synonyms": []
+  },
+  {
+    "phrase": "fried shrimp",
+    "emoji": "🍤",
+    "synonyms": []
+  },
+  {
+    "phrase": "fish cake with swirl",
+    "emoji": "🍥",
+    "synonyms": []
+  },
+  {
+    "phrase": "moon cake",
+    "emoji": "🥮",
+    "synonyms": []
+  },
+  {
+    "phrase": "dango",
+    "emoji": "🍡",
+    "synonyms": []
+  },
+  {
+    "phrase": "dumpling",
+    "emoji": "🥟",
+    "synonyms": []
+  },
+  {
+    "phrase": "fortune cookie",
+    "emoji": "🥠",
+    "synonyms": []
+  },
+  {
+    "phrase": "takeout box",
+    "emoji": "🥡",
+    "synonyms": []
+  },
+  {
+    "phrase": "soft ice cream",
+    "emoji": "🍦",
+    "synonyms": []
+  },
+  {
+    "phrase": "shaved ice",
+    "emoji": "🍧",
+    "synonyms": []
+  },
+  {
+    "phrase": "ice cream",
+    "emoji": "🍨",
+    "synonyms": []
+  },
+  {
+    "phrase": "doughnut",
+    "emoji": "🍩",
+    "synonyms": []
+  },
+  {
+    "phrase": "cookie",
+    "emoji": "🍪",
+    "synonyms": []
+  },
+  {
+    "phrase": "shortcake",
+    "emoji": "🍰",
+    "synonyms": []
+  },
+  {
+    "phrase": "cupcake",
+    "emoji": "🧁",
+    "synonyms": []
+  },
+  {
+    "phrase": "pie",
+    "emoji": "🥧",
+    "synonyms": []
+  },
+  {
+    "phrase": "chocolate bar",
+    "emoji": "🍫",
+    "synonyms": []
+  },
+  {
+    "phrase": "candy",
+    "emoji": "🍬",
+    "synonyms": []
+  },
+  {
+    "phrase": "lollipop",
+    "emoji": "🍭",
+    "synonyms": []
+  },
+  {
+    "phrase": "custard",
+    "emoji": "🍮",
+    "synonyms": []
+  },
+  {
+    "phrase": "honey pot",
+    "emoji": "🍯",
+    "synonyms": []
+  },
+  {
+    "phrase": "baby bottle",
+    "emoji": "🍼",
+    "synonyms": []
+  },
+  {
+    "phrase": "teapot",
+    "emoji": "🫖",
+    "synonyms": []
+  },
+  {
+    "phrase": "teacup without handle",
+    "emoji": "🍵",
+    "synonyms": []
+  },
+  {
+    "phrase": "sake",
+    "emoji": "🍶",
+    "synonyms": []
+  },
+  {
+    "phrase": "bottle with popping cork",
+    "emoji": "🍾",
+    "synonyms": []
+  },
+  {
+    "phrase": "wine glass",
+    "emoji": "🍷",
+    "synonyms": []
+  },
+  {
+    "phrase": "cocktail glass",
+    "emoji": "🍸",
+    "synonyms": []
+  },
+  {
+    "phrase": "tropical drink",
+    "emoji": "🍹",
+    "synonyms": []
+  },
+  {
+    "phrase": "clinking beer mugs",
+    "emoji": "🍻",
+    "synonyms": []
+  },
+  {
+    "phrase": "clinking glasses",
+    "emoji": "🥂",
+    "synonyms": []
+  },
+  {
+    "phrase": "tumbler glass",
+    "emoji": "🥃",
+    "synonyms": []
+  },
+  {
+    "phrase": "pouring liquid",
+    "emoji": "🫗",
+    "synonyms": []
+  },
+  {
+    "phrase": "cup with straw",
+    "emoji": "🥤",
+    "synonyms": []
+  },
+  {
+    "phrase": "bubble tea",
+    "emoji": "🧋",
+    "synonyms": []
+  },
+  {
+    "phrase": "beverage box",
+    "emoji": "🧃",
+    "synonyms": []
+  },
+  {
+    "phrase": "mate",
+    "emoji": "🧉",
+    "synonyms": []
+  },
+  {
+    "phrase": "ice",
+    "emoji": "🧊",
+    "synonyms": []
+  },
+  {
+    "phrase": "chopsticks",
+    "emoji": "🥢",
+    "synonyms": []
+  },
+  {
+    "phrase": "fork and knife with plate",
+    "emoji": "🍽",
+    "synonyms": []
+  },
+  {
+    "phrase": "fork and knife",
+    "emoji": "🍴",
+    "synonyms": []
+  },
+  {
+    "phrase": "spoon",
+    "emoji": "🥄",
+    "synonyms": []
+  },
+  {
+    "phrase": "kitchen knife",
+    "emoji": "🔪",
+    "synonyms": []
+  },
+  {
+    "phrase": "jar",
+    "emoji": "🫙",
+    "synonyms": []
+  },
+  {
+    "phrase": "amphora",
+    "emoji": "🏺",
+    "synonyms": []
+  },
+  {
+    "phrase": "globe showing Europe-Africa",
+    "emoji": "🌍",
+    "synonyms": []
+  },
+  {
+    "phrase": "globe showing Americas",
+    "emoji": "🌎",
+    "synonyms": []
+  },
+  {
+    "phrase": "globe showing Asia-Australia",
+    "emoji": "🌏",
+    "synonyms": []
+  },
+  {
+    "phrase": "globe with meridians",
+    "emoji": "🌐",
+    "synonyms": []
+  },
+  {
+    "phrase": "world map",
+    "emoji": "🗺",
+    "synonyms": []
+  },
+  {
+    "phrase": "map of Japan",
+    "emoji": "🗾",
+    "synonyms": []
+  },
+  {
+    "phrase": "compass",
+    "emoji": "🧭",
+    "synonyms": []
+  },
+  {
+    "phrase": "snow-capped mountain",
+    "emoji": "🏔",
+    "synonyms": []
+  },
+  {
+    "phrase": "mountain",
+    "emoji": "⛰",
+    "synonyms": []
+  },
+  {
+    "phrase": "landslide",
+    "emoji": "🛘",
+    "synonyms": []
+  },
+  {
+    "phrase": "volcano",
+    "emoji": "🌋",
+    "synonyms": []
+  },
+  {
+    "phrase": "mount fuji",
+    "emoji": "🗻",
+    "synonyms": []
+  },
+  {
+    "phrase": "camping",
+    "emoji": "🏕",
+    "synonyms": []
+  },
+  {
+    "phrase": "beach with umbrella",
+    "emoji": "🏖",
+    "synonyms": []
+  },
+  {
+    "phrase": "desert",
+    "emoji": "🏜",
+    "synonyms": []
+  },
+  {
+    "phrase": "desert island",
+    "emoji": "🏝",
+    "synonyms": []
+  },
+  {
+    "phrase": "national park",
+    "emoji": "🏞",
+    "synonyms": []
+  },
+  {
+    "phrase": "stadium",
+    "emoji": "🏟",
+    "synonyms": []
+  },
+  {
+    "phrase": "classical building",
+    "emoji": "🏛",
+    "synonyms": []
+  },
+  {
+    "phrase": "building construction",
+    "emoji": "🏗",
+    "synonyms": []
+  },
+  {
+    "phrase": "brick",
+    "emoji": "🧱",
+    "synonyms": []
+  },
+  {
+    "phrase": "rock",
+    "emoji": "🪨",
+    "synonyms": []
+  },
+  {
+    "phrase": "wood",
+    "emoji": "🪵",
+    "synonyms": []
+  },
+  {
+    "phrase": "hut",
+    "emoji": "🛖",
+    "synonyms": []
+  },
+  {
+    "phrase": "houses",
+    "emoji": "🏘",
+    "synonyms": []
+  },
+  {
+    "phrase": "derelict house",
+    "emoji": "🏚",
+    "synonyms": []
+  },
+  {
+    "phrase": "house",
+    "emoji": "🏠",
+    "synonyms": []
+  },
+  {
+    "phrase": "house with garden",
+    "emoji": "🏡",
+    "synonyms": []
+  },
+  {
+    "phrase": "office building",
+    "emoji": "🏢",
+    "synonyms": []
+  },
+  {
+    "phrase": "Japanese post office",
+    "emoji": "🏣",
+    "synonyms": []
+  },
+  {
+    "phrase": "post office",
+    "emoji": "🏤",
+    "synonyms": []
+  },
+  {
+    "phrase": "hospital",
+    "emoji": "🏥",
+    "synonyms": []
+  },
+  {
+    "phrase": "bank",
+    "emoji": "🏦",
+    "synonyms": []
+  },
+  {
+    "phrase": "hotel",
+    "emoji": "🏨",
+    "synonyms": []
+  },
+  {
+    "phrase": "love hotel",
+    "emoji": "🏩",
+    "synonyms": []
+  },
+  {
+    "phrase": "convenience store",
+    "emoji": "🏪",
+    "synonyms": []
+  },
+  {
+    "phrase": "school",
+    "emoji": "🏫",
+    "synonyms": []
+  },
+  {
+    "phrase": "department store",
+    "emoji": "🏬",
+    "synonyms": []
+  },
+  {
+    "phrase": "factory",
+    "emoji": "🏭",
+    "synonyms": []
+  },
+  {
+    "phrase": "Japanese castle",
+    "emoji": "🏯",
+    "synonyms": []
+  },
+  {
+    "phrase": "castle",
+    "emoji": "🏰",
+    "synonyms": []
+  },
+  {
+    "phrase": "wedding",
+    "emoji": "💒",
+    "synonyms": []
+  },
+  {
+    "phrase": "Tokyo tower",
+    "emoji": "🗼",
+    "synonyms": []
+  },
+  {
+    "phrase": "Statue of Liberty",
+    "emoji": "🗽",
+    "synonyms": []
+  },
+  {
+    "phrase": "church",
+    "emoji": "⛪",
+    "synonyms": []
+  },
+  {
+    "phrase": "mosque",
+    "emoji": "🕌",
+    "synonyms": []
+  },
+  {
+    "phrase": "hindu temple",
+    "emoji": "🛕",
+    "synonyms": []
+  },
+  {
+    "phrase": "synagogue",
+    "emoji": "🕍",
+    "synonyms": []
+  },
+  {
+    "phrase": "shinto shrine",
+    "emoji": "⛩",
+    "synonyms": []
+  },
+  {
+    "phrase": "kaaba",
+    "emoji": "🕋",
+    "synonyms": []
+  },
+  {
+    "phrase": "fountain",
+    "emoji": "⛲",
+    "synonyms": []
+  },
+  {
+    "phrase": "tent",
+    "emoji": "⛺",
+    "synonyms": []
+  },
+  {
+    "phrase": "foggy",
+    "emoji": "🌁",
+    "synonyms": []
+  },
+  {
+    "phrase": "night with stars",
+    "emoji": "🌃",
+    "synonyms": []
+  },
+  {
+    "phrase": "cityscape",
+    "emoji": "🏙",
+    "synonyms": []
+  },
+  {
+    "phrase": "sunrise over mountains",
+    "emoji": "🌄",
+    "synonyms": []
+  },
+  {
+    "phrase": "sunrise",
+    "emoji": "🌅",
+    "synonyms": []
+  },
+  {
+    "phrase": "cityscape at dusk",
+    "emoji": "🌆",
+    "synonyms": []
+  },
+  {
+    "phrase": "sunset",
+    "emoji": "🌇",
+    "synonyms": []
+  },
+  {
+    "phrase": "bridge at night",
+    "emoji": "🌉",
+    "synonyms": []
+  },
+  {
+    "phrase": "hot springs",
+    "emoji": "♨",
+    "synonyms": []
+  },
+  {
+    "phrase": "carousel horse",
+    "emoji": "🎠",
+    "synonyms": []
+  },
+  {
+    "phrase": "playground slide",
+    "emoji": "🛝",
+    "synonyms": []
+  },
+  {
+    "phrase": "ferris wheel",
+    "emoji": "🎡",
+    "synonyms": []
+  },
+  {
+    "phrase": "roller coaster",
+    "emoji": "🎢",
+    "synonyms": []
+  },
+  {
+    "phrase": "barber pole",
+    "emoji": "💈",
+    "synonyms": []
+  },
+  {
+    "phrase": "circus tent",
+    "emoji": "🎪",
+    "synonyms": []
+  },
+  {
+    "phrase": "locomotive",
+    "emoji": "🚂",
+    "synonyms": []
+  },
+  {
+    "phrase": "railway car",
+    "emoji": "🚃",
+    "synonyms": []
+  },
+  {
+    "phrase": "high-speed train",
+    "emoji": "🚄",
+    "synonyms": []
+  },
+  {
+    "phrase": "bullet train",
+    "emoji": "🚅",
+    "synonyms": []
+  },
+  {
+    "phrase": "train",
+    "emoji": "🚆",
+    "synonyms": []
+  },
+  {
+    "phrase": "metro",
+    "emoji": "🚇",
+    "synonyms": []
+  },
+  {
+    "phrase": "light rail",
+    "emoji": "🚈",
+    "synonyms": []
+  },
+  {
+    "phrase": "station",
+    "emoji": "🚉",
+    "synonyms": []
+  },
+  {
+    "phrase": "tram",
+    "emoji": "🚊",
+    "synonyms": []
+  },
+  {
+    "phrase": "monorail",
+    "emoji": "🚝",
+    "synonyms": []
+  },
+  {
+    "phrase": "mountain railway",
+    "emoji": "🚞",
+    "synonyms": []
+  },
+  {
+    "phrase": "tram car",
+    "emoji": "🚋",
+    "synonyms": []
+  },
+  {
+    "phrase": "bus",
+    "emoji": "🚌",
+    "synonyms": []
+  },
+  {
+    "phrase": "oncoming bus",
+    "emoji": "🚍",
+    "synonyms": []
+  },
+  {
+    "phrase": "trolleybus",
+    "emoji": "🚎",
+    "synonyms": []
+  },
+  {
+    "phrase": "minibus",
+    "emoji": "🚐",
+    "synonyms": []
+  },
+  {
+    "phrase": "ambulance",
+    "emoji": "🚑",
+    "synonyms": []
+  },
+  {
+    "phrase": "fire engine",
+    "emoji": "🚒",
+    "synonyms": []
+  },
+  {
+    "phrase": "police car",
+    "emoji": "🚓",
+    "synonyms": []
+  },
+  {
+    "phrase": "oncoming police car",
+    "emoji": "🚔",
+    "synonyms": []
+  },
+  {
+    "phrase": "taxi",
+    "emoji": "🚕",
+    "synonyms": []
+  },
+  {
+    "phrase": "oncoming taxi",
+    "emoji": "🚖",
+    "synonyms": []
+  },
+  {
+    "phrase": "automobile",
+    "emoji": "🚗",
+    "synonyms": []
+  },
+  {
+    "phrase": "oncoming automobile",
+    "emoji": "🚘",
+    "synonyms": []
+  },
+  {
+    "phrase": "sport utility vehicle",
+    "emoji": "🚙",
+    "synonyms": []
+  },
+  {
+    "phrase": "pickup truck",
+    "emoji": "🛻",
+    "synonyms": []
+  },
+  {
+    "phrase": "delivery truck",
+    "emoji": "🚚",
+    "synonyms": []
+  },
+  {
+    "phrase": "articulated lorry",
+    "emoji": "🚛",
+    "synonyms": []
+  },
+  {
+    "phrase": "tractor",
+    "emoji": "🚜",
+    "synonyms": []
+  },
+  {
+    "phrase": "racing car",
+    "emoji": "🏎",
+    "synonyms": []
+  },
+  {
+    "phrase": "motorcycle",
+    "emoji": "🏍",
+    "synonyms": []
+  },
+  {
+    "phrase": "motor scooter",
+    "emoji": "🛵",
+    "synonyms": []
+  },
+  {
+    "phrase": "manual wheelchair",
+    "emoji": "🦽",
+    "synonyms": []
+  },
+  {
+    "phrase": "motorized wheelchair",
+    "emoji": "🦼",
+    "synonyms": []
+  },
+  {
+    "phrase": "auto rickshaw",
+    "emoji": "🛺",
+    "synonyms": []
+  },
+  {
+    "phrase": "bicycle",
+    "emoji": "🚲",
+    "synonyms": []
+  },
+  {
+    "phrase": "kick scooter",
+    "emoji": "🛴",
+    "synonyms": []
+  },
+  {
+    "phrase": "skateboard",
+    "emoji": "🛹",
+    "synonyms": []
+  },
+  {
+    "phrase": "roller skate",
+    "emoji": "🛼",
+    "synonyms": []
+  },
+  {
+    "phrase": "bus stop",
+    "emoji": "🚏",
+    "synonyms": []
+  },
+  {
+    "phrase": "motorway",
+    "emoji": "🛣",
+    "synonyms": []
+  },
+  {
+    "phrase": "railway track",
+    "emoji": "🛤",
+    "synonyms": []
+  },
+  {
+    "phrase": "oil drum",
+    "emoji": "🛢",
+    "synonyms": []
+  },
+  {
+    "phrase": "fuel pump",
+    "emoji": "⛽",
+    "synonyms": []
+  },
+  {
+    "phrase": "wheel",
+    "emoji": "🛞",
+    "synonyms": []
+  },
+  {
+    "phrase": "police car light",
+    "emoji": "🚨",
+    "synonyms": []
+  },
+  {
+    "phrase": "horizontal traffic light",
+    "emoji": "🚥",
+    "synonyms": []
+  },
+  {
+    "phrase": "vertical traffic light",
+    "emoji": "🚦",
+    "synonyms": []
+  },
+  {
+    "phrase": "construction",
+    "emoji": "🚧",
+    "synonyms": []
+  },
+  {
+    "phrase": "anchor",
+    "emoji": "⚓",
+    "synonyms": []
+  },
+  {
+    "phrase": "ring buoy",
+    "emoji": "🛟",
+    "synonyms": []
+  },
+  {
+    "phrase": "sailboat",
+    "emoji": "⛵",
+    "synonyms": []
+  },
+  {
+    "phrase": "canoe",
+    "emoji": "🛶",
+    "synonyms": []
+  },
+  {
+    "phrase": "speedboat",
+    "emoji": "🚤",
+    "synonyms": []
+  },
+  {
+    "phrase": "passenger ship",
+    "emoji": "🛳",
+    "synonyms": []
+  },
+  {
+    "phrase": "ferry",
+    "emoji": "⛴",
+    "synonyms": []
+  },
+  {
+    "phrase": "motor boat",
+    "emoji": "🛥",
+    "synonyms": []
+  },
+  {
+    "phrase": "ship",
+    "emoji": "🚢",
+    "synonyms": []
+  },
+  {
+    "phrase": "airplane",
+    "emoji": "✈",
+    "synonyms": []
+  },
+  {
+    "phrase": "small airplane",
+    "emoji": "🛩",
+    "synonyms": []
+  },
+  {
+    "phrase": "airplane departure",
+    "emoji": "🛫",
+    "synonyms": []
+  },
+  {
+    "phrase": "airplane arrival",
+    "emoji": "🛬",
+    "synonyms": []
+  },
+  {
+    "phrase": "parachute",
+    "emoji": "🪂",
+    "synonyms": []
+  },
+  {
+    "phrase": "seat",
+    "emoji": "💺",
+    "synonyms": []
+  },
+  {
+    "phrase": "helicopter",
+    "emoji": "🚁",
+    "synonyms": []
+  },
+  {
+    "phrase": "suspension railway",
+    "emoji": "🚟",
+    "synonyms": []
+  },
+  {
+    "phrase": "mountain cableway",
+    "emoji": "🚠",
+    "synonyms": []
+  },
+  {
+    "phrase": "aerial tramway",
+    "emoji": "🚡",
+    "synonyms": []
+  },
+  {
+    "phrase": "satellite",
+    "emoji": "🛰",
+    "synonyms": []
+  },
+  {
+    "phrase": "flying saucer",
+    "emoji": "🛸",
+    "synonyms": []
+  },
+  {
+    "phrase": "bellhop bell",
+    "emoji": "🛎",
+    "synonyms": []
+  },
+  {
+    "phrase": "luggage",
+    "emoji": "🧳",
+    "synonyms": []
+  },
+  {
+    "phrase": "hourglass done",
+    "emoji": "⌛",
+    "synonyms": []
+  },
+  {
+    "phrase": "hourglass not done",
+    "emoji": "⏳",
+    "synonyms": []
+  },
+  {
+    "phrase": "watch",
+    "emoji": "⌚",
+    "synonyms": []
+  },
+  {
+    "phrase": "stopwatch",
+    "emoji": "⏱",
+    "synonyms": []
+  },
+  {
+    "phrase": "timer clock",
+    "emoji": "⏲",
+    "synonyms": []
+  },
+  {
+    "phrase": "mantelpiece clock",
+    "emoji": "🕰",
+    "synonyms": []
+  },
+  {
+    "phrase": "twelve o’clock",
+    "emoji": "🕛",
+    "synonyms": []
+  },
+  {
+    "phrase": "twelve-thirty",
+    "emoji": "🕧",
+    "synonyms": []
+  },
+  {
+    "phrase": "one o’clock",
+    "emoji": "🕐",
+    "synonyms": []
+  },
+  {
+    "phrase": "one-thirty",
+    "emoji": "🕜",
+    "synonyms": []
+  },
+  {
+    "phrase": "two o’clock",
+    "emoji": "🕑",
+    "synonyms": []
+  },
+  {
+    "phrase": "two-thirty",
+    "emoji": "🕝",
+    "synonyms": []
+  },
+  {
+    "phrase": "three o’clock",
+    "emoji": "🕒",
+    "synonyms": []
+  },
+  {
+    "phrase": "three-thirty",
+    "emoji": "🕞",
+    "synonyms": []
+  },
+  {
+    "phrase": "four o’clock",
+    "emoji": "🕓",
+    "synonyms": []
+  },
+  {
+    "phrase": "four-thirty",
+    "emoji": "🕟",
+    "synonyms": []
+  },
+  {
+    "phrase": "five o’clock",
+    "emoji": "🕔",
+    "synonyms": []
+  },
+  {
+    "phrase": "five-thirty",
+    "emoji": "🕠",
+    "synonyms": []
+  },
+  {
+    "phrase": "six o’clock",
+    "emoji": "🕕",
+    "synonyms": []
+  },
+  {
+    "phrase": "six-thirty",
+    "emoji": "🕡",
+    "synonyms": []
+  },
+  {
+    "phrase": "seven o’clock",
+    "emoji": "🕖",
+    "synonyms": []
+  },
+  {
+    "phrase": "seven-thirty",
+    "emoji": "🕢",
+    "synonyms": []
+  },
+  {
+    "phrase": "eight o’clock",
+    "emoji": "🕗",
+    "synonyms": []
+  },
+  {
+    "phrase": "eight-thirty",
+    "emoji": "🕣",
+    "synonyms": []
+  },
+  {
+    "phrase": "nine o’clock",
+    "emoji": "🕘",
+    "synonyms": []
+  },
+  {
+    "phrase": "nine-thirty",
+    "emoji": "🕤",
+    "synonyms": []
+  },
+  {
+    "phrase": "ten o’clock",
+    "emoji": "🕙",
+    "synonyms": []
+  },
+  {
+    "phrase": "ten-thirty",
+    "emoji": "🕥",
+    "synonyms": []
+  },
+  {
+    "phrase": "eleven o’clock",
+    "emoji": "🕚",
+    "synonyms": []
+  },
+  {
+    "phrase": "eleven-thirty",
+    "emoji": "🕦",
+    "synonyms": []
+  },
+  {
+    "phrase": "new moon",
+    "emoji": "🌑",
+    "synonyms": []
+  },
+  {
+    "phrase": "waxing crescent moon",
+    "emoji": "🌒",
+    "synonyms": []
+  },
+  {
+    "phrase": "first quarter moon",
+    "emoji": "🌓",
+    "synonyms": []
+  },
+  {
+    "phrase": "waxing gibbous moon",
+    "emoji": "🌔",
+    "synonyms": []
+  },
+  {
+    "phrase": "full moon",
+    "emoji": "🌕",
+    "synonyms": []
+  },
+  {
+    "phrase": "waning gibbous moon",
+    "emoji": "🌖",
+    "synonyms": []
+  },
+  {
+    "phrase": "last quarter moon",
+    "emoji": "🌗",
+    "synonyms": []
+  },
+  {
+    "phrase": "waning crescent moon",
+    "emoji": "🌘",
+    "synonyms": []
+  },
+  {
+    "phrase": "new moon face",
+    "emoji": "🌚",
+    "synonyms": []
+  },
+  {
+    "phrase": "first quarter moon face",
+    "emoji": "🌛",
+    "synonyms": []
+  },
+  {
+    "phrase": "last quarter moon face",
+    "emoji": "🌜",
+    "synonyms": []
+  },
+  {
+    "phrase": "thermometer",
+    "emoji": "🌡",
+    "synonyms": []
+  },
+  {
+    "phrase": "full moon face",
+    "emoji": "🌝",
+    "synonyms": []
+  },
+  {
+    "phrase": "sun with face",
+    "emoji": "🌞",
+    "synonyms": []
+  },
+  {
+    "phrase": "ringed planet",
+    "emoji": "🪐",
+    "synonyms": []
+  },
+  {
+    "phrase": "glowing star",
+    "emoji": "🌟",
+    "synonyms": []
+  },
+  {
+    "phrase": "shooting star",
+    "emoji": "🌠",
+    "synonyms": []
+  },
+  {
+    "phrase": "milky way",
+    "emoji": "🌌",
+    "synonyms": []
+  },
+  {
+    "phrase": "cloud",
+    "emoji": "☁",
+    "synonyms": []
+  },
+  {
+    "phrase": "sun behind cloud",
+    "emoji": "⛅",
+    "synonyms": []
+  },
+  {
+    "phrase": "cloud with lightning and rain",
+    "emoji": "⛈",
+    "synonyms": []
+  },
+  {
+    "phrase": "sun behind small cloud",
+    "emoji": "🌤",
+    "synonyms": []
+  },
+  {
+    "phrase": "sun behind large cloud",
+    "emoji": "🌥",
+    "synonyms": []
+  },
+  {
+    "phrase": "sun behind rain cloud",
+    "emoji": "🌦",
+    "synonyms": []
+  },
+  {
+    "phrase": "cloud with rain",
+    "emoji": "🌧",
+    "synonyms": []
+  },
+  {
+    "phrase": "cloud with snow",
+    "emoji": "🌨",
+    "synonyms": []
+  },
+  {
+    "phrase": "cloud with lightning",
+    "emoji": "🌩",
+    "synonyms": []
+  },
+  {
+    "phrase": "tornado",
+    "emoji": "🌪",
+    "synonyms": []
+  },
+  {
+    "phrase": "fog",
+    "emoji": "🌫",
+    "synonyms": []
+  },
+  {
+    "phrase": "wind face",
+    "emoji": "🌬",
+    "synonyms": []
+  },
+  {
+    "phrase": "cyclone",
+    "emoji": "🌀",
+    "synonyms": []
+  },
+  {
+    "phrase": "closed umbrella",
+    "emoji": "🌂",
+    "synonyms": []
+  },
+  {
+    "phrase": "umbrella with rain drops",
+    "emoji": "☔",
+    "synonyms": []
+  },
+  {
+    "phrase": "umbrella on ground",
+    "emoji": "⛱",
+    "synonyms": []
+  },
+  {
+    "phrase": "high voltage",
+    "emoji": "⚡",
+    "synonyms": []
+  },
+  {
+    "phrase": "snowman",
+    "emoji": "☃",
+    "synonyms": []
+  },
+  {
+    "phrase": "snowman without snow",
+    "emoji": "⛄",
+    "synonyms": []
+  },
+  {
+    "phrase": "comet",
+    "emoji": "☄",
+    "synonyms": []
+  },
+  {
+    "phrase": "droplet",
+    "emoji": "💧",
+    "synonyms": []
+  },
+  {
+    "phrase": "water wave",
+    "emoji": "🌊",
+    "synonyms": []
+  },
+  {
+    "phrase": "jack-o-lantern",
+    "emoji": "🎃",
+    "synonyms": []
+  },
+  {
+    "phrase": "Christmas tree",
+    "emoji": "🎄",
+    "synonyms": []
+  },
+  {
+    "phrase": "fireworks",
+    "emoji": "🎆",
+    "synonyms": []
+  },
+  {
+    "phrase": "sparkler",
+    "emoji": "🎇",
+    "synonyms": []
+  },
+  {
+    "phrase": "firecracker",
+    "emoji": "🧨",
+    "synonyms": []
+  },
+  {
+    "phrase": "confetti ball",
+    "emoji": "🎊",
+    "synonyms": []
+  },
+  {
+    "phrase": "tanabata tree",
+    "emoji": "🎋",
+    "synonyms": []
+  },
+  {
+    "phrase": "pine decoration",
+    "emoji": "🎍",
+    "synonyms": []
+  },
+  {
+    "phrase": "Japanese dolls",
+    "emoji": "🎎",
+    "synonyms": []
+  },
+  {
+    "phrase": "carp streamer",
+    "emoji": "🎏",
+    "synonyms": []
+  },
+  {
+    "phrase": "wind chime",
+    "emoji": "🎐",
+    "synonyms": []
+  },
+  {
+    "phrase": "moon viewing ceremony",
+    "emoji": "🎑",
+    "synonyms": []
+  },
+  {
+    "phrase": "red envelope",
+    "emoji": "🧧",
+    "synonyms": []
+  },
+  {
+    "phrase": "ribbon",
+    "emoji": "🎀",
+    "synonyms": []
+  },
+  {
+    "phrase": "wrapped gift",
+    "emoji": "🎁",
+    "synonyms": []
+  },
+  {
+    "phrase": "reminder ribbon",
+    "emoji": "🎗",
+    "synonyms": []
+  },
+  {
+    "phrase": "admission tickets",
+    "emoji": "🎟",
+    "synonyms": []
+  },
+  {
+    "phrase": "ticket",
+    "emoji": "🎫",
+    "synonyms": []
+  },
+  {
+    "phrase": "military medal",
+    "emoji": "🎖",
+    "synonyms": []
+  },
+  {
+    "phrase": "sports medal",
+    "emoji": "🏅",
+    "synonyms": []
+  },
+  {
+    "phrase": "1st place medal",
+    "emoji": "🥇",
+    "synonyms": []
+  },
+  {
+    "phrase": "2nd place medal",
+    "emoji": "🥈",
+    "synonyms": []
+  },
+  {
+    "phrase": "3rd place medal",
+    "emoji": "🥉",
+    "synonyms": []
+  },
+  {
+    "phrase": "soccer ball",
+    "emoji": "⚽",
+    "synonyms": []
+  },
+  {
+    "phrase": "baseball",
+    "emoji": "⚾",
+    "synonyms": []
+  },
+  {
+    "phrase": "softball",
+    "emoji": "🥎",
+    "synonyms": []
+  },
+  {
+    "phrase": "basketball",
+    "emoji": "🏀",
+    "synonyms": []
+  },
+  {
+    "phrase": "volleyball",
+    "emoji": "🏐",
+    "synonyms": []
+  },
+  {
+    "phrase": "american football",
+    "emoji": "🏈",
+    "synonyms": []
+  },
+  {
+    "phrase": "rugby football",
+    "emoji": "🏉",
+    "synonyms": []
+  },
+  {
+    "phrase": "tennis",
+    "emoji": "🎾",
+    "synonyms": []
+  },
+  {
+    "phrase": "flying disc",
+    "emoji": "🥏",
+    "synonyms": []
+  },
+  {
+    "phrase": "bowling",
+    "emoji": "🎳",
+    "synonyms": []
+  },
+  {
+    "phrase": "cricket game",
+    "emoji": "🏏",
+    "synonyms": []
+  },
+  {
+    "phrase": "field hockey",
+    "emoji": "🏑",
+    "synonyms": []
+  },
+  {
+    "phrase": "ice hockey",
+    "emoji": "🏒",
+    "synonyms": []
+  },
+  {
+    "phrase": "lacrosse",
+    "emoji": "🥍",
+    "synonyms": []
+  },
+  {
+    "phrase": "ping pong",
+    "emoji": "🏓",
+    "synonyms": []
+  },
+  {
+    "phrase": "badminton",
+    "emoji": "🏸",
+    "synonyms": []
+  },
+  {
+    "phrase": "boxing glove",
+    "emoji": "🥊",
+    "synonyms": []
+  },
+  {
+    "phrase": "martial arts uniform",
+    "emoji": "🥋",
+    "synonyms": []
+  },
+  {
+    "phrase": "goal net",
+    "emoji": "🥅",
+    "synonyms": []
+  },
+  {
+    "phrase": "flag in hole",
+    "emoji": "⛳",
+    "synonyms": []
+  },
+  {
+    "phrase": "ice skate",
+    "emoji": "⛸",
+    "synonyms": []
+  },
+  {
+    "phrase": "fishing pole",
+    "emoji": "🎣",
+    "synonyms": []
+  },
+  {
+    "phrase": "diving mask",
+    "emoji": "🤿",
+    "synonyms": []
+  },
+  {
+    "phrase": "running shirt",
+    "emoji": "🎽",
+    "synonyms": []
+  },
+  {
+    "phrase": "skis",
+    "emoji": "🎿",
+    "synonyms": []
+  },
+  {
+    "phrase": "sled",
+    "emoji": "🛷",
+    "synonyms": []
+  },
+  {
+    "phrase": "curling stone",
+    "emoji": "🥌",
+    "synonyms": []
+  },
+  {
+    "phrase": "bullseye",
+    "emoji": "🎯",
+    "synonyms": []
+  },
+  {
+    "phrase": "yo-yo",
+    "emoji": "🪀",
+    "synonyms": []
+  },
+  {
+    "phrase": "kite",
+    "emoji": "🪁",
+    "synonyms": []
+  },
+  {
+    "phrase": "water pistol",
+    "emoji": "🔫",
+    "synonyms": []
+  },
+  {
+    "phrase": "pool 8 ball",
+    "emoji": "🎱",
+    "synonyms": []
+  },
+  {
+    "phrase": "crystal ball",
+    "emoji": "🔮",
+    "synonyms": []
+  },
+  {
+    "phrase": "magic wand",
+    "emoji": "🪄",
+    "synonyms": []
+  },
+  {
+    "phrase": "joystick",
+    "emoji": "🕹",
+    "synonyms": []
+  },
+  {
+    "phrase": "slot machine",
+    "emoji": "🎰",
+    "synonyms": []
+  },
+  {
+    "phrase": "game die",
+    "emoji": "🎲",
+    "synonyms": []
+  },
+  {
+    "phrase": "puzzle piece",
+    "emoji": "🧩",
+    "synonyms": []
+  },
+  {
+    "phrase": "teddy bear",
+    "emoji": "🧸",
+    "synonyms": []
+  },
+  {
+    "phrase": "piñata",
+    "emoji": "🪅",
+    "synonyms": []
+  },
+  {
+    "phrase": "mirror ball",
+    "emoji": "🪩",
+    "synonyms": []
+  },
+  {
+    "phrase": "nesting dolls",
+    "emoji": "🪆",
+    "synonyms": []
+  },
+  {
+    "phrase": "spade suit",
+    "emoji": "♠",
+    "synonyms": []
+  },
+  {
+    "phrase": "heart suit",
+    "emoji": "♥",
+    "synonyms": []
+  },
+  {
+    "phrase": "diamond suit",
+    "emoji": "♦",
+    "synonyms": []
+  },
+  {
+    "phrase": "club suit",
+    "emoji": "♣",
+    "synonyms": []
+  },
+  {
+    "phrase": "chess pawn",
+    "emoji": "♟",
+    "synonyms": []
+  },
+  {
+    "phrase": "joker",
+    "emoji": "🃏",
+    "synonyms": []
+  },
+  {
+    "phrase": "mahjong red dragon",
+    "emoji": "🀄",
+    "synonyms": []
+  },
+  {
+    "phrase": "flower playing cards",
+    "emoji": "🎴",
+    "synonyms": []
+  },
+  {
+    "phrase": "performing arts",
+    "emoji": "🎭",
+    "synonyms": []
+  },
+  {
+    "phrase": "framed picture",
+    "emoji": "🖼",
+    "synonyms": []
+  },
+  {
+    "phrase": "artist palette",
+    "emoji": "🎨",
+    "synonyms": []
+  },
+  {
+    "phrase": "thread",
+    "emoji": "🧵",
+    "synonyms": []
+  },
+  {
+    "phrase": "sewing needle",
+    "emoji": "🪡",
+    "synonyms": []
+  },
+  {
+    "phrase": "yarn",
+    "emoji": "🧶",
+    "synonyms": []
+  },
+  {
+    "phrase": "knot",
+    "emoji": "🪢",
+    "synonyms": []
+  },
+  {
+    "phrase": "glasses",
+    "emoji": "👓",
+    "synonyms": []
+  },
+  {
+    "phrase": "sunglasses",
+    "emoji": "🕶",
+    "synonyms": []
+  },
+  {
+    "phrase": "goggles",
+    "emoji": "🥽",
+    "synonyms": []
+  },
+  {
+    "phrase": "lab coat",
+    "emoji": "🥼",
+    "synonyms": []
+  },
+  {
+    "phrase": "safety vest",
+    "emoji": "🦺",
+    "synonyms": []
+  },
+  {
+    "phrase": "necktie",
+    "emoji": "👔",
+    "synonyms": []
+  },
+  {
+    "phrase": "t-shirt",
+    "emoji": "👕",
+    "synonyms": []
+  },
+  {
+    "phrase": "jeans",
+    "emoji": "👖",
+    "synonyms": []
+  },
+  {
+    "phrase": "scarf",
+    "emoji": "🧣",
+    "synonyms": []
+  },
+  {
+    "phrase": "gloves",
+    "emoji": "🧤",
+    "synonyms": []
+  },
+  {
+    "phrase": "coat",
+    "emoji": "🧥",
+    "synonyms": []
+  },
+  {
+    "phrase": "socks",
+    "emoji": "🧦",
+    "synonyms": []
+  },
+  {
+    "phrase": "dress",
+    "emoji": "👗",
+    "synonyms": []
+  },
+  {
+    "phrase": "kimono",
+    "emoji": "👘",
+    "synonyms": []
+  },
+  {
+    "phrase": "sari",
+    "emoji": "🥻",
+    "synonyms": []
+  },
+  {
+    "phrase": "one-piece swimsuit",
+    "emoji": "🩱",
+    "synonyms": []
+  },
+  {
+    "phrase": "briefs",
+    "emoji": "🩲",
+    "synonyms": []
+  },
+  {
+    "phrase": "shorts",
+    "emoji": "🩳",
+    "synonyms": []
+  },
+  {
+    "phrase": "bikini",
+    "emoji": "👙",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman’s clothes",
+    "emoji": "👚",
+    "synonyms": []
+  },
+  {
+    "phrase": "folding hand fan",
+    "emoji": "🪭",
+    "synonyms": []
+  },
+  {
+    "phrase": "purse",
+    "emoji": "👛",
+    "synonyms": []
+  },
+  {
+    "phrase": "handbag",
+    "emoji": "👜",
+    "synonyms": []
+  },
+  {
+    "phrase": "clutch bag",
+    "emoji": "👝",
+    "synonyms": []
+  },
+  {
+    "phrase": "shopping bags",
+    "emoji": "🛍",
+    "synonyms": []
+  },
+  {
+    "phrase": "backpack",
+    "emoji": "🎒",
+    "synonyms": []
+  },
+  {
+    "phrase": "thong sandal",
+    "emoji": "🩴",
+    "synonyms": []
+  },
+  {
+    "phrase": "man’s shoe",
+    "emoji": "👞",
+    "synonyms": []
+  },
+  {
+    "phrase": "running shoe",
+    "emoji": "👟",
+    "synonyms": []
+  },
+  {
+    "phrase": "hiking boot",
+    "emoji": "🥾",
+    "synonyms": []
+  },
+  {
+    "phrase": "flat shoe",
+    "emoji": "🥿",
+    "synonyms": []
+  },
+  {
+    "phrase": "high-heeled shoe",
+    "emoji": "👠",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman’s sandal",
+    "emoji": "👡",
+    "synonyms": []
+  },
+  {
+    "phrase": "ballet shoes",
+    "emoji": "🩰",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman’s boot",
+    "emoji": "👢",
+    "synonyms": []
+  },
+  {
+    "phrase": "hair pick",
+    "emoji": "🪮",
+    "synonyms": []
+  },
+  {
+    "phrase": "crown",
+    "emoji": "👑",
+    "synonyms": []
+  },
+  {
+    "phrase": "woman’s hat",
+    "emoji": "👒",
+    "synonyms": []
+  },
+  {
+    "phrase": "top hat",
+    "emoji": "🎩",
+    "synonyms": []
+  },
+  {
+    "phrase": "graduation cap",
+    "emoji": "🎓",
+    "synonyms": []
+  },
+  {
+    "phrase": "billed cap",
+    "emoji": "🧢",
+    "synonyms": []
+  },
+  {
+    "phrase": "military helmet",
+    "emoji": "🪖",
+    "synonyms": []
+  },
+  {
+    "phrase": "rescue worker’s helmet",
+    "emoji": "⛑",
+    "synonyms": []
+  },
+  {
+    "phrase": "prayer beads",
+    "emoji": "📿",
+    "synonyms": []
+  },
+  {
+    "phrase": "lipstick",
+    "emoji": "💄",
+    "synonyms": []
+  },
+  {
+    "phrase": "ring",
+    "emoji": "💍",
+    "synonyms": []
+  },
+  {
+    "phrase": "gem stone",
+    "emoji": "💎",
+    "synonyms": []
+  },
+  {
+    "phrase": "muted speaker",
+    "emoji": "🔇",
+    "synonyms": []
+  },
+  {
+    "phrase": "speaker low volume",
+    "emoji": "🔈",
+    "synonyms": []
+  },
+  {
+    "phrase": "speaker medium volume",
+    "emoji": "🔉",
+    "synonyms": []
+  },
+  {
+    "phrase": "speaker high volume",
+    "emoji": "🔊",
+    "synonyms": []
+  },
+  {
+    "phrase": "loudspeaker",
+    "emoji": "📢",
+    "synonyms": []
+  },
+  {
+    "phrase": "megaphone",
+    "emoji": "📣",
+    "synonyms": []
+  },
+  {
+    "phrase": "postal horn",
+    "emoji": "📯",
+    "synonyms": []
+  },
+  {
+    "phrase": "bell",
+    "emoji": "🔔",
+    "synonyms": []
+  },
+  {
+    "phrase": "bell with slash",
+    "emoji": "🔕",
+    "synonyms": []
+  },
+  {
+    "phrase": "musical score",
+    "emoji": "🎼",
+    "synonyms": []
+  },
+  {
+    "phrase": "musical note",
+    "emoji": "🎵",
+    "synonyms": []
+  },
+  {
+    "phrase": "musical notes",
+    "emoji": "🎶",
+    "synonyms": []
+  },
+  {
+    "phrase": "studio microphone",
+    "emoji": "🎙",
+    "synonyms": []
+  },
+  {
+    "phrase": "level slider",
+    "emoji": "🎚",
+    "synonyms": []
+  },
+  {
+    "phrase": "control knobs",
+    "emoji": "🎛",
+    "synonyms": []
+  },
+  {
+    "phrase": "microphone",
+    "emoji": "🎤",
+    "synonyms": []
+  },
+  {
+    "phrase": "headphone",
+    "emoji": "🎧",
+    "synonyms": []
+  },
+  {
+    "phrase": "radio",
+    "emoji": "📻",
+    "synonyms": []
+  },
+  {
+    "phrase": "saxophone",
+    "emoji": "🎷",
+    "synonyms": []
+  },
+  {
+    "phrase": "trumpet",
+    "emoji": "🎺",
+    "synonyms": []
+  },
+  {
+    "phrase": "trombone",
+    "emoji": "🪊",
+    "synonyms": []
+  },
+  {
+    "phrase": "accordion",
+    "emoji": "🪗",
+    "synonyms": []
+  },
+  {
+    "phrase": "guitar",
+    "emoji": "🎸",
+    "synonyms": []
+  },
+  {
+    "phrase": "musical keyboard",
+    "emoji": "🎹",
+    "synonyms": []
+  },
+  {
+    "phrase": "violin",
+    "emoji": "🎻",
+    "synonyms": []
+  },
+  {
+    "phrase": "banjo",
+    "emoji": "🪕",
+    "synonyms": []
+  },
+  {
+    "phrase": "drum",
+    "emoji": "🥁",
+    "synonyms": []
+  },
+  {
+    "phrase": "long drum",
+    "emoji": "🪘",
+    "synonyms": []
+  },
+  {
+    "phrase": "maracas",
+    "emoji": "🪇",
+    "synonyms": []
+  },
+  {
+    "phrase": "flute",
+    "emoji": "🪈",
+    "synonyms": []
+  },
+  {
+    "phrase": "harp",
+    "emoji": "🪉",
+    "synonyms": []
+  },
+  {
+    "phrase": "mobile phone",
+    "emoji": "📱",
+    "synonyms": []
+  },
+  {
+    "phrase": "mobile phone with arrow",
+    "emoji": "📲",
+    "synonyms": []
+  },
+  {
+    "phrase": "telephone",
+    "emoji": "☎",
+    "synonyms": []
+  },
+  {
+    "phrase": "telephone receiver",
+    "emoji": "📞",
+    "synonyms": []
+  },
+  {
+    "phrase": "pager",
+    "emoji": "📟",
+    "synonyms": []
+  },
+  {
+    "phrase": "fax machine",
+    "emoji": "📠",
+    "synonyms": []
+  },
+  {
+    "phrase": "battery",
+    "emoji": "🔋",
+    "synonyms": []
+  },
+  {
+    "phrase": "low battery",
+    "emoji": "🪫",
+    "synonyms": []
+  },
+  {
+    "phrase": "electric plug",
+    "emoji": "🔌",
+    "synonyms": []
+  },
+  {
+    "phrase": "laptop",
+    "emoji": "💻",
+    "synonyms": []
+  },
+  {
+    "phrase": "desktop computer",
+    "emoji": "🖥",
+    "synonyms": []
+  },
+  {
+    "phrase": "printer",
+    "emoji": "🖨",
+    "synonyms": []
+  },
+  {
+    "phrase": "keyboard",
+    "emoji": "⌨",
+    "synonyms": []
+  },
+  {
+    "phrase": "computer mouse",
+    "emoji": "🖱",
+    "synonyms": []
+  },
+  {
+    "phrase": "trackball",
+    "emoji": "🖲",
+    "synonyms": []
+  },
+  {
+    "phrase": "computer disk",
+    "emoji": "💽",
+    "synonyms": []
+  },
+  {
+    "phrase": "floppy disk",
+    "emoji": "💾",
+    "synonyms": []
+  },
+  {
+    "phrase": "optical disk",
+    "emoji": "💿",
+    "synonyms": []
+  },
+  {
+    "phrase": "dvd",
+    "emoji": "📀",
+    "synonyms": []
+  },
+  {
+    "phrase": "abacus",
+    "emoji": "🧮",
+    "synonyms": []
+  },
+  {
+    "phrase": "movie camera",
+    "emoji": "🎥",
+    "synonyms": []
+  },
+  {
+    "phrase": "film frames",
+    "emoji": "🎞",
+    "synonyms": []
+  },
+  {
+    "phrase": "film projector",
+    "emoji": "📽",
+    "synonyms": []
+  },
+  {
+    "phrase": "clapper board",
+    "emoji": "🎬",
+    "synonyms": []
+  },
+  {
+    "phrase": "television",
+    "emoji": "📺",
+    "synonyms": []
+  },
+  {
+    "phrase": "camera",
+    "emoji": "📷",
+    "synonyms": []
+  },
+  {
+    "phrase": "camera with flash",
+    "emoji": "📸",
+    "synonyms": []
+  },
+  {
+    "phrase": "video camera",
+    "emoji": "📹",
+    "synonyms": []
+  },
+  {
+    "phrase": "videocassette",
+    "emoji": "📼",
+    "synonyms": []
+  },
+  {
+    "phrase": "magnifying glass tilted left",
+    "emoji": "🔍",
+    "synonyms": []
+  },
+  {
+    "phrase": "magnifying glass tilted right",
+    "emoji": "🔎",
+    "synonyms": []
+  },
+  {
+    "phrase": "candle",
+    "emoji": "🕯",
+    "synonyms": []
+  },
+  {
+    "phrase": "flashlight",
+    "emoji": "🔦",
+    "synonyms": []
+  },
+  {
+    "phrase": "red paper lantern",
+    "emoji": "🏮",
+    "synonyms": []
+  },
+  {
+    "phrase": "diya lamp",
+    "emoji": "🪔",
+    "synonyms": []
+  },
+  {
+    "phrase": "notebook with decorative cover",
+    "emoji": "📔",
+    "synonyms": []
+  },
+  {
+    "phrase": "closed book",
+    "emoji": "📕",
+    "synonyms": []
+  },
+  {
+    "phrase": "open book",
+    "emoji": "📖",
+    "synonyms": []
+  },
+  {
+    "phrase": "green book",
+    "emoji": "📗",
+    "synonyms": []
+  },
+  {
+    "phrase": "blue book",
+    "emoji": "📘",
+    "synonyms": []
+  },
+  {
+    "phrase": "orange book",
+    "emoji": "📙",
+    "synonyms": []
+  },
+  {
+    "phrase": "books",
+    "emoji": "📚",
+    "synonyms": []
+  },
+  {
+    "phrase": "notebook",
+    "emoji": "📓",
+    "synonyms": []
+  },
+  {
+    "phrase": "ledger",
+    "emoji": "📒",
+    "synonyms": []
+  },
+  {
+    "phrase": "page with curl",
+    "emoji": "📃",
+    "synonyms": []
+  },
+  {
+    "phrase": "scroll",
+    "emoji": "📜",
+    "synonyms": []
+  },
+  {
+    "phrase": "page facing up",
+    "emoji": "📄",
+    "synonyms": []
+  },
+  {
+    "phrase": "newspaper",
+    "emoji": "📰",
+    "synonyms": []
+  },
+  {
+    "phrase": "rolled-up newspaper",
+    "emoji": "🗞",
+    "synonyms": []
+  },
+  {
+    "phrase": "bookmark tabs",
+    "emoji": "📑",
+    "synonyms": []
+  },
+  {
+    "phrase": "bookmark",
+    "emoji": "🔖",
+    "synonyms": []
+  },
+  {
+    "phrase": "label",
+    "emoji": "🏷",
+    "synonyms": []
+  },
+  {
+    "phrase": "coin",
+    "emoji": "🪙",
+    "synonyms": []
+  },
+  {
+    "phrase": "treasure chest",
+    "emoji": "🪎",
+    "synonyms": []
+  },
+  {
+    "phrase": "yen banknote",
+    "emoji": "💴",
+    "synonyms": []
+  },
+  {
+    "phrase": "dollar banknote",
+    "emoji": "💵",
+    "synonyms": []
+  },
+  {
+    "phrase": "euro banknote",
+    "emoji": "💶",
+    "synonyms": []
+  },
+  {
+    "phrase": "pound banknote",
+    "emoji": "💷",
+    "synonyms": []
+  },
+  {
+    "phrase": "money with wings",
+    "emoji": "💸",
+    "synonyms": []
+  },
+  {
+    "phrase": "credit card",
+    "emoji": "💳",
+    "synonyms": []
+  },
+  {
+    "phrase": "receipt",
+    "emoji": "🧾",
+    "synonyms": []
+  },
+  {
+    "phrase": "chart increasing with yen",
+    "emoji": "💹",
+    "synonyms": []
+  },
+  {
+    "phrase": "envelope",
+    "emoji": "✉",
+    "synonyms": []
+  },
+  {
+    "phrase": "e-mail",
+    "emoji": "📧",
+    "synonyms": []
+  },
+  {
+    "phrase": "incoming envelope",
+    "emoji": "📨",
+    "synonyms": []
+  },
+  {
+    "phrase": "envelope with arrow",
+    "emoji": "📩",
+    "synonyms": []
+  },
+  {
+    "phrase": "outbox tray",
+    "emoji": "📤",
+    "synonyms": []
+  },
+  {
+    "phrase": "inbox tray",
+    "emoji": "📥",
+    "synonyms": []
+  },
+  {
+    "phrase": "package",
+    "emoji": "📦",
+    "synonyms": []
+  },
+  {
+    "phrase": "closed mailbox with raised flag",
+    "emoji": "📫",
+    "synonyms": []
+  },
+  {
+    "phrase": "closed mailbox with lowered flag",
+    "emoji": "📪",
+    "synonyms": []
+  },
+  {
+    "phrase": "open mailbox with raised flag",
+    "emoji": "📬",
+    "synonyms": []
+  },
+  {
+    "phrase": "open mailbox with lowered flag",
+    "emoji": "📭",
+    "synonyms": []
+  },
+  {
+    "phrase": "postbox",
+    "emoji": "📮",
+    "synonyms": []
+  },
+  {
+    "phrase": "ballot box with ballot",
+    "emoji": "🗳",
+    "synonyms": []
+  },
+  {
+    "phrase": "pencil",
+    "emoji": "✏",
+    "synonyms": []
+  },
+  {
+    "phrase": "black nib",
+    "emoji": "✒",
+    "synonyms": []
+  },
+  {
+    "phrase": "fountain pen",
+    "emoji": "🖋",
+    "synonyms": []
+  },
+  {
+    "phrase": "pen",
+    "emoji": "🖊",
+    "synonyms": []
+  },
+  {
+    "phrase": "paintbrush",
+    "emoji": "🖌",
+    "synonyms": []
+  },
+  {
+    "phrase": "crayon",
+    "emoji": "🖍",
+    "synonyms": []
+  },
+  {
+    "phrase": "memo",
+    "emoji": "📝",
+    "synonyms": []
+  },
+  {
+    "phrase": "briefcase",
+    "emoji": "💼",
+    "synonyms": []
+  },
+  {
+    "phrase": "file folder",
+    "emoji": "📁",
+    "synonyms": []
+  },
+  {
+    "phrase": "open file folder",
+    "emoji": "📂",
+    "synonyms": []
+  },
+  {
+    "phrase": "card index dividers",
+    "emoji": "🗂",
+    "synonyms": []
+  },
+  {
+    "phrase": "tear-off calendar",
+    "emoji": "📆",
+    "synonyms": []
+  },
+  {
+    "phrase": "spiral notepad",
+    "emoji": "🗒",
+    "synonyms": []
+  },
+  {
+    "phrase": "spiral calendar",
+    "emoji": "🗓",
+    "synonyms": []
+  },
+  {
+    "phrase": "card index",
+    "emoji": "📇",
+    "synonyms": []
+  },
+  {
+    "phrase": "chart increasing",
+    "emoji": "📈",
+    "synonyms": []
+  },
+  {
+    "phrase": "chart decreasing",
+    "emoji": "📉",
+    "synonyms": []
+  },
+  {
+    "phrase": "bar chart",
+    "emoji": "📊",
+    "synonyms": []
+  },
+  {
+    "phrase": "clipboard",
+    "emoji": "📋",
+    "synonyms": []
+  },
+  {
+    "phrase": "pushpin",
+    "emoji": "📌",
+    "synonyms": []
+  },
+  {
+    "phrase": "round pushpin",
+    "emoji": "📍",
+    "synonyms": []
+  },
+  {
+    "phrase": "paperclip",
+    "emoji": "📎",
+    "synonyms": []
+  },
+  {
+    "phrase": "linked paperclips",
+    "emoji": "🖇",
+    "synonyms": []
+  },
+  {
+    "phrase": "straight ruler",
+    "emoji": "📏",
+    "synonyms": []
+  },
+  {
+    "phrase": "triangular ruler",
+    "emoji": "📐",
+    "synonyms": []
+  },
+  {
+    "phrase": "scissors",
+    "emoji": "✂",
+    "synonyms": []
+  },
+  {
+    "phrase": "card file box",
+    "emoji": "🗃",
+    "synonyms": []
+  },
+  {
+    "phrase": "file cabinet",
+    "emoji": "🗄",
+    "synonyms": []
+  },
+  {
+    "phrase": "wastebasket",
+    "emoji": "🗑",
+    "synonyms": []
+  },
+  {
+    "phrase": "locked",
+    "emoji": "🔒",
+    "synonyms": []
+  },
+  {
+    "phrase": "unlocked",
+    "emoji": "🔓",
+    "synonyms": []
+  },
+  {
+    "phrase": "locked with pen",
+    "emoji": "🔏",
+    "synonyms": []
+  },
+  {
+    "phrase": "locked with key",
+    "emoji": "🔐",
+    "synonyms": []
+  },
+  {
+    "phrase": "key",
+    "emoji": "🔑",
+    "synonyms": []
+  },
+  {
+    "phrase": "old key",
+    "emoji": "🗝",
+    "synonyms": []
+  },
+  {
+    "phrase": "hammer",
+    "emoji": "🔨",
+    "synonyms": []
+  },
+  {
+    "phrase": "axe",
+    "emoji": "🪓",
+    "synonyms": []
+  },
+  {
+    "phrase": "pick",
+    "emoji": "⛏",
+    "synonyms": []
+  },
+  {
+    "phrase": "hammer and pick",
+    "emoji": "⚒",
+    "synonyms": []
+  },
+  {
+    "phrase": "hammer and wrench",
+    "emoji": "🛠",
+    "synonyms": []
+  },
+  {
+    "phrase": "dagger",
+    "emoji": "🗡",
+    "synonyms": []
+  },
+  {
+    "phrase": "crossed swords",
+    "emoji": "⚔",
+    "synonyms": []
+  },
+  {
+    "phrase": "boomerang",
+    "emoji": "🪃",
+    "synonyms": []
+  },
+  {
+    "phrase": "bow and arrow",
+    "emoji": "🏹",
+    "synonyms": []
+  },
+  {
+    "phrase": "shield",
+    "emoji": "🛡",
+    "synonyms": []
+  },
+  {
+    "phrase": "carpentry saw",
+    "emoji": "🪚",
+    "synonyms": []
+  },
+  {
+    "phrase": "wrench",
+    "emoji": "🔧",
+    "synonyms": []
+  },
+  {
+    "phrase": "screwdriver",
+    "emoji": "🪛",
+    "synonyms": []
+  },
+  {
+    "phrase": "nut and bolt",
+    "emoji": "🔩",
+    "synonyms": []
+  },
+  {
+    "phrase": "gear",
+    "emoji": "⚙",
+    "synonyms": []
+  },
+  {
+    "phrase": "clamp",
+    "emoji": "🗜",
+    "synonyms": []
+  },
+  {
+    "phrase": "balance scale",
+    "emoji": "⚖",
+    "synonyms": []
+  },
+  {
+    "phrase": "white cane",
+    "emoji": "🦯",
+    "synonyms": []
+  },
+  {
+    "phrase": "link",
+    "emoji": "🔗",
+    "synonyms": []
+  },
+  {
+    "phrase": "broken chain",
+    "emoji": "⛓‍💥",
+    "synonyms": []
+  },
+  {
+    "phrase": "chains",
+    "emoji": "⛓",
+    "synonyms": []
+  },
+  {
+    "phrase": "hook",
+    "emoji": "🪝",
+    "synonyms": []
+  },
+  {
+    "phrase": "toolbox",
+    "emoji": "🧰",
+    "synonyms": []
+  },
+  {
+    "phrase": "magnet",
+    "emoji": "🧲",
+    "synonyms": []
+  },
+  {
+    "phrase": "ladder",
+    "emoji": "🪜",
+    "synonyms": []
+  },
+  {
+    "phrase": "shovel",
+    "emoji": "🪏",
+    "synonyms": []
+  },
+  {
+    "phrase": "alembic",
+    "emoji": "⚗",
+    "synonyms": []
+  },
+  {
+    "phrase": "test tube",
+    "emoji": "🧪",
+    "synonyms": []
+  },
+  {
+    "phrase": "petri dish",
+    "emoji": "🧫",
+    "synonyms": []
+  },
+  {
+    "phrase": "dna",
+    "emoji": "🧬",
+    "synonyms": []
+  },
+  {
+    "phrase": "microscope",
+    "emoji": "🔬",
+    "synonyms": []
+  },
+  {
+    "phrase": "telescope",
+    "emoji": "🔭",
+    "synonyms": []
+  },
+  {
+    "phrase": "satellite antenna",
+    "emoji": "📡",
+    "synonyms": []
+  },
+  {
+    "phrase": "syringe",
+    "emoji": "💉",
+    "synonyms": []
+  },
+  {
+    "phrase": "drop of blood",
+    "emoji": "🩸",
+    "synonyms": []
+  },
+  {
+    "phrase": "pill",
+    "emoji": "💊",
+    "synonyms": []
+  },
+  {
+    "phrase": "adhesive bandage",
+    "emoji": "🩹",
+    "synonyms": []
+  },
+  {
+    "phrase": "crutch",
+    "emoji": "🩼",
+    "synonyms": []
+  },
+  {
+    "phrase": "stethoscope",
+    "emoji": "🩺",
+    "synonyms": []
+  },
+  {
+    "phrase": "x-ray",
+    "emoji": "🩻",
+    "synonyms": []
+  },
+  {
+    "phrase": "door",
+    "emoji": "🚪",
+    "synonyms": []
+  },
+  {
+    "phrase": "elevator",
+    "emoji": "🛗",
+    "synonyms": []
+  },
+  {
+    "phrase": "mirror",
+    "emoji": "🪞",
+    "synonyms": []
+  },
+  {
+    "phrase": "window",
+    "emoji": "🪟",
+    "synonyms": []
+  },
+  {
+    "phrase": "bed",
+    "emoji": "🛏",
+    "synonyms": []
+  },
+  {
+    "phrase": "couch and lamp",
+    "emoji": "🛋",
+    "synonyms": []
+  },
+  {
+    "phrase": "chair",
+    "emoji": "🪑",
+    "synonyms": []
+  },
+  {
+    "phrase": "toilet",
+    "emoji": "🚽",
+    "synonyms": []
+  },
+  {
+    "phrase": "plunger",
+    "emoji": "🪠",
+    "synonyms": []
+  },
+  {
+    "phrase": "shower",
+    "emoji": "🚿",
+    "synonyms": []
+  },
+  {
+    "phrase": "bathtub",
+    "emoji": "🛁",
+    "synonyms": []
+  },
+  {
+    "phrase": "mouse trap",
+    "emoji": "🪤",
+    "synonyms": []
+  },
+  {
+    "phrase": "razor",
+    "emoji": "🪒",
+    "synonyms": []
+  },
+  {
+    "phrase": "lotion bottle",
+    "emoji": "🧴",
+    "synonyms": []
+  },
+  {
+    "phrase": "safety pin",
+    "emoji": "🧷",
+    "synonyms": []
+  },
+  {
+    "phrase": "broom",
+    "emoji": "🧹",
+    "synonyms": []
+  },
+  {
+    "phrase": "basket",
+    "emoji": "🧺",
+    "synonyms": []
+  },
+  {
+    "phrase": "roll of paper",
+    "emoji": "🧻",
+    "synonyms": []
+  },
+  {
+    "phrase": "bucket",
+    "emoji": "🪣",
+    "synonyms": []
+  },
+  {
+    "phrase": "soap",
+    "emoji": "🧼",
+    "synonyms": []
+  },
+  {
+    "phrase": "bubbles",
+    "emoji": "🫧",
+    "synonyms": []
+  },
+  {
+    "phrase": "toothbrush",
+    "emoji": "🪥",
+    "synonyms": []
+  },
+  {
+    "phrase": "sponge",
+    "emoji": "🧽",
+    "synonyms": []
+  },
+  {
+    "phrase": "fire extinguisher",
+    "emoji": "🧯",
+    "synonyms": []
+  },
+  {
+    "phrase": "shopping cart",
+    "emoji": "🛒",
+    "synonyms": []
+  },
+  {
+    "phrase": "cigarette",
+    "emoji": "🚬",
+    "synonyms": []
+  },
+  {
+    "phrase": "coffin",
+    "emoji": "⚰",
+    "synonyms": []
+  },
+  {
+    "phrase": "headstone",
+    "emoji": "🪦",
+    "synonyms": []
+  },
+  {
+    "phrase": "funeral urn",
+    "emoji": "⚱",
+    "synonyms": []
+  },
+  {
+    "phrase": "nazar amulet",
+    "emoji": "🧿",
+    "synonyms": []
+  },
+  {
+    "phrase": "hamsa",
+    "emoji": "🪬",
+    "synonyms": []
+  },
+  {
+    "phrase": "moai",
+    "emoji": "🗿",
+    "synonyms": []
+  },
+  {
+    "phrase": "placard",
+    "emoji": "🪧",
+    "synonyms": []
+  },
+  {
+    "phrase": "identification card",
+    "emoji": "🪪",
+    "synonyms": []
+  },
+  {
+    "phrase": "ATM sign",
+    "emoji": "🏧",
+    "synonyms": []
+  },
+  {
+    "phrase": "litter in bin sign",
+    "emoji": "🚮",
+    "synonyms": []
+  },
+  {
+    "phrase": "potable water",
+    "emoji": "🚰",
+    "synonyms": []
+  },
+  {
+    "phrase": "wheelchair symbol",
+    "emoji": "♿",
+    "synonyms": []
+  },
+  {
+    "phrase": "men’s room",
+    "emoji": "🚹",
+    "synonyms": []
+  },
+  {
+    "phrase": "women’s room",
+    "emoji": "🚺",
+    "synonyms": []
+  },
+  {
+    "phrase": "restroom",
+    "emoji": "🚻",
+    "synonyms": []
+  },
+  {
+    "phrase": "baby symbol",
+    "emoji": "🚼",
+    "synonyms": []
+  },
+  {
+    "phrase": "water closet",
+    "emoji": "🚾",
+    "synonyms": []
+  },
+  {
+    "phrase": "passport control",
+    "emoji": "🛂",
+    "synonyms": []
+  },
+  {
+    "phrase": "customs",
+    "emoji": "🛃",
+    "synonyms": []
+  },
+  {
+    "phrase": "baggage claim",
+    "emoji": "🛄",
+    "synonyms": []
+  },
+  {
+    "phrase": "left luggage",
+    "emoji": "🛅",
+    "synonyms": []
+  },
+  {
+    "phrase": "children crossing",
+    "emoji": "🚸",
+    "synonyms": []
+  },
+  {
+    "phrase": "no entry",
+    "emoji": "⛔",
+    "synonyms": []
+  },
+  {
+    "phrase": "prohibited",
+    "emoji": "🚫",
+    "synonyms": []
+  },
+  {
+    "phrase": "no bicycles",
+    "emoji": "🚳",
+    "synonyms": []
+  },
+  {
+    "phrase": "no smoking",
+    "emoji": "🚭",
+    "synonyms": []
+  },
+  {
+    "phrase": "no littering",
+    "emoji": "🚯",
+    "synonyms": []
+  },
+  {
+    "phrase": "non-potable water",
+    "emoji": "🚱",
+    "synonyms": []
+  },
+  {
+    "phrase": "no pedestrians",
+    "emoji": "🚷",
+    "synonyms": []
+  },
+  {
+    "phrase": "no mobile phones",
+    "emoji": "📵",
+    "synonyms": []
+  },
+  {
+    "phrase": "no one under eighteen",
+    "emoji": "🔞",
+    "synonyms": []
+  },
+  {
+    "phrase": "radioactive",
+    "emoji": "☢",
+    "synonyms": []
+  },
+  {
+    "phrase": "biohazard",
+    "emoji": "☣",
+    "synonyms": []
+  },
+  {
+    "phrase": "right arrow",
+    "emoji": "➡",
+    "synonyms": []
+  },
+  {
+    "phrase": "clockwise vertical arrows",
+    "emoji": "🔃",
+    "synonyms": []
+  },
+  {
+    "phrase": "counterclockwise arrows button",
+    "emoji": "🔄",
+    "synonyms": []
+  },
+  {
+    "phrase": "BACK arrow",
+    "emoji": "🔙",
+    "synonyms": []
+  },
+  {
+    "phrase": "END arrow",
+    "emoji": "🔚",
+    "synonyms": []
+  },
+  {
+    "phrase": "ON! arrow",
+    "emoji": "🔛",
+    "synonyms": []
+  },
+  {
+    "phrase": "SOON arrow",
+    "emoji": "🔜",
+    "synonyms": []
+  },
+  {
+    "phrase": "TOP arrow",
+    "emoji": "🔝",
+    "synonyms": []
+  },
+  {
+    "phrase": "place of worship",
+    "emoji": "🛐",
+    "synonyms": []
+  },
+  {
+    "phrase": "atom symbol",
+    "emoji": "⚛",
+    "synonyms": []
+  },
+  {
+    "phrase": "om",
+    "emoji": "🕉",
+    "synonyms": []
+  },
+  {
+    "phrase": "star of David",
+    "emoji": "✡",
+    "synonyms": []
+  },
+  {
+    "phrase": "wheel of dharma",
+    "emoji": "☸",
+    "synonyms": []
+  },
+  {
+    "phrase": "yin yang",
+    "emoji": "☯",
+    "synonyms": []
+  },
+  {
+    "phrase": "latin cross",
+    "emoji": "✝",
+    "synonyms": []
+  },
+  {
+    "phrase": "orthodox cross",
+    "emoji": "☦",
+    "synonyms": []
+  },
+  {
+    "phrase": "star and crescent",
+    "emoji": "☪",
+    "synonyms": []
+  },
+  {
+    "phrase": "peace symbol",
+    "emoji": "☮",
+    "synonyms": []
+  },
+  {
+    "phrase": "menorah",
+    "emoji": "🕎",
+    "synonyms": []
+  },
+  {
+    "phrase": "dotted six-pointed star",
+    "emoji": "🔯",
+    "synonyms": []
+  },
+  {
+    "phrase": "khanda",
+    "emoji": "🪯",
+    "synonyms": []
+  },
+  {
+    "phrase": "Aries",
+    "emoji": "♈",
+    "synonyms": []
+  },
+  {
+    "phrase": "Taurus",
+    "emoji": "♉",
+    "synonyms": []
+  },
+  {
+    "phrase": "Gemini",
+    "emoji": "♊",
+    "synonyms": []
+  },
+  {
+    "phrase": "Cancer",
+    "emoji": "♋",
+    "synonyms": []
+  },
+  {
+    "phrase": "Leo",
+    "emoji": "♌",
+    "synonyms": []
+  },
+  {
+    "phrase": "Virgo",
+    "emoji": "♍",
+    "synonyms": []
+  },
+  {
+    "phrase": "Libra",
+    "emoji": "♎",
+    "synonyms": []
+  },
+  {
+    "phrase": "Scorpio",
+    "emoji": "♏",
+    "synonyms": []
+  },
+  {
+    "phrase": "Sagittarius",
+    "emoji": "♐",
+    "synonyms": []
+  },
+  {
+    "phrase": "Capricorn",
+    "emoji": "♑",
+    "synonyms": []
+  },
+  {
+    "phrase": "Aquarius",
+    "emoji": "♒",
+    "synonyms": []
+  },
+  {
+    "phrase": "Pisces",
+    "emoji": "♓",
+    "synonyms": []
+  },
+  {
+    "phrase": "Ophiuchus",
+    "emoji": "⛎",
+    "synonyms": []
+  },
+  {
+    "phrase": "shuffle tracks button",
+    "emoji": "🔀",
+    "synonyms": []
+  },
+  {
+    "phrase": "repeat button",
+    "emoji": "🔁",
+    "synonyms": []
+  },
+  {
+    "phrase": "repeat single button",
+    "emoji": "🔂",
+    "synonyms": []
+  },
+  {
+    "phrase": "fast-forward button",
+    "emoji": "⏩",
+    "synonyms": []
+  },
+  {
+    "phrase": "next track button",
+    "emoji": "⏭",
+    "synonyms": []
+  },
+  {
+    "phrase": "play or pause button",
+    "emoji": "⏯",
+    "synonyms": []
+  },
+  {
+    "phrase": "fast reverse button",
+    "emoji": "⏪",
+    "synonyms": []
+  },
+  {
+    "phrase": "last track button",
+    "emoji": "⏮",
+    "synonyms": []
+  },
+  {
+    "phrase": "upwards button",
+    "emoji": "🔼",
+    "synonyms": []
+  },
+  {
+    "phrase": "fast up button",
+    "emoji": "⏫",
+    "synonyms": []
+  },
+  {
+    "phrase": "downwards button",
+    "emoji": "🔽",
+    "synonyms": []
+  },
+  {
+    "phrase": "fast down button",
+    "emoji": "⏬",
+    "synonyms": []
+  },
+  {
+    "phrase": "pause button",
+    "emoji": "⏸",
+    "synonyms": []
+  },
+  {
+    "phrase": "stop button",
+    "emoji": "⏹",
+    "synonyms": []
+  },
+  {
+    "phrase": "record button",
+    "emoji": "⏺",
+    "synonyms": []
+  },
+  {
+    "phrase": "eject button",
+    "emoji": "⏏",
+    "synonyms": []
+  },
+  {
+    "phrase": "cinema",
+    "emoji": "🎦",
+    "synonyms": []
+  },
+  {
+    "phrase": "dim button",
+    "emoji": "🔅",
+    "synonyms": []
+  },
+  {
+    "phrase": "bright button",
+    "emoji": "🔆",
+    "synonyms": []
+  },
+  {
+    "phrase": "antenna bars",
+    "emoji": "📶",
+    "synonyms": []
+  },
+  {
+    "phrase": "wireless",
+    "emoji": "🛜",
+    "synonyms": []
+  },
+  {
+    "phrase": "vibration mode",
+    "emoji": "📳",
+    "synonyms": []
+  },
+  {
+    "phrase": "mobile phone off",
+    "emoji": "📴",
+    "synonyms": []
+  },
+  {
+    "phrase": "female sign",
+    "emoji": "♀",
+    "synonyms": []
+  },
+  {
+    "phrase": "male sign",
+    "emoji": "♂",
+    "synonyms": []
+  },
+  {
+    "phrase": "transgender symbol",
+    "emoji": "⚧",
+    "synonyms": []
+  },
+  {
+    "phrase": "multiply",
+    "emoji": "✖",
+    "synonyms": []
+  },
+  {
+    "phrase": "plus",
+    "emoji": "➕",
+    "synonyms": []
+  },
+  {
+    "phrase": "minus",
+    "emoji": "➖",
+    "synonyms": []
+  },
+  {
+    "phrase": "divide",
+    "emoji": "➗",
+    "synonyms": []
+  },
+  {
+    "phrase": "heavy equals sign",
+    "emoji": "🟰",
+    "synonyms": []
+  },
+  {
+    "phrase": "infinity",
+    "emoji": "♾",
+    "synonyms": []
+  },
+  {
+    "phrase": "red question mark",
+    "emoji": "❓",
+    "synonyms": []
+  },
+  {
+    "phrase": "white question mark",
+    "emoji": "❔",
+    "synonyms": []
+  },
+  {
+    "phrase": "white exclamation mark",
+    "emoji": "❕",
+    "synonyms": []
+  },
+  {
+    "phrase": "red exclamation mark",
+    "emoji": "❗",
+    "synonyms": []
+  },
+  {
+    "phrase": "currency exchange",
+    "emoji": "💱",
+    "synonyms": []
+  },
+  {
+    "phrase": "heavy dollar sign",
+    "emoji": "💲",
+    "synonyms": []
+  },
+  {
+    "phrase": "medical symbol",
+    "emoji": "⚕",
+    "synonyms": []
+  },
+  {
+    "phrase": "recycling symbol",
+    "emoji": "♻",
+    "synonyms": []
+  },
+  {
+    "phrase": "fleur-de-lis",
+    "emoji": "⚜",
+    "synonyms": []
+  },
+  {
+    "phrase": "trident emblem",
+    "emoji": "🔱",
+    "synonyms": []
+  },
+  {
+    "phrase": "name badge",
+    "emoji": "📛",
+    "synonyms": []
+  },
+  {
+    "phrase": "Japanese symbol for beginner",
+    "emoji": "🔰",
+    "synonyms": []
+  },
+  {
+    "phrase": "check mark button",
+    "emoji": "✅",
+    "synonyms": []
+  },
+  {
+    "phrase": "check box with check",
+    "emoji": "☑",
+    "synonyms": []
+  },
+  {
+    "phrase": "cross mark button",
+    "emoji": "❎",
+    "synonyms": []
+  },
+  {
+    "phrase": "curly loop",
+    "emoji": "➰",
+    "synonyms": []
+  },
+  {
+    "phrase": "double curly loop",
+    "emoji": "➿",
+    "synonyms": []
+  },
+  {
+    "phrase": "eight-spoked asterisk",
+    "emoji": "✳",
+    "synonyms": []
+  },
+  {
+    "phrase": "eight-pointed star",
+    "emoji": "✴",
+    "synonyms": []
+  },
+  {
+    "phrase": "splatter",
+    "emoji": "🫟",
+    "synonyms": []
+  },
+  {
+    "phrase": "input latin uppercase",
+    "emoji": "🔠",
+    "synonyms": []
+  },
+  {
+    "phrase": "input latin lowercase",
+    "emoji": "🔡",
+    "synonyms": []
+  },
+  {
+    "phrase": "input numbers",
+    "emoji": "🔢",
+    "synonyms": []
+  },
+  {
+    "phrase": "input symbols",
+    "emoji": "🔣",
+    "synonyms": []
+  },
+  {
+    "phrase": "input latin letters",
+    "emoji": "🔤",
+    "synonyms": []
+  },
+  {
+    "phrase": "A button (blood type)",
+    "emoji": "🅰",
+    "synonyms": []
+  },
+  {
+    "phrase": "AB button (blood type)",
+    "emoji": "🆎",
+    "synonyms": []
+  },
+  {
+    "phrase": "B button (blood type)",
+    "emoji": "🅱",
+    "synonyms": []
+  },
+  {
+    "phrase": "CL button",
+    "emoji": "🆑",
+    "synonyms": []
+  },
+  {
+    "phrase": "COOL button",
+    "emoji": "🆒",
+    "synonyms": []
+  },
+  {
+    "phrase": "FREE button",
+    "emoji": "🆓",
+    "synonyms": []
+  },
+  {
+    "phrase": "ID button",
+    "emoji": "🆔",
+    "synonyms": []
+  },
+  {
+    "phrase": "NEW button",
+    "emoji": "🆕",
+    "synonyms": []
+  },
+  {
+    "phrase": "NG button",
+    "emoji": "🆖",
+    "synonyms": []
+  },
+  {
+    "phrase": "O button (blood type)",
+    "emoji": "🅾",
+    "synonyms": []
+  },
+  {
+    "phrase": "OK button",
+    "emoji": "🆗",
+    "synonyms": []
+  },
+  {
+    "phrase": "P button",
+    "emoji": "🅿",
+    "synonyms": []
+  },
+  {
+    "phrase": "SOS button",
+    "emoji": "🆘",
+    "synonyms": []
+  },
+  {
+    "phrase": "UP! button",
+    "emoji": "🆙",
+    "synonyms": []
+  },
+  {
+    "phrase": "VS button",
+    "emoji": "🆚",
+    "synonyms": []
+  },
+  {
+    "phrase": "Japanese “here” button",
+    "emoji": "🈁",
+    "synonyms": []
+  },
+  {
+    "phrase": "Japanese “service charge” button",
+    "emoji": "🈂",
+    "synonyms": []
+  },
+  {
+    "phrase": "Japanese “monthly amount” button",
+    "emoji": "🈷",
+    "synonyms": []
+  },
+  {
+    "phrase": "Japanese “not free of charge” button",
+    "emoji": "🈶",
+    "synonyms": []
+  },
+  {
+    "phrase": "Japanese “reserved” button",
+    "emoji": "🈯",
+    "synonyms": []
+  },
+  {
+    "phrase": "Japanese “bargain” button",
+    "emoji": "🉐",
+    "synonyms": []
+  },
+  {
+    "phrase": "Japanese “discount” button",
+    "emoji": "🈹",
+    "synonyms": []
+  },
+  {
+    "phrase": "Japanese “free of charge” button",
+    "emoji": "🈚",
+    "synonyms": []
+  },
+  {
+    "phrase": "Japanese “prohibited” button",
+    "emoji": "🈲",
+    "synonyms": []
+  },
+  {
+    "phrase": "Japanese “acceptable” button",
+    "emoji": "🉑",
+    "synonyms": []
+  },
+  {
+    "phrase": "Japanese “application” button",
+    "emoji": "🈸",
+    "synonyms": []
+  },
+  {
+    "phrase": "Japanese “passing grade” button",
+    "emoji": "🈴",
+    "synonyms": []
+  },
+  {
+    "phrase": "Japanese “vacancy” button",
+    "emoji": "🈳",
+    "synonyms": []
+  },
+  {
+    "phrase": "Japanese “open for business” button",
+    "emoji": "🈺",
+    "synonyms": []
+  },
+  {
+    "phrase": "Japanese “no vacancy” button",
+    "emoji": "🈵",
+    "synonyms": []
+  },
+  {
+    "phrase": "red circle",
+    "emoji": "🔴",
+    "synonyms": []
+  },
+  {
+    "phrase": "orange circle",
+    "emoji": "🟠",
+    "synonyms": []
+  },
+  {
+    "phrase": "yellow circle",
+    "emoji": "🟡",
+    "synonyms": []
+  },
+  {
+    "phrase": "green circle",
+    "emoji": "🟢",
+    "synonyms": []
+  },
+  {
+    "phrase": "blue circle",
+    "emoji": "🔵",
+    "synonyms": []
+  },
+  {
+    "phrase": "purple circle",
+    "emoji": "🟣",
+    "synonyms": []
+  },
+  {
+    "phrase": "brown circle",
+    "emoji": "🟤",
+    "synonyms": []
+  },
+  {
+    "phrase": "black circle",
+    "emoji": "⚫",
+    "synonyms": []
+  },
+  {
+    "phrase": "white circle",
+    "emoji": "⚪",
+    "synonyms": []
+  },
+  {
+    "phrase": "red square",
+    "emoji": "🟥",
+    "synonyms": []
+  },
+  {
+    "phrase": "orange square",
+    "emoji": "🟧",
+    "synonyms": []
+  },
+  {
+    "phrase": "yellow square",
+    "emoji": "🟨",
+    "synonyms": []
+  },
+  {
+    "phrase": "green square",
+    "emoji": "🟩",
+    "synonyms": []
+  },
+  {
+    "phrase": "blue square",
+    "emoji": "🟦",
+    "synonyms": []
+  },
+  {
+    "phrase": "purple square",
+    "emoji": "🟪",
+    "synonyms": []
+  },
+  {
+    "phrase": "brown square",
+    "emoji": "🟫",
+    "synonyms": []
+  },
+  {
+    "phrase": "large orange diamond",
+    "emoji": "🔶",
+    "synonyms": []
+  },
+  {
+    "phrase": "large blue diamond",
+    "emoji": "🔷",
+    "synonyms": []
+  },
+  {
+    "phrase": "small orange diamond",
+    "emoji": "🔸",
+    "synonyms": []
+  },
+  {
+    "phrase": "small blue diamond",
+    "emoji": "🔹",
+    "synonyms": []
+  },
+  {
+    "phrase": "red triangle pointed up",
+    "emoji": "🔺",
+    "synonyms": []
+  },
+  {
+    "phrase": "red triangle pointed down",
+    "emoji": "🔻",
+    "synonyms": []
+  },
+  {
+    "phrase": "diamond with a dot",
+    "emoji": "💠",
+    "synonyms": []
+  },
+  {
+    "phrase": "radio button",
+    "emoji": "🔘",
+    "synonyms": []
+  },
+  {
+    "phrase": "white square button",
+    "emoji": "🔳",
+    "synonyms": []
+  },
+  {
+    "phrase": "black square button",
+    "emoji": "🔲",
+    "synonyms": []
+  },
+  {
+    "phrase": "chequered flag",
+    "emoji": "🏁",
+    "synonyms": []
+  },
+  {
+    "phrase": "triangular flag",
+    "emoji": "🚩",
+    "synonyms": []
+  },
+  {
+    "phrase": "crossed flags",
+    "emoji": "🎌",
+    "synonyms": []
+  },
+  {
+    "phrase": "black flag",
+    "emoji": "🏴",
+    "synonyms": []
+  },
+  {
+    "phrase": "white flag",
+    "emoji": "🏳",
+    "synonyms": []
+  },
+  {
+    "phrase": "rainbow flag",
+    "emoji": "🏳‍🌈",
+    "synonyms": []
+  },
+  {
+    "phrase": "transgender flag",
+    "emoji": "🏳‍⚧",
+    "synonyms": []
+  },
+  {
+    "phrase": "pirate flag",
+    "emoji": "🏴‍☠",
+    "synonyms": []
+  },
+  {
+    "phrase": "lighthouse",
+    "emoji": "🛙",
+    "synonyms": []
+  },
+  {
+    "phrase": "meteor",
+    "emoji": "🪋",
+    "synonyms": []
+  },
+  {
+    "phrase": "eraser",
+    "emoji": "🪌",
+    "synonyms": []
+  },
+  {
+    "phrase": "net with handle",
+    "emoji": "🪍",
+    "synonyms": []
+  },
+  {
+    "phrase": "monarch butterfly",
+    "emoji": "🫌",
+    "synonyms": []
+  },
+  {
+    "phrase": "pickle",
+    "emoji": "🫝",
+    "synonyms": []
+  },
+  {
+    "phrase": "cracking face",
+    "emoji": "🫫",
+    "synonyms": []
+  },
+  {
+    "phrase": "leftwards thumb sign",
+    "emoji": "🫹",
+    "synonyms": []
+  },
+  {
+    "phrase": "rightwards thumb sign",
+    "emoji": "🫺",
+    "synonyms": []
+  }
 ]
