@@ -1,0 +1,1587 @@
+OpenAI Codex v0.130.0
+--------
+workdir: /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-393-finalizer-empty
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: workspace-write [workdir, /tmp, $TMPDIR, /Users/m4pro_sv/.codex/memories]
+reasoning effort: high
+reasoning summaries: none
+session id: 019e2f83-db50-7a03-9b22-6566fdbf2043
+--------
+user
+current changes
+exec
+/bin/zsh -lc 'git status --short && git diff --stat && git diff --cached --stat' in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-393-finalizer-empty
+ succeeded in 0ms:
+ M Sources/EnviousWisprPipeline/TranscriptionPipeline.swift
+ M Sources/EnviousWisprPipeline/WhisperKitPipeline.swift
+ Sources/EnviousWisprPipeline/TranscriptionPipeline.swift |  8 +++++++-
+ Sources/EnviousWisprPipeline/WhisperKitPipeline.swift    | 10 ++++++++--
+ 2 files changed, 15 insertions(+), 3 deletions(-)
+
+exec
+/bin/zsh -lc 'git diff -- Sources/EnviousWisprPipeline/TranscriptionPipeline.swift Sources/EnviousWisprPipeline/WhisperKitPipeline.swift' in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-393-finalizer-empty
+ succeeded in 0ms:
+diff --git a/Sources/EnviousWisprPipeline/TranscriptionPipeline.swift b/Sources/EnviousWisprPipeline/TranscriptionPipeline.swift
+index a0f1a7c..d7c03cc 100644
+--- a/Sources/EnviousWisprPipeline/TranscriptionPipeline.swift
++++ b/Sources/EnviousWisprPipeline/TranscriptionPipeline.swift
+@@ -953,6 +953,12 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
+       } catch let error as FinalizationError {
+         switch error {
+         case .emptyAfterProcessing:
++          // #393 HYBRID per council: keep the guard + telemetry, but show a
++          // graceful user-facing message instead of a scary "Error." The user
++          // either didn't speak or audio capture produced nothing usable; the
++          // clipboard is intentionally unchanged. Telemetry retained so we can
++          // detect if this rate spikes (e.g., a future macOS update breaking
++          // capture).
+           SentryBreadcrumb.captureError(
+             HeartPathError.emptyAfterProcessing(
+               route: audioCapture.currentAudioRoute,
+@@ -967,7 +973,7 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
+               "capture_session_id": Int(audioCapture.currentCaptureSessionID),
+             ]
+           )
+-          state = .error("No text after processing")
++          state = .error("No speech detected. Your clipboard is unchanged. Try again.")
+           frozenSnapshot = nil
+           return
+         case .storageFailed(let underlying):
+diff --git a/Sources/EnviousWisprPipeline/WhisperKitPipeline.swift b/Sources/EnviousWisprPipeline/WhisperKitPipeline.swift
+index 530ac12..8b7cb31 100644
+--- a/Sources/EnviousWisprPipeline/WhisperKitPipeline.swift
++++ b/Sources/EnviousWisprPipeline/WhisperKitPipeline.swift
+@@ -989,7 +989,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
+               userInfo: [
+                 NSLocalizedDescriptionKey:
+                   "WhisperKit ASR returned empty text despite speech evidence"
+-            ]),
++              ]),
+             category: .asrEmptyResult, stage: "asr",
+             extra: {
+               var extra = asrEmptyDiagnostics.sentryExtra()
+@@ -1071,6 +1071,12 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
+       } catch let error as FinalizationError {
+         switch error {
+         case .emptyAfterProcessing:
++          // #393 HYBRID per council: keep the guard + telemetry, but show a
++          // graceful user-facing message instead of a scary "Error." The user
++          // either didn't speak or audio capture produced nothing usable; the
++          // clipboard is intentionally unchanged. Telemetry retained so we can
++          // detect if this rate spikes (e.g., a future macOS update breaking
++          // capture).
+           SentryBreadcrumb.captureError(
+             HeartPathError.emptyAfterProcessing(
+               route: audioCapture.currentAudioRoute,
+@@ -1085,7 +1091,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
+               "capture_session_id": Int(audioCapture.currentCaptureSessionID),
+             ]
+           )
+-          state = .error("No text after processing")
++          state = .error("No speech detected. Your clipboard is unchanged. Try again.")
+           frozenSnapshot = nil
+           return
+         case .storageFailed(let underlying):
+
+exec
+/bin/zsh -lc "sed -n '900,1025p' Sources/EnviousWisprPipeline/TranscriptionPipeline.swift && sed -n '1030,1120p' Sources/EnviousWisprPipeline/WhisperKitPipeline.swift" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-393-finalizer-empty
+ succeeded in 0ms:
+            data: [
+              "backend": asrManager.activeBackendType.rawValue,
+              "mode": wasStreaming ? "streaming" : "batch",
+            ]
+          )
+          state = .idle
+          Task {
+            await AppLogger.shared.log(
+              "No speech detected, returning to idle",
+              level: .info, category: "Pipeline"
+            )
+          }
+        }
+        frozenSnapshot = nil
+        return
+      }
+
+      SentryBreadcrumb.add(
+        stage: "asr", message: "ASR completed",
+        data: [
+          "mode": wasStreaming ? "streaming" : "batch",
+          "backend": asrManager.activeBackendType.rawValue,
+          "duration_s": String(format: "%.3f", asrEnd - asrStart),
+          "char_count": asrText.count,
+        ])
+      Task {
+        await AppLogger.shared.log(
+          "Pipeline timing: ASR completed in \(String(format: "%.3f", asrEnd - asrStart))s "
+            + "(mode=\(wasStreaming ? "streaming" : "batch"), \(asrText.count) chars, lang=\(result.language ?? "?"))",
+          level: .info, category: "PipelineTiming"
+        )
+      }
+
+      // Post-ASR finalization: text processing -> store -> paste
+      let finalizationResult: FinalizationResult
+      do {
+        finalizationResult = try await transcriptFinalizer.finalize(
+          FinalizationRequest(
+            asrText: asrText,
+            language: result.language,
+            duration: result.duration,
+            processingTime: result.processingTime,
+            backendType: result.backendType,
+            targetApp: targetApp,
+            targetElement: targetElement,
+            autoCopyToClipboard: autoCopyToClipboard,
+            autoPasteToActiveApp: autoPasteToActiveApp,
+            restoreClipboardAfterPaste: restoreClipboardAfterPaste,
+            steps: textProcessingSteps
+          ))
+      } catch is CancellationError {
+        frozenSnapshot = nil
+        return
+      } catch let error as FinalizationError {
+        switch error {
+        case .emptyAfterProcessing:
+          // #393 HYBRID per council: keep the guard + telemetry, but show a
+          // graceful user-facing message instead of a scary "Error." The user
+          // either didn't speak or audio capture produced nothing usable; the
+          // clipboard is intentionally unchanged. Telemetry retained so we can
+          // detect if this rate spikes (e.g., a future macOS update breaking
+          // capture).
+          SentryBreadcrumb.captureError(
+            HeartPathError.emptyAfterProcessing(
+              route: audioCapture.currentAudioRoute,
+              wasPolishEnabled: llmPolishStep.isEnabled
+            ),
+            category: .heartPathFinalization,
+            stage: "processing",
+            extra: [
+              "capture.route": audioCapture.currentAudioRoute,
+              "polish.enabled": llmPolishStep.isEnabled,
+              "backend": "parakeet",
+              "capture_session_id": Int(audioCapture.currentCaptureSessionID),
+            ]
+          )
+          state = .error("No speech detected. Your clipboard is unchanged. Try again.")
+          frozenSnapshot = nil
+          return
+        case .storageFailed(let underlying):
+          SentryBreadcrumb.captureError(underlying, category: .asrFailed, stage: "storage")
+          state = .error("Failed to save transcript")
+          frozenSnapshot = nil
+          return
+        }
+      }
+
+      lastPolishError = finalizationResult.polishError
+
+      // Notify ASR manager that transcription is done; schedules unload timer if configured.
+      asrManager.noteTranscriptionComplete(policy: modelUnloadPolicy)
+
+      // Build metrics (pipeline-specific: uses ASR timing, streaming mode)
+      let pasteTargetApp = targetApp?.bundleIdentifier
+      targetApp = nil
+      targetElement = nil
+
+      let pipelineEnd = CFAbsoluteTimeGetCurrent()
+      let polishDuration = finalizationResult.polishDurationSeconds
+      let pasteDuration = finalizationResult.pasteDurationSeconds
+      Task {
+        await AppLogger.shared.log(
+          "Pipeline timing TOTAL: \(String(format: "%.3f", pipelineEnd - pipelineStart))s "
+            + "(ASR=\(String(format: "%.3f", asrEnd - asrStart))s, "
+            + "polish=\(String(format: "%.3f", polishDuration))s, "
+            + "paste=\(String(format: "%.3f", pasteDuration))s)",
+          level: .info, category: "PipelineTiming"
+        )
+      }
+
+      var transcript = finalizationResult.transcript
+      transcript.metrics = ExecutionMetrics(
+        asrLatencySeconds: asrEnd - asrStart,
+        llmLatencySeconds: polishDuration,
+        pasteTier: finalizationResult.pasteResult?.pasteTierLabel,
+        pasteLatencyMs: finalizationResult.pasteResult?.durationMs,
+        targetApp: pasteTargetApp,
+        coldStart: false,
+        streamingMode: wasStreaming,
+        e2eSeconds: pipelineEnd - pipelineStart,
+        polishRouterMode: finalizationResult.polishMetadata?.routerMode,
+        polishRouterBasis: finalizationResult.polishMetadata?.routerBasis,
+        polishFilterTripped: finalizationResult.polishMetadata?.filterTripped,
+        polishFellBackToRaw: finalizationResult.polishMetadata == nil
+          ? nil : finalizationResult.pipelineFellBackToRaw
+      )
+          "duration_s": String(format: "%.3f", asrEnd - asrStart),
+          "char_count": asrText.count,
+          "incremental": usedIncremental,
+        ])
+      Task {
+        await AppLogger.shared.log(
+          "WhisperKit ASR completed in \(String(format: "%.3f", asrEnd - asrStart))s "
+            + "(\(asrText.count) chars, lang=\(asrLanguage ?? "?"), incremental=\(usedIncremental))",
+          level: .info, category: "WhisperKitPipeline"
+        )
+      }
+
+      // Post-ASR finalization: text processing -> store -> paste
+      let recordingDuration = Double(rawSamples.count) / 16000.0
+      let finalizationResult: FinalizationResult
+      do {
+        finalizationResult = try await transcriptFinalizer.finalize(
+          FinalizationRequest(
+            asrText: asrText,
+            language: asrLanguage,
+            duration: recordingDuration,
+            processingTime: asrEnd - asrStart,
+            backendType: .whisperKit,
+            targetApp: targetApp,
+            targetElement: targetElement,
+            autoCopyToClipboard: autoCopyToClipboard,
+            autoPasteToActiveApp: autoPasteToActiveApp,
+            restoreClipboardAfterPaste: restoreClipboardAfterPaste,
+            steps: textProcessingSteps
+          ))
+        logLIDPerfSignpost(
+          "t_clipboard_write",
+          timestamp: CFAbsoluteTimeGetCurrent(),
+          sessionID: audioCapture.currentCaptureSessionID,
+          voicedDuration: voicedDurationSec,
+          lidWindowCount: lidWindowCount,
+          clipKind: clipKind
+        )
+      } catch is CancellationError {
+        frozenSnapshot = nil
+        return
+      } catch let error as FinalizationError {
+        switch error {
+        case .emptyAfterProcessing:
+          // #393 HYBRID per council: keep the guard + telemetry, but show a
+          // graceful user-facing message instead of a scary "Error." The user
+          // either didn't speak or audio capture produced nothing usable; the
+          // clipboard is intentionally unchanged. Telemetry retained so we can
+          // detect if this rate spikes (e.g., a future macOS update breaking
+          // capture).
+          SentryBreadcrumb.captureError(
+            HeartPathError.emptyAfterProcessing(
+              route: audioCapture.currentAudioRoute,
+              wasPolishEnabled: llmPolishStep.isEnabled
+            ),
+            category: .heartPathFinalization,
+            stage: "processing",
+            extra: [
+              "capture.route": audioCapture.currentAudioRoute,
+              "polish.enabled": llmPolishStep.isEnabled,
+              "backend": "whisperKit",
+              "capture_session_id": Int(audioCapture.currentCaptureSessionID),
+            ]
+          )
+          state = .error("No speech detected. Your clipboard is unchanged. Try again.")
+          frozenSnapshot = nil
+          return
+        case .storageFailed(let underlying):
+          SentryBreadcrumb.captureError(underlying, category: .asrFailed, stage: "storage")
+          state = .error("Failed to save transcript")
+          frozenSnapshot = nil
+          return
+        }
+      }
+
+      lastPolishError = finalizationResult.polishError
+
+      // Build metrics (pipeline-specific: uses ASR timing)
+      let pasteTargetApp = targetApp?.bundleIdentifier
+      targetApp = nil
+      targetElement = nil
+
+      let pipelineEnd = CFAbsoluteTimeGetCurrent()
+      let polishDuration = finalizationResult.polishDurationSeconds
+      let pasteDuration = finalizationResult.pasteDurationSeconds
+      Task {
+        await AppLogger.shared.log(
+          "WhisperKit pipeline TOTAL: \(String(format: "%.3f", pipelineEnd - pipelineStart))s "
+            + "(ASR=\(String(format: "%.3f", asrEnd - asrStart))s, "
+            + "polish=\(String(format: "%.3f", polishDuration))s, "
+            + "paste=\(String(format: "%.3f", pasteDuration))s)",
+
+exec
+/bin/zsh -lc "rg \"enum .*State|case error|\\.error\\(\" -n Sources Tests | head -200" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-393-finalizer-empty
+ succeeded in 0ms:
+Sources/EnviousWisprServices/UpdateAvailabilityService.swift:32:  public enum UpdateState: Equatable {
+Sources/EnviousWisprServices/HeartPathError.swift:7:/// control flow. Pipeline `state = .error(...)` continues to use plain strings
+Tests/EnviousWisprTests/EnviousWisprTests.swift:22:    #expect(!PipelineState.error("something broke").isActive)
+Tests/EnviousWisprTests/EnviousWisprTests.swift:39:    #expect(PipelineState.error("a") == PipelineState.error("a"))
+Tests/EnviousWisprTests/EnviousWisprTests.swift:40:    #expect(PipelineState.error("a") != PipelineState.error("b"))
+Sources/EnviousWisprLLM/KeychainManager.swift:64:          Self.logger.error(
+Sources/EnviousWisprLLM/KeychainManager.swift:117:      Self.logger.error(
+Sources/EnviousWisprLLM/KeychainManager.swift:140:      Self.logger.error(
+Sources/EnviousWisprLLM/OllamaSetupService.swift:5:public enum OllamaSetupState: Equatable {
+Sources/EnviousWisprLLM/OllamaSetupService.swift:12:  case error(String)
+Sources/EnviousWisprLLM/OllamaSetupService.swift:16:public enum OllamaWarmupState: Equatable {
+Sources/EnviousWisprLLM/OllamaSetupService.swift:412:      setupState = .error(
+Sources/EnviousWisprLLM/OllamaSetupService.swift:535:        setupState = .error(
+Sources/EnviousWisprLLM/OllamaSetupService.swift:541:      setupState = .error(
+Sources/EnviousWisprLLM/OllamaSetupService.swift:565:      self?.setupState = .error(
+Sources/EnviousWisprLLM/OllamaSetupService.swift:626:        self.setupState = .error(self.friendlyMessage(for: urlError))
+Sources/EnviousWisprLLM/OllamaSetupService.swift:632:          self.setupState = .error(
+Sources/EnviousWisprLLM/OllamaSetupService.swift:636:          self.setupState = .error(
+Sources/EnviousWisprAudio/AVAudioEngineSource.swift:285:      btCrashLogger.error("Pre-roll: failed to create target format — tap not installed")
+Sources/EnviousWisprAudio/AVAudioEngineSource.swift:290:      btCrashLogger.error(
+Sources/EnviousWisprAudio/AVAudioEngineSource.swift:628:      btCrashLogger.error("Recovery: format stabilization timed out — emergency teardown")
+Sources/EnviousWisprAudio/AVAudioEngineSource.swift:669:        btCrashLogger.error(
+Sources/EnviousWisprAudio/AVAudioEngineSource.swift:706:      btCrashLogger.error("Recovery failed: \(error.localizedDescription) — emergency teardown")
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:229:    state = .error("No audio detected — try again.")
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:425:        state = .error(ModelLoadWatchdog.userMessage)
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:440:        state = .error("Model load failed: \(error.localizedDescription)")
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:583:      state = .error("Recording failed: \(error.localizedDescription)")
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:716:      state = .error("No audio captured")
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:888:          state = .error("Couldn't catch that -- try again")
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:976:          state = .error("No speech detected. Your clipboard is unchanged. Try again.")
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:981:          state = .error("Failed to save transcript")
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:1046:      state = .error("Transcription failed: \(error.localizedDescription)")
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:1126:    state = .error("Microphone disconnected")
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:1158:    state = .error("Transcription service crashed — please try again")
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:1372:    case .error(let msg):
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:1376:      return .error(message: msg)
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:1399:    state = .error(message)
+Sources/EnviousWisprPipeline/FillerRemovalStep.swift:25:      logger.error(
+Sources/EnviousWisprPipeline/DictationPipeline.swift:38:  case error(message: String)
+Sources/EnviousWisprPipeline/DictationPipeline.swift:55:  /// `handle(.preWarm)` threw). Intentionally dumb: sets `state = .error(msg)`
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:17:public enum WhisperKitPipelineState: Equatable, Sendable {
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:26:  case error(String)
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:48:    case .error(let msg): return .error(msg)
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:240:    state = .error("No audio detected — try again.")
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:301:    case .error(let msg):
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:305:      return .error(message: msg)
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:327:    state = .error(message)
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:467:        state = .error("Model load failed: \(error.localizedDescription)")
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:537:      state = .error("Recording failed: \(error.localizedDescription)")
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:620:      state = .error("No audio captured")
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:1001:          state = .error("Couldn't catch that -- try again")
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:1094:          state = .error("No speech detected. Your clipboard is unchanged. Try again.")
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:1099:          state = .error("Failed to save transcript")
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:1162:      state = .error("Transcription failed: \(error.localizedDescription)")
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:1187:    state = .error("Microphone disconnected")
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:1217:    state = .error("Transcription service crashed — please try again")
+Sources/EnviousWisprPipeline/PipelineStateChangePlanner.swift:9:enum PipelineStateSideEffect: Equatable, Sendable {
+Sources/EnviousWisprPipeline/PipelineStateChangePlanner.swift:64:enum PipelineStateChangePlanner {
+Sources/EnviousWisprPipeline/PipelineStateChangePlanner.swift:112:    if case .error(let msg) = newState.activity {
+Tests/EnviousWisprTests/Pipeline/PipelineStateChangePlannerTests.swift:163:      .idle, .loadingModel, .recording, .transcribing, .polishing, .error("boom"),
+Tests/EnviousWisprTests/Pipeline/PipelineStateChangePlannerTests.swift:213:      (.error("boom"), .error(message: "boom")),
+Tests/EnviousWisprTests/Pipeline/PipelineStateChangePlannerTests.swift:260:      to: PipelineState.error("mic_disconnected"),
+Tests/EnviousWisprTests/Pipeline/PipelineStateChangePlannerTests.swift:261:      pipelineOverlayIntent: .error(message: "mic_disconnected"),
+Tests/EnviousWisprTests/Pipeline/PipelineStateChangePlannerTests.swift:269:    #expect(plan.effects.contains(.showOverlay(.error(message: "mic_disconnected"))))
+Tests/EnviousWisprTests/Pipeline/PipelineStateChangePlannerTests.swift:278:      to: WhisperKitPipelineState.error("whisperkit_load_failed"),
+Tests/EnviousWisprTests/Pipeline/PipelineStateChangePlannerTests.swift:279:      pipelineOverlayIntent: .error(message: "whisperkit_load_failed"),
+Tests/EnviousWisprTests/Pipeline/PipelineStateChangePlannerTests.swift:367:      to: PipelineState.error("bad"),
+Tests/EnviousWisprTests/Pipeline/PipelineStateChangePlannerTests.swift:368:      pipelineOverlayIntent: .error(message: "bad"),
+Tests/EnviousWisprTests/Pipeline/PipelineStateChangePlannerTests.swift:377:        .showOverlay(.error(message: "bad")),
+Tests/EnviousWisprTests/Pipeline/PipelineStateChangePlannerTests.swift:392:    #expect(PipelineState.error("x").activity == .error("x"))
+Tests/EnviousWisprTests/Pipeline/PipelineStateChangePlannerTests.swift:405:    #expect(WhisperKitPipelineState.error("x").activity == .error("x"))
+Tests/EnviousWisprTests/Pipeline/V2/DedupSurvivesStallTests.swift:59:      pipeline.state == .error("No audio detected — try again."),
+Tests/EnviousWisprTests/Pipeline/V2/DedupSurvivesStallTests.swift:82:      pipeline.state == .error("No audio detected — try again."),
+Tests/EnviousWisprTests/Pipeline/HeartPathIntegrationTests.swift:731:   `.error("Transcription failed: ...")` without any fallback paste. That contradicts the
+Tests/EnviousWisprTests/Pipeline/PipelineStateChangeHandlerTests.swift:232:      to: PipelineState.error("mic_disconnected"),
+Tests/EnviousWisprTests/Pipeline/PipelineStateChangeHandlerTests.swift:233:      pipelineOverlayIntent: .error(message: "mic_disconnected"),
+Tests/EnviousWisprTests/Pipeline/PipelineStateChangeHandlerTests.swift:240:      spy.calls == [OverlaySpy.Call(intent: .error(message: "mic_disconnected"))])
+Sources/EnviousWisprASR/WhisperKitBackend.swift:270:      return .error(reason: lastError ?? "all_windows_failed")
+Sources/EnviousWisprASR/LanguageDetector.swift:188:    case .error(let reason):
+Sources/EnviousWisprASR/LIDObservation.swift:55:  case error(reason: String)
+Sources/EnviousWispr/Views/Onboarding/RainbowLipsView.swift:5:enum LipsAnimationState: Equatable {
+Sources/EnviousWisprASR/WhisperKitSetupService.swift:22:public enum WhisperKitSetupState: Equatable {
+Sources/EnviousWisprASR/WhisperKitSetupService.swift:27:  case error(String)
+Sources/EnviousWisprASR/WhisperKitSetupService.swift:173:        self?.setupState = .error(
+Sources/EnviousWispr/Views/Main/MainWindowView.swift:155:      case .error(let msg):
+Sources/EnviousWispr/App/LLMModelDiscoveryCoordinator.swift:13:  enum KeyValidationState: Equatable {
+Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift:18:    case error(String)
+Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift:100:      checklistStatuses[0] = .error(downloadError!)
+Sources/EnviousWispr/Views/Onboarding/OnboardingV2View.swift:143:      checklistStatuses[0] = .error(friendly)
+Sources/EnviousWisprCore/AppSettings.swift:17:public enum PipelineState: Equatable, Sendable {
+Sources/EnviousWisprCore/AppSettings.swift:24:  case error(String)
+Sources/EnviousWisprCore/SettingsEnums.swift:5:public enum OnboardingState: String, Codable, Sendable {
+Sources/EnviousWispr/Views/Settings/SpeechEngineSettingsView.swift:273:    case .error(let message):
+Sources/EnviousWisprCore/PipelineStateProtocol.swift:15:  case error(String)
+Sources/EnviousWisprCore/PipelineStateProtocol.swift:39:    case .error(let msg): return .error(msg)
+Sources/EnviousWispr/App/AppState.swift:295:      // sets state = .error(...), which fires onStateChange and shows the error
+Sources/EnviousWispr/App/AppState.swift:387:      // the pipeline sets .error(...) state which shows the error overlay via
+Sources/EnviousWispr/App/AppState.swift:612:      // surface its own `.error(...)`, treat as a silent failure and recover.
+Sources/EnviousWispr/App/AppState.swift:613:      // Per Codex Q4: do NOT overwrite an existing `.error(...)` (the watchdog
+Sources/EnviousWispr/App/AppState.swift:1012:  /// One authoritative mapping from WhisperKit's 9-state enum to unified PipelineState.
+Sources/EnviousWispr/App/AppState.swift:1021:    case .error(let msg): return .error(msg)
+Sources/EnviousWispr/App/MenuBarIconAnimator.swift:10:  enum IconState: Equatable {
+Sources/EnviousWispr/App/MenuBarIconAnimator.swift:14:    case error
+Sources/EnviousWispr/App/RecordingOverlayPanel.swift:135:    case .error(let message):
+Sources/EnviousWispr/App/RecordingOverlayPanel.swift:886:  case error
+Sources/EnviousWispr/Views/Settings/AIPolishSettingsView.swift:643:    case .error(let message):
+
+exec
+/bin/zsh -lc "sed -n '1,90p' Sources/EnviousWisprCore/AppSettings.swift; sed -n '120,180p' Sources/EnviousWispr/App/RecordingOverlayPanel.swift; sed -n '100,130p' Sources/EnviousWisprPipeline/PipelineStateChangePlanner.swift; sed -n '140,170p' Sources/EnviousWispr/Views/Main/MainWindowView.swift" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-393-finalizer-empty
+ succeeded in 0ms:
+import Foundation
+
+/// Recording mode for dictation.
+public enum RecordingMode: String, Codable, CaseIterable, Sendable {
+  case pushToTalk
+  case toggle
+
+  public var shortLabel: String {
+    switch self {
+    case .pushToTalk: return "PTT"
+    case .toggle: return "Toggle"
+    }
+  }
+}
+
+/// Pipeline processing state.
+public enum PipelineState: Equatable, Sendable {
+  case idle
+  case loadingModel
+  case recording
+  case transcribing
+  case polishing
+  case complete
+  case error(String)
+
+  public var isActive: Bool {
+    switch self {
+    case .loadingModel, .recording, .transcribing, .polishing:
+      return true
+    default:
+      return false
+    }
+  }
+
+}
+
+/// Policy controlling when idle ASR models are unloaded from memory.
+public enum ModelUnloadPolicy: String, Codable, CaseIterable, Sendable {
+  case never
+  case immediately
+  case twoMinutes
+  case fiveMinutes
+  case tenMinutes
+  case fifteenMinutes
+  case sixtyMinutes
+
+  public var displayName: String {
+    switch self {
+    case .never: return "Never"
+    case .immediately: return "Immediately"
+    case .twoMinutes: return "After 2 minutes"
+    case .fiveMinutes: return "After 5 minutes"
+    case .tenMinutes: return "After 10 minutes"
+    case .fifteenMinutes: return "After 15 minutes"
+    case .sixtyMinutes: return "After 1 hour"
+    }
+  }
+
+  /// Returns nil for .never and .immediately (timer-less policies).
+  public var interval: TimeInterval? {
+    switch self {
+    case .never, .immediately: return nil
+    case .twoMinutes: return 120
+    case .fiveMinutes: return 300
+    case .tenMinutes: return 600
+    case .fifteenMinutes: return 900
+    case .sixtyMinutes: return 3600
+    }
+  }
+}
+      if accessibilityToastShownThisSession || accessibilityWarningDismissedProvider() {
+        showClipboardFallback()
+      } else {
+        accessibilityToastShownThisSession = true
+        showAccessibilityToast()
+      }
+    case .warning(let message):
+      NSAccessibility.post(
+        element: NSApp.mainWindow as Any,
+        notification: .announcementRequested,
+        userInfo: [
+          .announcement: "Warning: \(message)",
+          .priority: NSAccessibilityPriorityLevel.medium.rawValue as NSNumber,
+        ])
+      showWarning(message: message)
+    case .error(let message):
+      NSAccessibility.post(
+        element: NSApp.mainWindow as Any,
+        notification: .announcementRequested,
+        userInfo: [
+          .announcement: "Error: \(message)",
+          .priority: NSAccessibilityPriorityLevel.high.rawValue as NSNumber,
+        ])
+      showError(message: message)
+    case .interruption(let message):
+      NSAccessibility.post(
+        element: NSApp.mainWindow as Any,
+        notification: .announcementRequested,
+        userInfo: [
+          .announcement: "Interruption: \(message)",
+          .priority: NSAccessibilityPriorityLevel.high.rawValue as NSNumber,
+        ])
+      showNotification(message: message, style: .interruption)
+    }
+  }
+
+  // MARK: - Legacy API (internal)
+
+  func show(audioLevelProvider: @escaping () -> Float, isRecordingLocked: Bool = false) {
+    if panel != nil {
+      // A panel already exists (e.g., "Starting..." polishing panel).
+      // Transition to recording — mirrors transitionToPolishing() in reverse.
+      transitionToRecording(
+        audioLevelProvider: audioLevelProvider, isRecordingLocked: isRecordingLocked)
+      return
+    }
+    // Cancel any lingering deferred work from a prior session that wasn't
+    // cleaned up (e.g., if a VAD self-cancel left pendingCreateWork set but
+    // panel still nil). This is defensive — normally hide() clears it.
+    pendingCreateWork?.cancel()
+    pendingCreateWork = nil
+    generation &+= 1
+    let token = generation
+
+    // Delay creation to the next run loop cycle.
+    // When triggered from an NSStatusItem menu action, the menu dismiss
+    // animation is still in progress. Creating an NSHostingView during
+    // that animation causes a re-entrant NSWindow layout cycle (SIGABRT).
+    // BRAIN: gotcha id=dispatch-queue-not-task
+    // NOTE: Do NOT replace with Task { @MainActor } — DispatchQueue.main.async
+    // guarantees next-run-loop-cycle deferral; Task may execute immediately
+    // current transcript. Finalizer already persisted by the time
+    // `.complete` is observed (TranscriptFinalizer.swift:126), so the
+    // new row is on disk regardless. The in-memory append keeps the
+    // history cache visibly fresh without an O(n) disk scan.
+    if case .complete = newState.activity {
+      if hasCurrentTranscript {
+        effects.append(.appendCompletedTranscript)
+        effects.append(.reportDictationCompleted)
+      }
+    }
+
+    // Step 3 — error-path telemetry.
+    if case .error(let msg) = newState.activity {
+      effects.append(.reportPipelineFailed(errorCode: msg))
+    }
+
+    return PipelineStateChangePlan(effects: effects)
+  }
+}
+          }
+
+          if let polishError = appState.lastPolishError {
+            HStack(spacing: 6) {
+              Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.stWarning)
+              Text("AI polish failed: \(polishError)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+            .padding(8)
+            .background(Color.stWarningSoft, in: RoundedRectangle(cornerRadius: 8))
+          }
+        }
+
+      case .error(let msg):
+        ContentUnavailableView {
+          Label("Error", systemImage: "exclamationmark.triangle")
+        } description: {
+          Text(msg)
+        } actions: {
+          Button("Try Again") {
+            appState.resetActivePipeline()
+          }
+        }
+      }
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .animation(.easeInOut(duration: 0.3), value: appState.pipelineState)
+    .task(id: appState.pipelineState == .recording) {
+      guard appState.pipelineState == .recording else {
+
+exec
+/bin/zsh -lc "rg \"enum FinalizationError|emptyAfterProcessing|finalize\\(\" -n Sources/EnviousWisprPipeline Sources Tests | head -100 && sed -n '1,220p' Sources/EnviousWisprPipeline/TranscriptFinalizer.swift" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-393-finalizer-empty
+ succeeded in 0ms:
+Tests/EnviousWisprTests/Services/HeartPathErrorTests.swift:44:      .emptyAfterProcessing(route: "built_in_mic", wasPolishEnabled: true),
+Sources/EnviousWisprPipeline/TranscriptFinalizer.swift:45:internal enum FinalizationError: Error {
+Sources/EnviousWisprPipeline/TranscriptFinalizer.swift:47:  case emptyAfterProcessing
+Sources/EnviousWisprPipeline/TranscriptFinalizer.swift:104:  func finalize(_ request: FinalizationRequest) async throws -> FinalizationResult {
+Sources/EnviousWisprPipeline/TranscriptFinalizer.swift:125:      throw FinalizationError.emptyAfterProcessing
+Sources/EnviousWisprServices/HeartPathError.swift:26:  case emptyAfterProcessing(route: String, wasPolishEnabled: Bool)
+Sources/EnviousWisprServices/HeartPathError.swift:50:    case .emptyAfterProcessing(_, let wasPolishEnabled):
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:936:        finalizationResult = try await transcriptFinalizer.finalize(
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:955:        case .emptyAfterProcessing:
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:963:            HeartPathError.emptyAfterProcessing(
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:860:        let result = await worker.finalize(finalSamples: rawSamples, speechSegments: segments)
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:1046:        finalizationResult = try await transcriptFinalizer.finalize(
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:1073:        case .emptyAfterProcessing:
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:1081:            HeartPathError.emptyAfterProcessing(
+Sources/EnviousWisprASR/WhisperKitIncrementalSession.swift:24:  func finalize(
+Sources/EnviousWisprASR/WhisperKitIncrementalWorker.swift:62:  package func finalize(
+Tests/EnviousWisprTests/Pipeline/HeartPathIntegrationTests.swift:261:    let finalization = try await finalizer.finalize(
+Tests/EnviousWisprTests/Pipeline/HeartPathIntegrationTests.swift:734:3. Heart-vs-limb ambiguity in `TranscriptFinalizer.finalize(...)`:
+Tests/EnviousWisprTests/Pipeline/HeartPathIntegrationTests.swift:735:   `emptyAfterProcessing` is terminal. If ASR fallback is allowed to degrade to an empty
+Tests/EnviousWisprTests/Pipeline/TranscriptFinalizerTests.swift:34:    let result = try await finalizer.finalize(Self.request(asrText: rawText, steps: [step]))
+Tests/EnviousWisprTests/Pipeline/TranscriptFinalizerTests.swift:43:  // MARK: - 2. Whitespace-only processed text throws .emptyAfterProcessing
+Tests/EnviousWisprTests/Pipeline/TranscriptFinalizerTests.swift:45:  @Test("Whitespace-only processed text throws .emptyAfterProcessing without saving")
+Tests/EnviousWisprTests/Pipeline/TranscriptFinalizerTests.swift:59:      _ = try await finalizer.finalize(Self.request(asrText: "hello", steps: [step]))
+Tests/EnviousWisprTests/Pipeline/TranscriptFinalizerTests.swift:61:    } catch FinalizationError.emptyAfterProcessing {
+Tests/EnviousWisprTests/Pipeline/TranscriptFinalizerTests.swift:64:      Issue.record("expected .emptyAfterProcessing, got \(error)")
+Tests/EnviousWisprTests/Pipeline/TranscriptFinalizerTests.swift:79:      _ = try await finalizer.finalize(Self.request(asrText: "hello", steps: []))
+Tests/EnviousWisprTests/Pipeline/TranscriptFinalizerTests.swift:120:      try await finalizer.finalize(Self.request(asrText: "hello", steps: [step]))
+Tests/EnviousWisprTests/Pipeline/TranscriptFinalizerTests.swift:149:    let result = try await finalizer.finalize(Self.request(asrText: rawText, steps: []))
+Tests/EnviousWisprTests/Pipeline/TranscriptFinalizerTests.swift:175:      _ = try await finalizer.finalize(Self.request(asrText: "hello", steps: []))
+Tests/EnviousWisprTests/Pipeline/TranscriptFinalizerTests.swift:207:    _ = try await finalizer.finalize(Self.request(asrText: "hello", steps: []))
+Tests/EnviousWisprTests/Pipeline/TranscriptFinalizerTests.swift:222:    _ = try await finalizer.finalize(Self.request(asrText: "hello", steps: []))
+Tests/EnviousWisprTests/Pipeline/TranscriptFinalizerTests.swift:242:    _ = try await finalizer.finalize(
+Sources/EnviousWisprPipeline/TranscriptFinalizer.swift:45:internal enum FinalizationError: Error {
+Sources/EnviousWisprPipeline/TranscriptFinalizer.swift:47:  case emptyAfterProcessing
+Sources/EnviousWisprPipeline/TranscriptFinalizer.swift:104:  func finalize(_ request: FinalizationRequest) async throws -> FinalizationResult {
+Sources/EnviousWisprPipeline/TranscriptFinalizer.swift:125:      throw FinalizationError.emptyAfterProcessing
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:860:        let result = await worker.finalize(finalSamples: rawSamples, speechSegments: segments)
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:1046:        finalizationResult = try await transcriptFinalizer.finalize(
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:1073:        case .emptyAfterProcessing:
+Sources/EnviousWisprPipeline/WhisperKitPipeline.swift:1081:            HeartPathError.emptyAfterProcessing(
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:936:        finalizationResult = try await transcriptFinalizer.finalize(
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:955:        case .emptyAfterProcessing:
+Sources/EnviousWisprPipeline/TranscriptionPipeline.swift:963:            HeartPathError.emptyAfterProcessing(
+import AppKit
+import EnviousWisprCore
+import EnviousWisprServices
+import EnviousWisprStorage
+import Foundation
+
+/// Input for post-ASR finalization.
+@MainActor
+internal struct FinalizationRequest {
+  let asrText: String
+  let language: String?
+  let duration: TimeInterval
+  let processingTime: TimeInterval
+  let backendType: ASRBackendType
+  let targetApp: NSRunningApplication?
+  let targetElement: AXUIElement?
+  let autoCopyToClipboard: Bool
+  let autoPasteToActiveApp: Bool
+  let restoreClipboardAfterPaste: Bool
+  let steps: [any TextProcessingStep]
+}
+
+/// Output from post-ASR finalization.
+@MainActor
+internal struct FinalizationResult {
+  let transcript: Transcript
+  let pasteResult: PasteDeliveryResult?
+  /// Error message from polish step failure, if any.
+  let polishError: String?
+  /// Time spent in text processing (for metrics).
+  let polishDurationSeconds: Double
+  /// Time spent in paste (for metrics).
+  let pasteDurationSeconds: Double
+  /// Connector-source-of-truth metadata for AFM dual-mode polish (#429).
+  /// Forwarded to pipeline so it can fold into `ExecutionMetrics` for telemetry.
+  let polishMetadata: PolishMetadata?
+  /// Final pipeline-level fallback flag (filter OR validator). See
+  /// `TextProcessingContext.pipelineFellBackToRaw`.
+  let pipelineFellBackToRaw: Bool
+}
+
+/// Typed errors so pipelines can decide the right fallback per category.
+/// GPT Desktop review: a single generic throw path blurs storage failures
+/// with polish failures, creating misleading Sentry data and wrong fallbacks.
+internal enum FinalizationError: Error {
+  /// Text processing ran but produced empty output
+  case emptyAfterProcessing
+  /// Transcript storage failed (disk full, permissions, etc.)
+  case storageFailed(underlying: Error)
+}
+
+/// Orchestrates the post-ASR delivery path: text processing -> store -> paste.
+///
+/// Does NOT own pipeline state transitions. Returns data; the pipeline decides
+/// .polishing, .complete, .error based on the result.
+/// Does NOT own step instances. Steps are passed in via the request.
+/// Does NOT emit pipeline-specific telemetry (ASR mode, backend, etc.).
+@MainActor
+internal final class TranscriptFinalizer {
+  private let save: @MainActor (Transcript) throws -> Void
+  private let textProcessingRunner: TextProcessingRunner
+  private let deliverPaste: @MainActor (PasteDeliveryRequest) async -> PasteDeliveryResult
+  /// Phase 0 (#640) — receives `PasteCompletionEvent` after every successful
+  /// dictation auto-paste. Nil means "no observers wired" (acceptable; events
+  /// are dropped silently). Phase 7 (#629) is the first planned subscriber.
+  private let pasteCompletionRegistry: PasteCompletionRegistry?
+
+  init(
+    transcriptStore: TranscriptStore,
+    textProcessingRunner: TextProcessingRunner = TextProcessingRunner(),
+    pasteExecutor: PasteCascadeExecutor = PasteCascadeExecutor(),
+    pasteCompletionRegistry: PasteCompletionRegistry? = nil
+  ) {
+    self.save = { try transcriptStore.save($0) }
+    self.textProcessingRunner = textProcessingRunner
+    self.deliverPaste = { await pasteExecutor.deliver($0) }
+    self.pasteCompletionRegistry = pasteCompletionRegistry
+  }
+
+  // Test-only seam: contract tests construct the finalizer with fake closures
+  // so they can exercise failure paths without touching disk or AX APIs.
+  // The seam is intentionally local to this type. Do NOT promote `save` /
+  // `deliverPaste` to protocols on `TranscriptStore` / `PasteCascadeExecutor`
+  // just because this surface exists. Those types carry wider production
+  // responsibilities and a single-method protocol is blast radius without
+  // coverage.
+  init(
+    save: @escaping @MainActor (Transcript) throws -> Void,
+    textProcessingRunner: TextProcessingRunner = TextProcessingRunner(),
+    deliverPaste: @escaping @MainActor (PasteDeliveryRequest) async -> PasteDeliveryResult,
+    pasteCompletionRegistry: PasteCompletionRegistry? = nil
+  ) {
+    self.save = save
+    self.textProcessingRunner = textProcessingRunner
+    self.deliverPaste = deliverPaste
+    self.pasteCompletionRegistry = pasteCompletionRegistry
+  }
+
+  /// Finalize a transcription: process text, store transcript, paste to target.
+  ///
+  /// Throws `FinalizationError` for typed failures. Throws `CancellationError` if cancelled.
+  /// Text processing step failures are handled internally (heart & limbs) and reported
+  /// via `polishError` in the result, NOT as thrown errors.
+  func finalize(_ request: FinalizationRequest) async throws -> FinalizationResult {
+    // 1. Text processing (step failures handled internally by runner)
+    let polishStart = CFAbsoluteTimeGetCurrent()
+    let processingResult = try await textProcessingRunner.run(
+      rawText: request.asrText,
+      language: request.language,
+      targetAppName: request.targetApp?.localizedName,
+      steps: request.steps
+    )
+    let polishEnd = CFAbsoluteTimeGetCurrent()
+
+    Task {
+      await AppLogger.shared.log(
+        "Pipeline timing: text processing completed in \(String(format: "%.3f", polishEnd - polishStart))s",
+        level: .info, category: "PipelineTiming"
+      )
+    }
+
+    let context = processingResult.context
+    let finalText = context.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !finalText.isEmpty else {
+      throw FinalizationError.emptyAfterProcessing
+    }
+
+    // 2. Create and store transcript
+    let transcript = Transcript(
+      text: context.text,
+      polishedText: context.polishedText,
+      language: request.language,
+      duration: request.duration,
+      processingTime: request.processingTime,
+      backendType: request.backendType,
+      llmProvider: context.llmProvider,
+      llmModel: context.llmModel
+    )
+    do {
+      try save(transcript)
+    } catch {
+      throw FinalizationError.storageFailed(underlying: error)
+    }
+
+    // 3. Paste (never throws -- paste cascade always falls back to clipboard)
+    let pasteStart = CFAbsoluteTimeGetCurrent()
+    var pasteResult: PasteDeliveryResult?
+    if request.autoPasteToActiveApp {
+      let text = PasteService.appendTrailingSpace(transcript.displayText)
+      pasteResult = await deliverPaste(
+        PasteDeliveryRequest(
+          text: text,
+          targetApp: request.targetApp,
+          targetElement: request.targetElement,
+          restoreClipboardAfterPaste: request.restoreClipboardAfterPaste
+        ))
+      // Phase 0 (#640): emit paste-complete event for downstream observers
+      // (Phase 7 auto-learn). Only fires on the dictation auto-paste path AND
+      // only when the cascade actually delivered (not when it fell back to
+      // clipboard-only). An auto-learn observer that saw clipboard-only
+      // fallbacks would start watching a destination where the text never
+      // landed — false-positive learning. Codex review revision 2026-05-05.
+      if let pasteResult, case .delivered = pasteResult.outcome {
+        pasteCompletionRegistry?.emit(
+          PasteCompletionEvent(
+            pastedText: text,
+            destinationBundleID: request.targetApp?.bundleIdentifier
+          )
+        )
+      }
+    } else if request.autoCopyToClipboard {
+      PasteService.copyToClipboard(transcript.displayText)
+    }
+    let pasteEnd = CFAbsoluteTimeGetCurrent()
+
+    return FinalizationResult(
+      transcript: transcript,
+      pasteResult: pasteResult,
+      polishError: processingResult.polishError,
+      polishDurationSeconds: polishEnd - polishStart,
+      pasteDurationSeconds: pasteEnd - pasteStart,
+      polishMetadata: context.polishMetadata,
+      pipelineFellBackToRaw: context.pipelineFellBackToRaw
+    )
+  }
+}
+
+exec
+/bin/zsh -lc "rg \"func showError|showError\\(\" -n Sources/EnviousWispr/App/RecordingOverlayPanel.swift Sources/EnviousWispr | head -50 && sed -n '520,620p' Sources/EnviousWispr/App/RecordingOverlayPanel.swift" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-393-finalizer-empty
+ succeeded in 0ms:
+Sources/EnviousWispr/App/RecordingOverlayPanel.swift:143:      showError(message: message)
+Sources/EnviousWispr/App/RecordingOverlayPanel.swift:301:  func showError(message: String) {
+Sources/EnviousWispr/App/RecordingOverlayPanel.swift:143:      showError(message: message)
+Sources/EnviousWispr/App/RecordingOverlayPanel.swift:301:  func showError(message: String) {
+    // This handles the rapid-ESC race: if hide() is called before the
+    // DispatchQueue.main.async closure from show() has had a chance to run,
+    // cancelling the work item prevents the panel from being created at all.
+    // The generation counter check inside the closure is a secondary guard.
+    pendingCreateWork?.cancel()
+    pendingCreateWork = nil
+
+    guard let panelToClose = panel else { return }
+    panel = nil
+
+    // Flush pending CA transactions before releasing the panel.
+    // RecordingOverlayView has a running .task loop updating audioLevel every 50ms
+    // and OverlayCapsuleBackground has a repeatForever animation. When close() fires,
+    // CA may have a pending implicit transaction trying to render a final frame of
+    // the now-deallocating NSHostingView backing layer. Flushing here ensures that
+    // frame is committed while the view graph is still alive, preventing the
+    // _DictionaryStorage use-after-free in CA::Transaction::commit.
+    //
+    // We must flush BEFORE close() (not after), because close() begins view teardown.
+    // The local `panelToClose` retain keeps the panel alive through the flush.
+    CATransaction.flush()
+    panelToClose.close()
+  }
+}
+
+// MARK: - SpectrumWheelIcon
+
+/// 12 rainbow-colored bars arranged radially, spinning slowly.
+struct SpectrumWheelIcon: View {
+  @State private var rotation: Double = 0
+  let size: CGFloat
+
+  private let bars: [(deg: Double, yOffset: CGFloat, height: CGFloat, color: Color)] = [
+    (0, 4, 14, Color(red: 1.0, green: 0.176, blue: 0.333)),
+    (30, 7, 10, Color(red: 1.0, green: 0.624, blue: 0.039)),
+    (60, 5, 12, Color(red: 1.0, green: 0.839, blue: 0.039)),
+    (90, 8, 9, Color(red: 0.188, green: 0.82, blue: 0.345)),
+    (120, 4, 14, Color(red: 0.204, green: 0.78, blue: 0.349)),
+    (150, 6, 11, Color(red: 0.196, green: 0.847, blue: 0.745)),
+    (180, 5, 13, Color(red: 0.392, green: 0.824, blue: 1.0)),
+    (210, 8, 9, Color(red: 0.039, green: 0.518, blue: 1.0)),
+    (240, 4, 14, Color(red: 0.369, green: 0.361, blue: 0.902)),
+    (270, 6, 12, Color(red: 0.749, green: 0.353, blue: 0.949)),
+    (300, 7, 10, Color(red: 1.0, green: 0.176, blue: 0.333)),
+    (330, 5, 13, Color(red: 1.0, green: 0.624, blue: 0.039)),
+  ]
+
+  var body: some View {
+    // Scale factor: SVG viewBox is 64x64, we map to `size`
+    let scale = size / 64.0
+    Canvas { context, size in
+      let cx = size.width / 2
+      let cy = size.height / 2
+      for bar in bars {
+        let barW = 4.0 * scale
+        let barH = bar.height * scale
+        // Bar rect centered on the canvas, offset upward by yOffset so
+        // its visual center sits at the correct radial distance.
+        let distFromCenter = 32.0 * scale - bar.yOffset * scale - barH / 2
+        let rect = CGRect(
+          x: -barW / 2,
+          y: -distFromCenter - barH / 2,
+          width: barW,
+          height: barH
+        )
+        let cornerRadius = 2.0 * scale
+        let barPath = Path(roundedRect: rect, cornerRadius: cornerRadius)
+        // Rotate around canvas center by bar's degree offset (converted to radians).
+        let angle = bar.deg * .pi / 180.0
+        let transform = CGAffineTransform(translationX: cx, y: cy)
+          .rotated(by: angle)
+        let rotatedPath = barPath.applying(transform)
+        context.fill(rotatedPath, with: .color(bar.color))
+      }
+    }
+    .frame(width: size, height: size)
+    .rotationEffect(.degrees(rotation))
+    .onAppear {
+      withAnimation(.linear(duration: 8).repeatForever(autoreverses: false)) {
+        rotation = 360
+      }
+    }
+    .accessibilityHidden(true)
+  }
+}
+
+// MARK: - RainbowLipsIcon
+
+/// Lip/spectrum bar brand icon driven by real-time audio level during recording.
+/// Each of the 18 bars (9 upper + 9 lower) scales vertically in response to
+/// `audioLevel` (0.0–1.0). Per-bar variation factors make the motion organic
+/// rather than all bars moving in lockstep.
+///
+/// Scale formula (matches MenuBarIconAnimator.renderRecordingLips):
+///   scaleY = silenceScale + (peakScale - silenceScale) * level * perBarFactor
+///
+/// At silence (level ≈ 0) bars sit at their minimum compressed state (lips closed).
+/// At peak (level = 1.0) center bars reach maximum expansion (lips open/talking).
+struct RainbowLipsIcon: View {
+  let size: CGFloat
+  /// Normalised audio level 0.0-1.0, updated every ~50 ms by the parent view.
+
+exec
+/bin/zsh -lc "sed -n '280,330p' Sources/EnviousWispr/App/RecordingOverlayPanel.swift; rg \"struct .*Error|case \\.error|Error\" -n Sources/EnviousWispr/App/RecordingOverlayPanel.swift | tail -80" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-393-finalizer-empty
+ succeeded in 0ms:
+    DispatchQueue.main.async(execute: work)
+  }
+
+  /// Auto-dismiss timer for transient notices (clipboard fallback, errors).
+  private var autoDismissTask: Task<Void, Never>?
+
+  private func scheduleAutoDismiss(seconds: Double = 2.5) {
+    autoDismissTask?.cancel()
+    autoDismissTask = Task { [weak self] in
+      try? await Task.sleep(for: .seconds(seconds))
+      guard !Task.isCancelled, let self, self.panel != nil else { return }
+      self.hide()
+    }
+  }
+
+  /// Show a transient warning notice that auto-dismisses after 2.5s.
+  func showWarning(message: String) {
+    showNotification(message: message, style: .warning)
+  }
+
+  /// Show a transient error notice that auto-dismisses after 3s.
+  func showError(message: String) {
+    showNotification(message: message, style: .error)
+  }
+
+  /// Unified handler for transient notification overlays (errors and warnings).
+  private func showNotification(message: String, style: NotificationStyle) {
+    guard panel == nil else {
+      transitionToNotification(message: message, style: style)
+      scheduleAutoDismiss(seconds: style.autoDismissSeconds)
+      return
+    }
+    pendingCreateWork?.cancel()
+    pendingCreateWork = nil
+    generation &+= 1
+    let token = generation
+
+    let work = DispatchWorkItem { [weak self] in
+      guard let self, self.generation == token else { return }
+      self.pendingCreateWork = nil
+      self.showPanel(
+        content: NotificationOverlayView(message: message, style: style).frame(
+          width: 280, height: 44),
+        width: 280
+      )
+      self.scheduleAutoDismiss(seconds: style.autoDismissSeconds)
+    }
+    pendingCreateWork = work
+    DispatchQueue.main.async(execute: work)
+  }
+
+135:    case .error(let message):
+140:          .announcement: "Error: \(message)",
+143:      showError(message: message)
+301:  func showError(message: String) {
+892:    case .error: "xmark.circle.fill"
+900:    case .error: .red
+908:    case .error: 3.0
+
+exec
+/bin/zsh -lc "sed -n '850,915p' Sources/EnviousWispr/App/RecordingOverlayPanel.swift" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-393-finalizer-empty
+ succeeded in 0ms:
+    .task {
+      while !Task.isCancelled {
+        audioLevel = audioLevelProvider()
+        elapsed = Date().timeIntervalSince(startTime)
+        try? await Task.sleep(for: .milliseconds(50))
+      }
+    }
+  }
+
+}
+
+// MARK: - PolishingOverlayView
+
+/// Compact polishing indicator overlay shown during LLM processing.
+struct PolishingOverlayView: View {
+  var label: String = "Polishing..."
+
+  var body: some View {
+    HStack(spacing: 10) {
+      // Spinning spectrum wheel icon — polishing/processing state
+      SpectrumWheelIcon(size: 24)
+
+      Text(label)
+        .font(.system(size: 13, weight: .medium))
+        .foregroundStyle(.white)
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 10)
+    .background(OverlayCapsuleBackground())
+  }
+}
+
+// MARK: - NotificationStyle
+
+/// Visual style for transient overlay notifications (errors and warnings).
+enum NotificationStyle {
+  case error
+  case warning
+  case interruption
+
+  var iconName: String {
+    switch self {
+    case .error: "xmark.circle.fill"
+    case .warning: "exclamationmark.triangle.fill"
+    case .interruption: ""  // uses distress lips, not SF Symbol
+    }
+  }
+
+  var iconColor: Color {
+    switch self {
+    case .error: .red
+    case .warning: .orange
+    case .interruption: .red
+    }
+  }
+
+  var autoDismissSeconds: Double {
+    switch self {
+    case .error: 3.0
+    case .warning: 2.5
+    case .interruption: 2.0
+    }
+  }
+
+  var usesDistressLips: Bool {
+    self == .interruption
+
+exec
+/bin/zsh -lc "sed -n '915,970p' Sources/EnviousWispr/App/RecordingOverlayPanel.swift" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-393-finalizer-empty
+ succeeded in 0ms:
+    self == .interruption
+  }
+}
+
+// MARK: - NotificationOverlayView
+
+/// Compact notification overlay for errors (red), warnings (orange), and interruptions (distress lips).
+struct NotificationOverlayView: View {
+  let message: String
+  let style: NotificationStyle
+
+  var body: some View {
+    HStack(spacing: 8) {
+      if style.usesDistressLips {
+        RainbowLipsIcon(size: 24, audioLevel: 0, isDistress: true)
+      } else {
+        Image(systemName: style.iconName)
+          .foregroundStyle(style.iconColor)
+          .font(.system(size: 16))
+      }
+
+      Text(message)
+        .font(.system(size: 13, weight: .medium))
+        .foregroundStyle(style.usesDistressLips ? Color.orange : .white)
+        .lineLimit(1)
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 10)
+    .background(
+      style.usesDistressLips
+        ? AnyView(DistressCapsuleBackground()) : AnyView(OverlayCapsuleBackground()))
+  }
+}
+
+// MARK: - AccessibilityToastView
+
+struct AccessibilityToastView: View {
+  let onGrant: () -> Void
+
+  var body: some View {
+    HStack(spacing: 10) {
+      Image(systemName: "lock.shield.fill")
+        .foregroundStyle(.orange)
+        .font(.system(size: 16))
+      Text("Auto-paste needs Accessibility")
+        .font(.system(size: 13, weight: .medium))
+        .foregroundStyle(.white)
+      Spacer(minLength: 8)
+      Button(action: onGrant) {
+        Text("Grant")
+          .font(.system(size: 12, weight: .semibold))
+          .foregroundStyle(.white)
+          .padding(.horizontal, 12)
+          .padding(.vertical, 4)
+          .background(Capsule().fill(Color.orange.opacity(0.85)))
+      }
+
+exec
+/bin/zsh -lc "sed -n '260,320p' Sources/EnviousWispr/App/AppState.swift; sed -n '360,400p' Sources/EnviousWispr/App/AppState.swift; sed -n '600,620p' Sources/EnviousWispr/App/AppState.swift" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-393-finalizer-empty
+ succeeded in 0ms:
+
+    // Unified engine interruption handler — routes to whichever pipeline is actively recording.
+    // Both pipelines share the same audioCapture instance. When the audio engine/XPC service
+    // is interrupted, we must notify the pipeline that's currently recording, not the one
+    // that happened to set onEngineInterrupted last.
+    audioCapture.onEngineInterrupted = { [weak self] in
+      guard let self else { return }
+      let pState = self.pipeline.state
+      let wkState = self.whisperKitPipeline.state
+      Task {
+        await AppLogger.shared.log(
+          "[AppState] Audio onEngineInterrupted — parakeet=\(pState), whisperKit=\(wkState)",
+          level: .info, category: "XPC"
+        )
+      }
+      SentryBreadcrumb.add(
+        stage: "audio", message: "Audio XPC interrupted", level: .error,
+        data: [
+          "parakeet_state": "\(pState)",
+          "whisperkit_state": "\(wkState)",
+        ])
+      // Issue #285 — route to the pipeline that owns the shared capture
+      // right now. Uses the same owner-selection as `activeTelemetryTarget()`
+      // so the two paths cannot drift when both pipelines are active
+      // (overlap during backend switch: one polishing while the other starts
+      // a new recording).
+      switch self.activeCaptureBackend() {
+      case .parakeet:
+        self.pipeline.handleEngineInterruption()
+      case .whisperKit:
+        self.whisperKitPipeline.handleEngineInterruption()
+      case nil:
+        break  // neither pipeline active — nothing to clean up
+      }
+      // Do NOT hide the overlay here. The pipeline's handleEngineInterruption()
+      // sets state = .error(...), which fires onStateChange and shows the error
+      // overlay. Calling hide() immediately after would dismiss it before the
+      // user can read it. The error overlay auto-dismisses after 3 seconds.
+    }
+
+    // Issue #285 — XPC transport telemetry. Proxy fires this from its
+    // interruption and invalidation handlers; idle interrupts stay silent.
+    // We emit a single captureError per channel with enough context for
+    // Sentry to classify and alert.
+    audioCapture.onXPCServiceError = { [weak self] ctx in
+      guard let self else { return }
+      let handlerKind: XPCHandlerKind = {
+        switch ctx.kind {
+        case .interruptCapturing: return .interrupt
+        case .invalidateCapturing, .invalidateIdle: return .invalidate
+        }
+      }()
+      let wasCapturing = ctx.kind != .invalidateIdle
+      let extras: [String: Any] = [
+        "xpc.handler": handlerKind.rawValue,
+        "xpc.was_capturing": wasCapturing,
+        "xpc.kind": ctx.kind.rawValue,
+        "capture_session_id": ctx.sessionID.map { Int($0) } ?? NSNull(),
+        "capture.route": self.audioCapture.currentAudioRoute,
+      ]
+      SentryBreadcrumb.captureError(
+        SentryBreadcrumb.add(
+          stage: "audio", message: "Audio route changed", level: .warning,
+          data: [
+            "audio_route": route
+          ])
+        SentryBreadcrumb.updateAudioRoute(route)
+      }
+    }
+
+    // Unified ASR service crash handler — routes to whichever pipeline is active.
+    // Fires when the XPC ASR service dies mid-session (streaming or batch).
+    asrManager.onServiceInterrupted = { [weak self] in
+      guard let self else { return }
+      let pState = self.pipeline.state
+      let wkState = self.whisperKitPipeline.state
+      Task {
+        await AppLogger.shared.log(
+          "[AppState] ASR onServiceInterrupted — parakeet=\(pState), whisperKit=\(wkState)",
+          level: .info, category: "XPC"
+        )
+      }
+      if pState == .loadingModel || pState == .recording || pState == .transcribing {
+        self.pipeline.handleASRServiceInterruption()
+      } else if wkState == .recording || wkState == .transcribing {
+        self.whisperKitPipeline.handleASRServiceInterruption()
+      }
+      // Do NOT hide the overlay here. Same reasoning as onEngineInterrupted:
+      // the pipeline sets .error(...) state which shows the error overlay via
+      // onStateChange. The error overlay auto-dismisses after 3 seconds.
+    }
+
+    // Unified VAD auto-stop handler — routes to whichever pipeline is actively recording.
+    // Fired by service-side VAD (XPC mode only). Same routing pattern as onEngineInterrupted.
+    audioCapture.onVADAutoStop = { [weak self] in
+      guard let self else { return }
+      if self.pipeline.state == .recording {
+        Task { await self.pipeline.stopAndTranscribe() }
+      } else if self.whisperKitPipeline.state == .recording {
+        Task { await self.whisperKitPipeline.stopAndTranscribe() }
+      }
+    }
+        )
+        self.recordingOverlay.show(intent: .hidden)
+        self.isRecordingLocked = false
+        active.setExternalError(ModelLoadWatchdog.userMessage)
+        return
+      }
+      let totalMs = {
+        let (s, a) = (ContinuousClock.now - pttStart).components
+        return Int(s) * 1000 + Int(a / 1_000_000_000_000_000)
+      }()
+      // Issue #445: post-condition guard. If `.handle` returned without putting
+      // the pipeline into an active state AND the pipeline didn't already
+      // surface its own `.error(...)`, treat as a silent failure and recover.
+      // Per Codex Q4: do NOT overwrite an existing `.error(...)` (the watchdog
+      // path already set it with the right message); only recover for
+      // inactive non-error states.
+      let pipelineActive: Bool
+      let pipelineInError: Bool
+      if isWhisperKit {
+        pipelineActive = self.whisperKitPipeline.state.isActive
+        if case .error = self.whisperKitPipeline.state {
+
+exec
+/bin/zsh -lc "sed -n '1,80p' Sources/EnviousWisprPipeline/DictationPipeline.swift; sed -n '1,130p' Sources/EnviousWisprPipeline/PipelineStateChangePlanner.swift" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-393-finalizer-empty
+ succeeded in 0ms:
+import EnviousWisprCore
+import Foundation
+
+/// Known interruption message strings used to route .error state to .interruption overlay intent.
+public enum InterruptionMessages {
+  public static let micDisconnected = "Microphone disconnected"
+}
+
+/// Events that any dictation pipeline must handle.
+public enum PipelineEvent: Sendable {
+  case preWarm
+  /// Toggle recording. Carries the per-recording configuration snapshot; pipelines
+  /// consume the config on start transitions and ignore it on stop transitions.
+  /// Settings mutated mid-recording apply to the next recording's snapshot.
+  case toggleRecording(DictationSessionConfig)
+  case requestStop
+  case cancelRecording
+  case reset
+}
+
+/// What the overlay should display — decoupled from internal pipeline state.
+public enum OverlayIntent: Equatable, Sendable {
+  case hidden
+  case recording(audioLevel: Float)
+  case processing(label: String)
+  /// Transient notice shown when paste fell back to clipboard-only (Tier 3).
+  /// Auto-dismissed by the overlay panel after a short delay.
+  case clipboardFallback
+  /// Educational notice shown once-per-session when paste cascade falls back
+  /// to clipboard because Accessibility permission is denied. Includes an
+  /// inline Grant button. Auto-dismissed after about 6 seconds.
+  case accessibilityToast
+  /// Transient warning notice for degraded-but-delivered results (e.g. polish failed).
+  /// Orange icon, auto-dismissed by the overlay panel after 2.5 seconds.
+  case warning(message: String)
+  /// Transient error notice shown when ASR fails despite speech evidence.
+  /// Auto-dismissed by the overlay panel after 3 seconds.
+  case error(message: String)
+  /// Transient interruption notice shown when the recording device disconnects.
+  /// Distress lips (red pulse) with reason text, auto-dismissed after 2 seconds.
+  case interruption(message: String)
+}
+
+/// Abstraction over dictation pipelines (Parakeet streaming, WhisperKit batch, etc.).
+/// Each pipeline owns its own state machine and emits `OverlayIntent` for UI.
+@MainActor
+public protocol DictationPipeline: AnyObject {
+  var overlayIntent: OverlayIntent { get }
+  /// Issue #289: `.preWarm` may now throw if the audio input fails to
+  /// start (XPC transport error, AVAudioEngine start refusal, etc.). Other
+  /// events never throw today but the unified signature lets callers observe
+  /// failures without a second protocol method.
+  func handle(event: PipelineEvent) async throws
+  /// Surface an error to the pipeline from outside (e.g. `AppState` after
+  /// `handle(.preWarm)` threw). Intentionally dumb: sets `state = .error(msg)`
+  /// and clears transient state. No retry scheduling, no transition logic.
+  func setExternalError(_ message: String)
+
+  /// Issue #289: invalidate any pending stall-recovery cleanup token so a
+  /// deferred `finishStallRecovery` won't call `stopCapture()` on a session
+  /// this pipeline no longer owns. Called by `PipelineSettingsSync` on
+  /// backend switch — the deactivating pipeline may still hold a token for a
+  /// pre-switch stall, and the shared `AudioCaptureInterface.currentCaptureSessionID`
+  /// doesn't advance until the other pipeline reaches `beginCapturePhase()`.
+  func clearPendingStallRecovery()
+}
+
+/// Issue #285 — heart-path telemetry callbacks that AppState routes to
+/// whichever pipeline is currently recording. The underlying `AudioCapture*`
+/// callback properties are single-owner on the shared capture instance, so
+/// per-pipeline wiring would let the second-initialized pipeline steal them.
+@MainActor
+public protocol HeartPathTelemetryTarget: AnyObject {
+  func handleCaptureStall(_ ctx: CaptureStallContext)
+  func handleXPCReplyFailed(_ ctx: XPCReplyFailureContext)
+  func handleCaptureSessionInterruption(_ ctx: CaptureSessionInterruptionContext)
+}
+import EnviousWisprCore
+import Foundation
+
+/// Every side effect the state-change closure produces, as a value.
+///
+/// Executed in order by the caller. The caller owns stateful concerns
+/// (the warning `Task`, the concrete telemetry service, the overlay panel);
+/// the planner is a pure projection from inputs to this list.
+enum PipelineStateSideEffect: Equatable, Sendable {
+  /// Cancel any pending post-completion warning task. Emitted on every
+  /// non-complete transition — mirrors AppState.swift:386 / :443 behavior.
+  case cancelPendingWarning
+
+  /// Schedule the "Polish failed -- using raw text" warning 400 ms after
+  /// completion. Emitted ONLY on `.complete` when a polish error was recorded
+  /// AND the paste did not fall back to clipboard-only.
+  case schedulePolishFailedWarning
+
+  /// Render this intent on the overlay. Always emitted exactly once per call.
+  case showOverlay(OverlayIntent)
+
+  /// Append the just-completed transcript to the in-memory history cache
+  /// (no disk I/O — finalizer already persisted before `.complete` fires).
+  /// Emitted only when `hasCurrentTranscript` is true; `.complete` with
+  /// `nil` transcript is treated as a transient stale-cache condition and
+  /// no append is emitted.
+  case appendCompletedTranscript
+
+  /// Call `TelemetryService.shared.reportDictationCompleted(transcript:inputMode:)`
+  /// using the caller's current transcript. Emitted only when `.complete` AND
+  /// the pipeline has a current transcript — matches AppState's `if let t`.
+  case reportDictationCompleted
+
+  /// Call `TelemetryService.shared.pipelineFailed(...)` with the captured error
+  /// code. The caller supplies the fixed `stage` / `errorCategory` / `backend`
+  /// literals that today live in AppState's closures.
+  case reportPipelineFailed(errorCode: String)
+}
+
+struct PipelineStateChangePlan: Equatable, Sendable {
+  let effects: [PipelineStateSideEffect]
+}
+
+/// Pure projection from a state transition's observable inputs to the ordered
+/// list of side effects AppState's `onStateChange` closures must perform.
+///
+/// **What lives here:**
+/// - Three-way overlay priority on `.complete`
+///   (clipboardFallback > polish-failed-warning > success).
+/// - Warning-task cancellation on any non-complete transition.
+/// - Telemetry + history-reload emission for `.complete` / `.error`.
+///
+/// **What does NOT live here** (stays with the caller / future handler):
+/// - Stateful `Task` ownership for the delayed polish-failed warning.
+/// - The `.ready`-as-completion-equivalent guard inside the delayed warning
+///   closure (that guard fires at 400 ms, not at plan time).
+/// - Hotkey register/unregister, `isRecordingLocked = false` reset, the
+///   inactive→active tiebreaker, the `onPipelineStateChange?` fan-out.
+///   All four are AppState-only concerns that the bible (§7) keeps inline.
+///
+/// Kept `internal` to `EnviousWisprPipeline`: only the handler in this
+/// module calls `plan(...)`; tests reach it through `@testable import`.
+@MainActor
+enum PipelineStateChangePlanner {
+  static func plan(
+    to newState: any PipelineStateProtocol,
+    pipelineOverlayIntent: OverlayIntent,
+    isClipboardFallback: Bool,
+    isAccessibilityToast: Bool,
+    lastPolishError: String?,
+    hasCurrentTranscript: Bool
+  ) -> PipelineStateChangePlan {
+    var effects: [PipelineStateSideEffect] = []
+
+    // Step 1 — overlay resolution + warning scheduling / cancellation.
+    // Order mirrors the production closures at AppState.swift:370-393 /
+    // :429-450: resolve intent, schedule warning iff applicable, then show.
+    let resolvedOverlayIntent: OverlayIntent
+    switch newState.activity {
+    case .complete:
+      if isAccessibilityToast {
+        resolvedOverlayIntent = .accessibilityToast
+      } else if isClipboardFallback {
+        resolvedOverlayIntent = .clipboardFallback
+      } else if lastPolishError != nil {
+        resolvedOverlayIntent = pipelineOverlayIntent
+        effects.append(.schedulePolishFailedWarning)
+      } else {
+        resolvedOverlayIntent = pipelineOverlayIntent
+      }
+    default:
+      effects.append(.cancelPendingWarning)
+      resolvedOverlayIntent = pipelineOverlayIntent
+    }
+    effects.append(.showOverlay(resolvedOverlayIntent))
+
+    // Step 2 — complete-path: append to in-memory history + telemetry.
+    // Phase C: replaced unconditional disk-backed reload with an
+    // in-memory append that only fires when the pipeline has a
+    // current transcript. Finalizer already persisted by the time
+    // `.complete` is observed (TranscriptFinalizer.swift:126), so the
+    // new row is on disk regardless. The in-memory append keeps the
+    // history cache visibly fresh without an O(n) disk scan.
+    if case .complete = newState.activity {
+      if hasCurrentTranscript {
+        effects.append(.appendCompletedTranscript)
+        effects.append(.reportDictationCompleted)
+      }
+    }
+
+    // Step 3 — error-path telemetry.
+    if case .error(let msg) = newState.activity {
+      effects.append(.reportPipelineFailed(errorCode: msg))
+    }
+
+    return PipelineStateChangePlan(effects: effects)
+  }
+}
+
+exec
+/bin/zsh -lc "sed -n '1350,1380p' Sources/EnviousWisprPipeline/TranscriptionPipeline.swift; sed -n '285,310p' Sources/EnviousWisprPipeline/WhisperKitPipeline.swift" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-393-finalizer-empty
+ succeeded in 0ms:
+    await AppLogger.shared.log(
+      "Streaming rescue: batch produced \(result.text.count) chars",
+      level: .info, category: "Pipeline"
+    )
+
+    return StreamingRescueResult(result: result, diagnostics: diagnostics)
+  }
+
+  // MARK: - DictationPipeline Conformance
+
+  public var overlayIntent: OverlayIntent {
+    switch state {
+    case .loadingModel:
+      return .processing(label: "Loading model...")
+    case .recording:
+      return .recording(audioLevel: 0)  // actual level provided by AudioCaptureManager
+    case .transcribing:
+      return .processing(label: "Transcribing...")
+    case .polishing:
+      return .processing(label: "Polishing...")
+    case .idle, .complete:
+      return .hidden
+    case .error(let msg):
+      if msg == InterruptionMessages.micDisconnected {
+        return .interruption(message: msg)
+      }
+      return .error(message: msg)
+    }
+  }
+
+  public func handle(event: PipelineEvent) async throws {
+  // MARK: - DictationPipeline Conformance
+
+  public var overlayIntent: OverlayIntent {
+    switch state {
+    case .startingUp:
+      return .processing(label: "Starting...")
+    case .loadingModel:
+      return .processing(label: "Loading model...")
+    case .recording:
+      return .recording(audioLevel: 0)
+    case .transcribing:
+      return .processing(label: "Transcribing...")
+    case .polishing:
+      return .processing(label: "Polishing...")
+    case .idle, .ready, .complete:
+      return .hidden
+    case .error(let msg):
+      if msg == InterruptionMessages.micDisconnected {
+        return .interruption(message: msg)
+      }
+      return .error(message: msg)
+    }
+  }
+
+  public func handle(event: PipelineEvent) async throws {
+    switch event {
+
+exec
+/bin/zsh -lc "nl -ba Sources/EnviousWisprPipeline/TranscriptionPipeline.swift | sed -n '968,980p'; nl -ba Sources/EnviousWisprPipeline/WhisperKitPipeline.swift | sed -n '1087,1098p'; nl -ba Sources/EnviousWispr/App/RecordingOverlayPanel.swift | sed -n '318,326p;928,936p'" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-393-finalizer-empty
+ succeeded in 0ms:
+   968	            stage: "processing",
+   969	            extra: [
+   970	              "capture.route": audioCapture.currentAudioRoute,
+   971	              "polish.enabled": llmPolishStep.isEnabled,
+   972	              "backend": "parakeet",
+   973	              "capture_session_id": Int(audioCapture.currentCaptureSessionID),
+   974	            ]
+   975	          )
+   976	          state = .error("No speech detected. Your clipboard is unchanged. Try again.")
+   977	          frozenSnapshot = nil
+   978	          return
+   979	        case .storageFailed(let underlying):
+   980	          SentryBreadcrumb.captureError(underlying, category: .asrFailed, stage: "storage")
+  1087	            extra: [
+  1088	              "capture.route": audioCapture.currentAudioRoute,
+  1089	              "polish.enabled": llmPolishStep.isEnabled,
+  1090	              "backend": "whisperKit",
+  1091	              "capture_session_id": Int(audioCapture.currentCaptureSessionID),
+  1092	            ]
+  1093	          )
+  1094	          state = .error("No speech detected. Your clipboard is unchanged. Try again.")
+  1095	          frozenSnapshot = nil
+  1096	          return
+  1097	        case .storageFailed(let underlying):
+  1098	          SentryBreadcrumb.captureError(underlying, category: .asrFailed, stage: "storage")
+   318	      guard let self, self.generation == token else { return }
+   319	      self.pendingCreateWork = nil
+   320	      self.showPanel(
+   321	        content: NotificationOverlayView(message: message, style: style).frame(
+   322	          width: 280, height: 44),
+   323	        width: 280
+   324	      )
+   325	      self.scheduleAutoDismiss(seconds: style.autoDismissSeconds)
+   326	    }
+   928	      if style.usesDistressLips {
+   929	        RainbowLipsIcon(size: 24, audioLevel: 0, isDistress: true)
+   930	      } else {
+   931	        Image(systemName: style.iconName)
+   932	          .foregroundStyle(style.iconColor)
+   933	          .font(.system(size: 16))
+   934	      }
+   935	
+   936	      Text(message)
+
+exec
+/bin/zsh -lc "nl -ba Sources/EnviousWispr/App/RecordingOverlayPanel.swift | sed -n '936,944p'" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-393-finalizer-empty
+ succeeded in 0ms:
+   936	      Text(message)
+   937	        .font(.system(size: 13, weight: .medium))
+   938	        .foregroundStyle(style.usesDistressLips ? Color.orange : .white)
+   939	        .lineLimit(1)
+   940	    }
+   941	    .padding(.horizontal, 14)
+   942	    .padding(.vertical, 10)
+   943	    .background(
+   944	      style.usesDistressLips
+
+codex
+The changes only replace the empty-finalization user-facing message while preserving the existing telemetry and early return behavior. I did not find a confirmed regression in the modified paths.
+The changes only replace the empty-finalization user-facing message while preserving the existing telemetry and early return behavior. I did not find a confirmed regression in the modified paths.
