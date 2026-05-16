@@ -52,9 +52,12 @@ function sourceForUrl(url) {
   // Strip site prefix and trailing slash.
   let p = url.replace(SITE, '').replace(/\/$/, '');
   if (p === '') p = '/index';
-  // Author pages: /authors/<slug>/ → dynamic route, no single source file. Skip.
-  if (p.startsWith('/authors/')) return null;
-  // Tag pages: /tags/<slug>/ → dynamic route. Skip.
+  // Author pages: /authors/<slug>/ → src/pages/authors/<slug>.astro (static file). Trailing slash already stripped at line 53.
+  if (p.startsWith('/authors/')) {
+    const slug = p.replace('/authors/', '');
+    return path.join(__dirname, `src/pages/authors/${slug}.astro`);
+  }
+  // Tag pages: /tags/<slug>/ → no static source on disk today. Forward-compatible scaffolding.
   if (p.startsWith('/tags/')) return null;
   // /blog/<slug>/ → handled by BLOG_POST_DATES.
   if (p.startsWith('/blog/') && p !== '/blog') return null;

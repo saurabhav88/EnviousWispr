@@ -1,0 +1,316 @@
+OpenAI Codex v0.130.0
+--------
+workdir: /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-741-sitemap-authors
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: workspace-write [workdir, /tmp, $TMPDIR, /Users/m4pro_sv/.codex/memories]
+reasoning effort: high
+reasoning summaries: none
+session id: 019e2f6b-d8f6-7803-af0d-ee181739c65a
+--------
+user
+current changes
+exec
+/bin/zsh -lc 'git status --short && git diff --stat && git diff --cached --stat' in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-741-sitemap-authors
+ succeeded in 0ms:
+ M website/astro.config.mjs
+ website/astro.config.mjs | 9 ++++++---
+ 1 file changed, 6 insertions(+), 3 deletions(-)
+
+exec
+/bin/zsh -lc "git diff -- website/astro.config.mjs && nl -ba website/astro.config.mjs | sed -n '1,220p'" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-741-sitemap-authors
+ succeeded in 0ms:
+diff --git a/website/astro.config.mjs b/website/astro.config.mjs
+index 11aedf9..e6a52e1 100644
+--- a/website/astro.config.mjs
++++ b/website/astro.config.mjs
+@@ -52,9 +52,12 @@ function sourceForUrl(url) {
+   // Strip site prefix and trailing slash.
+   let p = url.replace(SITE, '').replace(/\/$/, '');
+   if (p === '') p = '/index';
+-  // Author pages: /authors/<slug>/ → dynamic route, no single source file. Skip.
+-  if (p.startsWith('/authors/')) return null;
+-  // Tag pages: /tags/<slug>/ → dynamic route. Skip.
++  // Author pages: /authors/<slug>/ → src/pages/authors/<slug>.astro (static file). Trailing slash already stripped at line 53.
++  if (p.startsWith('/authors/')) {
++    const slug = p.replace('/authors/', '');
++    return path.join(__dirname, `src/pages/authors/${slug}.astro`);
++  }
++  // Tag pages: /tags/<slug>/ → no static source on disk today. Forward-compatible scaffolding.
+   if (p.startsWith('/tags/')) return null;
+   // /blog/<slug>/ → handled by BLOG_POST_DATES.
+   if (p.startsWith('/blog/') && p !== '/blog') return null;
+     1	// @ts-check
+     2	import { defineConfig } from 'astro/config';
+     3	import sitemap from '@astrojs/sitemap';
+     4	import fs from 'node:fs';
+     5	import path from 'node:path';
+     6	import { fileURLToPath } from 'node:url';
+     7	
+     8	const __dirname = path.dirname(fileURLToPath(import.meta.url));
+     9	const SITE = 'https://enviouswispr.com';
+    10	
+    11	// Format a Date or YYYY-MM-DD string as an ISO date (YYYY-MM-DD).
+    12	function toIsoDate(d) {
+    13	  if (!d) return null;
+    14	  if (typeof d === 'string') {
+    15	    const m = d.match(/^(\d{4}-\d{2}-\d{2})/);
+    16	    return m ? m[1] : null;
+    17	  }
+    18	  return new Date(d).toISOString().slice(0, 10);
+    19	}
+    20	
+    21	// Walk the blog frontmatter and pick max(updatedDate, pubDate) for each post.
+    22	const BLOG_POST_DATES = (() => {
+    23	  const blogDir = path.join(__dirname, 'src/content/blog');
+    24	  const map = {};
+    25	  let latest = null;
+    26	  if (!fs.existsSync(blogDir)) return { map, latest };
+    27	  for (const file of fs.readdirSync(blogDir)) {
+    28	    if (!file.endsWith('.md') && !file.endsWith('.mdx')) continue;
+    29	    const content = fs.readFileSync(path.join(blogDir, file), 'utf8');
+    30	    const pub = content.match(/^pubDate:\s*["']?(\d{4}-\d{2}-\d{2})["']?/m);
+    31	    const upd = content.match(/^updatedDate:\s*["']?(\d{4}-\d{2}-\d{2})["']?/m);
+    32	    const date = upd ? upd[1] : (pub ? pub[1] : null);
+    33	    if (!date) continue;
+    34	    const slug = file.replace(/\.mdx?$/, '');
+    35	    map[`${SITE}/blog/${slug}/`] = date;
+    36	    if (!latest || date > latest) latest = date;
+    37	  }
+    38	  return { map, latest };
+    39	})();
+    40	
+    41	// File mtime → ISO date for any source path on disk.
+    42	function mtimeIso(absPath) {
+    43	  try {
+    44	    return fs.statSync(absPath).mtime.toISOString().slice(0, 10);
+    45	  } catch {
+    46	    return null;
+    47	  }
+    48	}
+    49	
+    50	// Map a sitemap URL to its source .astro file path on disk.
+    51	function sourceForUrl(url) {
+    52	  // Strip site prefix and trailing slash.
+    53	  let p = url.replace(SITE, '').replace(/\/$/, '');
+    54	  if (p === '') p = '/index';
+    55	  // Author pages: /authors/<slug>/ → src/pages/authors/<slug>.astro (static file). Trailing slash already stripped at line 53.
+    56	  if (p.startsWith('/authors/')) {
+    57	    const slug = p.replace('/authors/', '');
+    58	    return path.join(__dirname, `src/pages/authors/${slug}.astro`);
+    59	  }
+    60	  // Tag pages: /tags/<slug>/ → no static source on disk today. Forward-compatible scaffolding.
+    61	  if (p.startsWith('/tags/')) return null;
+    62	  // /blog/<slug>/ → handled by BLOG_POST_DATES.
+    63	  if (p.startsWith('/blog/') && p !== '/blog') return null;
+    64	  // /blog/ index → src/pages/blog/index.astro
+    65	  if (p === '/blog') return path.join(__dirname, 'src/pages/blog/index.astro');
+    66	  // /compare/ index → src/pages/compare/index.astro
+    67	  if (p === '/compare') return path.join(__dirname, 'src/pages/compare/index.astro');
+    68	  // /compare/<slug>/ → src/pages/compare/<slug>.astro
+    69	  if (p.startsWith('/compare/')) {
+    70	    const slug = p.replace('/compare/', '');
+    71	    return path.join(__dirname, `src/pages/compare/${slug}.astro`);
+    72	  }
+    73	  // /index → src/pages/index.astro
+    74	  if (p === '/index') return path.join(__dirname, 'src/pages/index.astro');
+    75	  // /<page>/ → src/pages/<page>.astro
+    76	  const slug = p.replace(/^\//, '');
+    77	  return path.join(__dirname, `src/pages/${slug}.astro`);
+    78	}
+    79	
+    80	export default defineConfig({
+    81	  site: SITE,
+    82	  output: 'static',
+    83	  trailingSlash: 'always',
+    84	  integrations: [
+    85	    sitemap({
+    86	      serialize(item) {
+    87	        // Blog posts: use the frontmatter-driven date map.
+    88	        const blogDate = BLOG_POST_DATES.map[item.url];
+    89	        if (blogDate) {
+    90	          item.lastmod = blogDate;
+    91	          return item;
+    92	        }
+    93	        // Blog index: max of all post dates.
+    94	        if (item.url === `${SITE}/blog/`) {
+    95	          if (BLOG_POST_DATES.latest) {
+    96	            item.lastmod = BLOG_POST_DATES.latest;
+    97	            return item;
+    98	          }
+    99	        }
+   100	        // Static pages: use the source file mtime on disk.
+   101	        const src = sourceForUrl(item.url);
+   102	        if (src) {
+   103	          const mtime = mtimeIso(src);
+   104	          if (mtime) {
+   105	            item.lastmod = mtime;
+   106	            return item;
+   107	          }
+   108	        }
+   109	        // Final fallback: today's date.
+   110	        item.lastmod = new Date().toISOString().slice(0, 10);
+   111	        return item;
+   112	      },
+   113	    }),
+   114	  ],
+   115	});
+
+exec
+/bin/zsh -lc "find website/src/pages -maxdepth 3 -type f | sort | sed -n '1,200p' && find website/src/pages/authors -maxdepth 2 -type f -print 2>/dev/null | sort" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-741-sitemap-authors
+ succeeded in 0ms:
+website/src/pages/404.astro
+website/src/pages/authors/saurabh-vaish.astro
+website/src/pages/blog/[...slug].astro
+website/src/pages/blog/index.astro
+website/src/pages/compare/apple-dictation.astro
+website/src/pages/compare/dragon.astro
+website/src/pages/compare/google-docs-voice-typing.astro
+website/src/pages/compare/index.astro
+website/src/pages/compare/macwhisper.astro
+website/src/pages/compare/notta.astro
+website/src/pages/compare/otter-ai.astro
+website/src/pages/compare/superwhisper.astro
+website/src/pages/compare/voiceink.astro
+website/src/pages/compare/whisper-cpp.astro
+website/src/pages/compare/willow-voice.astro
+website/src/pages/compare/wisprflow-alternatives.astro
+website/src/pages/compare/wisprflow.astro
+website/src/pages/contact.astro
+website/src/pages/how-it-works.astro
+website/src/pages/index.astro
+website/src/pages/privacy-policy.astro
+website/src/pages/rss.xml.ts
+website/src/pages/terms-of-service.astro
+website/src/pages/authors/saurabh-vaish.astro
+
+exec
+/bin/zsh -lc 'ls website && cat website/package.json' in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-741-sitemap-authors
+ succeeded in 0ms:
+README.md
+astro.config.mjs
+dist
+functions
+node_modules
+package-lock.json
+package.json
+public
+scripts
+src
+tsconfig.json
+{
+  "name": "website",
+  "type": "module",
+  "version": "0.0.1",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "overrides": {
+    "devalue": ">=5.8.1",
+    "undici": ">=7.24.0"
+  },
+  "dependencies": {
+    "@astrojs/rss": "^4.0.17",
+    "@astrojs/sitemap": "^3.7.2",
+    "@fontsource/jetbrains-mono": "^5.2.8",
+    "@fontsource/plus-jakarta-sans": "^5.2.8",
+    "astro": "^6.3.3"
+  },
+  "devDependencies": {
+    "wrangler": "^4.92.0"
+  }
+}
+
+exec
+/bin/zsh -lc 'npm run build' in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-741-sitemap-authors/website
+ succeeded in 2167ms:
+02:14:45 [content] Syncing content
+02:14:45 [content] Synced content
+02:14:45 [types] Generated 194ms
+02:14:45 [build] output: "static"
+02:14:45 [build] mode: "static"
+02:14:45 [build] directory: /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-741-sitemap-authors/website/dist/
+02:14:45 [build] Collecting build info...
+02:14:45 [build] ✓ Completed in 204ms.
+02:14:45 [build] Building static entrypoints...
+02:14:46 [vite] ✓ built in 1.06s
+02:14:46 [vite] ✓ built in 26ms
+02:14:46 [build] Rearranging server assets...
+
+ generating static routes 
+02:14:46   ├─ /404.html (+4ms) 
+02:14:46   ├─ /authors/saurabh-vaish/index.html (+3ms) 
+02:14:46   ├─ /blog/index.html (+3ms) 
+02:14:46   ├─ /blog/mac-dictation-for-content-creators-the-complete-guide/index.html (+2ms) 
+02:14:46   ├─ /blog/mac-dictation-for-productivity-the-complete-guide/index.html (+2ms) 
+02:14:46   ├─ /blog/cloud-ai-polish-not-stored/index.html (+2ms) 
+02:14:46   ├─ /blog/dictation-for-healthcare-on-device-charting/index.html (+1ms) 
+02:14:46   ├─ /blog/building-commercial-software-solo-with-claude-code/index.html (+2ms) 
+02:14:46   ├─ /blog/welcome-to-enviouswispr/index.html (+2ms) 
+02:14:46   ├─ /blog/voice-to-prose-writing-workflow/index.html (+2ms) 
+02:14:46   ├─ /blog/on-device-vs-cloud-dictation-privacy/index.html (+1ms) 
+02:14:46   ├─ /blog/podcast-show-notes-to-blog-posts/index.html (+1ms) 
+02:14:46   ├─ /blog/dictating-episode-scripts-without-losing-flow/index.html (+1ms) 
+02:14:46   ├─ /blog/async-communication-better-when-you-speak/index.html (+1ms) 
+02:14:46   ├─ /blog/dictation-remote-workers-tired-of-typing/index.html (+1ms) 
+02:14:46   ├─ /blog/essay-outline-by-talking-it-out/index.html (+1ms) 
+02:14:46   ├─ /blog/take-lecture-notes-by-speaking/index.html (+1ms) 
+02:14:46   ├─ /blog/switched-typing-to-dictating-git-commits/index.html (+1ms) 
+02:14:46   ├─ /blog/voice-coding-macos-without-cloud/index.html (+1ms) 
+02:14:46   ├─ /blog/dictation-parents-type-one-handed/index.html (+1ms) 
+02:14:46   ├─ /blog/dictate-first-drafts-sound-like-you/index.html (+3ms) 
+02:14:46   ├─ /blog/dictation-for-writers-skip-blank-page/index.html (+1ms) 
+02:14:46   ├─ /blog/dictate-emails-speed-of-thought/index.html (+1ms) 
+02:14:46   ├─ /blog/meeting-notes-polished-summaries/index.html (+1ms) 
+02:14:46   ├─ /blog/dictation-for-developers-code-reviews/index.html (+1ms) 
+02:14:46   ├─ /blog/voice-input-rsi-keyboard-free-workflow/index.html (+1ms) 
+02:14:46   ├─ /blog/getting-started-enviouswispr-under-2-minutes/index.html (+1ms) 
+02:14:46   ├─ /blog/macos-dictation-offline-private/index.html (+1ms) 
+02:14:46   ├─ /compare/apple-dictation/index.html (+1ms) 
+02:14:46   ├─ /compare/dragon/index.html (+2ms) 
+02:14:46   ├─ /compare/google-docs-voice-typing/index.html (+1ms) 
+02:14:46   ├─ /compare/macwhisper/index.html (+1ms) 
+02:14:46   ├─ /compare/notta/index.html (+1ms) 
+02:14:46   ├─ /compare/otter-ai/index.html (+1ms) 
+02:14:46   ├─ /compare/superwhisper/index.html (+1ms) 
+02:14:46   ├─ /compare/voiceink/index.html (+1ms) 
+02:14:46   ├─ /compare/whisper-cpp/index.html (+1ms) 
+02:14:46   ├─ /compare/willow-voice/index.html (+1ms) 
+02:14:46   ├─ /compare/wisprflow/index.html (+2ms) 
+02:14:46   ├─ /compare/wisprflow-alternatives/index.html (+1ms) 
+02:14:46   ├─ /compare/index.html (+1ms) 
+02:14:46   ├─ /contact/index.html (+1ms) 
+02:14:46   ├─ /how-it-works/index.html (+1ms) 
+02:14:46   ├─ /privacy-policy/index.html (+3ms) 
+02:14:46   ├─ /rss.xml (+17ms) 
+02:14:46   ├─ /terms-of-service/index.html (+1ms) 
+02:14:46   ├─ /index.html (+1ms) 
+02:14:46 ✓ Completed in 99ms.
+
+02:14:46 [build] ✓ Completed in 1.21s.
+02:14:46 [@astrojs/sitemap] `sitemap-index.xml` created at `dist`
+02:14:46 [build] 46 page(s) built in 1.43s
+02:14:46 [build] Complete!
+
+exec
+/bin/zsh -lc 'git status --short && git diff --stat' in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-741-sitemap-authors
+ succeeded in 0ms:
+ M website/astro.config.mjs
+ website/astro.config.mjs | 9 ++++++---
+ 1 file changed, 6 insertions(+), 3 deletions(-)
+
+exec
+/bin/zsh -lc "grep -A2 -B1 'authors/saurabh-vaish' website/dist/sitemap-0.xml || true" in /Users/m4pro_sv/Developer/EnviousLabs/EnviousWispr-worktrees/issue-741-sitemap-authors
+ succeeded in 0ms:
+<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:news="http://www.google.com/schemas/sitemap-news/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1" xmlns:video="http://www.google.com/schemas/sitemap-video/1.1"><url><loc>https://enviouswispr.com/</loc><lastmod>2026-05-16T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/authors/saurabh-vaish/</loc><lastmod>2026-05-16T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/blog/</loc><lastmod>2026-05-15T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/blog/async-communication-better-when-you-speak/</loc><lastmod>2026-04-04T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/blog/building-commercial-software-solo-with-claude-code/</loc><lastmod>2026-05-15T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/blog/cloud-ai-polish-not-stored/</loc><lastmod>2026-05-15T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/blog/dictate-emails-speed-of-thought/</loc><lastmod>2026-04-04T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/blog/dictate-first-drafts-sound-like-you/</loc><lastmod>2026-04-04T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/blog/dictating-episode-scripts-without-losing-flow/</loc><lastmod>2026-04-04T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/blog/dictation-for-developers-code-reviews/</loc><lastmod>2026-04-04T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/blog/dictation-for-healthcare-on-device-charting/</loc><lastmod>2026-05-15T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/blog/dictation-for-writers-skip-blank-page/</loc><lastmod>2026-04-04T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/blog/dictation-parents-type-one-handed/</loc><lastmod>2026-04-04T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/blog/dictation-remote-workers-tired-of-typing/</loc><lastmod>2026-04-04T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/blog/essay-outline-by-talking-it-out/</loc><lastmod>2026-04-04T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/blog/getting-started-enviouswispr-under-2-minutes/</loc><lastmod>2026-04-28T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/blog/mac-dictation-for-content-creators-the-complete-guide/</loc><lastmod>2026-05-15T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/blog/mac-dictation-for-productivity-the-complete-guide/</loc><lastmod>2026-05-15T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/blog/macos-dictation-offline-private/</loc><lastmod>2026-04-28T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/blog/meeting-notes-polished-summaries/</loc><lastmod>2026-04-04T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/blog/on-device-vs-cloud-dictation-privacy/</loc><lastmod>2026-05-15T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/blog/podcast-show-notes-to-blog-posts/</loc><lastmod>2026-04-04T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/blog/switched-typing-to-dictating-git-commits/</loc><lastmod>2026-04-04T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/blog/take-lecture-notes-by-speaking/</loc><lastmod>2026-04-04T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/blog/voice-coding-macos-without-cloud/</loc><lastmod>2026-04-04T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/blog/voice-input-rsi-keyboard-free-workflow/</loc><lastmod>2026-04-04T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/blog/voice-to-prose-writing-workflow/</loc><lastmod>2026-04-04T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/blog/welcome-to-enviouswispr/</loc><lastmod>2026-04-04T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/compare/</loc><lastmod>2026-05-16T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/compare/apple-dictation/</loc><lastmod>2026-05-16T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/compare/dragon/</loc><lastmod>2026-05-16T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/compare/google-docs-voice-typing/</loc><lastmod>2026-05-16T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/compare/macwhisper/</loc><lastmod>2026-05-16T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/compare/notta/</loc><lastmod>2026-05-16T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/compare/otter-ai/</loc><lastmod>2026-05-16T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/compare/superwhisper/</loc><lastmod>2026-05-16T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/compare/voiceink/</loc><lastmod>2026-05-16T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/compare/whisper-cpp/</loc><lastmod>2026-05-16T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/compare/willow-voice/</loc><lastmod>2026-05-16T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/compare/wisprflow-alternatives/</loc><lastmod>2026-05-16T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/compare/wisprflow/</loc><lastmod>2026-05-16T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/contact/</loc><lastmod>2026-05-16T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/how-it-works/</loc><lastmod>2026-05-16T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/privacy-policy/</loc><lastmod>2026-05-16T00:00:00.000Z</lastmod></url><url><loc>https://enviouswispr.com/terms-of-service/</loc><lastmod>2026-05-16T00:00:00.000Z</lastmod></url></urlset>
+
+codex
+No actionable bugs were found in the current change. The author sitemap URL now maps to the existing static author page source file, and the website build completes successfully.
+No actionable bugs were found in the current change. The author sitemap URL now maps to the existing static author page source file, and the website build completes successfully.
