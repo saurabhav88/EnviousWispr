@@ -28,6 +28,45 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.0.2
+
+    Entry(
+      id: "right-option-push-to-talk",
+      icon: "keyboard",
+      title: "One key to talk",
+      description:
+        "Push-to-talk now defaults to a single tap of Right Option. Faster to reach than a two-key combo, and easier to remember. You can still remap it in Settings.",
+      category: .qualityOfLife,
+      version: "2.0.2"
+    ),
+    Entry(
+      id: "ai-polish-keys-in-keychain",
+      icon: "lock.shield",
+      title: "AI Polish keys live in your keychain",
+      description:
+        "Your API keys for AI Polish are now stored in your Mac's keychain, the same secure place your other passwords live. Existing keys were moved over automatically.",
+      category: .privacyAndSecurity,
+      version: "2.0.2"
+    ),
+    Entry(
+      id: "cleaner-audio-settings",
+      icon: "slider.horizontal.3",
+      title: "Cleaner audio settings",
+      description:
+        "Removed the noise suppression toggle. It wasn't doing what its name suggested, and a quieter settings panel is one less thing to wonder about.",
+      category: .qualityOfLife,
+      version: "2.0.2"
+    ),
+    Entry(
+      id: "update-banner-stays-put",
+      icon: "arrow.down.circle",
+      title: "Update reminder stays put",
+      description:
+        "When a new version is ready, the in-app banner now stays visible until you install. No more dismissing it and forgetting it was there.",
+      category: .qualityOfLife,
+      version: "2.0.2"
+    ),
+
     // MARK: - v2.0.1
 
     Entry(
