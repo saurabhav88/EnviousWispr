@@ -28,6 +28,7 @@ public final class SettingsManager {
     case restoreClipboardAfterPaste
     case wordCorrectionEnabled
     case fillerRemovalEnabled
+    case emojiFormatterEnabled
     case isDebugModeEnabled
     case debugLogLevel
     case useExtendedThinking
@@ -212,6 +213,15 @@ public final class SettingsManager {
     didSet {
       UserDefaults.standard.set(fillerRemovalEnabled, forKey: "fillerRemovalEnabled")
       onChange?(.fillerRemovalEnabled)
+    }
+  }
+
+  /// Spoken-emoji conversion toggle (#341). Default OFF until false-positive
+  /// rate is validated on real corpus per founder direction 2026-05-16.
+  public var emojiFormatterEnabled: Bool {
+    didSet {
+      UserDefaults.standard.set(emojiFormatterEnabled, forKey: "emojiFormatterEnabled")
+      onChange?(.emojiFormatterEnabled)
     }
   }
 
@@ -406,6 +416,7 @@ public final class SettingsManager {
       defaults.object(forKey: "restoreClipboardAfterPaste") as? Bool ?? true
     wordCorrectionEnabled = defaults.object(forKey: "wordCorrectionEnabled") as? Bool ?? true
     fillerRemovalEnabled = defaults.object(forKey: "fillerRemovalEnabled") as? Bool ?? true
+    emojiFormatterEnabled = defaults.object(forKey: "emojiFormatterEnabled") as? Bool ?? false
     isDebugModeEnabled = defaults.object(forKey: "isDebugModeEnabled") as? Bool ?? false
     debugLogLevel =
       DebugLogLevel(

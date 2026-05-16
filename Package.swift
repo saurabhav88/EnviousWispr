@@ -39,7 +39,8 @@ let package = Package(
     .target(
       name: "EnviousWisprPostProcessing",
       dependencies: ["EnviousWisprCore"],
-      path: "Sources/EnviousWisprPostProcessing"
+      path: "Sources/EnviousWisprPostProcessing",
+      resources: [.process("Resources")]
     ),
     .target(
       name: "EnviousWisprAudio",

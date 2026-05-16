@@ -22,6 +22,36 @@ public struct WordCorrector: Sendable {
   public static let ambiguityMargin: Double = 0.05
   public static let shortTokenMaxLength = 4
 
+  /// #341 EmojiFormatter trigger-word reservation. These literals cannot be
+  /// substituted by custom-word correction even when a user has defined an
+  /// alias for them. See plan §3.4 global-behavior caveat.
+  static let emojiTriggerReservedWords: Set<String> = ["emoji", "emoticon"]
+
+  /// True if any token in the slice (after punctuation strip + lowercase) is a
+  /// reserved trigger word. Used by Pass 0/1/2 to skip multi-word substitutions
+  /// that would consume a trigger word.
+  static func sliceContainsReservedTriggerWord(_ slice: ArraySlice<String>) -> Bool {
+    for token in slice {
+      let core = stripPunctuationStatic(token).lowercased()
+      if emojiTriggerReservedWords.contains(core) { return true }
+    }
+    return false
+  }
+
+  /// Static mirror of the instance-private `stripPunctuation` used inside the
+  /// reserved-word check. Stays minimal: strips leading/trailing punctuation
+  /// runs only (matches the instance method's contract for our purpose).
+  private static func stripPunctuationStatic(_ token: String) -> String {
+    guard !token.isEmpty else { return token }
+    let punct: Set<Character> = [
+      ".", ",", "!", "?", ";", ":", "—", "–", "-", "\"", "'", "(", ")", "[", "]", "{", "}",
+    ]
+    var s = token
+    while let first = s.first, punct.contains(first) { s.removeFirst() }
+    while let last = s.last, punct.contains(last) { s.removeLast() }
+    return s
+  }
+
   private static let levenshteinWeight = 0.40
   private static let bigramWeight = 0.40
   private static let soundexWeight = 0.20
@@ -255,6 +285,13 @@ public struct WordCorrector: Sendable {
 
           guard ngram.count >= 3 else { continue }
 
+          // #341 Pass 0 reserved-word guard: if any token in the n-gram slice
+          // is a trigger word, do not substitute. Protects "emoji"/"emoticon"
+          // tokens uniformly across all passes (see plan §3.4 global caveat).
+          if Self.sliceContainsReservedTriggerWord(slice) {
+            continue
+          }
+
           // Length ratio check: ngram must be within 25% of candidate length
           if let canonical = nospaceCanonicalMap[ngram] {
             let canonicalNospace = canonical.replacingOccurrences(of: " ", with: "")
@@ -293,6 +330,11 @@ public struct WordCorrector: Sendable {
           let phrase = slice.map { stripPunctuation($0).lowercased() }.joined(separator: " ")
           let rawPhrase = slice.map { stripPunctuation($0) }.joined(separator: " ")
 
+          // #341 Pass 1 reserved-word guard (same rationale as Pass 0).
+          if Self.sliceContainsReservedTriggerWord(slice) {
+            continue
+          }
+
           // Pass 1: exact multi-word alias
           if let canonical = multiAliasMap[phrase], rawPhrase != canonical {
             let (firstPrefix, _, _) = splitPunctuation(tokens[i])
@@ -314,6 +356,11 @@ public struct WordCorrector: Sendable {
             let slice = tokens[i..<(i + span)]
             let phrase = slice.map { stripPunctuation($0).lowercased() }.joined(separator: " ")
             let rawPhrase = slice.map { stripPunctuation($0) }.joined(separator: " ")
+
+            // #341 Pass 2 reserved-word guard (same rationale as Pass 0/1).
+            if Self.sliceContainsReservedTriggerWord(slice) {
+              continue
+            }
 
             if let candidates = multiAliasByCount[span] {
               var bestScore = 0.0
@@ -392,6 +439,15 @@ public struct WordCorrector: Sendable {
       guard !core.isEmpty, core.count >= 2 else { return token }
 
       let coreLower = core.lowercased()
+
+      // #341 EmojiFormatter trigger-word reservation: "emoji" and "emoticon"
+      // are reserved from custom-word substitution. The guard is unconditional
+      // (applies even when EmojiFormatter is disabled in Settings) because the
+      // trigger semantics belong to the deterministic post-processor downstream,
+      // not the per-user vocabulary layer. See plan §3.4.
+      if Self.emojiTriggerReservedWords.contains(coreLower) {
+        return token
+      }
 
       // Pass 3: exact single-word alias (includes canonical self-entries)
       if let canonical = singleAliasMap[coreLower], core != canonical {

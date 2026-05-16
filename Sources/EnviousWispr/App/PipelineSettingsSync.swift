@@ -54,8 +54,10 @@ final class PipelineSettingsSync {
   func applyInitialSettings(_ settings: SettingsManager) {
     pipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
     pipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
+    pipeline.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
     whisperKitPipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
     whisperKitPipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
+    whisperKitPipeline.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
 
     syncPolishServiceSettings(settings)
 
@@ -165,6 +167,9 @@ final class PipelineSettingsSync {
       if settings.modelUnloadPolicy == .never {
         asrManager.cancelIdleTimer()
       }
+    case .emojiFormatterEnabled:
+      pipeline.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
+      whisperKitPipeline.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
     case .wordCorrectionEnabled:
       pipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
       whisperKitPipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled

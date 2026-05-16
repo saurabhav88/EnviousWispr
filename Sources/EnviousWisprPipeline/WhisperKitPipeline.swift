@@ -129,12 +129,14 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
   // Text processing steps (own instances — not shared with Parakeet)
   public let wordCorrectionStep = WordCorrectionStep()
   public let fillerRemovalStep = FillerRemovalStep()
+  public let emojiFormatterStep = EmojiFormatterStep()
   public let llmPolishStep: LLMPolishStep
   private var textProcessingSteps: [any TextProcessingStep] = []
 
   /// Access for configuration
   public var wordCorrection: WordCorrectionStep { wordCorrectionStep }
   public var fillerRemoval: FillerRemovalStep { fillerRemovalStep }
+  public var emojiFormatter: EmojiFormatterStep { emojiFormatterStep }
   public var llmPolish: LLMPolishStep { llmPolishStep }
 
   /// The app that was frontmost when recording started.
@@ -207,7 +209,9 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
 
     // Activate SSE streaming for Gemini
     llmPolishStep.onToken = { _ in }
-    textProcessingSteps = [wordCorrectionStep, fillerRemovalStep, llmPolishStep]
+    textProcessingSteps = [
+      wordCorrectionStep, fillerRemovalStep, emojiFormatterStep, llmPolishStep,
+    ]
 
     // Issue #285 — telemetry callbacks on `audioCapture` are single-owner
     // properties and both pipelines share the same instance. `AppState`
