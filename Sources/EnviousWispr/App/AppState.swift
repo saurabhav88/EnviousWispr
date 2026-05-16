@@ -319,12 +319,20 @@ final class AppState {
         }
       }()
       let wasCapturing = ctx.kind != .invalidateIdle
+      // #455: surface recording_duration_ms when the interrupt/invalidate
+      // fired during active capture, so triage can separate "fired
+      // immediately after start" (likely device-binding race) from "fired
+      // mid-dictation" (likely launchd kill under memory pressure or
+      // system event).
+      let recordingDurationMs: Any =
+        ctx.recordingDurationNs.map { Int($0 / 1_000_000) } ?? NSNull()
       let extras: [String: Any] = [
         "xpc.handler": handlerKind.rawValue,
         "xpc.was_capturing": wasCapturing,
         "xpc.kind": ctx.kind.rawValue,
         "capture_session_id": ctx.sessionID.map { Int($0) } ?? NSNull(),
         "capture.route": self.audioCapture.currentAudioRoute,
+        "audio.recording_duration_ms": recordingDurationMs,
       ]
       SentryBreadcrumb.captureError(
         HeartPathError.audioXPCInterrupted(
