@@ -4,6 +4,7 @@ import SwiftUI
 /// Transcription engine, multi-language options, recording environment, and cleanup settings.
 struct SpeechEngineSettingsView: View {
   @Environment(AppState.self) private var appState
+  @Environment(LanguageSuggestionPresenter.self) private var languageSuggestionPresenter
 
   @State private var showLanguageLockSheet: Bool = false
 
@@ -88,6 +89,29 @@ struct SpeechEngineSettingsView: View {
                 }
                 .controlSize(.small)
               }
+            }
+          }
+          // PR4 of #763 (#252): Reset language suggestions. Clears the
+          // three-strike state machine (dismissal counts, suppression set,
+          // last-shown lang) so the chip can surface fresh for previously
+          // dismissed/suppressed languages.
+          BrandedRow(showDivider: false) {
+            HStack(spacing: 10) {
+              VStack(alignment: .leading, spacing: 2) {
+                Text("Language suggestions")
+                  .font(.system(size: 12))
+                  .foregroundStyle(.stTextTertiary)
+                Text(
+                  "Reset to allow the app to suggest locking a detected language again."
+                )
+                .font(.stHelper)
+                .foregroundStyle(.stTextTertiary)
+              }
+              Spacer()
+              Button("Reset") {
+                languageSuggestionPresenter.resetAllChipState()
+              }
+              .controlSize(.small)
             }
           }
         } footer: {

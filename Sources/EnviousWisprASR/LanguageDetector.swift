@@ -14,6 +14,13 @@ public struct PassiveChipTrigger: Sendable, Equatable {
   public enum Reason: String, Sendable, Equatable {
     case lidFlipFlop  // two different langs accepted within 5 min
     case consecutiveLowConfidence  // two low-confidence results in a session
+    /// Issue #252: N consecutive high-confidence accepts of the same non-English
+    /// language. Surfaces a "Detected <Lang>. Lock it?" chip in the recording
+    /// overlay post-dictation. English is a no-op for this signal. Threshold:
+    /// `.highAuto` tier AND `confidence >= 0.85` AND 3 consecutive same-lang
+    /// accepts. Counter is in-memory only; resets on app launch and on a
+    /// different non-English lang accept.
+    case consistentHighConfidence
   }
   public let lang: String?
   public let reason: Reason
@@ -81,6 +88,23 @@ public actor LanguageDetector {
   // (abstain, lowAuto, different strong candidate, or a candidate that fails
   // the switch bar) clears this.
   private var pendingSwitchCandidate: String?
+  /// Issue #252: per-language counter of consecutive high-confidence accepts of
+  /// the same non-English language. In-memory only; resets on app launch. The
+  /// only mutations are inside this actor; the LanguageChipCoordinator does NOT
+  /// touch this dict (the two state machines are independent). On English
+  /// `.highAuto` accept: complete no-op (no increment, no reset of other lang
+  /// counters). On non-English `.highAuto` accept with confidence >= 0.85:
+  /// increment own counter, reset all other entries to 0. On `.mediumAuto`,
+  /// `.lowAuto`, or `.abstain`: complete no-op (do not increment, do not reset).
+  /// When a lang's counter reaches `Self.consistentChipThreshold`, emit a
+  /// `.consistentHighConfidence` trigger and reset that lang's counter to 0.
+  private var consecutiveStrongAcceptsByLang: [String: Int] = [:]
+  /// Issue #252 threshold: N=3 consecutive high-confidence accepts settled by
+  /// council. Confidence floor 0.85 is checked at the accept site.
+  private static let consistentChipThreshold = 3
+  /// Issue #252 confidence floor for the `.consistentHighConfidence` emit path.
+  /// Tighter than the `.highAuto` tier's 0.80; council settled for safer.
+  private static let consistentChipConfidenceFloor: Double = 0.85
 
   public init(
     clock: LanguageDetectorClock = SystemLanguageDetectorClock(),
@@ -375,6 +399,17 @@ public actor LanguageDetector {
         registerFlipFlopCandidate(lang: top.key, confidence: rawTopProb, at: now)
         memory.recordAccepted(lang: top.key, confidence: rawTopProb, now: now)
         persistMemory()
+        // Issue #252: track consecutive high-confidence accepts of the same
+        // non-English language. Per plan §3.1 and council Q1 resolution: only
+        // `.highAuto` tier with confidence >= 0.85 counts. English is a complete
+        // no-op (no increment, no reset of other counters). Non-English accept
+        // increments own counter and resets all OTHER non-English counters.
+        // `.mediumAuto` accepts are full no-ops (do not increment, do not reset).
+        evaluateConsistentChipForAccept(
+          finalLang: top.key,
+          tier: tier,
+          rawTopProb: rawTopProb
+        )
         return LanguageDetectionResult(
           lang: top.key,
           confidence: rawTopProb,
@@ -506,6 +541,13 @@ public actor LanguageDetector {
         consecutiveLowConfidence = 0
         registerFlipFlopCandidate(lang: top.key, confidence: rawTopProb, at: now)
         memory.recordAccepted(lang: top.key, confidence: rawTopProb, now: now)
+        // Issue #252: same chip-counter evaluation as the production `detect`
+        // path, so tests can drive it without WhisperKit.
+        evaluateConsistentChipForAccept(
+          finalLang: top.key,
+          tier: tier,
+          rawTopProb: rawTopProb
+        )
         return LanguageDetectionResult(
           lang: top.key, confidence: rawTopProb, margin: rawMargin,
           tier: tier, voicedDuration: voicedDuration,
@@ -651,6 +693,48 @@ public actor LanguageDetector {
   private func emitPassiveChip(_ trigger: PassiveChipTrigger) {
     guard let cb = onPassiveChipTrigger else { return }
     cb(trigger)
+  }
+
+  /// Issue #252: evaluate whether this accept advances the consistent-language
+  /// chip counter and emit `.consistentHighConfidence` if N is reached.
+  ///
+  /// Rules (council Q1 + F4 settled):
+  /// - Tier MUST be `.highAuto` AND confidence >= 0.85. Anything else (mediumAuto,
+  ///   lowAuto, abstain): complete no-op (do not increment, do not reset).
+  /// - Normalized base "en": complete no-op (English is invisible to the chip).
+  /// - Non-English with high tier + conf >= 0.85: increment own counter, reset
+  ///   all other entries to 0 (different-lang resets others). If counter reaches
+  ///   `consistentChipThreshold` (3), emit `.consistentHighConfidence` and reset
+  ///   that lang's counter to 0 (prevents re-emit on the next accept).
+  private func evaluateConsistentChipForAccept(
+    finalLang: String,
+    tier: LanguageConfidenceTier,
+    rawTopProb: Double
+  ) {
+    // Tier + confidence gate
+    guard tier == .highAuto, rawTopProb >= Self.consistentChipConfidenceFloor else {
+      return
+    }
+    // English no-op (F4)
+    let base = Self.normalizedBaseLang(finalLang)
+    guard base != "en" else { return }
+    // Non-English increment + reset others
+    let next = (consecutiveStrongAcceptsByLang[base] ?? 0) + 1
+    consecutiveStrongAcceptsByLang = [base: next]
+    if next >= Self.consistentChipThreshold {
+      consecutiveStrongAcceptsByLang[base] = 0
+      emitPassiveChip(.init(lang: base, reason: .consistentHighConfidence))
+    }
+  }
+
+  /// Issue #252: strip variant suffix and lowercase. Mirrors
+  /// `LanguageChipCoordinator.normalizedBase`. `en-US` -> `en`, `Es_ES` -> `es`.
+  private static func normalizedBaseLang(_ lang: String) -> String {
+    let lower = lang.lowercased()
+    if let sepIdx = lower.firstIndex(where: { $0 == "-" || $0 == "_" }) {
+      return String(lower[..<sepIdx])
+    }
+    return lower
   }
 
   // MARK: - Classification

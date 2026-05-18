@@ -22,6 +22,7 @@ struct EnviousWisprApp: App {
         .environment(appDelegate.appState)
         .environment(appDelegate.navigationCoordinator)
         .environment(appDelegate.diagnosticsCoordinator)
+        .environment(appDelegate.languageSuggestionPresenter)
         .environment(appDelegate.updateCoordinatorHolder)
         .background(
           ActionWirer(
@@ -39,6 +40,7 @@ struct EnviousWisprApp: App {
       })
       .environment(appDelegate.appState)
       .environment(appDelegate.navigationCoordinator)
+      .environment(appDelegate.languageSuggestionPresenter)
     }
     .windowResizability(.contentSize)
     .defaultSize(width: 500, height: 550)

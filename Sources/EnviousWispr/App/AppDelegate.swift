@@ -45,6 +45,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /// Owns the diagnostics-tab benchmark surface (Settings → Diagnostics).
   let diagnosticsCoordinator = DiagnosticsCoordinator()
 
+  /// PR4 of #763 (#252 fold-in): owns the passive language-detection chip
+  /// lifecycle. Initialized in `init()` (must run after `appState` is constructed
+  /// so the presenter can capture `appState.recordingOverlay` in its narrow
+  /// closures). Setter-injected onto `appState` post-super-init so AppState's
+  /// chip-handler closure and pipeline state-change closures can dispatch to it.
+  /// Views inject directly via `@Environment(LanguageSuggestionPresenter.self)`.
+  /// Per swift-patterns.md SwiftUI env rule: non-optional `let` ensures SwiftUI
+  /// captures a non-nil instance at App-body eval time (no holder pattern needed).
+  let languageSuggestionPresenter: LanguageSuggestionPresenter
+
+  override init() {
+    // `appState` was already initialized via its declaration default (Swift
+    // initializes stored properties with defaults BEFORE the init body runs),
+    // so `appState.recordingOverlay` is accessible here.
+    let overlay = appState.recordingOverlay
+    self.languageSuggestionPresenter = LanguageSuggestionPresenter(
+      showOverlay: { [weak overlay] intent in overlay?.show(intent: intent) },
+      readCurrentIntent: { [weak overlay] in overlay?.currentIntent ?? .hidden },
+      // Silent hide for chip dismissal — bypasses the .hidden case's
+      // "Recording complete" AX announcement (Codex code-diff r5 [P3]).
+      hideOverlay: { [weak overlay] in overlay?.hide() }
+    )
+    super.init()
+    // Setter injection: appState now holds a reference to the presenter for
+    // dispatching from its chip-handler closure and pipeline state-change closures.
+    appState.attachLanguageSuggestionPresenter(languageSuggestionPresenter)
+    // Wire RecordingOverlayPanel chip handler closures into the presenter.
+    // PR9/PR10 absorb these along with the rest of AppState's chip dispatching.
+    appState.recordingOverlay.setPassiveChipHandlers(
+      onLock: { [weak appState, presenter = languageSuggestionPresenter] in
+        if let lang = presenter.accept(), let appState = appState {
+          // Capture prior mode for telemetry before mutating settings.
+          let priorMode = appState.settings.languageMode
+          let fromLang: String
+          switch priorMode {
+          case .auto: fromLang = "auto"
+          case .locked(let prev): fromLang = prev
+          }
+          appState.settings.languageMode = .locked(lang)
+          // Codex code-diff r6 [P2]: chip-driven locks must emit the same
+          // language.manual_lock_used event as Settings-driven locks so the
+          // chip CTA is visible in analytics. "after_bad_detect" is the
+          // reserved reason for this surface (TelemetryService.swift:483).
+          TelemetryService.shared.trackManualLockUsed(
+            fromLang: fromLang, toLang: lang, reason: "after_bad_detect")
+        }
+        // presenter.accept() already hid the overlay; no extra hide needed.
+      },
+      onDismiss: { [presenter = languageSuggestionPresenter] in
+        presenter.dismissExplicit()
+      },
+      onAutoDismiss: { [presenter = languageSuggestionPresenter] generation in
+        presenter.autoDismiss(generation: generation)
+      }
+    )
+  }
+
   /// Callback set by SwiftUI to open the main window (since openWindow env is only available in views).
   var openMainWindowAction: (() -> Void)?
 
