@@ -52,8 +52,11 @@ public final class LoadProgressWatcher {
   /// abnormal-ratio is more conservative.)
   private let abnormalRatio: Double = 5.0
 
-  // Per-attempt state. All using `ProcessInfo.processInfo.systemUptime`
-  // (monotonic — survives wall-clock jumps from sleep/wake).
+  // Per-attempt state. Time source is monotonic in production
+  // (`ProcessInfo.processInfo.systemUptime`, survives wall-clock jumps from
+  // sleep/wake). The `currentTime` seam below makes the source injectable so
+  // tests can drive deterministic time without coupling to the CI scheduler.
+  // See issue #782.
   private var attemptStartedAt: TimeInterval = 0
   private var firstSignalAt: TimeInterval?
   private var lastSignalAt: TimeInterval?
@@ -64,12 +67,25 @@ public final class LoadProgressWatcher {
   private var fired = false
   private var continuation: CheckedContinuation<Void, Never>?
 
-  public init() {}
+  /// Monotonic clock source. Production uses `ProcessInfo.processInfo.systemUptime`
+  /// via the default; tests inject a `ManualClock` for deterministic timing.
+  /// `@MainActor` on the closure type records the actual isolation contract —
+  /// the watcher is `@MainActor`-isolated and all call sites already run on
+  /// `@MainActor`.
+  private let currentTime: @MainActor () -> TimeInterval
+
+  public init(
+    currentTime: @escaping @MainActor () -> TimeInterval = {
+      ProcessInfo.processInfo.systemUptime
+    }
+  ) {
+    self.currentTime = currentTime
+  }
 
   /// Begin a new attempt. Resets all per-attempt state.
   /// Caller should pair with `stop()` after the attempt resolves.
   public func start() {
-    attemptStartedAt = ProcessInfo.processInfo.systemUptime
+    attemptStartedAt = currentTime()
     firstSignalAt = nil
     lastSignalAt = nil
     lastObservedMtime = nil
@@ -101,7 +117,7 @@ public final class LoadProgressWatcher {
   /// exist (pre-first-write).
   public func observeTick(observedMtime: Date?, observedPhase: String) {
     guard !fired else { return }
-    let now = ProcessInfo.processInfo.systemUptime
+    let now = currentTime()
 
     // Detect a "real" signal by mtime advance.
     if let mtime = observedMtime, mtime != lastObservedMtime {
@@ -181,7 +197,7 @@ public final class LoadProgressWatcher {
   /// Snapshot of the watcher's per-attempt state. Used by the pipeline to
   /// stamp the `wedge_detected` telemetry payload with diagnostic context.
   public var snapshot: WatcherSnapshot {
-    let now = ProcessInfo.processInfo.systemUptime
+    let now = currentTime()
     let silenceMs: Int = {
       if let last = lastSignalAt {
         return Int((now - last) * 1000)

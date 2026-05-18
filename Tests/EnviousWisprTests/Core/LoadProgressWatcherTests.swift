@@ -5,17 +5,32 @@ import Testing
 
 /// Issue #445: signal-based wedge detector tests.
 ///
+/// Issue #782: timing-coupled tests migrated to a `ManualClock` seam so the
+/// suite no longer depends on real `Task.sleep` for the SUT's measured cadence.
+/// Each test that drives an asserted threshold passes a manual clock to the
+/// watcher and advances it deterministically with `tick(seconds:)`. Tests whose
+/// sleeps are non-load-bearing (pre-first-signal, identical-mtime, stop()
+/// release, raceWithSignalWatcher orchestration) keep real `Task.sleep` because
+/// the sleep duration does not feed any asserted measurement.
+///
 /// The watcher is `@MainActor`-isolated; tests must run on `@MainActor`.
-/// Synthetic signal streams are injected directly (no real ProgressFile);
-/// silence is produced by `Task.sleep` between observations. Sleep durations
-/// are deliberately short (50–250ms) and the floor is 800ms / ratio is 5x,
-/// so the deterministic-yet-real-time tests still complete in single-digit
-/// seconds.
+/// Synthetic signal streams are injected directly (no real ProgressFile).
 @MainActor
 @Suite("LoadProgressWatcher — signal-based wedge detection")
 struct LoadProgressWatcherTests {
 
-  /// Helper: sleep for `ms` milliseconds in the host clock.
+  /// Deterministic monotonic-clock stand-in for tests that drive watcher
+  /// thresholds. `@MainActor`-implicit (the suite is `@MainActor`); safe because
+  /// `LoadProgressWatcher` is also `@MainActor`-isolated, so every `currentTime()`
+  /// read happens on the same actor that mutates `now`.
+  @MainActor
+  private final class ManualClock {
+    private(set) var now: TimeInterval = 0
+    func tick(seconds: TimeInterval) { now += seconds }
+  }
+
+  /// Helper: sleep for `ms` milliseconds in the host clock. Only used by tests
+  /// whose sleeps are NOT load-bearing for the watcher's measured cadence.
   private func sleep(ms: Int) async {
     try? await Task.sleep(nanoseconds: UInt64(ms) * 1_000_000)
   }
@@ -24,28 +39,6 @@ struct LoadProgressWatcherTests {
   /// inside the watcher; identical values are treated as no-op ticks.
   private func mtime(_ index: Int) -> Date {
     Date(timeIntervalSince1970: 1_000_000 + Double(index))
-  }
-
-  /// Helper: race `wedged()` against a short bound. Returns true if the watcher
-  /// fired within `ms` milliseconds, false otherwise.
-  private func didFireWithin(_ ms: Int, watcher: LoadProgressWatcher) async -> Bool {
-    let fireTask = Task { @MainActor in
-      await watcher.wedged()
-      return true
-    }
-    let timeoutTask = Task { @MainActor () -> Bool in
-      try? await Task.sleep(nanoseconds: UInt64(ms) * 1_000_000)
-      return false
-    }
-    let result: Bool
-    if await fireTask.value == true && !timeoutTask.isCancelled {
-      result = true
-    } else {
-      result = false
-    }
-    fireTask.cancel()
-    timeoutTask.cancel()
-    return result
   }
 
   @Test("Pre-first-signal silence does NOT fire (uncovered case per plan §2.2)")
@@ -73,95 +66,75 @@ struct LoadProgressWatcherTests {
 
   @Test("Steady-cadence ticks do NOT fire — silence stays below floor")
   func steadyCadenceNoFire() async {
-    let watcher = LoadProgressWatcher()
+    let clock = ManualClock()
+    let watcher = LoadProgressWatcher(currentTime: { clock.now })
     watcher.start()
     for i in 0..<10 {
       watcher.observeTick(observedMtime: mtime(i), observedPhase: "downloading")
-      await sleep(ms: 100)
+      clock.tick(seconds: 0.100)
     }
     let snap = watcher.snapshot
     #expect(snap.signalCountTotal == 10)
-    #expect(snap.maxGapMs > 50, "max gap observed; precise value depends on CI scheduler")
+    #expect(snap.maxGapMs == 100, "max gap is the steady 100ms cadence")
     #expect(!watcher.hasFired, "steady cadence stays below floor — watcher must not fire")
     watcher.stop()
   }
 
   @Test("Single signal then long silence does NOT fire (no ratio data)")
   func singleSignalLongSilenceDoesNotFire() async {
-    let watcher = LoadProgressWatcher()
+    let clock = ManualClock()
+    let watcher = LoadProgressWatcher(currentTime: { clock.now })
     watcher.start()
     // Only ONE real signal — `maxGapSeconds == 0`. Silence then accumulates
     // past the 800ms floor. Without an observed inter-signal gap the watcher
     // must NOT fire (Codex finding 2026-05-07).
     watcher.observeTick(observedMtime: mtime(0), observedPhase: "listing")
-    let waiter = Task { @MainActor in
-      await watcher.wedged()
-      return true
-    }
     for _ in 0..<20 {
       watcher.observeTick(observedMtime: mtime(0), observedPhase: "listing")
-      await sleep(ms: 60)
+      clock.tick(seconds: 0.060)
     }
     // Silence well over 1 second now; without ratio data, must not fire.
     let snap = watcher.snapshot
     #expect(snap.signalCountTotal == 1)
     #expect(snap.maxGapMs == 0)
+    #expect(!watcher.hasFired, "single signal with no observed gap must not fire")
     watcher.stop()
-    let released = await waiter.value
-    #expect(released, "stop() releases the consumer; watcher itself never fired")
   }
 
   @Test("Below 800ms floor — does NOT fire even if ratio is met")
   func ratioOnlyDoesNotFire() async {
-    let watcher = LoadProgressWatcher()
+    let clock = ManualClock()
+    let watcher = LoadProgressWatcher(currentTime: { clock.now })
     watcher.start()
     // Two signals 50ms apart → max gap 50ms. Ratio threshold = 250ms.
     watcher.observeTick(observedMtime: mtime(0), observedPhase: "downloading")
-    await sleep(ms: 50)
+    clock.tick(seconds: 0.050)
     watcher.observeTick(observedMtime: mtime(1), observedPhase: "downloading")
     // Silence at 300ms exceeds ratio (250ms) but is below floor (800ms).
     for _ in 0..<5 {
+      clock.tick(seconds: 0.060)
       watcher.observeTick(observedMtime: mtime(1), observedPhase: "downloading")
-      await sleep(ms: 60)
     }
-    // Spawn a wedged() waiter. With stop() called shortly after, it must
-    // resolve without ever having fired.
-    let waiter = Task { @MainActor in
-      await watcher.wedged()
-      return true
-    }
-    await sleep(ms: 100)
-    let firedBeforeStop = watcher.hasFired
+    #expect(!watcher.hasFired, "silence below 800ms floor must not fire even when ratio is met")
     watcher.stop()
-    _ = await waiter.value
-    #expect(!firedBeforeStop, "silence below 800ms floor must not fire even when ratio is met")
   }
 
   @Test("Both gates met (silence > floor AND silence > 5x max gap) — fires")
   func bothGatesFire() async {
-    let watcher = LoadProgressWatcher()
+    let clock = ManualClock()
+    let watcher = LoadProgressWatcher(currentTime: { clock.now })
     watcher.start()
-    // Establish two inter-signal gaps. The actual gap duration varies with CI
-    // scheduler load and determines the ratio threshold (5 * maxGap).
+    // Establish two inter-signal gaps of 150ms each → maxGap = 0.150.
+    // Ratio threshold = 5 * 0.150 = 0.750; floor wins at 0.800.
     watcher.observeTick(observedMtime: mtime(0), observedPhase: "compiling")
-    await sleep(ms: 150)
+    clock.tick(seconds: 0.150)
     watcher.observeTick(observedMtime: mtime(1), observedPhase: "compiling")
-    await sleep(ms: 150)
+    clock.tick(seconds: 0.150)
     watcher.observeTick(observedMtime: mtime(2), observedPhase: "compiling")
-    // Feed silence ticks until the watcher fires (both gates met) or a 5-second
-    // deadline expires. 5s comfortably exceeds any realistic threshold even when
-    // CI load inflates the gap measurement. The watcher fires synchronously inside
-    // observeTick(), so hasFired is readable immediately after the loop exits.
-    let deadline = ProcessInfo.processInfo.systemUptime + 5.0
-    repeat {
-      watcher.observeTick(observedMtime: mtime(2), observedPhase: "compiling")
-      if watcher.hasFired { break }
-      await sleep(ms: 100)
-    } while ProcessInfo.processInfo.systemUptime < deadline
-    // Assert via the deterministic `hasFired` accessor. Avoids awaiting
-    // `wedged()` unconditionally — under heavy CI load the resumed
-    // continuation can lag behind the assertion, causing the test to hang
-    // until the job-level timeout. The state read is synchronous and safe.
+    // Advance silence past the 0.800 floor and re-tick with the same mtime so
+    // observeTick takes the silence-evaluation branch (no new signal).
+    clock.tick(seconds: 0.810)
+    watcher.observeTick(observedMtime: mtime(2), observedPhase: "compiling")
     let snap = watcher.snapshot
     #expect(watcher.hasFired, "Both gates met → watcher must fire")
     #expect(snap.lastObservedPhase == "compiling")
@@ -231,18 +204,89 @@ struct LoadProgressWatcherTests {
 
   @Test("Snapshot fields are accurate after a successful attempt")
   func snapshotFieldsAccurate() async {
-    let watcher = LoadProgressWatcher()
+    let clock = ManualClock()
+    let watcher = LoadProgressWatcher(currentTime: { clock.now })
     watcher.start()
+    // Advance before the first signal so firstSignalLatencyMs is non-zero —
+    // the field is measured from start() to firstSignal.
+    clock.tick(seconds: 0.100)
     watcher.observeTick(observedMtime: mtime(0), observedPhase: "listing")
-    await sleep(ms: 100)
+    clock.tick(seconds: 0.100)
     watcher.observeTick(observedMtime: mtime(1), observedPhase: "downloading")
-    await sleep(ms: 200)
+    clock.tick(seconds: 0.200)
     watcher.observeTick(observedMtime: mtime(2), observedPhase: "compiling")
     let snap = watcher.snapshot
     #expect(snap.signalCountTotal == 3)
     #expect(snap.lastObservedPhase == "compiling")
-    #expect(snap.firstSignalLatencyMs != nil)
-    #expect(snap.maxGapMs > 100, "max gap captured")
+    #expect(snap.firstSignalLatencyMs == 100, "first signal observed 100ms after start()")
+    #expect(snap.maxGapMs == 200, "max gap is the 200ms second-to-third interval")
+    watcher.stop()
+  }
+
+  // MARK: - Boundary tests (issue #782)
+  //
+  // `observeTick` fires only when `silence > threshold` (strict comparator,
+  // LoadProgressWatcher.swift:140). These three tests pin the boundary so a
+  // future refactor of the threshold formula cannot quietly flip the comparator.
+
+  @Test("Fires just above threshold (silence = threshold + epsilon)")
+  func firesJustAboveThreshold() async {
+    let clock = ManualClock()
+    let watcher = LoadProgressWatcher(currentTime: { clock.now })
+    watcher.start()
+    // Two signals 200ms apart → maxGap = 0.200. Ratio = 5 * 0.200 = 1.000.
+    // Floor = 0.800. Effective threshold = max(0.800, 1.000) = 1.000.
+    watcher.observeTick(observedMtime: mtime(0), observedPhase: "compiling")
+    clock.tick(seconds: 0.200)
+    watcher.observeTick(observedMtime: mtime(1), observedPhase: "compiling")
+    // Advance silence to 1.001 (1ms past threshold).
+    clock.tick(seconds: 1.001)
+    watcher.observeTick(observedMtime: mtime(1), observedPhase: "compiling")
+    #expect(watcher.hasFired, "silence 1ms past threshold must fire")
+    watcher.stop()
+  }
+
+  @Test("Does NOT fire at exact threshold (strict > comparator)")
+  func doesNotFireAtExactThreshold() async {
+    let clock = ManualClock()
+    let watcher = LoadProgressWatcher(currentTime: { clock.now })
+    watcher.start()
+    // Same setup as firesJustAboveThreshold — threshold = 1.000.
+    watcher.observeTick(observedMtime: mtime(0), observedPhase: "compiling")
+    clock.tick(seconds: 0.200)
+    watcher.observeTick(observedMtime: mtime(1), observedPhase: "compiling")
+    // Advance silence to exactly 1.000 (equality is below `>` threshold).
+    clock.tick(seconds: 1.000)
+    watcher.observeTick(observedMtime: mtime(1), observedPhase: "compiling")
+    #expect(!watcher.hasFired, "silence == threshold is below the strict > comparator")
+    watcher.stop()
+  }
+
+  @Test("maxGap stays sticky when subsequent gaps shrink")
+  func maxGapStaysStickyWhenGapsShrink() async {
+    let clock = ManualClock()
+    let watcher = LoadProgressWatcher(currentTime: { clock.now })
+    watcher.start()
+    // First gap is the largest (500ms). Threshold should be derived from it
+    // even after smaller gaps follow.
+    watcher.observeTick(observedMtime: mtime(0), observedPhase: "compiling")
+    clock.tick(seconds: 0.500)
+    watcher.observeTick(observedMtime: mtime(1), observedPhase: "compiling")
+    clock.tick(seconds: 0.100)
+    watcher.observeTick(observedMtime: mtime(2), observedPhase: "compiling")
+    clock.tick(seconds: 0.100)
+    watcher.observeTick(observedMtime: mtime(3), observedPhase: "compiling")
+    let snap = watcher.snapshot
+    #expect(
+      snap.maxGapMs == 500, "maxGap must remain at 500ms — guarded by `if gap > maxGapSeconds`")
+    // Ratio threshold = 5 * 0.500 = 2.500. Silence of 2.499 must NOT fire.
+    clock.tick(seconds: 2.499)
+    watcher.observeTick(observedMtime: mtime(3), observedPhase: "compiling")
+    #expect(!watcher.hasFired, "silence below sticky-maxGap ratio must not fire")
+    // One more ms past the ratio threshold — must fire.
+    clock.tick(seconds: 0.002)
+    watcher.observeTick(observedMtime: mtime(3), observedPhase: "compiling")
+    #expect(watcher.hasFired, "silence past sticky-maxGap ratio must fire")
     watcher.stop()
   }
 }
