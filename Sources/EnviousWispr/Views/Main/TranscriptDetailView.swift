@@ -6,6 +6,7 @@ import SwiftUI
 struct TranscriptDetailView: View {
   let transcript: Transcript
   @Environment(AppState.self) private var appState
+  @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -28,7 +29,7 @@ struct TranscriptDetailView: View {
               PasteService.simulatePaste()
             }
           } else {
-            appState.pendingNavigationSection = .permissions
+            navigationCoordinator.request(.permissions)
           }
         } label: {
           Label("Paste", systemImage: "arrow.right.doc.on.clipboard")

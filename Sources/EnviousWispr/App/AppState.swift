@@ -93,7 +93,6 @@ final class AppState {
 
   // Transcript history — delegated to coordinator
   let transcriptCoordinator: TranscriptCoordinator
-  var pendingNavigationSection: SettingsSection?
 
   /// True when recording is in hands-free (locked) mode via double-press.
   /// Read by the overlay to switch to the expanded lips visual.

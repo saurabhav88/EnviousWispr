@@ -39,6 +39,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /// Shared app state — created here so it's available before any SwiftUI scene loads.
   let appState = AppState()
 
+  /// Owns the "open this settings tab next" handoff for menu actions and in-app shortcuts.
+  let navigationCoordinator = NavigationCoordinator()
+
   /// Callback set by SwiftUI to open the main window (since openWindow env is only available in views).
   var openMainWindowAction: (() -> Void)?
 
@@ -519,12 +522,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   @objc private func openSettings() {
-    appState.pendingNavigationSection = .speechEngine
+    navigationCoordinator.request(.speechEngine)
     showWindow()
   }
 
   @objc private func openPermissionsSettings() {
-    appState.pendingNavigationSection = .permissions
+    navigationCoordinator.request(.permissions)
     showWindow()
   }
 
