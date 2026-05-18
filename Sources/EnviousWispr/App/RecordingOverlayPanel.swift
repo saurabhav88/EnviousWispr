@@ -41,7 +41,9 @@ final class RecordingOverlayPanel {
 
   /// Last intent shown — guards against redundant show calls that would
   /// close and recreate the panel for the same visual state (flicker).
-  private var currentIntent: OverlayIntent = .hidden
+  /// `private(set)`: AppState reads this for the F14 chip-priority guard (chip
+  /// shows only when `currentIntent == .hidden`).
+  private(set) var currentIntent: OverlayIntent = .hidden
 
   /// Tracks lock state for flicker guard comparison.
   private var isRecordingLocked: Bool = false
@@ -49,6 +51,13 @@ final class RecordingOverlayPanel {
   private var accessibilityToastShownThisSession: Bool = false
   private var grantHandler: (() -> Void)?
   private var accessibilityWarningDismissedProvider: () -> Bool = { false }
+
+  // Passive chip handlers — installed by AppState once at init, invoked by the
+  // chip view when the user taps Lock / Dismiss or when the auto-dismiss timer
+  // fires. The closures are MainActor-bound; the panel itself is @MainActor.
+  private var passiveChipLockHandler: (() -> Void)?
+  private var passiveChipDismissHandler: (() -> Void)?
+  private var passiveChipAutoDismissHandler: ((UInt64) -> Void)?
 
   // MARK: - Intent-driven API
 
@@ -58,6 +67,18 @@ final class RecordingOverlayPanel {
 
   func setAccessibilityWarningDismissedProvider(_ provider: @escaping () -> Bool) {
     accessibilityWarningDismissedProvider = provider
+  }
+
+  /// Wire passive chip action handlers (Lock / Dismiss / auto-dismiss).
+  /// Installed once by AppState at construction time.
+  func setPassiveChipHandlers(
+    onLock: @escaping () -> Void,
+    onDismiss: @escaping () -> Void,
+    onAutoDismiss: @escaping (UInt64) -> Void
+  ) {
+    passiveChipLockHandler = onLock
+    passiveChipDismissHandler = onDismiss
+    passiveChipAutoDismissHandler = onAutoDismiss
   }
 
   /// Unified entry point: render the overlay for the given intent.
@@ -150,6 +171,15 @@ final class RecordingOverlayPanel {
           .priority: NSAccessibilityPriorityLevel.high.rawValue as NSNumber,
         ])
       showNotification(message: message, style: .interruption)
+    case .passiveChip(let payload):
+      NSAccessibility.post(
+        element: NSApp.mainWindow as Any,
+        notification: .announcementRequested,
+        userInfo: [
+          .announcement: "Detected \(payload.displayName)",
+          .priority: NSAccessibilityPriorityLevel.medium.rawValue as NSNumber,
+        ])
+      showPassiveChip(payload: payload)
     }
   }
 
@@ -507,6 +537,68 @@ final class RecordingOverlayPanel {
   func updateLockState(_ locked: Bool) {
     lockState.isLocked = locked
     isRecordingLocked = locked
+  }
+
+  /// Show the passive language-detection chip as a floating panel. Mirrors the
+  /// `showAccessibilityToast` shape: defers creation to next run loop cycle,
+  /// guards against rapid replace via the generation token. Auto-dismiss is 6s
+  /// with hover-pause (handled inside `LanguageChipView`).
+  func showPassiveChip(payload: LanguageChipPayload) {
+    guard panel == nil else {
+      transitionToPassiveChip(payload: payload)
+      return
+    }
+    pendingCreateWork?.cancel()
+    pendingCreateWork = nil
+    generation &+= 1
+    let token = generation
+
+    let work = DispatchWorkItem { [weak self] in
+      guard let self, self.generation == token else { return }
+      self.pendingCreateWork = nil
+      self.createPassiveChipPanel(payload: payload)
+    }
+    pendingCreateWork = work
+    DispatchQueue.main.async(execute: work)
+  }
+
+  private func createPassiveChipPanel(payload: LanguageChipPayload, y: CGFloat? = nil) {
+    guard panel == nil else { return }
+    let onLock = passiveChipLockHandler
+    let onDismiss = passiveChipDismissHandler
+    let onAutoDismiss = passiveChipAutoDismissHandler
+    let view = LanguageChipView(
+      payload: payload,
+      onLock: { onLock?() },
+      onDismiss: { onDismiss?() },
+      onAutoDismiss: { onAutoDismiss?(payload.generation) }
+    )
+    .frame(width: 340, height: 56)
+    showPanel(content: view, width: 340, height: 56, y: y)
+  }
+
+  private func transitionToPassiveChip(payload: LanguageChipPayload) {
+    guard let existingPanel = panel else { return }
+    let y = existingPanel.frame.origin.y
+
+    panel = nil
+    autoDismissTask?.cancel()
+    autoDismissTask = nil
+    pendingCreateWork?.cancel()
+    pendingCreateWork = nil
+    CATransaction.flush()
+    existingPanel.close()
+
+    generation &+= 1
+    let token = generation
+
+    let work = DispatchWorkItem { [weak self] in
+      guard let self, self.generation == token else { return }
+      self.pendingCreateWork = nil
+      self.createPassiveChipPanel(payload: payload, y: y)
+    }
+    pendingCreateWork = work
+    DispatchQueue.main.async(execute: work)
   }
 
   func hide() {
@@ -943,6 +1035,109 @@ struct NotificationOverlayView: View {
     .background(
       style.usesDistressLips
         ? AnyView(DistressCapsuleBackground()) : AnyView(OverlayCapsuleBackground()))
+  }
+}
+
+// MARK: - AccessibilityToastView
+
+// MARK: - LanguageChipView
+
+/// Passive language-detection chip surfaced post-dictation. Two visual states:
+/// - `.askToLock`: "Detected <Lang>. Lock it?" with Lock + Dismiss buttons.
+/// - `.educateAboutSettings`: "Detected <Lang>. This can be changed in Settings." with Dismiss only.
+///
+/// Auto-dismiss timer: 6 seconds. Paused while the cursor hovers over the chip.
+/// Auto-dismiss callback is gated on a generation token (race protection).
+struct LanguageChipView: View {
+  let payload: LanguageChipPayload
+  let onLock: () -> Void
+  let onDismiss: () -> Void
+  let onAutoDismiss: () -> Void
+
+  @State private var hovering: Bool = false
+  @State private var dismissTask: Task<Void, Never>?
+
+  private static let autoDismissSeconds: Double = 6.0
+
+  var body: some View {
+    HStack(spacing: 10) {
+      Image(systemName: "globe")
+        .foregroundStyle(.white.opacity(0.85))
+        .font(.system(size: 16))
+
+      Text(promptText)
+        .font(.system(size: 13, weight: .medium))
+        .foregroundStyle(.white)
+        .lineLimit(2)
+        .fixedSize(horizontal: false, vertical: true)
+
+      Spacer(minLength: 6)
+
+      if payload.state == .askToLock {
+        Button(action: {
+          dismissTask?.cancel()
+          onLock()
+        }) {
+          Text("Lock")
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+            .background(Capsule().fill(Color.blue.opacity(0.85)))
+        }
+        .buttonStyle(.plain)
+      }
+
+      Button(action: {
+        dismissTask?.cancel()
+        onDismiss()
+      }) {
+        Text("Dismiss")
+          .font(.system(size: 12, weight: .medium))
+          .foregroundStyle(.white.opacity(0.9))
+          .padding(.horizontal, 10)
+          .padding(.vertical, 4)
+          .contentShape(Rectangle())
+          .background(Capsule().fill(Color.white.opacity(0.15)))
+      }
+      .buttonStyle(.plain)
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 10)
+    .background(OverlayCapsuleBackground())
+    .onHover { isHovering in
+      hovering = isHovering
+      if isHovering {
+        dismissTask?.cancel()
+      } else {
+        scheduleAutoDismiss()
+      }
+    }
+    .onAppear {
+      scheduleAutoDismiss()
+    }
+    .onDisappear {
+      dismissTask?.cancel()
+    }
+  }
+
+  private var promptText: String {
+    switch payload.state {
+    case .askToLock:
+      return "Detected \(payload.displayName). Lock it?"
+    case .educateAboutSettings:
+      return "Detected \(payload.displayName). This can be changed in Settings."
+    }
+  }
+
+  private func scheduleAutoDismiss() {
+    dismissTask?.cancel()
+    dismissTask = Task { @MainActor in
+      try? await Task.sleep(for: .seconds(Self.autoDismissSeconds))
+      guard !Task.isCancelled else { return }
+      onAutoDismiss()
+    }
   }
 }
 

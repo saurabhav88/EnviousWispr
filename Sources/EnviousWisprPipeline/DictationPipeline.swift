@@ -39,6 +39,11 @@ public enum OverlayIntent: Equatable, Sendable {
   /// Transient interruption notice shown when the recording device disconnects.
   /// Distress lips (red pulse) with reason text, auto-dismissed after 2 seconds.
   case interruption(message: String)
+  /// Passive language-lock discoverability chip surfaced post-dictation when the
+  /// detector observed N consecutive high-confidence accepts of the same non-English
+  /// language. Renders State A (strikes 1+2: Lock + Dismiss) or State B (strike 3:
+  /// Dismiss only with Settings copy). Auto-dismissed after 6 seconds; pauses on hover.
+  case passiveChip(payload: LanguageChipPayload)
 }
 
 /// Abstraction over dictation pipelines (Parakeet streaming, WhisperKit batch, etc.).

@@ -97,13 +97,23 @@ final class AppState {
   /// Read by the overlay to switch to the expanded lips visual.
   var isRecordingLocked: Bool = false
 
-  /// Multilingual v1: latest passive-chip trigger emitted by LanguageDetector,
-  /// if any. Observed by settings/overlay UI to offer a "Detected X. Lock it?"
-  /// or "Language unstable. Lock language?" CTA. Nil when no chip is pending.
-  /// UI consumers set this to nil after dismissing.
-  /// TODO: wire a settings-level banner that presents this; current v1 ship is
-  /// callback-only so chip events are not silently dropped.
-  var pendingPassiveChip: PassiveChipTrigger?
+  /// PR4 of #763 (#252 fold-in): the chip presenter is set via setter
+  /// injection by AppDelegate after both AppState and the presenter exist.
+  /// Heart path: transient dispatch reference until PR9 (DictationLifecycleCoordinator)
+  /// absorbs the pipeline state-change call sites + this reference, and PR10
+  /// (DictationRuntime) absorbs the cancel call site. PR11 deletes AppState.
+  /// Until attached, calls into it are silent no-ops (`?.`). DEBUG-only
+  /// `ChipWiringDiagnostics.warnIfPresenterMissing` fires a one-shot warning
+  /// if a chip event arrives before attachment (impossible in production).
+  private(set) var languageSuggestionPresenter: LanguageSuggestionPresenter?
+
+  /// Setter for `languageSuggestionPresenter`. Called once by AppDelegate
+  /// after both AppState and the presenter exist (presenter needs
+  /// `recordingOverlay` for its showOverlay closure; AppState constructs the
+  /// overlay; so the wiring runs post-init in AppDelegate).
+  func attachLanguageSuggestionPresenter(_ presenter: LanguageSuggestionPresenter) {
+    self.languageSuggestionPresenter = presenter
+  }
 
   // Feature #8: custom word management — delegated to coordinator
   let customWordsCoordinator = CustomWordsCoordinator()
@@ -247,12 +257,17 @@ final class AppState {
     polishService.setDictationActivity(self)
 
     // Wire the passive-chip handler on the LanguageDetector actor now that
-    // self is fully constructed. The handler hops back to the MainActor
-    // to publish the chip on `pendingPassiveChip` so UI can observe it.
+    // self is fully constructed. The handler hops to MainActor and forwards
+    // the trigger to LanguageSuggestionPresenter (set by AppDelegate via
+    // attachLanguageSuggestionPresenter). DEBUG-only one-shot warning if the
+    // presenter is nil when an event arrives (catches test-harness misuse
+    // and refactor regressions; impossible in production AppDelegate flow).
     Task { [weak self] in
       await languageDetector.setPassiveChipHandler { @Sendable (trigger: PassiveChipTrigger) in
         Task { @MainActor in
-          self?.pendingPassiveChip = trigger
+          guard let self = self else { return }
+          ChipWiringDiagnostics.warnIfPresenterMissing(self.languageSuggestionPresenter)
+          self.languageSuggestionPresenter?.bufferTrigger(trigger)
         }
       }
     }
@@ -478,6 +493,33 @@ final class AppState {
         lastPolishError: self.pipeline.lastPolishError,
         currentTranscript: self.pipeline.currentTranscript
       )
+      // PR4 of #763 (#252): dispatch chip lifecycle to LanguageSuggestionPresenter.
+      // Sunset in PR9: moves with the rest of this closure into DictationLifecycleCoordinator.
+      //
+      // Codex r2 [P2]: skip surface when polish failed — the warning overlay
+      //   races and overwrites the chip otherwise.
+      // Codex r3 [P2]: when skipping, also clearBuffer — a stale trigger from
+      //   a polish-failed dictation must not surface on a later recording.
+      // Codex r7 [P2]: clearBuffer on .recording to drain any stale trigger
+      //   that arrived late (detector handler uses Task @MainActor; if it ran
+      //   AFTER prior .complete's surface, the trigger could otherwise attach
+      //   to this new recording's eventual .complete and misattribute).
+      switch newState {
+      case .recording:
+        self.languageSuggestionPresenter?.clearBuffer()
+      case .complete:
+        if self.pipeline.lastPolishError == nil {
+          self.languageSuggestionPresenter?.surfaceBufferedChipIfPossible(
+            currentLanguageMode: self.settings.languageMode)
+        } else {
+          self.languageSuggestionPresenter?.clearBuffer()
+        }
+      case .error:
+        self.languageSuggestionPresenter?.clearCurrentChip()
+        self.languageSuggestionPresenter?.clearBuffer()
+      default:
+        break
+      }
     }
 
     // Wire WhisperKit pipeline state changes to overlay and icon.
@@ -506,6 +548,25 @@ final class AppState {
         lastPolishError: self.whisperKitPipeline.lastPolishError,
         currentTranscript: self.whisperKitPipeline.currentTranscript
       )
+      // PR4 of #763 (#252): chip lifecycle dispatch. WhisperKit has both
+      // .complete and .ready as terminal-completion states. Same race guards
+      // as the parakeet arm (Codex P2 r2+r3+r7).
+      switch newState {
+      case .recording:
+        self.languageSuggestionPresenter?.clearBuffer()
+      case .complete, .ready:
+        if self.whisperKitPipeline.lastPolishError == nil {
+          self.languageSuggestionPresenter?.surfaceBufferedChipIfPossible(
+            currentLanguageMode: self.settings.languageMode)
+        } else {
+          self.languageSuggestionPresenter?.clearBuffer()
+        }
+      case .error:
+        self.languageSuggestionPresenter?.clearCurrentChip()
+        self.languageSuggestionPresenter?.clearBuffer()
+      default:
+        break
+      }
     }
 
     // Wire hotkey callbacks
@@ -969,6 +1030,12 @@ final class AppState {
   func cancelRecording() async {
     TelemetryService.shared.dictationCanceled(
       stage: "recording", reason: "user_cancel", durationSeconds: nil)
+    // PR4 of #763 (#252): clear chip state on cancel BEFORE dispatching cancel
+    // event. Cancel transitions through .idle (not .error), so the .error arm
+    // in pipeline state-change closures alone is insufficient. Sunset in PR10:
+    // moves into DictationRuntime.cancel.
+    languageSuggestionPresenter?.clearCurrentChip()
+    languageSuggestionPresenter?.clearBuffer()
     isRecordingLocked = false
     recordingOverlay.hide()
     let isWhisperKit = asrManager.activeBackendType == .whisperKit
