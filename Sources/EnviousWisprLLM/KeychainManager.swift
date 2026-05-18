@@ -357,7 +357,7 @@ struct SecurityKeychainItemStore: KeychainItemStorage {
   }
 }
 
-enum KeyStoreError: LocalizedError, Sendable {
+package enum KeyStoreError: LocalizedError, Sendable {
   case storeFailed(OSStatus)
   case retrieveFailed(OSStatus)
   case deleteFailed(OSStatus)
@@ -368,7 +368,7 @@ enum KeyStoreError: LocalizedError, Sendable {
   /// rollback; `rollback` is the secondary failure from the restore attempt.
   case rollbackFailed(cleanup: Error, rollback: Error)
 
-  var errorDescription: String? {
+  package var errorDescription: String? {
     switch self {
     case .storeFailed(let s): return "Key store failed: \(s)"
     case .retrieveFailed(let s): return "Key retrieve failed: \(s)"
