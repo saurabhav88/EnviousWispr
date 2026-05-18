@@ -13,10 +13,13 @@ struct DictationInvokedPipelineWiringTests {
   @Test("session config carries input mode into pipeline start")
   func sessionConfigCarriesInputMode() throws {
     let configSource = try Self.read("Sources/EnviousWisprCore/DictationSessionConfig.swift")
-    let appStateSource = try Self.read("Sources/EnviousWispr/App/AppState.swift")
+    // Per epic #763 PR5: the per-recording config snapshot moved out of
+    // AppState into DictationSessionConfigFactory. The factory now owns the
+    // `inputMode: settings.recordingMode` plumbing.
+    let factorySource = try Self.read("Sources/EnviousWispr/App/DictationSessionConfigFactory.swift")
 
     #expect(configSource.contains("public let inputMode: RecordingMode"))
-    #expect(appStateSource.contains("inputMode: settings.recordingMode"))
+    #expect(factorySource.contains("inputMode: settings.recordingMode"))
   }
 
   @Test("Parakeet emits dictation.invoked after capture enters recording")
