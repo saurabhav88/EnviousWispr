@@ -21,6 +21,7 @@ struct EnviousWisprApp: App {
         .frame(minWidth: 580, minHeight: 400)
         .environment(appDelegate.appState)
         .environment(appDelegate.navigationCoordinator)
+        .environment(appDelegate.diagnosticsCoordinator)
         .environment(appDelegate.updateCoordinatorHolder)
         .background(
           ActionWirer(

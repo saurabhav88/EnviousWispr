@@ -8,34 +8,42 @@ import Testing
 /// constructing an AppState instance — AppState's init pulls in real audio
 /// capture, ASR, pipelines, and Tasks that should not run inside a unit test.
 ///
-/// Ceilings: concrete-collaborator count ≤ 19, total line count ≤ 1050.
+/// Ceilings: concrete-collaborator count ≤ 18, total line count ≤ 1049.
 /// Raising a ceiling requires a Bible changelog entry, not a silent bump.
 @Suite struct AppStateCeilingsTests {
 
-  /// Concrete-collaborator count ceiling. Locked at post-Phase-F baseline = 19.
+  /// Concrete-collaborator count ceiling. Locked at post-PR3 (#768) baseline = 18.
   /// Counts top-level `let` declarations on AppState whose type is non-primitive.
   /// Existentials (`any X`) count as collaborators.
+  ///
+  /// Ratcheted 19 → 18 in PR3 of epic #763 (2026-05-18) after extracting
+  /// `BenchmarkSuite` into `DiagnosticsCoordinator`. No Bible entry — lowering
+  /// a ceiling does not require justification.
   @Test func appStateConcreteCollaboratorCeilingHolds() throws {
     let body = try classBodyOfAppState()
     let count = countTopLevelLetCollaborators(in: body)
     #expect(
-      count <= 19,
+      count <= 18,
       """
-      AppState concrete-collaborator ceiling exceeded: \(count) > 19. \
+      AppState concrete-collaborator ceiling exceeded: \(count) > 18. \
       Raising the ceiling requires a Bible changelog entry, not a silent bump.
       """)
   }
 
-  /// File line-count ceiling. Locked at post-Phase-F (954) + ~10% rounded to 1050.
+  /// File line-count ceiling. Locked at post-PR3 (#768) baseline = 1049.
   /// Soft backstop against scope creep.
+  ///
+  /// Ratcheted 1050 → 1049 in PR3 of epic #763 (2026-05-18) after removing the
+  /// `let benchmark = BenchmarkSuite()` line. Post-removal file is 1047 lines
+  /// by the same split-count method used here; 1049 leaves a 2-line margin.
   @Test func appStateLineCountCeilingHolds() throws {
     let url = appStateURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 1050,
+      lineCount <= 1049,
       """
-      AppState line count exceeded: \(lineCount) > 1050. \
+      AppState line count exceeded: \(lineCount) > 1049. \
       Raising the ceiling requires a Bible changelog entry, not a silent bump.
       """)
   }

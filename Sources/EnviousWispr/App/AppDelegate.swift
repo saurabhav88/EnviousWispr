@@ -42,6 +42,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /// Owns the "open this settings tab next" handoff for menu actions and in-app shortcuts.
   let navigationCoordinator = NavigationCoordinator()
 
+  /// Owns the diagnostics-tab benchmark surface (Settings → Diagnostics).
+  let diagnosticsCoordinator = DiagnosticsCoordinator()
+
   /// Callback set by SwiftUI to open the main window (since openWindow env is only available in views).
   var openMainWindowAction: (() -> Void)?
 
