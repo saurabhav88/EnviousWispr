@@ -1304,7 +1304,7 @@ def test_settings_tabs(ctx):
     if settings_win is None:
         raise AssertionError("Settings window did not appear")
 
-    expected_tabs = ["Shortcuts", "AI Polish", "Permissions", "Speech Engine"]
+    expected_tabs = ["Shortcuts", "AI Polish", "Permissions", "Transcription"]
     sidebar_texts = find_all_elements(settings_win, role="AXStaticText")
     sidebar_values = [get_attr(el, "AXValue") or "" for el in sidebar_texts]
     ctx.log(f"Sidebar text values: {sidebar_values[:20]}")
@@ -1332,7 +1332,7 @@ def test_settings_tab_switch(ctx):
         raise AssertionError("Settings sidebar outline not found")
 
     rows = get_attr(outline, "AXChildren") or []
-    tabs_to_click = ["AI Polish", "Permissions", "Speech Engine", "Shortcuts"]
+    tabs_to_click = ["AI Polish", "Permissions", "Transcription", "Shortcuts"]
     clicked = 0
 
     for tab_name in tabs_to_click:

@@ -16,6 +16,39 @@ _TTS_PATH = "/tmp/wispr_eyes_tts.aiff"
 _OPENAI_TTS_PATH = "/tmp/wispr_eyes_tts.mp3"
 _OPENAI_KEY_FILE = os.path.expanduser("~/.enviouswispr-keys/openai-api-key")
 
+# Bundle IDs the harness might attach to (dev first, prod fallback).
+_PTT_BUNDLE_IDS = ["com.enviouswispr.app.dev", "com.enviouswispr.app"]
+# Reverse map of simulate_input.KEY_CODES for modifier keycodes we hold for PTT.
+# 54=rcmd, 55=lcmd, 58=lopt, 61=ropt. Keep in sync with
+# `Tests/RuntimeUAT/simulate_input.py` MODIFIER_KEYS table.
+_PTT_KEYCODE_TO_NAME = {54: "rcmd", 55: "lcmd", 58: "lopt", 61: "ropt"}
+
+
+def _resolve_ptt_key(fallback="rcmd"):
+    """Read the active PTT keycode from EnviousWispr's UserDefaults
+    (`toggleKeyCode`) and map it back to the simulate_input key name.
+
+    PR-A of #763 fix: harness was hardcoded to `rcmd` (Right Command). When the
+    founder rebinds PTT to a different modifier (e.g. Right Option = 61), the
+    hardcoded harness presses the wrong key and the recording never engages.
+    This resolver keeps the harness aligned with whatever the app is configured
+    for. Falls back to `fallback` (default 'rcmd') if neither bundle responds.
+    """
+    for bundle_id in _PTT_BUNDLE_IDS:
+        try:
+            result = subprocess.run(
+                ["defaults", "read", bundle_id, "toggleKeyCode"],
+                capture_output=True, text=True, timeout=2,
+            )
+            if result.returncode != 0:
+                continue
+            keycode = int(result.stdout.strip())
+            if keycode in _PTT_KEYCODE_TO_NAME:
+                return _PTT_KEYCODE_TO_NAME[keycode]
+        except (subprocess.SubprocessError, ValueError, OSError):
+            continue
+    return fallback
+
 
 def tts(sentence="The quick brown fox jumps over the lazy dog", voice="echo", engine="openai"):
     """Generate audio from text. engine='openai' (natural) or 'say' (local fallback). Returns file path."""
@@ -1506,7 +1539,7 @@ def test_hands_free(audio=None, sentence=None, hold=4.0, expect=None, timeout=30
     return overall_pass
 
 
-def test_ptt(key="rcmd", audio=None, sentence=None, expect=None, timeout=10.0):
+def test_ptt(key=None, audio=None, sentence=None, expect=None, timeout=10.0):
     """End-to-end PTT (push-to-talk) recording test via key hold.
 
     Precisely times key hold to match audio duration:
@@ -1518,8 +1551,10 @@ def test_ptt(key="rcmd", audio=None, sentence=None, expect=None, timeout=10.0):
     6. Monitor pipeline via state polling + clipboard delta
 
     Args:
-        key:      Key to hold (default 'rcmd'). Any key in simulate_input.MODIFIER_KEYS
-                  or KEY_CODES (e.g. 'rcmd', 'space', 'f5').
+        key:      Key to hold. None (default) auto-detects from EnviousWispr's
+                  UserDefaults `toggleKeyCode`. Override with any key in
+                  simulate_input.MODIFIER_KEYS or KEY_CODES (e.g. 'rcmd',
+                  'space', 'f5').
         audio:    Path to audio file to play (or None to use TTS).
         sentence: Text to speak via TTS. Ignored if audio is provided.
         expect:   Optional substring expected in transcription.
@@ -1532,6 +1567,11 @@ def test_ptt(key="rcmd", audio=None, sentence=None, expect=None, timeout=10.0):
         test_ptt(audio='/path/to/clip.wav', expect='keyword')
     """
     connect()
+
+    # Resolve PTT key from app settings if caller didn't override.
+    if key is None:
+        key = _resolve_ptt_key()
+        print(f"PTT key auto-detected from settings: {key}")
 
     if audio is None:
         if sentence is None:
@@ -1621,7 +1661,7 @@ def test_ptt(key="rcmd", audio=None, sentence=None, expect=None, timeout=10.0):
     return overall_pass
 
 
-def record_tts(sentence="The quick brown fox jumps over the lazy dog", key="rcmd",
+def record_tts(sentence="The quick brown fox jumps over the lazy dog", key=None,
                voice="echo", wait=10.0, focus_app=None):
     """Generate TTS, hold PTT key, read raw ASR and polished output from app log.
 
@@ -1631,7 +1671,9 @@ def record_tts(sentence="The quick brown fox jumps over the lazy dog", key="rcmd
 
     Args:
         sentence: Text to speak via TTS.
-        key:      PTT key to hold (default 'rcmd' = right command).
+        key:      PTT key to hold. None (default) auto-detects from
+                  EnviousWispr's UserDefaults `toggleKeyCode`. Override with
+                  'rcmd', 'lcmd', 'lopt', 'ropt' to force a key.
         voice:    OpenAI TTS voice (echo, alloy, fable, onyx, nova, shimmer).
         wait:     Seconds to wait after key release for pipeline to complete.
         focus_app: App to focus before recording (paste target). None to skip.
@@ -1652,6 +1694,11 @@ def record_tts(sentence="The quick brown fox jumps over the lazy dog", key="rcmd
             print(f"  OUT: {r['polished']}")
     """
     import simulate_input as _si
+
+    # Resolve PTT key from app settings if caller didn't override.
+    if key is None:
+        key = _resolve_ptt_key()
+        print(f"PTT key auto-detected from settings: {key}")
 
     # Focus paste target app
     if focus_app:
