@@ -34,7 +34,7 @@ import Testing
       """)
   }
 
-  /// File line-count ceiling. Locked at post-PR4 (#770) baseline = 1115.
+  /// File line-count ceiling. Locked at post-PR5 (#771) baseline = 1073.
   /// Soft backstop against scope creep.
   ///
   /// Ratcheted history:
@@ -46,15 +46,18 @@ import Testing
   ///   (parakeet `.complete`/`.error`, whisperKit `.complete`/`.ready`/`.error`,
   ///   plus polish-error race guards from Codex code-diff r2+r3), and the
   ///   cancelRecording chip clear. All sunset in PR9 / PR10 / PR11.
-  ///   Bible-changelog entry present. 1107 actual + 8-line margin.
+  /// - 1115 → 1073 in PR5 of epic #763 (2026-05-18, #771) after extracting
+  ///   `makeDictationSessionConfig(triggerSource:)` into `DictationSessionConfigFactory`.
+  ///   Method body + doc removed 55 lines; two call sites grew 13 lines for the
+  ///   multi-line factory invocation. Net delta: -42. 1071 actual + 2-line margin.
   @Test func appStateLineCountCeilingHolds() throws {
     let url = appStateURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 1115,
+      lineCount <= 1073,
       """
-      AppState line count exceeded: \(lineCount) > 1115. \
+      AppState line count exceeded: \(lineCount) > 1073. \
       Raising the ceiling requires a Bible changelog entry, not a silent bump.
       """)
   }

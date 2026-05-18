@@ -592,7 +592,7 @@ final class AppState {
       } else {
         guard !self.pipelineState.isActive else { return }
       }
-      // Refresh AX status so `makeDictationSessionConfig` sees the right
+      // Refresh AX status so `DictationSessionConfigFactory.make` sees the right
       // paste capability. The session snapshot is captured fresh at
       // `.toggleRecording` dispatch below.
       self.permissions.refreshAccessibilityStatus()
@@ -654,7 +654,14 @@ final class AppState {
       // case; HeartControlRecovery handles both shapes internally).
       do {
         try await active.handle(
-          event: .toggleRecording(makeDictationSessionConfig(triggerSource: .pttHotkey)))
+          event: .toggleRecording(
+            DictationSessionConfigFactory.make(
+              asrManager: self.asrManager,
+              pipeline: self.pipeline,
+              whisperKitPipeline: self.whisperKitPipeline,
+              settings: self.settings,
+              triggerSource: .pttHotkey
+            )))
       } catch {
         self.heartControlRecovery.recover(
           error: error, pipeline: active, op: "toggle-from-prewarm",
@@ -950,7 +957,7 @@ final class AppState {
     postCompletionWarningTask?.cancel()
     let active = activePipeline
 
-    // Refresh AX status before snapshotting — `makeDictationSessionConfig`
+    // Refresh AX status before snapshotting — `DictationSessionConfigFactory.make`
     // derives `autoPasteToActiveApp` from the active pipeline's idle state
     // plus the current AX permission.
     permissions.refreshAccessibilityStatus()
@@ -962,68 +969,19 @@ final class AppState {
     // on the pipeline. Recovery type handles CancellationError silently.
     do {
       try await active.handle(
-        event: .toggleRecording(makeDictationSessionConfig(triggerSource: source)))
+        event: .toggleRecording(
+          DictationSessionConfigFactory.make(
+            asrManager: asrManager,
+            pipeline: pipeline,
+            whisperKitPipeline: whisperKitPipeline,
+            settings: settings,
+            triggerSource: source
+          )))
     } catch {
       heartControlRecovery.recover(
         error: error, pipeline: active, op: "toggle",
         message: ModelLoadWatchdog.userMessage)
     }
-  }
-
-  /// Build the per-recording config snapshot from settings and paste intent.
-  /// Called at `.toggleRecording` dispatch; the recording's pipeline freezes
-  /// the snapshot for its lifetime via `startRecording(config:)`.
-  private func makeDictationSessionConfig(triggerSource: TriggerSource) -> DictationSessionConfig {
-    let isWhisperKit = asrManager.activeBackendType == .whisperKit
-    let activePipelineIdle: Bool = {
-      if isWhisperKit {
-        switch whisperKitPipeline.state {
-        case .idle, .ready, .complete, .error: return true
-        default: return false
-        }
-      } else {
-        switch pipeline.state {
-        case .idle, .complete, .error: return true
-        default: return false
-        }
-      }
-    }()
-    // #500: drop the legacy `permissions.hasAccessibilityPermission` gate so the
-    // paste cascade always runs. The cascade already handles AX-not-trusted
-    // gracefully at PasteCascadeExecutor.swift:106-118 (forces `.nonText`,
-    // skips all tiers, falls through to clipboard) AND emits the
-    // `.clipboardOnlyAccessibilityDenied` outcome which routes to the
-    // educational `.accessibilityToast` overlay. The legacy gate bypassed
-    // the cascade entirely (TranscriptFinalizer:143 direct copyToClipboard),
-    // depriving AX-denied users of both the diagnostic and the toast.
-    let autoPaste = activePipelineIdle
-    let resolvedModel: String = {
-      switch settings.llmProvider {
-      case .appleIntelligence: return "apple-intelligence"
-      case .ollama: return settings.ollamaModel
-      default: return settings.llmModel
-      }
-    }()
-    return DictationSessionConfig(
-      autoCopyToClipboard: settings.autoCopyToClipboard,
-      inputMode: settings.recordingMode,
-      triggerSource: triggerSource,
-      autoPasteToActiveApp: autoPaste,
-      restoreClipboardAfterPaste: settings.restoreClipboardAfterPaste,
-      vadAutoStop: settings.vadAutoStop,
-      vadSilenceTimeout: settings.vadSilenceTimeout,
-      vadSensitivity: settings.vadSensitivity,
-      vadEnergyGate: settings.vadEnergyGate,
-      languageMode: settings.languageMode,
-      useStreamingASR: settings.useStreamingASR,
-      modelUnloadPolicy: settings.modelUnloadPolicy,
-      llmProvider: settings.llmProvider,
-      llmModel: resolvedModel,
-      polishInstructions: settings.activePolishInstructions,
-      useExtendedThinking: settings.useExtendedThinking,
-      selectedInputDeviceUID: settings.selectedInputDeviceUID,
-      preferredInputDeviceIDOverride: settings.preferredInputDeviceIDOverride
-    )
   }
 
   /// Cancel an active recording, discarding all captured audio.
