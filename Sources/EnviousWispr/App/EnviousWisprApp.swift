@@ -20,6 +20,7 @@ struct EnviousWisprApp: App {
       UnifiedWindowView()
         .frame(minWidth: 580, minHeight: 400)
         .environment(appDelegate.appState)
+        .environment(appDelegate.navigationCoordinator)
         .environment(appDelegate.updateCoordinatorHolder)
         .background(
           ActionWirer(
@@ -36,6 +37,7 @@ struct EnviousWisprApp: App {
         appDelegate.closeOnboardingWindow()
       })
       .environment(appDelegate.appState)
+      .environment(appDelegate.navigationCoordinator)
     }
     .windowResizability(.contentSize)
     .defaultSize(width: 500, height: 550)

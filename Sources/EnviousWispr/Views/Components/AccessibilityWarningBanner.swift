@@ -6,6 +6,7 @@ import SwiftUI
 /// Permissions settings tab and a "Dismiss" button to hide it for the session.
 struct AccessibilityWarningBanner: View {
   @Environment(AppState.self) private var appState
+  @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
   var body: some View {
     HStack(spacing: 10) {
@@ -20,7 +21,7 @@ struct AccessibilityWarningBanner: View {
       Spacer()
 
       Button("Fix Now") {
-        appState.pendingNavigationSection = .permissions
+        navigationCoordinator.request(.permissions)
       }
       .buttonStyle(.borderedProminent)
       .tint(.orange)

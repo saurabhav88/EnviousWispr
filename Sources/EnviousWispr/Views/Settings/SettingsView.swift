@@ -4,6 +4,7 @@ import SwiftUI
 /// Unified single-window view: History + all settings tabs in one sidebar.
 struct UnifiedWindowView: View {
   @Environment(AppState.self) private var appState
+  @Environment(NavigationCoordinator.self) private var navigationCoordinator
   @Environment(UpdateCoordinatorHolder.self) private var updateCoordinatorHolder
   @State private var selectedSection: SettingsSection = .history
 
@@ -59,10 +60,10 @@ struct UnifiedWindowView: View {
       }
     }
     .preferredColorScheme(.light)
-    .onChange(of: appState.pendingNavigationSection) { _, newSection in
+    .onChange(of: navigationCoordinator.pendingSection) { _, newSection in
       if let section = newSection {
         selectedSection = section
-        appState.pendingNavigationSection = nil
+        navigationCoordinator.consume()
       }
     }
   }
