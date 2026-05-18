@@ -15,13 +15,19 @@ public final class CaptureTelemetryState {
   private var lastSuccessfulRecordingAt: ContinuousClock.Instant?
   private(set) public var configurationChangeCount: Int = 0
 
-  public init() {}
+  private let currentInstant: @MainActor () -> ContinuousClock.Instant
+
+  public init(
+    currentInstant: @escaping @MainActor () -> ContinuousClock.Instant = { .now }
+  ) {
+    self.currentInstant = currentInstant
+  }
 
   /// Called at transcript save (not paste end) so clipboard-only users are
   /// covered. Resets zombie dedupe so a successful recording sandwiched
   /// between two zombie events still surfaces the second event.
   public func recordSuccessfulRecording() {
-    lastSuccessfulRecordingAt = .now
+    lastSuccessfulRecordingAt = currentInstant()
     lastZombieEmittedAt = nil
     lastZombieRoute = nil
   }
@@ -33,14 +39,14 @@ public final class CaptureTelemetryState {
     guard let last = lastZombieEmittedAt, lastZombieRoute == route else {
       return true
     }
-    return .now - last >= window
+    return currentInstant() - last >= window
   }
 
   /// Marks that a zombie event was observed (regardless of whether it emitted
   /// to Sentry). The 30s window is relative to the most recent observation,
   /// not the most recent emission, so rapid retries stay suppressed.
   public func markZombieEmitted(route: String) {
-    lastZombieEmittedAt = .now
+    lastZombieEmittedAt = currentInstant()
     lastZombieRoute = route
   }
 
@@ -52,7 +58,7 @@ public final class CaptureTelemetryState {
   /// has never produced a successful recording yet.
   public func timeSinceLastSuccessfulRecordingMs() -> Int? {
     guard let last = lastSuccessfulRecordingAt else { return nil }
-    let elapsed = ContinuousClock.now - last
+    let elapsed = currentInstant() - last
     let (seconds, attoseconds) = elapsed.components
     return Int(seconds) * 1000 + Int(attoseconds / 1_000_000_000_000_000)
   }

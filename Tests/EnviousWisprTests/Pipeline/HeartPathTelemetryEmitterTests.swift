@@ -368,33 +368,33 @@ struct HeartPathTelemetryEmitterTests {
 
   // MARK: - Codex code-review additions (2026-04-30)
 
-  /// Codex round-3 (2026-04-30) — replaces the round-2 theater test with a
-  /// time-based probe that distinguishes "old mark still active" from
+  /// Time-based probe that distinguishes "old mark still active" from
   /// "suppressed call refreshed the window". `CaptureTelemetryState`
   /// exposes a caller-specified window on `shouldEmitZombie(route:window:)`,
-  /// so we can use a SHORT probe window after a sleep to test the
-  /// invariant without widening the production API:
+  /// so we can use a SHORT probe window after advancing a fake clock to
+  /// test the invariant without widening the production API:
   ///
   ///   1. Emit once — fires (returns true), marks at T₀.
-  ///   2. Sleep ~1.1s.
+  ///   2. Advance fake clock past the probe window.
   ///   3. Call `zombieZeroPeak` again — suppressed by the emitter's 30s
   ///      dedup window (still well within 30s of T₀).
   ///   4. Probe `shouldEmitZombie(route:, window: 1s)`.
   ///
   /// If the suppressed path correctly called `markZombieEmitted`: the
-  /// mark timestamp is fresh (just now < 1s ago), `shouldEmitZombie` with
-  /// a 1s window returns FALSE.
+  /// mark is fresh on the fake clock and `shouldEmitZombie` returns FALSE.
   ///
   /// If the suppressed path skipped `markZombieEmitted` (the regression
-  /// we are guarding against): the mark timestamp is from T₀ (>1.1s ago),
-  /// `shouldEmitZombie` with a 1s window returns TRUE — and the test
-  /// fails.
+  /// we are guarding against): the mark stays at T₀, the fake clock is
+  /// past the 1s probe window, and `shouldEmitZombie` returns TRUE —
+  /// the assertion fails.
   ///
-  /// ~1.1s real-time sleep is the cost of the honest probe; one test run.
+  /// Migrated from a 1.1s real-time `Task.sleep` to a fake clock in
+  /// PR for issue #784 (2026-05-18). Same diagnostic power, ~0ms cost.
   @Test("zombieZeroPeak refreshes the dedup window on every observation, not just emits")
-  func zombieZeroPeakSuppressedRefreshesWindow() async throws {
+  func zombieZeroPeakSuppressedRefreshesWindow() {
+    let clock = ManualInstantClock()
     let recorder = Recorder()
-    let captureTelemetry = CaptureTelemetryState()
+    let captureTelemetry = CaptureTelemetryState(currentInstant: { clock.now })
     let emitter = Self.makeEmitter(
       backend: .parakeet, captureTelemetry: captureTelemetry, recorder: recorder)
 
@@ -402,17 +402,18 @@ struct HeartPathTelemetryEmitterTests {
     let firstFired = emitter.zombieZeroPeak(ctx: Self.zeroPeakContext())
     #expect(firstFired)
 
-    // Sleep just past the probe window.
-    try await Task.sleep(for: .milliseconds(1_100))
+    // Advance past the 1s probe window (still well inside the emitter's 30s dedup).
+    clock.advance(by: .milliseconds(1_100))
 
     // Second emit on same route — suppressed by emitter's 30s dedup.
     let secondFired = emitter.zombieZeroPeak(ctx: Self.zeroPeakContext(sessionID: 100))
     #expect(!secondFired)
 
     // Probe with a 1s window. If the suppressed call advanced the mark
-    // (correct behavior), the route is still in-window and shouldEmit
-    // returns false. If it didn't advance (regression), the original
-    // T₀ mark is >1.1s old and shouldEmit returns true.
+    // (correct behavior), mark is at T₀+1.1s, clock is at T₀+1.1s,
+    // elapsed = 0 < 1s → shouldEmit returns false.
+    // If it didn't advance (regression), mark stays at T₀, elapsed = 1.1s
+    // ≥ 1s window → shouldEmit returns true and the assertion fails.
     let shouldEmitNow = captureTelemetry.shouldEmitZombie(
       route: "bt_headset", window: .seconds(1))
     #expect(
@@ -577,5 +578,19 @@ struct HeartPathTelemetryEmitterTests {
     #expect(
       actualKeys == Self.zombieExtraKeys,
       "zombie extras key-set drift: \(actualKeys.symmetricDifference(Self.zombieExtraKeys))")
+  }
+}
+
+/// Fake monotonic instant clock for tests that need deterministic
+/// `ContinuousClock.Instant` arithmetic without real wall-clock sleeps.
+/// Snapshots `.now` at construction; subsequent `advance(by:)` calls move
+/// the snapshot forward via `.advanced(by:)`. Same shape duplicated in
+/// `CaptureTelemetryStateTests.swift` per #784 PR1 plan — DRY violation is
+/// cheaper than introducing a shared test-utilities target for 5 lines.
+@MainActor
+private final class ManualInstantClock {
+  private(set) var now: ContinuousClock.Instant = .now
+  func advance(by duration: Duration) {
+    now = now.advanced(by: duration)
   }
 }

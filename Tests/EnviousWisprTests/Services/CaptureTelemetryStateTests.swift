@@ -61,4 +61,62 @@ struct CaptureTelemetryStateTests {
     state.incrementConfigChange()
     #expect(state.configurationChangeCount == 3)
   }
+
+  // MARK: - Injected-clock boundary tests (#784 PR1, 2026-05-18)
+  //
+  // `shouldEmitZombie` returns true iff `currentInstant() - last >= window`.
+  // The `>=` comparator means equality is at-threshold (emit allowed) and
+  // strict-below is suppressed. These three tests pin both edges of `>=`
+  // and the at-equality case using a fake clock.
+
+  @Test("shouldEmitZombie returns true at exactly the window boundary")
+  func emitsAtExactWindow() {
+    let clock = ManualInstantClock()
+    let state = CaptureTelemetryState(currentInstant: { clock.now })
+    state.markZombieEmitted(route: "bt")
+    clock.advance(by: .seconds(30))
+    #expect(state.shouldEmitZombie(route: "bt", window: .seconds(30)) == true)
+  }
+
+  @Test("shouldEmitZombie returns false just below the window boundary")
+  func doesNotEmitJustBelowWindow() {
+    let clock = ManualInstantClock()
+    let state = CaptureTelemetryState(currentInstant: { clock.now })
+    state.markZombieEmitted(route: "bt")
+    clock.advance(by: .milliseconds(29_999))
+    #expect(state.shouldEmitZombie(route: "bt", window: .seconds(30)) == false)
+  }
+
+  @Test("shouldEmitZombie returns true just above the window boundary")
+  func emitsJustAboveWindow() {
+    let clock = ManualInstantClock()
+    let state = CaptureTelemetryState(currentInstant: { clock.now })
+    state.markZombieEmitted(route: "bt")
+    clock.advance(by: .milliseconds(30_001))
+    #expect(state.shouldEmitZombie(route: "bt", window: .seconds(30)) == true)
+  }
+
+  @Test("timeSinceLastSuccessfulRecordingMs uses the injected clock")
+  func timeSinceLastSuccessfulRecordingUsesInjectedClock() {
+    let clock = ManualInstantClock()
+    let state = CaptureTelemetryState(currentInstant: { clock.now })
+    #expect(state.timeSinceLastSuccessfulRecordingMs() == nil)
+    state.recordSuccessfulRecording()
+    clock.advance(by: .milliseconds(2_500))
+    #expect(state.timeSinceLastSuccessfulRecordingMs() == 2_500)
+  }
+}
+
+/// Fake monotonic instant clock for tests that need deterministic
+/// `ContinuousClock.Instant` arithmetic without real wall-clock sleeps.
+/// Snapshots `.now` at construction; subsequent `advance(by:)` calls move
+/// the snapshot forward via `.advanced(by:)`. Same shape duplicated in
+/// `HeartPathTelemetryEmitterTests.swift` per #784 PR1 plan — DRY violation
+/// is cheaper than introducing a shared test-utilities target for 5 lines.
+@MainActor
+private final class ManualInstantClock {
+  private(set) var now: ContinuousClock.Instant = .now
+  func advance(by duration: Duration) {
+    now = now.advanced(by: duration)
+  }
 }
