@@ -27,79 +27,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var statusItem: NSStatusItem?
   private(set) var updaterController: SPUStandardUpdaterController?
   private(set) var updateCoordinator: UpdateCoordinator?
-  /// Issue #739: stable env-carrier — non-optional `@Observable` holder
-  /// whose `coordinator` property is set once the AppDelegate finishes init.
-  /// SwiftUI captures THIS instance in env; the inner coordinator flip
-  /// (nil → non-nil) triggers re-evaluation of dependent views.
-  let updateCoordinatorHolder = UpdateCoordinatorHolder()
   private let iconAnimator = MenuBarIconAnimator()
   private weak var mainWindow: NSWindow?
   private var windowCloseObserver: (any NSObjectProtocol)?
 
-  /// Shared app state — created here so it's available before any SwiftUI scene loads.
-  let appState = AppState()
+  // PR-A of #763: App-owned homes. `EnviousWisprApp` owns these as `@State`
+  // and pushes them into AppDelegate via `attach(...)` synchronously during
+  // `EnviousWisprApp.init()`, before any `NSApplicationDelegate` callback
+  // fires. Weak refs so AppDelegate is not a retention root.
+  private weak var appState: AppState?
+  private weak var navigationCoordinator: NavigationCoordinator?
+  /// Issue #739: stable env-carrier — non-optional `@Observable` holder
+  /// owned by `EnviousWisprApp` as `@State`. AppDelegate publishes its
+  /// Sparkle-derived `updateCoordinator` into the holder once Sparkle is
+  /// initialized; `@Observable` flips dependent views.
+  private weak var updateCoordinatorHolder: UpdateCoordinatorHolder?
 
-  /// Owns the "open this settings tab next" handoff for menu actions and in-app shortcuts.
-  let navigationCoordinator = NavigationCoordinator()
-
-  /// Owns the diagnostics-tab benchmark surface (Settings → Diagnostics).
-  let diagnosticsCoordinator = DiagnosticsCoordinator()
-
-  /// PR4 of #763 (#252 fold-in): owns the passive language-detection chip
-  /// lifecycle. Initialized in `init()` (must run after `appState` is constructed
-  /// so the presenter can capture `appState.recordingOverlay` in its narrow
-  /// closures). Setter-injected onto `appState` post-super-init so AppState's
-  /// chip-handler closure and pipeline state-change closures can dispatch to it.
-  /// Views inject directly via `@Environment(LanguageSuggestionPresenter.self)`.
-  /// Per swift-patterns.md SwiftUI env rule: non-optional `let` ensures SwiftUI
-  /// captures a non-nil instance at App-body eval time (no holder pattern needed).
-  let languageSuggestionPresenter: LanguageSuggestionPresenter
-
-  override init() {
-    // `appState` was already initialized via its declaration default (Swift
-    // initializes stored properties with defaults BEFORE the init body runs),
-    // so `appState.recordingOverlay` is accessible here.
-    let overlay = appState.recordingOverlay
-    self.languageSuggestionPresenter = LanguageSuggestionPresenter(
-      showOverlay: { [weak overlay] intent in overlay?.show(intent: intent) },
-      readCurrentIntent: { [weak overlay] in overlay?.currentIntent ?? .hidden },
-      // Silent hide for chip dismissal — bypasses the .hidden case's
-      // "Recording complete" AX announcement (Codex code-diff r5 [P3]).
-      hideOverlay: { [weak overlay] in overlay?.hide() }
-    )
-    super.init()
-    // Setter injection: appState now holds a reference to the presenter for
-    // dispatching from its chip-handler closure and pipeline state-change closures.
-    appState.attachLanguageSuggestionPresenter(languageSuggestionPresenter)
-    // Wire RecordingOverlayPanel chip handler closures into the presenter.
-    // PR9/PR10 absorb these along with the rest of AppState's chip dispatching.
-    appState.recordingOverlay.setPassiveChipHandlers(
-      onLock: { [weak appState, presenter = languageSuggestionPresenter] in
-        if let lang = presenter.accept(), let appState = appState {
-          // Capture prior mode for telemetry before mutating settings.
-          let priorMode = appState.settings.languageMode
-          let fromLang: String
-          switch priorMode {
-          case .auto: fromLang = "auto"
-          case .locked(let prev): fromLang = prev
-          }
-          appState.settings.languageMode = .locked(lang)
-          // Codex code-diff r6 [P2]: chip-driven locks must emit the same
-          // language.manual_lock_used event as Settings-driven locks so the
-          // chip CTA is visible in analytics. "after_bad_detect" is the
-          // reserved reason for this surface (TelemetryService.swift:483).
-          TelemetryService.shared.trackManualLockUsed(
-            fromLang: fromLang, toLang: lang, reason: "after_bad_detect")
-        }
-        // presenter.accept() already hid the overlay; no extra hide needed.
-      },
-      onDismiss: { [presenter = languageSuggestionPresenter] in
-        presenter.dismissExplicit()
-      },
-      onAutoDismiss: { [presenter = languageSuggestionPresenter] generation in
-        presenter.autoDismiss(generation: generation)
-      }
-    )
+  /// PR-A of #763: receive App-owned home refs from `EnviousWisprApp.init()`
+  /// before delegate callbacks fire. If `updateCoordinator` is already
+  /// initialized (Sparkle came up before attach — defensive only, not a real
+  /// path), replay it into the holder immediately.
+  func attach(
+    appState: AppState,
+    navigationCoordinator: NavigationCoordinator,
+    updateCoordinatorHolder: UpdateCoordinatorHolder
+  ) {
+    self.appState = appState
+    self.navigationCoordinator = navigationCoordinator
+    self.updateCoordinatorHolder = updateCoordinatorHolder
+    if let existing = self.updateCoordinator {
+      updateCoordinatorHolder.coordinator = existing
+    }
   }
 
   /// Callback set by SwiftUI to open the main window (since openWindow env is only available in views).
@@ -143,17 +101,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       userDriverDelegate: self
     )
     updateCoordinator = UpdateCoordinator(updaterController: updaterController)
-    // Issue #739: publish the coordinator into the @Observable holder so any
-    // SwiftUI view bound to the holder's env value sees the flip from nil to
-    // non-nil and re-renders. The holder itself is created inline as a stable
-    // stored property, so SwiftUI's first env capture is non-nil.
-    updateCoordinatorHolder.coordinator = updateCoordinator
+    // Issue #739 / PR-A: publish the coordinator into the App-owned holder
+    // so SwiftUI views bound to its env value see the flip from nil → non-nil
+    // and re-render. The holder itself is a stable `@State` on
+    // `EnviousWisprApp`, attached to AppDelegate via `attach(...)` during
+    // App.init() — before this delegate callback fires.
+    updateCoordinatorHolder?.coordinator = updateCoordinator
     // Cross-launch correlation runs here (was in didFinishLaunching) so the
     // attribution event fires before any UI is shown.
     evaluateUpdateInstallAttemptOnLaunch()
   }
 
   func applicationDidFinishLaunching(_ notification: Notification) {
+    // PR-A: appState is App-owned; we hold a weak ref attached during
+    // EnviousWisprApp.init() (before any delegate callback fires).
+    guard let appState = self.appState else { return }
     // Hide dock icon on launch — we're a menu bar utility.
     // If onboarding is needed, stay .regular so SwiftUI creates the main window hierarchy
     // and ActionWirer can wire callbacks before opening the onboarding window.
@@ -297,7 +259,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
           parakeetPipeline: appState.pipeline,
           whisperKitPipeline: appState.whisperKitPipeline,
           activeBackend: { [weak self] in
-            self?.appState.settings.selectedBackend ?? .parakeet
+            self?.appState?.settings.selectedBackend ?? .parakeet
           }
         )
         endpoint.start()
@@ -306,8 +268,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     #endif
 
     audioEnvironmentSnapshotter = AudioEnvironmentSnapshotter(
-      routeProvider: { [weak appState = self.appState] in
-        appState?.audioCapture.currentAudioRoute
+      routeProvider: { [weak self] in
+        self?.appState?.audioCapture.currentAudioRoute
       }
     )
     SentryBreadcrumb.audioEnvironmentProvider = { [weak self] in
@@ -320,8 +282,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     audioSystemEventReporter = AudioSystemEventReporter(
       audioCapture: appState.audioCapture,
       asrManager: appState.asrManager,
-      pipelineStateProvider: { [weak appState = self.appState] in
-        appState?.pipelineState ?? .idle
+      pipelineStateProvider: { [weak self] in
+        self?.appState?.pipelineState ?? .idle
       },
       onAudioDeviceEvent: { [weak self] in
         self?.audioEnvironmentSnapshotter?.audioDeviceEventOccurred()
@@ -333,6 +295,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     audioEnvironmentSnapshotter?.applicationBecameActive()
 
     // Re-warm LLM backend when app comes to foreground.
+    guard let appState = self.appState else { return }
     LLMNetworkSession.shared.preWarmModel(
       provider: appState.settings.llmProvider,
       model: appState.settings.llmModel,
@@ -344,6 +307,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   /// Open the onboarding window and begin monitoring for early close (abort flow).
   func openOnboardingWindow() {
+    guard let appState = self.appState else { return }
     guard appState.settings.onboardingState != .completed else { return }
     openOnboardingAction?()
     NSApp.setActivationPolicy(.regular)
@@ -390,7 +354,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
           guard isOnboardingWindow else { return }
           self.onboardingWindow = nil
           // Only treat as abort if onboarding not yet completed.
-          if self.appState.settings.onboardingState != .completed {
+          if self.appState?.settings.onboardingState != .completed {
             self.updateIcon()
           }
         }
@@ -411,7 +375,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     guard let button = statusItem?.button else { return }
 
     iconAnimator.configure(button: button)
-    iconAnimator.audioLevelProvider = { [weak self] in self?.appState.audioCapture.audioLevel ?? 0 }
+    iconAnimator.audioLevelProvider = { [weak self] in self?.appState?.audioCapture.audioLevel ?? 0 }
 
     let menu = NSMenu()
     menu.delegate = self
@@ -432,6 +396,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private func populateMenu(_ menu: NSMenu) {
     menu.removeAllItems()
 
+    guard let appState = self.appState else { return }
     let state = appState.pipelineState
     let onboardingIncomplete = appState.settings.onboardingState != .completed
 
@@ -538,6 +503,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   /// Update the status item icon based on pipeline state.
   func updateIcon() {
+    guard let appState = self.appState else { return }
     let state = appState.pipelineState
     let needsAccessWarning = state == .idle && appState.permissions.shouldShowAccessibilityWarning
     let onboardingIncomplete = appState.settings.onboardingState != .completed
@@ -560,6 +526,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   @objc private func toggleRecording() {
+    guard let appState = self.appState else { return }
     Task {
       await appState.toggleRecording(source: .menuBar)
       updateIcon()
@@ -582,12 +549,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   @objc private func openSettings() {
-    navigationCoordinator.request(.speechEngine)
+    navigationCoordinator?.request(.speechEngine)
     showWindow()
   }
 
   @objc private func openPermissionsSettings() {
-    navigationCoordinator.request(.permissions)
+    navigationCoordinator?.request(.permissions)
     showWindow()
   }
 
@@ -632,8 +599,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       NotificationCenter.default.removeObserver(observer)
       onboardingCloseObserver = nil
     }
-    appState.setup.ollamaSetup.cleanup()
-    appState.hotkeyService.stop()
+    appState?.setup.ollamaSetup.cleanup()
+    appState?.hotkeyService.stop()
     LLMNetworkSession.shared.invalidate()
 
     #if DEBUG
