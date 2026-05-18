@@ -20,7 +20,6 @@ final class AppState {
   let asrManager: any ASRManagerInterface
   let keychainManager = KeychainManager()
   let hotkeyService = HotkeyService()
-  let benchmark = BenchmarkSuite()
   let recordingOverlay = RecordingOverlayPanel()
   // Phase F (#501) — setup-orchestration cluster moved out of AppState.
   // Holds ollamaSetup, whisperKitSetup, and the WhisperKit preload-observation

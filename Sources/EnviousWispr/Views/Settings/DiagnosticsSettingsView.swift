@@ -3,6 +3,7 @@ import SwiftUI
 
 struct DiagnosticsSettingsView: View {
   @Environment(AppState.self) private var appState
+  @Environment(DiagnosticsCoordinator.self) private var diagnostics
 
   var body: some View {
     @Bindable var state = appState
@@ -101,12 +102,12 @@ struct DiagnosticsSettingsView: View {
 
       // ── Performance ───────────────────────────────────────────────────
       BrandedSection(header: "Performance") {
-        if appState.benchmark.isRunning {
+        if diagnostics.benchmark.isRunning {
           BrandedRow {
             HStack {
               ProgressView()
                 .controlSize(.small)
-              Text(appState.benchmark.progress)
+              Text(diagnostics.benchmark.progress)
                 .font(.caption)
             }
           }
@@ -114,18 +115,18 @@ struct DiagnosticsSettingsView: View {
           BrandedRow {
             HStack {
               Button("Run ASR Benchmark") {
-                Task { await appState.benchmark.run(using: appState.asrManager) }
+                Task { await diagnostics.benchmark.run(using: appState.asrManager) }
               }
               Button("Run Pipeline Benchmark") {
-                Task { await appState.benchmark.runPipelineBenchmark(using: appState.asrManager) }
+                Task { await diagnostics.benchmark.runPipelineBenchmark(using: appState.asrManager) }
               }
             }
           }
         }
 
-        if !appState.benchmark.results.isEmpty {
+        if !diagnostics.benchmark.results.isEmpty {
           BrandedRow {
-            ForEach(appState.benchmark.results) { result in
+            ForEach(diagnostics.benchmark.results) { result in
               HStack {
                 Text(result.label)
                   .font(.caption)
@@ -142,7 +143,7 @@ struct DiagnosticsSettingsView: View {
           }
         }
 
-        if let pipeline = appState.benchmark.pipelineResult {
+        if let pipeline = diagnostics.benchmark.pipelineResult {
           BrandedRow {
             VStack(alignment: .leading, spacing: 4) {
               Text("Pipeline Benchmark Results")
