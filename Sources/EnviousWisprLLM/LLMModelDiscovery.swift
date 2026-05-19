@@ -200,12 +200,7 @@ public struct LLMModelDiscovery: Sendable {
   }
 
   private func probeOpenAI(modelID: String, apiKey: String) async -> Bool {
-    let body: [String: Any] = [
-      "model": modelID,
-      "messages": [["role": "user", "content": "Hi"]],
-      "max_tokens": 5,
-      "store": false,
-    ]
+    let body = Self.makeOpenAIProbeRequestBody(modelID: modelID)
 
     guard let url = URL(string: "https://api.openai.com/v1/chat/completions") else {
       return false
@@ -222,6 +217,15 @@ public struct LLMModelDiscovery: Sendable {
     else { return false }
 
     return httpResponse.statusCode == 200
+  }
+
+  static func makeOpenAIProbeRequestBody(modelID: String) -> [String: Any] {
+    [
+      "model": modelID,
+      "messages": [["role": "user", "content": "Hi"]],
+      "max_completion_tokens": 5,
+      "store": false,
+    ]
   }
 
   // MARK: - Ollama
