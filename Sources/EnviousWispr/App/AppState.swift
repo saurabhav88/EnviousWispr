@@ -303,154 +303,16 @@ final class AppState {
       }
     }
 
-    // Unified engine interruption handler — routes to whichever pipeline is actively recording.
-    // Both pipelines share the same audioCapture instance. When the audio engine/XPC service
-    // is interrupted, we must notify the pipeline that's currently recording, not the one
-    // that happened to set onEngineInterrupted last.
-    audioCapture.onEngineInterrupted = { [weak self] in
-      guard let self else { return }
-      let pState = self.pipeline.state
-      let wkState = self.whisperKitPipeline.state
-      Task {
-        await AppLogger.shared.log(
-          "[AppState] Audio onEngineInterrupted — parakeet=\(pState), whisperKit=\(wkState)",
-          level: .info, category: "XPC"
-        )
-      }
-      SentryBreadcrumb.add(
-        stage: "audio", message: "Audio XPC interrupted", level: .error,
-        data: [
-          "parakeet_state": "\(pState)",
-          "whisperkit_state": "\(wkState)",
-        ])
-      // Issue #285 — route to the pipeline that owns the shared capture
-      // right now. Uses the same owner-selection as `activeTelemetryTarget()`
-      // so the two paths cannot drift when both pipelines are active
-      // (overlap during backend switch: one polishing while the other starts
-      // a new recording).
-      switch self.activeCaptureBackend() {
-      case .parakeet:
-        self.pipeline.handleEngineInterruption()
-      case .whisperKit:
-        self.whisperKitPipeline.handleEngineInterruption()
-      case nil:
-        break  // neither pipeline active — nothing to clean up
-      }
-      // Do NOT hide the overlay here. The pipeline's handleEngineInterruption()
-      // sets state = .error(...), which fires onStateChange and shows the error
-      // overlay. Calling hide() immediately after would dismiss it before the
-      // user can read it. The error overlay auto-dismisses after 3 seconds.
-    }
+    // PR8 of #763 — heart-path event-routing callbacks (seven `audioCapture.on*`
+    // closures + `asrManager.onServiceInterrupted` + AVAudioEngineConfigurationChange
+    // observer) moved to `DictationRuntime` and its three private routers
+    // (`AudioEventRouter`, `ASREventRouter`, `WedgeRecoveryRouter`). Constructed
+    // in `EnviousWisprApp.init()` after `let appState = AppState()`. Resolver
+    // helpers (`activeCaptureBackend()`, `isCurrentSession(_:)`,
+    // `activeTelemetryTarget()`, `LastCapturingBackend`) stay here through
+    // PR8 and migrate with the rest of `pipeline.onStateChange` in PR9
+    // (DictationLifecycleCoordinator).
 
-    // Issue #285 — XPC transport telemetry. Proxy fires this from its
-    // interruption and invalidation handlers; idle interrupts stay silent.
-    // We emit a single captureError per channel with enough context for
-    // Sentry to classify and alert.
-    audioCapture.onXPCServiceError = { [weak self] ctx in
-      guard let self else { return }
-      let handlerKind: XPCHandlerKind = {
-        switch ctx.kind {
-        case .interruptCapturing: return .interrupt
-        case .invalidateCapturing, .invalidateIdle: return .invalidate
-        }
-      }()
-      let wasCapturing = ctx.kind != .invalidateIdle
-      // #455: surface recording_duration_ms when the interrupt/invalidate
-      // fired during active capture, so triage can separate "fired
-      // immediately after start" (likely device-binding race) from "fired
-      // mid-dictation" (likely launchd kill under memory pressure or
-      // system event).
-      let recordingDurationMs: Any =
-        ctx.recordingDurationNs.map { Int($0 / 1_000_000) } ?? NSNull()
-      let extras: [String: Any] = [
-        "xpc.handler": handlerKind.rawValue,
-        "xpc.was_capturing": wasCapturing,
-        "xpc.kind": ctx.kind.rawValue,
-        "capture_session_id": ctx.sessionID.map { Int($0) } ?? NSNull(),
-        "capture.route": self.audioCapture.currentAudioRoute,
-        "audio.recording_duration_ms": recordingDurationMs,
-      ]
-      SentryBreadcrumb.captureError(
-        HeartPathError.audioXPCInterrupted(
-          handler: handlerKind, wasCapturing: wasCapturing),
-        category: .xpcServiceError,
-        stage: "audio",
-        extra: extras
-      )
-    }
-
-    // (see `activeTelemetryTarget()` at end of init for dispatch logic).
-    // Issue #285 — centralized routing for heart-path telemetry callbacks.
-    // `audioCapture` is a single instance shared by both pipelines, so these
-    // closure properties are single-owner — per-pipeline wiring would let the
-    // last-initialized pipeline silently steal the callbacks. Same pattern as
-    // `onEngineInterrupted` above: route to whichever pipeline is currently
-    // recording so the right backend's dedup flags get set.
-    audioCapture.onCaptureStalled = { [weak self] ctx in
-      guard let self, self.isCurrentSession(ctx.sessionID) else { return }
-      self.activeTelemetryTarget()?.handleCaptureStall(ctx)
-    }
-    audioCapture.onXPCReplyFailed = { [weak self] ctx in
-      guard let self, self.isCurrentSession(ctx.sessionID) else { return }
-      self.activeTelemetryTarget()?.handleXPCReplyFailed(ctx)
-    }
-    audioCapture.onCaptureSessionInterruption = { [weak self] ctx in
-      guard let self, self.isCurrentSession(ctx.sessionID) else { return }
-      self.activeTelemetryTarget()?.handleCaptureSessionInterruption(ctx)
-    }
-
-    // Observe audio route changes for Sentry context enrichment.
-    // AVAudioEngineSource fires AVAudioEngineConfigurationChange internally and handles
-    // recovery, but breadcrumbs live in EnviousWisprServices (unavailable in the audio module).
-    // AppState observes here to stay within module boundary rules.
-    NotificationCenter.default.addObserver(
-      forName: .AVAudioEngineConfigurationChange, object: nil, queue: nil
-    ) { [weak self] _ in
-      Task { @MainActor in
-        guard let self else { return }
-        self.captureTelemetry.incrementConfigChange()
-        let route = self.audioCapture.currentAudioRoute
-        SentryBreadcrumb.add(
-          stage: "audio", message: "Audio route changed", level: .warning,
-          data: [
-            "audio_route": route
-          ])
-        SentryBreadcrumb.updateAudioRoute(route)
-      }
-    }
-
-    // Unified ASR service crash handler — routes to whichever pipeline is active.
-    // Fires when the XPC ASR service dies mid-session (streaming or batch).
-    asrManager.onServiceInterrupted = { [weak self] in
-      guard let self else { return }
-      let pState = self.pipeline.state
-      let wkState = self.whisperKitPipeline.state
-      Task {
-        await AppLogger.shared.log(
-          "[AppState] ASR onServiceInterrupted — parakeet=\(pState), whisperKit=\(wkState)",
-          level: .info, category: "XPC"
-        )
-      }
-      if pState == .loadingModel || pState == .recording || pState == .transcribing {
-        self.pipeline.handleASRServiceInterruption()
-      } else if wkState == .recording || wkState == .transcribing {
-        self.whisperKitPipeline.handleASRServiceInterruption()
-      }
-      // Do NOT hide the overlay here. Same reasoning as onEngineInterrupted:
-      // the pipeline sets .error(...) state which shows the error overlay via
-      // onStateChange. The error overlay auto-dismisses after 3 seconds.
-    }
-
-    // Unified VAD auto-stop handler — routes to whichever pipeline is actively recording.
-    // Fired by service-side VAD (XPC mode only). Same routing pattern as onEngineInterrupted.
-    audioCapture.onVADAutoStop = { [weak self] in
-      guard let self else { return }
-      if self.pipeline.state == .recording {
-        Task { await self.pipeline.stopAndTranscribe() }
-      } else if self.whisperKitPipeline.state == .recording {
-        Task { await self.whisperKitPipeline.stopAndTranscribe() }
-      }
-    }
     settingsSync.onNeedsPreloadObservation = { [weak setup] in
       setup?.startPreloadObservation()
     }
@@ -864,8 +726,12 @@ final class AppState {
   /// other begins a new capture). Updated on any active-state entry, not just
   /// `.recording`, so stall watchdog and interruption callbacks that fire
   /// pre-recording resolve to the correct backend.
-  private enum LastCapturingBackend { case parakeet, whisperKit }
-  private var lastCapturingBackend: LastCapturingBackend = .parakeet
+  /// PR8 of #763: promoted private→internal so `DictationRuntime`'s
+  /// injected resolver closures can type their return value. PR9
+  /// (`DictationLifecycleCoordinator`) absorbs this enum + the three
+  /// resolver helpers + the writer-side flips out of AppState.
+  enum LastCapturingBackend { case parakeet, whisperKit }
+  var lastCapturingBackend: LastCapturingBackend = .parakeet
   // Previous active-state of each pipeline, tracked so we flip
   // `lastCapturingBackend` only on inactive→active transitions. Without this,
   // `.transcribing → .polishing` (active → active) would re-steal ownership
@@ -881,7 +747,7 @@ final class AppState {
   /// now. Returns nil when both pipelines are fully idle. Shared helper for
   /// both telemetry routing and engine-interrupt routing so the two paths
   /// cannot drift.
-  private func activeCaptureBackend() -> LastCapturingBackend? {
+  func activeCaptureBackend() -> LastCapturingBackend? {
     let pActive = pipeline.state.isActive
     let wkActive = whisperKitPipeline.state.isActive
     if pActive && wkActive { return lastCapturingBackend }
@@ -895,11 +761,11 @@ final class AppState {
   /// backend switch. Dropping a stale callback is safer than misrouting it to
   /// a new session's dedup state. Source-level guards normally catch this;
   /// this is a second line of defense for the backend-overlap window.
-  private func isCurrentSession(_ sessionID: UInt64) -> Bool {
+  func isCurrentSession(_ sessionID: UInt64) -> Bool {
     sessionID == audioCapture.currentCaptureSessionID
   }
 
-  private func activeTelemetryTarget() -> (any HeartPathTelemetryTarget)? {
+  func activeTelemetryTarget() -> (any HeartPathTelemetryTarget)? {
     switch activeCaptureBackend() {
     case .whisperKit: return whisperKitPipeline
     case .parakeet: return pipeline

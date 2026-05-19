@@ -1,0 +1,119 @@
+import AVFAudio
+import EnviousWisprAudio
+import EnviousWisprCore
+import EnviousWisprPipeline
+import EnviousWisprServices
+import Foundation
+
+/// PR8 of #763 — routes audio engine + VAD + route-change events to the
+/// active pipeline. Installs three callbacks on `audioCapture` and one
+/// `AVAudioEngineConfigurationChange` observer at construction time.
+///
+/// Lifetime: held by `DictationRuntime`, which is `@State` on
+/// `EnviousWisprApp`, so the router lives for the app's lifetime. No `deinit`
+/// cleanup: same shape as the prior AppState code, where these observer
+/// blocks and callback slots persisted for the full app lifetime. Tests
+/// construct fresh routers against spy mocks, so test-side cleanup is not
+/// required either.
+@MainActor
+final class AudioEventRouter {
+  let audioCapture: any AudioCaptureInterface
+  let pipeline: TranscriptionPipeline
+  let whisperKitPipeline: WhisperKitPipeline
+  let captureTelemetry: CaptureTelemetryState
+
+  let resolveActiveCaptureBackend: @MainActor () -> AppState.LastCapturingBackend?
+
+  init(
+    audioCapture: any AudioCaptureInterface,
+    pipeline: TranscriptionPipeline,
+    whisperKitPipeline: WhisperKitPipeline,
+    captureTelemetry: CaptureTelemetryState,
+    resolveActiveCaptureBackend: @escaping @MainActor () -> AppState.LastCapturingBackend?
+  ) {
+    self.audioCapture = audioCapture
+    self.pipeline = pipeline
+    self.whisperKitPipeline = whisperKitPipeline
+    self.captureTelemetry = captureTelemetry
+    self.resolveActiveCaptureBackend = resolveActiveCaptureBackend
+
+    NotificationCenter.default.addObserver(
+      forName: .AVAudioEngineConfigurationChange, object: nil, queue: nil
+    ) { [weak self] _ in
+      Task { @MainActor in
+        guard let self else { return }
+        self.captureTelemetry.incrementConfigChange()
+        let route = self.audioCapture.currentAudioRoute
+        SentryBreadcrumb.add(
+          stage: "audio", message: "Audio route changed", level: .warning,
+          data: [
+            "audio_route": route
+          ])
+        SentryBreadcrumb.updateAudioRoute(route)
+      }
+    }
+
+    audioCapture.onEngineInterrupted = { [weak self] in
+      guard let self else { return }
+      let pState = self.pipeline.state
+      let wkState = self.whisperKitPipeline.state
+      Task {
+        await AppLogger.shared.log(
+          "[AudioEventRouter] Audio onEngineInterrupted — parakeet=\(pState), whisperKit=\(wkState)",
+          level: .info, category: "XPC"
+        )
+      }
+      SentryBreadcrumb.add(
+        stage: "audio", message: "Audio XPC interrupted", level: .error,
+        data: [
+          "parakeet_state": "\(pState)",
+          "whisperkit_state": "\(wkState)",
+        ])
+      switch self.resolveActiveCaptureBackend() {
+      case .parakeet:
+        self.pipeline.handleEngineInterruption()
+      case .whisperKit:
+        self.whisperKitPipeline.handleEngineInterruption()
+      case nil:
+        break
+      }
+    }
+
+    audioCapture.onXPCServiceError = { [weak self] ctx in
+      guard let self else { return }
+      let handlerKind: XPCHandlerKind = {
+        switch ctx.kind {
+        case .interruptCapturing: return .interrupt
+        case .invalidateCapturing, .invalidateIdle: return .invalidate
+        }
+      }()
+      let wasCapturing = ctx.kind != .invalidateIdle
+      let recordingDurationMs: Any =
+        ctx.recordingDurationNs.map { Int($0 / 1_000_000) } ?? NSNull()
+      let extras: [String: Any] = [
+        "xpc.handler": handlerKind.rawValue,
+        "xpc.was_capturing": wasCapturing,
+        "xpc.kind": ctx.kind.rawValue,
+        "capture_session_id": ctx.sessionID.map { Int($0) } ?? NSNull(),
+        "capture.route": self.audioCapture.currentAudioRoute,
+        "audio.recording_duration_ms": recordingDurationMs,
+      ]
+      SentryBreadcrumb.captureError(
+        HeartPathError.audioXPCInterrupted(
+          handler: handlerKind, wasCapturing: wasCapturing),
+        category: .xpcServiceError,
+        stage: "audio",
+        extra: extras
+      )
+    }
+
+    audioCapture.onVADAutoStop = { [weak self] in
+      guard let self else { return }
+      if self.pipeline.state == .recording {
+        Task { await self.pipeline.stopAndTranscribe() }
+      } else if self.whisperKitPipeline.state == .recording {
+        Task { await self.whisperKitPipeline.stopAndTranscribe() }
+      }
+    }
+  }
+}

@@ -31,6 +31,11 @@ struct EnviousWisprApp: App {
   @State private var liveRecordingState: LiveRecordingState
   @State private var lastRecordingResult: LastRecordingResult
   @State private var backendMetadata: BackendMetadata
+  // PR8 of #763: heart-path event-routing home. Holds three private routers
+  // (`AudioEventRouter`, `ASREventRouter`, `WedgeRecoveryRouter`) that install
+  // their callbacks on `audioCapture`/`asrManager` at construction. Not
+  // environment-injected and not consumed by AppDelegate.
+  @State private var dictationRuntime: DictationRuntime
 
   @State private var isOnboardingPresented: Bool =
     !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
@@ -119,6 +124,28 @@ struct EnviousWisprApp: App {
     appState.attachLastRecordingResult(lastRecordingResult)
     appState.attachBackendMetadata(backendMetadata)
 
+    // PR8 of #763: construct heart-path event-routing home. Routers install
+    // their `audioCapture.on*` / `asrManager.onServiceInterrupted` slots +
+    // the `AVAudioEngineConfigurationChange` observer at init. Resolver
+    // helpers stay on AppState through PR8; PR9 absorbs them into
+    // DictationLifecycleCoordinator and rewires the closures.
+    let dictationRuntime = DictationRuntime(
+      audioCapture: appState.audioCapture,
+      asrManager: appState.asrManager,
+      pipeline: appState.pipeline,
+      whisperKitPipeline: appState.whisperKitPipeline,
+      captureTelemetry: appState.captureTelemetry,
+      resolveActiveCaptureBackend: { [weak appState] in
+        appState?.activeCaptureBackend()
+      },
+      resolveActiveTelemetryTarget: { [weak appState] in
+        appState?.activeTelemetryTarget()
+      },
+      isCurrentSession: { [weak appState] sessionID in
+        appState?.isCurrentSession(sessionID) ?? false
+      }
+    )
+
     _appState = State(initialValue: appState)
     _navigationCoordinator = State(initialValue: navigationCoordinator)
     _diagnosticsCoordinator = State(initialValue: diagnosticsCoordinator)
@@ -128,6 +155,7 @@ struct EnviousWisprApp: App {
     _liveRecordingState = State(initialValue: liveRecordingState)
     _lastRecordingResult = State(initialValue: lastRecordingResult)
     _backendMetadata = State(initialValue: backendMetadata)
+    _dictationRuntime = State(initialValue: dictationRuntime)
 
     // PR-A: push App-owned homes into AppDelegate before any
     // NSApplicationDelegate callback fires. `@NSApplicationDelegateAdaptor`
