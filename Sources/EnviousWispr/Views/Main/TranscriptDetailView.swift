@@ -7,6 +7,7 @@ struct TranscriptDetailView: View {
   let transcript: Transcript
   @Environment(AppState.self) private var appState
   @Environment(NavigationCoordinator.self) private var navigationCoordinator
+  @Environment(TranscriptWorkflowCoordinator.self) private var transcriptWorkflowCoordinator
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -43,19 +44,19 @@ struct TranscriptDetailView: View {
 
         if transcript.polishedText == nil && appState.settings.llmProvider != .none {
           Button {
-            Task { await appState.polishTranscript(transcript) }
+            Task { await transcriptWorkflowCoordinator.polishTranscript(transcript) }
           } label: {
             Label("Enhance", systemImage: "sparkles")
           }
           .controlSize(.small)
-          .disabled(appState.polishService.polishingTranscriptID != nil)
+          .disabled(transcriptWorkflowCoordinator.polishingTranscriptID != nil)
           .help("Polish with AI")
         }
 
         Spacer()
 
         Button(role: .destructive) {
-          appState.transcriptCoordinator.delete(transcript)
+          transcriptWorkflowCoordinator.transcriptCoordinator.delete(transcript)
         } label: {
           Image(systemName: "trash")
         }
@@ -98,7 +99,7 @@ struct TranscriptDetailView: View {
               .frame(maxWidth: .infinity, alignment: .leading)
           }
 
-          if let enhError = appState.lastEnhancementError,
+          if let enhError = transcriptWorkflowCoordinator.lastEnhancementError,
             enhError.transcriptID == transcript.id
           {
             HStack(spacing: 6) {

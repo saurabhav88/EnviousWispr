@@ -17,6 +17,11 @@ struct EnviousWisprApp: App {
   @State private var diagnosticsCoordinator: DiagnosticsCoordinator
   @State private var languageSuggestionPresenter: LanguageSuggestionPresenter
   @State private var updateCoordinatorHolder: UpdateCoordinatorHolder
+  // PR6 of #763: TranscriptWorkflowCoordinator owns re-polish workflow.
+  // Holds references to AppState's TranscriptCoordinator + TranscriptPolishService
+  // (Shape 4 cascade: those references' storage stays on AppState until
+  // PR9/PR11 absorb their pipeline/PSS/custom-words callers).
+  @State private var transcriptWorkflowCoordinator: TranscriptWorkflowCoordinator
 
   @State private var isOnboardingPresented: Bool =
     !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
@@ -75,11 +80,21 @@ struct EnviousWisprApp: App {
 
     let updateCoordinatorHolder = UpdateCoordinatorHolder()
 
+    // PR6 of #763. Build TWC after appState so it can read appState's
+    // transcriptCoordinator + polishService refs. Shape 4: TWC holds the
+    // references, AppState retains storage through PR6 (cascades out
+    // PR9/PR11).
+    let transcriptWorkflowCoordinator = TranscriptWorkflowCoordinator(
+      transcriptCoordinator: appState.transcriptCoordinator,
+      polishService: appState.polishService
+    )
+
     _appState = State(initialValue: appState)
     _navigationCoordinator = State(initialValue: navigationCoordinator)
     _diagnosticsCoordinator = State(initialValue: diagnosticsCoordinator)
     _languageSuggestionPresenter = State(initialValue: languageSuggestionPresenter)
     _updateCoordinatorHolder = State(initialValue: updateCoordinatorHolder)
+    _transcriptWorkflowCoordinator = State(initialValue: transcriptWorkflowCoordinator)
 
     // PR-A: push App-owned homes into AppDelegate before any
     // NSApplicationDelegate callback fires. `@NSApplicationDelegateAdaptor`
@@ -106,6 +121,7 @@ struct EnviousWisprApp: App {
         .environment(diagnosticsCoordinator)
         .environment(languageSuggestionPresenter)
         .environment(updateCoordinatorHolder)
+        .environment(transcriptWorkflowCoordinator)
         .background(
           ActionWirer(
             appDelegate: appDelegate,

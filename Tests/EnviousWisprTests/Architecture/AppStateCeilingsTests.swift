@@ -34,7 +34,7 @@ import Testing
       """)
   }
 
-  /// File line-count ceiling. Locked at post-PR5 (#771) baseline = 1073.
+  /// File line-count ceiling. Locked at post-PR6 (#772) baseline = 1046.
   /// Soft backstop against scope creep.
   ///
   /// Ratcheted history:
@@ -50,14 +50,20 @@ import Testing
   ///   `makeDictationSessionConfig(triggerSource:)` into `DictationSessionConfigFactory`.
   ///   Method body + doc removed 55 lines; two call sites grew 13 lines for the
   ///   multi-line factory invocation. Net delta: -42. 1071 actual + 2-line margin.
+  /// - 1073 → 1046 in PR6 of epic #763 (2026-05-18, #772) after extracting
+  ///   `lastEnhancementError` computed + `polishTranscript(_:)` method into
+  ///   `TranscriptWorkflowCoordinator`. Removed 27 lines (5 + 20 + 2 blank).
+  ///   1044 actual + 2-line margin. Collaborator ceiling stays at 18 — Shape 4
+  ///   keeps `let polishService` and `let transcriptCoordinator` on AppState
+  ///   through PR6 (cascade out in PR11 / PR9 respectively).
   @Test func appStateLineCountCeilingHolds() throws {
     let url = appStateURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 1073,
+      lineCount <= 1046,
       """
-      AppState line count exceeded: \(lineCount) > 1073. \
+      AppState line count exceeded: \(lineCount) > 1046. \
       Raising the ceiling requires a Bible changelog entry, not a silent bump.
       """)
   }

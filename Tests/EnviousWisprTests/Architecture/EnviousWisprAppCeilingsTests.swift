@@ -14,20 +14,28 @@ import Testing
 @Suite struct EnviousWisprAppCeilingsTests {
 
   /// Stored-property ceiling on the App struct.
-  /// Locked at PR-A baseline (#779, 2026-05-18) = 7:
+  /// Locked at post-PR6 baseline (#772, 2026-05-18) = 8:
   /// appDelegate + isOnboardingPresented + appState + navigationCoordinator +
-  /// diagnosticsCoordinator + languageSuggestionPresenter + updateCoordinatorHolder.
+  /// diagnosticsCoordinator + languageSuggestionPresenter + updateCoordinatorHolder
+  /// + transcriptWorkflowCoordinator (PR6).
   /// Counts both `let` and `var` top-level declarations (property wrappers
   /// included). Primitives (`: Bool`, `: Int`, `: String`, `: Double`) are
   /// excluded so the bool-typed `isOnboardingPresented` does count via the
   /// `@State` wrapper presence rather than the type alone.
+  ///
+  /// Ratchet history:
+  /// - 7 → 8 in PR6 of epic #763 (2026-05-18, #772) for `TranscriptWorkflowCoordinator`.
+  ///   Bible §30 entry: PR6 adds one App-owned `@State` home for the re-polish
+  ///   workflow extracted from AppState. By design, new App-owned homes from
+  ///   epic #763 PRs land here; lifting the ceiling is the explicit acknowledgement
+  ///   that the composition root grew (versus AppState shrinking).
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
     #expect(
-      count <= 7,
+      count <= 8,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 7. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 8. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.
@@ -181,7 +189,8 @@ private func isNonPrivateMethodDeclaration(_ line: String) -> Bool {
   guard line.range(of: nonPrivateMethodPattern, options: .regularExpression) != nil
   else { return false }
   // Reject if the line declares `private func` or `fileprivate func`.
-  if line.range(of: #"^[[:space:]]*(private|fileprivate)[[:space:]]+func"#, options: .regularExpression)
+  if line.range(
+    of: #"^[[:space:]]*(private|fileprivate)[[:space:]]+func"#, options: .regularExpression)
     != nil
   {
     return false
