@@ -34,7 +34,7 @@ import Testing
       """)
   }
 
-  /// File line-count ceiling. Locked at post-PR7 (#773) baseline = 1038.
+  /// File line-count ceiling. Locked at post-PR8 (#774) baseline = 904.
   /// Soft backstop against scope creep.
   ///
   /// Ratcheted history:
@@ -67,14 +67,29 @@ import Testing
   ///   ceiling stays at 18 — the three new outlets are `var`, not `let`, and
   ///   the parser matches only `let`. The three temporary outlets sunset
   ///   in PR9 / PR11.
+  /// - 1038 → 904 in PR8 of epic #763 (2026-05-19, #774) after extracting the
+  ///   seven heart-path event-routing closures (`audioCapture.on*` ×6 +
+  ///   `asrManager.onServiceInterrupted`) plus the
+  ///   `AVAudioEngineConfigurationChange` observer block into
+  ///   `AudioEventRouter` / `ASREventRouter` / `WedgeRecoveryRouter` under
+  ///   `DictationRuntime`. Net: -134 (144 lines of closures + comments removed;
+  ///   ~10 lines of explanatory comment added in their place). 902 actual +
+  ///   2-line margin. Collaborator ceiling stays at 18 — no `let`s added or
+  ///   removed on AppState. The resolver helpers (`LastCapturingBackend`,
+  ///   `lastCapturingBackend`, `prevParakeetActive`, `prevWhisperKitActive`,
+  ///   `activeCaptureBackend()`, `isCurrentSession(_:)`,
+  ///   `activeTelemetryTarget()`) stay on AppState through PR8 — promoted
+  ///   `private` → `internal` so the router-injected closures can read them.
+  ///   PR9 absorbs them into `DictationLifecycleCoordinator` (same-PR
+  ///   grep-test `AppStateNoLongerOwnsBackendResolverTests` enforces).
   @Test func appStateLineCountCeilingHolds() throws {
     let url = appStateURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 1038,
+      lineCount <= 904,
       """
-      AppState line count exceeded: \(lineCount) > 1038. \
+      AppState line count exceeded: \(lineCount) > 904. \
       Raising the ceiling requires a Bible changelog entry, not a silent bump.
       """)
   }

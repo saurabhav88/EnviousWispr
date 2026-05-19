@@ -34,13 +34,20 @@ import Testing
   ///   `liveRecordingState` and `lastRecordingResult` sunset to 9 in PR9
   ///   (DictationLifecycleCoordinator absorbs the push sites);
   ///   `backendMetadata` sunsets to 8 in PR11 (with AppState deletion).
+  /// - 11 → 12 in PR8 of epic #763 (2026-05-19, #774) for `DictationRuntime`.
+  ///   Bible §30 entry: PR8 lifts the seven heart-path event-routing closures +
+  ///   the AVAudioEngineConfigurationChange observer off AppState into a new
+  ///   App-owned `@State` home (`DictationRuntime`) whose three private routers
+  ///   install the callbacks. AppState shrinks ~134 lines; the composition root
+  ///   grows by one. `DictationRuntime` is NOT environment-injected and not
+  ///   consumed by AppDelegate; it persists for the lifetime of the App.
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
     #expect(
-      count <= 11,
+      count <= 12,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 11. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 12. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.
@@ -64,17 +71,20 @@ import Testing
       """)
   }
 
-  /// Line-count trip-wire (5x of current). Soft backstop against accidental
-  /// file explosions; entanglement signals (stored properties, methods,
-  /// imports) are the primary mechanical constraints.
+  /// Line-count trip-wire. Soft backstop against accidental file explosions;
+  /// entanglement signals (stored properties, methods, imports) are the
+  /// primary mechanical constraints. Ratcheted 250→270 in PR8 of epic #763
+  /// (2026-05-19, #774) to absorb DictationRuntime construction (15 lines:
+  /// @State decl + closure-injected init block + State(initialValue:)).
+  /// 259 actual + 2-line margin then rounded to the next ratchet step.
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 250,
+      lineCount <= 270,
       """
-      EnviousWisprApp line count exceeded: \(lineCount) > 250. \
+      EnviousWisprApp line count exceeded: \(lineCount) > 270. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }
