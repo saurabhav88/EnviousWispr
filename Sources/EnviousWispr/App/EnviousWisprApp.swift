@@ -9,34 +9,25 @@ struct EnviousWisprApp: App {
 
   // PR-A of #763: SwiftUI App struct is the composition root. App-owned homes
   // live here as `@State` and are injected into views via `.environment(...)`.
-  // AppDelegate is a temporary AppKit adapter holding weak refs to a subset
-  // (appState, navigationCoordinator, updateCoordinatorHolder) so its
-  // NSApplicationDelegate callbacks can read them. PR-B shrinks AppDelegate
-  // further; PR11 deletes AppState.
   @State private var appState: AppState
   @State private var navigationCoordinator: NavigationCoordinator
   @State private var diagnosticsCoordinator: DiagnosticsCoordinator
   @State private var languageSuggestionPresenter: LanguageSuggestionPresenter
   @State private var updateCoordinatorHolder: UpdateCoordinatorHolder
-  // PR6 of #763: TranscriptWorkflowCoordinator owns re-polish workflow.
-  // Holds references to AppState's TranscriptCoordinator + TranscriptPolishService
-  // (Shape 4 cascade: those references' storage stays on AppState until
-  // PR9/PR11 absorb their pipeline/PSS/custom-words callers).
   @State private var transcriptWorkflowCoordinator: TranscriptWorkflowCoordinator
-  // PR7 of #763: split the pre-PR7 AppState "dictation state" pile into
-  // three narrow homes by lifetime. LiveRecordingState owns in-flight
-  // facts; LastRecordingResult owns post-recording polish error; BackendMetadata
-  // owns display labels. AppState's state-change closures push to
-  // `lastRecordingResult.polishError`; `liveRecordingState` and
-  // `backendMetadata` are pure read surfaces.
   @State private var liveRecordingState: LiveRecordingState
   @State private var lastRecordingResult: LastRecordingResult
   @State private var backendMetadata: BackendMetadata
-  // PR8 of #763: heart-path event-routing home. Holds three private routers
-  // (`AudioEventRouter`, `ASREventRouter`, `WedgeRecoveryRouter`) that install
-  // their callbacks on `audioCapture`/`asrManager` at construction. Not
-  // environment-injected and not consumed by AppDelegate.
   @State private var dictationRuntime: DictationRuntime
+  /// PR10 of #763: the App owns the shared `HotkeyService` so the single
+  /// instance can be threaded into `HotkeyController` (wires callbacks),
+  /// `PipelineSettingsSync` (live key/modifier/mode updates),
+  /// `DictationLifecycleCoordinator` (per-pipeline-state register/unregister
+  /// of the cancel hotkey), and `AppDelegate.attach(...)` (termination
+  /// `.stop()`). A single owner of the service is required because all
+  /// three consumers mutate it; multiple instances would silently lose
+  /// settings changes.
+  @State private var hotkeyService: HotkeyService
 
   @State private var isOnboardingPresented: Bool =
     !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
@@ -45,18 +36,15 @@ struct EnviousWisprApp: App {
     // Construct App-owned homes in dependency order. Closure-capture targets
     // (overlay) must exist before the closures are built; AppState's chip
     // handlers must be wired exactly once.
-    //
-    // PR9 of #763 — `TranscriptStore` + `TranscriptCoordinator` constructed
-    // here (was inside AppState.init pre-PR9). AppState's init takes
-    // `transcriptStore` so the pipelines + polish service still receive the
-    // shared store reference. `TranscriptCoordinator` is threaded into both
-    // the new lifecycle home (caller of `append`) AND
-    // `TranscriptWorkflowCoordinator` (view-facing surface). Invariant:
-    // exactly one `TranscriptStore()` call in `Sources/` outside
-    // `EnviousWisprStorage/TranscriptStore.swift`.
     let transcriptStore = TranscriptStore()
     let transcriptCoordinator = TranscriptCoordinator(store: transcriptStore)
-    let appState = AppState(transcriptStore: transcriptStore)
+    // PR10 of #763 — shared `HotkeyService` constructed here as a local
+    // let so it can be threaded into AppState.init (for PSS), DLC.init,
+    // DR.init (which threads it into HotkeyController), and AppDelegate.attach
+    // (for termination). Assigned to `_hotkeyService = State(initialValue:)`
+    // at the end of init alongside the other @State homes.
+    let hotkeyService = HotkeyService()
+    let appState = AppState(transcriptStore: transcriptStore, hotkeyService: hotkeyService)
     let navigationCoordinator = NavigationCoordinator()
     let diagnosticsCoordinator = DiagnosticsCoordinator()
 
@@ -75,7 +63,6 @@ struct EnviousWisprApp: App {
     // dispatching from its chip-handler closure and pipeline state-change closures.
     appState.attachLanguageSuggestionPresenter(languageSuggestionPresenter)
     // Wire RecordingOverlayPanel chip handler closures into the presenter.
-    // PR9/PR10 absorb these along with the rest of AppState's chip dispatching.
     appState.recordingOverlay.setPassiveChipHandlers(
       onLock: { [weak appState, presenter = languageSuggestionPresenter] in
         if let lang = presenter.accept(), let appState = appState {
@@ -106,20 +93,11 @@ struct EnviousWisprApp: App {
 
     let updateCoordinatorHolder = UpdateCoordinatorHolder()
 
-    // PR6 of #763. Build TWC after appState so it can read appState's
-    // transcriptCoordinator + polishService refs. Shape 4: TWC holds the
-    // references, AppState retains storage through PR6 (cascades out
-    // PR9/PR11).
     let transcriptWorkflowCoordinator = TranscriptWorkflowCoordinator(
       transcriptCoordinator: transcriptCoordinator,
       polishService: appState.polishService
     )
 
-    // PR7 of #763: construct the three dictation-state homes off AppState's
-    // existing sub-systems. Same precedent as TWC above. Setter-inject into
-    // AppState so the state-change closures can push polishError. Sunset:
-    // LRS + LRR in PR9 (DictationLifecycleCoordinator absorbs push sites);
-    // BackendMetadata in PR11 (with AppState).
     let liveRecordingState = LiveRecordingState(
       pipeline: appState.pipeline,
       whisperKitPipeline: appState.whisperKitPipeline,
@@ -137,49 +115,49 @@ struct EnviousWisprApp: App {
     appState.attachBackendMetadata(backendMetadata)
 
     // PR9 of #763: construct the lifecycle home BEFORE DictationRuntime.
-    // The coordinator owns pipeline state-change side effects + the
-    // post-completion warning Task + the seven backend-resolver symbols PR8
-    // deferred. `install()` wires `pipeline.onStateChange` and
-    // `whisperKitPipeline.onStateChange` to its `handleParakeet` /
-    // `handleWhisperKit` methods. The recordingLockedAccess struct lets the
-    // coordinator read AND write AppState's still-owned `isRecordingLocked`
-    // (PR10 absorbs it).
+    // PR10 of #763: the shared `hotkeyService` is now threaded in
+    // explicitly from the App-owned local let, not from `appState.hotkeyService`
+    // (which no longer exists).
+    let recordingLockedAccess = DictationLifecycleCoordinator.RecordingLockedAccess(
+      get: { [weak appState] in appState?.isRecordingLocked ?? false },
+      set: { [weak appState] locked in appState?.isRecordingLocked = locked }
+    )
     let dictationLifecycleCoordinator = DictationLifecycleCoordinator(
       pipeline: appState.pipeline,
       whisperKitPipeline: appState.whisperKitPipeline,
       recordingOverlay: appState.recordingOverlay,
-      hotkeyService: appState.hotkeyService,
+      hotkeyService: hotkeyService,
       settingsSync: appState.settingsSync,
       audioCapture: appState.audioCapture,
       transcriptCoordinator: transcriptCoordinator,
       settings: appState.settings,
       lastRecordingResult: lastRecordingResult,
       languageSuggestionPresenter: languageSuggestionPresenter,
-      recordingLockedAccess: .init(
-        get: { [weak appState] in appState?.isRecordingLocked ?? false },
-        set: { [weak appState] locked in appState?.isRecordingLocked = locked }
-      )
+      recordingLockedAccess: recordingLockedAccess
     )
     dictationLifecycleCoordinator.install()
-    // PR9 of #763: AppState's PR10-scope start paths
-    // (`hotkeyService.onStartRecording`, `toggleRecording(source:)`) call
-    // `coordinator.cancelPendingWarning()` before showing the new recording
-    // overlay. Weak setter avoids a strong cycle through AppState.
-    appState.attachDictationLifecycleCoordinator(dictationLifecycleCoordinator)
 
     // PR8 of #763: construct heart-path event-routing home. Routers install
     // their `audioCapture.on*` / `asrManager.onServiceInterrupted` slots +
     // the `AVAudioEngineConfigurationChange` observer at init.
-    // PR9 of #763: resolver closures now capture
-    // `[weak dictationLifecycleCoordinator]` instead of `[weak appState]`.
-    // Closure signatures unchanged.
+    // PR10 of #763: also constructs `HotkeyController` / `RecordingStarter` /
+    // `RecordingFinalizer` internally and calls `hotkeyController.install()`
+    // as the last init step. EnviousWisprApp.init does NOT construct the
+    // recording subsystem directly — DR is the composition root for it.
     let dictationRuntime = DictationRuntime(
       audioCapture: appState.audioCapture,
       asrManager: appState.asrManager,
       pipeline: appState.pipeline,
       whisperKitPipeline: appState.whisperKitPipeline,
       captureTelemetry: appState.captureTelemetry,
+      settings: appState.settings,
+      permissions: appState.permissions,
+      recordingOverlay: appState.recordingOverlay,
+      hotkeyService: hotkeyService,
+      lastRecordingResult: lastRecordingResult,
+      languageSuggestionPresenter: languageSuggestionPresenter,
       dictationLifecycleCoordinator: dictationLifecycleCoordinator,
+      recordingLockedAccess: recordingLockedAccess,
       resolveActiveCaptureBackend: { [weak dictationLifecycleCoordinator] in
         dictationLifecycleCoordinator?.activeCaptureBackend()
       },
@@ -201,21 +179,24 @@ struct EnviousWisprApp: App {
     _lastRecordingResult = State(initialValue: lastRecordingResult)
     _backendMetadata = State(initialValue: backendMetadata)
     _dictationRuntime = State(initialValue: dictationRuntime)
+    _hotkeyService = State(initialValue: hotkeyService)
 
     // PR-A: push App-owned homes into AppDelegate before any
-    // NSApplicationDelegate callback fires. `@NSApplicationDelegateAdaptor`
-    // exposes the delegate synchronously here; NSApplication.run() (which
-    // dispatches delegate callbacks) starts only after App.init() returns.
-    // PR7 of #763: also push `liveRecordingState` and `backendMetadata` so
-    // AppDelegate's `populateMenu` and `updateIcon` reads resolve through
-    // the new homes (the AppState getters they previously called are gone).
+    // NSApplicationDelegate callback fires.
+    // PR10 of #763: also push `dictationRuntime` (so AppDelegate's menu-bar
+    // `toggleRecording` action and `applicationDidFinishLaunching`
+    // hotkey-start path resolve through the new façade) and `hotkeyService`
+    // (so `applicationWillTerminate` can stop the shared service without
+    // reaching through the deleted `appState.hotkeyService` path).
     appDelegate.attach(
       appState: appState,
       navigationCoordinator: navigationCoordinator,
       updateCoordinatorHolder: updateCoordinatorHolder,
       liveRecordingState: liveRecordingState,
       backendMetadata: backendMetadata,
-      dictationLifecycleCoordinator: dictationLifecycleCoordinator
+      dictationLifecycleCoordinator: dictationLifecycleCoordinator,
+      dictationRuntime: dictationRuntime,
+      hotkeyService: hotkeyService
     )
 
     // Initialize observability (PostHog + Sentry) unconditionally at launch —
@@ -237,6 +218,7 @@ struct EnviousWisprApp: App {
         .environment(liveRecordingState)
         .environment(lastRecordingResult)
         .environment(backendMetadata)
+        .environment(dictationRuntime)
         .background(
           ActionWirer(
             appDelegate: appDelegate,
@@ -255,6 +237,7 @@ struct EnviousWisprApp: App {
       .environment(appState)
       .environment(navigationCoordinator)
       .environment(languageSuggestionPresenter)
+      .environment(dictationRuntime)
     }
     .windowResizability(.contentSize)
     .defaultSize(width: 500, height: 550)

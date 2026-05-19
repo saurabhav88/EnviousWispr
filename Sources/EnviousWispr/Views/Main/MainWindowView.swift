@@ -9,6 +9,9 @@ struct StatusView: View {
   @Environment(LiveRecordingState.self) private var liveRecordingState
   @Environment(LastRecordingResult.self) private var lastRecordingResult
   @Environment(BackendMetadata.self) private var backendMetadata
+  // PR10 of #763: recording-control surface (toggle, cancel, reset,
+  // hotkey description) moved off AppState onto DictationRuntime façade.
+  @Environment(DictationRuntime.self) private var dictationRuntime
   @State private var elapsed: TimeInterval = 0
   @State private var recordingStart: Date?
 
@@ -22,7 +25,7 @@ struct StatusView: View {
           VStack(spacing: 4) {
             Text("Press the record button to start dictating.")
             if appState.settings.hotkeyEnabled {
-              Text("Hotkey: \(appState.hotkeyService.hotkeyDescription)")
+              Text("Hotkey: \(dictationRuntime.hotkeyDescription)")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
             }
@@ -83,7 +86,7 @@ struct StatusView: View {
           // Action buttons
           HStack(spacing: 16) {
             Button {
-              Task { await appState.toggleRecording(source: .toolbar) }
+              Task { await dictationRuntime.toggleRecording(source: .toolbar) }
             } label: {
               HStack(spacing: 4) {
                 Image(systemName: "stop.fill")
@@ -102,7 +105,7 @@ struct StatusView: View {
             .foregroundStyle(.stError)
 
             Button {
-              Task { await appState.cancelRecording() }
+              Task { await dictationRuntime.cancelRecording() }
             } label: {
               HStack(spacing: 4) {
                 Text("Esc")
@@ -164,7 +167,7 @@ struct StatusView: View {
           Text(msg)
         } actions: {
           Button("Try Again") {
-            appState.resetActivePipeline()
+            dictationRuntime.resetActivePipeline()
           }
         }
       }
@@ -312,15 +315,16 @@ struct StatusBadge: View {
 
 /// Record/stop button in the toolbar.
 struct RecordButton: View {
-  @Environment(AppState.self) private var appState
   // PR7 of #763: live phase resolves through LiveRecordingState.
   @Environment(LiveRecordingState.self) private var liveRecordingState
+  // PR10 of #763: toggle dispatches through DictationRuntime façade.
+  @Environment(DictationRuntime.self) private var dictationRuntime
 
   var body: some View {
     let state = liveRecordingState.pipelineState
     Button {
       Task {
-        await appState.toggleRecording(source: .toolbar)
+        await dictationRuntime.toggleRecording(source: .toolbar)
       }
     } label: {
       Label(

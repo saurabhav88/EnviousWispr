@@ -955,7 +955,9 @@ private struct KeycapHotkeyView: View {
   @Binding var keyCode: UInt16
   @Binding var modifiers: NSEvent.ModifierFlags
 
-  @Environment(AppState.self) private var appState
+  // PR10 of #763: hotkey suspend/resume dispatch through DictationRuntime
+  // façade; the shared HotkeyService is no longer accessible via AppState.
+  @Environment(DictationRuntime.self) private var dictationRuntime
   @State private var isRecording = false
   @State private var cursorOpacity: Double = 1.0
   @State private var pulsePhase: Bool = false
@@ -1162,12 +1164,12 @@ private struct KeycapHotkeyView: View {
 
   private func startRecording() {
     isRecording = true
-    appState.hotkeyService.suspend()
+    dictationRuntime.suspendHotkeys()
   }
 
   private func stopRecording() {
     isRecording = false
-    appState.hotkeyService.resume()
+    dictationRuntime.resumeHotkeys()
   }
 
   private func handleKeyEvent(_ event: NSEvent) {

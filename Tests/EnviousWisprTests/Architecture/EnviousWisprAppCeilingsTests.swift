@@ -35,19 +35,21 @@ import Testing
   ///   (DictationLifecycleCoordinator absorbs the push sites);
   ///   `backendMetadata` sunsets to 8 in PR11 (with AppState deletion).
   /// - 11 → 12 in PR8 of epic #763 (2026-05-19, #774) for `DictationRuntime`.
-  ///   Bible §30 entry: PR8 lifts the seven heart-path event-routing closures +
-  ///   the AVAudioEngineConfigurationChange observer off AppState into a new
-  ///   App-owned `@State` home (`DictationRuntime`) whose three private routers
-  ///   install the callbacks. AppState shrinks ~134 lines; the composition root
-  ///   grows by one. `DictationRuntime` is NOT environment-injected and not
-  ///   consumed by AppDelegate; it persists for the lifetime of the App.
+  /// - 12 → 13 in PR10 of epic #763 (2026-05-19, #776) for the shared
+  ///   `HotkeyService`. Bible §30 entry: PR10 lifts `let hotkeyService` off
+  ///   AppState because three independent consumers (`HotkeyController`,
+  ///   `PipelineSettingsSync`, `DictationLifecycleCoordinator`) plus
+  ///   `AppDelegate` termination all need the SAME instance, and AppState
+  ///   is being deleted (epic #763 freeze). The App-owned `@State` is the
+  ///   only composition root that survives PR11. Threaded into `AppState.init`,
+  ///   DLC.init, DR.init, and `appDelegate.attach(...)`.
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
     #expect(
-      count <= 12,
+      count <= 13,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 12. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 13. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.
