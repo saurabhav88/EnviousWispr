@@ -8,7 +8,7 @@ import Testing
 /// constructing an AppState instance — AppState's init pulls in real audio
 /// capture, ASR, pipelines, and Tasks that should not run inside a unit test.
 ///
-/// Ceilings: concrete-collaborator count ≤ 17, total line count ≤ 692.
+/// Ceilings: concrete-collaborator count ≤ 16, total line count ≤ 380.
 /// Raising a ceiling requires a Bible changelog entry, not a silent bump.
 @Suite struct AppStateCeilingsTests {
 
@@ -23,20 +23,22 @@ import Testing
   ///   `var` (setter-injected post-init) and is therefore NOT counted by
   ///   this parser — the ceiling stays at 18.
   /// - 18 → 17 in PR9 of epic #763 (2026-05-19, #775) after extracting
-  ///   `let transcriptCoordinator` off AppState. The new lifecycle home
-  ///   (`DictationLifecycleCoordinator`) is the caller of `append`; views
-  ///   read through `TranscriptWorkflowCoordinator`. The composition root
-  ///   (`EnviousWisprApp.init`) constructs `TranscriptCoordinator` once and
-  ///   threads the same instance to both. AppState's init now takes
-  ///   `TranscriptStore` so the pipelines + polish service still receive
-  ///   the shared store reference.
+  ///   `let transcriptCoordinator` off AppState.
+  /// - 17 → 16 in PR10 of epic #763 (2026-05-19, #776) after extracting
+  ///   `let hotkeyService = HotkeyService()` (line 22 pre-PR10). The shared
+  ///   instance is hoisted to `EnviousWisprApp` as `@State` so it can be
+  ///   threaded into `HotkeyController` (callback wiring), `PipelineSettingsSync`
+  ///   (live settings updates), `DictationLifecycleCoordinator` (cancel-hotkey
+  ///   register/unregister), and `AppDelegate.attach(...)` (termination
+  ///   `.stop()`). AppState's init now takes `hotkeyService` so PSS still
+  ///   receives the shared instance during AppState construction.
   @Test func appStateConcreteCollaboratorCeilingHolds() throws {
     let body = try classBodyOfAppState()
     let count = countTopLevelLetCollaborators(in: body)
     #expect(
-      count <= 17,
+      count <= 16,
       """
-      AppState concrete-collaborator ceiling exceeded: \(count) > 17. \
+      AppState concrete-collaborator ceiling exceeded: \(count) > 16. \
       Raising the ceiling requires a Bible changelog entry, not a silent bump.
       """)
   }
@@ -82,26 +84,32 @@ import Testing
   ///   stayed on AppState through PR8 — promoted `private` → `internal` so
   ///   the router-injected closures could read them — and PR9 owns the
   ///   cleanup.
-  /// - 904 → 692 in PR9 of epic #763 (2026-05-19, #775) after extracting:
-  ///   the two pipeline `onStateChange` closure bodies (~120 lines), the
-  ///   lazy state-handler factory (~37 lines), the post-completion warning
-  ///   Task + scheduler (~13 lines), the seven PR8 deferred resolver
-  ///   symbols (~47 lines), the `let transcriptCoordinator` + local
-  ///   `transcriptStore` construction (~5 lines), the `onPipelineStateChange`
-  ///   var (~2 lines). New code added: the `attachDictationLifecycleCoordinator`
-  ///   weak ref setter (~10 lines), the `init(transcriptStore:)` parameter
-  ///   change (~2 lines), explanatory comments at the deletion sites
-  ///   (~25 lines). Net: ~-212. 690 actual + 2-line margin. Same-PR
-  ///   grep-test `AppStateNoLongerOwnsBackendResolverTests` enforces no
-  ///   PR8-deferred symbol survives.
+  /// - 904 → 692 in PR9 of epic #763 (2026-05-19, #775) after extracting
+  ///   the two pipeline `onStateChange` closures + lazy state-handler factory
+  ///   + post-completion warning Task + seven PR8 deferred resolver symbols.
+  /// - 692 → 380 in PR10 of epic #763 (2026-05-19, #776) after extracting:
+  ///   `let hotkeyService` (1 line), the `lazy var heartControlRecovery`
+  ///   block (~7 lines), the entire `hotkeyService` callback wiring block
+  ///   at lines 330-537 (~208 lines: onToggleRecording, onStartRecording —
+  ///   the huge ~150-line block — onStopRecording, onCancelRecording,
+  ///   onIsProcessing, onLocked, plus the recordingMode / keyCode /
+  ///   modifier configuration push), `startHotkeyServiceIfEnabled` (5 lines),
+  ///   `activePipeline` computed property (4 lines), `lastUserStopRequest`
+  ///   var (3 lines), `resetActivePipeline` method (7 lines),
+  ///   `toggleRecording(source:)` method (~42 lines), `cancelRecording`
+  ///   method (~30 lines), the `dictationLifecycleCoordinator` weak ref
+  ///   + setter (~11 lines). New code added: the `hotkeyService:` init
+  ///   parameter, explanatory header comment block (~30 lines). Net: ~-310.
+  ///   372 actual + 8-line margin = 380. Companion `AppStateFreezeTests`
+  ///   in PR11 replaces this when AppState is deleted.
   @Test func appStateLineCountCeilingHolds() throws {
     let url = appStateURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 692,
+      lineCount <= 380,
       """
-      AppState line count exceeded: \(lineCount) > 692. \
+      AppState line count exceeded: \(lineCount) > 380. \
       Raising the ceiling requires a Bible changelog entry, not a silent bump.
       """)
   }

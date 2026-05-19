@@ -109,7 +109,9 @@ struct HotkeyRecorderView: View {
   let label: String
   var colors: HotkeyRecorderColors = .system
 
-  @Environment(AppState.self) private var appState
+  // PR10 of #763: hotkey suspend/resume dispatch through DictationRuntime
+  // façade; the shared HotkeyService is no longer accessible via AppState.
+  @Environment(DictationRuntime.self) private var dictationRuntime
 
   @State private var isRecording = false
 
@@ -177,13 +179,13 @@ struct HotkeyRecorderView: View {
   private func startRecording() {
     isRecording = true
     // Suspend all Carbon hotkeys so they don't swallow key combos during recording
-    appState.hotkeyService.suspend()
+    dictationRuntime.suspendHotkeys()
   }
 
   private func stopRecording() {
     isRecording = false
     // Resume Carbon hotkeys
-    appState.hotkeyService.resume()
+    dictationRuntime.resumeHotkeys()
   }
 
   private func handleKeyEvent(_ event: NSEvent) {

@@ -55,6 +55,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /// in `applicationDidFinishLaunching`. Weak ref — strong owner is
   /// `DictationRuntime` via `EnviousWisprApp`'s `@State`.
   private weak var dictationLifecycleCoordinator: DictationLifecycleCoordinator?
+  /// PR10 of #763: the recording-control façade (start hotkey service,
+  /// menu-bar toggle). Weak ref — strong owner is `EnviousWisprApp`'s
+  /// `@State`. Used by `applicationDidFinishLaunching` (hotkey start) and
+  /// the `@objc toggleRecording` menu-bar action.
+  private weak var dictationRuntime: DictationRuntime?
+  /// PR10 of #763: shared `HotkeyService` owned by `EnviousWisprApp` as
+  /// `@State`. AppDelegate calls `.stop()` on termination so the Carbon
+  /// hotkey registration is cleaned up before the run loop tears down.
+  /// Replaces the pre-PR10 `appState.hotkeyService.stop()` call.
+  private weak var hotkeyService: HotkeyService?
 
   /// PR-A of #763: receive App-owned home refs from `EnviousWisprApp.init()`
   /// before delegate callbacks fire. If `updateCoordinator` is already
@@ -73,7 +83,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     updateCoordinatorHolder: UpdateCoordinatorHolder,
     liveRecordingState: LiveRecordingState,
     backendMetadata: BackendMetadata,
-    dictationLifecycleCoordinator: DictationLifecycleCoordinator
+    dictationLifecycleCoordinator: DictationLifecycleCoordinator,
+    dictationRuntime: DictationRuntime,
+    hotkeyService: HotkeyService
   ) {
     self.appState = appState
     self.navigationCoordinator = navigationCoordinator
@@ -81,6 +93,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     self.liveRecordingState = liveRecordingState
     self.backendMetadata = backendMetadata
     self.dictationLifecycleCoordinator = dictationLifecycleCoordinator
+    self.dictationRuntime = dictationRuntime
+    self.hotkeyService = hotkeyService
     if let existing = self.updateCoordinator {
       updateCoordinatorHolder.coordinator = existing
     }
@@ -216,7 +230,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // Start hotkeys now that the event loop is running.
     // Carbon RegisterEventHotKey requires an active run loop for event delivery.
-    appState.startHotkeyServiceIfEnabled()
+    // PR10 of #763 — façade pass-through; HotkeyController owns the
+    // `settings.hotkeyEnabled` gate and the `hotkeyService.start()` call.
+    dictationRuntime?.startHotkeyServiceIfEnabled()
 
     if appState.settings.onboardingState == .completed {
       let s = appState.settings
@@ -562,9 +578,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   @objc private func toggleRecording() {
-    guard let appState = self.appState else { return }
+    // PR10 of #763 — façade pass-through to RecordingStarter via DictationRuntime.
+    guard let dictationRuntime = self.dictationRuntime else { return }
     Task {
-      await appState.toggleRecording(source: .menuBar)
+      await dictationRuntime.toggleRecording(source: .menuBar)
       updateIcon()
     }
   }
@@ -636,7 +653,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       onboardingCloseObserver = nil
     }
     appState?.setup.ollamaSetup.cleanup()
-    appState?.hotkeyService.stop()
+    // PR10 of #763 — shared HotkeyService is owned by EnviousWisprApp as
+    // `@State`; AppDelegate holds a weak ref pushed via `attach(...)`.
+    hotkeyService?.stop()
     LLMNetworkSession.shared.invalidate()
 
     #if DEBUG
