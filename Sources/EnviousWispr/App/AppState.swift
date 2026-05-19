@@ -29,69 +29,29 @@ final class AppState {
   let audioDeviceList = AudioDeviceList()
   let captureTelemetry = CaptureTelemetryState()
 
-  /// Cancellable task for showing a deferred post-completion warning (e.g. polish failed).
-  /// Cancelled when a new recording starts or a higher-priority notification is shown.
-  private var postCompletionWarningTask: Task<Void, Never>?
-
   // Pipelines — initialized after sub-systems
   let pipeline: TranscriptionPipeline
   let whisperKitPipeline: WhisperKitPipeline
 
-  // Phase A (#196) — per-pipeline state-change behavior absorbed from the
-  // onStateChange closures. Each handler owns the effect execution; AppState
-  // still owns the cross-pipeline warning Task + tiebreaker + hotkey ordering.
-  // Lazy so the callback closures can capture `self` after stored-property
-  // assignment completes. First access is inside `onStateChange`, well after
-  // `init()` returns.
-  @ObservationIgnored
-  private lazy var parakeetStateHandler: PipelineStateChangeHandler = {
-    makeStateChangeHandler(backendLabel: "parakeet")
-  }()
-  @ObservationIgnored
-  private lazy var whisperKitStateHandler: PipelineStateChangeHandler = {
-    makeStateChangeHandler(backendLabel: "whisperKit")
-  }()
-
-  private func makeStateChangeHandler(backendLabel: String) -> PipelineStateChangeHandler {
-    PipelineStateChangeHandler(
-      showOverlay: { [weak self] intent in
-        guard let self else { return }
-        self.recordingOverlay.show(
-          intent: intent,
-          audioLevelProvider: { [weak self] in self?.audioCapture.audioLevel ?? 0 },
-          isRecordingLocked: self.isRecordingLocked
-        )
-      },
-      cancelPendingWarning: { [weak self] in self?.postCompletionWarningTask?.cancel() },
-      schedulePolishFailedWarning: { [weak self] in
-        self?.schedulePostCompletionWarning(message: "Polish failed -- using raw text")
-      },
-      appendCompletedTranscript: { [weak self] t in self?.transcriptCoordinator.append(t) },
-      reportDictationCompleted: { [weak self] t in
-        guard let self else { return }
-        TelemetryService.shared.reportDictationCompleted(
-          transcript: t, inputMode: self.settings.recordingMode.rawValue)
-      },
-      reportPipelineFailed: { msg in
-        TelemetryService.shared.pipelineFailed(
-          stage: "transcription", errorCategory: "pipeline_error", errorCode: msg,
-          recoverable: false, backend: backendLabel)
-      }
-    )
-  }
+  // PR9 of #763 — pipeline state-change side effects (overlay, hotkey
+  // arbitration, telemetry, chip lifecycle, terminal settings sync) moved to
+  // `DictationLifecycleCoordinator` under DictationRuntime. The factory +
+  // lazy handlers + post-completion warning Task all sunset here. The icon
+  // callback property also moved to the new home; AppDelegate sets it on the
+  // coordinator now.
 
   /// Standalone service for re-polishing saved transcripts from the detail view.
   /// Completely decoupled from pipeline state machines.
   let polishService: TranscriptPolishService
 
   /// Forwards settings changes to pipelines and subsystems.
-  private let settingsSync: PipelineSettingsSync
+  let settingsSync: PipelineSettingsSync
 
-  /// Called when pipeline state changes — set by AppDelegate for icon updates.
-  var onPipelineStateChange: ((PipelineState) -> Void)?
-
-  // Transcript history — delegated to coordinator
-  let transcriptCoordinator: TranscriptCoordinator
+  // PR9 of #763 — transcript-coordinator storage moved off AppState. The
+  // composition root constructs it once and threads it into both the new
+  // lifecycle home (caller of append) and `TranscriptWorkflowCoordinator`
+  // (view-facing surface). AppState's init takes `TranscriptStore` so the
+  // pipelines + polish service can still receive the shared store reference.
 
   /// True when recording is in hands-free (locked) mode via double-press.
   /// Read by the overlay to switch to the expanded lips visual.
@@ -146,6 +106,18 @@ final class AppState {
     self.backendMetadata = metadata
   }
 
+  /// PR9 of #763 — weak ref to the new lifecycle home. AppState's PR10-scope
+  /// start paths (`hotkeyService.onStartRecording`, `toggleRecording(source:)`)
+  /// still need to call `cancelPendingWarning()` before a new recording
+  /// overlay shows. PR10 retires this when start/stop/cancel migrate into
+  /// `RecordingStarter` / `RecordingFinalizer`. Setter-injected `var` —
+  /// uncounted by the ceiling parser (matches the pattern used for the four
+  /// outlets above).
+  private(set) weak var dictationLifecycleCoordinator: DictationLifecycleCoordinator?
+  func attachDictationLifecycleCoordinator(_ coordinator: DictationLifecycleCoordinator) {
+    self.dictationLifecycleCoordinator = coordinator
+  }
+
   // Feature #8: custom word management — delegated to coordinator
   let customWordsCoordinator = CustomWordsCoordinator()
 
@@ -171,7 +143,12 @@ final class AppState {
       self?.asrManager.activeBackendType == .whisperKit ? "whisperkit" : "parakeet"
     })
 
-  init() {
+  /// PR9 of #763 — `transcriptStore` is constructed by the composition root
+  /// (`EnviousWisprApp.init`) and injected. This lets `TranscriptCoordinator`
+  /// move off AppState (the composition root threads the same TC instance to
+  /// the lifecycle coordinator + the transcript workflow coordinator). The
+  /// pipelines + polish service still receive `transcriptStore` via this init.
+  init(transcriptStore: TranscriptStore) {
     // XPC audio service — default ON (Step 7). Audio capture runs in a separate XPC
     // service process for crash isolation. Escape hatch: `defaults write ... useXPCAudioService -bool false`
     // Read directly from UserDefaults because `settings` is not yet available (stored
@@ -195,14 +172,6 @@ final class AppState {
       asrManager = ASRManager()
     }
 
-    // Composition-root for transcript storage. One `TranscriptStore` is threaded
-    // to every consumer (coordinator + both pipelines + polish service); AppState
-    // does NOT retain it. Invariant: exactly one `TranscriptStore(` call in
-    // `Sources/` outside `EnviousWisprStorage/TranscriptStore.swift`.
-    let transcriptStore = TranscriptStore()
-    // Transcripts always live at AppConstants.appSupportURL/transcripts.
-    // No legacy path, no group container, no iCloud. Default init creates dir on miss.
-    transcriptCoordinator = TranscriptCoordinator(store: transcriptStore)
     llmDiscovery = LLMModelDiscoveryCoordinator(keychainManager: keychainManager)
 
     // Phase 0 (#640) — single shared paste-completion registry. Constructed
@@ -307,11 +276,9 @@ final class AppState {
     // closures + `asrManager.onServiceInterrupted` + AVAudioEngineConfigurationChange
     // observer) moved to `DictationRuntime` and its three private routers
     // (`AudioEventRouter`, `ASREventRouter`, `WedgeRecoveryRouter`). Constructed
-    // in `EnviousWisprApp.init()` after `let appState = AppState()`. Resolver
-    // helpers (`activeCaptureBackend()`, `isCurrentSession(_:)`,
-    // `activeTelemetryTarget()`, `LastCapturingBackend`) stay here through
-    // PR8 and migrate with the rest of `pipeline.onStateChange` in PR9
-    // (DictationLifecycleCoordinator).
+    // in `EnviousWisprApp.init()` after AppState is constructed. PR9
+    // absorbed the resolver helpers + warning Task into the new lifecycle
+    // home; routers' injected closures now resolve through it.
 
     settingsSync.onNeedsPreloadObservation = { [weak setup] in
       setup?.startPreloadObservation()
@@ -353,132 +320,12 @@ final class AppState {
       self.settingsSync.handleSettingChanged(key, settings: self.settings)
     }
 
-    // Wire pipeline state changes to overlay and icon.
-    // The behavioral contract (overlay resolution, warning scheduling /
-    // cancellation, telemetry, history reload) is owned by the per-pipeline
-    // PipelineStateChangeHandler. The closure still owns AppState-local
-    // concerns: external observer fan-out, hotkey register/unregister,
-    // isRecordingLocked reset, and the inactive→active tiebreaker (#285).
-    pipeline.onStateChange = { [weak self] newState in
-      guard let self else { return }
-      self.onPipelineStateChange?(newState)
-      switch newState {
-      case .recording:
-        self.hotkeyService.registerCancelHotkey()
-        // PR7 of #763 — clear the prior recording's polish error on every
-        // new recording start. Reset matrix locked in PR7 plan: cancel
-        // does NOT clear (prior error stays cleared by next start). Sunset
-        // PR9 with the rest of this closure.
-        self.lastRecordingResult?.polishError = nil
-      case .loadingModel, .transcribing, .polishing:
-        self.isRecordingLocked = false
-        self.hotkeyService.unregisterCancelHotkey()
-      case .error, .idle, .complete:
-        self.isRecordingLocked = false
-        self.hotkeyService.unregisterCancelHotkey()
-        // Session ended — retry any Ollama eviction deferred because the
-        // frozen session pinned the old model.
-        self.settingsSync.retryDeferredOllamaEviction(settings: self.settings)
-      }
-      let nowActive = newState.isActive
-      if nowActive && !self.prevParakeetActive {
-        self.lastCapturingBackend = .parakeet
-      }
-      self.prevParakeetActive = nowActive
-      self.parakeetStateHandler.handle(
-        to: newState,
-        pipelineOverlayIntent: self.pipeline.overlayIntent,
-        lastPolishError: self.pipeline.lastPolishError,
-        currentTranscript: self.pipeline.currentTranscript
-      )
-      // PR7 of #763 — push polish error to the post-recording result home so
-      // views can read `lastRecordingResult.polishError` without reaching
-      // through AppState. Sunset PR9 (DictationLifecycleCoordinator owns
-      // this push site).
-      self.lastRecordingResult?.polishError = self.pipeline.lastPolishError
-      // PR4 of #763 (#252): dispatch chip lifecycle to LanguageSuggestionPresenter.
-      // Sunset in PR9: moves with the rest of this closure into DictationLifecycleCoordinator.
-      //
-      // Codex r2 [P2]: skip surface when polish failed — the warning overlay
-      //   races and overwrites the chip otherwise.
-      // Codex r3 [P2]: when skipping, also clearBuffer — a stale trigger from
-      //   a polish-failed dictation must not surface on a later recording.
-      // Codex r7 [P2]: clearBuffer on .recording to drain any stale trigger
-      //   that arrived late (detector handler uses Task @MainActor; if it ran
-      //   AFTER prior .complete's surface, the trigger could otherwise attach
-      //   to this new recording's eventual .complete and misattribute).
-      switch newState {
-      case .recording:
-        self.languageSuggestionPresenter?.clearBuffer()
-      case .complete:
-        if self.pipeline.lastPolishError == nil {
-          self.languageSuggestionPresenter?.surfaceBufferedChipIfPossible(
-            currentLanguageMode: self.settings.languageMode)
-        } else {
-          self.languageSuggestionPresenter?.clearBuffer()
-        }
-      case .error:
-        self.languageSuggestionPresenter?.clearCurrentChip()
-        self.languageSuggestionPresenter?.clearBuffer()
-      default:
-        break
-      }
-    }
-
-    // Wire WhisperKit pipeline state changes to overlay and icon.
-    whisperKitPipeline.onStateChange = { [weak self] newState in
-      guard let self else { return }
-      // PR7 of #763: route the WhisperKit state to unified PipelineState
-      // inline; the prior `self.pipelineState` getter is gone.
-      self.onPipelineStateChange?(newState.asPipelineState)
-      switch newState {
-      case .recording:
-        self.hotkeyService.registerCancelHotkey()
-        // PR7 of #763 — clear prior recording's polish error on new start.
-        // Mirrors the Parakeet arm above. Sunset PR9.
-        self.lastRecordingResult?.polishError = nil
-      case .startingUp, .loadingModel, .transcribing, .polishing:
-        self.isRecordingLocked = false
-        self.hotkeyService.unregisterCancelHotkey()
-      case .error, .idle, .ready, .complete:
-        self.isRecordingLocked = false
-        self.hotkeyService.unregisterCancelHotkey()
-        self.settingsSync.retryDeferredOllamaEviction(settings: self.settings)
-      }
-      let nowActive = newState.isActive
-      if nowActive && !self.prevWhisperKitActive {
-        self.lastCapturingBackend = .whisperKit
-      }
-      self.prevWhisperKitActive = nowActive
-      self.whisperKitStateHandler.handle(
-        to: newState,
-        pipelineOverlayIntent: self.whisperKitPipeline.overlayIntent,
-        lastPolishError: self.whisperKitPipeline.lastPolishError,
-        currentTranscript: self.whisperKitPipeline.currentTranscript
-      )
-      // PR7 of #763 — push WhisperKit polish error to the post-recording
-      // result home. Same shape as the Parakeet arm above. Sunset PR9.
-      self.lastRecordingResult?.polishError = self.whisperKitPipeline.lastPolishError
-      // PR4 of #763 (#252): chip lifecycle dispatch. WhisperKit has both
-      // .complete and .ready as terminal-completion states. Same race guards
-      // as the parakeet arm (Codex P2 r2+r3+r7).
-      switch newState {
-      case .recording:
-        self.languageSuggestionPresenter?.clearBuffer()
-      case .complete, .ready:
-        if self.whisperKitPipeline.lastPolishError == nil {
-          self.languageSuggestionPresenter?.surfaceBufferedChipIfPossible(
-            currentLanguageMode: self.settings.languageMode)
-        } else {
-          self.languageSuggestionPresenter?.clearBuffer()
-        }
-      case .error:
-        self.languageSuggestionPresenter?.clearCurrentChip()
-        self.languageSuggestionPresenter?.clearBuffer()
-      default:
-        break
-      }
-    }
+    // PR9 of #763 — pipeline state-change closures moved to
+    // `DictationLifecycleCoordinator.install()`, called once by the
+    // composition root (`EnviousWisprApp.init`) after the coordinator is
+    // constructed. The coordinator owns: overlay show/clear, hotkey
+    // arbitration, telemetry, chip lifecycle, terminal settings sync,
+    // backend-resolver state + helpers, post-completion warning Task.
 
     // Wire hotkey callbacks
     hotkeyService.recordingMode = settings.recordingMode
@@ -492,9 +339,12 @@ final class AppState {
     }
     hotkeyService.onStartRecording = { [weak self] in
       guard let self else { return }
-      // Cancel any pending post-completion warning from the previous session
-      // before showing the new recording overlay.
-      self.postCompletionWarningTask?.cancel()
+      // PR9 of #763 — cancel any pending post-completion warning from the
+      // previous session before showing the new recording overlay. Task lives
+      // on `DictationLifecycleCoordinator` now; AppState holds a weak ref via
+      // `attachDictationLifecycleCoordinator`. PR10 inlines this when start
+      // migrates into `RecordingStarter`.
+      self.dictationLifecycleCoordinator?.cancelPendingWarning()
       let isWhisperKit = self.asrManager.activeBackendType == .whisperKit
       let active = self.activePipeline
 
@@ -717,77 +567,14 @@ final class AppState {
     asrManager.activeBackendType == .whisperKit ? whisperKitPipeline : pipeline
   }
 
-  /// Schedule a deferred post-completion warning overlay. Cancellable and session-scoped:
-  /// cancelled if a new recording starts (any non-complete state change cancels it).
-  /// Uses the pipeline's current state as a guard to avoid showing stale warnings.
-  /// Issue #285 — which backend most recently entered an active state
-  /// (startup, loading, or recording). Used as a tiebreaker when both
-  /// pipelines are active simultaneously (e.g. one still polishing while the
-  /// other begins a new capture). Updated on any active-state entry, not just
-  /// `.recording`, so stall watchdog and interruption callbacks that fire
-  /// pre-recording resolve to the correct backend.
-  /// PR8 of #763: promoted private→internal so `DictationRuntime`'s
-  /// injected resolver closures can type their return value. PR9
-  /// (`DictationLifecycleCoordinator`) absorbs this enum + the three
-  /// resolver helpers + the writer-side flips out of AppState.
-  enum LastCapturingBackend { case parakeet, whisperKit }
-  var lastCapturingBackend: LastCapturingBackend = .parakeet
-  // Previous active-state of each pipeline, tracked so we flip
-  // `lastCapturingBackend` only on inactive→active transitions. Without this,
-  // `.transcribing → .polishing` (active → active) would re-steal ownership
-  // after a different backend acquired the shared capture.
-  private var prevParakeetActive: Bool = false
-  private var prevWhisperKitActive: Bool = false
-
   /// Issue #445: most recent user stop/cancel timestamp; suppresses the
   /// post-condition wedge guard when the user released PTT mid-start.
   private var lastUserStopRequest: ContinuousClock.Instant?
 
-  /// Issue #285 — resolve which backend owns the shared audio capture right
-  /// now. Returns nil when both pipelines are fully idle. Shared helper for
-  /// both telemetry routing and engine-interrupt routing so the two paths
-  /// cannot drift.
-  func activeCaptureBackend() -> LastCapturingBackend? {
-    let pActive = pipeline.state.isActive
-    let wkActive = whisperKitPipeline.state.isActive
-    if pActive && wkActive { return lastCapturingBackend }
-    if pActive { return .parakeet }
-    if wkActive { return .whisperKit }
-    return nil
-  }
-
-  /// Issue #285 — belt-and-suspenders filter for late callbacks that somehow
-  /// slip past the per-source `isCapturing` / observer-removal guards during a
-  /// backend switch. Dropping a stale callback is safer than misrouting it to
-  /// a new session's dedup state. Source-level guards normally catch this;
-  /// this is a second line of defense for the backend-overlap window.
-  func isCurrentSession(_ sessionID: UInt64) -> Bool {
-    sessionID == audioCapture.currentCaptureSessionID
-  }
-
-  func activeTelemetryTarget() -> (any HeartPathTelemetryTarget)? {
-    switch activeCaptureBackend() {
-    case .whisperKit: return whisperKitPipeline
-    case .parakeet: return pipeline
-    case nil:
-      // Idle → attribute to the backend that most recently owned a session.
-      return lastCapturingBackend == .whisperKit ? whisperKitPipeline : pipeline
-    }
-  }
-
-  private func schedulePostCompletionWarning(message: String) {
-    postCompletionWarningTask?.cancel()
-    postCompletionWarningTask = Task { @MainActor [weak self] in
-      try? await Task.sleep(for: .milliseconds(400))
-      guard !Task.isCancelled, let self else { return }
-      // Only show if we're still in the completed state (no new recording started)
-      let parakeetComplete = self.pipeline.state == .complete
-      let whisperKitComplete =
-        self.whisperKitPipeline.state == .complete || self.whisperKitPipeline.state == .ready
-      guard parakeetComplete || whisperKitComplete else { return }
-      self.recordingOverlay.show(intent: .warning(message: message))
-    }
-  }
+  // PR9 of #763 — backend-resolver state + helpers + the deferred warning
+  // scheduler moved to `DictationLifecycleCoordinator`. PR8's DictationRuntime
+  // resolver closures now capture the new home instead of AppState. Same-PR
+  // grep-test gate (`AppStateNoLongerOwnsBackendResolverTests`) enforces.
 
   /// Reset the currently active pipeline to idle. Used by UI "dismiss" actions.
   func resetActivePipeline() {
@@ -804,7 +591,8 @@ final class AppState {
   /// (issue #723). Production callers MUST specify; there is no default to prevent
   /// silent fallthrough to a generic value.
   func toggleRecording(source: TriggerSource) async {
-    postCompletionWarningTask?.cancel()
+    // PR9 of #763 — see comment in `hotkeyService.onStartRecording`.
+    dictationLifecycleCoordinator?.cancelPendingWarning()
     let active = activePipeline
     // PR7 of #763 — match the hotkey path: clear prior polish error before
     // dispatch when this toggle is a START. Sunset PR9.

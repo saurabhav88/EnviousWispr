@@ -49,6 +49,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   // sunset on the timeline noted at AppState's `attach…` methods.
   private weak var liveRecordingState: LiveRecordingState?
   private weak var backendMetadata: BackendMetadata?
+  /// PR9 of #763: the pipeline state-change callback (icon updates,
+  /// audio-environment snapshot triggers) lives on the new lifecycle home now.
+  /// AppDelegate sets `dictationLifecycleCoordinator.onPipelineStateChange`
+  /// in `applicationDidFinishLaunching`. Weak ref — strong owner is
+  /// `DictationRuntime` via `EnviousWisprApp`'s `@State`.
+  private weak var dictationLifecycleCoordinator: DictationLifecycleCoordinator?
 
   /// PR-A of #763: receive App-owned home refs from `EnviousWisprApp.init()`
   /// before delegate callbacks fire. If `updateCoordinator` is already
@@ -57,18 +63,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   ///
   /// PR7 of #763: additionally receive `liveRecordingState` and
   /// `backendMetadata` for the menu-bar reads.
+  ///
+  /// PR9 of #763: additionally receive `dictationLifecycleCoordinator` so the
+  /// icon-update callback can be installed on the new home (was on AppState
+  /// pre-PR9).
   func attach(
     appState: AppState,
     navigationCoordinator: NavigationCoordinator,
     updateCoordinatorHolder: UpdateCoordinatorHolder,
     liveRecordingState: LiveRecordingState,
-    backendMetadata: BackendMetadata
+    backendMetadata: BackendMetadata,
+    dictationLifecycleCoordinator: DictationLifecycleCoordinator
   ) {
     self.appState = appState
     self.navigationCoordinator = navigationCoordinator
     self.updateCoordinatorHolder = updateCoordinatorHolder
     self.liveRecordingState = liveRecordingState
     self.backendMetadata = backendMetadata
+    self.dictationLifecycleCoordinator = dictationLifecycleCoordinator
     if let existing = self.updateCoordinator {
       updateCoordinatorHolder.coordinator = existing
     }
@@ -186,7 +198,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Update menu bar icon whenever pipeline state or accessibility changes.
     // Also forwards recording state to the update coordinator so the banner
     // hides during recording + 3s post-recording grace (issue #343).
-    appState.onPipelineStateChange = { [weak self] state in
+    // PR9 of #763: callback lives on `DictationLifecycleCoordinator` now.
+    dictationLifecycleCoordinator?.onPipelineStateChange = { [weak self] state in
       guard let self else { return }
       self.updateIcon()
       // Issue #739: do NOT forward pipeline state to the update widget. The

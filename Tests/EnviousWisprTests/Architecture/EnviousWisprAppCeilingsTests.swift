@@ -74,17 +74,20 @@ import Testing
   /// Line-count trip-wire. Soft backstop against accidental file explosions;
   /// entanglement signals (stored properties, methods, imports) are the
   /// primary mechanical constraints. Ratcheted 250→270 in PR8 of epic #763
-  /// (2026-05-19, #774) to absorb DictationRuntime construction (15 lines:
-  /// @State decl + closure-injected init block + State(initialValue:)).
-  /// 259 actual + 2-line margin then rounded to the next ratchet step.
+  /// (2026-05-19, #774) to absorb DictationRuntime construction (15 lines).
+  /// Ratcheted 270→310 in PR9 of epic #763 (2026-05-19, #775) to absorb
+  /// `DictationLifecycleCoordinator` construction (~25 lines: 11-collaborator
+  /// init block + recordingLockedAccess struct literal + install() call +
+  /// attachDictationLifecycleCoordinator call) and the hoisted
+  /// `TranscriptStore` + `TranscriptCoordinator` construction (~3 lines).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 270,
+      lineCount <= 310,
       """
-      EnviousWisprApp line count exceeded: \(lineCount) > 270. \
+      EnviousWisprApp line count exceeded: \(lineCount) > 310. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }
@@ -93,10 +96,20 @@ import Testing
   /// modules like EnviousWisprPipeline / EnviousWisprAudio / EnviousWisprASR /
   /// EnviousWisprLLM directly — that would couple SwiftUI mounting to engine
   /// implementation details. AppDelegate already carries those imports.
+  ///
+  /// PR9 of #763 added EnviousWisprStorage to construct `TranscriptStore`
+  /// directly in the composition root (hoisted out of `AppState.init` so the
+  /// composition root can thread the same `TranscriptCoordinator` instance
+  /// to both the lifecycle home and the transcript workflow coordinator).
+  /// `TranscriptStore` is a small, dependency-free persistence wrapper — not
+  /// an engine internal — so allowing it on the composition root is
+  /// consistent with the rule's intent.
   @Test func envWisprAppImportsCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
-    let allowed: Set<String> = ["SwiftUI", "EnviousWisprCore", "EnviousWisprServices"]
+    let allowed: Set<String> = [
+      "SwiftUI", "EnviousWisprCore", "EnviousWisprServices", "EnviousWisprStorage",
+    ]
     let actual = parseImports(in: source)
     let unexpected = actual.subtracting(allowed)
     #expect(

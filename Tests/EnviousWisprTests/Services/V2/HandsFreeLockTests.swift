@@ -4,39 +4,39 @@ import Testing
 
 /// V2 fault-injection — Lane C invariant C4 (issue #291).
 ///
-/// Asserts that AppState's pipeline-state observer resets `isRecordingLocked`
-/// for every terminal state (.complete, .error, .idle). This is what closes
-/// the hands-free lock loop: the user double-presses to lock, dictates, and
+/// Asserts that the pipeline-state observer resets `isRecordingLocked` for
+/// every terminal state (.complete, .error, .idle). This closes the
+/// hands-free lock loop: the user double-presses to lock, dictates, and
 /// when the pipeline reaches a terminal state the lock must clear so the
 /// next recording starts in normal PTT mode.
 ///
-/// Tests the source-level wiring contract rather than constructing a full
-/// `AppState` (per `AppStateCeilingsTests`: "AppState's init pulls in real
-/// audio capture, ASR, pipelines, and Tasks that should not run inside a
-/// unit test"). A regression that drops `isRecordingLocked = false` from any
-/// terminal arm of the pipeline observer will be caught here.
+/// PR9 of #763: the observer moved from `AppState` to
+/// `DictationLifecycleCoordinator`. AppState still owns `isRecordingLocked`
+/// state; the coordinator clears it via the injected `recordingLockedAccess.set`
+/// closure. The test now scans the coordinator's per-pipeline `switch newState`
+/// blocks and asserts each terminal arm calls `recordingLockedAccess.set(false)`.
 @Suite("V2 Lane C — hands-free lock cleared on every terminal pipeline state")
 struct HandsFreeLockTests {
 
-  @Test("Parakeet pipeline observer resets isRecordingLocked on .error / .idle / .complete")
+  @Test("Parakeet observer resets isRecordingLocked on .error / .idle / .complete")
   func testHandsFreeLockClearedOnComplete_parakeet() throws {
-    let body = try Self.classBodyOfAppState()
+    let body = try Self.classBodyOfCoordinator()
     let parakeetSwitch = try Self.extractSwitch(
       in: body,
       switchedOn: "newState",
-      after: "pipeline.onStateChange = { [weak self] newState in"
+      after: "private func handleParakeet(newState: PipelineState) {"
     )
     Self.assertResetsLockForCases(parakeetSwitch, cases: [".error", ".idle", ".complete"])
   }
 
   @Test(
-    "WhisperKit pipeline observer resets isRecordingLocked on .error / .idle / .ready / .complete")
+    "WhisperKit observer resets isRecordingLocked on .error / .idle / .ready / .complete")
   func testHandsFreeLockClearedOnComplete_whisperKit() throws {
-    let body = try Self.classBodyOfAppState()
+    let body = try Self.classBodyOfCoordinator()
     let whisperKitSwitch = try Self.extractSwitch(
       in: body,
       switchedOn: "newState",
-      after: "whisperKitPipeline.onStateChange = { [weak self] newState in"
+      after: "private func handleWhisperKit(newState: WhisperKitPipelineState) {"
     )
     Self.assertResetsLockForCases(
       whisperKitSwitch, cases: [".error", ".idle", ".ready", ".complete"])
@@ -44,7 +44,7 @@ struct HandsFreeLockTests {
 
   // MARK: - Source-level helpers
 
-  private static func appStateURL() -> URL {
+  private static func coordinatorURL() -> URL {
     let here = URL(fileURLWithPath: #filePath)
     return
       here
@@ -53,11 +53,12 @@ struct HandsFreeLockTests {
       .deletingLastPathComponent()  // EnviousWisprTests/
       .deletingLastPathComponent()  // Tests/
       .deletingLastPathComponent()  // <repo root>/
-      .appendingPathComponent("Sources/EnviousWispr/App/AppState.swift")
+      .appendingPathComponent(
+        "Sources/EnviousWispr/App/DictationRuntime/DictationLifecycleCoordinator.swift")
   }
 
-  private static func classBodyOfAppState() throws -> String {
-    try String(contentsOf: appStateURL(), encoding: .utf8)
+  private static func classBodyOfCoordinator() throws -> String {
+    try String(contentsOf: coordinatorURL(), encoding: .utf8)
   }
 
   /// Extract the body of the `switch` statement that follows `marker`. Cheap
@@ -118,9 +119,9 @@ struct HandsFreeLockTests {
       if let arm = matchingArm {
         let armBody = arm.body.joined(separator: "\n")
         #expect(
-          armBody.contains("isRecordingLocked = false"),
+          armBody.contains("recordingLockedAccess.set(false)"),
           """
-          AppState observer arm `\(arm.header)` must reset `isRecordingLocked = false` for `\(caseToken)`. \
+          Coordinator arm `\(arm.header)` must call `recordingLockedAccess.set(false)` for `\(caseToken)`. \
           Removing this reset breaks hands-free lock cleanup on terminal pipeline state.
           Arm body:
           \(armBody)

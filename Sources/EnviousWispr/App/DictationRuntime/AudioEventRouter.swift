@@ -22,14 +22,16 @@ final class AudioEventRouter {
   let whisperKitPipeline: WhisperKitPipeline
   let captureTelemetry: CaptureTelemetryState
 
-  let resolveActiveCaptureBackend: @MainActor () -> AppState.LastCapturingBackend?
+  let resolveActiveCaptureBackend:
+    @MainActor () -> DictationLifecycleCoordinator.LastCapturingBackend?
 
   init(
     audioCapture: any AudioCaptureInterface,
     pipeline: TranscriptionPipeline,
     whisperKitPipeline: WhisperKitPipeline,
     captureTelemetry: CaptureTelemetryState,
-    resolveActiveCaptureBackend: @escaping @MainActor () -> AppState.LastCapturingBackend?
+    resolveActiveCaptureBackend: @escaping @MainActor () -> DictationLifecycleCoordinator
+      .LastCapturingBackend?
   ) {
     self.audioCapture = audioCapture
     self.pipeline = pipeline

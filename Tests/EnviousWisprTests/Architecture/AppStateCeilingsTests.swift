@@ -8,28 +8,35 @@ import Testing
 /// constructing an AppState instance — AppState's init pulls in real audio
 /// capture, ASR, pipelines, and Tasks that should not run inside a unit test.
 ///
-/// Ceilings: concrete-collaborator count ≤ 18, total line count ≤ 1115.
+/// Ceilings: concrete-collaborator count ≤ 17, total line count ≤ 692.
 /// Raising a ceiling requires a Bible changelog entry, not a silent bump.
 @Suite struct AppStateCeilingsTests {
 
-  /// Concrete-collaborator count ceiling. Locked at post-PR3 (#769) baseline = 18.
+  /// Concrete-collaborator count ceiling. Locked at post-PR9 (#775) baseline = 17.
   /// Counts top-level `let` declarations on AppState whose type is non-primitive.
   /// Existentials (`any X`) count as collaborators.
   ///
-  /// Ratcheted 19 → 18 in PR3 of epic #763 (2026-05-18, #769) after extracting
-  /// BenchmarkSuite into DiagnosticsCoordinator. PR4 of epic #763 (#770) ships
-  /// `var languageSuggestionPresenter` which is intentionally a `var` (setter-
-  /// injected post-init) and is therefore NOT counted by this parser — the
-  /// ceiling stays at 18. Per Codex code-diff r4 [P3]: keeping the ceiling at
-  /// 18 preserves the parser-aligned guard rather than weakening it to 19 for
-  /// a collaborator the parser would not count anyway.
+  /// Ratchet history:
+  /// - 19 → 18 in PR3 of epic #763 (2026-05-18, #769) after extracting
+  ///   BenchmarkSuite into DiagnosticsCoordinator. PR4 of epic #763 (#770)
+  ///   ships `var languageSuggestionPresenter` which is intentionally a
+  ///   `var` (setter-injected post-init) and is therefore NOT counted by
+  ///   this parser — the ceiling stays at 18.
+  /// - 18 → 17 in PR9 of epic #763 (2026-05-19, #775) after extracting
+  ///   `let transcriptCoordinator` off AppState. The new lifecycle home
+  ///   (`DictationLifecycleCoordinator`) is the caller of `append`; views
+  ///   read through `TranscriptWorkflowCoordinator`. The composition root
+  ///   (`EnviousWisprApp.init`) constructs `TranscriptCoordinator` once and
+  ///   threads the same instance to both. AppState's init now takes
+  ///   `TranscriptStore` so the pipelines + polish service still receive
+  ///   the shared store reference.
   @Test func appStateConcreteCollaboratorCeilingHolds() throws {
     let body = try classBodyOfAppState()
     let count = countTopLevelLetCollaborators(in: body)
     #expect(
-      count <= 18,
+      count <= 17,
       """
-      AppState concrete-collaborator ceiling exceeded: \(count) > 18. \
+      AppState concrete-collaborator ceiling exceeded: \(count) > 17. \
       Raising the ceiling requires a Bible changelog entry, not a silent bump.
       """)
   }
@@ -70,26 +77,31 @@ import Testing
   /// - 1038 → 904 in PR8 of epic #763 (2026-05-19, #774) after extracting the
   ///   seven heart-path event-routing closures (`audioCapture.on*` ×6 +
   ///   `asrManager.onServiceInterrupted`) plus the
-  ///   `AVAudioEngineConfigurationChange` observer block into
-  ///   `AudioEventRouter` / `ASREventRouter` / `WedgeRecoveryRouter` under
-  ///   `DictationRuntime`. Net: -134 (144 lines of closures + comments removed;
-  ///   ~10 lines of explanatory comment added in their place). 902 actual +
-  ///   2-line margin. Collaborator ceiling stays at 18 — no `let`s added or
-  ///   removed on AppState. The resolver helpers (`LastCapturingBackend`,
-  ///   `lastCapturingBackend`, `prevParakeetActive`, `prevWhisperKitActive`,
-  ///   `activeCaptureBackend()`, `isCurrentSession(_:)`,
-  ///   `activeTelemetryTarget()`) stay on AppState through PR8 — promoted
-  ///   `private` → `internal` so the router-injected closures can read them.
-  ///   PR9 absorbs them into `DictationLifecycleCoordinator` (same-PR
-  ///   grep-test `AppStateNoLongerOwnsBackendResolverTests` enforces).
+  ///   `AVAudioEngineConfigurationChange` observer block into the three
+  ///   routers under `DictationRuntime`. Net: -134. The resolver helpers
+  ///   stayed on AppState through PR8 — promoted `private` → `internal` so
+  ///   the router-injected closures could read them — and PR9 owns the
+  ///   cleanup.
+  /// - 904 → 692 in PR9 of epic #763 (2026-05-19, #775) after extracting:
+  ///   the two pipeline `onStateChange` closure bodies (~120 lines), the
+  ///   lazy state-handler factory (~37 lines), the post-completion warning
+  ///   Task + scheduler (~13 lines), the seven PR8 deferred resolver
+  ///   symbols (~47 lines), the `let transcriptCoordinator` + local
+  ///   `transcriptStore` construction (~5 lines), the `onPipelineStateChange`
+  ///   var (~2 lines). New code added: the `attachDictationLifecycleCoordinator`
+  ///   weak ref setter (~10 lines), the `init(transcriptStore:)` parameter
+  ///   change (~2 lines), explanatory comments at the deletion sites
+  ///   (~25 lines). Net: ~-212. 690 actual + 2-line margin. Same-PR
+  ///   grep-test `AppStateNoLongerOwnsBackendResolverTests` enforces no
+  ///   PR8-deferred symbol survives.
   @Test func appStateLineCountCeilingHolds() throws {
     let url = appStateURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 904,
+      lineCount <= 692,
       """
-      AppState line count exceeded: \(lineCount) > 904. \
+      AppState line count exceeded: \(lineCount) > 692. \
       Raising the ceiling requires a Bible changelog entry, not a silent bump.
       """)
   }

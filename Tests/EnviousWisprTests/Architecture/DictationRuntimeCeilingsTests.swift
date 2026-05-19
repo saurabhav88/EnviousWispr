@@ -4,6 +4,17 @@ import Testing
 /// PR8 of #763 — locks `DictationRuntime`'s initial shape so the new
 /// runtime-internals home does not silently accrete domain state before
 /// PR10 expands it with HotkeyController / RecordingStarter / RecordingFinalizer.
+///
+/// Bible-changelog (ratchet history):
+/// - PR8 (#774): baseline = 3 collaborators (audio/asr/wedge routers), 0
+///   non-private methods, ≤ 80 lines.
+/// - PR9 (#775): collaborator cap 3 → 4 (added `dictationLifecycleCoordinator`
+///   as a private property — the routers' injected resolver closures now
+///   capture the lifecycle home instead of AppState; co-locating it here
+///   makes DictationRuntime the single composition root for the heart-path
+///   event-handling layer). Line cap 80 → 100 (new property + init parameter
+///   + Bible-changelog header comment). PR10 ratchets up to ~120 for
+///   HotkeyController + RecordingStarter + RecordingFinalizer.
 @Suite struct DictationRuntimeCeilingsTests {
   private static let sourcePath =
     "Sources/EnviousWispr/App/DictationRuntime/DictationRuntime.swift"
@@ -13,11 +24,12 @@ import Testing
       named: "DictationRuntime", at: Self.sourcePath)
     let count = RouterCeilingParser.collaboratorCount(in: body)
     #expect(
-      count <= 3,
+      count <= 4,
       """
-      DictationRuntime collaborator ceiling exceeded: \(count) > 3. \
-      Allowed: audioEventRouter, asrEventRouter, wedgeRecoveryRouter.
-      PR10 raises this when hotkey/start/finalize land.
+      DictationRuntime collaborator ceiling exceeded: \(count) > 4. \
+      Allowed (PR9 baseline): dictationLifecycleCoordinator, audioEventRouter, \
+      asrEventRouter, wedgeRecoveryRouter. PR10 raises this when \
+      hotkey/start/finalize land.
       """)
   }
 
@@ -53,10 +65,11 @@ import Testing
       contentsOf: URL(fileURLWithPath: Self.sourcePath), encoding: .utf8)
     let count = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      count <= 80,
+      count <= 100,
       """
-      DictationRuntime line count exceeded: \(count) > 80. \
-      Raise via Bible §30 only.
+      DictationRuntime line count exceeded: \(count) > 100. \
+      Raise via Bible §30 only. PR9 ratcheted 80 → 100 to budget for the new \
+      `dictationLifecycleCoordinator` property + init parameter + header note.
       """)
   }
 
