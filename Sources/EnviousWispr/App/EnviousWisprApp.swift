@@ -1,5 +1,6 @@
 import EnviousWisprCore
 import EnviousWisprServices
+import EnviousWisprStorage
 import SwiftUI
 
 @main
@@ -44,7 +45,18 @@ struct EnviousWisprApp: App {
     // Construct App-owned homes in dependency order. Closure-capture targets
     // (overlay) must exist before the closures are built; AppState's chip
     // handlers must be wired exactly once.
-    let appState = AppState()
+    //
+    // PR9 of #763 — `TranscriptStore` + `TranscriptCoordinator` constructed
+    // here (was inside AppState.init pre-PR9). AppState's init takes
+    // `transcriptStore` so the pipelines + polish service still receive the
+    // shared store reference. `TranscriptCoordinator` is threaded into both
+    // the new lifecycle home (caller of `append`) AND
+    // `TranscriptWorkflowCoordinator` (view-facing surface). Invariant:
+    // exactly one `TranscriptStore()` call in `Sources/` outside
+    // `EnviousWisprStorage/TranscriptStore.swift`.
+    let transcriptStore = TranscriptStore()
+    let transcriptCoordinator = TranscriptCoordinator(store: transcriptStore)
+    let appState = AppState(transcriptStore: transcriptStore)
     let navigationCoordinator = NavigationCoordinator()
     let diagnosticsCoordinator = DiagnosticsCoordinator()
 
@@ -99,7 +111,7 @@ struct EnviousWisprApp: App {
     // references, AppState retains storage through PR6 (cascades out
     // PR9/PR11).
     let transcriptWorkflowCoordinator = TranscriptWorkflowCoordinator(
-      transcriptCoordinator: appState.transcriptCoordinator,
+      transcriptCoordinator: transcriptCoordinator,
       polishService: appState.polishService
     )
 
@@ -124,25 +136,58 @@ struct EnviousWisprApp: App {
     appState.attachLastRecordingResult(lastRecordingResult)
     appState.attachBackendMetadata(backendMetadata)
 
+    // PR9 of #763: construct the lifecycle home BEFORE DictationRuntime.
+    // The coordinator owns pipeline state-change side effects + the
+    // post-completion warning Task + the seven backend-resolver symbols PR8
+    // deferred. `install()` wires `pipeline.onStateChange` and
+    // `whisperKitPipeline.onStateChange` to its `handleParakeet` /
+    // `handleWhisperKit` methods. The recordingLockedAccess struct lets the
+    // coordinator read AND write AppState's still-owned `isRecordingLocked`
+    // (PR10 absorbs it).
+    let dictationLifecycleCoordinator = DictationLifecycleCoordinator(
+      pipeline: appState.pipeline,
+      whisperKitPipeline: appState.whisperKitPipeline,
+      recordingOverlay: appState.recordingOverlay,
+      hotkeyService: appState.hotkeyService,
+      settingsSync: appState.settingsSync,
+      audioCapture: appState.audioCapture,
+      transcriptCoordinator: transcriptCoordinator,
+      settings: appState.settings,
+      lastRecordingResult: lastRecordingResult,
+      languageSuggestionPresenter: languageSuggestionPresenter,
+      recordingLockedAccess: .init(
+        get: { [weak appState] in appState?.isRecordingLocked ?? false },
+        set: { [weak appState] locked in appState?.isRecordingLocked = locked }
+      )
+    )
+    dictationLifecycleCoordinator.install()
+    // PR9 of #763: AppState's PR10-scope start paths
+    // (`hotkeyService.onStartRecording`, `toggleRecording(source:)`) call
+    // `coordinator.cancelPendingWarning()` before showing the new recording
+    // overlay. Weak setter avoids a strong cycle through AppState.
+    appState.attachDictationLifecycleCoordinator(dictationLifecycleCoordinator)
+
     // PR8 of #763: construct heart-path event-routing home. Routers install
     // their `audioCapture.on*` / `asrManager.onServiceInterrupted` slots +
-    // the `AVAudioEngineConfigurationChange` observer at init. Resolver
-    // helpers stay on AppState through PR8; PR9 absorbs them into
-    // DictationLifecycleCoordinator and rewires the closures.
+    // the `AVAudioEngineConfigurationChange` observer at init.
+    // PR9 of #763: resolver closures now capture
+    // `[weak dictationLifecycleCoordinator]` instead of `[weak appState]`.
+    // Closure signatures unchanged.
     let dictationRuntime = DictationRuntime(
       audioCapture: appState.audioCapture,
       asrManager: appState.asrManager,
       pipeline: appState.pipeline,
       whisperKitPipeline: appState.whisperKitPipeline,
       captureTelemetry: appState.captureTelemetry,
-      resolveActiveCaptureBackend: { [weak appState] in
-        appState?.activeCaptureBackend()
+      dictationLifecycleCoordinator: dictationLifecycleCoordinator,
+      resolveActiveCaptureBackend: { [weak dictationLifecycleCoordinator] in
+        dictationLifecycleCoordinator?.activeCaptureBackend()
       },
-      resolveActiveTelemetryTarget: { [weak appState] in
-        appState?.activeTelemetryTarget()
+      resolveActiveTelemetryTarget: { [weak dictationLifecycleCoordinator] in
+        dictationLifecycleCoordinator?.activeTelemetryTarget()
       },
-      isCurrentSession: { [weak appState] sessionID in
-        appState?.isCurrentSession(sessionID) ?? false
+      isCurrentSession: { [weak dictationLifecycleCoordinator] sessionID in
+        dictationLifecycleCoordinator?.isCurrentSession(sessionID) ?? false
       }
     )
 
@@ -169,7 +214,8 @@ struct EnviousWisprApp: App {
       navigationCoordinator: navigationCoordinator,
       updateCoordinatorHolder: updateCoordinatorHolder,
       liveRecordingState: liveRecordingState,
-      backendMetadata: backendMetadata
+      backendMetadata: backendMetadata,
+      dictationLifecycleCoordinator: dictationLifecycleCoordinator
     )
 
     // Initialize observability (PostHog + Sentry) unconditionally at launch —
