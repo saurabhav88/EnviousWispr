@@ -247,7 +247,13 @@ struct TextProcessingRunnerTests {
 
   @Test("skips a timed-out non-LLM step and continues without polishError")
   func skipsTimedOutNonLLMStep() async throws {
-    let runner = TextProcessingRunner()
+    // #784 (2026-05-18): migrated from real `Task.sleep(300ms)` racing a
+    // 50ms `withThrowingTimeout` deadline to a deterministic
+    // `FakeTimeoutExecutor`. The fake runs normal-budget steps and throws
+    // `TimeoutError` for budgets below 0.1s — sitting between the 50ms
+    // slow-step budget and the 5s default budget.
+    let fakeTimeout = FakeTimeoutExecutor(throwBelowSeconds: 0.1)
+    let runner = TextProcessingRunner(timeoutExecutor: fakeTimeout.run)
 
     let first = RecordingStep(name: "A") { context in
       var next = context
@@ -256,7 +262,6 @@ struct TextProcessingRunnerTests {
     }
 
     let slow = RecordingStep(name: "Filler Removal", maxDuration: .milliseconds(50)) { context in
-      try await Task.sleep(for: .milliseconds(300))
       var next = context
       next.text += "-slow"
       return next
@@ -276,17 +281,21 @@ struct TextProcessingRunnerTests {
     )
 
     #expect(first.runCount == 1)
-    #expect(slow.runCount == 1)
+    #expect(slow.runCount == 0)  // executor short-circuited before invoking op()
     #expect(third.runCount == 1)
     #expect(third.seenInputs.count == 1)
     #expect(third.seenInputs[0].text == "start-A")
     #expect(result.context.text == "start-A-C")
     #expect(result.polishError == nil)
+    #expect(fakeTimeout.callCount == 3)
+    #expect(fakeTimeout.capturedBudgets == [5.0, 0.05, 5.0])
   }
 
   @Test("records polishError when LLM Polish times out and continues with prior text")
   func recordsPolishErrorWhenLLMPolishTimesOut() async throws {
-    let runner = TextProcessingRunner()
+    // #784 (2026-05-18): see `skipsTimedOutNonLLMStep` for migration shape.
+    let fakeTimeout = FakeTimeoutExecutor(throwBelowSeconds: 0.1)
+    let runner = TextProcessingRunner(timeoutExecutor: fakeTimeout.run)
 
     let first = RecordingStep(name: "A") { context in
       var next = context
@@ -297,7 +306,6 @@ struct TextProcessingRunnerTests {
     let slowLLM = RecordingStep(
       name: "LLM Polish", maxDuration: .milliseconds(50), errorSurfacePolicy: .surface
     ) { context in
-      try await Task.sleep(for: .milliseconds(300))
       var next = context
       next.text += "-slow"
       return next
@@ -316,12 +324,15 @@ struct TextProcessingRunnerTests {
       steps: [first, slowLLM, third]
     )
 
-    #expect(slowLLM.runCount == 1)
+    #expect(first.runCount == 1)
+    #expect(slowLLM.runCount == 0)  // executor short-circuited before invoking op()
     #expect(third.runCount == 1)
     #expect(third.seenInputs.count == 1)
     #expect(third.seenInputs[0].text == "start-A")
     #expect(result.context.text == "start-A-C")
     #expect(result.polishError == TimeoutError(seconds: 0.05).localizedDescription)
+    #expect(fakeTimeout.callCount == 3)
+    #expect(fakeTimeout.capturedBudgets == [5.0, 0.05, 5.0])
   }
 
   @Test("rethrows CancellationError and does not run later steps")
@@ -473,11 +484,12 @@ struct TextProcessingRunnerTests {
 
   @Test("Step timeout emits a TextProcessing 'timed out' entry via injected logger")
   func timeoutLogsTextProcessingWarning() async throws {
+    // #784 (2026-05-18): see `skipsTimedOutNonLLMStep` for migration shape.
     let recorder = RecordingPipelineLogger()
-    let runner = TextProcessingRunner(logger: recorder)
+    let fakeTimeout = FakeTimeoutExecutor(throwBelowSeconds: 0.1)
+    let runner = TextProcessingRunner(logger: recorder, timeoutExecutor: fakeTimeout.run)
 
     let slow = RecordingStep(name: "Slow", maxDuration: .milliseconds(50)) { context in
-      try await Task.sleep(for: .milliseconds(300))
       return context
     }
 
@@ -492,6 +504,9 @@ struct TextProcessingRunnerTests {
       category: "TextProcessing", messageContains: "Slow timed out")
     #expect(
       entries.contains { $0.category == "TextProcessing" && $0.message.contains("Slow timed out") })
+    #expect(slow.runCount == 0)  // executor short-circuited before invoking op()
+    #expect(fakeTimeout.callCount == 1)
+    #expect(fakeTimeout.capturedBudgets == [0.05])
   }
 }
 
@@ -573,4 +588,44 @@ final class RecordingPipelineLogger: PipelineLogging, @unchecked Sendable {
 private struct StepFailure: LocalizedError, Equatable {
   let message: String
   var errorDescription: String? { message }
+}
+
+/// Deterministic `TextProcessingRunner.TimeoutExecutor` (#784, 2026-05-18).
+///
+/// The runner calls its executor once per enabled step. A fake that always
+/// throws would time out the first normal-budget step before reaching the
+/// intended slow step in multi-step tests. So this fake discriminates by
+/// budget: throws `TimeoutError(seconds:)` for budgets STRICTLY BELOW
+/// `throwBelowSeconds`, runs the operation otherwise. Threshold is required
+/// at init (no default) so each test makes the discriminator explicit.
+@MainActor
+private final class FakeTimeoutExecutor {
+  let throwBelowSeconds: Double
+
+  private(set) var callCount: Int = 0
+  private(set) var capturedBudgets: [Double] = []
+
+  init(throwBelowSeconds: Double) {
+    self.throwBelowSeconds = throwBelowSeconds
+  }
+
+  func run(
+    _ seconds: Double,
+    _ op: @escaping @MainActor () async throws -> TextProcessingContext
+  ) async throws -> TextProcessingContext {
+    callCount += 1
+    capturedBudgets.append(seconds)
+    if seconds < throwBelowSeconds {
+      // Yield once before throwing so the fake mirrors the real
+      // `withThrowingTimeout`'s yielding behavior (production always
+      // suspends inside its task-group `Task.sleep` deadline). Without
+      // this yield, the runner returns to the test without giving its
+      // prior fire-and-forget logger Tasks a chance to run; under
+      // full-suite MainActor saturation, those Tasks can fail to drain
+      // inside the test's 500ms `awaitEntry` polling window.
+      await Task.yield()
+      throw TimeoutError(seconds: seconds)
+    }
+    return try await op()
+  }
 }

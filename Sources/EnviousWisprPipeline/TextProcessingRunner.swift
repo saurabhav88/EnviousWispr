@@ -25,10 +25,36 @@ internal struct TextProcessingRunResult {
 @MainActor
 internal final class TextProcessingRunner {
 
-  private let logger: any PipelineLogging
+  /// Per-step timeout-executor seam (#784, 2026-05-18). Production default
+  /// delegates to `withThrowingTimeout`; tests inject a deterministic fake
+  /// that decides per call whether to run the operation or throw
+  /// `TimeoutError`. Specialized to `TextProcessingContext` because the
+  /// runner only ever times out step operations of that return type.
+  typealias TimeoutExecutor = @MainActor (
+    Double,
+    @escaping @MainActor () async throws -> TextProcessingContext
+  ) async throws -> TextProcessingContext
 
-  init(logger: any PipelineLogging = AppLoggerAdapter()) {
+  private let logger: any PipelineLogging
+  private let timeoutExecutor: TimeoutExecutor
+
+  init(
+    logger: any PipelineLogging = AppLoggerAdapter(),
+    timeoutExecutor: @escaping TimeoutExecutor = { seconds, op in
+      // nonisolated(unsafe) bridges @MainActor `op` to withThrowingTimeout's
+      // @Sendable contract. Safety: op is @MainActor and its return value
+      // (TextProcessingContext) is Sendable, so when op runs inside the
+      // task group's child task and returns to the parent, the result
+      // crosses isolation safely. Same bridge pattern as the existing
+      // `unsafeStep` use below.
+      nonisolated(unsafe) let unsafeOp = op
+      return try await withThrowingTimeout(seconds: seconds) {
+        try await unsafeOp()
+      }
+    }
+  ) {
     self.logger = logger
+    self.timeoutExecutor = timeoutExecutor
   }
 
   func run(
@@ -60,7 +86,7 @@ internal final class TextProcessingRunner {
         Double(unsafeStep.maxDuration.components.seconds)
         + Double(unsafeStep.maxDuration.components.attoseconds) / 1e18
       do {
-        context = try await withThrowingTimeout(seconds: budgetSeconds) {
+        context = try await timeoutExecutor(budgetSeconds) {
           try await unsafeStep.process(input)
         }
         let stepMs = (CFAbsoluteTimeGetCurrent() - stepStart) * 1000
