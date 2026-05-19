@@ -22,6 +22,15 @@ struct EnviousWisprApp: App {
   // (Shape 4 cascade: those references' storage stays on AppState until
   // PR9/PR11 absorb their pipeline/PSS/custom-words callers).
   @State private var transcriptWorkflowCoordinator: TranscriptWorkflowCoordinator
+  // PR7 of #763: split the pre-PR7 AppState "dictation state" pile into
+  // three narrow homes by lifetime. LiveRecordingState owns in-flight
+  // facts; LastRecordingResult owns post-recording polish error; BackendMetadata
+  // owns display labels. AppState's state-change closures push to
+  // `lastRecordingResult.polishError`; `liveRecordingState` and
+  // `backendMetadata` are pure read surfaces.
+  @State private var liveRecordingState: LiveRecordingState
+  @State private var lastRecordingResult: LastRecordingResult
+  @State private var backendMetadata: BackendMetadata
 
   @State private var isOnboardingPresented: Bool =
     !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
@@ -89,21 +98,50 @@ struct EnviousWisprApp: App {
       polishService: appState.polishService
     )
 
+    // PR7 of #763: construct the three dictation-state homes off AppState's
+    // existing sub-systems. Same precedent as TWC above. Setter-inject into
+    // AppState so the state-change closures can push polishError. Sunset:
+    // LRS + LRR in PR9 (DictationLifecycleCoordinator absorbs push sites);
+    // BackendMetadata in PR11 (with AppState).
+    let liveRecordingState = LiveRecordingState(
+      pipeline: appState.pipeline,
+      whisperKitPipeline: appState.whisperKitPipeline,
+      audioCapture: appState.audioCapture,
+      asrManager: appState.asrManager
+    )
+    let lastRecordingResult = LastRecordingResult()
+    let backendMetadata = BackendMetadata(
+      settings: appState.settings,
+      asrManager: appState.asrManager,
+      llmDiscovery: appState.llmDiscovery
+    )
+    appState.attachLiveRecordingState(liveRecordingState)
+    appState.attachLastRecordingResult(lastRecordingResult)
+    appState.attachBackendMetadata(backendMetadata)
+
     _appState = State(initialValue: appState)
     _navigationCoordinator = State(initialValue: navigationCoordinator)
     _diagnosticsCoordinator = State(initialValue: diagnosticsCoordinator)
     _languageSuggestionPresenter = State(initialValue: languageSuggestionPresenter)
     _updateCoordinatorHolder = State(initialValue: updateCoordinatorHolder)
     _transcriptWorkflowCoordinator = State(initialValue: transcriptWorkflowCoordinator)
+    _liveRecordingState = State(initialValue: liveRecordingState)
+    _lastRecordingResult = State(initialValue: lastRecordingResult)
+    _backendMetadata = State(initialValue: backendMetadata)
 
     // PR-A: push App-owned homes into AppDelegate before any
     // NSApplicationDelegate callback fires. `@NSApplicationDelegateAdaptor`
     // exposes the delegate synchronously here; NSApplication.run() (which
     // dispatches delegate callbacks) starts only after App.init() returns.
+    // PR7 of #763: also push `liveRecordingState` and `backendMetadata` so
+    // AppDelegate's `populateMenu` and `updateIcon` reads resolve through
+    // the new homes (the AppState getters they previously called are gone).
     appDelegate.attach(
       appState: appState,
       navigationCoordinator: navigationCoordinator,
-      updateCoordinatorHolder: updateCoordinatorHolder
+      updateCoordinatorHolder: updateCoordinatorHolder,
+      liveRecordingState: liveRecordingState,
+      backendMetadata: backendMetadata
     )
 
     // Initialize observability (PostHog + Sentry) unconditionally at launch —
@@ -122,6 +160,9 @@ struct EnviousWisprApp: App {
         .environment(languageSuggestionPresenter)
         .environment(updateCoordinatorHolder)
         .environment(transcriptWorkflowCoordinator)
+        .environment(liveRecordingState)
+        .environment(lastRecordingResult)
+        .environment(backendMetadata)
         .background(
           ActionWirer(
             appDelegate: appDelegate,

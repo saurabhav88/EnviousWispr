@@ -5,10 +5,12 @@ import SwiftUI
 struct TranscriptHistoryView: View {
   @Environment(AppState.self) private var appState
   @Environment(TranscriptWorkflowCoordinator.self) private var transcriptWorkflowCoordinator
+  // PR7 of #763: live phase resolves through LiveRecordingState.
+  @Environment(LiveRecordingState.self) private var liveRecordingState
   @State private var showDeleteAllConfirmation = false
 
   private var isRecording: Bool {
-    appState.pipelineState == .recording
+    liveRecordingState.pipelineState == .recording
   }
 
   var body: some View {

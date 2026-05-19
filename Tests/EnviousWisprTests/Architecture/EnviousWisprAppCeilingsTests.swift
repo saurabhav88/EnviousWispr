@@ -14,10 +14,11 @@ import Testing
 @Suite struct EnviousWisprAppCeilingsTests {
 
   /// Stored-property ceiling on the App struct.
-  /// Locked at post-PR6 baseline (#772, 2026-05-18) = 8:
+  /// Locked at post-PR7 baseline (#773, 2026-05-18) = 11:
   /// appDelegate + isOnboardingPresented + appState + navigationCoordinator +
   /// diagnosticsCoordinator + languageSuggestionPresenter + updateCoordinatorHolder
-  /// + transcriptWorkflowCoordinator (PR6).
+  /// + transcriptWorkflowCoordinator (PR6) + liveRecordingState +
+  /// lastRecordingResult + backendMetadata (all PR7).
   /// Counts both `let` and `var` top-level declarations (property wrappers
   /// included). Primitives (`: Bool`, `: Int`, `: String`, `: Double`) are
   /// excluded so the bool-typed `isOnboardingPresented` does count via the
@@ -25,17 +26,21 @@ import Testing
   ///
   /// Ratchet history:
   /// - 7 → 8 in PR6 of epic #763 (2026-05-18, #772) for `TranscriptWorkflowCoordinator`.
-  ///   Bible §30 entry: PR6 adds one App-owned `@State` home for the re-polish
-  ///   workflow extracted from AppState. By design, new App-owned homes from
-  ///   epic #763 PRs land here; lifting the ceiling is the explicit acknowledgement
-  ///   that the composition root grew (versus AppState shrinking).
+  /// - 8 → 11 in PR7 of epic #763 (2026-05-18, #773) for `LiveRecordingState` +
+  ///   `LastRecordingResult` + `BackendMetadata`. Bible §30 entry: PR7 lifts the
+  ///   three live-dictation / display-label homes off AppState into App-owned
+  ///   `@State` instances. By design, AppState shrinks (~14 lines) while the
+  ///   composition root grows by three; this is the migration shape.
+  ///   `liveRecordingState` and `lastRecordingResult` sunset to 9 in PR9
+  ///   (DictationLifecycleCoordinator absorbs the push sites);
+  ///   `backendMetadata` sunsets to 8 in PR11 (with AppState deletion).
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
     #expect(
-      count <= 8,
+      count <= 11,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 8. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 11. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.

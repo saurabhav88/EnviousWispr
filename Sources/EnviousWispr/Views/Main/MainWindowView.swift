@@ -4,12 +4,17 @@ import SwiftUI
 /// Status view when no transcript is active — handles all pipeline states.
 struct StatusView: View {
   @Environment(AppState.self) private var appState
+  // PR7 of #763: live phase, audio level, model label, polish error all
+  // resolve through the three new homes.
+  @Environment(LiveRecordingState.self) private var liveRecordingState
+  @Environment(LastRecordingResult.self) private var lastRecordingResult
+  @Environment(BackendMetadata.self) private var backendMetadata
   @State private var elapsed: TimeInterval = 0
   @State private var recordingStart: Date?
 
   var body: some View {
     VStack(spacing: 16) {
-      switch appState.pipelineState {
+      switch liveRecordingState.pipelineState {
       case .idle:
         ContentUnavailableView {
           Label("Ready to Transcribe", systemImage: "mic")
@@ -53,18 +58,18 @@ struct StatusView: View {
               .foregroundStyle(.primary)
           }
 
-          Text("Recording · \(appState.activeModelName)")
+          Text("Recording · \(backendMetadata.modelLabel)")
             .font(.subheadline)
             .foregroundStyle(.secondary)
 
           // Waveform visualizer
-          WaveformView(level: appState.audioLevel)
+          WaveformView(level: liveRecordingState.audioLevel)
             .frame(height: 36)
             .padding(.horizontal, 40)
 
           // VAD status bar
           VStack(spacing: 4) {
-            AudioLevelBar(level: appState.audioLevel)
+            AudioLevelBar(level: liveRecordingState.audioLevel)
               .frame(width: 240, height: 6)
               .accessibilityHidden(true)
 
@@ -139,7 +144,7 @@ struct StatusView: View {
             Text("Select a transcript from the sidebar to view it.")
           }
 
-          if let polishError = appState.lastPolishError {
+          if let polishError = lastRecordingResult.polishError {
             HStack(spacing: 6) {
               Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.stWarning)
@@ -165,9 +170,9 @@ struct StatusView: View {
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .animation(.easeInOut(duration: 0.3), value: appState.pipelineState)
-    .task(id: appState.pipelineState == .recording) {
-      guard appState.pipelineState == .recording else {
+    .animation(.easeInOut(duration: 0.3), value: liveRecordingState.pipelineState)
+    .task(id: liveRecordingState.pipelineState == .recording) {
+      guard liveRecordingState.pipelineState == .recording else {
         recordingStart = nil
         return
       }
@@ -264,10 +269,12 @@ struct AudioLevelBar: View {
 /// Pipeline status badge in toolbar — hidden when idle/complete/error, minimal during active states.
 struct StatusBadge: View {
   @Environment(AppState.self) private var appState
+  // PR7 of #763: live phase resolves through LiveRecordingState.
+  @Environment(LiveRecordingState.self) private var liveRecordingState
 
   var body: some View {
     Group {
-      switch appState.pipelineState {
+      switch liveRecordingState.pipelineState {
       case .recording:
         HStack(spacing: 4) {
           Image(systemName: "mic.fill")
@@ -291,7 +298,7 @@ struct StatusBadge: View {
         EmptyView()
       }
     }
-    .animation(.easeInOut(duration: 0.2), value: appState.pipelineState)
+    .animation(.easeInOut(duration: 0.2), value: liveRecordingState.pipelineState)
   }
 
   private func progressLabel(_ text: String) -> some View {
@@ -306,21 +313,24 @@ struct StatusBadge: View {
 /// Record/stop button in the toolbar.
 struct RecordButton: View {
   @Environment(AppState.self) private var appState
+  // PR7 of #763: live phase resolves through LiveRecordingState.
+  @Environment(LiveRecordingState.self) private var liveRecordingState
 
   var body: some View {
+    let state = liveRecordingState.pipelineState
     Button {
       Task {
         await appState.toggleRecording(source: .toolbar)
       }
     } label: {
       Label(
-        appState.pipelineState == .recording ? "Stop" : "Record",
-        systemImage: appState.pipelineState == .recording ? "stop.circle.fill" : "mic.circle.fill"
+        state == .recording ? "Stop" : "Record",
+        systemImage: state == .recording ? "stop.circle.fill" : "mic.circle.fill"
       )
-      .foregroundStyle(appState.pipelineState == .recording ? Color.stError : Color.stAccent)
+      .foregroundStyle(state == .recording ? Color.stError : Color.stAccent)
     }
     .labelStyle(.titleAndIcon)
-    .disabled(appState.pipelineState.isActive && appState.pipelineState != .recording)
-    .help(appState.pipelineState == .recording ? "Stop recording" : "Start recording")
+    .disabled(state.isActive && state != .recording)
+    .help(state == .recording ? "Stop recording" : "Start recording")
   }
 }
