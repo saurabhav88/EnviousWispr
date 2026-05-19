@@ -4,6 +4,7 @@ import SwiftUI
 /// Inner content for the History tab: transcript list (left) + detail/status (right).
 struct HistoryContentView: View {
   @Environment(AppState.self) private var appState
+  @Environment(TranscriptWorkflowCoordinator.self) private var transcriptWorkflowCoordinator
 
   var body: some View {
     VStack(spacing: 0) {
@@ -28,7 +29,7 @@ struct HistoryContentView: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .task {
-      appState.transcriptCoordinator.load()
+      transcriptWorkflowCoordinator.transcriptCoordinator.load()
     }
   }
 }

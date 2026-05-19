@@ -1013,33 +1013,6 @@ final class AppState {
     }
   }
 
-  /// Enhancement error from the transcript detail view's re-polish service.
-  /// Separate from `lastPolishError` which tracks live-dictation polish failures.
-  var lastEnhancementError: EnhancementError? {
-    polishService.lastEnhancementError
-  }
-
-  /// Re-polish an existing transcript via the standalone polish service.
-  /// Decoupled from pipeline state: does not touch pipeline.state, currentTranscript, or lastPolishError.
-  func polishTranscript(_ transcript: Transcript) async {
-    do {
-      let updated = try await polishService.polish(transcript)
-      if let idx = transcriptCoordinator.transcripts.firstIndex(where: { $0.id == updated.id }) {
-        transcriptCoordinator.transcripts[idx] = updated
-      }
-      // Ensure detail view refreshes even when activeTranscript falls back to pipeline.currentTranscript
-      transcriptCoordinator.selectedTranscriptID = updated.id
-    } catch {
-      // Error already captured in polishService.lastEnhancementError
-      Task {
-        await AppLogger.shared.log(
-          "Transcript enhancement failed: \(error.localizedDescription)",
-          level: .info, category: "Enhancement"
-        )
-      }
-    }
-  }
-
   // Phase 5 B.1 validated 2026-03-16: batch round-trip 51-60ms across XPC.
   // Cold model load: 13,966ms. 3 warm back-to-back runs stable.
   // Test function in git history.
