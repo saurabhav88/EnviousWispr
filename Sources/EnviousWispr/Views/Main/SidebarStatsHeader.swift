@@ -5,9 +5,12 @@ import SwiftUI
 struct SidebarStatsHeader: View {
   @Environment(AppState.self) private var appState
   @Environment(TranscriptWorkflowCoordinator.self) private var transcriptWorkflowCoordinator
+  // PR7 of #763: live phase + display labels resolve through the three new homes.
+  @Environment(LiveRecordingState.self) private var liveRecordingState
+  @Environment(BackendMetadata.self) private var backendMetadata
 
   private var isRecording: Bool {
-    appState.pipelineState == .recording
+    liveRecordingState.pipelineState == .recording
   }
 
   var body: some View {
@@ -36,12 +39,12 @@ struct SidebarStatsHeader: View {
 
       // Model status bar
       ModelStatusBar(
-        modelName: appState.activeModelName,
-        statusText: appState.modelStatusText,
+        modelName: backendMetadata.modelLabel,
+        statusText: backendMetadata.statusText(for: liveRecordingState.pipelineState),
         isRecording: isRecording,
         isLoaded: appState.asrManager.isModelLoaded,
         hasError: {
-          if case .error = appState.pipelineState { return true }
+          if case .error = liveRecordingState.pipelineState { return true }
           return false
         }()
       )

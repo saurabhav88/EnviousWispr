@@ -4,6 +4,8 @@ import SwiftUI
 struct DiagnosticsSettingsView: View {
   @Environment(AppState.self) private var appState
   @Environment(DiagnosticsCoordinator.self) private var diagnostics
+  // PR7 of #763: live phase resolves through LiveRecordingState.
+  @Environment(LiveRecordingState.self) private var liveRecordingState
 
   var body: some View {
     @Bindable var state = appState
@@ -36,7 +38,7 @@ struct DiagnosticsSettingsView: View {
                   delegate.openOnboardingWindow()
                 }
               }
-              .disabled(appState.pipelineState != .idle)
+              .disabled(liveRecordingState.pipelineState != .idle)
               Text(
                 "Re-runs the onboarding flow without wiping app state. Disabled during recording."
               )
@@ -118,7 +120,9 @@ struct DiagnosticsSettingsView: View {
                 Task { await diagnostics.benchmark.run(using: appState.asrManager) }
               }
               Button("Run Pipeline Benchmark") {
-                Task { await diagnostics.benchmark.runPipelineBenchmark(using: appState.asrManager) }
+                Task {
+                  await diagnostics.benchmark.runPipelineBenchmark(using: appState.asrManager)
+                }
               }
             }
           }

@@ -115,6 +115,37 @@ final class AppState {
     self.languageSuggestionPresenter = presenter
   }
 
+  /// PR7 of #763 — sunset PR9. App-owned home for live dictation facts
+  /// (pipelineState, audioLevel, currentTranscript). Setter-injected `var`
+  /// so the `AppStateCeilingsTests` collaborator parser (which counts only
+  /// `let`) does not see it. Migration-period plumbing: AppState held the
+  /// equivalent getters pre-PR7; PR9's `DictationLifecycleCoordinator`
+  /// absorbs the push sites and this outlet evaporates.
+  private(set) var liveRecordingState: LiveRecordingState?
+  func attachLiveRecordingState(_ state: LiveRecordingState) {
+    self.liveRecordingState = state
+  }
+
+  /// PR7 of #763 — sunset PR9. App-owned home for post-recording polish
+  /// error state. AppState's existing state-change closures push
+  /// `pipeline.lastPolishError` / `whisperKitPipeline.lastPolishError` into
+  /// `lastRecordingResult?.polishError`; `toggleRecording` resets it on a
+  /// new recording start. Setter-injected `var` — see ceiling note above.
+  private(set) var lastRecordingResult: LastRecordingResult?
+  func attachLastRecordingResult(_ result: LastRecordingResult) {
+    self.lastRecordingResult = result
+  }
+
+  /// PR7 of #763 — sunset PR11. App-owned home for backend display labels
+  /// (modelLabel, llmLabel, statusText). Setter-injected so AppDelegate's
+  /// menu reads can resolve through this outlet during the migration;
+  /// once AppDelegate shrinks per PR-B and AppState is deleted in PR11,
+  /// this outlet evaporates with the host.
+  private(set) var backendMetadata: BackendMetadata?
+  func attachBackendMetadata(_ metadata: BackendMetadata) {
+    self.backendMetadata = metadata
+  }
+
   // Feature #8: custom word management — delegated to coordinator
   let customWordsCoordinator = CustomWordsCoordinator()
 
@@ -472,6 +503,11 @@ final class AppState {
       switch newState {
       case .recording:
         self.hotkeyService.registerCancelHotkey()
+        // PR7 of #763 — clear the prior recording's polish error on every
+        // new recording start. Reset matrix locked in PR7 plan: cancel
+        // does NOT clear (prior error stays cleared by next start). Sunset
+        // PR9 with the rest of this closure.
+        self.lastRecordingResult?.polishError = nil
       case .loadingModel, .transcribing, .polishing:
         self.isRecordingLocked = false
         self.hotkeyService.unregisterCancelHotkey()
@@ -493,6 +529,11 @@ final class AppState {
         lastPolishError: self.pipeline.lastPolishError,
         currentTranscript: self.pipeline.currentTranscript
       )
+      // PR7 of #763 — push polish error to the post-recording result home so
+      // views can read `lastRecordingResult.polishError` without reaching
+      // through AppState. Sunset PR9 (DictationLifecycleCoordinator owns
+      // this push site).
+      self.lastRecordingResult?.polishError = self.pipeline.lastPolishError
       // PR4 of #763 (#252): dispatch chip lifecycle to LanguageSuggestionPresenter.
       // Sunset in PR9: moves with the rest of this closure into DictationLifecycleCoordinator.
       //
@@ -525,10 +566,15 @@ final class AppState {
     // Wire WhisperKit pipeline state changes to overlay and icon.
     whisperKitPipeline.onStateChange = { [weak self] newState in
       guard let self else { return }
-      self.onPipelineStateChange?(self.pipelineState)
+      // PR7 of #763: route the WhisperKit state to unified PipelineState
+      // inline; the prior `self.pipelineState` getter is gone.
+      self.onPipelineStateChange?(newState.asPipelineState)
       switch newState {
       case .recording:
         self.hotkeyService.registerCancelHotkey()
+        // PR7 of #763 — clear prior recording's polish error on new start.
+        // Mirrors the Parakeet arm above. Sunset PR9.
+        self.lastRecordingResult?.polishError = nil
       case .startingUp, .loadingModel, .transcribing, .polishing:
         self.isRecordingLocked = false
         self.hotkeyService.unregisterCancelHotkey()
@@ -548,6 +594,9 @@ final class AppState {
         lastPolishError: self.whisperKitPipeline.lastPolishError,
         currentTranscript: self.whisperKitPipeline.currentTranscript
       )
+      // PR7 of #763 — push WhisperKit polish error to the post-recording
+      // result home. Same shape as the Parakeet arm above. Sunset PR9.
+      self.lastRecordingResult?.polishError = self.whisperKitPipeline.lastPolishError
       // PR4 of #763 (#252): chip lifecycle dispatch. WhisperKit has both
       // .complete and .ready as terminal-completion states. Same race guards
       // as the parakeet arm (Codex P2 r2+r3+r7).
@@ -590,8 +639,11 @@ final class AppState {
       if isWhisperKit {
         guard !self.whisperKitPipeline.state.isActive else { return }
       } else {
-        guard !self.pipelineState.isActive else { return }
+        guard !self.pipeline.state.isActive else { return }
       }
+      // PR7 of #763 — clear any prior polish error before the new recording
+      // start. Mirrors `toggleRecording(source:)` below. Sunset PR9.
+      self.lastRecordingResult?.polishError = nil
       // Refresh AX status so `DictationSessionConfigFactory.make` sees the right
       // paste capability. The session snapshot is captured fresh at
       // `.toggleRecording` dispatch below.
@@ -688,8 +740,8 @@ final class AppState {
           pipelineInError = false
         }
       } else {
-        pipelineActive = self.pipelineState.isActive
-        if case .error = self.pipelineState {
+        pipelineActive = self.pipeline.state.isActive
+        if case .error = self.pipeline.state {
           pipelineInError = true
         } else {
           pipelineInError = false
@@ -803,33 +855,6 @@ final class AppState {
     asrManager.activeBackendType == .whisperKit ? whisperKitPipeline : pipeline
   }
 
-  /// Convenience: current pipeline state — routes through active backend.
-  var pipelineState: PipelineState {
-    if asrManager.activeBackendType == .whisperKit {
-      return whisperKitPipeline.state.asPipelineState
-    }
-    return pipeline.state
-  }
-
-  /// Last polish error from the active pipeline.
-  var lastPolishError: String? {
-    if asrManager.activeBackendType == .whisperKit {
-      return whisperKitPipeline.lastPolishError
-    }
-    return pipeline.lastPolishError
-  }
-
-  /// Convenience: the transcript from the latest recording.
-  var activeTranscript: Transcript? {
-    if let selected = transcriptCoordinator.selectedTranscriptID {
-      return transcriptCoordinator.transcripts.first { $0.id == selected }
-    }
-    if asrManager.activeBackendType == .whisperKit {
-      return whisperKitPipeline.currentTranscript
-    }
-    return pipeline.currentTranscript
-  }
-
   /// Schedule a deferred post-completion warning overlay. Cancellable and session-scoped:
   /// cancelled if a new recording starts (any non-complete state change cancels it).
   /// Uses the pipeline's current state as a guard to avoid showing stale warnings.
@@ -907,47 +932,6 @@ final class AppState {
     }
   }
 
-  /// Convenience: audio level for UI visualization.
-  var audioLevel: Float {
-    audioCapture.audioLevel
-  }
-
-  /// Human-readable model name for display.
-  var activeModelName: String {
-    settings.selectedBackend == .parakeet ? "Parakeet v3" : "WhisperKit"
-  }
-
-  var activeLLMDisplayName: String {
-    guard settings.llmProvider != .none else { return "LLM Deactivated" }
-    let model = settings.llmProvider == .ollama ? settings.ollamaModel : settings.llmModel
-    if model.isEmpty { return settings.llmProvider.displayName }
-    // Use discoveredModels displayName if available, otherwise raw model ID
-    if let info = llmDiscovery.discoveredModels.first(where: { $0.id == model }) {
-      return info.displayName
-    }
-    return model
-  }
-
-  /// Model status text for sidebar display.
-  var modelStatusText: String {
-    if asrManager.activeBackendType == .whisperKit {
-      switch whisperKitPipeline.state {
-      case .loadingModel: return "Loading Model"
-      case .recording: return "Recording"
-      case .transcribing: return "Transcribing"
-      case .polishing: return "Polishing"
-      case .error: return "Error"
-      default: break
-      }
-    } else {
-      if pipelineState == .recording { return "Recording" }
-      if pipelineState == .transcribing { return "Transcribing" }
-      if pipelineState == .polishing { return "Polishing" }
-      if case .error = pipelineState { return "Error" }
-    }
-    return asrManager.isModelLoaded ? "Loaded" : "Unloaded"
-  }
-
   /// Toggle recording on/off (plain, no forced LLM).
   ///
   /// `source` distinguishes the invocation surface for `dictation.invoked` telemetry
@@ -956,6 +940,12 @@ final class AppState {
   func toggleRecording(source: TriggerSource) async {
     postCompletionWarningTask?.cancel()
     let active = activePipeline
+    // PR7 of #763 — match the hotkey path: clear prior polish error before
+    // dispatch when this toggle is a START. Sunset PR9.
+    let isWK = asrManager.activeBackendType == .whisperKit
+    if !(isWK ? whisperKitPipeline.state.isActive : pipeline.state.isActive) {
+      lastRecordingResult?.polishError = nil
+    }
 
     // Refresh AX status before snapshotting — `DictationSessionConfigFactory.make`
     // derives `autoPasteToActiveApp` from the active pipeline's idle state
@@ -1008,7 +998,9 @@ final class AppState {
         heartControlRecovery.logDispatchFailure(error, op: "cancel-whisperkit")
       }
     } else {
-      guard pipelineState == .recording || pipelineState == .loadingModel else { return }
+      // PR7 of #763 — `pipelineState` getter removed; this branch is Parakeet
+      // only (`!isWhisperKit`), so read the concrete pipeline's state directly.
+      guard pipeline.state == .recording || pipeline.state == .loadingModel else { return }
       await pipeline.cancelRecording()
     }
   }

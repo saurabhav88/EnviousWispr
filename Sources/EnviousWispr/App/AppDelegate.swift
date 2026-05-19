@@ -42,19 +42,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /// Sparkle-derived `updateCoordinator` into the holder once Sparkle is
   /// initialized; `@Observable` flips dependent views.
   private weak var updateCoordinatorHolder: UpdateCoordinatorHolder?
+  // PR7 of #763: weak refs to the two App-owned homes AppDelegate's
+  // menu-bar reads now route through. `liveRecordingState` replaces
+  // the old `appState.pipelineState` getter; `backendMetadata` replaces
+  // `appState.activeModelName` / `appState.activeLLMDisplayName`. Both
+  // sunset on the timeline noted at AppState's `attach…` methods.
+  private weak var liveRecordingState: LiveRecordingState?
+  private weak var backendMetadata: BackendMetadata?
 
   /// PR-A of #763: receive App-owned home refs from `EnviousWisprApp.init()`
   /// before delegate callbacks fire. If `updateCoordinator` is already
   /// initialized (Sparkle came up before attach — defensive only, not a real
   /// path), replay it into the holder immediately.
+  ///
+  /// PR7 of #763: additionally receive `liveRecordingState` and
+  /// `backendMetadata` for the menu-bar reads.
   func attach(
     appState: AppState,
     navigationCoordinator: NavigationCoordinator,
-    updateCoordinatorHolder: UpdateCoordinatorHolder
+    updateCoordinatorHolder: UpdateCoordinatorHolder,
+    liveRecordingState: LiveRecordingState,
+    backendMetadata: BackendMetadata
   ) {
     self.appState = appState
     self.navigationCoordinator = navigationCoordinator
     self.updateCoordinatorHolder = updateCoordinatorHolder
+    self.liveRecordingState = liveRecordingState
+    self.backendMetadata = backendMetadata
     if let existing = self.updateCoordinator {
       updateCoordinatorHolder.coordinator = existing
     }
@@ -283,7 +297,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       audioCapture: appState.audioCapture,
       asrManager: appState.asrManager,
       pipelineStateProvider: { [weak self] in
-        self?.appState?.pipelineState ?? .idle
+        // PR7 of #763: pipeline phase resolves through LiveRecordingState.
+        self?.liveRecordingState?.pipelineState ?? .idle
       },
       onAudioDeviceEvent: { [weak self] in
         self?.audioEnvironmentSnapshotter?.audioDeviceEventOccurred()
@@ -375,7 +390,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     guard let button = statusItem?.button else { return }
 
     iconAnimator.configure(button: button)
-    iconAnimator.audioLevelProvider = { [weak self] in self?.appState?.audioCapture.audioLevel ?? 0 }
+    iconAnimator.audioLevelProvider = { [weak self] in self?.appState?.audioCapture.audioLevel ?? 0
+    }
 
     let menu = NSMenu()
     menu.delegate = self
@@ -397,7 +413,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     menu.removeAllItems()
 
     guard let appState = self.appState else { return }
-    let state = appState.pipelineState
+    // PR7 of #763: live pipeline phase + display labels now resolve through
+    // App-owned homes attached during `EnviousWisprApp.init()`. Fall back
+    // to `.idle` / empty strings if a home is unavailable (only possible
+    // during very-early teardown — never on a live path).
+    let state = liveRecordingState?.pipelineState ?? .idle
     let onboardingIncomplete = appState.settings.onboardingState != .completed
 
     // Onboarding abort item — shown at the very top when setup is incomplete.
@@ -415,8 +435,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // Status: ASR model — LLM model
-    let asrModel = appState.activeModelName
-    let llmInfo = appState.activeLLMDisplayName
+    // PR7 of #763: display labels resolve through `backendMetadata`. Fall
+    // back to empty strings if the home is unavailable (defensive only).
+    let asrModel = backendMetadata?.modelLabel ?? ""
+    let llmInfo = backendMetadata?.llmLabel ?? ""
     let statusTitle = "\(asrModel) — \(llmInfo)"
     let statusItem = NSMenuItem(title: statusTitle, action: nil, keyEquivalent: "")
     statusItem.isEnabled = false
@@ -504,7 +526,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /// Update the status item icon based on pipeline state.
   func updateIcon() {
     guard let appState = self.appState else { return }
-    let state = appState.pipelineState
+    // PR7 of #763: live pipeline phase resolves through `liveRecordingState`.
+    let state = liveRecordingState?.pipelineState ?? .idle
     let needsAccessWarning = state == .idle && appState.permissions.shouldShowAccessibilityWarning
     let onboardingIncomplete = appState.settings.onboardingState != .completed
 

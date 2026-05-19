@@ -34,7 +34,7 @@ import Testing
       """)
   }
 
-  /// File line-count ceiling. Locked at post-PR6 (#772) baseline = 1046.
+  /// File line-count ceiling. Locked at post-PR7 (#773) baseline = 1038.
   /// Soft backstop against scope creep.
   ///
   /// Ratcheted history:
@@ -56,14 +56,25 @@ import Testing
   ///   1044 actual + 2-line margin. Collaborator ceiling stays at 18 — Shape 4
   ///   keeps `let polishService` and `let transcriptCoordinator` on AppState
   ///   through PR6 (cascade out in PR11 / PR9 respectively).
+  /// - 1046 → 1038 in PR7 of epic #763 (2026-05-18, #773) after extracting the
+  ///   eight live-recording / display getters (`pipelineState`, `lastPolishError`,
+  ///   `activeTranscript`, `audioLevel`, `activeModelName`, `activeLLMDisplayName`,
+  ///   `modelStatusText`) into `LiveRecordingState` + `LastRecordingResult` +
+  ///   `BackendMetadata`. Net: -8 (getters + comments removed; three setter-
+  ///   injected `var` outlets + their attach methods + polishError push/reset
+  ///   lines added, including a Codex-flagged pre-dispatch reset in
+  ///   `toggleRecording(source:)`). 1036 actual + 2-line margin. Collaborator
+  ///   ceiling stays at 18 — the three new outlets are `var`, not `let`, and
+  ///   the parser matches only `let`. The three temporary outlets sunset
+  ///   in PR9 / PR11.
   @Test func appStateLineCountCeilingHolds() throws {
     let url = appStateURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 1046,
+      lineCount <= 1038,
       """
-      AppState line count exceeded: \(lineCount) > 1046. \
+      AppState line count exceeded: \(lineCount) > 1038. \
       Raising the ceiling requires a Bible changelog entry, not a silent bump.
       """)
   }

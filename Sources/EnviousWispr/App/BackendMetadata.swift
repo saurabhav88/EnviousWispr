@@ -1,0 +1,59 @@
+import EnviousWisprASR
+import EnviousWisprCore
+import EnviousWisprServices
+import Observation
+
+/// PR7 of epic #763. Display-only labels for the active ASR backend, the
+/// LLM polish provider/model, and the pipeline status string. Replaces
+/// AppState's `activeModelName`, `activeLLMDisplayName`, `modelStatusText`.
+/// `statusText(for:)` takes the active `PipelineState` as a parameter to
+/// keep `EnviousWisprPipeline` out of this home's import set.
+@Observable @MainActor
+final class BackendMetadata {
+  let settings: SettingsManager
+  let asrManager: any ASRManagerInterface
+  let llmDiscovery: LLMModelDiscoveryCoordinator
+
+  init(
+    settings: SettingsManager,
+    asrManager: any ASRManagerInterface,
+    llmDiscovery: LLMModelDiscoveryCoordinator
+  ) {
+    self.settings = settings
+    self.asrManager = asrManager
+    self.llmDiscovery = llmDiscovery
+  }
+
+  var modelLabel: String {
+    settings.selectedBackend == .parakeet ? "Parakeet v3" : "WhisperKit"
+  }
+
+  var llmLabel: String {
+    guard settings.llmProvider != .none else { return "LLM Deactivated" }
+    let model = settings.llmProvider == .ollama ? settings.ollamaModel : settings.llmModel
+    if model.isEmpty { return settings.llmProvider.displayName }
+    if let info = llmDiscovery.discoveredModels.first(where: { $0.id == model }) {
+      return info.displayName
+    }
+    return model
+  }
+
+  func statusText(for state: PipelineState) -> String {
+    if asrManager.activeBackendType == .whisperKit {
+      switch state {
+      case .loadingModel: return "Loading Model"
+      case .recording: return "Recording"
+      case .transcribing: return "Transcribing"
+      case .polishing: return "Polishing"
+      case .error: return "Error"
+      default: break
+      }
+    } else {
+      if state == .recording { return "Recording" }
+      if state == .transcribing { return "Transcribing" }
+      if state == .polishing { return "Polishing" }
+      if case .error = state { return "Error" }
+    }
+    return asrManager.isModelLoaded ? "Loaded" : "Unloaded"
+  }
+}

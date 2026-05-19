@@ -5,6 +5,21 @@ import SwiftUI
 struct HistoryContentView: View {
   @Environment(AppState.self) private var appState
   @Environment(TranscriptWorkflowCoordinator.self) private var transcriptWorkflowCoordinator
+  // PR7 of #763: live-recording fallback transcript comes from LiveRecordingState.
+  @Environment(LiveRecordingState.self) private var liveRecordingState
+
+  /// PR7 of #763: compose the displayed transcript inline. History selection
+  /// from `TranscriptCoordinator` wins over the in-flight live fallback —
+  /// same priority the pre-PR7 `AppState.activeTranscript` getter delivered.
+  private var displayedTranscript: Transcript? {
+    let tc = transcriptWorkflowCoordinator.transcriptCoordinator
+    if let selected = tc.selectedTranscriptID,
+      let match = tc.transcripts.first(where: { $0.id == selected })
+    {
+      return match
+    }
+    return liveRecordingState.currentTranscript
+  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -17,7 +32,7 @@ struct HistoryContentView: View {
           .frame(minWidth: 120, idealWidth: 200, maxWidth: 280)
 
         Group {
-          if let transcript = appState.activeTranscript {
+          if let transcript = displayedTranscript {
             TranscriptDetailView(transcript: transcript)
           } else {
             StatusView()
