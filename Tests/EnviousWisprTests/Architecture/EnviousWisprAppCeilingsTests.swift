@@ -58,13 +58,20 @@ import Testing
   ///   constructed in `init()` with two onboarding-guard closures and threaded
   ///   into `appDelegate.attach(...)` plus injected into both Window scenes
   ///   via `.environment(...)`.
+  /// - 15 → 16 in PR-B.3 of epic #763 (2026-05-20, #798) for
+  ///   `MenuBarController`. Bible §30 entry: PR-B.3 lifts the menu bar surface
+  ///   (status item, dropdown menu, animated icon, `NSMenuDelegate`, five menu
+  ///   actions) off AppDelegate into a dedicated App-owned home. The `@State`
+  ///   instance is constructed in `init()` with five menu-action closures and
+  ///   threaded into `appDelegate.attach(...)`. Not `.environment(...)`-injected
+  ///   — no SwiftUI view consumes the menu surface.
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
     #expect(
-      count <= 15,
+      count <= 16,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 15. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 16. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.
@@ -103,14 +110,18 @@ import Testing
   /// two `.environment(...)` injections, and the `ActionWirer` drain-before-
   /// auto-open rewrite. Soft trip-wire only — the stored-property cap is the
   /// primary entanglement signal.
+  /// Ratcheted 340→370 in PR-B.3 of epic #763 (2026-05-20, #798) to absorb
+  /// `MenuBarController` construction (~22 lines: five menu-action closures),
+  /// the `@State` declaration, and the `_menuBarController` assignment. The
+  /// `attach(...)` arg count is unchanged (drops two, adds one).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 340,
+      lineCount <= 370,
       """
-      EnviousWisprApp line count exceeded: \(lineCount) > 340. \
+      EnviousWisprApp line count exceeded: \(lineCount) > 370. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }

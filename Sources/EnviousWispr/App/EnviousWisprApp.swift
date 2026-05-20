@@ -38,6 +38,11 @@ struct EnviousWisprApp: App {
   /// scenes via `.environment(...)` so `DiagnosticsSettingsView` reaches it
   /// through `@Environment` instead of an `NSApp.delegate` downcast.
   @State private var appWindowCoordinator: AppWindowCoordinator
+  /// PR-B.3 of #763: App-owned home for the menu bar surface (status item,
+  /// dropdown menu, animated icon). Strong owner is this `@State`;
+  /// `AppDelegate` holds a weak ref pushed via `attach(...)`. Not
+  /// `.environment(...)`-injected — no SwiftUI view consumes the menu surface.
+  @State private var menuBarController: MenuBarController
 
   @State private var isOnboardingPresented: Bool =
     !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
@@ -195,6 +200,32 @@ struct EnviousWisprApp: App {
       }
     )
 
+    // PR-B.3 of #763: menu bar surface home. The five menu-action closures
+    // compose the previously inline `@objc` AppDelegate action bodies. The
+    // controller reads display facts through narrow PR11-survivor refs
+    // (`liveRecordingState`, `backendMetadata`, `sparkleUpdateController`,
+    // `appState.settings`, `appState.permissions`) — no AppState reference.
+    let menuBarController = MenuBarController(
+      liveRecordingState: liveRecordingState,
+      backendMetadata: backendMetadata,
+      sparkleUpdateController: sparkleUpdateController,
+      settings: appState.settings,
+      permissions: appState.permissions,
+      actions: MenuBarActions(
+        continueOnboarding: { appWindowCoordinator.openOnboardingWindow() },
+        openSettings: {
+          navigationCoordinator.request(.speechEngine)
+          appWindowCoordinator.showWindow()
+        },
+        openPermissions: {
+          navigationCoordinator.request(.permissions)
+          appWindowCoordinator.showWindow()
+        },
+        toggleRecording: { await dictationRuntime.toggleRecording(source: .menuBar) },
+        quit: { NSApp.terminate(nil) }
+      )
+    )
+
     _appState = State(initialValue: appState)
     _navigationCoordinator = State(initialValue: navigationCoordinator)
     _diagnosticsCoordinator = State(initialValue: diagnosticsCoordinator)
@@ -208,6 +239,7 @@ struct EnviousWisprApp: App {
     _dictationRuntime = State(initialValue: dictationRuntime)
     _hotkeyService = State(initialValue: hotkeyService)
     _appWindowCoordinator = State(initialValue: appWindowCoordinator)
+    _menuBarController = State(initialValue: menuBarController)
 
     // PR-A: push App-owned homes into AppDelegate before any
     // NSApplicationDelegate callback fires.
@@ -218,14 +250,13 @@ struct EnviousWisprApp: App {
     // reaching through the deleted `appState.hotkeyService` path).
     appDelegate.attach(
       appState: appState,
-      navigationCoordinator: navigationCoordinator,
       sparkleUpdateController: sparkleUpdateController,
       liveRecordingState: liveRecordingState,
-      backendMetadata: backendMetadata,
       dictationLifecycleCoordinator: dictationLifecycleCoordinator,
       dictationRuntime: dictationRuntime,
       hotkeyService: hotkeyService,
-      appWindowCoordinator: appWindowCoordinator
+      appWindowCoordinator: appWindowCoordinator,
+      menuBarController: menuBarController
     )
 
     // Initialize observability (PostHog + Sentry) unconditionally at launch —
@@ -251,9 +282,9 @@ struct EnviousWisprApp: App {
         .environment(appWindowCoordinator)
         .background(
           ActionWirer(
-            appDelegate: appDelegate,
             appState: appState,
             appWindowCoordinator: appWindowCoordinator,
+            menuBarController: menuBarController,
             isOnboardingPresented: $isOnboardingPresented
           )
         )
@@ -276,17 +307,16 @@ struct EnviousWisprApp: App {
   }
 }
 
-/// Hidden view that wires SwiftUI environment actions to the AppDelegate.
+/// Hidden view that wires SwiftUI environment actions into App-owned homes.
 /// Must live inside a SwiftUI view hierarchy to access @Environment.
 private struct ActionWirer: View {
-  let appDelegate: AppDelegate
-  /// PR-A: App-owned AppState passed in directly. AppDelegate no longer
-  /// exposes `appState`; reading it through the delegate would have to go
-  /// through its weak ref and risk a stale read during teardown.
+  /// PR-A: App-owned AppState passed in directly.
   let appState: AppState
   /// PR-B.2 of #763: the three SwiftUI window bridges are wired onto the
   /// coordinator now, not AppDelegate.
   let appWindowCoordinator: AppWindowCoordinator
+  /// PR-B.3 of #763: onboarding-dismissal icon refresh targets the menu home.
+  let menuBarController: MenuBarController
   @Binding var isOnboardingPresented: Bool
   @Environment(\.openWindow) private var openWindow
   @Environment(\.dismissWindow) private var dismissWindow
@@ -322,7 +352,7 @@ private struct ActionWirer: View {
           // State-driven dismissal: binding flipped to false → close window.
           dismissWindow(id: "onboarding")
           NSApp.setActivationPolicy(.accessory)
-          appDelegate.updateIcon()
+          menuBarController.updateIcon()
         }
       }
   }

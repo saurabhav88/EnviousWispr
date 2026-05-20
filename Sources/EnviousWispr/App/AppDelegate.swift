@@ -23,28 +23,22 @@ import SwiftUI
 /// native approach that reliably handles clicks on all macOS versions.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-  private var statusItem: NSStatusItem?
-  private let iconAnimator = MenuBarIconAnimator()
-
   // PR-A of #763: App-owned homes. `EnviousWisprApp` owns these as `@State`
   // and pushes them into AppDelegate via `attach(...)` synchronously during
   // `EnviousWisprApp.init()`, before any `NSApplicationDelegate` callback
   // fires. Weak refs so AppDelegate is not a retention root.
   private weak var appState: AppState?
-  private weak var navigationCoordinator: NavigationCoordinator?
   /// PR-B.1 of #763: App-owned home for the Sparkle integration. Strong
   /// owner is `EnviousWisprApp`'s `@State`. AppDelegate's relationship
   /// is reduced to invoking `startUpdater()` from
   /// `applicationWillFinishLaunching` and gating the menu's
   /// "Check for Updates" item.
   private weak var sparkleUpdateController: SparkleUpdateController?
-  // PR7 of #763: weak refs to the two App-owned homes AppDelegate's
-  // menu-bar reads now route through. `liveRecordingState` replaces
-  // the old `appState.pipelineState` getter; `backendMetadata` replaces
-  // `appState.activeModelName` / `appState.activeLLMDisplayName`. Both
-  // sunset on the timeline noted at AppState's `attach…` methods.
+  /// PR7 of #763: weak ref to the App-owned live-recording home.
+  /// `AudioSystemEventReporter.pipelineStateProvider` reads `pipelineState`
+  /// from it (see `applicationDidFinishLaunching`). The menu-bar reads that
+  /// previously routed through here moved to `MenuBarController` in PR-B.3.
   private weak var liveRecordingState: LiveRecordingState?
-  private weak var backendMetadata: BackendMetadata?
   /// PR9 of #763: the pipeline state-change callback (icon updates,
   /// audio-environment snapshot triggers) lives on the new lifecycle home now.
   /// AppDelegate sets `dictationLifecycleCoordinator.onPipelineStateChange`
@@ -65,15 +59,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /// window identity, the two `NSWindow.willCloseNotification` observers, the
   /// SwiftUI open/dismiss bridges, activation-policy transitions). Weak ref —
   /// strong owner is `EnviousWisprApp`'s `@State`. AppDelegate routes
-  /// `installOnLaunch()` / `tearDown()` from its lifecycle callbacks and the
-  /// menu actions through it.
+  /// `installOnLaunch()` / `tearDown()` from its lifecycle callbacks.
   private weak var appWindowCoordinator: AppWindowCoordinator?
+  /// PR-B.3 of #763: App-owned home for the menu bar surface (status item,
+  /// dropdown menu, animated icon, menu actions). Weak ref — strong owner is
+  /// `EnviousWisprApp`'s `@State`. AppDelegate calls `installStatusItem()`
+  /// from launch and routes the three external icon-refresh seams here.
+  private weak var menuBarController: MenuBarController?
 
   /// PR-A of #763: receive App-owned home refs from `EnviousWisprApp.init()`
   /// before delegate callbacks fire.
-  ///
-  /// PR7 of #763: additionally receive `liveRecordingState` and
-  /// `backendMetadata` for the menu-bar reads.
   ///
   /// PR9 of #763: additionally receive `dictationLifecycleCoordinator` so the
   /// icon-update callback can be installed on the new home (was on AppState
@@ -85,34 +80,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /// `startUpdater()`.
   ///
   /// PR-B.2 of #763: additionally receive `appWindowCoordinator` so the
-  /// lifecycle callbacks can install/tear down the window observers and the
-  /// menu actions can route window opens through it. `attach()` also wires the
-  /// `onOnboardingDismissed` icon-refresh seam (PR-B.3 retargets it).
+  /// lifecycle callbacks can install/tear down the window observers.
+  ///
+  /// PR-B.3 of #763: additionally receive `menuBarController`; drop
+  /// `navigationCoordinator` and `backendMetadata` (both were only read by the
+  /// menu code that moved to `MenuBarController`). The `onOnboardingDismissed`
+  /// icon-refresh seam now targets `menuBarController`.
   func attach(
     appState: AppState,
-    navigationCoordinator: NavigationCoordinator,
     sparkleUpdateController: SparkleUpdateController,
     liveRecordingState: LiveRecordingState,
-    backendMetadata: BackendMetadata,
     dictationLifecycleCoordinator: DictationLifecycleCoordinator,
     dictationRuntime: DictationRuntime,
     hotkeyService: HotkeyService,
-    appWindowCoordinator: AppWindowCoordinator
+    appWindowCoordinator: AppWindowCoordinator,
+    menuBarController: MenuBarController
   ) {
     self.appState = appState
-    self.navigationCoordinator = navigationCoordinator
     self.sparkleUpdateController = sparkleUpdateController
     self.liveRecordingState = liveRecordingState
-    self.backendMetadata = backendMetadata
     self.dictationLifecycleCoordinator = dictationLifecycleCoordinator
     self.dictationRuntime = dictationRuntime
     self.hotkeyService = hotkeyService
     self.appWindowCoordinator = appWindowCoordinator
+    self.menuBarController = menuBarController
     // Icon-refresh seam: the coordinator's two onboarding-dismiss callsites
-    // route through this closure instead of reaching into AppDelegate's
-    // menu-icon logic. PR-B.3 retargets the seam to MenuBarController.
-    appWindowCoordinator.onOnboardingDismissed = { [weak self] in
-      self?.updateIcon()
+    // route through this closure. PR-B.3 retargets it to MenuBarController.
+    appWindowCoordinator.onOnboardingDismissed = { [weak menuBarController] in
+      menuBarController?.updateIcon()
     }
   }
 
@@ -208,15 +203,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // are invoked from `applicationWillFinishLaunching` so SwiftUI's env
     // value snapshot is non-nil when the App body first evaluates.
 
-    setupStatusItem()
+    // PR-B.3 of #763: the menu bar surface lives on `MenuBarController` now.
+    menuBarController?.installStatusItem()
 
-    // Update menu bar icon whenever pipeline state or accessibility changes.
-    // Also forwards recording state to the update coordinator so the banner
-    // hides during recording + 3s post-recording grace (issue #343).
-    // PR9 of #763: callback lives on `DictationLifecycleCoordinator` now.
+    // Update menu bar icon whenever pipeline state changes. PR9 of #763: the
+    // callback lives on `DictationLifecycleCoordinator`. PR-B.3 of #763: the
+    // icon call targets `MenuBarController`. The closure stays here because it
+    // is composite — it also triggers the audio-environment snapshotter, which
+    // does not move off AppDelegate until PR-B.4.
     dictationLifecycleCoordinator?.onPipelineStateChange = { [weak self] state in
       guard let self else { return }
-      self.updateIcon()
+      self.menuBarController?.updateIcon()
       // Issue #739: do NOT forward pipeline state to the update widget. The
       // widget is now bundle-version-driven only — visible whenever an update
       // is pending, period. Matches Claude Desktop / Slack / Cursor update-prompt
@@ -225,9 +222,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.audioEnvironmentSnapshotter?.recordingStarted()
       }
     }
-    appState.permissions.onAccessibilityChange = { [weak self] in
-      self?.updateIcon()
-    }
+    // PR-B.3 of #763: the accessibility-change icon-refresh seam moved into
+    // `MenuBarController.installStatusItem()`.
 
     // Start hotkeys now that the event loop is running.
     // Carbon RegisterEventHotKey requires an active run loop for event delivery.
@@ -278,7 +274,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // Check Accessibility permission on launch (query only — never auto-prompt).
     appState.permissions.refreshOnLaunch()
-    updateIcon()  // Reflect accessibility warning state in menu bar icon
+    menuBarController?.updateIcon()  // Reflect accessibility warning state in menu bar icon
 
     // Begin smart polling if Accessibility is not yet granted.
     appState.permissions.startMonitoring()
@@ -348,190 +344,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
   }
 
-  private func setupStatusItem() {
-    statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    guard let button = statusItem?.button else { return }
-
-    iconAnimator.configure(button: button)
-    iconAnimator.audioLevelProvider = { [weak self] in self?.appState?.audioCapture.audioLevel ?? 0
-    }
-
-    let menu = NSMenu()
-    menu.delegate = self
-    statusItem?.menu = menu
-    populateMenu(menu)
-  }
-
-  /// Load a menu bar icon from the app bundle's Resources directory.
-  /// At runtime the bundle is a proper .app with Contents/Resources/;
-  /// during development we fall back to the source Resources/ directory.
-  ///
-  /// Resolution order:
-  ///   1. Bundle.main.resourceURL  (production .app bundle)
-  ///   2. Derived from executable path (fallback when Bundle.main mis-resolves)
-  ///   3. Source tree via #filePath (development / bare binary)
-  ///   4. SF Symbol "mic" (last resort)
-  /// Populate the given menu with items reflecting current AppState.
-  private func populateMenu(_ menu: NSMenu) {
-    menu.removeAllItems()
-
-    guard let appState = self.appState else { return }
-    // PR7 of #763: live pipeline phase + display labels now resolve through
-    // App-owned homes attached during `EnviousWisprApp.init()`. Fall back
-    // to `.idle` / empty strings if a home is unavailable (only possible
-    // during very-early teardown — never on a live path).
-    let state = liveRecordingState?.pipelineState ?? .idle
-    let onboardingIncomplete = appState.settings.onboardingState != .completed
-
-    // Onboarding abort item — shown at the very top when setup is incomplete.
-    if onboardingIncomplete {
-      let setupItem = NSMenuItem(
-        title: "Setup Required: Continue Setup…",
-        action: #selector(continueOnboarding),
-        keyEquivalent: ""
-      )
-      setupItem.image = NSImage(
-        systemSymbolName: "exclamationmark.circle.fill", accessibilityDescription: "Setup required")
-      setupItem.target = self
-      menu.addItem(setupItem)
-      menu.addItem(.separator())
-    }
-
-    // Status: ASR model — LLM model
-    // PR7 of #763: display labels resolve through `backendMetadata`. Fall
-    // back to empty strings if the home is unavailable (defensive only).
-    let asrModel = backendMetadata?.modelLabel ?? ""
-    let llmInfo = backendMetadata?.llmLabel ?? ""
-    let statusTitle = "\(asrModel) — \(llmInfo)"
-    let statusItem = NSMenuItem(title: statusTitle, action: nil, keyEquivalent: "")
-    statusItem.isEnabled = false
-    menu.addItem(statusItem)
-
-    // Version
-    let versionItem = NSMenuItem(
-      title: "Version: \(AppConstants.appVersion)", action: nil, keyEquivalent: "")
-    versionItem.isEnabled = false
-    menu.addItem(versionItem)
-
-    menu.addItem(.separator())
-
-    // Record / Stop
-    let recordTitle = state == .recording ? "Stop Recording" : "Start Recording"
-    let recordSymbol = state == .recording ? "stop.circle" : "mic.fill"
-    let recordDescription = state == .recording ? "Stop" : "Record"
-    let recordItem = NSMenuItem(
-      title: recordTitle, action: #selector(toggleRecording), keyEquivalent: "")
-    recordItem.image = NSImage(
-      systemSymbolName: recordSymbol, accessibilityDescription: recordDescription)
-    recordItem.target = self
-    recordItem.isEnabled = !(state.isActive && state != .recording)
-    menu.addItem(recordItem)
-
-    // Auto-stop on silence indicator
-    if appState.settings.vadAutoStop {
-      let autoStopTitle =
-        state == .recording
-        ? "Auto-stop: Active (\(String(format: "%.1fs", appState.settings.vadSilenceTimeout)) silence)"
-        : "Auto-stop on silence: On"
-      let autoStopItem = NSMenuItem(title: autoStopTitle, action: nil, keyEquivalent: "")
-      autoStopItem.image = NSImage(
-        systemSymbolName: "waveform.badge.minus", accessibilityDescription: "Auto-stop on silence")
-      autoStopItem.isEnabled = false
-      menu.addItem(autoStopItem)
-    }
-
-    // Accessibility warning — shown only when paste is unavailable and not dismissed.
-    if appState.permissions.shouldShowAccessibilityWarning {
-      let warningItem = NSMenuItem(
-        title: "Paste disabled — Accessibility required",
-        action: #selector(openPermissionsSettings),
-        keyEquivalent: ""
-      )
-      warningItem.image = NSImage(
-        systemSymbolName: "exclamationmark.shield.fill",
-        accessibilityDescription: "Accessibility required")
-      warningItem.target = self
-      menu.addItem(warningItem)
-    }
-
-    menu.addItem(.separator())
-
-    // Settings (opens unified window to Speech Engine tab)
-    let settingsItem = NSMenuItem(
-      title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
-    settingsItem.image = NSImage(
-      systemSymbolName: "gearshape", accessibilityDescription: "Settings")
-    settingsItem.target = self
-    menu.addItem(settingsItem)
-
-    // Check for Updates — retargets to SparkleUpdateController so it can
-    // tag the install source as "menu" for telemetry attribution (issue #343).
-    // PR-B.1 of #763: target/action both moved to the controller.
-    if sparkleUpdateController?.hasUpdater == true {
-      let updateItem = NSMenuItem(
-        title: "Check for Updates…",
-        action: #selector(SparkleUpdateController.openUpdateCheckFromMenu(_:)),
-        keyEquivalent: "")
-      updateItem.image = NSImage(
-        systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: "Update")
-      updateItem.target = sparkleUpdateController
-      menu.addItem(updateItem)
-    }
-
-    menu.addItem(.separator())
-
-    // Quit
-    let quitItem = NSMenuItem(
-      title: "Quit \(AppConstants.appName)", action: #selector(quitApp), keyEquivalent: "q")
-    quitItem.image = NSImage(systemSymbolName: "power", accessibilityDescription: "Quit")
-    quitItem.target = self
-    menu.addItem(quitItem)
-  }
-
-  /// Update the status item icon based on pipeline state.
-  func updateIcon() {
-    guard let appState = self.appState else { return }
-    // PR7 of #763: live pipeline phase resolves through `liveRecordingState`.
-    let state = liveRecordingState?.pipelineState ?? .idle
-    let needsAccessWarning = state == .idle && appState.permissions.shouldShowAccessibilityWarning
-    let onboardingIncomplete = appState.settings.onboardingState != .completed
-
-    if needsAccessWarning || (onboardingIncomplete && state == .idle) {
-      iconAnimator.transition(to: .error)
-    } else if case .error = state {
-      iconAnimator.transition(to: .error)
-    } else if state == .recording {
-      iconAnimator.transition(to: .recording)
-    } else if state == .transcribing || state == .polishing || state == .loadingModel {
-      iconAnimator.transition(to: .processing)
-    } else {
-      iconAnimator.transition(to: .idle)
-    }
-  }
-
-  @objc private func continueOnboarding() {
-    appWindowCoordinator?.openOnboardingWindow()
-  }
-
-  @objc private func toggleRecording() {
-    // PR10 of #763 — façade pass-through to RecordingStarter via DictationRuntime.
-    guard let dictationRuntime = self.dictationRuntime else { return }
-    Task {
-      await dictationRuntime.toggleRecording(source: .menuBar)
-      updateIcon()
-    }
-  }
-
-  @objc private func openSettings() {
-    navigationCoordinator?.request(.speechEngine)
-    appWindowCoordinator?.showWindow()
-  }
-
-  @objc private func openPermissionsSettings() {
-    navigationCoordinator?.request(.permissions)
-    appWindowCoordinator?.showWindow()
-  }
-
   func applicationWillTerminate(_ notification: Notification) {
     // PR-B.2 of #763: both window-close observers are torn down by the
     // coordinator now.
@@ -557,24 +369,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Menu bar app — keep running when windows close.
     // User quits via "Quit EnviousWispr" in the status bar menu.
     return false
-  }
-
-  @objc private func quitApp() {
-    NSApp.terminate(nil)
-  }
-}
-
-// MARK: - NSMenuDelegate
-
-extension AppDelegate: NSMenuDelegate {
-  /// Repopulate menu items each time the menu opens so state is fresh.
-  /// NSMenu delegate methods are always called on the main thread.
-  nonisolated func menuNeedsUpdate(_ menu: NSMenu) {
-    MainActor.assumeIsolated {
-      if let currentMenu = self.statusItem?.menu {
-        self.populateMenu(currentMenu)
-      }
-      self.updateIcon()
-    }
   }
 }
