@@ -78,16 +78,20 @@ import Testing
   ///   (`settings`, `permissions`, `asrManager`, `customWordsCoordinator`,
   ///   `setup`, `audioDeviceList`, `aiAvailability`, `keychainManager`,
   ///   `llmDiscovery`) into App-owned `@State` homes, injected into both Window
-  ///   scenes. `appState` itself stays (receive-only) until PR-C.4 deletes it,
-  ///   which lowers this ceiling back to 25 (lower-is-free). The seven
-  ///   construction-only subsystems stay `init()` locals and are not counted.
+  ///   scenes. The seven construction-only subsystems stay `init()` locals and
+  ///   are not counted.
+  /// - 26 → 27 in PR-C.3 of epic #763 (2026-05-20, #815). Bible §30 entry:
+  ///   PR-C.3 rehomes `polishService` (the re-polish service) onto an App-owned
+  ///   `@State`; it was an `init()` local handed to `AppState`. `appState`
+  ///   itself stays (receive-only) until PR-C.4 deletes it, which lowers this
+  ///   ceiling back to 26 (lower-is-free).
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
     #expect(
-      count <= 26,
+      count <= 27,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 26. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 27. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.
@@ -143,14 +147,19 @@ import Testing
   /// the deterministic rule (post-change actual 546 + 10, rounded up to the
   /// nearest 5). Line count is a soft 5x backstop — the stored-property and
   /// import ceilings are the primary entanglement signals.
+  /// Ratcheted 560→580 in PR-C.3 of epic #763 (2026-05-20, #815) to absorb the
+  /// `polishService` `@State` declaration + assignment and the
+  /// `AppLifecycleCoordinator` init call expanding from one `appState:` argument
+  /// to ten specific-home arguments. Cap set by the deterministic rule
+  /// (post-change actual 569 + 10, rounded up to the nearest 5).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 560,
+      lineCount <= 580,
       """
-      EnviousWisprApp line count exceeded: \(lineCount) > 560. \
+      EnviousWisprApp line count exceeded: \(lineCount) > 580. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }

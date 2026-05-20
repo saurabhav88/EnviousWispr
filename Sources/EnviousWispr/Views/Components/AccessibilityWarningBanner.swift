@@ -1,3 +1,4 @@
+import EnviousWisprServices
 import SwiftUI
 
 /// Compact amber banner shown when Accessibility permission is missing.
@@ -5,7 +6,7 @@ import SwiftUI
 /// Displayed above the history split view. Provides a "Fix Now" shortcut to the
 /// Permissions settings tab and a "Dismiss" button to hide it for the session.
 struct AccessibilityWarningBanner: View {
-  @Environment(AppState.self) private var appState
+  @Environment(PermissionsService.self) private var permissions
   @Environment(NavigationCoordinator.self) private var navigationCoordinator
 
   var body: some View {
@@ -28,7 +29,7 @@ struct AccessibilityWarningBanner: View {
       .controlSize(.small)
 
       Button("Dismiss") {
-        appState.permissions.dismissAccessibilityWarning()
+        permissions.dismissAccessibilityWarning()
       }
       .buttonStyle(.plain)
       .foregroundStyle(.secondary)

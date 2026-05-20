@@ -8,12 +8,18 @@ import Testing
 /// - 0 non-private `func` methods (three computed properties: `pipelineState`,
 ///   `audioLevel`, `currentTranscript`; computed properties are NOT counted
 ///   by `CeilingsTestSupport.countNonPrivateMethods`)
-/// - ≤90 lines
+/// - ≤100 lines
 /// - imports ⊆ {EnviousWisprASR, EnviousWisprAudio, EnviousWisprCore, EnviousWisprPipeline, Observation}
 ///
 /// Ceiling-raise note: stored-property count was raised from 3 to 4 before
 /// PR7 was written, after grep verification showed the four current AppState
 /// dependencies. Bible §30 entry filed.
+///
+/// Bible §30 entry (PR-C.3 of #763, 2026-05-20, #815): line ceiling 90 → 100.
+/// PR-C.3 adds the `isRecordingLocked` hands-free flag (rehomed off `AppState`)
+/// and the `DictationActivityProviding` conformance extension (also off
+/// `AppState`). The stored-property count is unchanged (the flag is a primitive
+/// `var`, not counted) and no `func` is added (`isDictationActive` is computed).
 ///
 /// Lowering any cap is free; raising requires a Bible §30 changelog entry.
 @Suite struct LiveRecordingStateCeilingsTests {
@@ -61,9 +67,9 @@ import Testing
     let source = try CeilingsTestSupport.source(at: Self.sourcePath)
     let count = CeilingsTestSupport.lineCount(in: source)
     #expect(
-      count <= 90,
+      count <= 100,
       """
-      LiveRecordingState line count exceeded: \(count) > 90. \
+      LiveRecordingState line count exceeded: \(count) > 100. \
       Ratchet down if implementation came in lower; raise only via Bible §30.
       """)
   }

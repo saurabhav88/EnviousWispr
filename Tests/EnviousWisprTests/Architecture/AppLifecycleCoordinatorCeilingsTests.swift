@@ -8,15 +8,22 @@ import Testing
 /// parser-visible count (the shared parser counts only non-primitive `let`s,
 /// which a count alone would under-report). This test parses every stored
 /// declaration in the class body (`let` and `var`, all access levels,
-/// primitives included) and asserts the name set EQUALS the 10-name allowlist.
-/// Adding an 11th field fails the test.
+/// primitives included) and asserts the name set EQUALS the allowlist.
+/// Adding an unlisted field fails the test.
 ///
-/// Bible §30 baseline: 10 stored — 3 owned `var` (`audioEnvironmentSnapshotter`,
-/// `audioSystemEventReporter`, `#if DEBUG debugFaultEndpoint`) + 7 injected
-/// `let` (`appState`, `dictationRuntime`, `dictationLifecycleCoordinator`,
-/// `liveRecordingState`, `menuBarController`, `appWindowCoordinator`,
-/// `hotkeyService`); non-private `func`s `runDidFinishLaunching`,
-/// `runDidBecomeActive`, `runWillTerminate` (`init` is not a `func`).
+/// Bible §30 baseline (PR-B.4): 10 stored — 3 owned `var` + 7 injected `let`
+/// including the single `appState`.
+///
+/// Bible §30 entry (PR-C.3 of #763, 2026-05-20, #815): the single `appState`
+/// reference is replaced by the 10 specific homes the launch / become-active /
+/// terminate bodies actually read (`settings`, `permissions`, `keychainManager`,
+/// `customWordsCoordinator`, `aiAvailability`, `audioCapture`, `asrManager`,
+/// `pipeline`, `whisperKitPipeline`, `setup`). This is de-coupling, not
+/// god-object accretion: the coordinator trades one wide god-reference for ten
+/// narrow ones, reads nothing new, and its non-private method count is
+/// unchanged at 3. Allowlist count rises 10 → 19 (3 owned `var` + 16 injected
+/// `let`); non-private `func`s `runDidFinishLaunching`, `runDidBecomeActive`,
+/// `runWillTerminate` unchanged (`init` is not a `func`).
 @Suite struct AppLifecycleCoordinatorCeilingsTests {
   private static let sourcePath =
     "Sources/EnviousWispr/App/AppLifecycleCoordinator.swift"
@@ -25,7 +32,16 @@ import Testing
     "audioEnvironmentSnapshotter",
     "audioSystemEventReporter",
     "debugFaultEndpoint",
-    "appState",
+    "settings",
+    "permissions",
+    "keychainManager",
+    "customWordsCoordinator",
+    "aiAvailability",
+    "audioCapture",
+    "asrManager",
+    "pipeline",
+    "whisperKitPipeline",
+    "setup",
     "dictationRuntime",
     "dictationLifecycleCoordinator",
     "liveRecordingState",
@@ -43,8 +59,8 @@ import Testing
     #expect(
       extras.isEmpty && missing.isEmpty,
       """
-      AppLifecycleCoordinator stored-property set drifted from the PR-B.4 \
-      10-name allowlist. Unexpected: \(extras.sorted()). Missing: \
+      AppLifecycleCoordinator stored-property set drifted from the \
+      19-name allowlist. Unexpected: \(extras.sorted()). Missing: \
       \(missing.sorted()). Adding a stored property is god-object drift — \
       raising the allowlist requires a Bible §30 entry. Removing one means \
       this allowlist must shrink in the same PR.

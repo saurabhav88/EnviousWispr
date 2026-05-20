@@ -35,6 +35,11 @@ final class LiveRecordingState {
   let audioCapture: any AudioCaptureInterface
   let asrManager: any ASRManagerInterface
 
+  /// True when recording is in hands-free (locked) mode via double-press.
+  /// Read by the overlay, written through PR9's `RecordingLockedAccess` get/set
+  /// seam. PR-C.3 of #763 rehomed this off `AppState`.
+  var isRecordingLocked: Bool = false
+
   init(
     pipeline: TranscriptionPipeline,
     whisperKitPipeline: WhisperKitPipeline,
@@ -73,5 +78,17 @@ final class LiveRecordingState {
       return whisperKitPipeline.currentTranscript
     }
     return pipeline.currentTranscript
+  }
+}
+
+// MARK: - DictationActivityProviding
+
+/// PR-C.3 of #763: `LiveRecordingState` provides the dictation-activity signal
+/// (replaces `AppState`'s conformance). It already owns both pipelines.
+extension LiveRecordingState: DictationActivityProviding {
+  /// True when either pipeline is recording, transcribing, or polishing. Used
+  /// by `TranscriptPolishService` to block a re-polish during live dictation.
+  var isDictationActive: Bool {
+    pipeline.state.isActive || whisperKitPipeline.state.isActive
   }
 }

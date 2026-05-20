@@ -3,7 +3,6 @@ import SwiftUI
 
 /// Sidebar list of past transcripts with stats header and search.
 struct TranscriptHistoryView: View {
-  @Environment(AppState.self) private var appState
   @Environment(TranscriptWorkflowCoordinator.self) private var transcriptWorkflowCoordinator
   // PR7 of #763: live phase resolves through LiveRecordingState.
   @Environment(LiveRecordingState.self) private var liveRecordingState
