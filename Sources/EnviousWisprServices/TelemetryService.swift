@@ -603,6 +603,14 @@ public final class TelemetryService {
   }
 
   public func updateSparkleDefaultShown(version: String, isCritical: Bool, reason: String) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "update.sparkle_default_shown",
+          stringProps: ["version": version, "reason": reason],
+          boolProps: ["is_critical": isCritical]
+        ))
+    #endif
     PostHogSDK.shared.capture(
       "update.sparkle_default_shown",
       properties: [
@@ -614,6 +622,14 @@ public final class TelemetryService {
   }
 
   public func updateInstallStarted(version: String, isCritical: Bool, source: String) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "update.install_started",
+          stringProps: ["version": version, "source": source],
+          boolProps: ["is_critical": isCritical]
+        ))
+    #endif
     PostHogSDK.shared.capture(
       "update.install_started",
       properties: [
@@ -630,6 +646,16 @@ public final class TelemetryService {
     source: String,
     errorCode: String?
   ) {
+    #if DEBUG
+      var hookStringProps: [String: String] = ["version": version, "source": source]
+      if let errorCode { hookStringProps["error_code"] = errorCode }
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "update.sparkle_cycle_finished",
+          stringProps: hookStringProps,
+          boolProps: ["is_critical": isCritical]
+        ))
+    #endif
     var props: [String: Any] = [
       "version": version,
       "is_critical": isCritical,
@@ -640,6 +666,14 @@ public final class TelemetryService {
   }
 
   public func updateInstallCompleted(version: String, isCritical: Bool, source: String) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "update.install_completed",
+          stringProps: ["version": version, "source": source],
+          boolProps: ["is_critical": isCritical]
+        ))
+    #endif
     PostHogSDK.shared.capture(
       "update.install_completed",
       properties: [
@@ -656,6 +690,14 @@ public final class TelemetryService {
     source: String,
     errorCode: String
   ) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "update.install_failed",
+          stringProps: ["version": version, "source": source, "error_code": errorCode],
+          boolProps: ["is_critical": isCritical]
+        ))
+    #endif
     PostHogSDK.shared.capture(
       "update.install_failed",
       properties: [
@@ -668,6 +710,14 @@ public final class TelemetryService {
   }
 
   public func updateInstallCancelled(version: String, isCritical: Bool, source: String) {
+    #if DEBUG
+      testEventHook?(
+        CapturedTelemetryEvent(
+          name: "update.install_cancelled",
+          stringProps: ["version": version, "source": source],
+          boolProps: ["is_critical": isCritical]
+        ))
+    #endif
     PostHogSDK.shared.capture(
       "update.install_cancelled",
       properties: [

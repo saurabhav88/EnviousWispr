@@ -12,12 +12,12 @@ import Testing
 /// — this test fails first.
 ///
 /// Allowlist shrinks over time:
-/// - `updateCoordinator` (UpdateCoordinator?) — Sparkle integration; sunsets
-///   in PR-B when SparkleUpdateController extracts. After PR-B, allowlist is
-///   expected to be empty.
+/// - `updateCoordinator` (UpdateCoordinator?) — Sparkle integration. SUNSET
+///   in PR-B.1 of #763. SparkleUpdateController now owns the Sparkle
+///   integration; AppDelegate holds only a weak ref.
 @Suite struct AppDelegateOwnershipTests {
 
-  static let namedHomeAllowlist: Set<String> = ["updateCoordinator"]
+  static let namedHomeAllowlist: Set<String> = []
 
   /// AppDelegate.swift must not declare a non-weak `let|var` whose type name
   /// matches the named-home pattern, unless the property is on the allowlist.
@@ -90,7 +90,8 @@ private func appDelegateURL() -> URL {
 
 private func classBodyOfAppDelegate() throws -> String {
   let source = try String(contentsOf: appDelegateURL(), encoding: .utf8)
-  guard let openRange = source.range(of: "final class AppDelegate: NSObject, NSApplicationDelegate {")
+  guard
+    let openRange = source.range(of: "final class AppDelegate: NSObject, NSApplicationDelegate {")
   else {
     Issue.record("AppDelegate declaration not found at expected path/shape")
     throw POSIXError(.ENOENT)
@@ -158,14 +159,16 @@ private func matchPropertyDeclaration(_ line: String) -> PropertyMatch? {
 
   // Capture: name, optional `: TypeName`, optional `= TypeName(`.
   // Pattern handles `let name: Type?` and `var name = Type()` and `let name: Type = Type()`.
-  let pattern = #"\b(?:let|var)\s+([A-Za-z_][A-Za-z0-9_]*)\b(?:\s*:\s*([A-Za-z_][A-Za-z0-9_]*))?(?:\s*=\s*([A-Za-z_][A-Za-z0-9_]*)\s*\()?"#
+  let pattern =
+    #"\b(?:let|var)\s+([A-Za-z_][A-Za-z0-9_]*)\b(?:\s*:\s*([A-Za-z_][A-Za-z0-9_]*))?(?:\s*=\s*([A-Za-z_][A-Za-z0-9_]*)\s*\()?"#
   guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
   let ns = line as NSString
   let range = NSRange(location: 0, length: ns.length)
   guard let m = regex.firstMatch(in: line, options: [], range: range), m.numberOfRanges >= 4
   else { return nil }
   let name = ns.substring(with: m.range(at: 1))
-  let annotatedType = m.range(at: 2).location != NSNotFound ? ns.substring(with: m.range(at: 2)) : ""
+  let annotatedType =
+    m.range(at: 2).location != NSNotFound ? ns.substring(with: m.range(at: 2)) : ""
   let initType = m.range(at: 3).location != NSNotFound ? ns.substring(with: m.range(at: 3)) : ""
   let typeName = !annotatedType.isEmpty ? annotatedType : initType
   guard !typeName.isEmpty else { return nil }
