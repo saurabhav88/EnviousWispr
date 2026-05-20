@@ -5,13 +5,13 @@ import SwiftUI
 /// Reads `frequencyUsed` from Phase 3a/b for "used N times" subtitle (omitted
 /// when frequency is 0 to avoid the "0 times" looks-like-a-bug case). Bible §10.2.
 struct CustomTermsSection: View {
-  @Environment(AppState.self) private var appState
+  @Environment(CustomWordsCoordinator.self) private var customWordsCoordinator
   @State private var searchQuery: String = ""
   @State private var currentPage: Int = 0
   @State private var editingWord: CustomWord?
 
   private var allWords: [CustomWord] {
-    appState.customWordsCoordinator.customWords
+    customWordsCoordinator.customWords
   }
 
   private var filteredWords: [CustomWord] {
@@ -116,12 +116,12 @@ struct CustomTermsSection: View {
     .sheet(item: $editingWord) { word in
       CustomWordEditSheet(
         word: word,
-        wordSuggestionService: appState.customWordsCoordinator.suggestionService,
+        wordSuggestionService: customWordsCoordinator.suggestionService,
         onSave: { updated in
-          appState.customWordsCoordinator.update(updated)
+          customWordsCoordinator.update(updated)
         },
         onDelete: {
-          appState.customWordsCoordinator.remove(id: word.id)
+          customWordsCoordinator.remove(id: word.id)
         }
       )
     }

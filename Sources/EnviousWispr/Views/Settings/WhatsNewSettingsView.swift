@@ -1,7 +1,8 @@
+import EnviousWisprServices
 import SwiftUI
 
 struct WhatsNewSettingsView: View {
-  @Environment(AppState.self) private var appState
+  @Environment(SettingsManager.self) private var settings
 
   var body: some View {
     SettingsContentView {
@@ -47,7 +48,7 @@ struct WhatsNewSettingsView: View {
       }
     }
     .onAppear {
-      appState.settings.markWhatsNewSeen()
+      settings.markWhatsNewSeen()
     }
   }
 }

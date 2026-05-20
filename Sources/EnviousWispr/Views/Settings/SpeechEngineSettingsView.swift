@@ -1,15 +1,17 @@
 import EnviousWisprCore
+import EnviousWisprServices
 import SwiftUI
 
 /// Transcription engine, multi-language options, recording environment, and cleanup settings.
 struct SpeechEngineSettingsView: View {
-  @Environment(AppState.self) private var appState
+  @Environment(SettingsManager.self) private var settings
+  @Environment(SetupCoordinator.self) private var setup
   @Environment(LanguageSuggestionPresenter.self) private var languageSuggestionPresenter
 
   @State private var showLanguageLockSheet: Bool = false
 
   var body: some View {
-    @Bindable var state = appState
+    @Bindable var settings = settings
 
     SettingsContentView {
       // ── Section 1: Transcription Engine ──────────────────────────────
@@ -20,12 +22,12 @@ struct SpeechEngineSettingsView: View {
               ("Fast (English)", ASRBackendType.parakeet),
               ("Multi-Language", ASRBackendType.whisperKit),
             ],
-            selection: $state.settings.selectedBackend
+            selection: $settings.selectedBackend
           )
         }
         BrandedRow(showDivider: false) {
           Text(
-            appState.settings.selectedBackend == .parakeet
+            settings.selectedBackend == .parakeet
               ? "Powered by Parakeet — fast English transcription with built-in punctuation."
               : "Powered by WhisperKit — broader language support with optimized quality defaults."
           )
@@ -35,7 +37,7 @@ struct SpeechEngineSettingsView: View {
       }
 
       // ── Section 2: WhisperKit Model Setup (conditional) ───────────────
-      if appState.settings.selectedBackend == .whisperKit {
+      if settings.selectedBackend == .whisperKit {
         BrandedSection(header: "Model Setup") {
           BrandedRow(showDivider: false) {
             whisperKitSetupContent
@@ -44,8 +46,8 @@ struct SpeechEngineSettingsView: View {
       }
 
       // ── Section 3: Language Selection (only when model is ready) ──
-      if appState.settings.selectedBackend == .whisperKit,
-        case .ready = appState.setup.whisperKitSetup.setupState
+      if settings.selectedBackend == .whisperKit,
+        case .ready = setup.whisperKitSetup.setupState
       {
         BrandedSection(header: "Language") {
           BrandedRow {
@@ -53,9 +55,9 @@ struct SpeechEngineSettingsView: View {
               Toggle(
                 "Auto-detect language",
                 isOn: Binding(
-                  get: { isAutoLanguage(appState.settings.languageMode) },
+                  get: { isAutoLanguage(settings.languageMode) },
                   set: { newValue in
-                    state.settings.languageMode =
+                    settings.languageMode =
                       newValue
                       ? .auto
                       : .locked(currentOrDefaultLockCode())
@@ -71,7 +73,7 @@ struct SpeechEngineSettingsView: View {
             }
           }
 
-          if case .locked(let code) = appState.settings.languageMode {
+          if case .locked(let code) = settings.languageMode {
             BrandedRow(showDivider: false) {
               HStack(spacing: 10) {
                 let entry = LanguageCatalog.entry(for: code)
@@ -124,21 +126,21 @@ struct SpeechEngineSettingsView: View {
         BrandedRow {
           EnvironmentPresetCards(
             selection: Binding(
-              get: { appState.settings.environmentPreset },
-              set: { state.settings.environmentPreset = $0 }
+              get: { settings.environmentPreset },
+              set: { settings.environmentPreset = $0 }
             ))
         }
         BrandedRow {
           VStack(alignment: .leading, spacing: 4) {
-            Toggle("Stop recording on silence", isOn: $state.settings.vadAutoStop)
+            Toggle("Stop recording on silence", isOn: $settings.vadAutoStop)
               .toggleStyle(BrandedToggleStyle())
           }
         }
-        if appState.settings.vadAutoStop {
+        if settings.vadAutoStop {
           BrandedRow {
             VStack(alignment: .leading, spacing: 4) {
               BrandedSlider(
-                "Pause duration", value: $state.settings.vadSilenceTimeout, in: 0.5...3.0,
+                "Pause duration", value: $settings.vadSilenceTimeout, in: 0.5...3.0,
                 step: 0.25, low: "0.5s", high: "3.0s", format: "%.1fs")
               Text("How long to wait after you stop speaking before ending the recording.")
                 .font(.stHelper)
@@ -151,11 +153,11 @@ struct SpeechEngineSettingsView: View {
       }
 
       // ── Section 4: Transcription Mode ────────────────────────────────
-      if appState.settings.selectedBackend == .parakeet {
+      if settings.selectedBackend == .parakeet {
         BrandedSection(header: "Transcription Mode") {
           BrandedRow(showDivider: false) {
             VStack(alignment: .leading, spacing: 4) {
-              Toggle("Live transcription", isOn: $state.settings.useStreamingASR)
+              Toggle("Live transcription", isOn: $settings.useStreamingASR)
                 .toggleStyle(BrandedToggleStyle())
               Text(
                 "Transcribes while you speak for faster results. Turn off for cleaner text on longer recordings."
@@ -174,7 +176,7 @@ struct SpeechEngineSettingsView: View {
         BrandedRow(showDivider: true) {
           VStack(alignment: .leading, spacing: 4) {
             Toggle(
-              "Remove filler words (um, uh, hmm...)", isOn: $state.settings.fillerRemovalEnabled
+              "Remove filler words (um, uh, hmm...)", isOn: $settings.fillerRemovalEnabled
             )
             .toggleStyle(BrandedToggleStyle())
             Text("Strips common filler words from transcriptions.")
@@ -186,7 +188,7 @@ struct SpeechEngineSettingsView: View {
           VStack(alignment: .leading, spacing: 4) {
             Toggle(
               "Convert spoken emoji (e.g. \"thumbs up emoji\" → 👍)",
-              isOn: $state.settings.emojiFormatterEnabled
+              isOn: $settings.emojiFormatterEnabled
             )
             .toggleStyle(BrandedToggleStyle())
             Text("Say \"<phrase> emoji\" to get the glyph. Bare words never convert.")
@@ -197,18 +199,17 @@ struct SpeechEngineSettingsView: View {
       }
     }
     .onAppear {
-      if appState.settings.selectedBackend == .whisperKit {
-        Task { await appState.setup.whisperKitSetup.detectState() }
+      if settings.selectedBackend == .whisperKit {
+        Task { await setup.whisperKitSetup.detectState() }
       }
     }
-    .onChange(of: appState.settings.selectedBackend) { _, newBackend in
+    .onChange(of: settings.selectedBackend) { _, newBackend in
       if newBackend == .whisperKit {
-        Task { await appState.setup.whisperKitSetup.detectState() }
+        Task { await setup.whisperKitSetup.detectState() }
       }
     }
     .sheet(isPresented: $showLanguageLockSheet) {
       LanguageLockSheet()
-        .environment(appState)
     }
   }
 
@@ -225,10 +226,10 @@ struct SpeechEngineSettingsView: View {
   /// to lock to. Preserve the prior locked code if we have one (comes from
   /// the W2 migration of `whisperKitLanguage`), otherwise default to English.
   private func currentOrDefaultLockCode() -> String {
-    if case .locked(let code) = appState.settings.languageMode {
+    if case .locked(let code) = settings.languageMode {
       return code
     }
-    let migrated = appState.settings.whisperKitLanguage
+    let migrated = settings.whisperKitLanguage
     if LanguageTypes.isSupported(migrated) {
       return migrated
     }
@@ -239,7 +240,7 @@ struct SpeechEngineSettingsView: View {
 
   @ViewBuilder
   private var whisperKitSetupContent: some View {
-    switch appState.setup.whisperKitSetup.setupState {
+    switch setup.whisperKitSetup.setupState {
     case .checking:
       HStack {
         ProgressView()
@@ -261,7 +262,7 @@ struct SpeechEngineSettingsView: View {
 
         HStack {
           Button("Download WhisperKit Model") {
-            appState.setup.whisperKitSetup.downloadModel()
+            setup.whisperKitSetup.downloadModel()
           }
           .buttonStyle(.borderedProminent)
           .controlSize(.small)
@@ -290,7 +291,7 @@ struct SpeechEngineSettingsView: View {
               .foregroundStyle(.stTextTertiary)
           }
           Button("Cancel") {
-            appState.setup.whisperKitSetup.cancelDownload()
+            setup.whisperKitSetup.cancelDownload()
           }
           .controlSize(.small)
           .buttonStyle(.borderless)
@@ -317,7 +318,7 @@ struct SpeechEngineSettingsView: View {
           .fixedSize(horizontal: false, vertical: true)
 
         Button("Try Again") {
-          Task { await appState.setup.whisperKitSetup.detectState() }
+          Task { await setup.whisperKitSetup.detectState() }
         }
         .controlSize(.small)
       }
@@ -334,7 +335,7 @@ struct SpeechEngineSettingsView: View {
   @ViewBuilder
   private var whisperKitRefreshButton: some View {
     Button {
-      Task { await appState.setup.whisperKitSetup.forceDetectState() }
+      Task { await setup.whisperKitSetup.forceDetectState() }
     } label: {
       Image(systemName: "arrow.clockwise")
     }

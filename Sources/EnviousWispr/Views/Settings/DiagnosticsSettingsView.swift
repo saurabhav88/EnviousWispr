@@ -1,8 +1,11 @@
+import EnviousWisprASR
 import EnviousWisprCore
+import EnviousWisprServices
 import SwiftUI
 
 struct DiagnosticsSettingsView: View {
-  @Environment(AppState.self) private var appState
+  @Environment(SettingsManager.self) private var settings
+  @Environment(\.asrManager) private var asrManagerEnv
   @Environment(DiagnosticsCoordinator.self) private var diagnostics
   // PR7 of #763: live phase resolves through LiveRecordingState.
   @Environment(LiveRecordingState.self) private var liveRecordingState
@@ -10,24 +13,28 @@ struct DiagnosticsSettingsView: View {
   // through the environment instead of an `NSApp.delegate` downcast.
   @Environment(AppWindowCoordinator.self) private var appWindowCoordinator
 
+  /// Force-unwrapped: `EnviousWisprApp` always injects a real instance into the
+  /// environment (see `AppEnvironmentKeys.swift`).
+  private var asrManager: any ASRManagerInterface { asrManagerEnv! }
+
   var body: some View {
-    @Bindable var state = appState
+    @Bindable var settings = settings
 
     SettingsContentView {
       // ── Debug Mode ────────────────────────────────────────────────────
       BrandedSection(header: "Debug Mode") {
         BrandedRow {
           VStack(alignment: .leading, spacing: 4) {
-            Toggle("Enable debug mode", isOn: $state.settings.isDebugModeEnabled)
+            Toggle("Enable debug mode", isOn: $settings.isDebugModeEnabled)
               .toggleStyle(BrandedToggleStyle())
             Text("Persists across relaunches. Toggle with Cmd+Shift+D from anywhere.")
               .font(.stHelper)
               .foregroundStyle(.stTextTertiary)
           }
         }
-        if appState.settings.isDebugModeEnabled {
+        if settings.isDebugModeEnabled {
           BrandedRow {
-            Picker("Log Level", selection: $state.settings.debugLogLevel) {
+            Picker("Log Level", selection: $settings.debugLogLevel) {
               ForEach(DebugLogLevel.allCases, id: \.self) { level in
                 Text(level.displayName).tag(level)
               }
@@ -36,7 +43,7 @@ struct DiagnosticsSettingsView: View {
           BrandedRow(showDivider: false) {
             VStack(alignment: .leading, spacing: 4) {
               Button("Restart Onboarding…") {
-                appState.settings.onboardingState = .notStarted
+                settings.onboardingState = .notStarted
                 appWindowCoordinator.openOnboardingWindow()
               }
               .disabled(liveRecordingState.pipelineState != .idle)
@@ -118,11 +125,11 @@ struct DiagnosticsSettingsView: View {
           BrandedRow {
             HStack {
               Button("Run ASR Benchmark") {
-                Task { await diagnostics.benchmark.run(using: appState.asrManager) }
+                Task { await diagnostics.benchmark.run(using: asrManager) }
               }
               Button("Run Pipeline Benchmark") {
                 Task {
-                  await diagnostics.benchmark.runPipelineBenchmark(using: appState.asrManager)
+                  await diagnostics.benchmark.runPipelineBenchmark(using: asrManager)
                 }
               }
             }
@@ -193,8 +200,8 @@ struct DiagnosticsSettingsView: View {
           HStack {
             Text("Model status:")
             Spacer()
-            Text(appState.asrManager.isModelLoaded ? "Loaded" : "Unloaded")
-              .foregroundStyle(appState.asrManager.isModelLoaded ? .stSuccess : .secondary)
+            Text(asrManager.isModelLoaded ? "Loaded" : "Unloaded")
+              .foregroundStyle(asrManager.isModelLoaded ? .stSuccess : .secondary)
           }
         }
       }

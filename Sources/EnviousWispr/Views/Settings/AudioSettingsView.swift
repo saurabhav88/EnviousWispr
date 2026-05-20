@@ -1,26 +1,28 @@
 import EnviousWisprAudio
 import EnviousWisprCore
+import EnviousWisprServices
 import SwiftUI
 
 /// Audio input device selection and noise processing settings.
 struct AudioSettingsView: View {
-  @Environment(AppState.self) private var appState
+  @Environment(SettingsManager.self) private var settings
+  @Environment(AudioDeviceList.self) private var audioDeviceList
 
   var body: some View {
-    @Bindable var state = appState
+    @Bindable var settings = settings
 
     SettingsContentView {
       BrandedSection(header: "Input Device") {
         BrandedRow {
-          Picker("Input Device", selection: $state.settings.preferredInputDeviceIDOverride) {
+          Picker("Input Device", selection: $settings.preferredInputDeviceIDOverride) {
             Text("Auto").tag("")
-            ForEach(appState.audioDeviceList.availableInputDevices) { device in
+            ForEach(audioDeviceList.availableInputDevices) { device in
               Text(device.name).tag(device.uid)
             }
           }
         }
         BrandedRow(showDivider: false) {
-          if appState.settings.preferredInputDeviceIDOverride.isEmpty,
+          if settings.preferredInputDeviceIDOverride.isEmpty,
             let outputID = AudioDeviceEnumerator.defaultOutputDeviceID(),
             AudioDeviceEnumerator.isBluetoothDevice(outputID)
           {
@@ -43,7 +45,7 @@ struct AudioSettingsView: View {
 
       BrandedSection(header: "Microphone Readiness") {
         BrandedRow {
-          Picker("Keep microphone ready", selection: $state.settings.warmEnginePolicy) {
+          Picker("Keep microphone ready", selection: $settings.warmEnginePolicy) {
             Text("Off").tag(WarmEnginePolicy.off)
             Text("10 seconds").tag(WarmEnginePolicy.seconds10)
             Text("30 seconds").tag(WarmEnginePolicy.seconds30)
@@ -58,7 +60,7 @@ struct AudioSettingsView: View {
             )
             .font(.stHelper)
             .foregroundStyle(.stTextTertiary)
-            if state.settings.warmEnginePolicy == .always {
+            if settings.warmEnginePolicy == .always {
               Text(
                 "Always keeps the microphone engine active. The macOS microphone indicator may remain visible and power usage may increase."
               )
