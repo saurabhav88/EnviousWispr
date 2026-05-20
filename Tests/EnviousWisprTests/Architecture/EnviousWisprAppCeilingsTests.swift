@@ -65,13 +65,21 @@ import Testing
   ///   instance is constructed in `init()` with five menu-action closures and
   ///   threaded into `appDelegate.attach(...)`. Not `.environment(...)`-injected
   ///   — no SwiftUI view consumes the menu surface.
+  /// - 16 → 17 in PR-B.4 of epic #763 (2026-05-20, #799) for
+  ///   `AppLifecycleCoordinator`. Bible §30 entry: PR-B.4 lifts the
+  ///   process-lifecycle sequence (launch / become-active / terminate side
+  ///   effects, the three process-lifetime audio objects) off AppDelegate into
+  ///   a dedicated App-owned home. The `@State` instance is constructed last in
+  ///   `init()` from seven already-built dependencies and threaded into
+  ///   `appDelegate.attach(...)`. This is the final PR-B home — `AppDelegate`
+  ///   ends as a thin AppKit adapter. Not `.environment(...)`-injected.
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
     #expect(
-      count <= 16,
+      count <= 17,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 16. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 17. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.
@@ -114,14 +122,19 @@ import Testing
   /// `MenuBarController` construction (~22 lines: five menu-action closures),
   /// the `@State` declaration, and the `_menuBarController` assignment. The
   /// `attach(...)` arg count is unchanged (drops two, adds one).
+  /// Ratcheted 370→385 in PR-B.4 of epic #763 (2026-05-20, #799) to absorb
+  /// `AppLifecycleCoordinator` construction (the seven-dependency `init` call)
+  /// and its `@State` declaration + assignment, net of the `attach(...)` call
+  /// collapsing from eight arguments to two. Cap set by the deterministic rule
+  /// (post-change actual 375 + 10, rounded up to the nearest 5).
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 370,
+      lineCount <= 385,
       """
-      EnviousWisprApp line count exceeded: \(lineCount) > 370. \
+      EnviousWisprApp line count exceeded: \(lineCount) > 385. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }

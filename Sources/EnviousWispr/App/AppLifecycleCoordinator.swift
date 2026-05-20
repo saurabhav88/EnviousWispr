@@ -1,0 +1,254 @@
+import AppKit
+import EnviousWisprASR
+import EnviousWisprAudio
+import EnviousWisprCore
+import EnviousWisprLLM
+import EnviousWisprServices
+import Foundation
+
+// Issue #574: `EnviousWisprAudio` and `EnviousWisprASR` are needed in release
+// builds because `AudioSystemEventReporter` (production telemetry) references
+// `AudioCaptureInterface` and `ASRManagerInterface` from those modules.
+
+#if DEBUG
+  import EnviousWisprPipeline
+#endif
+
+/// PR-B.4 of #763: App-owned home for the process-lifecycle sequence.
+///
+/// Coordinates the launch / foreground-activation / termination side effects
+/// that were previously inlined in `AppDelegate`'s `NSApplicationDelegate`
+/// callbacks. `EnviousWisprApp` owns this as `@State`; `AppDelegate` holds a
+/// weak ref and forwards its three lifecycle callbacks here. The three `run*`
+/// methods are verbatim relocations of the corresponding `AppDelegate`
+/// callback bodies — same launch order, same telemetry, same teardown.
+@MainActor
+final class AppLifecycleCoordinator {
+  // Owned process-lifetime objects: constructed in `runDidFinishLaunching`,
+  // torn down in `runWillTerminate`.
+  private var audioEnvironmentSnapshotter: AudioEnvironmentSnapshotter?
+  private var audioSystemEventReporter: AudioSystemEventReporter?
+
+  #if DEBUG
+    /// V2 fault-injection control surface (issue #291). Started only when
+    /// `EW_FAULT_INJECTION=1` is set in the launching environment. Stopped in
+    /// `runWillTerminate`. Compiled out of release entirely.
+    private var debugFaultEndpoint: DebugFaultEndpoint?
+  #endif
+
+  // Injected dependencies — delegated to, never owned.
+  private let appState: AppState
+  private let dictationRuntime: DictationRuntime
+  private let dictationLifecycleCoordinator: DictationLifecycleCoordinator
+  private let liveRecordingState: LiveRecordingState
+  private let menuBarController: MenuBarController
+  private let appWindowCoordinator: AppWindowCoordinator
+  private let hotkeyService: HotkeyService
+
+  init(
+    appState: AppState,
+    dictationRuntime: DictationRuntime,
+    dictationLifecycleCoordinator: DictationLifecycleCoordinator,
+    liveRecordingState: LiveRecordingState,
+    menuBarController: MenuBarController,
+    appWindowCoordinator: AppWindowCoordinator,
+    hotkeyService: HotkeyService
+  ) {
+    self.appState = appState
+    self.dictationRuntime = dictationRuntime
+    self.dictationLifecycleCoordinator = dictationLifecycleCoordinator
+    self.liveRecordingState = liveRecordingState
+    self.menuBarController = menuBarController
+    self.appWindowCoordinator = appWindowCoordinator
+    self.hotkeyService = hotkeyService
+    // Icon-refresh seam: the window coordinator's two onboarding-dismiss
+    // callsites route through this closure. Was wired in `AppDelegate.attach`
+    // before PR-B.4.
+    appWindowCoordinator.onOnboardingDismissed = { [weak menuBarController] in
+      menuBarController?.updateIcon()
+    }
+  }
+
+  func runDidFinishLaunching() {
+    // Hide dock icon on launch — we're a menu bar utility.
+    // If onboarding is needed, stay .regular so SwiftUI creates the main window
+    // hierarchy and ActionWirer can wire callbacks before opening the
+    // onboarding window.
+    if appState.settings.onboardingState == .completed {
+      NSApp.setActivationPolicy(.accessory)
+    }
+
+    // Issue #445: launch-time telemetry callback wiring. ASRManagerProxy/
+    // ASRManager fire this closure from inside `loadModelSilently()` so the
+    // launch-warming path (previously silent on success) becomes visible in
+    // PostHog.
+    ASRManagerProxy.launchPreloadReporter = { backend, result, durationMs in
+      Task { @MainActor in
+        TelemetryService.shared.launchModelPreloadCompleted(
+          backend: backend, result: result, durationMs: durationMs)
+      }
+    }
+    ASRManager.launchPreloadReporter = { backend, result, durationMs in
+      Task { @MainActor in
+        TelemetryService.shared.launchModelPreloadCompleted(
+          backend: backend, result: result, durationMs: durationMs)
+      }
+    }
+
+    // PR-B.2 of #763: the window-close observer lives on AppWindowCoordinator.
+    appWindowCoordinator.installOnLaunch()
+
+    // PR-B.3 of #763: the menu bar surface lives on `MenuBarController`.
+    menuBarController.installStatusItem()
+
+    // Update menu bar icon whenever pipeline state changes. The closure is
+    // composite — it also triggers the audio-environment snapshotter on
+    // `.recording`. PR-B.4 of #763: both the snapshotter and this closure now
+    // live in `AppLifecycleCoordinator`, so the closure is one coherent unit.
+    dictationLifecycleCoordinator.onPipelineStateChange = { [weak self] state in
+      guard let self else { return }
+      self.menuBarController.updateIcon()
+      // Issue #739: do NOT forward pipeline state to the update widget. The
+      // widget is bundle-version-driven only — visible whenever an update is
+      // pending, matching Claude Desktop / Slack / Cursor conventions.
+      if state == .recording {
+        self.audioEnvironmentSnapshotter?.recordingStarted()
+      }
+    }
+
+    // Start hotkeys now that the event loop is running.
+    // Carbon RegisterEventHotKey requires an active run loop for event delivery.
+    dictationRuntime.startHotkeyServiceIfEnabled()
+
+    if appState.settings.onboardingState == .completed {
+      let s = appState.settings
+      let hasKeys =
+        (try? appState.keychainManager.retrieve(key: KeychainManager.openAIKeyID)) != nil
+        || (try? appState.keychainManager.retrieve(key: KeychainManager.geminiKeyID)) != nil
+      TelemetryService.shared.settingsSnapshot(
+        asrBackend: s.selectedBackend.rawValue,
+        llmProvider: s.llmProvider.rawValue,
+        recordingMode: s.recordingMode.rawValue,
+        fillerRemoval: s.fillerRemovalEnabled,
+        customWordsCount: appState.customWordsCoordinator.customWords.count,
+        hasApiKeys: hasKeys,
+        noiseSuppression: s.noiseSuppression
+      )
+    }
+
+    // Run Apple Intelligence diagnostics via coordinator.
+    // Handles: Sentry context, PostHog event, persistence, first-launch re-check.
+    let isFreshInstall = appState.settings.onboardingState != .completed
+    if isFreshInstall {
+      appState.aiAvailability.firstLaunchCheck()
+    } else {
+      Task { await appState.aiAvailability.checkAvailability(trigger: "app_launch") }
+    }
+
+    // Fire structured app.launched event — uses cached report (loaded from
+    // UserDefaults in coordinator init). No async wait needed.
+    let version =
+      Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+    let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+    let osVer = ProcessInfo.processInfo.operatingSystemVersion
+    let cachedReport = appState.aiAvailability.latestReport
+    TelemetryService.shared.appLaunched(
+      version: version,
+      build: build,
+      osVersion: "\(osVer.majorVersion).\(osVer.minorVersion).\(osVer.patchVersion)",
+      hardware: cachedReport?.hardwareClass ?? "unknown",
+      isFreshInstall: isFreshInstall,
+      aiAvailable: cachedReport?.overallStatus == .available
+    )
+
+    // Check Accessibility permission on launch (query only — never auto-prompt).
+    appState.permissions.refreshOnLaunch()
+    menuBarController.updateIcon()  // Reflect accessibility warning state in icon.
+
+    // Begin smart polling if Accessibility is not yet granted.
+    appState.permissions.startMonitoring()
+
+    // Pre-warm LLM backend with a real inference request.
+    LLMNetworkSession.shared.preWarmModel(
+      provider: appState.settings.llmProvider,
+      model: appState.settings.llmModel,
+      keychainManager: appState.keychainManager
+    )
+
+    // Onboarding auto-open is handled by ActionWirer inside the main Window
+    // scene. No deferred dispatch required here.
+
+    #if DEBUG
+      // V2 fault-injection (issue #291). Only when explicitly opted in via env var.
+      if DebugFaultEndpoint.isRequested {
+        let endpoint = DebugFaultEndpoint(
+          audioProxy: appState.audioCapture as? AudioCaptureProxy,
+          asrProxy: appState.asrManager as? ASRManagerProxy,
+          parakeetPipeline: appState.pipeline,
+          whisperKitPipeline: appState.whisperKitPipeline,
+          activeBackend: { [weak self] in
+            self?.appState.settings.selectedBackend ?? .parakeet
+          }
+        )
+        endpoint.start()
+        debugFaultEndpoint = endpoint
+      }
+    #endif
+
+    audioEnvironmentSnapshotter = AudioEnvironmentSnapshotter(
+      routeProvider: { [weak self] in
+        self?.appState.audioCapture.currentAudioRoute
+      }
+    )
+    SentryBreadcrumb.audioEnvironmentProvider = { [weak self] in
+      self?.audioEnvironmentSnapshotter?.latestForError()
+    }
+
+    // Production telemetry: OS-level audio events (issue #574). Always on in
+    // release; ships to all users so we get cross-user data on what real
+    // devices/routes/connections users actually hit.
+    audioSystemEventReporter = AudioSystemEventReporter(
+      audioCapture: appState.audioCapture,
+      asrManager: appState.asrManager,
+      pipelineStateProvider: { [weak self] in
+        // PR7 of #763: pipeline phase resolves through LiveRecordingState.
+        self?.liveRecordingState.pipelineState ?? .idle
+      },
+      onAudioDeviceEvent: { [weak self] in
+        self?.audioEnvironmentSnapshotter?.audioDeviceEventOccurred()
+      }
+    )
+  }
+
+  func runDidBecomeActive() {
+    audioEnvironmentSnapshotter?.applicationBecameActive()
+
+    // Re-warm LLM backend when app comes to foreground.
+    LLMNetworkSession.shared.preWarmModel(
+      provider: appState.settings.llmProvider,
+      model: appState.settings.llmModel,
+      keychainManager: appState.keychainManager
+    )
+  }
+
+  func runWillTerminate() {
+    // PR-B.2 of #763: both window-close observers are torn down by the
+    // coordinator now.
+    appWindowCoordinator.tearDown()
+    appState.setup.ollamaSetup.cleanup()
+    // PR10 of #763 — shared HotkeyService is owned by EnviousWisprApp as
+    // `@State`; this coordinator holds an injected ref.
+    hotkeyService.stop()
+    LLMNetworkSession.shared.invalidate()
+
+    #if DEBUG
+      debugFaultEndpoint?.stop()
+      debugFaultEndpoint = nil
+    #endif
+
+    // Issue #574: tear down audio-event observers cleanly.
+    audioSystemEventReporter = nil
+    SentryBreadcrumb.audioEnvironmentProvider = nil
+    audioEnvironmentSnapshotter = nil
+  }
+}

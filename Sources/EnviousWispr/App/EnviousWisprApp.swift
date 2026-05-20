@@ -43,6 +43,12 @@ struct EnviousWisprApp: App {
   /// `AppDelegate` holds a weak ref pushed via `attach(...)`. Not
   /// `.environment(...)`-injected — no SwiftUI view consumes the menu surface.
   @State private var menuBarController: MenuBarController
+  /// PR-B.4 of #763: App-owned home for the process-lifecycle sequence
+  /// (launch / foreground-activation / termination side effects). Strong owner
+  /// is this `@State`; `AppDelegate` holds a weak ref pushed via `attach(...)`
+  /// and forwards its three lifecycle callbacks here. Not
+  /// `.environment(...)`-injected — no SwiftUI view consumes it.
+  @State private var appLifecycleCoordinator: AppLifecycleCoordinator
 
   @State private var isOnboardingPresented: Bool =
     !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
@@ -226,6 +232,20 @@ struct EnviousWisprApp: App {
       )
     )
 
+    // PR-B.4 of #763: process-lifecycle home. Constructed last — it injects
+    // seven already-built dependencies and wires the onboarding-dismiss
+    // icon-refresh seam in its `init`. Holds the launch / become-active /
+    // terminate bodies that were inlined in `AppDelegate` before PR-B.4.
+    let appLifecycleCoordinator = AppLifecycleCoordinator(
+      appState: appState,
+      dictationRuntime: dictationRuntime,
+      dictationLifecycleCoordinator: dictationLifecycleCoordinator,
+      liveRecordingState: liveRecordingState,
+      menuBarController: menuBarController,
+      appWindowCoordinator: appWindowCoordinator,
+      hotkeyService: hotkeyService
+    )
+
     _appState = State(initialValue: appState)
     _navigationCoordinator = State(initialValue: navigationCoordinator)
     _diagnosticsCoordinator = State(initialValue: diagnosticsCoordinator)
@@ -240,23 +260,18 @@ struct EnviousWisprApp: App {
     _hotkeyService = State(initialValue: hotkeyService)
     _appWindowCoordinator = State(initialValue: appWindowCoordinator)
     _menuBarController = State(initialValue: menuBarController)
+    _appLifecycleCoordinator = State(initialValue: appLifecycleCoordinator)
 
     // PR-A: push App-owned homes into AppDelegate before any
     // NSApplicationDelegate callback fires.
-    // PR10 of #763: also push `dictationRuntime` (so AppDelegate's menu-bar
-    // `toggleRecording` action and `applicationDidFinishLaunching`
-    // hotkey-start path resolve through the new façade) and `hotkeyService`
-    // (so `applicationWillTerminate` can stop the shared service without
-    // reaching through the deleted `appState.hotkeyService` path).
+    // PR-B.4 of #763: `AppDelegate` is now a thin AppKit adapter — it receives
+    // only `sparkleUpdateController` (for `applicationWillFinishLaunching`) and
+    // `appLifecycleCoordinator` (for the launch / become-active / terminate
+    // callbacks). All other dependencies are injected into
+    // `AppLifecycleCoordinator.init` instead.
     appDelegate.attach(
-      appState: appState,
       sparkleUpdateController: sparkleUpdateController,
-      liveRecordingState: liveRecordingState,
-      dictationLifecycleCoordinator: dictationLifecycleCoordinator,
-      dictationRuntime: dictationRuntime,
-      hotkeyService: hotkeyService,
-      appWindowCoordinator: appWindowCoordinator,
-      menuBarController: menuBarController
+      appLifecycleCoordinator: appLifecycleCoordinator
     )
 
     // Initialize observability (PostHog + Sentry) unconditionally at launch —
