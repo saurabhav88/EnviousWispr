@@ -3,17 +3,17 @@ import SwiftUI
 
 /// Global hotkey configuration.
 struct ShortcutsSettingsView: View {
-  @Environment(AppState.self) private var appState
+  @Environment(SettingsManager.self) private var settings
 
   var body: some View {
-    @Bindable var state = appState
+    @Bindable var settings = settings
 
     SettingsContentView {
       BrandedSection(header: "Transcribe Shortcut") {
         BrandedRow {
           HotkeyRecorderView(
-            keyCode: $state.settings.toggleKeyCode,
-            modifiers: $state.settings.toggleModifiers,
+            keyCode: $settings.toggleKeyCode,
+            modifiers: $settings.toggleModifiers,
             defaultKeyCode: ModifierKeyCodes.rightOption,
             defaultModifiers: [],
             label: "Shortcut"
@@ -22,18 +22,18 @@ struct ShortcutsSettingsView: View {
         BrandedRow {
           VStack(alignment: .leading, spacing: 4) {
             Toggle(
-              appState.settings.isPushToTalk ? "Push to Talk" : "Toggle",
-              isOn: $state.settings.isPushToTalk
+              settings.isPushToTalk ? "Push to Talk" : "Toggle",
+              isOn: $settings.isPushToTalk
             )
             .toggleStyle(BrandedToggleStyle())
             Text(
-              appState.settings.isPushToTalk
+              settings.isPushToTalk
                 ? "Hold the hotkey to record, release to stop."
                 : "Press the hotkey to start recording, press again to stop."
             )
             .font(.stHelper)
             .foregroundStyle(.stTextTertiary)
-            if appState.settings.isPushToTalk {
+            if settings.isPushToTalk {
               Text("Double-press to go hands-free. Triple-press to cancel.")
                 .font(.stHelper)
                 .foregroundStyle(.stTextTertiary.opacity(0.72))
@@ -42,8 +42,8 @@ struct ShortcutsSettingsView: View {
         }
         BrandedRow {
           HotkeyRecorderView(
-            keyCode: $state.settings.cancelKeyCode,
-            modifiers: $state.settings.cancelModifiers,
+            keyCode: $settings.cancelKeyCode,
+            modifiers: $settings.cancelModifiers,
             defaultKeyCode: 53,
             defaultModifiers: [],
             label: "Cancel recording"

@@ -10,7 +10,7 @@ import SwiftUI
 /// dismisses. The sheet is a settings detail, never an interrupt: nothing
 /// here blocks dictation.
 struct LanguageLockSheet: View {
-  @Environment(AppState.self) private var appState
+  @Environment(SettingsManager.self) private var settings
   @Environment(\.dismiss) private var dismiss
 
   @State private var searchText: String = ""
@@ -195,7 +195,7 @@ struct LanguageLockSheet: View {
     // W6 telemetry: record the mode transition before we mutate settings so
     // we can read the prior value for `from_lang`.
     let fromLang: String
-    switch appState.settings.languageMode {
+    switch settings.languageMode {
     case .auto:
       fromLang = "auto"
     case .locked(let prior):
@@ -206,13 +206,13 @@ struct LanguageLockSheet: View {
     // "after_bad_detect" path is reserved for the passive-chip CTA (future
     // hook) so we do not mis-label a Settings-driven change.
     let reason: String
-    if case .auto = appState.settings.languageMode {
+    if case .auto = settings.languageMode {
       reason = "first_time"
     } else {
       reason = "preference"
     }
 
-    appState.settings.languageMode = .locked(entry.code)
+    settings.languageMode = .locked(entry.code)
     TelemetryService.shared.trackManualLockUsed(
       fromLang: fromLang,
       toLang: entry.code,
@@ -222,7 +222,7 @@ struct LanguageLockSheet: View {
   }
 
   private func isCurrentLock(_ code: String) -> Bool {
-    if case .locked(let current) = appState.settings.languageMode {
+    if case .locked(let current) = settings.languageMode {
       return current == code
     }
     return false

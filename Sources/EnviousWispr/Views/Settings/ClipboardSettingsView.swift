@@ -1,22 +1,23 @@
+import EnviousWisprServices
 import SwiftUI
 
 /// Clipboard behavior settings.
 struct ClipboardSettingsView: View {
-  @Environment(AppState.self) private var appState
+  @Environment(SettingsManager.self) private var settings
 
   var body: some View {
-    @Bindable var state = appState
+    @Bindable var settings = settings
 
     SettingsContentView {
       BrandedSection(header: "Clipboard") {
         BrandedRow {
-          Toggle("Auto-copy to clipboard", isOn: $state.settings.autoCopyToClipboard)
+          Toggle("Auto-copy to clipboard", isOn: $settings.autoCopyToClipboard)
             .toggleStyle(BrandedToggleStyle())
         }
         BrandedRow(showDivider: false) {
           VStack(alignment: .leading, spacing: 4) {
             Toggle(
-              "Restore clipboard after paste", isOn: $state.settings.restoreClipboardAfterPaste
+              "Restore clipboard after paste", isOn: $settings.restoreClipboardAfterPaste
             )
             .toggleStyle(BrandedToggleStyle())
             Text("Saves and restores whatever was on your clipboard before pasting the transcript.")

@@ -1,9 +1,10 @@
 import EnviousWisprCore
+import EnviousWisprServices
 import SwiftUI
 
 /// Unified single-window view: History + all settings tabs in one sidebar.
 struct UnifiedWindowView: View {
-  @Environment(AppState.self) private var appState
+  @Environment(SettingsManager.self) private var settings
   @Environment(NavigationCoordinator.self) private var navigationCoordinator
   @Environment(UpdateCoordinatorHolder.self) private var updateCoordinatorHolder
   @State private var selectedSection: SettingsSection = .history
@@ -16,7 +17,7 @@ struct UnifiedWindowView: View {
             Section(group.rawValue) {
               ForEach(group.sections) { section in
                 if section == .whatsNew {
-                  WhatsNewSidebarRow(isUnread: appState.settings.hasUnreadWhatsNew)
+                  WhatsNewSidebarRow(isUnread: settings.hasUnreadWhatsNew)
                     .tag(section)
                 } else {
                   Label(section.label, systemImage: section.icon)
