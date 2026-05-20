@@ -19,7 +19,7 @@ public protocol AudioCaptureInterface: AnyObject {
 
   // Telemetry callbacks (round-4 additions for #285 heart-path Sentry coverage).
   // Producers: source backends (`AVAudioEngineSource`, `AVCaptureSessionSource`,
-  //            `AudioCaptureProxy`). Consumers: pipeline layer + `AppState`.
+  //            `AudioCaptureProxy`). Consumers: pipeline layer + the former root state.
   // All callbacks fire on the MainActor. Conformers that don't produce a given
   // signal leave the closure nil (e.g. direct sources leave XPC callbacks nil).
 

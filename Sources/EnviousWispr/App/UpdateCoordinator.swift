@@ -6,8 +6,8 @@ import SwiftUI
 
 /// App-target coordinator for the in-app update banner (issue #343).
 /// Owns the `UpdateAvailabilityService` and the `installAction` closure that
-/// invokes Sparkle. Limb classification: keeps update-banner state OFF `AppState`
-/// (whose 19-collaborator ceiling is enforced by `AppStateCeilingsTests`).
+/// invokes Sparkle. Limb classification: keeps update-banner state in a
+/// dedicated home rather than a shared state bag (epic #763).
 @MainActor
 final class UpdateCoordinator {
   let service: UpdateAvailabilityService

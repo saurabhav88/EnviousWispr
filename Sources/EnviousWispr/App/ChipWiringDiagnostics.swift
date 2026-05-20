@@ -2,14 +2,14 @@ import EnviousWisprCore
 import Foundation
 
 /// Codex grounded review 2026-05-18 Finding 5: DEBUG-only one-shot warning if
-/// AppState receives a chip event before `attachLanguageSuggestionPresenter` is
+/// the former root state receives a chip event before `attachLanguageSuggestionPresenter` is
 /// called. Should not happen in production (AppDelegate's instance-init wires
 /// the setter synchronously before the async chip-handler is registered with
 /// the LanguageDetector), but a degenerate test harness or future refactor
 /// could trip it — the warning makes that visible without runtime cost in
 /// production builds.
 ///
-/// Lives in its own file so AppState.swift line count stays bounded under the
+/// Lives in its own file so the former root-state file line count stays bounded under the
 /// migration's evolving ceiling.
 enum ChipWiringDiagnostics {
   #if DEBUG

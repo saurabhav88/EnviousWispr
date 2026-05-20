@@ -21,7 +21,7 @@ import Testing
 ///    fails closed: no transcript mutation, no selection change, no crash.
 ///    The catch block's `AppLogger.shared.log` call is exercised but its
 ///    parity (verbatim message + category) is asserted at code-review time
-///    against `Sources/EnviousWispr/App/AppState.swift:1035-1038` not by an
+///    against `Sources/EnviousWispr/App/the former root-state file` not by an
 ///    AppLogger sink seam (the seam would require a refactor outside PR6
 ///    scope; Codex grounded review accepted the narrowing).
 @MainActor

@@ -11,7 +11,7 @@ import Foundation
 ///
 /// Lifetime: held by `DictationRuntime`, which is `@State` on
 /// `EnviousWisprApp`, so the router lives for the app's lifetime. No `deinit`
-/// cleanup: same shape as the prior AppState code, where these observer
+/// cleanup: same shape as the prior the former root state code, where these observer
 /// blocks and callback slots persisted for the full app lifetime. Tests
 /// construct fresh routers against spy mocks, so test-side cleanup is not
 /// required either.

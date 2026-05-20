@@ -13,7 +13,6 @@ struct EnviousWisprApp: App {
 
   // PR-A of #763: SwiftUI App struct is the composition root. App-owned homes
   // live here as `@State` and are injected into views via `.environment(...)`.
-  @State private var appState: AppState
   @State private var navigationCoordinator: NavigationCoordinator
   @State private var diagnosticsCoordinator: DiagnosticsCoordinator
   @State private var languageSuggestionPresenter: LanguageSuggestionPresenter
@@ -29,10 +28,9 @@ struct EnviousWisprApp: App {
   @State private var menuBarController: MenuBarController
   @State private var appLifecycleCoordinator: AppLifecycleCoordinator
 
-  // PR-C.1 of #763: the nine view-facing subsystems that AppState used to own
-  // are now App-owned `@State` homes, injected into both Window scenes'
-  // environment. As of PR-C.3 every Settings / Main / Onboarding view reads
-  // these homes directly; `appState` is receive-only and deleted in PR-C.4.
+  // The nine view-facing subsystems are App-owned `@State` homes, injected
+  // into both Window scenes' environment. Every Settings / Main / Onboarding
+  // view reads these homes directly (epic #763).
   @State private var settings: SettingsManager
   @State private var permissions: PermissionsService
   @State private var asrManager: any ASRManagerInterface
@@ -43,20 +41,19 @@ struct EnviousWisprApp: App {
   @State private var keychainManager: KeychainManager
   @State private var llmDiscovery: LLMModelDiscoveryCoordinator
 
-  // PR-C.3 of #763: the re-polish service is now App-owned. It was an
-  // `init()` local handed to `AppState`; with views and consumers migrated
-  // off `AppState`, the composition root holds the canonical reference.
+  // The re-polish service is App-owned (epic #763): the composition root
+  // holds the canonical reference; views and consumers read it directly.
   @State private var polishService: TranscriptPolishService
 
   @State private var isOnboardingPresented: Bool =
     !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
 
   init() {
-    // ===== PR-C.1 of #763: subsystem construction (relocated from AppState.init) =====
-    // `EnviousWisprApp` is the composition root. Every subsystem is constructed
-    // here and handed to a receive-only `AppState`. Construction order is
-    // load-bearing: `polishService` before the pipelines (they read its
-    // `pasteCompletionRegistry`); `settingsSync` after both pipelines + `setup`.
+    // ===== Subsystem construction (epic #763) =====
+    // `EnviousWisprApp` is the composition root: every subsystem is constructed
+    // here. Construction order is load-bearing: `polishService` before the
+    // pipelines (they read its `pasteCompletionRegistry`); `settingsSync` after
+    // both pipelines + `setup`.
 
     let settings = SettingsManager()
     let permissions = PermissionsService()
@@ -162,9 +159,8 @@ struct EnviousWisprApp: App {
     }
 
     // Custom-words propagator wiring (seed → register consumers → install
-    // `onWordsChanged`). Phase D (#496). PR-C.1: `wireCustomWords` now
-    // strong-captures the propagator so its lifetime survives AppState deletion
-    // in PR-C.4.
+    // `onWordsChanged`). Phase D (#496). `wireCustomWords` strong-captures the
+    // propagator so its lifetime is anchored to `customWordsCoordinator`.
     wireCustomWords(
       propagator: customWordsPropagator,
       initialWords: customWordsCoordinator.customWords,
@@ -207,33 +203,11 @@ struct EnviousWisprApp: App {
       setup?.startPreloadObservation()
     }
 
-    // ===== Receive-only AppState (PR-C.1 of #763) =====
-    let appState = AppState(
-      settings: settings,
-      permissions: permissions,
-      audioCapture: audioCapture,
-      asrManager: asrManager,
-      keychainManager: keychainManager,
-      recordingOverlay: recordingOverlay,
-      setup: setup,
-      audioDeviceList: audioDeviceList,
-      captureTelemetry: captureTelemetry,
-      pipeline: pipeline,
-      whisperKitPipeline: whisperKitPipeline,
-      polishService: polishService,
-      settingsSync: settingsSync,
-      customWordsCoordinator: customWordsCoordinator,
-      customWordsPropagator: customWordsPropagator,
-      llmDiscovery: llmDiscovery,
-      aiAvailability: aiAvailability
-    )
-
     let navigationCoordinator = NavigationCoordinator()
     let diagnosticsCoordinator = DiagnosticsCoordinator()
 
     // PR4 of #763 construction-order constraint preserved: LanguageSuggestionPresenter
-    // captures `recordingOverlay` through narrow closures. Build presenter,
-    // then attach to AppState.
+    // captures `recordingOverlay` through narrow closures.
     let overlay = recordingOverlay
     let languageSuggestionPresenter = LanguageSuggestionPresenter(
       showOverlay: { [weak overlay] intent in overlay?.show(intent: intent) },
@@ -242,14 +216,8 @@ struct EnviousWisprApp: App {
       // "Recording complete" AX announcement (PR4 Codex code-diff r5 [P3]).
       hideOverlay: { [weak overlay] in overlay?.hide() }
     )
-    // Setter injection: appState holds a reference to the presenter for the
-    // not-yet-migrated views and pipeline state-change closures.
-    appState.attachLanguageSuggestionPresenter(languageSuggestionPresenter)
-
-    // PR-C.1 of #763: passive-chip handler relocated from `AppState.init`.
-    // Wires the `LanguageDetector` actor's callback to the presenter now that
-    // it exists. Previously wired inside `AppState.init` capturing `self`
-    // weakly; the presenter is now captured directly (App-lifetime `@State`).
+    // Wires the `LanguageDetector` actor's passive-chip callback to the
+    // presenter. The presenter is captured directly (App-lifetime `@State`).
     Task {
       await languageDetector.setPassiveChipHandler {
         @Sendable (trigger: PassiveChipTrigger) in
@@ -306,13 +274,9 @@ struct EnviousWisprApp: App {
       asrManager: asrManager,
       llmDiscovery: llmDiscovery
     )
-    appState.attachLiveRecordingState(liveRecordingState)
-    appState.attachLastRecordingResult(lastRecordingResult)
-    appState.attachBackendMetadata(backendMetadata)
-
-    // PR-C.3 of #763: `LiveRecordingState` provides `DictationActivityProviding`
-    // (replaces `AppState`'s conformance). `polishService` blocks a re-polish
-    // while live dictation is in flight. Wired after `liveRecordingState` exists.
+    // `LiveRecordingState` provides `DictationActivityProviding`: `polishService`
+    // blocks a re-polish while live dictation is in flight. Wired after
+    // `liveRecordingState` exists.
     polishService.setDictationActivity(liveRecordingState)
 
     // PR9 of #763: construct the lifecycle home BEFORE DictationRuntime.
@@ -396,8 +360,8 @@ struct EnviousWisprApp: App {
       )
     )
 
-    // PR-B.4 of #763: process-lifecycle home. Constructed last.
-    // PR-C.3 of #763: receives the 10 specific homes it reads, not `AppState`.
+    // PR-B.4 of #763: process-lifecycle home. Constructed last. It receives the
+    // 10 specific homes it reads.
     let appLifecycleCoordinator = AppLifecycleCoordinator(
       settings: settings,
       permissions: permissions,
@@ -417,7 +381,6 @@ struct EnviousWisprApp: App {
       hotkeyService: hotkeyService
     )
 
-    _appState = State(initialValue: appState)
     _navigationCoordinator = State(initialValue: navigationCoordinator)
     _diagnosticsCoordinator = State(initialValue: diagnosticsCoordinator)
     _languageSuggestionPresenter = State(initialValue: languageSuggestionPresenter)
@@ -462,7 +425,6 @@ struct EnviousWisprApp: App {
     Window(AppConstants.appName, id: "main") {
       UnifiedWindowView()
         .frame(minWidth: 580, minHeight: 400)
-        .environment(appState)
         .environment(navigationCoordinator)
         .environment(diagnosticsCoordinator)
         .environment(languageSuggestionPresenter)
@@ -473,7 +435,7 @@ struct EnviousWisprApp: App {
         .environment(backendMetadata)
         .environment(dictationRuntime)
         .environment(appWindowCoordinator)
-        // PR-C.1 of #763: nine view-facing homes injected alongside `appState`.
+        // The nine view-facing homes (epic #763).
         .environment(settings)
         .environment(permissions)
         .environment(customWordsCoordinator)
@@ -499,12 +461,11 @@ struct EnviousWisprApp: App {
       OnboardingV2View(onComplete: {
         appWindowCoordinator.closeOnboardingWindow()
       })
-      .environment(appState)
       .environment(navigationCoordinator)
       .environment(languageSuggestionPresenter)
       .environment(dictationRuntime)
       .environment(appWindowCoordinator)
-      // PR-C.1 of #763: nine view-facing homes injected alongside `appState`.
+      // The nine view-facing homes (epic #763).
       .environment(settings)
       .environment(permissions)
       .environment(customWordsCoordinator)
@@ -523,8 +484,8 @@ struct EnviousWisprApp: App {
 /// Hidden view that wires SwiftUI environment actions into App-owned homes.
 /// Must live inside a SwiftUI view hierarchy to access @Environment.
 private struct ActionWirer: View {
-  /// PR-C.3 of #763: the onboarding-auto-open gate reads `onboardingState`
-  /// off the settings store directly, not via `AppState`.
+  /// The onboarding-auto-open gate reads `onboardingState` off the settings
+  /// store directly (epic #763).
   let settings: SettingsManager
   /// PR-B.2 of #763: the three SwiftUI window bridges are wired onto the
   /// coordinator now, not AppDelegate.

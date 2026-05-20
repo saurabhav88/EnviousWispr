@@ -5,7 +5,7 @@ import Testing
 @testable import EnviousWisprPipeline
 
 /// Characterization tests pinning the current behavior of the state-change
-/// closures at `AppState.swift:344-406` (Parakeet) and `:409-463` (WhisperKit).
+/// closures at the former root-state file (Parakeet) and `:409-463` (WhisperKit).
 ///
 /// The planner is a pure projection — tests drive each state case with every
 /// clipboardFallback / polishError / hasTranscript combination that the

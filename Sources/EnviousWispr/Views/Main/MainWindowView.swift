@@ -12,7 +12,7 @@ struct StatusView: View {
   @Environment(LastRecordingResult.self) private var lastRecordingResult
   @Environment(BackendMetadata.self) private var backendMetadata
   // PR10 of #763: recording-control surface (toggle, cancel, reset,
-  // hotkey description) moved off AppState onto DictationRuntime façade.
+  // hotkey description) moved off the former root state onto DictationRuntime façade.
   @Environment(DictationRuntime.self) private var dictationRuntime
   @Environment(\.asrManager) private var asrManagerEnv
   @State private var elapsed: TimeInterval = 0

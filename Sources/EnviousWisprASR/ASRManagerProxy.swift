@@ -135,7 +135,7 @@ public final class ASRManagerProxy: ASRManagerInterface {
   }
 
   /// Issue #445: launch-time telemetry callback. Set at app startup by
-  /// AppDelegate (one-line assignment, no AppState collaborator growth).
+  /// AppDelegate (one-line assignment, no former-root-state collaborator growth).
   /// `EnviousWisprASR` cannot depend on `EnviousWisprServices` per
   /// architecture-rules.md dependency direction, so the actual PostHog
   /// emission lives outside this module — we just hand off the timing.
@@ -145,7 +145,7 @@ public final class ASRManagerProxy: ASRManagerInterface {
   public nonisolated(unsafe) static var launchPreloadReporter:
     (@Sendable (String, String, Int) -> Void)?
 
-  /// Self-contained — does NOT grow AppState. Emits a PostHog event so we can
+  /// Self-contained — does NOT grow the former root state. Emits a PostHog event so we can
   /// finally see launch-time model-load behavior in production (success,
   /// duration, failure rate). Pre-#445 this path was completely silent on
   /// success by design.

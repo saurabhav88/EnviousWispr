@@ -6,13 +6,12 @@ import Testing
 /// Unit tests for `LastRecordingResult` (PR7 of epic #763).
 ///
 /// Trivial coverage by design: this home is a single-field observable
-/// storage; AppState's existing state-change closures push to
+/// storage; the former root state's existing state-change closures push to
 /// `polishError`, and `toggleRecording` resets it on a new recording
 /// start. The full reset/cancel/failure matrix is exercised by Live UAT,
-/// not unit tests — pushing AppState's state-change closures from a unit
-/// test would require constructing AppState (which pulls in real audio
-/// capture, ASR, pipelines and was explicitly avoided by
-/// `AppStateCeilingsTests` for the same reason).
+/// not unit tests — pushing the former root state's state-change closures from a unit
+/// test would require constructing it (which pulls in real audio capture,
+/// ASR, and pipelines).
 @MainActor
 @Suite("LastRecordingResult")
 struct LastRecordingResultTests {

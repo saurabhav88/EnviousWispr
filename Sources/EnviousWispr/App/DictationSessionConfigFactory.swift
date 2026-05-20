@@ -7,7 +7,7 @@ import EnviousWisprServices
 /// source, current settings, paste-intent inference, and active-pipeline idle
 /// state at recording-start dispatch. Stateless: no stored state, no lifecycle.
 ///
-/// Extracted from `AppState.makeDictationSessionConfig(triggerSource:)` per
+/// Extracted from `the former root state(triggerSource:)` per
 /// epic #763 PR5. Decision-tree rule #17 in `.claude/knowledge/appstate-ownership.md`.
 enum DictationSessionConfigFactory {
   @MainActor

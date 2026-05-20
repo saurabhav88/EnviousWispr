@@ -9,7 +9,7 @@ import Testing
 /// The proxy itself is not directly testable in isolation (the XPC handlers
 /// run inside its private static factory functions), so this asserts the
 /// CONTRACT — the struct preserves the field and defaults to nil. Together
-/// with the AppState breadcrumb wiring tests, this guards the diagnostic path
+/// with the former root state breadcrumb wiring tests, this guards the diagnostic path
 /// from `Recording started → ...ms → XPC interrupt` to Sentry.
 @Suite("XPCErrorContext recordingDurationNs (#455)")
 struct XPCErrorContextRecordingDurationTests {
@@ -47,9 +47,9 @@ struct XPCErrorContextRecordingDurationTests {
     #expect(ctx.recordingDurationNs == 250_000_000)
   }
 
-  /// Demonstrates the duration conversion that AppState.onXPCServiceError
+  /// Demonstrates the duration conversion that the former root state
   /// uses to populate the `audio.recording_duration_ms` breadcrumb extra.
-  /// This isn't AppState itself but documents the exact math; if AppState's
+  /// This isn't the former root state itself but documents the exact math; if the former root state's
   /// conversion drifts, this test still passes — making the drift visible at
   /// review time, where the Sentry breadcrumb field name has to match.
   @Test("nanosecond → millisecond conversion shape used by the breadcrumb")

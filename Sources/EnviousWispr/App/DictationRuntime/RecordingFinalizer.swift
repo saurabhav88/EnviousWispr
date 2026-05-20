@@ -5,7 +5,7 @@ import EnviousWisprServices
 import Foundation
 
 /// PR10 of #763 — owns the stop / cancel / lock-on path lifted out of
-/// AppState. User stop dispatches `.requestStop`. User cancel emits
+/// the former root state. User stop dispatches `.requestStop`. User cancel emits
 /// telemetry first, then clears the chip, clears the hands-free lock,
 /// hides the overlay, then dispatches `.cancelRecording` on the active
 /// backend. Also owns the `lastUserStopRequest` timestamp (read by
@@ -15,7 +15,7 @@ import Foundation
 /// Timing invariant: `userStop()` and `cancel()` mark
 /// `lastUserStopRequest` BEFORE any `await` that could suspend; Starter's
 /// wedge guard reads it after dispatch/prewarm at the same logical point
-/// as the old AppState code at `AppState.swift:466-470` (pre-PR10).
+/// as the old root-state code (pre-PR10).
 /// Clock source is `ContinuousClock`, NOT `Date`.
 @MainActor
 final class RecordingFinalizer {

@@ -8,13 +8,13 @@ import Testing
 /// Unit tests for SetupCoordinator's preload observation behavior.
 ///
 /// SetupCoordinator owns the WhisperKit preload observer that previously lived
-/// on AppState. The observer is gated by two signals: `asrManager.activeBackendType`
+/// on the former root state. The observer is gated by two signals: `asrManager.activeBackendType`
 /// (must be `.whisperKit`) and `whisperKitSetup.setupState` (must reach `.ready`).
 /// When both are satisfied, the injected `preloadAction` closure fires once.
 ///
 /// These tests exercise the gating without touching any real WhisperKit / Ollama
 /// state — the closure-based seam is the whole point of moving this code off
-/// AppState.
+/// the former root state.
 @Suite @MainActor
 struct SetupCoordinatorTests {
 

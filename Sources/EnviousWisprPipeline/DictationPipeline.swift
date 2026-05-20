@@ -56,7 +56,7 @@ public protocol DictationPipeline: AnyObject {
   /// events never throw today but the unified signature lets callers observe
   /// failures without a second protocol method.
   func handle(event: PipelineEvent) async throws
-  /// Surface an error to the pipeline from outside (e.g. `AppState` after
+  /// Surface an error to the pipeline from outside (e.g. the former root state after
   /// `handle(.preWarm)` threw). Intentionally dumb: sets `state = .error(msg)`
   /// and clears transient state. No retry scheduling, no transition logic.
   func setExternalError(_ message: String)
@@ -70,7 +70,7 @@ public protocol DictationPipeline: AnyObject {
   func clearPendingStallRecovery()
 }
 
-/// Issue #285 — heart-path telemetry callbacks that AppState routes to
+/// Issue #285 — heart-path telemetry callbacks that the former root state routes to
 /// whichever pipeline is currently recording. The underlying `AudioCapture*`
 /// callback properties are single-owner on the shared capture instance, so
 /// per-pipeline wiring would let the second-initialized pipeline steal them.

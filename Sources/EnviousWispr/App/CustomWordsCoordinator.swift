@@ -10,7 +10,7 @@ final class CustomWordsCoordinator {
   var customWordError: String?
   let suggestionService = WordSuggestionService()
 
-  /// Called after any mutation so AppState can sync words to pipelines.
+  /// Called after any mutation so the former root state can sync words to pipelines.
   var onWordsChanged: (([CustomWord]) -> Void)?
 
   private let manager = CustomWordsManager()

@@ -96,7 +96,7 @@ struct BackendSwitchGuardTests {
     #expect(pipeline.state.isActive, "guard precondition: pipeline.state.isActive must be true")
 
     // Flip the setting and fire the handler. Production wiring is via
-    // SettingsManager.didSet → AppState observer → sync.handleSettingChanged;
+    // SettingsManager.didSet → the former root state observer → sync.handleSettingChanged;
     // the guard logic under test lives in `handleSettingChanged`.
     let settings = SettingsManager()
     settings.selectedBackend = .whisperKit

@@ -5,9 +5,9 @@ import EnviousWisprPipeline
 import Observation
 
 /// PR7 of epic #763. Owns the "what is happening with dictation right now"
-/// facts that were previously computed by AppState getters. Three computed
+/// facts that were previously computed by the former root state getters. Three computed
 /// properties — `pipelineState`, `audioLevel`, `currentTranscript` — route
-/// through the active backend exactly as the old AppState getters did, with
+/// through the active backend exactly as the old root-state getters did, with
 /// no behavior change.
 ///
 /// **Lifetime.** Constructed once at app launch as `@State` on
@@ -16,8 +16,8 @@ import Observation
 /// drive menu-bar icon updates.
 ///
 /// **Existential storage rationale.** `audioCapture` and `asrManager` are
-/// stored as the same existential protocol types AppState uses
-/// (`AppState.swift:19-20`) so PR7 can be a pure facts-move with no shape
+/// stored as the same existential protocol types the former root state uses
+/// (the former root-state file) so PR7 can be a pure facts-move with no shape
 /// change. Both concrete conformers (`AudioCaptureManager`,
 /// `AudioCaptureProxy`, `ASRManager`) are `@Observable`; SwiftUI body
 /// tracking propagates through the existential. `LiveRecordingStateTests`
@@ -26,7 +26,7 @@ import Observation
 ///
 /// **Ceiling-raise note (3 → 4 stored).** The four sources of truth
 /// (`pipeline`, `whisperKitPipeline`, `audioCapture`, `asrManager`) reflect
-/// real AppState code; bundling them into a lens value-type would hide the
+/// real root-state code; bundling them into a lens value-type would hide the
 /// count rather than reduce coupling. Bible §30 entry filed.
 @Observable @MainActor
 final class LiveRecordingState {
@@ -37,7 +37,7 @@ final class LiveRecordingState {
 
   /// True when recording is in hands-free (locked) mode via double-press.
   /// Read by the overlay, written through PR9's `RecordingLockedAccess` get/set
-  /// seam. PR-C.3 of #763 rehomed this off `AppState`.
+  /// seam. PR-C.3 of #763 rehomed this off the former root state.
   var isRecordingLocked: Bool = false
 
   init(
@@ -55,7 +55,7 @@ final class LiveRecordingState {
   /// Current pipeline phase. Routes through whichever backend is active per
   /// `asrManager.activeBackendType`; WhisperKit's distinct state enum is
   /// bridged via `WhisperKitPipelineState.asPipelineState`. Replaces the
-  /// pre-PR7 `AppState.pipelineState` getter.
+  /// pre-PR7 root-state getter.
   var pipelineState: PipelineState {
     if asrManager.activeBackendType == .whisperKit {
       return whisperKitPipeline.state.asPipelineState
@@ -64,7 +64,7 @@ final class LiveRecordingState {
   }
 
   /// Audio capture level for waveform/level UI. Replaces the pre-PR7
-  /// `AppState.audioLevel` getter.
+  /// the former root state getter.
   var audioLevel: Float {
     audioCapture.audioLevel
   }
@@ -72,7 +72,7 @@ final class LiveRecordingState {
   /// In-flight transcript from the active pipeline. Used as the live
   /// fallback in `HistoryContentView` composition: selected-history else
   /// live. Replaces the live-fallback half of the pre-PR7
-  /// `AppState.activeTranscript` getter.
+  /// the former root state getter.
   var currentTranscript: Transcript? {
     if asrManager.activeBackendType == .whisperKit {
       return whisperKitPipeline.currentTranscript
@@ -84,7 +84,7 @@ final class LiveRecordingState {
 // MARK: - DictationActivityProviding
 
 /// PR-C.3 of #763: `LiveRecordingState` provides the dictation-activity signal
-/// (replaces `AppState`'s conformance). It already owns both pipelines.
+/// (replaces the former root state's conformance). It already owns both pipelines.
 extension LiveRecordingState: DictationActivityProviding {
   /// True when either pipeline is recording, transcribing, or polishing. Used
   /// by `TranscriptPolishService` to block a re-polish during live dictation.

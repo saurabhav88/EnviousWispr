@@ -2,7 +2,7 @@ import EnviousWisprCore
 import Foundation
 
 /// Shared builder for the Sentry `extra` dictionary on heart-path audio events.
-/// Ensures both pipelines, the XPC proxy emission site, and the AppState
+/// Ensures both pipelines, the XPC proxy emission site, and the former root state
 /// interruption callback produce consistent tag shapes.
 @MainActor
 public enum SentryAudioExtras {

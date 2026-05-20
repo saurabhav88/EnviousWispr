@@ -3,7 +3,7 @@ import EnviousWisprCore
 import EnviousWisprLLM
 import Observation
 
-/// Owns setup-orchestration concerns previously held directly on AppState:
+/// Owns setup-orchestration concerns previously held directly on the former root state:
 /// the Ollama setup service, the WhisperKit setup service, and the background
 /// observation task that pre-loads WhisperKit when its setup state becomes ready.
 ///

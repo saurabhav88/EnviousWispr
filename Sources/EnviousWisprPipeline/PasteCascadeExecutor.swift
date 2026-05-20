@@ -150,7 +150,7 @@ internal final class PasteCascadeExecutor {
     // their outer AXGroup container. ONLY applied when AX is trusted —
     // promoting to `.missing` in the AX-denied branch would attempt Cmd+V
     // anyway (it can't paste without AX) and would bypass the educational
-    // accessibility-denied toast that AppState surfaces via the existing
+    // accessibility-denied toast that the former root state surfaces via the existing
     // `.clipboardOnlyAccessibilityDenied` outcome.
     let targetBundleID = request.targetApp?.bundleIdentifier
     if !axTrusted {

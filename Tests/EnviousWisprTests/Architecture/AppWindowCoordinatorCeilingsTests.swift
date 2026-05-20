@@ -97,26 +97,6 @@ import Testing
       """)
   }
 
-  @Test func noAppStateReference() throws {
-    // The coordinator must carry no `AppState` import or type reference — the
-    // two onboarding-guard closures capture `appState` weakly at the
-    // construction site in `EnviousWisprApp.init()`, not here.
-    let source = try String(
-      contentsOf: URL(fileURLWithPath: Self.sourcePath), encoding: .utf8)
-    let pattern = #"\bAppState\b"#
-    let regex = try NSRegularExpression(pattern: pattern)
-    let ns = source as NSString
-    let matches = regex.matches(in: source, range: NSRange(location: 0, length: ns.length))
-    #expect(
-      matches.isEmpty,
-      """
-      AppWindowCoordinator.swift references `AppState` \(matches.count) time(s); \
-      expected 0. The coordinator must stay AppState-free — onboarding state is \
-      read through the injected `canOpenOnboarding` / `isOnboardingComplete` \
-      closures, which capture `appState` weakly in EnviousWisprApp.init().
-      """)
-  }
-
   @Test func allowedImports() throws {
     let source = try String(
       contentsOf: URL(fileURLWithPath: Self.sourcePath), encoding: .utf8)

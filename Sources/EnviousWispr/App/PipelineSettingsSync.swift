@@ -19,8 +19,8 @@ final class PipelineSettingsSync {
   private let hotkeyService: HotkeyService
   private let whisperKitSetup: WhisperKitSetupService
 
-  /// Set by AppState so backend/model changes can retrigger preload observation
-  /// without coupling this layer to AppState.
+  /// Set by `EnviousWisprApp.init()` so backend/model changes can retrigger
+  /// preload observation without coupling this layer to the composition root.
   var onNeedsPreloadObservation: (() -> Void)?
 
   /// Tracks the last evictable Ollama model for #295. Independent of
@@ -50,7 +50,7 @@ final class PipelineSettingsSync {
   /// at each `startRecording` and are not seeded here.
   ///
   /// Custom words are NOT seeded here — `CustomWordsPropagator` (registered
-  /// in AppState init) owns that fanout. See Phase D (#496).
+  /// in the former root state init) owns that fanout. See Phase D (#496).
   func applyInitialSettings(_ settings: SettingsManager) {
     pipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
     pipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
@@ -258,8 +258,9 @@ final class PipelineSettingsSync {
   }
 
   /// Retry a deferred Ollama eviction after an in-flight session ends.
-  /// AppState calls this from `onStateChange` when either pipeline transitions
-  /// to a terminal state. Idempotent: no-op if nothing is pending.
+  /// Called from the pipeline state-change side-effect path when either
+  /// pipeline transitions to a terminal state. Idempotent: no-op if nothing
+  /// is pending.
   func retryDeferredOllamaEviction(settings: SettingsManager) {
     reconcileOllamaEviction(settings: settings)
   }

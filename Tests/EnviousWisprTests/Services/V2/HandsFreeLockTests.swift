@@ -10,8 +10,8 @@ import Testing
 /// when the pipeline reaches a terminal state the lock must clear so the
 /// next recording starts in normal PTT mode.
 ///
-/// PR9 of #763: the observer moved from `AppState` to
-/// `DictationLifecycleCoordinator`. AppState still owns `isRecordingLocked`
+/// PR9 of #763: the observer moved from the former root state to
+/// `DictationLifecycleCoordinator`. the former root state still owns `isRecordingLocked`
 /// state; the coordinator clears it via the injected `recordingLockedAccess.set`
 /// closure. The test now scans the coordinator's per-pipeline `switch newState`
 /// blocks and asserts each terminal arm calls `recordingLockedAccess.set(false)`.
@@ -115,7 +115,7 @@ struct HandsFreeLockTests {
       }
       #expect(
         matchingArm != nil,
-        "AppState observer must have an arm matching `\(caseToken)` (regression?)")
+        "the former root state observer must have an arm matching `\(caseToken)` (regression?)")
       if let arm = matchingArm {
         let armBody = arm.body.joined(separator: "\n")
         #expect(

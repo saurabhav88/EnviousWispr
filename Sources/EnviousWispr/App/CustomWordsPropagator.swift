@@ -7,10 +7,10 @@ import Foundation
 /// only, never polish (bible §2.2). The lane split makes pack-to-prompt
 /// leakage a Swift compile error.
 ///
-/// AppState constructs one propagator at init, registers the known consumers
-/// (pipeline word-correction × 2, pipeline llmPolish × 2, polishService.llmPolishStep
-/// = 5 total), and forwards `CustomWordsCoordinator.onWordsChanged` into
-/// `update(corrector:polish:)`.
+/// `EnviousWisprApp.init()` constructs one propagator, registers the known
+/// consumers (pipeline word-correction × 2, pipeline llmPolish × 2,
+/// polishService.llmPolishStep = 5 total), and forwards
+/// `CustomWordsCoordinator.onWordsChanged` into `update(corrector:polish:)`.
 ///
 /// Re-entrancy is contracted out: a consumer's setter must not call
 /// `propagator.update(...)` synchronously. DEBUG builds trap on violation.
@@ -117,7 +117,7 @@ final class CustomWordsPropagator {
 // MARK: - Wiring helper (extracted for testability)
 
 /// Wires a `CustomWordsPropagator` to its consumers and a coordinator using
-/// AppState's exact init ordering: seed via `update`, register all consumers
+/// the former root state's exact init ordering: seed via `update`, register all consumers
 /// (each receives the seed via initial-sync), then assign the coordinator's
 /// `onWordsChanged` callback to broadcast future mutations.
 ///
@@ -145,9 +145,9 @@ func wireCustomWords(
     propagator.register(consumer)
   }
   // PR-C.1 of #763: the closure captures `propagator` STRONGLY. Pre-PR-C.1
-  // this was `[weak propagator]` because AppState held the propagator as a
+  // this was `[weak propagator]` because the former root state held the propagator as a
   // stored `let`. With construction moved to `EnviousWisprApp.init()` the
-  // propagator would otherwise have no strong owner once AppState is deleted
+  // propagator would otherwise have no strong owner once the former root state is deleted
   // (PR-C.4) — `CustomWordsCoordinator` only stores this closure. Strong
   // capture anchors the propagator's lifetime to the coordinator (App-owned
   // `@State`). No retain cycle: the propagator holds only weak consumer

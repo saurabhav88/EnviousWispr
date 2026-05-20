@@ -21,7 +21,7 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
       // Honor the `currentSessionConfig` contract: nil when no recording is
       // in flight. Clear on every transition to a terminal state BEFORE
       // firing `onStateChange` so observer code (e.g. `reconcileOllamaEviction`
-      // on the AppState side) sees the cleared session and does not treat the
+      // on the former root state side) sees the cleared session and does not treat the
       // just-finished recording as still pinning a model. (#426 — Codex)
       switch state {
       case .idle, .complete, .error:
@@ -188,9 +188,9 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
       self?.state = .polishing
     }
 
-    // Engine interruption cleanup is wired by AppState.onEngineInterrupted
+    // Engine interruption cleanup is wired by the former root state
     // (unified handler that routes to the active pipeline). The pipeline exposes
-    // handleEngineInterruption() for AppState to call.
+    // handleEngineInterruption() for the former root state to call.
     // Activate SSE streaming for Gemini — a non-nil onToken causes GeminiConnector
     // to use streamGenerateContent instead of batch generateContent.
     // No-op callback is correct; live token display in overlay is a future follow-up.
@@ -200,7 +200,7 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
     ]
 
     // Issue #285 — telemetry callbacks on `audioCapture` are single-owner
-    // properties and both pipelines share the same instance. `AppState`
+    // properties and both pipelines share the same instance. the former root state
     // centralizes routing to the active pipeline (same pattern as
     // `onEngineInterrupted`) and calls into our public `handleCaptureStall` /
     // `handleXPCReplyFailed` / `handleCaptureSessionInterruption` methods.
@@ -1103,11 +1103,11 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
   }
 
   /// Handle audio engine interruption (device disconnect, service crash, max duration cap).
-  /// Called by AppState's unified interruption handler, not set directly on audioCapture.
+  /// Called by the former root state's unified interruption handler, not set directly on audioCapture.
   public func handleEngineInterruption() {
     pendingStallRecoveryToken = nil
     // Issue #285 — Sentry emission for audio/XPC interruptions is owned by
-    // AppState.onXPCServiceError (single-owner per plan §3.4a). This handler
+    // the former root state (single-owner per plan §3.4a). This handler
     // is control-flow only: clean up pipeline state + transition UI.
     SentryBreadcrumb.updateRecordingState(active: false)
     frozenSnapshot = nil
@@ -1132,7 +1132,7 @@ public final class TranscriptionPipeline: DictationPipeline, HeartPathTelemetryT
   }
 
   /// Handle ASR XPC service crash during active session.
-  /// Called by AppState's unified ASR interruption handler when this pipeline is active.
+  /// Called by the former root state's unified ASR interruption handler when this pipeline is active.
   /// Must stop audio capture (still running — only ASR died) and clean up fully.
   public func handleASRServiceInterruption() {
     pendingStallRecoveryToken = nil

@@ -11,7 +11,7 @@ struct HistoryContentView: View {
 
   /// PR7 of #763: compose the displayed transcript inline. History selection
   /// from `TranscriptCoordinator` wins over the in-flight live fallback —
-  /// same priority the pre-PR7 `AppState.activeTranscript` getter delivered.
+  /// same priority the pre-PR7 root-state getter delivered.
   private var displayedTranscript: Transcript? {
     let tc = transcriptWorkflowCoordinator.transcriptCoordinator
     if let selected = tc.selectedTranscriptID,

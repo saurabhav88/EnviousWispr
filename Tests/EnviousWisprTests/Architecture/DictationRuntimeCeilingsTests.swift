@@ -12,7 +12,7 @@ import Testing
 ///   + Bible-changelog header comment).
 /// - PR10 (#776): collaborator cap 4 → 7 (added `hotkeyController`,
 ///   `starter`, `finalizer` — three new private collaborators that own
-///   the recording-control surface lifted out of AppState). Non-private
+///   the recording-control surface lifted out of the former root state). Non-private
 ///   method cap 0 → 6 — DictationRuntime is now the App-level façade for
 ///   recording commands (`startHotkeyServiceIfEnabled`, `suspendHotkeys`,
 ///   `resumeHotkeys`, `toggleRecording(source:)`, `cancelRecording()`,
