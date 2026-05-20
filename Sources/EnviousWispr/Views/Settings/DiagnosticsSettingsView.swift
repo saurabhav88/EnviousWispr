@@ -6,6 +6,9 @@ struct DiagnosticsSettingsView: View {
   @Environment(DiagnosticsCoordinator.self) private var diagnostics
   // PR7 of #763: live phase resolves through LiveRecordingState.
   @Environment(LiveRecordingState.self) private var liveRecordingState
+  // PR-B.2 of #763: "Restart Onboarding" reaches the window coordinator
+  // through the environment instead of an `NSApp.delegate` downcast.
+  @Environment(AppWindowCoordinator.self) private var appWindowCoordinator
 
   var body: some View {
     @Bindable var state = appState
@@ -34,9 +37,7 @@ struct DiagnosticsSettingsView: View {
             VStack(alignment: .leading, spacing: 4) {
               Button("Restart Onboarding…") {
                 appState.settings.onboardingState = .notStarted
-                if let delegate = NSApp.delegate as? AppDelegate {
-                  delegate.openOnboardingWindow()
-                }
+                appWindowCoordinator.openOnboardingWindow()
               }
               .disabled(liveRecordingState.pipelineState != .idle)
               Text(
