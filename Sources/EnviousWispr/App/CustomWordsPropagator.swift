@@ -144,8 +144,15 @@ func wireCustomWords(
   for consumer in polishConsumers {
     propagator.register(consumer)
   }
-  let onChange: ([CustomWord]) -> Void = { [weak propagator] words in
-    guard let propagator else { return }
+  // PR-C.1 of #763: the closure captures `propagator` STRONGLY. Pre-PR-C.1
+  // this was `[weak propagator]` because AppState held the propagator as a
+  // stored `let`. With construction moved to `EnviousWisprApp.init()` the
+  // propagator would otherwise have no strong owner once AppState is deleted
+  // (PR-C.4) — `CustomWordsCoordinator` only stores this closure. Strong
+  // capture anchors the propagator's lifetime to the coordinator (App-owned
+  // `@State`). No retain cycle: the propagator holds only weak consumer
+  // boxes and never references the coordinator.
+  let onChange: ([CustomWord]) -> Void = { words in
     let next = LanePartitioner.split(words, generation: propagator.corrector.generation &+ 1)
     propagator.update(corrector: next.corrector, polish: next.polish)
   }
