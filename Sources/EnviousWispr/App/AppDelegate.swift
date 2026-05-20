@@ -25,8 +25,6 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
   private var statusItem: NSStatusItem?
   private let iconAnimator = MenuBarIconAnimator()
-  private weak var mainWindow: NSWindow?
-  private var windowCloseObserver: (any NSObjectProtocol)?
 
   // PR-A of #763: App-owned homes. `EnviousWisprApp` owns these as `@State`
   // and pushes them into AppDelegate via `attach(...)` synchronously during
@@ -63,6 +61,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /// hotkey registration is cleaned up before the run loop tears down.
   /// Replaces the pre-PR10 `appState.hotkeyService.stop()` call.
   private weak var hotkeyService: HotkeyService?
+  /// PR-B.2 of #763: App-owned home for window lifecycle (main + onboarding
+  /// window identity, the two `NSWindow.willCloseNotification` observers, the
+  /// SwiftUI open/dismiss bridges, activation-policy transitions). Weak ref —
+  /// strong owner is `EnviousWisprApp`'s `@State`. AppDelegate routes
+  /// `installOnLaunch()` / `tearDown()` from its lifecycle callbacks and the
+  /// menu actions through it.
+  private weak var appWindowCoordinator: AppWindowCoordinator?
 
   /// PR-A of #763: receive App-owned home refs from `EnviousWisprApp.init()`
   /// before delegate callbacks fire.
@@ -78,6 +83,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /// `sparkleUpdateController`. AppDelegate no longer owns the holder ref —
   /// the controller does, and the controller publishes into it from
   /// `startUpdater()`.
+  ///
+  /// PR-B.2 of #763: additionally receive `appWindowCoordinator` so the
+  /// lifecycle callbacks can install/tear down the window observers and the
+  /// menu actions can route window opens through it. `attach()` also wires the
+  /// `onOnboardingDismissed` icon-refresh seam (PR-B.3 retargets it).
   func attach(
     appState: AppState,
     navigationCoordinator: NavigationCoordinator,
@@ -86,7 +96,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     backendMetadata: BackendMetadata,
     dictationLifecycleCoordinator: DictationLifecycleCoordinator,
     dictationRuntime: DictationRuntime,
-    hotkeyService: HotkeyService
+    hotkeyService: HotkeyService,
+    appWindowCoordinator: AppWindowCoordinator
   ) {
     self.appState = appState
     self.navigationCoordinator = navigationCoordinator
@@ -96,20 +107,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     self.dictationLifecycleCoordinator = dictationLifecycleCoordinator
     self.dictationRuntime = dictationRuntime
     self.hotkeyService = hotkeyService
+    self.appWindowCoordinator = appWindowCoordinator
+    // Icon-refresh seam: the coordinator's two onboarding-dismiss callsites
+    // route through this closure instead of reaching into AppDelegate's
+    // menu-icon logic. PR-B.3 retargets the seam to MenuBarController.
+    appWindowCoordinator.onOnboardingDismissed = { [weak self] in
+      self?.updateIcon()
+    }
   }
-
-  /// Callback set by SwiftUI to open the main window (since openWindow env is only available in views).
-  var openMainWindowAction: (() -> Void)?
-
-  /// Callback set by SwiftUI to open the onboarding window.
-  var openOnboardingAction: (() -> Void)?
-
-  /// Callback set by SwiftUI to dismiss the onboarding window (state-driven).
-  var dismissOnboardingAction: (() -> Void)?
-
-  /// Weak reference to the onboarding window so we can detect when user closes it early.
-  private weak var onboardingWindow: NSWindow?
-  private var onboardingCloseObserver: (any NSObjectProtocol)?
 
   #if DEBUG
     /// V2 fault-injection control surface (issue #291). Started only when
@@ -177,26 +182,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       }
     }
 
-    // When the unified window closes, revert to .accessory immediately.
-    // There's only one window now, so no need for the 200ms re-check delay.
-    // Store token so we can remove on termination (H11 observer leak fix).
-    windowCloseObserver = NotificationCenter.default.addObserver(
-      forName: NSWindow.willCloseNotification,
-      object: nil,
-      queue: .main
-    ) { [weak self] notification in
-      guard let window = notification.object as? NSWindow else { return }
-      MainActor.assumeIsolated {
-        guard let self else { return }
-        // Capture the main window reference on first titled window appearance.
-        if self.mainWindow == nil, window.styleMask.contains(.titled),
-          window.title == AppConstants.appName
-        {
-          self.mainWindow = window
-        }
-        // Match by identity so status-bar/panel windows never trigger the reset.
-        guard window === self.mainWindow else { return }
-        NSApp.setActivationPolicy(.accessory)
+    // PR-B.2 of #763: the window-close observer lives on AppWindowCoordinator
+    // now. Loud nil-guard, but NOT a method-wide early return — the rest of
+    // `applicationDidFinishLaunching` (status item, hotkey start, telemetry,
+    // permissions, LLM pre-warm, audio reporters) must always run. Window
+    // observation is a limb; app startup is not. Position preserved: same
+    // mid-method point the inline observer block occupied before PR-B.2.
+    if let appWindowCoordinator {
+      appWindowCoordinator.installOnLaunch()
+    } else {
+      assertionFailure(
+        "AppWindowCoordinator must be attached before applicationDidFinishLaunching fires."
+      )
+      Task {
+        await AppLogger.shared.log(
+          "Window observer install skipped: coordinator ref is nil. Activation-policy revert on window close will not work this session.",
+          level: .info,
+          category: "AppDelegate"
+        )
       }
     }
 
@@ -343,73 +346,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       model: appState.settings.llmModel,
       keychainManager: appState.keychainManager
     )
-  }
-
-  // MARK: - Onboarding Window
-
-  /// Open the onboarding window and begin monitoring for early close (abort flow).
-  func openOnboardingWindow() {
-    guard let appState = self.appState else { return }
-    guard appState.settings.onboardingState != .completed else { return }
-    openOnboardingAction?()
-    NSApp.setActivationPolicy(.regular)
-    NSApp.activate(ignoringOtherApps: true)
-    // Hide the main window so only the onboarding window is visible during setup.
-    if let mainWin = self.mainWindow {
-      mainWin.orderOut(nil)
-    }
-
-    // Capture the onboarding NSWindow by identity on first open.
-    // We defer one run-loop cycle so SwiftUI has time to create/order the window
-    // before we search NSApp.windows.
-    DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
-      // SwiftUI Window(id: "onboarding") sets the title to the scene name ("Setup").
-      // We capture by identity here so the close observer can match by reference,
-      // not by title — title matching would fail if the scene name ever changes.
-      if self.onboardingWindow == nil {
-        self.onboardingWindow = NSApp.windows.first {
-          $0.title == AppConstants.onboardingWindowTitle
-        }
-      }
-      // Ensure the window is visible — openWindow(id:) is a silent no-op when
-      // reopening a single-instance Window scene that was previously dismissed.
-      self.onboardingWindow?.makeKeyAndOrderFront(nil)
-    }
-
-    // Monitor for user closing the onboarding window before completion.
-    // Match by window identity (captured above), not by title string.
-    if onboardingCloseObserver == nil {
-      onboardingCloseObserver = NotificationCenter.default.addObserver(
-        forName: NSWindow.willCloseNotification,
-        object: nil,
-        queue: .main
-      ) { [weak self] notification in
-        guard let window = notification.object as? NSWindow else { return }
-        MainActor.assumeIsolated {
-          guard let self else { return }
-          // Match by captured identity; fall back to title if not yet captured.
-          let isOnboardingWindow =
-            (self.onboardingWindow != nil)
-            ? window === self.onboardingWindow
-            : window.title == AppConstants.onboardingWindowTitle
-          guard isOnboardingWindow else { return }
-          self.onboardingWindow = nil
-          // Only treat as abort if onboarding not yet completed.
-          if self.appState?.settings.onboardingState != .completed {
-            self.updateIcon()
-          }
-        }
-      }
-    }
-  }
-
-  /// Called by the onboarding Done button via the onComplete callback.
-  /// State-driven: flips isOnboardingPresented to false, ActionWirer's onChange dismisses the window.
-  func closeOnboardingWindow() {
-    dismissOnboardingAction?()
-    NSApp.setActivationPolicy(.accessory)
-    updateIcon()
   }
 
   private func setupStatusItem() {
@@ -574,7 +510,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   @objc private func continueOnboarding() {
-    openOnboardingWindow()
+    appWindowCoordinator?.openOnboardingWindow()
   }
 
   @objc private func toggleRecording() {
@@ -586,40 +522,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
   }
 
-  /// Show the unified window: bring it to front, set .regular, activate.
-  private func showWindow() {
-    if let action = openMainWindowAction {
-      action()
-    } else {
-      // Fallback: find and show an existing window
-      for window in NSApp.windows where window.title == AppConstants.appName {
-        window.makeKeyAndOrderFront(nil)
-        break
-      }
-    }
-    NSApp.setActivationPolicy(.regular)
-    NSApp.activate(ignoringOtherApps: true)
-  }
-
   @objc private func openSettings() {
     navigationCoordinator?.request(.speechEngine)
-    showWindow()
+    appWindowCoordinator?.showWindow()
   }
 
   @objc private func openPermissionsSettings() {
     navigationCoordinator?.request(.permissions)
-    showWindow()
+    appWindowCoordinator?.showWindow()
   }
 
   func applicationWillTerminate(_ notification: Notification) {
-    if let observer = windowCloseObserver {
-      NotificationCenter.default.removeObserver(observer)
-      windowCloseObserver = nil
-    }
-    if let observer = onboardingCloseObserver {
-      NotificationCenter.default.removeObserver(observer)
-      onboardingCloseObserver = nil
-    }
+    // PR-B.2 of #763: both window-close observers are torn down by the
+    // coordinator now.
+    appWindowCoordinator?.tearDown()
     appState?.setup.ollamaSetup.cleanup()
     // PR10 of #763 — shared HotkeyService is owned by EnviousWisprApp as
     // `@State`; AppDelegate holds a weak ref pushed via `attach(...)`.

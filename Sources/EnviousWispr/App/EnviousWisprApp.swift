@@ -33,6 +33,11 @@ struct EnviousWisprApp: App {
   /// three consumers mutate it; multiple instances would silently lose
   /// settings changes.
   @State private var hotkeyService: HotkeyService
+  /// PR-B.2 of #763: App-owned home for window lifecycle. Strong owner is this
+  /// `@State`; `AppDelegate` holds a weak ref. Injected into both Window
+  /// scenes via `.environment(...)` so `DiagnosticsSettingsView` reaches it
+  /// through `@Environment` instead of an `NSApp.delegate` downcast.
+  @State private var appWindowCoordinator: AppWindowCoordinator
 
   @State private var isOnboardingPresented: Bool =
     !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
@@ -175,6 +180,21 @@ struct EnviousWisprApp: App {
       }
     )
 
+    // PR-B.2 of #763: window-lifecycle home. The two closures encode today's
+    // two distinct onboarding guards exactly (`canOpenOnboarding` folds the
+    // stacked `guard let appState` + `!= .completed`; `isOnboardingComplete`
+    // is the close-observer abort gate). Both capture `appState` weakly so the
+    // coordinator carries no `AppState` import or stored reference.
+    let appWindowCoordinator = AppWindowCoordinator(
+      canOpenOnboarding: { [weak appState] in
+        guard let appState else { return false }
+        return appState.settings.onboardingState != .completed
+      },
+      isOnboardingComplete: { [weak appState] in
+        appState?.settings.onboardingState == .completed
+      }
+    )
+
     _appState = State(initialValue: appState)
     _navigationCoordinator = State(initialValue: navigationCoordinator)
     _diagnosticsCoordinator = State(initialValue: diagnosticsCoordinator)
@@ -187,6 +207,7 @@ struct EnviousWisprApp: App {
     _backendMetadata = State(initialValue: backendMetadata)
     _dictationRuntime = State(initialValue: dictationRuntime)
     _hotkeyService = State(initialValue: hotkeyService)
+    _appWindowCoordinator = State(initialValue: appWindowCoordinator)
 
     // PR-A: push App-owned homes into AppDelegate before any
     // NSApplicationDelegate callback fires.
@@ -203,7 +224,8 @@ struct EnviousWisprApp: App {
       backendMetadata: backendMetadata,
       dictationLifecycleCoordinator: dictationLifecycleCoordinator,
       dictationRuntime: dictationRuntime,
-      hotkeyService: hotkeyService
+      hotkeyService: hotkeyService,
+      appWindowCoordinator: appWindowCoordinator
     )
 
     // Initialize observability (PostHog + Sentry) unconditionally at launch —
@@ -226,10 +248,12 @@ struct EnviousWisprApp: App {
         .environment(lastRecordingResult)
         .environment(backendMetadata)
         .environment(dictationRuntime)
+        .environment(appWindowCoordinator)
         .background(
           ActionWirer(
             appDelegate: appDelegate,
             appState: appState,
+            appWindowCoordinator: appWindowCoordinator,
             isOnboardingPresented: $isOnboardingPresented
           )
         )
@@ -239,12 +263,13 @@ struct EnviousWisprApp: App {
     // Onboarding window — non-resizable, centered, auto-opens on first launch.
     Window(AppConstants.onboardingWindowTitle, id: "onboarding") {
       OnboardingV2View(onComplete: {
-        appDelegate.closeOnboardingWindow()
+        appWindowCoordinator.closeOnboardingWindow()
       })
       .environment(appState)
       .environment(navigationCoordinator)
       .environment(languageSuggestionPresenter)
       .environment(dictationRuntime)
+      .environment(appWindowCoordinator)
     }
     .windowResizability(.contentSize)
     .defaultSize(width: 500, height: 550)
@@ -259,6 +284,9 @@ private struct ActionWirer: View {
   /// exposes `appState`; reading it through the delegate would have to go
   /// through its weak ref and risk a stale read during teardown.
   let appState: AppState
+  /// PR-B.2 of #763: the three SwiftUI window bridges are wired onto the
+  /// coordinator now, not AppDelegate.
+  let appWindowCoordinator: AppWindowCoordinator
   @Binding var isOnboardingPresented: Bool
   @Environment(\.openWindow) private var openWindow
   @Environment(\.dismissWindow) private var dismissWindow
@@ -267,20 +295,26 @@ private struct ActionWirer: View {
     Color.clear
       .frame(width: 0, height: 0)
       .task {
-        appDelegate.openMainWindowAction = { [openWindow] in
+        appWindowCoordinator.openMainWindowAction = { [openWindow] in
           openWindow(id: "main")
         }
-        appDelegate.openOnboardingAction = { [openWindow] in
+        appWindowCoordinator.openOnboardingAction = { [openWindow] in
           openWindow(id: "onboarding")
         }
-        appDelegate.dismissOnboardingAction = { [dismissWindow] in
+        appWindowCoordinator.dismissOnboardingAction = { [dismissWindow] in
           dismissWindow(id: "onboarding")
         }
-        // Auto-open onboarding if needed (first launch).
-        // ActionWirer runs inside the main Window scene which is always created,
-        // so the callbacks are wired before we attempt to open the onboarding window.
-        if appState.settings.onboardingState != .completed {
-          appDelegate.openOnboardingWindow()
+        // PR-B.2 of #763: drain any queued onboarding-open request FIRST. On a
+        // normal fresh-install launch nothing was queued (no caller runs before
+        // this task), so `replayed` is false and the auto-open below fires
+        // exactly once — identical to today. Draining first prevents a
+        // double-open if a queued request exists.
+        let replayed = appWindowCoordinator.consumePendingOpenOnboarding()
+        // Auto-open onboarding if needed (first launch), only if nothing was
+        // already replayed. ActionWirer runs inside the main Window scene which
+        // is always created, so the callbacks are wired before this point.
+        if !replayed, appState.settings.onboardingState != .completed {
+          appWindowCoordinator.openOnboardingWindow()
         }
       }
       .onChange(of: isOnboardingPresented) { _, newValue in

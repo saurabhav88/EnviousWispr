@@ -50,13 +50,21 @@ import Testing
   ///   threaded into `appDelegate.attach(...)` so `applicationWillFinishLaunching`
   ///   can invoke `startUpdater()` synchronously before any SwiftUI scene
   ///   body evaluates (Issue #739 env-capture invariant).
+  /// - 14 → 15 in PR-B.2 of epic #763 (2026-05-19, #797) for
+  ///   `AppWindowCoordinator`. Bible §30 entry: PR-B.2 lifts window lifecycle
+  ///   (main + onboarding window identity, the two close observers, the
+  ///   SwiftUI open/dismiss bridges, activation-policy transitions) off
+  ///   AppDelegate into a dedicated App-owned home. The `@State` instance is
+  ///   constructed in `init()` with two onboarding-guard closures and threaded
+  ///   into `appDelegate.attach(...)` plus injected into both Window scenes
+  ///   via `.environment(...)`.
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
     #expect(
-      count <= 14,
+      count <= 15,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 14. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 15. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.
@@ -89,14 +97,20 @@ import Testing
   /// init block + recordingLockedAccess struct literal + install() call +
   /// attachDictationLifecycleCoordinator call) and the hoisted
   /// `TranscriptStore` + `TranscriptCoordinator` construction (~3 lines).
+  /// Ratcheted 310→340 in PR-B.2 of epic #763 (2026-05-19, #797) to absorb
+  /// `AppWindowCoordinator` construction (~14 lines: two onboarding-guard
+  /// closures), the `@State` declaration, the 9th `attach(...)` argument, the
+  /// two `.environment(...)` injections, and the `ActionWirer` drain-before-
+  /// auto-open rewrite. Soft trip-wire only — the stored-property cap is the
+  /// primary entanglement signal.
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 310,
+      lineCount <= 340,
       """
-      EnviousWisprApp line count exceeded: \(lineCount) > 310. \
+      EnviousWisprApp line count exceeded: \(lineCount) > 340. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }
