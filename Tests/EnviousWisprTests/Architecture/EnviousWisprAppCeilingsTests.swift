@@ -73,13 +73,21 @@ import Testing
   ///   `init()` from seven already-built dependencies and threaded into
   ///   `appDelegate.attach(...)`. This is the final PR-B home — `AppDelegate`
   ///   ends as a thin AppKit adapter. Not `.environment(...)`-injected.
+  /// - 17 → 26 in PR-C.1 of epic #763 (2026-05-20, #813). Bible §30 entry:
+  ///   PR-C.1 hoists the nine view-facing subsystems AppState used to own
+  ///   (`settings`, `permissions`, `asrManager`, `customWordsCoordinator`,
+  ///   `setup`, `audioDeviceList`, `aiAvailability`, `keychainManager`,
+  ///   `llmDiscovery`) into App-owned `@State` homes, injected into both Window
+  ///   scenes. `appState` itself stays (receive-only) until PR-C.4 deletes it,
+  ///   which lowers this ceiling back to 25 (lower-is-free). The seven
+  ///   construction-only subsystems stay `init()` locals and are not counted.
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
     #expect(
-      count <= 17,
+      count <= 26,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 17. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 26. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.
@@ -127,35 +135,47 @@ import Testing
   /// and its `@State` declaration + assignment, net of the `attach(...)` call
   /// collapsing from eight arguments to two. Cap set by the deterministic rule
   /// (post-change actual 375 + 10, rounded up to the nearest 5).
+  /// Ratcheted 385→560 in PR-C.1 of epic #763 (2026-05-20, #813) to absorb the
+  /// subsystem construction + init-time wiring relocated from `AppState.init()`
+  /// (the composition root now constructs all 17 subsystems), the nine
+  /// view-facing `@State` declarations + assignments, and the eighteen
+  /// `.environment(...)` injections across the two Window scenes. Cap set by
+  /// the deterministic rule (post-change actual 546 + 10, rounded up to the
+  /// nearest 5). Line count is a soft 5x backstop — the stored-property and
+  /// import ceilings are the primary entanglement signals.
   @Test func envWisprAppLineCountCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let lineCount = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
-      lineCount <= 385,
+      lineCount <= 560,
       """
-      EnviousWisprApp line count exceeded: \(lineCount) > 385. \
+      EnviousWisprApp line count exceeded: \(lineCount) > 560. \
       Raising the ceiling requires a Bible changelog entry.
       """)
   }
 
-  /// Allowed-imports ceiling. The composition root must NOT depend on lower
-  /// modules like EnviousWisprPipeline / EnviousWisprAudio / EnviousWisprASR /
-  /// EnviousWisprLLM directly — that would couple SwiftUI mounting to engine
-  /// implementation details. AppDelegate already carries those imports.
+  /// Allowed-imports ceiling.
   ///
   /// PR9 of #763 added EnviousWisprStorage to construct `TranscriptStore`
-  /// directly in the composition root (hoisted out of `AppState.init` so the
-  /// composition root can thread the same `TranscriptCoordinator` instance
-  /// to both the lifecycle home and the transcript workflow coordinator).
-  /// `TranscriptStore` is a small, dependency-free persistence wrapper — not
-  /// an engine internal — so allowing it on the composition root is
-  /// consistent with the rule's intent.
+  /// directly in the composition root.
+  ///
+  /// PR-C.1 of #763 (#813) widened the allowlist to the full engine-module set
+  /// (`EnviousWisprASR`, `EnviousWisprAudio`, `EnviousWisprLLM`,
+  /// `EnviousWisprPipeline`). This is the deliberate consequence of making
+  /// `EnviousWisprApp` the construction root: it now builds `AudioCaptureProxy`,
+  /// `ASRManagerProxy`, both pipelines, `TranscriptPolishService`,
+  /// `LLMModelDiscoveryCoordinator`, etc. — the construction that used to live
+  /// in `AppState.init()`. A composition root importing the modules it
+  /// composes is correct; the anti-coupling intent is satisfied by the
+  /// zero-non-private-method ceiling, which keeps the App struct construction-
+  /// only with no behavior.
   @Test func envWisprAppImportsCeilingHolds() throws {
     let url = envWisprAppURL()
     let source = try String(contentsOf: url, encoding: .utf8)
     let allowed: Set<String> = [
       "SwiftUI", "EnviousWisprCore", "EnviousWisprServices", "EnviousWisprStorage",
+      "EnviousWisprASR", "EnviousWisprAudio", "EnviousWisprLLM", "EnviousWisprPipeline",
     ]
     let actual = parseImports(in: source)
     let unexpected = actual.subtracting(allowed)

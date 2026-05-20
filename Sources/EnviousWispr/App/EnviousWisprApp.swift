@@ -1,4 +1,8 @@
+import EnviousWisprASR
+import EnviousWisprAudio
 import EnviousWisprCore
+import EnviousWisprLLM
+import EnviousWisprPipeline
 import EnviousWisprServices
 import EnviousWisprStorage
 import SwiftUI
@@ -14,65 +18,221 @@ struct EnviousWisprApp: App {
   @State private var diagnosticsCoordinator: DiagnosticsCoordinator
   @State private var languageSuggestionPresenter: LanguageSuggestionPresenter
   @State private var updateCoordinatorHolder: UpdateCoordinatorHolder
-  /// PR-B.1 of #763 — App-owned Sparkle integration. Constructed in `init()`
-  /// from `updateCoordinatorHolder` so `startUpdater()` can publish the
-  /// coordinator into the env carrier synchronously during
-  /// `applicationWillFinishLaunching` (Issue #739 env-capture invariant).
   @State private var sparkleUpdateController: SparkleUpdateController
   @State private var transcriptWorkflowCoordinator: TranscriptWorkflowCoordinator
   @State private var liveRecordingState: LiveRecordingState
   @State private var lastRecordingResult: LastRecordingResult
   @State private var backendMetadata: BackendMetadata
   @State private var dictationRuntime: DictationRuntime
-  /// PR10 of #763: the App owns the shared `HotkeyService` so the single
-  /// instance can be threaded into `HotkeyController` (wires callbacks),
-  /// `PipelineSettingsSync` (live key/modifier/mode updates),
-  /// `DictationLifecycleCoordinator` (per-pipeline-state register/unregister
-  /// of the cancel hotkey), and `AppDelegate.attach(...)` (termination
-  /// `.stop()`). A single owner of the service is required because all
-  /// three consumers mutate it; multiple instances would silently lose
-  /// settings changes.
   @State private var hotkeyService: HotkeyService
-  /// PR-B.2 of #763: App-owned home for window lifecycle. Strong owner is this
-  /// `@State`; `AppDelegate` holds a weak ref. Injected into both Window
-  /// scenes via `.environment(...)` so `DiagnosticsSettingsView` reaches it
-  /// through `@Environment` instead of an `NSApp.delegate` downcast.
   @State private var appWindowCoordinator: AppWindowCoordinator
-  /// PR-B.3 of #763: App-owned home for the menu bar surface (status item,
-  /// dropdown menu, animated icon). Strong owner is this `@State`;
-  /// `AppDelegate` holds a weak ref pushed via `attach(...)`. Not
-  /// `.environment(...)`-injected — no SwiftUI view consumes the menu surface.
   @State private var menuBarController: MenuBarController
-  /// PR-B.4 of #763: App-owned home for the process-lifecycle sequence
-  /// (launch / foreground-activation / termination side effects). Strong owner
-  /// is this `@State`; `AppDelegate` holds a weak ref pushed via `attach(...)`
-  /// and forwards its three lifecycle callbacks here. Not
-  /// `.environment(...)`-injected — no SwiftUI view consumes it.
   @State private var appLifecycleCoordinator: AppLifecycleCoordinator
+
+  // PR-C.1 of #763: the nine view-facing subsystems that AppState used to own
+  // are now App-owned `@State` homes, injected into both Window scenes'
+  // environment alongside `appState`. Views still read `@Environment(AppState.self)`
+  // in PR-C.1; PR-C.2 / PR-C.3 migrate them onto these homes directly.
+  @State private var settings: SettingsManager
+  @State private var permissions: PermissionsService
+  @State private var asrManager: any ASRManagerInterface
+  @State private var customWordsCoordinator: CustomWordsCoordinator
+  @State private var setup: SetupCoordinator
+  @State private var audioDeviceList: AudioDeviceList
+  @State private var aiAvailability: AIAvailabilityCoordinator
+  @State private var keychainManager: KeychainManager
+  @State private var llmDiscovery: LLMModelDiscoveryCoordinator
 
   @State private var isOnboardingPresented: Bool =
     !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
 
   init() {
-    // Construct App-owned homes in dependency order. Closure-capture targets
-    // (overlay) must exist before the closures are built; AppState's chip
-    // handlers must be wired exactly once.
+    // ===== PR-C.1 of #763: subsystem construction (relocated from AppState.init) =====
+    // `EnviousWisprApp` is the composition root. Every subsystem is constructed
+    // here and handed to a receive-only `AppState`. Construction order is
+    // load-bearing: `polishService` before the pipelines (they read its
+    // `pasteCompletionRegistry`); `settingsSync` after both pipelines + `setup`.
+
+    let settings = SettingsManager()
+    let permissions = PermissionsService()
+    let keychainManager = KeychainManager()
+    let recordingOverlay = RecordingOverlayPanel()
+    let audioDeviceList = AudioDeviceList()
+    let captureTelemetry = CaptureTelemetryState()
+    let customWordsCoordinator = CustomWordsCoordinator()
+    let customWordsPropagator = CustomWordsPropagator()
+    let aiAvailability = AIAvailabilityCoordinator()
+
+    // XPC audio service — default ON. Audio capture runs in a separate XPC
+    // service process for crash isolation. Read directly from UserDefaults
+    // (the `object(forKey:) ?? true` pattern so existing installs with no key
+    // written get the new default). Escape hatch:
+    // `defaults write ... useXPCAudioService -bool false`.
+    let useXPC = UserDefaults.standard.object(forKey: "useXPCAudioService") as? Bool ?? true
+    let audioCapture: any AudioCaptureInterface =
+      useXPC ? AudioCaptureProxy() : AudioCaptureManager()
+
+    // XPC ASR service — default ON. ASR inference runs in a separate XPC
+    // service process for memory isolation. Escape hatch:
+    // `defaults write ... useXPCASRService -bool false`.
+    let useXPCASR = UserDefaults.standard.object(forKey: "useXPCASRService") as? Bool ?? true
+    let asrManager: any ASRManagerInterface =
+      useXPCASR ? ASRManagerProxy() : ASRManager()
+
+    let llmDiscovery = LLMModelDiscoveryCoordinator(keychainManager: keychainManager)
+
     let transcriptStore = TranscriptStore()
     let transcriptCoordinator = TranscriptCoordinator(store: transcriptStore)
-    // PR10 of #763 — shared `HotkeyService` constructed here as a local
-    // let so it can be threaded into AppState.init (for PSS), DLC.init,
-    // DR.init (which threads it into HotkeyController), and AppDelegate.attach
-    // (for termination). Assigned to `_hotkeyService = State(initialValue:)`
-    // at the end of init alongside the other @State homes.
+
+    // Phase 0 (#640) — single shared paste-completion registry. `polishService`
+    // is constructed before the pipelines so both receive the same instance.
+    let polishService = TranscriptPolishService(
+      keychainManager: keychainManager,
+      transcriptStore: transcriptStore
+    )
+
+    let pipeline = TranscriptionPipeline(
+      audioCapture: audioCapture,
+      asrManager: asrManager,
+      transcriptStore: transcriptStore,
+      keychainManager: keychainManager,
+      captureTelemetry: captureTelemetry,
+      pasteCompletionRegistry: polishService.pasteCompletionRegistry
+    )
+
+    // W6: language-flip telemetry wired via a closure so `EnviousWisprASR`
+    // stays vendor-contained. The detector fires this from an actor; hop to
+    // MainActor to call the @MainActor-isolated `TelemetryService`.
+    let languageDetector = LanguageDetector(
+      onLanguageFlip: { @Sendable event in
+        Task { @MainActor in
+          TelemetryService.shared.trackLanguageFlip(
+            fromLang: event.fromLang,
+            toLang: event.toLang,
+            confidenceBoth: event.confidenceBoth
+          )
+        }
+      }
+    )
+    let whisperKitPipeline = WhisperKitPipeline(
+      audioCapture: audioCapture,
+      backend: WhisperKitBackend(),
+      transcriptStore: transcriptStore,
+      keychainManager: keychainManager,
+      languageDetector: languageDetector,
+      captureTelemetry: captureTelemetry,
+      pasteCompletionRegistry: polishService.pasteCompletionRegistry
+    )
+
+    // Phase F (#501) — `SetupCoordinator` needs `asrManager` + the WhisperKit
+    // preload closure. `[weak whisperKitPipeline]` so it does not retain it.
+    let setup = SetupCoordinator(
+      asrManager: asrManager,
+      preloadAction: { [weak whisperKitPipeline] in
+        await whisperKitPipeline?.prepareBackendSilently()
+      }
+    )
+
+    // PR10 of #763 — shared `HotkeyService`. One owner so the single instance
+    // threads into `HotkeyController`, `PipelineSettingsSync`,
+    // `DictationLifecycleCoordinator`, and `AppDelegate` termination.
     let hotkeyService = HotkeyService()
-    let appState = AppState(transcriptStore: transcriptStore, hotkeyService: hotkeyService)
+
+    let settingsSync = PipelineSettingsSync(
+      pipeline: pipeline,
+      whisperKitPipeline: whisperKitPipeline,
+      polishService: polishService,
+      audioCapture: audioCapture,
+      asrManager: asrManager,
+      hotkeyService: hotkeyService,
+      whisperKitSetup: setup.whisperKitSetup
+    )
+    settingsSync.applyInitialSettings(settings)
+
+    recordingOverlay.setGrantHandler { [weak permissions] in
+      _ = permissions?.requestAccessibilityAccess()
+    }
+    recordingOverlay.setAccessibilityWarningDismissedProvider { [weak permissions] in
+      permissions?.accessibilityWarningDismissed ?? false
+    }
+
+    // Custom-words propagator wiring (seed → register consumers → install
+    // `onWordsChanged`). Phase D (#496). PR-C.1: `wireCustomWords` now
+    // strong-captures the propagator so its lifetime survives AppState deletion
+    // in PR-C.4.
+    wireCustomWords(
+      propagator: customWordsPropagator,
+      initialWords: customWordsCoordinator.customWords,
+      correctorConsumers: [
+        pipeline.wordCorrection,
+        whisperKitPipeline.wordCorrection,
+      ],
+      polishConsumers: [
+        pipeline.llmPolish,
+        whisperKitPipeline.llmPolish,
+        polishService.llmPolishStep,
+      ],
+      coordinator: customWordsCoordinator
+    )
+
+    settingsSync.onNeedsPreloadObservation = { [weak setup] in
+      setup?.startPreloadObservation()
+    }
+
+    // Restore persisted backend selection synchronously (no race with first record).
+    asrManager.setInitialBackendType(settings.selectedBackend)
+    SentryBreadcrumb.updateASRBackend(
+      settings.selectedBackend == .whisperKit ? "whisperkit" : "parakeet")
+
+    settings.onChange = { [weak settingsSync, weak settings] key in
+      guard let settingsSync, let settings else { return }
+      settingsSync.handleSettingChanged(key, settings: settings)
+    }
+
+    // Pre-load the selected backend's model in the background to eliminate
+    // cold-start delay. Parakeet: direct silent load. WhisperKit:
+    // observation-based (waits for setupState to become .ready first).
+    if settings.selectedBackend == .parakeet {
+      Task { [weak asrManager] in
+        await asrManager?.loadModelSilently()
+      }
+    }
+    Task { [weak setup] in
+      await setup?.whisperKitSetup.detectState()
+      setup?.startPreloadObservation()
+    }
+
+    // ===== Receive-only AppState (PR-C.1 of #763) =====
+    let appState = AppState(
+      settings: settings,
+      permissions: permissions,
+      audioCapture: audioCapture,
+      asrManager: asrManager,
+      keychainManager: keychainManager,
+      recordingOverlay: recordingOverlay,
+      setup: setup,
+      audioDeviceList: audioDeviceList,
+      captureTelemetry: captureTelemetry,
+      pipeline: pipeline,
+      whisperKitPipeline: whisperKitPipeline,
+      polishService: polishService,
+      settingsSync: settingsSync,
+      customWordsCoordinator: customWordsCoordinator,
+      customWordsPropagator: customWordsPropagator,
+      llmDiscovery: llmDiscovery,
+      aiAvailability: aiAvailability
+    )
+    // PR-C.1: AppState still conforms to `DictationActivityProviding`.
+    // PR-C.3 rewires this provider to `LiveRecordingState`.
+    polishService.setDictationActivity(appState)
+
     let navigationCoordinator = NavigationCoordinator()
     let diagnosticsCoordinator = DiagnosticsCoordinator()
 
     // PR4 of #763 construction-order constraint preserved: LanguageSuggestionPresenter
-    // captures `appState.recordingOverlay` through narrow closures. Build
-    // overlay reference first, then presenter, then attach to AppState.
-    let overlay = appState.recordingOverlay
+    // captures `recordingOverlay` through narrow closures. Build presenter,
+    // then attach to AppState.
+    let overlay = recordingOverlay
     let languageSuggestionPresenter = LanguageSuggestionPresenter(
       showOverlay: { [weak overlay] intent in overlay?.show(intent: intent) },
       readCurrentIntent: { [weak overlay] in overlay?.currentIntent ?? .hidden },
@@ -80,25 +240,37 @@ struct EnviousWisprApp: App {
       // "Recording complete" AX announcement (PR4 Codex code-diff r5 [P3]).
       hideOverlay: { [weak overlay] in overlay?.hide() }
     )
-    // Setter injection: appState now holds a reference to the presenter for
-    // dispatching from its chip-handler closure and pipeline state-change closures.
+    // Setter injection: appState holds a reference to the presenter for the
+    // not-yet-migrated views and pipeline state-change closures.
     appState.attachLanguageSuggestionPresenter(languageSuggestionPresenter)
+
+    // PR-C.1 of #763: passive-chip handler relocated from `AppState.init`.
+    // Wires the `LanguageDetector` actor's callback to the presenter now that
+    // it exists. Previously wired inside `AppState.init` capturing `self`
+    // weakly; the presenter is now captured directly (App-lifetime `@State`).
+    Task {
+      await languageDetector.setPassiveChipHandler {
+        @Sendable (trigger: PassiveChipTrigger) in
+        Task { @MainActor in
+          languageSuggestionPresenter.bufferTrigger(trigger)
+        }
+      }
+    }
+
     // Wire RecordingOverlayPanel chip handler closures into the presenter.
-    appState.recordingOverlay.setPassiveChipHandlers(
-      onLock: { [weak appState, presenter = languageSuggestionPresenter] in
-        if let lang = presenter.accept(), let appState = appState {
+    recordingOverlay.setPassiveChipHandlers(
+      onLock: { [weak settings, presenter = languageSuggestionPresenter] in
+        if let lang = presenter.accept(), let settings = settings {
           // Capture prior mode for telemetry before mutating settings.
-          let priorMode = appState.settings.languageMode
+          let priorMode = settings.languageMode
           let fromLang: String
           switch priorMode {
           case .auto: fromLang = "auto"
           case .locked(let prev): fromLang = prev
           }
-          appState.settings.languageMode = .locked(lang)
-          // PR4 Codex code-diff r6 [P2]: chip-driven locks must emit the same
-          // language.manual_lock_used event as Settings-driven locks so the
-          // chip CTA is visible in analytics. "after_bad_detect" is the
-          // reserved reason for this surface (TelemetryService.swift:483).
+          settings.languageMode = .locked(lang)
+          // PR4 Codex code-diff r6 [P2]: chip-driven locks emit the same
+          // language.manual_lock_used event as Settings-driven locks.
           TelemetryService.shared.trackManualLockUsed(
             fromLang: fromLang, toLang: lang, reason: "after_bad_detect")
         }
@@ -117,64 +289,56 @@ struct EnviousWisprApp: App {
 
     let transcriptWorkflowCoordinator = TranscriptWorkflowCoordinator(
       transcriptCoordinator: transcriptCoordinator,
-      polishService: appState.polishService
+      polishService: polishService
     )
 
     let liveRecordingState = LiveRecordingState(
-      pipeline: appState.pipeline,
-      whisperKitPipeline: appState.whisperKitPipeline,
-      audioCapture: appState.audioCapture,
-      asrManager: appState.asrManager
+      pipeline: pipeline,
+      whisperKitPipeline: whisperKitPipeline,
+      audioCapture: audioCapture,
+      asrManager: asrManager
     )
     let lastRecordingResult = LastRecordingResult()
     let backendMetadata = BackendMetadata(
-      settings: appState.settings,
-      asrManager: appState.asrManager,
-      llmDiscovery: appState.llmDiscovery
+      settings: settings,
+      asrManager: asrManager,
+      llmDiscovery: llmDiscovery
     )
     appState.attachLiveRecordingState(liveRecordingState)
     appState.attachLastRecordingResult(lastRecordingResult)
     appState.attachBackendMetadata(backendMetadata)
 
     // PR9 of #763: construct the lifecycle home BEFORE DictationRuntime.
-    // PR10 of #763: the shared `hotkeyService` is now threaded in
-    // explicitly from the App-owned local let, not from `appState.hotkeyService`
-    // (which no longer exists).
     let recordingLockedAccess = DictationLifecycleCoordinator.RecordingLockedAccess(
       get: { [weak appState] in appState?.isRecordingLocked ?? false },
       set: { [weak appState] locked in appState?.isRecordingLocked = locked }
     )
     let dictationLifecycleCoordinator = DictationLifecycleCoordinator(
-      pipeline: appState.pipeline,
-      whisperKitPipeline: appState.whisperKitPipeline,
-      recordingOverlay: appState.recordingOverlay,
+      pipeline: pipeline,
+      whisperKitPipeline: whisperKitPipeline,
+      recordingOverlay: recordingOverlay,
       hotkeyService: hotkeyService,
-      settingsSync: appState.settingsSync,
-      audioCapture: appState.audioCapture,
+      settingsSync: settingsSync,
+      audioCapture: audioCapture,
       transcriptCoordinator: transcriptCoordinator,
-      settings: appState.settings,
+      settings: settings,
       lastRecordingResult: lastRecordingResult,
       languageSuggestionPresenter: languageSuggestionPresenter,
       recordingLockedAccess: recordingLockedAccess
     )
     dictationLifecycleCoordinator.install()
 
-    // PR8 of #763: construct heart-path event-routing home. Routers install
-    // their `audioCapture.on*` / `asrManager.onServiceInterrupted` slots +
-    // the `AVAudioEngineConfigurationChange` observer at init.
-    // PR10 of #763: also constructs `HotkeyController` / `RecordingStarter` /
-    // `RecordingFinalizer` internally and calls `hotkeyController.install()`
-    // as the last init step. EnviousWisprApp.init does NOT construct the
-    // recording subsystem directly — DR is the composition root for it.
+    // PR8 of #763: heart-path event-routing home. PR10: also constructs
+    // HotkeyController / RecordingStarter / RecordingFinalizer internally.
     let dictationRuntime = DictationRuntime(
-      audioCapture: appState.audioCapture,
-      asrManager: appState.asrManager,
-      pipeline: appState.pipeline,
-      whisperKitPipeline: appState.whisperKitPipeline,
-      captureTelemetry: appState.captureTelemetry,
-      settings: appState.settings,
-      permissions: appState.permissions,
-      recordingOverlay: appState.recordingOverlay,
+      audioCapture: audioCapture,
+      asrManager: asrManager,
+      pipeline: pipeline,
+      whisperKitPipeline: whisperKitPipeline,
+      captureTelemetry: captureTelemetry,
+      settings: settings,
+      permissions: permissions,
+      recordingOverlay: recordingOverlay,
       hotkeyService: hotkeyService,
       lastRecordingResult: lastRecordingResult,
       languageSuggestionPresenter: languageSuggestionPresenter,
@@ -191,32 +355,24 @@ struct EnviousWisprApp: App {
       }
     )
 
-    // PR-B.2 of #763: window-lifecycle home. The two closures encode today's
-    // two distinct onboarding guards exactly (`canOpenOnboarding` folds the
-    // stacked `guard let appState` + `!= .completed`; `isOnboardingComplete`
-    // is the close-observer abort gate). Both capture `appState` weakly so the
-    // coordinator carries no `AppState` import or stored reference.
+    // PR-B.2 of #763: window-lifecycle home.
     let appWindowCoordinator = AppWindowCoordinator(
-      canOpenOnboarding: { [weak appState] in
-        guard let appState else { return false }
-        return appState.settings.onboardingState != .completed
+      canOpenOnboarding: { [weak settings] in
+        guard let settings else { return false }
+        return settings.onboardingState != .completed
       },
-      isOnboardingComplete: { [weak appState] in
-        appState?.settings.onboardingState == .completed
+      isOnboardingComplete: { [weak settings] in
+        settings?.onboardingState == .completed
       }
     )
 
-    // PR-B.3 of #763: menu bar surface home. The five menu-action closures
-    // compose the previously inline `@objc` AppDelegate action bodies. The
-    // controller reads display facts through narrow PR11-survivor refs
-    // (`liveRecordingState`, `backendMetadata`, `sparkleUpdateController`,
-    // `appState.settings`, `appState.permissions`) — no AppState reference.
+    // PR-B.3 of #763: menu bar surface home.
     let menuBarController = MenuBarController(
       liveRecordingState: liveRecordingState,
       backendMetadata: backendMetadata,
       sparkleUpdateController: sparkleUpdateController,
-      settings: appState.settings,
-      permissions: appState.permissions,
+      settings: settings,
+      permissions: permissions,
       actions: MenuBarActions(
         continueOnboarding: { appWindowCoordinator.openOnboardingWindow() },
         openSettings: {
@@ -232,10 +388,7 @@ struct EnviousWisprApp: App {
       )
     )
 
-    // PR-B.4 of #763: process-lifecycle home. Constructed last — it injects
-    // seven already-built dependencies and wires the onboarding-dismiss
-    // icon-refresh seam in its `init`. Holds the launch / become-active /
-    // terminate bodies that were inlined in `AppDelegate` before PR-B.4.
+    // PR-B.4 of #763: process-lifecycle home. Constructed last.
     let appLifecycleCoordinator = AppLifecycleCoordinator(
       appState: appState,
       dictationRuntime: dictationRuntime,
@@ -262,21 +415,25 @@ struct EnviousWisprApp: App {
     _menuBarController = State(initialValue: menuBarController)
     _appLifecycleCoordinator = State(initialValue: appLifecycleCoordinator)
 
+    // PR-C.1 of #763: the nine view-facing homes.
+    _settings = State(initialValue: settings)
+    _permissions = State(initialValue: permissions)
+    _asrManager = State(initialValue: asrManager)
+    _customWordsCoordinator = State(initialValue: customWordsCoordinator)
+    _setup = State(initialValue: setup)
+    _audioDeviceList = State(initialValue: audioDeviceList)
+    _aiAvailability = State(initialValue: aiAvailability)
+    _keychainManager = State(initialValue: keychainManager)
+    _llmDiscovery = State(initialValue: llmDiscovery)
+
     // PR-A: push App-owned homes into AppDelegate before any
     // NSApplicationDelegate callback fires.
-    // PR-B.4 of #763: `AppDelegate` is now a thin AppKit adapter — it receives
-    // only `sparkleUpdateController` (for `applicationWillFinishLaunching`) and
-    // `appLifecycleCoordinator` (for the launch / become-active / terminate
-    // callbacks). All other dependencies are injected into
-    // `AppLifecycleCoordinator.init` instead.
     appDelegate.attach(
       sparkleUpdateController: sparkleUpdateController,
       appLifecycleCoordinator: appLifecycleCoordinator
     )
 
-    // Initialize observability (PostHog + Sentry) unconditionally at launch —
-    // captures install/open/update lifecycle events, startup crashes, and the
-    // full onboarding funnel. Anonymous from first launch.
+    // Initialize observability (PostHog + Sentry) unconditionally at launch.
     ObservabilityBootstrap.initialize()
   }
 
@@ -295,6 +452,16 @@ struct EnviousWisprApp: App {
         .environment(backendMetadata)
         .environment(dictationRuntime)
         .environment(appWindowCoordinator)
+        // PR-C.1 of #763: nine view-facing homes injected alongside `appState`.
+        .environment(settings)
+        .environment(permissions)
+        .environment(customWordsCoordinator)
+        .environment(setup)
+        .environment(audioDeviceList)
+        .environment(aiAvailability)
+        .environment(llmDiscovery)
+        .environment(\.asrManager, asrManager)
+        .environment(\.keychainManager, keychainManager)
         .background(
           ActionWirer(
             appState: appState,
@@ -316,6 +483,16 @@ struct EnviousWisprApp: App {
       .environment(languageSuggestionPresenter)
       .environment(dictationRuntime)
       .environment(appWindowCoordinator)
+      // PR-C.1 of #763: nine view-facing homes injected alongside `appState`.
+      .environment(settings)
+      .environment(permissions)
+      .environment(customWordsCoordinator)
+      .environment(setup)
+      .environment(audioDeviceList)
+      .environment(aiAvailability)
+      .environment(llmDiscovery)
+      .environment(\.asrManager, asrManager)
+      .environment(\.keychainManager, keychainManager)
     }
     .windowResizability(.contentSize)
     .defaultSize(width: 500, height: 550)
@@ -349,15 +526,10 @@ private struct ActionWirer: View {
         appWindowCoordinator.dismissOnboardingAction = { [dismissWindow] in
           dismissWindow(id: "onboarding")
         }
-        // PR-B.2 of #763: drain any queued onboarding-open request FIRST. On a
-        // normal fresh-install launch nothing was queued (no caller runs before
-        // this task), so `replayed` is false and the auto-open below fires
-        // exactly once — identical to today. Draining first prevents a
-        // double-open if a queued request exists.
+        // PR-B.2 of #763: drain any queued onboarding-open request FIRST.
         let replayed = appWindowCoordinator.consumePendingOpenOnboarding()
         // Auto-open onboarding if needed (first launch), only if nothing was
-        // already replayed. ActionWirer runs inside the main Window scene which
-        // is always created, so the callbacks are wired before this point.
+        // already replayed.
         if !replayed, appState.settings.onboardingState != .completed {
           appWindowCoordinator.openOnboardingWindow()
         }
