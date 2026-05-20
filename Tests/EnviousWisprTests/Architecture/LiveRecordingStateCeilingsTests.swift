@@ -12,13 +12,13 @@ import Testing
 /// - imports ⊆ {EnviousWisprASR, EnviousWisprAudio, EnviousWisprCore, EnviousWisprPipeline, Observation}
 ///
 /// Ceiling-raise note: stored-property count was raised from 3 to 4 before
-/// PR7 was written, after grep verification showed the four current AppState
+/// PR7 was written, after grep verification showed the four current root-state
 /// dependencies. Bible §30 entry filed.
 ///
 /// Bible §30 entry (PR-C.3 of #763, 2026-05-20, #815): line ceiling 90 → 100.
-/// PR-C.3 adds the `isRecordingLocked` hands-free flag (rehomed off `AppState`)
+/// PR-C.3 adds the `isRecordingLocked` hands-free flag (rehomed off the former root state)
 /// and the `DictationActivityProviding` conformance extension (also off
-/// `AppState`). The stored-property count is unchanged (the flag is a primitive
+/// the former root state). The stored-property count is unchanged (the flag is a primitive
 /// `var`, not counted) and no `func` is added (`isDictationActive` is computed).
 ///
 /// Lowering any cap is free; raising requires a Bible §30 changelog entry.

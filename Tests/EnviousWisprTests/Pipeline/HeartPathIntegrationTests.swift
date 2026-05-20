@@ -104,7 +104,7 @@ struct HeartPathIntegrationTests {
     await pipeline.startRecording(config: config)
 
     // Phase B freeze contract: the pipeline captures the config handed in by
-    // AppState, and external readers see the frozen snapshot for the
+    // the former root state, and external readers see the frozen snapshot for the
     // recording's lifetime.
     let captured = pipeline.currentSessionConfig
     #expect(captured?.autoPasteToActiveApp == true)

@@ -7,9 +7,9 @@ import Testing
 /// (b) the property name is on the named allowlist.
 ///
 /// PR-A of #763 installs this guard so that the App-struct composition root
-/// stays the home for App-owned state. Re-introducing
-/// `let appState = AppState()` on AppDelegate would silently revert the move
-/// — this test fails first.
+/// stays the home for App-owned state. Re-introducing a strong named home
+/// (e.g. `let rootState = SomeRootState()`) on AppDelegate would silently
+/// revert the move — this test fails first.
 ///
 /// Allowlist shrinks over time:
 /// - `updateCoordinator` (UpdateCoordinator?) — Sparkle integration. SUNSET
@@ -40,17 +40,17 @@ import Testing
   /// Deliberate-reintroduction fixture: the test verifies the parser flags
   /// the exact regression we want to prevent. If this fixture stops failing,
   /// the parser has weakened — the real guard above is no longer trustworthy.
-  @Test func parserCatchesReintroducedAppState() {
+  @Test func parserCatchesReintroducedNamedHome() {
     let fixture = """
       private var statusItem: NSStatusItem?
-      let appState = AppState()
+      let rootState = SomeRootState()
       private weak var mainWindow: NSWindow?
       """
     let violations = findNamedHomeViolations(in: fixture, allowlist: [])
     #expect(
-      violations.contains(where: { $0.name == "appState" && $0.type == "AppState" }),
+      violations.contains(where: { $0.name == "rootState" && $0.type == "SomeRootState" }),
       """
-      Parser failed to flag the canonical regression (`let appState = AppState()`). \
+      Parser failed to flag the canonical regression (`let rootState = SomeRootState()`). \
       The mechanical guard cannot be trusted until this is fixed.
       """
     )
@@ -71,7 +71,7 @@ import Testing
   /// `weak` is not ownership.
   @Test func weakSuppressesFlagging() {
     let fixture = """
-      private weak var appState: AppState?
+      private weak var rootState: SomeRootState?
       private weak var navigationCoordinator: NavigationCoordinator?
       """
     let violations = findNamedHomeViolations(in: fixture, allowlist: [])

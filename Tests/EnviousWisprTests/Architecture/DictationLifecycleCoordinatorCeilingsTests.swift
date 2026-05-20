@@ -13,7 +13,7 @@ import Testing
 ///       `prevParakeetActive`, `prevWhisperKitActive`, `postCompletionWarningTask`,
 ///       lazy state handlers, `onPipelineStateChange`) is therefore free
 ///       against the cap.
-///   (b) the lifecycle home needs BOTH a getter and a setter for AppState's
+///   (b) the lifecycle home needs BOTH a getter and a setter for the former root state's
 ///       still-owned `isRecordingLocked` — getter feeds
 ///       `recordingOverlay.show(...)` so the hands-free lock visual renders
 ///       correctly during state transitions; setter clears locked on
@@ -36,8 +36,7 @@ import Testing
 ///      no external owner, no architectural dependency.
 ///   2. EXTERNAL CALLBACK (`var onPipelineStateChange`): setter-injected
 ///      post-init by AppDelegate. Same precedent as PR4's
-///      `var languageSuggestionPresenter` on AppState (see
-///      `AppStateCeilingsTests.swift:19-25` doc).
+///      `var languageSuggestionPresenter`.
 @Suite struct DictationLifecycleCoordinatorCeilingsTests {
   private static let sourcePath =
     "Sources/EnviousWispr/App/DictationRuntime/DictationLifecycleCoordinator.swift"

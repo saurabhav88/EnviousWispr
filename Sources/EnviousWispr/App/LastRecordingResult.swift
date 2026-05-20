@@ -9,18 +9,18 @@ import Observation
 /// **Lifetime.** Constructed once at app launch as `@State` on
 /// `EnviousWisprApp`; lives for the entire process lifetime.
 ///
-/// **Push model.** AppState's existing Parakeet and WhisperKit
-/// state-change closures (`AppState.swift:493-528`, `:548-572`) push to
+/// **Push model.** the former root state's existing Parakeet and WhisperKit
+/// state-change closures (the former root-state file, `:548-572`) push to
 /// `polishError` on every state transition. `toggleRecording` resets it
 /// to `nil` on a new recording start. The full reset / cancel / failure
 /// matrix is locked in the PR7 plan.
 ///
-/// Replaces the pre-PR7 `AppState.lastPolishError` getter.
+/// Replaces the pre-PR7 root-state getter.
 ///
 /// **No imports of `EnviousWisprASR`, `EnviousWisprPipeline`, etc.** is
 /// intentional. This home is observable storage, not a derivation surface;
 /// keeping its import set narrow prevents callers from drifting it toward
-/// pipeline-specific knowledge as PR9/PR11 dissolve AppState.
+/// pipeline-specific knowledge as PR9/PR11 dissolve the former root state.
 @Observable @MainActor
 final class LastRecordingResult {
   /// `nil` when polish succeeded (or never ran); a non-empty message when

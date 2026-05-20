@@ -75,7 +75,7 @@ public actor LanguageDetector {
   private let clock: LanguageDetectorClock
   private let defaults: UserDefaults
   // Mutable so callers can wire handlers post-init (see
-  // `setPassiveChipHandler`). Needed for AppState, which can't capture
+  // `setPassiveChipHandler`). Needed for the former root state, which can't capture
   // `self` in init because its stored properties are still being set up.
   private var onPassiveChipTrigger: (@Sendable (PassiveChipTrigger) -> Void)?
   private let onLanguageFlip: (@Sendable (LanguageFlipEvent) -> Void)?
@@ -120,7 +120,7 @@ public actor LanguageDetector {
   }
 
   /// Install or replace the passive-chip handler post-init. Used by owners
-  /// (e.g. AppState) that cannot capture `self` at construction time because
+  /// (e.g. the former root state) that cannot capture `self` at construction time because
   /// their stored properties are still being initialized.
   public func setPassiveChipHandler(_ handler: (@Sendable (PassiveChipTrigger) -> Void)?) {
     self.onPassiveChipTrigger = handler

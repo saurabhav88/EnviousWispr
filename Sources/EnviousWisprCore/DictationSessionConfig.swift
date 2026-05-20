@@ -50,7 +50,7 @@ public struct DictationSessionConfig: Sendable {
   /// Input-mode-derived at `startRecording`. True when the user triggered via hotkey
   /// or push-to-talk with accessibility permission available; false for menu-triggered
   /// recordings or when the paste target cannot be resolved. Consolidates the previously
-  /// scattered writes to `pipeline.autoPasteToActiveApp` in `AppState`.
+  /// scattered writes to `pipeline.autoPasteToActiveApp` in the former root state.
   public let autoPasteToActiveApp: Bool
   public let restoreClipboardAfterPaste: Bool
 

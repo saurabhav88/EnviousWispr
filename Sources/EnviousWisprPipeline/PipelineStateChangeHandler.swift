@@ -6,13 +6,13 @@ import Foundation
 /// One instance per pipeline (Parakeet / WhisperKit). The handler holds no
 /// pipeline reference itself — the caller passes the pipeline-scoped inputs
 /// (`pipelineOverlayIntent`, `lastPolishError`, `currentTranscript`) for each
-/// transition. AppState remains the owner of cross-pipeline state (the
+/// transition. the former root state remains the owner of cross-pipeline state (the
 /// `postCompletionWarningTask`, the tiebreaker, the hotkey register/unregister
 /// ordering), and the handler reaches back into those through narrow
 /// callbacks.
 ///
 /// Why the warning task is NOT owned by the handler: the current production
-/// `schedulePostCompletionWarning` at `AppState.swift:732-744` treats
+/// `schedulePostCompletionWarning` at the former root-state file treats
 /// `whisperKitPipeline.state == .ready` as completion-equivalent for the
 /// delayed guard. That check crosses pipeline boundaries (the warning can be
 /// scheduled from Parakeet's closure and still fire if WhisperKit is in

@@ -5,7 +5,7 @@ import Observation
 
 /// PR7 of epic #763. Display-only labels for the active ASR backend, the
 /// LLM polish provider/model, and the pipeline status string. Replaces
-/// AppState's `activeModelName`, `activeLLMDisplayName`, `modelStatusText`.
+/// the former root state's `activeModelName`, `activeLLMDisplayName`, `modelStatusText`.
 /// `statusText(for:)` takes the active `PipelineState` as a parameter to
 /// keep `EnviousWisprPipeline` out of this home's import set.
 @Observable @MainActor

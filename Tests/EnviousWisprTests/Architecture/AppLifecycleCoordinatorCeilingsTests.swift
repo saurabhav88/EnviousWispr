@@ -120,7 +120,7 @@ import Testing
   @Test func parserCatchesExtraStoredProperty() {
     let fixture = """
         private var audioEnvironmentSnapshotter: AudioEnvironmentSnapshotter?
-        private let appState: AppState
+        private let permissions: PermissionsService
         private let hotkeyService: HotkeyService
         private var smuggledExtraField: Int = 0
       """

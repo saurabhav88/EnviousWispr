@@ -10,7 +10,7 @@ import Testing
 /// Unit tests for `BackendMetadata` (PR7 of epic #763). Covers the three
 /// display surfaces exposed to views/AppDelegate: `modelLabel`,
 /// `llmLabel`, and `statusText(for:)`. Behavior parity with pre-PR7
-/// AppState getters is the contract.
+/// the former root state getters is the contract.
 @MainActor
 @Suite("BackendMetadata")
 struct BackendMetadataTests {

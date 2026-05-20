@@ -66,7 +66,7 @@ public final class HotkeyService {
   /// finger-bounce from immediately stopping the locked recording.
   private var lockTime: Date? = nil
 
-  // MARK: - Callbacks (wired by AppState)
+  // MARK: - Callbacks (wired by the former root state)
 
   public var onToggleRecording: (@MainActor () async -> Void)?
   public var onStartRecording: (@MainActor () async -> Void)?

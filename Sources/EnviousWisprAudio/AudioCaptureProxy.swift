@@ -356,7 +356,7 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
           level: .info, category: "XPC"
         )
       }
-      // Issue #289: propagate so the pipeline / AppState can abort the
+      // Issue #289: propagate so the pipeline / the former root state can abort the
       // recording cleanly instead of flipping isPreWarmed=true against a
       // dead capture path.
       throw error
@@ -790,7 +790,7 @@ extension AudioCaptureProxy: AudioServiceClientProtocol {
   }
 
   /// Service-side VAD detected sustained silence after speech — auto-stop should trigger.
-  /// Stale-fire protection: generation check + pipeline state guard (in AppState handler).
+  /// Stale-fire protection: generation check + pipeline state guard (in the former root state handler).
   nonisolated public func vadAutoStopTriggered() {
     Task { @MainActor [weak self] in
       guard let self else { return }

@@ -92,24 +92,6 @@ import Testing
       """)
   }
 
-  @Test func noAppStateReference() throws {
-    // The controller must carry no `AppState` import or type reference — its
-    // read dependencies are narrow PR11-survivor refs injected at construction.
-    let source = try String(
-      contentsOf: URL(fileURLWithPath: Self.sourcePath), encoding: .utf8)
-    let regex = try NSRegularExpression(pattern: #"\bAppState\b"#)
-    let ns = source as NSString
-    let matches = regex.matches(in: source, range: NSRange(location: 0, length: ns.length))
-    #expect(
-      matches.isEmpty,
-      """
-      MenuBarController.swift references `AppState` \(matches.count) time(s); \
-      expected 0. The menu home must stay AppState-free — it reads display \
-      facts through `liveRecordingState` / `backendMetadata` / `settings` / \
-      `permissions` / `sparkleUpdateController`.
-      """)
-  }
-
   @Test func allowedImports() throws {
     let source = try String(
       contentsOf: URL(fileURLWithPath: Self.sourcePath), encoding: .utf8)

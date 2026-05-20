@@ -41,7 +41,7 @@ final class RecordingOverlayPanel {
 
   /// Last intent shown — guards against redundant show calls that would
   /// close and recreate the panel for the same visual state (flicker).
-  /// `private(set)`: AppState reads this for the F14 chip-priority guard (chip
+  /// `private(set)`: the former root state reads this for the F14 chip-priority guard (chip
   /// shows only when `currentIntent == .hidden`).
   private(set) var currentIntent: OverlayIntent = .hidden
 
@@ -52,7 +52,7 @@ final class RecordingOverlayPanel {
   private var grantHandler: (() -> Void)?
   private var accessibilityWarningDismissedProvider: () -> Bool = { false }
 
-  // Passive chip handlers — installed by AppState once at init, invoked by the
+  // Passive chip handlers — installed by the former root state once at init, invoked by the
   // chip view when the user taps Lock / Dismiss or when the auto-dismiss timer
   // fires. The closures are MainActor-bound; the panel itself is @MainActor.
   private var passiveChipLockHandler: (() -> Void)?
@@ -70,7 +70,7 @@ final class RecordingOverlayPanel {
   }
 
   /// Wire passive chip action handlers (Lock / Dismiss / auto-dismiss).
-  /// Installed once by AppState at construction time.
+  /// Installed once by the former root state at construction time.
   func setPassiveChipHandlers(
     onLock: @escaping () -> Void,
     onDismiss: @escaping () -> Void,
@@ -530,7 +530,7 @@ final class RecordingOverlayPanel {
     self.panel = p
   }
 
-  /// Update the lock state reactively. Called by AppState when
+  /// Update the lock state reactively. Called by the former root state when
   /// hands-free mode is activated or deactivated mid-recording.
   /// The shared OverlayLockState triggers a SwiftUI animation
   /// on the existing RecordingOverlayView without panel recreation.

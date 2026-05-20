@@ -3,7 +3,7 @@ import Testing
 @testable import EnviousWispr
 
 /// Issue #765 (PR2 of epic #763) — pins the `NavigationCoordinator` contract
-/// that was extracted from `AppState.pendingNavigationSection`.
+/// that was extracted from the former root state.
 @MainActor
 @Suite("NavigationCoordinator — pending settings tab handoff")
 struct NavigationCoordinatorTests {

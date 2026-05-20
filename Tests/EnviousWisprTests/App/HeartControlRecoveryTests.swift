@@ -5,7 +5,7 @@ import Testing
 @testable import EnviousWisprPipeline
 @testable import EnviousWisprServices
 
-/// #585 — HeartControlRecovery extracted from AppState.
+/// #585 — HeartControlRecovery extracted from the former root state.
 ///
 /// These tests assert the recovery contract via injected closures + Sentry's
 /// test-only `captureErrorDelegate` hook. CancellationError must be treated as

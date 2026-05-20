@@ -2,21 +2,14 @@ import Foundation
 import Testing
 
 struct DictationInvokedPipelineWiringTests {
-  @Test("AppState does not own dictation.invoked telemetry")
-  func appStateDoesNotEmitDictationInvoked() throws {
-    let source = try Self.read("Sources/EnviousWispr/App/AppState.swift")
-
-    #expect(!source.contains("dictationInvoked("))
-    #expect(!source.contains("emitDictationInvoked"))
-  }
-
   @Test("session config carries input mode into pipeline start")
   func sessionConfigCarriesInputMode() throws {
     let configSource = try Self.read("Sources/EnviousWisprCore/DictationSessionConfig.swift")
-    // Per epic #763 PR5: the per-recording config snapshot moved out of
-    // AppState into DictationSessionConfigFactory. The factory now owns the
+    // Per epic #763 PR5: the per-recording config snapshot moved into
+    // DictationSessionConfigFactory. The factory now owns the
     // `inputMode: settings.recordingMode` plumbing.
-    let factorySource = try Self.read("Sources/EnviousWispr/App/DictationSessionConfigFactory.swift")
+    let factorySource = try Self.read(
+      "Sources/EnviousWispr/App/DictationSessionConfigFactory.swift")
 
     #expect(configSource.contains("public let inputMode: RecordingMode"))
     #expect(factorySource.contains("inputMode: settings.recordingMode"))

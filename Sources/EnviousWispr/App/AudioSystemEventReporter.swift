@@ -20,9 +20,9 @@ import Foundation
 /// recording.
 ///
 /// Owner: `AppDelegate` (matches `DebugFaultEndpoint` retain pattern). NOT on
-/// AppState — Bible epic #319 (Phase E #502, Phase F #503) actively shrinks
-/// AppState. Reporter holds plain collaborator references (no AppState back-
-/// reference) so it cannot accidentally mutate AppState state.
+/// a shared state bag — Bible epic #319 (Phase E #502, Phase F #503). Reporter
+/// holds plain collaborator references (no back-reference to a shared state
+/// bag) so it cannot accidentally mutate global state.
 ///
 /// Process placement: host app. CoreAudio system-object property listeners
 /// fire in any process; `AVCaptureDevice.wasConnected/wasDisconnected`

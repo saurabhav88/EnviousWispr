@@ -10,7 +10,7 @@ import Observation
 /// Shape 4 cascade decision (2026-05-18): TWC ships in its final post-PR11
 /// shape — `@State` on `EnviousWisprApp`, holds references to
 /// `TranscriptCoordinator` + `TranscriptPolishService` injected by
-/// `EnviousWisprApp.init()`. The references' storage stays on `AppState`
+/// `EnviousWisprApp.init()`. The references' storage stays on the former root state
 /// through PR6 (TC cascades out in PR9, TPS in PR11) because pipelines,
 /// `PipelineSettingsSync`, and the custom-words propagator still call them
 /// at construction time — moving storage in PR6 would require forwarding
@@ -20,7 +20,7 @@ import Observation
 /// solely so the four transcript-history view consumers
 /// (`TranscriptDetailView`, `HistoryContentView`, `TranscriptHistoryView`,
 /// `SidebarStatsHeader`) can resolve list/count/delete/load/filter through
-/// a single environment surface during the AppState deletion cascade. No new
+/// a single environment surface during the former root state deletion cascade. No new
 /// domain APIs, no unrelated transcript surfaces, no non-transcript
 /// consumers. `TranscriptWorkflowCoordinatorCeilingsTests` enforces ≤2
 /// stored properties and ≤1 non-private method as the structural backstop.
@@ -47,7 +47,7 @@ final class TranscriptWorkflowCoordinator {
   /// on `polishingTranscriptID != nil`. Direct-call guard is
   /// `TranscriptPolishService.polish` itself, which sets/checks its own
   /// `polishingTranscriptID`. PR6 preserves this two-layer guard exactly as
-  /// pre-PR6 AppState had it.
+  /// pre-PR6 root state had it.
   func polishTranscript(_ transcript: Transcript) async {
     do {
       let updated = try await polishService.polish(transcript)

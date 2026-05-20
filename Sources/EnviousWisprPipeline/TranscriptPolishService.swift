@@ -32,7 +32,7 @@ public final class TranscriptPolishService {
   /// At call time, config is snapshotted into an immutable value for request safety.
   public let llmPolishStep: LLMPolishStep
 
-  /// Phase 0 (#640) — single shared registry. Constructed here so AppState
+  /// Phase 0 (#640) — single shared registry. Constructed here so the former root state
   /// avoids breaching the 19-collaborator ceiling (the registry would
   /// otherwise need its own top-level `let`). Both pipeline finalizers
   /// receive this same instance via init injection. Phase 7 (#629)
@@ -60,7 +60,7 @@ public final class TranscriptPolishService {
     self.llmPolishStep.onToken = nil
   }
 
-  /// Set the dictation activity provider after init (when AppState conforms post-init).
+  /// Set the dictation activity provider after init (when the former root state conforms post-init).
   public func setDictationActivity(_ provider: DictationActivityProviding) {
     self.dictationActivity = provider
   }

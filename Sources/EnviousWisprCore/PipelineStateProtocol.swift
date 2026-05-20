@@ -19,7 +19,7 @@ public enum PipelineActivity: Equatable, Sendable {
 /// conform by extension; the planner never inspects their specific cases.
 ///
 /// `isActive` is NOT part of this protocol: both backends' concrete state
-/// enums already expose their own `isActive` (used inline by AppState for
+/// enums already expose their own `isActive` (used inline by the former root state for
 /// the inactive->active tiebreaker), and the planner derives all its
 /// control-flow decisions from `activity` alone.
 public protocol PipelineStateProtocol: Equatable, Sendable {

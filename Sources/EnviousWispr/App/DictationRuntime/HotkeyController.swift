@@ -98,7 +98,7 @@ final class HotkeyController {
   /// Carbon `RegisterEventHotKey` only delivers events while the
   /// `NSApplication` event loop is running. AppDelegate calls this from
   /// `applicationDidFinishLaunching` once that is the case. Unconditional
-  /// behavior preserved from `AppState.startHotkeyServiceIfEnabled` —
+  /// behavior preserved from the former root state —
   /// no onboarding gate (the `:221` onboarding check in AppDelegate is
   /// for the `settingsSnapshot` telemetry event, not for hotkey start).
   func startIfEnabled() {

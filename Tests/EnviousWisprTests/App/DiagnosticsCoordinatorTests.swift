@@ -3,7 +3,7 @@ import Testing
 @testable import EnviousWispr
 
 /// Issue #768 (PR3 of epic #763) — pins the `DiagnosticsCoordinator` contract
-/// that was extracted from `AppState.benchmark`.
+/// that was extracted from the former root state.
 @MainActor
 @Suite("DiagnosticsCoordinator — benchmark ownership")
 struct DiagnosticsCoordinatorTests {

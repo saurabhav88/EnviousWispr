@@ -8,7 +8,7 @@ import Foundation
 /// the planner is a pure projection from inputs to this list.
 enum PipelineStateSideEffect: Equatable, Sendable {
   /// Cancel any pending post-completion warning task. Emitted on every
-  /// non-complete transition — mirrors AppState.swift:386 / :443 behavior.
+  /// non-complete transition — mirrors the former root-state file behavior.
   case cancelPendingWarning
 
   /// Schedule the "Polish failed -- using raw text" warning 400 ms after
@@ -28,12 +28,12 @@ enum PipelineStateSideEffect: Equatable, Sendable {
 
   /// Call `TelemetryService.shared.reportDictationCompleted(transcript:inputMode:)`
   /// using the caller's current transcript. Emitted only when `.complete` AND
-  /// the pipeline has a current transcript — matches AppState's `if let t`.
+  /// the pipeline has a current transcript — matches the former root state's `if let t`.
   case reportDictationCompleted
 
   /// Call `TelemetryService.shared.pipelineFailed(...)` with the captured error
   /// code. The caller supplies the fixed `stage` / `errorCategory` / `backend`
-  /// literals that today live in AppState's closures.
+  /// literals that today live in the former root state's closures.
   case reportPipelineFailed(errorCode: String)
 }
 
@@ -42,7 +42,7 @@ struct PipelineStateChangePlan: Equatable, Sendable {
 }
 
 /// Pure projection from a state transition's observable inputs to the ordered
-/// list of side effects AppState's `onStateChange` closures must perform.
+/// list of side effects the former root state's `onStateChange` closures must perform.
 ///
 /// **What lives here:**
 /// - Three-way overlay priority on `.complete`
@@ -56,7 +56,7 @@ struct PipelineStateChangePlan: Equatable, Sendable {
 ///   closure (that guard fires at 400 ms, not at plan time).
 /// - Hotkey register/unregister, `isRecordingLocked = false` reset, the
 ///   inactive→active tiebreaker, the `onPipelineStateChange?` fan-out.
-///   All four are AppState-only concerns that the bible (§7) keeps inline.
+///   All four are root-state-only concerns that the bible (§7) keeps inline.
 ///
 /// Kept `internal` to `EnviousWisprPipeline`: only the handler in this
 /// module calls `plan(...)`; tests reach it through `@testable import`.
@@ -73,8 +73,7 @@ enum PipelineStateChangePlanner {
     var effects: [PipelineStateSideEffect] = []
 
     // Step 1 — overlay resolution + warning scheduling / cancellation.
-    // Order mirrors the production closures at AppState.swift:370-393 /
-    // :429-450: resolve intent, schedule warning iff applicable, then show.
+    // Order mirrors the production closures at the former root-state file: resolve intent, schedule warning iff applicable, then show.
     let resolvedOverlayIntent: OverlayIntent
     switch newState.activity {
     case .complete:

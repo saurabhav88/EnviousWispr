@@ -12,8 +12,8 @@ import Testing
 
 /// Unit tests for `DictationSessionConfigFactory.make(...)` (PR5 of epic #763).
 ///
-/// The factory body is lifted verbatim from `AppState.makeDictationSessionConfig(triggerSource:)`,
-/// so end-to-end behavior is exercised by existing AppState toggleRecording tests
+/// The factory body is lifted verbatim from `the former root state(triggerSource:)`,
+/// so end-to-end behavior is exercised by existing the former root state toggleRecording tests
 /// and the runtime UAT. These tests pin three deterministic data-transformation
 /// invariants: trigger-source passthrough, LLM-model resolution per provider,
 /// and settings passthrough on the parakeet-idle path (the common case).

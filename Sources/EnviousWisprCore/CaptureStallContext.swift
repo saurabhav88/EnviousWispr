@@ -120,7 +120,7 @@ public enum XPCErrorKind: String, Sendable {
 }
 
 /// Context for XPC interrupt / invalidate handler fires. Consumed by
-/// `AppState.onXPCServiceError` which emits the captureError.
+/// the former root state which emits the captureError.
 public struct XPCErrorContext: Sendable {
   public let kind: XPCErrorKind
   public let sessionID: UInt64?

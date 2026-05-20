@@ -7,10 +7,10 @@ import EnviousWisprStorage
 import Foundation
 
 /// PR9 of #763 — Lifecycle home for pipeline state-change side effects plus the
-/// seven PR8 backend-resolver symbols that PR8 left on AppState (`LastCapturingBackend`
+/// seven PR8 backend-resolver symbols that PR8 left on the former root state (`LastCapturingBackend`
 /// enum, the three resolver-state vars, and the three resolver helpers).
 ///
-/// Owns three responsibilities the AppState god-object held:
+/// Owns three responsibilities the former root state god-object held:
 ///   1. Pipeline `onStateChange` side effects (overlay show/clear, hotkey
 ///      arbitration, telemetry, chip lifecycle, terminal settings sync).
 ///   2. Backend-resolver state + helpers for `DictationRuntime`'s routers
@@ -78,9 +78,8 @@ final class DictationLifecycleCoordinator {
   private var postCompletionWarningTask: Task<Void, Never>?
 
   /// AppDelegate sets this to update the menu-bar icon + drive update-banner
-  /// suppression. Setter-injected post-init like AppState's
-  /// `var languageSuggestionPresenter` precedent (see
-  /// `AppStateCeilingsTests.swift:19-25` ratchet history).
+  /// suppression. Setter-injected post-init, the same precedent as PR4's
+  /// `var languageSuggestionPresenter`.
   var onPipelineStateChange: ((PipelineState) -> Void)?
 
   /// Per-pipeline side-effect executors. Lazy so the closures can capture
@@ -164,7 +163,7 @@ final class DictationLifecycleCoordinator {
     )
     // PR7 of #763 — push polish error to the post-recording result home so
     // views can read `lastRecordingResult.polishError` without reaching
-    // through AppState. Sunset PR11.
+    // through the former root state. Sunset PR11.
     lastRecordingResult.polishError = pipeline.lastPolishError
     dispatchChipLifecycle(newState: newState, lastPolishError: pipeline.lastPolishError)
   }
@@ -278,7 +277,7 @@ final class DictationLifecycleCoordinator {
 
   // MARK: - Post-completion warning
 
-  /// Cancel any pending deferred polish-failed warning. Called by AppState's
+  /// Cancel any pending deferred polish-failed warning. Called by the former root state's
   /// PR10-scope start paths (`hotkeyService.onStartRecording`,
   /// `toggleRecording(source:)`) BEFORE a new recording overlay shows, so a
   /// stale warning from the previous session cannot race the new dictation's

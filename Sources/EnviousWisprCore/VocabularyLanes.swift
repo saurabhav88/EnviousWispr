@@ -25,7 +25,7 @@ public struct CorrectorVocabulary: Sendable, Equatable {
     self.generation = generation
   }
 
-  /// Empty initial value used at AppState wire time before the first user mutation.
+  /// Empty initial value used at the former root state wire time before the first user mutation.
   public static let empty = CorrectorVocabulary(terms: [], generation: 0)
 }
 

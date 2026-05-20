@@ -55,7 +55,7 @@ public final class TelemetryService {
 
   // MARK: - Observation Layer (reads domain objects)
 
-  /// Called by AppState when a pipeline completes. Reads Transcript + ExecutionMetrics.
+  /// Called by the former root state when a pipeline completes. Reads Transcript + ExecutionMetrics.
   public func reportDictationCompleted(transcript t: Transcript, inputMode: String) {
     #if DEBUG
       testEventHook?(

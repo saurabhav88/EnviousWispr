@@ -28,20 +28,20 @@ import Testing
   /// - 7 → 8 in PR6 of epic #763 (2026-05-18, #772) for `TranscriptWorkflowCoordinator`.
   /// - 8 → 11 in PR7 of epic #763 (2026-05-18, #773) for `LiveRecordingState` +
   ///   `LastRecordingResult` + `BackendMetadata`. Bible §30 entry: PR7 lifts the
-  ///   three live-dictation / display-label homes off AppState into App-owned
-  ///   `@State` instances. By design, AppState shrinks (~14 lines) while the
+  ///   three live-dictation / display-label homes off the former root state into App-owned
+  ///   `@State` instances. By design, the former root state shrinks (~14 lines) while the
   ///   composition root grows by three; this is the migration shape.
   ///   `liveRecordingState` and `lastRecordingResult` sunset to 9 in PR9
   ///   (DictationLifecycleCoordinator absorbs the push sites);
-  ///   `backendMetadata` sunsets to 8 in PR11 (with AppState deletion).
+  ///   `backendMetadata` sunsets to 8 in PR11 (with the former root state deletion).
   /// - 11 → 12 in PR8 of epic #763 (2026-05-19, #774) for `DictationRuntime`.
   /// - 12 → 13 in PR10 of epic #763 (2026-05-19, #776) for the shared
   ///   `HotkeyService`. Bible §30 entry: PR10 lifts `let hotkeyService` off
-  ///   AppState because three independent consumers (`HotkeyController`,
+  ///   the former root state because three independent consumers (`HotkeyController`,
   ///   `PipelineSettingsSync`, `DictationLifecycleCoordinator`) plus
-  ///   `AppDelegate` termination all need the SAME instance, and AppState
+  ///   `AppDelegate` termination all need the SAME instance, and the former root state
   ///   is being deleted (epic #763 freeze). The App-owned `@State` is the
-  ///   only composition root that survives PR11. Threaded into `AppState.init`,
+  ///   only composition root that survives PR11. Threaded into `the former root-state initializer`,
   ///   DLC.init, DR.init, and `appDelegate.attach(...)`.
   /// - 13 → 14 in PR-B.1 of epic #763 (2026-05-19, #796) for
   ///   `SparkleUpdateController`. Bible §30 entry: PR-B.1 lifts the Sparkle
@@ -74,24 +74,24 @@ import Testing
   ///   `appDelegate.attach(...)`. This is the final PR-B home — `AppDelegate`
   ///   ends as a thin AppKit adapter. Not `.environment(...)`-injected.
   /// - 17 → 26 in PR-C.1 of epic #763 (2026-05-20, #813). Bible §30 entry:
-  ///   PR-C.1 hoists the nine view-facing subsystems AppState used to own
+  ///   PR-C.1 hoists the nine view-facing subsystems the former root state used to own
   ///   (`settings`, `permissions`, `asrManager`, `customWordsCoordinator`,
   ///   `setup`, `audioDeviceList`, `aiAvailability`, `keychainManager`,
   ///   `llmDiscovery`) into App-owned `@State` homes, injected into both Window
   ///   scenes. The seven construction-only subsystems stay `init()` locals and
   ///   are not counted.
-  /// - 26 → 27 in PR-C.3 of epic #763 (2026-05-20, #815). Bible §30 entry:
-  ///   PR-C.3 rehomes `polishService` (the re-polish service) onto an App-owned
-  ///   `@State`; it was an `init()` local handed to `AppState`. `appState`
-  ///   itself stays (receive-only) until PR-C.4 deletes it, which lowers this
-  ///   ceiling back to 26 (lower-is-free).
+  /// - 26 → 27 in PR-C.3 of epic #763 (2026-05-20, #815): PR-C.3 rehomed
+  ///   `polishService` (the re-polish service) onto an App-owned `@State`.
+  /// - 27 → 26 in PR-C.4 of epic #763 (2026-05-20, #816): PR-C.4 deleted the
+  ///   receive-only root state property, the final step of the epic.
+  ///   Lower-is-free.
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
     #expect(
-      count <= 27,
+      count <= 26,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 27. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 26. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.
@@ -140,7 +140,7 @@ import Testing
   /// collapsing from eight arguments to two. Cap set by the deterministic rule
   /// (post-change actual 375 + 10, rounded up to the nearest 5).
   /// Ratcheted 385→560 in PR-C.1 of epic #763 (2026-05-20, #813) to absorb the
-  /// subsystem construction + init-time wiring relocated from `AppState.init()`
+  /// subsystem construction + init-time wiring relocated from the former root-state initializer
   /// (the composition root now constructs all 17 subsystems), the nine
   /// view-facing `@State` declarations + assignments, and the eighteen
   /// `.environment(...)` injections across the two Window scenes. Cap set by
@@ -175,7 +175,7 @@ import Testing
   /// `EnviousWisprApp` the construction root: it now builds `AudioCaptureProxy`,
   /// `ASRManagerProxy`, both pipelines, `TranscriptPolishService`,
   /// `LLMModelDiscoveryCoordinator`, etc. — the construction that used to live
-  /// in `AppState.init()`. A composition root importing the modules it
+  /// in the former root-state initializer. A composition root importing the modules it
   /// composes is correct; the anti-coupling intent is satisfied by the
   /// zero-non-private-method ceiling, which keeps the App struct construction-
   /// only with no behavior.

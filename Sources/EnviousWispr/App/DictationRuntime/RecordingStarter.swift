@@ -5,7 +5,7 @@ import EnviousWisprPipeline
 import EnviousWisprServices
 import Foundation
 
-/// PR10 of #763 — owns the start path lifted out of AppState. `start()` is
+/// PR10 of #763 — owns the start path lifted out of the former root state. `start()` is
 /// the hotkey-onStartRecording path (refresh permissions, show overlay
 /// immediately, prewarm the pipeline, dispatch `.toggleRecording`, run
 /// the post-condition wedge guard, log cold-start telemetry).
@@ -76,7 +76,7 @@ final class RecordingStarter {
     self.dictationLifecycleCoordinator = dictationLifecycleCoordinator
   }
 
-  /// Hotkey PTT start path. Mirrors AppState.swift:340-493 (pre-PR10):
+  /// Hotkey PTT start path. Mirrors the former root-state file (pre-PR10):
   /// overlay shows immediately for visual feedback, then prewarm, then
   /// dispatch `.toggleRecording`, then the issue #445 post-condition
   /// guard.
@@ -187,7 +187,7 @@ final class RecordingStarter {
     }
   }
 
-  /// UI/menu toggle path (no prewarm). Mirrors AppState.swift:588-629
+  /// UI/menu toggle path (no prewarm). Mirrors the former root-state file
   /// (pre-PR10). When this toggle initiates a START (active idle), clear
   /// the prior polish error and refresh AX status so the session config
   /// snapshot picks up the right paste capability.

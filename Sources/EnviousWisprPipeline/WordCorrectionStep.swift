@@ -53,7 +53,7 @@ public final class WordCorrectionStep: TextProcessingStep, CorrectorVocabularyCo
 
   /// Phase 3a (#631): manager handle for replacement attribution. Optional
   /// because pre-Phase-3a callers (and tests) construct the step with no
-  /// manager; production wiring (AppState) supplies one.
+  /// manager; production wiring (the former root state) supplies one.
   private let customWordsManager: CustomWordsManager?
 
   /// Phase 2b (#638): cached lookup maps keyed by `CorrectorVocabulary.generation`.

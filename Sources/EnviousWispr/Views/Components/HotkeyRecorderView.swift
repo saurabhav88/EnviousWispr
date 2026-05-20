@@ -110,7 +110,7 @@ struct HotkeyRecorderView: View {
   var colors: HotkeyRecorderColors = .system
 
   // PR10 of #763: hotkey suspend/resume dispatch through DictationRuntime
-  // façade; the shared HotkeyService is no longer accessible via AppState.
+  // façade; the shared HotkeyService is no longer accessible via the former root state.
   @Environment(DictationRuntime.self) private var dictationRuntime
 
   @State private var isRecording = false

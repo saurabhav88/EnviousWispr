@@ -4,7 +4,7 @@ import EnviousWisprCore
 /// Abstraction over ASR management — enables swapping between in-process and XPC implementations.
 ///
 /// `ASRManager` (in-process) and `ASRManagerProxy` (XPC) both conform to this protocol.
-/// Pipelines and AppState interact through this interface only.
+/// Pipelines and the former root state interact through this interface only.
 @MainActor
 public protocol ASRManagerInterface: AnyObject {
   // Observable state
@@ -58,6 +58,6 @@ public protocol ASRManagerInterface: AnyObject {
   var loadProgressTickReporter: (@MainActor @Sendable (Date?, String) -> Void)? { get set }
 
   // Crash notification — fires when XPC ASR service dies during an active session.
-  // Wired by AppState to route to the active pipeline (same pattern as AudioCaptureProxy.onEngineInterrupted).
+  // Wired by the former root state to route to the active pipeline (same pattern as AudioCaptureProxy.onEngineInterrupted).
   var onServiceInterrupted: (() -> Void)? { get set }
 }
