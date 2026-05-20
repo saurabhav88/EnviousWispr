@@ -1,9 +1,11 @@
+import EnviousWisprASR
 import EnviousWisprCore
+import EnviousWisprServices
 import SwiftUI
 
 /// Status view when no transcript is active — handles all pipeline states.
 struct StatusView: View {
-  @Environment(AppState.self) private var appState
+  @Environment(SettingsManager.self) private var settings
   // PR7 of #763: live phase, audio level, model label, polish error all
   // resolve through the three new homes.
   @Environment(LiveRecordingState.self) private var liveRecordingState
@@ -12,8 +14,13 @@ struct StatusView: View {
   // PR10 of #763: recording-control surface (toggle, cancel, reset,
   // hotkey description) moved off AppState onto DictationRuntime façade.
   @Environment(DictationRuntime.self) private var dictationRuntime
+  @Environment(\.asrManager) private var asrManagerEnv
   @State private var elapsed: TimeInterval = 0
   @State private var recordingStart: Date?
+
+  /// Force-unwrapped: `EnviousWisprApp` always injects a real instance into the
+  /// environment (see `AppEnvironmentKeys.swift`).
+  private var asrManager: any ASRManagerInterface { asrManagerEnv! }
 
   var body: some View {
     VStack(spacing: 16) {
@@ -24,7 +31,7 @@ struct StatusView: View {
         } description: {
           VStack(spacing: 4) {
             Text("Press the record button to start dictating.")
-            if appState.settings.hotkeyEnabled {
+            if settings.hotkeyEnabled {
               Text("Hotkey: \(dictationRuntime.hotkeyDescription)")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
@@ -76,7 +83,7 @@ struct StatusView: View {
               .frame(width: 240, height: 6)
               .accessibilityHidden(true)
 
-            if appState.settings.vadAutoStop {
+            if settings.vadAutoStop {
               Text("VAD: Active")
                 .font(.caption2)
                 .foregroundStyle(.stSuccess)
@@ -124,7 +131,7 @@ struct StatusView: View {
             .controlSize(.large)
           Text("Transcribing...")
             .font(.title2)
-          if !appState.asrManager.isModelLoaded {
+          if !asrManager.isModelLoaded {
             Text("This may take a moment on first run while the model loads.")
               .font(.caption)
               .foregroundStyle(.secondary)
@@ -271,7 +278,6 @@ struct AudioLevelBar: View {
 
 /// Pipeline status badge in toolbar — hidden when idle/complete/error, minimal during active states.
 struct StatusBadge: View {
-  @Environment(AppState.self) private var appState
   // PR7 of #763: live phase resolves through LiveRecordingState.
   @Environment(LiveRecordingState.self) private var liveRecordingState
 

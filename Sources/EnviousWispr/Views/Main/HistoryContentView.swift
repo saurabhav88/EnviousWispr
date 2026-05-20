@@ -1,9 +1,10 @@
 import EnviousWisprCore
+import EnviousWisprServices
 import SwiftUI
 
 /// Inner content for the History tab: transcript list (left) + detail/status (right).
 struct HistoryContentView: View {
-  @Environment(AppState.self) private var appState
+  @Environment(PermissionsService.self) private var permissions
   @Environment(TranscriptWorkflowCoordinator.self) private var transcriptWorkflowCoordinator
   // PR7 of #763: live-recording fallback transcript comes from LiveRecordingState.
   @Environment(LiveRecordingState.self) private var liveRecordingState
@@ -23,7 +24,7 @@ struct HistoryContentView: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      if appState.permissions.shouldShowAccessibilityWarning {
+      if permissions.shouldShowAccessibilityWarning {
         AccessibilityWarningBanner()
       }
 

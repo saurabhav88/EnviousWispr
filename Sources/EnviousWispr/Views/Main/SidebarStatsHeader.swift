@@ -1,13 +1,18 @@
+import EnviousWisprASR
 import EnviousWisprCore
 import SwiftUI
 
 /// Stats header shown above the transcript list in the sidebar.
 struct SidebarStatsHeader: View {
-  @Environment(AppState.self) private var appState
   @Environment(TranscriptWorkflowCoordinator.self) private var transcriptWorkflowCoordinator
   // PR7 of #763: live phase + display labels resolve through the three new homes.
   @Environment(LiveRecordingState.self) private var liveRecordingState
   @Environment(BackendMetadata.self) private var backendMetadata
+  @Environment(\.asrManager) private var asrManagerEnv
+
+  /// Force-unwrapped: `EnviousWisprApp` always injects a real instance into the
+  /// environment (see `AppEnvironmentKeys.swift`).
+  private var asrManager: any ASRManagerInterface { asrManagerEnv! }
 
   private var isRecording: Bool {
     liveRecordingState.pipelineState == .recording
@@ -42,7 +47,7 @@ struct SidebarStatsHeader: View {
         modelName: backendMetadata.modelLabel,
         statusText: backendMetadata.statusText(for: liveRecordingState.pipelineState),
         isRecording: isRecording,
-        isLoaded: appState.asrManager.isModelLoaded,
+        isLoaded: asrManager.isModelLoaded,
         hasError: {
           if case .error = liveRecordingState.pipelineState { return true }
           return false

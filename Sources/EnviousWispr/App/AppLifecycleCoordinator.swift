@@ -3,16 +3,16 @@ import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprLLM
+import EnviousWisprPipeline
 import EnviousWisprServices
 import Foundation
 
 // Issue #574: `EnviousWisprAudio` and `EnviousWisprASR` are needed in release
 // builds because `AudioSystemEventReporter` (production telemetry) references
 // `AudioCaptureInterface` and `ASRManagerInterface` from those modules.
-
-#if DEBUG
-  import EnviousWisprPipeline
-#endif
+// PR-C.3 of #763: `EnviousWisprPipeline` is now an unconditional import — the
+// `TranscriptionPipeline` / `WhisperKitPipeline` homes are stored properties
+// (still read only by `DebugFaultEndpoint` in debug builds).
 
 /// PR-B.4 of #763: App-owned home for the process-lifecycle sequence.
 ///
@@ -37,7 +37,18 @@ final class AppLifecycleCoordinator {
   #endif
 
   // Injected dependencies — delegated to, never owned.
-  private let appState: AppState
+  // PR-C.3 of #763: the single `appState` reference is replaced by the 10
+  // specific homes the launch/become-active/terminate bodies actually read.
+  private let settings: SettingsManager
+  private let permissions: PermissionsService
+  private let keychainManager: KeychainManager
+  private let customWordsCoordinator: CustomWordsCoordinator
+  private let aiAvailability: AIAvailabilityCoordinator
+  private let audioCapture: any AudioCaptureInterface
+  private let asrManager: any ASRManagerInterface
+  private let pipeline: TranscriptionPipeline
+  private let whisperKitPipeline: WhisperKitPipeline
+  private let setup: SetupCoordinator
   private let dictationRuntime: DictationRuntime
   private let dictationLifecycleCoordinator: DictationLifecycleCoordinator
   private let liveRecordingState: LiveRecordingState
@@ -46,7 +57,16 @@ final class AppLifecycleCoordinator {
   private let hotkeyService: HotkeyService
 
   init(
-    appState: AppState,
+    settings: SettingsManager,
+    permissions: PermissionsService,
+    keychainManager: KeychainManager,
+    customWordsCoordinator: CustomWordsCoordinator,
+    aiAvailability: AIAvailabilityCoordinator,
+    audioCapture: any AudioCaptureInterface,
+    asrManager: any ASRManagerInterface,
+    pipeline: TranscriptionPipeline,
+    whisperKitPipeline: WhisperKitPipeline,
+    setup: SetupCoordinator,
     dictationRuntime: DictationRuntime,
     dictationLifecycleCoordinator: DictationLifecycleCoordinator,
     liveRecordingState: LiveRecordingState,
@@ -54,7 +74,16 @@ final class AppLifecycleCoordinator {
     appWindowCoordinator: AppWindowCoordinator,
     hotkeyService: HotkeyService
   ) {
-    self.appState = appState
+    self.settings = settings
+    self.permissions = permissions
+    self.keychainManager = keychainManager
+    self.customWordsCoordinator = customWordsCoordinator
+    self.aiAvailability = aiAvailability
+    self.audioCapture = audioCapture
+    self.asrManager = asrManager
+    self.pipeline = pipeline
+    self.whisperKitPipeline = whisperKitPipeline
+    self.setup = setup
     self.dictationRuntime = dictationRuntime
     self.dictationLifecycleCoordinator = dictationLifecycleCoordinator
     self.liveRecordingState = liveRecordingState
@@ -74,7 +103,7 @@ final class AppLifecycleCoordinator {
     // If onboarding is needed, stay .regular so SwiftUI creates the main window
     // hierarchy and ActionWirer can wire callbacks before opening the
     // onboarding window.
-    if appState.settings.onboardingState == .completed {
+    if settings.onboardingState == .completed {
       NSApp.setActivationPolicy(.accessory)
     }
 
@@ -120,17 +149,17 @@ final class AppLifecycleCoordinator {
     // Carbon RegisterEventHotKey requires an active run loop for event delivery.
     dictationRuntime.startHotkeyServiceIfEnabled()
 
-    if appState.settings.onboardingState == .completed {
-      let s = appState.settings
+    if settings.onboardingState == .completed {
+      let s = settings
       let hasKeys =
-        (try? appState.keychainManager.retrieve(key: KeychainManager.openAIKeyID)) != nil
-        || (try? appState.keychainManager.retrieve(key: KeychainManager.geminiKeyID)) != nil
+        (try? keychainManager.retrieve(key: KeychainManager.openAIKeyID)) != nil
+        || (try? keychainManager.retrieve(key: KeychainManager.geminiKeyID)) != nil
       TelemetryService.shared.settingsSnapshot(
         asrBackend: s.selectedBackend.rawValue,
         llmProvider: s.llmProvider.rawValue,
         recordingMode: s.recordingMode.rawValue,
         fillerRemoval: s.fillerRemovalEnabled,
-        customWordsCount: appState.customWordsCoordinator.customWords.count,
+        customWordsCount: customWordsCoordinator.customWords.count,
         hasApiKeys: hasKeys,
         noiseSuppression: s.noiseSuppression
       )
@@ -138,11 +167,11 @@ final class AppLifecycleCoordinator {
 
     // Run Apple Intelligence diagnostics via coordinator.
     // Handles: Sentry context, PostHog event, persistence, first-launch re-check.
-    let isFreshInstall = appState.settings.onboardingState != .completed
+    let isFreshInstall = settings.onboardingState != .completed
     if isFreshInstall {
-      appState.aiAvailability.firstLaunchCheck()
+      aiAvailability.firstLaunchCheck()
     } else {
-      Task { await appState.aiAvailability.checkAvailability(trigger: "app_launch") }
+      Task { await aiAvailability.checkAvailability(trigger: "app_launch") }
     }
 
     // Fire structured app.launched event — uses cached report (loaded from
@@ -151,7 +180,7 @@ final class AppLifecycleCoordinator {
       Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
     let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
     let osVer = ProcessInfo.processInfo.operatingSystemVersion
-    let cachedReport = appState.aiAvailability.latestReport
+    let cachedReport = aiAvailability.latestReport
     TelemetryService.shared.appLaunched(
       version: version,
       build: build,
@@ -162,17 +191,17 @@ final class AppLifecycleCoordinator {
     )
 
     // Check Accessibility permission on launch (query only — never auto-prompt).
-    appState.permissions.refreshOnLaunch()
+    permissions.refreshOnLaunch()
     menuBarController.updateIcon()  // Reflect accessibility warning state in icon.
 
     // Begin smart polling if Accessibility is not yet granted.
-    appState.permissions.startMonitoring()
+    permissions.startMonitoring()
 
     // Pre-warm LLM backend with a real inference request.
     LLMNetworkSession.shared.preWarmModel(
-      provider: appState.settings.llmProvider,
-      model: appState.settings.llmModel,
-      keychainManager: appState.keychainManager
+      provider: settings.llmProvider,
+      model: settings.llmModel,
+      keychainManager: keychainManager
     )
 
     // Onboarding auto-open is handled by ActionWirer inside the main Window
@@ -182,12 +211,12 @@ final class AppLifecycleCoordinator {
       // V2 fault-injection (issue #291). Only when explicitly opted in via env var.
       if DebugFaultEndpoint.isRequested {
         let endpoint = DebugFaultEndpoint(
-          audioProxy: appState.audioCapture as? AudioCaptureProxy,
-          asrProxy: appState.asrManager as? ASRManagerProxy,
-          parakeetPipeline: appState.pipeline,
-          whisperKitPipeline: appState.whisperKitPipeline,
+          audioProxy: audioCapture as? AudioCaptureProxy,
+          asrProxy: asrManager as? ASRManagerProxy,
+          parakeetPipeline: pipeline,
+          whisperKitPipeline: whisperKitPipeline,
           activeBackend: { [weak self] in
-            self?.appState.settings.selectedBackend ?? .parakeet
+            self?.settings.selectedBackend ?? .parakeet
           }
         )
         endpoint.start()
@@ -197,7 +226,7 @@ final class AppLifecycleCoordinator {
 
     audioEnvironmentSnapshotter = AudioEnvironmentSnapshotter(
       routeProvider: { [weak self] in
-        self?.appState.audioCapture.currentAudioRoute
+        self?.audioCapture.currentAudioRoute
       }
     )
     SentryBreadcrumb.audioEnvironmentProvider = { [weak self] in
@@ -208,8 +237,8 @@ final class AppLifecycleCoordinator {
     // release; ships to all users so we get cross-user data on what real
     // devices/routes/connections users actually hit.
     audioSystemEventReporter = AudioSystemEventReporter(
-      audioCapture: appState.audioCapture,
-      asrManager: appState.asrManager,
+      audioCapture: audioCapture,
+      asrManager: asrManager,
       pipelineStateProvider: { [weak self] in
         // PR7 of #763: pipeline phase resolves through LiveRecordingState.
         self?.liveRecordingState.pipelineState ?? .idle
@@ -225,9 +254,9 @@ final class AppLifecycleCoordinator {
 
     // Re-warm LLM backend when app comes to foreground.
     LLMNetworkSession.shared.preWarmModel(
-      provider: appState.settings.llmProvider,
-      model: appState.settings.llmModel,
-      keychainManager: appState.keychainManager
+      provider: settings.llmProvider,
+      model: settings.llmModel,
+      keychainManager: keychainManager
     )
   }
 
@@ -235,7 +264,7 @@ final class AppLifecycleCoordinator {
     // PR-B.2 of #763: both window-close observers are torn down by the
     // coordinator now.
     appWindowCoordinator.tearDown()
-    appState.setup.ollamaSetup.cleanup()
+    setup.ollamaSetup.cleanup()
     // PR10 of #763 — shared HotkeyService is owned by EnviousWisprApp as
     // `@State`; this coordinator holds an injected ref.
     hotkeyService.stop()

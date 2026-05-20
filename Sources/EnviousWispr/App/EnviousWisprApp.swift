@@ -31,8 +31,8 @@ struct EnviousWisprApp: App {
 
   // PR-C.1 of #763: the nine view-facing subsystems that AppState used to own
   // are now App-owned `@State` homes, injected into both Window scenes'
-  // environment alongside `appState`. Views still read `@Environment(AppState.self)`
-  // in PR-C.1; PR-C.2 / PR-C.3 migrate them onto these homes directly.
+  // environment. As of PR-C.3 every Settings / Main / Onboarding view reads
+  // these homes directly; `appState` is receive-only and deleted in PR-C.4.
   @State private var settings: SettingsManager
   @State private var permissions: PermissionsService
   @State private var asrManager: any ASRManagerInterface
@@ -42,6 +42,11 @@ struct EnviousWisprApp: App {
   @State private var aiAvailability: AIAvailabilityCoordinator
   @State private var keychainManager: KeychainManager
   @State private var llmDiscovery: LLMModelDiscoveryCoordinator
+
+  // PR-C.3 of #763: the re-polish service is now App-owned. It was an
+  // `init()` local handed to `AppState`; with views and consumers migrated
+  // off `AppState`, the composition root holds the canonical reference.
+  @State private var polishService: TranscriptPolishService
 
   @State private var isOnboardingPresented: Bool =
     !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
@@ -222,9 +227,6 @@ struct EnviousWisprApp: App {
       llmDiscovery: llmDiscovery,
       aiAvailability: aiAvailability
     )
-    // PR-C.1: AppState still conforms to `DictationActivityProviding`.
-    // PR-C.3 rewires this provider to `LiveRecordingState`.
-    polishService.setDictationActivity(appState)
 
     let navigationCoordinator = NavigationCoordinator()
     let diagnosticsCoordinator = DiagnosticsCoordinator()
@@ -308,10 +310,16 @@ struct EnviousWisprApp: App {
     appState.attachLastRecordingResult(lastRecordingResult)
     appState.attachBackendMetadata(backendMetadata)
 
+    // PR-C.3 of #763: `LiveRecordingState` provides `DictationActivityProviding`
+    // (replaces `AppState`'s conformance). `polishService` blocks a re-polish
+    // while live dictation is in flight. Wired after `liveRecordingState` exists.
+    polishService.setDictationActivity(liveRecordingState)
+
     // PR9 of #763: construct the lifecycle home BEFORE DictationRuntime.
+    // PR-C.3: the hands-free lock flag is rehomed onto `LiveRecordingState`.
     let recordingLockedAccess = DictationLifecycleCoordinator.RecordingLockedAccess(
-      get: { [weak appState] in appState?.isRecordingLocked ?? false },
-      set: { [weak appState] locked in appState?.isRecordingLocked = locked }
+      get: { liveRecordingState.isRecordingLocked },
+      set: { locked in liveRecordingState.isRecordingLocked = locked }
     )
     let dictationLifecycleCoordinator = DictationLifecycleCoordinator(
       pipeline: pipeline,
@@ -389,8 +397,18 @@ struct EnviousWisprApp: App {
     )
 
     // PR-B.4 of #763: process-lifecycle home. Constructed last.
+    // PR-C.3 of #763: receives the 10 specific homes it reads, not `AppState`.
     let appLifecycleCoordinator = AppLifecycleCoordinator(
-      appState: appState,
+      settings: settings,
+      permissions: permissions,
+      keychainManager: keychainManager,
+      customWordsCoordinator: customWordsCoordinator,
+      aiAvailability: aiAvailability,
+      audioCapture: audioCapture,
+      asrManager: asrManager,
+      pipeline: pipeline,
+      whisperKitPipeline: whisperKitPipeline,
+      setup: setup,
       dictationRuntime: dictationRuntime,
       dictationLifecycleCoordinator: dictationLifecycleCoordinator,
       liveRecordingState: liveRecordingState,
@@ -425,6 +443,9 @@ struct EnviousWisprApp: App {
     _aiAvailability = State(initialValue: aiAvailability)
     _keychainManager = State(initialValue: keychainManager)
     _llmDiscovery = State(initialValue: llmDiscovery)
+
+    // PR-C.3 of #763: App-owned re-polish service.
+    _polishService = State(initialValue: polishService)
 
     // PR-A: push App-owned homes into AppDelegate before any
     // NSApplicationDelegate callback fires.
@@ -464,7 +485,7 @@ struct EnviousWisprApp: App {
         .environment(\.keychainManager, keychainManager)
         .background(
           ActionWirer(
-            appState: appState,
+            settings: settings,
             appWindowCoordinator: appWindowCoordinator,
             menuBarController: menuBarController,
             isOnboardingPresented: $isOnboardingPresented
@@ -502,8 +523,9 @@ struct EnviousWisprApp: App {
 /// Hidden view that wires SwiftUI environment actions into App-owned homes.
 /// Must live inside a SwiftUI view hierarchy to access @Environment.
 private struct ActionWirer: View {
-  /// PR-A: App-owned AppState passed in directly.
-  let appState: AppState
+  /// PR-C.3 of #763: the onboarding-auto-open gate reads `onboardingState`
+  /// off the settings store directly, not via `AppState`.
+  let settings: SettingsManager
   /// PR-B.2 of #763: the three SwiftUI window bridges are wired onto the
   /// coordinator now, not AppDelegate.
   let appWindowCoordinator: AppWindowCoordinator
@@ -530,7 +552,7 @@ private struct ActionWirer: View {
         let replayed = appWindowCoordinator.consumePendingOpenOnboarding()
         // Auto-open onboarding if needed (first launch), only if nothing was
         // already replayed.
-        if !replayed, appState.settings.onboardingState != .completed {
+        if !replayed, settings.onboardingState != .completed {
           appWindowCoordinator.openOnboardingWindow()
         }
       }

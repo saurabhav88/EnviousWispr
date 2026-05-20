@@ -27,9 +27,9 @@ final class DictationLifecycleCoordinator {
   // Ceiling 11 (raised from parent migration plan's 10; see
   // `DictationLifecycleCoordinatorCeilingsTests` Bible-changelog comment).
   // The 11th slot is `recordingLockedAccess`, a get/set closure-pair struct
-  // that lets the coordinator read AND write AppState's `isRecordingLocked`
-  // without storing an AppState reference. PR10 absorbs `isRecordingLocked`
-  // ownership into the recording-state homes and ratchets this back down.
+  // that lets the coordinator read AND write the hands-free `isRecordingLocked`
+  // flag without storing a reference to its owner. PR-C.3 of #763 rehomed that
+  // flag onto `LiveRecordingState` (the closures retarget at the call site).
 
   let pipeline: TranscriptionPipeline  // 1
   let whisperKitPipeline: WhisperKitPipeline  // 2
@@ -43,9 +43,9 @@ final class DictationLifecycleCoordinator {
   let languageSuggestionPresenter: LanguageSuggestionPresenter?  // 10
   let recordingLockedAccess: RecordingLockedAccess  // 11
 
-  /// Bidirectional accessor for `AppState.isRecordingLocked`. PR9 keeps the
-  /// stored property on AppState (PR10 absorbs it into the recording-state
-  /// homes). The state-change closure both READS the lock state (to pass into
+  /// Bidirectional accessor for the hands-free `isRecordingLocked` flag (rehomed
+  /// onto `LiveRecordingState` in PR-C.3 of #763). The state-change closure both
+  /// READS the lock state (to pass into
   /// `recordingOverlay.show(...)` so hands-free visuals render correctly) AND
   /// WRITES it (to clear hands-free on any transition out of `.recording`).
   /// Packaging the pair as one struct keeps the cap at 11.

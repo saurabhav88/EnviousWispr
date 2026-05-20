@@ -5,7 +5,8 @@ import SwiftUI
 /// Detail view for a single transcript with toolbar actions.
 struct TranscriptDetailView: View {
   let transcript: Transcript
-  @Environment(AppState.self) private var appState
+  @Environment(PermissionsService.self) private var permissions
+  @Environment(SettingsManager.self) private var settings
   @Environment(NavigationCoordinator.self) private var navigationCoordinator
   @Environment(TranscriptWorkflowCoordinator.self) private var transcriptWorkflowCoordinator
 
@@ -22,7 +23,7 @@ struct TranscriptDetailView: View {
         .help("Copy to clipboard")
 
         Button {
-          if appState.permissions.accessibilityGranted {
+          if permissions.accessibilityGranted {
             PasteService.copyToClipboard(transcript.displayText)
             NSApp.hide(nil)
             Task {
@@ -36,13 +37,13 @@ struct TranscriptDetailView: View {
           Label("Paste", systemImage: "arrow.right.doc.on.clipboard")
         }
         .controlSize(.small)
-        .disabled(!appState.permissions.accessibilityGranted)
+        .disabled(!permissions.accessibilityGranted)
         .help(
-          appState.permissions.accessibilityGranted
+          permissions.accessibilityGranted
             ? "Paste into active app"
             : "Accessibility permission required for paste")
 
-        if transcript.polishedText == nil && appState.settings.llmProvider != .none {
+        if transcript.polishedText == nil && settings.llmProvider != .none {
           Button {
             Task { await transcriptWorkflowCoordinator.polishTranscript(transcript) }
           } label: {

@@ -276,10 +276,16 @@ struct OnboardingV2View: View {
     removal: .opacity
   )
 
-  @Environment(AppState.self) private var appState
+  @Environment(SettingsManager.self) private var settings
+  @Environment(PermissionsService.self) private var permissions
+  @Environment(\.asrManager) private var asrManagerEnv
   var onComplete: () -> Void
 
   @State private var viewModel = OnboardingV2ViewModel()
+
+  /// Force-unwrapped: `EnviousWisprApp` always injects a real instance into the
+  /// environment (see `AppEnvironmentKeys.swift`).
+  private var asrManager: any ASRManagerInterface { asrManagerEnv! }
 
   var body: some View {
     ZStack {
@@ -292,7 +298,7 @@ struct OnboardingV2View: View {
           .transition(Self.screenTransition)
       case .ready:
         ReadyScreenV2(onComplete: {
-          viewModel.finishOnboarding(settings: appState.settings)
+          viewModel.finishOnboarding(settings: settings)
           onComplete()
         })
         .transition(Self.screenTransition)
@@ -312,12 +318,12 @@ struct OnboardingV2View: View {
         viewModel.downloadError == nil,
         case .pending = viewModel.checklistStatuses[0]
       else { return }
-      await viewModel.startSetup(asrManager: appState.asrManager, settings: appState.settings)
+      await viewModel.startSetup(asrManager: asrManager, settings: settings)
     }
   }
 
   private func recoverFromPersistedState() {
-    switch appState.settings.onboardingState {
+    switch settings.onboardingState {
     case .notStarted:
       viewModel.currentScreen = .welcome
     case .settingUp:
@@ -326,9 +332,9 @@ struct OnboardingV2View: View {
     case .needsPermissions:
       viewModel.currentScreen = .settingUp
       viewModel.checklistStatuses = [.completed, .completed, .completed]
-      appState.permissions.refreshAccessibilityStatus()
-      viewModel.micGranted = appState.permissions.hasMicrophonePermission
-      viewModel.accessibilityGranted = appState.permissions.accessibilityGranted
+      permissions.refreshAccessibilityStatus()
+      viewModel.micGranted = permissions.hasMicrophonePermission
+      viewModel.accessibilityGranted = permissions.accessibilityGranted
       if viewModel.micGranted && viewModel.accessibilityGranted {
         viewModel.currentScreen = .ready
       } else {
@@ -640,7 +646,8 @@ private struct ChecklistItemRow: View {
 
 private struct PermissionsPhaseView: View {
   var viewModel: OnboardingV2ViewModel
-  @Environment(AppState.self) private var appState
+  @Environment(PermissionsService.self) private var permissions
+  @Environment(SettingsManager.self) private var settings
 
   var body: some View {
     VStack(spacing: 0) {
@@ -667,7 +674,7 @@ private struct PermissionsPhaseView: View {
           subtitle: "To hear your voice for transcription.",
           isGranted: viewModel.micGranted,
           onGrant: {
-            Task { await viewModel.requestMicPermission(permissions: appState.permissions) }
+            Task { await viewModel.requestMicPermission(permissions: permissions) }
           }
         )
 
@@ -676,7 +683,7 @@ private struct PermissionsPhaseView: View {
           title: "Accessibility",
           subtitle: "To paste your transcribed text into any app.",
           isGranted: viewModel.accessibilityGranted,
-          onGrant: { viewModel.openAccessibilitySettings(permissions: appState.permissions) }
+          onGrant: { viewModel.openAccessibilitySettings(permissions: permissions) }
         )
 
         // #735: trust-builder banner. "Accessibility" is the scariest-sounding
@@ -749,11 +756,11 @@ private struct PermissionsPhaseView: View {
       }
     }
     .onAppear {
-      appState.permissions.refreshAccessibilityStatus()
-      viewModel.micGranted = appState.permissions.hasMicrophonePermission
-      viewModel.accessibilityGranted = appState.permissions.accessibilityGranted
+      permissions.refreshAccessibilityStatus()
+      viewModel.micGranted = permissions.hasMicrophonePermission
+      viewModel.accessibilityGranted = permissions.accessibilityGranted
       if viewModel.accessibilityGranted {
-        appState.settings.autoCopyToClipboard = true
+        settings.autoCopyToClipboard = true
       }
     }
     .task { await pollPermissions() }
@@ -770,15 +777,15 @@ private struct PermissionsPhaseView: View {
 
       elapsed += 2
 
-      appState.permissions.refreshAccessibilityStatus()
-      if appState.permissions.accessibilityGranted && !viewModel.accessibilityGranted {
+      permissions.refreshAccessibilityStatus()
+      if permissions.accessibilityGranted && !viewModel.accessibilityGranted {
         viewModel.accessibilityGranted = true
-        appState.settings.autoCopyToClipboard = true
+        settings.autoCopyToClipboard = true
         TelemetryService.shared.onboardingStepCompleted(
           step: "accessibility_permission", result: "granted")
       }
 
-      if appState.permissions.hasMicrophonePermission && !viewModel.micGranted {
+      if permissions.hasMicrophonePermission && !viewModel.micGranted {
         viewModel.micGranted = true
         TelemetryService.shared.onboardingStepCompleted(step: "mic_permission", result: "granted")
       }
@@ -845,11 +852,12 @@ private struct PermissionRow: View {
 // MARK: - Screen 3: Ready
 
 private struct ReadyScreenV2: View {
-  @Environment(AppState.self) private var appState
+  @Environment(SettingsManager.self) private var settings
+  @Environment(PermissionsService.self) private var permissions
   let onComplete: () -> Void
 
   var body: some View {
-    @Bindable var bindableAppState = appState
+    @Bindable var settings = settings
     VStack(spacing: 0) {
       // Bigger lips + radial glow for a celebratory feel
       ZStack {
@@ -880,12 +888,12 @@ private struct ReadyScreenV2: View {
 
       // Interactive keycap — tap to record, shows result inline
       KeycapHotkeyView(
-        keyCode: $bindableAppState.settings.toggleKeyCode,
-        modifiers: $bindableAppState.settings.toggleModifiers
+        keyCode: $settings.toggleKeyCode,
+        modifiers: $settings.toggleModifiers
       )
       .padding(.bottom, 20)
 
-      if !appState.permissions.accessibilityGranted {
+      if !permissions.accessibilityGranted {
         HStack(spacing: 10) {
           Image(systemName: "lightbulb.fill")
             .foregroundStyle(Color.obWarning)
@@ -943,7 +951,7 @@ private struct ReadyScreenV2: View {
         }
       }
     }
-    .animation(.easeInOut(duration: 0.35), value: appState.permissions.accessibilityGranted)
+    .animation(.easeInOut(duration: 0.35), value: permissions.accessibilityGranted)
   }
 }
 
