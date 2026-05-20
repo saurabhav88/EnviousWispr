@@ -43,13 +43,20 @@ import Testing
   ///   is being deleted (epic #763 freeze). The App-owned `@State` is the
   ///   only composition root that survives PR11. Threaded into `AppState.init`,
   ///   DLC.init, DR.init, and `appDelegate.attach(...)`.
+  /// - 13 → 14 in PR-B.1 of epic #763 (2026-05-19, #796) for
+  ///   `SparkleUpdateController`. Bible §30 entry: PR-B.1 lifts the Sparkle
+  ///   integration off AppDelegate into a dedicated App-owned home. The
+  ///   `@State` instance is constructed from `updateCoordinatorHolder` and
+  ///   threaded into `appDelegate.attach(...)` so `applicationWillFinishLaunching`
+  ///   can invoke `startUpdater()` synchronously before any SwiftUI scene
+  ///   body evaluates (Issue #739 env-capture invariant).
   @Test func envWisprAppStoredPropertyCeilingHolds() throws {
     let body = try structBodyOfEnviousWisprApp()
     let count = countTopLevelStoredProperties(in: body)
     #expect(
-      count <= 13,
+      count <= 14,
       """
-      EnviousWisprApp stored-property ceiling exceeded: \(count) > 13. \
+      EnviousWisprApp stored-property ceiling exceeded: \(count) > 14. \
       Raising the ceiling requires a Bible changelog entry. \
       New App-owned homes belong on EnviousWisprApp by design — this cap is \
       a thermostat: raise it deliberately, do not silently bump.

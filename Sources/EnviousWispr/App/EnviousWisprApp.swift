@@ -14,6 +14,11 @@ struct EnviousWisprApp: App {
   @State private var diagnosticsCoordinator: DiagnosticsCoordinator
   @State private var languageSuggestionPresenter: LanguageSuggestionPresenter
   @State private var updateCoordinatorHolder: UpdateCoordinatorHolder
+  /// PR-B.1 of #763 — App-owned Sparkle integration. Constructed in `init()`
+  /// from `updateCoordinatorHolder` so `startUpdater()` can publish the
+  /// coordinator into the env carrier synchronously during
+  /// `applicationWillFinishLaunching` (Issue #739 env-capture invariant).
+  @State private var sparkleUpdateController: SparkleUpdateController
   @State private var transcriptWorkflowCoordinator: TranscriptWorkflowCoordinator
   @State private var liveRecordingState: LiveRecordingState
   @State private var lastRecordingResult: LastRecordingResult
@@ -92,6 +97,7 @@ struct EnviousWisprApp: App {
     )
 
     let updateCoordinatorHolder = UpdateCoordinatorHolder()
+    let sparkleUpdateController = SparkleUpdateController(holder: updateCoordinatorHolder)
 
     let transcriptWorkflowCoordinator = TranscriptWorkflowCoordinator(
       transcriptCoordinator: transcriptCoordinator,
@@ -174,6 +180,7 @@ struct EnviousWisprApp: App {
     _diagnosticsCoordinator = State(initialValue: diagnosticsCoordinator)
     _languageSuggestionPresenter = State(initialValue: languageSuggestionPresenter)
     _updateCoordinatorHolder = State(initialValue: updateCoordinatorHolder)
+    _sparkleUpdateController = State(initialValue: sparkleUpdateController)
     _transcriptWorkflowCoordinator = State(initialValue: transcriptWorkflowCoordinator)
     _liveRecordingState = State(initialValue: liveRecordingState)
     _lastRecordingResult = State(initialValue: lastRecordingResult)
@@ -191,7 +198,7 @@ struct EnviousWisprApp: App {
     appDelegate.attach(
       appState: appState,
       navigationCoordinator: navigationCoordinator,
-      updateCoordinatorHolder: updateCoordinatorHolder,
+      sparkleUpdateController: sparkleUpdateController,
       liveRecordingState: liveRecordingState,
       backendMetadata: backendMetadata,
       dictationLifecycleCoordinator: dictationLifecycleCoordinator,
