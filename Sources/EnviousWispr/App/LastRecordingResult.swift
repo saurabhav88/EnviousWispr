@@ -36,3 +36,4 @@ final class LastRecordingResult {
 // CI build-gate trigger for #804 (cache-first CI-speedup PR): a CI-workflow-only
 // change otherwise sets needs_build=false and skips the build steps, so this PR
 // could not self-test. This inert line forces needs_build=true. Safe to remove.
+// CI-speedup post-fix measurement marker — throwaway, not for merge (#804).
