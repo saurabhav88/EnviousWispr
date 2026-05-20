@@ -38,18 +38,96 @@ jobs:
             echo "==> Non-code changes only — skipping build"
           fi
 
-      - name: Cache SPM dependencies
+      - name: Compute SwiftPM cache key
+        id: spm-cache-key
         if: steps.changes.outputs.needs_build == 'true'
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        run: |
+          set -euo pipefail
+          TOOLCHAIN_ID="$(
+            { xcodebuild -version; xcrun --sdk macosx --show-sdk-version; } |
+            shasum -a 256 | cut -c1-12
+          )"
+          echo "toolchain_id=$TOOLCHAIN_ID" >> "$GITHUB_OUTPUT"
+
+      # main-post-merge.yml is the cache WRITER: it restores the freshest
+      # compatible cache, runs the full debug+release build+test matrix, then
+      # saves a new cache under the rolling commit-keyed primary key. Every PR
+      # then restores this fresh default-branch cache (see issue #804).
+      - name: Restore SwiftPM build cache
+        id: spm-cache
+        if: steps.changes.outputs.needs_build == 'true'
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: .build
-          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          key: ${{ runner.os }}-spm-${{ steps.spm-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved') }}-${{ github.sha }}
           restore-keys: |
+            ${{ runner.os }}-spm-${{ steps.spm-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved') }}-
+            ${{ runner.os }}-spm-${{ steps.spm-cache-key.outputs.toolchain_id }}-
             ${{ runner.os }}-spm-
+
+      - name: Build (debug)
+        if: steps.changes.outputs.needs_build == 'true'
+        run: swift build
 
       - name: Build (release)
         if: steps.changes.outputs.needs_build == 'true'
         run: swift build -c release --arch arm64
+
+      - name: Run logic tests
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          set -euo pipefail
+          OUTPUT=$(scripts/swift-test.sh 2>&1) || true
+          echo "$OUTPUT"
+          # Fail on actual test failures
+          if echo "$OUTPUT" | grep -q "✘"; then
+            echo "::error::Swift tests have failures"
+            exit 1
+          fi
+          # Verify tests actually started (guard against silent no-op)
+          STARTED=$(echo "$OUTPUT" | grep -c "started" || true)
+          if [ "$STARTED" -eq 0 ]; then
+            echo "::error::No tests started — possible compilation failure"
+            exit 1
+          fi
+          PASSED=$(echo "$OUTPUT" | grep -c "passed" || true)
+          echo "==> $STARTED test entries started, $PASSED reported passed, 0 failures"
+
+      - name: Run logic tests (release config)
+        if: steps.changes.outputs.needs_build == 'true'
+        run: |
+          set -euo pipefail
+          set +e
+          OUTPUT=$(scripts/swift-test.sh -c release 2>&1)
+          STATUS=$?
+          set -e
+          echo "$OUTPUT"
+          if [ "$STATUS" -ne 0 ]; then
+            echo "::error::scripts/swift-test.sh -c release exited $STATUS"
+            exit "$STATUS"
+          fi
+          if echo "$OUTPUT" | grep -q "✘"; then
+            echo "::error::Swift tests have failures (release config)"
+            exit 1
+          fi
+          STARTED=$(echo "$OUTPUT" | grep -c "started" || true)
+          if [ "$STARTED" -eq 0 ]; then
+            echo "::error::No tests started in release config — possible compilation failure"
+            exit 1
+          fi
+          PASSED=$(echo "$OUTPUT" | grep -c "passed" || true)
+          echo "==> release: $STARTED test entries started, $PASSED reported passed, 0 failures"
+
+      # Save only when the build/tests succeeded and the restore was not an exact
+      # hit. The primary key carries github.sha, so a first run for this commit
+      # always saves; a rerun of the same commit exact-hits and skips (re-saving
+      # an existing key errors). Uses the restore step's resolved primary key.
+      - name: Save SwiftPM build cache
+        if: steps.changes.outputs.needs_build == 'true' && success() && steps.spm-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: .build
+          key: ${{ steps.spm-cache.outputs.cache-primary-key }}
 
       - name: Post result
         if: always()
@@ -59,5 +137,5 @@ jobs:
           if [ "$NEEDS_BUILD" != "true" ]; then
             echo "Non-code push (appcast, docs, etc.) — no build needed"
           else
-            echo "Post-merge release build passed"
+            echo "Post-merge full validation passed"
           fi

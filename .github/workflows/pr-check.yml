@@ -17,7 +17,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          fetch-depth: 0
+          fetch-depth: 2
 
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
@@ -60,13 +60,31 @@ jobs:
             exit 1
           fi
 
-      - name: Cache SPM dependencies
+      - name: Compute SwiftPM cache key
+        id: spm-cache-key
         if: steps.changes.outputs.needs_build == 'true'
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        run: |
+          set -euo pipefail
+          TOOLCHAIN_ID="$(
+            { xcodebuild -version; xcrun --sdk macosx --show-sdk-version; } |
+            shasum -a 256 | cut -c1-12
+          )"
+          echo "toolchain_id=$TOOLCHAIN_ID" >> "$GITHUB_OUTPUT"
+
+      # Rolling cache key: the github.sha suffix makes the primary key unique per
+      # commit so the cache is never an exact hit here. pr-check.yml is restore-only
+      # by design — main-post-merge.yml is the sole writer (see issue #804). The
+      # restore-keys prefixes fall back to the freshest compatible cache.
+      - name: Restore SwiftPM build cache
+        id: spm-cache
+        if: steps.changes.outputs.needs_build == 'true'
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: .build
-          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          key: ${{ runner.os }}-spm-${{ steps.spm-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved') }}-${{ github.sha }}
           restore-keys: |
+            ${{ runner.os }}-spm-${{ steps.spm-cache-key.outputs.toolchain_id }}-${{ hashFiles('Package.resolved') }}-
+            ${{ runner.os }}-spm-${{ steps.spm-cache-key.outputs.toolchain_id }}-
             ${{ runner.os }}-spm-
 
       - name: Build (debug)
@@ -104,31 +122,6 @@ jobs:
           fi
           PASSED=$(echo "$OUTPUT" | grep -c "passed" || true)
           echo "==> $STARTED test entries started, $PASSED reported passed, 0 failures"
-
-      - name: Run logic tests (release config)
-        if: steps.changes.outputs.needs_build == 'true'
-        run: |
-          set -euo pipefail
-          set +e
-          OUTPUT=$(scripts/swift-test.sh -c release 2>&1)
-          STATUS=$?
-          set -e
-          echo "$OUTPUT"
-          if [ "$STATUS" -ne 0 ]; then
-            echo "::error::scripts/swift-test.sh -c release exited $STATUS"
-            exit "$STATUS"
-          fi
-          if echo "$OUTPUT" | grep -q "✘"; then
-            echo "::error::Swift tests have failures (release config)"
-            exit 1
-          fi
-          STARTED=$(echo "$OUTPUT" | grep -c "started" || true)
-          if [ "$STARTED" -eq 0 ]; then
-            echo "::error::No tests started in release config — possible compilation failure"
-            exit 1
-          fi
-          PASSED=$(echo "$OUTPUT" | grep -c "passed" || true)
-          echo "==> release: $STARTED test entries started, $PASSED reported passed, 0 failures"
 
       - name: Verify FoundationModels compile probe
         if: steps.changes.outputs.needs_build == 'true'
