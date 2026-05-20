@@ -186,6 +186,11 @@ struct HeartPathIntegrationTests {
       )
     )
     let pasteSink = CapturingPasteSink()
+    // #794: the mock's 50ms `maxDuration` becomes a 0.05s budget; the
+    // 0.1 discriminator throws `TimeoutError` for it deterministically,
+    // so the test no longer races the mock's 250ms sleep against a real
+    // wall clock. The `.sleepThenSuccess` body never runs — the fake
+    // intercepts before `op()`.
     let polish = MockPolishStep(
       maxDuration: .milliseconds(50),
       mode: .sleepThenSuccess(.milliseconds(250), "Hello, world.")
@@ -195,7 +200,8 @@ struct HeartPathIntegrationTests {
       audioCapture: audioCapture,
       asrManager: asrManager,
       pasteSink: pasteSink,
-      steps: [polish]
+      steps: [polish],
+      textProcessingRunner: finalizerRunner(throwBelowSeconds: 0.1)
     )
 
     let result = try await harness.run()
@@ -220,23 +226,42 @@ private struct HeartPathHarnessResult {
   let usedASRFallback: Bool
 }
 
+/// A `TextProcessingRunner` whose timeout executor is deterministic.
+///
+/// #794 (2026-05-19): the default `TextProcessingRunner()` delegates to the
+/// real `withThrowingTimeout`, which races a wall clock. On a contended CI
+/// runner a polish step's 5s budget can expire and the runner silently
+/// degrades to raw ASR text — a false failure unrelated to the test's
+/// intent. `throwBelowSeconds: 0.0` never throws (every step runs);
+/// `throwBelowSeconds: 0.1` discriminates a 50ms slow-step budget from the
+/// 5s default so the `polishTimeoutFallsBackToRawASR` test can exercise the
+/// real timeout-degradation path deterministically.
+@MainActor
+private func finalizerRunner(throwBelowSeconds: Double = 0.0) -> TextProcessingRunner {
+  TextProcessingRunner(
+    timeoutExecutor: FakeTimeoutExecutor(throwBelowSeconds: throwBelowSeconds).run)
+}
+
 @MainActor
 private final class HeartPathHarness {
   private let audioCapture: FixtureAudioCapture
   private let asrManager: MockASRManager
   private let pasteSink: CapturingPasteSink
   private let steps: [any TextProcessingStep]
+  private let textProcessingRunner: TextProcessingRunner
 
   init(
     audioCapture: FixtureAudioCapture,
     asrManager: MockASRManager,
     pasteSink: CapturingPasteSink,
-    steps: [any TextProcessingStep]
+    steps: [any TextProcessingStep],
+    textProcessingRunner: TextProcessingRunner = finalizerRunner()
   ) {
     self.audioCapture = audioCapture
     self.asrManager = asrManager
     self.pasteSink = pasteSink
     self.steps = steps
+    self.textProcessingRunner = textProcessingRunner
   }
 
   func run() async throws -> HeartPathHarnessResult {
@@ -253,6 +278,7 @@ private final class HeartPathHarness {
 
     let finalizer = TranscriptFinalizer(
       save: { _ in },
+      textProcessingRunner: textProcessingRunner,
       deliverPaste: { [pasteSink] request in
         await pasteSink.deliver(request)
       }

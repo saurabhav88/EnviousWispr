@@ -2,7 +2,6 @@ import EnviousWisprCore
 import EnviousWisprLLM
 import Foundation
 import Testing
-import os
 
 @testable import EnviousWisprPipeline
 
@@ -12,7 +11,7 @@ struct TextProcessingRunnerTests {
 
   @Test("returns the seeded context unchanged when there are no steps")
   func returnsSeededContextWhenThereAreNoSteps() async throws {
-    let runner = TextProcessingRunner()
+    let runner = deterministicRunner()
 
     let result = try await runner.run(
       rawText: "hello world",
@@ -32,7 +31,7 @@ struct TextProcessingRunnerTests {
 
   @Test("passes raw text, language, target app, and prior mutations through the real runner")
   func passesSeededAndMutatedContextThroughTheChain() async throws {
-    let runner = TextProcessingRunner()
+    let runner = deterministicRunner()
 
     let first = RecordingStep(name: "Normalize") { context in
       var next = context
@@ -85,7 +84,7 @@ struct TextProcessingRunnerTests {
 
   @Test("skips disabled steps and keeps running enabled ones in order")
   func skipsDisabledSteps() async throws {
-    let runner = TextProcessingRunner()
+    let runner = deterministicRunner()
 
     let first = RecordingStep(name: "A") { context in
       var next = context
@@ -121,7 +120,7 @@ struct TextProcessingRunnerTests {
 
   @Test("continues after a non-LLM step failure and does not set polishError")
   func continuesAfterNonLLMStepFailure() async throws {
-    let runner = TextProcessingRunner()
+    let runner = deterministicRunner()
 
     let first = RecordingStep(name: "Word Correction") { context in
       var next = context
@@ -157,7 +156,7 @@ struct TextProcessingRunnerTests {
 
   @Test("captures LLM polish failures in polishError and continues with prior text")
   func capturesLLMPolishFailures() async throws {
-    let runner = TextProcessingRunner()
+    let runner = deterministicRunner()
 
     let first = RecordingStep(name: "Word Correction") { context in
       var next = context
@@ -189,7 +188,7 @@ struct TextProcessingRunnerTests {
 
   @Test("suppresses polishError for unsupported input language skips from LLM Polish")
   func suppressesPolishErrorForUnsupportedInputLanguage() async throws {
-    let runner = TextProcessingRunner()
+    let runner = deterministicRunner()
 
     let llm = RecordingStep(name: "LLM Polish", errorSurfacePolicy: .surface) { _ in
       throw LLMError.unsupportedInputLanguage("de")
@@ -218,7 +217,7 @@ struct TextProcessingRunnerTests {
 
   @Test("suppresses polishError for output language drift skips from LLM Polish")
   func suppressesPolishErrorForOutputLanguageDrift() async throws {
-    let runner = TextProcessingRunner()
+    let runner = deterministicRunner()
 
     let llm = RecordingStep(name: "LLM Polish", errorSurfacePolicy: .surface) { _ in
       throw LLMError.outputLanguageDrift(expected: "de", actual: "en")
@@ -337,7 +336,7 @@ struct TextProcessingRunnerTests {
 
   @Test("rethrows CancellationError and does not run later steps")
   func rethrowsCancellationError() async {
-    let runner = TextProcessingRunner()
+    let runner = deterministicRunner()
 
     let first = RecordingStep(name: "A") { context in
       var next = context
@@ -378,7 +377,7 @@ struct TextProcessingRunnerTests {
     "Renaming the polish step does NOT affect polishError when the policy stays .surface"
   )
   func policyDispatchSurvivesRename() async throws {
-    let runner = TextProcessingRunner()
+    let runner = deterministicRunner()
 
     let renamed = RecordingStep(
       name: "Polish",  // intentionally NOT "LLM Polish"
@@ -399,7 +398,7 @@ struct TextProcessingRunnerTests {
 
   @Test(".swallow policy never sets polishError, even for a step named 'LLM Polish'")
   func swallowPolicyHidesErrorEvenForCollidingName() async throws {
-    let runner = TextProcessingRunner()
+    let runner = deterministicRunner()
 
     // Same legacy name but explicit .swallow policy: the runner must read the
     // policy, not the name. This is the symmetric guarantee for
@@ -431,8 +430,8 @@ struct TextProcessingRunnerTests {
 
   @Test("Step success emits a PipelineTiming entry into the injected logger")
   func successLogsPipelineTimingEntry() async throws {
-    let recorder = RecordingPipelineLogger()
-    let runner = TextProcessingRunner(logger: recorder)
+    let signalLogger = SignalPipelineLogger()
+    let runner = deterministicRunner(logger: signalLogger)
 
     let step = RecordingStep(name: "A") { context in
       var next = context
@@ -447,18 +446,18 @@ struct TextProcessingRunnerTests {
       steps: [step]
     )
 
-    // Logger work runs in fire-and-forget Task envelopes; bounded-poll for it.
-    let entries = await recorder.awaitEntry(
-      category: "PipelineTiming", messageContains: "A completed in")
-    #expect(
-      entries.contains { $0.category == "PipelineTiming" && $0.message.hasPrefix("A completed in") }
-    )
+    // Logger work runs in fire-and-forget Task envelopes; await the exact
+    // entry instead of polling — resolves the instant the envelope fires.
+    let entry = try await signalLogger.waitForEntry {
+      $0.category == "PipelineTiming" && $0.message.hasPrefix("A completed in")
+    }
+    #expect(entry.category == "PipelineTiming")
   }
 
   @Test("Step that mutates text emits CorrectionDebug IN/OUT lines via injected logger")
   func mutatingStepLogsCorrectionDebug() async throws {
-    let recorder = RecordingPipelineLogger()
-    let runner = TextProcessingRunner(logger: recorder)
+    let signalLogger = SignalPipelineLogger()
+    let runner = deterministicRunner(logger: signalLogger)
 
     let step = RecordingStep(name: "Renamer") { context in
       var next = context
@@ -473,21 +472,25 @@ struct TextProcessingRunnerTests {
       steps: [step]
     )
 
-    // OUT is emitted right after IN inside the same Task envelope; awaiting OUT
-    // implicitly drains until both have landed.
-    let entries = await recorder.awaitEntry(
-      category: "CorrectionDebug", messageContains: "[Renamer] OUT: polished")
-    let cd = entries.filter { $0.category == "CorrectionDebug" }
-    #expect(cd.contains { $0.message.contains("[Renamer] IN:  raw") })
-    #expect(cd.contains { $0.message.contains("[Renamer] OUT: polished") })
+    // OUT is emitted right after IN inside the same Task envelope, so once
+    // OUT has been signalled IN is already in `entries`.
+    let out = try await signalLogger.waitForEntry {
+      $0.category == "CorrectionDebug" && $0.message.contains("[Renamer] OUT: polished")
+    }
+    #expect(out.message.contains("[Renamer] OUT: polished"))
+    #expect(
+      signalLogger.entries.contains {
+        $0.category == "CorrectionDebug" && $0.message.contains("[Renamer] IN:  raw")
+      }
+    )
   }
 
   @Test("Step timeout emits a TextProcessing 'timed out' entry via injected logger")
   func timeoutLogsTextProcessingWarning() async throws {
     // #784 (2026-05-18): see `skipsTimedOutNonLLMStep` for migration shape.
-    let recorder = RecordingPipelineLogger()
+    let signalLogger = SignalPipelineLogger()
     let fakeTimeout = FakeTimeoutExecutor(throwBelowSeconds: 0.1)
-    let runner = TextProcessingRunner(logger: recorder, timeoutExecutor: fakeTimeout.run)
+    let runner = TextProcessingRunner(logger: signalLogger, timeoutExecutor: fakeTimeout.run)
 
     let slow = RecordingStep(name: "Slow", maxDuration: .milliseconds(50)) { context in
       return context
@@ -500,10 +503,10 @@ struct TextProcessingRunnerTests {
       steps: [slow]
     )
 
-    let entries = await recorder.awaitEntry(
-      category: "TextProcessing", messageContains: "Slow timed out")
-    #expect(
-      entries.contains { $0.category == "TextProcessing" && $0.message.contains("Slow timed out") })
+    let entry = try await signalLogger.waitForEntry {
+      $0.category == "TextProcessing" && $0.message.contains("Slow timed out")
+    }
+    #expect(entry.message.contains("Slow timed out"))
     #expect(slow.runCount == 0)  // executor short-circuited before invoking op()
     #expect(fakeTimeout.callCount == 1)
     #expect(fakeTimeout.capturedBudgets == [0.05])
@@ -543,89 +546,27 @@ private final class RecordingStep: TextProcessingStep {
   }
 }
 
-/// Test-only PipelineLogging conformer. Records every log call in memory so
-/// G2 tests can assert log side effects that the prior global-singleton
-/// `AppLogger.shared` design hid behind disk-only writes.
-final class RecordingPipelineLogger: PipelineLogging, @unchecked Sendable {
-  struct Entry: Equatable {
-    let message: String
-    let level: DebugLogLevel
-    let category: String
-  }
-
-  // OSAllocatedUnfairLock rather than NSLock — Swift 6 strict concurrency
-  // forbids NSLock.lock/unlock from async contexts.
-  private let storage = OSAllocatedUnfairLock<[Entry]>(initialState: [])
-
-  func log(_ message: String, level: DebugLogLevel, category: String) async {
-    storage.withLock { state in
-      state.append(Entry(message: message, level: level, category: category))
-    }
-  }
-
-  func snapshot() -> [Entry] {
-    storage.withLock { $0 }
-  }
-
-  /// Waits up to ~500ms for an entry whose category matches `category` and
-  /// whose message contains `messageContains` to appear. Returns the full
-  /// recorded buffer afterwards. The runner emits log calls from inside
-  /// fire-and-forget `Task { ... }` envelopes; cooperative yield alone is
-  /// not deterministic because the detached Tasks have no parent the test
-  /// can await. A bounded poll is a robust and cheap workaround.
-  func awaitEntry(category: String, messageContains needle: String) async -> [Entry] {
-    for _ in 0..<50 {
-      let current = snapshot()
-      if current.contains(where: { $0.category == category && $0.message.contains(needle) }) {
-        return current
-      }
-      try? await Task.sleep(for: .milliseconds(10))
-    }
-    return snapshot()
-  }
-}
-
 private struct StepFailure: LocalizedError, Equatable {
   let message: String
   var errorDescription: String? { message }
 }
 
-/// Deterministic `TextProcessingRunner.TimeoutExecutor` (#784, 2026-05-18).
+/// Builds a runner whose timeout executor never throws — every step runs to
+/// completion regardless of how long the CI scheduler takes.
 ///
-/// The runner calls its executor once per enabled step. A fake that always
-/// throws would time out the first normal-budget step before reaching the
-/// intended slow step in multi-step tests. So this fake discriminates by
-/// budget: throws `TimeoutError(seconds:)` for budgets STRICTLY BELOW
-/// `throwBelowSeconds`, runs the operation otherwise. Threshold is required
-/// at init (no default) so each test makes the discriminator explicit.
+/// #794 (2026-05-19): replaces bare `TextProcessingRunner()` across this
+/// suite. The default `TextProcessingRunner()` delegates to the real
+/// `withThrowingTimeout`, which races a wall clock; on a contended CI runner
+/// a step's 5s budget can expire and the runner silently degrades to prior
+/// input. Tests that ARE about timeout behavior keep their own explicit
+/// `FakeTimeoutExecutor(throwBelowSeconds: 0.1)` discriminator.
 @MainActor
-private final class FakeTimeoutExecutor {
-  let throwBelowSeconds: Double
-
-  private(set) var callCount: Int = 0
-  private(set) var capturedBudgets: [Double] = []
-
-  init(throwBelowSeconds: Double) {
-    self.throwBelowSeconds = throwBelowSeconds
+private func deterministicRunner(
+  logger: SignalPipelineLogger? = nil
+) -> TextProcessingRunner {
+  let executor = FakeTimeoutExecutor(throwBelowSeconds: 0.0)
+  if let logger {
+    return TextProcessingRunner(logger: logger, timeoutExecutor: executor.run)
   }
-
-  func run(
-    _ seconds: Double,
-    _ op: @escaping @MainActor () async throws -> TextProcessingContext
-  ) async throws -> TextProcessingContext {
-    callCount += 1
-    capturedBudgets.append(seconds)
-    if seconds < throwBelowSeconds {
-      // Yield once before throwing so the fake mirrors the real
-      // `withThrowingTimeout`'s yielding behavior (production always
-      // suspends inside its task-group `Task.sleep` deadline). Without
-      // this yield, the runner returns to the test without giving its
-      // prior fire-and-forget logger Tasks a chance to run; under
-      // full-suite MainActor saturation, those Tasks can fail to drain
-      // inside the test's 500ms `awaitEntry` polling window.
-      await Task.yield()
-      throw TimeoutError(seconds: seconds)
-    }
-    return try await op()
-  }
+  return TextProcessingRunner(timeoutExecutor: executor.run)
 }
