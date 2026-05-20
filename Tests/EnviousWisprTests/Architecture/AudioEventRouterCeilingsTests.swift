@@ -3,9 +3,10 @@ import Testing
 
 /// PR8 of #763 — locks `AudioEventRouter`'s entanglement shape.
 ///
-/// Counts honestly: BOTH `let` and `var` instance stored properties count,
-/// sub-binned into collaborator / closure-injected / observer-token slots so
-/// the test fails with a specific message. Caps lower-is-free, raise via the
+/// Counts top-level `let` stored properties only (per
+/// `.claude/rules/architecture-rules.md`; `var` is owned mutable state, not a
+/// collaborator), sub-binned into collaborator / closure-injected slots so the
+/// test fails with a specific message. Caps lower-is-free, raise via the
 /// Bible §30 changelog.
 @Suite struct AudioEventRouterCeilingsTests {
   private static let sourcePath =
