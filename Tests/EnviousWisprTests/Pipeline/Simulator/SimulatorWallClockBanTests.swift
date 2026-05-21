@@ -30,10 +30,15 @@ struct SimulatorWallClockBanTests {
     let simulatorDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
     let selfFile = URL(fileURLWithPath: #filePath).lastPathComponent
 
-    let contents = try FileManager.default.contentsOfDirectory(
+    // Recursive enumeration — a non-recursive `contentsOfDirectory` would miss
+    // wall-clock APIs in any future nested subfolder under Simulator/.
+    let enumerator = FileManager.default.enumerator(
       at: simulatorDir, includingPropertiesForKeys: nil)
-    let swiftFiles = contents.filter {
-      $0.pathExtension == "swift" && $0.lastPathComponent != selfFile
+    var swiftFiles: [URL] = []
+    while let url = enumerator?.nextObject() as? URL {
+      if url.pathExtension == "swift" && url.lastPathComponent != selfFile {
+        swiftFiles.append(url)
+      }
     }
 
     #expect(!swiftFiles.isEmpty, "expected to find simulator source files to scan")
