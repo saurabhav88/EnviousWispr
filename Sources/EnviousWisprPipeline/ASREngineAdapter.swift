@@ -118,11 +118,14 @@ public struct ASRFinalizeProgressTick: Sendable {
 /// for every captured buffer; a streaming adapter forwards it, a batch adapter
 /// buffers or no-ops.
 ///
-/// `pcm` is owned Float32 sample storage in PR-2 — the simplest unconditionally
-/// `Sendable` shape. It is **provisional**: PR-3 picks the production copy
-/// strategy (copy-into-owned-storage vs `nonisolated(unsafe)` `AVAudioPCMBuffer`
-/// transfer) with measured audio-thread latency evidence and owns the final
-/// representation (PR-1 §B.3, PR-2 plan OQ-1).
+/// `pcm` is owned Float32 sample storage — the simplest unconditionally
+/// `Sendable` shape. PR-3 consumes this shape unchanged: its kernel is
+/// production-unwired, with no real audio thread to measure against, so it
+/// reuses the shipped per-buffer `Task { @MainActor }` hand-off pattern
+/// (PR-3 plan §3.4). The production PCM-representation decision
+/// (copy-into-owned-storage vs `nonisolated(unsafe)` `AVAudioPCMBuffer`
+/// transfer) belongs to PR-4 — the first PR with a real audio thread feeding
+/// the kernel (PR-1 §B.3 erratum 2026-05-21).
 public struct AudioBufferHandoff: Sendable {
   /// 16 kHz mono Float32 samples, owned by this struct.
   public let pcm: [Float]

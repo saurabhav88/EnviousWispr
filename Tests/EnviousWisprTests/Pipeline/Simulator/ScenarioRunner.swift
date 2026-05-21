@@ -39,19 +39,27 @@ struct ScenarioRunner {
 
     for (index, step) in scenario.steps.enumerated() {
       await apply(step, context: context, stepIndex: index, into: &failures)
+      // Drain the SUT's ready async work to quiescence so the next step
+      // observes a settled FSM (PR-3 plan §3.3). No-op for the stub.
+      await context.sut.drainReadyWork()
     }
 
-    // Assert the outcome the scenario's STEPS produced — BEFORE teardown.
-    // `drainPending()` force-completes any parked `FakeClock.sleep` (e.g. a
-    // slow-load warm-up that a zero-tick schedule never advanced), which would
-    // mutate the SUT state/effects this check verifies. Draining first would
-    // turn a genuinely-wedged end state into a false pass. Check, then drain.
-    failures.append(contentsOf: checkOutcome(scenario.expected, context: context))
-
-    // Teardown: now release any still-parked `FakeClock.sleep` so no
-    // continuation leaks. This runs after the outcome is already recorded.
+    // Teardown drain, THEN check (PR-3 plan §3.7 — drain/check contract).
+    // `drainPending()` releases every still-pending `FakeClock.sleep`: for the
+    // base inventory a correctly-sized scenario has none, so this is pure
+    // leak cleanup; for the `zeroTick` interleaving class (which zeroes every
+    // `advanceClock`) it is the modelled completion mechanism — a clock-gated
+    // operation completes with zero logical time elapsed (Scenario.swift
+    // zeroTick contract). Checking before this drain was tried and rejected
+    // in PR-3: it strands every `zeroTick`-swept clock-gated scenario in a
+    // non-terminal state. `vad.finish()` closes the signal stream so the
+    // kernel's VAD-subscription task exits; the final `drainReadyWork()` lets
+    // the released forward-path work run to its terminal state.
     context.clock.drainPending()
+    context.vad.finish()
+    await context.sut.drainReadyWork()
 
+    failures.append(contentsOf: checkOutcome(scenario.expected, context: context))
     return ScenarioResult(scenarioID: scenario.id, failures: failures)
   }
 
@@ -82,6 +90,10 @@ struct ScenarioRunner {
         context.engine.loadProgressAbsent = absent
       case .setFinalizeProgressAbsent(let absent):
         context.engine.finalizeProgressAbsent = absent
+      case .requestMidSessionSwitch:
+        // A18 — a factory-preference change request (PR-6 owns the factory).
+        // Inert against the running adapter; the active session is unaffected.
+        context.engine.noteMidSessionSwitchRequest()
       }
 
     case .capture(let directive):
@@ -95,6 +107,9 @@ struct ScenarioRunner {
         context.vad.emit(.maxDurationReached)
       case .evidence(let evidence):
         context.vad.evidence = evidence
+      case .staleAutoStop:
+        // R2 — a stop signal stamped with a prior session's `SessionID`.
+        context.vad.emitStale(.autoStopTriggered)
       }
 
     case .paste(let directive):
@@ -105,12 +120,10 @@ struct ScenarioRunner {
         context.paste.shouldFailPaste = false
       }
 
-    case .limb:
-      // The limb / finalizer / storage seam is production code the kernel
-      // calls; PR-2 has no fake for it. The directive is carried as scenario
-      // data so PR-3's kernel-finalizer wiring keys failure injection on it.
-      // No PR-2 consumer — intentionally a no-op here.
-      break
+    case .limb(let directive):
+      // PR-3 consumes the limb directive: the kernel-wrapper records it and
+      // its `processText` / `store` seams read it (PR-3 plan §14a).
+      context.sut.inject(directive)
 
     case .expectState(let expected):
       if context.sut.state != expected {

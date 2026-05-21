@@ -1,4 +1,7 @@
+import EnviousWisprAudio
 import Foundation
+
+@testable import EnviousWisprPipeline
 
 // MARK: - SUT seam (epic #827, PR-2 plan §3.0, §3b)
 //
@@ -41,6 +44,23 @@ protocol RecordingSessionDriving: AnyObject {
   /// Apply one lifecycle trigger. PR-3's wrapper dispatches this to the
   /// kernel's real start / stop / cancel / reset / preWarm entry points.
   func apply(_ trigger: SessionTrigger) async
+
+  /// Run every ready async task the SUT spawned to quiescence, so the next
+  /// scenario step observes a settled state (PR-3 plan §3.3 — deterministic
+  /// step ordering against a real FSM). No-op for the synchronous stub.
+  func drainReadyWork() async
+
+  /// Inject a limb / finalizer / storage failure (PR-3 plan §14a). The
+  /// kernel-wrapper records it; its `processText` / `store` seams read it.
+  /// No-op for the stub (PR-2's `.limb` step was data-only).
+  func inject(_ limb: LimbDirective)
+}
+
+extension RecordingSessionDriving {
+  /// Default — a synchronous SUT (`StubRecordingSession`) has no async work.
+  func drainReadyWork() async {}
+  /// Default — the stub does not model limb failures.
+  func inject(_ limb: LimbDirective) {}
 }
 
 // MARK: - StubRecordingSession
@@ -78,5 +98,185 @@ final class StubRecordingSession: RecordingSessionDriving {
 
   func setEffects(_ newEffects: SessionEffects) {
     effects = newEffects
+  }
+}
+
+// MARK: - KernelRecordingSession
+//
+// The PR-3 conformer: a TRIVIAL forwarding/observation wrapper around the real
+// `RecordingSessionKernel` (PR-3 plan §3.3). It MAY forward triggers, map the
+// kernel's state onto `FSMState`, read the kernel's observable surface into
+// `SessionEffects`, and drain the kernel's async work to quiescence. It MUST
+// NOT implement session policy — session filtering, terminal-state dedup,
+// cancellation ordering, stale-callback dropping, cleanup, or any latch logic
+// are kernel behaviors asserted AGAINST the kernel. Codex code-diff review
+// checks this file for "no behavior except forwarding/observation."
+
+/// Mutable limb-failure state set by `.limb(...)` scenario steps. A reference
+/// box so the kernel's `processText` / `store` closures, captured at kernel
+/// construction, read the value set by a later `inject(_:)` call.
+@MainActor
+final class LimbInjectionBox {
+  var degradeToRaw = false
+  var storageWriteFails = false
+}
+
+@MainActor
+final class KernelRecordingSession: RecordingSessionDriving {
+  private let kernel: RecordingSessionKernel
+  private let vad: FakeVADSignalSource
+  private let limb = LimbInjectionBox()
+
+  /// The wrapped kernel — exposed only so the direct FSM-invariant tests can
+  /// inspect kernel internals (`RecordingSessionKernelTests`).
+  var testKernel: RecordingSessionKernel { kernel }
+
+  init(
+    engine: FakeEngine,
+    capture: FakeAudioCapture,
+    vad: FakeVADSignalSource,
+    clock: FakeClock,
+    paste: FakePasteTarget
+  ) {
+    self.vad = vad
+    let limb = self.limb
+    self.kernel = RecordingSessionKernel(
+      adapter: engine,
+      audioCapture: capture,
+      vad: vad,
+      currentTick: { clock.now },
+      sleepTicks: { await clock.sleep(ticks: $0) },
+      processText: { raw, onPolishStarted in
+        // PR-3's fake polish is identity — there is no real LLM. A degraded
+        // limb (`polishFails` etc.) still returns the raw text, the heart
+        // path's guaranteed floor (PR-1 §B.5). The seam is exercised either
+        // way so the kernel's polish-signal observation point is covered.
+        onPolishStarted()
+        _ = limb.degradeToRaw
+        return raw
+      },
+      store: { _ in
+        if limb.storageWriteFails { throw KernelLimbError.storageFailed }
+      },
+      deliver: { text in
+        switch paste.attemptPaste(text) {
+        case .pasted: return .pasted
+        case .clipboardOnly, .none: return .clipboardOnly
+        }
+      })
+  }
+
+  // MARK: RecordingSessionDriving — observation
+
+  var state: FSMState { Self.map(kernel.state) }
+
+  var effects: SessionEffects {
+    var result = SessionEffects()
+    result.pasteCount = kernel.pasteCount
+    switch kernel.deliveryOutcome {
+    case .pasted: result.pasteOutcome = .pasted
+    case .clipboardOnly: result.pasteOutcome = .clipboardOnly
+    case nil: result.pasteOutcome = .none
+    }
+    result.transcript = kernel.deliveredTranscript
+    result.resourcesReleased = kernel.resourcesReleased
+    switch kernel.userVisibleError {
+    case .recoverableError: result.userVisibleError = .recoverableError
+    case .interruption: result.userVisibleError = .interruption
+    case nil: result.userVisibleError = nil
+    }
+    return result
+  }
+
+  // MARK: RecordingSessionDriving — driving
+
+  func apply(_ trigger: SessionTrigger) async {
+    switch trigger {
+    case .start:
+      kernel.start()
+      // The seam is told the frozen session at session start (PR-1 §B.6):
+      // sync the fake VAD's stamp to the kernel's freshly minted SessionID.
+      vad.currentSessionID = kernel.currentSessionID
+    case .stop:
+      kernel.requestStop()
+    case .cancel:
+      kernel.cancel()
+    case .reset:
+      kernel.reset()
+    case .preWarm:
+      kernel.preWarm()
+    }
+  }
+
+  func inject(_ limbDirective: LimbDirective) {
+    switch limbDirective {
+    case .polishFails, .customWordsFails, .fillerRemovalFails:
+      limb.degradeToRaw = true
+    case .storageWriteFails:
+      limb.storageWriteFails = true
+    }
+  }
+
+  /// Yield until the kernel's `workEpoch` stops advancing — every ready task
+  /// has run and the FSM has settled. `workEpoch` is the signal: the kernel
+  /// bumps it on every transition, task resumption, and progress tick. The
+  /// 64-yield stability requirement is margin for a ready kernel task that
+  /// loses the scheduler lottery to unrelated parallel tests across several
+  /// yields under MainActor contention — not a deadline. The 20000-iteration
+  /// cap is a safety net against a kernel livelock (it surfaces as a
+  /// stuck-state assertion failure, not a hang).
+  func drainReadyWork() async {
+    var last = kernel.workEpoch
+    var stable = 0
+    var iterations = 0
+    while stable < 64, iterations < 20000 {
+      await Task.yield()
+      iterations += 1
+      let now = kernel.workEpoch
+      if now == last {
+        stable += 1
+      } else {
+        stable = 0
+        last = now
+      }
+    }
+  }
+
+  // MARK: State mapping — pure, mechanical (no policy)
+
+  private static func map(_ state: RecordingSessionState) -> FSMState {
+    switch state {
+    case .idle: return .idle
+    case .preparing: return .preparing
+    case .warmingUp: return .warmingUp
+    case .recording: return .recording
+    case .stopping: return .stopping
+    case .transcribing: return .transcribing
+    case .finalizing: return .finalizing
+    case .completed: return .completed
+    case .failed(let reason): return .failed(map(reason))
+    case .cancelled: return .cancelled
+    case .discarded: return .discarded
+    case .noSpeech: return .noSpeech
+    case .audioInterrupted: return .audioInterrupted
+    case .asrInterrupted: return .asrInterrupted
+    }
+  }
+
+  private static func map(_ reason: RecordingFailureReason) -> FSMFailureReason {
+    switch reason {
+    case .prepareFailed: return .prepareFailed
+    case .permissionDenied: return .permissionDenied
+    case .modelWedged: return .modelWedged
+    case .modelLoadFailed: return .modelLoadFailed
+    case .captureStartFailed: return .captureStartFailed
+    case .noAudioCaptured: return .noAudioCaptured
+    case .asrEmpty: return .asrEmpty
+    case .asrFailed: return .asrFailed
+    case .asrWedged: return .asrWedged
+    case .emptyAfterProcessing: return .emptyAfterProcessing
+    case .storageFailed: return .storageFailed
+    case .captureStalled: return .captureStalled
+    }
   }
 }

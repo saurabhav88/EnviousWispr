@@ -12,28 +12,15 @@ import Foundation
 // was dropped because this inventory locks the WhisperKit stop-during-startup
 // case. `ScenarioInventoryTests` asserts `R1` and `R2` by ID specifically.
 //
-// Step scripts are representative — they describe the path PR-3 wires the
-// kernel to walk. The `ExpectedOutcome` is the contract every row carries.
+// Step scripts drive the real kernel (PR-3): the `ScenarioRunner` executes
+// each against the `RecordingSessionKernel` behind the test-side wrapper. The
+// `ExpectedOutcome` is the contract every row carries.
 //
-// ── PR-3 OBLIGATIONS (founder call 2026-05-21: ship the inventory now, finish
-//    these two when the kernel lands) ───────────────────────────────────────
-// Two scenarios cannot be precisely driven until PR-3's kernel seams exist,
-// because the stimulus they need IS a kernel-seam question:
-//
-//  • R2 (Parakeet stale-latch): needs a directive that emits a callback /
-//    completion stamped with a PRIOR session's `SessionID`. PR-2's DSL has no
-//    stale-callback injection because "what a stale callback looks like" is
-//    defined by the kernel's task/callback seam (PR-3). PR-3 adds the
-//    directive and R2's script gains an explicit prior-session stale signal.
-//
-//  • A18 (engine switch during active session): PR-2 models a behavior change
-//    by mutating the live `FakeEngine` (`EngineDirective.setBehavior`). A real
-//    mid-session switch is a request against the adapter FACTORY (PR-6), not a
-//    mutation of the running adapter. PR-3/PR-6 model the switch as factory
-//    state so A18 proves the active session keeps its original adapter.
-//
-// Both rows ship now with correct IDs + `ExpectedOutcome` so the inventory is
-// complete and `R1`/`R2` stay drop-resistant; PR-3 tightens their stimulus.
+// PR-3 closed the two PR-2-deferred obligations (R2 stale-callback injection,
+// A18 mid-session engine switch) and tightened the wedge scripts (A4, A13)
+// and the cancel-while-transcribing script (A8) so each lands its trigger in
+// a deterministic FSM state against the real kernel (PR-3 plan §3.6, §3.7,
+// §14a).
 
 enum ScenarioInventory {
 
@@ -83,11 +70,15 @@ enum ScenarioInventory {
       id: "A4", name: "warm-up wedge",
       steps: [
         .engine(.setBehavior(.wedgeOnLoad)),
-        .trigger(.start), .trigger(.cancel),
+        .trigger(.start), .advanceClock(ticks: 4), .trigger(.cancel),
       ],
-      // .wedgeOnLoad is the silent-progress wedge — the kernel detects it via
-      // loadProgress absence and transitions to failed(.modelWedged). A model
-      // load that THROWS is a separate behavior (failed(.modelLoadFailed)).
+      // .wedgeOnLoad emits a few load-progress ticks then goes silent — the
+      // kernel's wedge watcher arms on the first tick and, after a stall
+      // window of logical time elapses with the adapter still not ready,
+      // transitions to failed(.modelWedged) (PR-3 plan §3.7). The advanceClock
+      // step supplies that window; the trailing cancel then hits a terminal
+      // state and is ignored. A model load that THROWS is a separate behavior
+      // (failed(.modelLoadFailed)).
       expected: ExpectedOutcome(
         terminalState: .failed(.modelWedged), pasteCount: 0, pasteOutcome: .none,
         transcript: .none, userVisibleError: .recoverableError)),
@@ -118,8 +109,13 @@ enum ScenarioInventory {
         transcript: .none),
       tags: [.concurrencySensitive]),
     Scenario(
+      // A `slowFinalize` engine holds the kernel in `transcribing` (a genuine
+      // in-flight finalize, no wedge) so the cancel lands deterministically
+      // inside that state — distinct from L5, where a synchronous finalize
+      // has already carried the kernel into `finalizing` (PR-3 plan §14a).
       id: "A8", name: "cancel while transcribing",
       steps: [
+        .engine(.setBehavior(.slowFinalize(ticksToFinal: 3, text: "in flight"))),
         .trigger(.start), .capture(.deliverBuffer), .trigger(.stop),
         .trigger(.cancel), .expectState(.cancelled),
       ],
@@ -168,11 +164,15 @@ enum ScenarioInventory {
         terminalState: .noSpeech, pasteCount: 0, pasteOutcome: .none,
         transcript: .none)),
     Scenario(
+      // .wedgeOnFinalize emits a few finalize-progress ticks then goes silent;
+      // the kernel's finalize wedge watcher arms on the first tick and fires
+      // after a stall window of logical time (PR-3 plan §3.7). The advanceClock
+      // step supplies that window; the trailing cancel hits a terminal state.
       id: "A13", name: "adapter wedge on finalize",
       steps: [
         .engine(.setBehavior(.wedgeOnFinalize)),
         .trigger(.start), .capture(.deliverBuffer), .trigger(.stop),
-        .trigger(.cancel),
+        .advanceClock(ticks: 4), .trigger(.cancel),
       ],
       expected: ExpectedOutcome(
         terminalState: .failed(.asrWedged), pasteCount: 0, pasteOutcome: .none,
@@ -217,18 +217,19 @@ enum ScenarioInventory {
         terminalState: .completed, pasteCount: 1, pasteOutcome: .pasted,
         transcript: .exact("second"))),
     Scenario(
-      // PR-3 OBLIGATION: model the mid-session switch as an adapter-FACTORY
-      // request (PR-6 seam), not a mutation of the live FakeEngine — see the
-      // PR-3 OBLIGATIONS block at the top of this file.
+      // The mid-session switch is a factory-preference request (PR-6 owns the
+      // factory). The kernel binds its adapter at `preparing` and holds it for
+      // the session's lifetime, so the request is inert against the running
+      // session — the transcript stays "kept" (PR-3 plan §3.6).
       id: "A18", name: "engine switch attempted during active session",
       steps: [
         .engine(.setBehavior(.batchSuccess(text: "kept"))),
         .trigger(.start), .capture(.deliverBuffer),
-        .engine(.setBehavior(.batchSuccess(text: "ignored"))),
+        .engine(.requestMidSessionSwitch),
         .trigger(.stop), .expectState(.completed),
       ],
-      // .exact("kept"): the mid-session switch must be ignored. .nonEmpty
-      // would pass even if the active session wrongly used the new engine.
+      // .exact("kept"): the mid-session switch request must not affect the
+      // running session. .nonEmpty would pass even on a wrong adapter swap.
       expected: ExpectedOutcome(
         terminalState: .completed, pasteCount: 1, pasteOutcome: .pasted,
         transcript: .exact("kept")),
@@ -251,25 +252,30 @@ enum ScenarioInventory {
   private static let regressionLocks: [Scenario] = [
     Scenario(
       id: "R1", name: "WhisperKit stop-during-startup (regression lock)",
+      // No trailing `expectState(.discarded)` — the terminal is clock-gated
+      // (the warm-up completes only after the clock advances), and under the
+      // interleaving sweep's `zeroTick` schedule that advance is zeroed, so a
+      // mid-scenario terminal assertion cannot hold. `ExpectedOutcome`'s
+      // `terminalState` is the authoritative check (PR-3 plan §3.7).
       steps: [
         .engine(.setBehavior(.slowLoad(ticksToReady: 5))),
         .trigger(.start), .trigger(.stop), .advanceClock(ticks: 5),
-        .expectState(.discarded),
       ],
       expected: ExpectedOutcome(
         terminalState: .discarded, pasteCount: 0, pasteOutcome: .none,
         transcript: .none),
       tags: [.concurrencySensitive]),
     Scenario(
-      // PR-3 OBLIGATION: add a stale-callback injection directive (a callback
-      // stamped with a prior session's SessionID) and drive it here — see the
-      // PR-3 OBLIGATIONS block at the top of this file. Until then this row
-      // pins the happy path; it does not yet PROVE the stale-drop.
+      // The stale auto-stop signal carries a PRIOR session's `SessionID`. The
+      // kernel drops it (FSM invariant 7) — the current recording is not
+      // terminated by a finished session's latch. `expectState(.recording)`
+      // proves the drop; the real stop then completes normally (PR-3 §3.6).
       id: "R2", name: "Parakeet stale-latch (regression lock)",
       steps: [
         .engine(.setBehavior(.batchSuccess(text: "current"))),
-        .trigger(.start), .capture(.deliverBuffer), .trigger(.stop),
-        .expectState(.completed),
+        .trigger(.start), .capture(.deliverBuffer),
+        .vad(.staleAutoStop), .expectState(.recording),
+        .trigger(.stop), .expectState(.completed),
       ],
       expected: ExpectedOutcome(
         terminalState: .completed, pasteCount: 1, pasteOutcome: .pasted,

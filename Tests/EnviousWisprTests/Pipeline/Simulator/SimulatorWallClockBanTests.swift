@@ -28,7 +28,9 @@ struct SimulatorWallClockBanTests {
   @Test("no simulator source file uses a wall-clock API")
   func noWallClockInSimulatorDirectory() throws {
     let simulatorDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-    let selfFile = URL(fileURLWithPath: #filePath).lastPathComponent
+    // Self-exclude by full path, not basename — a same-named file in any
+    // nested subfolder must not silently skip this scan (#834 finding 2).
+    let selfPath = URL(fileURLWithPath: #filePath).standardizedFileURL
 
     // Recursive enumeration — a non-recursive `contentsOfDirectory` would miss
     // wall-clock APIs in any future nested subfolder under Simulator/.
@@ -36,7 +38,7 @@ struct SimulatorWallClockBanTests {
       at: simulatorDir, includingPropertiesForKeys: nil)
     var swiftFiles: [URL] = []
     while let url = enumerator?.nextObject() as? URL {
-      if url.pathExtension == "swift" && url.lastPathComponent != selfFile {
+      if url.pathExtension == "swift" && url.standardizedFileURL != selfPath {
         swiftFiles.append(url)
       }
     }
