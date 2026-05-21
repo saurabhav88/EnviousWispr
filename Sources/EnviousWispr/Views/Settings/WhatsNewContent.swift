@@ -28,6 +28,45 @@ enum WhatsNewContent {
   }
 
   static let entries: [Entry] = [
+    // MARK: - v2.0.3
+
+    Entry(
+      id: "spoken-emoji",
+      icon: "face.smiling",
+      title: "Speak an emoji",
+      description:
+        "Say the emoji's name followed by the word \"emoji\" while you dictate, like \"smiley face emoji\" or \"thumbs up emoji\", and EnviousWispr drops the glyph right in.",
+      category: .newFeatures,
+      version: "2.0.3"
+    ),
+    Entry(
+      id: "smart-language-detection",
+      icon: "globe",
+      title: "Smarter language detection",
+      description:
+        "On the Multi-Language speech engine, EnviousWispr now notices when you keep dictating in the same non-English language and offers to lock it in. A fixed language makes transcription both faster and more accurate.",
+      category: .newFeatures,
+      version: "2.0.3"
+    ),
+    Entry(
+      id: "newer-ai-polish-models",
+      icon: "sparkles",
+      title: "Newer AI Polish models",
+      description:
+        "AI Polish now works with the latest models. We recommend Gemini 3.5 Flash, or OpenAI 5.4 mini or nano, for the best balance of speed and quality.",
+      category: .smarterAIPolish,
+      version: "2.0.3"
+    ),
+    Entry(
+      id: "steadier-under-the-hood",
+      icon: "wrench.and.screwdriver",
+      title: "A steadier app under the hood",
+      description:
+        "We continued a major rebuild of how the app manages itself internally. You won't see it directly, but it makes EnviousWispr more stable and quicker for us to improve.",
+      category: .fasterAndMoreReliable,
+      version: "2.0.3"
+    ),
+
     // MARK: - v2.0.2
 
     Entry(
