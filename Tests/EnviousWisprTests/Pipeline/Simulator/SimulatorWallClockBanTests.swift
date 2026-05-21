@@ -1,0 +1,51 @@
+import Foundation
+import Testing
+
+/// Wall-clock ban (epic #827, PR-2 plan §11.2, §10 — Codex round-1 revision 10).
+///
+/// Scans every Swift source file in the simulator directory and fails if any
+/// uses a wall-clock API. The simulator's determinism rests on `FakeClock`
+/// being the ONLY time source; a stray `Task.sleep` / `Date()` / `Timer` would
+/// reintroduce nondeterminism. This catches that at PR CI — the earliest
+/// failure point — before it produces a flake.
+@Suite("Simulator wall-clock ban")
+struct SimulatorWallClockBanTests {
+
+  /// Banned substrings — wall-clock APIs no simulator file may use.
+  /// `Task.yield()` is NOT banned: it is a cooperative yield, not a wall-clock
+  /// wait.
+  private static let bannedPatterns = [
+    "Task.sleep",
+    "DispatchQueue",
+    "Date()",
+    "ContinuousClock",
+    "SuspendingClock",
+    "Timer(",
+    "asyncAfter",
+    "ProcessInfo.processInfo.systemUptime",
+  ]
+
+  @Test("no simulator source file uses a wall-clock API")
+  func noWallClockInSimulatorDirectory() throws {
+    let simulatorDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+    let selfFile = URL(fileURLWithPath: #filePath).lastPathComponent
+
+    let contents = try FileManager.default.contentsOfDirectory(
+      at: simulatorDir, includingPropertiesForKeys: nil)
+    let swiftFiles = contents.filter {
+      $0.pathExtension == "swift" && $0.lastPathComponent != selfFile
+    }
+
+    #expect(!swiftFiles.isEmpty, "expected to find simulator source files to scan")
+
+    for file in swiftFiles {
+      let source = try String(contentsOf: file, encoding: .utf8)
+      for pattern in Self.bannedPatterns where source.contains(pattern) {
+        let name = file.lastPathComponent
+        Issue.record(
+          "\(name) uses banned wall-clock API \"\(pattern)\"; simulator time must come from FakeClock"
+        )
+      }
+    }
+  }
+}

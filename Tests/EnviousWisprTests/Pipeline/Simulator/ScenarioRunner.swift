@@ -1,0 +1,214 @@
+import Foundation
+
+// MARK: - ScenarioRunner + assertion library (epic #827, PR-2 plan §3.4)
+//
+// The runner executes a `Scenario`'s ordered steps against a
+// `RecordingSessionDriving` SUT, driving the fakes, then checks the full
+// `ExpectedOutcome`. Deterministic: one run per scenario is the pass
+// (epic §3a). In PR-2 the SUT is `StubRecordingSession` and only the harness
+// mechanics are exercised; from PR-3 the SUT is the real kernel and the
+// 33-scenario inventory becomes merge-blocking.
+
+/// The fakes + SUT bundle one scenario runs against.
+@MainActor
+struct SimulatorContext {
+  let sut: RecordingSessionDriving
+  let engine: FakeEngine
+  let capture: FakeAudioCapture
+  let vad: FakeVADSignalSource
+  let clock: FakeClock
+  let paste: FakePasteTarget
+}
+
+/// The result of running one scenario — the failure list IS the verdict.
+struct ScenarioResult: Sendable {
+  let scenarioID: String
+  let failures: [String]
+
+  var passed: Bool { failures.isEmpty }
+}
+
+@MainActor
+struct ScenarioRunner {
+
+  init() {}
+
+  /// Execute `scenario` against `context` and check its `ExpectedOutcome`.
+  func run(_ scenario: Scenario, context: SimulatorContext) async -> ScenarioResult {
+    var failures: [String] = []
+
+    for (index, step) in scenario.steps.enumerated() {
+      await apply(step, context: context, stepIndex: index, into: &failures)
+    }
+
+    // Teardown: release any deliberately-wedged `FakeClock.sleep` so no
+    // continuation leaks.
+    context.clock.drainPending()
+
+    failures.append(contentsOf: checkOutcome(scenario.expected, context: context))
+    return ScenarioResult(scenarioID: scenario.id, failures: failures)
+  }
+
+  // MARK: Step execution
+
+  private func apply(
+    _ step: ScenarioStep,
+    context: SimulatorContext,
+    stepIndex: Int,
+    into failures: inout [String]
+  ) async {
+    switch step {
+    case .trigger(let trigger):
+      await context.sut.apply(trigger)
+
+    case .advanceClock(let ticks):
+      context.clock.advance(by: ticks)
+
+    case .engine(let directive):
+      switch directive {
+      case .setBehavior(let behavior):
+        context.engine.behavior = behavior
+      case .emitLoadTick:
+        context.engine.emitLoadTick()
+      case .emitFinalizeTick:
+        context.engine.emitFinalizeTick()
+      case .setLoadProgressAbsent(let absent):
+        context.engine.loadProgressAbsent = absent
+      case .setFinalizeProgressAbsent(let absent):
+        context.engine.finalizeProgressAbsent = absent
+      }
+
+    case .capture(let directive):
+      apply(captureDirective: directive, context: context)
+
+    case .vad(let directive):
+      switch directive {
+      case .autoStop:
+        context.vad.emit(.autoStopTriggered)
+      case .maxDuration:
+        context.vad.emit(.maxDurationReached)
+      case .evidence(let evidence):
+        context.vad.evidence = evidence
+      }
+
+    case .paste(let directive):
+      switch directive {
+      case .fail:
+        context.paste.shouldFailPaste = true
+      case .succeed:
+        context.paste.shouldFailPaste = false
+      }
+
+    case .limb:
+      // The limb / finalizer / storage seam is production code the kernel
+      // calls; PR-2 has no fake for it. The directive is carried as scenario
+      // data so PR-3's kernel-finalizer wiring keys failure injection on it.
+      // No PR-2 consumer — intentionally a no-op here.
+      break
+
+    case .expectState(let expected):
+      if context.sut.state != expected {
+        failures.append(
+          "step \(stepIndex): expected state \(expected), got \(context.sut.state)")
+      }
+    }
+  }
+
+  private func apply(captureDirective: CaptureDirective, context: SimulatorContext) {
+    switch captureDirective {
+    case .deliverBuffer:
+      context.capture.deliverBuffer()
+    case .stall:
+      // A stall fires the liveness-watchdog callback — not merely an absence
+      // of buffers (C3 / C4).
+      context.capture.fireCaptureStalled()
+    case .interrupt, .routeChange:
+      // The audio-interruption channel (C5).
+      context.capture.raiseEngineInterruption()
+    case .permissionDenied:
+      context.capture.permissionDenied = true
+    case .startFailure:
+      context.capture.failCaptureStart = true
+    case .xpcCrash:
+      // The ASR-interruption channel — distinct from the audio-interruption
+      // path (C6, not C5).
+      context.capture.fireXPCServiceError()
+    }
+  }
+
+  // MARK: Assertion library — checks the full ExpectedOutcome
+
+  private func checkOutcome(
+    _ expected: ExpectedOutcome, context: SimulatorContext
+  ) -> [String] {
+    var failures: [String] = []
+    let state = context.sut.state
+    let effects = context.sut.effects
+
+    // Final state. For almost every scenario `expected.terminalState` is one
+    // of the seven terminal states; the lone exception is the no-session
+    // scenario (A16 — "stop without active session"), whose expected final
+    // state is `.idle` because no session was ever minted. The stuck-session
+    // check therefore fires only when a terminal state was expected.
+    if state != expected.terminalState {
+      failures.append(
+        "final state: expected \(expected.terminalState), got \(state)")
+    }
+    if expected.terminalState.isTerminal && !state.isTerminal {
+      failures.append("no terminal state reached — session is stuck at \(state)")
+    }
+
+    // Paste count — >1 is always a retry-storm failure.
+    if effects.pasteCount != expected.pasteCount {
+      failures.append(
+        "paste count: expected \(expected.pasteCount), got \(effects.pasteCount)")
+    }
+    if effects.pasteCount > 1 {
+      failures.append("duplicate paste — count \(effects.pasteCount) exceeds 1")
+    }
+
+    // Paste outcome.
+    if effects.pasteOutcome != expected.pasteOutcome {
+      failures.append(
+        "paste outcome: expected \(expected.pasteOutcome), got \(effects.pasteOutcome)")
+    }
+
+    // Transcript expectation.
+    failures.append(
+      contentsOf: checkTranscript(expected.transcript, delivered: effects.transcript))
+
+    // Resource release — always true at any terminal state.
+    if effects.resourcesReleased != expected.resourcesReleased {
+      failures.append(
+        "resources released: expected \(expected.resourcesReleased), "
+          + "got \(effects.resourcesReleased)")
+    }
+
+    // User-visible error category.
+    if effects.userVisibleError != expected.userVisibleError {
+      failures.append(
+        "user-visible error: expected \(String(describing: expected.userVisibleError)), "
+          + "got \(String(describing: effects.userVisibleError))")
+    }
+
+    return failures
+  }
+
+  private func checkTranscript(
+    _ expectation: TranscriptExpectation, delivered: String?
+  ) -> [String] {
+    switch expectation {
+    case .none:
+      return delivered == nil
+        ? []
+        : ["transcript: expected none delivered, got \(delivered ?? "")"]
+    case .nonEmpty:
+      if let delivered, !delivered.isEmpty { return [] }
+      return ["transcript: expected non-empty, got \(String(describing: delivered))"]
+    case .exact(let text):
+      return delivered == text
+        ? []
+        : ["transcript: expected \"\(text)\", got \(String(describing: delivered))"]
+    }
+  }
+}
