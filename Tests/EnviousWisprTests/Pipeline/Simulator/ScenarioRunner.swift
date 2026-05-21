@@ -41,11 +41,17 @@ struct ScenarioRunner {
       await apply(step, context: context, stepIndex: index, into: &failures)
     }
 
-    // Teardown: release any deliberately-wedged `FakeClock.sleep` so no
-    // continuation leaks.
+    // Assert the outcome the scenario's STEPS produced — BEFORE teardown.
+    // `drainPending()` force-completes any parked `FakeClock.sleep` (e.g. a
+    // slow-load warm-up that a zero-tick schedule never advanced), which would
+    // mutate the SUT state/effects this check verifies. Draining first would
+    // turn a genuinely-wedged end state into a false pass. Check, then drain.
+    failures.append(contentsOf: checkOutcome(scenario.expected, context: context))
+
+    // Teardown: now release any still-parked `FakeClock.sleep` so no
+    // continuation leaks. This runs after the outcome is already recorded.
     context.clock.drainPending()
 
-    failures.append(contentsOf: checkOutcome(scenario.expected, context: context))
     return ScenarioResult(scenarioID: scenario.id, failures: failures)
   }
 
