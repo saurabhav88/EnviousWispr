@@ -182,10 +182,19 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     // MainActor-confined here, so capturing it carries no cross-actor transfer.
     // `feedsDispatched` / `feedsCompleted` let `finalize()` drain the queue.
     let pcmBuffer = buffer.buffer
+    let handoffSession = buffer.sessionID
     feedsDispatched += 1
     Task { @MainActor [weak self] in
-      defer { self?.feedsCompleted += 1 }
-      try? await self?.asrManager.feedAudio(pcmBuffer)
+      guard let self else { return }
+      defer { self.feedsCompleted += 1 }
+      // Re-check on the `@MainActor` hop: a `cancel()` or a new `beginSession()`
+      // between dispatch and now must not feed this buffer into a fresh
+      // streaming session (Codex r2 — stale-feed race). The shipped pipeline
+      // re-checks `streamingASRActive` / `state` inside the same hop
+      // (`TranscriptionPipeline.swift:486`).
+      guard self.sessionID == handoffSession, self.streamingActive, !self.isTerminal
+      else { return }
+      try? await self.asrManager.feedAudio(pcmBuffer)
     }
   }
 
@@ -198,12 +207,20 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
       retainedPCM.removeAll()
       return .cancelled
     }
+    let session = sessionID
     let outcome: ASREngineOutcome
     if streamingActive {
       await drainStreamingFeeds()
       outcome = await finalizeStreamingWithRescue()
     } else {
       outcome = await finalizeBatch()
+    }
+    // A `cancel()` + new `beginSession()` during the ASR await must not let
+    // this stale finalize clobber the fresh session's `lastResult` / retained
+    // PCM / terminal flag (Codex r2 — stale-finalize race). The kernel's own
+    // `finalize(_:)` wrapper drops the stale return value separately.
+    guard sessionID == session, !isCancelled else {
+      return isCancelled ? .cancelled : outcome
     }
     if case .transcript(let result) = outcome {
       lastResult = result

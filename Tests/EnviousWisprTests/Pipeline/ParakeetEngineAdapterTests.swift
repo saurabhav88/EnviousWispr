@@ -75,9 +75,10 @@ import Testing
     manager.finalizeStreamingResult = makeResult("")  // streaming returns empty
     manager.transcribeResult = makeResult("rescued text")
     let adapter = ParakeetEngineAdapter(asrManager: manager)
-    try await adapter.beginSession(SessionID(), options: .default)
-    feed(adapter, samples: [0.1, 0.2, 0.3])
-    feed(adapter, samples: [0.4, 0.5])
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default)
+    feed(adapter, samples: [0.1, 0.2, 0.3], session: sid)
+    feed(adapter, samples: [0.4, 0.5], session: sid)
     let outcome = await adapter.finalize()
     guard case .transcript(let result) = outcome else {
       Issue.record("expected .transcript, got \(outcome)")
@@ -96,8 +97,9 @@ import Testing
     manager.finalizeStreamingThrows = true
     manager.transcribeResult = makeResult("rescued after throw")
     let adapter = ParakeetEngineAdapter(asrManager: manager)
-    try await adapter.beginSession(SessionID(), options: .default)
-    feed(adapter, samples: [0.7])
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default)
+    feed(adapter, samples: [0.7], session: sid)
     let outcome = await adapter.finalize()
     guard case .transcript(let result) = outcome else {
       Issue.record("expected .transcript, got \(outcome)")
@@ -112,8 +114,9 @@ import Testing
     manager.finalizeStreamingResult = makeResult("")
     manager.transcribeResult = makeResult("")
     let adapter = ParakeetEngineAdapter(asrManager: manager)
-    try await adapter.beginSession(SessionID(), options: .default)
-    feed(adapter, samples: [0.1])
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default)
+    feed(adapter, samples: [0.1], session: sid)
     let outcome = await adapter.finalize()
     guard case .empty(let hadSpeechEvidence) = outcome else {
       Issue.record("expected .empty, got \(outcome)")
@@ -130,8 +133,9 @@ import Testing
     manager.finalizeStreamingResult = makeResult("")
     manager.transcribeResult = makeResult("x")
     let adapter = ParakeetEngineAdapter(asrManager: manager)
-    try await adapter.beginSession(SessionID(), options: .default)
-    feed(adapter, samples: [0.1, 0.2])
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default)
+    feed(adapter, samples: [0.1, 0.2], session: sid)
     _ = await adapter.finalize()
     // A fresh session must not see the prior session's PCM. Streaming empty +
     // a no-op batch over zero retained samples => .empty.
@@ -150,8 +154,9 @@ import Testing
   func pcmClearedOnCancel() async throws {
     let manager = StubParakeetASRManager()
     let adapter = ParakeetEngineAdapter(asrManager: manager)
-    try await adapter.beginSession(SessionID(), options: .default)
-    feed(adapter, samples: [0.1, 0.2])
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default)
+    feed(adapter, samples: [0.1, 0.2], session: sid)
     await adapter.cancel()
     manager.transcribeResult = makeResult("")
     manager.finalizeStreamingResult = makeResult("")
@@ -169,13 +174,51 @@ import Testing
     manager.slowFeed = true  // feedAudio tasks are still in flight at finalize
     manager.finalizeStreamingResult = makeResult("streamed text")
     let adapter = ParakeetEngineAdapter(asrManager: manager)
-    try await adapter.beginSession(SessionID(), options: .default)
-    feed(adapter, samples: [0.1])
-    feed(adapter, samples: [0.2])
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default)
+    feed(adapter, samples: [0.1], session: sid)
+    feed(adapter, samples: [0.2], session: sid)
     _ = await adapter.finalize()
     #expect(
       manager.feedAudioCount == 2,
       "finalize() waited for every dispatched feed — no tail buffer dropped")
+  }
+
+  // MARK: Stale-async session guards (Codex r2)
+
+  @Test("a feed queued before a cancel is not fed into the terminated session")
+  func staleFeedGuardOnCancel() async throws {
+    let manager = StubParakeetASRManager()
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default)
+    feed(adapter, samples: [0.1], session: sid)  // dispatches a feed task
+    // cancel()'s synchronous prefix sets isTerminal/streamingActive before it
+    // suspends, so the queued feed task runs after and sees the terminated
+    // session.
+    await adapter.cancel()
+    for _ in 0..<50 { await Task.yield() }
+    #expect(manager.feedAudioCount == 0, "the queued feed saw the terminated session and skipped")
+  }
+
+  @Test("a stale finalize does not clobber a session that began during its await")
+  func staleFinalizeGuard() async throws {
+    let manager = StubParakeetASRManager()
+    manager.slowFinalizeStreaming = true
+    manager.finalizeStreamingResult = makeResult("session A text")
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    let sidA = SessionID()
+    try await adapter.beginSession(sidA, options: .default)
+    feed(adapter, samples: [0.1], session: sidA)
+    // finalize() for session A suspends inside the slow finalizeStreaming.
+    async let outcomeA = adapter.finalize()
+    for _ in 0..<10 { await Task.yield() }
+    // Session B begins while A's finalize is still suspended.
+    try await adapter.beginSession(SessionID(), options: .default)
+    _ = await outcomeA
+    #expect(
+      adapter.lastResult == nil,
+      "the stale finalize skipped its post-await mutations — session B's state is intact")
   }
 
   // MARK: MUST / MUST NOT clauses (PR-1 §B.2.2)
@@ -185,10 +228,11 @@ import Testing
     let manager = StubParakeetASRManager()
     manager.finalizeStreamingResult = makeResult("done")
     let adapter = ParakeetEngineAdapter(asrManager: manager)
-    try await adapter.beginSession(SessionID(), options: .default)
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default)
     _ = await adapter.finalize()
     let before = manager.feedAudioCount
-    feed(adapter, samples: [0.9])  // post-terminal — must be ignored
+    feed(adapter, samples: [0.9], session: sid)  // post-terminal — must be ignored
     #expect(manager.feedAudioCount == before, "no audio fed after a terminal session")
   }
 
@@ -242,14 +286,17 @@ import Testing
 
   // MARK: Helpers
 
-  private func feed(_ adapter: ParakeetEngineAdapter, samples: [Float]) {
+  /// Feed one synthetic buffer stamped with `session` — the kernel always
+  /// hands the adapter buffers stamped with the begun session, and the
+  /// adapter's streaming-feed guard drops a mismatched stamp.
+  private func feed(_ adapter: ParakeetEngineAdapter, samples: [Float], session: SessionID) {
     guard let buffer = FakeAudioCapture.makeBuffer(samples: samples) else {
       Issue.record("failed to synthesize a test buffer")
       return
     }
     adapter.acceptAudio(
       AudioBufferHandoff(
-        buffer: buffer, frameCount: samples.count, sequence: 1, sessionID: SessionID()))
+        buffer: buffer, frameCount: samples.count, sequence: 1, sessionID: session))
   }
 
   private func makeResult(_ text: String) -> ASRResult {
@@ -285,6 +332,9 @@ final class StubParakeetASRManager: ASRManagerInterface {
   /// When set, `feedAudio` yields many times before completing — models a
   /// streaming feed still in flight when `finalize()` is called.
   var slowFeed = false
+  /// When set, `finalizeStreaming` yields many times before returning — models
+  /// a finalize suspended in ASR while a new session begins.
+  var slowFinalizeStreaming = false
 
   // Observed counters
   var loadModelCount = 0
@@ -330,6 +380,9 @@ final class StubParakeetASRManager: ASRManagerInterface {
 
   func finalizeStreaming() async throws -> ASRResult {
     finalizeStreamingCount += 1
+    if slowFinalizeStreaming {
+      for _ in 0..<200 { await Task.yield() }
+    }
     if finalizeStreamingThrows { throw FakeASRError.decode }
     return finalizeStreamingResult
   }
