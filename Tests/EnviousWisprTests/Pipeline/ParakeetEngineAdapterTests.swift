@@ -163,6 +163,21 @@ import Testing
     }
   }
 
+  @Test("finalize drains in-flight streaming feeds before finalizeStreaming")
+  func finalizeDrainsStreamingFeeds() async throws {
+    let manager = StubParakeetASRManager()
+    manager.slowFeed = true  // feedAudio tasks are still in flight at finalize
+    manager.finalizeStreamingResult = makeResult("streamed text")
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    try await adapter.beginSession(SessionID(), options: .default)
+    feed(adapter, samples: [0.1])
+    feed(adapter, samples: [0.2])
+    _ = await adapter.finalize()
+    #expect(
+      manager.feedAudioCount == 2,
+      "finalize() waited for every dispatched feed — no tail buffer dropped")
+  }
+
   // MARK: MUST / MUST NOT clauses (PR-1 §B.2.2)
 
   @Test("acceptAudio after a terminal session is a no-op")
@@ -267,6 +282,9 @@ final class StubParakeetASRManager: ASRManagerInterface {
     text: "default-batch", language: "en", duration: 1, processingTime: 0,
     backendType: .parakeet)
   var transcribeThrows = false
+  /// When set, `feedAudio` yields many times before completing — models a
+  /// streaming feed still in flight when `finalize()` is called.
+  var slowFeed = false
 
   // Observed counters
   var loadModelCount = 0
@@ -303,7 +321,12 @@ final class StubParakeetASRManager: ASRManagerInterface {
     isStreaming = true
   }
 
-  func feedAudio(_ buffer: AVAudioPCMBuffer) async throws { feedAudioCount += 1 }
+  func feedAudio(_ buffer: AVAudioPCMBuffer) async throws {
+    if slowFeed {
+      for _ in 0..<100 { await Task.yield() }
+    }
+    feedAudioCount += 1
+  }
 
   func finalizeStreaming() async throws -> ASRResult {
     finalizeStreamingCount += 1

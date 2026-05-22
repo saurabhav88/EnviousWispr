@@ -46,6 +46,14 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   /// `true` while `warmUp()` has a `loadModel()` in flight — feeds `readiness`.
   private var isLoadInFlight = false
 
+  /// Streaming-feed drain counters. `acceptAudio(_:)` dispatches each
+  /// `feedAudio` on its own task; `finalize()` waits for every dispatched feed
+  /// to complete before `finalizeStreaming()`, so a non-empty streaming result
+  /// is never finalized missing the tail buffers. Mirrors the shipped
+  /// `TranscriptionPipeline` streaming drain (`TranscriptionPipeline.swift:675`).
+  private var feedsDispatched = 0
+  private var feedsCompleted = 0
+
   // MARK: Batch-rescue PCM retention (§3.2a)
 
   /// The whole session's 16 kHz mono Float32 samples, accumulated from every
@@ -146,6 +154,8 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     isCancelled = false
     streamingActive = false
     lastResult = nil
+    feedsDispatched = 0
+    feedsCompleted = 0
     retainedPCM.removeAll(keepingCapacity: true)
 
     if await asrManager.activeBackendSupportsStreaming {
@@ -170,8 +180,11 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     // Mirror the shipped per-buffer hand-off (`TranscriptionPipeline.swift:481`):
     // each buffer is fed on its own `@MainActor` task. The buffer is already
     // MainActor-confined here, so capturing it carries no cross-actor transfer.
+    // `feedsDispatched` / `feedsCompleted` let `finalize()` drain the queue.
     let pcmBuffer = buffer.buffer
+    feedsDispatched += 1
     Task { @MainActor [weak self] in
+      defer { self?.feedsCompleted += 1 }
       try? await self?.asrManager.feedAudio(pcmBuffer)
     }
   }
@@ -187,6 +200,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     }
     let outcome: ASREngineOutcome
     if streamingActive {
+      await drainStreamingFeeds()
       outcome = await finalizeStreamingWithRescue()
     } else {
       outcome = await finalizeBatch()
@@ -224,6 +238,22 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
 
   func applyUnloadPolicy(_ policy: ModelUnloadPolicy) {
     asrManager.noteTranscriptionComplete(policy: policy)
+  }
+
+  // MARK: Streaming drain
+
+  /// Wait for every dispatched `feedAudio` task to complete before
+  /// `finalizeStreaming()` — so a non-empty streaming result is never
+  /// finalized missing tail buffers still queued behind `acceptAudio`
+  /// (`TranscriptionPipeline.swift:675` — "losing ~250-500ms of trailing
+  /// audio"). The signal is `feedsCompleted` catching `feedsDispatched`; the
+  /// 500 ms bound is the shipped drain deadline, a safety net against a feed
+  /// task that never completes (`TranscriptionPipeline.swift:680`).
+  private func drainStreamingFeeds() async {
+    let deadline = ContinuousClock.now + .milliseconds(500)
+    while feedsCompleted < feedsDispatched, ContinuousClock.now < deadline {
+      await Task.yield()
+    }
   }
 
   // MARK: Rescue
