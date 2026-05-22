@@ -65,6 +65,11 @@ final class FakeEngine: ASREngineAdapter {
 
   private(set) var readiness: ASREngineReadiness = .notReady
 
+  /// Mid-recording engine-crash callback (PR-4 §3.2). The kernel sets this
+  /// during session setup; `fireEngineInterrupted()` lets a scenario simulate
+  /// an ASR-service crash while recording.
+  var onEngineInterrupted: (@MainActor () -> Void)?
+
   // MARK: Observed counters (for FakeEngineTests)
 
   private(set) var warmUpCallCount = 0
@@ -274,6 +279,12 @@ final class FakeEngine: ASREngineAdapter {
 
   func applyUnloadPolicy(_ policy: ModelUnloadPolicy) {
     lastUnloadPolicy = policy
+  }
+
+  /// Simulate a mid-recording engine crash — drives the kernel's
+  /// `asrInterrupted` terminal (PR-4 §3.2).
+  func fireEngineInterrupted() {
+    onEngineInterrupted?()
   }
 
   // MARK: Helpers

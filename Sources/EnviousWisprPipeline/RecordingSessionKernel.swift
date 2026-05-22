@@ -89,6 +89,19 @@ public enum KernelErrorCategory: Equatable, Sendable {
   case interruption
 }
 
+/// Why a session reached the `discarded` terminal — surfaced for the
+/// PR-1 §B.7.4 telemetry event (PR-4 plan §3.8a). A sibling observable to
+/// `state`, the same shape as `deliveredTranscript`; the `discarded` FSM case
+/// stays plain (no state-enum payload).
+public enum DiscardReason: Equatable, Sendable {
+  /// Stop latched before the session ever reached `recording` — PTT released
+  /// during prepare / warm-up. No transcribable audio.
+  case releasedBeforeRecording
+  /// Recording reached `recording` but handed off zero buffers — a
+  /// sub-minimum-duration accidental tap.
+  case tooShort
+}
+
 /// A typed limb-seam failure the kernel maps to a `failed` terminal reason
 /// (PR-3 plan §14a). The `processText` / `store` seams throw these.
 public enum KernelLimbError: Error, Sendable {
@@ -133,6 +146,17 @@ final class RecordingSessionKernel {
   /// the simulator's logical-tick time base — not a wall-clock deadline.
   private let wedgeStallTicks: Int
 
+  // MARK: Telemetry fan-out
+
+  /// Capture-stall telemetry fan-out (PR-4 plan §3.9). When the capture layer
+  /// reports a stall the kernel — besides routing `failed(.captureStalled)`
+  /// for control flow — hands the raw `CaptureStallContext` to this seam so a
+  /// telemetry observer receives the diagnostic payload the terminal state
+  /// cannot carry. A dumb fan-out: the kernel never reads it back, and it
+  /// keeps the kernel telemetry-infra-agnostic (the closure is a seam, like
+  /// `processText` / `store` / `deliver`). A no-op in the simulator.
+  private let captureStallTelemetry: @MainActor (CaptureStallContext) -> Void
+
   // MARK: Observable surface
 
   /// The current FSM state. Callers observe; they never mutate it.
@@ -148,6 +172,11 @@ final class RecordingSessionKernel {
 
   /// The text delivered to the user, or `nil` if none.
   private(set) var deliveredTranscript: String?
+
+  /// Why the session was `discarded`, or `nil` if it did not reach `discarded`
+  /// (PR-4 plan §3.8a). Set immediately before the `→ discarded` transition so
+  /// a state observer reads the correct reason.
+  private(set) var discardReason: DiscardReason?
 
   /// How delivery happened, or `nil` if nothing was delivered.
   private(set) var deliveryOutcome: KernelDeliveryOutcome?
@@ -183,6 +212,17 @@ final class RecordingSessionKernel {
   }
 
   // MARK: Session-scoped mutable state
+
+  /// The per-recording config bound at `start(config:)` (PR-4 plan §3.3a). The
+  /// forward path reads it for VAD configuration and decode options; a
+  /// terminal reads `modelUnloadPolicy`. `nil` before the first session.
+  private var sessionConfig: DictationSessionConfig?
+
+  /// `true` once `adapter.beginSession()` succeeded this session. Distinct from
+  /// `adapterSessionActive` (which `finalize()` clears) — this stays true for
+  /// the whole session so a terminal applies the model-unload policy exactly
+  /// once for any session that ran the adapter (PR-4 plan §3.2, Codex RR4).
+  private var adapterDidBeginSession = false
 
   /// The session task bag, keyed by `SessionID` (PR-1 §B.1.6). Reaching a
   /// terminal state cancels and clears it — nonblocking (PR-3 plan §3.1a).
@@ -255,7 +295,8 @@ final class RecordingSessionKernel {
     ) async throws -> String,
     store: @escaping @MainActor (_ text: String) async throws -> Void,
     deliver: @escaping @MainActor (_ text: String) async -> KernelDeliveryOutcome,
-    wedgeStallTicks: Int = 2
+    wedgeStallTicks: Int = 2,
+    captureStallTelemetry: @escaping @MainActor (CaptureStallContext) -> Void = { _ in }
   ) {
     self.adapter = adapter
     self.audioCapture = audioCapture
@@ -266,14 +307,16 @@ final class RecordingSessionKernel {
     self.store = store
     self.deliver = deliver
     self.wedgeStallTicks = wedgeStallTicks
+    self.captureStallTelemetry = captureStallTelemetry
   }
 
   // MARK: Driver entry points (PR-1 §A.2 trigger vocabulary)
 
   /// Start a new recording session. Legal from `idle` or any terminal state;
   /// ignored while a session is active (PR-1 §B.1.2 — "don't interrupt
-  /// processing").
-  func start() {
+  /// processing"). `config` freezes per-recording settings (VAD, decode
+  /// language, model-unload policy) for this session (PR-4 plan §3.3a).
+  func start(config: DictationSessionConfig) {
     guard state == .idle || state.isTerminal else {
       log("start ignored — session active at \(state)")
       return
@@ -281,6 +324,7 @@ final class RecordingSessionKernel {
     let sid = SessionID()
     currentSessionID = sid
     resetSessionState()
+    sessionConfig = config
     transition(to: .preparing)
     spawn(sid) { [weak self] in
       await self?.runForwardPath(sid)
@@ -369,15 +413,26 @@ final class RecordingSessionKernel {
   // MARK: Forward path
 
   private func runForwardPath(_ sid: SessionID) async {
-    // Preparing: configure VAD, bind capture callbacks, derive options.
+    guard let config = sessionConfig else {
+      // `start(config:)` always sets `sessionConfig` before spawning this —
+      // this guard is defensive only and cannot fire in practice.
+      finishTerminal(.failed(.prepareFailed), sid: sid)
+      return
+    }
+    // Preparing: configure VAD from the frozen session config, bind capture
+    // callbacks, derive decode options (PR-4 plan §3.3a).
     audioCapture.configureVAD(
-      autoStop: true, silenceTimeout: 0, sensitivity: 0, energyGate: false)
+      autoStop: config.vadAutoStop,
+      silenceTimeout: config.vadSilenceTimeout,
+      sensitivity: config.vadSensitivity,
+      energyGate: config.vadEnergyGate)
     bindCaptureCallbacks(sid)
     subscribeVADSignals(sid)
 
     guard isCurrent(sid) else { return }
     if stopLatched {
       // PTT released before `recording` — no transcribable audio (PR-1 §B.1.2).
+      discardReason = .releasedBeforeRecording
       finishTerminal(.discarded, sid: sid)
       return
     }
@@ -404,6 +459,7 @@ final class RecordingSessionKernel {
         finishTerminal(.cancelled, sid: sid)
         return
       case .stopped:
+        discardReason = .releasedBeforeRecording
         finishTerminal(.discarded, sid: sid)
         return
       }
@@ -421,6 +477,7 @@ final class RecordingSessionKernel {
     // The capture engine is up — every terminal from here must stop capture.
     captureLifecycle = .active
     if stopLatched {
+      discardReason = .releasedBeforeRecording
       finishTerminal(.discarded, sid: sid)
       return
     }
@@ -445,9 +502,10 @@ final class RecordingSessionKernel {
     }
     guard isCurrent(sid) else { return }
 
-    // Begin the adapter session.
+    // Begin the adapter session. Decode options derive from the frozen
+    // session config's language mode (PR-4 plan §3.3a).
     do {
-      try await adapter.beginSession(sid, options: TranscriptionOptions.default)
+      try await adapter.beginSession(sid, options: makeTranscriptionOptions(config))
     } catch {
       guard isCurrent(sid) else { return }
       audioCapture.onBufferCaptured = nil
@@ -458,11 +516,15 @@ final class RecordingSessionKernel {
     // The adapter now holds an open session — a terminal before `finalize()`
     // must discard it via `adapter.cancel()` (`finishTerminal` does this).
     adapterSessionActive = true
+    // The adapter ran a session this run — the terminal applies the
+    // model-unload policy exactly once (PR-4 plan §3.2).
+    adapterDidBeginSession = true
     // Final latch check before `recording` — a stop / cancel that arrived
     // while `beginCapturePhase()` / `beginSession()` was suspended set only
     // `stopLatched` / `cancelRequested` (the FSM was still `warmingUp`); it
     // must be consumed here, not lost on the way into `recording` (Codex P1).
     if stopLatched {
+      discardReason = .releasedBeforeRecording
       finishTerminal(.discarded, sid: sid)
       return
     }
@@ -517,6 +579,7 @@ final class RecordingSessionKernel {
     // Sub-minimum-duration proxy: zero buffers handed off ⇒ discarded
     // (PR-1 §B.1.2 `recording → discarded`).
     if bufferCountThisSession == 0 {
+      discardReason = .tooShort
       finishTerminal(.discarded, sid: sid)
       return
     }
@@ -716,18 +779,29 @@ final class RecordingSessionKernel {
 
   // MARK: Capture callbacks + buffer handoff
 
+  /// Bind the recording-exit callbacks for this session — the capture-layer
+  /// signals and the adapter's mid-recording engine-crash signal (PR-4 plan
+  /// §3.2). VAD auto-stop is NOT bound here: it flows through `vad.stopSignals`
+  /// only, with `CaptureVADSignalSource` the single owner of
+  /// `AudioCaptureInterface.onVADAutoStop` (PR-4 plan §3.5).
   private func bindCaptureCallbacks(_ sid: SessionID) {
     audioCapture.onEngineInterrupted = { [weak self] in
       self?.deliverRecordingExitIfCurrent(.audioInterruption, sid: sid)
     }
-    audioCapture.onCaptureStalled = { [weak self] _ in
-      self?.deliverRecordingExitIfCurrent(.captureStall, sid: sid)
+    audioCapture.onCaptureStalled = { [weak self] ctx in
+      guard let self else { return }
+      // Fan the raw context to telemetry (PR-4 plan §3.9), then route the
+      // control-flow exit. The exit only latches; ordering is immaterial.
+      self.captureStallTelemetry(ctx)
+      self.deliverRecordingExitIfCurrent(.captureStall, sid: sid)
     }
     audioCapture.onXPCServiceError = { [weak self] _ in
       self?.deliverRecordingExitIfCurrent(.asrInterruption, sid: sid)
     }
-    audioCapture.onVADAutoStop = { [weak self] in
-      self?.deliverRecordingExitIfCurrent(.vadAutoStop, sid: sid)
+    // The adapter's own backend crashing mid-recording (distinct XPC layer
+    // from `onXPCServiceError`'s audio-capture service) — PR-4 plan §3.2.
+    adapter.onEngineInterrupted = { [weak self] in
+      self?.deliverRecordingExitIfCurrent(.asrInterruption, sid: sid)
     }
   }
 
@@ -735,26 +809,26 @@ final class RecordingSessionKernel {
   /// `Task { @MainActor }` per-buffer hop pattern). The audio-thread closure
   /// does the minimum — wrap + hop; the `@MainActor` side gates on
   /// `SessionID` + FSM state, then forwards to the adapter.
+  ///
+  /// PR-4 plan §3.4: the carrier holds the `AVAudioPCMBuffer` directly. The
+  /// audio thread transfers it via `nonisolated(unsafe)` — the buffer is
+  /// created on the audio thread, wrapped once, and read only on `@MainActor`,
+  /// never from two threads (the shipped pattern, `TranscriptionPipeline.swift:483`).
   private func makeBufferCallback(_ sid: SessionID) -> (@Sendable (AVAudioPCMBuffer) -> Void) {
     return { [weak self] buffer in
-      let pcm = Self.extractSamples(buffer)
+      nonisolated(unsafe) let safeBuffer = buffer
       let frameCount = Int(buffer.frameLength)
       Task { @MainActor [weak self] in
         guard let self, self.isCurrent(sid), self.state == .recording else { return }
         self.bufferSequence += 1
         let handoff = AudioBufferHandoff(
-          pcm: pcm, frameCount: frameCount, sequence: self.bufferSequence, sessionID: sid)
+          buffer: safeBuffer, frameCount: frameCount,
+          sequence: self.bufferSequence, sessionID: sid)
         self.adapter.acceptAudio(handoff)
         self.bufferCountThisSession += 1
         self.bump()
       }
     }
-  }
-
-  private nonisolated static func extractSamples(_ buffer: AVAudioPCMBuffer) -> [Float] {
-    let count = Int(buffer.frameLength)
-    guard count > 0, let channel = buffer.floatChannelData?[0] else { return [] }
-    return Array(UnsafeBufferPointer(start: channel, count: count))
   }
 
   // MARK: VAD subscription
@@ -913,7 +987,9 @@ final class RecordingSessionKernel {
     audioCapture.onEngineInterrupted = nil
     audioCapture.onCaptureStalled = nil
     audioCapture.onXPCServiceError = nil
-    audioCapture.onVADAutoStop = nil
+    // `onVADAutoStop` is NOT cleared here — the kernel never owns it
+    // (`CaptureVADSignalSource` is the single owner, PR-4 plan §3.5).
+    adapter.onEngineInterrupted = nil
     drainTaskBag()
 
     // Discard the adapter's open session — the only discard hook is
@@ -922,6 +998,14 @@ final class RecordingSessionKernel {
     if adapterSessionActive {
       adapterSessionActive = false
       detachedAdapterCancel()
+    }
+
+    // Apply the model-unload policy once for any session that ran the adapter
+    // (PR-4 plan §3.2) — the kernel-era equivalent of today's
+    // post-transcription `noteTranscriptionComplete(policy:)`.
+    if adapterDidBeginSession {
+      adapterDidBeginSession = false
+      adapter.applyUnloadPolicy(sessionConfig?.modelUnloadPolicy ?? .never)
     }
 
     // Stop the capture engine. `resourcesReleased` flips true only once the
@@ -999,6 +1083,7 @@ final class RecordingSessionKernel {
     bufferSequence = 0
     captureLifecycle = .notStarted
     adapterSessionActive = false
+    adapterDidBeginSession = false
     loadTickCount = 0
     finalizeTickCount = 0
     lastLoadTickAt = 0
@@ -1009,8 +1094,24 @@ final class RecordingSessionKernel {
     finalizingSubStatus = .transcribing
     deliveredTranscript = nil
     deliveryOutcome = nil
+    discardReason = nil
     pasteCount = 0
     forbiddenTransitionRejected = false
+  }
+
+  /// Derive decode options from the frozen session config's language mode
+  /// (PR-4 plan §3.3a — mirrors `TranscriptionPipeline.applySessionConfig`).
+  private func makeTranscriptionOptions(_ config: DictationSessionConfig)
+    -> TranscriptionOptions
+  {
+    var options = TranscriptionOptions()
+    switch config.languageMode {
+    case .auto:
+      options.language = nil
+    case .locked(let code):
+      options.language = code
+    }
+    return options
   }
 
   private func classifyCaptureStartError(_ error: Error) -> RecordingFailureReason {

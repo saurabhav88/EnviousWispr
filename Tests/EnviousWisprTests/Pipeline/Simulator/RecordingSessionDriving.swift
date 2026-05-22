@@ -1,4 +1,5 @@
 import EnviousWisprAudio
+import EnviousWisprCore
 import Foundation
 
 @testable import EnviousWisprPipeline
@@ -193,7 +194,10 @@ final class KernelRecordingSession: RecordingSessionDriving {
   func apply(_ trigger: SessionTrigger) async {
     switch trigger {
     case .start:
-      kernel.start()
+      // PR-4 §3.3a: the kernel's `start` now takes a `DictationSessionConfig`.
+      // The simulator passes the test default — `FakeAudioCapture.configureVAD`
+      // is inert, so no scenario behavior changes.
+      kernel.start(config: .testDefault())
       // The seam is told the frozen session at session start (PR-1 §B.6):
       // sync the fake VAD's stamp to the kernel's freshly minted SessionID.
       vad.currentSessionID = kernel.currentSessionID
