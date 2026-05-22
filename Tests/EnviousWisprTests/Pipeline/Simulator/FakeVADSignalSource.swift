@@ -38,6 +38,15 @@ final class FakeVADSignalSource: VADSignalSource {
     stopContinuation.yield(VADStopSignal(kind: kind, sessionID: currentSessionID))
   }
 
+  /// Emit a stop-driving signal stamped with a PRIOR session's `SessionID` —
+  /// the R2 stale-callback injection (PR-3 plan §3.6). A fresh `SessionID`
+  /// distinct from `currentSessionID` models a callback latched under a
+  /// finished session; the kernel must drop it (FSM invariant 7).
+  func emitStale(_ kind: VADStopKind) {
+    emittedKinds.append(kind)
+    stopContinuation.yield(VADStopSignal(kind: kind, sessionID: SessionID()))
+  }
+
   func speechEvidenceAtStop() -> VADSpeechEvidence {
     evidenceReadCount += 1
     return evidence

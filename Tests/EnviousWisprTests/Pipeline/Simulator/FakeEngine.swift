@@ -15,7 +15,7 @@ import Foundation
 // stream. A nil stream (the `*ProgressAbsent` knobs) means the engine exposes
 // no wedge signal at all. The two are distinct on purpose.
 
-/// The eight `FakeEngine` behaviors (PR-1 §B.2.3).
+/// The nine `FakeEngine` behaviors (PR-1 §B.2.3).
 enum FakeEngineBehavior: Sendable {
   /// Batch engine: `finalize()` returns one transcript.
   case batchSuccess(text: String)
@@ -25,11 +25,18 @@ enum FakeEngineBehavior: Sendable {
   case empty(hadSpeechEvidence: Bool)
   /// `warmUp()` completes after `ticksToReady` logical clock ticks.
   case slowLoad(ticksToReady: Int)
-  /// `warmUp()` never completes on its own — the load wedges. Resolved only by
-  /// `cancel()` (best-effort load cancellation, D6).
+  /// `finalize()` completes after `ticksToFinal` logical clock ticks, then
+  /// returns one transcript. Models a transcribe that genuinely dwells —
+  /// lets a scenario place a `cancel` deterministically inside `transcribing`
+  /// (A8) without wedging (PR-3 plan §14a).
+  case slowFinalize(ticksToFinal: Int, text: String)
+  /// `warmUp()` emits a few load-progress ticks then goes silent — a genuine
+  /// cadence stall the kernel's wedge watcher can detect (PR-3 plan §3.7).
+  /// Resolved only by `cancel()` (best-effort load cancellation, D6).
   case wedgeOnLoad
-  /// `finalize()` never completes on its own — the finalize wedges. Resolved
-  /// only by `cancel()`.
+  /// `finalize()` emits a few finalize-progress ticks then goes silent — a
+  /// genuine finalize cadence stall (PR-3 plan §3.7). Resolved only by
+  /// `cancel()`.
   case wedgeOnFinalize
   /// `finalize()` surfaces an engine crash as `.failed(.engineCrashed)` —
   /// never a throw, never a hang.
@@ -68,6 +75,16 @@ final class FakeEngine: ASREngineAdapter {
   private(set) var cancelCallCount = 0
   private(set) var lastUnloadPolicy: ModelUnloadPolicy?
   private(set) var lastSessionID: SessionID?
+  /// Count of mid-session engine-switch requests (A18). The request models a
+  /// factory-preference change (PR-6 owns the factory); it does NOT mutate
+  /// this engine's `behavior`, so the active session keeps its transcript.
+  private(set) var midSessionSwitchRequestCount = 0
+
+  /// Record a mid-session engine-switch request (A18, PR-3 plan §3.6). A
+  /// no-op against the running adapter — proves the request was inert.
+  func noteMidSessionSwitchRequest() {
+    midSessionSwitchRequestCount += 1
+  }
 
   // MARK: Terminal latch
 
@@ -134,14 +151,16 @@ final class FakeEngine: ASREngineAdapter {
       await clock.sleep(ticks: ticksToReady)
       readiness = .ready
     case .wedgeOnLoad:
-      // The load wedges — suspend until `cancel()` resumes us. No progress
-      // tick is emitted, so a kernel watching `loadProgress` detects the
-      // wedge. Best-effort load cancellation (D6): `warmUp()` throws once
-      // released.
+      // The load emits a few progress ticks (arming the kernel's wedge
+      // watcher) then goes silent — a genuine cadence stall (PR-3 plan §3.7).
+      // It suspends until `cancel()` resumes us; best-effort load
+      // cancellation (D6): `warmUp()` throws once released.
       // If `cancel()` ALREADY ran (cancel-before-warmUp ordering), there is no
       // future `cancel()` to resume the continuation — parking would hang.
       // Throw immediately instead.
       if isCancelled { throw ASREngineError.wedged }
+      emitLoadTick()
+      emitLoadTick()
       await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
         loadWedgeContinuation = continuation
       }
@@ -194,15 +213,27 @@ final class FakeEngine: ASREngineAdapter {
       // An engine crash surfaces as a VALUE, never a throw, never a hang.
       outcome = .failed(.engineCrashed)
     case .wedgeOnFinalize:
-      // The finalize wedges — suspend until `cancel()` resumes us. No
-      // finalize tick is emitted, so a kernel watching `finalizeProgress`
-      // detects the wedge. Once released, return `.cancelled` per the
-      // post-cancel MUST clause.
+      // The finalize emits a few finalize-progress ticks (arming the kernel's
+      // wedge watcher) then goes silent — a genuine cadence stall (PR-3 plan
+      // §3.7). It suspends until `cancel()` resumes us; once released, returns
+      // `.cancelled` per the post-cancel MUST clause.
+      emitFinalizeTick()
+      emitFinalizeTick()
       await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
         finalizeWedgeContinuation = continuation
       }
       isTerminal = true
       return .cancelled
+    case .slowFinalize(let ticksToFinal, let text):
+      // `finalize()` dwells `ticksToFinal` logical ticks then returns — a
+      // genuine in-flight `transcribing` window, no wedge (no progress
+      // ticks are emitted, so no watcher arms).
+      await clock.sleep(ticks: ticksToFinal)
+      if isCancelled {
+        isTerminal = true
+        return .cancelled
+      }
+      outcome = .transcript(makeResult(text: text))
     case .cancelled:
       outcome = .cancelled
     case .slowLoad:

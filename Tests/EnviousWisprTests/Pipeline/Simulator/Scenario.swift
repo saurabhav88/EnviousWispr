@@ -33,6 +33,12 @@ enum EngineDirective: Sendable {
   case setLoadProgressAbsent(Bool)
   /// Model the engine exposing no finalize-progress stream.
   case setFinalizeProgressAbsent(Bool)
+  /// Request an engine switch mid-session (A18). Models a factory-preference
+  /// change (the factory is PR-6) — it does NOT mutate the running adapter.
+  /// The kernel binds its adapter at `preparing` and holds it for the
+  /// session's lifetime, so the active session keeps its original engine
+  /// (PR-3 plan §3.6).
+  case requestMidSessionSwitch
 }
 
 /// A directive to the `FakePasteTarget` mid-scenario.
@@ -84,6 +90,10 @@ enum VADDirective: Sendable {
   case autoStop
   case maxDuration
   case evidence(VADSpeechEvidence)
+  /// Emit an auto-stop signal stamped with a PRIOR session's `SessionID` —
+  /// the stale-callback injection for R2 (PR-3 plan §3.6). The kernel must
+  /// drop it (FSM invariant 7) and leave the current session running.
+  case staleAutoStop
 }
 
 /// One step in a scenario's ordered script.
