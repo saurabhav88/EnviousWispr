@@ -1,0 +1,171 @@
+import EnviousWisprCore
+import EnviousWisprLLM
+import EnviousWisprServices
+import Foundation
+import Testing
+
+@testable import EnviousWisprPipeline
+
+// MARK: - KernelDictationDriverTests (epic #827, PR-4 §11.4)
+//
+// Unit coverage for `KernelDictationDriver` — the state / overlay maps, the
+// PipelineEvent dispatch, the external-error surface, and the no-op contracts.
+
+@MainActor
+@Suite struct KernelDictationDriverTests {
+
+  // MARK: RecordingSessionState -> PipelineState map (pure, total)
+
+  @Test("the state map is total and isActive holds for every active kernel state")
+  func stateMapIsTotal() {
+    func mapped(_ s: RecordingSessionState) -> PipelineState {
+      KernelDictationDriver.pipelineState(for: s, externalError: nil)
+    }
+    // Idle-class terminals collapse to idle (silent — no error surface).
+    #expect(mapped(.idle) == .idle)
+    #expect(mapped(.cancelled) == .idle)
+    #expect(mapped(.discarded) == .idle)
+    #expect(mapped(.noSpeech) == .idle)
+    // Active states — every one must report `isActive` so the backend-switch
+    // guard (`PipelineSettingsSync`, §3.13) sees the kernel session as active.
+    for s: RecordingSessionState in [
+      .preparing, .warmingUp, .recording, .stopping, .transcribing, .finalizing,
+    ] {
+      #expect(mapped(s).isActive, "\(s) must map to an active PipelineState")
+    }
+    #expect(mapped(.recording) == .recording)
+    #expect(mapped(.completed) == .complete)
+    // Error-surface terminals.
+    if case .error = mapped(.failed(.asrEmpty)) {
+    } else {
+      Issue.record("failed should map to .error")
+    }
+    if case .error = mapped(.audioInterrupted) {
+    } else {
+      Issue.record("audioInterrupted should map to .error")
+    }
+    if case .error = mapped(.asrInterrupted) {
+    } else {
+      Issue.record("asrInterrupted should map to .error")
+    }
+  }
+
+  @Test("an external error overrides the mapped state")
+  func externalErrorOverridesState() {
+    #expect(
+      KernelDictationDriver.pipelineState(for: .idle, externalError: "boom") == .error("boom"))
+    #expect(
+      KernelDictationDriver.pipelineState(for: .recording, externalError: "boom")
+        == .error("boom"))
+  }
+
+  @Test("failureMessage mirrors the shipped strings for the equivalent failures")
+  func failureMessages() {
+    #expect(KernelDictationDriver.failureMessage(.asrEmpty) == "Couldn't catch that -- try again")
+    #expect(KernelDictationDriver.failureMessage(.noAudioCaptured) == "No audio captured")
+    #expect(KernelDictationDriver.failureMessage(.storageFailed) == "Failed to save transcript")
+    #expect(
+      KernelDictationDriver.failureMessage(.emptyAfterProcessing)
+        == "No speech detected. Your clipboard is unchanged. Try again.")
+  }
+
+  // MARK: handle(event:) -> kernel triggers
+
+  @Test("handle(.toggleRecording) from idle starts a kernel session")
+  func toggleRecordingStarts() async throws {
+    let h = makeDriver()
+    try await h.driver.handle(event: .toggleRecording(.testDefault()))
+    await drainUntil { h.kernel.state == .recording }
+    #expect(h.kernel.state == .recording)
+    #expect(h.driver.state == .recording)
+  }
+
+  @Test("handle(.toggleRecording) while recording requests a stop")
+  func toggleRecordingWhileActiveStops() async throws {
+    let h = makeDriver()
+    try await h.driver.handle(event: .toggleRecording(.testDefault()))
+    await drainUntil { h.kernel.state == .recording }
+    try await h.driver.handle(event: .toggleRecording(.testDefault()))
+    await drainUntil { h.kernel.state.isTerminal }
+    #expect(h.kernel.state.isTerminal, "the second toggle drove the session to a terminal")
+  }
+
+  // MARK: External-error surface
+
+  @Test("setExternalError surfaces .error on state and overlay")
+  func setExternalErrorSurfaces() {
+    let h = makeDriver()
+    h.driver.setExternalError("device unplugged")
+    #expect(h.driver.state == .error("device unplugged"))
+    #expect(h.driver.overlayIntent == .error(message: "device unplugged"))
+  }
+
+  @Test("a new start clears the external error")
+  func startClearsExternalError() async throws {
+    let h = makeDriver()
+    h.driver.setExternalError("device unplugged")
+    try await h.driver.handle(event: .toggleRecording(.testDefault()))
+    await drainUntil { h.kernel.state == .recording }
+    #expect(h.driver.state != .error("device unplugged"))
+  }
+
+  @Test("clearPendingStallRecovery is an inert no-op")
+  func clearPendingStallRecoveryIsNoOp() {
+    let h = makeDriver()
+    let before = h.driver.state
+    h.driver.clearPendingStallRecovery()
+    #expect(h.driver.state == before)
+  }
+
+  // MARK: currentTranscript / lastPolishError side-channel
+
+  @Test("currentTranscript and lastPolishError read the finalization side-channel")
+  func sideChannelReads() {
+    let h = makeDriver()
+    #expect(h.driver.currentTranscript == nil)
+    h.outcome.transcript = Transcript(text: "hello world")
+    h.outcome.polishError = "polish timed out"
+    #expect(h.driver.currentTranscript?.text == "hello world")
+    #expect(h.driver.lastPolishError == "polish timed out")
+  }
+
+  // MARK: Helpers
+
+  private struct Harness {
+    let driver: KernelDictationDriver
+    let kernel: RecordingSessionKernel
+    let outcome: KernelFinalizationOutcome
+  }
+
+  private func makeDriver() -> Harness {
+    let kernel = RecordingSessionKernel(
+      adapter: FakeEngine(behavior: .batchSuccess(text: "x"), clock: FakeClock()),
+      audioCapture: FakeAudioCapture(),
+      vad: FakeVADSignalSource(),
+      currentTick: { 0 },
+      sleepTicks: { _ in },
+      processText: { raw, _ in raw },
+      store: { _ in },
+      deliver: { _ in .pasted })
+    let observer = KernelHeartPathTelemetryObserver(
+      kernel: kernel, audioCapture: FakeAudioCapture(), emitLifecycleEvent: { _ in })
+    let outcome = KernelFinalizationOutcome()
+    let steps = LimbSteps(
+      wordCorrection: WordCorrectionStep(),
+      fillerRemoval: FillerRemovalStep(),
+      emojiFormatter: EmojiFormatterStep(),
+      llmPolish: LLMPolishStep(keychainManager: KeychainManager()))
+    let driver = KernelDictationDriver(
+      kernel: kernel, observer: observer, outcome: outcome,
+      context: KernelSessionContext(), steps: steps)
+    driver.start()
+    return Harness(driver: driver, kernel: kernel, outcome: outcome)
+  }
+
+  private func drainUntil(_ condition: @MainActor () -> Bool) async {
+    for _ in 0..<2000 {
+      if condition() { return }
+      await Task.yield()
+    }
+  }
+}

@@ -218,7 +218,11 @@ final class FakeAudioCapture: AudioCaptureInterface {
 
   // MARK: Helpers
 
-  private static func makeBuffer(samples: [Float]) -> AVAudioPCMBuffer? {
+  /// Synthesize one 16 kHz mono Float32 `AVAudioPCMBuffer` from samples.
+  /// `internal` so other test fixtures (`FakeEngineTests`,
+  /// `ParakeetEngineAdapterTests`) build `AudioBufferHandoff`s without
+  /// reimplementing buffer construction.
+  static func makeBuffer(samples: [Float]) -> AVAudioPCMBuffer? {
     guard
       let format = AVAudioFormat(
         commonFormat: .pcmFormatFloat32,

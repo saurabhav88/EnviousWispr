@@ -106,10 +106,11 @@ struct FakeEngineTests {
   }
 
   @Test("acceptAudio after a terminal session is a no-op")
-  func acceptAudioAfterTerminalIsNoOp() async {
+  func acceptAudioAfterTerminalIsNoOp() async throws {
     let (engine, _) = makeEngine(.batchSuccess(text: "x"))
+    let pcm = try #require(FakeAudioCapture.makeBuffer(samples: [0.1]))
     let buffer = AudioBufferHandoff(
-      pcm: [0.1], frameCount: 1, sequence: 1, sessionID: SessionID())
+      buffer: pcm, frameCount: 1, sequence: 1, sessionID: SessionID())
     engine.acceptAudio(buffer)
     #expect(engine.acceptedBufferCount == 1)
     await engine.cancel()

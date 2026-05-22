@@ -1,3 +1,4 @@
+@preconcurrency import AVFoundation
 import EnviousWisprCore
 import Foundation
 
@@ -113,23 +114,28 @@ public struct ASRFinalizeProgressTick: Sendable {
   }
 }
 
-/// A `Sendable` carrier wrapping one captured audio buffer for the
-/// kernel → adapter handoff (PR-1 §B.3). The kernel calls `acceptAudio(_:)`
-/// for every captured buffer; a streaming adapter forwards it, a batch adapter
-/// buffers or no-ops.
+/// A carrier wrapping one captured audio buffer for the kernel → adapter
+/// handoff (PR-1 §B.3). The kernel calls `acceptAudio(_:)` for every captured
+/// buffer; a streaming adapter forwards it, a batch adapter buffers or no-ops.
 ///
-/// `pcm` is owned Float32 sample storage — the simplest unconditionally
-/// `Sendable` shape. PR-3 consumes this shape unchanged: its kernel is
-/// production-unwired, with no real audio thread to measure against, so it
-/// reuses the shipped per-buffer `Task { @MainActor }` hand-off pattern
-/// (PR-3 plan §3.4). The production PCM-representation decision
-/// (copy-into-owned-storage vs `nonisolated(unsafe)` `AVAudioPCMBuffer`
-/// transfer) belongs to PR-4 — the first PR with a real audio thread feeding
-/// the kernel (PR-1 §B.3 erratum 2026-05-21).
-public struct AudioBufferHandoff: Sendable {
-  /// 16 kHz mono Float32 samples, owned by this struct.
-  public let pcm: [Float]
-  /// Sample count in `pcm`.
+/// 2026-05-22 erratum (PR-4, plan §3.4). PR-1 §B.3 and the PR-3 plan deferred
+/// the production PCM-representation decision to PR-4 — the first PR with a
+/// real audio thread feeding the kernel. PR-4 resolves it: the carrier holds
+/// the `AVAudioPCMBuffer` directly (PR-1 §B.3 option b), not an owned `[Float]`
+/// copy. The production Parakeet adapter feeds streaming ASR through
+/// `ASRManagerInterface.feedAudio(_:)`, which takes an `AVAudioPCMBuffer`; an
+/// owned-`[Float]` carrier would force a buffer reconstruction the shipped
+/// streaming path (`TranscriptionPipeline.swift:483`) never does.
+///
+/// `@unchecked Sendable`: `AVAudioPCMBuffer` is not `Sendable`, but the buffer
+/// is created on the audio thread, wrapped here exactly once, and handed to
+/// `@MainActor` exactly once — never touched from two threads. This is the
+/// shipped `nonisolated(unsafe)` cross-actor-buffer transfer discipline
+/// (`swift-patterns.md`).
+public struct AudioBufferHandoff: @unchecked Sendable {
+  /// 16 kHz mono Float32 capture buffer.
+  public let buffer: AVAudioPCMBuffer
+  /// Frame count in `buffer` (`buffer.frameLength`).
   public let frameCount: Int
   /// Monotonic sequence number stamped on the audio thread. A streaming
   /// adapter that needs strict order reorders by `sequence`; a batch adapter
@@ -139,8 +145,10 @@ public struct AudioBufferHandoff: Sendable {
   /// kernel's current session is dropped (PR-1 §B.3, FSM invariant 7).
   public let sessionID: SessionID
 
-  public init(pcm: [Float], frameCount: Int, sequence: UInt64, sessionID: SessionID) {
-    self.pcm = pcm
+  public init(
+    buffer: AVAudioPCMBuffer, frameCount: Int, sequence: UInt64, sessionID: SessionID
+  ) {
+    self.buffer = buffer
     self.frameCount = frameCount
     self.sequence = sequence
     self.sessionID = sessionID
@@ -179,8 +187,13 @@ public protocol ASREngineAdapter: AnyObject {
 
   // MARK: Session lifecycle
 
-  /// Begin a recording session under `id`.
-  func beginSession(_ id: SessionID, options: TranscriptionOptions) async throws
+  /// Begin a recording session under `id`. `streaming` carries the kernel's
+  /// per-session orchestration decision — `config.useStreamingASR` ANDed with
+  /// this adapter's static `capabilities.supportsStreaming` (PR-4 plan §3.4).
+  /// The kernel owns the policy; the adapter obeys. `false` means batch-decode
+  /// after stop: the adapter MUST NOT open a live stream. An adapter MAY still
+  /// fall back to batch from `true` if its own runtime backend check fails.
+  func beginSession(_ id: SessionID, options: TranscriptionOptions, streaming: Bool) async throws
 
   /// Accept one captured buffer. The kernel ALWAYS calls this; the adapter
   /// decides forward-vs-buffer. A call after a terminal session (post-`cancel()`
@@ -198,6 +211,16 @@ public protocol ASREngineAdapter: AnyObject {
   /// Idempotent discard. Calling it 2+ times has the same effect as once
   /// (PR-1 §B.2.2).
   func cancel() async
+
+  // MARK: Engine interruption
+
+  /// Fires when the engine's own backend dies mid-recording — distinct from a
+  /// crash surfaced through `finalize()` as `.failed(.engineCrashed)`
+  /// (PR-1 §B.2.2 covered only the `finalize()`-time crash; a mid-recording
+  /// crash was a gap, PR-4 plan §3.2). The kernel sets this during session
+  /// setup and routes it to the `asrInterrupted` terminal. An adapter whose
+  /// engine has no mid-recording crash signal leaves it nil.
+  var onEngineInterrupted: (@MainActor () -> Void)? { get set }
 
   // MARK: Cleanup
 
