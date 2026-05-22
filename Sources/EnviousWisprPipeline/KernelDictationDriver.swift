@@ -41,6 +41,12 @@ final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryTarget {
   private let outcome: KernelFinalizationOutcome
   private let steps: LimbSteps
 
+  /// The per-session context the wiring's closures read (PR-4 §3.3 — "captured
+  /// by the driver and threaded into the wiring"). PR-4a holds it; PR-4b's
+  /// `handle(.toggleRecording)` is the writer — it records the frozen config
+  /// and the frontmost app / focused element at recording start.
+  private let context: KernelSessionContext
+
   /// External-error surface (PR-4 §3.7). `kernel.cancel()` alone maps to a
   /// `.hidden` overlay, so the driver owns the error state pushed in from
   /// outside (`setExternalError`). Cleared on the next start / reset.
@@ -60,11 +66,13 @@ final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryTarget {
     kernel: RecordingSessionKernel,
     observer: KernelHeartPathTelemetryObserver,
     outcome: KernelFinalizationOutcome,
+    context: KernelSessionContext,
     steps: LimbSteps
   ) {
     self.kernel = kernel
     self.observer = observer
     self.outcome = outcome
+    self.context = context
     self.steps = steps
     self.lastFiredState = Self.pipelineState(for: kernel.state, externalError: nil)
   }

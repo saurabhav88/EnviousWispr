@@ -2,7 +2,6 @@ import AppKit
 import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprServices
-import EnviousWisprStorage
 import Foundation
 
 // MARK: - KernelFinalizationWiring (epic #827, PR-4 §3.3, §3.6)
@@ -95,14 +94,18 @@ struct KernelFinalizationWiring {
   let currentTick: @MainActor () -> UInt64
   let sleepTicks: @MainActor (Int) async -> Void
 
+  /// `save` and `deliverPaste` are closure seams over `TranscriptStore.save`
+  /// and `PasteCascadeExecutor.deliver` — the same test-seam shape
+  /// `TranscriptFinalizer` exposes. The App wraps the concrete types; tests
+  /// pass fakes without touching disk or the AX paste APIs.
   init(
     outcome: KernelFinalizationOutcome,
     context: KernelSessionContext,
     adapter: ParakeetEngineAdapter,
     steps: LimbSteps,
     textProcessingRunner: TextProcessingRunner,
-    transcriptStore: TranscriptStore,
-    pasteExecutor: PasteCascadeExecutor,
+    save: @escaping @MainActor (Transcript) throws -> Void,
+    deliverPaste: @escaping @MainActor (PasteDeliveryRequest) async -> PasteDeliveryResult,
     pasteCompletionRegistry: PasteCompletionRegistry?
   ) {
     // processText — run the limb chain, write the polish side-channel, return
@@ -149,7 +152,7 @@ struct KernelFinalizationWiring {
         backendType: .parakeet,
         llmProvider: outcome.llmProvider,
         llmModel: outcome.llmModel)
-      try transcriptStore.save(transcript)
+      try save(transcript)
       outcome.transcript = transcript
     }
 
@@ -161,7 +164,7 @@ struct KernelFinalizationWiring {
       let config = context.config
       if config?.autoPasteToActiveApp == true {
         let pasteText = PasteService.appendTrailingSpace(text)
-        let result = await pasteExecutor.deliver(
+        let result = await deliverPaste(
           PasteDeliveryRequest(
             text: pasteText,
             targetApp: context.targetApp,
