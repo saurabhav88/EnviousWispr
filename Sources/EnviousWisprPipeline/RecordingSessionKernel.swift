@@ -134,7 +134,8 @@ final class RecordingSessionKernel {
   /// and signals polish-start via its callback; `store` persists; `deliver`
   /// pastes. PR-4 wires these to a real `TranscriptFinalizer` call site.
   private let processText:
-    @MainActor (_ raw: String, _ onPolishStarted: @MainActor () -> Void) async throws -> String
+    @MainActor (_ raw: String, _ onPolishStarted: @escaping @MainActor () -> Void)
+      async throws -> String
   private let store: @MainActor (_ text: String) async throws -> Void
   private let deliver: @MainActor (_ text: String) async -> KernelDeliveryOutcome
 
@@ -291,7 +292,7 @@ final class RecordingSessionKernel {
     currentTick: @escaping @MainActor () -> UInt64,
     sleepTicks: @escaping @MainActor (Int) async -> Void,
     processText: @escaping @MainActor (
-      _ raw: String, _ onPolishStarted: @MainActor () -> Void
+      _ raw: String, _ onPolishStarted: @escaping @MainActor () -> Void
     ) async throws -> String,
     store: @escaping @MainActor (_ text: String) async throws -> Void,
     deliver: @escaping @MainActor (_ text: String) async -> KernelDeliveryOutcome,

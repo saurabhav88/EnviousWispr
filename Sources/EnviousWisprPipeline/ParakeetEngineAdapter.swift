@@ -55,6 +55,13 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   /// no accumulation outlives its session.
   private var retainedPCM: [Float] = []
 
+  /// The `ASRResult` of the last successful `finalize()`, or `nil`. The kernel
+  /// threads only `result.text` to its `runFinalizing` closures, so the
+  /// finalization wiring reads the result's metadata (`language`, `duration`,
+  /// `processingTime`) from here to build the `Transcript` (PR-4 §3.3).
+  /// Cleared on `beginSession()` and `cancel()`.
+  private(set) var lastResult: ASRResult?
+
   /// Cap on `retainedPCM` — `maxRecordingDuration` worth of 16 kHz mono samples
   /// (300 s x 16 kHz = 4.8 M `Float` = ~19 MB). On reaching the cap the
   /// accumulation stops growing; recording auto-stops on max-duration anyway.
@@ -138,6 +145,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     isTerminal = false
     isCancelled = false
     streamingActive = false
+    lastResult = nil
     retainedPCM.removeAll(keepingCapacity: true)
 
     if await asrManager.activeBackendSupportsStreaming {
@@ -183,6 +191,9 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     } else {
       outcome = await finalizeBatch()
     }
+    if case .transcript(let result) = outcome {
+      lastResult = result
+    }
     isTerminal = true
     streamingActive = false
     retainedPCM.removeAll()
@@ -200,6 +211,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   func cancel() async {
     isCancelled = true
     isTerminal = true
+    lastResult = nil
     retainedPCM.removeAll()
     if streamingActive {
       streamingActive = false
