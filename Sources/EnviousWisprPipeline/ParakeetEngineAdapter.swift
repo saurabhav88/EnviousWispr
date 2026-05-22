@@ -46,13 +46,16 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   /// `true` while `warmUp()` has a `loadModel()` in flight — feeds `readiness`.
   private var isLoadInFlight = false
 
-  /// Streaming-feed drain counters. `acceptAudio(_:)` dispatches each
-  /// `feedAudio` on its own task; `finalize()` waits for every dispatched feed
-  /// to complete before `finalizeStreaming()`, so a non-empty streaming result
-  /// is never finalized missing the tail buffers. Mirrors the shipped
-  /// `TranscriptionPipeline` streaming drain (`TranscriptionPipeline.swift:675`).
-  private var feedsDispatched = 0
-  private var feedsCompleted = 0
+  /// In-flight streaming-feed tasks. `acceptAudio(_:)` dispatches each
+  /// `feedAudio` on its own task and appends the handle here; `finalize()`
+  /// awaits every handle before `finalizeStreaming()`, so a non-empty streaming
+  /// result is never finalized missing the tail buffers. Awaiting the actual
+  /// task is the completion signal — no wall-clock deadline. A `ContinuousClock`
+  /// deadline raced the `@MainActor` scheduler: under contention it fired before
+  /// queued feed tasks ran, dropping tail audio (Codex PR-4a r4, reproduced as a
+  /// `finalizeDrainsStreamingFeeds` flake). Each task `try?`-awaits `feedAudio`,
+  /// so it always completes — on success or a thrown XPC error — never hangs.
+  private var feedTasks: [Task<Void, Never>] = []
 
   // MARK: Batch-rescue PCM retention (§3.2a)
 
@@ -156,8 +159,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     isCancelled = false
     streamingActive = false
     lastResult = nil
-    feedsDispatched = 0
-    feedsCompleted = 0
+    feedTasks.removeAll()
     retainedPCM.removeAll(keepingCapacity: true)
 
     // Cancel any pending model-unload timer a prior session armed via
@@ -188,13 +190,11 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     // Mirror the shipped per-buffer hand-off (`TranscriptionPipeline.swift:481`):
     // each buffer is fed on its own `@MainActor` task. The buffer is already
     // MainActor-confined here, so capturing it carries no cross-actor transfer.
-    // `feedsDispatched` / `feedsCompleted` let `finalize()` drain the queue.
+    // The task handle is retained in `feedTasks` so `finalize()` can await it.
     let pcmBuffer = buffer.buffer
     let handoffSession = buffer.sessionID
-    feedsDispatched += 1
-    Task { @MainActor [weak self] in
+    let task = Task { @MainActor [weak self] in
       guard let self else { return }
-      defer { self.feedsCompleted += 1 }
       // Re-check on the `@MainActor` hop: a `cancel()` or a new `beginSession()`
       // between dispatch and now must not feed this buffer into a fresh
       // streaming session (Codex r2 — stale-feed race). The shipped pipeline
@@ -204,6 +204,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
       else { return }
       try? await self.asrManager.feedAudio(pcmBuffer)
     }
+    feedTasks.append(task)
   }
 
   /// Finalize: one normalized outcome. Streaming runs the
@@ -252,6 +253,9 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     isTerminal = true
     lastResult = nil
     retainedPCM.removeAll()
+    // Drop feed-task handles — the tasks see `isTerminal` and skip; `finalize()`
+    // after `cancel()` short-circuits to `.cancelled` and never drains.
+    feedTasks.removeAll()
     if streamingActive {
       streamingActive = false
       await asrManager.cancelStreaming()
@@ -267,18 +271,17 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
 
   // MARK: Streaming drain
 
-  /// Wait for every dispatched `feedAudio` task to complete before
-  /// `finalizeStreaming()` — so a non-empty streaming result is never
-  /// finalized missing tail buffers still queued behind `acceptAudio`
-  /// (`TranscriptionPipeline.swift:675` — "losing ~250-500ms of trailing
-  /// audio"). The signal is `feedsCompleted` catching `feedsDispatched`; the
-  /// 500 ms bound is the shipped drain deadline, a safety net against a feed
-  /// task that never completes (`TranscriptionPipeline.swift:680`).
+  /// Await every dispatched `feedAudio` task before `finalizeStreaming()` — so
+  /// a non-empty streaming result is never finalized missing tail buffers still
+  /// queued behind `acceptAudio` (`TranscriptionPipeline.swift:675` — "losing
+  /// ~250-500ms of trailing audio"). Awaiting the task handles is the actual
+  /// completion signal; no wall-clock deadline (`no-arbitrary-timeouts.md`) —
+  /// the prior `ContinuousClock` deadline raced the scheduler and flaked.
+  /// Iterates a value snapshot and does NOT clear `feedTasks` — only
+  /// `beginSession()` / `cancel()` clear it, so a session that begins during
+  /// this drain's `await` cannot have its fresh feed handles dropped here.
   private func drainStreamingFeeds() async {
-    let deadline = ContinuousClock.now + .milliseconds(500)
-    while feedsCompleted < feedsDispatched, ContinuousClock.now < deadline {
-      await Task.yield()
-    }
+    for task in feedTasks { await task.value }
   }
 
   // MARK: Rescue
