@@ -289,6 +289,18 @@ import Testing
     }
   }
 
+  @Test("beginSession cancels a pending model-unload timer from a prior session")
+  func beginSessionCancelsIdleTimer() async throws {
+    let manager = StubParakeetASRManager()
+    let adapter = ParakeetEngineAdapter(asrManager: manager)
+    // A prior session armed a delayed unload.
+    adapter.applyUnloadPolicy(.fiveMinutes)
+    try await adapter.beginSession(SessionID(), options: .default, streaming: true)
+    #expect(
+      manager.cancelIdleTimerCount == 1,
+      "beginSession cancels the idle timer so no unload fires mid-session")
+  }
+
   @Test("applyUnloadPolicy forwards the policy to the ASR manager")
   func applyUnloadPolicy() {
     let manager = StubParakeetASRManager()
@@ -367,6 +379,7 @@ final class StubParakeetASRManager: ASRManagerInterface {
   var cancelStreamingCount = 0
   var transcribeCount = 0
   var cancelInFlightLoadCount = 0
+  var cancelIdleTimerCount = 0
   var lastUnloadPolicy: ModelUnloadPolicy?
   var lastTranscribeSamples: [Float] = []
 
@@ -415,7 +428,7 @@ final class StubParakeetASRManager: ASRManagerInterface {
     isStreaming = false
   }
   func noteTranscriptionComplete(policy: ModelUnloadPolicy) { lastUnloadPolicy = policy }
-  func cancelIdleTimer() {}
+  func cancelIdleTimer() { cancelIdleTimerCount += 1 }
   func cancelInFlightLoad() { cancelInFlightLoadCount += 1 }
 
   enum FakeASRError: Error { case streamingSetup, decode }

@@ -160,6 +160,12 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     feedsCompleted = 0
     retainedPCM.removeAll(keepingCapacity: true)
 
+    // Cancel any pending model-unload timer a prior session armed via
+    // `applyUnloadPolicy` — otherwise it can fire mid-recording and unload the
+    // model under the live session. Mirrors `TranscriptionPipeline.swift:359`,
+    // which cancels the idle timer at every session start.
+    asrManager.cancelIdleTimer()
+
     if streaming, await asrManager.activeBackendSupportsStreaming {
       do {
         try await asrManager.startStreaming(options: options)
