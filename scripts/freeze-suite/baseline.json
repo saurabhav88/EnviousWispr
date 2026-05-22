@@ -1,0 +1,400 @@
+{
+  "schema_version": 2,
+  "epic": "#827 PR-3 freeze-suite baseline",
+  "capture_status": "captured",
+  "text_stage": "raw_asr_before_finalizer",
+  "normalization_ruleset_version": 1,
+  "provenance": {
+    "commit_sha": "2026bd27e0c4b6e560ccefdeebdc97be65ead163",
+    "clean_tree": false,
+    "os_version": "26.5",
+    "chip": "Apple M4 Pro",
+    "capture_script_sha256": "4070241f2ca22a172db617c90074b727d0df16c8502c37572be9f7fe9b7180a6",
+    "captured_at": "2026-05-22T01:52:29.825353+00:00",
+    "runs_per_engine": 2
+  },
+  "settings_snapshot": {
+    "_defaults_domain": "com.enviouswispr.app.dev",
+    "selectedBackend": "whisperKit",
+    "recordingMode": null,
+    "llmProvider": "appleIntelligence",
+    "llmModel": "apple-intelligence",
+    "ollamaModel": "tinyllama:latest",
+    "vadAutoStop": "0",
+    "vadSilenceTimeout": null,
+    "vadSensitivity": null,
+    "vadEnergyGate": null,
+    "wordCorrectionEnabled": "1",
+    "fillerRemovalEnabled": "1",
+    "emojiFormatterEnabled": "1",
+    "useStreamingASR": null,
+    "warmEnginePolicy": null,
+    "modelUnloadPolicy": null,
+    "autoCopyToClipboard": "1",
+    "restoreClipboardAfterPaste": "1",
+    "isDebugModeEnabled": "1"
+  },
+  "clips": {
+    "normal-speech": {
+      "expected_outcome_rule": "lexical-parity",
+      "wav_sha256": "155c91ac16aa5a19bb4dee4decc4d658ddbc4d4a663148c97d372bcefa984d62",
+      "sample_rate_hz": 16000,
+      "channels": 1,
+      "sample_width_bytes": 2,
+      "duration_s": 6.264,
+      "engines": {
+        "parakeet": {
+          "model_state_by_run": [
+            "cold",
+            "warm"
+          ],
+          "runs": [
+            {
+              "run_index": 0,
+              "model_state": "cold",
+              "raw_transcript": "The quick brown fox jumps over the lazy dog while the morning sun rises slowly above the quiet hills.",
+              "no_speech": false,
+              "completed": true,
+              "log_line_count": 27,
+              "failures": []
+            },
+            {
+              "run_index": 1,
+              "model_state": "warm",
+              "raw_transcript": "The quick brown fox jumps over the lazy dog while the morning sun rises slowly above the quiet hills.",
+              "no_speech": false,
+              "completed": true,
+              "log_line_count": 27,
+              "failures": []
+            }
+          ],
+          "raw_transcript": "The quick brown fox jumps over the lazy dog while the morning sun rises slowly above the quiet hills.",
+          "vad_auto_stop_frame_index": null,
+          "no_speech": false,
+          "unstable_fields": []
+        },
+        "whisperKit": {
+          "model_state_by_run": [
+            "cold",
+            "warm"
+          ],
+          "runs": [
+            {
+              "run_index": 0,
+              "model_state": "cold",
+              "raw_transcript": "The quick brown fox jumps over the lazy dog while the morning sun rises slowly above the quiet hills.",
+              "no_speech": false,
+              "completed": true,
+              "log_line_count": 34,
+              "failures": []
+            },
+            {
+              "run_index": 1,
+              "model_state": "warm",
+              "raw_transcript": "The quick brown fox jumps over the lazy dog while the morning sun rises slowly above the quiet hills.",
+              "no_speech": false,
+              "completed": true,
+              "log_line_count": 34,
+              "failures": []
+            }
+          ],
+          "raw_transcript": "The quick brown fox jumps over the lazy dog while the morning sun rises slowly above the quiet hills.",
+          "vad_auto_stop_frame_index": null,
+          "no_speech": false,
+          "unstable_fields": []
+        }
+      }
+    },
+    "silence": {
+      "expected_outcome_rule": "noSpeech-parity",
+      "wav_sha256": "ee7bea4232762775f8fce9b3e27e4d3948c8ac6a45a87ca769f703d6eed0b448",
+      "sample_rate_hz": 16000,
+      "channels": 1,
+      "sample_width_bytes": 2,
+      "duration_s": 10.0,
+      "engines": {
+        "parakeet": {
+          "model_state_by_run": [
+            "cold",
+            "warm"
+          ],
+          "runs": [
+            {
+              "run_index": 0,
+              "model_state": "cold",
+              "raw_transcript": null,
+              "no_speech": true,
+              "completed": true,
+              "log_line_count": 5,
+              "failures": []
+            },
+            {
+              "run_index": 1,
+              "model_state": "warm",
+              "raw_transcript": "Right.",
+              "no_speech": false,
+              "completed": true,
+              "log_line_count": 20,
+              "failures": []
+            }
+          ],
+          "raw_transcript": null,
+          "vad_auto_stop_frame_index": null,
+          "no_speech": null,
+          "unstable_fields": [
+            "raw_transcript",
+            "no_speech"
+          ]
+        },
+        "whisperKit": {
+          "model_state_by_run": [
+            "cold",
+            "warm"
+          ],
+          "runs": [
+            {
+              "run_index": 0,
+              "model_state": "cold",
+              "raw_transcript": "There's another close way to frame. There was also an idea of cute. The moment I heard it, I thought I felt something happening.",
+              "no_speech": false,
+              "completed": true,
+              "log_line_count": 34,
+              "failures": []
+            },
+            {
+              "run_index": 1,
+              "model_state": "warm",
+              "raw_transcript": null,
+              "no_speech": true,
+              "completed": true,
+              "log_line_count": 4,
+              "failures": []
+            }
+          ],
+          "raw_transcript": null,
+          "vad_auto_stop_frame_index": null,
+          "no_speech": null,
+          "unstable_fields": [
+            "raw_transcript",
+            "no_speech"
+          ]
+        }
+      }
+    },
+    "background-noise": {
+      "expected_outcome_rule": "noSpeech-parity-or-transcript-parity",
+      "wav_sha256": "94b3b9360ee8471a6b44aca11055d8d04a9a0aaa81a95e839b63913723c98a9b",
+      "sample_rate_hz": 16000,
+      "channels": 1,
+      "sample_width_bytes": 2,
+      "duration_s": 5.0,
+      "engines": {
+        "parakeet": {
+          "model_state_by_run": [
+            "cold",
+            "warm"
+          ],
+          "runs": [
+            {
+              "run_index": 0,
+              "model_state": "cold",
+              "raw_transcript": "Oh.",
+              "no_speech": false,
+              "completed": true,
+              "log_line_count": 20,
+              "failures": []
+            },
+            {
+              "run_index": 1,
+              "model_state": "warm",
+              "raw_transcript": null,
+              "no_speech": true,
+              "completed": true,
+              "log_line_count": 5,
+              "failures": []
+            }
+          ],
+          "raw_transcript": null,
+          "vad_auto_stop_frame_index": null,
+          "no_speech": null,
+          "unstable_fields": [
+            "raw_transcript",
+            "no_speech"
+          ]
+        },
+        "whisperKit": {
+          "model_state_by_run": [
+            "cold",
+            "warm"
+          ],
+          "runs": [
+            {
+              "run_index": 0,
+              "model_state": "cold",
+              "raw_transcript": null,
+              "no_speech": true,
+              "completed": true,
+              "log_line_count": 4,
+              "failures": []
+            },
+            {
+              "run_index": 1,
+              "model_state": "warm",
+              "raw_transcript": null,
+              "no_speech": true,
+              "completed": true,
+              "log_line_count": 4,
+              "failures": []
+            }
+          ],
+          "raw_transcript": null,
+          "vad_auto_stop_frame_index": null,
+          "no_speech": true,
+          "unstable_fields": []
+        }
+      }
+    },
+    "mumbled-speech": {
+      "expected_outcome_rule": "lexical-parity-if-stable-else-outcome-parity",
+      "wav_sha256": "d25dd9329a1415684fc0c07cb765d0e3298e945f5a828944a1efccb06f6f6b6b",
+      "sample_rate_hz": 16000,
+      "channels": 1,
+      "sample_width_bytes": 2,
+      "duration_s": 11.424,
+      "engines": {
+        "parakeet": {
+          "model_state_by_run": [
+            "cold",
+            "warm"
+          ],
+          "runs": [
+            {
+              "run_index": 0,
+              "model_state": "cold",
+              "raw_transcript": "I think we should probably head out before it gets too late. But honestly, I am not really sure what the plan is or where everyone wants to go for dinner. So let us just decide soon.",
+              "no_speech": false,
+              "completed": true,
+              "log_line_count": 27,
+              "failures": []
+            },
+            {
+              "run_index": 1,
+              "model_state": "warm",
+              "raw_transcript": "I think we should probably head out before it gets too late. But honestly, I am not really sure what the plan is or where everyone wants to go for dinner. So let us just decide soon.",
+              "no_speech": false,
+              "completed": true,
+              "log_line_count": 27,
+              "failures": []
+            }
+          ],
+          "raw_transcript": "I think we should probably head out before it gets too late. But honestly, I am not really sure what the plan is or where everyone wants to go for dinner. So let us just decide soon.",
+          "vad_auto_stop_frame_index": null,
+          "no_speech": false,
+          "unstable_fields": []
+        },
+        "whisperKit": {
+          "model_state_by_run": [
+            "cold",
+            "warm"
+          ],
+          "runs": [
+            {
+              "run_index": 0,
+              "model_state": "cold",
+              "raw_transcript": "I think we should probably head out before it gets too late. But honestly, I am not really sure what the plan is or where everyone wants to go for dinner. So let us just decide soon.",
+              "no_speech": false,
+              "completed": true,
+              "log_line_count": 34,
+              "failures": []
+            },
+            {
+              "run_index": 1,
+              "model_state": "warm",
+              "raw_transcript": "I think we should probably head out before it gets too late, but honestly, I am not really sure what the plan is or where everyone wants to go for dinner. So let us just decide soon.",
+              "no_speech": false,
+              "completed": true,
+              "log_line_count": 34,
+              "failures": []
+            }
+          ],
+          "raw_transcript": null,
+          "vad_auto_stop_frame_index": null,
+          "no_speech": false,
+          "unstable_fields": [
+            "raw_transcript"
+          ]
+        }
+      }
+    },
+    "sudden-burst": {
+      "expected_outcome_rule": "noSpeech-parity",
+      "wav_sha256": "022784dd58a37b649ee495f52a1641fc0f5dc418d79ccaaf6447bbd1e065dda4",
+      "sample_rate_hz": 16000,
+      "channels": 1,
+      "sample_width_bytes": 2,
+      "duration_s": 2.0,
+      "engines": {
+        "parakeet": {
+          "model_state_by_run": [
+            "cold",
+            "warm"
+          ],
+          "runs": [
+            {
+              "run_index": 0,
+              "model_state": "cold",
+              "raw_transcript": null,
+              "no_speech": true,
+              "completed": true,
+              "log_line_count": 5,
+              "failures": []
+            },
+            {
+              "run_index": 1,
+              "model_state": "warm",
+              "raw_transcript": null,
+              "no_speech": true,
+              "completed": true,
+              "log_line_count": 5,
+              "failures": []
+            }
+          ],
+          "raw_transcript": null,
+          "vad_auto_stop_frame_index": null,
+          "no_speech": true,
+          "unstable_fields": []
+        },
+        "whisperKit": {
+          "model_state_by_run": [
+            "cold",
+            "warm"
+          ],
+          "runs": [
+            {
+              "run_index": 0,
+              "model_state": "cold",
+              "raw_transcript": null,
+              "no_speech": true,
+              "completed": true,
+              "log_line_count": 4,
+              "failures": []
+            },
+            {
+              "run_index": 1,
+              "model_state": "warm",
+              "raw_transcript": null,
+              "no_speech": true,
+              "completed": true,
+              "log_line_count": 4,
+              "failures": []
+            }
+          ],
+          "raw_transcript": null,
+          "vad_auto_stop_frame_index": null,
+          "no_speech": true,
+          "unstable_fields": []
+        }
+      }
+    }
+  }
+}

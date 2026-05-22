@@ -160,6 +160,10 @@ scripts/eval/alias_runner/Package.resolved
 scripts/eval/corpus/alias-holdout-private.jsonl
 !scripts/eval/baselines/alias-suggestions/
 !scripts/eval/baselines/alias-suggestions/**
+# Freeze-suite baseline capture (#827 PR-3) — tooling, clip scripts, fixed
+# audio clips, and the captured baseline are all tracked.
+!scripts/freeze-suite/
+!scripts/freeze-suite/**
 docs/
 content-engine/
 Brand Assets/

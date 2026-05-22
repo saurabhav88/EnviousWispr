@@ -13,6 +13,13 @@ import Foundation
 
 enum FreezeSuiteNormalization {
 
+  /// Ruleset version — the identity of the eight normalization rules below.
+  /// `baseline.json` records this integer; PR-4/PR-5's freeze-suite comparison
+  /// refuses to run against a baseline whose recorded `normalization_ruleset_version`
+  /// differs from this constant, forcing a deliberate re-capture rather than a
+  /// silent semantic drift (PR-3 plan §3.8). Bump whenever a rule changes.
+  static let rulesetVersion = 1
+
   /// Curly / typographic apostrophes normalized to straight `'` and KEPT —
   /// they are word characters (`can't` ≠ `cant` is a real regression).
   private static let apostropheVariants: [Character] = ["\u{2019}", "\u{2018}", "\u{02BC}"]
