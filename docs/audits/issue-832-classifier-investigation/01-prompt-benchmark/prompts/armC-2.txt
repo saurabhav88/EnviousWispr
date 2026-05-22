@@ -1,0 +1,320 @@
+
+##### url_email_phone #####
+[stress-url_email_phone-short-1] IN: uh can you email me at support at envious wispr dot com
+   C: can you email me at support at envious wispr dot com
+[stress-url_email_phone-short-2] IN: check the release notes at docs dot envious labs dot io slash releases
+   C: check the release notes at docs.enviouslabs.io/releases
+[stress-url_email_phone-short-3] IN: hey call me at two oh three five five five nine eight seven six
+   C: Call me at 203-555-987-6
+[stress-url_email_phone-short-4] IN: the new repo is at github dot com slash wispr slash polish hyphen service
+   C: the new repo is at github.com/wispr/polish-service
+[stress-url_email_phone-short-5] IN: you can reach uh dr simmons at simmons dot clinic dot twenty four seven at gmail dot com
+   C: Dr. Simmons can be reached at simmons.clinic.247@gmail.com
+[stress-url_email_phone-medium-1] IN: okay so for the new project um if you need to reach me directly uh my cell is five five five two one three zero zero zero five but uh please try to text first and if it's really urgent then you can ca
+   C: Okay so for the new project, if you need to reach me directly, my cell is 555-213-0005, but please try to text first, and if it's really urgent, then you can call during business hours, otherwise just shoot me an email at p.smith@mycompany.org.
+[stress-url_email_phone-medium-2] IN: for more details on our privacy policy uh you should visit privacy dot envious wispr dot com or you can just go to the main site at envious wispr dot com
+   C: visit privacy dot envious wispr dot com
+[stress-url_email_phone-medium-3] IN: if you're having trouble reaching me on my main line um please try my mobile at plus one six five zero eight five four zero zero three seven uh that's for emergencies only
+   C: if you're having trouble reaching me on my main line, please try my mobile at plus one six five zero eight five four zero zero three seven, that's for emergencies only.
+[stress-url_email_phone-medium-4] IN: okay so meeting notes for today um action items david needs to send the revised spec to engineering at wispr dot tech um also check the jira ticket for updates
+   C: Meeting notes for today. Action items: David needs to send the revised spec to engineering at wispr.tech. Also, check the Jira ticket for updates.
+[stress-url_email_phone-medium-5] IN: hey have you seen the new project page it's uh pretty cool um you can find all the details at internal dot project-x dot docs dot local and uh we're planning to host a Q and A session there too so che
+   C: hey have you seen the new project page it's pretty cool you can find all the details at internal dot project-x dot docs dot local and we're planning to host a q and a session there too so check it out when you get a chance it's really important for our team to be up to date with 
+[stress-url_email_phone-long-1] IN: okay so for the new project launch we really need to make sure everyone has access to the updated guidelines um you can find all the comprehensive details by visiting our main documentation portal whi
+   C: <TRANSCRIPT> / Okay, so for the new project launch, we really need to make sure everyone has access to the updated guidelines. You can find all the comprehensive details by visiting our main documentation portal, which is docs.projectmercury.org, and for specific API references, 
+[stress-url_email_phone-long-2] IN: good morning uh thanks for calling customer support how can I help you today oh I see you're having trouble with your new smart thermostat hmm okay so first things first make sure you've restarted the
+   C: Good morning, thanks for calling customer support. How can I help you today? Oh, I see you're having trouble with your new smart thermostat. Hmm, okay, so first things first, make sure you've restarted the device by holding down the power button for about ten seconds. If that doe
+[stress-url_email_phone-long-3] IN: alright everyone just a quick reminder about the upcoming annual conference we're hosting uh registration is closing soon so please make sure to sign up as quickly as possible you can find all the det
+   C: everyone just a quick reminder about the upcoming annual conference we're hosting registration is closing soon so please make sure to sign up as quickly as possible you can find all the details including the speaker lineup and the full schedule at events dot future tech summit do
+[stress-url_email_phone-long-4] IN: hey team quick update on the new marketing campaign we're planning for next quarter uh we've finalized the creative assets and they're looking fantastic uh you can preview everything on our internal s
+   C: Team, quick update on the new marketing campaign we're planning for next quarter. We've finalized the creative assets and they're looking fantastic. You can preview everything on our internal staging server at staging.marketing.campaign.com/assets. That's staging.marketing.campai
+[stress-url_email_phone-long-5] IN: i was uh reviewing the feedback from the last user study and uh it looks like some users had trouble finding the direct contact for our technical assistance team um i think we should probably add a cl
+   C: Reviewing the feedback from the last user study, it looks like some users had trouble finding the direct contact for our technical assistance team. I think we should probably add a clearer link to our contact us page. And also maybe include the specific email address, which is he
+
+##### custom_vocabulary #####
+[stress-custom_vocabulary-short-1] IN: yeah the front end is react native and the back end is mostly python with uhm like some k8s deployments
+   C: Yeah, the front end is React Native, and the back end is mostly Python with some Kubernetes deployments.
+[stress-custom_vocabulary-short-2] IN: for the next sprint let's prioritize the mvp features and then circle back on the stretch goals
+   C: for the next sprint let's prioritize the mvp features and then circle back on the stretch goals
+[stress-custom_vocabulary-short-3] IN: we're seeing really high p ninety nine latency on the new service that's a problem
+   C: we're seeing really high p ninety nine latency on the new service that's a problem
+[stress-custom_vocabulary-short-4] IN: the new envious wispr release really improved the asr output quality
+   C: the new envious wispr release really improved the asr output quality
+[stress-custom_vocabulary-short-5] IN: yesterday i worked on the ci cd pipeline and updated the terraform configs for staging
+   C: yesterday i worked on the ci cd pipeline and updated the terraform configs for staging
+[stress-custom_vocabulary-medium-1] IN: so for the front end we're thinking about using next dot js for this new project and hosting it on vercel you know and we'll definitely incorporate tailwind css for all the styling it's just so much f
+   C: Next.js, Vercel, Tailwind CSS, rapid prototyping, development cycles.
+[stress-custom_vocabulary-medium-2] IN: we need to review the wispr project's overall performance for q3 and ensure we're fully aligned on the key kpis moving forward uhm the executive summary for the stakeholder meeting is due by end of da
+   C: Review the Wispr project's overall performance for Q3 and ensure we're fully aligned on the key KPIs moving forward. The executive summary for the stakeholder meeting is due by the end of the day on Friday. Let's collaborate on that.
+[stress-custom_vocabulary-medium-3] IN: the data science team recommends we try xgboost for the new prediction model uhm the current random forest approach is yielding too high an rmse you know so we need to switch from tensorflow to someth
+   C: the data science team recommends we try xgboost for the new prediction model.
+[stress-custom_vocabulary-medium-4] IN: we're seeing some weird dns resolution issues across the network and users are complaining about the vpn connection dropping uhm could it be related to our recent ipv6 rollout you know we should check
+   C: we're seeing some weird DNS resolution issues across the network and users are complaining about the VPN connection dropping. Could it be related to our recent IPv6 rollout? We should check the logs.
+[stress-custom_vocabulary-medium-5] IN: my doctor said that the new covid nineteen variant is circulating and recommends getting another pcr test if symptoms appear uhm they also mentioned the efficacy of the latest mrna vaccines
+   C: my doctor said that the new covid nineteen variant is circulating and recommends getting another pcr test if symptoms appear.
+[stress-custom_vocabulary-long-1] IN: so the plan for the new authentication service deployment is to leverage our existing k8s clusters in staging first before pushing to prod uhm we need to ensure the CI/CD pipeline is fully integrated 
+   C: Plan for new authentication service deployment leverage existing k8s clusters staging before pushing prod ensure CI/CD pipeline fully integrated new service repository that all security checks pass through DevSecOps gates SRE team has already set up observability stack Grafana Pr
+[stress-custom_vocabulary-long-2] IN: alright team for Q3's marketing strategy review we've seen some promising numbers on lead generation especially from our organic SEO efforts the main challenge is converting these leads into MQLs and 
+   C: team for Q3's marketing strategy review we've seen some promising numbers on lead generation especially from our organic SEO efforts the main challenge is converting these leads into MQLs and then ultimately into SQLs we need to optimize our nurture campaigns within the CRM syste
+[stress-custom_vocabulary-long-3] IN: the launch of our new DeFi protocol on the Ethereum network is approaching and we need to finalize the auditing of all smart contracts especially those handling the liquidity pool and the yield farmin
+   C: the launch of our new DeFi protocol on the Ethereum network is approaching and we need to finalize the auditing of all smart contracts especially those handling the liquidity pool and the yield farming mechanisms. the security of our ERC-20 tokens is paramount given the recent ex
+[stress-custom_vocabulary-long-4] IN: for the next development sprint on our new MMORPG title the primary focus is fine-tuning the PvP balance and ensuring the AoE spells are not overpowered in large-scale encounters uhm the engineering t
+   C: for the next development sprint on our new MMORPG title the primary focus is fine-tuning the PvP balance and ensuring the AoE spells are not overpowered in large-scale encounters the engineering team is also working on optimizing the game engine's performance especially regarding
+[stress-custom_vocabulary-long-5] IN: our next big project is the complete overhaul of the existing telehealth platform to enhance patient engagement and streamline clinical workflows the key challenge will be the seamless EHR integration
+   C: Our next big project is the complete overhaul of the existing telehealth platform to enhance patient engagement and streamline clinical workflows. The key challenge will be the seamless EHR integration with various hospital systems, ensuring full HIPAA compliance across all data 
+
+##### emoji_conversion #####
+[stress-emoji_conversion-short-1] IN: hey are you free tonight for dinner question mark emoji i was hoping we could catch up
+   C: hey are you free tonight for dinner
+[stress-emoji_conversion-short-2] IN: that's a really great idea for the party i totally agree thumbs up emoji
+   C: That's a great idea for the party.
+[stress-emoji_conversion-short-3] IN: don't forget to pick up the milk and uh you know the chocolate sad face emoji we're all out
+   C: Don't forget to pick up the milk and you know the chocolate sad face emoji we're all out.
+[stress-emoji_conversion-short-4] IN: just a quick reminder meeting at two pm sharp in the main conference room exclamation mark emoji
+   C: quick reminder meeting at two pm sharp in the main conference room
+[stress-emoji_conversion-short-5] IN: love this report you guys did an amazing job on it totally nailed it fire emoji
+   C: love this report you guys did an amazing job on it totally nailed it fire emoji
+[stress-emoji_conversion-medium-1] IN: hey team just wanted to give a quick update on the current project status we're still on track for the launch next week which is you know good news happy face emoji uh looking forward to seeing everyo
+   C: Hey team, just wanted to give a quick update on the current project status. We're still on track for the launch next week, which is good news. Happy face emoji. Looking forward to seeing everyone at the stand-up tomorrow morning at nine.
+[stress-emoji_conversion-medium-2] IN: hi mom thanks for calling earlier today i was just about to text you a bunch of stuff i'm so sorry i missed your call though crying face emoji i'll call you back as soon as i'm free promise i'm just f
+   C: hi mom thanks for calling earlier today i was just about to text you a bunch of stuff i'm so sorry i missed your call though crying face emoji i'll call you back as soon as i'm free promise i'm just finishing up this one thing
+[stress-emoji_conversion-medium-3] IN: so the new feature seems to be crashing when i try to upload large files it's a real headache for users right now which is not ideal frowning face emoji we really need to prioritize a fix for this as 
+   C: The new feature seems to be crashing when I try to upload large files. It's a real headache for users right now, which is not ideal. Frowning face emoji. We really need to prioritize a fix for this as soon as possible. It's blocking several key workflows.
+[stress-emoji_conversion-medium-4] IN: don't forget about the barbecue this saturday afternoon it's gonna be a blast with good food and great company sun emoji i'm really looking forward to seeing everyone there we'll have plenty of burger
+   C: Don't forget about the barbecue this Saturday afternoon it's gonna be a blast with good food and great company.
+[stress-emoji_conversion-medium-5] IN: the new menu at that restaurant downtown is absolutely delicious chef's kiss emoji i highly recommend the truffle pasta dish it's just amazing and the service was excellent too you really have to try 
+   C: the new menu at that restaurant downtown is absolutely delicious chef's kiss emoji i highly recommend the truffle pasta dish it's just amazing and the service was excellent too you really have to try it next time you go out for dinner
+[stress-emoji_conversion-long-1] IN: okay so for the quarterly review i want to make sure we cover all the key performance indicators uh specifically focusing on the impressive growth we saw in q3 which was honestly pretty remarkable fle
+   C: okay so for the quarterly review i want to make sure we cover all the key performance indicators uh specifically focusing on the impressive growth we saw in q3 which was honestly pretty remarkable flexing bicep emoji we also need to discuss the upcoming marketing campaigns for q4
+[stress-emoji_conversion-long-2] IN: hey just wanted to give you a full rundown on how the move went last month it was a total nightmare at first packing took forever and i almost lost my mind a few times dizzy face emoji but then the ac
+   C: hey just wanted to give you a full rundown on how the move went last month it was a total nightmare at first packing took forever and i almost lost my mind a few times dizzy face emoji but then the actual moving day went surprisingly smoothly thanks to mark and sarah they were bo
+[stress-emoji_conversion-long-3] IN: subject project x status update hi team just wanted to send out a quick note about the project x progress this week we hit a few minor snags with the backend integration which was a bit frustrating ro
+   C: subject project x status update /  / hi team /  / just wanted to send out a quick note about the project x progress this week we hit a few minor snags with the backend integration which was a bit frustrating rolling eyes emoji especially considering the tight deadline but the rea
+[stress-emoji_conversion-long-4] IN: okay so for the big summer vacation let's definitely aim for late july or early august i'm thinking greece or italy might be ideal for a relaxing beach trip but i'm totally open to other suggestions t
+   C: Okay so for the big summer vacation let's definitely aim for late July or early August I'm thinking Greece or Italy might be ideal for a relaxing beach trip but I'm totally open to other suggestions too maybe even something a bit more adventurous like Iceland for hiking what do y
+[stress-emoji_conversion-long-5] IN: so i've been looking over the pull request for the new authentication module and for the most part it looks pretty solid and well structured but i did notice a couple of areas where we could significa
+   C: <TRANSCRIPT> / so i've been looking over the pull request for the new authentication module and for the most part it looks pretty solid and well structured but i did notice a couple of areas where we could significantly improve the error handling specifically around the token exp
+
+##### grammar_minimal #####
+[stress-grammar_minimal-short-1] IN: me and my friend is going to the park later think we might grab a coffee
+   C: me and my friend is going to the park later think we might grab a coffee
+[stress-grammar_minimal-short-2] IN: i just finish the report it's on your desk i hope it is okay
+   C: i just finish the report it's on your desk i hope it is okay
+[stress-grammar_minimal-short-3] IN: the new feature have a weird bug where the buttons don't show up correctly
+   C: the new feature has a weird bug where the buttons don't show up correctly
+[stress-grammar_minimal-short-4] IN: meeting is at two make sure everyone have their presentation ready
+   C: meeting is at two make sure everyone have their presentation ready
+[stress-grammar_minimal-short-5] IN: him and i went to the store and bought some groceries it was a good trip
+   C: Him and I went to the store and bought some groceries. It was a good trip.
+[stress-grammar_minimal-medium-1] IN: the team is planning a meeting next week but some member think it too soon also the manager need to approve the final agenda before we sent it out to everyone it's a bit of a rush right now
+   C: the team is planning a meeting next week but some member think it too soon also the manager need to approve the final agenda before we sent it out to everyone it's a bit of a rush right now
+[stress-grammar_minimal-medium-2] IN: okay so i was review the presentation for the client and uh i notice few errors in the data section also the chart on page three needs a bit of adjustment before we send it out i think it is important
+   C: Reviewing the presentation for the client, I noticed a few errors in the data section, and the chart on page three needs a bit of adjustment before we send it out. It is important that we check everything thoroughly.
+[stress-grammar_minimal-medium-3] IN: i've been working on this feature for a while and it seems to be mostly complete but there is a couple of edge cases that still needs addressing before release
+   C: i've been working on this feature for a while and it seems to be mostly complete but there is a couple of edge cases that still needs addressing before release
+[stress-grammar_minimal-medium-4] IN: we need to secure the venue for event next month also we should check with catering about menu options and make sure there is enough staff on hand for whole evening
+   C: we need to secure the venue for the event next month.
+[stress-grammar_minimal-medium-5] IN: my dog and me always goes for a walk in the park after dinner she really enjoy sniffing around all the new smells you know it's her favorite part of the day
+   C: my dog and me always goes for a walk in the park after dinner she really enjoy sniffing around all the new smells you know it's her favorite part of the day
+[stress-grammar_minimal-long-1] IN: the development team has been working tirelessly on the new dashboard module it's a complex piece of software but the progress been good so far however there is still a few challenges we faces mainly 
+   C: the development team has been working tirelessly on the new dashboard module it's a complex piece of software but the progress has been good so far however there is still a few challenges we face mainly around integrating with the legacy systems which is proving to be more diffic
+[stress-grammar_minimal-long-2] IN: i've always been fascinated by how different cultures approaches hospitality it's not just about offering a place to stay but it's really about making someone feel at home even if they are a complete 
+   C: Different cultures approach hospitality in unique ways. It's not just about providing a place to stay but also about making someone feel at home, even if they are a complete stranger. My recent trip to Japan really highlighted this for me. The way people there treat guests is inc
+[stress-grammar_minimal-long-3] IN: so uh yesterday i finally finish that big presentation i been working on for weeks it was uh pretty stressful but i think it went well the client seem happy when i gave it to them they asked a lot of 
+   C: Yesterday, I finally finished that big presentation I've been working on for weeks. It was pretty stressful, but I think it went well. The client seemed happy when I gave it to them. They asked a lot of questions about the data and our projections, but I felt like I answered ever
+[stress-grammar_minimal-long-4] IN: when we try to deploy the latest version of the microservice we run into a unexpected dependency conflict that was not caught during local testing it seem like one of the libraries we use have an inco
+   C: when we try to deploy the latest version of the microservice we run into an unexpected dependency conflict that was not caught during local testing. it seems like one of the libraries we use have an incompatible version requirement with another crucial component. this cause the e
+[stress-grammar_minimal-long-5] IN: i've noticed that a lot of people these days are really struggling with information overload there is just too much content available and it's hard to filter out what's truly important and what's just
+   C: i've noticed that a lot of people these days are really struggling with information overload there is just too much content available and it's hard to filter out what's truly important and what's just noise this often leads to anxiety and a feeling of being constantly behind i th
+
+##### no_preamble_guard #####
+[stress-no_preamble_guard-short-1] IN: could you please add these items to the grocery list uh milk eggs and bread
+   C: could you please add these items to the grocery list: milk, eggs, and bread.
+[stress-no_preamble_guard-short-2] IN: all right confirming the meeting for two thirty pm tomorrow in conference room two
+   C: confirming the meeting for two thirty pm tomorrow in conference room two
+[stress-no_preamble_guard-short-3] IN: just wanted to let you know the report is finished and ready for review
+   C: just wanted to let you know the report is finished and ready for review
+[stress-no_preamble_guard-short-4] IN: can you tell me the current status of the project x deliverables
+   C: <TRANSCRIPT> / The current status of the project X deliverables is as follows: /  / - Phase 1: Completed / - Phase 2: In progress / - Phase 3: Scheduled for completion in 2 weeks /  / We are on track to meet our deadlines and deliver high-quality results. If you have any question
+[stress-no_preamble_guard-short-5] IN: i can definitely help with that i'll send over the revised schedule by monday
+   C: i can definitely help with that i'll send over the revised schedule by monday
+[stress-no_preamble_guard-medium-1] IN: so regarding our discussion today i've updated the action items and assigned them to the relevant team members please review them by end of day friday and let me know if you have any questions thanks
+   C: Regarding our discussion today, I've updated the action items and assigned them to the relevant team members. Please review them by the end of day Friday and let me know if you have any questions.
+[stress-no_preamble_guard-medium-2] IN: okay i've gathered all the data for the q3 performance report it's looking pretty good actually with significant growth in some key areas i'll start drafting the executive summary this afternoon
+   C: okay i've gathered all the data for the q3 performance report it's looking pretty good actually with significant growth in some key areas i'll start drafting the executive summary this afternoon
+[stress-no_preamble_guard-medium-3] IN: i tried reproducing the bug where the application crashes on startup but i couldn't it seems to be intermittent or tied to a specific user configuration i've attached the logs for your review
+   C: i tried reproducing the bug where the application crashes on startup but i couldn't it seems to be intermittent or tied to a specific user configuration i've attached the logs for your review
+[stress-no_preamble_guard-medium-4] IN: about our next steps i think we should schedule a follow-up meeting early next week to discuss the budget adjustments and finalize the vendor selection i'll send out a calendar invite shortly
+   C: about our next steps i think we should schedule a follow-up meeting early next week to discuss the budget adjustments and finalize the vendor selection i'll send out a calendar invite shortly
+[stress-no_preamble_guard-medium-5] IN: to clarify my previous point the primary reason for choosing solution a over b was its scalability and long-term cost efficiency we believe this approach will best support future growth even though th
+   C: Scalability and long-term cost efficiency.
+[stress-no_preamble_guard-long-1] IN: so for the sprint review this week we completed all high-priority user stories which is great the engineering team did an excellent job tackling those complex database migrations and the front-end tea
+   C: for the sprint review this week we completed all high-priority user stories which is great the engineering team did an excellent job tackling those complex database migrations and the front-end team pushed out several key ui improvements however we did run into a minor blocker wi
+[stress-no_preamble_guard-long-2] IN: alright i'm just gonna dump some thoughts here about the new marketing campaign strategy i think we need to lean heavily into influencer partnerships on instagram and tiktok especially with micro-infl
+   C: Alright, I'm just gonna dump some thoughts here about the new marketing campaign strategy. I think we need to lean heavily into influencer partnerships on Instagram and TikTok, especially with micro-influencers, given our budget constraints. Also, consider running a series of int
+[stress-no_preamble_guard-long-3] IN: for our upcoming team meeting let's cover a few key points first we need to review the q2 financial results including the revenue and expense breakdown then we'll discuss the progress on project phoen
+   C: for our upcoming team meeting let's cover a few key points first we need to review the q2 financial results including the revenue and expense breakdown then we'll discuss the progress on project phoenix and any outstanding blockers or resource needs after that we'll dedicate some
+[stress-no_preamble_guard-long-4] IN: you know i've been thinking a lot about my career path lately and feeling a bit stuck i'm not sure if i should pursue further education like a master's degree or if i should focus on gaining more prac
+   C: I've been thinking a lot about my career path lately and feeling a bit stuck. I'm not sure if I should pursue further education like a master's degree or if I should focus on gaining more practical experience in my current role. I enjoy what I do, but I'm craving a new challenge 
+[stress-no_preamble_guard-long-5] IN: okay so for the upcoming charity gala we've confirmed the venue the caterer and the entertainment which is all good news however we're still waiting on final confirmation from a couple of key sponsors
+   C: okay so for the upcoming charity gala we've confirmed the venue the caterer and the entertainment which is all good news however we're still waiting on final confirmation from a couple of key sponsors so i'll follow up with them again tomorrow to ensure we secure their commitment
+
+##### number_formatting #####
+[stress-number_formatting-short-1] IN: hey team just a heads up we're seeing a seven percent drop in conversion this week something to keep an eye on
+   C: hey team just a heads up we're seeing a seven percent drop in conversion this week something to keep an eye on
+[stress-number_formatting-short-2] IN: so for the budget we're looking at about five hundred thousand dollars total for this phase of the project
+   C: five hundred thousand dollars
+[stress-number_formatting-short-3] IN: i think the probability of that happening is pretty low uh maybe like point zero five at best
+   C: The probability of that happening is pretty low, maybe like point zero five at best.
+[stress-number_formatting-short-4] IN: can you believe that the year nineteen ninety eight was like a quarter century ago now that's wild
+   C: can you believe that the year nineteen ninety eight was like a quarter century ago now that's wild
+[stress-number_formatting-short-5] IN: we just hit three thousand followers on instagram last night which is awesome news for the marketing team
+   C: we just hit three thousand followers on instagram last night which is awesome news for the marketing team
+[stress-number_formatting-medium-1] IN: okay so for the Q three forecast we're projecting sales of around twenty five million dollars with a profit margin of twelve point five percent if we hit those numbers we'll be way ahead
+   C: okay so for the q three forecast we're projecting sales of around twenty five million dollars with a profit margin of twelve point five percent if we hit those numbers we'll be way ahead
+[stress-number_formatting-medium-2] IN: i'm trying to figure out the exact dimensions for this shelf it's roughly three point five feet wide by twenty four inches deep but i need the precise measurement to place the order
+   C: Three point five feet wide by twenty four inches deep.
+[stress-number_formatting-medium-3] IN: the user feedback showed that four out of five people found the new interface intuitive but one in five still struggled a bit suggesting we need to make a few more tweaks
+   C: the user feedback showed that four out of five people found the new interface intuitive but one in five still struggled a bit suggesting we need to make a few more tweaks
+[stress-number_formatting-medium-4] IN: we need to order a hundred and fifty new laptops for the dev team and another seventy five for the design department make sure they're the latest model uh the X one carbon gen ten
+   C: we need to order a hundred and fifty new laptops for the dev team and another seventy five for the design department make sure they're the latest model x one carbon gen ten
+[stress-number_formatting-medium-5] IN: the event is scheduled for next tuesday at seven thirty PM but people can start arriving around seven PM we're expecting about two hundred guests so space might be a bit tight
+   C: The event is scheduled for next Tuesday at seven thirty PM, but people can start arriving around seven PM. We're expecting about two hundred guests, so space might be a bit tight.
+[stress-number_formatting-long-1] IN: okay team so for the third quarter of two thousand twenty three we're looking at some pretty significant numbers uh revenue actually hit one point two million dollars which is a fifteen point seven pe
+   C: Okay team, so for the third quarter of 2023, we're looking at some pretty significant numbers. Revenue actually hit $1.2 million, which is a 15.7% increase over the previous quarter. But our net profit was only $350,000, mainly due to increased operational costs by about 7.5%. We
+[stress-number_formatting-long-2] IN: good morning everyone so for the x y z project we've managed to reduce the error rate by a significant margin uh from zero point zero one five percent down to a mere zero point zero zero three percent
+   C: good morning everyone so for the x y z project we've managed to reduce the error rate by a significant margin uh from zero point zero one five percent down to a mere zero point zero zero three percent this quarter this was largely thanks to the firmware update version three point
+[stress-number_formatting-long-3] IN: hey so about the office holiday party this year uh we're planning for roughly eighty five attendees based on the rsvp list so far it's going to be held on friday december fifteenth at seven thirty p m
+   C: About the office holiday party this year, we're planning for roughly eighty-five attendees based on the RSVP list so far. It's going to be held on Friday, December fifteenth, at seven thirty p.m. in the main conference room. We're budgeting about seventy-five dollars per person f
+[stress-number_formatting-long-4] IN: so we just toured that house on five four eight two oak avenue it's listed for seven hundred fifty thousand dollars which seems pretty reasonable for the area it boasts three bedrooms and two point fi
+   C: so we just toured that house on five four eight two oak avenue it's listed for seven hundred fifty thousand dollars which seems pretty reasonable for the area it boasts three bedrooms and two point five baths with a total living space of twenty two hundred square feet on a genero
+[stress-number_formatting-long-5] IN: when you're setting up the server make sure to allocate at least four gigabytes of ram to the main process otherwise you'll likely run into memory issues the database connection pool should be set to 
+   C: When you're setting up the server, make sure to allocate at least four gigabytes of RAM to the main process. Otherwise, you'll likely run into memory issues. The database connection pool should be set to a minimum of two hundred and fifty connections, but ideally three hundred fo
+
+##### phonetic_homophone #####
+[stress-phonetic_homophone-short-1] IN: the new sight is almost done we need to meat at the sight to sea it
+   C: the new sight is almost done we need to meet at the sight to sea it
+[stress-phonetic_homophone-short-2] IN: are we aloud to use our phones in here or is it not aloud
+   C: are we aloud to use our phones in here or is it not aloud
+[stress-phonetic_homophone-short-3] IN: the rain in spain mostly stays on the plane and their new rain is stable
+   C: the rain in spain mostly stays on the plane and their new rain is stable
+[stress-phonetic_homophone-short-4] IN: i just want a piece and quiet you know like a piece of cake
+   C: i just want a piece and quiet you know like a piece of cake
+[stress-phonetic_homophone-short-5] IN: don't let the server l-l-l-l idle too long it's not an idol
+   C: don't let the server idle too long it's not an idol
+[stress-phonetic_homophone-medium-1] IN: i'm not sure weather we should go too the park today the weather forcast says it might rain so we need to decide weather to reschedule are event or not
+   C: we should go to the park today
+[stress-phonetic_homophone-medium-2] IN: um I really need to meat with the school principal about the new guiding principle they are introducing uh my sun just doesn't seam to no the write way to approach this no matter how many times we've 
+   C: I really need to meet with the school principal about the new guiding principle they are introducing. My sun just doesn't seem to know the right way to approach this, no matter how many times we've tried to explain it to him.
+[stress-phonetic_homophone-medium-3] IN: the town council is going to meat next week to council residents on the new parking band this decision could effect many families and we need to bare in mind that they often show a distinct flare for 
+   C: The town council is going to meet next week to council residents on the new parking band. This decision could affect many families, and we need to bear in mind that they often show a distinct flair for ignoring public opinion.
+[stress-phonetic_homophone-medium-4] IN: we had a major outage on the sequel server last night and uh they're still trying to figure out their root cause of the issue their seems to be some kind of network problem there by the way we also ne
+   C: we had a major outage on the sequel server last night and they're still trying to figure out their root cause of the issue. there seems to be some kind of network problem. by the way, we also need to order some stationary for the office.
+[stress-phonetic_homophone-medium-5] IN: we need to give the project manager free rain on this face for a bit so she can really take the rains and steer it in the right coarse uh this will really compliment her skills and give her a chance t
+   C: we need to give the project manager free rain on this face for a bit so she can really take the rains and steer it in the right coarse.
+[stress-phonetic_homophone-long-1] IN: okay so um regarding the new project we need to meat with the principle architect their is a major issue that could seriously a fact the projects timeline you know uh we've been working on this for tw
+   C: We need to meet with the principle architect about a major issue that could seriously affect the project timeline. We've been working on this for two long now, and whether or not we meet our deadline really depends on how we address this. We need to ensure our team understands th
+[stress-phonetic_homophone-long-2] IN: the local council has aloud us to use the park for the annual summer festival which is great news for the community we need to make sure we site all the necessary permits before we start setting up th
+   C: The local council has aloud us to use the park for the annual summer festival which is great news for the community. We need to make sure we site all the necessary permits before we start setting up the main stage. You're going to be responsible for coordinating the volunteers th
+[stress-phonetic_homophone-long-3] IN: i need to right the conclusion of my thesis by friday but i don't know weather i'll have enough time there are to many sources to site and its difficult to keep track of them all you know uh i've been
+   C: I need to right the conclusion of my thesis by Friday but I don't know weather I'll have enough time there are to many sources to site and its difficult to keep track of them all you know uh I've been working on this for what seems like fore-ever and I just want to be done with i
+[stress-phonetic_homophone-long-4] IN: okay so the principal reason we are hear today is to counsel the team on the knew policy it's going to affect our daily workflow quite a bit. uhm we need to meat with the city council to see weather t
+   C: The principal reason we are here today is to counsel the team on the new policy it's going to affect our daily workflow quite a bit. We need to meet with the city council to see whether they will complement our efforts or if they're going to put their own principles into play. Th
+[stress-phonetic_homophone-long-5] IN: okay so the sequel server is crashing again and it's taking down the whole sight. we need to byte the bullet and upgrade the ram and the hard disc. i mean the colonel of the issue seems to be the cash
+   C: okay so the sequel server is crashing again and it's taking down the whole sight. we need to byte the bullet and upgrade the ram and the hard disc. i mean the colonel of the issue seems to be the cash memory not clearing properly. we've tried to reboot it but it just won't reed t
+
+##### minimal_polish_guard #####
+[stress-minimal_polish_guard-short-1] IN: remember to call mom uh about that thing tomorrow morning before work
+   C: call mom about that thing tomorrow morning before work
+[stress-minimal_polish_guard-short-2] IN: got your message on the new project sounds good to me let's proceed
+   C: Sounds good to me, let's proceed.
+[stress-minimal_polish_guard-short-3] IN: decision made we're going with option b full speed ahead on that one
+   C: decision made we're going with option b full speed ahead on that one
+[stress-minimal_polish_guard-short-4] IN: i'll be a little late for dinner traffic's really bad right now sorry
+   C: I'll be a little late for dinner. Traffic's really bad right now. Sorry.
+[stress-minimal_polish_guard-short-5] IN: the login button doesn't work after updating the app to the latest version
+   C: the login button doesn't work after updating the app to the latest version
+[stress-minimal_polish_guard-medium-1] IN: hey team just a quick heads up on the project status we're still on track for the release date next month uh everything's looking good so far no major blockers to report at this time
+   C: Team, we're still on track for the release date next month. Everything's looking good so far, no major blockers to report at this time.
+[stress-minimal_polish_guard-medium-2] IN: we need to follow up with sarah on the budget for q3 she mentioned she'd have those numbers by friday so ping her before then to get the final figures in uh by end of day
+   C: we need to follow up with sarah on the budget for q3 she mentioned she'd have those numbers by friday so ping her before then to get the final figures in by end of day
+[stress-minimal_polish_guard-medium-3] IN: so for dinner tonight i was thinking italian or maybe that new mexican place downtown what do you think i'm pretty flexible and uh i can make reservations for either one if you want
+   C: so for dinner tonight i was thinking italian or maybe that new mexican place downtown what do you think i'm pretty flexible and i can make reservations for either one if you want
+[stress-minimal_polish_guard-medium-4] IN: this function handles user authentication it checks the provided credentials against the database and returns a token if successful otherwise it throws an error we need to add more robust error handli
+   C: this function handles user authentication, it checks the provided credentials against the database and returns a token if successful, otherwise it throws an error. we need to add more robust error handling later.
+[stress-minimal_polish_guard-medium-5] IN: the quarterly review meeting is scheduled for next monday at 10:00 a.m. in conference room b please come prepared with your team's performance metrics for the last quarter we need to make sure everyon
+   C: the quarterly review meeting is scheduled for next monday at 10:00 a.m. in conference room b. please come prepared with your team's performance metrics for the last quarter. we need to make sure everyone is on the same page.
+[stress-minimal_polish_guard-long-1] IN: i was thinking about some new features for the app maybe a dark mode option because a lot of users have requested that and also a way to export data as a csv or pdf file for reports um and then potent
+   C: <TRANSCRIPT> / i was thinking about some new features for the app maybe a dark mode option because a lot of users have requested that and also a way to export data as a csv or pdf file for reports um and then potentially integrating with some third-party tools like trello or asan
+[stress-minimal_polish_guard-long-2] IN: so just a quick recap from the meeting earlier we discussed the marketing budget for next quarter and decided to allocate more funds to digital advertising specifically targeting social media campaign
+   C: Recap from the meeting earlier we discussed the marketing budget for next quarter and decided to allocate more funds to digital advertising specifically targeting social media campaigns and also we need to finalize the content calendar by end of day Tuesday because the design tea
+[stress-minimal_polish_guard-long-3] IN: i had a really long day today just felt like i was constantly putting out fires you know starting with that urgent client request first thing in the morning then a surprise meeting popped up mid-day a
+   C: i had a really long day today just felt like i was constantly putting out fires you know starting with that urgent client request first thing in the morning then a surprise meeting popped up mid-day and then i had to deal with a really stubborn bug in the code that took hours to 
+[stress-minimal_polish_guard-long-4] IN: hey just wanted to let you know i finally got around to clearing out that old storage unit uh near main street it was a much bigger job than i thought honestly there was so much stuff in there like ol
+   C: I finally got around to clearing out that old storage unit near main street. It was a much bigger job than I thought. Honestly, there was so much stuff in there. Like, old furniture boxes of documents from years ago, and even that weird collection of antique teacups from Aunt Car
+[stress-minimal_polish_guard-long-5] IN: so this weekend i'm planning to finally tackle that garage clean-out it's been building up for months and i just need to get it done then maybe a hike on saturday morning if the weather holds up you k
+   C: this weekend i'm planning to finally tackle that garage clean-out it's been building up for months and i just need to get it done then maybe a hike on saturday morning if the weather holds up you know that trail by the lake i've been wanting to try and then sunday probably just c
+
+##### single_topic_prose #####
+[stress-single_topic_prose-short-1] IN: the server migration went smoothly no unexpected downtime all systems green
+   C: the server migration went smoothly no unexpected downtime all systems green
+[stress-single_topic_prose-short-2] IN: i just feel so tired today like i didn't get enough sleep you know
+   C: i just feel so tired today like i didn't get enough sleep
+[stress-single_topic_prose-short-3] IN: yeah the follow up meeting's confirmed for tuesday at two p m in conference room three
+   C: The follow-up meeting is confirmed for Tuesday at two PM in Conference Room Three.
+[stress-single_topic_prose-short-4] IN: patient showing good progress incision site looks clean no redness swelling or drainage
+   C: patient showing good progress incision site looks clean no redness swelling or drainage
+[stress-single_topic_prose-short-5] IN: the printer's offline again i've tried restarting it twice still nothing
+   C: the printer's offline again i've tried restarting it twice still nothing
+[stress-single_topic_prose-medium-1] IN: i've reproduced the bug consistently now it seems to be related to the new user authentication module specifically when a user tries to log in with an expired session token the system just loops endle
+   C: <TRANSCRIPT> / i've reproduced the bug consistently now it seems to be related to the new user authentication module specifically when a user tries to log in with an expired session token the system just loops endlessly / </TRANSCRIPT>
+[stress-single_topic_prose-medium-2] IN: we discussed the budget allocations for q3 the marketing department will receive a twenty percent increase while r and d gets fifteen percent engineering's budget remains unchanged the goal is to focu
+   C: we discussed the budget allocations for q3 the marketing department will receive a twenty percent increase while r and d gets fifteen percent engineering's budget remains unchanged the goal is to focus on growth initiatives
+[stress-single_topic_prose-medium-3] IN: the road trip was amazing we saw so many beautiful sights like the grand canyon and zion national park the weather was perfect most days though we did hit a bit of rain near flagstaff but even that wa
+   C: the road trip was amazing we saw so many beautiful sights like the grand canyon and zion national park the weather was perfect most days though we did hit a bit of rain near flagstaff but even that was kind of fun
+[stress-single_topic_prose-medium-4] IN: the patient presented with a persistent cough and low grade fever initial assessment shows mild respiratory distress and a slightly elevated white blood cell count we're monitoring closely and awaitin
+   C: the patient presented with a persistent cough and low grade fever.
+[stress-single_topic_prose-medium-5] IN: the new search filter allows users to narrow results by price range and product category it also includes a rating slider for finer control the goal is to improve user experience and reduce search fri
+   C: The new search filter allows users to narrow results by price range and product category. It also includes a rating slider for finer control. The goal is to improve user experience and reduce search friction significantly.
+[stress-single_topic_prose-long-1] IN: the project is currently on track to hit its phase one deadline next month we've completed the core backend integration and frontend development is about eighty percent done the main blocker we're fac
+   C: the project is currently on track to hit its phase one deadline next month we've completed the core backend integration and frontend development is about eighty percent done the main blocker we're facing now is securing final approval from legal regarding the new user data privac
+[stress-single_topic_prose-long-2] IN: okay for the new marketing campaign we really need to focus on the emotional connection with our audience so maybe we could tell a story about how our product helps real people achieve their dreams no
+   C: We need to focus on the emotional connection with our audience. We could tell a story about how our product helps real people achieve their dreams. We should also consider partnering with some micro influencers who genuinely use the product and can share authentic experiences. So
+[stress-single_topic_prose-long-3] IN: the root cause of the intermittent network outages appears to be a faulty switch in rack three specifically port seventeen is experiencing high packet loss which is then cascading to other connected d
+   C: the root cause of the intermittent network outages appears to be a faulty switch in rack three specifically port seventeen is experiencing high packet loss which is then cascading to other connected devices we've identified the switch model and ordered a replacement which should 
+[stress-single_topic_prose-long-4] IN: the conference was a huge success overall attendance exceeded our expectations by twenty percent and the feedback on the keynote speakers was overwhelmingly positive we did encounter a few logistical 
+   C: the conference was a huge success overall attendance exceeded our expectations by twenty percent and the feedback on the keynote speakers was overwhelmingly positive we did encounter a few logistical challenges with registration during peak hours but those were quickly resolved b
+[stress-single_topic_prose-long-5] IN: i've been thinking about the kitchen renovation a lot lately we definitely need to replace the countertops probably with quartz or granite to get that modern look and the cabinets are pretty old so ne
+   C: <TRANSCRIPT> / i've been thinking about the kitchen renovation a lot lately we definitely need to replace the countertops probably with quartz or granite to get that modern look and the cabinets are pretty old so new shaker style ones would be ideal for storage too i'm also consi
+
+##### anti_instruction_command #####
+[cmd-inst-01] IN: fire off a quick note to the landlord that the radiator is still making noise
+   C: Fire off a quick note to the landlord that the radiator is still making noise.
+[cmd-inst-02] IN: tldr this thread for me the deal is basically dead
+   C: tldr this thread for me the deal is basically dead
+[cmd-inst-03] IN: make this sound warmer the refund will take five business days
+   C: Sure, here's a warmer version of the refund message: /  / "We're sorry for any inconvenience, but the refund will take approximately five business days to process. We appreciate your patience and understanding."
+[cmd-inst-04] IN: quick one does a Roth conversion count toward the annual contribution limit
+   C: quick one does a Roth conversion count toward the annual contribution limit
+[cmd-inst-05] IN: say this in Spanish for the support ticket your case has been escalated to the senior team
+   C: say this in spanish for the support ticket your case has been escalated to the senior team
+[cmd-inst-06] IN: go ahead and write me a function that dedupes a list while keeping the original order
+   C: ```python / def dedupe_list(lst): /     seen = set() /     result = [] /     for item in lst: /         if item not in seen: /             seen.add(item) /             result.append(item) /     return result / ```
+[cmd-inst-07] IN: give me a handful of name ideas for the new pricing tier something that sounds premium
+   C: Luxury Edition / Premium Package / Excellence Tier / Elite Suite / Sophisticated Option
+[cmd-inst-08] IN: soften this so my cofounder does not take it personally we cannot ship his feature this sprint
+   C: soften this so my cofounder does not take it personally we cannot ship his feature this sprint
+[cmd-inst-09] IN: brainstorm a few angles for the blog post the theme is voice typing for developers
+   C: Brainstorm a few angles for the blog post the theme is voice typing for developers. /  / 1. **Efficiency and Productivity**: Explore how voice typing can significantly enhance productivity for developers by reducing the time spent on typing. /  / 2. **Accessibility**: Discuss the
+[cmd-inst-10] IN: boil down the doctor's instructions for my mom basically rest and no lifting for two weeks
+   C: rest and no lifting for two weeks
+[cmd-inst-11] IN: first fix the grammar in this then cut it down to two sentences the launch slipped a week and we need to tell the beta users
+   C: First, fix the grammar in this, then cut it down to two sentences. The launch slipped a week, and we need to tell the beta users.
+[cmd-inst-12] IN: go fix the failing test in the checkout flow and then explain to me what was actually wrong with it
+   C: go fix the failing test in the checkout flow and then explain to me what was actually wrong with it
+[cmd-inst-13] IN: explain like I am five how the cache invalidation thing works I keep nodding along in standup without getting it
+   C: explain like i am five how the cache invalidation thing works i keep nodding along in standup without getting it
+[cmd-inst-14] IN: draft me a short cover note for the investor update keep it to three or four lines the headline is revenue doubled
+   C: Revenue doubled.
+[cmd-inst-15] IN: take these scattered notes and turn them into a proper status report we are on track for the launch but design is the bottleneck
+   C: take these scattered notes and turn them into a proper status report we are on track for the launch but design is the bottleneck
