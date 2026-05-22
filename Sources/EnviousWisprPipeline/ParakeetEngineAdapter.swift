@@ -144,10 +144,12 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
 
   // MARK: ASREngineAdapter — session lifecycle
 
-  /// Begin a session. Starts streaming when the backend supports it; on a
-  /// streaming-setup failure it degrades to batch-after-stop — today's
-  /// `streamingSetupSucceeded` fallback (`TranscriptionPipeline.swift:458`).
-  func beginSession(_ id: SessionID, options: TranscriptionOptions) async throws {
+  /// Begin a session. Opens a live stream only when the kernel asked for one
+  /// (`streaming`) AND the backend supports it; on a streaming-setup failure it
+  /// degrades to batch-after-stop — today's `streamingSetupSucceeded` fallback
+  /// (`TranscriptionPipeline.swift:458`). `streaming == false` (the user
+  /// disabled live transcription) means batch decode after stop only.
+  func beginSession(_ id: SessionID, options: TranscriptionOptions, streaming: Bool) async throws {
     sessionID = id
     decodeOptions = options
     isTerminal = false
@@ -158,7 +160,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     feedsCompleted = 0
     retainedPCM.removeAll(keepingCapacity: true)
 
-    if await asrManager.activeBackendSupportsStreaming {
+    if streaming, await asrManager.activeBackendSupportsStreaming {
       do {
         try await asrManager.startStreaming(options: options)
         streamingActive = true

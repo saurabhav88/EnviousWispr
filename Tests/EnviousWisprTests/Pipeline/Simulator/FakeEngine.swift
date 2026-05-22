@@ -80,6 +80,9 @@ final class FakeEngine: ASREngineAdapter {
   private(set) var cancelCallCount = 0
   private(set) var lastUnloadPolicy: ModelUnloadPolicy?
   private(set) var lastSessionID: SessionID?
+  /// The `streaming` flag the kernel passed on the last `beginSession()` —
+  /// lets a scenario assert the kernel's streaming-policy decision (PR-4 §3.4).
+  private(set) var lastStreamingRequested: Bool?
   /// Count of mid-session engine-switch requests (A18). The request models a
   /// factory-preference change (PR-6 owns the factory); it does NOT mutate
   /// this engine's `behavior`, so the active session keeps its transcript.
@@ -183,9 +186,12 @@ final class FakeEngine: ASREngineAdapter {
 
   // MARK: Session lifecycle
 
-  func beginSession(_ id: SessionID, options: TranscriptionOptions) async throws {
+  func beginSession(
+    _ id: SessionID, options: TranscriptionOptions, streaming: Bool
+  ) async throws {
     beginSessionCallCount += 1
     lastSessionID = id
+    lastStreamingRequested = streaming
     isTerminal = false
     isCancelled = false
   }

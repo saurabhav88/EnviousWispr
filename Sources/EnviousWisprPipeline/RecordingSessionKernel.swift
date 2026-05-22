@@ -504,9 +504,14 @@ final class RecordingSessionKernel {
     guard isCurrent(sid) else { return }
 
     // Begin the adapter session. Decode options derive from the frozen
-    // session config's language mode (PR-4 plan §3.3a).
+    // session config's language mode (PR-4 plan §3.3a). The kernel owns the
+    // streaming-vs-batch policy: the user's `useStreamingASR` setting ANDed
+    // with the adapter's static streaming capability (PR-4 plan §3.4). A
+    // non-streaming engine (PR-5 WhisperKit) is never asked to stream.
+    let shouldStream = config.useStreamingASR && adapter.capabilities.supportsStreaming
     do {
-      try await adapter.beginSession(sid, options: makeTranscriptionOptions(config))
+      try await adapter.beginSession(
+        sid, options: makeTranscriptionOptions(config), streaming: shouldStream)
     } catch {
       guard isCurrent(sid) else { return }
       audioCapture.onBufferCaptured = nil

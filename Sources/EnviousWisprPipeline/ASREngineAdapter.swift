@@ -187,8 +187,13 @@ public protocol ASREngineAdapter: AnyObject {
 
   // MARK: Session lifecycle
 
-  /// Begin a recording session under `id`.
-  func beginSession(_ id: SessionID, options: TranscriptionOptions) async throws
+  /// Begin a recording session under `id`. `streaming` carries the kernel's
+  /// per-session orchestration decision — `config.useStreamingASR` ANDed with
+  /// this adapter's static `capabilities.supportsStreaming` (PR-4 plan §3.4).
+  /// The kernel owns the policy; the adapter obeys. `false` means batch-decode
+  /// after stop: the adapter MUST NOT open a live stream. An adapter MAY still
+  /// fall back to batch from `true` if its own runtime backend check fails.
+  func beginSession(_ id: SessionID, options: TranscriptionOptions, streaming: Bool) async throws
 
   /// Accept one captured buffer. The kernel ALWAYS calls this; the adapter
   /// decides forward-vs-buffer. A call after a terminal session (post-`cancel()`
