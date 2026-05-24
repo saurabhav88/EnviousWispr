@@ -77,6 +77,10 @@ final class FakeEngine: ASREngineAdapter {
   private(set) var acceptedBufferCount = 0
   private(set) var acceptAudioAfterTerminalCount = 0
   private(set) var finalizeCallCount = 0
+  /// The `batchSamples:` value the most recent `finalize` call received
+  /// (PR-4.5 #5) — lets seam tests assert the kernel passes conditioned
+  /// audio through instead of `nil`.
+  private(set) var lastFinalizeBatchSamples: [Float]? = nil
   private(set) var cancelCallCount = 0
   private(set) var lastUnloadPolicy: ModelUnloadPolicy?
   private(set) var lastSessionID: SessionID?
@@ -194,6 +198,10 @@ final class FakeEngine: ASREngineAdapter {
     lastStreamingRequested = streaming
     isTerminal = false
     isCancelled = false
+    // Mirror the real Parakeet adapter's per-session reset
+    // (`ParakeetEngineAdapter.swift:163`) — a fresh session should not inherit
+    // a prior finalize's batchSamples snapshot in tests.
+    lastFinalizeBatchSamples = nil
   }
 
   func acceptAudio(_ buffer: AudioBufferHandoff) {
@@ -205,8 +213,11 @@ final class FakeEngine: ASREngineAdapter {
     acceptedBufferCount += 1
   }
 
-  func finalize() async -> ASREngineOutcome {
+  func finalize(batchSamples: [Float]?) async -> ASREngineOutcome {
     finalizeCallCount += 1
+    // `beginSession` resets this to nil so a fresh session sees nil if its
+    // finalize is never reached — only the LAST finalize's value survives.
+    lastFinalizeBatchSamples = batchSamples
     // After `cancel()`, `finalize()` MUST return `.cancelled` (PR-1 §B.2.2).
     if isCancelled {
       isTerminal = true

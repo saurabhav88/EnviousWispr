@@ -1,5 +1,6 @@
 import Foundation
 
+@testable import EnviousWisprCore
 @testable import EnviousWisprPipeline
 
 // MARK: - FakeVADSignalSource (epic #827, PR-2 plan §3.3; PR-1 §B.6)
@@ -18,9 +19,19 @@ final class FakeVADSignalSource: VADSignalSource {
   /// scenarios set `.confirmedNoSpeech` or `.unavailable`.
   var evidence: VADSpeechEvidence = .voiced
 
-  /// The session each emitted signal is stamped with. PR-3 sets this per
-  /// session start (mirroring the real seam being told the frozen session).
+  /// The segments `speechSegmentsAtStop()` returns (PR-4.5 #5, Codex r1).
+  /// Defaults empty; conductor-parity seam tests set non-empty to assert
+  /// the conditioner reads from the seam, not from `CaptureResult.vadSegments`.
+  var segments: [SpeechSegment] = []
+
+  /// The session each emitted signal is stamped with. The kernel calls
+  /// `setCurrentSessionID(_:)` at session start (PR-4.5 #2); tests may also
+  /// poke this directly to model out-of-band stamp injection.
   var currentSessionID = SessionID()
+
+  func setCurrentSessionID(_ id: SessionID) {
+    currentSessionID = id
+  }
 
   /// Every signal kind emitted, in order — for `FakeVADSignalSourceTests`.
   private(set) var emittedKinds: [VADStopKind] = []
@@ -51,6 +62,8 @@ final class FakeVADSignalSource: VADSignalSource {
     evidenceReadCount += 1
     return evidence
   }
+
+  func speechSegmentsAtStop() -> [SpeechSegment] { segments }
 
   /// Close the signal stream at scenario teardown.
   func finish() {

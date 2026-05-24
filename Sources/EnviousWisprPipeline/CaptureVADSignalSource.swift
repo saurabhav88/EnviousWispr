@@ -1,4 +1,5 @@
 import EnviousWisprAudio
+import EnviousWisprCore
 import Foundation
 
 // MARK: - CaptureVADSignalSource (epic #827, PR-4 §3.5)
@@ -38,11 +39,19 @@ final class CaptureVADSignalSource: VADSignalSource {
   /// `.unavailable` (no detector) — the kernel then does not gate (PR-1 §B.6).
   private var evidenceProvider: @MainActor () -> VADSpeechEvidence
 
+  /// Returns the voiced segments observed during the just-stopped session
+  /// (PR-4.5 #5, Codex r1). Default `[]` (no detector ran). The wiring sets
+  /// it from `captureResult.vadSegments` (XPC) or `detector.speechSegments`
+  /// (direct mode) — see `setSegmentsProvider`.
+  private var segmentsProvider: @MainActor () -> [SpeechSegment]
+
   init(
-    evidenceProvider: @escaping @MainActor () -> VADSpeechEvidence = { .unavailable }
+    evidenceProvider: @escaping @MainActor () -> VADSpeechEvidence = { .unavailable },
+    segmentsProvider: @escaping @MainActor () -> [SpeechSegment] = { [] }
   ) {
     (signalStream, signalContinuation) = AsyncStream.makeStream(of: VADStopSignal.self)
     self.evidenceProvider = evidenceProvider
+    self.segmentsProvider = segmentsProvider
   }
 
   // MARK: VADSignalSource
@@ -50,6 +59,8 @@ final class CaptureVADSignalSource: VADSignalSource {
   var stopSignals: AsyncStream<VADStopSignal> { signalStream }
 
   func speechEvidenceAtStop() -> VADSpeechEvidence { evidenceProvider() }
+
+  func speechSegmentsAtStop() -> [SpeechSegment] { segmentsProvider() }
 
   // MARK: Session wiring
 
@@ -64,6 +75,16 @@ final class CaptureVADSignalSource: VADSignalSource {
   /// `captureResult.vadSegments` (PR-4 §3.5).
   func setEvidenceProvider(_ provider: @escaping @MainActor () -> VADSpeechEvidence) {
     evidenceProvider = provider
+  }
+
+  /// Replace the voiced-segments provider for the session (PR-4.5 #5, Codex
+  /// r1). The wiring sets it from `captureResult.vadSegments` (XPC mode) or
+  /// from the in-process `SilenceDetector.speechSegments` (direct mode). The
+  /// kernel's `CapturedAudioConditioner` reads this — NOT
+  /// `CaptureResult.vadSegments` — so direct-mode recordings get the same
+  /// VAD filtering as XPC mode.
+  func setSegmentsProvider(_ provider: @escaping @MainActor () -> [SpeechSegment]) {
+    segmentsProvider = provider
   }
 
   /// Claim sole ownership of `AudioCaptureInterface.onVADAutoStop` (PR-4 §3.5).

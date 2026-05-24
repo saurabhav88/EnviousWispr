@@ -146,7 +146,8 @@ import Testing
       sleepTicks: { _ in },
       processText: { raw, _ in raw },
       store: { _ in },
-      deliver: { _ in .pasted })
+      deliver: { _ in .pasted },
+      minimumRecordingTicks: 0)  // PR-4.5 #4: clock never advances; opt out of the gate
     let observer = KernelHeartPathTelemetryObserver(
       kernel: kernel, audioCapture: FakeAudioCapture(), emitLifecycleEvent: { _ in })
     let outcome = KernelFinalizationOutcome()

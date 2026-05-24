@@ -1,3 +1,4 @@
+import EnviousWisprCore
 import Foundation
 
 // MARK: - VAD signal / policy split (epic #827, PR-1 §B.6 → PR-2)
@@ -66,4 +67,23 @@ public protocol VADSignalSource: AnyObject {
   /// The speech-evidence verdict at stop. Read once when the kernel enters
   /// `stopping`.
   func speechEvidenceAtStop() -> VADSpeechEvidence
+
+  /// The kernel calls this at session start so every subsequent signal carries
+  /// the live `SessionID` (PR-1 §B.6, PR-4.5 #2). The old `TranscriptionPipeline`
+  /// stamped per session (`:569-570,1276-1285`); the fresh kernel never wired
+  /// the stamp, so the seam dropped every signal as stale. Required on the
+  /// protocol so `any VADSignalSource` can be stamped without down-casting.
+  func setCurrentSessionID(_ id: SessionID)
+
+  /// The voiced segments observed during the just-stopped session, used by
+  /// the kernel's `CapturedAudioConditioner` (PR-4.5 #5, Codex r1). The seam
+  /// — not `CaptureResult.vadSegments` — is the authoritative source because
+  /// in direct (non-XPC) mode `AudioCaptureManager.stopCapture()` does not
+  /// populate `CaptureResult.vadSegments`; segments live in the in-process
+  /// `SilenceDetector`. Both modes feed the seam: XPC bundles via
+  /// `captureResult.vadSegments`, direct mode bridges from the detector. A
+  /// conformer with no segments (no detector ran) returns an empty array —
+  /// the conditioner then no-ops `SampleFilter` and falls through to raw
+  /// fallback / padding, matching the old pipeline's no-VAD path.
+  func speechSegmentsAtStop() -> [SpeechSegment]
 }

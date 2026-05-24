@@ -55,7 +55,7 @@ import Testing
     let source = """
       @MainActor final class RogueAdapter: ASREngineAdapter {
         private var state: RecordingSessionState = .idle
-        func finalize() async -> ASREngineOutcome {
+        func finalize(batchSamples: [Float]?) async -> ASREngineOutcome {
           transition(to: .completed)
           return .cancelled
         }
