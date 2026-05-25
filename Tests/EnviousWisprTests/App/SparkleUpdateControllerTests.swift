@@ -76,9 +76,9 @@ struct SparkleUpdateControllerTests {
 
   // MARK: - Bundle-version-aware install-attempt evaluation
 
-  // The next two tests rely on the DEBUG-only `testEventHook` seam, so they
-  // compile only in debug. CI also builds tests in release; gating preserves
-  // both lanes.
+  // The tests below rely on the DEBUG-only `testEventHook` seam (and the
+  // `EventBox` Sendable storage), so they compile only in debug. CI also
+  // builds tests in release; gating preserves both lanes.
   #if DEBUG
 
     /// Sendable storage box for the testEventHook closure. The hook is
@@ -216,6 +216,71 @@ struct SparkleUpdateControllerTests {
         #expect(evt.stringProps.keys.sorted() == ["error_code", "source", "version"])
         #expect(evt.boolProps.keys.sorted() == ["is_critical"])
       }
+    }
+
+    // MARK: - #846: isReportableSparkleInstallFailure classifier (Layer A)
+    //
+    // Pure-function tests on the new classifier helper. Direct delegate
+    // testing of `didFinishUpdateCycleFor` is infeasible (SPUUpdater.init
+    // is unavailable per Sparkle/SPUUpdater.h:62-69), so we test the
+    // classifier as a function and trust the integration call site by
+    // inspection. The three benign Sparkle codes come from Sparkle's own
+    // logging filter at SPUUpdater.m:797-800.
+
+    @Test("Sparkle code 1001 (SUNoUpdateError) is suppressed")
+    func classifier_sparkle1001_isFalse() {
+      let error = NSError(domain: "SUSparkleErrorDomain", code: 1001)
+      #expect(SparkleUpdateController.isReportableSparkleInstallFailure(error) == false)
+    }
+
+    @Test("Sparkle code 4007 (SUInstallationCanceledError) is suppressed")
+    func classifier_sparkle4007_isFalse() {
+      let error = NSError(domain: "SUSparkleErrorDomain", code: 4007)
+      #expect(SparkleUpdateController.isReportableSparkleInstallFailure(error) == false)
+    }
+
+    @Test("Sparkle code 4008 (SUInstallationAuthorizeLaterError) is suppressed")
+    func classifier_sparkle4008_isFalse() {
+      let error = NSError(domain: "SUSparkleErrorDomain", code: 4008)
+      #expect(SparkleUpdateController.isReportableSparkleInstallFailure(error) == false)
+    }
+
+    @Test("Sparkle code 4005 (SUInstallationError) is reported")
+    func classifier_sparkle4005_isTrue() {
+      let error = NSError(domain: "SUSparkleErrorDomain", code: 4005)
+      #expect(SparkleUpdateController.isReportableSparkleInstallFailure(error) == true)
+    }
+
+    @Test("Non-Sparkle domain with code 1001 is reported (domain guard)")
+    func classifier_nonSparkleDomain1001_isTrue() {
+      let error = NSError(domain: "NSURLErrorDomain", code: 1001)
+      #expect(SparkleUpdateController.isReportableSparkleInstallFailure(error) == true)
+    }
+
+    // MARK: - #846: telemetry-hook smoke (Layer B)
+
+    @Test("updateInstallFailed propagates error_code to testEventHook")
+    func installFailedPropagatesErrorCodeToHook() async {
+      let box = EventBox()
+      let originalHook = TelemetryService.shared.testEventHook
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        Task { @MainActor in box.events.append(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = originalHook }
+
+      TelemetryService.shared.updateInstallFailed(
+        version: "v1",
+        isCritical: false,
+        source: "test",
+        errorCode: "SUSparkleErrorDomain.4005")
+
+      await Task.yield()
+      await Task.yield()
+
+      let captured = box.events
+      let evt = captured.first(where: { $0.name == "update.install_failed" })
+      #expect(evt != nil, "update.install_failed event should be captured")
+      #expect(evt?.stringProps["error_code"] == "SUSparkleErrorDomain.4005")
     }
 
   #endif  // DEBUG

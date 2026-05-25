@@ -240,6 +240,24 @@ extension SparkleUpdateController: SPUUpdaterDelegate {
     return false
   }
 
+  /// Issue #846: classifier for whether an error from `didFinishUpdateCycleFor`
+  /// represents a real install failure (worth firing `update.install_failed`)
+  /// or one of Sparkle's three benign terminal outcomes. Pure function — no
+  /// instance state. Sparkle itself excludes these three codes from its own
+  /// logging (`SPUUpdater.m:797-800`).
+  ///
+  /// Domain guard: a non-Sparkle error happening to carry one of the numeric
+  /// codes (e.g. a CFNetwork error with code 1001) still emits. We only
+  /// suppress when Sparkle's own domain emits one of its known benign codes.
+  ///
+  /// `internal` (not `private`) so `@testable import EnviousWispr` tests can
+  /// call it without constructing a `SPUUpdater` (which Sparkle does not
+  /// expose for tests per `SPUUpdater.h:62-69`).
+  static func isReportableSparkleInstallFailure(_ error: NSError) -> Bool {
+    guard error.domain == "SUSparkleErrorDomain" else { return true }
+    return ![1001, 4007, 4008].contains(error.code)
+  }
+
   /// Issue #343: terminal "the cycle ended" hook. Fires diagnostic event,
   /// resolves service state, clears install-source.
   func updater(
@@ -268,12 +286,19 @@ extension SparkleUpdateController: SPUUpdaterDelegate {
       source: source,
       errorCode: errorCode
     )
-    if error != nil {
+    // Issue #846: filter Sparkle's three benign terminal outcomes from
+    // update.install_failed. Sparkle itself excludes them from its own logging
+    // (SPUUpdater.m:797-800): SUNoUpdateError = 1001 (no update available),
+    // SUInstallationCanceledError = 4007 (user cancelled authorization),
+    // SUInstallationAuthorizeLaterError = 4008 (user chose install later).
+    // All three reach this callback via SPUUpdater.m:810-812. Non-Sparkle
+    // errors with the same numeric codes still emit (domain guard).
+    if let nsError = error as NSError?, Self.isReportableSparkleInstallFailure(nsError) {
       TelemetryService.shared.updateInstallFailed(
         version: version,
         isCritical: isCritical,
         source: source,
-        errorCode: errorCode ?? "unknown"
+        errorCode: "\(nsError.domain).\(nsError.code)"
       )
     }
     // Issue #739: do NOT call noteResolved here. Sparkle's "cycle finished"
