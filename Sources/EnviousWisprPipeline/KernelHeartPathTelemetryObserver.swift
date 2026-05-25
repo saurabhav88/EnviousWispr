@@ -34,8 +34,11 @@ import Foundation
 /// to the telemetry backends.
 enum KernelLifecycleEvent: Equatable, Sendable {
   /// The session committed to `recording` — PR-1 §B.7 `dictation.invoked` +
-  /// the recording-started breadcrumb.
-  case recordingCommitted
+  /// the recording-started breadcrumb. Carries the streaming-mode flag the
+  /// kernel decided at `beginSession` time so the sink emits the same
+  /// `isStreaming` value old `TranscriptionPipeline.swift:550-553` did
+  /// (Codex review #11 r2).
+  case recordingCommitted(isStreaming: Bool)
   /// The session entered `transcribing` — the `asr` "Transcription started"
   /// breadcrumb.
   case transcriptionStarted
@@ -48,13 +51,41 @@ enum KernelLifecycleEvent: Equatable, Sendable {
   /// The session reached `audioInterrupted` — a microphone-disconnect event.
   case audioInterrupted
   /// The session reached `asrInterrupted` — the `captureError(xpcServiceError)`.
-  case asrInterrupted
+  /// Carries the `was_recording` flag the old TP:1145 captureError extra
+  /// carried: `true` when entered from `.recording`, `false` when entered
+  /// from `.transcribing`. Bridge matrix #3.
+  case asrInterrupted(wasRecording: Bool)
   /// The session reached `discarded` — PR-1 §B.7.4, carrying the abort reason.
   case discarded(DiscardReason)
-  /// The session reached `noSpeech` — the VAD no-speech outcome.
-  case noSpeech
+  /// The session reached `noSpeech`. The associated value names which path led
+  /// here so the sink can emit the byte-correct breadcrumb (PR-1 §B.7.2 — old
+  /// `TranscriptionPipeline.swift:787` vs `:902`).
+  case noSpeech(NoSpeechSource)
   /// The session reached `cancelled` — a user-cancelled recording.
   case cancelled
+
+  // MARK: PR-4b.2 r6 additions
+
+  /// The session entered `.warmingUp` AND the ASR model was not already loaded
+  /// (i.e., a real model-load is about to start). Mirrors the old
+  /// `TranscriptionPipeline.swift:365` "Model loading" breadcrumb. NOT fired
+  /// when the model was warm at start (parity — old code only emits when it
+  /// enters the load branch at `:363`). Gated by the kernel's
+  /// `didLoadModelThisSession` sibling observable.
+  case modelLoading
+
+  /// The session entered `.stopping`. Mirrors the old
+  /// `TranscriptionPipeline.swift:671-673` recording-stopped breadcrumb +
+  /// `updateRecordingState(active:false)`.
+  case recordingStopped
+
+  /// The session entered `.finalizing` AFTER a successful transcribe (ASR
+  /// returned non-empty text). Mirrors the old `TranscriptionPipeline.swift:922`
+  /// "ASR completed" breadcrumb. NOT fired on the `.finalizing` path that came
+  /// from a no-speech VAD gate or asrEmpty — those emit `.noSpeech(source:)` /
+  /// `.failed(.asrEmpty)` instead, matching old code which never emits the
+  /// "ASR completed" breadcrumb on those paths.
+  case asrCompleted
 }
 
 /// Observes raw `RecordingSessionKernel` state and emits the PR-1 §B.7
@@ -129,24 +160,55 @@ final class KernelHeartPathTelemetryObserver {
   }
 
   /// Emit the lifecycle event for the current kernel state, if it changed.
+  /// Reads kernel sibling observables (`discardReason`, `didLoadModelThisSession`,
+  /// `lastNoSpeechSource`, `finalizingSubStatus`) at mapping time so the event
+  /// carries the right associated values without racing the state transition
+  /// (PR-4b.2 §3.6 OQ-3, r7).
   private func handleStateChange() {
     let state = kernel.state
     guard state != lastObservedState else { return }
+    let priorState = lastObservedState
     lastObservedState = state
-    guard let event = Self.lifecycleEvent(for: state, discardReason: kernel.discardReason)
+    guard
+      let event = Self.lifecycleEvent(
+        for: state,
+        priorState: priorState,
+        discardReason: kernel.discardReason,
+        didLoadModelThisSession: kernel.didLoadModelThisSession,
+        lastNoSpeechSource: kernel.lastNoSpeechSource,
+        isStreamingSession: kernel.isStreamingSession
+      )
     else { return }
     emitLifecycleEvent(event)
   }
 
-  /// Map a kernel state to its lifecycle event. States with no §B.7 event
-  /// (`idle` / `preparing` / `warmingUp` / `stopping` / `finalizing`) map to
-  /// `nil` — observing raw state still guarantees no terminal is missed.
+  /// Map a kernel state (plus the sibling observables that the event payloads
+  /// depend on) to its lifecycle event. States with no §B.7 event (`idle` /
+  /// `preparing`) map to `nil` — observing raw state still guarantees no
+  /// terminal is missed.
+  ///
+  /// - parameter priorState: the state we just transitioned out of. Used to
+  ///   gate `.finalizing` → `.asrCompleted` to the post-transcribing branch
+  ///   only.
+  /// - parameter didLoadModelThisSession: kernel-stamped truthy when the
+  ///   adapter was NOT `.ready` at the warm-up gate (PR-4b.2 §3.6).
+  /// - parameter lastNoSpeechSource: kernel-stamped at the two distinct
+  ///   `.noSpeech` forward-path sites (VAD gate vs ASR-empty no-speech).
+  /// - parameter isStreamingSession: kernel-stamped at `beginSession` —
+  ///   `config.useStreamingASR && adapter.capabilities.supportsStreaming`.
+  ///   Threaded through `.recordingCommitted(isStreaming:)` so the sink
+  ///   emits the same flag old TP did (Codex review #11 r2).
   static func lifecycleEvent(
-    for state: RecordingSessionState, discardReason: DiscardReason?
+    for state: RecordingSessionState,
+    priorState: RecordingSessionState,
+    discardReason: DiscardReason?,
+    didLoadModelThisSession: Bool,
+    lastNoSpeechSource: NoSpeechSource?,
+    isStreamingSession: Bool
   ) -> KernelLifecycleEvent? {
     switch state {
     case .recording:
-      return .recordingCommitted
+      return .recordingCommitted(isStreaming: isStreamingSession)
     case .transcribing:
       return .transcriptionStarted
     case .completed:
@@ -156,16 +218,45 @@ final class KernelHeartPathTelemetryObserver {
     case .audioInterrupted:
       return .audioInterrupted
     case .asrInterrupted:
-      return .asrInterrupted
+      // Bridge matrix #3 — old TP:1145 reported `was_recording == state == .recording`
+      // at crash time. The kernel reaches `.asrInterrupted` from either
+      // `.recording` (via `deliverRecordingExit(.asrInterruption)`) or
+      // `.transcribing` (via `finishTerminal(.asrInterrupted)`); the prior
+      // state distinguishes them.
+      return .asrInterrupted(wasRecording: priorState == .recording)
     case .discarded:
       // The reason is a sibling observable set before the `→ discarded`
       // transition (PR-4 §3.8a); default defensively if somehow absent.
       return .discarded(discardReason ?? .releasedBeforeRecording)
     case .noSpeech:
-      return .noSpeech
+      // Source stamped at the kernel transition site (PR-4b.2 §3.6 r7).
+      // Default defensively to `.vadGate` if somehow absent — both sites
+      // stamp, so an absent source means the kernel reached `.noSpeech`
+      // via a path the inventory did not anticipate; better to emit a
+      // breadcrumb that names "no speech" than to silently drop the event.
+      return .noSpeech(lastNoSpeechSource ?? .vadGate)
     case .cancelled:
       return .cancelled
-    case .idle, .preparing, .warmingUp, .stopping, .finalizing:
+    case .warmingUp:
+      // PR-4b.2 §3.6 — only fire `.modelLoading` if the adapter was not
+      // already loaded (parity with old TP:363 conditional).
+      return didLoadModelThisSession ? .modelLoading : nil
+    case .stopping:
+      return .recordingStopped
+    case .finalizing:
+      // PR-4b.2 §3.6 — only fire `.asrCompleted` on the post-transcribing
+      // path. Old TP:922 was inside the transcript branch; the kernel only
+      // reaches `.finalizing` from `.transcribing` via `runFinalizing(asrText:)`
+      // (`RecordingSessionKernel.swift:836` — the `.transcript(...)` arm of
+      // the finalize switch). The `.empty` and no-speech arms jump straight
+      // to terminal, so `priorState == .transcribing` IS the structural
+      // signal that ASR returned non-empty text. (Codex review #11:
+      // `kernel.deliveredTranscript` is set INSIDE `runFinalizing` AFTER the
+      // `→ .finalizing` transition, so reading it at mapping time would
+      // always be nil and the breadcrumb would never fire.)
+      guard priorState == .transcribing else { return nil }
+      return .asrCompleted
+    case .idle, .preparing:
       return nil
     }
   }

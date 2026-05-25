@@ -102,6 +102,20 @@ public enum DiscardReason: Equatable, Sendable {
   case tooShort
 }
 
+/// Which path led to a `.noSpeech` terminal. Sibling-observable payload for
+/// the `KernelLifecycleEvent.noSpeech(NoSpeechSource)` lifecycle event so the
+/// observer can route the source-appropriate breadcrumb without losing the
+/// old VAD-gate vs ASR-empty no-speech distinction (PR-1 §B.7.2; old
+/// `TranscriptionPipeline.swift:787` vs `:902`).
+public enum NoSpeechSource: Equatable, Sendable {
+  /// VAD gate fired pre-ASR — raw samples had no speech evidence
+  /// (`TP:787` — "VAD gate: no speech detected, skipping ASR").
+  case vadGate
+  /// ASR returned empty text on a path where VAD did NOT firmly say speech
+  /// (`TP:902` — "ASR empty (no speech detected)").
+  case asrEmptyNoSpeech
+}
+
 /// A typed limb-seam failure the kernel maps to a `failed` terminal reason
 /// (PR-3 plan §14a). The `processText` / `store` seams throw these.
 public enum KernelLimbError: Error, Sendable {
@@ -195,6 +209,32 @@ final class RecordingSessionKernel {
   /// (PR-4 plan §3.8a). Set immediately before the `→ discarded` transition so
   /// a state observer reads the correct reason.
   private(set) var discardReason: DiscardReason?
+
+  /// `true` if this session entered the model-load branch (i.e. adapter was
+  /// not already `.ready` at the warm-up gate). Set immediately BEFORE the
+  /// `→ warmingUp` transition. Read by the kernel-state observer to gate the
+  /// `.modelLoading` lifecycle event so a warm session does not emit a
+  /// spurious "Model loading" breadcrumb (PR-1 §B.7.2 parity; old
+  /// `TranscriptionPipeline.swift:365` was conditional on entering the
+  /// load branch at `:363`). Reset on session start.
+  private(set) var didLoadModelThisSession: Bool = false
+
+  /// Which path led to `.noSpeech` for this session, or `nil` if the session
+  /// did not reach `.noSpeech`. Set immediately BEFORE the `→ noSpeech`
+  /// transition at each of the two distinct forward-path sites (VAD gate vs
+  /// ASR-empty no-speech). The observer reads this at lifecycle-event mapping
+  /// time to choose `.vadGate` or `.asrEmptyNoSpeech`. Reset on session start.
+  private(set) var lastNoSpeechSource: NoSpeechSource?
+
+  /// `true` if the kernel started this session in streaming mode. Set
+  /// immediately BEFORE `adapter.beginSession(..., streaming:)`. The observer
+  /// reads this at `.recording` lifecycle mapping time so the
+  /// `recordingCommitted` event carries the same streaming flag the old
+  /// `TranscriptionPipeline.swift:550-553` breadcrumb + `updateRecordingState`
+  /// emitted (Codex review #11 r2 — without this thread-through the sink
+  /// would misreport every streaming session as batch). Reset on session
+  /// start.
+  private(set) var isStreamingSession: Bool = false
 
   /// How delivery happened, or `nil` if nothing was delivered.
   private(set) var deliveryOutcome: KernelDeliveryOutcome?
@@ -554,6 +594,9 @@ final class RecordingSessionKernel {
 
     // Warm-up (skipped if the adapter is already ready — the warm path).
     if adapter.readiness != .ready {
+      // Stamp BEFORE the transition so the lifecycle-event observer reads
+      // the truthy flag at `.warmingUp` mapping time (PR-4b.2 §3.6 OQ-3).
+      didLoadModelThisSession = true
       transition(to: .warmingUp)
       let warmResult = await warmUp(sid)
       guard isCurrent(sid) else { return }
@@ -612,6 +655,9 @@ final class RecordingSessionKernel {
     // streaming capability (PR-4 plan §3.4). A non-streaming engine (PR-5
     // WhisperKit) is never asked to stream.
     let shouldStream = config.useStreamingASR && adapter.capabilities.supportsStreaming
+    // Stamp BEFORE beginSession so the lifecycle observer reads the correct
+    // streaming flag at the `.recording` transition (Codex review #11 r2).
+    isStreamingSession = shouldStream
     do {
       try await adapter.beginSession(
         sid, options: makeTranscriptionOptions(config), streaming: shouldStream)
@@ -746,6 +792,9 @@ final class RecordingSessionKernel {
 
     // VAD no-speech gate (PR-1 §B.6) — keys on *confirmed* no-speech.
     if vad.speechEvidenceAtStop() == .confirmedNoSpeech {
+      // Stamp BEFORE the transition so the lifecycle-event observer reads
+      // the source at `.noSpeech` mapping time (PR-4b.2 §3.6 r7).
+      lastNoSpeechSource = .vadGate
       finishTerminal(.noSpeech, sid: sid)
       return
     }
@@ -799,6 +848,11 @@ final class RecordingSessionKernel {
     case .transcript(let result):
       await runFinalizing(sid, asrText: result.text)
     case .empty(let hadSpeechEvidence):
+      if !hadSpeechEvidence {
+        // Stamp BEFORE the transition so the observer reads the source
+        // at `.noSpeech` mapping time (PR-4b.2 §3.6 r7).
+        lastNoSpeechSource = .asrEmptyNoSpeech
+      }
       finishTerminal(hadSpeechEvidence ? .failed(.asrEmpty) : .noSpeech, sid: sid)
     case .cancelled:
       finishTerminal(.cancelled, sid: sid)
@@ -1413,6 +1467,9 @@ final class RecordingSessionKernel {
     deliveredTranscript = nil
     deliveryOutcome = nil
     discardReason = nil
+    didLoadModelThisSession = false
+    lastNoSpeechSource = nil
+    isStreamingSession = false
     pasteCount = 0
     forbiddenTransitionRejected = false
   }

@@ -21,6 +21,17 @@ import Foundation
 // PR-4a ships this production-unwired: no App-layer caller constructs it.
 // PR-4b re-points the 13 App files at this type.
 
+/// Resume-once latch for `KernelDictationDriver.awaitKernelTerminal`. A
+/// reference type so the closure passed to `withObservationTracking`'s
+/// `onChange` and the recursive re-arm method share the same instance.
+/// `@MainActor`-isolated — single writer (the main-actor Task that handles
+/// each state-change tick). `Sendable` because `@MainActor` isolation acts
+/// as the synchronization boundary.
+@MainActor
+private final class TerminalResumeLatch: Sendable {
+  var resumed = false
+}
+
 /// The four text-processing limb steps the App configures and the kernel's
 /// `processText` closure runs. Created once, shared by the driver (which
 /// exposes the accessors) and `KernelFinalizationWiring` (whose `processText`
@@ -36,7 +47,7 @@ struct LimbSteps {
 /// Wraps `RecordingSessionKernel` as a `DictationPipeline` for the App layer.
 @MainActor
 @Observable
-final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryTarget {
+public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryTarget {
 
   private let kernel: RecordingSessionKernel
   private let observer: KernelHeartPathTelemetryObserver
@@ -57,7 +68,7 @@ final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryTarget {
   /// Fired by the kernel-state observer whenever the mapped `PipelineState`
   /// changes. The App's `DictationLifecycleCoordinator` is the consumer.
   @ObservationIgnored
-  var onStateChange: ((PipelineState) -> Void)?
+  public var onStateChange: ((PipelineState) -> Void)?
 
   /// The last mapped state `onStateChange` fired for — so a re-armed
   /// observation that fires without a mapped-state change stays quiet.
@@ -86,27 +97,167 @@ final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryTarget {
 
   // MARK: Limb-step accessors (read by `PipelineSettingsSync` + custom-words)
 
-  var wordCorrection: WordCorrectionStep { steps.wordCorrection }
-  var fillerRemoval: FillerRemovalStep { steps.fillerRemoval }
-  var emojiFormatter: EmojiFormatterStep { steps.emojiFormatter }
-  var llmPolish: LLMPolishStep { steps.llmPolish }
+  public var wordCorrection: WordCorrectionStep { steps.wordCorrection }
+  public var fillerRemoval: FillerRemovalStep { steps.fillerRemoval }
+  public var emojiFormatter: EmojiFormatterStep { steps.emojiFormatter }
+  public var llmPolish: LLMPolishStep { steps.llmPolish }
 
   // MARK: Caller-visible signals
 
   /// The kernel's `RecordingSessionState` mapped to the legacy `PipelineState`.
-  var state: PipelineState {
+  public var state: PipelineState {
     Self.pipelineState(for: kernel.state, externalError: lastExternalError)
   }
 
   /// The transcript the `store` closure built for the last completed session.
-  var currentTranscript: Transcript? { outcome.transcript }
+  public var currentTranscript: Transcript? { outcome.transcript }
 
   /// The polish error from the last session, or `nil`.
-  var lastPolishError: String? { outcome.polishError }
+  public var lastPolishError: String? { outcome.polishError }
+
+  // MARK: PR-4b.2 — direct methods + property (mirror old TranscriptionPipeline App surface)
+
+  /// Async cancel request. Wraps `kernel.cancel()` for App callers
+  /// (`PipelineSettingsSync.swift:195`, `RecordingFinalizer.swift:95`) that
+  /// `async`-call `pipeline.cancelRecording()`. Awaits the kernel reaching a
+  /// terminal state before returning — `PipelineSettingsSync` relies on this
+  /// to fully tear down capture before `buildEngine(...)` for a
+  /// noise-suppression rebuild (Codex review #11 r5). `kernel.cancel()` on
+  /// its own is fire-and-latch: it triggers the recording-exit path or sets
+  /// `cancelRequested`, but the actual transition to `.cancelled` /
+  /// `.discarded` happens on the forward path's next yield.
+  public func cancelRecording() async {
+    kernel.cancel()
+    await awaitKernelTerminal()
+  }
+
+  /// Sync reset. Wraps `kernel.reset()` + driver-side cleanup. Mirrors the
+  /// existing `handle(.reset)` body for `RecordingFinalizer.swift:117`'s
+  /// sync call site.
+  ///
+  /// Bridge matrix #5 — the App's "Try Again / dismiss" path
+  /// (`RecordingFinalizer.resetActive()`) typically fires from a terminal
+  /// state. Sync reset CANNOT fully drive an active session to `.idle`
+  /// because `kernel.cancel()` is fire-and-latch — the actual transition
+  /// happens on the forward path's next yield, which a sync caller cannot
+  /// await (Codex review #11 r5). When called from an active state, this
+  /// method requests cancellation; the kernel converges to a terminal on
+  /// its own, and the next sync `reset()` (or terminal-state observation)
+  /// will land at `.idle`. For deterministic completion from an active
+  /// state, use `cancelRecording()` + `reset()` (async-then-sync), or wait
+  /// for the kernel-state observer to fire with the terminal state.
+  public func reset() {
+    lastExternalError = nil
+    if !Self.isTerminal(kernel.state) {
+      // Best-effort: request cancellation. Caller-visible state will not
+      // reach `.idle` synchronously from `.recording` / `.transcribing` —
+      // see doc-comment.
+      kernel.cancel()
+    }
+    // From terminal (the typical caller state), this transitions to `.idle`.
+    // From a state that cancel just latched, kernel.reset() refuses and
+    // returns false; the kernel's forward path eventually reaches
+    // `.cancelled`, at which point the App must call reset() again or rely
+    // on a fresh `.toggleRecording` to mint a new session.
+    kernel.reset()
+    fireStateChangeIfNeeded()
+  }
+
+  /// Stop-and-await-finalize. Old `pipeline.stopAndTranscribe()` awaits the
+  /// full flow; `AudioEventRouter.swift:115` does
+  /// `Task { await pipeline.stopAndTranscribe() }` and the `await` is
+  /// load-bearing for downstream sequencing. The driver method requests stop
+  /// AND awaits the kernel reaching a terminal state.
+  ///
+  /// Bridge matrix #1 — guard for the active-non-recording states
+  /// (`.preparing`, `.warmingUp`, `.stopping`, `.transcribing`, `.finalizing`).
+  /// Old TP's `stopAndTranscribe()` (`TranscriptionPipeline.swift:614-615`)
+  /// only acted on `.recording`. Without the guard, the driver would force
+  /// an inappropriate stop request mid-warm-up or duplicate a stop already
+  /// in flight.
+  public func stopAndTranscribe() async {
+    guard kernel.state == .recording else { return }
+    kernel.requestStop()
+    await awaitKernelTerminal()
+  }
+
+  /// External engine-interruption entry — bridges App-routed
+  /// audio-engine-interruption signals into the kernel FSM and the
+  /// telemetry emitters.
+  ///
+  /// `kernel.externalEngineInterrupted()` only acts on `.recording` (its
+  /// documented contract — `RecordingSessionKernel.swift:1077-1080`). For
+  /// every other active state (`.preparing`, `.warmingUp`, `.stopping`,
+  /// `.transcribing`, `.finalizing`) the kernel silently drops the signal,
+  /// which at PR-4b.4 cutover would leave the UI stuck. Old TP's
+  /// `handleEngineInterruption()` (`TranscriptionPipeline.swift:1107-1131`)
+  /// was state-agnostic: emit Sentry+PostHog state change, cancel cleanup,
+  /// flip UI to the mic-disconnect error. Bridge matrix #4 ports the old
+  /// behavior for those states via `setExternalError`.
+  public func handleEngineInterruption() {
+    switch kernel.state {
+    case .recording:
+      kernel.externalEngineInterrupted()
+    case .preparing, .warmingUp, .stopping, .transcribing, .finalizing:
+      // Direct PostHog state update — the kernel won't reach
+      // `.audioInterrupted` from here, so the lifecycle sink's
+      // `.audioInterrupted` handler never fires.
+      SentryBreadcrumb.updateRecordingState(active: false)
+      setExternalError(InterruptionMessages.micDisconnected)
+    case .idle, .completed, .failed, .cancelled, .discarded, .noSpeech,
+      .audioInterrupted, .asrInterrupted:
+      // Already idle / terminal — no useful action. Router-stale calls
+      // land here.
+      break
+    }
+  }
+
+  /// External ASR-XPC interruption entry — bridges App-routed ASR-service
+  /// crash signals into the kernel FSM and the telemetry emitters.
+  ///
+  /// `kernel.externalASRInterrupted()` only acts on `.recording` /
+  /// `.transcribing` (its documented contract —
+  /// `RecordingSessionKernel.swift:1077-1080`). Old TP's
+  /// `handleASRServiceInterruption()` (`TranscriptionPipeline.swift:1137-1163`)
+  /// was state-agnostic: always emit the `xpc_service_error` Sentry event +
+  /// flip the UI to the ASR-crash error. Bridge matrix #2 ports the old
+  /// behavior for `.preparing`, `.warmingUp`, `.stopping`, `.finalizing`
+  /// via direct Sentry emission + `setExternalError`.
+  public func handleASRServiceInterruption() {
+    switch kernel.state {
+    case .recording, .transcribing:
+      kernel.externalASRInterrupted()
+    case .preparing, .warmingUp, .stopping, .finalizing:
+      // Kernel won't reach `.asrInterrupted` from here, so the lifecycle
+      // sink's `.asrInterrupted(wasRecording:)` handler never fires —
+      // emit the captureError directly with `was_recording == false`.
+      SentryBreadcrumb.captureError(
+        NSError(
+          domain: "EnviousWispr", code: -3,
+          userInfo: [NSLocalizedDescriptionKey: "ASR XPC service crashed"]),
+        category: .xpcServiceError, stage: "asr",
+        extra: ["was_recording": false])
+      setExternalError(Self.asrInterruptedMessage)
+    case .idle, .completed, .failed, .cancelled, .discarded, .noSpeech,
+      .audioInterrupted, .asrInterrupted:
+      // Already idle / terminal — no useful action. Router-stale calls
+      // land here.
+      break
+    }
+  }
+
+  /// The frozen per-session config, or `nil` when no session is in flight.
+  /// Mirrors old `TranscriptionPipeline.currentSessionConfig`.
+  /// `PipelineSettingsSync.swift:272` reads this across both pipelines as the
+  /// "recording in flight" signal. The driver's terminal handler clears
+  /// `context.config = nil` to honor the "nil when idle" contract (§3.4).
+  public var currentSessionConfig: DictationSessionConfig? {
+    context.config
+  }
 
   // MARK: DictationPipeline
 
-  var overlayIntent: OverlayIntent {
+  public var overlayIntent: OverlayIntent {
     if let lastExternalError {
       return .error(message: lastExternalError)
     }
@@ -137,7 +288,7 @@ final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryTarget {
     }
   }
 
-  func handle(event: PipelineEvent) async throws {
+  public func handle(event: PipelineEvent) async throws {
     switch event {
     case .preWarm:
       // PR-4.5 #1 + Codex r4: capture pre-warm is awaited end-to-end so the
@@ -166,6 +317,7 @@ final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryTarget {
         context.config = config
         context.targetApp = NSWorkspace.shared.frontmostApplication
         context.targetElement = PasteService.captureFocusedElement()
+        applyLLMConfigToPolishStep(config)
         kernel.start(config: config)
       case .recording:
         kernel.requestStop()
@@ -202,7 +354,7 @@ final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryTarget {
   /// runs and the lifecycle coordinator never learns about the error. Direct
   /// fire-through ensures the error reaches the overlay / hotkey teardown
   /// path regardless of kernel-state movement.
-  func setExternalError(_ message: String) {
+  public func setExternalError(_ message: String) {
     kernel.cancel()
     outcome.transcript = nil
     lastExternalError = message
@@ -211,19 +363,29 @@ final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryTarget {
 
   /// Intentional no-op (PR-4 §3.7). The kernel's `SessionID` structurally
   /// replaces the stall-recovery token (D11) — there is nothing to clear.
-  func clearPendingStallRecovery() {}
+  public func clearPendingStallRecovery() {}
 
   // MARK: HeartPathTelemetryTarget — forwards to the observer (PR-4 §3.9)
 
-  func handleCaptureStall(_ ctx: CaptureStallContext) {
+  public func handleCaptureStall(_ ctx: CaptureStallContext) {
+    // Two-arm fan-out:
+    //   1. observer.handleCaptureStall — drives the rich Sentry emission
+    //      via `HeartPathTelemetryEmitter.stallFired(ctx:)`.
+    //   2. kernel.externalCaptureStalled — flips the kernel FSM to
+    //      `failed(.captureStalled)` so the session actually stops.
+    // PR-4b.1 dropped the kernel's direct `audioCapture.onCaptureStalled`
+    // subscription; PR-4b.2 closes the loop by fanning out from this
+    // App-facing entry. Without the kernel call, a real stall would
+    // leave the session stuck in `.recording` (Codex review #11 r3).
     observer.handleCaptureStall(ctx)
+    kernel.externalCaptureStalled(ctx)
   }
 
-  func handleXPCReplyFailed(_ ctx: XPCReplyFailureContext) {
+  public func handleXPCReplyFailed(_ ctx: XPCReplyFailureContext) {
     observer.handleXPCReplyFailed(ctx)
   }
 
-  func handleCaptureSessionInterruption(_ ctx: CaptureSessionInterruptionContext) {
+  public func handleCaptureSessionInterruption(_ ctx: CaptureSessionInterruptionContext) {
     observer.handleCaptureSessionInterruption(ctx)
   }
 
@@ -248,6 +410,7 @@ final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryTarget {
     } onChange: { [weak self] in
       Task { @MainActor [weak self] in
         guard let self else { return }
+        self.clearContextConfigIfTerminalOrIdle()
         self.fireStateChangeIfNeeded()
         self.observeKernelState()
       }
@@ -261,12 +424,86 @@ final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryTarget {
     onStateChange?(mapped)
   }
 
+  /// Apply the session's frozen LLM config to the polish step. Mirrors the
+  /// LLM portion of old `TranscriptionPipeline.applySessionConfig(_:)`
+  /// (`TranscriptionPipeline.swift:1419-1422`). VAD + device UID portions
+  /// are already handled by `RecordingSessionKernel`.
+  private func applyLLMConfigToPolishStep(_ config: DictationSessionConfig) {
+    steps.llmPolish.llmProvider = config.llmProvider
+    steps.llmPolish.llmModel = config.llmModel
+    steps.llmPolish.polishInstructions = config.polishInstructions
+    steps.llmPolish.useExtendedThinking = config.useExtendedThinking
+  }
+
+  /// Clear `context.config` whenever the kernel is in a "no in-flight session"
+  /// state. That's the union of the 7 terminal states (per
+  /// `RecordingSessionState.isTerminal` — `.completed`, `.cancelled`,
+  /// `.failed`, `.noSpeech`, `.discarded`, `.audioInterrupted`,
+  /// `.asrInterrupted`) plus `.idle`. Honors the old TP "nil when idle"
+  /// contract that `PipelineSettingsSync` relies on for its backend-switch
+  /// guard (PR-4b.2 §3.4).
+  private func clearContextConfigIfTerminalOrIdle() {
+    switch kernel.state {
+    case .idle, .completed, .cancelled, .failed, .noSpeech, .discarded,
+      .audioInterrupted, .asrInterrupted:
+      context.config = nil
+    case .preparing, .warmingUp, .recording, .stopping, .transcribing, .finalizing:
+      break
+    }
+  }
+
+  /// Suspend until `kernel.state` reaches a terminal state. Uses
+  /// `withObservationTracking` + `withCheckedContinuation` with a
+  /// reference-typed resume-once latch so concurrent kernel-state changes
+  /// during the suspension cannot double-resume the continuation (which would
+  /// crash). The latch is `@MainActor`-isolated; every re-arm path passes
+  /// through it before any work.
+  private func awaitKernelTerminal() async {
+    if Self.isTerminal(kernel.state) { return }
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+      let latch = TerminalResumeLatch()
+      armTerminalObservation(continuation: continuation, latch: latch)
+    }
+  }
+
+  /// Re-armable observation arm for `awaitKernelTerminal`. Split out so the
+  /// `withObservationTracking` re-arm reaches a `@MainActor`-isolated method
+  /// (matches the Swift 6 idiom used by `observeKernelState()`).
+  private func armTerminalObservation(
+    continuation: CheckedContinuation<Void, Never>, latch: TerminalResumeLatch
+  ) {
+    withObservationTracking {
+      _ = kernel.state
+    } onChange: { [weak self, latch] in
+      Task { @MainActor [weak self, latch] in
+        guard let self else { return }
+        guard !latch.resumed else { return }
+        if Self.isTerminal(self.kernel.state) {
+          latch.resumed = true
+          continuation.resume()
+        } else {
+          self.armTerminalObservation(continuation: continuation, latch: latch)
+        }
+      }
+    }
+  }
+
+  private static func isTerminal(_ s: RecordingSessionState) -> Bool {
+    switch s {
+    case .idle, .completed, .cancelled, .discarded, .noSpeech, .failed,
+      .audioInterrupted, .asrInterrupted:
+      return true
+    case .preparing, .warmingUp, .recording, .stopping, .transcribing, .finalizing:
+      return false
+    }
+  }
+
   // MARK: State mapping — total, mechanical (PR-4 §3.7)
 
   /// Map a kernel state to the legacy `PipelineState`. Total over all 14 kernel
   /// states. `state.isActive` is `true` for every active kernel state, which
   /// the `PipelineSettingsSync` backend-switch guard depends on (§3.13).
-  static func pipelineState(
+  public static func pipelineState(
     for state: RecordingSessionState, externalError: String?
   ) -> PipelineState {
     if let externalError {
