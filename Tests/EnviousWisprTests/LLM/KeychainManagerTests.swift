@@ -32,12 +32,37 @@ struct KeychainManagerTests {
         atPath: dir.appendingPathComponent(KeychainManager.openAIKeyID).path))
   }
 
+  /// Probe the legacy file-based macOS keychain to decide whether tests that
+  /// hit real `SecItem*` APIs (even without the DP attribute) can run. Some
+  /// hardened CI environments refuse all `SecItemAdd` calls from an unsigned
+  /// binary; this probe makes that condition explicit and skippable instead of
+  /// surfacing as a test failure during `SecItemAdd` of a test fixture item.
+  static let hasLegacyKeychainAccess: Bool = {
+    let probeService = "com.enviouswispr.tests.legacy-probe.\(UUID().uuidString)"
+    let addQuery: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: probeService,
+      kSecAttrAccount as String: "probe",
+      kSecAttrSynchronizable as String: kCFBooleanFalse as Any,
+      kSecValueData as String: Data([0]),
+    ]
+    let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+    let deleteQuery: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: probeService,
+      kSecAttrAccount as String: "probe",
+    ]
+    _ = SecItemDelete(deleteQuery as CFDictionary)
+    return addStatus == errSecSuccess
+  }()
+
   /// Probe the Data Protection keychain to decide whether tests that hit real
-  /// `SecItem*` APIs can run. Bare `swift test` produces an unsigned test
-  /// binary; macOS returns `errSecMissingEntitlement` (-34018) for DP-scoped
-  /// queries without a signed entitlement. These tests are then conditionally
-  /// disabled in CI and local `swift test`, and exercised only in signed
-  /// release-config Live UAT against the shipped `.app`.
+  /// `SecItem*` APIs with `kSecUseDataProtectionKeychain: true` can run. Bare
+  /// `swift test` produces an unsigned test binary; macOS returns
+  /// `errSecMissingEntitlement` (-34018) for DP-scoped queries without a
+  /// signed entitlement. These tests are then conditionally disabled in CI and
+  /// local `swift test`, and exercised only in signed release-config Live UAT
+  /// against the shipped `.app`.
   ///
   /// Probe is intentionally lazy and cached for the suite lifetime to avoid
   /// repeatedly trying SecItemAdd during test discovery.
@@ -129,6 +154,11 @@ struct KeychainManagerTests {
 
   @Test(
     "Legacy-backend item is invisible to a DP-scoped retrieve",
+    .enabled(
+      if: KeychainManagerTests.hasLegacyKeychainAccess
+        && KeychainManagerTests.hasDataProtectionKeychainEntitlement,
+      "Requires both legacy and DP keychain access; verified in Live UAT against shipped .app"
+    ),
     .bug(
       "https://github.com/saurabhav88/EnviousWispr/issues/845",
       "Data-protection keychain + explicit accessibility per TN3137"))
