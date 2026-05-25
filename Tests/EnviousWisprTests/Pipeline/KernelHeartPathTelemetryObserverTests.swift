@@ -63,7 +63,7 @@ import Testing
       let recorder = EventRecorder()
       let kernel = makeKernel()
       let observer = makeObserver(kernel: kernel, recorder: recorder)
-      observer.start()
+      observer.observeKernelState()
 
       // Force a legal happy-path sequence — the observer keys on raw `state`.
       kernel.testForceTransition(to: .preparing)
@@ -87,7 +87,7 @@ import Testing
       let recorder = EventRecorder()
       let kernel = makeKernel()
       let observer = makeObserver(kernel: kernel, recorder: recorder)
-      observer.start()
+      observer.observeKernelState()
 
       kernel.testForceTransition(to: .preparing)
       await drain()
@@ -99,40 +99,30 @@ import Testing
 
     // MARK: onCaptureStalled fan-out
 
-    @Test("a capture stall fans out to the observer's telemetry emitter")
+    @Test("a capture stall handled by the observer reaches its telemetry emitter")
     func captureStallFanout() async {
-      // The kernel-side control flow (stall -> failed(captureStalled)) is covered
-      // by the simulator's capture-stall scenario; this test pins the new PR-4
-      // fan-out: the kernel's captureStallTelemetry seam reaches the observer.
+      // PR-4b.1: the kernel no longer subscribes to `audioCapture.onCaptureStalled`,
+      // so the previous end-to-end path (capture callback → kernel
+      // `captureStallTelemetry` seam → observer) is unsubscribed. PR-4b.4 wires
+      // the driver to fan out a stall to BOTH `observer.handleCaptureStall(_:)`
+      // AND `kernel.externalCaptureStalled(_:)` from a single App router
+      // subscription. This test now pins the observer-emitter half of that
+      // fan-out: a direct `handleCaptureStall` invocation reaches the emitter.
+      // The kernel-side control flow (stall → failed(captureStalled)) is
+      // covered by the simulator's capture-stall scenario via the new
+      // `externalCaptureStalled` entry.
       let stallRecorder = StallRecorder()
       let emitter = HeartPathTelemetryEmitter(
         backend: .parakeet,
         captureTelemetry: CaptureTelemetryState(),
         captureError: { error, _, _, _ in stallRecorder.note(error) },
         addBreadcrumb: { _, _, _ in })
-      let engine = FakeEngine(behavior: .batchSuccess(text: "x"), clock: FakeClock())
       let capture = FakeAudioCapture()
-      let observerHolder = ObserverHolder()
-      let kernel = RecordingSessionKernel(
-        adapter: engine,
-        audioCapture: capture,
-        vad: FakeVADSignalSource(),
-        currentTick: { 0 },
-        sleepTicks: { _ in },
-        processText: { raw, _ in raw },
-        store: { _ in },
-        deliver: { _ in .pasted },
-        minimumRecordingTicks: 0,  // PR-4.5 #4: test does not advance the clock; opt out of the gate
-        captureStallTelemetry: { ctx in observerHolder.observer?.handleCaptureStall(ctx) })
+      let kernel = makeKernel()
       let observer = KernelHeartPathTelemetryObserver(
         kernel: kernel, audioCapture: capture, emitter: emitter, emitLifecycleEvent: { _ in })
-      observerHolder.observer = observer
-      observer.start()
 
-      kernel.start(config: .testDefault())
-      await drainUntil { kernel.state == .recording }
-
-      capture.fireCaptureStalled()
+      observer.handleCaptureStall(capture.makeStallContext())
       await drain()
 
       #expect(stallRecorder.count == 1, "the capture-stall context reached the observer's emitter")
@@ -169,13 +159,6 @@ import Testing
     private func drain() async {
       for _ in 0..<100 { await Task.yield() }
     }
-
-    private func drainUntil(_ condition: @MainActor () -> Bool) async {
-      for _ in 0..<2000 {
-        if condition() { return }
-        await Task.yield()
-      }
-    }
   }
 
   @MainActor
@@ -187,11 +170,6 @@ import Testing
   private final class StallRecorder {
     private(set) var count = 0
     func note(_ error: any Error) { count += 1 }
-  }
-
-  @MainActor
-  private final class ObserverHolder {
-    weak var observer: KernelHeartPathTelemetryObserver?
   }
 
 #endif  // DEBUG
