@@ -164,7 +164,12 @@ final class KernelRecordingSession: RecordingSessionDriving {
         case .pasted: return .pasted
         case .clipboardOnly, .none: return .clipboardOnly
         }
-      })
+      },
+      // PR-4.5 #4 (Codex r3): the simulator's 33-scenario inventory does not
+      // advance the FakeClock between start and stop, so a positive
+      // minimum-recording threshold would discard most scenarios. The
+      // dedicated #4 coverage lives in `ConductorParitySeamTests`.
+      minimumRecordingTicks: 0)
   }
 
   // MARK: RecordingSessionDriving — observation
@@ -197,10 +202,12 @@ final class KernelRecordingSession: RecordingSessionDriving {
       // PR-4 §3.3a: the kernel's `start` now takes a `DictationSessionConfig`.
       // The simulator passes the test default — `FakeAudioCapture.configureVAD`
       // is inert, so no scenario behavior changes.
+      //
+      // PR-4.5 #2: the kernel now stamps the VAD seam itself via
+      // `vad.setCurrentSessionID(sid)` in `runForwardPath` (was a simulator-only
+      // manual stamp before; that hid the production gap where the kernel never
+      // wired the call).
       kernel.start(config: .testDefault())
-      // The seam is told the frozen session at session start (PR-1 §B.6):
-      // sync the fake VAD's stamp to the kernel's freshly minted SessionID.
-      vad.currentSessionID = kernel.currentSessionID
     case .stop:
       kernel.requestStop()
     case .cancel:
@@ -208,7 +215,7 @@ final class KernelRecordingSession: RecordingSessionDriving {
     case .reset:
       kernel.reset()
     case .preWarm:
-      kernel.preWarm()
+      await kernel.preWarm()
     }
   }
 

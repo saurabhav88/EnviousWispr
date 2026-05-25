@@ -1,4 +1,6 @@
+import AppKit
 import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 
 // MARK: - KernelDictationDriver (epic #827, PR-4 §3.1)
@@ -138,15 +140,32 @@ final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryTarget {
   func handle(event: PipelineEvent) async throws {
     switch event {
     case .preWarm:
-      kernel.preWarm()
+      // PR-4.5 #1 + Codex r4: capture pre-warm is awaited end-to-end so the
+      // PTT-flow caller (`RecordingStarter.start()` awaits `handle(.preWarm)`
+      // and then immediately sends `.toggleRecording`) does not see the
+      // recording start before BT codec negotiation completes.
+      await kernel.preWarm()
     case .toggleRecording(let config):
       switch kernel.state {
       case .idle, .completed, .failed, .cancelled, .discarded, .noSpeech,
         .audioInterrupted, .asrInterrupted:
-        // Start: clear the prior session's surfaces, then mint a new session.
+        // Start: clear the prior session's surfaces, capture finalization
+        // context AT RECORDING START (PR-4.5 #6, parity with old
+        // `TranscriptionPipeline.swift:450-453`), then mint a new session.
+        //
+        // The frontmost app + focused AX element are captured here so that a
+        // polish step taking seconds — during which focus may shift to the
+        // app's own window or another app — does not lose the original paste
+        // target. The frozen `DictationSessionConfig` lands in
+        // `context.config` for the wiring's `processText` / `deliver`
+        // closures to read at finalize time (the wiring's optional-chained
+        // reads were always-nil in production until this PR — finding #6).
         lastExternalError = nil
         outcome.transcript = nil
         outcome.polishError = nil
+        context.config = config
+        context.targetApp = NSWorkspace.shared.frontmostApplication
+        context.targetElement = PasteService.captureFocusedElement()
         kernel.start(config: config)
       case .recording:
         kernel.requestStop()
@@ -161,16 +180,33 @@ final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryTarget {
     case .reset:
       lastExternalError = nil
       kernel.reset()
+      // PR-4.5 #9 (Codex r5): when the kernel is already idle, `reset()` is a
+      // no-op, so the kernel-state observation does NOT fire. After
+      // `setExternalError` parked the observer on `.error`, that observer
+      // would stay stuck. Driving the fan-out directly mirrors the #9 fix on
+      // the error-set side.
+      fireStateChangeIfNeeded()
     }
   }
 
-  /// Dumb external-error sink (PR-4 §3.7). Cancels the kernel session and
-  /// holds the message so `state` / `overlayIntent` surface `.error` until the
-  /// next start / reset clears it.
+  /// External-error sink (PR-4 §3.7). Cancels the kernel session and holds
+  /// the message so `state` / `overlayIntent` surface `.error` until the next
+  /// start / reset clears it.
+  ///
+  /// PR-4.5 #9: also fires `onStateChange` directly with the mapped `.error`
+  /// state. The state mapper reads `lastExternalError`, so the *driver's*
+  /// public state did change; but the kernel-state observer at
+  /// `observeKernelState` only fires when `kernel.state` itself changes. When
+  /// `kernel.cancel()` is a no-op (kernel already idle / terminal — common
+  /// for pre-warm / mic failures routed through here), the observer never
+  /// runs and the lifecycle coordinator never learns about the error. Direct
+  /// fire-through ensures the error reaches the overlay / hotkey teardown
+  /// path regardless of kernel-state movement.
   func setExternalError(_ message: String) {
     kernel.cancel()
     outcome.transcript = nil
     lastExternalError = message
+    fireStateChangeIfNeeded()
   }
 
   /// Intentional no-op (PR-4 §3.7). The kernel's `SessionID` structurally

@@ -202,7 +202,16 @@ public protocol ASREngineAdapter: AnyObject {
 
   /// Finalize and produce exactly one outcome. Engine-specific rescue lives
   /// here. After `cancel()`, MUST return `.cancelled` (PR-1 §B.2.2).
-  func finalize() async -> ASREngineOutcome
+  ///
+  /// `batchSamples`, when non-nil, is the kernel-conditioned ASR-ready audio
+  /// the adapter MUST use for any batch decode in this finalize call (PR-4.5
+  /// #5 — VAD-segment filtering, raw fallback, short-utterance padding are
+  /// kernel-side, not adapter-side). When nil, the adapter uses its own
+  /// raw retained audio unchanged (today's pre-PR-4.5 behavior, preserved for
+  /// tests + the `FakeEngine` simulator path). The streaming path is
+  /// unaffected — per-buffer feeds were already raw and the kernel's
+  /// `acceptAudio` contract has not changed.
+  func finalize(batchSamples: [Float]?) async -> ASREngineOutcome
 
   /// OPTIONAL `finalize()`-wedge signal (PR-1 §B.1.7). Same `nil` semantics as
   /// `loadProgress`.

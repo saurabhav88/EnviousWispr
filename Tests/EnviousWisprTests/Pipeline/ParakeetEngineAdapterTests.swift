@@ -60,7 +60,7 @@ import Testing
     manager.finalizeStreamingResult = makeResult("streamed text")
     let adapter = ParakeetEngineAdapter(asrManager: manager)
     try await adapter.beginSession(SessionID(), options: .default, streaming: true)
-    let outcome = await adapter.finalize()
+    let outcome = await adapter.finalize(batchSamples: nil)
     guard case .transcript(let result) = outcome else {
       Issue.record("expected .transcript, got \(outcome)")
       return
@@ -79,7 +79,7 @@ import Testing
     try await adapter.beginSession(sid, options: .default, streaming: true)
     feed(adapter, samples: [0.1, 0.2, 0.3], session: sid)
     feed(adapter, samples: [0.4, 0.5], session: sid)
-    let outcome = await adapter.finalize()
+    let outcome = await adapter.finalize(batchSamples: nil)
     guard case .transcript(let result) = outcome else {
       Issue.record("expected .transcript, got \(outcome)")
       return
@@ -100,7 +100,7 @@ import Testing
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: true)
     feed(adapter, samples: [0.7], session: sid)
-    let outcome = await adapter.finalize()
+    let outcome = await adapter.finalize(batchSamples: nil)
     guard case .transcript(let result) = outcome else {
       Issue.record("expected .transcript, got \(outcome)")
       return
@@ -117,7 +117,7 @@ import Testing
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: true)
     feed(adapter, samples: [0.1], session: sid)
-    let outcome = await adapter.finalize()
+    let outcome = await adapter.finalize(batchSamples: nil)
     guard case .empty(let hadSpeechEvidence) = outcome else {
       Issue.record("expected .empty, got \(outcome)")
       return
@@ -135,7 +135,7 @@ import Testing
     try await adapter.beginSession(sid, options: .default, streaming: false)
     feed(adapter, samples: [0.1, 0.2], session: sid)
     #expect(manager.startStreamingCount == 0, "streaming disabled — no live stream opened")
-    let outcome = await adapter.finalize()
+    let outcome = await adapter.finalize(batchSamples: nil)
     guard case .transcript(let result) = outcome else {
       Issue.record("expected .transcript, got \(outcome)")
       return
@@ -159,13 +159,13 @@ import Testing
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: true)
     feed(adapter, samples: [0.1, 0.2], session: sid)
-    _ = await adapter.finalize()
+    _ = await adapter.finalize(batchSamples: nil)
     // A fresh session must not see the prior session's PCM. Streaming empty +
     // a no-op batch over zero retained samples => .empty.
     manager.transcribeCount = 0
     manager.lastTranscribeSamples = []
     try await adapter.beginSession(SessionID(), options: .default, streaming: true)
-    let outcome = await adapter.finalize()
+    let outcome = await adapter.finalize(batchSamples: nil)
     guard case .empty = outcome else {
       Issue.record("expected .empty over cleared PCM, got \(outcome)")
       return
@@ -184,7 +184,7 @@ import Testing
     manager.transcribeResult = makeResult("")
     manager.finalizeStreamingResult = makeResult("")
     // After cancel, finalize() must short-circuit to .cancelled regardless.
-    let outcome = await adapter.finalize()
+    let outcome = await adapter.finalize(batchSamples: nil)
     guard case .cancelled = outcome else {
       Issue.record("expected .cancelled, got \(outcome)")
       return
@@ -201,7 +201,7 @@ import Testing
     try await adapter.beginSession(sid, options: .default, streaming: true)
     feed(adapter, samples: [0.1], session: sid)
     feed(adapter, samples: [0.2], session: sid)
-    _ = await adapter.finalize()
+    _ = await adapter.finalize(batchSamples: nil)
     #expect(
       manager.feedAudioCount == 2,
       "finalize() waited for every dispatched feed — no tail buffer dropped")
@@ -234,7 +234,7 @@ import Testing
     try await adapter.beginSession(sidA, options: .default, streaming: true)
     feed(adapter, samples: [0.1], session: sidA)
     // finalize() for session A suspends inside the slow finalizeStreaming.
-    async let outcomeA = adapter.finalize()
+    async let outcomeA = adapter.finalize(batchSamples: nil)
     for _ in 0..<10 { await Task.yield() }
     // Session B begins while A's finalize is still suspended.
     try await adapter.beginSession(SessionID(), options: .default, streaming: true)
@@ -253,7 +253,7 @@ import Testing
     let adapter = ParakeetEngineAdapter(asrManager: manager)
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: true)
-    _ = await adapter.finalize()
+    _ = await adapter.finalize(batchSamples: nil)
     let before = manager.feedAudioCount
     feed(adapter, samples: [0.9], session: sid)  // post-terminal — must be ignored
     #expect(manager.feedAudioCount == before, "no audio fed after a terminal session")
@@ -266,7 +266,7 @@ import Testing
     let adapter = ParakeetEngineAdapter(asrManager: manager)
     try await adapter.beginSession(SessionID(), options: .default, streaming: true)
     await adapter.cancel()
-    let outcome = await adapter.finalize()
+    let outcome = await adapter.finalize(batchSamples: nil)
     guard case .cancelled = outcome else {
       Issue.record("expected .cancelled, got \(outcome)")
       return
@@ -282,7 +282,7 @@ import Testing
     await adapter.cancel()
     await adapter.cancel()
     // Three cancels behave as one — the adapter stays terminal-cancelled.
-    let outcome = await adapter.finalize()
+    let outcome = await adapter.finalize(batchSamples: nil)
     guard case .cancelled = outcome else {
       Issue.record("expected .cancelled, got \(outcome)")
       return

@@ -209,8 +209,9 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
 
   /// Finalize: one normalized outcome. Streaming runs the
   /// streaming-finalize-then-batch rescue (D14); batch-mode runs batch decode
-  /// over the retained PCM. After `cancel()`, returns `.cancelled` (PR-1 §B.2.2).
-  func finalize() async -> ASREngineOutcome {
+  /// over the kernel-conditioned audio when supplied, else raw retained PCM
+  /// (PR-4.5 #5). After `cancel()`, returns `.cancelled` (PR-1 §B.2.2).
+  func finalize(batchSamples: [Float]?) async -> ASREngineOutcome {
     if isCancelled {
       isTerminal = true
       retainedPCM.removeAll()
@@ -220,9 +221,9 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     let outcome: ASREngineOutcome
     if streamingActive {
       await drainStreamingFeeds()
-      outcome = await finalizeStreamingWithRescue()
+      outcome = await finalizeStreamingWithRescue(batchSamples: batchSamples)
     } else {
-      outcome = await finalizeBatch()
+      outcome = await finalizeBatch(batchSamples: batchSamples)
     }
     // A `cancel()` + new `beginSession()` during the ASR await must not let
     // this stale finalize clobber the fresh session's `lastResult` / retained
@@ -291,7 +292,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   /// The kernel runs the VAD no-speech gate before `finalize()`, so reaching
   /// here means speech evidence was voiced or unavailable — the rescue always
   /// attempts batch when streaming yields nothing.
-  private func finalizeStreamingWithRescue() async -> ASREngineOutcome {
+  private func finalizeStreamingWithRescue(batchSamples: [Float]?) async -> ASREngineOutcome {
     do {
       let result = try await asrManager.finalizeStreaming()
       if !result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -303,15 +304,18 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     } catch {
       // Streaming finalize failed — fall through to the batch rescue.
     }
-    return await finalizeBatch()
+    return await finalizeBatch(batchSamples: batchSamples)
   }
 
-  /// Batch decode over the retained session PCM (§3.2a).
-  private func finalizeBatch() async -> ASREngineOutcome {
-    guard !retainedPCM.isEmpty else { return .empty(hadSpeechEvidence: true) }
+  /// Batch decode (§3.2a). Uses kernel-conditioned `batchSamples` when
+  /// supplied (PR-4.5 #5 — VAD-filtered + raw-fallback + silence-padded);
+  /// else falls back to the adapter's raw retained PCM.
+  private func finalizeBatch(batchSamples: [Float]?) async -> ASREngineOutcome {
+    let samples = batchSamples ?? retainedPCM
+    guard !samples.isEmpty else { return .empty(hadSpeechEvidence: true) }
     do {
       let result = try await asrManager.transcribe(
-        audioSamples: retainedPCM, options: decodeOptions)
+        audioSamples: samples, options: decodeOptions)
       if result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
         // Past the kernel's VAD no-speech gate, an empty decode is a real ASR
         // failure — `hadSpeechEvidence: true` routes the kernel to
