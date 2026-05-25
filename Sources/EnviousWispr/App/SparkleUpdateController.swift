@@ -258,6 +258,56 @@ extension SparkleUpdateController: SPUUpdaterDelegate {
     return ![1001, 4007, 4008].contains(error.code)
   }
 
+  /// Issue #847 Phase 1: extract Sparkle's no-update reason from the error
+  /// userInfo. Guarded — returns nil unless the error is a Sparkle SUNoUpdateError
+  /// (code 1001 with the `SUSparkleErrorDomain` domain). Sparkle attaches
+  /// `SPUNoUpdateFoundReasonKey: NSNumber(rawValue)` ONLY on that specific
+  /// error path per `SPUBasicUpdateDriver.m:244-261`. Pure function, no
+  /// instance state, testable directly.
+  ///
+  /// Returns a stable lowercase-snake string. Unknown raw values map to the
+  /// fixed string `"unrecognized"` (bounded cardinality — no rawValue
+  /// interpolation, addresses Gemini council finding about unbounded
+  /// PostHog property cardinality).
+  static func noUpdateReason(from error: NSError?) -> String? {
+    guard let error else { return nil }
+    guard error.domain == "SUSparkleErrorDomain", error.code == 1001 else { return nil }
+    // SPUNoUpdateFoundReason is declared as NS_ENUM(OSStatus, ...) per
+    // SUErrors.h:80, so rawValue: takes OSStatus (Int32). Read NSNumber
+    // and convert with int32Value to match the bridged enum's signature.
+    guard
+      let raw = (error.userInfo[SPUNoUpdateFoundReasonKey as String] as? NSNumber)?.int32Value
+    else { return nil }
+    // Prefer the Swift-bridged enum case-switch; rawValue init is
+    // failable so unknown future cases fall through to "unrecognized".
+    guard let reason = SPUNoUpdateFoundReason(rawValue: raw) else { return "unrecognized" }
+    switch reason {
+    case .unknown: return "unknown"
+    case .onLatestVersion: return "on_latest_version"
+    case .onNewerThanLatestVersion: return "on_newer_than_latest_version"
+    case .systemIsTooOld: return "system_is_too_old"
+    case .systemIsTooNew: return "system_is_too_new"
+    case .hardwareDoesNotSupportARM64: return "hardware_does_not_support_arm64"
+    @unknown default: return "unrecognized"
+    }
+  }
+
+  /// Issue #847 Phase 1: discriminator string for Sparkle's update-check
+  /// classification. The founder workaround (manual menu click works when
+  /// background check returns no update) makes this the load-bearing
+  /// signal for Phase 2 root-cause analysis.
+  ///
+  /// `@unknown default` forces a compile warning if Sparkle adds new cases
+  /// at the next major bump — early signal at build time.
+  static func checkKindString(_ check: SPUUpdateCheck) -> String {
+    switch check {
+    case .updates: return "user_initiated"
+    case .updatesInBackground: return "background"
+    case .updateInformation: return "informational"
+    @unknown default: return "unrecognized"
+    }
+  }
+
   /// Issue #343: terminal "the cycle ended" hook. Fires diagnostic event,
   /// resolves service state, clears install-source.
   func updater(
@@ -280,11 +330,22 @@ extension SparkleUpdateController: SPUUpdaterDelegate {
       return false
     }()
     let errorCode = (error as NSError?).map { "\($0.domain).\($0.code)" }
+    // Issue #847 Phase 1: diagnostic enrichment. Extract Sparkle's
+    // SPUNoUpdateFoundReasonKey (guarded to SUNoUpdateError + domain) and
+    // map SPUUpdateCheck to a stable string. Pair with current app version
+    // sourced from the existing bundleVersionProvider so Phase 2 can
+    // pivot the fix on (current_app_version × check_kind × no_update_reason).
+    let noUpdateReason = Self.noUpdateReason(from: error as NSError?)
+    let checkKind = Self.checkKindString(updateCheck)
+    let currentAppVersion = bundleVersionProvider()
     TelemetryService.shared.updateSparkleCycleFinished(
       version: version,
       isCritical: isCritical,
       source: source,
-      errorCode: errorCode
+      errorCode: errorCode,
+      noUpdateReason: noUpdateReason,
+      checkKind: checkKind,
+      currentAppVersion: currentAppVersion
     )
     // Issue #846: filter Sparkle's three benign terminal outcomes from
     // update.install_failed. Sparkle itself excludes them from its own logging
@@ -298,7 +359,10 @@ extension SparkleUpdateController: SPUUpdaterDelegate {
         version: version,
         isCritical: isCritical,
         source: source,
-        errorCode: "\(nsError.domain).\(nsError.code)"
+        errorCode: "\(nsError.domain).\(nsError.code)",
+        noUpdateReason: noUpdateReason,
+        checkKind: checkKind,
+        currentAppVersion: currentAppVersion
       )
     }
     // Issue #739: do NOT call noteResolved here. Sparkle's "cycle finished"

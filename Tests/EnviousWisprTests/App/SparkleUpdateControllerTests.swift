@@ -1,6 +1,7 @@
 import EnviousWisprCore
 import EnviousWisprServices
 import Foundation
+@preconcurrency import Sparkle
 import Testing
 
 @testable import EnviousWispr
@@ -174,13 +175,27 @@ struct SparkleUpdateControllerTests {
       TelemetryService.shared.updateInstallStarted(
         version: "v1", isCritical: true, source: "menu")
       TelemetryService.shared.updateSparkleCycleFinished(
-        version: "v1", isCritical: false, source: "menu", errorCode: nil)
+        version: "v1",
+        isCritical: false,
+        source: "menu",
+        errorCode: nil,
+        noUpdateReason: nil,
+        checkKind: "background",
+        currentAppVersion: "v-host"
+      )
       TelemetryService.shared.updateInstallCompleted(
         version: "v1", isCritical: false, source: "menu")
       TelemetryService.shared.updateInstallCancelled(
         version: "v1", isCritical: false, source: "banner")
       TelemetryService.shared.updateInstallFailed(
-        version: "v1", isCritical: false, source: "menu", errorCode: "NSURLErrorDomain.-1009")
+        version: "v1",
+        isCritical: false,
+        source: "menu",
+        errorCode: "NSURLErrorDomain.-1009",
+        noUpdateReason: nil,
+        checkKind: "background",
+        currentAppVersion: "v-host"
+      )
 
       // Drain the Task hops scheduled by each test hook firing.
       await Task.yield()
@@ -213,7 +228,10 @@ struct SparkleUpdateControllerTests {
         #expect(evt.boolProps.keys.sorted() == ["is_critical"])
       }
       if let evt = captured.first(where: { $0.name == "update.install_failed" }) {
-        #expect(evt.stringProps.keys.sorted() == ["error_code", "source", "version"])
+        #expect(
+          evt.stringProps.keys.sorted() == [
+            "check_kind", "current_app_version", "error_code", "source", "version",
+          ])
         #expect(evt.boolProps.keys.sorted() == ["is_critical"])
       }
     }
@@ -272,7 +290,11 @@ struct SparkleUpdateControllerTests {
         version: "v1",
         isCritical: false,
         source: "test",
-        errorCode: "SUSparkleErrorDomain.4005")
+        errorCode: "SUSparkleErrorDomain.4005",
+        noUpdateReason: nil,
+        checkKind: "background",
+        currentAppVersion: "v-host"
+      )
 
       await Task.yield()
       await Task.yield()
@@ -281,6 +303,173 @@ struct SparkleUpdateControllerTests {
       let evt = captured.first(where: { $0.name == "update.install_failed" })
       #expect(evt != nil, "update.install_failed event should be captured")
       #expect(evt?.stringProps["error_code"] == "SUSparkleErrorDomain.4005")
+    }
+
+    // MARK: - #847 Phase 1: noUpdateReason classifier (Layer A)
+    //
+    // Pure-function tests on the extraction helper. Sparkle attaches
+    // SPUNoUpdateFoundReasonKey only to errors with the SUSparkleErrorDomain
+    // domain AND code SUNoUpdateError (1001) per SPUBasicUpdateDriver.m:244-261.
+    // The helper enforces that guard. Bridged enum init is failable so
+    // unknown future raw values fall through to "unrecognized" (fixed string,
+    // not interpolated — bounded PostHog cardinality).
+
+    @Test("noUpdateReason: nil error returns nil")
+    func noUpdateReason_nilError_returnsNil() {
+      #expect(SparkleUpdateController.noUpdateReason(from: nil) == nil)
+    }
+
+    @Test("noUpdateReason: Sparkle 1001 with systemIsTooNew rawValue returns mapped string")
+    func noUpdateReason_systemTooNew_returnsString() {
+      let error = NSError(
+        domain: "SUSparkleErrorDomain",
+        code: 1001,
+        userInfo: [SPUNoUpdateFoundReasonKey as String: NSNumber(value: Int32(4))]
+      )
+      #expect(SparkleUpdateController.noUpdateReason(from: error) == "system_is_too_new")
+    }
+
+    @Test("noUpdateReason: Sparkle 1001 with missing reason key returns nil")
+    func noUpdateReason_missingReasonKey_returnsNil() {
+      let error = NSError(domain: "SUSparkleErrorDomain", code: 1001)
+      #expect(SparkleUpdateController.noUpdateReason(from: error) == nil)
+    }
+
+    @Test("noUpdateReason: non-Sparkle domain with reason key returns nil (domain guard)")
+    func noUpdateReason_nonSparkleDomain_returnsNil() {
+      let error = NSError(
+        domain: "NSURLErrorDomain",
+        code: 1001,
+        userInfo: [SPUNoUpdateFoundReasonKey as String: NSNumber(value: Int32(4))]
+      )
+      #expect(SparkleUpdateController.noUpdateReason(from: error) == nil)
+    }
+
+    @Test("noUpdateReason: Sparkle non-1001 code with reason key returns nil (code guard)")
+    func noUpdateReason_wrongCode_returnsNil() {
+      let error = NSError(
+        domain: "SUSparkleErrorDomain",
+        code: 4005,
+        userInfo: [SPUNoUpdateFoundReasonKey as String: NSNumber(value: Int32(4))]
+      )
+      #expect(SparkleUpdateController.noUpdateReason(from: error) == nil)
+    }
+
+    @Test("noUpdateReason: out-of-range rawValue returns fixed 'unrecognized' string")
+    func noUpdateReason_unknownRawValue_returnsUnrecognized() {
+      let error = NSError(
+        domain: "SUSparkleErrorDomain",
+        code: 1001,
+        userInfo: [SPUNoUpdateFoundReasonKey as String: NSNumber(value: Int32(999))]
+      )
+      #expect(SparkleUpdateController.noUpdateReason(from: error) == "unrecognized")
+    }
+
+    @Test("checkKindString: maps all three documented SPUUpdateCheck cases")
+    func checkKindString_mapsAllThreeCases() {
+      #expect(SparkleUpdateController.checkKindString(.updates) == "user_initiated")
+      #expect(SparkleUpdateController.checkKindString(.updatesInBackground) == "background")
+      #expect(SparkleUpdateController.checkKindString(.updateInformation) == "informational")
+    }
+
+    // MARK: - #847 Phase 1: telemetry-hook propagation (Layer B)
+
+    @Test("updateSparkleCycleFinished propagates all three new props to hook")
+    func cycleFinished_propagatesAllThreeNewPropsToHook() async {
+      let box = EventBox()
+      let originalHook = TelemetryService.shared.testEventHook
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        Task { @MainActor in box.events.append(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = originalHook }
+
+      TelemetryService.shared.updateSparkleCycleFinished(
+        version: "v-pending",
+        isCritical: false,
+        source: "background",
+        errorCode: "SUSparkleErrorDomain.1001",
+        noUpdateReason: "on_latest_version",
+        checkKind: "background",
+        currentAppVersion: "v2.0.4"
+      )
+
+      await Task.yield()
+      await Task.yield()
+
+      let captured = box.events
+      let evt = captured.first(where: { $0.name == "update.sparkle_cycle_finished" })
+      #expect(evt != nil, "update.sparkle_cycle_finished event should be captured")
+      #expect(evt?.stringProps["no_update_reason"] == "on_latest_version")
+      #expect(evt?.stringProps["check_kind"] == "background")
+      #expect(evt?.stringProps["current_app_version"] == "v2.0.4")
+    }
+
+    @Test("updateSparkleCycleFinished with nil noUpdateReason omits the property entirely")
+    func cycleFinished_withNilNoUpdateReason_omitsProperty() async {
+      let box = EventBox()
+      let originalHook = TelemetryService.shared.testEventHook
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        Task { @MainActor in box.events.append(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = originalHook }
+
+      TelemetryService.shared.updateSparkleCycleFinished(
+        version: "v-pending",
+        isCritical: false,
+        source: "background",
+        errorCode: nil,
+        noUpdateReason: nil,
+        checkKind: "user_initiated",
+        currentAppVersion: "v2.0.4"
+      )
+
+      await Task.yield()
+      await Task.yield()
+
+      let captured = box.events
+      let evt = captured.first(where: { $0.name == "update.sparkle_cycle_finished" })
+      #expect(evt != nil)
+      #expect(
+        evt?.stringProps["no_update_reason"] == nil,
+        "no_update_reason key MUST be absent (not the literal 'nil' string).")
+      #expect(evt?.stringProps["check_kind"] == "user_initiated")
+      #expect(evt?.stringProps["current_app_version"] == "v2.0.4")
+    }
+
+    @Test("updateInstallFailed propagates all three new props to hook")
+    func installFailed_propagatesAllThreeNewPropsToHook() async {
+      let box = EventBox()
+      let originalHook = TelemetryService.shared.testEventHook
+      TelemetryService.shared.testEventHook = { @Sendable event in
+        Task { @MainActor in box.events.append(event) }
+      }
+      defer { TelemetryService.shared.testEventHook = originalHook }
+
+      // Note: production callers will not pair install_failed with a
+      // non-nil no_update_reason after #846 lands (1001 events stop
+      // routing through install_failed). The test still passes a non-nil
+      // value to prove the signature handles all three new props
+      // independently of the call-site policy.
+      TelemetryService.shared.updateInstallFailed(
+        version: "v-pending",
+        isCritical: false,
+        source: "menu",
+        errorCode: "SUSparkleErrorDomain.4005",
+        noUpdateReason: "on_latest_version",
+        checkKind: "user_initiated",
+        currentAppVersion: "v2.0.4"
+      )
+
+      await Task.yield()
+      await Task.yield()
+
+      let captured = box.events
+      let evt = captured.first(where: { $0.name == "update.install_failed" })
+      #expect(evt != nil)
+      #expect(evt?.stringProps["error_code"] == "SUSparkleErrorDomain.4005")
+      #expect(evt?.stringProps["check_kind"] == "user_initiated")
+      #expect(evt?.stringProps["current_app_version"] == "v2.0.4")
+      #expect(evt?.stringProps["no_update_reason"] == "on_latest_version")
     }
 
   #endif  // DEBUG
