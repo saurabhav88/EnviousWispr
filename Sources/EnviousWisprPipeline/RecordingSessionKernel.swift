@@ -982,30 +982,79 @@ final class RecordingSessionKernel {
 
   // MARK: Capture callbacks + buffer handoff
 
-  /// Bind the recording-exit callbacks for this session — the capture-layer
-  /// signals and the adapter's mid-recording engine-crash signal (PR-4 plan
-  /// §3.2). VAD auto-stop is NOT bound here: it flows through `vad.stopSignals`
+  /// Bind the adapter's mid-recording engine-crash signal (PR-4 plan §3.2).
+  ///
+  /// PR-4b.1: the three shared `AudioCaptureInterface` callbacks
+  /// (`onEngineInterrupted`, `onCaptureStalled`, `onXPCServiceError`) are no
+  /// longer claimed here. `AudioCaptureInterface` callbacks are single-owner;
+  /// the App-side `AudioEventRouter` + `WedgeRecoveryRouter` stay as the sole
+  /// subscribers and forward into the kernel through the driver's
+  /// `externalEngineInterrupted` / `externalASRInterrupted` /
+  /// `externalCaptureStalled` entry methods (wired in PR-4b.4). The adapter's
+  /// own engine-interruption callback STAYS — the adapter is internal to the
+  /// kernel boundary, not a shared resource.
+  ///
+  /// VAD auto-stop is NOT bound here: it flows through `vad.stopSignals`
   /// only, with `CaptureVADSignalSource` the single owner of
   /// `AudioCaptureInterface.onVADAutoStop` (PR-4 plan §3.5).
   private func bindCaptureCallbacks(_ sid: SessionID) {
-    audioCapture.onEngineInterrupted = { [weak self] in
-      self?.deliverRecordingExitIfCurrent(.audioInterruption, sid: sid)
-    }
-    audioCapture.onCaptureStalled = { [weak self] ctx in
-      guard let self else { return }
-      // Fan the raw context to telemetry (PR-4 plan §3.9), then route the
-      // control-flow exit. The exit only latches; ordering is immaterial.
-      self.captureStallTelemetry(ctx)
-      self.deliverRecordingExitIfCurrent(.captureStall, sid: sid)
-    }
-    audioCapture.onXPCServiceError = { [weak self] _ in
-      self?.routeASRInterruption(sid: sid)
-    }
     // The adapter's own backend crashing mid-recording (distinct XPC layer
     // from `onXPCServiceError`'s audio-capture service) — PR-4 plan §3.2.
     adapter.onEngineInterrupted = { [weak self] in
       self?.routeASRInterruption(sid: sid)
     }
+  }
+
+  // MARK: External entry points (PR-4b.1)
+  //
+  // PR-4b.1 removed the kernel's direct subscriptions to the shared
+  // `AudioCaptureInterface` callbacks (`onEngineInterrupted`, `onCaptureStalled`,
+  // `onXPCServiceError`). The App-side routers stay as sole subscribers; the
+  // driver (`KernelDictationDriver` — same module) forwards the calls into
+  // these internal entry methods. PR-4b.4 wires the App routers' Parakeet
+  // branches.
+  //
+  // Each method is idempotent — early-return when the kernel is in a terminal
+  // state via the existing `RecordingSessionState.isTerminal` (`:60`). The
+  // seven terminal states (`completed`, `cancelled`, `discarded`, `noSpeech`,
+  // `failed`, `audioInterrupted`, `asrInterrupted`) return true; `.idle` does
+  // NOT. Between sessions the kernel sits at `.idle`, which is non-terminal
+  // but also non-recording — the no-op at `.idle` is delivered by
+  // `deliverRecordingExitIfCurrent`'s `state == .recording` guard (`:1103`),
+  // not by `!state.isTerminal`. `routeASRInterruption` similarly switches on
+  // state and falls through to `default: return` for non-recording /
+  // non-transcribing states.
+
+  /// Route an external audio-interruption (BT disconnect, mic route change)
+  /// into the FSM. Replaces the removed direct subscription to
+  /// `audioCapture.onEngineInterrupted`. Idempotent: a second call after a
+  /// terminal short-circuits via `!state.isTerminal`.
+  func externalEngineInterrupted() {
+    guard !state.isTerminal else { return }
+    deliverRecordingExitIfCurrent(.audioInterruption, sid: currentSessionID)
+  }
+
+  /// Route an external ASR-XPC interruption (audio-capture XPC service error,
+  /// equivalent in shape to the adapter's own engine-crash) into the FSM.
+  /// Mirror of the internal `routeASRInterruption(sid:)` path the removed
+  /// `onXPCServiceError` subscription used to invoke.
+  func externalASRInterrupted() {
+    guard !state.isTerminal else { return }
+    routeASRInterruption(sid: currentSessionID)
+  }
+
+  /// Route an external capture-stall into the FSM. Replaces the removed
+  /// `audioCapture.onCaptureStalled` subscription. The driver fans the
+  /// `CaptureStallContext` to the telemetry observer separately (PR-4b.4);
+  /// this method only routes the FSM transition. The context's `sessionID`
+  /// is a `UInt64` capture counter (different domain from the kernel's UUID
+  /// `SessionID`), so the guard is on kernel terminal state, not ID
+  /// equality — the App-side `WedgeRecoveryRouter` already filters by
+  /// capture session via its own `isCurrentSession(ctx.sessionID)` check.
+  func externalCaptureStalled(_ ctx: CaptureStallContext) {
+    _ = ctx
+    guard !state.isTerminal else { return }
+    deliverRecordingExitIfCurrent(.captureStall, sid: currentSessionID)
   }
 
   /// The buffer-handoff callback (PR-3 plan §3.4 — reuses the shipped
@@ -1236,11 +1285,12 @@ final class RecordingSessionKernel {
     guard isCurrent(sid) else { return }
     guard transition(to: terminal) else { return }
     audioCapture.onBufferCaptured = nil
-    audioCapture.onEngineInterrupted = nil
-    audioCapture.onCaptureStalled = nil
-    audioCapture.onXPCServiceError = nil
-    // `onVADAutoStop` is NOT cleared here — the kernel never owns it
-    // (`CaptureVADSignalSource` is the single owner, PR-4 plan §3.5).
+    // PR-4b.1: `onEngineInterrupted`, `onCaptureStalled`, and `onXPCServiceError`
+    // are no longer owned by the kernel — the App-side routers stay as sole
+    // subscribers, so the kernel must not nil-clear them on session terminal
+    // (doing so would steal them from the App router for the lifetime of the
+    // app). `onVADAutoStop` is similarly NOT cleared here — `CaptureVADSignalSource`
+    // is the single owner (PR-4 plan §3.5).
     adapter.onEngineInterrupted = nil
     drainTaskBag()
 

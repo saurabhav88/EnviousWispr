@@ -192,18 +192,27 @@ final class FakeAudioCapture: AudioCaptureInterface {
   /// Fire the capture-stall callback (C3 / C4 — the liveness watchdog observed
   /// zero buffers within the stall window).
   func fireCaptureStalled() {
-    onCaptureStalled?(
-      CaptureStallContext(
-        sessionID: currentCaptureSessionID,
-        armedAtUptimeNs: 0,
-        firedAtUptimeNs: 0,
-        route: "fake",
-        sourceType: captureSourceType,
-        engineStartedSuccessfully: true,
-        tapInstalled: true,
-        formatMismatchObserved: false,
-        inputDeviceUIDPreferred: nil,
-        inputDeviceUIDSystemDefault: nil))
+    onCaptureStalled?(makeStallContext())
+  }
+
+  /// Construct a synthetic capture-stall context against the fake's current
+  /// session counter. Used by the simulator's `ScenarioRunner` to route a
+  /// stall directly into the kernel's `externalCaptureStalled(_:)` entry
+  /// method (PR-4b.1) — the kernel no longer subscribes to
+  /// `onCaptureStalled`, so the simulator drives the FSM transition through
+  /// the new entry instead of firing the callback.
+  func makeStallContext() -> CaptureStallContext {
+    CaptureStallContext(
+      sessionID: currentCaptureSessionID,
+      armedAtUptimeNs: 0,
+      firedAtUptimeNs: 0,
+      route: "fake",
+      sourceType: captureSourceType,
+      engineStartedSuccessfully: true,
+      tapInstalled: true,
+      formatMismatchObserved: false,
+      inputDeviceUIDPreferred: nil,
+      inputDeviceUIDSystemDefault: nil)
   }
 
   /// Fire the XPC service-error callback (C6 — XPC capture crash). This is the

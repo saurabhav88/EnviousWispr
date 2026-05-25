@@ -1,5 +1,7 @@
 import Foundation
 
+@testable import EnviousWisprPipeline
+
 // MARK: - ScenarioRunner + assertion library (epic #827, PR-2 plan §3.4)
 //
 // The runner executes a `Scenario`'s ordered steps against a
@@ -134,16 +136,26 @@ struct ScenarioRunner {
   }
 
   private func apply(captureDirective: CaptureDirective, context: SimulatorContext) {
+    // PR-4b.1: the kernel no longer subscribes to `audioCapture.onEngineInterrupted`,
+    // `onCaptureStalled`, or `onXPCServiceError`. The simulator routes these
+    // signals through the kernel's new internal entry methods (
+    // `externalEngineInterrupted` / `externalASRInterrupted` /
+    // `externalCaptureStalled`) instead of firing the now-unsubscribed capture
+    // callbacks. The `StubRecordingSession` self-test never wired these
+    // directives (the stub has no kernel), so the kernel-cast falls through to
+    // a no-op there — same shape as before the migration.
+    let kernel = (context.sut as? KernelRecordingSession)?.testKernel
     switch captureDirective {
     case .deliverBuffer:
       context.capture.deliverBuffer()
     case .stall:
-      // A stall fires the liveness-watchdog callback — not merely an absence
-      // of buffers (C3 / C4).
-      context.capture.fireCaptureStalled()
+      // A stall fires the liveness-watchdog signal — not merely an absence
+      // of buffers (C3 / C4). Routed through the kernel's external entry to
+      // match the production path PR-4b.4 wires (App router → driver → kernel).
+      kernel?.externalCaptureStalled(context.capture.makeStallContext())
     case .interrupt, .routeChange:
       // The audio-interruption channel (C5).
-      context.capture.raiseEngineInterruption()
+      kernel?.externalEngineInterrupted()
     case .permissionDenied:
       context.capture.permissionDenied = true
     case .startFailure:
@@ -151,7 +163,7 @@ struct ScenarioRunner {
     case .xpcCrash:
       // The ASR-interruption channel — distinct from the audio-interruption
       // path (C6, not C5).
-      context.capture.fireXPCServiceError()
+      kernel?.externalASRInterrupted()
     }
   }
 

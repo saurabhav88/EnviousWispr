@@ -13,10 +13,15 @@ import Foundation
 // the `.hidden` overlay, so a UI-keyed observer would miss them.
 //
 // This observer watches RAW `kernel.state` transitions, so no terminal is
-// missed. It also owns the two capture-layer diagnostic callbacks the kernel
-// does not consume for control flow (`onCaptureSessionInterruption`,
-// `onXPCReplyFailed`). The capture-stall signal — which the kernel DOES
-// consume for control flow — reaches the observer through the kernel's
+// missed. PR-4b.1: the observer no longer claims the shared
+// `AudioCaptureInterface` callbacks (`onCaptureSessionInterruption`,
+// `onXPCReplyFailed`). Those are single-owner; the App-side routers stay as
+// sole subscribers. The driver's `HeartPathTelemetryTarget` conformance
+// already forwards into the observer's `handleCaptureSessionInterruption(_:)`
+// and `handleXPCReplyFailed(_:)` methods via `WedgeRecoveryRouter`'s
+// `resolveActiveTelemetryTarget()` (PR-4b.4 wires the App router's Parakeet
+// branch). The capture-stall signal — which the kernel DOES consume for
+// control flow — reaches the observer through the kernel's
 // `captureStallTelemetry` fan-out seam (PR-4 §3.9).
 //
 // PR-4a ships this production-unwired: no App-layer caller constructs it. The
@@ -80,18 +85,6 @@ final class KernelHeartPathTelemetryObserver {
     self.lastObservedState = kernel.state
   }
 
-  /// Begin observing. Wires the two capture-diagnostic callbacks the kernel
-  /// does not consume, and arms raw-state observation.
-  func start() {
-    audioCapture.onCaptureSessionInterruption = { [weak self] ctx in
-      self?.handleCaptureSessionInterruption(ctx)
-    }
-    audioCapture.onXPCReplyFailed = { [weak self] ctx in
-      self?.handleXPCReplyFailed(ctx)
-    }
-    observeKernelState()
-  }
-
   // MARK: Capture-diagnostic callbacks (the kernel does not consume these)
   //
   // These three method names match `HeartPathTelemetryTarget`; the
@@ -120,8 +113,10 @@ final class KernelHeartPathTelemetryObserver {
   /// runs synchronously on whatever context mutated the property; it hops to
   /// `@MainActor` before re-reading state and re-arming (PR-4 §3.7, Gemini
   /// concurrency premise — the explicit hop is the safe pattern even though
-  /// the kernel is `@MainActor`).
-  private func observeKernelState() {
+  /// the kernel is `@MainActor`). PR-4b.1 widened access from `private` to
+  /// internal so the factory (PR-4b.2) can call it directly post-construction
+  /// in place of the deleted `start()` method.
+  func observeKernelState() {
     withObservationTracking {
       _ = kernel.state
     } onChange: { [weak self] in
