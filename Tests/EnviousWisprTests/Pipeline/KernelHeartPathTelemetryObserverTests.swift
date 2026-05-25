@@ -31,29 +31,88 @@ import Testing
       // state, so each still produces an event.
       #expect(event(.completed) == .pipelineCompleted)
       #expect(event(.cancelled) == .cancelled)
-      #expect(event(.noSpeech) == .noSpeech)
+      #expect(event(.noSpeech) == .noSpeech(.vadGate))
       #expect(event(.audioInterrupted) == .audioInterrupted)
-      #expect(event(.asrInterrupted) == .asrInterrupted)
+      // Default priorState `.idle` → wasRecording == false (the non-recording
+      // path); the routing test below covers the `.recording` → true case
+      // and the `.transcribing` → false case.
+      #expect(event(.asrInterrupted) == .asrInterrupted(wasRecording: false))
       #expect(event(.failed(.asrEmpty)) == .failed(.asrEmpty))
+      // PR-4b.2 r10 — observer routes the two rich-emitter-owned failures into
+      // the sink. The sink will skip these (negative coverage in
+      // `KernelLifecycleTelemetrySinkTests`), but the observer MUST still
+      // map them so the case is reachable rather than silently dropped.
+      #expect(event(.failed(.captureStalled)) == .failed(.captureStalled))
+      #expect(event(.failed(.noAudioCaptured)) == .failed(.noAudioCaptured))
     }
 
     @Test("the discarded event carries the abort reason")
     func discardedCarriesReason() {
+      #expect(event(.discarded, discardReason: .tooShort) == .discarded(.tooShort))
       #expect(
-        KernelHeartPathTelemetryObserver.lifecycleEvent(
-          for: .discarded, discardReason: .tooShort) == .discarded(.tooShort))
-      #expect(
-        KernelHeartPathTelemetryObserver.lifecycleEvent(
-          for: .discarded, discardReason: .releasedBeforeRecording)
+        event(.discarded, discardReason: .releasedBeforeRecording)
           == .discarded(.releasedBeforeRecording))
     }
 
-    @Test("non-event states map to nil")
+    @Test(".asrInterrupted carries was_recording derived from priorState (matrix #3)")
+    func asrInterruptedCarriesWasRecording() {
+      #expect(
+        event(.asrInterrupted, priorState: .recording) == .asrInterrupted(wasRecording: true))
+      #expect(
+        event(.asrInterrupted, priorState: .transcribing)
+          == .asrInterrupted(wasRecording: false))
+    }
+
+    @Test("the noSpeech event carries the source (r7)")
+    func noSpeechCarriesSource() {
+      #expect(event(.noSpeech, lastNoSpeechSource: .vadGate) == .noSpeech(.vadGate))
+      #expect(
+        event(.noSpeech, lastNoSpeechSource: .asrEmptyNoSpeech)
+          == .noSpeech(.asrEmptyNoSpeech))
+    }
+
+    @Test("warmingUp emits .modelLoading only when a model load actually started (r6/r7)")
+    func warmingUpGatedByDidLoadModel() {
+      // r7 OQ-3 resolution — observer reads kernel-stamped flag, not adapter
+      // readiness post-transition.
+      #expect(event(.warmingUp, didLoadModelThisSession: true) == .modelLoading)
+      #expect(event(.warmingUp, didLoadModelThisSession: false) == nil)
+    }
+
+    @Test("stopping always maps to .recordingStopped (r6)")
+    func stoppingMapsToRecordingStopped() {
+      #expect(event(.stopping) == .recordingStopped)
+    }
+
+    @Test("finalizing emits .asrCompleted only when entered from .transcribing (r6)")
+    func finalizingGatedByPriorState() {
+      // Old TP:922 fired inside the transcript branch. The kernel reaches
+      // `.finalizing` ONLY from `.transcribing` via `runFinalizing(asrText:)`
+      // — the no-speech / asrEmpty arms jump straight to terminal — so
+      // `priorState == .transcribing` is the structural "ASR returned text"
+      // signal. Codex review #11 caught that the previous implementation
+      // gated on `kernel.deliveredTranscript`, which is set INSIDE
+      // `runFinalizing` AFTER the transition; reading it at mapping time
+      // would always be nil.
+      #expect(event(.finalizing, priorState: .transcribing) == .asrCompleted)
+      // Defensive contra-condition: a `.finalizing` arrival from any other
+      // prior state is structurally impossible (the FSM doesn't allow it),
+      // but if it somehow happened the breadcrumb must NOT fire.
+      #expect(event(.finalizing, priorState: .recording) == nil)
+      #expect(event(.finalizing, priorState: .preparing) == nil)
+    }
+
+    @Test("non-event states map to nil under default conditions")
     func nonEventStatesMapToNil() {
-      for state: RecordingSessionState in [.idle, .preparing, .warmingUp, .stopping, .finalizing] {
-        #expect(
-          KernelHeartPathTelemetryObserver.lifecycleEvent(for: state, discardReason: nil) == nil)
+      // `.warmingUp` / `.stopping` / `.finalizing` now have conditional event
+      // mappings (covered above); under default conditions warmingUp +
+      // finalizing still return nil. Only `.idle` and `.preparing` are
+      // unconditionally nil.
+      for state: RecordingSessionState in [.idle, .preparing] {
+        #expect(event(state) == nil)
       }
+      #expect(event(.warmingUp) == nil)
+      #expect(event(.finalizing) == nil)
     }
 
     // MARK: Raw-state observation wiring
@@ -79,7 +138,18 @@ import Testing
       kernel.testForceTransition(to: .completed)
       await drain()
 
-      #expect(recorder.events == [.recordingCommitted, .transcriptionStarted, .pipelineCompleted])
+      // PR-4b.2 r6 — `.stopping` emits `.recordingStopped`; `.finalizing`
+      // emits `.asrCompleted` when entered from `.transcribing` (the
+      // structural transcript-branch signal — Codex review #11). The test's
+      // forced path visits `.transcribing → .finalizing`, so the breadcrumb
+      // fires here. `.warmingUp` wasn't visited (no model-load branch
+      // entered).
+      #expect(
+        recorder.events == [
+          .recordingCommitted(isStreaming: false), .recordingStopped, .transcriptionStarted,
+          .asrCompleted,
+          .pipelineCompleted,
+        ])
     }
 
     @Test("a cancelled terminal emits even though it renders a hidden overlay")
@@ -130,8 +200,21 @@ import Testing
 
     // MARK: Helpers
 
-    private func event(_ state: RecordingSessionState) -> KernelLifecycleEvent? {
-      KernelHeartPathTelemetryObserver.lifecycleEvent(for: state, discardReason: nil)
+    private func event(
+      _ state: RecordingSessionState,
+      priorState: RecordingSessionState = .idle,
+      discardReason: DiscardReason? = nil,
+      didLoadModelThisSession: Bool = false,
+      lastNoSpeechSource: NoSpeechSource? = nil,
+      isStreamingSession: Bool = false
+    ) -> KernelLifecycleEvent? {
+      KernelHeartPathTelemetryObserver.lifecycleEvent(
+        for: state,
+        priorState: priorState,
+        discardReason: discardReason,
+        didLoadModelThisSession: didLoadModelThisSession,
+        lastNoSpeechSource: lastNoSpeechSource,
+        isStreamingSession: isStreamingSession)
     }
 
     private func makeKernel() -> RecordingSessionKernel {
