@@ -167,6 +167,10 @@ scripts/eval/corpus/alias-holdout-private.jsonl
 # audio clips, and the captured baseline are all tracked.
 !scripts/freeze-suite/
 !scripts/freeze-suite/**
+# Runtime outputs of the PR-4b.3 variance-log harness — machine-state,
+# regenerated per run / appended across runs. Founder reviews locally.
+scripts/freeze-suite/compare-output.json
+scripts/freeze-suite/variance-log.jsonl
 docs/
 content-engine/
 Brand Assets/
