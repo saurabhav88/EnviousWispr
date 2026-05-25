@@ -4,7 +4,7 @@ import Foundation
 /// Per-call context for `HeartPathTelemetryEmitter.noAudioCaptured(...)`.
 ///
 /// The shape mirrors the parameters previously threaded into
-/// `TranscriptionPipeline.emitNoAudioCapturedEvent(wasStreaming:)` and
+/// the old Parakeet pipeline's `emitNoAudioCapturedEvent(wasStreaming:)` and
 /// `WhisperKitPipeline.emitNoAudioCapturedEvent()`.
 struct NoAudioContext: Sendable {
   let sessionID: UInt64

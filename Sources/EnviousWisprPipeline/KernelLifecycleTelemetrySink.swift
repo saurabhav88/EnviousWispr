@@ -5,7 +5,7 @@ import Foundation
 
 /// Renders `KernelLifecycleEvent` values (produced by
 /// `KernelHeartPathTelemetryObserver`) into the byte-identical Sentry / PostHog
-/// calls that `TranscriptionPipeline` made today. PR-4b.2 §3.7.
+/// calls that the old Parakeet pipeline made today. PR-4b.2 §3.7.
 ///
 /// Backend-agnostic — the backend tag flows from `init(backend:)`, never from
 /// hardcoded `"parakeet"` / `"whisperKit"` strings inside the switch body.
@@ -289,7 +289,7 @@ final class KernelLifecycleTelemetrySink {
       //   - `.captureStalled` rich path: observer.handleCaptureStall →
       //     emitter.stallFired — actively wired in the new factory stack.
       //   - `.noAudioCaptured` rich path: emitter.noAudioCaptured(ctx:) is
-      //     ONLY called from `TranscriptionPipeline.swift:720` and
+      //     ONLY called from the old Parakeet pipeline and
       //     `WhisperKitPipeline.swift:623` — both BYPASSED by PR-4b.4 cutover.
       //     Nothing in the kernel / observer / driver invokes it.
       // Result: skipping here would drop the no-audio Sentry signal

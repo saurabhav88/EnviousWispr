@@ -103,16 +103,24 @@ enum DictationRuntimeFixtures {
     return TranscriptStore(directory: tempDir)
   }
 
-  static func makeParakeetPipeline(
+  /// PR-4b.4 of #827: returns the kernel-backed driver (the Parakeet pipeline
+  /// post-cutover). Callers update their stored variable type from
+  /// the old Parakeet pipeline to `KernelDictationDriver`; the construction-site
+  /// keyword-arg shape is otherwise unchanged.
+  static func makeParakeetDriver(
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface,
     store: TranscriptStore
-  ) -> TranscriptionPipeline {
-    TranscriptionPipeline(
-      audioCapture: audioCapture,
-      asrManager: asrManager,
-      transcriptStore: store
-    )
+  ) -> KernelDictationDriver {
+    KernelDictationDriverFactory.make(
+      inputs: .init(
+        audioCapture: audioCapture,
+        asrManager: asrManager,
+        transcriptStore: store,
+        keychainManager: KeychainManager(),
+        captureTelemetry: CaptureTelemetryState(),
+        pasteCompletionRegistry: PasteCompletionRegistry()
+      ))
   }
 
   static func makeWhisperKitPipeline(

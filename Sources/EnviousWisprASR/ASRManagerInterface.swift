@@ -50,7 +50,7 @@ public protocol ASRManagerInterface: AnyObject {
   func cancelInFlightLoad()
 
   /// Issue #445: per-tick callback for the load-progress polling stream.
-  /// Set by `TranscriptionPipeline` for the duration of one `loadModel()`
+  /// Set by the dictation kernel for the duration of one `loadModel()`
   /// call so the pipeline-owned `LoadProgressWatcher` receives mtime + phase
   /// observations from the proxy's existing 8Hz timer. Cleared after the
   /// load resolves. Closure-callback shape matches `swift-patterns.md` hot-

@@ -252,13 +252,16 @@ struct MenuBarControllerTests {
     let tempDir = FileManager.default.temporaryDirectory
       .appendingPathComponent("menu-bar-controller-tests-\(UUID().uuidString)")
     let store = TranscriptStore(directory: tempDir)
-    let parakeet = TranscriptionPipeline(
-      audioCapture: audioCapture, asrManager: asrManager, transcriptStore: store)
+    let parakeet = KernelDictationDriverFactory.make(
+      inputs: .init(
+        audioCapture: audioCapture, asrManager: asrManager, transcriptStore: store,
+        keychainManager: KeychainManager(), captureTelemetry: CaptureTelemetryState(),
+        pasteCompletionRegistry: PasteCompletionRegistry()))
     let whisperKit = WhisperKitPipeline(
       audioCapture: audioCapture, backend: WhisperKitBackend(),
       transcriptStore: store, keychainManager: KeychainManager())
     let liveRecordingState = LiveRecordingState(
-      pipeline: parakeet, whisperKitPipeline: whisperKit,
+      kernelDriver: parakeet, whisperKitPipeline: whisperKit,
       audioCapture: audioCapture, asrManager: asrManager)
     let settings = SettingsManager()
     let backendMetadata = BackendMetadata(

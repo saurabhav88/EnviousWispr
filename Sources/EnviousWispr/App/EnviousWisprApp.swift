@@ -93,14 +93,20 @@ struct EnviousWisprApp: App {
       transcriptStore: transcriptStore
     )
 
-    let pipeline = TranscriptionPipeline(
-      audioCapture: audioCapture,
-      asrManager: asrManager,
-      transcriptStore: transcriptStore,
-      keychainManager: keychainManager,
-      captureTelemetry: captureTelemetry,
-      pasteCompletionRegistry: polishService.pasteCompletionRegistry
-    )
+    // PR-4b.4 of #827: Parakeet recordings flow through the kernel via the
+    // driver constructed by `KernelDictationDriverFactory`. The factory
+    // builds the kernel + Parakeet engine adapter + lifecycle telemetry sink
+    // + heart-path telemetry observer internally and wires kernel-state
+    // observation post-construction (PR-4b.2).
+    let kernelDriver = KernelDictationDriverFactory.make(
+      inputs: .init(
+        audioCapture: audioCapture,
+        asrManager: asrManager,
+        transcriptStore: transcriptStore,
+        keychainManager: keychainManager,
+        captureTelemetry: captureTelemetry,
+        pasteCompletionRegistry: polishService.pasteCompletionRegistry
+      ))
 
     // W6: language-flip telemetry wired via a closure so `EnviousWisprASR`
     // stays vendor-contained. The detector fires this from an actor; hop to
@@ -141,7 +147,7 @@ struct EnviousWisprApp: App {
     let hotkeyService = HotkeyService()
 
     let settingsSync = PipelineSettingsSync(
-      pipeline: pipeline,
+      kernelDriver: kernelDriver,
       whisperKitPipeline: whisperKitPipeline,
       polishService: polishService,
       audioCapture: audioCapture,
@@ -165,11 +171,11 @@ struct EnviousWisprApp: App {
       propagator: customWordsPropagator,
       initialWords: customWordsCoordinator.customWords,
       correctorConsumers: [
-        pipeline.wordCorrection,
+        kernelDriver.wordCorrection,
         whisperKitPipeline.wordCorrection,
       ],
       polishConsumers: [
-        pipeline.llmPolish,
+        kernelDriver.llmPolish,
         whisperKitPipeline.llmPolish,
         polishService.llmPolishStep,
       ],
@@ -263,7 +269,7 @@ struct EnviousWisprApp: App {
     )
 
     let liveRecordingState = LiveRecordingState(
-      pipeline: pipeline,
+      kernelDriver: kernelDriver,
       whisperKitPipeline: whisperKitPipeline,
       audioCapture: audioCapture,
       asrManager: asrManager
@@ -286,7 +292,7 @@ struct EnviousWisprApp: App {
       set: { locked in liveRecordingState.isRecordingLocked = locked }
     )
     let dictationLifecycleCoordinator = DictationLifecycleCoordinator(
-      pipeline: pipeline,
+      kernelDriver: kernelDriver,
       whisperKitPipeline: whisperKitPipeline,
       recordingOverlay: recordingOverlay,
       hotkeyService: hotkeyService,
@@ -305,7 +311,7 @@ struct EnviousWisprApp: App {
     let dictationRuntime = DictationRuntime(
       audioCapture: audioCapture,
       asrManager: asrManager,
-      pipeline: pipeline,
+      kernelDriver: kernelDriver,
       whisperKitPipeline: whisperKitPipeline,
       captureTelemetry: captureTelemetry,
       settings: settings,
@@ -370,7 +376,7 @@ struct EnviousWisprApp: App {
       aiAvailability: aiAvailability,
       audioCapture: audioCapture,
       asrManager: asrManager,
-      pipeline: pipeline,
+      kernelDriver: kernelDriver,
       whisperKitPipeline: whisperKitPipeline,
       setup: setup,
       dictationRuntime: dictationRuntime,

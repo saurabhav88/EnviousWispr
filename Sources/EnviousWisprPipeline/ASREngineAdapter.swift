@@ -125,7 +125,7 @@ public struct ASRFinalizeProgressTick: Sendable {
 /// copy. The production Parakeet adapter feeds streaming ASR through
 /// `ASRManagerInterface.feedAudio(_:)`, which takes an `AVAudioPCMBuffer`; an
 /// owned-`[Float]` carrier would force a buffer reconstruction the shipped
-/// streaming path (`TranscriptionPipeline.swift:483`) never does.
+/// streaming path (old Parakeet pipeline) never does.
 ///
 /// `@unchecked Sendable`: `AVAudioPCMBuffer` is not `Sendable`, but the buffer
 /// is created on the audio thread, wrapped here exactly once, and handed to

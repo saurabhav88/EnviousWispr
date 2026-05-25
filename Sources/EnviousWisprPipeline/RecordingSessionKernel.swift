@@ -106,7 +106,7 @@ public enum DiscardReason: Equatable, Sendable {
 /// the `KernelLifecycleEvent.noSpeech(NoSpeechSource)` lifecycle event so the
 /// observer can route the source-appropriate breadcrumb without losing the
 /// old VAD-gate vs ASR-empty no-speech distinction (PR-1 §B.7.2; old
-/// `TranscriptionPipeline.swift:787` vs `:902`).
+/// the old Parakeet pipeline vs `:902`).
 public enum NoSpeechSource: Equatable, Sendable {
   /// VAD gate fired pre-ASR — raw samples had no speech evidence
   /// (`TP:787` — "VAD gate: no speech detected, skipping ASR").
@@ -215,7 +215,7 @@ final class RecordingSessionKernel {
   /// `→ warmingUp` transition. Read by the kernel-state observer to gate the
   /// `.modelLoading` lifecycle event so a warm session does not emit a
   /// spurious "Model loading" breadcrumb (PR-1 §B.7.2 parity; old
-  /// `TranscriptionPipeline.swift:365` was conditional on entering the
+  /// the old Parakeet pipeline was conditional on entering the
   /// load branch at `:363`). Reset on session start.
   private(set) var didLoadModelThisSession: Bool = false
 
@@ -230,7 +230,7 @@ final class RecordingSessionKernel {
   /// immediately BEFORE `adapter.beginSession(..., streaming:)`. The observer
   /// reads this at `.recording` lifecycle mapping time so the
   /// `recordingCommitted` event carries the same streaming flag the old
-  /// `TranscriptionPipeline.swift:550-553` breadcrumb + `updateRecordingState`
+  /// the old Parakeet pipeline breadcrumb + `updateRecordingState`
   /// emitted (Codex review #11 r2 — without this thread-through the sink
   /// would misreport every streaming session as batch). Reset on session
   /// start.
@@ -302,14 +302,14 @@ final class RecordingSessionKernel {
   /// `audioCapture.stopCapture()` between `.stopping` and the discard check
   /// counts capture-teardown latency as visible-recording time, letting a
   /// 40 ms tap bypass the gate when teardown is slow. Old pipeline
-  /// parity: `TranscriptionPipeline.swift:622` reads elapsed BEFORE
+  /// parity: the old Parakeet pipeline reads elapsed BEFORE
   /// `stopCapture()`. `nil` outside `.stopping`+; reset on every session start.
   private var stoppingStartedAtTick: UInt64?
 
   /// `true` once the polish step returned a non-empty processed transcript —
   /// the kernel-era equivalent of the point at which the old pipeline called
   /// `asrManager.noteTranscriptionComplete(policy:)` (just after polish, before
-  /// storage and paste — `TranscriptionPipeline.swift:992-995`). PR-4.5 #8
+  /// storage and paste — the old Parakeet pipeline). PR-4.5 #8
   /// gates the unload policy on this so failures BEFORE a transcript was ready
   /// (capture-stall, ASR-wedge, no-speech, cancel, sub-minimum discard, audio /
   /// ASR interrupt mid-recording) do NOT incur a model-unload spike that the
@@ -496,7 +496,7 @@ final class RecordingSessionKernel {
   /// Sessionless pre-warm — drives `adapter.readiness` toward `.ready` AND
   /// warms the capture path so a Bluetooth codec negotiation does not eat the
   /// first 0.5–2 s of dictation (PR-1 §B.1.2, §B.2.2; PR-4.5 #1 — parity with
-  /// old `TranscriptionPipeline.preWarmAudioInput`, `:295-315`). No
+  /// old Parakeet pipeline's `preWarmAudioInput`, `:295-315`). No
   /// `SessionID`, no FSM transition; valid only from `idle` / terminal.
   ///
   /// **Async on purpose (Codex r4):** the real PTT flow
@@ -518,7 +518,7 @@ final class RecordingSessionKernel {
   /// logged + swallowed (the session is not stranded; the start path will
   /// retry capture as needed); an adapter-warm failure leaves `.readiness`
   /// non-ready and the session's own warm-up path handles it.
-  func preWarm() async {
+  func preWarm() async throws {
     guard state == .idle || state.isTerminal else {
       log("preWarm ignored — session active at \(state)")
       return
@@ -538,11 +538,19 @@ final class RecordingSessionKernel {
     // negotiation MUST complete before `start(config:)` cancels the session
     // task bag, or the negotiation truncates and the user pays the
     // cold-start cost the pre-warm was supposed to hide.
+    //
+    // PR-4b.4 of #827: rethrow audioCapture.preWarm failures so the PTT
+    // starter (`RecordingStarter.start()`) can surface "Microphone
+    // unavailable" to the user. Old Parakeet pipeline propagated this same
+    // error through `try await preWarmAudioInput()`; swallowing it here
+    // would let the start path proceed into `.toggleRecording` and fail
+    // downstream in a less informative way.
     do {
       try await audioCapture.preWarm()
       log("preWarm audioCapture.preWarm succeeded sid=\(sid.raw)")
     } catch {
       log("preWarm audioCapture.preWarm failed sid=\(sid.raw) error=\(error)")
+      throw error
     }
   }
 
@@ -556,7 +564,7 @@ final class RecordingSessionKernel {
       return
     }
     // Push the frozen device UIDs BEFORE the capture source is built (PR-4.5
-    // #3 — parity with old TranscriptionPipeline `:1434-1439`). The capture
+    // #3 — parity with old Parakeet pipeline `:1434-1439`). The capture
     // layer reads UIDs at source construction (the source is rebuilt between
     // recordings); a mic swap arriving after pre-warm but before
     // `startEnginePhase` would otherwise slip through `PipelineSettingsSync`'s
@@ -574,7 +582,7 @@ final class RecordingSessionKernel {
     bindCaptureCallbacks(sid)
     // Stamp the VAD seam with the freshly minted session BEFORE subscribing —
     // a signal that races in between subscribe and stamp would otherwise carry
-    // a stale ID and be dropped (PR-4.5 #2; old TranscriptionPipeline
+    // a stale ID and be dropped (PR-4.5 #2; old Parakeet pipeline
     // `:569-570,1276-1285`).
     vad.setCurrentSessionID(sid)
     log("VAD session stamped sid=\(sid.raw)")  // PR-4.5 §8
@@ -757,7 +765,7 @@ final class RecordingSessionKernel {
     guard !state.isTerminal else { return }
 
     // Minimum-recording-duration discard (PR-4.5 #4) — parity with old
-    // `TranscriptionPipeline.swift:621-640`. The TIME-BASED gate uses
+    // the old Parakeet pipeline. The TIME-BASED gate uses
     // visible-recording elapsed measured from `→ recording` (set above at
     // `recordingStartedAtTick`), NOT from pre-roll capture (PR-4.5 §5b:
     // pre-roll fix #0 must not let a 40 ms accidental tap slip past this
@@ -801,7 +809,7 @@ final class RecordingSessionKernel {
 
     // Condition the captured audio for ASR batch rescue (PR-4.5 #5) — VAD
     // filtering + too-aggressive-filter raw fallback + short-utterance
-    // padding, in the order the old `TranscriptionPipeline` (`:732-823`)
+    // padding, in the order the old Parakeet pipeline (`:732-823`)
     // applied them. Runs AFTER the #4 discard gate so a sub-minimum tap is
     // never padded into valid ASR input (§5b). Conditioner is kernel-side
     // (capture/VAD policy lives here, not in the adapter); the adapter
@@ -818,7 +826,7 @@ final class RecordingSessionKernel {
     let xpcSegments = captureResult.vadSegments
     let vadSegments = !xpcSegments.isEmpty ? xpcSegments : vad.speechSegmentsAtStop()
     // Raw audio for the conditioner is `captureResult.samples` (parity with
-    // old `TranscriptionPipeline.swift:670` `rawSamples = captureResult.samples`).
+    // old Parakeet pipeline `rawSamples = captureResult.samples`).
     // The OLD pipeline did NOT include pre-roll in batch decode either — pre-roll
     // reached the streaming ASR via `onBufferCaptured` (still does, via
     // `acceptAudio` → adapter's streaming feed). Codex r4 caught a r3 regression
@@ -890,7 +898,7 @@ final class RecordingSessionKernel {
 
     // The unload-policy gate: a non-empty transcript has cleared polish and is
     // about to be stored / delivered. Old pipeline parity
-    // (`TranscriptionPipeline.swift:992-995`): `noteTranscriptionComplete` fires
+    // (old Parakeet pipeline): `noteTranscriptionComplete` fires
     // here, between polish and storage/paste — failures after this point still
     // get unload, failures before do not (PR-4.5 #8, §5b).
     transcriptReadyForDelivery = true
@@ -1119,7 +1127,7 @@ final class RecordingSessionKernel {
   /// PR-4 plan §3.4: the carrier holds the `AVAudioPCMBuffer` directly. The
   /// audio thread transfers it via `nonisolated(unsafe)` — the buffer is
   /// created on the audio thread, wrapped once, and read only on `@MainActor`,
-  /// never from two threads (the shipped pattern, `TranscriptionPipeline.swift:483`).
+  /// never from two threads (the shipped pattern, the old Parakeet pipeline).
   private func makeBufferCallback(_ sid: SessionID) -> (@Sendable (AVAudioPCMBuffer) -> Void) {
     return { [weak self] buffer in
       nonisolated(unsafe) let safeBuffer = buffer
@@ -1127,7 +1135,7 @@ final class RecordingSessionKernel {
       Task { @MainActor [weak self] in
         // PR-4.5 #0 pre-roll restoration: accept buffers as soon as the
         // adapter session is open, NOT when the FSM has reached `.recording`.
-        // The old `TranscriptionPipeline` (`:535-539`) retained pre-roll fed
+        // The old Parakeet pipeline (`:535-539`) retained pre-roll fed
         // by `AVAudioEngineSource.PreRollForwarder` (`:329-335`) for the
         // adapter's batch rescue; the fresh kernel's `state == .recording`
         // gate dropped that pre-roll. `adapterSessionActive` is set true the
@@ -1136,7 +1144,7 @@ final class RecordingSessionKernel {
         // (PR-4.5 §5b — prior-session leakage cannot occur). Tail buffers
         // arriving after `.recording` exit but before `onBufferCaptured = nil`
         // also reach the adapter, parity with the old per-buffer hand-off
-        // (`TranscriptionPipeline.swift:481`).
+        // (old Parakeet pipeline).
         guard let self, self.isCurrent(sid), self.adapterSessionActive else { return }
         self.bufferSequence += 1
         let handoff = AudioBufferHandoff(
@@ -1208,7 +1216,7 @@ final class RecordingSessionKernel {
   }
 
   /// Route an ASR-interruption signal (adapter engine crash OR audio-capture
-  /// XPC service error). PR-4.5 #7: the old `TranscriptionPipeline`
+  /// XPC service error). PR-4.5 #7: the old Parakeet pipeline
   /// (`:1134-1163`) handled this in BOTH `.recording` AND `.transcribing`; the
   /// fresh kernel's `deliverRecordingExitIfCurrent` guarded `state == .recording`
   /// only, so a crash in `.transcribing` was dropped (no terminal, no cleanup,
@@ -1358,7 +1366,7 @@ final class RecordingSessionKernel {
 
     // Apply the model-unload policy once per session that produced a
     // transcript-ready-for-delivery (PR-4.5 #8, parity with old
-    // `TranscriptionPipeline.swift:992-995`). A session that crashed in
+    // the old Parakeet pipeline). A session that crashed in
     // capture-stall / ASR-wedge / no-speech / cancel / sub-minimum / audio /
     // ASR interrupt did NOT produce a transcript — applying the unload policy
     // would force a cold reload on the next session for no value. The
@@ -1475,7 +1483,7 @@ final class RecordingSessionKernel {
   }
 
   /// Derive decode options from the frozen session config's language mode
-  /// (PR-4 plan §3.3a — mirrors `TranscriptionPipeline.applySessionConfig`).
+  /// (PR-4 plan §3.3a — mirrors the old Parakeet pipeline's `applySessionConfig`).
   private func makeTranscriptionOptions(_ config: DictationSessionConfig)
     -> TranscriptionOptions
   {

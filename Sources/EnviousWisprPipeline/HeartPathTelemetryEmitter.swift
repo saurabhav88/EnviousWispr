@@ -4,7 +4,7 @@ import EnviousWisprServices
 import Foundation
 
 /// Owns the SHARED heart-path infrastructure-failure telemetry that previously
-/// lived duplicated across `TranscriptionPipeline` and `WhisperKitPipeline`.
+/// lived duplicated across the old Parakeet pipeline and `WhisperKitPipeline`.
 ///
 /// Five events:
 ///   1. capture stall (watchdog-fired)

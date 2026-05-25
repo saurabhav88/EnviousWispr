@@ -16,7 +16,7 @@ import Foundation
 // -> `PipelineState` / `OverlayIntent`. It is a permanent translation layer
 // until PR-9 deletes `DictationPipeline`; it carries real behavior (event
 // translation, state mapping, the limb-step home, the external-error surface)
-// and is NOT a forwarding shim — the old `TranscriptionPipeline` path is gone.
+// and is NOT a forwarding shim — the old Parakeet pipeline path is gone.
 //
 // PR-4a ships this production-unwired: no App-layer caller constructs it.
 // PR-4b re-points the 13 App files at this type.
@@ -115,7 +115,7 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
   /// The polish error from the last session, or `nil`.
   public var lastPolishError: String? { outcome.polishError }
 
-  // MARK: PR-4b.2 — direct methods + property (mirror old TranscriptionPipeline App surface)
+  // MARK: PR-4b.2 — direct methods + property (mirror old Parakeet pipeline App surface)
 
   /// Async cancel request. Wraps `kernel.cancel()` for App callers
   /// (`PipelineSettingsSync.swift:195`, `RecordingFinalizer.swift:95`) that
@@ -171,7 +171,7 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
   ///
   /// Bridge matrix #1 — guard for the active-non-recording states
   /// (`.preparing`, `.warmingUp`, `.stopping`, `.transcribing`, `.finalizing`).
-  /// Old TP's `stopAndTranscribe()` (`TranscriptionPipeline.swift:614-615`)
+  /// Old TP's `stopAndTranscribe()` (old Parakeet pipeline)
   /// only acted on `.recording`. Without the guard, the driver would force
   /// an inappropriate stop request mid-warm-up or duplicate a stop already
   /// in flight.
@@ -190,7 +190,7 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
   /// every other active state (`.preparing`, `.warmingUp`, `.stopping`,
   /// `.transcribing`, `.finalizing`) the kernel silently drops the signal,
   /// which at PR-4b.4 cutover would leave the UI stuck. Old TP's
-  /// `handleEngineInterruption()` (`TranscriptionPipeline.swift:1107-1131`)
+  /// `handleEngineInterruption()` (old Parakeet pipeline)
   /// was state-agnostic: emit Sentry+PostHog state change, cancel cleanup,
   /// flip UI to the mic-disconnect error. Bridge matrix #4 ports the old
   /// behavior for those states via `setExternalError`.
@@ -218,7 +218,7 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
   /// `kernel.externalASRInterrupted()` only acts on `.recording` /
   /// `.transcribing` (its documented contract —
   /// `RecordingSessionKernel.swift:1077-1080`). Old TP's
-  /// `handleASRServiceInterruption()` (`TranscriptionPipeline.swift:1137-1163`)
+  /// `handleASRServiceInterruption()` (old Parakeet pipeline)
   /// was state-agnostic: always emit the `xpc_service_error` Sentry event +
   /// flip the UI to the ASR-crash error. Bridge matrix #2 ports the old
   /// behavior for `.preparing`, `.warmingUp`, `.stopping`, `.finalizing`
@@ -247,7 +247,7 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
   }
 
   /// The frozen per-session config, or `nil` when no session is in flight.
-  /// Mirrors old `TranscriptionPipeline.currentSessionConfig`.
+  /// Mirrors old Parakeet pipeline's `currentSessionConfig`.
   /// `PipelineSettingsSync.swift:272` reads this across both pipelines as the
   /// "recording in flight" signal. The driver's terminal handler clears
   /// `context.config = nil` to honor the "nil when idle" contract (§3.4).
@@ -268,7 +268,7 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
       return .processing(label: "Preparing dictation...")
     case .recording:
       // The real level is supplied by `AudioCaptureManager` downstream — the
-      // pipeline returns 0 here, exactly as `TranscriptionPipeline` did.
+      // pipeline returns 0 here, exactly as the old Parakeet pipeline did.
       return .recording(audioLevel: 0)
     case .stopping, .transcribing:
       return .processing(label: "Transcribing...")
@@ -295,14 +295,17 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
       // PTT-flow caller (`RecordingStarter.start()` awaits `handle(.preWarm)`
       // and then immediately sends `.toggleRecording`) does not see the
       // recording start before BT codec negotiation completes.
-      await kernel.preWarm()
+      //
+      // PR-4b.4 of #827: rethrow on `audioCapture.preWarm()` failure so the
+      // starter's catch{} branch fires the "Microphone unavailable" overlay.
+      try await kernel.preWarm()
     case .toggleRecording(let config):
       switch kernel.state {
       case .idle, .completed, .failed, .cancelled, .discarded, .noSpeech,
         .audioInterrupted, .asrInterrupted:
         // Start: clear the prior session's surfaces, capture finalization
         // context AT RECORDING START (PR-4.5 #6, parity with old
-        // `TranscriptionPipeline.swift:450-453`), then mint a new session.
+        // the old Parakeet pipeline), then mint a new session.
         //
         // The frontmost app + focused AX element are captured here so that a
         // polish step taking seconds — during which focus may shift to the
@@ -393,7 +396,7 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
 
   #if DEBUG
     /// Drives the kernel's cancel unwind — the kernel-era equivalent of
-    /// `TranscriptionPipeline.forceCancelNow()`. Callable from `DebugFaultEndpoint`.
+    /// the old Parakeet pipeline's `forceCancelNow()`. Callable from `DebugFaultEndpoint`.
     package func forceCancelNow() async {
       kernel.cancel()
     }
@@ -425,8 +428,8 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
   }
 
   /// Apply the session's frozen LLM config to the polish step. Mirrors the
-  /// LLM portion of old `TranscriptionPipeline.applySessionConfig(_:)`
-  /// (`TranscriptionPipeline.swift:1419-1422`). VAD + device UID portions
+  /// LLM portion of old Parakeet pipeline's `applySessionConfig(_:)`
+  /// (old Parakeet pipeline). VAD + device UID portions
   /// are already handled by `RecordingSessionKernel`.
   private func applyLLMConfigToPolishStep(_ config: DictationSessionConfig) {
     steps.llmPolish.llmProvider = config.llmProvider
@@ -531,12 +534,12 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
     }
   }
 
-  /// Mirrors the shipped `TranscriptionPipeline` string verbatim (em-dash
+  /// Mirrors the shipped the old Parakeet pipeline string verbatim (em-dash
   /// included) — PR-4 parity; the em-dash cleanup is a separate content change.
   static let asrInterruptedMessage = "Transcription service crashed — please try again"
 
   /// User-facing message for a `failed` terminal. The plan does not enumerate
-  /// this map; each message mirrors today's `TranscriptionPipeline` string for
+  /// this map; each message mirrors today's the old Parakeet pipeline string for
   /// the equivalent failure verbatim (parity — PR-4's bar is "user feels
   /// nothing change"), or a sensible message where the kernel splits a reason
   /// today's pipeline did not name distinctly. The `captureStalled` em-dash is

@@ -39,7 +39,7 @@ import Testing
     "aiAvailability",
     "audioCapture",
     "asrManager",
-    "pipeline",
+    "kernelDriver",
     "whisperKitPipeline",
     "setup",
     "dictationRuntime",

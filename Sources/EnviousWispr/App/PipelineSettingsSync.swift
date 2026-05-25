@@ -11,7 +11,7 @@ import Foundation
 /// see #195 plan for the full frozen/live classification.
 @MainActor
 final class PipelineSettingsSync {
-  private let pipeline: TranscriptionPipeline
+  private let kernelDriver: KernelDictationDriver
   private let whisperKitPipeline: WhisperKitPipeline
   private let polishService: TranscriptPolishService
   private let audioCapture: any AudioCaptureInterface
@@ -29,7 +29,7 @@ final class PipelineSettingsSync {
   private var lastEvictableOllamaModel: String?
 
   init(
-    pipeline: TranscriptionPipeline,
+    kernelDriver: KernelDictationDriver,
     whisperKitPipeline: WhisperKitPipeline,
     polishService: TranscriptPolishService,
     audioCapture: any AudioCaptureInterface,
@@ -37,7 +37,7 @@ final class PipelineSettingsSync {
     hotkeyService: HotkeyService,
     whisperKitSetup: WhisperKitSetupService
   ) {
-    self.pipeline = pipeline
+    self.kernelDriver = kernelDriver
     self.whisperKitPipeline = whisperKitPipeline
     self.polishService = polishService
     self.audioCapture = audioCapture
@@ -52,9 +52,9 @@ final class PipelineSettingsSync {
   /// Custom words are NOT seeded here — `CustomWordsPropagator` (registered
   /// in the former root state init) owns that fanout. See Phase D (#496).
   func applyInitialSettings(_ settings: SettingsManager) {
-    pipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
-    pipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
-    pipeline.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
+    kernelDriver.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
+    kernelDriver.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
+    kernelDriver.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
     whisperKitPipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
     whisperKitPipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
     whisperKitPipeline.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
@@ -100,7 +100,7 @@ final class PipelineSettingsSync {
     switch key {
     case .selectedBackend:
       // Don't switch backends while a pipeline is actively recording/transcribing
-      let parakeetActive = pipeline.state.isActive
+      let parakeetActive = kernelDriver.state.isActive
       let whisperKitActive = whisperKitPipeline.state.isActive
       if parakeetActive || whisperKitActive {
         Task {
@@ -115,7 +115,7 @@ final class PipelineSettingsSync {
       // Issue #289: invalidate any stall-recovery token on either pipeline
       // so a deferred cleanup from a pre-switch stall doesn't tear down
       // the pipeline that's about to become active.
-      pipeline.clearPendingStallRecovery()
+      kernelDriver.clearPendingStallRecovery()
       whisperKitPipeline.clearPendingStallRecovery()
       Task { [weak self] in
         await self?.asrManager.switchBackend(to: backend)
@@ -168,13 +168,13 @@ final class PipelineSettingsSync {
         asrManager.cancelIdleTimer()
       }
     case .emojiFormatterEnabled:
-      pipeline.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
+      kernelDriver.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
       whisperKitPipeline.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
     case .wordCorrectionEnabled:
-      pipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
+      kernelDriver.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
       whisperKitPipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
     case .fillerRemovalEnabled:
-      pipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
+      kernelDriver.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
       whisperKitPipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
     case .isDebugModeEnabled:
       Task { await AppLogger.shared.setDebugMode(settings.isDebugModeEnabled) }
@@ -190,9 +190,9 @@ final class PipelineSettingsSync {
     case .noiseSuppression:
       // Runtime voice-processing toggling is unreliable — full engine rebuild.
       // Cancel active recording first to avoid corrupted state.
-      if pipeline.state == .recording {
+      if kernelDriver.state == .recording {
         Task { [weak self] in
-          await self?.pipeline.cancelRecording()
+          await self?.kernelDriver.cancelRecording()
           self?.audioCapture.buildEngine(noiseSuppression: settings.noiseSuppression)
         }
       } else {
@@ -269,7 +269,7 @@ final class PipelineSettingsSync {
   /// given Ollama model. Used by `reconcileOllamaEviction` to avoid evicting
   /// a model the in-flight polish still needs.
   private func isOllamaModelPinnedInFlight(_ model: String) -> Bool {
-    for cfg in [pipeline.currentSessionConfig, whisperKitPipeline.currentSessionConfig] {
+    for cfg in [kernelDriver.currentSessionConfig, whisperKitPipeline.currentSessionConfig] {
       guard let cfg else { continue }
       if cfg.llmProvider == .ollama && cfg.llmModel == model {
         return true

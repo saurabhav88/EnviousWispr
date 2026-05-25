@@ -34,7 +34,7 @@ import Testing
     let audio = RouterTestAudioCapture()
     let asr = RouterTestASRManager()
     let store = DictationRuntimeFixtures.tempStore()
-    let pipeline = DictationRuntimeFixtures.makeParakeetPipeline(
+    let pipeline = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
     let whisperKitPipeline = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audio, store: store)
@@ -43,7 +43,7 @@ import Testing
     let permissions = PermissionsService()
     let hotkey = HotkeyService()
     let settingsSync = PipelineSettingsSync(
-      pipeline: pipeline,
+      kernelDriver: pipeline,
       whisperKitPipeline: whisperKitPipeline,
       polishService: TranscriptPolishService(
         keychainManager: KeychainManager(),
@@ -64,7 +64,7 @@ import Testing
       backend: { "parakeet" }
     )
     let finalizer = RecordingFinalizer(
-      pipeline: pipeline,
+      kernelDriver: pipeline,
       whisperKitPipeline: whisperKitPipeline,
       asrManager: asr,
       recordingOverlay: overlay,
@@ -75,7 +75,7 @@ import Testing
     let starter = RecordingStarter(
       audioCapture: audio,
       asrManager: asr,
-      pipeline: pipeline,
+      kernelDriver: pipeline,
       whisperKitPipeline: whisperKitPipeline,
       settings: settings,
       permissions: permissions,

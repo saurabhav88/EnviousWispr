@@ -30,7 +30,7 @@ import Testing
 
   private struct Fixture {
     let finalizer: RecordingFinalizer
-    let pipeline: TranscriptionPipeline
+    let kernelDriver: KernelDictationDriver
     let whisperKitPipeline: WhisperKitPipeline
     let asr: RouterTestASRManager
     let lockBox: TestRecordingLockedBox
@@ -41,7 +41,7 @@ import Testing
     let audio = RouterTestAudioCapture()
     let asr = RouterTestASRManager()
     let store = DictationRuntimeFixtures.tempStore()
-    let pipeline = DictationRuntimeFixtures.makeParakeetPipeline(
+    let pipeline = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
     let whisperKitPipeline = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audio, store: store)
@@ -57,7 +57,7 @@ import Testing
       backend: { asr.activeBackendType == .whisperKit ? "whisperkit" : "parakeet" }
     )
     let finalizer = RecordingFinalizer(
-      pipeline: pipeline,
+      kernelDriver: pipeline,
       whisperKitPipeline: whisperKitPipeline,
       asrManager: asr,
       recordingOverlay: overlay,
@@ -67,7 +67,7 @@ import Testing
     )
     return Fixture(
       finalizer: finalizer,
-      pipeline: pipeline,
+      kernelDriver: pipeline,
       whisperKitPipeline: whisperKitPipeline,
       asr: asr,
       lockBox: lockBox,

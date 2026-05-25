@@ -4,7 +4,7 @@ import Foundation
 // MARK: - CapturedAudioConditioner (epic #827, PR-4.5 #5)
 //
 // Restores the VAD-segment filtering + too-aggressive-filter raw fallback +
-// short-utterance padding the old `TranscriptionPipeline.swift:732-762,809-823`
+// short-utterance padding the old Parakeet pipeline
 // applied before handing samples to ASR. PR-3's fresh kernel kept only the
 // yes/no VAD-evidence gate; the adapter then transcribed raw retained PCM,
 // so common short utterances ("yes", "no", "hey") could fail outright when
@@ -35,13 +35,13 @@ public struct ConditionedAudio: Equatable, Sendable {
   public let filteredSampleCount: Int
 
   /// `true` when filtering dropped samples below the ASR minimum AND raw
-  /// samples meet the minimum, so the conditioner returned raw instead. Old
-  /// `TranscriptionPipeline.swift:813-816`.
+  /// samples meet the minimum, so the conditioner returned raw instead.
+  /// Matches the old Parakeet pipeline's raw-fallback branch.
   public let usedRawFallbackAfterVAD: Bool
 
   /// `true` when the final sample count was below the ASR minimum and the
-  /// conditioner appended silence to reach it. Old
-  /// `TranscriptionPipeline.swift:820-823`.
+  /// conditioner appended silence to reach it. Matches the old Parakeet
+  /// pipeline's short-utterance padding.
   public let samplesPaddedToMinimum: Bool
 
   /// Final sample count of `samples` — redundant with `samples.count` but
@@ -66,7 +66,7 @@ public enum CapturedAudioConditioner {
     vadSegments: [SpeechSegment],
     minimumSamples: Int = AudioConstants.minimumTranscriptionSamples
   ) -> ConditionedAudio {
-    // Step 1: VAD-segment filter (parity: `TranscriptionPipeline.swift:751`).
+    // Step 1: VAD-segment filter.
     // `SampleFilter.filter` already returns `rawSamples` unchanged when
     // segments are empty OR when total voiced audio is sub-threshold — the
     // "too-aggressive-filter" raw fallback at the SampleFilter layer.
@@ -74,7 +74,7 @@ public enum CapturedAudioConditioner {
     let filteredCount = filtered.count
 
     // Step 2: too-aggressive-filter raw fallback at the conditioner layer
-    // (parity: `TranscriptionPipeline.swift:813-816`). Even with non-empty
+    //. Even with non-empty
     // segments, SampleFilter's merge can produce fewer than `minimumSamples`
     // if voiced regions were sparse. If raw audio would meet the minimum,
     // prefer raw — losing words is worse than ASR seeing extra silence.
@@ -85,8 +85,7 @@ public enum CapturedAudioConditioner {
       usedRawFallback = true
     }
 
-    // Step 3: short-utterance padding (parity:
-    // `TranscriptionPipeline.swift:820-823`). For genuinely short audio
+    // Step 3: short-utterance padding. For genuinely short audio
     // (single-word: "hey", "hi") pad with silence so ASR's minimum-length
     // contract is satisfied. Guard `count > 0` so a degenerate empty input
     // does not become a buffer of pure silence — the kernel's empty check

@@ -4,18 +4,20 @@ import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
 import EnviousWisprStorage
+import EnviousWisprServices
 import Foundation
 import Testing
 
+import EnviousWisprLLM
 @testable import EnviousWisprPipeline
 
 @MainActor
 @Suite("Heart Path Integration — Finalizer layer (mocked ASR + paste)")
 struct HeartPathIntegrationTests {
   // Scope note. The tests in this file exercise `TranscriptFinalizer` with
-  // mocked ASR and paste boundaries, plus one true `TranscriptionPipeline`
+  // mocked ASR and paste boundaries, plus one true the old Parakeet pipeline
   // cancellation test. The full pipeline heart-path (audio capture through
-  // delivery) cannot be exercised end-to-end until `TranscriptionPipeline`
+  // delivery) cannot be exercised end-to-end until the old Parakeet pipeline
   // gains DI seams for the finalizer and paste executor (#394).
   //
   // Do NOT add tests here that claim graceful ASR-failure degradation —
@@ -87,11 +89,14 @@ struct HeartPathIntegrationTests {
       )
     )
 
-    let pipeline = TranscriptionPipeline(
+    let pipeline = KernelDictationDriverFactory.make(inputs: .init(
       audioCapture: audioCapture,
       asrManager: asrManager,
-      transcriptStore: TranscriptStore()
-    )
+      transcriptStore: TranscriptStore(),
+      keychainManager: KeychainManager(),
+      captureTelemetry: CaptureTelemetryState(),
+      pasteCompletionRegistry: PasteCompletionRegistry()
+    ))
     #expect(pipeline.currentSessionConfig == nil)
 
     let config = DictationSessionConfig.testDefault(
@@ -101,7 +106,7 @@ struct HeartPathIntegrationTests {
       llmProvider: .openAI,
       llmModel: "gpt-test"
     )
-    await pipeline.startRecording(config: config)
+    try await pipeline.handle(event: .toggleRecording(config))
 
     // Phase B freeze contract: the pipeline captures the config handed in by
     // the former root state, and external readers see the frozen snapshot for the
@@ -745,14 +750,14 @@ private func pollUntil(
 /*
 FINDINGS
 
-1. Missing injection seam in `TranscriptionPipeline`:
-   `TranscriptionPipeline.init(...)` constructs its own `TranscriptFinalizer`, and that
+1. Missing injection seam in the old Parakeet kernelDriver:
+   the old Parakeet pipeline's `init(...)` constructs its own `TranscriptFinalizer`, and that
    finalizer owns the only clean paste seam (`deliverPaste`) plus the real text-processing
    runner. That prevents a true pipeline-level integration test from injecting a mock paste
    executor or alternate LLM step through the orchestrator itself. This file uses a small
    harness around real `TranscriptFinalizer` to cover those behaviors.
 
-2. Heart-path contract mismatch in `TranscriptionPipeline.stopAndTranscribe()`:
+2. Heart-path contract mismatch in the old Parakeet pipeline's `stopAndTranscribe()`:
    a thrown ASR error currently lands in the outer `catch` and sets
    `.error("Transcription failed: ...")` without any fallback paste. That contradicts the
    stated requirement that the heart path never fails and should still deliver something.
@@ -767,6 +772,6 @@ FINDINGS
    capability. Renaming the step changes user-visible degradation behavior.
 
 5. Observable coverage gap for real pipeline cancellation:
-   cancellation is testable through `TranscriptionPipeline`, but paste non-occurrence is only
+   cancellation is testable through the old Parakeet pipeline, but paste non-occurrence is only
    indirectly observable today because the paste path is not injectable at the pipeline layer.
 */

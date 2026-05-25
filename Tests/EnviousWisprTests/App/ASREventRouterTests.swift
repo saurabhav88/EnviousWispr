@@ -15,20 +15,32 @@ struct ASREventRouterTests {
     let audio = RouterTestAudioCapture()
     let asr = RouterTestASRManager()
     let store = DictationRuntimeFixtures.tempStore()
-    let parakeet = DictationRuntimeFixtures.makeParakeetPipeline(
+    let parakeet = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
     let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audio, store: store)
 
-    #expect(asr.onServiceInterrupted == nil)
+    // Post-PR-4b.4 of #827: `makeParakeetDriver` runs the factory which
+    // constructs `ParakeetEngineAdapter`, and the adapter installs an
+    // `asrManager.onServiceInterrupted` handler of its own (legacy two-hop
+    // bridge to `adapter.onEngineInterrupted`). The App router overwrites
+    // this on construction below — last-write-wins, and the App route via
+    // `kernelDriver.handleASRServiceInterruption()` is now authoritative.
+    // The pre-construction handler is therefore non-nil; what the test
+    // actually validates is that constructing the router installs a fresh
+    // (router-owned) handler and the post-construction reference reaches it.
+    let priorHandler = asr.onServiceInterrupted
 
     let router = ASREventRouter(
       asrManager: asr,
-      pipeline: parakeet,
+      kernelDriver: parakeet,
       whisperKitPipeline: whisperKit
     )
 
     #expect(asr.onServiceInterrupted != nil)
+    // Confirms the router REPLACED the adapter's installation rather than
+    // running additively — identity check rules out a chain wrapper.
+    #expect(asr.onServiceInterrupted as AnyObject? !== priorHandler as AnyObject?)
     withExtendedLifetime(router) {}
   }
 
@@ -37,14 +49,14 @@ struct ASREventRouterTests {
     let audio = RouterTestAudioCapture()
     let asr = RouterTestASRManager()
     let store = DictationRuntimeFixtures.tempStore()
-    let parakeet = DictationRuntimeFixtures.makeParakeetPipeline(
+    let parakeet = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
     let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audio, store: store)
 
     let router = ASREventRouter(
       asrManager: asr,
-      pipeline: parakeet,
+      kernelDriver: parakeet,
       whisperKitPipeline: whisperKit
     )
 

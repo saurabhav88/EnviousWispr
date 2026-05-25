@@ -36,7 +36,7 @@ enum KernelLifecycleEvent: Equatable, Sendable {
   /// The session committed to `recording` — PR-1 §B.7 `dictation.invoked` +
   /// the recording-started breadcrumb. Carries the streaming-mode flag the
   /// kernel decided at `beginSession` time so the sink emits the same
-  /// `isStreaming` value old `TranscriptionPipeline.swift:550-553` did
+  /// `isStreaming` value old Parakeet pipeline did
   /// (Codex review #11 r2).
   case recordingCommitted(isStreaming: Bool)
   /// The session entered `transcribing` — the `asr` "Transcription started"
@@ -59,7 +59,7 @@ enum KernelLifecycleEvent: Equatable, Sendable {
   case discarded(DiscardReason)
   /// The session reached `noSpeech`. The associated value names which path led
   /// here so the sink can emit the byte-correct breadcrumb (PR-1 §B.7.2 — old
-  /// `TranscriptionPipeline.swift:787` vs `:902`).
+  /// the old Parakeet pipeline vs `:902`).
   case noSpeech(NoSpeechSource)
   /// The session reached `cancelled` — a user-cancelled recording.
   case cancelled
@@ -68,19 +68,19 @@ enum KernelLifecycleEvent: Equatable, Sendable {
 
   /// The session entered `.warmingUp` AND the ASR model was not already loaded
   /// (i.e., a real model-load is about to start). Mirrors the old
-  /// `TranscriptionPipeline.swift:365` "Model loading" breadcrumb. NOT fired
+  /// the old Parakeet pipeline "Model loading" breadcrumb. NOT fired
   /// when the model was warm at start (parity — old code only emits when it
   /// enters the load branch at `:363`). Gated by the kernel's
   /// `didLoadModelThisSession` sibling observable.
   case modelLoading
 
   /// The session entered `.stopping`. Mirrors the old
-  /// `TranscriptionPipeline.swift:671-673` recording-stopped breadcrumb +
+  /// the old Parakeet pipeline recording-stopped breadcrumb +
   /// `updateRecordingState(active:false)`.
   case recordingStopped
 
   /// The session entered `.finalizing` AFTER a successful transcribe (ASR
-  /// returned non-empty text). Mirrors the old `TranscriptionPipeline.swift:922`
+  /// returned non-empty text). Mirrors the old Parakeet pipeline
   /// "ASR completed" breadcrumb. NOT fired on the `.finalizing` path that came
   /// from a no-speech VAD gate or asrEmpty — those emit `.noSpeech(source:)` /
   /// `.failed(.asrEmpty)` instead, matching old code which never emits the

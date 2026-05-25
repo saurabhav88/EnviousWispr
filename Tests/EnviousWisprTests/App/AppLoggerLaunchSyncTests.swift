@@ -60,11 +60,14 @@ struct AppLoggerLaunchSyncTests {
     )
     let transcriptStore = TranscriptStore()
     let keychain = KeychainManager()
-    let pipeline = TranscriptionPipeline(
+    let pipeline = KernelDictationDriverFactory.make(inputs: .init(
       audioCapture: audioCapture,
       asrManager: asrManager,
-      transcriptStore: transcriptStore
-    )
+      transcriptStore: transcriptStore,
+      keychainManager: KeychainManager(),
+      captureTelemetry: CaptureTelemetryState(),
+      pasteCompletionRegistry: PasteCompletionRegistry()
+    ))
     let whisperKitPipeline = WhisperKitPipeline(
       audioCapture: audioCapture,
       backend: WhisperKitBackend(),
@@ -79,7 +82,7 @@ struct AppLoggerLaunchSyncTests {
     let whisperKitSetup = WhisperKitSetupService()
 
     let sync = PipelineSettingsSync(
-      pipeline: pipeline,
+      kernelDriver: pipeline,
       whisperKitPipeline: whisperKitPipeline,
       polishService: polishService,
       audioCapture: audioCapture,

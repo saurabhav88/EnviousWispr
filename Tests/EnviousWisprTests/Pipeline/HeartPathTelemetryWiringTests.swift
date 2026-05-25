@@ -7,6 +7,7 @@ import EnviousWisprStorage
 import Foundation
 import Testing
 
+import EnviousWisprLLM
 @testable import EnviousWisprPipeline
 
 /// Pipeline-level tests for the `HeartPathTelemetryEmitter` wiring.
@@ -31,7 +32,7 @@ import Testing
 /// below, which uses `FixtureAudioCapture` + `startRecording(...)` to
 /// drive into `.recording` before calling `handleCaptureStall`.
 ///
-/// We test `TranscriptionPipeline` (Parakeet) directly because its
+/// We test `KernelDictationDriver` (Parakeet) directly because its
 /// dependencies are easy to stub. The WhisperKit equivalent would require
 /// constructing a real `WhisperKitBackend` actor; the asymmetry it depends
 /// on is already proven by the unit tests in
@@ -97,12 +98,15 @@ struct HeartPathTelemetryWiringTests {
     NoOpASRManager()
   }
 
-  private static func makePipeline() -> TranscriptionPipeline {
-    TranscriptionPipeline(
+  private static func makePipeline() -> KernelDictationDriver {
+    KernelDictationDriverFactory.make(inputs: .init(
       audioCapture: makeStubAudio(),
       asrManager: makeASR(),
-      transcriptStore: TranscriptStore()
-    )
+      transcriptStore: TranscriptStore(),
+      keychainManager: KeychainManager(),
+      captureTelemetry: CaptureTelemetryState(),
+      pasteCompletionRegistry: PasteCompletionRegistry()
+    ))
   }
 
   private static func stallContext(sessionID: UInt64) -> CaptureStallContext {
@@ -140,7 +144,7 @@ struct HeartPathTelemetryWiringTests {
   /// Codex gap #4 — Parakeet pipeline must construct its emitter with
   /// `.parakeet`. The captureSessionInterruption extras are the cheapest
   /// witness: Parakeet omits the `"backend"` key.
-  @Test("TranscriptionPipeline interruption extras omit backend key (Parakeet wiring)")
+  @Test("KernelDictationDriver interruption extras omit backend key (Parakeet wiring)")
   func parakeetPipelineWiringOmitsBackendExtra() {
     let pipeline = Self.makePipeline()
 
@@ -161,7 +165,7 @@ struct HeartPathTelemetryWiringTests {
   /// produce ONE captureError. Proves the emitter the pipeline uses is
   /// connected to the same dedup state. Does NOT verify the
   /// terminal-state flip — that lives in the next test.
-  @Test("TranscriptionPipeline.handleCaptureStall dedups Sentry emits per session")
+  @Test("KernelDictationDriver.handleCaptureStall dedups Sentry emits per session")
   func parakeetPipelineStallDedupsSentryPerSession() {
     let pipeline = Self.makePipeline()
 
@@ -177,7 +181,7 @@ struct HeartPathTelemetryWiringTests {
 
   /// Sanity companion to the dedup test: a different `sessionID` re-arms
   /// the dedup, proving it is not a global one-shot.
-  @Test("TranscriptionPipeline.handleCaptureStall re-arms Sentry emits on session change")
+  @Test("KernelDictationDriver.handleCaptureStall re-arms Sentry emits on session change")
   func parakeetPipelineStallReArmsOnSession() {
     let pipeline = Self.makePipeline()
 
@@ -193,7 +197,7 @@ struct HeartPathTelemetryWiringTests {
   }
 
   /// Codex gap #3 — `guard fired else { return }` in
-  /// `TranscriptionPipeline.handleCaptureStall` must prevent a
+  /// `KernelDictationDriver.handleCaptureStall` must prevent a
   /// session-deduped call from incorrectly flipping state to `.error`.
   ///
   /// Test shape (Codex round-3 suggestion):
@@ -216,7 +220,7 @@ struct HeartPathTelemetryWiringTests {
   /// The first-stall-from-recording case (state → .error on first hit) is
   /// covered implicitly: if the emitter's pre-dedup wiring breaks, the
   /// second call would emit and the test fails for the opposite reason.
-  @Test("TranscriptionPipeline.handleCaptureStall guard fired prevents deduped state flip")
+  @Test("KernelDictationDriver.handleCaptureStall guard fired prevents deduped state flip")
   func parakeetPipelineStallGuardFiredPreventsDedupedFlip() async throws {
     let fixture = try SyntheticAudioFixture.make(
       fileName: "r5-stall-guard-fired.wav",
@@ -234,11 +238,14 @@ struct HeartPathTelemetryWiringTests {
         )
       )
     )
-    let pipeline = TranscriptionPipeline(
+    let pipeline = KernelDictationDriverFactory.make(inputs: .init(
       audioCapture: audioCapture,
       asrManager: asrManager,
-      transcriptStore: TranscriptStore()
-    )
+      transcriptStore: TranscriptStore(),
+      keychainManager: KeychainManager(),
+      captureTelemetry: CaptureTelemetryState(),
+      pasteCompletionRegistry: PasteCompletionRegistry()
+    ))
 
     // Step 1: pre-dedup the emitter's stall flag while pipeline is .idle.
     // `handleCaptureStall` calls telemetry.stallFired (which dedups
@@ -255,7 +262,7 @@ struct HeartPathTelemetryWiringTests {
       llmProvider: .openAI,
       llmModel: "gpt-test"
     )
-    await pipeline.startRecording(config: config)
+    try await pipeline.handle(event: .toggleRecording(config))
 
     let reachedRecording = await pollUntil(timeout: .seconds(1)) {
       pipeline.state == .recording

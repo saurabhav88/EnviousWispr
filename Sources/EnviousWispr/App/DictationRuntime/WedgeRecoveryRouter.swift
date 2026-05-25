@@ -10,7 +10,7 @@ import Foundation
 @MainActor
 final class WedgeRecoveryRouter {
   let audioCapture: any AudioCaptureInterface
-  let pipeline: TranscriptionPipeline
+  let kernelDriver: KernelDictationDriver
   let whisperKitPipeline: WhisperKitPipeline
 
   let isCurrentSession: @MainActor (UInt64) -> Bool
@@ -18,13 +18,13 @@ final class WedgeRecoveryRouter {
 
   init(
     audioCapture: any AudioCaptureInterface,
-    pipeline: TranscriptionPipeline,
+    kernelDriver: KernelDictationDriver,
     whisperKitPipeline: WhisperKitPipeline,
     isCurrentSession: @escaping @MainActor (UInt64) -> Bool,
     resolveActiveTelemetryTarget: @escaping @MainActor () -> (any HeartPathTelemetryTarget)?
   ) {
     self.audioCapture = audioCapture
-    self.pipeline = pipeline
+    self.kernelDriver = kernelDriver
     self.whisperKitPipeline = whisperKitPipeline
     self.isCurrentSession = isCurrentSession
     self.resolveActiveTelemetryTarget = resolveActiveTelemetryTarget

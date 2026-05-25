@@ -25,12 +25,12 @@ import Observation
 /// it fails, switch to concrete types before PR merge.
 ///
 /// **Ceiling-raise note (3 → 4 stored).** The four sources of truth
-/// (`pipeline`, `whisperKitPipeline`, `audioCapture`, `asrManager`) reflect
+/// (`kernelDriver`, `whisperKitPipeline`, `audioCapture`, `asrManager`) reflect
 /// real root-state code; bundling them into a lens value-type would hide the
 /// count rather than reduce coupling. Bible §30 entry filed.
 @Observable @MainActor
 final class LiveRecordingState {
-  let pipeline: TranscriptionPipeline
+  let kernelDriver: KernelDictationDriver
   let whisperKitPipeline: WhisperKitPipeline
   let audioCapture: any AudioCaptureInterface
   let asrManager: any ASRManagerInterface
@@ -41,12 +41,12 @@ final class LiveRecordingState {
   var isRecordingLocked: Bool = false
 
   init(
-    pipeline: TranscriptionPipeline,
+    kernelDriver: KernelDictationDriver,
     whisperKitPipeline: WhisperKitPipeline,
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface
   ) {
-    self.pipeline = pipeline
+    self.kernelDriver = kernelDriver
     self.whisperKitPipeline = whisperKitPipeline
     self.audioCapture = audioCapture
     self.asrManager = asrManager
@@ -60,7 +60,7 @@ final class LiveRecordingState {
     if asrManager.activeBackendType == .whisperKit {
       return whisperKitPipeline.state.asPipelineState
     }
-    return pipeline.state
+    return kernelDriver.state
   }
 
   /// Audio capture level for waveform/level UI. Replaces the pre-PR7
@@ -77,7 +77,7 @@ final class LiveRecordingState {
     if asrManager.activeBackendType == .whisperKit {
       return whisperKitPipeline.currentTranscript
     }
-    return pipeline.currentTranscript
+    return kernelDriver.currentTranscript
   }
 }
 
@@ -89,6 +89,6 @@ extension LiveRecordingState: DictationActivityProviding {
   /// True when either pipeline is recording, transcribing, or polishing. Used
   /// by `TranscriptPolishService` to block a re-polish during live dictation.
   var isDictationActive: Bool {
-    pipeline.state.isActive || whisperKitPipeline.state.isActive
+    kernelDriver.state.isActive || whisperKitPipeline.state.isActive
   }
 }

@@ -2,6 +2,8 @@
 import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
+import EnviousWisprLLM
+import EnviousWisprServices
 import EnviousWisprStorage
 import Foundation
 import Testing
@@ -31,11 +33,15 @@ struct DedupSurvivesStallTests {
     let audioCapture = NeverFinishingAudioCapture()
     let asrManager = NoOpASRManagerV2()
 
-    let pipeline = TranscriptionPipeline(
-      audioCapture: audioCapture,
-      asrManager: asrManager,
-      transcriptStore: TranscriptStore()
-    )
+    let pipeline = KernelDictationDriverFactory.make(
+      inputs: .init(
+        audioCapture: audioCapture,
+        asrManager: asrManager,
+        transcriptStore: TranscriptStore(),
+        keychainManager: KeychainManager(),
+        captureTelemetry: CaptureTelemetryState(),
+        pasteCompletionRegistry: PasteCompletionRegistry()
+      ))
 
     let config = DictationSessionConfig.testDefault(
       autoPasteToActiveApp: false,
@@ -46,28 +52,35 @@ struct DedupSurvivesStallTests {
     )
 
     // ─── Session 1 ─────────────────────────────────────────────────────────
-    await pipeline.startRecording(config: config)
+    try await pipeline.handle(event: .toggleRecording(config))
     let reachedRecording1 = await pollUntil(timeout: .seconds(1)) {
       pipeline.state == .recording
     }
     #expect(reachedRecording1, "session 1 must reach .recording")
 
-    // First stall in session 1 — emitter fires (no prior dedup), pipeline
-    // guard advances state to .error.
+    // First stall in session 1 — emitter fires (no prior dedup); the kernel's
+    // recording-exit continuation resumes the forward-path coroutine, which
+    // then transitions to `.failed(.captureStalled)` (driver maps to
+    // `.error("No audio detected -- try again.")`). The transition is async
+    // because the forward path runs in a separate Task — poll until it lands.
     pipeline.handleCaptureStall(Self.stallContext(sessionID: 1))
-    #expect(
-      pipeline.state == .error("No audio detected — try again."),
-      "first stall in session 1 must flip state to .error")
+    let reachedError1 = await pollUntil(timeout: .seconds(1)) {
+      pipeline.state == .error("No audio detected — try again.")
+    }
+    #expect(reachedError1, "first stall in session 1 must flip state to .error")
 
     // Reset to idle so we can start session 2. `cancelRecording()` is a
     // no-op once the pipeline is in `.error` (its guard checks for
     // `.recording` / `.loadingModel`); `reset()` is the path that takes the
     // pipeline back to `.idle` from any state.
     pipeline.reset()
-    #expect(pipeline.state == .idle, "reset() must return to .idle")
+    let reachedIdle = await pollUntil(timeout: .seconds(1)) {
+      pipeline.state == .idle
+    }
+    #expect(reachedIdle, "reset() must return to .idle")
 
     // ─── Session 2 ─────────────────────────────────────────────────────────
-    await pipeline.startRecording(config: config)
+    try await pipeline.handle(event: .toggleRecording(config))
     let reachedRecording2 = await pollUntil(timeout: .seconds(1)) {
       pipeline.state == .recording
     }
@@ -78,8 +91,11 @@ struct DedupSurvivesStallTests {
     // to .error. If dedup state had leaked across recordings, state would
     // remain .recording and this test would fail.
     pipeline.handleCaptureStall(Self.stallContext(sessionID: 2))
+    let reachedError2 = await pollUntil(timeout: .seconds(1)) {
+      pipeline.state == .error("No audio detected — try again.")
+    }
     #expect(
-      pipeline.state == .error("No audio detected — try again."),
+      reachedError2,
       "stall in fresh session 2 must fire — dedup state must not survive restart")
 
     await pipeline.cancelRecording()
@@ -203,8 +219,21 @@ private final class NoOpASRManagerV2: ASRManagerInterface {
   var onServiceInterrupted: (() -> Void)?
   var loadProgressTickReporter: (@MainActor @Sendable (Date?, String) -> Void)?
 
-  func loadModel() async throws {}
-  func loadModelSilently() async {}
+  // PR-4b.4: the kernel adapter calls `loadModel()` during warmUp and the
+  // kernel watchdogs the load via `loadProgressTickReporter` — no ticks for
+  // long enough triggers `.modelLoadFailed`. The old Parakeet pipeline
+  // path bypassed the watchdog, so an empty body was sufficient. Fire a tick
+  // so the watcher sees progress, then flip `isModelLoaded` to mark the
+  // load complete; the recording then proceeds to `.recording` and this
+  // stall-dedup scenario can run as designed.
+  func loadModel() async throws {
+    loadProgressTickReporter?(Date(), "test-fake-load")
+    isModelLoaded = true
+  }
+  func loadModelSilently() async {
+    loadProgressTickReporter?(Date(), "test-fake-load")
+    isModelLoaded = true
+  }
   func unloadModel() async {}
   func setInitialBackendType(_ type: ASRBackendType) { activeBackendType = type }
   func switchBackend(to type: ASRBackendType) async { activeBackendType = type }

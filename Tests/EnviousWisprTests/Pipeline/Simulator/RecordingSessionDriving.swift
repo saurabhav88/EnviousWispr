@@ -215,7 +215,20 @@ final class KernelRecordingSession: RecordingSessionDriving {
     case .reset:
       kernel.reset()
     case .preWarm:
-      await kernel.preWarm()
+      // PR-4b.4 of #827: `kernel.preWarm()` now throws on
+      // `audioCapture.preWarm()` failure (App starter relies on this for
+      // the "Microphone unavailable" recovery path). Simulator scenarios
+      // never inject a preWarm failure into `FakeAudioCapture`, so the
+      // throw cannot fire here; swallow defensively to keep this
+      // simulator's `apply(_:)` non-throwing (the contract scenarios
+      // built against).
+      do {
+        try await kernel.preWarm()
+      } catch {
+        // unreachable in current scenarios; if a future scenario adds
+        // preWarm fault injection, surface via the existing failure
+        // observation path.
+      }
     }
   }
 

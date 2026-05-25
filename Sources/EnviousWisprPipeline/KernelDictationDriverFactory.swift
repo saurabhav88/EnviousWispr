@@ -18,7 +18,7 @@ import Foundation
 /// App-visible). This factory builds the full stack from public-typed inputs
 /// and returns the public driver.
 ///
-/// PR-4b.4 swaps the App's `TranscriptionPipeline` construction site for a
+/// PR-4b.4 swaps the App's the old Parakeet pipeline construction site for a
 /// call to `KernelDictationDriverFactory.make(inputs:)`. PR-4b.2 ships the
 /// factory production-unwired — no App caller invokes it yet.
 @MainActor
@@ -62,6 +62,13 @@ public enum KernelDictationDriverFactory {
       emojiFormatter: EmojiFormatterStep(),
       llmPolish: LLMPolishStep(keychainManager: inputs.keychainManager)
     )
+    // PR-4b.4 of #827: a non-nil `onToken` callback is the discriminant that
+    // tells `GeminiConnector` to use `streamGenerateContent?alt=sse` instead
+    // of batch `generateContent`. The old Parakeet pipeline set this to a
+    // no-op closure for the same purpose; preserve that behavior so Gemini
+    // polish stays on the streaming endpoint post-cutover. Live token UI is
+    // a separate follow-up; this callback intentionally discards tokens.
+    limbSteps.llmPolish.onToken = { _ in }
 
     // 2. Shared mutable holders.
     let outcome = KernelFinalizationOutcome()

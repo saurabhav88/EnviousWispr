@@ -15,24 +15,29 @@ struct DictationInvokedPipelineWiringTests {
     #expect(factorySource.contains("inputMode: settings.recordingMode"))
   }
 
-  @Test("Parakeet emits dictation.invoked after capture enters recording")
+  @Test("Parakeet (kernel sink) emits dictation.invoked from recordingCommitted")
   func parakeetPipelineEmitsAfterRecordingStarts() throws {
-    let source = try Self.read("Sources/EnviousWisprPipeline/TranscriptionPipeline.swift")
+    // PR-4b.4: Parakeet's dictation.invoked emit moved out of the deleted
+    // Parakeet pipeline.swift into `KernelLifecycleTelemetrySink.swift`,
+    // case `.recordingCommitted`. The kernel emits `.recordingCommitted` AFTER
+    // the FSM transitions to `.recording` — that ordering is covered by
+    // `RecordingSessionKernelScenarioTests`. This test verifies the sink
+    // pulls trigger / mode / target from the per-session config and forwards
+    // them via the `dictationInvoked` sink (default closure -> TelemetryService).
+    let source = try Self.read(
+      "Sources/EnviousWisprPipeline/KernelLifecycleTelemetrySink.swift")
     let body = try Self.slice(
       source,
-      from: "public func startRecording(config: DictationSessionConfig) async {",
-      to: "/// Stop recording"
+      from: "case .recordingCommitted(let isStreaming):",
+      to: "case .recordingStopped"
     )
 
-    let stateIndex = try Self.require("state = .recording", in: body)
-    let telemetryIndex = try Self.require("TelemetryService.shared.dictationInvoked(", in: body)
-
-    #expect(stateIndex < telemetryIndex)
-    // #723: trigger_source and input_mode are distinct schema slots; pipeline
+    #expect(body.contains("dictationInvoked(triggerSource, inputMode, targetApp)"))
+    // #723: trigger_source and input_mode are distinct schema slots; sink
     // must read them from distinct config fields.
-    #expect(body.contains("triggerSource: config.triggerSource.rawValue"))
-    #expect(body.contains("inputMode: config.inputMode.rawValue"))
-    #expect(body.contains("targetApp: targetApp?.localizedName"))
+    #expect(body.contains("context.config?.triggerSource.rawValue"))
+    #expect(body.contains("context.config?.inputMode.rawValue"))
+    #expect(body.contains("context.targetApp?.localizedName"))
   }
 
   @Test("WhisperKit emits dictation.invoked after capture enters recording")

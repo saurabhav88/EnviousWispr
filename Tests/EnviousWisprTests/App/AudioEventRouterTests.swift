@@ -22,7 +22,7 @@ struct AudioEventRouterTests {
     let audio = RouterTestAudioCapture()
     let asr = RouterTestASRManager()
     let store = DictationRuntimeFixtures.tempStore()
-    let parakeet = DictationRuntimeFixtures.makeParakeetPipeline(
+    let parakeet = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
     let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audio, store: store)
@@ -34,7 +34,7 @@ struct AudioEventRouterTests {
 
     let router = AudioEventRouter(
       audioCapture: audio,
-      pipeline: parakeet,
+      kernelDriver: parakeet,
       whisperKitPipeline: whisperKit,
       captureTelemetry: telemetry,
       resolveActiveCaptureBackend: { nil }
@@ -51,7 +51,7 @@ struct AudioEventRouterTests {
     let audio = RouterTestAudioCapture()
     let asr = RouterTestASRManager()
     let store = DictationRuntimeFixtures.tempStore()
-    let parakeet = DictationRuntimeFixtures.makeParakeetPipeline(
+    let parakeet = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
     let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audio, store: store)
@@ -59,7 +59,7 @@ struct AudioEventRouterTests {
 
     let router = AudioEventRouter(
       audioCapture: audio,
-      pipeline: parakeet,
+      kernelDriver: parakeet,
       whisperKitPipeline: whisperKit,
       captureTelemetry: telemetry,
       resolveActiveCaptureBackend: { nil }
@@ -81,7 +81,7 @@ struct AudioEventRouterTests {
     let audio = RouterTestAudioCapture()
     let asr = RouterTestASRManager()
     let store = DictationRuntimeFixtures.tempStore()
-    let parakeet = DictationRuntimeFixtures.makeParakeetPipeline(
+    let parakeet = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
     let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audio, store: store)
@@ -90,7 +90,7 @@ struct AudioEventRouterTests {
     var resolverCallCount = 0
     let router = AudioEventRouter(
       audioCapture: audio,
-      pipeline: parakeet,
+      kernelDriver: parakeet,
       whisperKitPipeline: whisperKit,
       captureTelemetry: telemetry,
       resolveActiveCaptureBackend: {

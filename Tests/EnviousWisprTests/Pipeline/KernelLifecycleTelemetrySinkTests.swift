@@ -416,7 +416,7 @@ import Testing
     // The earlier r8 patch tried to skip this case symmetrically with
     // `.captureStalled`, but grep verified asymmetry: the rich
     // `HeartPathTelemetryEmitter.noAudioCaptured(ctx:)` is called ONLY from
-    // TranscriptionPipeline / WhisperKitPipeline — both bypassed by the
+    // Parakeet pipeline / WhisperKitPipeline — both bypassed by the
     // kernel-driver cutover. The lifecycle sink IS the only no-audio
     // emitter in the new factory stack; skipping here would drop the
     // signal entirely.
