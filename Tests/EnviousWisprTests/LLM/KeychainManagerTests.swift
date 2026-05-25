@@ -32,7 +32,44 @@ struct KeychainManagerTests {
         atPath: dir.appendingPathComponent(KeychainManager.openAIKeyID).path))
   }
 
-  @Test("Security Keychain store can round-trip with a unique test service")
+  /// Probe the Data Protection keychain to decide whether tests that hit real
+  /// `SecItem*` APIs can run. Bare `swift test` produces an unsigned test
+  /// binary; macOS returns `errSecMissingEntitlement` (-34018) for DP-scoped
+  /// queries without a signed entitlement. These tests are then conditionally
+  /// disabled in CI and local `swift test`, and exercised only in signed
+  /// release-config Live UAT against the shipped `.app`.
+  ///
+  /// Probe is intentionally lazy and cached for the suite lifetime to avoid
+  /// repeatedly trying SecItemAdd during test discovery.
+  static let hasDataProtectionKeychainEntitlement: Bool = {
+    let probeService = "com.enviouswispr.tests.dp-probe.\(UUID().uuidString)"
+    let addQuery: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: probeService,
+      kSecAttrAccount as String: "probe",
+      kSecAttrSynchronizable as String: kCFBooleanFalse as Any,
+      kSecUseDataProtectionKeychain as String: kCFBooleanTrue as Any,
+      kSecValueData as String: Data([0]),
+      kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+    ]
+    let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+    // Clean up the probe item regardless of outcome.
+    let deleteQuery: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: probeService,
+      kSecAttrAccount as String: "probe",
+      kSecUseDataProtectionKeychain as String: kCFBooleanTrue as Any,
+    ]
+    _ = SecItemDelete(deleteQuery as CFDictionary)
+    return addStatus == errSecSuccess
+  }()
+
+  @Test(
+    "Security Keychain store can round-trip with a unique test service",
+    .enabled(
+      if: KeychainManagerTests.hasDataProtectionKeychainEntitlement,
+      "Data Protection keychain requires signed entitlement; verified in Live UAT against shipped .app"
+    ))
   func securityKeychainRoundTrip() throws {
     let service = "com.enviouswispr.tests.api-keys.\(UUID().uuidString)"
     let store = SecurityKeychainItemStore()
@@ -50,6 +87,195 @@ struct KeychainManagerTests {
       _ = try store.retrieve(service: service, account: KeychainManager.openAIKeyID)
     }
   }
+
+  // MARK: - Issue #845 — Data Protection Keychain + explicit accessibility
+
+  @Test(
+    "DP-backend write is invisible to a legacy-scoped read",
+    .enabled(
+      if: KeychainManagerTests.hasDataProtectionKeychainEntitlement,
+      "Data Protection keychain requires signed entitlement; verified in Live UAT against shipped .app"
+    ),
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/845",
+      "Data-protection keychain + explicit accessibility per TN3137"))
+  func securityKeychainBackendIsolationWriteDPReadLegacyMisses() throws {
+    let service = "com.enviouswispr.tests.api-keys.\(UUID().uuidString)"
+    let store = SecurityKeychainItemStore()
+    defer {
+      try? store.delete(service: service, account: KeychainManager.openAIKeyID)
+      // Belt-and-suspenders: also wipe any leftover legacy item from the raw query.
+      _ = SecItemDelete(
+        Self.legacyQuery(service: service, account: KeychainManager.openAIKeyID) as CFDictionary)
+    }
+
+    try store.store(
+      service: service, account: KeychainManager.openAIKeyID, value: "dp-only-value")
+
+    // Reading via SecurityKeychainItemStore (DP-scoped) must hit.
+    #expect(
+      try store.retrieve(service: service, account: KeychainManager.openAIKeyID)
+        == "dp-only-value")
+
+    // Reading via a raw legacy-scoped query MUST miss — the item is in DP, not legacy.
+    var legacyReadQuery = Self.legacyQuery(
+      service: service, account: KeychainManager.openAIKeyID)
+    legacyReadQuery[kSecReturnData as String] = kCFBooleanTrue
+    legacyReadQuery[kSecMatchLimit as String] = kSecMatchLimitOne
+    var result: CFTypeRef?
+    let status = SecItemCopyMatching(legacyReadQuery as CFDictionary, &result)
+    #expect(status == errSecItemNotFound)
+  }
+
+  @Test(
+    "Legacy-backend item is invisible to a DP-scoped retrieve",
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/845",
+      "Data-protection keychain + explicit accessibility per TN3137"))
+  func securityKeychainBackendIsolationWriteLegacyReadDPMisses() throws {
+    let service = "com.enviouswispr.tests.api-keys.\(UUID().uuidString)"
+    let store = SecurityKeychainItemStore()
+    defer {
+      try? store.delete(service: service, account: KeychainManager.openAIKeyID)
+      _ = SecItemDelete(
+        Self.legacyQuery(service: service, account: KeychainManager.openAIKeyID) as CFDictionary)
+    }
+
+    // Seed a legacy-backend item directly.
+    guard let data = "legacy-only-value".data(using: .utf8) else {
+      Issue.record("UTF-8 encoding failed")
+      return
+    }
+    var legacyAddQuery = Self.legacyQuery(
+      service: service, account: KeychainManager.openAIKeyID)
+    legacyAddQuery[kSecValueData as String] = data
+    let addStatus = SecItemAdd(legacyAddQuery as CFDictionary, nil)
+    #expect(addStatus == errSecSuccess)
+
+    // Production code (DP-scoped retrieve) MUST NOT see the legacy item.
+    #expect(throws: KeyStoreError.self) {
+      _ = try store.retrieve(service: service, account: KeychainManager.openAIKeyID)
+    }
+  }
+
+  @Test(
+    "Stored item has explicit kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly",
+    .enabled(
+      if: KeychainManagerTests.hasDataProtectionKeychainEntitlement,
+      "Data Protection keychain requires signed entitlement; verified in Live UAT against shipped .app"
+    ),
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/845",
+      "Data-protection keychain + explicit accessibility per TN3137"))
+  func securityKeychainStoredItemHasExplicitAccessibility() throws {
+    let service = "com.enviouswispr.tests.api-keys.\(UUID().uuidString)"
+    let store = SecurityKeychainItemStore()
+    defer { try? store.delete(service: service, account: KeychainManager.openAIKeyID) }
+
+    try store.store(
+      service: service, account: KeychainManager.openAIKeyID, value: "access-attr-test")
+
+    // Re-read via the DP-scoped query and ask for the attributes dictionary.
+    var query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: service,
+      kSecAttrAccount as String: KeychainManager.openAIKeyID,
+      kSecAttrSynchronizable as String: kCFBooleanFalse as Any,
+      kSecUseDataProtectionKeychain as String: kCFBooleanTrue as Any,
+      kSecReturnAttributes as String: kCFBooleanTrue as Any,
+      kSecMatchLimit as String: kSecMatchLimitOne,
+    ]
+    var result: CFTypeRef?
+    let status = SecItemCopyMatching(query as CFDictionary, &result)
+    #expect(status == errSecSuccess)
+
+    let attrs = try #require(result as? [String: Any])
+    let accessible = try #require(attrs[kSecAttrAccessible as String] as? String)
+    #expect(accessible == (kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String))
+    _ = query  // silence unused warning on local var rebinding form
+  }
+
+  @Test(
+    "Delete wipes both DP item and any legacy-backend orphan",
+    .enabled(
+      if: KeychainManagerTests.hasDataProtectionKeychainEntitlement,
+      "Data Protection keychain requires signed entitlement; verified in Live UAT against shipped .app"
+    ),
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/845",
+      "Data-protection keychain + explicit accessibility per TN3137"))
+  func securityKeychainDeleteCleansLegacyOrphan() throws {
+    let service = "com.enviouswispr.tests.api-keys.\(UUID().uuidString)"
+    let store = SecurityKeychainItemStore()
+    defer {
+      try? store.delete(service: service, account: KeychainManager.openAIKeyID)
+      _ = SecItemDelete(
+        Self.legacyQuery(service: service, account: KeychainManager.openAIKeyID) as CFDictionary)
+    }
+
+    // Seed both backends: a legacy orphan (simulating v2.0.2 / v2.0.3 leftover)
+    // and a DP item (simulating the user's re-pasted key on the fixed build).
+    guard let legacyData = "legacy-orphan".data(using: .utf8) else {
+      Issue.record("UTF-8 encoding failed")
+      return
+    }
+    var legacyAddQuery = Self.legacyQuery(
+      service: service, account: KeychainManager.openAIKeyID)
+    legacyAddQuery[kSecValueData as String] = legacyData
+    #expect(SecItemAdd(legacyAddQuery as CFDictionary, nil) == errSecSuccess)
+
+    try store.store(
+      service: service, account: KeychainManager.openAIKeyID, value: "dp-current")
+
+    // User-initiated clear MUST wipe both backends.
+    try store.delete(service: service, account: KeychainManager.openAIKeyID)
+
+    // DP backend empty.
+    #expect(throws: KeyStoreError.self) {
+      _ = try store.retrieve(service: service, account: KeychainManager.openAIKeyID)
+    }
+
+    // Legacy backend ALSO empty — the N5 cleanup ran.
+    var legacyReadQuery = Self.legacyQuery(
+      service: service, account: KeychainManager.openAIKeyID)
+    legacyReadQuery[kSecReturnData as String] = kCFBooleanTrue
+    legacyReadQuery[kSecMatchLimit as String] = kSecMatchLimitOne
+    var legacyResult: CFTypeRef?
+    let legacyReadStatus = SecItemCopyMatching(legacyReadQuery as CFDictionary, &legacyResult)
+    #expect(legacyReadStatus == errSecItemNotFound)
+  }
+
+  @Test(
+    "Delete on missing item is success across both backends",
+    .enabled(
+      if: KeychainManagerTests.hasDataProtectionKeychainEntitlement,
+      "Data Protection keychain requires signed entitlement; verified in Live UAT against shipped .app"
+    ),
+    .bug(
+      "https://github.com/saurabhav88/EnviousWispr/issues/845",
+      "Data-protection keychain + explicit accessibility per TN3137"))
+  func securityKeychainDeleteIsIdempotentWhenNothingExists() throws {
+    let service = "com.enviouswispr.tests.api-keys.\(UUID().uuidString)"
+    let store = SecurityKeychainItemStore()
+
+    // No items in either backend. delete() must succeed (errSecItemNotFound on
+    // both is treated as success).
+    try store.delete(service: service, account: KeychainManager.openAIKeyID)
+  }
+
+  /// Builds a legacy-backend SecItem query (omits kSecUseDataProtectionKeychain
+  /// so the call targets the legacy file-based macOS keychain, matching what
+  /// EW v2.0.2 / v2.0.3 wrote before #845 adopted the DP backend).
+  private static func legacyQuery(service: String, account: String) -> [String: Any] {
+    [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: service,
+      kSecAttrAccount as String: account,
+      kSecAttrSynchronizable as String: kCFBooleanFalse as Any,
+    ]
+  }
+
+  // MARK: - Pre-#845 tests follow
 
   @Test("release retrieve migrates legacy file when Keychain item is missing")
   func releaseRetrieveMigratesLegacyFile() throws {

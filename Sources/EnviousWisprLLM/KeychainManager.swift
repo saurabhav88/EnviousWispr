@@ -299,6 +299,9 @@ struct FileLegacyKeyStore: LegacyKeyFileStorage {
 }
 
 struct SecurityKeychainItemStore: KeychainItemStorage {
+  private static let logger = Logger(
+    subsystem: "com.enviouswispr.app", category: "Keychain")
+
   func store(service: String, account: String, value: String) throws {
     guard let data = value.data(using: .utf8) else {
       throw KeyStoreError.storeFailed(-1)
@@ -313,6 +316,7 @@ struct SecurityKeychainItemStore: KeychainItemStorage {
     case errSecItemNotFound:
       var addQuery = query
       addQuery[kSecValueData as String] = data
+      addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
       let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
       guard addStatus == errSecSuccess else {
         throw KeyStoreError.storeFailed(addStatus)
@@ -345,6 +349,25 @@ struct SecurityKeychainItemStore: KeychainItemStorage {
     guard status == errSecSuccess || status == errSecItemNotFound else {
       throw KeyStoreError.deleteFailed(status)
     }
+    // Issue #845: best-effort cleanup of any v2.0.2 / v2.0.3 orphan that
+    // lives in the legacy file-based macOS keychain. The query omits
+    // kSecUseDataProtectionKeychain so it targets the legacy backend. We
+    // swallow non-not-found errors here because the primary (DP) delete
+    // already succeeded; throwing now would surface a confusing error for
+    // an orphan the production code never reads. errSecItemNotFound is the
+    // common case (no orphan) and is success.
+    let legacyQuery: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: service,
+      kSecAttrAccount as String: account,
+      kSecAttrSynchronizable as String: kCFBooleanFalse as Any,
+    ]
+    let legacyStatus = SecItemDelete(legacyQuery as CFDictionary)
+    if legacyStatus != errSecSuccess && legacyStatus != errSecItemNotFound {
+      Self.logger.error(
+        "Legacy-keychain orphan cleanup failed account=\(account, privacy: .public) status=\(legacyStatus, privacy: .public)"
+      )
+    }
   }
 
   private func baseQuery(service: String, account: String) -> [String: Any] {
@@ -353,6 +376,7 @@ struct SecurityKeychainItemStore: KeychainItemStorage {
       kSecAttrService as String: service,
       kSecAttrAccount as String: account,
       kSecAttrSynchronizable as String: kCFBooleanFalse as Any,
+      kSecUseDataProtectionKeychain as String: kCFBooleanTrue as Any,
     ]
   }
 }

@@ -125,6 +125,9 @@ scripts/*
 !scripts/validation-status.sh
 !scripts/lid-perf-bench.sh
 !scripts/lid-perf-bench.py
+# UAT helpers (per-PR Swift CLIs invoked during Live UAT, e.g. issue #845 keychain verifier)
+!scripts/uat/
+!scripts/uat/**
 # Polish eval harness — PUBLIC tracked files only (see .claude/knowledge/polish-eval.md for scope rules)
 !scripts/eval/
 scripts/eval/*
