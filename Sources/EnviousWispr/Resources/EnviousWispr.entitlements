@@ -6,5 +6,21 @@
     <true/>
     <key>com.apple.security.automation.apple-events</key>
     <true/>
+    <!--
+      Issue #845: data-protection keychain access for OpenAI/Gemini API key
+      storage. Non-sandboxed Developer-ID-signed macOS apps need an explicit
+      keychain-access-groups entitlement to use SecItem* with
+      kSecUseDataProtectionKeychain: true (Apple TN3137). Sandboxed apps get
+      the equivalent application-identifier auto-derived; we don't, so we
+      declare it. The "9UT54V24XG" prefix is the EnviousLabs team ID, present
+      on both "Developer ID Application: Saurabh Vaish (9UT54V24XG)" and
+      "Developer ID Application: ENVIOUS LABS LLC (9UT54V24XG)" certs used by
+      the release pipeline. The first entry is the default access group used
+      by SecItemAdd when no explicit kSecAttrAccessGroup is set.
+    -->
+    <key>keychain-access-groups</key>
+    <array>
+        <string>9UT54V24XG.com.enviouswispr.app</string>
+    </array>
 </dict>
 </plist>
