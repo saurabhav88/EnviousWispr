@@ -644,11 +644,20 @@ public final class TelemetryService {
     version: String,
     isCritical: Bool,
     source: String,
-    errorCode: String?
+    errorCode: String?,
+    noUpdateReason: String?,
+    checkKind: String,
+    currentAppVersion: String
   ) {
     #if DEBUG
-      var hookStringProps: [String: String] = ["version": version, "source": source]
+      var hookStringProps: [String: String] = [
+        "version": version,
+        "source": source,
+        "check_kind": checkKind,
+        "current_app_version": currentAppVersion,
+      ]
       if let errorCode { hookStringProps["error_code"] = errorCode }
+      if let noUpdateReason { hookStringProps["no_update_reason"] = noUpdateReason }
       testEventHook?(
         CapturedTelemetryEvent(
           name: "update.sparkle_cycle_finished",
@@ -660,8 +669,11 @@ public final class TelemetryService {
       "version": version,
       "is_critical": isCritical,
       "source": source,
+      "check_kind": checkKind,
+      "current_app_version": currentAppVersion,
     ]
     if let errorCode { props["error_code"] = errorCode }
+    if let noUpdateReason { props["no_update_reason"] = noUpdateReason }
     PostHogSDK.shared.capture("update.sparkle_cycle_finished", properties: props)
   }
 
@@ -688,25 +700,37 @@ public final class TelemetryService {
     version: String,
     isCritical: Bool,
     source: String,
-    errorCode: String
+    errorCode: String,
+    noUpdateReason: String?,
+    checkKind: String,
+    currentAppVersion: String
   ) {
     #if DEBUG
+      var hookStringProps: [String: String] = [
+        "version": version,
+        "source": source,
+        "error_code": errorCode,
+        "check_kind": checkKind,
+        "current_app_version": currentAppVersion,
+      ]
+      if let noUpdateReason { hookStringProps["no_update_reason"] = noUpdateReason }
       testEventHook?(
         CapturedTelemetryEvent(
           name: "update.install_failed",
-          stringProps: ["version": version, "source": source, "error_code": errorCode],
+          stringProps: hookStringProps,
           boolProps: ["is_critical": isCritical]
         ))
     #endif
-    PostHogSDK.shared.capture(
-      "update.install_failed",
-      properties: [
-        "version": version,
-        "is_critical": isCritical,
-        "source": source,
-        "error_code": errorCode,
-      ]
-    )
+    var props: [String: Any] = [
+      "version": version,
+      "is_critical": isCritical,
+      "source": source,
+      "error_code": errorCode,
+      "check_kind": checkKind,
+      "current_app_version": currentAppVersion,
+    ]
+    if let noUpdateReason { props["no_update_reason"] = noUpdateReason }
+    PostHogSDK.shared.capture("update.install_failed", properties: props)
   }
 
   public func updateInstallCancelled(version: String, isCritical: Bool, source: String) {
