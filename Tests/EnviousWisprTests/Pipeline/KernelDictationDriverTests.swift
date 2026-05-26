@@ -216,29 +216,37 @@ import Testing
     @Test(
       "terminal-state cleanup stamps bundle id into snapshot before nulling targetApp (Codex r2 on Div 8)"
     )
-    func terminalCleanupStampsBundleIDIntoSnapshot() async {
+    func terminalCleanupStampsBundleIDIntoSnapshot() async throws {
       let h = makeDriver()
       // Pre-seed the kernel's recording snapshot the way `freezeRecordingSnapshot`
       // would at recording start — except `targetAppBundleID` is still nil
-      // (the kernel never has direct access to `context.targetApp`).
+      // (the kernel never has direct access to `context.targetApp`). The
+      // sentinel value is what the stamp must REPLACE; if the stamp logic
+      // were missing, the sentinel would survive and the test would catch
+      // that even when `bundleIdentifier` returns nil under `swift test`
+      // (Codex r2 follow-up on Div 8 — guard against a vacuous nil==nil pass).
+      let sentinel = "test.sentinel.unstamped"
       h.kernel.testSetRecordingSnapshot(
         KernelRecordingSnapshotTelemetry(
           backend: "parakeet", audioRoute: "test", wasStreaming: false,
-          startTime: Date(), durationMs: 0, targetAppBundleID: nil))
+          startTime: Date(), durationMs: 0, targetAppBundleID: sentinel))
       let currentApp = NSRunningApplication.current
       h.driver.contextForTesting.targetApp = currentApp
-      #expect(h.kernel.testGetRecordingSnapshot()?.targetAppBundleID == nil)
+      #expect(h.kernel.testGetRecordingSnapshot()?.targetAppBundleID == sentinel)
       // Force a terminal — the driver's observer-driven cleanup must stamp
-      // the bundle id into the snapshot BEFORE nulling context.targetApp.
+      // the bundle id (or nil if the test process has none) into the
+      // snapshot BEFORE nulling context.targetApp.
       #expect(h.kernel.testForceTransition(to: .preparing))
       #expect(h.kernel.testForceTransition(to: .cancelled))
       await drainUntil { h.driver.contextForTesting.targetApp == nil }
       #expect(h.driver.contextForTesting.targetApp == nil)
-      // The bundle id survived the clear into the snapshot — what the
-      // lifecycle sink reads when rendering terminal Sentry events.
-      #expect(
-        h.kernel.testGetRecordingSnapshot()?.targetAppBundleID
-          == currentApp.bundleIdentifier)
+      // Regardless of whether `bundleIdentifier` returned nil or a real
+      // value under `swift test`, the sentinel must NOT survive — that's
+      // proof the stamp ran. AND the stamped value must equal the bundle
+      // id we read off the running application.
+      let stamped = h.kernel.testGetRecordingSnapshot()?.targetAppBundleID
+      #expect(stamped != sentinel, "stamp must have replaced the sentinel")
+      #expect(stamped == currentApp.bundleIdentifier)
     }
 
     @Test(
