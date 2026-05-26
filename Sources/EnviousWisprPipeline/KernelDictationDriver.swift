@@ -148,6 +148,12 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
   /// for the kernel-state observer to fire with the terminal state.
   public func reset() {
     lastExternalError = nil
+    // Clear the last-session transcript so `currentTranscript` returns nil
+    // after a Try-Again / dismiss, matching the old Parakeet pipeline's
+    // `reset()` contract (TP:1081-1102). Without this, the dismissed
+    // transcript can still surface on the next read until a fresh session
+    // mints a new one.
+    outcome.transcript = nil
     if !Self.isTerminal(kernel.state) {
       // Best-effort: request cancellation. Caller-visible state will not
       // reach `.idle` synchronously from `.recording` / `.transcribing` —
@@ -348,6 +354,10 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
       kernel.cancel()
     case .reset:
       lastExternalError = nil
+      // Parity with the sync `reset()` method above (Div 1 of seam audit /
+      // TP:1081-1102): clear the last-session transcript so consumers do not
+      // re-surface a dismissed result.
+      outcome.transcript = nil
       kernel.reset()
       // PR-4.5 #9 (Codex r5): when the kernel is already idle, `reset()` is a
       // no-op, so the kernel-state observation does NOT fire. After

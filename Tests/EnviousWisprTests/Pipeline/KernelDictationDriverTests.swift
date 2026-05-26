@@ -129,6 +129,24 @@ import Testing
     #expect(h.driver.lastPolishError == "polish timed out")
   }
 
+  @Test("reset() clears currentTranscript (sync entry — parity with TP:1081-1102)")
+  func syncResetClearsTranscript() {
+    let h = makeDriver()
+    h.outcome.transcript = Transcript(text: "old session")
+    #expect(h.driver.currentTranscript?.text == "old session")
+    h.driver.reset()
+    #expect(h.driver.currentTranscript == nil)
+  }
+
+  @Test("handle(.reset) clears currentTranscript (event entry — parity with TP:1081-1102)")
+  func eventResetClearsTranscript() async throws {
+    let h = makeDriver()
+    h.outcome.transcript = Transcript(text: "old session")
+    #expect(h.driver.currentTranscript?.text == "old session")
+    try await h.driver.handle(event: .reset)
+    #expect(h.driver.currentTranscript == nil)
+  }
+
   // MARK: Helpers
 
   private struct Harness {
