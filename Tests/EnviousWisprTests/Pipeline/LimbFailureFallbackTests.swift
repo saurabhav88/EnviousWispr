@@ -67,7 +67,12 @@ struct LimbFailureFallbackTests {
 private final class FailingPolishStep: TextProcessingStep {
   let name = "LLM Polish"
   let isEnabled: Bool
-  let maxDuration: Duration = .seconds(5)
+  // Generous timeout: the runner races `process()` against this deadline.
+  // On contended CI (Apple M1 Virtual, 3 cores), MainActor scheduling delay
+  // beat a 5s deadline on the post-merge run of a5a2eec, causing the timeout
+  // to surface before the deterministic throw. The test asserts behavior on
+  // the throw, not on the timeout — make the deadline unreachable in practice.
+  let maxDuration: Duration = .seconds(60)
   let errorSurfacePolicy: ErrorSurfacePolicy = .surface
   private let message: String
 
