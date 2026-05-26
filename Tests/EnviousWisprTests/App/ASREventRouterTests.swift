@@ -72,22 +72,32 @@ struct ASREventRouterTests {
     let audio = RouterTestAudioCapture()
     let asr = RouterTestASRManager()
     let store = DictationRuntimeFixtures.tempStore()
-    let pipeline = DictationRuntimeFixtures.makeParakeetPipeline(
+    let driver = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
     let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audio, store: store)
     let router = ASREventRouter(
       asrManager: asr,
-      pipeline: pipeline,
+      kernelDriver: driver,
       whisperKitPipeline: whisperKit
     )
 
-    pipeline.llmPolish.onWillProcess?()
-    #expect(pipeline.state == .polishing)
+    // Walk the kernel FSM through the legal edges so it lands in
+    // `.finalizing`; the public mapping at
+    // KernelDictationDriver.pipelineState(for:externalError:) returns
+    // `.polishing` for that state, which is the safe-point window the
+    // router must NOT interrupt on ASR XPC crash.
+    let kernel = driver.kernelForTesting
+    #expect(kernel.testForceTransition(to: .preparing))
+    #expect(kernel.testForceTransition(to: .recording))
+    #expect(kernel.testForceTransition(to: .stopping))
+    #expect(kernel.testForceTransition(to: .transcribing))
+    #expect(kernel.testForceTransition(to: .finalizing))
+    #expect(driver.state == .polishing)
     asr.onServiceInterrupted?()
     await Task.yield()
 
-    #expect(pipeline.state == .polishing)
+    #expect(driver.state == .polishing)
     withExtendedLifetime(router) {}
   }
 
@@ -96,13 +106,13 @@ struct ASREventRouterTests {
     let audio = RouterTestAudioCapture()
     let asr = RouterTestASRManager()
     let store = DictationRuntimeFixtures.tempStore()
-    let pipeline = DictationRuntimeFixtures.makeParakeetPipeline(
+    let driver = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
     let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audio, store: store)
     let router = ASREventRouter(
       asrManager: asr,
-      pipeline: pipeline,
+      kernelDriver: driver,
       whisperKitPipeline: whisperKit
     )
 

@@ -33,7 +33,12 @@ struct AudioEventRouterTests {
 
     #expect(audio.onEngineInterrupted == nil)
     #expect(audio.onXPCServiceError == nil)
-    #expect(audio.onVADAutoStop == nil)
+    // `makeParakeetDriver` runs `KernelDictationDriverFactory.make` which
+    // claims `onVADAutoStop` via `CaptureVADSignalSource.bind`. To exercise
+    // the App router's unclaimed-fallback path explicitly, clear the slot
+    // BEFORE constructing the router. (The kernel-claim-survives path has
+    // its own test below.)
+    audio.onVADAutoStop = nil
 
     let router = AudioEventRouter(
       audioCapture: audio,
@@ -54,7 +59,7 @@ struct AudioEventRouterTests {
     let audio = RouterTestAudioCapture()
     let asr = RouterTestASRManager()
     let store = DictationRuntimeFixtures.tempStore()
-    let parakeet = DictationRuntimeFixtures.makeParakeetPipeline(
+    let parakeet = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
     let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audio, store: store)
@@ -64,7 +69,7 @@ struct AudioEventRouterTests {
 
     let router = AudioEventRouter(
       audioCapture: audio,
-      pipeline: parakeet,
+      kernelDriver: parakeet,
       whisperKitPipeline: whisperKit,
       captureTelemetry: telemetry,
       resolveActiveCaptureBackend: { nil }
@@ -108,13 +113,13 @@ struct AudioEventRouterTests {
     }
 
     let legacyStore = DictationRuntimeFixtures.tempStore()
-    let legacyParakeet = DictationRuntimeFixtures.makeParakeetPipeline(
-      audioCapture: audio, asrManager: asr, store: legacyStore)
     let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audio, store: legacyStore)
+    // Post-PR-4b.4 of #827: the App router takes the same driver the kernel
+    // path uses; there is no separate "legacy Parakeet" pipeline to satisfy.
     let router = AudioEventRouter(
       audioCapture: audio,
-      pipeline: legacyParakeet,
+      kernelDriver: driver,
       whisperKitPipeline: whisperKit,
       captureTelemetry: CaptureTelemetryState(),
       resolveActiveCaptureBackend: { .parakeet }

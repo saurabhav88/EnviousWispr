@@ -414,6 +414,12 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
     package func forceCancelNow() async {
       kernel.cancel()
     }
+
+    /// Test-only kernel handle. Unit tests that need to drive the kernel into
+    /// a specific FSM state (e.g. force `.finalizing` to assert `.polishing`
+    /// state mapping or to pin a safe-point invariant) reach `testForceTransition`
+    /// through this accessor.
+    var kernelForTesting: RecordingSessionKernel { kernel }
   #endif
 
   // MARK: Kernel-state observation
