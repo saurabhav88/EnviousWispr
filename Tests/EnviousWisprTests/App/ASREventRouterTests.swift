@@ -67,39 +67,48 @@ struct ASREventRouterTests {
     withExtendedLifetime(router) {}
   }
 
-  @Test("ASR XPC crash during Parakeet polishing leaves the safe point alone")
-  func serviceInterruptedDuringParakeetPolishingIsIgnored() async {
-    let audio = RouterTestAudioCapture()
-    let asr = RouterTestASRManager()
-    let store = DictationRuntimeFixtures.tempStore()
-    let driver = DictationRuntimeFixtures.makeParakeetDriver(
-      audioCapture: audio, asrManager: asr, store: store)
-    let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
-      audioCapture: audio, store: store)
-    let router = ASREventRouter(
-      asrManager: asr,
-      kernelDriver: driver,
-      whisperKitPipeline: whisperKit
-    )
+  #if DEBUG
+    // `kernelForTesting` + `testForceTransition` are DEBUG-only seams (per
+    // KernelDictationDriver:411-425 and RecordingSessionKernel:1730-1746).
+    // Existing kernel-FSM-driving tests (RecordingSessionKernelTests,
+    // KernelHeartPathTelemetryObserverTests) wrap themselves in `#if DEBUG`
+    // for the same reason — `build-check` never compiles the test target in
+    // release, but the gate keeps a release-config `swift test` honest
+    // (PR #838 / `gotchas-release.md`).
+    @Test("ASR XPC crash during Parakeet polishing leaves the safe point alone")
+    func serviceInterruptedDuringParakeetPolishingIsIgnored() async {
+      let audio = RouterTestAudioCapture()
+      let asr = RouterTestASRManager()
+      let store = DictationRuntimeFixtures.tempStore()
+      let driver = DictationRuntimeFixtures.makeParakeetDriver(
+        audioCapture: audio, asrManager: asr, store: store)
+      let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
+        audioCapture: audio, store: store)
+      let router = ASREventRouter(
+        asrManager: asr,
+        kernelDriver: driver,
+        whisperKitPipeline: whisperKit
+      )
 
-    // Walk the kernel FSM through the legal edges so it lands in
-    // `.finalizing`; the public mapping at
-    // KernelDictationDriver.pipelineState(for:externalError:) returns
-    // `.polishing` for that state, which is the safe-point window the
-    // router must NOT interrupt on ASR XPC crash.
-    let kernel = driver.kernelForTesting
-    #expect(kernel.testForceTransition(to: .preparing))
-    #expect(kernel.testForceTransition(to: .recording))
-    #expect(kernel.testForceTransition(to: .stopping))
-    #expect(kernel.testForceTransition(to: .transcribing))
-    #expect(kernel.testForceTransition(to: .finalizing))
-    #expect(driver.state == .polishing)
-    asr.onServiceInterrupted?()
-    await Task.yield()
+      // Walk the kernel FSM through the legal edges so it lands in
+      // `.finalizing`; the public mapping at
+      // KernelDictationDriver.pipelineState(for:externalError:) returns
+      // `.polishing` for that state, which is the safe-point window the
+      // router must NOT interrupt on ASR XPC crash.
+      let kernel = driver.kernelForTesting
+      #expect(kernel.testForceTransition(to: .preparing))
+      #expect(kernel.testForceTransition(to: .recording))
+      #expect(kernel.testForceTransition(to: .stopping))
+      #expect(kernel.testForceTransition(to: .transcribing))
+      #expect(kernel.testForceTransition(to: .finalizing))
+      #expect(driver.state == .polishing)
+      asr.onServiceInterrupted?()
+      await Task.yield()
 
-    #expect(driver.state == .polishing)
-    withExtendedLifetime(router) {}
-  }
+      #expect(driver.state == .polishing)
+      withExtendedLifetime(router) {}
+    }
+  #endif
 
   @Test("ASR XPC crash during WhisperKit polishing leaves the safe point alone")
   func serviceInterruptedDuringWhisperKitPolishingIsIgnored() async {
