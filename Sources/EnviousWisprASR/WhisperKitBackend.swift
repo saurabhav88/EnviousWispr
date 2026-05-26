@@ -2,6 +2,10 @@ import EnviousWisprCore
 import Foundation
 @preconcurrency import WhisperKit
 
+// FIXME(#827): founder/upstream action needed. WhisperKit/CoreML must expose
+// model-load, LID-window, and decoder-step progress signals before this backend
+// can add real signal-based watchdog recovery without wall-clock timeouts.
+
 /// Hardcoded compute options optimized for Apple Silicon dictation.
 /// Audio encoder + text decoder → Neural Engine, mel spectrogram → GPU.
 private let dictationComputeOptions = ModelComputeOptions(
@@ -74,6 +78,8 @@ public actor WhisperKitBackend: ASRBackend {
       if let cached = WhisperKitSetupService.getLocalModelPath(variant: modelVariant) {
         modelPath = cached
       } else {
+        // TODO(#827): watchdog needs WhisperKit download progress wired into
+        // this fallback path if product keeps allowing first-record downloads.
         let folder = try await WhisperKit.download(variant: modelVariant, progressCallback: nil)
         modelPath = folder.path
       }
@@ -152,6 +158,9 @@ public actor WhisperKitBackend: ASRBackend {
       computeOptions: dictationComputeOptions,
       download: false
     )
+    // TODO(#827): watchdog needs CoreML/WhisperKit model-load progress or a
+    // service process-liveness signal owned upstream. Do not wrap this in a
+    // wall-clock timeout.
     let kit = try await WhisperKit(config)
     self.whisperKit = kit
     isReady = true
@@ -167,6 +176,9 @@ public actor WhisperKitBackend: ASRBackend {
     let startTime = CFAbsoluteTimeGetCurrent()
     let results: [TranscriptionResult]
     do {
+      // TODO(#827): watchdog needs a decoder-step or token/segment progress
+      // callback owned by WhisperKit; cancellation depends on this await
+      // returning.
       results = try await kit.transcribe(audioArray: paddedSamples, decodeOptions: decodeOptions)
     } catch {
       throw ASRError.transcriptionFailed(error.localizedDescription)
@@ -250,6 +262,8 @@ public actor WhisperKitBackend: ASRBackend {
       do {
         // WhisperKit API is `detectLangauge(audioArray:)` (original typo
         // preserved upstream — do not "fix" it).
+        // TODO(#827): watchdog needs a within-window LID progress callback
+        // owned by WhisperKit; cancellation is only checked between windows.
         result = try await kit.detectLangauge(audioArray: window)
       } catch is CancellationError {
         return .cancelled

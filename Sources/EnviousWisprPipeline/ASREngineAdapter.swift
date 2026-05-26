@@ -42,6 +42,12 @@ public struct ASREngineCapabilities: Sendable {
 
   /// The engine can detect the spoken language (WhisperKit). `false` for
   /// Parakeet.
+  ///
+  /// TODO(PR-5 telemetry): the WhisperKit adapter must surface its
+  /// engine-internal telemetry at this seam: `language.detected`,
+  /// `language.lid_abstained`, `language.transcription_latency`,
+  /// LID perf signpost logs (`lid_perf_signpost`), and incremental-finalize
+  /// AppLogger lines. The lifecycle sink only owns kernel-level events.
   public let supportsLanguageDetection: Bool
 
   public init(supportsStreaming: Bool, supportsLanguageDetection: Bool) {

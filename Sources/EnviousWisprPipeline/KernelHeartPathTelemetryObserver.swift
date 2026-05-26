@@ -74,9 +74,10 @@ enum KernelLifecycleEvent: Equatable, Sendable {
   /// `didLoadModelThisSession` sibling observable.
   case modelLoading
 
-  /// The session entered `.stopping`. Mirrors the old
-  /// the old Parakeet pipeline recording-stopped breadcrumb +
-  /// `updateRecordingState(active:false)`.
+  /// Recording stopped. Production emits this through
+  /// `KernelLifecycleTelemetrySink.emitRecordingStopped(sampleCount:)` after
+  /// `stopCapture()` returns, because old TP payload parity needs the final
+  /// sample count.
   case recordingStopped
 
   /// The session entered `.finalizing` AFTER a successful transcribe (ASR
@@ -242,7 +243,7 @@ final class KernelHeartPathTelemetryObserver {
       // already loaded (parity with old TP:363 conditional).
       return didLoadModelThisSession ? .modelLoading : nil
     case .stopping:
-      return .recordingStopped
+      return nil
     case .finalizing:
       // PR-4b.2 §3.6 — only fire `.asrCompleted` on the post-transcribing
       // path. Old TP:922 was inside the transcript branch; the kernel only

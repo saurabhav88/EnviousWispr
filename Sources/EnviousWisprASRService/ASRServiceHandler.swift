@@ -71,6 +71,9 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
           self.parakeetBackend = backend
         case "whisperKit":
           let backend = WhisperKitBackend()
+          // TODO(#827): watchdog needs WhisperKit/CoreML model-load progress
+          // written to ProgressFile or XPCOperationSignalFile. Current upstream
+          // load has no progress callback.
           try await backend.prepare()
           self.whisperKitBackend = backend
         default:
@@ -179,9 +182,17 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
 
   // MARK: - Streaming
 
-  func startStreaming(language: String, enableTimestamps: Bool, reply: @escaping (NSError?) -> Void)
+  func startStreaming(
+    operationID: String,
+    language: String,
+    enableTimestamps: Bool,
+    reply: @escaping (NSError?) -> Void
+  )
   {
+    let signal = XPCOperationSignalFile.asr.makeEmitter(operationID: operationID)
+    signal.emit(stage: "asr.start_streaming.received")
     guard let parakeet = parakeetBackend else {
+      signal.emit(stage: "asr.start_streaming.failed", detail: "no_parakeet_model")
       reply(
         NSError(
           domain: "ASRService", code: -3,
@@ -191,14 +202,18 @@ final class ASRServiceHandler: NSObject, ASRServiceProtocol, @unchecked Sendable
 
     nonisolated(unsafe) let safeReply = reply
     Task { @MainActor in
+      signal.emit(stage: "asr.start_streaming.main_actor")
       do {
         var options = TranscriptionOptions()
         options.language = language.isEmpty ? nil : language
         options.enableTimestamps = enableTimestamps
+        signal.emit(stage: "asr.start_streaming.backend_entered")
         try await parakeet.startStreaming(options: options)
+        signal.emit(stage: "asr.start_streaming.backend_completed")
         self.isStreamingActive = true
         safeReply(nil)
       } catch {
+        signal.emit(stage: "asr.start_streaming.failed", detail: error.localizedDescription)
         // XPC error sanitization boundary.
         safeReply(XPCErrorSanitizer.sanitizeForXPC(error))
       }

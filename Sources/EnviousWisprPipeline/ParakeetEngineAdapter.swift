@@ -1,6 +1,7 @@
 @preconcurrency import AVFoundation
 import EnviousWisprASR
 import EnviousWisprCore
+import EnviousWisprServices
 import Foundation
 
 // MARK: - ParakeetEngineAdapter (epic #827, PR-4 §3.2)
@@ -45,6 +46,8 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   private var isCancelled = false
   /// `true` while `warmUp()` has a `loadModel()` in flight — feeds `readiness`.
   private var isLoadInFlight = false
+  private var streamingBuffersDispatched = 0
+  private var streamingBuffersFed = 0
 
   /// In-flight streaming-feed tasks. `acceptAudio(_:)` dispatches each
   /// `feedAudio` on its own task and appends the handle here; `finalize()`
@@ -72,6 +75,8 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   /// `processingTime`) from here to build the `Transcript` (PR-4 §3.3).
   /// Cleared on `beginSession()` and `cancel()`.
   private(set) var lastResult: ASRResult?
+  private(set) var lastASRDiagnostics: KernelASRAdapterDiagnostics?
+  private(set) var lastFailureError: (any Error)?
 
   /// Cap on `retainedPCM` — `maxRecordingDuration` worth of 16 kHz mono samples
   /// (300 s x 16 kHz = 4.8 M `Float` = ~19 MB). On reaching the cap the
@@ -87,9 +92,9 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
 
   // MARK: ASREngineAdapter — engine interruption
 
-  /// Set by the kernel during session setup; the kernel routes it to the
-  /// `asrInterrupted` terminal. Bridged from `ASRManagerInterface.onServiceInterrupted`
-  /// — the mid-recording ASR-service crash signal (PR-4 §3.2, Codex RR1).
+  /// Optional adapter-local interruption hook. Parakeet leaves
+  /// `ASRManagerInterface.onServiceInterrupted` to `ASREventRouter` so the
+  /// shared ASR callback has one owner.
   var onEngineInterrupted: (@MainActor () -> Void)?
 
   // MARK: Init
@@ -97,12 +102,8 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   init(asrManager: any ASRManagerInterface) {
     self.asrManager = asrManager
     (loadStream, loadContinuation) = AsyncStream.makeStream(of: ASRLoadProgressTick.self)
-    // Bridge the ASR-service-crash signal. `onServiceInterrupted` is a distinct
-    // XPC layer from the audio-capture `onXPCServiceError` the kernel binds
-    // separately (PR-4 §3.2).
-    asrManager.onServiceInterrupted = { [weak self] in
-      self?.onEngineInterrupted?()
-    }
+    // ASR service interruption is single-owner at the App router. Installing
+    // here races `ASREventRouter`'s handler and loses by last-writer-wins.
   }
 
   // MARK: ASREngineAdapter — identity & capability
@@ -159,6 +160,10 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     isCancelled = false
     streamingActive = false
     lastResult = nil
+    lastASRDiagnostics = nil
+    lastFailureError = nil
+    streamingBuffersDispatched = 0
+    streamingBuffersFed = 0
     feedTasks.removeAll()
     retainedPCM.removeAll(keepingCapacity: true)
 
@@ -172,10 +177,23 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
       do {
         try await asrManager.startStreaming(options: options)
         streamingActive = true
+        SentryBreadcrumb.add(
+          stage: "asr", message: "Streaming ASR started",
+          data: ["backend": ASRBackendType.parakeet.rawValue])
+        await AppLogger.shared.log(
+          "Streaming ASR started during recording",
+          level: .info, category: "Pipeline"
+        )
       } catch {
         // Streaming setup failed — fall back to batch decode after stop. Not a
         // session failure; the batch rescue over `retainedPCM` covers it.
         streamingActive = false
+        SentryBreadcrumb.add(
+          stage: "asr", message: "Streaming start failed, will use batch", level: .warning)
+        await AppLogger.shared.log(
+          "Streaming ASR failed to start, will use batch: \(error.localizedDescription)",
+          level: .info, category: "Pipeline"
+        )
       }
     }
   }
@@ -193,6 +211,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     // The task handle is retained in `feedTasks` so `finalize()` can await it.
     let pcmBuffer = buffer.buffer
     let handoffSession = buffer.sessionID
+    streamingBuffersDispatched += 1
     let task = Task { @MainActor [weak self] in
       guard let self else { return }
       // Re-check on the `@MainActor` hop: a `cancel()` or a new `beginSession()`
@@ -203,6 +222,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
       guard self.sessionID == handoffSession, self.streamingActive, !self.isTerminal
       else { return }
       try? await self.asrManager.feedAudio(pcmBuffer)
+      self.streamingBuffersFed += 1
     }
     feedTasks.append(task)
   }
@@ -212,6 +232,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   /// over the kernel-conditioned audio when supplied, else raw retained PCM
   /// (PR-4.5 #5). After `cancel()`, returns `.cancelled` (PR-1 §B.2.2).
   func finalize(batchSamples: [Float]?) async -> ASREngineOutcome {
+    lastFailureError = nil
     if isCancelled {
       isTerminal = true
       retainedPCM.removeAll()
@@ -241,8 +262,10 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     return outcome
   }
 
-  /// Parakeet's streaming-finalize returns in milliseconds — no finalize-wedge
-  /// signal (§B.1.7 `finalizeProgress == nil` = signal-free `transcribing`).
+  /// Parakeet/ASRManager expose completion-only `finalizeStreaming()` and
+  /// `transcribe(...)` calls. There is no decoder-step, partial-result, queue,
+  /// or file-mtime signal to feed the kernel's signal-based wedge detector.
+  // TODO(#NNN): finalize-wedge watchdog needs Parakeet progress signal.
   var finalizeProgress: AsyncStream<ASRFinalizeProgressTick>? { nil }
 
   /// Idempotent discard. Cancels streaming and any wedged in-flight model load,
@@ -278,11 +301,24 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   /// ~250-500ms of trailing audio"). Awaiting the task handles is the actual
   /// completion signal; no wall-clock deadline (`no-arbitrary-timeouts.md`) —
   /// the prior `ContinuousClock` deadline raced the scheduler and flaked.
+  /// REVIEWED_OK(#827): production uses `ASRManagerProxy.feedAudio`, which is
+  /// XPC fire-and-forget and returns after dispatch. The task drain waits for
+  /// host-side dispatch completion, not for remote ASR processing.
   /// Iterates a value snapshot and does NOT clear `feedTasks` — only
   /// `beginSession()` / `cancel()` clear it, so a session that begins during
   /// this drain's `await` cannot have its fresh feed handles dropped here.
   private func drainStreamingFeeds() async {
+    let feedCount = feedTasks.count
+    let sampleCount = retainedPCM.count
+    await AppLogger.shared.log(
+      "Streaming drain started (feeds=\(feedCount), samples=\(sampleCount))",
+      level: .info, category: "PipelineTiming"
+    )
     for task in feedTasks { await task.value }
+    await AppLogger.shared.log(
+      "Streaming drain completed (feeds=\(feedCount), samples=\(retainedPCM.count))",
+      level: .info, category: "PipelineTiming"
+    )
   }
 
   // MARK: Rescue
@@ -293,9 +329,25 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   /// here means speech evidence was voiced or unavailable — the rescue always
   /// attempts batch when streaming yields nothing.
   private func finalizeStreamingWithRescue(batchSamples: [Float]?) async -> ASREngineOutcome {
+    var diagnostics = KernelASRAdapterDiagnostics(
+      streamingBuffersDispatched: streamingBuffersDispatched,
+      streamingBuffersFed: streamingBuffersFed
+    )
     do {
+      await AppLogger.shared.log(
+        "Streaming finalize started",
+        level: .info, category: "Pipeline"
+      )
       let result = try await asrManager.finalizeStreaming()
-      if !result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      let trimmed = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+      diagnostics.streamingResultChars = trimmed.count
+      diagnostics.streamingFinalizeFailed = false
+      await AppLogger.shared.log(
+        "Streaming finalize result: \(trimmed.count) chars",
+        level: .info, category: "Pipeline"
+      )
+      if !trimmed.isEmpty {
+        lastASRDiagnostics = diagnostics
         return .transcript(result)
       }
       // Streaming returned empty — fall through to the batch rescue.
@@ -303,8 +355,56 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
       return .cancelled
     } catch {
       // Streaming finalize failed — fall through to the batch rescue.
+      diagnostics.streamingFinalizeFailed = true
+      diagnostics.streamingFinalizeErrorType = String(reflecting: type(of: error))
+      await AppLogger.shared.log(
+        "Streaming finalize failed: \(error.localizedDescription), rescue triggered -> batch fallback",
+        level: .info, category: "Pipeline"
+      )
     }
-    return await finalizeBatch(batchSamples: batchSamples)
+    return await finalizeBatchRescue(batchSamples: batchSamples, diagnostics: diagnostics)
+  }
+
+  private func finalizeBatchRescue(
+    batchSamples: [Float]?,
+    diagnostics: KernelASRAdapterDiagnostics
+  ) async -> ASREngineOutcome {
+    var diagnostics = diagnostics
+    diagnostics.batchRescueAttempted = true
+    let samples = batchSamples ?? retainedPCM
+    await AppLogger.shared.log(
+      "Streaming rescue triggered -> batch fallback (\(samples.count) samples)",
+      level: .info, category: "Pipeline"
+    )
+    guard !samples.isEmpty else {
+      lastASRDiagnostics = diagnostics
+      return .empty(hadSpeechEvidence: true)
+    }
+    do {
+      let result = try await asrManager.transcribe(
+        audioSamples: samples, options: decodeOptions)
+      let trimmed = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+      diagnostics.batchRescueResultChars = trimmed.count
+      lastASRDiagnostics = diagnostics
+      await AppLogger.shared.log(
+        "Streaming rescue result: batch produced \(trimmed.count) chars",
+        level: .info, category: "Pipeline"
+      )
+      if trimmed.isEmpty {
+        return .empty(hadSpeechEvidence: true)
+      }
+      return .transcript(result)
+    } catch is CancellationError {
+      return .cancelled
+    } catch {
+      lastFailureError = error
+      lastASRDiagnostics = diagnostics
+      await AppLogger.shared.log(
+        "Streaming rescue result: batch failed: \(error.localizedDescription)",
+        level: .info, category: "Pipeline"
+      )
+      return .failed(.decodeFailed)
+    }
   }
 
   /// Batch decode (§3.2a). Uses kernel-conditioned `batchSamples` when
@@ -312,11 +412,18 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   /// else falls back to the adapter's raw retained PCM.
   private func finalizeBatch(batchSamples: [Float]?) async -> ASREngineOutcome {
     let samples = batchSamples ?? retainedPCM
-    guard !samples.isEmpty else { return .empty(hadSpeechEvidence: true) }
+    var diagnostics = KernelASRAdapterDiagnostics(batchRescueAttempted: false)
+    guard !samples.isEmpty else {
+      lastASRDiagnostics = diagnostics
+      return .empty(hadSpeechEvidence: true)
+    }
     do {
       let result = try await asrManager.transcribe(
         audioSamples: samples, options: decodeOptions)
-      if result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      let trimmed = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+      diagnostics.batchRescueResultChars = trimmed.count
+      lastASRDiagnostics = diagnostics
+      if trimmed.isEmpty {
         // Past the kernel's VAD no-speech gate, an empty decode is a real ASR
         // failure — `hadSpeechEvidence: true` routes the kernel to
         // `failed(asrEmpty)` (PR-1 §B.1.2), matching today's "Couldn't catch
@@ -327,6 +434,8 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     } catch is CancellationError {
       return .cancelled
     } catch {
+      lastFailureError = error
+      lastASRDiagnostics = diagnostics
       return .failed(.decodeFailed)
     }
   }
@@ -345,3 +454,5 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     retainedPCM.append(contentsOf: UnsafeBufferPointer(start: channel, count: take))
   }
 }
+
+extension ParakeetEngineAdapter: ASREngineTelemetryProviding {}

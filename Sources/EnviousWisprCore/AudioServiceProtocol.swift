@@ -41,20 +41,21 @@ import Foundation
   /// Phase 1: start the audio engine, trigger BT codec switch, register config-change observer.
   /// Device UIDs are passed inline so the proxy doesn't need separate setter replay before this call.
   func startEnginePhase(
-    preferredDeviceUID: String, selectedDeviceUID: String, reply: @escaping (NSError?) -> Void)
+    operationID: String, preferredDeviceUID: String, selectedDeviceUID: String,
+    reply: @escaping (NSError?) -> Void)
 
   /// Poll engine format until stable after BT codec negotiation.
   func waitForFormatStabilization(
     maxWait: Double, pollInterval: Double, reply: @escaping (Bool) -> Void)
 
   /// Phase 2: install audio tap and begin capture. Buffers flow back via audioBufferCaptured callback.
-  func beginCapture(reply: @escaping (NSError?) -> Void)
+  func beginCapture(operationID: String, reply: @escaping (NSError?) -> Void)
 
   /// Stop capture and return accumulated samples + finalized VAD segments atomically.
   /// First Data = raw Float32 sample bytes. Second Data = packed [Int32 start, Int32 end] VAD segment pairs.
   /// VAD segments are finalized BEFORE the sample buffer is cleared, preventing the call-order bug
   /// where separate stopCapture/getVADSegments calls produced endSample=0 on open segments.
-  func stopCapture(reply: @escaping (Data, Data) -> Void)
+  func stopCapture(operationID: String, reply: @escaping (Data, Data) -> Void)
 
   /// Cancel a pre-warmed engine that never began capture.
   func abortPreWarm()

@@ -37,6 +37,14 @@ public final class AudioCaptureManager: AudioCaptureInterface {
   /// No-op for in-process capture — VAD runs in the pipeline's monitorVAD() loop instead.
   public var onVADAutoStop: (() -> Void)?
 
+  /// Optional fine-grained lifecycle signal used by the XPC service to publish
+  /// phase ticks while a proxy is waiting on a lifecycle reply.
+  public var onLifecycleSignal: (@Sendable (String) -> Void)? {
+    didSet {
+      activeSource?.onLifecycleSignal = onLifecycleSignal
+    }
+  }
+
   // MARK: - Round-4 telemetry callbacks (issue #285)
 
   /// Stall watchdog callback (forwarded to active source in Phase B implementation).
@@ -150,8 +158,12 @@ public final class AudioCaptureManager: AudioCaptureInterface {
 
   public func startEnginePhase() async throws {
     // Re-evaluate route on every recording start — BT state may have changed.
+    onLifecycleSignal?("manager_resolve_source_entered")
     let source = resolveSource()
+    source.onLifecycleSignal = onLifecycleSignal
+    onLifecycleSignal?("manager_prepare_entered")
     try await source.prepare()
+    onLifecycleSignal?("manager_prepare_completed")
   }
 
   public func beginCapturePhase() async throws -> AsyncStream<AVAudioPCMBuffer> {
@@ -215,7 +227,10 @@ public final class AudioCaptureManager: AudioCaptureInterface {
       self.onCaptureSessionInterruption?(ctx)
     }
 
+    source.onLifecycleSignal = onLifecycleSignal
+    onLifecycleSignal?("manager_start_capture_entered")
     let stream = try await source.startCapture()
+    onLifecycleSignal?("manager_start_capture_completed")
     isCapturing = true
     // Mirror source identity so pipeline-layer Sentry extras still resolve
     // after stopCapture tears `activeSource` down synchronously.
@@ -254,7 +269,9 @@ public final class AudioCaptureManager: AudioCaptureInterface {
     // prepare() sees the engine is already running and skips startup.
     // This eliminates first-word clipping by ensuring the ring buffer has
     // audio from before the user pressed the key.
+    onLifecycleSignal?("manager_deactivate_capture_entered")
     source.deactivateCapture()
+    onLifecycleSignal?("manager_deactivate_capture_completed")
 
     // Keep activeSource alive — resolveSource() will reuse it if still running.
     // BT state changes are handled by resolveSource() re-evaluating the route.

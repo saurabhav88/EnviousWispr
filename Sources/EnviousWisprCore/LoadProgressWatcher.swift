@@ -66,6 +66,12 @@ public final class LoadProgressWatcher {
   private var signalCount: Int = 0
   private var fired = false
   private var continuation: CheckedContinuation<Void, Never>?
+  /// Require two observed progress signals before ratio-based silence can fire.
+  /// This keeps the 800ms floor from becoming a standalone timeout after only
+  /// one lifecycle tick. XPC lifecycle operations keep this safer default:
+  /// cold `startRunning()`, `AVAudioEngine.start()`, and large stop replies can
+  /// legitimately stay quiet for longer than the floor before their next signal.
+  private let requiresObservedGap: Bool
 
   /// Monotonic clock source. Production uses `ProcessInfo.processInfo.systemUptime`
   /// via the default; tests inject a `ManualClock` for deterministic timing.
@@ -77,9 +83,11 @@ public final class LoadProgressWatcher {
   public init(
     currentTime: @escaping @MainActor () -> TimeInterval = {
       ProcessInfo.processInfo.systemUptime
-    }
+    },
+    requiresObservedGap: Bool = true
   ) {
     self.currentTime = currentTime
+    self.requiresObservedGap = requiresObservedGap
   }
 
   /// Begin a new attempt. Resets all per-attempt state.
@@ -149,7 +157,18 @@ public final class LoadProgressWatcher {
     // non-goal; in practice the wedge symptom sits inside compile phase, after
     // many signals have accumulated, so this restriction does not lose coverage
     // for the targeted defect).
-    guard maxGapSeconds > 0 else { return }
+    guard maxGapSeconds > 0 else {
+      guard !requiresObservedGap else { return }
+      let silence = now - (lastSignalAt ?? attemptStartedAt)
+      if silence > floorSeconds {
+        fired = true
+        if let cont = continuation {
+          continuation = nil
+          cont.resume()
+        }
+      }
+      return
+    }
     let silence = now - (lastSignalAt ?? attemptStartedAt)
     let ratioThreshold = maxGapSeconds * abnormalRatio
     let threshold = max(floorSeconds, ratioThreshold)
@@ -255,10 +274,21 @@ public enum WatcherOutcome<T: Sendable>: Sendable {
   /// background. The function returns regardless; the caller's state machine
   /// must reset cleanly without depending on the work actually stopping.
   case wedged
-  /// Work threw before the watcher fired, OR the parent task that called
-  /// `raceWithSignalWatcher` was cancelled. Caller cancellation surfaces as
-  /// `CancellationError`.
+  /// Work threw before the watcher fired. With the default parent-cancellation
+  /// behavior, caller cancellation also surfaces here as `CancellationError`.
   case threw(Error)
+}
+
+/// Parent-task cancellation policy for `raceWithSignalWatcher`.
+public enum WatcherParentCancellationBehavior: Sendable {
+  /// Surface caller cancellation as `.threw(CancellationError())` and cancel
+  /// the raced work best-effort. This is the normal behavior for foreground
+  /// operations whose caller is no longer interested in the result.
+  case returnCancellation
+  /// Ignore parent-task cancellation and keep awaiting the real operation result
+  /// or the signal watcher. Cleanup awaits use this so a cancelled forward-path
+  /// task cannot mark resources released before the service actually stops.
+  case waitForResolution
 }
 
 /// At-most-once outcome delivery. First sender wins; subsequent senders are
@@ -294,13 +324,16 @@ private actor OutcomeBox<T: Sendable> {
 ///
 /// On wedge, the work task is `cancel()`ed (best-effort, cooperative).
 ///
-/// On parent-task cancellation, returns `.threw(CancellationError())`.
+/// On parent-task cancellation, returns `.threw(CancellationError())` by
+/// default. Cleanup callers can opt into `.waitForResolution` when returning
+/// before the real operation resolves would violate a release contract.
 ///
 /// Caller must call `watcher.start()` before invoking this and `watcher.stop()`
 /// after it returns (typically via `defer`). The race helper does NOT manage
 /// the watcher's lifecycle.
 public func raceWithSignalWatcher<T: Sendable>(
   watcher: LoadProgressWatcher,
+  parentCancellationBehavior: WatcherParentCancellationBehavior = .returnCancellation,
   _ work: @Sendable @escaping () async throws -> T
 ) async -> WatcherOutcome<T> {
   let box = OutcomeBox<T>()
@@ -332,8 +365,13 @@ public func raceWithSignalWatcher<T: Sendable>(
     }
     return result
   } onCancel: {
-    Task { await box.deliver(.threw(CancellationError())) }
-    workTask.cancel()
-    watcherTask.cancel()
+    switch parentCancellationBehavior {
+    case .returnCancellation:
+      Task { await box.deliver(.threw(CancellationError())) }
+      workTask.cancel()
+      watcherTask.cancel()
+    case .waitForResolution:
+      break
+    }
   }
 }

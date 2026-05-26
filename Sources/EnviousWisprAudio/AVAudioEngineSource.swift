@@ -93,6 +93,7 @@ final class AVAudioEngineSource: AudioInputSource {
   var onSamples: (@Sendable (_ samples: [Float], _ audioLevel: Float) -> Void)?
   var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?
   var onInterrupted: (() -> Void)?
+  var onLifecycleSignal: (@Sendable (String) -> Void)?
 
   // MARK: - Round-4 telemetry (issue #285) — capture liveness watchdog.
 
@@ -159,7 +160,10 @@ final class AVAudioEngineSource: AudioInputSource {
   // MARK: - Lifecycle
 
   func prepare() async throws {
-    guard !engine.isRunning else { return }
+    guard !engine.isRunning else {
+      onLifecycleSignal?("engine_prepare_already_running")
+      return
+    }
     let prepareStart = ContinuousClock.now
 
     activeTasks.removeAll()
@@ -173,6 +177,7 @@ final class AVAudioEngineSource: AudioInputSource {
     // Split-route check: when input != output device (e.g., built-in mic + BT headphones),
     // CoreAudio's AEC can't sync different hardware clocks. Disable VP in this case.
     let vpStart = ContinuousClock.now
+    onLifecycleSignal?("engine_voice_processing_entered")
     let inputDeviceID = AudioDeviceEnumerator.defaultInputDeviceID()
     let outputDeviceID = AudioDeviceEnumerator.defaultOutputDeviceID()
     let isSplitRoute =
@@ -199,11 +204,13 @@ final class AVAudioEngineSource: AudioInputSource {
     } else {
       try? engine.inputNode.setVoiceProcessingEnabled(false)
     }
+    onLifecycleSignal?("engine_voice_processing_completed")
     let vpMs = ms(ContinuousClock.now - vpStart)
 
     // Step 2: Resolve input device — smart selection when in Auto mode.
     // SAFETY: Skip setInputDevice() entirely when BT output is active.
     let deviceStart = ContinuousClock.now
+    onLifecycleSignal?("engine_input_device_entered")
     let btOutputActive: Bool
     if let outID = AudioDeviceEnumerator.defaultOutputDeviceID() {
       btOutputActive = AudioDeviceEnumerator.isBluetoothDevice(outID)
@@ -237,6 +244,7 @@ final class AVAudioEngineSource: AudioInputSource {
     }
     try setInputDevice(resolvedDeviceID)
     currentInputDeviceID = resolvedDeviceID ?? AudioDeviceEnumerator.defaultInputDeviceID()
+    onLifecycleSignal?("engine_input_device_completed")
     let deviceMs = ms(ContinuousClock.now - deviceStart)
 
     // Create the capture stop token for this session
@@ -262,7 +270,9 @@ final class AVAudioEngineSource: AudioInputSource {
 
     let engineStartTime = ContinuousClock.now
     btCrashLogger.info("Engine starting — stop token created, observer registered (queue: nil)")
+    onLifecycleSignal?("engine_start_entered")
     try engine.start()
+    onLifecycleSignal?("engine_start_completed")
     let engineMs = ms(ContinuousClock.now - engineStartTime)
     btCrashLogger.info("Engine started successfully")
 
@@ -271,6 +281,7 @@ final class AVAudioEngineSource: AudioInputSource {
     // The tap routes through a PreRollForwarder that buffers audio until
     // startCapture() activates live forwarding.
     let tapStart = ContinuousClock.now
+    onLifecycleSignal?("engine_preroll_tap_entered")
     let inputNode = engine.inputNode
     let inputFormat = inputNode.outputFormat(forBus: 0)
 
@@ -306,6 +317,7 @@ final class AVAudioEngineSource: AudioInputSource {
       tapLocal: tapLocalSeen
     )
     inputNode.installTap(onBus: 0, bufferSize: 2048, format: inputFormat, block: tapHandler)
+    onLifecycleSignal?("engine_preroll_tap_completed")
     let tapMs = ms(ContinuousClock.now - tapStart)
     let totalMs = ms(ContinuousClock.now - prepareStart)
     AudioCaptureManager.btRouteLog(

@@ -7,6 +7,10 @@ import EnviousWisprServices
 import EnviousWisprStorage
 import Foundation
 
+// FIXME(#827): founder/upstream action needed. WhisperKit model load, LID, and
+// decoder awaits need vendor progress signals before this pipeline can add
+// signal-based recovery without wall-clock timeouts.
+
 // R2 (#360): the pipeline holds no WhisperKit-typed values after the
 // Approach C session protocol + LID-button refactor, so it no longer
 // imports the vendor module directly. The dependency is also dropped from
@@ -455,6 +459,8 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
       }
       prepareTask = task
       do {
+        // TODO(#827): watchdog needs CoreML/WhisperKit model-load progress from
+        // `WhisperKitBackend.prepare`; no local signal exists at this await.
         try await task.value
         prepareTask = nil
         guard state == .loadingModel else { return }  // cancelled during model load
@@ -769,6 +775,8 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
     // Snapshot `lidSamples` into an immutable binding so the @Sendable observer
     // closure does not capture the surrounding `var lidSamples` (would race).
     let observerSamples = lidSamples
+    // TODO(#827): watchdog needs within-window LID progress from WhisperKit.
+    // `LanguageDetector` only returns after the backend observer finishes.
     let lidResult = await languageDetector.detect(
       samples: lidSamples,
       voicedDuration: voicedDurationSec,
@@ -861,6 +869,9 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
 
       if let worker = incrementalWorker {
         let segments = await silenceDetector?.speechSegments ?? []
+        // TODO(#827): watchdog needs decoder-step progress from
+        // `WhisperKitIncrementalWorker.finalize`; worker counters update only
+        // after vendor transcribe returns.
         let result = await worker.finalize(finalSamples: rawSamples, speechSegments: segments)
         incrementalWorker = nil
         asrEmptyDiagnostics.incrementalAccepted = result.accepted
@@ -911,6 +922,8 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
             lidWindowCount: lidWindowCount,
             clipKind: clipKind
           )
+          // TODO(#827): watchdog needs WhisperKit decoder-step progress from
+          // `WhisperKitBackend.transcribe`.
           let batchResult = try await backend.transcribe(
             audioSamples: asrSamples, options: transcriptionOptions)
           let batchEnd = CFAbsoluteTimeGetCurrent()
@@ -946,6 +959,8 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
           lidWindowCount: lidWindowCount,
           clipKind: clipKind
         )
+        // TODO(#827): watchdog needs WhisperKit decoder-step progress from
+        // `WhisperKitBackend.transcribe`.
         let batchResult = try await backend.transcribe(
           audioSamples: asrSamples, options: transcriptionOptions)
         asrEmptyDiagnostics.batchRescueAttempted = false

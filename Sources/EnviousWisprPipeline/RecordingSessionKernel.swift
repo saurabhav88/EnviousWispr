@@ -116,6 +116,18 @@ public enum NoSpeechSource: Equatable, Sendable {
   case asrEmptyNoSpeech
 }
 
+/// Kernel-side model-load wedge payload. The old pipeline used
+/// `LoadProgressWatcherSnapshot`; the kernel has logical progress ticks, so it
+/// records the same telemetry keys from that signal stream.
+struct KernelModelLoadWedgeTelemetry: Equatable, Sendable {
+  let silenceMs: Int
+  let observedMaxGapMs: Int
+  let observedPhase: String
+  let signalCountTotal: Int
+  let firstSignalLatencyMs: Int?
+  let totalAttemptDurationMs: Int
+}
+
 /// A typed limb-seam failure the kernel maps to a `failed` terminal reason
 /// (PR-3 plan §14a). The `processText` / `store` seams throw these.
 public enum KernelLimbError: Error, Sendable {
@@ -188,6 +200,12 @@ final class RecordingSessionKernel {
   /// keeps the kernel telemetry-infra-agnostic (the closure is a seam, like
   /// `processText` / `store` / `deliver`). A no-op in the simulator.
   private let captureStallTelemetry: @MainActor (CaptureStallContext) -> Void
+  private let zombieZeroPeakTelemetry: @MainActor (ZeroPeakContext) -> Void
+  private let recordingStoppedTelemetry: @MainActor (_ sampleCount: Int) -> Void
+  private let markPipelineTimingStart: @MainActor () -> Void
+  private let markASRTimingStart: @MainActor (_ streaming: Bool) -> Void
+  private let markASRTimingEnd: @MainActor () -> Void
+  private let telemetryState: KernelTelemetryState
 
   // MARK: Observable surface
 
@@ -305,6 +323,7 @@ final class RecordingSessionKernel {
   /// parity: the old Parakeet pipeline reads elapsed BEFORE
   /// `stopCapture()`. `nil` outside `.stopping`+; reset on every session start.
   private var stoppingStartedAtTick: UInt64?
+  private var recordingStartedAtDate: Date?
 
   /// `true` once the polish step returned a non-empty processed transcript —
   /// the kernel-era equivalent of the point at which the old pipeline called
@@ -318,6 +337,10 @@ final class RecordingSessionKernel {
   /// transcript in hand, parity with the old pipeline firing unload before
   /// paste.
   private var transcriptReadyForDelivery = false
+
+  /// Rich model-load wedge payload for the lifecycle sink. Set before
+  /// `failed(.modelWedged)` so Sentry/PostHog keep the old payload shape.
+  private(set) var modelLoadWedgeTelemetry: KernelModelLoadWedgeTelemetry?
 
   /// The session task bag, keyed by `SessionID` (PR-1 §B.1.6). Reaching a
   /// terminal state cancels and clears it — nonblocking (PR-3 plan §3.1a).
@@ -360,6 +383,9 @@ final class RecordingSessionKernel {
   /// progress is never misclassified as wedged (Codex review P2).
   private var loadTickCount = 0
   private var finalizeTickCount = 0
+  private var loadAttemptStartedAtTick: UInt64 = 0
+  private var firstLoadTickAt: UInt64?
+  private var maxLoadTickGapTicks: UInt64 = 0
   private var lastLoadTickAt: UInt64 = 0
   private var lastFinalizeTickAt: UInt64 = 0
   private var loadWedgeDetected = false
@@ -392,7 +418,13 @@ final class RecordingSessionKernel {
     deliver: @escaping @MainActor (_ text: String) async -> KernelDeliveryOutcome,
     wedgeStallTicks: Int = 2,
     minimumRecordingTicks: Int = 5,
-    captureStallTelemetry: @escaping @MainActor (CaptureStallContext) -> Void = { _ in }
+    captureStallTelemetry: @escaping @MainActor (CaptureStallContext) -> Void = { _ in },
+    zombieZeroPeakTelemetry: @escaping @MainActor (ZeroPeakContext) -> Void = { _ in },
+    recordingStoppedTelemetry: @escaping @MainActor (_ sampleCount: Int) -> Void = { _ in },
+    markPipelineTimingStart: @escaping @MainActor () -> Void = {},
+    markASRTimingStart: @escaping @MainActor (_ streaming: Bool) -> Void = { _ in },
+    markASRTimingEnd: @escaping @MainActor () -> Void = {},
+    telemetryState: KernelTelemetryState = KernelTelemetryState()
   ) {
     self.adapter = adapter
     self.audioCapture = audioCapture
@@ -405,6 +437,12 @@ final class RecordingSessionKernel {
     self.wedgeStallTicks = wedgeStallTicks
     self.minimumRecordingTicks = minimumRecordingTicks
     self.captureStallTelemetry = captureStallTelemetry
+    self.zombieZeroPeakTelemetry = zombieZeroPeakTelemetry
+    self.recordingStoppedTelemetry = recordingStoppedTelemetry
+    self.markPipelineTimingStart = markPipelineTimingStart
+    self.markASRTimingStart = markASRTimingStart
+    self.markASRTimingEnd = markASRTimingEnd
+    self.telemetryState = telemetryState
   }
 
   // MARK: Driver entry points (PR-1 §A.2 trigger vocabulary)
@@ -422,6 +460,7 @@ final class RecordingSessionKernel {
     currentSessionID = sid
     resetSessionState()
     sessionConfig = config
+    telemetryState.resetForNewSession(polishEnabled: config.llmProvider != .none)
     transition(to: .preparing)
     spawn(sid) { [weak self] in
       await self?.runForwardPath(sid)
@@ -579,6 +618,10 @@ final class RecordingSessionKernel {
       silenceTimeout: config.vadSilenceTimeout,
       sensitivity: config.vadSensitivity,
       energyGate: config.vadEnergyGate)
+    (vad as? CaptureVADSignalSource)?.configureSession(
+      config: config,
+      audioCapture: audioCapture
+    )
     bindCaptureCallbacks(sid)
     // Stamp the VAD seam with the freshly minted session BEFORE subscribing —
     // a signal that races in between subscribe and stamp would otherwise carry
@@ -632,6 +675,7 @@ final class RecordingSessionKernel {
       try await audioCapture.startEnginePhase()
     } catch {
       guard isCurrent(sid) else { return }
+      telemetryState.captureFailureError = error
       finishTerminal(.failed(classifyCaptureStartError(error)), sid: sid)
       return
     }
@@ -696,6 +740,7 @@ final class RecordingSessionKernel {
     } catch {
       guard isCurrent(sid) else { return }
       audioCapture.onBufferCaptured = nil
+      telemetryState.captureFailureError = error
       finishTerminal(.failed(.captureStartFailed), sid: sid)
       return
     }
@@ -716,11 +761,18 @@ final class RecordingSessionKernel {
 
     // Recording.
     transition(to: .recording)
+    recordingStartedAtDate = Date()
     // Stamp visible-recording start for the #4 discard gate (PR-4.5 #4, §5b).
     // Set ONLY after the transition to .recording; pre-roll buffers fed
     // earlier do not count toward minimum-duration.
     recordingStartedAtTick = currentTick()
     resourcesReleased = false
+    (vad as? CaptureVADSignalSource)?.startMonitoring(
+      recordingStartTime: Date(),
+      isRecording: { [weak self] in
+        self?.state == .recording && self?.currentSessionID == sid
+      }
+    )
 
     let exit = await awaitRecordingExit()
     guard isCurrent(sid), !state.isTerminal else { return }
@@ -750,6 +802,8 @@ final class RecordingSessionKernel {
     // (a cancel landing mid-stop) not to fire a second, racing stop — it
     // waits for this one. `resourcesReleased` flips true once the stop
     // genuinely completes, even if the session went terminal meanwhile.
+    freezeRecordingSnapshot()
+    markPipelineTimingStart()
     transition(to: .stopping)
     // PR-4.5 #4 (Codex r1): latch the tick BEFORE `stopCapture()`'s await so
     // capture-teardown latency does not count as visible-recording time.
@@ -763,6 +817,12 @@ final class RecordingSessionKernel {
     captureLifecycle = .stopped
     resourcesReleased = true
     guard !state.isTerminal else { return }
+    recordingStoppedTelemetry(captureResult.samples.count)
+    await (vad as? CaptureVADSignalSource)?.finalizeAtStop(
+      rawSampleCount: captureResult.samples.count,
+      xpcSegments: captureResult.vadSegments
+    )
+    let rawPeakAudioLevel = peakAudioLevel(in: captureResult.samples)
 
     // Minimum-recording-duration discard (PR-4.5 #4) — parity with old
     // the old Parakeet pipeline. The TIME-BASED gate uses
@@ -799,10 +859,20 @@ final class RecordingSessionKernel {
     }
 
     // VAD no-speech gate (PR-1 §B.6) — keys on *confirmed* no-speech.
-    if vad.speechEvidenceAtStop() == .confirmedNoSpeech {
+    let speechEvidence = vad.speechEvidenceAtStop()
+    if speechEvidence == .confirmedNoSpeech {
       // Stamp BEFORE the transition so the lifecycle-event observer reads
       // the source at `.noSpeech` mapping time (PR-4b.2 §3.6 r7).
       lastNoSpeechSource = .vadGate
+      telemetryState.noSpeechTelemetry = KernelNoSpeechTelemetry(
+        mode: isStreamingSession ? "streaming" : "batch",
+        rawSampleCount: captureResult.samples.count,
+        peakAudioLevel: rawPeakAudioLevel
+      )
+      emitZombieZeroPeakIfNeeded(
+        rawSamples: captureResult.samples,
+        peakAudioLevel: rawPeakAudioLevel
+      )
       finishTerminal(.noSpeech, sid: sid)
       return
     }
@@ -837,6 +907,21 @@ final class RecordingSessionKernel {
     // "post-isCapturing audio only"; preserving it.
     let conditioned = CapturedAudioConditioner.condition(
       rawSamples: captureResult.samples, vadSegments: vadSegments)
+    let vadSpeechDurationMs = Self.speechDurationMs(vadSegments)
+    telemetryState.asrEmptyDiagnostics = ASREmptyResultDiagnostics(
+      backend: ASRBackendType.parakeet.rawValue,
+      mode: isStreamingSession ? "streaming" : "batch",
+      hasSpeechEvidence: speechEvidence != .confirmedNoSpeech,
+      rawSampleCount: captureResult.samples.count,
+      vadSegmentCount: vadSegments.count,
+      vadSpeechDurationMs: vadSpeechDurationMs,
+      peakAudioLevel: rawPeakAudioLevel,
+      vadFilteredSampleCount: conditioned.filteredSampleCount,
+      finalSampleCount: conditioned.finalSampleCount,
+      samplesPaddedToMinimum: conditioned.samplesPaddedToMinimum,
+      usedRawFallbackAfterVAD: conditioned.usedRawFallbackAfterVAD,
+      speechSegments: vadSegments
+    )
     // PR-4.5 §8 metadata-only telemetry: sample counts + booleans, no audio
     // content. Lets a future "single-word transcription failed" triage tell
     // whether VAD filtering swallowed the speech (filteredSampleCount low),
@@ -848,25 +933,45 @@ final class RecordingSessionKernel {
         + "final=\(conditioned.finalSampleCount)")
 
     // Transcribing.
+    let asrStart = CFAbsoluteTimeGetCurrent()
+    markASRTimingStart(isStreamingSession)
     transition(to: .transcribing)
     let outcome = await finalize(sid, batchSamples: conditioned.samples)
     guard isCurrent(sid), !state.isTerminal else { return }
+    let asrEnd = CFAbsoluteTimeGetCurrent()
+    markASRTimingEnd()
 
     switch outcome {
     case .transcript(let result):
+      telemetryState.asrCompletedTelemetry = KernelASRCompletedTelemetry(
+        durationSeconds: asrEnd - asrStart,
+        charCount: result.text.trimmingCharacters(in: .whitespacesAndNewlines).count,
+        mode: isStreamingSession ? "streaming" : "batch",
+        language: result.language
+      )
       await runFinalizing(sid, asrText: result.text)
     case .empty(let hadSpeechEvidence):
+      mergeAdapterDiagnosticsIntoASREmpty()
       if !hadSpeechEvidence {
         // Stamp BEFORE the transition so the observer reads the source
         // at `.noSpeech` mapping time (PR-4b.2 §3.6 r7).
         lastNoSpeechSource = .asrEmptyNoSpeech
+        telemetryState.noSpeechTelemetry = KernelNoSpeechTelemetry(
+          mode: isStreamingSession ? "streaming" : "batch",
+          rawSampleCount: captureResult.samples.count,
+          peakAudioLevel: rawPeakAudioLevel
+        )
       }
       finishTerminal(hadSpeechEvidence ? .failed(.asrEmpty) : .noSpeech, sid: sid)
     case .cancelled:
       finishTerminal(.cancelled, sid: sid)
     case .failed(.wedged):
+      telemetryState.transcriptionFailureError =
+        (adapter as? ASREngineTelemetryProviding)?.lastFailureError ?? ASREngineError.wedged
       finishTerminal(.failed(.asrWedged), sid: sid)
-    case .failed:
+    case .failed(let error):
+      telemetryState.transcriptionFailureError =
+        (adapter as? ASREngineTelemetryProviding)?.lastFailureError ?? error
       finishTerminal(.failed(.asrFailed), sid: sid)
     }
   }
@@ -885,6 +990,7 @@ final class RecordingSessionKernel {
       }
     } catch {
       guard isCurrent(sid) else { return }
+      telemetryState.transcriptionFailureError = error
       finishTerminal(.failed(.emptyAfterProcessing), sid: sid)
       return
     }
@@ -907,6 +1013,7 @@ final class RecordingSessionKernel {
       try await store(processed)
     } catch {
       guard isCurrent(sid) else { return }
+      telemetryState.storageFailureError = error
       finishTerminal(.failed(.storageFailed), sid: sid)
       return
     }
@@ -927,6 +1034,10 @@ final class RecordingSessionKernel {
   private func warmUp(_ sid: SessionID) async -> WarmUpResult {
     loadWedgeDetected = false
     loadTickCount = 0
+    loadAttemptStartedAtTick = currentTick()
+    firstLoadTickAt = nil
+    maxLoadTickGapTicks = 0
+    modelLoadWedgeTelemetry = nil
 
     // Consume the optional load-progress stream. The wedge watcher is armed
     // by the FIRST tick — real progress must be observed before a stall
@@ -936,8 +1047,17 @@ final class RecordingSessionKernel {
       spawn(sid) { [weak self] in
         for await _ in stream {
           guard let self, self.isCurrent(sid) else { return }
+          let now = self.currentTick()
+          if self.loadTickCount == 0 {
+            self.firstLoadTickAt = now
+          } else {
+            self.maxLoadTickGapTicks = max(
+              self.maxLoadTickGapTicks,
+              now &- self.lastLoadTickAt
+            )
+          }
           self.loadTickCount += 1
-          self.lastLoadTickAt = self.currentTick()
+          self.lastLoadTickAt = now
           self.bump()
           if self.loadTickCount == 1 {
             self.spawn(sid) { [weak self] in
@@ -976,14 +1096,31 @@ final class RecordingSessionKernel {
       await sleepTicks(wedgeStallTicks)
       guard isCurrent(sid), !Task.isCancelled, !loadWedgeDetected else { return }
       if adapter.readiness == .ready { return }  // healthy completion
-      if currentTick() &- lastLoadTickAt >= UInt64(wedgeStallTicks) {
+      let now = currentTick()
+      let silentTicks = now &- lastLoadTickAt
+      if silentTicks >= UInt64(wedgeStallTicks) {
         loadWedgeDetected = true
+        let maxGapTicks = max(maxLoadTickGapTicks, silentTicks)
+        modelLoadWedgeTelemetry = KernelModelLoadWedgeTelemetry(
+          silenceMs: milliseconds(forTicks: silentTicks),
+          observedMaxGapMs: milliseconds(forTicks: maxGapTicks),
+          observedPhase: "kernel",
+          signalCountTotal: loadTickCount,
+          firstSignalLatencyMs: firstLoadTickAt.map {
+            milliseconds(forTicks: $0 &- loadAttemptStartedAtTick)
+          },
+          totalAttemptDurationMs: milliseconds(forTicks: now &- loadAttemptStartedAtTick)
+        )
         bump()
         await adapter.cancel()
         return
       }
       // A tick landed within the window — the load is still progressing.
     }
+  }
+
+  private func milliseconds(forTicks ticks: UInt64) -> Int {
+    Int(ticks) * 100
   }
 
   // MARK: Finalize + wedge detection
@@ -1052,16 +1189,17 @@ final class RecordingSessionKernel {
   /// the App-side `AudioEventRouter` + `WedgeRecoveryRouter` stay as the sole
   /// subscribers and forward into the kernel through the driver's
   /// `externalEngineInterrupted` / `externalASRInterrupted` /
-  /// `externalCaptureStalled` entry methods (wired in PR-4b.4). The adapter's
-  /// own engine-interruption callback STAYS — the adapter is internal to the
-  /// kernel boundary, not a shared resource.
+  /// `externalCaptureStalled` entry methods (wired in PR-4b.4). Adapter-local
+  /// interruption callbacks may still route here, but Parakeet leaves
+  /// `ASRManager.onServiceInterrupted` to the App router to avoid
+  /// last-writer-wins callback collisions.
   ///
   /// VAD auto-stop is NOT bound here: it flows through `vad.stopSignals`
   /// only, with `CaptureVADSignalSource` the single owner of
   /// `AudioCaptureInterface.onVADAutoStop` (PR-4 plan §3.5).
   private func bindCaptureCallbacks(_ sid: SessionID) {
-    // The adapter's own backend crashing mid-recording (distinct XPC layer
-    // from `onXPCServiceError`'s audio-capture service) — PR-4 plan §3.2.
+    // Optional adapter-local backend crash signal. Parakeet does not install
+    // this on `ASRManager.onServiceInterrupted`; the App router owns that one.
     adapter.onEngineInterrupted = { [weak self] in
       self?.routeASRInterruption(sid: sid)
     }
@@ -1238,8 +1376,10 @@ final class RecordingSessionKernel {
     log("ASR interruption routed sid=\(sid.raw) state=\(state)")
     switch state {
     case .recording:
+      freezeRecordingSnapshot()
       deliverRecordingExit(.asrInterruption)
     case .transcribing:
+      freezeRecordingSnapshot()
       finishTerminal(.asrInterrupted, sid: sid)
     default:
       return
@@ -1464,13 +1604,18 @@ final class RecordingSessionKernel {
     transcriptReadyForDelivery = false
     recordingStartedAtTick = nil
     stoppingStartedAtTick = nil
+    recordingStartedAtDate = nil
     loadTickCount = 0
     finalizeTickCount = 0
+    loadAttemptStartedAtTick = 0
+    firstLoadTickAt = nil
+    maxLoadTickGapTicks = 0
     lastLoadTickAt = 0
     lastFinalizeTickAt = 0
     loadWedgeDetected = false
     finalizeWedgeDetected = false
     finalizeCompleted = false
+    modelLoadWedgeTelemetry = nil
     finalizingSubStatus = .transcribing
     deliveredTranscript = nil
     deliveryOutcome = nil
@@ -1495,6 +1640,62 @@ final class RecordingSessionKernel {
       options.language = code
     }
     return options
+  }
+
+  private func freezeRecordingSnapshot() {
+    let start = recordingStartedAtDate ?? Date()
+    telemetryState.recordingSnapshot = KernelRecordingSnapshotTelemetry(
+      backend: ASRBackendType.parakeet.rawValue,
+      audioRoute: audioCapture.currentAudioRoute,
+      wasStreaming: isStreamingSession,
+      startTime: start,
+      durationMs: Int(Date().timeIntervalSince(start) * 1000),
+      targetAppBundleID: nil
+    )
+  }
+
+  private func emitZombieZeroPeakIfNeeded(rawSamples: [Float], peakAudioLevel: Float) {
+    guard peakAudioLevel == 0.0,
+      rawSamples.count >= AudioConstants.minimumTranscriptionSamples
+    else { return }
+
+    zombieZeroPeakTelemetry(
+      ZeroPeakContext(
+        sessionID: audioCapture.currentCaptureSessionID,
+        durationMs: rawSamples.count * 1000 / Int(AudioConstants.sampleRate),
+        route: audioCapture.currentAudioRoute,
+        sampleCount: rawSamples.count,
+        isActivelyCapturing: audioCapture.isActivelyCapturing,
+        captureSourceType: audioCapture.captureSourceType,
+        inputDeviceUIDPreferred: audioCapture.preferredInputDeviceIDOverride.isEmpty
+          ? nil : audioCapture.preferredInputDeviceIDOverride,
+        inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID()
+      )
+    )
+  }
+
+  private func mergeAdapterDiagnosticsIntoASREmpty() {
+    guard var diagnostics = telemetryState.asrEmptyDiagnostics,
+      let adapterDiagnostics = (adapter as? ASREngineTelemetryProviding)?.lastASRDiagnostics
+    else { return }
+
+    diagnostics.streamingResultChars = adapterDiagnostics.streamingResultChars
+    diagnostics.streamingFinalizeFailed = adapterDiagnostics.streamingFinalizeFailed
+    diagnostics.streamingFinalizeErrorType = adapterDiagnostics.streamingFinalizeErrorType
+    diagnostics.streamingBuffersDispatched = adapterDiagnostics.streamingBuffersDispatched
+    diagnostics.streamingBuffersFed = adapterDiagnostics.streamingBuffersFed
+    diagnostics.batchRescueAttempted = adapterDiagnostics.batchRescueAttempted
+    diagnostics.batchRescueResultChars = adapterDiagnostics.batchRescueResultChars
+    telemetryState.asrEmptyDiagnostics = diagnostics
+  }
+
+  private func peakAudioLevel(in samples: [Float]) -> Float {
+    samples.reduce(Float(0)) { max($0, abs($1)) }
+  }
+
+  private static func speechDurationMs(_ segments: [SpeechSegment]) -> Int {
+    segments.reduce(0) { $0 + ($1.endSample - $1.startSample) } * 1000
+      / Int(AudioConstants.sampleRate)
   }
 
   private func classifyCaptureStartError(_ error: Error) -> RecordingFailureReason {

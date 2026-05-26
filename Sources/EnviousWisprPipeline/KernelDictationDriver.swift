@@ -317,6 +317,20 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
         lastExternalError = nil
         outcome.transcript = nil
         outcome.polishError = nil
+        outcome.rawText = nil
+        outcome.polishedText = nil
+        outcome.llmProvider = nil
+        outcome.llmModel = nil
+        outcome.polishMetadata = nil
+        outcome.pipelineFellBackToRaw = false
+        outcome.pipelineStartedAtSeconds = nil
+        outcome.pipelineEndedAtSeconds = nil
+        outcome.asrStartedAtSeconds = nil
+        outcome.asrEndedAtSeconds = nil
+        outcome.streamingMode = false
+        outcome.polishDurationSeconds = 0
+        outcome.pasteDurationSeconds = 0
+        outcome.pasteResult = nil
         context.config = config
         context.targetApp = NSWorkspace.shared.frontmostApplication
         context.targetElement = PasteService.captureFocusedElement()
@@ -461,6 +475,11 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
   /// during the suspension cannot double-resume the continuation (which would
   /// crash). The latch is `@MainActor`-isolated; every re-arm path passes
   /// through it before any work.
+  ///
+  /// REVIEWED_OK(#827): the signal source is the kernel's observable terminal
+  /// state transition. A hang here means a lower-level kernel await failed to
+  /// produce its own transition signal; the driver has no separate recovery
+  /// action beyond observing the kernel state it adapts.
   private func awaitKernelTerminal() async {
     if Self.isTerminal(kernel.state) { return }
     await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
