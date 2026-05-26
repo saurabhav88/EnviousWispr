@@ -148,12 +148,6 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
   /// for the kernel-state observer to fire with the terminal state.
   public func reset() {
     lastExternalError = nil
-    // Clear the last-session transcript so `currentTranscript` returns nil
-    // after a Try-Again / dismiss, matching the old Parakeet pipeline's
-    // `reset()` contract (TP:1081-1102). Without this, the dismissed
-    // transcript can still surface on the next read until a fresh session
-    // mints a new one.
-    outcome.transcript = nil
     if !Self.isTerminal(kernel.state) {
       // Best-effort: request cancellation. Caller-visible state will not
       // reach `.idle` synchronously from `.recording` / `.transcribing` —
@@ -166,6 +160,17 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
     // `.cancelled`, at which point the App must call reset() again or rely
     // on a fresh `.toggleRecording` to mint a new session.
     kernel.reset()
+    // Clear the last-session transcript only after the kernel has actually
+    // landed at idle — matching the old Parakeet pipeline's `reset()` clear
+    // (TP:1081-1102) without breaking the finalizing safe-point window. If
+    // `kernel.cancel()` + `kernel.reset()` were no-ops because the kernel
+    // sits in `.finalizing` (transcript saved, paste still completing), the
+    // in-flight session can still legitimately deliver and `.completed`
+    // must still see `currentTranscript` for history + completion telemetry
+    // (Codex review #11 r3 / `PipelineStateChangeHandler` guard).
+    if kernel.state == .idle {
+      outcome.transcript = nil
+    }
     fireStateChangeIfNeeded()
   }
 
@@ -354,11 +359,14 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
       kernel.cancel()
     case .reset:
       lastExternalError = nil
-      // Parity with the sync `reset()` method above (Div 1 of seam audit /
-      // TP:1081-1102): clear the last-session transcript so consumers do not
-      // re-surface a dismissed result.
-      outcome.transcript = nil
       kernel.reset()
+      // Same guard as the sync `reset()` method above — only clear once the
+      // kernel actually lands at idle, so a `.reset` event arriving during
+      // the finalizing safe-point does not erase the transcript before
+      // `.completed` is observed.
+      if kernel.state == .idle {
+        outcome.transcript = nil
+      }
       // PR-4.5 #9 (Codex r5): when the kernel is already idle, `reset()` is a
       // no-op, so the kernel-state observation does NOT fire. After
       // `setExternalError` parked the observer on `.error`, that observer

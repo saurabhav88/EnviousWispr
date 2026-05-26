@@ -147,6 +147,26 @@ import Testing
     #expect(h.driver.currentTranscript == nil)
   }
 
+  #if DEBUG
+    @Test(
+      "reset() preserves the transcript when the kernel is in the finalizing safe-point"
+    )
+    func resetDuringFinalizingPreservesTranscript() {
+      let h = makeDriver()
+      // Walk to .finalizing — the safe-point window where the in-flight
+      // session may still legitimately reach `.completed` and history +
+      // completion telemetry must see the saved transcript.
+      #expect(h.kernel.testForceTransition(to: .preparing))
+      #expect(h.kernel.testForceTransition(to: .recording))
+      #expect(h.kernel.testForceTransition(to: .stopping))
+      #expect(h.kernel.testForceTransition(to: .transcribing))
+      #expect(h.kernel.testForceTransition(to: .finalizing))
+      h.outcome.transcript = Transcript(text: "in-flight save")
+      h.driver.reset()
+      #expect(h.driver.currentTranscript?.text == "in-flight save")
+    }
+  #endif
+
   // MARK: Helpers
 
   private struct Harness {
