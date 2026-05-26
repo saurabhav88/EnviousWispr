@@ -54,4 +54,52 @@ struct ASREventRouterTests {
     asr.onServiceInterrupted?()
     withExtendedLifetime(router) {}
   }
+
+  @Test("ASR XPC crash during Parakeet polishing leaves the safe point alone")
+  func serviceInterruptedDuringParakeetPolishingIsIgnored() async {
+    let audio = RouterTestAudioCapture()
+    let asr = RouterTestASRManager()
+    let store = DictationRuntimeFixtures.tempStore()
+    let pipeline = DictationRuntimeFixtures.makeParakeetPipeline(
+      audioCapture: audio, asrManager: asr, store: store)
+    let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
+      audioCapture: audio, store: store)
+    let router = ASREventRouter(
+      asrManager: asr,
+      pipeline: pipeline,
+      whisperKitPipeline: whisperKit
+    )
+
+    pipeline.llmPolish.onWillProcess?()
+    #expect(pipeline.state == .polishing)
+    asr.onServiceInterrupted?()
+    await Task.yield()
+
+    #expect(pipeline.state == .polishing)
+    withExtendedLifetime(router) {}
+  }
+
+  @Test("ASR XPC crash during WhisperKit polishing leaves the safe point alone")
+  func serviceInterruptedDuringWhisperKitPolishingIsIgnored() async {
+    let audio = RouterTestAudioCapture()
+    let asr = RouterTestASRManager()
+    let store = DictationRuntimeFixtures.tempStore()
+    let pipeline = DictationRuntimeFixtures.makeParakeetPipeline(
+      audioCapture: audio, asrManager: asr, store: store)
+    let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
+      audioCapture: audio, store: store)
+    let router = ASREventRouter(
+      asrManager: asr,
+      pipeline: pipeline,
+      whisperKitPipeline: whisperKit
+    )
+
+    whisperKit.llmPolish.onWillProcess?()
+    #expect(whisperKit.state == .polishing)
+    asr.onServiceInterrupted?()
+    await Task.yield()
+
+    #expect(whisperKit.state == .polishing)
+    withExtendedLifetime(router) {}
+  }
 }

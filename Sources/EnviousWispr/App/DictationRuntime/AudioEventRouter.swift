@@ -5,16 +5,15 @@ import EnviousWisprPipeline
 import EnviousWisprServices
 import Foundation
 
-/// PR8 of #763 — routes audio engine + VAD + route-change events to the
-/// active pipeline. Installs three callbacks on `audioCapture` and one
+/// PR8 of #763 — routes audio engine + route-change events to the active pipeline;
+/// installs two callbacks on `audioCapture` and one
 /// `AVAudioEngineConfigurationChange` observer at construction time.
 ///
 /// Lifetime: held by `DictationRuntime`, which is `@State` on
 /// `EnviousWisprApp`, so the router lives for the app's lifetime. No `deinit`
 /// cleanup: same shape as the prior the former root state code, where these observer
-/// blocks and callback slots persisted for the full app lifetime. Tests
-/// construct fresh routers against spy mocks, so test-side cleanup is not
-/// required either.
+/// blocks and callback slots persisted for the full app lifetime. Tests use
+/// fresh spy mocks, so test-side cleanup is not required either.
 @MainActor
 final class AudioEventRouter {
   let audioCapture: any AudioCaptureInterface
@@ -109,12 +108,16 @@ final class AudioEventRouter {
       )
     }
 
-    audioCapture.onVADAutoStop = { [weak self] in
-      guard let self else { return }
-      if self.pipeline.state == .recording {
-        Task { await self.pipeline.stopAndTranscribe() }
-      } else if self.whisperKitPipeline.state == .recording {
-        Task { await self.whisperKitPipeline.stopAndTranscribe() }
+    // Kernel-owned path: leave a preinstalled single-slot owner intact.
+    // If unclaimed, install the legacy App-router fallback.
+    if audioCapture.onVADAutoStop == nil {
+      audioCapture.onVADAutoStop = { [weak self] in
+        guard let self else { return }
+        if self.pipeline.state == .recording {
+          Task { await self.pipeline.stopAndTranscribe() }
+        } else if self.whisperKitPipeline.state == .recording {
+          Task { await self.whisperKitPipeline.stopAndTranscribe() }
+        }
       }
     }
   }
