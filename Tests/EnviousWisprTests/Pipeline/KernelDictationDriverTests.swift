@@ -214,6 +214,34 @@ import Testing
     }
 
     @Test(
+      "terminal-state cleanup stamps bundle id into snapshot before nulling targetApp (Codex r2 on Div 8)"
+    )
+    func terminalCleanupStampsBundleIDIntoSnapshot() async {
+      let h = makeDriver()
+      // Pre-seed the kernel's recording snapshot the way `freezeRecordingSnapshot`
+      // would at recording start — except `targetAppBundleID` is still nil
+      // (the kernel never has direct access to `context.targetApp`).
+      h.kernel.testSetRecordingSnapshot(
+        KernelRecordingSnapshotTelemetry(
+          backend: "parakeet", audioRoute: "test", wasStreaming: false,
+          startTime: Date(), durationMs: 0, targetAppBundleID: nil))
+      let currentApp = NSRunningApplication.current
+      h.driver.contextForTesting.targetApp = currentApp
+      #expect(h.kernel.testGetRecordingSnapshot()?.targetAppBundleID == nil)
+      // Force a terminal — the driver's observer-driven cleanup must stamp
+      // the bundle id into the snapshot BEFORE nulling context.targetApp.
+      #expect(h.kernel.testForceTransition(to: .preparing))
+      #expect(h.kernel.testForceTransition(to: .cancelled))
+      await drainUntil { h.driver.contextForTesting.targetApp == nil }
+      #expect(h.driver.contextForTesting.targetApp == nil)
+      // The bundle id survived the clear into the snapshot — what the
+      // lifecycle sink reads when rendering terminal Sentry events.
+      #expect(
+        h.kernel.testGetRecordingSnapshot()?.targetAppBundleID
+          == currentApp.bundleIdentifier)
+    }
+
+    @Test(
       "reset() preserves the transcript when the kernel is in the finalizing safe-point"
     )
     func resetDuringFinalizingPreservesTranscript() {

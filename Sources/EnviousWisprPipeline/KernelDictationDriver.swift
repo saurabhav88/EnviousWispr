@@ -511,6 +511,13 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
     switch kernel.state {
     case .idle, .completed, .cancelled, .failed, .noSpeech, .discarded,
       .audioInterrupted, .asrInterrupted:
+      // Stamp the bundle id into the recording snapshot BEFORE nulling
+      // `targetApp` — the lifecycle sink's snapshot read
+      // (`KernelLifecycleTelemetrySink:370`) falls back to `context.targetApp`,
+      // and the driver-observer can race ahead of the lifecycle observer.
+      // Codex review of the Div 8 patch caught this — without the stamp,
+      // terminal Sentry events would drop `target_app_bundle_id`.
+      kernel.stampRecordingSnapshotTargetApp(context.targetApp?.bundleIdentifier)
       context.config = nil
       context.targetApp = nil
       context.targetElement = nil

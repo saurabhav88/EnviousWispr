@@ -1669,6 +1669,17 @@ final class RecordingSessionKernel {
     return options
   }
 
+  /// Driver-facing seam: stamp the frontmost app's bundle identifier into
+  /// the current recording snapshot. The driver calls this BEFORE clearing
+  /// `KernelSessionContext.targetApp` on terminal so the lifecycle sink's
+  /// fallback (`KernelLifecycleTelemetrySink:370`) sees the bundle id from
+  /// the snapshot itself, not from a now-nulled context reference. No-op
+  /// when no snapshot exists (e.g., terminal reached without ever entering
+  /// `.recording`).
+  func stampRecordingSnapshotTargetApp(_ bundleID: String?) {
+    telemetryState.recordingSnapshot?.targetAppBundleID = bundleID
+  }
+
   private func freezeRecordingSnapshot() {
     let start = recordingStartedAtDate ?? Date()
     telemetryState.recordingSnapshot = KernelRecordingSnapshotTelemetry(
@@ -1783,6 +1794,17 @@ final class RecordingSessionKernel {
     }
     func testSetTranscriptionFailureError(_ error: (any Error)?) {
       telemetryState.transcriptionFailureError = error
+    }
+
+    /// Test-only recording-snapshot accessors. Used by Div 8 coverage to
+    /// pre-seed a snapshot (since the kernel only freezes one mid-session)
+    /// and to read its `targetAppBundleID` after the driver's terminal
+    /// cleanup stamps it.
+    func testSetRecordingSnapshot(_ snapshot: KernelRecordingSnapshotTelemetry?) {
+      telemetryState.recordingSnapshot = snapshot
+    }
+    func testGetRecordingSnapshot() -> KernelRecordingSnapshotTelemetry? {
+      telemetryState.recordingSnapshot
     }
   #endif
 }

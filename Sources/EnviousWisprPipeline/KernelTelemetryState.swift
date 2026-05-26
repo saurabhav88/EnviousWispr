@@ -34,7 +34,12 @@ struct KernelRecordingSnapshotTelemetry {
   let wasStreaming: Bool
   let startTime: Date
   let durationMs: Int
-  let targetAppBundleID: String?
+  /// `var` (not `let`) so the driver's terminal-state cleanup can stamp the
+  /// frontmost app's bundle identifier into the snapshot before nulling
+  /// `KernelSessionContext.targetApp` — otherwise the lifecycle sink's
+  /// fallback at `KernelLifecycleTelemetrySink:370` would race the clear
+  /// and drop `target_app_bundle_id` from terminal Sentry snapshots.
+  var targetAppBundleID: String?
 }
 
 struct KernelNoSpeechTelemetry {
