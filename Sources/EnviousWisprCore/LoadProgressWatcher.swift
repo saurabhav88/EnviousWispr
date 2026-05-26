@@ -66,6 +66,11 @@ public final class LoadProgressWatcher {
   private var signalCount: Int = 0
   private var fired = false
   private var continuation: CheckedContinuation<Void, Never>?
+  /// Model-load progress keeps the original safer rule: require two observed
+  /// progress signals before ratio-based silence can fire. Discrete XPC
+  /// lifecycle operations set this false because their signal is an explicit
+  /// "entered a blocking state" transition, not a long download cadence.
+  private let requiresObservedGap: Bool
 
   /// Monotonic clock source. Production uses `ProcessInfo.processInfo.systemUptime`
   /// via the default; tests inject a `ManualClock` for deterministic timing.
@@ -77,9 +82,11 @@ public final class LoadProgressWatcher {
   public init(
     currentTime: @escaping @MainActor () -> TimeInterval = {
       ProcessInfo.processInfo.systemUptime
-    }
+    },
+    requiresObservedGap: Bool = true
   ) {
     self.currentTime = currentTime
+    self.requiresObservedGap = requiresObservedGap
   }
 
   /// Begin a new attempt. Resets all per-attempt state.
@@ -149,7 +156,18 @@ public final class LoadProgressWatcher {
     // non-goal; in practice the wedge symptom sits inside compile phase, after
     // many signals have accumulated, so this restriction does not lose coverage
     // for the targeted defect).
-    guard maxGapSeconds > 0 else { return }
+    guard maxGapSeconds > 0 else {
+      guard !requiresObservedGap else { return }
+      let silence = now - (lastSignalAt ?? attemptStartedAt)
+      if silence > floorSeconds {
+        fired = true
+        if let cont = continuation {
+          continuation = nil
+          cont.resume()
+        }
+      }
+      return
+    }
     let silence = now - (lastSignalAt ?? attemptStartedAt)
     let ratioThreshold = maxGapSeconds * abnormalRatio
     let threshold = max(floorSeconds, ratioThreshold)

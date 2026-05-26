@@ -278,6 +278,9 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   /// ~250-500ms of trailing audio"). Awaiting the task handles is the actual
   /// completion signal; no wall-clock deadline (`no-arbitrary-timeouts.md`) —
   /// the prior `ContinuousClock` deadline raced the scheduler and flaked.
+  /// REVIEWED_OK(#827): production uses `ASRManagerProxy.feedAudio`, which is
+  /// XPC fire-and-forget and returns after dispatch. The task drain waits for
+  /// host-side dispatch completion, not for remote ASR processing.
   /// Iterates a value snapshot and does NOT clear `feedTasks` — only
   /// `beginSession()` / `cancel()` clear it, so a session that begins during
   /// this drain's `await` cannot have its fresh feed handles dropped here.

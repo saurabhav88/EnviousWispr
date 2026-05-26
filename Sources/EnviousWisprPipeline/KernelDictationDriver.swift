@@ -458,6 +458,11 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
   /// during the suspension cannot double-resume the continuation (which would
   /// crash). The latch is `@MainActor`-isolated; every re-arm path passes
   /// through it before any work.
+  ///
+  /// REVIEWED_OK(#827): the signal source is the kernel's observable terminal
+  /// state transition. A hang here means a lower-level kernel await failed to
+  /// produce its own transition signal; the driver has no separate recovery
+  /// action beyond observing the kernel state it adapts.
   private func awaitKernelTerminal() async {
     if Self.isTerminal(kernel.state) { return }
     await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in

@@ -46,7 +46,9 @@ import Foundation
   // MARK: - Streaming Transcription (Parakeet)
 
   /// Start a streaming ASR session.
-  func startStreaming(language: String, enableTimestamps: Bool, reply: @escaping (NSError?) -> Void)
+  func startStreaming(
+    operationID: String, language: String, enableTimestamps: Bool,
+    reply: @escaping (NSError?) -> Void)
 
   /// Feed an audio buffer to the streaming session. Fire-and-forget — no reply.
   /// Transport format: raw Float32 bytes, non-interleaved mono, 16kHz.

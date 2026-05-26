@@ -137,18 +137,30 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
   // MARK: - Lifecycle
 
   func startEnginePhase(
+    operationID: String,
     preferredDeviceUID: String,
     selectedDeviceUID: String,
     reply: @escaping (NSError?) -> Void
   ) {
+    let signal = XPCOperationSignalFile.audio.makeEmitter(operationID: operationID)
+    signal.emit(stage: "audio.start_engine.received")
     nonisolated(unsafe) let safeReply = reply
     Task { @MainActor in
+      signal.emit(stage: "audio.start_engine.main_actor")
+      let previousLifecycleSignal = captureManager.onLifecycleSignal
+      captureManager.onLifecycleSignal = { phase in
+        signal.emit(stage: "audio.start_engine.\(phase)")
+      }
+      defer { captureManager.onLifecycleSignal = previousLifecycleSignal }
       captureManager.preferredInputDeviceIDOverride = preferredDeviceUID
       captureManager.selectedInputDeviceUID = selectedDeviceUID
       do {
+        signal.emit(stage: "audio.start_engine.prepare_entered")
         try await captureManager.startEnginePhase()
+        signal.emit(stage: "audio.start_engine.prepare_completed")
         safeReply(nil)
       } catch {
+        signal.emit(stage: "audio.start_engine.failed", detail: error.localizedDescription)
         // XPC error sanitization boundary.
         safeReply(XPCErrorSanitizer.sanitizeForXPC(error))
       }
@@ -170,28 +182,51 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
     }
   }
 
-  func beginCapture(reply: @escaping (NSError?) -> Void) {
+  func beginCapture(operationID: String, reply: @escaping (NSError?) -> Void) {
+    let signal = XPCOperationSignalFile.audio.makeEmitter(operationID: operationID)
+    signal.emit(stage: "audio.begin_capture.received")
     nonisolated(unsafe) let safeReply = reply
     Task { @MainActor in
+      signal.emit(stage: "audio.begin_capture.main_actor")
+      let previousLifecycleSignal = self.captureManager.onLifecycleSignal
+      self.captureManager.onLifecycleSignal = { phase in
+        signal.emit(stage: "audio.begin_capture.\(phase)")
+      }
+      defer { self.captureManager.onLifecycleSignal = previousLifecycleSignal }
       do {
+        signal.emit(stage: "audio.begin_capture.source_entered")
         _ = try await self.captureManager.beginCapturePhase()
+        signal.emit(stage: "audio.begin_capture.source_completed")
         self.startVADMonitoring()
+        signal.emit(stage: "audio.begin_capture.vad_started")
         safeReply(nil)
       } catch {
+        signal.emit(stage: "audio.begin_capture.failed", detail: error.localizedDescription)
         // XPC error sanitization boundary.
         safeReply(XPCErrorSanitizer.sanitizeForXPC(error))
       }
     }
   }
 
-  func stopCapture(reply: @escaping (Data, Data) -> Void) {
+  func stopCapture(operationID: String, reply: @escaping (Data, Data) -> Void) {
+    let signal = XPCOperationSignalFile.audio.makeEmitter(operationID: operationID)
+    signal.emit(stage: "audio.stop_capture.received")
     nonisolated(unsafe) let safeReply = reply
     Task { @MainActor in
+      signal.emit(stage: "audio.stop_capture.main_actor")
+      let previousLifecycleSignal = self.captureManager.onLifecycleSignal
+      self.captureManager.onLifecycleSignal = { phase in
+        signal.emit(stage: "audio.stop_capture.\(phase)")
+      }
+      defer { self.captureManager.onLifecycleSignal = previousLifecycleSignal }
       self.cancelVADMonitoring()
+      signal.emit(stage: "audio.stop_capture.vad_cancelled")
 
       // Stop capture first: freezes the tap, returns all accumulated samples,
       // clears the internal buffer. No new samples can arrive after this.
+      signal.emit(stage: "audio.stop_capture.source_entered")
       let captureResult = await self.captureManager.stopCapture()
+      signal.emit(stage: "audio.stop_capture.source_completed")
 
       // Finalize VAD using the EXACT count of returned samples. This guarantees
       // segment endpoints align perfectly with the sample array the caller receives.
@@ -200,8 +235,10 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
       // - The race window: samples arriving during await -> count drift -> tail trim
       var vadData = Data()
       if let detector = self.silenceDetector {
+        signal.emit(stage: "audio.stop_capture.vad_finalize_entered")
         await detector.finalizeSegments(totalSampleCount: captureResult.samples.count)
         let segments = await detector.speechSegments
+        signal.emit(stage: "audio.stop_capture.vad_finalize_completed")
         vadData = Data(capacity: segments.count * MemoryLayout<Int32>.size * 2)
         for seg in segments {
           var start = Int32(seg.startSample)
@@ -212,6 +249,7 @@ final class AudioServiceHandler: NSObject, AudioServiceProtocol, @unchecked Send
       }
 
       let sampleData = captureResult.samples.withUnsafeBytes { Data($0) }
+      signal.emit(stage: "audio.stop_capture.reply_ready")
       safeReply(sampleData, vadData)
     }
   }

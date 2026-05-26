@@ -30,6 +30,10 @@ internal final class TextProcessingRunner {
   /// that decides per call whether to run the operation or throw
   /// `TimeoutError`. Specialized to `TextProcessingContext` because the
   /// runner only ever times out step operations of that return type.
+  ///
+  /// REVIEWED_OK(#827): this pre-existing guard is covered by the injected
+  /// executor tests and surfaces `TimeoutError` into the normal limb-failed
+  /// continuation path.
   typealias TimeoutExecutor = @MainActor (
     Double,
     @escaping @MainActor () async throws -> TextProcessingContext

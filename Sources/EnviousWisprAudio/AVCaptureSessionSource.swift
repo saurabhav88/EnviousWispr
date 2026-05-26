@@ -14,6 +14,56 @@ private final class CaptureLivenessFlag: Sendable {
   func reset() { _lock.withLock { $0 = false } }
 }
 
+/// One-shot await helper for AVCaptureSession lifecycle calls. The signal is a
+/// platform state notification (`DidStartRunning`, `DidStopRunning`,
+/// `RuntimeError`, or `WasInterrupted`) racing the blocking sessionQueue call.
+private final class SessionLifecycleSignal<T: Sendable>: @unchecked Sendable {
+  private let lock = NSLock()
+  private var continuation: CheckedContinuation<T, Never>?
+  private var observers: [NSObjectProtocol] = []
+
+  init(_ continuation: CheckedContinuation<T, Never>) {
+    self.continuation = continuation
+  }
+
+  func observe(name: Notification.Name, object: Any?, returning value: T) {
+    observe(name: name, object: object, returning: value, onSignal: nil)
+  }
+
+  func observe(
+    name: Notification.Name,
+    object: Any?,
+    returning value: T,
+    onSignal: (@Sendable () -> Void)?
+  ) {
+    let observer = NotificationCenter.default.addObserver(
+      forName: name,
+      object: object,
+      queue: nil
+    ) { [weak self] _ in
+      onSignal?()
+      self?.resume(returning: value)
+    }
+    lock.lock()
+    observers.append(observer)
+    lock.unlock()
+  }
+
+  func resume(returning value: T) {
+    lock.lock()
+    let cont = continuation
+    continuation = nil
+    let observersToRemove = observers
+    observers = []
+    lock.unlock()
+
+    for observer in observersToRemove {
+      NotificationCenter.default.removeObserver(observer)
+    }
+    cont?.resume(returning: value)
+  }
+}
+
 /// AVCaptureSession-based audio capture source. Avoids BT A2DP→SCO codec switch by
 /// capturing from the built-in microphone via AVCaptureSession, which on macOS does NOT
 /// trigger Bluetooth audio route changes (AVAudioSession is API_UNAVAILABLE(macos)).
@@ -31,6 +81,7 @@ final class AVCaptureSessionSource: AudioInputSource {
   var onSamples: (@Sendable (_ samples: [Float], _ audioLevel: Float) -> Void)?
   var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)?
   var onInterrupted: (() -> Void)?
+  var onLifecycleSignal: (@Sendable (String) -> Void)?
 
   // MARK: - Round-4 telemetry (issue #285) — stall watchdog + interruption ctx.
 
@@ -82,15 +133,21 @@ final class AVCaptureSessionSource: AudioInputSource {
 
   func prepare() async throws {
     // Double-start protection
-    guard session == nil || session?.isRunning == false else { return }
+    guard session == nil || session?.isRunning == false else {
+      onLifecycleSignal?("capture_session_prepare_already_running")
+      return
+    }
 
     // Find the built-in microphone by transport type — NOT AVCaptureDevice.default(for: .audio)
     // which follows the system default and may return a BT device.
+    onLifecycleSignal?("capture_session_find_mic_entered")
     let builtInMic = findBuiltInMicrophone()
     guard let mic = builtInMic else {
       throw AudioError.noBuiltInMicrophoneFound
     }
+    onLifecycleSignal?("capture_session_find_mic_completed")
 
+    onLifecycleSignal?("capture_session_configure_entered")
     let captureSession = AVCaptureSession()
 
     let input = try AVCaptureDeviceInput(device: mic)
@@ -132,20 +189,19 @@ final class AVCaptureSessionSource: AudioInputSource {
     )
     self.delegate = preRollDelegate
     output.setSampleBufferDelegate(preRollDelegate, queue: callbackQueue)
+    onLifecycleSignal?("capture_session_configure_completed")
 
     // Register interruption observers
+    onLifecycleSignal?("capture_session_observers_entered")
     registerInterruptionObservers(for: captureSession)
+    onLifecycleSignal?("capture_session_observers_completed")
 
     // Start the session — this does NOT trigger BT route changes on macOS.
     // IMPORTANT: startRunning() is a blocking call that Apple says must not run on main thread.
     // Dispatch to background and await completion.
-    let sessionQ = sessionQueue
-    let started = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
-      sessionQ.async {
-        captureSession.startRunning()
-        cont.resume(returning: captureSession.isRunning)
-      }
-    }
+    onLifecycleSignal?("capture_session_start_running_entered")
+    let started = await awaitStartRunning(captureSession, lifecycleSignal: onLifecycleSignal)
+    onLifecycleSignal?("capture_session_start_running_completed")
 
     guard started else {
       throw AudioError.formatCreationFailed(source: "AVCaptureSessionSource.prepare.start_running")
@@ -153,6 +209,36 @@ final class AVCaptureSessionSource: AudioInputSource {
 
     AudioCaptureManager.btRouteLog(
       "AVCaptureSessionSource: prepared with \(mic.localizedName) (uid=\(mic.uniqueID))")
+  }
+
+  private func awaitStartRunning(
+    _ captureSession: AVCaptureSession,
+    lifecycleSignal: (@Sendable (String) -> Void)?
+  ) async -> Bool {
+    let sessionQ = sessionQueue
+    return await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+      let signal = SessionLifecycleSignal(cont)
+      signal.observe(
+        name: .AVCaptureSessionDidStartRunning, object: captureSession, returning: true
+      ) {
+        lifecycleSignal?("capture_session_did_start_running")
+      }
+      signal.observe(
+        name: .AVCaptureSessionRuntimeError, object: captureSession, returning: false
+      ) {
+        lifecycleSignal?("capture_session_runtime_error")
+      }
+      signal.observe(
+        name: .AVCaptureSessionWasInterrupted, object: captureSession, returning: false
+      ) {
+        lifecycleSignal?("capture_session_was_interrupted")
+      }
+      sessionQ.async {
+        captureSession.startRunning()
+        lifecycleSignal?("capture_session_start_running_returned")
+        signal.resume(returning: captureSession.isRunning)
+      }
+    }
   }
 
   func startCapture() async throws -> AsyncStream<AVAudioPCMBuffer> {
@@ -261,13 +347,9 @@ final class AVCaptureSessionSource: AudioInputSource {
     // RULE: Do NOT touch delegate, callback queue, or continuation state until
     // stopRunning() has returned. No "cleanup optimization" before the session stops.
     if let captureSession = session {
-      let sessionQ = sessionQueue
-      await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-        sessionQ.async {
-          captureSession.stopRunning()
-          cont.resume()
-        }
-      }
+      onLifecycleSignal?("capture_session_stop_running_entered")
+      await awaitStopRunning(captureSession, lifecycleSignal: onLifecycleSignal)
+      onLifecycleSignal?("capture_session_stop_running_completed")
     }
 
     // NOW safe to clear delegate — session is stopped, no more buffers arriving.
@@ -281,6 +363,36 @@ final class AVCaptureSessionSource: AudioInputSource {
 
     // Source does not own samples — manager accumulates via onSamples callback.
     return []
+  }
+
+  private func awaitStopRunning(
+    _ captureSession: AVCaptureSession,
+    lifecycleSignal: (@Sendable (String) -> Void)?
+  ) async {
+    let sessionQ = sessionQueue
+    await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+      let signal = SessionLifecycleSignal(cont)
+      signal.observe(
+        name: .AVCaptureSessionDidStopRunning, object: captureSession, returning: ()
+      ) {
+        lifecycleSignal?("capture_session_did_stop_running")
+      }
+      signal.observe(
+        name: .AVCaptureSessionRuntimeError, object: captureSession, returning: ()
+      ) {
+        lifecycleSignal?("capture_session_runtime_error")
+      }
+      signal.observe(
+        name: .AVCaptureSessionWasInterrupted, object: captureSession, returning: ()
+      ) {
+        lifecycleSignal?("capture_session_was_interrupted")
+      }
+      sessionQ.async {
+        captureSession.stopRunning()
+        lifecycleSignal?("capture_session_stop_running_returned")
+        signal.resume(returning: ())
+      }
+    }
   }
 
   func waitForFormatStabilization(maxWait: TimeInterval, pollInterval: TimeInterval) async -> Bool {

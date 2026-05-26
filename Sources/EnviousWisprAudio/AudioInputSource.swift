@@ -16,6 +16,7 @@ protocol AudioInputSource: AnyObject {
   var onSamples: (@Sendable (_ samples: [Float], _ audioLevel: Float) -> Void)? { get set }
   var onBufferCaptured: (@Sendable (AVAudioPCMBuffer) -> Void)? { get set }
   var onInterrupted: (() -> Void)? { get set }
+  var onLifecycleSignal: (@Sendable (String) -> Void)? { get set }
 
   /// Liveness-watchdog callback — fires once per capture session if zero
   /// buffers are delivered within `Constants.audioCaptureStallWindowMs` of
