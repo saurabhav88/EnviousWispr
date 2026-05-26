@@ -51,6 +51,12 @@ final class FakeEngine: ASREngineAdapter {
   /// fake before a session begins (e.g. the engine-switch scenarios).
   var behavior: FakeEngineBehavior
 
+  /// Self-declared identity (PR-5 Rung 1). Settable so the engine-identity
+  /// propagation sentinel test can construct a `FakeEngine` with `.whisperKit`
+  /// and assert the kernel reads it back; defaults to `.parakeet` so existing
+  /// scenarios assert byte-identical strings.
+  var engineIdentity: ASREngineIdentity = ASREngineIdentity(backendType: .parakeet)
+
   /// Capabilities follow `behavior` — a `streamingSuccess` fake advertises
   /// `supportsStreaming`, so a kernel that branches on `capabilities` runs the
   /// A2 / A9 / A10 streaming scenarios through a genuinely streaming adapter.

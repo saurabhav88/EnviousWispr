@@ -31,6 +31,21 @@ public struct SessionID: Hashable, Sendable {
   }
 }
 
+/// Self-declared engine identity (epic #827, PR-5 Rung 1). Replaces the
+/// kernel- and factory-side hard-coded `.parakeet` literals: each
+/// `ASREngineAdapter` conformer declares its identity, and the kernel /
+/// factory read identity from `adapter.engineIdentity` rather than
+/// branching on engine type (epic §3.4).
+public struct ASREngineIdentity: Sendable {
+  public let backendType: ASRBackendType
+  public var rawValue: String { backendType.rawValue }
+  public var displayName: String { backendType.displayName }
+
+  public init(backendType: ASRBackendType) {
+    self.backendType = backendType
+  }
+}
+
 /// Static capability flags an engine adapter advertises so the kernel can
 /// branch on `capabilities` rather than on engine identity (PR-1 §B.2.1,
 /// D15). An optional capability the adapter does not support MUST degrade
@@ -170,6 +185,11 @@ public struct AudioBufferHandoff: @unchecked Sendable {
 @MainActor
 public protocol ASREngineAdapter: AnyObject {
   // MARK: Identity & capability
+
+  /// Self-declared engine identity. The kernel and factory read identity from
+  /// here rather than branching on engine type (epic §3.4: kernel never
+  /// branches on engine identity).
+  var engineIdentity: ASREngineIdentity { get }
 
   /// Static capability flags (PR-1 §B.2.1).
   var capabilities: ASREngineCapabilities { get }

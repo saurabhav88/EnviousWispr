@@ -288,7 +288,10 @@ import Testing
       deliver: { _ in .pasted },
       minimumRecordingTicks: 0)  // PR-4.5 #4: clock never advances; opt out of the gate
     let observer = KernelHeartPathTelemetryObserver(
-      kernel: kernel, audioCapture: FakeAudioCapture(), emitLifecycleEvent: { _ in })
+      kernel: kernel, audioCapture: FakeAudioCapture(),
+      emitter: HeartPathTelemetryEmitter(
+        backend: .parakeet, captureTelemetry: CaptureTelemetryState()),
+      emitLifecycleEvent: { _ in })
     let outcome = KernelFinalizationOutcome()
     let steps = LimbSteps(
       wordCorrection: WordCorrectionStep(),

@@ -245,6 +245,8 @@ import Testing
       KernelHeartPathTelemetryObserver(
         kernel: kernel,
         audioCapture: FakeAudioCapture(),
+        emitter: HeartPathTelemetryEmitter(
+          backend: .parakeet, captureTelemetry: CaptureTelemetryState()),
         emitLifecycleEvent: { recorder.events.append($0) })
     }
 

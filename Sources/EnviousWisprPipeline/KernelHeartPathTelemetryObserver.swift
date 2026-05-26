@@ -106,8 +106,7 @@ final class KernelHeartPathTelemetryObserver {
   init(
     kernel: RecordingSessionKernel,
     audioCapture: any AudioCaptureInterface,
-    emitter: HeartPathTelemetryEmitter = HeartPathTelemetryEmitter(
-      backend: .parakeet, captureTelemetry: CaptureTelemetryState()),
+    emitter: HeartPathTelemetryEmitter,
     emitLifecycleEvent: @escaping @MainActor (KernelLifecycleEvent) -> Void
   ) {
     self.kernel = kernel
