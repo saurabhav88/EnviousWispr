@@ -447,6 +447,12 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
     /// state mapping or to pin a safe-point invariant) reach `testForceTransition`
     /// through this accessor.
     var kernelForTesting: RecordingSessionKernel { kernel }
+
+    /// Test-only session-context handle. Used to verify the terminal-state
+    /// cleanup clears `targetApp` + `targetElement` (Div 8 of seam audit /
+    /// TP:998-1000, 1128-1129, 1221-1223). The context's properties are not
+    /// otherwise observable from outside the driver.
+    var contextForTesting: KernelSessionContext { context }
   #endif
 
   // MARK: Kernel-state observation
@@ -485,18 +491,29 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
     steps.llmPolish.useExtendedThinking = config.useExtendedThinking
   }
 
-  /// Clear `context.config` whenever the kernel is in a "no in-flight session"
-  /// state. That's the union of the 7 terminal states (per
-  /// `RecordingSessionState.isTerminal` — `.completed`, `.cancelled`,
-  /// `.failed`, `.noSpeech`, `.discarded`, `.audioInterrupted`,
+  /// Clear `context.config` + paste-target references whenever the kernel is
+  /// in a "no in-flight session" state. That's the union of the 7 terminal
+  /// states (per `RecordingSessionState.isTerminal` — `.completed`,
+  /// `.cancelled`, `.failed`, `.noSpeech`, `.discarded`, `.audioInterrupted`,
   /// `.asrInterrupted`) plus `.idle`. Honors the old TP "nil when idle"
   /// contract that `PipelineSettingsSync` relies on for its backend-switch
   /// guard (PR-4b.2 §3.4).
+  ///
+  /// Also clears `context.targetApp` + `context.targetElement` for parity
+  /// with the old Parakeet pipeline (TP:998-1000 / 1128-1129 / 1221-1223 —
+  /// cleared after success, audio interruption, and cancel). The kernel's
+  /// finalize wiring consumes both during `.finalizing`; by the time the
+  /// kernel reaches a terminal state, paste has already completed.
+  /// Otherwise these references can linger across sessions and surface a
+  /// stale `NSRunningApplication` / `AXUIElement` to any reader between
+  /// sessions.
   private func clearContextConfigIfTerminalOrIdle() {
     switch kernel.state {
     case .idle, .completed, .cancelled, .failed, .noSpeech, .discarded,
       .audioInterrupted, .asrInterrupted:
       context.config = nil
+      context.targetApp = nil
+      context.targetElement = nil
     case .preparing, .warmingUp, .recording, .stopping, .transcribing, .finalizing:
       break
     }

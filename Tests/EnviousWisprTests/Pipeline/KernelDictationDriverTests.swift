@@ -1,3 +1,4 @@
+import AppKit
 import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprServices
@@ -187,6 +188,29 @@ import Testing
       #expect(h.driver.state == .error("Model load failed: vram exhausted"))
       #expect(
         h.driver.overlayIntent == .error(message: "Model load failed: vram exhausted"))
+    }
+
+    @Test(
+      "terminal-state cleanup clears paste targets (Div 8 — parity with TP:998-1000)"
+    )
+    func terminalClearsContextTargets() async {
+      let h = makeDriver()
+      // Populate the targets without going through the start path (which
+      // would also set them and overwrite). NSRunningApplication.current is
+      // a process-stable handle; AXUIElement bridges from any AnyObject.
+      h.driver.contextForTesting.targetApp = NSRunningApplication.current
+      h.driver.contextForTesting.config = DictationSessionConfig.testDefault()
+      #expect(h.driver.contextForTesting.targetApp != nil)
+      #expect(h.driver.contextForTesting.config != nil)
+      // Walk the kernel to a terminal — `idle → preparing → cancelled` is
+      // legal and reaches a terminal-or-idle bucket the observer will see.
+      #expect(h.kernel.testForceTransition(to: .preparing))
+      #expect(h.kernel.testForceTransition(to: .cancelled))
+      // The observer hops to @MainActor via Task; drain until the cleanup
+      // observes the terminal.
+      await drainUntil { h.driver.contextForTesting.targetApp == nil }
+      #expect(h.driver.contextForTesting.targetApp == nil)
+      #expect(h.driver.contextForTesting.config == nil)
     }
 
     @Test(
