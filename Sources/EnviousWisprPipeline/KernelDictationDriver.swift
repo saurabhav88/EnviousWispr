@@ -293,7 +293,14 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
         return .processing(label: "Polishing...")
       }
     case .failed(let reason):
-      return .error(message: Self.failureMessage(reason))
+      // Thread `kernel.lastFailureDetail` so the overlay surfaces the same
+      // enriched "Model load failed: <detail>" / "Recording failed: <detail>"
+      // / "Transcription failed: <detail>" string the `state` getter does —
+      // overlay is the visible user-facing path, and `state` is read by the
+      // lifecycle coordinator (Codex review of Div 4: keep the two paths in
+      // sync).
+      return .error(
+        message: Self.failureMessage(reason, detail: kernel.lastFailureDetail))
     case .audioInterrupted:
       return .interruption(message: InterruptionMessages.micDisconnected)
     case .asrInterrupted:

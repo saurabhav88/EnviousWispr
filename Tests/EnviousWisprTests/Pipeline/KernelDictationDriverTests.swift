@@ -171,6 +171,24 @@ import Testing
   }
 
   #if DEBUG
+    @Test("overlayIntent surfaces failure detail (Div 4 — overlay parity)")
+    func overlayIntentEnrichedDetail() {
+      let h = makeDriver()
+      h.kernel.testSetModelLoadError(
+        NSError(
+          domain: "test", code: 1,
+          userInfo: [NSLocalizedDescriptionKey: "vram exhausted"]))
+      // Walk to .failed(.modelLoadFailed) through legal edges.
+      #expect(h.kernel.testForceTransition(to: .preparing))
+      #expect(h.kernel.testForceTransition(to: .failed(.modelLoadFailed)))
+      // Both the lifecycle-coordinator state read AND the visible overlay
+      // must carry the enriched detail; an unenriched overlay was the bug
+      // Codex flagged on the initial Div 4 patch.
+      #expect(h.driver.state == .error("Model load failed: vram exhausted"))
+      #expect(
+        h.driver.overlayIntent == .error(message: "Model load failed: vram exhausted"))
+    }
+
     @Test(
       "reset() preserves the transcript when the kernel is in the finalizing safe-point"
     )

@@ -1770,5 +1770,19 @@ final class RecordingSessionKernel {
     /// The count of task references still held on the kernel — the §3.1a
     /// "no active task references remain after a terminal state" invariant.
     var testActiveTaskCount: Int { taskBag.count }
+
+    /// Test-only telemetry-error setters. Unit tests that need to assert the
+    /// `lastFailureDetail` mapping reach the underlying telemetry fields
+    /// through these hooks rather than driving a real warm-up / capture /
+    /// transcription failure.
+    func testSetModelLoadError(_ error: (any Error)?) {
+      telemetryState.modelLoadError = error
+    }
+    func testSetCaptureFailureError(_ error: (any Error)?) {
+      telemetryState.captureFailureError = error
+    }
+    func testSetTranscriptionFailureError(_ error: (any Error)?) {
+      telemetryState.transcriptionFailureError = error
+    }
   #endif
 }
