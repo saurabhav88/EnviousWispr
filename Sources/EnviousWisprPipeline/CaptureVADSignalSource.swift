@@ -17,8 +17,9 @@ import Foundation
 //     `noteAutoStopTriggered()` by the VAD-loop wiring;
 //   - the max-duration stop, delivered through `noteMaxDurationReached()`.
 //
-// It does NOT host the in-process VAD loop — that loop is a wiring concern
-// (PR-4b). This source only aggregates and stamps signals.
+// It also owns the in-process direct-mode VAD loop, because that loop is the
+// production signal source when capture is not running through XPC. Both modes
+// normalize into the same kernel input port.
 //
 // PR-4a ships this production-unwired: no App-layer caller binds it yet.
 
@@ -29,6 +30,11 @@ final class CaptureVADSignalSource: VADSignalSource {
 
   private let signalStream: AsyncStream<VADStopSignal>
   private let signalContinuation: AsyncStream<VADStopSignal>.Continuation
+  private weak var audioCapture: (any AudioCaptureInterface)?
+  private var monitorTask: Task<Void, Never>?
+  private var silenceDetector: SilenceDetector?
+  private var detectorSilenceTimeout: TimeInterval?
+  private var directDetectorPrepared = false
 
   /// The session each emitted signal is stamped with. The seam is told the
   /// frozen session at session start (PR-1 §B.6 — VAD config is per-session);
@@ -44,6 +50,7 @@ final class CaptureVADSignalSource: VADSignalSource {
   /// it from `captureResult.vadSegments` (XPC) or `detector.speechSegments`
   /// (direct mode) — see `setSegmentsProvider`.
   private var segmentsProvider: @MainActor () -> [SpeechSegment]
+  private var sessionConfig: DictationSessionConfig?
 
   init(
     evidenceProvider: @escaping @MainActor () -> VADSpeechEvidence = { .unavailable },
@@ -91,9 +98,133 @@ final class CaptureVADSignalSource: VADSignalSource {
   /// The XPC service-side detector fires this callback; the kernel no longer
   /// binds it directly (`bindCaptureCallbacks` dropped that wiring).
   func bind(audioCapture: any AudioCaptureInterface) {
+    self.audioCapture = audioCapture
     audioCapture.onVADAutoStop = { [weak self] in
       self?.noteAutoStopTriggered()
     }
+  }
+
+  /// Bind the frozen per-session VAD config. The kernel calls this before the
+  /// recording phase so direct and XPC capture paths feed the same source.
+  func configureSession(config: DictationSessionConfig, audioCapture: any AudioCaptureInterface) {
+    self.audioCapture = audioCapture
+    sessionConfig = config
+    monitorTask?.cancel()
+    monitorTask = nil
+    if detectorSilenceTimeout != nil && detectorSilenceTimeout != config.vadSilenceTimeout {
+      silenceDetector = nil
+      detectorSilenceTimeout = nil
+    }
+    directDetectorPrepared = false
+    setEvidenceProvider { .unavailable }
+    setSegmentsProvider { [] }
+  }
+
+  /// Start direct-mode VAD monitoring and max-duration monitoring. In XPC mode
+  /// the service owns the detector and calls `onVADAutoStop`; this loop still
+  /// owns max-duration so the kernel receives the same stop signal in both
+  /// modes.
+  func startMonitoring(
+    recordingStartTime: Date,
+    isRecording: @escaping @MainActor () -> Bool
+  ) {
+    guard let audioCapture, let config = sessionConfig else { return }
+    let isXPCMode = audioCapture is AudioCaptureProxy
+
+    monitorTask?.cancel()
+    monitorTask = Task { @MainActor [weak self] in
+      guard let self, let audioCapture = self.audioCapture else { return }
+      let detector: SilenceDetector?
+
+      if isXPCMode {
+        detector = nil
+      } else {
+        let vadConfig = SmoothedVADConfig.fromSensitivity(
+          config.vadSensitivity,
+          energyGate: config.vadEnergyGate
+        )
+        let directDetector =
+          self.silenceDetector
+          ?? SilenceDetector(
+            silenceTimeout: config.vadSilenceTimeout,
+            vadConfig: vadConfig
+          )
+        self.silenceDetector = directDetector
+        self.detectorSilenceTimeout = config.vadSilenceTimeout
+        await directDetector.reset()
+        await directDetector.updateConfig(vadConfig)
+        if !(await directDetector.isReady) {
+          do {
+            try await directDetector.prepare()
+          } catch {
+            Task {
+              await AppLogger.shared.log(
+                "VAD preparation failed: \(error)",
+                level: .info, category: "VAD"
+              )
+            }
+            return
+          }
+        }
+        self.directDetectorPrepared = true
+        detector = directDetector
+      }
+
+      await self.runMonitor(
+        detector: detector,
+        config: config,
+        recordingStartTime: recordingStartTime,
+        audioCapture: audioCapture,
+        isRecording: isRecording
+      )
+    }
+  }
+
+  func finalizeAtStop(rawSampleCount: Int, xpcSegments: [SpeechSegment]) async {
+    monitorTask?.cancel()
+    monitorTask = nil
+
+    if audioCapture is AudioCaptureProxy {
+      setSegmentsProvider { xpcSegments }
+      setEvidenceProvider { xpcSegments.isEmpty ? .confirmedNoSpeech : .voiced }
+      return
+    }
+
+    guard let silenceDetector, directDetectorPrepared else {
+      setSegmentsProvider { [] }
+      setEvidenceProvider { .unavailable }
+      return
+    }
+
+    await silenceDetector.finalizeSegments(totalSampleCount: rawSampleCount)
+    let segments = await silenceDetector.speechSegments
+    setSegmentsProvider { segments }
+    setEvidenceProvider { segments.isEmpty ? .confirmedNoSpeech : .voiced }
+  }
+
+  private func runMonitor(
+    detector: SilenceDetector?,
+    config: DictationSessionConfig,
+    recordingStartTime: Date,
+    audioCapture: any AudioCaptureInterface,
+    isRecording: @escaping @MainActor () -> Bool
+  ) async {
+    await VADMonitorLoop.run(
+      detector: detector,
+      vadAutoStop: config.vadAutoStop,
+      maxDuration: TimingConstants.maxRecordingDuration,
+      recordingStartTime: recordingStartTime,
+      sampleProvider: { audioCapture.capturedSamples },
+      isRecording: isRecording,
+      onStop: { [weak self] reason in
+        switch reason {
+        case .silenceTimeout:
+          self?.noteAutoStopTriggered()
+        case .maxDuration:
+          self?.noteMaxDurationReached()
+        }
+      }
+    )
   }
 
   // MARK: Signal inputs

@@ -53,6 +53,20 @@ public enum KernelDictationDriverFactory {
     }
   }
 
+  @MainActor
+  private final class TelemetryRelay {
+    var kernel: RecordingSessionKernel?
+    var recordingStopped: (@MainActor (Int) -> Void)?
+
+    func emitRecordingStopped(sampleCount: Int) {
+      recordingStopped?(sampleCount)
+    }
+
+    func modelLoadWedgeTelemetry() -> KernelModelLoadWedgeTelemetry? {
+      kernel?.modelLoadWedgeTelemetry
+    }
+  }
+
   /// Build the driver stack and arm both observation arms before returning.
   public static func make(inputs: Inputs) -> KernelDictationDriver {
     // 1. LimbSteps — same instances driver + wiring hold by reference.
@@ -62,15 +76,17 @@ public enum KernelDictationDriverFactory {
       emojiFormatter: EmojiFormatterStep(),
       llmPolish: LLMPolishStep(keychainManager: inputs.keychainManager)
     )
+    limbSteps.llmPolish.backend = .parakeet
+    limbSteps.llmPolish.onToken = { _ in }
 
     // 2. Shared mutable holders.
     let outcome = KernelFinalizationOutcome()
     let context = KernelSessionContext()
+    let telemetryState = KernelTelemetryState()
 
-    // 3. VAD signal source. PR-4b.4 decides whether to call `bind(audioCapture:)`
-    //    here or leave the App's `AudioEventRouter` as the `onVADAutoStop`
-    //    owner; PR-4b.2 does not call `bind()` from the factory.
+    // 3. VAD signal source.
     let vad = CaptureVADSignalSource()
+    vad.bind(audioCapture: inputs.audioCapture)
 
     // 4. Parakeet adapter.
     let adapter = ParakeetEngineAdapter(asrManager: inputs.asrManager)
@@ -81,16 +97,7 @@ public enum KernelDictationDriverFactory {
       captureTelemetry: inputs.captureTelemetry
     )
 
-    // 5a. Lifecycle sink (r6) — emits the PR-1 §B.7.2 kernel-owned events
-    //     when the observer's lifecycle-event callback fires. Reads
-    //     `context.config`, `inputs.audioCapture.currentAudioRoute`, and
-    //     `inputs.captureTelemetry`. Internal type; never appears in `Inputs`.
-    let lifecycleSink = KernelLifecycleTelemetrySink(
-      backend: .parakeet,
-      audioCapture: inputs.audioCapture,
-      context: context,
-      captureTelemetry: inputs.captureTelemetry
-    )
+    let telemetryRelay = TelemetryRelay()
 
     // 6. Finalization wiring (closures over store + paste).
     let textProcessingRunner = TextProcessingRunner()
@@ -114,10 +121,45 @@ public enum KernelDictationDriverFactory {
       sleepTicks: wiring.sleepTicks,
       processText: wiring.processText,
       store: wiring.store,
-      deliver: wiring.deliver
+      deliver: wiring.deliver,
+      zombieZeroPeakTelemetry: { ctx in
+        emitter.zombieZeroPeak(ctx: ctx)
+      },
+      recordingStoppedTelemetry: { sampleCount in
+        telemetryRelay.emitRecordingStopped(sampleCount: sampleCount)
+      },
+      markPipelineTimingStart: {
+        outcome.pipelineStartedAtSeconds = CFAbsoluteTimeGetCurrent()
+      },
+      markASRTimingStart: { streaming in
+        outcome.asrStartedAtSeconds = CFAbsoluteTimeGetCurrent()
+        outcome.streamingMode = streaming
+      },
+      markASRTimingEnd: {
+        outcome.asrEndedAtSeconds = CFAbsoluteTimeGetCurrent()
+      },
+      telemetryState: telemetryState
     )
+    telemetryRelay.kernel = kernel
 
-    // 8. Observer (constructed AFTER kernel — needs the kernel ref). The
+    // 8. Lifecycle sink (r6) — emits the PR-1 §B.7.2 kernel-owned events
+    //     when the observer's lifecycle-event callback fires. Reads
+    //     `context.config`, `inputs.audioCapture.currentAudioRoute`, and
+    //     `inputs.captureTelemetry`. Internal type; never appears in `Inputs`.
+    let lifecycleSink = KernelLifecycleTelemetrySink(
+      backend: .parakeet,
+      audioCapture: inputs.audioCapture,
+      context: context,
+      outcome: outcome,
+      captureTelemetry: inputs.captureTelemetry,
+      telemetryState: telemetryState,
+      modelLoadWedgeTelemetry: { telemetryRelay.modelLoadWedgeTelemetry() }
+    )
+    telemetryRelay.recordingStopped = { [lifecycleSink] sampleCount in
+      lifecycleSink.emitRecordingStopped(sampleCount: sampleCount)
+    }
+
+    // 9. Observer (constructed AFTER kernel — needs the kernel ref). The
     //    lifecycle callback closes over the internal sink so the observer's
     //    emit-side stays decoupled from Sentry / PostHog wiring.
     let observer = KernelHeartPathTelemetryObserver(
@@ -127,7 +169,7 @@ public enum KernelDictationDriverFactory {
       emitLifecycleEvent: { [lifecycleSink] event in lifecycleSink.emit(event) }
     )
 
-    // 9. Driver.
+    // 10. Driver.
     let driver = KernelDictationDriver(
       kernel: kernel,
       observer: observer,

@@ -31,9 +31,11 @@ final class ASREventRouter {
           level: .info, category: "XPC"
         )
       }
-      if pState == .loadingModel || pState == .recording || pState == .transcribing {
+      if pState == .loadingModel || pState == .recording || pState == .transcribing
+        || pState == .polishing
+      {
         self.pipeline.handleASRServiceInterruption()
-      } else if wkState == .recording || wkState == .transcribing {
+      } else if wkState == .recording || wkState == .transcribing || wkState == .polishing {
         self.whisperKitPipeline.handleASRServiceInterruption()
       }
     }

@@ -79,9 +79,11 @@ import Testing
       #expect(event(.warmingUp, didLoadModelThisSession: false) == nil)
     }
 
-    @Test("stopping always maps to .recordingStopped (r6)")
-    func stoppingMapsToRecordingStopped() {
-      #expect(event(.stopping) == .recordingStopped)
+    @Test("stopping no longer maps to .recordingStopped in the observer")
+    func stoppingDoesNotEmitRecordingStoppedFromObserver() {
+      // Fixer item #4 moved recording-stopped emission to the kernel callback
+      // carrying stopCapture()'s exact sample count; the observer path is nil.
+      #expect(event(.stopping) == nil)
     }
 
     @Test("finalizing emits .asrCompleted only when entered from .transcribing (r6)")
@@ -138,15 +140,22 @@ import Testing
       kernel.testForceTransition(to: .completed)
       await drain()
 
-      // PR-4b.2 r6 — `.stopping` emits `.recordingStopped`; `.finalizing`
-      // emits `.asrCompleted` when entered from `.transcribing` (the
-      // structural transcript-branch signal — Codex review #11). The test's
-      // forced path visits `.transcribing → .finalizing`, so the breadcrumb
-      // fires here. `.warmingUp` wasn't visited (no model-load branch
-      // entered).
+      // `.stopping` no longer emits via the observer. The kernel-parity-hardening
+      // PR moved the recording-stopped breadcrumb to a direct kernel callback
+      // (`recordingStoppedTelemetry` in the constructor) that receives the
+      // exact `sampleCount` returned by `stopCapture()`, replacing the prior
+      // observer-path emission that read the inaccurate `capturedSamples.count`
+      // property snapshot. The breadcrumb still fires in production; the
+      // observer is no longer the emission path for it.
+      //
+      // `.finalizing` emits `.asrCompleted` when entered from `.transcribing`
+      // (PR-4b.2 r6 — the structural transcript-branch signal, Codex review #11).
+      // The test's forced path visits `.transcribing → .finalizing`, so the
+      // breadcrumb fires here. `.warmingUp` wasn't visited (no model-load
+      // branch entered).
       #expect(
         recorder.events == [
-          .recordingCommitted(isStreaming: false), .recordingStopped, .transcriptionStarted,
+          .recordingCommitted(isStreaming: false), .transcriptionStarted,
           .asrCompleted,
           .pipelineCompleted,
         ])

@@ -42,7 +42,9 @@ final class KernelLifecycleTelemetrySink {
     _ triggerSource: String, _ inputMode: String, _ targetApp: String?
   ) -> Void
 
-  typealias ModelLoadWedgedSink = @MainActor (_ backend: String) -> Void
+  typealias ModelLoadWedgedSink = @MainActor (
+    _ backend: String, _ telemetry: KernelModelLoadWedgeTelemetry?
+  ) -> Void
 
   typealias CaptureErrorSink = @MainActor (
     _ error: any Error,
@@ -51,24 +53,39 @@ final class KernelLifecycleTelemetrySink {
     _ extra: [String: Any]?
   ) -> Void
 
+  typealias SnapshotCaptureErrorSink = @MainActor (
+    _ error: any Error,
+    _ category: SentryBreadcrumb.ErrorCategory,
+    _ stage: String,
+    _ extra: [String: Any]?,
+    _ snapshot: SentryBreadcrumb.RecordingSnapshot
+  ) -> Void
+
   // MARK: Identity + read sources
 
   private let backend: ASRBackendType
   private let audioCapture: any AudioCaptureInterface
   private let context: KernelSessionContext
+  private let outcome: KernelFinalizationOutcome
   private let captureTelemetry: CaptureTelemetryState
+  private let telemetryState: KernelTelemetryState
+  private let modelLoadWedgeTelemetry: @MainActor () -> KernelModelLoadWedgeTelemetry?
   private let breadcrumb: BreadcrumbSink
   private let updateRecordingState: RecordingStateSink
   private let updateAudioRoute: AudioRouteSink
   private let dictationInvoked: DictationInvokedSink
   private let modelLoadWedged: ModelLoadWedgedSink
   private let captureError: CaptureErrorSink
+  private let captureErrorWithSnapshot: SnapshotCaptureErrorSink
 
   init(
     backend: ASRBackendType,
     audioCapture: any AudioCaptureInterface,
     context: KernelSessionContext,
+    outcome: KernelFinalizationOutcome = KernelFinalizationOutcome(),
     captureTelemetry: CaptureTelemetryState,
+    telemetryState: KernelTelemetryState = KernelTelemetryState(),
+    modelLoadWedgeTelemetry: @escaping @MainActor () -> KernelModelLoadWedgeTelemetry? = { nil },
     breadcrumb: @escaping BreadcrumbSink = { stage, message, data in
       SentryBreadcrumb.add(stage: stage, message: message, level: .info, data: data)
     },
@@ -83,28 +100,89 @@ final class KernelLifecycleTelemetrySink {
       TelemetryService.shared.dictationInvoked(
         triggerSource: trigger, inputMode: mode, targetApp: target)
     },
-    modelLoadWedged: @escaping ModelLoadWedgedSink = { backend in
-      // Minimal payload — the full wedge_snapshot is documented as deferred
-      // (§2.2 non-goals). PR-4b.4 Live UAT may file a follow-up.
+    modelLoadWedged: @escaping ModelLoadWedgedSink = { backend, telemetry in
       TelemetryService.shared.modelLoadWedged(
         backend: backend, stage: "loading_model",
-        silenceMs: 0, observedMaxGapMs: 0, observedPhase: "kernel",
-        signalCountTotal: 0, firstSignalLatencyMs: nil, totalAttemptDurationMs: 0)
+        silenceMs: telemetry?.silenceMs,
+        observedMaxGapMs: telemetry?.observedMaxGapMs,
+        observedPhase: telemetry?.observedPhase ?? "kernel",
+        signalCountTotal: telemetry?.signalCountTotal,
+        firstSignalLatencyMs: telemetry?.firstSignalLatencyMs,
+        totalAttemptDurationMs: telemetry?.totalAttemptDurationMs)
     },
     captureError: @escaping CaptureErrorSink = { error, category, stage, extra in
       SentryBreadcrumb.captureError(error, category: category, stage: stage, extra: extra)
+    },
+    captureErrorWithSnapshot: @escaping SnapshotCaptureErrorSink = {
+      error, category, stage, extra, snapshot in
+      SentryBreadcrumb.captureError(
+        error, category: category, stage: stage, extra: extra, snapshot: snapshot)
     }
   ) {
     self.backend = backend
     self.audioCapture = audioCapture
     self.context = context
+    self.outcome = outcome
     self.captureTelemetry = captureTelemetry
+    self.telemetryState = telemetryState
+    self.modelLoadWedgeTelemetry = modelLoadWedgeTelemetry
     self.breadcrumb = breadcrumb
     self.updateRecordingState = updateRecordingState
     self.updateAudioRoute = updateAudioRoute
     self.dictationInvoked = dictationInvoked
     self.modelLoadWedged = modelLoadWedged
     self.captureError = captureError
+    self.captureErrorWithSnapshot = captureErrorWithSnapshot
+  }
+
+  convenience init(
+    backend: ASRBackendType,
+    audioCapture: any AudioCaptureInterface,
+    context: KernelSessionContext,
+    outcome: KernelFinalizationOutcome = KernelFinalizationOutcome(),
+    captureTelemetry: CaptureTelemetryState,
+    telemetryState: KernelTelemetryState = KernelTelemetryState(),
+    modelLoadWedgeTelemetry: @escaping @MainActor () -> KernelModelLoadWedgeTelemetry? = { nil },
+    breadcrumb: @escaping BreadcrumbSink = { stage, message, data in
+      SentryBreadcrumb.add(stage: stage, message: message, level: .info, data: data)
+    },
+    updateRecordingState: @escaping RecordingStateSink = { active, backend, isStreaming in
+      SentryBreadcrumb.updateRecordingState(
+        active: active, backend: backend, isStreaming: isStreaming)
+    },
+    updateAudioRoute: @escaping AudioRouteSink = { route in
+      SentryBreadcrumb.updateAudioRoute(route)
+    },
+    dictationInvoked: @escaping DictationInvokedSink = { trigger, mode, target in
+      TelemetryService.shared.dictationInvoked(
+        triggerSource: trigger, inputMode: mode, targetApp: target)
+    },
+    modelLoadWedged: @escaping @MainActor (_ backend: String) -> Void,
+    captureError: @escaping CaptureErrorSink = { error, category, stage, extra in
+      SentryBreadcrumb.captureError(error, category: category, stage: stage, extra: extra)
+    },
+    captureErrorWithSnapshot: @escaping SnapshotCaptureErrorSink = {
+      error, category, stage, extra, snapshot in
+      SentryBreadcrumb.captureError(
+        error, category: category, stage: stage, extra: extra, snapshot: snapshot)
+    }
+  ) {
+    self.init(
+      backend: backend,
+      audioCapture: audioCapture,
+      context: context,
+      outcome: outcome,
+      captureTelemetry: captureTelemetry,
+      telemetryState: telemetryState,
+      modelLoadWedgeTelemetry: modelLoadWedgeTelemetry,
+      breadcrumb: breadcrumb,
+      updateRecordingState: updateRecordingState,
+      updateAudioRoute: updateAudioRoute,
+      dictationInvoked: dictationInvoked,
+      modelLoadWedged: { backend, _ in modelLoadWedged(backend) },
+      captureError: captureError,
+      captureErrorWithSnapshot: captureErrorWithSnapshot
+    )
   }
 
   /// Switch over the 12-case lifecycle vocabulary and emit each PR-1 §B.7.2
@@ -131,19 +209,42 @@ final class KernelLifecycleTelemetrySink {
         ["backend": backend.rawValue, "streaming": isStreaming])
       updateRecordingState(true, backend.rawValue, isStreaming)
       updateAudioRoute(audioCapture.currentAudioRoute)
+      Task {
+        await AppLogger.shared.log(
+          "Recording started. Backend: \(backend.rawValue), streaming=\(isStreaming)",
+          level: .info, category: "Pipeline"
+        )
+      }
 
     case .recordingStopped:
-      breadcrumb("recording", "Recording stopped", nil)
-      updateRecordingState(false, nil, nil)
+      emitRecordingStopped(sampleCount: audioCapture.capturedSamples.count)
 
     case .transcriptionStarted:
-      breadcrumb("asr", "Transcription started", ["backend": backend.rawValue])
+      breadcrumb(
+        "asr", "Transcription started",
+        ["mode": outcome.streamingMode ? "streaming" : "batch", "backend": backend.rawValue])
+      Task {
+        await AppLogger.shared.log(
+          "Pipeline timing: ASR started (mode=\(outcome.streamingMode ? "streaming" : "batch"), backend=\(backend.rawValue))",
+          level: .info, category: "PipelineTiming"
+        )
+      }
 
     case .asrCompleted:
-      breadcrumb("asr", "ASR completed", ["backend": backend.rawValue])
+      // TODO(test-fix): update KernelLifecycleTelemetrySinkTests for the round-2 ASR payload.
+      let payload = asrCompletedPayload()
+      breadcrumb("asr", "ASR completed", payload)
+      Task {
+        await AppLogger.shared.log(
+          "Pipeline timing: ASR completed in \(payload["duration_s"] ?? "0.000")s "
+            + "(mode=\(payload["mode"] ?? "batch"), \(payload["char_count"] ?? 0) chars, "
+            + "lang=\(payload["language"] ?? "?"))",
+          level: .info, category: "PipelineTiming"
+        )
+      }
 
     case .pipelineCompleted:
-      breadcrumb("pipeline", "Pipeline complete", ["backend": backend.rawValue])
+      breadcrumb("pipeline", "Pipeline complete", pipelineCompletedPayload())
       captureTelemetry.recordSuccessfulRecording()
 
     case .failed(let reason):
@@ -156,12 +257,13 @@ final class KernelLifecycleTelemetrySink {
       // Bridge matrix #3 — old TP:1145 emitted `was_recording == state == .recording`
       // at crash time. The kernel reaches `.asrInterrupted` from `.recording`
       // OR `.transcribing`; the observer threads the prior state in here.
-      captureError(
+      emitCaptureError(
         NSError(
           domain: "EnviousWispr", code: -3,
           userInfo: [NSLocalizedDescriptionKey: "ASR XPC service crashed"]),
         .xpcServiceError, "asr",
-        ["was_recording": wasRecording])
+        ["was_recording": wasRecording],
+        snapshot: recordingSnapshot())
       updateRecordingState(false, nil, nil)
 
     case .discarded(let reason):
@@ -178,13 +280,18 @@ final class KernelLifecycleTelemetrySink {
       // name/string rule. VAD-gate path = TP:787; ASR-empty no-speech = TP:902.
       switch source {
       case .vadGate:
+        // TODO(test-fix): update no-speech payload expectations for round-2 fields.
         breadcrumb(
           "asr", "VAD gate: no speech detected, skipping ASR",
-          ["backend": backend.rawValue])
+          noSpeechVADGatePayload())
       case .asrEmptyNoSpeech:
         breadcrumb(
           "asr", "ASR empty (no speech detected)",
-          ["backend": backend.rawValue])
+          [
+            "backend": backend.rawValue,
+            "mode": telemetryState.noSpeechTelemetry?.mode
+              ?? (outcome.streamingMode ? "streaming" : "batch"),
+          ])
       }
 
     case .cancelled:
@@ -196,76 +303,197 @@ final class KernelLifecycleTelemetrySink {
     }
   }
 
+  func emitRecordingStopped(sampleCount: Int) {
+    breadcrumb(
+      "recording", "Recording stopped",
+      ["sample_count": sampleCount])
+    updateRecordingState(false, nil, nil)
+  }
+
+  private func pipelineCompletedPayload() -> [String: Any] {
+    let e2e =
+      outcome.pipelineStartedAtSeconds.flatMap { start in
+        outcome.pipelineEndedAtSeconds.map { $0 - start }
+      } ?? 0
+    let asr =
+      outcome.asrStartedAtSeconds.flatMap { start in
+        outcome.asrEndedAtSeconds.map { $0 - start }
+      } ?? 0
+
+    return [
+      "e2e_s": String(format: "%.3f", e2e),
+      "asr_s": String(format: "%.3f", asr),
+      "polish_s": String(format: "%.3f", outcome.polishDurationSeconds),
+      "paste_tier": outcome.pasteResult?.pasteTierLabel ?? "none",
+      "backend": backend.rawValue,
+    ]
+  }
+
+  private func asrCompletedPayload() -> [String: Any] {
+    let duration =
+      telemetryState.asrCompletedTelemetry?.durationSeconds
+      ?? outcome.asrStartedAtSeconds.flatMap { start in
+        outcome.asrEndedAtSeconds.map { $0 - start }
+      }
+      ?? 0
+    let mode =
+      telemetryState.asrCompletedTelemetry?.mode
+      ?? (outcome.streamingMode ? "streaming" : "batch")
+    return [
+      "backend": backend.rawValue,
+      "duration_s": String(format: "%.3f", duration),
+      "char_count": telemetryState.asrCompletedTelemetry?.charCount ?? 0,
+      "mode": mode,
+      "language": telemetryState.asrCompletedTelemetry?.language ?? "unknown",
+    ]
+  }
+
+  private func noSpeechVADGatePayload() -> [String: Any] {
+    [
+      "backend": backend.rawValue,
+      "mode": telemetryState.noSpeechTelemetry?.mode
+        ?? (outcome.streamingMode ? "streaming" : "batch"),
+      "raw_sample_count": telemetryState.noSpeechTelemetry?.rawSampleCount
+        ?? audioCapture.capturedSamples.count,
+      "peak_audio_level": telemetryState.noSpeechTelemetry?.peakAudioLevel ?? 0,
+    ]
+  }
+
+  private func recordingSnapshot() -> SentryBreadcrumb.RecordingSnapshot? {
+    guard let snapshot = telemetryState.recordingSnapshot else { return nil }
+    return SentryBreadcrumb.RecordingSnapshot(
+      backend: snapshot.backend,
+      audioRoute: snapshot.audioRoute,
+      wasStreaming: snapshot.wasStreaming,
+      startTime: snapshot.startTime,
+      durationMs: snapshot.durationMs,
+      targetAppBundleID: snapshot.targetAppBundleID ?? context.targetApp?.bundleIdentifier
+    )
+  }
+
+  private func captureFailureExtra(error: any Error, failureMode: String) -> [String: Any] {
+    AudioCaptureFailureExtras.build(
+      error: error,
+      audioCapture: audioCapture,
+      failureMode: failureMode,
+      backend: backend == .whisperKit ? backend.rawValue : nil
+    )
+  }
+
+  private func emitCaptureError(
+    _ error: any Error,
+    _ category: SentryBreadcrumb.ErrorCategory,
+    _ stage: String,
+    _ extra: [String: Any]?,
+    snapshot: SentryBreadcrumb.RecordingSnapshot? = nil
+  ) {
+    if let snapshot {
+      captureErrorWithSnapshot(error, category, stage, extra, snapshot)
+    } else {
+      captureError(error, category, stage, extra)
+    }
+  }
+
+  private func modelLoadWedgedExtra(_ telemetry: KernelModelLoadWedgeTelemetry?) -> [String: Any] {
+    [
+      "backend": backend.rawValue,
+      "silence_ms": telemetry?.silenceMs ?? 0,
+      "observed_max_gap_ms": telemetry?.observedMaxGapMs ?? 0,
+      "observed_phase": telemetry?.observedPhase ?? "kernel",
+      "signal_count_total": telemetry?.signalCountTotal ?? 0,
+      "first_signal_latency_ms": telemetry?.firstSignalLatencyMs ?? -1,
+      "total_attempt_duration_ms": telemetry?.totalAttemptDurationMs ?? 0,
+    ]
+  }
+
   /// Per-failure-reason captureError emission. Mirrors old TP failure call
   /// sites with stage + message + core data; rich diagnostic dicts deferred.
   private func emitFailed(_ reason: RecordingFailureReason) {
     switch reason {
     case .modelWedged:
-      captureError(
+      let telemetry = modelLoadWedgeTelemetry()
+      emitCaptureError(
         ModelLoadWatchdog.WedgeError(),
         .modelLoadWedged, "asr",
-        ["backend": backend.rawValue])
-      modelLoadWedged(backend.rawValue)
+        modelLoadWedgedExtra(telemetry))
+      modelLoadWedged(backend.rawValue, telemetry)
     case .modelLoadFailed:
-      captureError(
+      emitCaptureError(
         NSError(
           domain: "EnviousWispr", code: -10,
           userInfo: [NSLocalizedDescriptionKey: "Model load failed"]),
         .modelLoadFailed, "asr",
         ["backend": backend.rawValue])
     case .captureStartFailed:
-      captureError(
-        NSError(
+      let error =
+        telemetryState.captureFailureError
+        ?? NSError(
           domain: "EnviousWispr", code: -11,
-          userInfo: [NSLocalizedDescriptionKey: "Recording failed"]),
+          userInfo: [NSLocalizedDescriptionKey: "Recording failed"])
+      emitCaptureError(
+        error,
         .audioCaptureFailed, "recording",
-        ["backend": backend.rawValue])
+        captureFailureExtra(error: error, failureMode: "thrown_start"))
     case .asrEmpty:
-      captureError(
+      emitCaptureError(
         NSError(
           domain: "EnviousWispr", code: -1,
           userInfo: [
             NSLocalizedDescriptionKey: "ASR returned empty text despite speech evidence"
           ]),
         .asrEmptyResult, "asr",
-        ["backend": backend.rawValue])
+        telemetryState.asrEmptyDiagnostics?.sentryExtra() ?? ["backend": backend.rawValue],
+        snapshot: recordingSnapshot())
     case .emptyAfterProcessing:
-      captureError(
+      emitCaptureError(
         HeartPathError.emptyAfterProcessing(
           route: audioCapture.currentAudioRoute,
-          wasPolishEnabled: false),  // limb-step state not threaded; conservative default
+          wasPolishEnabled: telemetryState.polishEnabled),
         .heartPathFinalization, "processing",
         [
           "backend": backend.rawValue,
           "capture.route": audioCapture.currentAudioRoute,
+          "polish.enabled": telemetryState.polishEnabled,
+          "capture_session_id": Int(audioCapture.currentCaptureSessionID),
         ])
     case .storageFailed:
-      captureError(
-        NSError(
+      let error =
+        telemetryState.storageFailureError
+        ?? NSError(
           domain: "EnviousWispr", code: -12,
-          userInfo: [NSLocalizedDescriptionKey: "Failed to save transcript"]),
-        .asrFailed, "storage", nil)
+          userInfo: [NSLocalizedDescriptionKey: "Failed to save transcript"])
+      emitCaptureError(error, .asrFailed, "storage", nil)
     case .asrFailed, .asrWedged:
-      captureError(
-        NSError(
+      let error =
+        telemetryState.transcriptionFailureError
+        ?? NSError(
           domain: "EnviousWispr", code: -13,
-          userInfo: [NSLocalizedDescriptionKey: "Transcription failed"]),
+          userInfo: [NSLocalizedDescriptionKey: "Transcription failed"])
+      emitCaptureError(
+        error,
         .asrFailed, "transcription",
-        ["backend": backend.rawValue])
+        ["backend": backend.rawValue],
+        snapshot: recordingSnapshot())
     case .permissionDenied:
-      captureError(
-        NSError(
+      let error =
+        telemetryState.captureFailureError
+        ?? NSError(
           domain: "EnviousWispr", code: -14,
-          userInfo: [NSLocalizedDescriptionKey: "Microphone permission denied"]),
+          userInfo: [NSLocalizedDescriptionKey: "Microphone permission denied"])
+      emitCaptureError(
+        error,
         .audioCaptureFailed, "recording",
-        ["backend": backend.rawValue, "failure_mode": "permission_denied"])
+        captureFailureExtra(error: error, failureMode: "permission_denied"))
     case .prepareFailed:
-      captureError(
-        NSError(
+      let error =
+        telemetryState.captureFailureError
+        ?? NSError(
           domain: "EnviousWispr", code: -15,
-          userInfo: [NSLocalizedDescriptionKey: "Prepare failed"]),
+          userInfo: [NSLocalizedDescriptionKey: "Prepare failed"])
+      emitCaptureError(
+        error,
         .audioCaptureFailed, "recording",
-        ["backend": backend.rawValue, "failure_mode": "prepare_failed"])
+        captureFailureExtra(error: error, failureMode: "prepare_failed"))
     case .captureStalled:
       // r8 (2026-05-25) — NO Sentry/PostHog emission for `.captureStalled`.
       // The rich `HeartPathTelemetryEmitter.stallFired(ctx:)` (`:91-116`)
@@ -296,12 +524,17 @@ final class KernelLifecycleTelemetrySink {
       // entirely. Emit the basic captureError so the timeline keeps the
       // event; the richer ctx-bearing path is a follow-up (matches the
       // §2.2 "rich diagnostic dicts deferred" non-goal).
-      captureError(
-        NSError(
-          domain: "EnviousWispr", code: -16,
-          userInfo: [NSLocalizedDescriptionKey: "No audio captured"]),
+      let sampleCount = audioCapture.capturedSamples.count
+      let error = HeartPathError.noAudioCaptured(
+        sessionID: audioCapture.currentCaptureSessionID,
+        durationMs: sampleCount * 1000 / Int(AudioConstants.sampleRate),
+        wasStreaming: outcome.streamingMode,
+        route: audioCapture.currentAudioRoute
+      )
+      emitCaptureError(
+        error,
         .audioCaptureFailed, "recording",
-        ["backend": backend.rawValue, "failure_mode": "no_audio_captured"])
+        captureFailureExtra(error: error, failureMode: "no_audio_captured"))
     }
   }
 }

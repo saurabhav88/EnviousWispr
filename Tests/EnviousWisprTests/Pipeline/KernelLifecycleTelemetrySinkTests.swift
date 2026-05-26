@@ -153,9 +153,11 @@ import Testing
     let recorder = Recorder()
     let sink = makeSink(recorder: recorder)
     sink.emit(.recordingStopped)
+    // Fixer item #4 restored OLD-TP:671's sample count payload; production now
+    // emits the exact `sample_count` key with the recording-stopped breadcrumb.
     #expect(
       recorder.breadcrumbs == [
-        .init(stage: "recording", message: "Recording stopped", dataKeys: [])
+        .init(stage: "recording", message: "Recording stopped", dataKeys: ["sample_count"])
       ])
     #expect(
       recorder.recordingStates == [
@@ -168,9 +170,11 @@ import Testing
     let recorder = Recorder()
     let sink = makeSink(recorder: recorder)
     sink.emit(.transcriptionStarted)
+    // Fixer item #4 restored OLD-TP:827-832's mode payload so production can
+    // distinguish streaming ASR from batch ASR in the breadcrumb.
     #expect(
       recorder.breadcrumbs == [
-        .init(stage: "asr", message: "Transcription started", dataKeys: ["backend"])
+        .init(stage: "asr", message: "Transcription started", dataKeys: ["backend", "mode"])
       ])
   }
 
@@ -179,9 +183,13 @@ import Testing
     let recorder = Recorder()
     let sink = makeSink(recorder: recorder)
     sink.emit(.asrCompleted)
+    // Round 2 item #10 restored OLD-TP:922-935's `duration_s`, `char_count`,
+    // `mode`, `language` fields. Sink now emits the full sorted key set.
     #expect(
       recorder.breadcrumbs == [
-        .init(stage: "asr", message: "ASR completed", dataKeys: ["backend"])
+        .init(
+          stage: "asr", message: "ASR completed",
+          dataKeys: ["backend", "char_count", "duration_s", "language", "mode"])
       ])
   }
 
@@ -190,9 +198,13 @@ import Testing
     let recorder = Recorder()
     let sink = makeSink(recorder: recorder)
     sink.emit(.pipelineCompleted)
+    // Fixer item #3 restored OLD-TP:1032-1040's rich timing and paste-tier
+    // payload, so production emits the full sorted key set again.
     #expect(
       recorder.breadcrumbs == [
-        .init(stage: "pipeline", message: "Pipeline complete", dataKeys: ["backend"])
+        .init(
+          stage: "pipeline", message: "Pipeline complete",
+          dataKeys: ["asr_s", "backend", "e2e_s", "paste_tier", "polish_s"])
       ])
   }
 
@@ -250,11 +262,13 @@ import Testing
     let recorder = Recorder()
     let sink = makeSink(recorder: recorder)
     sink.emit(.noSpeech(.vadGate))
+    // Round 2 item #15 restored OLD-TP:787-804's `mode`, `peak_audio_level`,
+    // `raw_sample_count` fields. Sink now emits the full sorted key set.
     #expect(
       recorder.breadcrumbs == [
         .init(
           stage: "asr", message: "VAD gate: no speech detected, skipping ASR",
-          dataKeys: ["backend"])
+          dataKeys: ["backend", "mode", "peak_audio_level", "raw_sample_count"])
       ])
   }
 
@@ -263,11 +277,13 @@ import Testing
     let recorder = Recorder()
     let sink = makeSink(recorder: recorder)
     sink.emit(.noSpeech(.asrEmptyNoSpeech))
+    // Round 2 enrichment added `mode` to this breadcrumb alongside the
+    // existing `backend` field.
     #expect(
       recorder.breadcrumbs == [
         .init(
           stage: "asr", message: "ASR empty (no speech detected)",
-          dataKeys: ["backend"])
+          dataKeys: ["backend", "mode"])
       ])
   }
 

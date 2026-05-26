@@ -309,14 +309,16 @@ import Testing
     #expect(manager.lastUnloadPolicy == .fiveMinutes)
   }
 
-  @Test("a mid-recording ASR-service crash drives onEngineInterrupted")
-  func engineInterruptedBridge() async throws {
+  @Test("Parakeet leaves ASR service interruption ownership to ASREventRouter")
+  func engineInterruptedCallbackOwnership() async throws {
     let manager = StubParakeetASRManager()
     let adapter = ParakeetEngineAdapter(asrManager: manager)
     var fired = false
     adapter.onEngineInterrupted = { fired = true }
-    manager.onServiceInterrupted?()
-    #expect(fired, "ASRManagerInterface.onServiceInterrupted bridges to onEngineInterrupted")
+    // Fixer item #7 made ASREventRouter the sole owner of onServiceInterrupted;
+    // the adapter-local hook remains optional and is not wired from this callback.
+    #expect(manager.onServiceInterrupted == nil)
+    #expect(!fired)
   }
 
   // MARK: Helpers
