@@ -605,9 +605,19 @@ final class RecordingSessionKernel {
     // error through `try await preWarmAudioInput()`; swallowing it here
     // would let the start path proceed into `.toggleRecording` and fail
     // downstream in a less informative way.
+    let preWarmStart = ContinuousClock.now
     do {
       try await audioCapture.preWarm()
       log("preWarm audioCapture.preWarm succeeded sid=\(sid.raw)")
+      // GAP 3 app.log parity: emit the OLD TP cold-start preWarm timing
+      // (TP:317-321) so debug-mode log scans grep this exact prefix.
+      let totalMs = Int((ContinuousClock.now - preWarmStart) / .milliseconds(1))
+      Task {
+        await AppLogger.shared.log(
+          "COLD-START [Parakeet] preWarmAudioInput total=\(totalMs)ms",
+          level: .info, category: "Pipeline"
+        )
+      }
     } catch {
       log("preWarm audioCapture.preWarm failed sid=\(sid.raw) error=\(error)")
       throw error
@@ -879,6 +889,18 @@ final class RecordingSessionKernel {
       return
     }
 
+    // GAP 3 app.log parity: captured-sample-count log (TP:725-729) —
+    // gives debug-mode log readers the duration of the visible recording
+    // before any VAD / conditioning runs.
+    let capturedSampleCount = captureResult.samples.count
+    Task {
+      await AppLogger.shared.log(
+        "Captured \(capturedSampleCount) samples "
+          + "(\(String(format: "%.2f", Double(capturedSampleCount) / 16000))s)",
+        level: .verbose, category: "Pipeline"
+      )
+    }
+
     // VAD no-speech gate (PR-1 §B.6) — keys on *confirmed* no-speech.
     let speechEvidence = vad.speechEvidenceAtStop()
     if speechEvidence == .confirmedNoSpeech {
@@ -894,6 +916,17 @@ final class RecordingSessionKernel {
         rawSamples: captureResult.samples,
         peakAudioLevel: rawPeakAudioLevel
       )
+      // GAP 3 app.log parity: VAD-gate skip log (TP:800-804) — gives debug
+      // log readers a clear marker for "user pressed without speaking."
+      let peak = rawPeakAudioLevel
+      let cnt = capturedSampleCount
+      Task {
+        await AppLogger.shared.log(
+          "VAD gate: no speech, skipping ASR "
+            + "(samples=\(cnt), peak=\(String(format: "%.4f", peak)))",
+          level: .info, category: "Pipeline"
+        )
+      }
       finishTerminal(.noSpeech, sid: sid)
       return
     }
@@ -929,6 +962,16 @@ final class RecordingSessionKernel {
     let conditioned = CapturedAudioConditioner.condition(
       rawSamples: captureResult.samples, vadSegments: vadSegments)
     let vadSpeechDurationMs = Self.speechDurationMs(vadSegments)
+    // GAP 3 app.log parity: VAD filter ratio log (TP:772-776).
+    let rawCount = captureResult.samples.count
+    let filteredCount = conditioned.filteredSampleCount
+    Task {
+      await AppLogger.shared.log(
+        "VAD filtered to \(filteredCount) samples "
+          + "(\(String(format: "%.1f", Double(filteredCount) / Double(max(rawCount, 1)) * 100))% voiced)",
+        level: .verbose, category: "Pipeline"
+      )
+    }
     telemetryState.asrEmptyDiagnostics = ASREmptyResultDiagnostics(
       backend: ASRBackendType.parakeet.rawValue,
       mode: isStreamingSession ? "streaming" : "batch",
@@ -982,6 +1025,25 @@ final class RecordingSessionKernel {
           rawSampleCount: captureResult.samples.count,
           peakAudioLevel: rawPeakAudioLevel
         )
+        // GAP 3 app.log parity: no-speech-no-evidence log (TP:911-915).
+        Task {
+          await AppLogger.shared.log(
+            "No speech detected, returning to idle",
+            level: .info, category: "Pipeline"
+          )
+        }
+      } else {
+        // GAP 3 app.log parity: ASR-empty-despite-evidence log (TP:894-898).
+        let segs = vadSegments.count
+        let speechMs = vadSpeechDurationMs
+        let peak = rawPeakAudioLevel
+        Task {
+          await AppLogger.shared.log(
+            "ASR empty despite speech evidence "
+              + "(segments=\(segs), speechMs=\(speechMs), peak=\(peak))",
+            level: .info, category: "Pipeline"
+          )
+        }
       }
       finishTerminal(hadSpeechEvidence ? .failed(.asrEmpty) : .noSpeech, sid: sid)
     case .cancelled:
