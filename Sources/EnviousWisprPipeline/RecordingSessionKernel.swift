@@ -618,24 +618,11 @@ final class RecordingSessionKernel {
           level: .info, category: "Pipeline"
         )
       }
-      // GAP 2 of seam audit (TP:512-531): set the flag so the forward path
-      // can SKIP the BT-codec stabilization-wait + engine-rebuild retry.
-      // `audioCapture.preWarm()` already runs the stabilization itself
-      // (AudioCaptureProxy:391 / AudioCaptureManager:334).
-      audioPreWarmed = true
     } catch {
       log("preWarm audioCapture.preWarm failed sid=\(sid.raw) error=\(error)")
       throw error
     }
   }
-
-  /// True between a successful `preWarm()` and the next `start(config:)`'s
-  /// forward path consuming it. Lets the forward path skip the
-  /// stabilization-wait + engine-rebuild retry on PTT paths (which already
-  /// stabilized inside `audioCapture.preWarm()`). Menu / non-PTT starts
-  /// see `false` and pay the OLD TP's stabilization safety net (Div 5 of
-  /// seam audit / TP:512-531).
-  private var audioPreWarmed = false
 
   // MARK: Forward path
 
@@ -724,34 +711,34 @@ final class RecordingSessionKernel {
       return
     }
     guard isCurrent(sid) else { return }
-    // GAP 2 of seam audit (TP:512-531): for non-PTT starts (no
-    // `preWarm()` ran), wait briefly for BT-codec format stabilization,
-    // and rebuild the engine + retry once if it never settled. The PTT
-    // path covers this inside `audioCapture.preWarm()`; `audioPreWarmed`
-    // gates the work to skip it on the warm path. The 1.5s/0.2s pair
-    // matches the existing stabilization sites at AudioCaptureProxy:391
-    // and AudioCaptureManager:334 — re-using a value the codebase has
+    // GAP 2 of seam audit (TP:512-531): wait briefly for BT-codec format
+    // stabilization, and rebuild the engine + retry once if it never
+    // settled. Always running this is cheap on the PTT (warm) path —
+    // `waitForFormatStabilization` returns near-instantly when format
+    // is already settled (AudioCaptureManager:355 short-circuits when
+    // there's no active source; per-source impls return on the first
+    // poll once stable). The 1.5s/0.2s pair matches the existing
+    // stabilization sites at AudioCaptureProxy:391 and
+    // AudioCaptureManager:334 — re-using a value the codebase has
     // already shipped, not introducing a new arbitrary timeout.
-    if !audioPreWarmed {
-      let stabilized = await audioCapture.waitForFormatStabilization(
-        maxWait: 1.5, pollInterval: 0.2)
-      guard isCurrent(sid) else { return }
-      if !stabilized {
-        audioCapture.rebuildEngine()
-        do {
-          try await audioCapture.startEnginePhase()
-        } catch {
-          guard isCurrent(sid) else { return }
-          telemetryState.captureFailureError = error
-          finishTerminal(.failed(classifyCaptureStartError(error)), sid: sid)
-          return
-        }
+    // Codex r1 on this fix flagged that gating the call on a "pre-warmed"
+    // flag could survive an aborted preWarm and skip stabilization on
+    // a later cold start; running unconditionally avoids that.
+    let stabilized = await audioCapture.waitForFormatStabilization(
+      maxWait: 1.5, pollInterval: 0.2)
+    guard isCurrent(sid) else { return }
+    if !stabilized {
+      audioCapture.rebuildEngine()
+      do {
+        try await audioCapture.startEnginePhase()
+      } catch {
         guard isCurrent(sid) else { return }
+        telemetryState.captureFailureError = error
+        finishTerminal(.failed(classifyCaptureStartError(error)), sid: sid)
+        return
       }
+      guard isCurrent(sid) else { return }
     }
-    // Consume the flag — next session must re-establish whether pre-warm
-    // happened.
-    audioPreWarmed = false
     // The capture engine is up — every terminal from here must stop capture.
     captureLifecycle = .active
     if stopLatched {
