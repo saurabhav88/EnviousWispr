@@ -2,6 +2,10 @@ import EnviousWisprCore
 import Foundation
 @preconcurrency import WhisperKit
 
+// FIXME(#827): founder/upstream action needed. WhisperKit must expose decoder
+// progress callbacks for incremental and tail transcribe calls before this
+// worker can add signal-based wedge recovery without wall-clock timeouts.
+
 package struct IncrementalResult: Sendable {
   package let text: String?
   package let samplesCovered: Int
@@ -138,6 +142,8 @@ package actor WhisperKitIncrementalWorker: WhisperKitIncrementalSession {
       // the remaining short fragment (e.g., "by Friday"). This was the root
       // cause of #216: tail decode returned empty despite speech being present.
 
+      // TODO(#827): watchdog needs WhisperKit decoder-step progress during tail
+      // decode; cancellation depends on this await returning.
       let results = try await whisperKit.transcribe(audioArray: paddedSamples, decodeOptions: opts)
       let tailText = results.map(\.text)
         .joined(separator: " ")
@@ -214,6 +220,9 @@ package actor WhisperKitIncrementalWorker: WhisperKitIncrementalSession {
         if isLongRecording {
           var opts = baseDecodingOptions
           opts.clipTimestamps = [lastClipSeconds]
+          // TODO(#827): watchdog needs decoder-step progress for clipped
+          // incremental decodes; accepted-byte counters only move after this
+          // await returns.
           let results = try await whisperKit.transcribe(
             audioArray: snapshot.samples, decodeOptions: opts
           )
@@ -233,6 +242,9 @@ package actor WhisperKitIncrementalWorker: WhisperKitIncrementalSession {
             lastResultSampleCount = snapshot.count
           }
         } else {
+          // TODO(#827): watchdog needs decoder-step progress for full-buffer
+          // incremental decodes; accepted-byte counters only move after this
+          // await returns.
           let results = try await whisperKit.transcribe(
             audioArray: snapshot.samples, decodeOptions: baseDecodingOptions
           )

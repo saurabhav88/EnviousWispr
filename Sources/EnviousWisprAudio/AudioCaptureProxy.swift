@@ -153,10 +153,17 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
 
     ensureConnection()
     resendConfigIfNeeded()
+    try await withAudioXPCOperationSignal(stage: "start_engine") { operationID in
+      try await self.awaitStartEnginePhaseReply(operationID: operationID)
+    }
+  }
+
+  private func awaitStartEnginePhaseReply(operationID: String) async throws {
     try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
       let guard_ = OneShotContinuation(cont)
       serviceProxy { proxy in
         proxy.startEnginePhase(
+          operationID: operationID,
           preferredDeviceUID: self.preferredInputDeviceIDOverride,
           selectedDeviceUID: self.selectedInputDeviceUID
         ) { nsError in
@@ -182,15 +189,8 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
       self.bufferContinuation = continuation
     }
 
-    try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
-      let guard_ = OneShotContinuation(cont)
-      serviceProxy { proxy in
-        proxy.beginCapture { nsError in
-          if let error = nsError { guard_.resume(throwing: error) } else { guard_.resume() }
-        }
-      } onProxyError: {
-        guard_.resume(throwing: XPCTransportError.serviceUnreachable)
-      }
+    try await withAudioXPCOperationSignal(stage: "begin_capture") { operationID in
+      try await self.awaitBeginCaptureReply(operationID: operationID)
     }
 
     isCapturing = true
@@ -198,6 +198,19 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     hasReceivedBufferThisSession = false
     armCaptureStallWatchdog()
     return stream
+  }
+
+  private func awaitBeginCaptureReply(operationID: String) async throws {
+    try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
+      let guard_ = OneShotContinuation(cont)
+      serviceProxy { proxy in
+        proxy.beginCapture(operationID: operationID) { nsError in
+          if let error = nsError { guard_.resume(throwing: error) } else { guard_.resume() }
+        }
+      } onProxyError: {
+        guard_.resume(throwing: XPCTransportError.serviceUnreachable)
+      }
+    }
   }
 
   /// Arm the one-shot stall watchdog for the current `activeCaptureGeneration`.
@@ -272,21 +285,22 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
 
     var result = CaptureResult(samples: [])
     do {
-      result = try await withCheckedThrowingContinuation {
-        (cont: CheckedContinuation<CaptureResult, any Error>) in
-        let guard_ = OneShotContinuation(cont)
-        serviceProxy { proxy in
-          proxy.stopCapture { sampleData, vadData in
-            let samples = Self.dataToFloats(sampleData)
-            let segments = Self.decodeVADSegments(vadData)
-            guard_.resume(returning: CaptureResult(samples: samples, vadSegments: segments))
-          }
-        } onProxyError: { [weak self] in
-          self?.reportXPCReplyFailure(stage: "stop_capture", sessionID: endingSession)
-          guard_.resume(returning: CaptureResult(samples: []))
-        }
+      // Cleanup must outlive forward-path task cancellation. `finishTerminal`
+      // cancels that task while stop may already be in flight; returning early
+      // would mark capture resources released before the service actually stops.
+      result = try await withAudioXPCOperationSignal(
+        stage: "stop_capture",
+        parentCancellationBehavior: .waitForResolution
+      ) { operationID in
+        try await self.awaitStopCaptureReply(
+          operationID: operationID,
+          endingSession: endingSession
+        )
       }
     } catch {
+      if error is XPCOperationSignalWedgeError {
+        reportXPCReplyFailure(stage: "stop_capture_signal_watchdog", sessionID: endingSession)
+      }
       // XPC error — service crashed during stopCapture. Samples are lost.
       // The interruptionHandler fires independently and handles pipeline notification.
       // Do NOT call onEngineInterrupted here to avoid double-firing.
@@ -304,6 +318,26 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     bufferContinuation?.finish()
     bufferContinuation = nil
     return result
+  }
+
+  private func awaitStopCaptureReply(
+    operationID: String,
+    endingSession: UInt64
+  ) async throws -> CaptureResult {
+    try await withCheckedThrowingContinuation {
+      (cont: CheckedContinuation<CaptureResult, any Error>) in
+      let guard_ = OneShotContinuation(cont)
+      serviceProxy { proxy in
+        proxy.stopCapture(operationID: operationID) { sampleData, vadData in
+          let samples = Self.dataToFloats(sampleData)
+          let segments = Self.decodeVADSegments(vadData)
+          guard_.resume(returning: CaptureResult(samples: samples, vadSegments: segments))
+        }
+      } onProxyError: { [weak self] in
+        self?.reportXPCReplyFailure(stage: "stop_capture", sessionID: endingSession)
+        guard_.resume(returning: CaptureResult(samples: []))
+      }
+    }
   }
 
   public func rebuildEngine() {
@@ -336,18 +370,8 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     // Phase 1: start engine
     let enginePhaseStart = ContinuousClock.now
     do {
-      try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
-        let guard_ = OneShotContinuation(cont)
-        serviceProxy { proxy in
-          proxy.startEnginePhase(
-            preferredDeviceUID: self.preferredInputDeviceIDOverride,
-            selectedDeviceUID: self.selectedInputDeviceUID
-          ) { nsError in
-            if let error = nsError { guard_.resume(throwing: error) } else { guard_.resume() }
-          }
-        } onProxyError: {
-          guard_.resume(throwing: XPCTransportError.serviceUnreachable)
-        }
+      try await withAudioXPCOperationSignal(stage: "start_engine_prewarm") { operationID in
+        try await self.awaitStartEnginePhaseReply(operationID: operationID)
       }
     } catch {
       Task {
@@ -397,6 +421,59 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
         cont.resume(returning: false)
       }
     }
+  }
+
+  private func withAudioXPCOperationSignal<T: Sendable>(
+    stage: String,
+    parentCancellationBehavior: WatcherParentCancellationBehavior = .returnCancellation,
+    _ work: @MainActor @escaping (String) async throws -> T
+  ) async throws -> T {
+    let operationID = UUID().uuidString
+    let signal = XPCOperationSignalWatcher(file: .audio, operationID: operationID)
+    signal.start()
+    nonisolated(unsafe) let unsafeWork = work
+    let operationTask = Task { @MainActor in
+      try await unsafeWork(operationID)
+    }
+    let outcome = await raceWithSignalWatcher(
+      watcher: signal.progressWatcher,
+      parentCancellationBehavior: parentCancellationBehavior
+    ) {
+      try await operationTask.value
+    }
+    let snapshot = signal.snapshot
+    signal.stop()
+
+    switch outcome {
+    case .completed(let value):
+      return value
+    case .threw(let error):
+      throw error
+    case .wedged:
+      operationTask.cancel()
+      handleAudioXPCOperationWedge(stage: stage, operationID: operationID, snapshot: snapshot)
+      throw XPCOperationSignalWedgeError(
+        service: "Audio",
+        stage: stage,
+        observedPhase: snapshot.lastObservedPhase
+      )
+    }
+  }
+
+  private func handleAudioXPCOperationWedge(
+    stage: String,
+    operationID: String,
+    snapshot: WatcherSnapshot
+  ) {
+    Task {
+      await AppLogger.shared.log(
+        "[AudioCaptureProxy] signal watchdog fired stage=\(stage) operationID=\(operationID) phase=\(snapshot.lastObservedPhase) silenceMs=\(snapshot.silenceMs)",
+        level: .info, category: "XPC"
+      )
+    }
+    connection?.invalidate()
+    connection = nil
+    needsReinit = true
   }
 
   // MARK: - Config re-send after crash

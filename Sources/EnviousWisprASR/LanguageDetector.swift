@@ -1,6 +1,10 @@
 import EnviousWisprCore
 import Foundation
 
+// FIXME(#827): founder/upstream action needed. The LID observer closure needs
+// within-window progress from WhisperKit before LanguageDetector can recover a
+// wedged language-detection await without a wall-clock timeout.
+
 // R2 (#360): no longer reaches `WhisperKit` directly. The non-Sendable
 // reference stays inside `WhisperKitBackend.observeLID`; this actor consumes
 // only the Sendable `LIDObservationBatch` shape.
@@ -186,6 +190,9 @@ public actor LanguageDetector {
     // and returns a Sendable batch. We map each batch variant to the matching
     // abstain reason — this preserves the per-failure-mode semantics from
     // the previous inline implementation.
+    // TODO(#827): watchdog needs a within-window progress signal from the
+    // observer owner (`WhisperKitBackend.observeLID`). This actor only sees the
+    // batch after all windows return.
     let batch = await observerFn()
     let multi: MultiWindowLID
     switch batch {

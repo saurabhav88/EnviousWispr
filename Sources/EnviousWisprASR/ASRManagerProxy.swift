@@ -283,18 +283,35 @@ public final class ASRManagerProxy: ASRManagerInterface {
 
   public func startStreaming(options: TranscriptionOptions) async throws {
     let language = options.language ?? ""
+    try await withASRXPCOperationSignal(stage: "start_streaming") { operationID in
+      try await self.awaitStartStreamingReply(
+        operationID: operationID,
+        language: language,
+        enableTimestamps: options.enableTimestamps
+      )
+    }
+    isStreaming = true
+  }
+
+  private func awaitStartStreamingReply(
+    operationID: String,
+    language: String,
+    enableTimestamps: Bool
+  ) async throws {
     try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, any Error>) in
       let guard_ = OneShotContinuationASR(cont)
       serviceProxy { proxy in
-        proxy.startStreaming(language: language, enableTimestamps: options.enableTimestamps) {
-          nsError in
+        proxy.startStreaming(
+          operationID: operationID,
+          language: language,
+          enableTimestamps: enableTimestamps
+        ) { nsError in
           if let error = nsError { guard_.resume(throwing: error) } else { guard_.resume() }
         }
       } onProxyError: {
         guard_.resume(throwing: XPCASRTransportError.serviceUnreachable)
       }
     }
-    isStreaming = true
   }
 
   public func feedAudio(_ buffer: AVAudioPCMBuffer) async throws {
@@ -465,6 +482,56 @@ public final class ASRManagerProxy: ASRManagerInterface {
       return
     }
     work(service)
+  }
+
+  private func withASRXPCOperationSignal<T: Sendable>(
+    stage: String,
+    _ work: @MainActor @escaping (String) async throws -> T
+  ) async throws -> T {
+    let operationID = UUID().uuidString
+    let signal = XPCOperationSignalWatcher(file: .asr, operationID: operationID)
+    signal.start()
+    nonisolated(unsafe) let unsafeWork = work
+    let operationTask = Task { @MainActor in
+      try await unsafeWork(operationID)
+    }
+    let outcome = await raceWithSignalWatcher(watcher: signal.progressWatcher) {
+      try await operationTask.value
+    }
+    let snapshot = signal.snapshot
+    signal.stop()
+
+    switch outcome {
+    case .completed(let value):
+      return value
+    case .threw(let error):
+      throw error
+    case .wedged:
+      operationTask.cancel()
+      handleASRXPCOperationWedge(stage: stage, operationID: operationID, snapshot: snapshot)
+      throw XPCOperationSignalWedgeError(
+        service: "ASR",
+        stage: stage,
+        observedPhase: snapshot.lastObservedPhase
+      )
+    }
+  }
+
+  private func handleASRXPCOperationWedge(
+    stage: String,
+    operationID: String,
+    snapshot: WatcherSnapshot
+  ) {
+    Task {
+      await AppLogger.shared.log(
+        "[ASRManagerProxy] signal watchdog fired stage=\(stage) operationID=\(operationID) phase=\(snapshot.lastObservedPhase) silenceMs=\(snapshot.silenceMs)",
+        level: .info, category: "XPC"
+      )
+    }
+    connection?.invalidate()
+    connection = nil
+    isStreaming = false
+    needsReinit = true
   }
 
   // MARK: - Nonisolated Handler Factories (Swift 6 isolation safety)
