@@ -91,16 +91,18 @@ struct ASREventRouterTests {
       )
 
       // Walk the kernel FSM through the legal edges so it lands in
-      // `.finalizing`; the public mapping at
-      // KernelDictationDriver.pipelineState(for:externalError:) returns
-      // `.polishing` for that state, which is the safe-point window the
-      // router must NOT interrupt on ASR XPC crash.
+      // `.finalizing` AND flip the sub-status to `.polishing` — Div 3 of
+      // seam audit (TP:187-188): public `.polishing` follows
+      // `finalizingSubStatus`, not the bare `.finalizing` FSM state.
+      // The safe-point invariant under test is: when the driver IS in
+      // `.polishing`, ASR XPC crash must not change that.
       let kernel = driver.kernelForTesting
       #expect(kernel.testForceTransition(to: .preparing))
       #expect(kernel.testForceTransition(to: .recording))
       #expect(kernel.testForceTransition(to: .stopping))
       #expect(kernel.testForceTransition(to: .transcribing))
       #expect(kernel.testForceTransition(to: .finalizing))
+      kernel.testSetFinalizingSubStatus(.polishing)
       #expect(driver.state == .polishing)
       asr.onServiceInterrupted?()
       await Task.yield()

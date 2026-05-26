@@ -60,6 +60,43 @@ import Testing
         == .error("boom"))
   }
 
+  @Test(".finalizing routes through finalizingSubStatus (Div 3 — parity with TP:187-188)")
+  func finalizingRoutesThroughSubStatus() {
+    // Default + .polishing sub-status: public state is .polishing (byte-parity
+    // with the bridge-matrix surface and any caller that doesn't have the
+    // sub-status to thread through).
+    #expect(
+      KernelDictationDriver.pipelineState(for: .finalizing, externalError: nil) == .polishing)
+    #expect(
+      KernelDictationDriver.pipelineState(
+        for: .finalizing, externalError: nil, finalizingSubStatus: .polishing) == .polishing)
+    // .transcribing sub-status: public state is .transcribing — the new
+    // parity behavior that prevents MainWindow from showing "Polishing..."
+    // while the kernel is still saving the transcript.
+    #expect(
+      KernelDictationDriver.pipelineState(
+        for: .finalizing, externalError: nil, finalizingSubStatus: .transcribing) == .transcribing)
+  }
+
+  #if DEBUG
+    @Test("instance state getter routes .finalizing through finalizingSubStatus (Div 3)")
+    func instanceStateRoutesFinalizingSubStatus() {
+      let h = makeDriver()
+      // Walk to .finalizing — default sub-status is .transcribing per
+      // RecordingSessionKernel.swift:221 + :1004.
+      #expect(h.kernel.testForceTransition(to: .preparing))
+      #expect(h.kernel.testForceTransition(to: .recording))
+      #expect(h.kernel.testForceTransition(to: .stopping))
+      #expect(h.kernel.testForceTransition(to: .transcribing))
+      #expect(h.kernel.testForceTransition(to: .finalizing))
+      #expect(h.kernel.finalizingSubStatus == .transcribing)
+      #expect(h.driver.state == .transcribing)
+      // Flip the sub-status; the public state must follow.
+      h.kernel.testSetFinalizingSubStatus(.polishing)
+      #expect(h.driver.state == .polishing)
+    }
+  #endif
+
   @Test("failureMessage mirrors the shipped strings for the equivalent failures")
   func failureMessages() {
     #expect(KernelDictationDriver.failureMessage(.asrEmpty) == "Couldn't catch that -- try again")
