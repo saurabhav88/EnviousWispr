@@ -319,6 +319,17 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   /// Iterates a value snapshot and does NOT clear `feedTasks` — only
   /// `beginSession()` / `cancel()` clear it, so a session that begins during
   /// this drain's `await` cannot have its fresh feed handles dropped here.
+  ///
+  /// Seam audit Div 7 (2026-05-26) — WONTFIX. The old Parakeet pipeline's
+  /// 500ms bounded drain (TP:680-700) was an arbitrary deadline that the
+  /// kernel deliberately replaced with this signal-based wait per
+  /// `~/.claude/rules/no-arbitrary-timeouts.md`. Re-introducing the timeout
+  /// would regress that rule. Hang risk for a feed task that genuinely
+  /// stalls is mitigated by #863's signal-based watchdogs on the audio /
+  /// ASR XPC await sites, which the feed-task body invokes. The
+  /// "clean/timeout/lost" log line shape from OLD TP is replaced by the
+  /// `started`/`completed` pair above; PostHog + Sentry retain the
+  /// streaming-finalize timing.
   private func drainStreamingFeeds() async {
     let feedCount = feedTasks.count
     let sampleCount = retainedPCM.count
