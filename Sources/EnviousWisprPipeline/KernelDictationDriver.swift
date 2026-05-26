@@ -16,7 +16,7 @@ import Foundation
 // -> `PipelineState` / `OverlayIntent`. It is a permanent translation layer
 // until PR-9 deletes `DictationPipeline`; it carries real behavior (event
 // translation, state mapping, the limb-step home, the external-error surface)
-// and is NOT a forwarding shim — the old `TranscriptionPipeline` path is gone.
+// and is NOT a forwarding shim — the old Parakeet pipeline path is gone.
 //
 // PR-4a ships this production-unwired: no App-layer caller constructs it.
 // PR-4b re-points the 13 App files at this type.
@@ -106,7 +106,9 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
 
   /// The kernel's `RecordingSessionState` mapped to the legacy `PipelineState`.
   public var state: PipelineState {
-    Self.pipelineState(for: kernel.state, externalError: lastExternalError)
+    Self.pipelineState(
+      for: kernel.state, externalError: lastExternalError,
+      failureDetail: kernel.lastFailureDetail)
   }
 
   /// The transcript the `store` closure built for the last completed session.
@@ -115,7 +117,7 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
   /// The polish error from the last session, or `nil`.
   public var lastPolishError: String? { outcome.polishError }
 
-  // MARK: PR-4b.2 — direct methods + property (mirror old TranscriptionPipeline App surface)
+  // MARK: PR-4b.2 — direct methods + property (mirror old Parakeet pipeline App surface)
 
   /// Async cancel request. Wraps `kernel.cancel()` for App callers
   /// (`PipelineSettingsSync.swift:195`, `RecordingFinalizer.swift:95`) that
@@ -136,16 +138,32 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
   /// sync call site.
   ///
   /// Bridge matrix #5 — the App's "Try Again / dismiss" path
-  /// (`RecordingFinalizer.resetActive()`) typically fires from a terminal
-  /// state. Sync reset CANNOT fully drive an active session to `.idle`
-  /// because `kernel.cancel()` is fire-and-latch — the actual transition
-  /// happens on the forward path's next yield, which a sync caller cannot
-  /// await (Codex review #11 r5). When called from an active state, this
-  /// method requests cancellation; the kernel converges to a terminal on
-  /// its own, and the next sync `reset()` (or terminal-state observation)
-  /// will land at `.idle`. For deterministic completion from an active
-  /// state, use `cancelRecording()` + `reset()` (async-then-sync), or wait
-  /// for the kernel-state observer to fire with the terminal state.
+  /// (`RecordingFinalizer.resetActive()`) is wired to `MainWindowView`'s
+  /// "Try Again" button, which renders only when the driver's
+  /// `pipelineState` is `.error`. Most `.error` mappings come from
+  /// terminal kernel states (`.failed`, `.audioInterrupted`,
+  /// `.asrInterrupted`), but `lastExternalError` can also surface
+  /// `.error` while the kernel is still in an active state — the mic
+  /// disconnect / ASR crash paths route through `setExternalError(...)`
+  /// from `.preparing`, `.warmingUp`, `.stopping`, `.transcribing`, and
+  /// `.finalizing` (see `handleEngineInterruption` / `handleASRServiceInterruption`).
+  /// Active-state `reset()` is therefore a real production path, not a
+  /// test-only seam.
+  ///
+  /// Seam audit Div 2 (2026-05-26): the old Parakeet pipeline allowed
+  /// active-state `reset()` to synchronously land `.idle`. In the kernel
+  /// path that is best-effort only — `kernel.cancel()` is fire-and-latch,
+  /// so the actual transition happens on the forward path's next yield,
+  /// which a sync caller cannot await (Codex review #11 r5). When called
+  /// from an active state, this method requests cancellation; the kernel
+  /// converges to a terminal on its own, and the next sync `reset()` (or
+  /// terminal-state observation) will land at `.idle`. For deterministic
+  /// completion from an active state, use `cancelRecording()` + `reset()`
+  /// (async-then-sync), or wait for the kernel-state observer to fire
+  /// with the terminal state. The external-error surface that "Try Again"
+  /// re-enters from is cleared synchronously here via `lastExternalError =
+  /// nil`, so the user-visible `.error` resolves immediately even when the
+  /// kernel itself takes another tick to reach `.idle`.
   public func reset() {
     lastExternalError = nil
     if !Self.isTerminal(kernel.state) {
@@ -160,6 +178,17 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
     // `.cancelled`, at which point the App must call reset() again or rely
     // on a fresh `.toggleRecording` to mint a new session.
     kernel.reset()
+    // Clear the last-session transcript only after the kernel has actually
+    // landed at idle — matching the old Parakeet pipeline's `reset()` clear
+    // (TP:1081-1102) without breaking the finalizing safe-point window. If
+    // `kernel.cancel()` + `kernel.reset()` were no-ops because the kernel
+    // sits in `.finalizing` (transcript saved, paste still completing), the
+    // in-flight session can still legitimately deliver and `.completed`
+    // must still see `currentTranscript` for history + completion telemetry
+    // (Codex review #11 r3 / `PipelineStateChangeHandler` guard).
+    if kernel.state == .idle {
+      outcome.transcript = nil
+    }
     fireStateChangeIfNeeded()
   }
 
@@ -171,7 +200,7 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
   ///
   /// Bridge matrix #1 — guard for the active-non-recording states
   /// (`.preparing`, `.warmingUp`, `.stopping`, `.transcribing`, `.finalizing`).
-  /// Old TP's `stopAndTranscribe()` (`TranscriptionPipeline.swift:614-615`)
+  /// Old TP's `stopAndTranscribe()` (old Parakeet pipeline)
   /// only acted on `.recording`. Without the guard, the driver would force
   /// an inappropriate stop request mid-warm-up or duplicate a stop already
   /// in flight.
@@ -190,7 +219,7 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
   /// every other active state (`.preparing`, `.warmingUp`, `.stopping`,
   /// `.transcribing`, `.finalizing`) the kernel silently drops the signal,
   /// which at PR-4b.4 cutover would leave the UI stuck. Old TP's
-  /// `handleEngineInterruption()` (`TranscriptionPipeline.swift:1107-1131`)
+  /// `handleEngineInterruption()` (old Parakeet pipeline)
   /// was state-agnostic: emit Sentry+PostHog state change, cancel cleanup,
   /// flip UI to the mic-disconnect error. Bridge matrix #4 ports the old
   /// behavior for those states via `setExternalError`.
@@ -218,7 +247,7 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
   /// `kernel.externalASRInterrupted()` only acts on `.recording` /
   /// `.transcribing` (its documented contract —
   /// `RecordingSessionKernel.swift:1077-1080`). Old TP's
-  /// `handleASRServiceInterruption()` (`TranscriptionPipeline.swift:1137-1163`)
+  /// `handleASRServiceInterruption()` (old Parakeet pipeline)
   /// was state-agnostic: always emit the `xpc_service_error` Sentry event +
   /// flip the UI to the ASR-crash error. Bridge matrix #2 ports the old
   /// behavior for `.preparing`, `.warmingUp`, `.stopping`, `.finalizing`
@@ -247,7 +276,7 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
   }
 
   /// The frozen per-session config, or `nil` when no session is in flight.
-  /// Mirrors old `TranscriptionPipeline.currentSessionConfig`.
+  /// Mirrors old Parakeet pipeline's `currentSessionConfig`.
   /// `PipelineSettingsSync.swift:272` reads this across both pipelines as the
   /// "recording in flight" signal. The driver's terminal handler clears
   /// `context.config = nil` to honor the "nil when idle" contract (§3.4).
@@ -268,7 +297,7 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
       return .processing(label: "Preparing dictation...")
     case .recording:
       // The real level is supplied by `AudioCaptureManager` downstream — the
-      // pipeline returns 0 here, exactly as `TranscriptionPipeline` did.
+      // pipeline returns 0 here, exactly as the old Parakeet pipeline did.
       return .recording(audioLevel: 0)
     case .stopping, .transcribing:
       return .processing(label: "Transcribing...")
@@ -280,7 +309,14 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
         return .processing(label: "Polishing...")
       }
     case .failed(let reason):
-      return .error(message: Self.failureMessage(reason))
+      // Thread `kernel.lastFailureDetail` so the overlay surfaces the same
+      // enriched "Model load failed: <detail>" / "Recording failed: <detail>"
+      // / "Transcription failed: <detail>" string the `state` getter does —
+      // overlay is the visible user-facing path, and `state` is read by the
+      // lifecycle coordinator (Codex review of Div 4: keep the two paths in
+      // sync).
+      return .error(
+        message: Self.failureMessage(reason, detail: kernel.lastFailureDetail))
     case .audioInterrupted:
       return .interruption(message: InterruptionMessages.micDisconnected)
     case .asrInterrupted:
@@ -295,14 +331,17 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
       // PTT-flow caller (`RecordingStarter.start()` awaits `handle(.preWarm)`
       // and then immediately sends `.toggleRecording`) does not see the
       // recording start before BT codec negotiation completes.
-      await kernel.preWarm()
+      //
+      // PR-4b.4 of #827: rethrow on `audioCapture.preWarm()` failure so the
+      // starter's catch{} branch fires the "Microphone unavailable" overlay.
+      try await kernel.preWarm()
     case .toggleRecording(let config):
       switch kernel.state {
       case .idle, .completed, .failed, .cancelled, .discarded, .noSpeech,
         .audioInterrupted, .asrInterrupted:
         // Start: clear the prior session's surfaces, capture finalization
         // context AT RECORDING START (PR-4.5 #6, parity with old
-        // `TranscriptionPipeline.swift:450-453`), then mint a new session.
+        // the old Parakeet pipeline), then mint a new session.
         //
         // The frontmost app + focused AX element are captured here so that a
         // polish step taking seconds — during which focus may shift to the
@@ -332,6 +371,12 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
         context.targetApp = NSWorkspace.shared.frontmostApplication
         context.targetElement = PasteService.captureFocusedElement()
         applyLLMConfigToPolishStep(config)
+        // GAP 1 of seam audit (TP:708-713): warm the polish provider as
+        // the session starts so the polish step's cold-start latency is
+        // hidden behind ASR. AppLifecycleCoordinator already warms at
+        // launch + foreground; this is the per-session refresh that
+        // covers long-idle paths between recordings.
+        steps.llmPolish.preWarm()
         kernel.start(config: config)
       case .recording:
         kernel.requestStop()
@@ -346,6 +391,13 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
     case .reset:
       lastExternalError = nil
       kernel.reset()
+      // Same guard as the sync `reset()` method above — only clear once the
+      // kernel actually lands at idle, so a `.reset` event arriving during
+      // the finalizing safe-point does not erase the transcript before
+      // `.completed` is observed.
+      if kernel.state == .idle {
+        outcome.transcript = nil
+      }
       // PR-4.5 #9 (Codex r5): when the kernel is already idle, `reset()` is a
       // no-op, so the kernel-state observation does NOT fire. After
       // `setExternalError` parked the observer on `.error`, that observer
@@ -407,10 +459,22 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
 
   #if DEBUG
     /// Drives the kernel's cancel unwind — the kernel-era equivalent of
-    /// `TranscriptionPipeline.forceCancelNow()`. Callable from `DebugFaultEndpoint`.
+    /// the old Parakeet pipeline's `forceCancelNow()`. Callable from `DebugFaultEndpoint`.
     package func forceCancelNow() async {
       kernel.cancel()
     }
+
+    /// Test-only kernel handle. Unit tests that need to drive the kernel into
+    /// a specific FSM state (e.g. force `.finalizing` to assert `.polishing`
+    /// state mapping or to pin a safe-point invariant) reach `testForceTransition`
+    /// through this accessor.
+    var kernelForTesting: RecordingSessionKernel { kernel }
+
+    /// Test-only session-context handle. Used to verify the terminal-state
+    /// cleanup clears `targetApp` + `targetElement` (Div 8 of seam audit /
+    /// TP:998-1000, 1128-1129, 1221-1223). The context's properties are not
+    /// otherwise observable from outside the driver.
+    var contextForTesting: KernelSessionContext { context }
   #endif
 
   // MARK: Kernel-state observation
@@ -439,8 +503,8 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
   }
 
   /// Apply the session's frozen LLM config to the polish step. Mirrors the
-  /// LLM portion of old `TranscriptionPipeline.applySessionConfig(_:)`
-  /// (`TranscriptionPipeline.swift:1419-1422`). VAD + device UID portions
+  /// LLM portion of old Parakeet pipeline's `applySessionConfig(_:)`
+  /// (old Parakeet pipeline). VAD + device UID portions
   /// are already handled by `RecordingSessionKernel`.
   private func applyLLMConfigToPolishStep(_ config: DictationSessionConfig) {
     steps.llmPolish.llmProvider = config.llmProvider
@@ -449,18 +513,36 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
     steps.llmPolish.useExtendedThinking = config.useExtendedThinking
   }
 
-  /// Clear `context.config` whenever the kernel is in a "no in-flight session"
-  /// state. That's the union of the 7 terminal states (per
-  /// `RecordingSessionState.isTerminal` — `.completed`, `.cancelled`,
-  /// `.failed`, `.noSpeech`, `.discarded`, `.audioInterrupted`,
+  /// Clear `context.config` + paste-target references whenever the kernel is
+  /// in a "no in-flight session" state. That's the union of the 7 terminal
+  /// states (per `RecordingSessionState.isTerminal` — `.completed`,
+  /// `.cancelled`, `.failed`, `.noSpeech`, `.discarded`, `.audioInterrupted`,
   /// `.asrInterrupted`) plus `.idle`. Honors the old TP "nil when idle"
   /// contract that `PipelineSettingsSync` relies on for its backend-switch
   /// guard (PR-4b.2 §3.4).
+  ///
+  /// Also clears `context.targetApp` + `context.targetElement` for parity
+  /// with the old Parakeet pipeline (TP:998-1000 / 1128-1129 / 1221-1223 —
+  /// cleared after success, audio interruption, and cancel). The kernel's
+  /// finalize wiring consumes both during `.finalizing`; by the time the
+  /// kernel reaches a terminal state, paste has already completed.
+  /// Otherwise these references can linger across sessions and surface a
+  /// stale `NSRunningApplication` / `AXUIElement` to any reader between
+  /// sessions.
   private func clearContextConfigIfTerminalOrIdle() {
     switch kernel.state {
     case .idle, .completed, .cancelled, .failed, .noSpeech, .discarded,
       .audioInterrupted, .asrInterrupted:
+      // Stamp the bundle id into the recording snapshot BEFORE nulling
+      // `targetApp` — the lifecycle sink's snapshot read
+      // (`KernelLifecycleTelemetrySink:370`) falls back to `context.targetApp`,
+      // and the driver-observer can race ahead of the lifecycle observer.
+      // Codex review of the Div 8 patch caught this — without the stamp,
+      // terminal Sentry events would drop `target_app_bundle_id`.
+      kernel.stampRecordingSnapshotTargetApp(context.targetApp?.bundleIdentifier)
       context.config = nil
+      context.targetApp = nil
+      context.targetElement = nil
     case .preparing, .warmingUp, .recording, .stopping, .transcribing, .finalizing:
       break
     }
@@ -522,8 +604,16 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
   /// Map a kernel state to the legacy `PipelineState`. Total over all 14 kernel
   /// states. `state.isActive` is `true` for every active kernel state, which
   /// the `PipelineSettingsSync` backend-switch guard depends on (§3.13).
+  ///
+  /// `failureDetail` is the underlying-error `localizedDescription` for the
+  /// three reasons the old Parakeet pipeline embedded into its error strings
+  /// (model load, recording start, transcription); the static map embeds it
+  /// when present and falls back to the parity-bare string when nil. The
+  /// driver's instance `state` getter threads `kernel.lastFailureDetail`
+  /// through; existing test callers pass nil for byte-parity coverage.
   public static func pipelineState(
-    for state: RecordingSessionState, externalError: String?
+    for state: RecordingSessionState, externalError: String?,
+    failureDetail: String? = nil
   ) -> PipelineState {
     if let externalError {
       return .error(externalError)
@@ -538,11 +628,26 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
     case .stopping, .transcribing:
       return .transcribing
     case .finalizing:
+      // Seam audit Div 3 (2026-05-26): the old Parakeet pipeline set public
+      // `.polishing` only when the polish step's `onWillProcess` fired
+      // (TP:187-188). The kernel collapses both the early-finalizing
+      // (transcript save / `.transcribing` sub-status) AND the polish
+      // sub-status into public `.polishing`. WONTFIX: routing through
+      // `kernel.finalizingSubStatus` cascades into two real safe-point
+      // bugs — (1) `observeKernelState` only watches `kernel.state`, so the
+      // sub-status flip never reaches `onStateChange`; (2)
+      // `ASREventRouter` would route ASR crashes during the early window
+      // into `handleASRServiceInterruption`, which sets an external error
+      // and breaks the `.finalizing` safe point (verified Codex r1 on the
+      // attempted Div 3 fix). The user-visible cost of the current
+      // collapse is "Polishing..." appears a few hundred ms early in
+      // MainWindow; the `overlayIntent` getter already routes through
+      // `finalizingSubStatus` for the overlay-text path.
       return .polishing
     case .completed:
       return .complete
     case .failed(let reason):
-      return .error(failureMessage(reason))
+      return .error(failureMessage(reason, detail: failureDetail))
     case .audioInterrupted:
       return .error(InterruptionMessages.micDisconnected)
     case .asrInterrupted:
@@ -550,18 +655,20 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
     }
   }
 
-  /// Mirrors the shipped `TranscriptionPipeline` string verbatim (em-dash
+  /// Mirrors the shipped the old Parakeet pipeline string verbatim (em-dash
   /// included) — PR-4 parity; the em-dash cleanup is a separate content change.
   static let asrInterruptedMessage = "Transcription service crashed — please try again"
 
   /// User-facing message for a `failed` terminal. The plan does not enumerate
-  /// this map; each message mirrors today's `TranscriptionPipeline` string for
+  /// this map; each message mirrors today's the old Parakeet pipeline string for
   /// the equivalent failure verbatim (parity — PR-4's bar is "user feels
   /// nothing change"), or a sensible message where the kernel splits a reason
   /// today's pipeline did not name distinctly. The `captureStalled` em-dash is
   /// preserved to match the shipped string byte-for-byte; fixing it is a
   /// separate content-lane change, out of PR-4 scope.
-  static func failureMessage(_ reason: RecordingFailureReason) -> String {
+  static func failureMessage(_ reason: RecordingFailureReason, detail: String? = nil)
+    -> String
+  {
     switch reason {
     case .prepareFailed:
       return "Couldn't start dictation. Please try again."
@@ -570,15 +677,21 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
     case .modelWedged:
       return ModelLoadWatchdog.userMessage
     case .modelLoadFailed:
-      return "Model load failed."
+      // Old Parakeet pipeline shape: "Model load failed: <error.localizedDescription>"
+      // (TP:440-445). Fall back to the bare string when no detail is captured.
+      return detail.map { "Model load failed: \($0)" } ?? "Model load failed."
     case .captureStartFailed:
-      return "Recording failed."
+      // Old Parakeet pipeline shape: "Recording failed: <error.localizedDescription>"
+      // (TP:577-588).
+      return detail.map { "Recording failed: \($0)" } ?? "Recording failed."
     case .noAudioCaptured:
       return "No audio captured"
     case .asrEmpty:
       return "Couldn't catch that -- try again"
     case .asrFailed:
-      return "Transcription failed."
+      // Old Parakeet pipeline shape: "Transcription failed: <error.localizedDescription>"
+      // (TP:1045-1051).
+      return detail.map { "Transcription failed: \($0)" } ?? "Transcription failed."
     case .asrWedged:
       return "Transcription stalled. Please try again."
     case .emptyAfterProcessing:

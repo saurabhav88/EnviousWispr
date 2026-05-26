@@ -69,7 +69,7 @@ public protocol VADSignalSource: AnyObject {
   func speechEvidenceAtStop() -> VADSpeechEvidence
 
   /// The kernel calls this at session start so every subsequent signal carries
-  /// the live `SessionID` (PR-1 §B.6, PR-4.5 #2). The old `TranscriptionPipeline`
+  /// the live `SessionID` (PR-1 §B.6, PR-4.5 #2). The old Parakeet pipeline
   /// stamped per session (`:569-570,1276-1285`); the fresh kernel never wired
   /// the stamp, so the seam dropped every signal as stale. Required on the
   /// protocol so `any VADSignalSource` can be stamped without down-casting.

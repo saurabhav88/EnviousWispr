@@ -1,3 +1,4 @@
+import AppKit
 import EnviousWisprCore
 import EnviousWisprLLM
 import EnviousWisprServices
@@ -69,6 +70,29 @@ import Testing
         == "No speech detected. Your clipboard is unchanged. Try again.")
   }
 
+  @Test("failureMessage embeds error detail for the three TP-parity reasons (Div 4)")
+  func failureMessagesWithDetail() {
+    // Parity with the old Parakeet pipeline at TP:440-445 / TP:577-588 / TP:1045-1051:
+    // include `error.localizedDescription` when present.
+    #expect(
+      KernelDictationDriver.failureMessage(.modelLoadFailed, detail: "out of memory")
+        == "Model load failed: out of memory")
+    #expect(
+      KernelDictationDriver.failureMessage(.captureStartFailed, detail: "device busy")
+        == "Recording failed: device busy")
+    #expect(
+      KernelDictationDriver.failureMessage(.asrFailed, detail: "stream closed")
+        == "Transcription failed: stream closed")
+    // No detail → byte-parity with the bare strings.
+    #expect(KernelDictationDriver.failureMessage(.modelLoadFailed) == "Model load failed.")
+    #expect(KernelDictationDriver.failureMessage(.captureStartFailed) == "Recording failed.")
+    #expect(KernelDictationDriver.failureMessage(.asrFailed) == "Transcription failed.")
+    // Other reasons ignore the detail (out-of-scope for parity).
+    #expect(
+      KernelDictationDriver.failureMessage(.asrEmpty, detail: "irrelevant")
+        == "Couldn't catch that -- try again")
+  }
+
   // MARK: handle(event:) -> kernel triggers
 
   @Test("handle(.toggleRecording) from idle starts a kernel session")
@@ -128,6 +152,121 @@ import Testing
     #expect(h.driver.currentTranscript?.text == "hello world")
     #expect(h.driver.lastPolishError == "polish timed out")
   }
+
+  @Test("reset() clears currentTranscript (sync entry — parity with TP:1081-1102)")
+  func syncResetClearsTranscript() {
+    let h = makeDriver()
+    h.outcome.transcript = Transcript(text: "old session")
+    #expect(h.driver.currentTranscript?.text == "old session")
+    h.driver.reset()
+    #expect(h.driver.currentTranscript == nil)
+  }
+
+  @Test("handle(.reset) clears currentTranscript (event entry — parity with TP:1081-1102)")
+  func eventResetClearsTranscript() async throws {
+    let h = makeDriver()
+    h.outcome.transcript = Transcript(text: "old session")
+    #expect(h.driver.currentTranscript?.text == "old session")
+    try await h.driver.handle(event: .reset)
+    #expect(h.driver.currentTranscript == nil)
+  }
+
+  #if DEBUG
+    @Test("overlayIntent surfaces failure detail (Div 4 — overlay parity)")
+    func overlayIntentEnrichedDetail() {
+      let h = makeDriver()
+      h.kernel.testSetModelLoadError(
+        NSError(
+          domain: "test", code: 1,
+          userInfo: [NSLocalizedDescriptionKey: "vram exhausted"]))
+      // Walk to .failed(.modelLoadFailed) through legal edges.
+      #expect(h.kernel.testForceTransition(to: .preparing))
+      #expect(h.kernel.testForceTransition(to: .failed(.modelLoadFailed)))
+      // Both the lifecycle-coordinator state read AND the visible overlay
+      // must carry the enriched detail; an unenriched overlay was the bug
+      // Codex flagged on the initial Div 4 patch.
+      #expect(h.driver.state == .error("Model load failed: vram exhausted"))
+      #expect(
+        h.driver.overlayIntent == .error(message: "Model load failed: vram exhausted"))
+    }
+
+    @Test(
+      "terminal-state cleanup clears paste targets (Div 8 — parity with TP:998-1000)"
+    )
+    func terminalClearsContextTargets() async {
+      let h = makeDriver()
+      // Populate the targets without going through the start path (which
+      // would also set them and overwrite). NSRunningApplication.current is
+      // a process-stable handle; AXUIElement bridges from any AnyObject.
+      h.driver.contextForTesting.targetApp = NSRunningApplication.current
+      h.driver.contextForTesting.config = DictationSessionConfig.testDefault()
+      #expect(h.driver.contextForTesting.targetApp != nil)
+      #expect(h.driver.contextForTesting.config != nil)
+      // Walk the kernel to a terminal — `idle → preparing → cancelled` is
+      // legal and reaches a terminal-or-idle bucket the observer will see.
+      #expect(h.kernel.testForceTransition(to: .preparing))
+      #expect(h.kernel.testForceTransition(to: .cancelled))
+      // The observer hops to @MainActor via Task; drain until the cleanup
+      // observes the terminal.
+      await drainUntil { h.driver.contextForTesting.targetApp == nil }
+      #expect(h.driver.contextForTesting.targetApp == nil)
+      #expect(h.driver.contextForTesting.config == nil)
+    }
+
+    @Test(
+      "terminal-state cleanup stamps bundle id into snapshot before nulling targetApp (Codex r2 on Div 8)"
+    )
+    func terminalCleanupStampsBundleIDIntoSnapshot() async throws {
+      let h = makeDriver()
+      // Pre-seed the kernel's recording snapshot the way `freezeRecordingSnapshot`
+      // would at recording start — except `targetAppBundleID` is still nil
+      // (the kernel never has direct access to `context.targetApp`). The
+      // sentinel value is what the stamp must REPLACE; if the stamp logic
+      // were missing, the sentinel would survive and the test would catch
+      // that even when `bundleIdentifier` returns nil under `swift test`
+      // (Codex r2 follow-up on Div 8 — guard against a vacuous nil==nil pass).
+      let sentinel = "test.sentinel.unstamped"
+      h.kernel.testSetRecordingSnapshot(
+        KernelRecordingSnapshotTelemetry(
+          backend: "parakeet", audioRoute: "test", wasStreaming: false,
+          startTime: Date(), durationMs: 0, targetAppBundleID: sentinel))
+      let currentApp = NSRunningApplication.current
+      h.driver.contextForTesting.targetApp = currentApp
+      #expect(h.kernel.testGetRecordingSnapshot()?.targetAppBundleID == sentinel)
+      // Force a terminal — the driver's observer-driven cleanup must stamp
+      // the bundle id (or nil if the test process has none) into the
+      // snapshot BEFORE nulling context.targetApp.
+      #expect(h.kernel.testForceTransition(to: .preparing))
+      #expect(h.kernel.testForceTransition(to: .cancelled))
+      await drainUntil { h.driver.contextForTesting.targetApp == nil }
+      #expect(h.driver.contextForTesting.targetApp == nil)
+      // Regardless of whether `bundleIdentifier` returned nil or a real
+      // value under `swift test`, the sentinel must NOT survive — that's
+      // proof the stamp ran. AND the stamped value must equal the bundle
+      // id we read off the running application.
+      let stamped = h.kernel.testGetRecordingSnapshot()?.targetAppBundleID
+      #expect(stamped != sentinel, "stamp must have replaced the sentinel")
+      #expect(stamped == currentApp.bundleIdentifier)
+    }
+
+    @Test(
+      "reset() preserves the transcript when the kernel is in the finalizing safe-point"
+    )
+    func resetDuringFinalizingPreservesTranscript() {
+      let h = makeDriver()
+      // Walk to .finalizing — the safe-point window where the in-flight
+      // session may still legitimately reach `.completed` and history +
+      // completion telemetry must see the saved transcript.
+      #expect(h.kernel.testForceTransition(to: .preparing))
+      #expect(h.kernel.testForceTransition(to: .recording))
+      #expect(h.kernel.testForceTransition(to: .stopping))
+      #expect(h.kernel.testForceTransition(to: .transcribing))
+      #expect(h.kernel.testForceTransition(to: .finalizing))
+      h.outcome.transcript = Transcript(text: "in-flight save")
+      h.driver.reset()
+      #expect(h.driver.currentTranscript?.text == "in-flight save")
+    }
+  #endif
 
   // MARK: Helpers
 

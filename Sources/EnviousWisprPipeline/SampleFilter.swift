@@ -7,7 +7,7 @@ internal enum SampleFilter {
   /// Filter audio samples using VAD speech segments, with padding and segment merging.
   /// Returns original samples if segments are empty or total voiced audio is below threshold.
   ///
-  /// Extracted from TranscriptionPipeline.filterSamples() and WhisperKitPipeline.filterSamples()
+  /// Extracted from the old Parakeet pipeline.filterSamples() and WhisperKitPipeline.filterSamples()
   /// which were character-for-character identical.
   ///
   /// Hardened against unsorted input (#386) and `Int` overflow on near-`Int.max` endpoints (#387).

@@ -43,7 +43,7 @@ final class DictationRuntime {
   init(
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface,
-    pipeline: TranscriptionPipeline,
+    kernelDriver: KernelDictationDriver,
     whisperKitPipeline: WhisperKitPipeline,
     captureTelemetry: CaptureTelemetryState,
     settings: SettingsManager,
@@ -62,19 +62,19 @@ final class DictationRuntime {
     self.dictationLifecycleCoordinator = dictationLifecycleCoordinator
     self.audioEventRouter = AudioEventRouter(
       audioCapture: audioCapture,
-      pipeline: pipeline,
+      kernelDriver: kernelDriver,
       whisperKitPipeline: whisperKitPipeline,
       captureTelemetry: captureTelemetry,
       resolveActiveCaptureBackend: resolveActiveCaptureBackend
     )
     self.asrEventRouter = ASREventRouter(
       asrManager: asrManager,
-      pipeline: pipeline,
+      kernelDriver: kernelDriver,
       whisperKitPipeline: whisperKitPipeline
     )
     self.wedgeRecoveryRouter = WedgeRecoveryRouter(
       audioCapture: audioCapture,
-      pipeline: pipeline,
+      kernelDriver: kernelDriver,
       whisperKitPipeline: whisperKitPipeline,
       isCurrentSession: isCurrentSession,
       resolveActiveTelemetryTarget: resolveActiveTelemetryTarget
@@ -93,7 +93,7 @@ final class DictationRuntime {
       }
     )
     let finalizer = RecordingFinalizer(
-      pipeline: pipeline,
+      kernelDriver: kernelDriver,
       whisperKitPipeline: whisperKitPipeline,
       asrManager: asrManager,
       recordingOverlay: recordingOverlay,
@@ -105,7 +105,7 @@ final class DictationRuntime {
     let starter = RecordingStarter(
       audioCapture: audioCapture,
       asrManager: asrManager,
-      pipeline: pipeline,
+      kernelDriver: kernelDriver,
       whisperKitPipeline: whisperKitPipeline,
       settings: settings,
       permissions: permissions,

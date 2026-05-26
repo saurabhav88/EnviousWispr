@@ -57,7 +57,7 @@ extension WhisperKitPipelineState: PipelineStateProtocol {
 /// Independent WhisperKit dictation pipeline — batch record → transcribe → polish → paste.
 ///
 /// Owns its own 8-state machine, shares only AudioCaptureManager and LLM infrastructure
-/// with the Parakeet highway (TranscriptionPipeline). No streaming — batch only.
+/// with the Parakeet highway (the old Parakeet pipeline). No streaming — batch only.
 @MainActor
 @Observable
 public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarget {
@@ -171,7 +171,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
   /// orphaned in-flight load is not duplicated by a subsequent press.
   private var prepareTask: Task<Void, Error>?
 
-  /// Issue #289 stall-recovery ownership token (see TranscriptionPipeline).
+  /// Issue #289 stall-recovery ownership token (see the old Parakeet pipeline).
   private var pendingStallRecoveryToken: UInt64?
 
   public init(
@@ -237,7 +237,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
     )
 
     // Issue #289: synchronous terminal-state flip before any await — see
-    // TranscriptionPipeline.handleCaptureStall for the race-closure rationale.
+    // the old Parakeet pipeline.handleCaptureStall for the race-closure rationale.
     // The emitter's per-session dedup already suppressed the captureError on
     // re-entry; we still must guard the state flip the same way.
     guard fired else { return }
@@ -252,12 +252,12 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
     }
   }
 
-  /// Issue #289: token-gated cleanup (mirrors `TranscriptionPipeline`).
-  /// See TranscriptionPipeline.finishStallRecovery for the sessionID-stale
+  /// Issue #289: token-gated cleanup (mirrors the old Parakeet pipeline).
+  /// See the old Parakeet pipeline.finishStallRecovery for the sessionID-stale
   /// race that the token gate closes.
   @MainActor
   private func finishStallRecovery(for sessionID: UInt64) async {
-    // Defense-in-depth (see TranscriptionPipeline).
+    // Defense-in-depth (see the old Parakeet pipeline).
     guard case .error = state else { return }
     guard pendingStallRecoveryToken == sessionID else { return }
     guard audioCapture.currentCaptureSessionID == sessionID else { return }
@@ -329,7 +329,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
     }
   }
 
-  /// Issue #289: dumb external-error sink (mirrors `TranscriptionPipeline`).
+  /// Issue #289: dumb external-error sink (mirrors the old Parakeet pipeline).
   public func setExternalError(_ message: String) {
     currentTranscript = nil
     state = .error(message)
@@ -380,11 +380,11 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
 
   public func preWarmAudioInput() async throws {
     guard !state.isActive, state != .recording else { return }
-    // Issue #289: earliest new-attempt signal — see TranscriptionPipeline
+    // Issue #289: earliest new-attempt signal — see the old Parakeet pipeline
     // for rationale. Clearing in `startRecording` alone left a race window.
     pendingStallRecoveryToken = nil
     let start = ContinuousClock.now
-    // Issue #289: propagate preWarm failures (see TranscriptionPipeline).
+    // Issue #289: propagate preWarm failures (see the old Parakeet pipeline).
     try await audioCapture.preWarm()
     guard !Task.isCancelled else { return }
     isPreWarmed = true
@@ -1476,7 +1476,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
   }
 
   /// Fan out frozen config values to substeps and derive decode options.
-  /// See `TranscriptionPipeline.applySessionConfig` for rationale.
+  /// See the old Parakeet pipeline's `applySessionConfig` for rationale.
   private func applySessionConfig(_ config: DictationSessionConfig) {
     llmPolishStep.llmProvider = config.llmProvider
     llmPolishStep.llmModel = config.llmModel
@@ -1493,7 +1493,7 @@ public final class WhisperKitPipeline: DictationPipeline, HeartPathTelemetryTarg
       energyGate: config.vadEnergyGate
     )
 
-    // Push the frozen device UIDs. See TranscriptionPipeline.applySessionConfig
+    // Push the frozen device UIDs. See the old Parakeet pipeline.applySessionConfig
     // for the narrow-race rationale.
     audioCapture.selectedInputDeviceUID = config.selectedInputDeviceUID
     audioCapture.preferredInputDeviceIDOverride = config.preferredInputDeviceIDOverride

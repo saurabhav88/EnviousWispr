@@ -22,7 +22,7 @@ import Foundation
 final class RecordingStarter {
   let audioCapture: any AudioCaptureInterface
   let asrManager: any ASRManagerInterface
-  let pipeline: TranscriptionPipeline
+  let kernelDriver: KernelDictationDriver
   let whisperKitPipeline: WhisperKitPipeline
   let settings: SettingsManager
   let permissions: PermissionsService
@@ -43,7 +43,7 @@ final class RecordingStarter {
       let state = whisperKitPipeline.state
       return state == .transcribing || state == .polishing
     } else {
-      let state = pipeline.state
+      let state = kernelDriver.state
       return state == .transcribing || state == .polishing
     }
   }
@@ -51,7 +51,7 @@ final class RecordingStarter {
   init(
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface,
-    pipeline: TranscriptionPipeline,
+    kernelDriver: KernelDictationDriver,
     whisperKitPipeline: WhisperKitPipeline,
     settings: SettingsManager,
     permissions: PermissionsService,
@@ -64,7 +64,7 @@ final class RecordingStarter {
   ) {
     self.audioCapture = audioCapture
     self.asrManager = asrManager
-    self.pipeline = pipeline
+    self.kernelDriver = kernelDriver
     self.whisperKitPipeline = whisperKitPipeline
     self.settings = settings
     self.permissions = permissions
@@ -83,11 +83,11 @@ final class RecordingStarter {
   func start() async {
     dictationLifecycleCoordinator?.cancelPendingWarning()
     let isWhisperKit = asrManager.activeBackendType == .whisperKit
-    let active: any DictationPipeline = isWhisperKit ? whisperKitPipeline : pipeline
+    let active: any DictationPipeline = isWhisperKit ? whisperKitPipeline : kernelDriver
     if isWhisperKit {
       guard !whisperKitPipeline.state.isActive else { return }
     } else {
-      guard !pipeline.state.isActive else { return }
+      guard !kernelDriver.state.isActive else { return }
     }
     lastRecordingResult?.polishError = nil
     permissions.refreshAccessibilityStatus()
@@ -124,13 +124,30 @@ final class RecordingStarter {
       recordingLockedAccess.set(false)
       return
     }
+    // PTT key-up that fired while `preWarm()` was awaiting did not reach
+    // the kernel via `requestStop` — `RecordingSessionKernel.requestStop`
+    // ignores `.idle` (sessionless pre-warm leaves the kernel idle), so
+    // dispatching `.toggleRecording` here would start a recording even
+    // though the user had already released. Mirror the post-toggle
+    // `userStoppedDuringStart` guard at lines 162-165 so the start path
+    // bails out cleanly. (Codex final-review P1 on the cutover.)
+    let userStoppedDuringPreWarm: Bool = {
+      guard let lastStop = lastUserStopAccess.read() else { return false }
+      return lastStop > pttStart
+    }()
+    if userStoppedDuringPreWarm {
+      audioCapture.abortPreWarm()
+      recordingOverlay.show(intent: .hidden)
+      recordingLockedAccess.set(false)
+      return
+    }
     let preWarmMs = Self.elapsedMs(since: pttStart)
     do {
       try await active.handle(
         event: .toggleRecording(
           DictationSessionConfigFactory.make(
             asrManager: asrManager,
-            pipeline: pipeline,
+            kernelDriver: kernelDriver,
             whisperKitPipeline: whisperKitPipeline,
             settings: settings,
             triggerSource: .pttHotkey
@@ -152,8 +169,8 @@ final class RecordingStarter {
         pipelineInError = false
       }
     } else {
-      pipelineActive = pipeline.state.isActive
-      if case .error = pipeline.state {
+      pipelineActive = kernelDriver.state.isActive
+      if case .error = kernelDriver.state {
         pipelineInError = true
       } else {
         pipelineInError = false
@@ -194,9 +211,9 @@ final class RecordingStarter {
   func toggle(source: TriggerSource) async {
     dictationLifecycleCoordinator?.cancelPendingWarning()
     let active: any DictationPipeline =
-      asrManager.activeBackendType == .whisperKit ? whisperKitPipeline : pipeline
+      asrManager.activeBackendType == .whisperKit ? whisperKitPipeline : kernelDriver
     let isWK = asrManager.activeBackendType == .whisperKit
-    if !(isWK ? whisperKitPipeline.state.isActive : pipeline.state.isActive) {
+    if !(isWK ? whisperKitPipeline.state.isActive : kernelDriver.state.isActive) {
       lastRecordingResult?.polishError = nil
     }
     permissions.refreshAccessibilityStatus()
@@ -208,7 +225,7 @@ final class RecordingStarter {
         event: .toggleRecording(
           DictationSessionConfigFactory.make(
             asrManager: asrManager,
-            pipeline: pipeline,
+            kernelDriver: kernelDriver,
             whisperKitPipeline: whisperKitPipeline,
             settings: settings,
             triggerSource: source

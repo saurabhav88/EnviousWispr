@@ -106,7 +106,7 @@ public enum DiscardReason: Equatable, Sendable {
 /// the `KernelLifecycleEvent.noSpeech(NoSpeechSource)` lifecycle event so the
 /// observer can route the source-appropriate breadcrumb without losing the
 /// old VAD-gate vs ASR-empty no-speech distinction (PR-1 §B.7.2; old
-/// `TranscriptionPipeline.swift:787` vs `:902`).
+/// the old Parakeet pipeline vs `:902`).
 public enum NoSpeechSource: Equatable, Sendable {
   /// VAD gate fired pre-ASR — raw samples had no speech evidence
   /// (`TP:787` — "VAD gate: no speech detected, skipping ASR").
@@ -233,7 +233,7 @@ final class RecordingSessionKernel {
   /// `→ warmingUp` transition. Read by the kernel-state observer to gate the
   /// `.modelLoading` lifecycle event so a warm session does not emit a
   /// spurious "Model loading" breadcrumb (PR-1 §B.7.2 parity; old
-  /// `TranscriptionPipeline.swift:365` was conditional on entering the
+  /// the old Parakeet pipeline was conditional on entering the
   /// load branch at `:363`). Reset on session start.
   private(set) var didLoadModelThisSession: Bool = false
 
@@ -248,7 +248,7 @@ final class RecordingSessionKernel {
   /// immediately BEFORE `adapter.beginSession(..., streaming:)`. The observer
   /// reads this at `.recording` lifecycle mapping time so the
   /// `recordingCommitted` event carries the same streaming flag the old
-  /// `TranscriptionPipeline.swift:550-553` breadcrumb + `updateRecordingState`
+  /// the old Parakeet pipeline breadcrumb + `updateRecordingState`
   /// emitted (Codex review #11 r2 — without this thread-through the sink
   /// would misreport every streaming session as batch). Reset on session
   /// start.
@@ -320,7 +320,7 @@ final class RecordingSessionKernel {
   /// `audioCapture.stopCapture()` between `.stopping` and the discard check
   /// counts capture-teardown latency as visible-recording time, letting a
   /// 40 ms tap bypass the gate when teardown is slow. Old pipeline
-  /// parity: `TranscriptionPipeline.swift:622` reads elapsed BEFORE
+  /// parity: the old Parakeet pipeline reads elapsed BEFORE
   /// `stopCapture()`. `nil` outside `.stopping`+; reset on every session start.
   private var stoppingStartedAtTick: UInt64?
   private var recordingStartedAtDate: Date?
@@ -328,7 +328,7 @@ final class RecordingSessionKernel {
   /// `true` once the polish step returned a non-empty processed transcript —
   /// the kernel-era equivalent of the point at which the old pipeline called
   /// `asrManager.noteTranscriptionComplete(policy:)` (just after polish, before
-  /// storage and paste — `TranscriptionPipeline.swift:992-995`). PR-4.5 #8
+  /// storage and paste — the old Parakeet pipeline). PR-4.5 #8
   /// gates the unload policy on this so failures BEFORE a transcript was ready
   /// (capture-stall, ASR-wedge, no-speech, cancel, sub-minimum discard, audio /
   /// ASR interrupt mid-recording) do NOT incur a model-unload spike that the
@@ -341,6 +341,27 @@ final class RecordingSessionKernel {
   /// Rich model-load wedge payload for the lifecycle sink. Set before
   /// `failed(.modelWedged)` so Sentry/PostHog keep the old payload shape.
   private(set) var modelLoadWedgeTelemetry: KernelModelLoadWedgeTelemetry?
+
+  /// User-visible detail for the current `.failed(reason)` state, if any —
+  /// the underlying error's `localizedDescription` for the three reasons the
+  /// old Parakeet pipeline embedded into its error strings (TP:440-445,
+  /// TP:577-588, TP:1045-1051). `nil` when the kernel is not in a
+  /// detail-bearing failed state, OR when no underlying error was captured.
+  /// Reading scope is intentionally narrow: this is the user-message
+  /// enrichment seam, not a general error-introspection API.
+  var lastFailureDetail: String? {
+    guard case .failed(let reason) = state else { return nil }
+    switch reason {
+    case .modelLoadFailed:
+      return telemetryState.modelLoadError?.localizedDescription
+    case .captureStartFailed:
+      return telemetryState.captureFailureError?.localizedDescription
+    case .asrFailed:
+      return telemetryState.transcriptionFailureError?.localizedDescription
+    default:
+      return nil
+    }
+  }
 
   /// The session task bag, keyed by `SessionID` (PR-1 §B.1.6). Reaching a
   /// terminal state cancels and clears it — nonblocking (PR-3 plan §3.1a).
@@ -535,7 +556,7 @@ final class RecordingSessionKernel {
   /// Sessionless pre-warm — drives `adapter.readiness` toward `.ready` AND
   /// warms the capture path so a Bluetooth codec negotiation does not eat the
   /// first 0.5–2 s of dictation (PR-1 §B.1.2, §B.2.2; PR-4.5 #1 — parity with
-  /// old `TranscriptionPipeline.preWarmAudioInput`, `:295-315`). No
+  /// old Parakeet pipeline's `preWarmAudioInput`, `:295-315`). No
   /// `SessionID`, no FSM transition; valid only from `idle` / terminal.
   ///
   /// **Async on purpose (Codex r4):** the real PTT flow
@@ -557,7 +578,7 @@ final class RecordingSessionKernel {
   /// logged + swallowed (the session is not stranded; the start path will
   /// retry capture as needed); an adapter-warm failure leaves `.readiness`
   /// non-ready and the session's own warm-up path handles it.
-  func preWarm() async {
+  func preWarm() async throws {
     guard state == .idle || state.isTerminal else {
       log("preWarm ignored — session active at \(state)")
       return
@@ -577,11 +598,29 @@ final class RecordingSessionKernel {
     // negotiation MUST complete before `start(config:)` cancels the session
     // task bag, or the negotiation truncates and the user pays the
     // cold-start cost the pre-warm was supposed to hide.
+    //
+    // PR-4b.4 of #827: rethrow audioCapture.preWarm failures so the PTT
+    // starter (`RecordingStarter.start()`) can surface "Microphone
+    // unavailable" to the user. Old Parakeet pipeline propagated this same
+    // error through `try await preWarmAudioInput()`; swallowing it here
+    // would let the start path proceed into `.toggleRecording` and fail
+    // downstream in a less informative way.
+    let preWarmStart = ContinuousClock.now
     do {
       try await audioCapture.preWarm()
       log("preWarm audioCapture.preWarm succeeded sid=\(sid.raw)")
+      // GAP 3 app.log parity: emit the OLD TP cold-start preWarm timing
+      // (TP:317-321) so debug-mode log scans grep this exact prefix.
+      let totalMs = Int((ContinuousClock.now - preWarmStart) / .milliseconds(1))
+      Task {
+        await AppLogger.shared.log(
+          "COLD-START [Parakeet] preWarmAudioInput total=\(totalMs)ms",
+          level: .info, category: "Pipeline"
+        )
+      }
     } catch {
       log("preWarm audioCapture.preWarm failed sid=\(sid.raw) error=\(error)")
+      throw error
     }
   }
 
@@ -595,7 +634,7 @@ final class RecordingSessionKernel {
       return
     }
     // Push the frozen device UIDs BEFORE the capture source is built (PR-4.5
-    // #3 — parity with old TranscriptionPipeline `:1434-1439`). The capture
+    // #3 — parity with old Parakeet pipeline `:1434-1439`). The capture
     // layer reads UIDs at source construction (the source is rebuilt between
     // recordings); a mic swap arriving after pre-warm but before
     // `startEnginePhase` would otherwise slip through `PipelineSettingsSync`'s
@@ -617,7 +656,7 @@ final class RecordingSessionKernel {
     bindCaptureCallbacks(sid)
     // Stamp the VAD seam with the freshly minted session BEFORE subscribing —
     // a signal that races in between subscribe and stamp would otherwise carry
-    // a stale ID and be dropped (PR-4.5 #2; old TranscriptionPipeline
+    // a stale ID and be dropped (PR-4.5 #2; old Parakeet pipeline
     // `:569-570,1276-1285`).
     vad.setCurrentSessionID(sid)
     log("VAD session stamped sid=\(sid.raw)")  // PR-4.5 §8
@@ -672,6 +711,34 @@ final class RecordingSessionKernel {
       return
     }
     guard isCurrent(sid) else { return }
+    // GAP 2 of seam audit (TP:512-531): wait briefly for BT-codec format
+    // stabilization, and rebuild the engine + retry once if it never
+    // settled. Always running this is cheap on the PTT (warm) path —
+    // `waitForFormatStabilization` returns near-instantly when format
+    // is already settled (AudioCaptureManager:355 short-circuits when
+    // there's no active source; per-source impls return on the first
+    // poll once stable). The 1.5s/0.2s pair matches the existing
+    // stabilization sites at AudioCaptureProxy:391 and
+    // AudioCaptureManager:334 — re-using a value the codebase has
+    // already shipped, not introducing a new arbitrary timeout.
+    // Codex r1 on this fix flagged that gating the call on a "pre-warmed"
+    // flag could survive an aborted preWarm and skip stabilization on
+    // a later cold start; running unconditionally avoids that.
+    let stabilized = await audioCapture.waitForFormatStabilization(
+      maxWait: 1.5, pollInterval: 0.2)
+    guard isCurrent(sid) else { return }
+    if !stabilized {
+      audioCapture.rebuildEngine()
+      do {
+        try await audioCapture.startEnginePhase()
+      } catch {
+        guard isCurrent(sid) else { return }
+        telemetryState.captureFailureError = error
+        finishTerminal(.failed(classifyCaptureStartError(error)), sid: sid)
+        return
+      }
+      guard isCurrent(sid) else { return }
+    }
     // The capture engine is up — every terminal from here must stop capture.
     captureLifecycle = .active
     if stopLatched {
@@ -817,7 +884,7 @@ final class RecordingSessionKernel {
     let rawPeakAudioLevel = peakAudioLevel(in: captureResult.samples)
 
     // Minimum-recording-duration discard (PR-4.5 #4) — parity with old
-    // `TranscriptionPipeline.swift:621-640`. The TIME-BASED gate uses
+    // the old Parakeet pipeline. The TIME-BASED gate uses
     // visible-recording elapsed measured from `→ recording` (set above at
     // `recordingStartedAtTick`), NOT from pre-roll capture (PR-4.5 §5b:
     // pre-roll fix #0 must not let a 40 ms accidental tap slip past this
@@ -850,6 +917,18 @@ final class RecordingSessionKernel {
       return
     }
 
+    // GAP 3 app.log parity: captured-sample-count log (TP:725-729) —
+    // gives debug-mode log readers the duration of the visible recording
+    // before any VAD / conditioning runs.
+    let capturedSampleCount = captureResult.samples.count
+    Task {
+      await AppLogger.shared.log(
+        "Captured \(capturedSampleCount) samples "
+          + "(\(String(format: "%.2f", Double(capturedSampleCount) / 16000))s)",
+        level: .verbose, category: "Pipeline"
+      )
+    }
+
     // VAD no-speech gate (PR-1 §B.6) — keys on *confirmed* no-speech.
     let speechEvidence = vad.speechEvidenceAtStop()
     if speechEvidence == .confirmedNoSpeech {
@@ -865,13 +944,35 @@ final class RecordingSessionKernel {
         rawSamples: captureResult.samples,
         peakAudioLevel: rawPeakAudioLevel
       )
+      // GAP 3 app.log parity: emit the VAD filtered log here too — for
+      // `.confirmedNoSpeech`, conditioner never runs (we return below),
+      // so the filtered count is 0 by definition. Without this, the
+      // no-speech path is missing one of the OLD TP debug lines (TP:772
+      // emitted before TP:800's no-speech gate). Codex r1 (P3) on GAP 3.
+      Task {
+        await AppLogger.shared.log(
+          "VAD filtered to 0 samples (0.0% voiced)",
+          level: .verbose, category: "Pipeline"
+        )
+      }
+      // GAP 3 app.log parity: VAD-gate skip log (TP:800-804) — gives debug
+      // log readers a clear marker for "user pressed without speaking."
+      let peak = rawPeakAudioLevel
+      let cnt = capturedSampleCount
+      Task {
+        await AppLogger.shared.log(
+          "VAD gate: no speech, skipping ASR "
+            + "(samples=\(cnt), peak=\(String(format: "%.4f", peak)))",
+          level: .info, category: "Pipeline"
+        )
+      }
       finishTerminal(.noSpeech, sid: sid)
       return
     }
 
     // Condition the captured audio for ASR batch rescue (PR-4.5 #5) — VAD
     // filtering + too-aggressive-filter raw fallback + short-utterance
-    // padding, in the order the old `TranscriptionPipeline` (`:732-823`)
+    // padding, in the order the old Parakeet pipeline (`:732-823`)
     // applied them. Runs AFTER the #4 discard gate so a sub-minimum tap is
     // never padded into valid ASR input (§5b). Conditioner is kernel-side
     // (capture/VAD policy lives here, not in the adapter); the adapter
@@ -888,7 +989,7 @@ final class RecordingSessionKernel {
     let xpcSegments = captureResult.vadSegments
     let vadSegments = !xpcSegments.isEmpty ? xpcSegments : vad.speechSegmentsAtStop()
     // Raw audio for the conditioner is `captureResult.samples` (parity with
-    // old `TranscriptionPipeline.swift:670` `rawSamples = captureResult.samples`).
+    // old Parakeet pipeline `rawSamples = captureResult.samples`).
     // The OLD pipeline did NOT include pre-roll in batch decode either — pre-roll
     // reached the streaming ASR via `onBufferCaptured` (still does, via
     // `acceptAudio` → adapter's streaming feed). Codex r4 caught a r3 regression
@@ -900,6 +1001,16 @@ final class RecordingSessionKernel {
     let conditioned = CapturedAudioConditioner.condition(
       rawSamples: captureResult.samples, vadSegments: vadSegments)
     let vadSpeechDurationMs = Self.speechDurationMs(vadSegments)
+    // GAP 3 app.log parity: VAD filter ratio log (TP:772-776).
+    let rawCount = captureResult.samples.count
+    let filteredCount = conditioned.filteredSampleCount
+    Task {
+      await AppLogger.shared.log(
+        "VAD filtered to \(filteredCount) samples "
+          + "(\(String(format: "%.1f", Double(filteredCount) / Double(max(rawCount, 1)) * 100))% voiced)",
+        level: .verbose, category: "Pipeline"
+      )
+    }
     telemetryState.asrEmptyDiagnostics = ASREmptyResultDiagnostics(
       backend: ASRBackendType.parakeet.rawValue,
       mode: isStreamingSession ? "streaming" : "batch",
@@ -953,6 +1064,25 @@ final class RecordingSessionKernel {
           rawSampleCount: captureResult.samples.count,
           peakAudioLevel: rawPeakAudioLevel
         )
+        // GAP 3 app.log parity: no-speech-no-evidence log (TP:911-915).
+        Task {
+          await AppLogger.shared.log(
+            "No speech detected, returning to idle",
+            level: .info, category: "Pipeline"
+          )
+        }
+      } else {
+        // GAP 3 app.log parity: ASR-empty-despite-evidence log (TP:894-898).
+        let segs = vadSegments.count
+        let speechMs = vadSpeechDurationMs
+        let peak = rawPeakAudioLevel
+        Task {
+          await AppLogger.shared.log(
+            "ASR empty despite speech evidence "
+              + "(segments=\(segs), speechMs=\(speechMs), peak=\(peak))",
+            level: .info, category: "Pipeline"
+          )
+        }
       }
       finishTerminal(hadSpeechEvidence ? .failed(.asrEmpty) : .noSpeech, sid: sid)
     case .cancelled:
@@ -996,7 +1126,7 @@ final class RecordingSessionKernel {
 
     // The unload-policy gate: a non-empty transcript has cleared polish and is
     // about to be stored / delivered. Old pipeline parity
-    // (`TranscriptionPipeline.swift:992-995`): `noteTranscriptionComplete` fires
+    // (old Parakeet pipeline): `noteTranscriptionComplete` fires
     // here, between polish and storage/paste — failures after this point still
     // get unload, failures before do not (PR-4.5 #8, §5b).
     transcriptReadyForDelivery = true
@@ -1060,11 +1190,16 @@ final class RecordingSessionKernel {
       }
     }
 
+    var thrownError: (any Error)?
     do {
       try await adapter.warmUp()
     } catch {
       // Classified below — `warmUp()` throwing is expected on the wedge path
       // (the watcher cancels the adapter, which unblocks the parked load).
+      // Stash the error so the `.loadFailed` terminal can surface
+      // `error.localizedDescription` in the user-facing message (parity with
+      // the old Parakeet pipeline at TP:440-445).
+      thrownError = error
     }
     guard isCurrent(sid) else { return .cancelled }
 
@@ -1072,6 +1207,7 @@ final class RecordingSessionKernel {
     if stopLatched { return .stopped }
     if cancelRequested { return .cancelled }
     if adapter.readiness == .ready { return .ready }
+    if let thrownError { telemetryState.modelLoadError = thrownError }
     return .loadFailed
   }
 
@@ -1096,7 +1232,12 @@ final class RecordingSessionKernel {
         modelLoadWedgeTelemetry = KernelModelLoadWedgeTelemetry(
           silenceMs: milliseconds(forTicks: silentTicks),
           observedMaxGapMs: milliseconds(forTicks: maxGapTicks),
-          observedPhase: "kernel",
+          // Div 5 of seam audit (TP:407): surface the underlying loader's
+          // last-observed phase string instead of a generic "kernel" label
+          // so the Sentry wedge payload preserves the OLD pipeline's
+          // diagnostic richness. Adapters that have no phase surface return
+          // the protocol default "warmup".
+          observedPhase: adapter.lastObservedPhase,
           signalCountTotal: loadTickCount,
           firstSignalLatencyMs: firstLoadTickAt.map {
             milliseconds(forTicks: $0 &- loadAttemptStartedAtTick)
@@ -1257,7 +1398,7 @@ final class RecordingSessionKernel {
   /// PR-4 plan §3.4: the carrier holds the `AVAudioPCMBuffer` directly. The
   /// audio thread transfers it via `nonisolated(unsafe)` — the buffer is
   /// created on the audio thread, wrapped once, and read only on `@MainActor`,
-  /// never from two threads (the shipped pattern, `TranscriptionPipeline.swift:483`).
+  /// never from two threads (the shipped pattern, the old Parakeet pipeline).
   private func makeBufferCallback(_ sid: SessionID) -> (@Sendable (AVAudioPCMBuffer) -> Void) {
     return { [weak self] buffer in
       nonisolated(unsafe) let safeBuffer = buffer
@@ -1265,7 +1406,7 @@ final class RecordingSessionKernel {
       Task { @MainActor [weak self] in
         // PR-4.5 #0 pre-roll restoration: accept buffers as soon as the
         // adapter session is open, NOT when the FSM has reached `.recording`.
-        // The old `TranscriptionPipeline` (`:535-539`) retained pre-roll fed
+        // The old Parakeet pipeline (`:535-539`) retained pre-roll fed
         // by `AVAudioEngineSource.PreRollForwarder` (`:329-335`) for the
         // adapter's batch rescue; the fresh kernel's `state == .recording`
         // gate dropped that pre-roll. `adapterSessionActive` is set true the
@@ -1274,7 +1415,7 @@ final class RecordingSessionKernel {
         // (PR-4.5 §5b — prior-session leakage cannot occur). Tail buffers
         // arriving after `.recording` exit but before `onBufferCaptured = nil`
         // also reach the adapter, parity with the old per-buffer hand-off
-        // (`TranscriptionPipeline.swift:481`).
+        // (old Parakeet pipeline).
         guard let self, self.isCurrent(sid), self.adapterSessionActive else { return }
         self.bufferSequence += 1
         let handoff = AudioBufferHandoff(
@@ -1346,7 +1487,7 @@ final class RecordingSessionKernel {
   }
 
   /// Route an ASR-interruption signal (adapter engine crash OR audio-capture
-  /// XPC service error). PR-4.5 #7: the old `TranscriptionPipeline`
+  /// XPC service error). PR-4.5 #7: the old Parakeet pipeline
   /// (`:1134-1163`) handled this in BOTH `.recording` AND `.transcribing`; the
   /// fresh kernel's `deliverRecordingExitIfCurrent` guarded `state == .recording`
   /// only, so a crash in `.transcribing` was dropped (no terminal, no cleanup,
@@ -1498,7 +1639,7 @@ final class RecordingSessionKernel {
 
     // Apply the model-unload policy once per session that produced a
     // transcript-ready-for-delivery (PR-4.5 #8, parity with old
-    // `TranscriptionPipeline.swift:992-995`). A session that crashed in
+    // the old Parakeet pipeline). A session that crashed in
     // capture-stall / ASR-wedge / no-speech / cancel / sub-minimum / audio /
     // ASR interrupt did NOT produce a transcript — applying the unload policy
     // would force a cold reload on the next session for no value. The
@@ -1620,7 +1761,7 @@ final class RecordingSessionKernel {
   }
 
   /// Derive decode options from the frozen session config's language mode
-  /// (PR-4 plan §3.3a — mirrors `TranscriptionPipeline.applySessionConfig`).
+  /// (PR-4 plan §3.3a — mirrors the old Parakeet pipeline's `applySessionConfig`).
   private func makeTranscriptionOptions(_ config: DictationSessionConfig)
     -> TranscriptionOptions
   {
@@ -1632,6 +1773,17 @@ final class RecordingSessionKernel {
       options.language = code
     }
     return options
+  }
+
+  /// Driver-facing seam: stamp the frontmost app's bundle identifier into
+  /// the current recording snapshot. The driver calls this BEFORE clearing
+  /// `KernelSessionContext.targetApp` on terminal so the lifecycle sink's
+  /// fallback (`KernelLifecycleTelemetrySink:370`) sees the bundle id from
+  /// the snapshot itself, not from a now-nulled context reference. No-op
+  /// when no snapshot exists (e.g., terminal reached without ever entering
+  /// `.recording`).
+  func stampRecordingSnapshotTargetApp(_ bundleID: String?) {
+    telemetryState.recordingSnapshot?.targetAppBundleID = bundleID
   }
 
   private func freezeRecordingSnapshot() {
@@ -1735,5 +1887,39 @@ final class RecordingSessionKernel {
     /// The count of task references still held on the kernel — the §3.1a
     /// "no active task references remain after a terminal state" invariant.
     var testActiveTaskCount: Int { taskBag.count }
+
+    /// Test-only telemetry-error setters. Unit tests that need to assert the
+    /// `lastFailureDetail` mapping reach the underlying telemetry fields
+    /// through these hooks rather than driving a real warm-up / capture /
+    /// transcription failure.
+    func testSetModelLoadError(_ error: (any Error)?) {
+      telemetryState.modelLoadError = error
+    }
+    func testSetCaptureFailureError(_ error: (any Error)?) {
+      telemetryState.captureFailureError = error
+    }
+    func testSetTranscriptionFailureError(_ error: (any Error)?) {
+      telemetryState.transcriptionFailureError = error
+    }
+
+    /// Test-only recording-snapshot accessors. Used by Div 8 coverage to
+    /// pre-seed a snapshot (since the kernel only freezes one mid-session)
+    /// and to read its `targetAppBundleID` after the driver's terminal
+    /// cleanup stamps it.
+    func testSetRecordingSnapshot(_ snapshot: KernelRecordingSnapshotTelemetry?) {
+      telemetryState.recordingSnapshot = snapshot
+    }
+    func testGetRecordingSnapshot() -> KernelRecordingSnapshotTelemetry? {
+      telemetryState.recordingSnapshot
+    }
+
+    /// Test-only finalizing-sub-status setter. Lets unit tests flip the
+    /// `.transcribing` ↔ `.polishing` sub-status without driving a real
+    /// polish-step `onWillProcess`. The driver's `overlayIntent` routes
+    /// overlay-label text through this sub-status (`.processing("Transcribing...")`
+    /// vs `"Polishing..."`).
+    func testSetFinalizingSubStatus(_ status: FinalizingSubStatus) {
+      finalizingSubStatus = status
+    }
   #endif
 }

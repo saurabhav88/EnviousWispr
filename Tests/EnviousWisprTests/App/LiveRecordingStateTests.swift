@@ -112,11 +112,14 @@ struct LiveRecordingStateTests {
     let tempDir = FileManager.default.temporaryDirectory
       .appendingPathComponent("live-recording-state-tests-\(UUID().uuidString)")
     let store = TranscriptStore(directory: tempDir)
-    let parakeet = TranscriptionPipeline(
+    let parakeet = KernelDictationDriverFactory.make(inputs: .init(
       audioCapture: audioCapture,
       asrManager: asrManager,
-      transcriptStore: store
-    )
+      transcriptStore: store,
+      keychainManager: KeychainManager(),
+      captureTelemetry: CaptureTelemetryState(),
+      pasteCompletionRegistry: PasteCompletionRegistry()
+    ))
     let whisperKit = WhisperKitPipeline(
       audioCapture: audioCapture,
       backend: WhisperKitBackend(),
@@ -124,7 +127,7 @@ struct LiveRecordingStateTests {
       keychainManager: KeychainManager()
     )
     return LiveRecordingState(
-      pipeline: parakeet,
+      kernelDriver: parakeet,
       whisperKitPipeline: whisperKit,
       audioCapture: audioCapture,
       asrManager: asrManager

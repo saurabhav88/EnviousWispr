@@ -131,7 +131,7 @@ public struct ASRFinalizeProgressTick: Sendable {
 /// copy. The production Parakeet adapter feeds streaming ASR through
 /// `ASRManagerInterface.feedAudio(_:)`, which takes an `AVAudioPCMBuffer`; an
 /// owned-`[Float]` carrier would force a buffer reconstruction the shipped
-/// streaming path (`TranscriptionPipeline.swift:483`) never does.
+/// streaming path (old Parakeet pipeline) never does.
 ///
 /// `@unchecked Sendable`: `AVAudioPCMBuffer` is not `Sendable`, but the buffer
 /// is created on the audio thread, wrapped here exactly once, and handed to
@@ -191,6 +191,14 @@ public protocol ASREngineAdapter: AnyObject {
   /// deadline (PR-1 §B.2.2).
   var loadProgress: AsyncStream<ASRLoadProgressTick>? { get }
 
+  /// Latest model-load phase string surfaced by the underlying loader, or
+  /// `"warmup"` when the loader doesn't expose phases. Used by the kernel's
+  /// model-load-wedge Sentry payload — Div 5 of seam audit (TP:407 read
+  /// `snap.lastObservedPhase` from `ModelLoadWatchdog.snapshot`). Default
+  /// returns `"warmup"`; adapters that observe phase strings (e.g.
+  /// `ParakeetEngineAdapter` via the XPC `loadProgressTickReporter`) override.
+  var lastObservedPhase: String { get }
+
   // MARK: Session lifecycle
 
   /// Begin a recording session under `id`. `streaming` carries the kernel's
@@ -241,4 +249,11 @@ public protocol ASREngineAdapter: AnyObject {
 
   /// Apply the model-unload policy (PR-1 §B.2.1, D16).
   func applyUnloadPolicy(_ policy: ModelUnloadPolicy)
+}
+
+extension ASREngineAdapter {
+  /// Default phase: adapters without a loader-phase surface return the
+  /// generic warmup label. Concrete adapters override when they observe
+  /// real phase strings.
+  public var lastObservedPhase: String { "warmup" }
 }

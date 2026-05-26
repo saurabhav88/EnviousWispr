@@ -51,11 +51,14 @@ struct BackendSwitchGuardTests {
     let transcriptStore = TranscriptStore()
     let keychain = KeychainManager()
 
-    let pipeline = TranscriptionPipeline(
+    let pipeline = KernelDictationDriverFactory.make(inputs: .init(
       audioCapture: audioCapture,
       asrManager: asrManager,
-      transcriptStore: transcriptStore
-    )
+      transcriptStore: transcriptStore,
+      keychainManager: KeychainManager(),
+      captureTelemetry: CaptureTelemetryState(),
+      pasteCompletionRegistry: PasteCompletionRegistry()
+    ))
     let whisperKitPipeline = WhisperKitPipeline(
       audioCapture: audioCapture,
       backend: WhisperKitBackend(),
@@ -70,7 +73,7 @@ struct BackendSwitchGuardTests {
     let whisperKitSetup = WhisperKitSetupService()
 
     let sync = PipelineSettingsSync(
-      pipeline: pipeline,
+      kernelDriver: pipeline,
       whisperKitPipeline: whisperKitPipeline,
       polishService: polishService,
       audioCapture: audioCapture,
@@ -87,7 +90,7 @@ struct BackendSwitchGuardTests {
       llmProvider: .openAI,
       llmModel: "gpt-test"
     )
-    await pipeline.startRecording(config: config)
+    try await pipeline.handle(event: .toggleRecording(config))
 
     let reachedRecording = await pollUntil(timeout: .seconds(1)) {
       pipeline.state == .recording

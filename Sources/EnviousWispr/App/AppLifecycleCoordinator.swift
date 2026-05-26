@@ -11,7 +11,7 @@ import Foundation
 // builds because `AudioSystemEventReporter` (production telemetry) references
 // `AudioCaptureInterface` and `ASRManagerInterface` from those modules.
 // PR-C.3 of #763: `EnviousWisprPipeline` is now an unconditional import — the
-// `TranscriptionPipeline` / `WhisperKitPipeline` homes are stored properties
+// `KernelDictationDriver` / `WhisperKitPipeline` homes are stored properties
 // (still read only by `DebugFaultEndpoint` in debug builds).
 
 /// PR-B.4 of #763: App-owned home for the process-lifecycle sequence.
@@ -46,7 +46,7 @@ final class AppLifecycleCoordinator {
   private let aiAvailability: AIAvailabilityCoordinator
   private let audioCapture: any AudioCaptureInterface
   private let asrManager: any ASRManagerInterface
-  private let pipeline: TranscriptionPipeline
+  private let kernelDriver: KernelDictationDriver
   private let whisperKitPipeline: WhisperKitPipeline
   private let setup: SetupCoordinator
   private let dictationRuntime: DictationRuntime
@@ -64,7 +64,7 @@ final class AppLifecycleCoordinator {
     aiAvailability: AIAvailabilityCoordinator,
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface,
-    pipeline: TranscriptionPipeline,
+    kernelDriver: KernelDictationDriver,
     whisperKitPipeline: WhisperKitPipeline,
     setup: SetupCoordinator,
     dictationRuntime: DictationRuntime,
@@ -81,7 +81,7 @@ final class AppLifecycleCoordinator {
     self.aiAvailability = aiAvailability
     self.audioCapture = audioCapture
     self.asrManager = asrManager
-    self.pipeline = pipeline
+    self.kernelDriver = kernelDriver
     self.whisperKitPipeline = whisperKitPipeline
     self.setup = setup
     self.dictationRuntime = dictationRuntime
@@ -213,7 +213,7 @@ final class AppLifecycleCoordinator {
         let endpoint = DebugFaultEndpoint(
           audioProxy: audioCapture as? AudioCaptureProxy,
           asrProxy: asrManager as? ASRManagerProxy,
-          parakeetPipeline: pipeline,
+          kernelDriver: kernelDriver,
           whisperKitPipeline: whisperKitPipeline,
           activeBackend: { [weak self] in
             self?.settings.selectedBackend ?? .parakeet

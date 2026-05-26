@@ -13,7 +13,7 @@ enum DictationSessionConfigFactory {
   @MainActor
   static func make(
     asrManager: any ASRManagerInterface,
-    pipeline: TranscriptionPipeline,
+    kernelDriver: KernelDictationDriver,
     whisperKitPipeline: WhisperKitPipeline,
     settings: SettingsManager,
     triggerSource: TriggerSource
@@ -26,7 +26,7 @@ enum DictationSessionConfigFactory {
         default: return false
         }
       } else {
-        switch pipeline.state {
+        switch kernelDriver.state {
         case .idle, .complete, .error: return true
         default: return false
         }

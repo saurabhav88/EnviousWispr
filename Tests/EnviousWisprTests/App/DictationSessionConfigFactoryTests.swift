@@ -34,7 +34,7 @@ struct DictationSessionConfigFactoryTests {
     for source in TriggerSource.allCases {
       let config = DictationSessionConfigFactory.make(
         asrManager: harness.asrManager,
-        pipeline: harness.pipeline,
+        kernelDriver: harness.kernelDriver,
         whisperKitPipeline: harness.whisperKitPipeline,
         settings: harness.settings,
         triggerSource: source
@@ -136,7 +136,7 @@ struct DictationSessionConfigFactoryTests {
 @MainActor
 private struct Harness {
   let asrManager: FactoryFakeASRManager
-  let pipeline: TranscriptionPipeline
+  let kernelDriver: KernelDictationDriver
   let whisperKitPipeline: WhisperKitPipeline
   let settings: SettingsManager
 
@@ -153,11 +153,14 @@ private struct Harness {
     let audio = try FixtureAudioCapture(fixtureURL: fixture.url)
     let store = TranscriptStore()
     let keychain = KeychainManager()
-    let pipeline = TranscriptionPipeline(
+    let pipeline = KernelDictationDriverFactory.make(inputs: .init(
       audioCapture: audio,
       asrManager: asr,
-      transcriptStore: store
-    )
+      transcriptStore: store,
+      keychainManager: KeychainManager(),
+      captureTelemetry: CaptureTelemetryState(),
+      pasteCompletionRegistry: PasteCompletionRegistry()
+    ))
     let whisperKitPipeline = WhisperKitPipeline(
       audioCapture: audio,
       backend: WhisperKitBackend(),
@@ -167,7 +170,7 @@ private struct Harness {
     let settings = SettingsManager()
     return Harness(
       asrManager: asr,
-      pipeline: pipeline,
+      kernelDriver: pipeline,
       whisperKitPipeline: whisperKitPipeline,
       settings: settings
     )
@@ -176,7 +179,7 @@ private struct Harness {
   func makeConfig(triggerSource: TriggerSource = .programmatic) -> DictationSessionConfig {
     DictationSessionConfigFactory.make(
       asrManager: asrManager,
-      pipeline: pipeline,
+      kernelDriver: kernelDriver,
       whisperKitPipeline: whisperKitPipeline,
       settings: settings,
       triggerSource: triggerSource

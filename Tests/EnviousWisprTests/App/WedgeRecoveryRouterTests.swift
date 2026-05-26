@@ -16,7 +16,7 @@ struct WedgeRecoveryRouterTests {
     let audio = RouterTestAudioCapture()
     let asr = RouterTestASRManager()
     let store = DictationRuntimeFixtures.tempStore()
-    let parakeet = DictationRuntimeFixtures.makeParakeetPipeline(
+    let parakeet = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
     let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audio, store: store)
@@ -27,7 +27,7 @@ struct WedgeRecoveryRouterTests {
 
     let router = WedgeRecoveryRouter(
       audioCapture: audio,
-      pipeline: parakeet,
+      kernelDriver: parakeet,
       whisperKitPipeline: whisperKit,
       isCurrentSession: { _ in true },
       resolveActiveTelemetryTarget: { nil }
@@ -44,7 +44,7 @@ struct WedgeRecoveryRouterTests {
     let audio = RouterTestAudioCapture()
     let asr = RouterTestASRManager()
     let store = DictationRuntimeFixtures.tempStore()
-    let parakeet = DictationRuntimeFixtures.makeParakeetPipeline(
+    let parakeet = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
     let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audio, store: store)
@@ -54,7 +54,7 @@ struct WedgeRecoveryRouterTests {
 
     let router = WedgeRecoveryRouter(
       audioCapture: audio,
-      pipeline: parakeet,
+      kernelDriver: parakeet,
       whisperKitPipeline: whisperKit,
       isCurrentSession: { sessionID in
         sessionFilterCalls.append(sessionID)
@@ -82,7 +82,7 @@ struct WedgeRecoveryRouterTests {
     let audio = RouterTestAudioCapture()
     let asr = RouterTestASRManager()
     let store = DictationRuntimeFixtures.tempStore()
-    let parakeet = DictationRuntimeFixtures.makeParakeetPipeline(
+    let parakeet = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
     let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audio, store: store)
@@ -91,7 +91,7 @@ struct WedgeRecoveryRouterTests {
 
     let router = WedgeRecoveryRouter(
       audioCapture: audio,
-      pipeline: parakeet,
+      kernelDriver: parakeet,
       whisperKitPipeline: whisperKit,
       isCurrentSession: { _ in true },
       resolveActiveTelemetryTarget: {

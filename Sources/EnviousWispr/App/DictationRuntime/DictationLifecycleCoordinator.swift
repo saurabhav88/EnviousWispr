@@ -31,7 +31,7 @@ final class DictationLifecycleCoordinator {
   // flag without storing a reference to its owner. PR-C.3 of #763 rehomed that
   // flag onto `LiveRecordingState` (the closures retarget at the call site).
 
-  let pipeline: TranscriptionPipeline  // 1
+  let kernelDriver: KernelDictationDriver  // 1
   let whisperKitPipeline: WhisperKitPipeline  // 2
   let recordingOverlay: RecordingOverlayPanel  // 3
   let hotkeyService: HotkeyService  // 4
@@ -90,7 +90,7 @@ final class DictationLifecycleCoordinator {
     makeStateChangeHandler(backendLabel: "whisperKit")
 
   init(
-    pipeline: TranscriptionPipeline,
+    kernelDriver: KernelDictationDriver,
     whisperKitPipeline: WhisperKitPipeline,
     recordingOverlay: RecordingOverlayPanel,
     hotkeyService: HotkeyService,
@@ -102,7 +102,7 @@ final class DictationLifecycleCoordinator {
     languageSuggestionPresenter: LanguageSuggestionPresenter?,
     recordingLockedAccess: RecordingLockedAccess
   ) {
-    self.pipeline = pipeline
+    self.kernelDriver = kernelDriver
     self.whisperKitPipeline = whisperKitPipeline
     self.recordingOverlay = recordingOverlay
     self.hotkeyService = hotkeyService
@@ -119,7 +119,7 @@ final class DictationLifecycleCoordinator {
   /// composition root (`EnviousWisprApp.init`) after `DictationLifecycleCoordinator`
   /// and the routers are constructed.
   func install() {
-    pipeline.onStateChange = { [weak self] newState in
+    kernelDriver.onStateChange = { [weak self] newState in
       guard let self else { return }
       self.handleParakeet(newState: newState)
     }
@@ -157,15 +157,15 @@ final class DictationLifecycleCoordinator {
     prevParakeetActive = nowActive
     parakeetStateHandler.handle(
       to: newState,
-      pipelineOverlayIntent: pipeline.overlayIntent,
-      lastPolishError: pipeline.lastPolishError,
-      currentTranscript: pipeline.currentTranscript
+      pipelineOverlayIntent: kernelDriver.overlayIntent,
+      lastPolishError: kernelDriver.lastPolishError,
+      currentTranscript: kernelDriver.currentTranscript
     )
     // PR7 of #763 — push polish error to the post-recording result home so
     // views can read `lastRecordingResult.polishError` without reaching
     // through the former root state. Sunset PR11.
-    lastRecordingResult.polishError = pipeline.lastPolishError
-    dispatchChipLifecycle(newState: newState, lastPolishError: pipeline.lastPolishError)
+    lastRecordingResult.polishError = kernelDriver.lastPolishError
+    dispatchChipLifecycle(newState: newState, lastPolishError: kernelDriver.lastPolishError)
   }
 
   private func handleWhisperKit(newState: WhisperKitPipelineState) {
@@ -250,7 +250,7 @@ final class DictationLifecycleCoordinator {
   /// telemetry routing and engine-interrupt routing so the two paths cannot
   /// drift.
   func activeCaptureBackend() -> LastCapturingBackend? {
-    let pActive = pipeline.state.isActive
+    let pActive = kernelDriver.state.isActive
     let wkActive = whisperKitPipeline.state.isActive
     if pActive && wkActive { return lastCapturingBackend }
     if pActive { return .parakeet }
@@ -268,10 +268,10 @@ final class DictationLifecycleCoordinator {
   func activeTelemetryTarget() -> (any HeartPathTelemetryTarget)? {
     switch activeCaptureBackend() {
     case .whisperKit: return whisperKitPipeline
-    case .parakeet: return pipeline
+    case .parakeet: return kernelDriver
     case nil:
       // Idle → attribute to the backend that most recently owned a session.
-      return lastCapturingBackend == .whisperKit ? whisperKitPipeline : pipeline
+      return lastCapturingBackend == .whisperKit ? whisperKitPipeline : kernelDriver
     }
   }
 
@@ -293,7 +293,7 @@ final class DictationLifecycleCoordinator {
       try? await Task.sleep(for: .milliseconds(400))
       guard !Task.isCancelled, let self else { return }
       // Only show if we're still in the completed state (no new recording started)
-      let parakeetComplete = self.pipeline.state == .complete
+      let parakeetComplete = self.kernelDriver.state == .complete
       let whisperKitComplete =
         self.whisperKitPipeline.state == .complete || self.whisperKitPipeline.state == .ready
       guard parakeetComplete || whisperKitComplete else { return }

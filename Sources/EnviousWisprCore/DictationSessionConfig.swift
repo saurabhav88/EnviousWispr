@@ -67,7 +67,7 @@ public struct DictationSessionConfig: Sendable {
   /// `TranscriptionOptions` from this at session start.
   public let languageMode: LanguageMode
   /// Parakeet-only. Committed at start — there is no mid-record reconfiguration path
-  /// in `TranscriptionPipeline`.
+  /// in the dictation kernel.
   public let useStreamingASR: Bool
   public let modelUnloadPolicy: ModelUnloadPolicy
 

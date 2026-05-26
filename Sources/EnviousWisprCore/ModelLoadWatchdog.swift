@@ -2,7 +2,7 @@ import Foundation
 
 /// Issue #445: shared constants and types for the model-load watchdog.
 ///
-/// `TranscriptionPipeline` (Parakeet) wraps its model-load `await` in
+/// the dictation kernel (Parakeet) wraps its model-load `await` in
 /// `raceWithSignalWatcher` against a `LoadProgressWatcher`, surfaces a
 /// Sentry/PostHog event on wedge, and triggers service-level recovery via
 /// `asrManager.cancelInFlightLoad()` (XPC connection invalidate, host task

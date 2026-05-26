@@ -19,7 +19,7 @@ import Foundation
 /// Clock source is `ContinuousClock`, NOT `Date`.
 @MainActor
 final class RecordingFinalizer {
-  let pipeline: TranscriptionPipeline
+  let kernelDriver: KernelDictationDriver
   let whisperKitPipeline: WhisperKitPipeline
   let asrManager: any ASRManagerInterface
   let recordingOverlay: RecordingOverlayPanel
@@ -43,7 +43,7 @@ final class RecordingFinalizer {
   }
 
   init(
-    pipeline: TranscriptionPipeline,
+    kernelDriver: KernelDictationDriver,
     whisperKitPipeline: WhisperKitPipeline,
     asrManager: any ASRManagerInterface,
     recordingOverlay: RecordingOverlayPanel,
@@ -51,7 +51,7 @@ final class RecordingFinalizer {
     recordingLockedAccess: DictationLifecycleCoordinator.RecordingLockedAccess,
     languageSuggestionPresenter: LanguageSuggestionPresenter?
   ) {
-    self.pipeline = pipeline
+    self.kernelDriver = kernelDriver
     self.whisperKitPipeline = whisperKitPipeline
     self.asrManager = asrManager
     self.recordingOverlay = recordingOverlay
@@ -64,7 +64,7 @@ final class RecordingFinalizer {
     recordingLockedAccess.set(false)
     lastUserStopRequest = ContinuousClock.now
     let active: any DictationPipeline =
-      asrManager.activeBackendType == .whisperKit ? whisperKitPipeline : pipeline
+      asrManager.activeBackendType == .whisperKit ? whisperKitPipeline : kernelDriver
     do {
       try await active.handle(event: .requestStop)
     } catch {
@@ -91,8 +91,8 @@ final class RecordingFinalizer {
         heartControlRecovery.logDispatchFailure(error, op: "cancel-whisperkit")
       }
     } else {
-      guard pipeline.state == .recording || pipeline.state == .loadingModel else { return }
-      await pipeline.cancelRecording()
+      guard kernelDriver.state == .recording || kernelDriver.state == .loadingModel else { return }
+      await kernelDriver.cancelRecording()
     }
   }
 
@@ -114,7 +114,7 @@ final class RecordingFinalizer {
     if asrManager.activeBackendType == .whisperKit {
       whisperKitPipeline.reset()
     } else {
-      pipeline.reset()
+      kernelDriver.reset()
     }
   }
 }

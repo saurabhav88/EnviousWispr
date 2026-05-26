@@ -33,7 +33,7 @@ public final class ASRManagerProxy: ASRManagerInterface {
   /// Fires when the ASR XPC service crashes during an active session (streaming or batch in-flight).
   public var onServiceInterrupted: (() -> Void)?
 
-  /// Issue #445: per-tick callback wired by `TranscriptionPipeline` to feed
+  /// Issue #445: per-tick callback wired by the dictation kernel to feed
   /// its `LoadProgressWatcher` from the existing 8Hz polling timer.
   public var loadProgressTickReporter: (@MainActor @Sendable (Date?, String) -> Void)?
 
@@ -387,7 +387,7 @@ public final class ASRManagerProxy: ASRManagerInterface {
 
   /// Cancel a wedged in-flight model load and force a service-level reset.
   ///
-  /// Called by `TranscriptionPipeline`'s watchdog when `loadModel()` exceeds
+  /// Called by the dictation kernel's watchdog when `loadModel()` exceeds
   /// the recovery deadline. Three actions:
   ///
   /// 1. Cancel `inFlightLoadTask`. Host-side cooperative cancellation. Helps

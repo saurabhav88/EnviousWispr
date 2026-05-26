@@ -27,14 +27,14 @@ import Testing
   private static func makeCoordinator() -> (
     coordinator: DictationLifecycleCoordinator,
     audio: RouterTestAudioCapture,
-    pipeline: TranscriptionPipeline,
+    kernelDriver: KernelDictationDriver,
     whisperKitPipeline: WhisperKitPipeline,
     recordingLocked: TestRecordingLockedBox
   ) {
     let audio = RouterTestAudioCapture()
     let asr = RouterTestASRManager()
     let store = DictationRuntimeFixtures.tempStore()
-    let pipeline = DictationRuntimeFixtures.makeParakeetPipeline(
+    let pipeline = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
     let whisperKitPipeline = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audio, store: store)
@@ -42,7 +42,7 @@ import Testing
     let overlay = RecordingOverlayPanel()
     let hotkey = HotkeyService()
     let settingsSync = PipelineSettingsSync(
-      pipeline: pipeline,
+      kernelDriver: pipeline,
       whisperKitPipeline: whisperKitPipeline,
       polishService: TranscriptPolishService(
         keychainManager: KeychainManager(),
@@ -56,7 +56,7 @@ import Testing
     let lastRecordingResult = LastRecordingResult()
     let lockBox = TestRecordingLockedBox()
     let coordinator = DictationLifecycleCoordinator(
-      pipeline: pipeline,
+      kernelDriver: pipeline,
       whisperKitPipeline: whisperKitPipeline,
       recordingOverlay: overlay,
       hotkeyService: hotkey,
@@ -89,7 +89,7 @@ import Testing
   @Test func activeCaptureBackendReturnsNilWhenBothPipelinesIdle() {
     let fixtures = Self.makeCoordinator()
     // Both pipelines start in `.idle`; no `install()` so no transitions fired.
-    #expect(fixtures.pipeline.state.isActive == false)
+    #expect(fixtures.kernelDriver.state.isActive == false)
     #expect(fixtures.whisperKitPipeline.state.isActive == false)
     #expect(fixtures.coordinator.activeCaptureBackend() == nil)
   }
@@ -101,7 +101,7 @@ import Testing
     // which is parakeet at first launch.
     let target = fixtures.coordinator.activeTelemetryTarget()
     #expect(target != nil)
-    #expect(target as AnyObject === fixtures.pipeline as AnyObject)
+    #expect(target as AnyObject === fixtures.kernelDriver as AnyObject)
   }
 
   @Test func isCurrentSessionMatchesAudioCaptureSessionID() {
@@ -114,10 +114,10 @@ import Testing
 
   @Test func installSetsBothPipelineCallbacks() {
     let fixtures = Self.makeCoordinator()
-    #expect(fixtures.pipeline.onStateChange == nil)
+    #expect(fixtures.kernelDriver.onStateChange == nil)
     #expect(fixtures.whisperKitPipeline.onStateChange == nil)
     fixtures.coordinator.install()
-    #expect(fixtures.pipeline.onStateChange != nil)
+    #expect(fixtures.kernelDriver.onStateChange != nil)
     #expect(fixtures.whisperKitPipeline.onStateChange != nil)
   }
 }

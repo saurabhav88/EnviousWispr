@@ -18,7 +18,7 @@ import Foundation
 /// App-visible). This factory builds the full stack from public-typed inputs
 /// and returns the public driver.
 ///
-/// PR-4b.4 swaps the App's `TranscriptionPipeline` construction site for a
+/// PR-4b.4 swaps the App's the old Parakeet pipeline construction site for a
 /// call to `KernelDictationDriverFactory.make(inputs:)`. PR-4b.2 ships the
 /// factory production-unwired — no App caller invokes it yet.
 @MainActor
@@ -77,6 +77,12 @@ public enum KernelDictationDriverFactory {
       llmPolish: LLMPolishStep(keychainManager: inputs.keychainManager)
     )
     limbSteps.llmPolish.backend = .parakeet
+    // PR-4b.4 of #827: a non-nil `onToken` callback is the discriminant that
+    // tells `GeminiConnector` to use `streamGenerateContent?alt=sse` instead
+    // of batch `generateContent`. The old Parakeet pipeline set this to a
+    // no-op closure for the same purpose; preserve that behavior so Gemini
+    // polish stays on the streaming endpoint post-cutover. Live token UI is
+    // a separate follow-up; this callback intentionally discards tokens.
     limbSteps.llmPolish.onToken = { _ in }
 
     // 2. Shared mutable holders.
@@ -122,6 +128,12 @@ public enum KernelDictationDriverFactory {
       processText: wiring.processText,
       store: wiring.store,
       deliver: wiring.deliver,
+      // Production wedge-stall window — `RecordingSessionKernel` defaults
+      // to 2 ticks (test-only value); with the wiring's 100ms tick clock
+      // that would cancel cold model loads after ~200ms instead of the
+      // documented 10-tick / 1000ms production window. Pass the production
+      // constant explicitly so cold loads don't get false-positive wedged.
+      wedgeStallTicks: KernelFinalizationWiring.wedgeStallTicks,
       zombieZeroPeakTelemetry: { ctx in
         emitter.zombieZeroPeak(ctx: ctx)
       },
@@ -153,7 +165,12 @@ public enum KernelDictationDriverFactory {
       outcome: outcome,
       captureTelemetry: inputs.captureTelemetry,
       telemetryState: telemetryState,
-      modelLoadWedgeTelemetry: { telemetryRelay.modelLoadWedgeTelemetry() }
+      modelLoadWedgeTelemetry: { telemetryRelay.modelLoadWedgeTelemetry() },
+      // Div 6 of seam audit (TP:273-291): route `.noAudioCaptured` through
+      // the emitter so the rich payload (sourceType, isActivelyCapturing,
+      // device IDs) AND the stall/XPC-failure dedup contract reach Sentry —
+      // both were lost when the sink shipped the basic-error fallback.
+      noAudioCapturedRich: { [emitter] ctx in emitter.noAudioCaptured(ctx: ctx) }
     )
     telemetryRelay.recordingStopped = { [lifecycleSink] sampleCount in
       lifecycleSink.emitRecordingStopped(sampleCount: sampleCount)

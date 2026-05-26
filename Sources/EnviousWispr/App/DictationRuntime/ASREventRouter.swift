@@ -9,21 +9,21 @@ import Foundation
 @MainActor
 final class ASREventRouter {
   let asrManager: any ASRManagerInterface
-  let pipeline: TranscriptionPipeline
+  let kernelDriver: KernelDictationDriver
   let whisperKitPipeline: WhisperKitPipeline
 
   init(
     asrManager: any ASRManagerInterface,
-    pipeline: TranscriptionPipeline,
+    kernelDriver: KernelDictationDriver,
     whisperKitPipeline: WhisperKitPipeline
   ) {
     self.asrManager = asrManager
-    self.pipeline = pipeline
+    self.kernelDriver = kernelDriver
     self.whisperKitPipeline = whisperKitPipeline
 
     asrManager.onServiceInterrupted = { [weak self] in
       guard let self else { return }
-      let pState = self.pipeline.state
+      let pState = self.kernelDriver.state
       let wkState = self.whisperKitPipeline.state
       Task {
         await AppLogger.shared.log(
@@ -32,7 +32,7 @@ final class ASREventRouter {
         )
       }
       if pState == .loadingModel || pState == .recording || pState == .transcribing {
-        self.pipeline.handleASRServiceInterruption()
+        self.kernelDriver.handleASRServiceInterruption()
       } else if wkState == .recording || wkState == .transcribing {
         self.whisperKitPipeline.handleASRServiceInterruption()
       }

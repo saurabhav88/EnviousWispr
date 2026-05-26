@@ -13,14 +13,14 @@ import Foundation
 // Scope (epic §4): an adapter owns its own ASR and rescue and NOTHING else — no
 // capture, no finalization, no paste, no UI, no FSM, no kernel state. This
 // adapter owns Parakeet transcription, the streaming-finalize-then-batch rescue
-// (D14, today `TranscriptionPipeline.transcribeWithStreamingRescue`), and the
+// (D14, today the old Parakeet pipeline's `transcribeWithStreamingRescue`), and the
 // full-session PCM the batch rescue needs (§3.2a). It holds legitimate
 // engine-session bookkeeping (a streaming-active flag, the retained PCM, an
 // in-flight-load flag, a terminal / cancelled flag) — session bookkeeping is
 // explicitly NOT FSM state (Codex finding 46, §3.11 adapter-shape check).
 //
 // PR-4a ships this production-unwired: no App-layer caller constructs it yet.
-// PR-4b wires it behind the Parakeet branch and deletes `TranscriptionPipeline`.
+// PR-4b wires it behind the Parakeet branch and deletes the old Parakeet pipeline.
 
 /// Wraps Parakeet's `ASRManagerInterface` as a kernel-facing `ASREngineAdapter`.
 @MainActor
@@ -127,7 +127,12 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   func warmUp() async throws {
     if asrManager.isModelLoaded { return }
     isLoadInFlight = true
-    asrManager.loadProgressTickReporter = { [weak self] _, _ in
+    asrManager.loadProgressTickReporter = { [weak self] _, phase in
+      // Capture the phase string for the kernel's model-load-wedge payload
+      // (Div 5 of seam audit / TP:407). The old Parakeet pipeline read
+      // `ModelLoadWatchdog.snapshot.lastObservedPhase`; in the kernel path
+      // the watchdog lives in the adapter, so the adapter stashes it.
+      self?.lastObservedPhase = phase
       self?.emitLoadTick()
     }
     defer {
@@ -136,6 +141,13 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     }
     try await asrManager.loadModel()
   }
+
+  /// Latest phase string observed by the in-flight `loadProgressTickReporter`,
+  /// or the default `"warmup"` before any tick lands. Reset at the start of
+  /// each warm-up via the protocol's default until the reporter overwrites
+  /// it on the first tick. Read by `RecordingSessionKernel.freezeModelLoadWedgeTelemetry`
+  /// when surfacing the model-load wedge to Sentry.
+  private(set) var lastObservedPhase: String = "warmup"
 
   /// Parakeet always exposes a load-progress stream (D5) — non-nil, so the
   /// kernel runs signal-based warm-up wedge detection.
@@ -151,7 +163,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   /// Begin a session. Opens a live stream only when the kernel asked for one
   /// (`streaming`) AND the backend supports it; on a streaming-setup failure it
   /// degrades to batch-after-stop — today's `streamingSetupSucceeded` fallback
-  /// (`TranscriptionPipeline.swift:458`). `streaming == false` (the user
+  /// (old Parakeet pipeline). `streaming == false` (the user
   /// disabled live transcription) means batch decode after stop only.
   func beginSession(_ id: SessionID, options: TranscriptionOptions, streaming: Bool) async throws {
     sessionID = id
@@ -169,7 +181,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
 
     // Cancel any pending model-unload timer a prior session armed via
     // `applyUnloadPolicy` — otherwise it can fire mid-recording and unload the
-    // model under the live session. Mirrors `TranscriptionPipeline.swift:359`,
+    // model under the live session. Mirrors the old Parakeet pipeline,
     // which cancels the idle timer at every session start.
     asrManager.cancelIdleTimer()
 
@@ -205,7 +217,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     guard !isTerminal else { return }
     appendRetainedPCM(from: buffer.buffer)
     guard streamingActive else { return }
-    // Mirror the shipped per-buffer hand-off (`TranscriptionPipeline.swift:481`):
+    // Mirror the shipped per-buffer hand-off (old Parakeet pipeline):
     // each buffer is fed on its own `@MainActor` task. The buffer is already
     // MainActor-confined here, so capturing it carries no cross-actor transfer.
     // The task handle is retained in `feedTasks` so `finalize()` can await it.
@@ -218,7 +230,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
       // between dispatch and now must not feed this buffer into a fresh
       // streaming session (Codex r2 — stale-feed race). The shipped pipeline
       // re-checks `streamingASRActive` / `state` inside the same hop
-      // (`TranscriptionPipeline.swift:486`).
+      // (old Parakeet pipeline).
       guard self.sessionID == handoffSession, self.streamingActive, !self.isTerminal
       else { return }
       try? await self.asrManager.feedAudio(pcmBuffer)
@@ -297,7 +309,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
 
   /// Await every dispatched `feedAudio` task before `finalizeStreaming()` — so
   /// a non-empty streaming result is never finalized missing tail buffers still
-  /// queued behind `acceptAudio` (`TranscriptionPipeline.swift:675` — "losing
+  /// queued behind `acceptAudio` (the old Parakeet pipeline — "losing
   /// ~250-500ms of trailing audio"). Awaiting the task handles is the actual
   /// completion signal; no wall-clock deadline (`no-arbitrary-timeouts.md`) —
   /// the prior `ContinuousClock` deadline raced the scheduler and flaked.
@@ -307,6 +319,17 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   /// Iterates a value snapshot and does NOT clear `feedTasks` — only
   /// `beginSession()` / `cancel()` clear it, so a session that begins during
   /// this drain's `await` cannot have its fresh feed handles dropped here.
+  ///
+  /// Seam audit Div 7 (2026-05-26) — WONTFIX. The old Parakeet pipeline's
+  /// 500ms bounded drain (TP:680-700) was an arbitrary deadline that the
+  /// kernel deliberately replaced with this signal-based wait per
+  /// `~/.claude/rules/no-arbitrary-timeouts.md`. Re-introducing the timeout
+  /// would regress that rule. Hang risk for a feed task that genuinely
+  /// stalls is mitigated by #863's signal-based watchdogs on the audio /
+  /// ASR XPC await sites, which the feed-task body invokes. The
+  /// "clean/timeout/lost" log line shape from OLD TP is replaced by the
+  /// `started`/`completed` pair above; PostHog + Sentry retain the
+  /// streaming-finalize timing.
   private func drainStreamingFeeds() async {
     let feedCount = feedTasks.count
     let sampleCount = retainedPCM.count
@@ -324,7 +347,7 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   // MARK: Rescue
 
   /// Streaming finalize, then batch rescue if streaming returned empty or
-  /// failed. Mirrors `TranscriptionPipeline.transcribeWithStreamingRescue`.
+  /// failed. Mirrors the old Parakeet pipeline's `transcribeWithStreamingRescue`.
   /// The kernel runs the VAD no-speech gate before `finalize()`, so reaching
   /// here means speech evidence was voiced or unavailable — the rescue always
   /// attempts batch when streaming yields nothing.
