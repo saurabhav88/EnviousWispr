@@ -622,6 +622,21 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
     case .stopping, .transcribing:
       return .transcribing
     case .finalizing:
+      // Seam audit Div 3 (2026-05-26): the old Parakeet pipeline set public
+      // `.polishing` only when the polish step's `onWillProcess` fired
+      // (TP:187-188). The kernel collapses both the early-finalizing
+      // (transcript save / `.transcribing` sub-status) AND the polish
+      // sub-status into public `.polishing`. WONTFIX: routing through
+      // `kernel.finalizingSubStatus` cascades into two real safe-point
+      // bugs — (1) `observeKernelState` only watches `kernel.state`, so the
+      // sub-status flip never reaches `onStateChange`; (2)
+      // `ASREventRouter` would route ASR crashes during the early window
+      // into `handleASRServiceInterruption`, which sets an external error
+      // and breaks the `.finalizing` safe point (verified Codex r1 on the
+      // attempted Div 3 fix). The user-visible cost of the current
+      // collapse is "Polishing..." appears a few hundred ms early in
+      // MainWindow; the `overlayIntent` getter already routes through
+      // `finalizingSubStatus` for the overlay-text path.
       return .polishing
     case .completed:
       return .complete

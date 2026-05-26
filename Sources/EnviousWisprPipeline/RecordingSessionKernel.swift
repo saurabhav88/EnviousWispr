@@ -1806,5 +1806,14 @@ final class RecordingSessionKernel {
     func testGetRecordingSnapshot() -> KernelRecordingSnapshotTelemetry? {
       telemetryState.recordingSnapshot
     }
+
+    /// Test-only finalizing-sub-status setter. Lets unit tests flip the
+    /// `.transcribing` ↔ `.polishing` sub-status without driving a real
+    /// polish-step `onWillProcess`. The driver's `overlayIntent` routes
+    /// overlay-label text through this sub-status (`.processing("Transcribing...")`
+    /// vs `"Polishing..."`).
+    func testSetFinalizingSubStatus(_ status: FinalizingSubStatus) {
+      finalizingSubStatus = status
+    }
   #endif
 }
