@@ -138,27 +138,32 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
   /// sync call site.
   ///
   /// Bridge matrix #5 — the App's "Try Again / dismiss" path
-  /// (`RecordingFinalizer.resetActive()`) always fires from a terminal
-  /// state in production: it is wired to the `MainWindowView` "Try Again"
-  /// button, which only renders when `liveRecordingState.pipelineState`
-  /// is `.error`, and the `.error` mapping at `pipelineState(for:...)`
-  /// covers only `.failed`, `.audioInterrupted`, and `.asrInterrupted`
-  /// (all terminal) plus externally-set errors. Seam audit Div 2 (2026-05-26)
-  /// flagged that the old Parakeet pipeline allowed active-state `reset()`
-  /// to synchronously land `.idle`; in the kernel path that is best-effort
-  /// only — App callers don't hit it, so the divergence is documentation,
-  /// not a bug.
+  /// (`RecordingFinalizer.resetActive()`) is wired to `MainWindowView`'s
+  /// "Try Again" button, which renders only when the driver's
+  /// `pipelineState` is `.error`. Most `.error` mappings come from
+  /// terminal kernel states (`.failed`, `.audioInterrupted`,
+  /// `.asrInterrupted`), but `lastExternalError` can also surface
+  /// `.error` while the kernel is still in an active state — the mic
+  /// disconnect / ASR crash paths route through `setExternalError(...)`
+  /// from `.preparing`, `.warmingUp`, `.stopping`, `.transcribing`, and
+  /// `.finalizing` (see `handleEngineInterruption` / `handleASRServiceInterruption`).
+  /// Active-state `reset()` is therefore a real production path, not a
+  /// test-only seam.
   ///
-  /// Sync reset CANNOT fully drive an active session to `.idle` because
-  /// `kernel.cancel()` is fire-and-latch — the actual transition happens
-  /// on the forward path's next yield, which a sync caller cannot await
-  /// (Codex review #11 r5). When called from an active state (the path
-  /// used by some tests), this method requests cancellation; the kernel
+  /// Seam audit Div 2 (2026-05-26): the old Parakeet pipeline allowed
+  /// active-state `reset()` to synchronously land `.idle`. In the kernel
+  /// path that is best-effort only — `kernel.cancel()` is fire-and-latch,
+  /// so the actual transition happens on the forward path's next yield,
+  /// which a sync caller cannot await (Codex review #11 r5). When called
+  /// from an active state, this method requests cancellation; the kernel
   /// converges to a terminal on its own, and the next sync `reset()` (or
   /// terminal-state observation) will land at `.idle`. For deterministic
   /// completion from an active state, use `cancelRecording()` + `reset()`
   /// (async-then-sync), or wait for the kernel-state observer to fire
-  /// with the terminal state.
+  /// with the terminal state. The external-error surface that "Try Again"
+  /// re-enters from is cleared synchronously here via `lastExternalError =
+  /// nil`, so the user-visible `.error` resolves immediately even when the
+  /// kernel itself takes another tick to reach `.idle`.
   public func reset() {
     lastExternalError = nil
     if !Self.isTerminal(kernel.state) {
