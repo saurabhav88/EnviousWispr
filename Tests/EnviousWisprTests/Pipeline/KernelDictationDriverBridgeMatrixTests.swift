@@ -56,6 +56,8 @@ import Testing
         minimumRecordingTicks: 0)
       let observer = KernelHeartPathTelemetryObserver(
         kernel: kernel, audioCapture: FakeAudioCapture(),
+        emitter: HeartPathTelemetryEmitter(
+          backend: .parakeet, captureTelemetry: CaptureTelemetryState()),
         emitLifecycleEvent: { _ in })
       let driver = KernelDictationDriver(
         kernel: kernel, observer: observer, outcome: outcome,

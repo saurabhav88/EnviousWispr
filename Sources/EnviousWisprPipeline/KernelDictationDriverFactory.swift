@@ -76,14 +76,6 @@ public enum KernelDictationDriverFactory {
       emojiFormatter: EmojiFormatterStep(),
       llmPolish: LLMPolishStep(keychainManager: inputs.keychainManager)
     )
-    limbSteps.llmPolish.backend = .parakeet
-    // PR-4b.4 of #827: a non-nil `onToken` callback is the discriminant that
-    // tells `GeminiConnector` to use `streamGenerateContent?alt=sse` instead
-    // of batch `generateContent`. The old Parakeet pipeline set this to a
-    // no-op closure for the same purpose; preserve that behavior so Gemini
-    // polish stays on the streaming endpoint post-cutover. Live token UI is
-    // a separate follow-up; this callback intentionally discards tokens.
-    limbSteps.llmPolish.onToken = { _ in }
 
     // 2. Shared mutable holders.
     let outcome = KernelFinalizationOutcome()
@@ -97,9 +89,22 @@ public enum KernelDictationDriverFactory {
     // 4. Parakeet adapter.
     let adapter = ParakeetEngineAdapter(asrManager: inputs.asrManager)
 
+    // 4a. Polish-step backend stamp — sourced from the adapter's self-declared
+    // identity so this site never hard-codes engine identity (PR-5 Rung 1).
+    // Late-assigned after step 4 because `LLMPolishStep` is class-typed and
+    // nothing between step 1 and here reads `llmPolish.backend`.
+    limbSteps.llmPolish.backend = adapter.engineIdentity.backendType
+    // PR-4b.4 of #827: a non-nil `onToken` callback is the discriminant that
+    // tells `GeminiConnector` to use `streamGenerateContent?alt=sse` instead
+    // of batch `generateContent`. The old Parakeet pipeline set this to a
+    // no-op closure for the same purpose; preserve that behavior so Gemini
+    // polish stays on the streaming endpoint post-cutover. Live token UI is
+    // a separate follow-up; this callback intentionally discards tokens.
+    limbSteps.llmPolish.onToken = { _ in }
+
     // 5. Telemetry emitter (factory-internal; App never sees it).
     let emitter = HeartPathTelemetryEmitter(
-      backend: .parakeet,
+      backend: adapter.engineIdentity.backendType,
       captureTelemetry: inputs.captureTelemetry
     )
 
@@ -159,7 +164,7 @@ public enum KernelDictationDriverFactory {
     //     `context.config`, `inputs.audioCapture.currentAudioRoute`, and
     //     `inputs.captureTelemetry`. Internal type; never appears in `Inputs`.
     let lifecycleSink = KernelLifecycleTelemetrySink(
-      backend: .parakeet,
+      backend: adapter.engineIdentity.backendType,
       audioCapture: inputs.audioCapture,
       context: context,
       outcome: outcome,

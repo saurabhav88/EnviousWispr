@@ -15,6 +15,21 @@ import Testing
 @MainActor
 @Suite struct ParakeetEngineAdapterTests {
 
+  // MARK: Identity (PR-5 Rung 1)
+
+  @Test("engineIdentity: Parakeet declares .parakeet backend")
+  func engineIdentityBackend() {
+    let adapter = ParakeetEngineAdapter(asrManager: StubParakeetASRManager())
+    #expect(adapter.engineIdentity.backendType == .parakeet)
+    #expect(adapter.engineIdentity.rawValue == "parakeet")
+  }
+
+  @Test("engineIdentity: Parakeet displayName == Parakeet v3")
+  func engineIdentityDisplayName() {
+    let adapter = ParakeetEngineAdapter(asrManager: StubParakeetASRManager())
+    #expect(adapter.engineIdentity.displayName == "Parakeet v3")
+  }
+
   // MARK: Capabilities + readiness
 
   @Test("capabilities: Parakeet streams, detects no language")

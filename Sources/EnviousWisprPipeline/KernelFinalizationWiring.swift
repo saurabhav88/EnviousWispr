@@ -156,7 +156,7 @@ struct KernelFinalizationWiring {
         language: adapter.lastResult?.language,
         duration: adapter.lastResult?.duration ?? 0,
         processingTime: adapter.lastResult?.processingTime ?? 0,
-        backendType: .parakeet,
+        backendType: adapter.engineIdentity.backendType,
         llmProvider: outcome.llmProvider,
         llmModel: outcome.llmModel)
       try save(transcript)

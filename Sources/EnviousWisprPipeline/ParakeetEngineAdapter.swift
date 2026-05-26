@@ -108,6 +108,12 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
 
   // MARK: ASREngineAdapter — identity & capability
 
+  /// Self-declared identity. The kernel reads from here at every site that
+  /// previously hard-coded `.parakeet` (PR-5 Rung 1).
+  var engineIdentity: ASREngineIdentity {
+    ASREngineIdentity(backendType: .parakeet)
+  }
+
   /// Parakeet decodes incrementally and detects no language (D2, D15). Static —
   /// the kernel branches on `capabilities`, never on engine identity.
   var capabilities: ASREngineCapabilities {

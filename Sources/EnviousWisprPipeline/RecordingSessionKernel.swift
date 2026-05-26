@@ -614,7 +614,7 @@ final class RecordingSessionKernel {
       let totalMs = Int((ContinuousClock.now - preWarmStart) / .milliseconds(1))
       Task {
         await AppLogger.shared.log(
-          "COLD-START [Parakeet] preWarmAudioInput total=\(totalMs)ms",
+          "COLD-START [\(adapter.engineIdentity.displayName)] preWarmAudioInput total=\(totalMs)ms",
           level: .info, category: "Pipeline"
         )
       }
@@ -1012,7 +1012,7 @@ final class RecordingSessionKernel {
       )
     }
     telemetryState.asrEmptyDiagnostics = ASREmptyResultDiagnostics(
-      backend: ASRBackendType.parakeet.rawValue,
+      backend: adapter.engineIdentity.rawValue,
       mode: isStreamingSession ? "streaming" : "batch",
       hasSpeechEvidence: speechEvidence != .confirmedNoSpeech,
       rawSampleCount: captureResult.samples.count,
@@ -1789,7 +1789,7 @@ final class RecordingSessionKernel {
   private func freezeRecordingSnapshot() {
     let start = recordingStartedAtDate ?? Date()
     telemetryState.recordingSnapshot = KernelRecordingSnapshotTelemetry(
-      backend: ASRBackendType.parakeet.rawValue,
+      backend: adapter.engineIdentity.rawValue,
       audioRoute: audioCapture.currentAudioRoute,
       wasStreaming: isStreamingSession,
       startTime: start,
@@ -1911,6 +1911,13 @@ final class RecordingSessionKernel {
     }
     func testGetRecordingSnapshot() -> KernelRecordingSnapshotTelemetry? {
       telemetryState.recordingSnapshot
+    }
+
+    /// PR-5 Rung 1: surface the natural `freezeRecordingSnapshot()` path so
+    /// the engine-identity propagation sentinel can prove `:1791-1792` reads
+    /// `adapter.engineIdentity.rawValue` rather than a hard-coded literal.
+    func testTriggerRecordingSnapshotFreeze() {
+      freezeRecordingSnapshot()
     }
 
     /// Test-only finalizing-sub-status setter. Lets unit tests flip the
