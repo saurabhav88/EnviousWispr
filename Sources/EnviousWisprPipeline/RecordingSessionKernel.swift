@@ -342,6 +342,27 @@ final class RecordingSessionKernel {
   /// `failed(.modelWedged)` so Sentry/PostHog keep the old payload shape.
   private(set) var modelLoadWedgeTelemetry: KernelModelLoadWedgeTelemetry?
 
+  /// User-visible detail for the current `.failed(reason)` state, if any —
+  /// the underlying error's `localizedDescription` for the three reasons the
+  /// old Parakeet pipeline embedded into its error strings (TP:440-445,
+  /// TP:577-588, TP:1045-1051). `nil` when the kernel is not in a
+  /// detail-bearing failed state, OR when no underlying error was captured.
+  /// Reading scope is intentionally narrow: this is the user-message
+  /// enrichment seam, not a general error-introspection API.
+  var lastFailureDetail: String? {
+    guard case .failed(let reason) = state else { return nil }
+    switch reason {
+    case .modelLoadFailed:
+      return telemetryState.modelLoadError?.localizedDescription
+    case .captureStartFailed:
+      return telemetryState.captureFailureError?.localizedDescription
+    case .asrFailed:
+      return telemetryState.transcriptionFailureError?.localizedDescription
+    default:
+      return nil
+    }
+  }
+
   /// The session task bag, keyed by `SessionID` (PR-1 §B.1.6). Reaching a
   /// terminal state cancels and clears it — nonblocking (PR-3 plan §3.1a).
   private var taskBag: [Task<Void, Never>] = []
@@ -1068,11 +1089,16 @@ final class RecordingSessionKernel {
       }
     }
 
+    var thrownError: (any Error)?
     do {
       try await adapter.warmUp()
     } catch {
       // Classified below — `warmUp()` throwing is expected on the wedge path
       // (the watcher cancels the adapter, which unblocks the parked load).
+      // Stash the error so the `.loadFailed` terminal can surface
+      // `error.localizedDescription` in the user-facing message (parity with
+      // the old Parakeet pipeline at TP:440-445).
+      thrownError = error
     }
     guard isCurrent(sid) else { return .cancelled }
 
@@ -1080,6 +1106,7 @@ final class RecordingSessionKernel {
     if stopLatched { return .stopped }
     if cancelRequested { return .cancelled }
     if adapter.readiness == .ready { return .ready }
+    if let thrownError { telemetryState.modelLoadError = thrownError }
     return .loadFailed
   }
 

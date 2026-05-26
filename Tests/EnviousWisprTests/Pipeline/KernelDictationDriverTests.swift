@@ -69,6 +69,29 @@ import Testing
         == "No speech detected. Your clipboard is unchanged. Try again.")
   }
 
+  @Test("failureMessage embeds error detail for the three TP-parity reasons (Div 4)")
+  func failureMessagesWithDetail() {
+    // Parity with the old Parakeet pipeline at TP:440-445 / TP:577-588 / TP:1045-1051:
+    // include `error.localizedDescription` when present.
+    #expect(
+      KernelDictationDriver.failureMessage(.modelLoadFailed, detail: "out of memory")
+        == "Model load failed: out of memory")
+    #expect(
+      KernelDictationDriver.failureMessage(.captureStartFailed, detail: "device busy")
+        == "Recording failed: device busy")
+    #expect(
+      KernelDictationDriver.failureMessage(.asrFailed, detail: "stream closed")
+        == "Transcription failed: stream closed")
+    // No detail → byte-parity with the bare strings.
+    #expect(KernelDictationDriver.failureMessage(.modelLoadFailed) == "Model load failed.")
+    #expect(KernelDictationDriver.failureMessage(.captureStartFailed) == "Recording failed.")
+    #expect(KernelDictationDriver.failureMessage(.asrFailed) == "Transcription failed.")
+    // Other reasons ignore the detail (out-of-scope for parity).
+    #expect(
+      KernelDictationDriver.failureMessage(.asrEmpty, detail: "irrelevant")
+        == "Couldn't catch that -- try again")
+  }
+
   // MARK: handle(event:) -> kernel triggers
 
   @Test("handle(.toggleRecording) from idle starts a kernel session")

@@ -106,7 +106,9 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
 
   /// The kernel's `RecordingSessionState` mapped to the legacy `PipelineState`.
   public var state: PipelineState {
-    Self.pipelineState(for: kernel.state, externalError: lastExternalError)
+    Self.pipelineState(
+      for: kernel.state, externalError: lastExternalError,
+      failureDetail: kernel.lastFailureDetail)
   }
 
   /// The transcript the `store` closure built for the last completed session.
@@ -549,8 +551,16 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
   /// Map a kernel state to the legacy `PipelineState`. Total over all 14 kernel
   /// states. `state.isActive` is `true` for every active kernel state, which
   /// the `PipelineSettingsSync` backend-switch guard depends on (§3.13).
+  ///
+  /// `failureDetail` is the underlying-error `localizedDescription` for the
+  /// three reasons the old Parakeet pipeline embedded into its error strings
+  /// (model load, recording start, transcription); the static map embeds it
+  /// when present and falls back to the parity-bare string when nil. The
+  /// driver's instance `state` getter threads `kernel.lastFailureDetail`
+  /// through; existing test callers pass nil for byte-parity coverage.
   public static func pipelineState(
-    for state: RecordingSessionState, externalError: String?
+    for state: RecordingSessionState, externalError: String?,
+    failureDetail: String? = nil
   ) -> PipelineState {
     if let externalError {
       return .error(externalError)
@@ -569,7 +579,7 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
     case .completed:
       return .complete
     case .failed(let reason):
-      return .error(failureMessage(reason))
+      return .error(failureMessage(reason, detail: failureDetail))
     case .audioInterrupted:
       return .error(InterruptionMessages.micDisconnected)
     case .asrInterrupted:
@@ -588,7 +598,9 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
   /// today's pipeline did not name distinctly. The `captureStalled` em-dash is
   /// preserved to match the shipped string byte-for-byte; fixing it is a
   /// separate content-lane change, out of PR-4 scope.
-  static func failureMessage(_ reason: RecordingFailureReason) -> String {
+  static func failureMessage(_ reason: RecordingFailureReason, detail: String? = nil)
+    -> String
+  {
     switch reason {
     case .prepareFailed:
       return "Couldn't start dictation. Please try again."
@@ -597,15 +609,21 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
     case .modelWedged:
       return ModelLoadWatchdog.userMessage
     case .modelLoadFailed:
-      return "Model load failed."
+      // Old Parakeet pipeline shape: "Model load failed: <error.localizedDescription>"
+      // (TP:440-445). Fall back to the bare string when no detail is captured.
+      return detail.map { "Model load failed: \($0)" } ?? "Model load failed."
     case .captureStartFailed:
-      return "Recording failed."
+      // Old Parakeet pipeline shape: "Recording failed: <error.localizedDescription>"
+      // (TP:577-588).
+      return detail.map { "Recording failed: \($0)" } ?? "Recording failed."
     case .noAudioCaptured:
       return "No audio captured"
     case .asrEmpty:
       return "Couldn't catch that -- try again"
     case .asrFailed:
-      return "Transcription failed."
+      // Old Parakeet pipeline shape: "Transcription failed: <error.localizedDescription>"
+      // (TP:1045-1051).
+      return detail.map { "Transcription failed: \($0)" } ?? "Transcription failed."
     case .asrWedged:
       return "Transcription stalled. Please try again."
     case .emptyAfterProcessing:

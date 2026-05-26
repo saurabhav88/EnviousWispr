@@ -13,6 +13,7 @@ final class KernelTelemetryState {
   var captureFailureError: (any Error)?
   var storageFailureError: (any Error)?
   var transcriptionFailureError: (any Error)?
+  var modelLoadError: (any Error)?
 
   func resetForNewSession(polishEnabled: Bool) {
     self.polishEnabled = polishEnabled
@@ -23,6 +24,7 @@ final class KernelTelemetryState {
     captureFailureError = nil
     storageFailureError = nil
     transcriptionFailureError = nil
+    modelLoadError = nil
   }
 }
 
