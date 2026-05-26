@@ -1204,7 +1204,12 @@ final class RecordingSessionKernel {
         modelLoadWedgeTelemetry = KernelModelLoadWedgeTelemetry(
           silenceMs: milliseconds(forTicks: silentTicks),
           observedMaxGapMs: milliseconds(forTicks: maxGapTicks),
-          observedPhase: "kernel",
+          // Div 5 of seam audit (TP:407): surface the underlying loader's
+          // last-observed phase string instead of a generic "kernel" label
+          // so the Sentry wedge payload preserves the OLD pipeline's
+          // diagnostic richness. Adapters that have no phase surface return
+          // the protocol default "warmup".
+          observedPhase: adapter.lastObservedPhase,
           signalCountTotal: loadTickCount,
           firstSignalLatencyMs: firstLoadTickAt.map {
             milliseconds(forTicks: $0 &- loadAttemptStartedAtTick)

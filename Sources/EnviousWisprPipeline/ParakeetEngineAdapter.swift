@@ -127,7 +127,12 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
   func warmUp() async throws {
     if asrManager.isModelLoaded { return }
     isLoadInFlight = true
-    asrManager.loadProgressTickReporter = { [weak self] _, _ in
+    asrManager.loadProgressTickReporter = { [weak self] _, phase in
+      // Capture the phase string for the kernel's model-load-wedge payload
+      // (Div 5 of seam audit / TP:407). The old Parakeet pipeline read
+      // `ModelLoadWatchdog.snapshot.lastObservedPhase`; in the kernel path
+      // the watchdog lives in the adapter, so the adapter stashes it.
+      self?.lastObservedPhase = phase
       self?.emitLoadTick()
     }
     defer {
@@ -136,6 +141,13 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     }
     try await asrManager.loadModel()
   }
+
+  /// Latest phase string observed by the in-flight `loadProgressTickReporter`,
+  /// or the default `"warmup"` before any tick lands. Reset at the start of
+  /// each warm-up via the protocol's default until the reporter overwrites
+  /// it on the first tick. Read by `RecordingSessionKernel.freezeModelLoadWedgeTelemetry`
+  /// when surfacing the model-load wedge to Sentry.
+  private(set) var lastObservedPhase: String = "warmup"
 
   /// Parakeet always exposes a load-progress stream (D5) — non-nil, so the
   /// kernel runs signal-based warm-up wedge detection.
