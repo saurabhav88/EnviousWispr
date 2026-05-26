@@ -108,8 +108,7 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
   public var state: PipelineState {
     Self.pipelineState(
       for: kernel.state, externalError: lastExternalError,
-      failureDetail: kernel.lastFailureDetail,
-      finalizingSubStatus: kernel.finalizingSubStatus)
+      failureDetail: kernel.lastFailureDetail)
   }
 
   /// The transcript the `store` closure built for the last completed session.
@@ -606,19 +605,9 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
   /// when present and falls back to the parity-bare string when nil. The
   /// driver's instance `state` getter threads `kernel.lastFailureDetail`
   /// through; existing test callers pass nil for byte-parity coverage.
-  ///
-  /// `finalizingSubStatus` routes the `.finalizing` kernel state to either
-  /// public `.transcribing` (sub-status `.transcribing`) or `.polishing`
-  /// (sub-status `.polishing`). Without it, `.finalizing` defaults to
-  /// `.polishing` — which surfaces a too-early "Polishing..." overlay in
-  /// MainWindow while the kernel is still saving the transcript before
-  /// polish actually starts (Div 3 of seam audit / TP:187-188 — old TP set
-  /// `.polishing` only when polish's onWillProcess fired). The instance
-  /// getter threads `kernel.finalizingSubStatus` through.
   public static func pipelineState(
     for state: RecordingSessionState, externalError: String?,
-    failureDetail: String? = nil,
-    finalizingSubStatus: FinalizingSubStatus? = nil
+    failureDetail: String? = nil
   ) -> PipelineState {
     if let externalError {
       return .error(externalError)
@@ -633,15 +622,7 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
     case .stopping, .transcribing:
       return .transcribing
     case .finalizing:
-      switch finalizingSubStatus {
-      case .transcribing:
-        return .transcribing
-      case .polishing, nil:
-        // Default to `.polishing` when no sub-status is provided — preserves
-        // the byte-parity that bridge-matrix tests and static callers rely
-        // on for the bare static method.
-        return .polishing
-      }
+      return .polishing
     case .completed:
       return .complete
     case .failed(let reason):

@@ -1806,12 +1806,5 @@ final class RecordingSessionKernel {
     func testGetRecordingSnapshot() -> KernelRecordingSnapshotTelemetry? {
       telemetryState.recordingSnapshot
     }
-
-    /// Test-only finalizing-sub-status setter. Div 3 of seam audit: the
-    /// driver's public `state` getter routes `.finalizing` through this
-    /// sub-status; the test flips it directly to verify the routing.
-    func testSetFinalizingSubStatus(_ status: FinalizingSubStatus) {
-      finalizingSubStatus = status
-    }
   #endif
 }
