@@ -128,6 +128,12 @@ public enum KernelDictationDriverFactory {
       processText: wiring.processText,
       store: wiring.store,
       deliver: wiring.deliver,
+      // Production wedge-stall window — `RecordingSessionKernel` defaults
+      // to 2 ticks (test-only value); with the wiring's 100ms tick clock
+      // that would cancel cold model loads after ~200ms instead of the
+      // documented 10-tick / 1000ms production window. Pass the production
+      // constant explicitly so cold loads don't get false-positive wedged.
+      wedgeStallTicks: KernelFinalizationWiring.wedgeStallTicks,
       zombieZeroPeakTelemetry: { ctx in
         emitter.zombieZeroPeak(ctx: ctx)
       },
