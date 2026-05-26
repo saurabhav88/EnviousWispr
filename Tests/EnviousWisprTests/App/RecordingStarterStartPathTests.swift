@@ -158,4 +158,13 @@ import Testing
     await fx.finalizer.userStop()
     #expect(fx.starter.lastUserStopAccess.read() != nil)
   }
+
+  // NOTE: a behavioral test for the post-preWarm
+  // `userStoppedDuringPreWarm` guard (Codex final-review P1 on the
+  // cutover) is hard to schedule reliably — `RouterTestAudioCapture.preWarm`
+  // completes synchronously, so a concurrent `userStop()` may land after
+  // `.toggleRecording` already dispatched. The existing
+  // `lastUserStopAccessIsThreadedFromFinalizer` test pins the wiring of
+  // the closure; the guard itself mirrors the post-toggle check at
+  // lines 162-165 (covered by behavioral observation in Live UAT).
 }

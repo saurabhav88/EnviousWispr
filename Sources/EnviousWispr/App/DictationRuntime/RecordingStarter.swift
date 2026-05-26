@@ -124,6 +124,23 @@ final class RecordingStarter {
       recordingLockedAccess.set(false)
       return
     }
+    // PTT key-up that fired while `preWarm()` was awaiting did not reach
+    // the kernel via `requestStop` — `RecordingSessionKernel.requestStop`
+    // ignores `.idle` (sessionless pre-warm leaves the kernel idle), so
+    // dispatching `.toggleRecording` here would start a recording even
+    // though the user had already released. Mirror the post-toggle
+    // `userStoppedDuringStart` guard at lines 162-165 so the start path
+    // bails out cleanly. (Codex final-review P1 on the cutover.)
+    let userStoppedDuringPreWarm: Bool = {
+      guard let lastStop = lastUserStopAccess.read() else { return false }
+      return lastStop > pttStart
+    }()
+    if userStoppedDuringPreWarm {
+      audioCapture.abortPreWarm()
+      recordingOverlay.show(intent: .hidden)
+      recordingLockedAccess.set(false)
+      return
+    }
     let preWarmMs = Self.elapsedMs(since: pttStart)
     do {
       try await active.handle(
