@@ -159,7 +159,12 @@ public enum KernelDictationDriverFactory {
       outcome: outcome,
       captureTelemetry: inputs.captureTelemetry,
       telemetryState: telemetryState,
-      modelLoadWedgeTelemetry: { telemetryRelay.modelLoadWedgeTelemetry() }
+      modelLoadWedgeTelemetry: { telemetryRelay.modelLoadWedgeTelemetry() },
+      // Div 6 of seam audit (TP:273-291): route `.noAudioCaptured` through
+      // the emitter so the rich payload (sourceType, isActivelyCapturing,
+      // device IDs) AND the stall/XPC-failure dedup contract reach Sentry —
+      // both were lost when the sink shipped the basic-error fallback.
+      noAudioCapturedRich: { [emitter] ctx in emitter.noAudioCaptured(ctx: ctx) }
     )
     telemetryRelay.recordingStopped = { [lifecycleSink] sampleCount in
       lifecycleSink.emitRecordingStopped(sampleCount: sampleCount)

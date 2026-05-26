@@ -444,6 +444,37 @@ import Testing
     #expect(recorder.captureErrors.first?.stage == "recording")
   }
 
+  @Test(
+    ".failed(.noAudioCaptured) routes through the rich sink when wired (Div 6)"
+  )
+  func failedNoAudioCapturedRoutesRichSinkWhenWired() {
+    // Div 6 of seam audit (TP:273-291): when the factory wires
+    // `noAudioCapturedRich` to the emitter, the sink builds the full
+    // NoAudioContext and dispatches there instead of falling back to
+    // the basic captureError. The captureError recorder must stay
+    // empty in this path (the rich sink owns the dedup contract +
+    // Sentry emission).
+    let recorder = Recorder()
+    var richCalls: [NoAudioContext] = []
+    let sink = KernelLifecycleTelemetrySink(
+      backend: .parakeet,
+      audioCapture: FakeAudioCapture(),
+      context: KernelSessionContext(),
+      captureTelemetry: CaptureTelemetryState(),
+      captureError: { error, category, stage, _ in
+        recorder.captureErrors.append(
+          Recorder.CaptureErrorCall(
+            category: category, stage: stage, errorDescription: error.localizedDescription))
+      },
+      noAudioCapturedRich: { ctx in richCalls.append(ctx) })
+    sink.emit(.failed(.noAudioCaptured))
+    #expect(recorder.captureErrors.isEmpty)
+    #expect(richCalls.count == 1)
+    // The ctx must carry the rich payload that the basic-error path lost.
+    #expect(richCalls.first?.route == "fake")
+    #expect(richCalls.first?.captureSourceType != "")
+  }
+
   // MARK: - Backend-parametrization regression (r6)
 
   @Test("sink emits backend.rawValue, not a hardcoded 'parakeet' string")

@@ -61,6 +61,16 @@ final class KernelLifecycleTelemetrySink {
     _ snapshot: SentryBreadcrumb.RecordingSnapshot
   ) -> Void
 
+  /// Rich `no_audio_captured` emission with the full `NoAudioContext` (route,
+  /// active-capture flag, source type, device IDs). Div 6 of seam audit /
+  /// TP:273-291: the old Parakeet pipeline routed through
+  /// `HeartPathTelemetryEmitter.noAudioCaptured(ctx:)` which preserves the
+  /// stall/XPC-failure dedup contract. The default impl emits the basic
+  /// captureError (preserves the no-rich-wiring behavior for tests); the
+  /// factory wires it to the real emitter so production callers get the
+  /// rich payload.
+  typealias NoAudioCapturedSink = @MainActor (_ ctx: NoAudioContext) -> Void
+
   // MARK: Identity + read sources
 
   private let backend: ASRBackendType
@@ -77,6 +87,14 @@ final class KernelLifecycleTelemetrySink {
   private let modelLoadWedged: ModelLoadWedgedSink
   private let captureError: CaptureErrorSink
   private let captureErrorWithSnapshot: SnapshotCaptureErrorSink
+  /// Optional. When wired (factory path), the sink routes
+  /// `.noAudioCaptured` through this closure so the emitter's dedup
+  /// contract + rich extras land at Sentry. When nil (test path / no
+  /// rich wiring), the sink falls back to the basic captureError
+  /// closure with the same context fields. Either way, the test
+  /// recorder pattern observes the emission via its `captureError`
+  /// injection.
+  private let noAudioCapturedRich: NoAudioCapturedSink?
 
   init(
     backend: ASRBackendType,
@@ -117,7 +135,8 @@ final class KernelLifecycleTelemetrySink {
       error, category, stage, extra, snapshot in
       SentryBreadcrumb.captureError(
         error, category: category, stage: stage, extra: extra, snapshot: snapshot)
-    }
+    },
+    noAudioCapturedRich: NoAudioCapturedSink? = nil
   ) {
     self.backend = backend
     self.audioCapture = audioCapture
@@ -133,6 +152,7 @@ final class KernelLifecycleTelemetrySink {
     self.modelLoadWedged = modelLoadWedged
     self.captureError = captureError
     self.captureErrorWithSnapshot = captureErrorWithSnapshot
+    self.noAudioCapturedRich = noAudioCapturedRich
   }
 
   convenience init(
@@ -511,30 +531,41 @@ final class KernelLifecycleTelemetrySink {
       // explicit shared dedup contract (scope creep for PR-4b.2).
       break
     case .noAudioCaptured:
-      // Codex review #11 r3 (2026-05-25) — DO emit. The earlier r8 patch
-      // treated `.noAudioCaptured` symmetrically with `.captureStalled`,
-      // but grep verified they are not symmetric in the kernel path:
-      //   - `.captureStalled` rich path: observer.handleCaptureStall →
-      //     emitter.stallFired — actively wired in the new factory stack.
-      //   - `.noAudioCaptured` rich path: emitter.noAudioCaptured(ctx:) is
-      //     ONLY called from the old Parakeet pipeline and
-      //     `WhisperKitPipeline.swift:623` — both BYPASSED by PR-4b.4 cutover.
-      //     Nothing in the kernel / observer / driver invokes it.
-      // Result: skipping here would drop the no-audio Sentry signal
-      // entirely. Emit the basic captureError so the timeline keeps the
-      // event; the richer ctx-bearing path is a follow-up (matches the
-      // §2.2 "rich diagnostic dicts deferred" non-goal).
+      // Build the rich `NoAudioContext` (route, active-capture, source,
+      // device IDs) and route through the injected sink. Default impl
+      // emits a basic captureError; the factory wires it to
+      // `emitter.noAudioCaptured(ctx:)` so production callers also get
+      // the stall/XPC-failure dedup contract (Div 6 of seam audit /
+      // TP:273-291 — restores the no-audio Sentry payload richness the
+      // earlier `KernelLifecycleTelemetrySink` shipped without).
       let sampleCount = audioCapture.capturedSamples.count
-      let error = HeartPathError.noAudioCaptured(
+      let snapshotDurationMs = telemetryState.recordingSnapshot?.durationMs ?? 0
+      let computedDurationMs = sampleCount * 1000 / Int(AudioConstants.sampleRate)
+      let preferredID = audioCapture.preferredInputDeviceIDOverride
+      let ctx = NoAudioContext(
         sessionID: audioCapture.currentCaptureSessionID,
-        durationMs: sampleCount * 1000 / Int(AudioConstants.sampleRate),
+        durationMs: max(snapshotDurationMs, computedDurationMs),
         wasStreaming: outcome.streamingMode,
-        route: audioCapture.currentAudioRoute
+        route: audioCapture.currentAudioRoute,
+        isActivelyCapturing: audioCapture.isActivelyCapturing,
+        captureSourceType: audioCapture.captureSourceType,
+        inputDeviceUIDPreferred: preferredID.isEmpty ? nil : preferredID,
+        inputDeviceUIDSystemDefault: AudioDeviceEnumerator.defaultInputDeviceUID()
       )
-      emitCaptureError(
-        error,
-        .audioCaptureFailed, "recording",
-        captureFailureExtra(error: error, failureMode: "no_audio_captured"))
+      if let noAudioCapturedRich {
+        noAudioCapturedRich(ctx)
+      } else {
+        // Fallback for callers that don't wire the rich sink (tests):
+        // route through the injected `captureError` so the recorder
+        // pattern observes the emission.
+        let error = HeartPathError.noAudioCaptured(
+          sessionID: ctx.sessionID, durationMs: ctx.durationMs,
+          wasStreaming: ctx.wasStreaming, route: ctx.route)
+        emitCaptureError(
+          error,
+          .audioCaptureFailed, "recording",
+          captureFailureExtra(error: error, failureMode: "no_audio_captured"))
+      }
     }
   }
 }
