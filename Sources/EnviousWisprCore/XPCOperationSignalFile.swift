@@ -6,6 +6,12 @@ import Foundation
 /// service for progress while it is already waiting for that request's reply.
 /// This file mirrors `ProgressFile`: the service writes state-transition ticks
 /// to `/tmp`, and the host polls those ticks outside XPC.
+///
+/// The host watcher intentionally keeps `LoadProgressWatcher`'s observed-gap
+/// gate. A single service tick followed by 800ms of silence is not enough
+/// evidence of a wedge: cold AVFoundation/CoreAudio phases and large stop
+/// replies can be healthy while quiet. Once at least one inter-signal cadence
+/// exists, later silence still fires through the normal floor + 5x-gap rule.
 public final class XPCOperationSignalFile: Sendable {
   public static let audio = XPCOperationSignalFile(
     filePath: "/tmp/com.enviouswispr.audio-operation-signal")
@@ -103,7 +109,7 @@ public final class XPCOperationSignalWatcher {
   public init(file: XPCOperationSignalFile, operationID: String) {
     self.file = file
     self.operationID = operationID
-    self.progressWatcher = LoadProgressWatcher(requiresObservedGap: false)
+    self.progressWatcher = LoadProgressWatcher()
   }
 
   public func start() {

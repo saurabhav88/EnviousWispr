@@ -14,9 +14,9 @@ private final class CaptureLivenessFlag: Sendable {
   func reset() { _lock.withLock { $0 = false } }
 }
 
-/// One-shot await helper for AVCaptureSession lifecycle calls. The signal is a
-/// platform state notification (`DidStartRunning`, `DidStopRunning`,
-/// `RuntimeError`, or `WasInterrupted`) racing the blocking sessionQueue call.
+/// One-shot await helper for AVCaptureSession lifecycle calls. Start can use
+/// platform notifications as terminal signals. Stop uses notifications only as
+/// progress ticks; `stopRunning()` returning is the cleanup boundary.
 private final class SessionLifecycleSignal<T: Sendable>: @unchecked Sendable {
   private let lock = NSLock()
   private var continuation: CheckedContinuation<T, Never>?
@@ -43,6 +43,23 @@ private final class SessionLifecycleSignal<T: Sendable>: @unchecked Sendable {
     ) { [weak self] _ in
       onSignal?()
       self?.resume(returning: value)
+    }
+    lock.lock()
+    observers.append(observer)
+    lock.unlock()
+  }
+
+  func observeProgress(
+    name: Notification.Name,
+    object: Any?,
+    onSignal: @escaping @Sendable () -> Void
+  ) {
+    let observer = NotificationCenter.default.addObserver(
+      forName: name,
+      object: object,
+      queue: nil
+    ) { _ in
+      onSignal()
     }
     lock.lock()
     observers.append(observer)
@@ -372,18 +389,18 @@ final class AVCaptureSessionSource: AudioInputSource {
     let sessionQ = sessionQueue
     await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
       let signal = SessionLifecycleSignal(cont)
-      signal.observe(
-        name: .AVCaptureSessionDidStopRunning, object: captureSession, returning: ()
+      signal.observeProgress(
+        name: .AVCaptureSessionDidStopRunning, object: captureSession
       ) {
         lifecycleSignal?("capture_session_did_stop_running")
       }
-      signal.observe(
-        name: .AVCaptureSessionRuntimeError, object: captureSession, returning: ()
+      signal.observeProgress(
+        name: .AVCaptureSessionRuntimeError, object: captureSession
       ) {
         lifecycleSignal?("capture_session_runtime_error")
       }
-      signal.observe(
-        name: .AVCaptureSessionWasInterrupted, object: captureSession, returning: ()
+      signal.observeProgress(
+        name: .AVCaptureSessionWasInterrupted, object: captureSession
       ) {
         lifecycleSignal?("capture_session_was_interrupted")
       }

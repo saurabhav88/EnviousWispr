@@ -285,7 +285,13 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
 
     var result = CaptureResult(samples: [])
     do {
-      result = try await withAudioXPCOperationSignal(stage: "stop_capture") { operationID in
+      // Cleanup must outlive forward-path task cancellation. `finishTerminal`
+      // cancels that task while stop may already be in flight; returning early
+      // would mark capture resources released before the service actually stops.
+      result = try await withAudioXPCOperationSignal(
+        stage: "stop_capture",
+        parentCancellationBehavior: .waitForResolution
+      ) { operationID in
         try await self.awaitStopCaptureReply(
           operationID: operationID,
           endingSession: endingSession
@@ -419,6 +425,7 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
 
   private func withAudioXPCOperationSignal<T: Sendable>(
     stage: String,
+    parentCancellationBehavior: WatcherParentCancellationBehavior = .returnCancellation,
     _ work: @MainActor @escaping (String) async throws -> T
   ) async throws -> T {
     let operationID = UUID().uuidString
@@ -428,7 +435,10 @@ public final class AudioCaptureProxy: AudioCaptureInterface {
     let operationTask = Task { @MainActor in
       try await unsafeWork(operationID)
     }
-    let outcome = await raceWithSignalWatcher(watcher: signal.progressWatcher) {
+    let outcome = await raceWithSignalWatcher(
+      watcher: signal.progressWatcher,
+      parentCancellationBehavior: parentCancellationBehavior
+    ) {
       try await operationTask.value
     }
     let snapshot = signal.snapshot

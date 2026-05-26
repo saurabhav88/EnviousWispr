@@ -80,7 +80,7 @@ struct LoadProgressWatcherTests {
     watcher.stop()
   }
 
-  @Test("Single signal then long silence does NOT fire (no ratio data)")
+  @Test("Single signal then long silence does NOT fire (observed-gap gate protects XPC)")
   func singleSignalLongSilenceDoesNotFire() async {
     let clock = ManualClock()
     let watcher = LoadProgressWatcher(currentTime: { clock.now })
@@ -97,7 +97,10 @@ struct LoadProgressWatcherTests {
     let snap = watcher.snapshot
     #expect(snap.signalCountTotal == 1)
     #expect(snap.maxGapMs == 0)
-    #expect(!watcher.hasFired, "single signal with no observed gap must not fire")
+    #expect(
+      !watcher.hasFired,
+      "single XPC lifecycle tick with no observed gap must not become an 800ms timeout"
+    )
     watcher.stop()
   }
 
@@ -183,6 +186,30 @@ struct LoadProgressWatcherTests {
       #expect(value == 42)
     } else {
       Issue.record("Expected .completed(42), got \(outcome)")
+    }
+  }
+
+  @Test("raceWithSignalWatcher can wait through parent cancellation for cleanup awaits")
+  func raceWaitsThroughParentCancellationWhenRequested() async {
+    let watcher = LoadProgressWatcher()
+    watcher.start()
+    let task = Task { @MainActor in
+      await raceWithSignalWatcher(
+        watcher: watcher,
+        parentCancellationBehavior: .waitForResolution
+      ) {
+        try await Task.sleep(nanoseconds: 50_000_000)
+        return 42
+      }
+    }
+    await sleep(ms: 10)
+    task.cancel()
+    let outcome = await task.value
+    watcher.stop()
+    if case .completed(let value) = outcome {
+      #expect(value == 42)
+    } else {
+      Issue.record("Expected cleanup wait to complete after cancellation, got \(outcome)")
     }
   }
 
