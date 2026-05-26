@@ -80,6 +80,22 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     await OllamaConnector().evictModel(modelName)
   }
 
+  /// Warm the configured LLM provider for the upcoming session — parity
+  /// with the old Parakeet pipeline (TP:708-713) which warmed polish
+  /// while ASR was still running so the post-ASR polish step did not
+  /// pay the cold-start penalty. The app-level warm at launch /
+  /// foreground (`AppLifecycleCoordinator.swift:200`/256) is enough on
+  /// short-idle sessions; this per-session refresh restores parity for
+  /// long-idle paths. No-op when polish is disabled.
+  public func preWarm() {
+    guard isEnabled else { return }
+    LLMNetworkSession.shared.preWarmModel(
+      provider: llmProvider,
+      model: llmModel,
+      keychainManager: keychainManager
+    )
+  }
+
   /// Minimum word count to send to the LLM (Latin/Cyrillic/Indic/Arabic etc).
   /// Transcripts at or below this threshold are passed through verbatim — LLMs
   /// hallucinate on ultra-short input (e.g., "Yeah" → a full essay). See ew-zr4.

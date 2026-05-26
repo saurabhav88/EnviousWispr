@@ -371,6 +371,12 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
         context.targetApp = NSWorkspace.shared.frontmostApplication
         context.targetElement = PasteService.captureFocusedElement()
         applyLLMConfigToPolishStep(config)
+        // GAP 1 of seam audit (TP:708-713): warm the polish provider as
+        // the session starts so the polish step's cold-start latency is
+        // hidden behind ASR. AppLifecycleCoordinator already warms at
+        // launch + foreground; this is the per-session refresh that
+        // covers long-idle paths between recordings.
+        steps.llmPolish.preWarm()
         kernel.start(config: config)
       case .recording:
         kernel.requestStop()
