@@ -916,6 +916,17 @@ final class RecordingSessionKernel {
         rawSamples: captureResult.samples,
         peakAudioLevel: rawPeakAudioLevel
       )
+      // GAP 3 app.log parity: emit the VAD filtered log here too — for
+      // `.confirmedNoSpeech`, conditioner never runs (we return below),
+      // so the filtered count is 0 by definition. Without this, the
+      // no-speech path is missing one of the OLD TP debug lines (TP:772
+      // emitted before TP:800's no-speech gate). Codex r1 (P3) on GAP 3.
+      Task {
+        await AppLogger.shared.log(
+          "VAD filtered to 0 samples (0.0% voiced)",
+          level: .verbose, category: "Pipeline"
+        )
+      }
       // GAP 3 app.log parity: VAD-gate skip log (TP:800-804) — gives debug
       // log readers a clear marker for "user pressed without speaking."
       let peak = rawPeakAudioLevel
