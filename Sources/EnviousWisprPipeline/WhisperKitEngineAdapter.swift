@@ -315,6 +315,17 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
           let samples = self?.retainedPCM ?? []
           return (samples: samples, count: samples.count)
         })
+        // Stale-beginSession guard AFTER `session.start`: if a `cancel()` +
+        // new `beginSession(B)` landed during the start await, the worker
+        // was installed under the wrong session. Uninstall + cancel it
+        // (Codex r7 matrix S6).
+        guard sessionID == id, !isCancelled else {
+          if (incrementalWorker as AnyObject?) === (session as AnyObject) {
+            incrementalWorker = nil
+          }
+          await session.cancel()
+          return
+        }
         Task {
           await AppLogger.shared.log(
             "WhisperKit recording started (batch mode, incremental worker: on)",
@@ -359,6 +370,10 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   /// so `clipTimestamps` derived from these are aligned to the audio the
   /// decoder actually sees.
   func observeSpeechSegments(_ segments: [SpeechSegment]) {
+    // Drop calls without a live session OR after the session went
+    // terminal/cancelled (Codex r7 matrix S0/S3/S4/S6). A late observe
+    // from a prior session must NOT repopulate the fresh adapter state.
+    guard sessionID != nil, !isTerminal, !isCancelled else { return }
     observedSpeechSegments = segments
   }
 
@@ -378,7 +393,15 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
       observedSpeechSegments.removeAll()
       return .cancelled
     }
-    let session = sessionID
+    // Entry guard: no active session OR already-terminal session must not
+    // re-enter the decode path (Codex r7 matrix S0/S4). The protocol's
+    // "one outcome per session" shape at `ASREngineAdapter.swift:237-266`
+    // means a second `finalize()` after a successful one is undefined; the
+    // adapter declines rather than re-running LID/transcribe and clobbering
+    // the prior outcome.
+    guard let session = sessionID, !isTerminal else {
+      return .empty(hadSpeechEvidence: false)
+    }
 
     // No-speech gating is kernel-owned in the new model
     // (`RecordingSessionKernel.swift:974-1059` returns early for
@@ -754,14 +777,31 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
 
   /// Apply the model-unload policy. Mirrors
   /// `WhisperKitPipeline.scheduleModelUnloadIfNeeded:1457-1476`.
+  /// Refuses to arm during an active session and session-keys the unload
+  /// task so a delayed unload from session A cannot fire under session B
+  /// (Codex r7 matrix S0-S3, S5, S6). The legacy pipeline armed unload
+  /// only at the post-finalize terminal transition, so an
+  /// active-session arming was implicitly disallowed; the kernel-driven
+  /// model needs an explicit guard.
   func applyUnloadPolicy(_ policy: ModelUnloadPolicy) {
     modelUnloadTask?.cancel()
     modelUnloadTask = nil
+    // Only arm when no active session exists (idle/post-terminal).
+    guard sessionID == nil || isTerminal else { return }
+    let armedSession = sessionID
     switch policy {
     case .never:
       return
     case .immediately:
       modelUnloadTask = Task { [backend, weak self] in
+        guard !Task.isCancelled else { return }
+        // Re-check session keying right before the unload call — a
+        // `beginSession(B)` between arm and execute must NOT see A's
+        // unload land on B.
+        let shouldUnload = await MainActor.run { [weak self] () -> Bool in
+          self?.sessionID == armedSession && (self?.isTerminal == true || self?.sessionID == nil)
+        }
+        guard shouldUnload else { return }
         await backend.unload()
         await MainActor.run { [weak self] in
           self?.cachedReadiness = .notReady
@@ -772,6 +812,10 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
       modelUnloadTask = Task { [backend, weak self] in
         try? await Task.sleep(for: .seconds(interval))
         guard !Task.isCancelled else { return }
+        let shouldUnload = await MainActor.run { [weak self] () -> Bool in
+          self?.sessionID == armedSession && (self?.isTerminal == true || self?.sessionID == nil)
+        }
+        guard shouldUnload else { return }
         await backend.unload()
         await MainActor.run { [weak self] in
           self?.cachedReadiness = .notReady

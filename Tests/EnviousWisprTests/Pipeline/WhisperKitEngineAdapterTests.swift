@@ -799,6 +799,142 @@ import Testing
     // layer's `handleASRServiceInterruption` (Rung 5) wires the callback.
   }
 
+  // MARK: Codex r7 matrix gap closure
+
+  @Test(
+    "finalize without an active session returns .empty(false) and never decodes (Codex r7 S0)"
+  )
+  func finalizeWithoutSessionShortCircuits() async {
+    let backend = StubWhisperKitBackend()
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let outcome = await adapter.finalize(batchSamples: nil)
+    guard case .empty(let hadSpeechEvidence) = outcome, hadSpeechEvidence == false else {
+      Issue.record("expected .empty(false), got \(outcome)")
+      return
+    }
+    let txCount = await backend.transcribeCount
+    let observeCount = await backend.observeLIDCount
+    #expect(txCount == 0, "no transcribe runs without an active session")
+    #expect(observeCount == 0, "no LID runs without an active session")
+  }
+
+  @Test(
+    "finalize after a successful terminal finalize returns .empty(false) — no re-decode (Codex r7 S4)"
+  )
+  func finalizeAfterTerminalShortCircuits() async throws {
+    let backend = StubWhisperKitBackend()
+    await backend.setTranscribeResult(
+      ASRResult(
+        text: "first", language: "en", duration: 1, processingTime: 0.1,
+        backendType: .whisperKit))
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default, streaming: false)
+    feed(adapter, samples: speechSamples(count: 16_000), session: sid)
+    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)])
+    _ = await adapter.finalize(batchSamples: nil)
+    let txCountAfterFirst = await backend.transcribeCount
+    // Second finalize on the same terminal session must short-circuit.
+    let outcome = await adapter.finalize(batchSamples: nil)
+    guard case .empty(let hadSpeechEvidence) = outcome, hadSpeechEvidence == false else {
+      Issue.record("expected .empty(false) on re-finalize, got \(outcome)")
+      return
+    }
+    let txCountAfterSecond = await backend.transcribeCount
+    #expect(
+      txCountAfterFirst == txCountAfterSecond,
+      "second finalize must NOT call transcribe again")
+  }
+
+  @Test(
+    "observeSpeechSegments is dropped after cancel and after a terminal finalize (Codex r7 S3/S4)"
+  )
+  func observeSpeechSegmentsDroppedAfterTerminal() async throws {
+    let backend = StubWhisperKitBackend()
+    await backend.setTranscribeResult(
+      ASRResult(
+        text: "done", language: "en", duration: 1, processingTime: 0.1,
+        backendType: .whisperKit))
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default, streaming: false)
+    feed(adapter, samples: speechSamples(count: 16_000), session: sid)
+    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)])
+    _ = await adapter.finalize(batchSamples: nil)
+    // After terminal finalize, late observe must NOT repopulate.
+    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 99_999)])
+    #expect(
+      adapter.observedSpeechSegmentsForTests.isEmpty,
+      "post-terminal observeSpeechSegments must be a no-op")
+  }
+
+  @Test(
+    "observeSpeechSegments is dropped after cancel (Codex r7 S3)"
+  )
+  func observeSpeechSegmentsDroppedAfterCancel() async throws {
+    let backend = StubWhisperKitBackend()
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default, streaming: false)
+    await adapter.cancel()
+    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 99_999)])
+    #expect(
+      adapter.observedSpeechSegmentsForTests.isEmpty,
+      "post-cancel observeSpeechSegments must be a no-op")
+  }
+
+  @Test(
+    "observeSpeechSegments without a live session is dropped (Codex r7 S0)"
+  )
+  func observeSpeechSegmentsWithoutSessionIsDropped() {
+    let adapter = WhisperKitEngineAdapter(backend: StubWhisperKitBackend())
+    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)])
+    #expect(
+      adapter.observedSpeechSegmentsForTests.isEmpty,
+      "observeSpeechSegments without a live session must be a no-op")
+  }
+
+  @Test(
+    "applyUnloadPolicy refuses to arm during an active session (Codex r7 S1)"
+  )
+  func applyUnloadPolicyRefusedDuringActiveSession() async throws {
+    let backend = StubWhisperKitBackend()
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default, streaming: false)
+    adapter.applyUnloadPolicy(.immediately)
+    // Yield so any putative unload task would have run.
+    for _ in 0..<50 { await Task.yield() }
+    let count = await backend.unloadCount
+    #expect(count == 0, "unload must NOT fire while a session is active")
+  }
+
+  @Test(
+    "applyUnloadPolicy armed under session A does NOT unload after beginSession(B) (Codex r7 S5)"
+  )
+  func applyUnloadPolicyArmedUnderADoesNotFireUnderB() async throws {
+    let backend = StubWhisperKitBackend()
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    // Drive A through to terminal (so applyUnloadPolicy may arm).
+    let sidA = SessionID()
+    try await adapter.beginSession(sidA, options: .default, streaming: false)
+    await backend.setTranscribeResult(
+      ASRResult(
+        text: "done", language: "en", duration: 1, processingTime: 0.1,
+        backendType: .whisperKit))
+    feed(adapter, samples: speechSamples(count: 16_000), session: sidA)
+    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)])
+    _ = await adapter.finalize(batchSamples: nil)
+    // Now apply policy in the terminal A state — armed unload task starts.
+    adapter.applyUnloadPolicy(.immediately)
+    // Begin session B before the unload task hops back.
+    try await adapter.beginSession(SessionID(), options: .default, streaming: false)
+    // Yield so any putative unload task would have run.
+    for _ in 0..<50 { await Task.yield() }
+    let count = await backend.unloadCount
+    #expect(count == 0, "unload from A's armed task must NOT fire under B")
+  }
+
   // MARK: Production-unwired sanity
 
   @Test("WhisperKitEngineAdapter exists at Sources/EnviousWisprPipeline/")
