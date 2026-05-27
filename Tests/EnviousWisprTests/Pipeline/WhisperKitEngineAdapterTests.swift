@@ -195,6 +195,48 @@ import Testing
     #expect(adapter.retainedPCMForTests.count == beforeRetainedCount)
   }
 
+  @Test(
+    "acceptAudio drops late buffers stamped with a prior session (Codex code-diff r3 defect 3, PR-1 §B.3 invariant 7)"
+  )
+  func acceptAudioDropsStaleSessionBuffers() async throws {
+    let backend = StubWhisperKitBackend()
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let sidA = SessionID()
+    try await adapter.beginSession(sidA, options: .default, streaming: false)
+    feed(adapter, samples: [0.1, 0.1], session: sidA)
+    let sidB = SessionID()
+    try await adapter.beginSession(sidB, options: .default, streaming: false)
+    // Buffer stamped with the old (sidA) session arrives after the new
+    // beginSession — must be dropped, NOT appended to B's retainedPCM.
+    feed(adapter, samples: [0.9, 0.9, 0.9], session: sidA)
+    #expect(
+      adapter.retainedPCMForTests.isEmpty,
+      "stale buffer was appended to fresh session's retainedPCM")
+  }
+
+  @Test(
+    "beginSession cancels and drops any orphan incremental worker from a prior session (Codex r3 defect 2)"
+  )
+  func beginSessionCancelsOrphanWorker() async throws {
+    let backend = StubWhisperKitBackend()
+    let stubSession = StubIncrementalSession(result: .rejected())
+    await backend.setIncrementalSessionFactory({ stubSession })
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    // Session A: locked mode, worker is installed.
+    try await adapter.beginSession(
+      SessionID(), options: TranscriptionOptions(language: "en"), streaming: false)
+    let starts1 = await stubSession.startCount
+    #expect(starts1 == 1, "worker installed for session A")
+    // Session B: auto mode, no factory provided this time. The orphan must
+    // be cancelled and dropped so auto mode does NOT enter the worker path.
+    await backend.setIncrementalSessionFactory(nil)
+    try await adapter.beginSession(SessionID(), options: .default, streaming: false)
+    // Yield so the detached worker.cancel() task runs.
+    for _ in 0..<10 { await Task.yield() }
+    let cancels = await stubSession.cancelCount
+    #expect(cancels == 1, "orphan worker must be cancelled on beginSession")
+  }
+
   @Test("acceptAudio is bounded by retainedPCMCap")
   func acceptAudioCappedAtMaxRecording() async throws {
     let backend = StubWhisperKitBackend()

@@ -294,6 +294,17 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     modelUnloadTask?.cancel()
     modelUnloadTask = nil
 
+    // Cancel + drop any orphan worker from a prior session — if the previous
+    // session was superseded before finalize/cancel cleared the handle, the
+    // worker would still be installed and the auto-mode branch below would
+    // erroneously route through it (Codex code-diff r3 defect 2). Fire the
+    // cancel detached so beginSession stays nominally fast; the worker
+    // itself is safe to discard immediately since no caller holds it.
+    if let orphan = incrementalWorker {
+      incrementalWorker = nil
+      Task { await orphan.cancel() }
+    }
+
     // Refresh cached readiness — backend may have been unloaded by a prior
     // session's policy timer that fired while idle.
     cachedReadiness = await backend.isReady ? .ready : .notReady
@@ -336,7 +347,13 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   /// (PR-1 §B.2.2). WhisperKit has no live stream — buffers are batched
   /// until `finalize`.
   func acceptAudio(_ buffer: AudioBufferHandoff) {
-    guard !isTerminal, !isCancelled else { return }
+    // Drop late buffers from a prior session — PR-1 §B.3 / FSM invariant 7:
+    // a buffer whose `sessionID` is not the kernel's current session is
+    // dropped. Without this gate, a delayed handoff after `beginSession(B)`
+    // would land in session B's `retainedPCM` and misalign the
+    // segment-derived `clipTimestamps` for batch decode (Codex code-diff r3
+    // defect 3).
+    guard !isTerminal, !isCancelled, buffer.sessionID == sessionID else { return }
     appendRetainedPCM(from: buffer.buffer)
   }
 
@@ -468,6 +485,17 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     // LID PostHog telemetry — adapter-owned per `supportsLanguageDetection`
     // TODO at `ASREngineAdapter.swift:60-65`.
     let sessionPreferredSnapshot = await languageDetector.peekMemory().sessionPreferred
+
+    // Stale guard after the `peekMemory()` await: a `beginSession(B)` during
+    // this hop must not let the stale A finalize keep reading mutable
+    // `incrementalWorker`/`decodeOptions` for the rest of finalize. The
+    // downstream guards catch session B's state AFTER the next awaits, but
+    // an early bail here prevents reading session B's worker between
+    // LID telemetry and the decode (Codex code-diff r3 defect 1).
+    guard sessionID == session, !isCancelled else {
+      return isCancelled ? .cancelled : .empty(hadSpeechEvidence: true)
+    }
+
     TelemetryService.shared.trackLanguageDetected(
       lang: lidResult.lang,
       confidence: lidResult.confidence,
