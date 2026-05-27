@@ -301,6 +301,15 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     // until LID runs at finalize, so the worker is skipped.
     if options.language != nil {
       if let session = await backend.makeIncrementalSession(options: options) {
+        // Stale-beginSession guard: a `cancel()` + new `beginSession(B)`
+        // during the `makeIncrementalSession` await must NOT let this
+        // stale install land on the fresh session — otherwise `finalize`
+        // for B would see a non-nil `incrementalWorker` from A and route
+        // through it (Codex code-diff r6).
+        guard sessionID == id, !isCancelled else {
+          await session.cancel()
+          return
+        }
         incrementalWorker = session
         await session.start(audioSamplesProvider: { @MainActor [weak self] in
           let samples = self?.retainedPCM ?? []
