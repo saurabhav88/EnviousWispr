@@ -106,53 +106,40 @@ import Testing
   }
 
   @Test(
-    "warmUpFromCache() returns immediately and loads the cached model on a detached Task (Codex r4 defect 2)"
+    "warmUpFromCache() does NOT call prepareIfCached (avoids load-race with prepare(), Codex r5)"
   )
-  func warmUpFromCacheHit() async throws {
+  func warmUpFromCacheDoesNotTriggerLoad() async throws {
     let backend = StubWhisperKitBackend()
     await backend.setPrepareIfCachedResult(true)
     let adapter = WhisperKitEngineAdapter(backend: backend)
     try await adapter.warmUpFromCache()
-    // Caller's await returns BEFORE the detached load completes — readiness
-    // is still .notReady right after. Poll until the detached Task lands
-    // (signal-based wait, no arbitrary timeout).
-    var loaded = false
-    for _ in 0..<200 {
-      if adapter.readiness == .ready {
-        loaded = true
-        break
-      }
-      await Task.yield()
-    }
-    #expect(loaded, "detached cache-only warm-up never completed")
+    // Give any putative background task a chance to run.
+    for _ in 0..<50 { await Task.yield() }
+    let pifCount = await backend.prepareIfCachedCount
+    let prepareCount = await backend.prepareCount
+    #expect(pifCount == 0, "warmUpFromCache must NOT call prepareIfCached")
+    #expect(prepareCount == 0, "warmUpFromCache must NOT call prepare")
   }
 
-  @Test("warmUpFromCache() swallows throws (limb-style) and never blocks the caller")
-  func warmUpFromCacheSwallowsErrors() async throws {
+  @Test("warmUpFromCache() refreshes cachedReadiness from the backend state")
+  func warmUpFromCacheRefreshesCachedReadiness() async throws {
     let backend = StubWhisperKitBackend()
-    await backend.setPrepareIfCachedThrows(StubBackendError.prepareFailed)
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    // Backend is not ready → cachedReadiness stays .notReady.
+    try await adapter.warmUpFromCache()
+    #expect(adapter.readiness == .notReady)
+    // Backend flips ready (simulating a prior `warmUp()` that completed) →
+    // the next warmUpFromCache call observes and reports .ready.
+    await backend.setIsReady(true)
+    try await adapter.warmUpFromCache()
+    #expect(adapter.readiness == .ready)
+  }
+
+  @Test("warmUpFromCache() never throws (limb-style)")
+  func warmUpFromCacheNeverThrows() async throws {
+    let backend = StubWhisperKitBackend()
     let adapter = WhisperKitEngineAdapter(backend: backend)
     try await adapter.warmUpFromCache()  // must not throw
-    // Yield so the detached error log fires, then confirm readiness stayed
-    // notReady (no fake-ready on a failed cache load).
-    for _ in 0..<50 { await Task.yield() }
-    #expect(adapter.readiness == .notReady)
-  }
-
-  @Test(
-    "warmUpFromCache() returns synchronously — does NOT block the PTT preWarm critical path"
-  )
-  func warmUpFromCacheDoesNotBlockCaller() async throws {
-    let backend = StubWhisperKitBackend()
-    await backend.setPrepareIfCachedResult(true)
-    let adapter = WhisperKitEngineAdapter(backend: backend)
-    // Caller's await must return before `prepareIfCached` is even called
-    // on the backend (the load is fully detached).
-    try await adapter.warmUpFromCache()
-    let countImmediatelyAfter = await backend.prepareIfCachedCount
-    // Either the detached task hasn't run yet (count=0) OR it has (count=1).
-    // The key invariant: the caller did NOT have to await the load.
-    #expect(countImmediatelyAfter <= 1)
   }
 
   @Test("loadProgress returns nil (WhisperKit has no model-load signal)")

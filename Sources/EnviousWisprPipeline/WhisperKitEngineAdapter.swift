@@ -221,46 +221,28 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     }
   }
 
-  /// Cache-only warm-up — mirrors `WhisperKitPipeline.prepareBackendSilently`.
-  /// `WhisperKitBackend.prepareIfCached()` performs the full cached CoreML
-  /// `loadFromPath` when the cache hits, so it is NOT a cheap probe. The
-  /// kernel's `preWarm()` awaits this hook before sending `.toggleRecording`,
-  /// so running the load synchronously here would block the PTT critical
-  /// path (Codex code-diff r4 defect 2). Fire-and-forget the cached load on
-  /// a detached `Task` instead — the kernel's spawned `warmUp()` path
-  /// already covers the heavy-load case on user intent, and a cache hit
-  /// here lets a subsequent press skip the load. Returns immediately;
-  /// never throws to the caller.
+  /// Cache-only warm-up — intentionally a near no-op for WhisperKit.
+  ///
+  /// Earlier drafts dispatched `prepareIfCached()` here on a detached `Task`
+  /// to silently load a cached model during the kernel's `preWarm` hop. But
+  /// `WhisperKitBackend.prepareIfCached()` does NOT participate in
+  /// `prepare()`'s `loadTask` single-flight guard at
+  /// `WhisperKitBackend.swift:61-97` — so a detached `prepareIfCached` racing
+  /// the kernel's spawned `warmUp()` (which calls `prepare()`) can launch
+  /// two concurrent CoreML loads, doubling cold-start work and memory
+  /// pressure (Codex code-diff r5).
+  ///
+  /// In the kernel-driven flow, the kernel's spawned `warmUp()` path
+  /// already calls `prepare()`, which internally checks
+  /// `WhisperKitSetupService.getLocalModelPath` and loads from cache when
+  /// the model is cached. So no `warmUpFromCache` work is needed here —
+  /// the cached-load optimization is preserved by `prepare()`'s own cache
+  /// branch, and the single-flight guard prevents duplicate loads.
+  ///
+  /// Side effect: keep `cachedReadiness` refreshed against the backend's
+  /// current state so a recently-unloaded model is reported as `.notReady`.
   func warmUpFromCache() async throws {
-    if await backend.isReady {
-      cachedReadiness = .ready
-      return
-    }
-    let captured = backend
-    Task {
-      do {
-        let loaded = try await captured.prepareIfCached()
-        if loaded {
-          await MainActor.run { [weak self] in
-            self?.cachedReadiness = .ready
-          }
-          await AppLogger.shared.log(
-            "WhisperKit model pre-loaded successfully (background)",
-            level: .info, category: "WhisperKitEngineAdapter"
-          )
-        } else {
-          await AppLogger.shared.log(
-            "WhisperKit model not cached, skipping silent pre-load",
-            level: .info, category: "WhisperKitEngineAdapter"
-          )
-        }
-      } catch {
-        await AppLogger.shared.log(
-          "WhisperKit model pre-load failed: \(error.localizedDescription)",
-          level: .info, category: "WhisperKitEngineAdapter"
-        )
-      }
-    }
+    cachedReadiness = await backend.isReady ? .ready : .notReady
   }
 
   /// WhisperKit / CoreML exposes no model-load progress signal. The kernel
