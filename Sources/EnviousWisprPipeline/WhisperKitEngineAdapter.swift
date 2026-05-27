@@ -802,7 +802,13 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
           self?.sessionID == armedSession && (self?.isTerminal == true || self?.sessionID == nil)
         }
         guard shouldUnload else { return }
+        // Final cancellation re-check: between the `shouldUnload` MainActor
+        // hop and this point, a `beginSession(B)` may have cancelled this
+        // task. Without the recheck, the cancelled task can still fire
+        // `backend.unload()` under session B (Codex code-diff r8).
+        guard !Task.isCancelled else { return }
         await backend.unload()
+        guard !Task.isCancelled else { return }
         await MainActor.run { [weak self] in
           self?.cachedReadiness = .notReady
         }
@@ -816,7 +822,13 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
           self?.sessionID == armedSession && (self?.isTerminal == true || self?.sessionID == nil)
         }
         guard shouldUnload else { return }
+        // Final cancellation re-check: between the `shouldUnload` MainActor
+        // hop and this point, a `beginSession(B)` may have cancelled this
+        // task. Without the recheck, the cancelled task can still fire
+        // `backend.unload()` under session B (Codex code-diff r8).
+        guard !Task.isCancelled else { return }
         await backend.unload()
+        guard !Task.isCancelled else { return }
         await MainActor.run { [weak self] in
           self?.cachedReadiness = .notReady
         }
