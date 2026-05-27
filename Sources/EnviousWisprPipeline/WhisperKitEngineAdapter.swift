@@ -127,21 +127,6 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   /// `beginSession()` and after `finalize()` commits.
   private var observedSpeechSegments: [SpeechSegment] = []
 
-  /// True once `observeSpeechSegments(_:)` has been called this session.
-  /// Disambiguates `observedSpeechSegments == []` between two semantically
-  /// distinct cases:
-  ///   1. VAD ran and confirmed no voiced segments → kernel calls
-  ///      `observeSpeechSegments([])` → adapter sees empty + flag true → no-speech
-  ///      gate fires → return `.empty(hadSpeechEvidence: false)`.
-  ///   2. VAD was unavailable (`VADSignalSource.speechEvidenceAtStop()` returned
-  ///      `.unavailable`, kernel intentionally skips the no-speech gate) →
-  ///      kernel calls `observeSpeechSegments([])` with raw-fallback samples →
-  ///      adapter must fail toward visibility (run ASR anyway) just like the
-  ///      legacy pipeline's `hasSpeechEvidence(vadSegments: nil) -> true`
-  ///      branch at `WhisperKitPipeline.swift:683-688`.
-  /// Cleared on `beginSession()` and `cancel()`.
-  private var hasReceivedSpeechSegmentSignal = false
-
   /// Cap on `retainedPCM` — `maxRecordingDuration` worth of 16 kHz mono samples
   /// (300 s * 16 kHz = 4.8 M Float = ~19 MB). Mirrors Parakeet's cap so the
   /// two engines size memory the same way. On reaching the cap the
@@ -301,7 +286,6 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     lastLanguageDetection = nil
     retainedPCM.removeAll(keepingCapacity: true)
     observedSpeechSegments.removeAll()
-    hasReceivedSpeechSegmentSignal = false
 
     // Cancel any pending model-unload timer a prior session armed. Rung 2B's
     // kernel `cancelPendingUnload` hook already fires synchronously before
@@ -362,7 +346,6 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   /// decoder actually sees.
   func observeSpeechSegments(_ segments: [SpeechSegment]) {
     observedSpeechSegments = segments
-    hasReceivedSpeechSegmentSignal = true
   }
 
   /// Finalize: LID → transcribe with `clipTimestamps` derived from observed
@@ -383,51 +366,20 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     }
     let session = sessionID
 
-    // No-speech gate: matches `WhisperKitPipeline.swift:694-718`. Two
-    // ambiguity cases for `observedSpeechSegments == []`:
-    //   (a) VAD ran, found no voiced ranges → kernel calls
-    //       `observeSpeechSegments([])` (`hasReceivedSpeechSegmentSignal ==
-    //       true`) → confirmed no speech → return `.empty(false)`.
-    //   (b) VAD was unavailable (`VADSignalSource.speechEvidenceAtStop()`
-    //       returned `.unavailable`, kernel skips the call) →
-    //       `hasReceivedSpeechSegmentSignal == false` → fail toward
-    //       visibility, run ASR (legacy pipeline's `hasSpeechEvidence(
-    //       vadSegments: nil) -> true` branch at
-    //       `WhisperKitPipeline.swift:683-688`). Codex code-diff defect 2.
-    let hasSpeechEvidence: Bool
-    if hasReceivedSpeechSegmentSignal {
-      hasSpeechEvidence = WhisperKitPipelineSpeechRouting.hasSpeechEvidence(
-        vadSegments: observedSpeechSegments
-      )
-    } else {
-      // Kernel did not call `observeSpeechSegments` this session — treat
-      // as VAD-unavailable, fail toward visibility.
-      hasSpeechEvidence = WhisperKitPipelineSpeechRouting.hasSpeechEvidence(
-        vadSegments: nil
-      )
-    }
+    // No-speech gating is kernel-owned in the new model
+    // (`RecordingSessionKernel.swift:974-1059` returns early for
+    // `VADSignalSource.speechEvidenceAtStop() == .confirmedNoSpeech` BEFORE
+    // calling `adapter.finalize`). The kernel calls `observeSpeechSegments`
+    // with an empty array in both the `.confirmedSpeech` + (vad found no
+    // ranges) AND the `.unavailable` cases, so the adapter cannot
+    // disambiguate them from `observedSpeechSegments == []` alone. Trust the
+    // kernel: if we reached finalize, ASR runs. Empty segments simply mean
+    // "no `clipTimestamps` to thread into decode" (Codex code-diff r2
+    // defect 1). The legacy pipeline's own no-speech gate at
+    // `WhisperKitPipeline.swift:694-718` was a pipeline-level defense; in
+    // the kernel-driven model the kernel owns that gate.
     let minimumSamples = AudioConstants.minimumTranscriptionSamples
     let rawSamples = retainedPCM
-
-    if !hasSpeechEvidence {
-      if let worker = incrementalWorker {
-        await worker.cancel()
-        incrementalWorker = nil
-      }
-      // Stale-cancel guard: a `cancel()` + new `beginSession()` during the
-      // worker.cancel() await must NOT clobber session B's fresh state.
-      // Just return on session mismatch (Codex code-diff defect 3).
-      guard sessionID == session, !isCancelled else {
-        return isCancelled ? .cancelled : .empty(hadSpeechEvidence: false)
-      }
-      var diagnostics = KernelASRAdapterDiagnostics()
-      diagnostics.rawSampleCount = rawSamples.count
-      lastASRDiagnostics = diagnostics
-      isTerminal = true
-      retainedPCM.removeAll()
-      observedSpeechSegments.removeAll()
-      return .empty(hadSpeechEvidence: false)
-    }
 
     // Sample shaping for LID + ASR. ASR runs over raw retained PCM (padded);
     // LID runs over voiced-only audio (with raw fallback if voiced is too short).
@@ -555,9 +507,22 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     let asrStart = CFAbsoluteTimeGetCurrent()
 
     if let worker = incrementalWorker {
-      let workerResult = await worker.finalize(
+      // Snapshot the worker handle for THIS session — if session B starts
+      // while this await is suspended, `incrementalWorker` may already point
+      // at B's worker. Clear only the captured handle on the post-await
+      // session-match path (Codex code-diff r2 defect 2).
+      let capturedWorker = worker
+      let workerResult = await capturedWorker.finalize(
         finalSamples: rawSamples, speechSegments: speechSegments)
-      incrementalWorker = nil
+      if sessionID == session, !isCancelled {
+        // Only A's worker handle can be cleared. If session B is now
+        // current, its worker stays installed.
+        if (incrementalWorker as AnyObject?) === (capturedWorker as AnyObject) {
+          incrementalWorker = nil
+        }
+      } else {
+        return isCancelled ? .cancelled : .empty(hadSpeechEvidence: true)
+      }
       diagnostics.incrementalAccepted = workerResult.accepted
       diagnostics.incrementalResultChars =
         workerResult.text?.trimmingCharacters(in: .whitespacesAndNewlines).count
@@ -605,6 +570,12 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
           lidWindowCount: lidWindowCount,
           clipKind: clipKind
         )
+        // Stale guard immediately after the decode await — a stale
+        // failure/cancel from session A MUST NOT clobber session B's
+        // state (Codex code-diff r2 defect 3).
+        guard sessionID == session, !isCancelled else {
+          return isCancelled ? .cancelled : .empty(hadSpeechEvidence: true)
+        }
         switch batchOutcome {
         case .success(let result):
           let trimmed = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -641,6 +612,12 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
         lidWindowCount: lidWindowCount,
         clipKind: clipKind
       )
+      // Stale guard immediately after the decode await — a stale
+      // failure/cancel from session A MUST NOT clobber session B's
+      // state (Codex code-diff r2 defect 3).
+      guard sessionID == session, !isCancelled else {
+        return isCancelled ? .cancelled : .empty(hadSpeechEvidence: true)
+      }
       switch batchOutcome {
       case .success(let result):
         let trimmed = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -737,7 +714,6 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     lastLanguageDetection = nil
     retainedPCM.removeAll()
     observedSpeechSegments.removeAll()
-    hasReceivedSpeechSegmentSignal = false
     prepareTask?.cancel()
     prepareTask = nil
     modelUnloadTask?.cancel()

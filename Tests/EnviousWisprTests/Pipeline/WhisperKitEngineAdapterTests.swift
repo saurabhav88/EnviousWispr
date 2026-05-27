@@ -226,29 +226,10 @@ import Testing
 
   // MARK: Finalize — core paths
 
-  @Test("finalize with observed-empty segments (VAD confirmed no speech) returns .empty(false)")
-  func finalizeVADConfirmedNoSpeechReturnsEmptyFalse() async throws {
-    let backend = StubWhisperKitBackend()
-    let adapter = WhisperKitEngineAdapter(backend: backend)
-    let sid = SessionID()
-    try await adapter.beginSession(sid, options: .default, streaming: false)
-    feed(adapter, samples: [0.1, 0.2], session: sid)
-    // Kernel explicitly signals "VAD ran, found no voiced ranges".
-    adapter.observeSpeechSegments([])
-    let outcome = await adapter.finalize(batchSamples: nil)
-    guard case .empty(let hadSpeechEvidence) = outcome else {
-      Issue.record("expected .empty, got \(outcome)")
-      return
-    }
-    #expect(hadSpeechEvidence == false)
-    let txCount = await backend.transcribeCount
-    #expect(txCount == 0, "no transcribe runs when VAD confirmed no speech")
-  }
-
   @Test(
-    "finalize WITHOUT observeSpeechSegments runs ASR (VAD-unavailable fail-toward-visibility, Codex code-diff defect 2)"
+    "finalize with empty observeSpeechSegments runs ASR — adapter trusts kernel-side no-speech gate (Codex r2 defect 1)"
   )
-  func finalizeWithoutSegmentSignalFailsTowardVisibility() async throws {
+  func finalizeEmptySegmentsRunsASRTrustingKernelGate() async throws {
     let backend = StubWhisperKitBackend()
     await backend.setTranscribeResult(
       ASRResult(
@@ -258,12 +239,40 @@ import Testing
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: false)
     feed(adapter, samples: speechSamples(count: 16_000), session: sid)
-    // Deliberately skip observeSpeechSegments — simulates VAD-unavailable
-    // (legacy `WhisperKitPipeline.swift:683-688` `hasSpeechEvidence(vadSegments:
-    // nil) -> true` branch).
+    // Kernel calls `observeSpeechSegments([])` in both
+    // VAD-confirmed-no-speech AND VAD-unavailable cases — adapter cannot
+    // disambiguate, so it trusts the kernel's own `.confirmedNoSpeech` gate
+    // (which would have early-returned before reaching `finalize`) and
+    // ALWAYS runs ASR. Empty segments simply means "no clipTimestamps".
+    adapter.observeSpeechSegments([])
     let outcome = await adapter.finalize(batchSamples: nil)
     guard case .transcript(let result) = outcome else {
-      Issue.record("expected .transcript (fail toward visibility), got \(outcome)")
+      Issue.record("expected .transcript (no adapter-side no-speech gate), got \(outcome)")
+      return
+    }
+    #expect(result.text == "recovered")
+    let txCount = await backend.transcribeCount
+    #expect(txCount == 1, "ASR runs even with empty segments — kernel owns the gate")
+  }
+
+  @Test(
+    "finalize WITHOUT observeSpeechSegments runs ASR — adapter trusts kernel-side no-speech gate"
+  )
+  func finalizeNoSegmentSignalRunsASR() async throws {
+    let backend = StubWhisperKitBackend()
+    await backend.setTranscribeResult(
+      ASRResult(
+        text: "recovered", language: "en", duration: 1, processingTime: 0.1,
+        backendType: .whisperKit))
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default, streaming: false)
+    feed(adapter, samples: speechSamples(count: 16_000), session: sid)
+    // Deliberately skip observeSpeechSegments — same semantic as empty
+    // segments in the kernel-driven model.
+    let outcome = await adapter.finalize(batchSamples: nil)
+    guard case .transcript(let result) = outcome else {
+      Issue.record("expected .transcript, got \(outcome)")
       return
     }
     #expect(result.text == "recovered")
