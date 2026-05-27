@@ -108,7 +108,7 @@ struct KernelFinalizationWiring {
   init(
     outcome: KernelFinalizationOutcome,
     context: KernelSessionContext,
-    adapter: ParakeetEngineAdapter,
+    adapter: any ASREngineAdapter,
     steps: LimbSteps,
     textProcessingRunner: TextProcessingRunner,
     save: @escaping @MainActor (Transcript) throws -> Void,
