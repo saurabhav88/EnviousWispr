@@ -238,13 +238,31 @@ public protocol ASREngineAdapter: AnyObject {
   /// here. After `cancel()`, MUST return `.cancelled` (PR-1 §B.2.2).
   ///
   /// `batchSamples`, when non-nil, is the kernel-conditioned ASR-ready audio
-  /// the adapter MUST use for any batch decode in this finalize call (PR-4.5
-  /// #5 — VAD-segment filtering, raw fallback, short-utterance padding are
-  /// kernel-side, not adapter-side). When nil, the adapter uses its own
-  /// raw retained audio unchanged (today's pre-PR-4.5 behavior, preserved for
-  /// tests + the `FakeEngine` simulator path). The streaming path is
-  /// unaffected — per-buffer feeds were already raw and the kernel's
-  /// `acceptAudio` contract has not changed.
+  /// (PR-4.5 #5 — VAD-segment filtering, raw fallback, short-utterance padding
+  /// are kernel-side, not adapter-side). Per-engine semantics:
+  ///
+  /// - The Parakeet adapter MUST use `batchSamples` for batch rescue. The
+  ///   kernel-side conditioning is the canonical audio for Parakeet's
+  ///   decoder; using its own retained PCM would skip the conditioning step.
+  /// - The WhisperKit adapter MUST NOT use `batchSamples`. WhisperKit decodes
+  ///   with `clipTimestamps` derived from kernel-supplied voiced segments
+  ///   (the #452/#560 hallucination-suppression mechanism); the kernel's
+  ///   silence-stripping conditioning shifts the time origin and would
+  ///   invalidate the segment-derived timestamps. The WhisperKit adapter
+  ///   decodes against its own retained raw PCM so the coordinate space
+  ///   matches.
+  ///
+  /// PR-5 Rung 3 (#827) carved out this engine-specific divergence; before
+  /// Rung 3 the contract said all adapters MUST use `batchSamples`. Adapters
+  /// whose decode requires raw-coordinate audio (engine-internal VAD chunking,
+  /// `clipTimestamps` derivation, etc.) MUST document the deviation at the
+  /// adapter call site and use their own retained source.
+  ///
+  /// When `batchSamples` is nil, the adapter uses its own raw retained audio
+  /// unchanged (today's pre-PR-4.5 behavior, preserved for tests + the
+  /// `FakeEngine` simulator path). The streaming path is unaffected —
+  /// per-buffer feeds were already raw and the kernel's `acceptAudio`
+  /// contract has not changed.
   func finalize(batchSamples: [Float]?) async -> ASREngineOutcome
 
   /// OPTIONAL `finalize()`-wedge signal (PR-1 §B.1.7). Same `nil` semantics as

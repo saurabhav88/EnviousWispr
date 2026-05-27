@@ -63,6 +63,20 @@ struct KernelASRAdapterDiagnostics {
   var streamingBuffersFed: Int? = nil
   var batchRescueAttempted: Bool? = nil
   var batchRescueResultChars: Int? = nil
+
+  // PR-5 Rung 3 (#827): WhisperKit-specific finalize diagnostics. The
+  // WhisperKit adapter populates these on every terminal outcome so the
+  // kernel's lifecycle sink can render the asr-empty-with-speech-evidence
+  // payload (today's `WhisperKitPipeline.swift:1005-1019` Sentry call).
+  // Sink-side wiring lands in Rung 5; adapter-side population lands here.
+  var rawSampleCount: Int? = nil
+  var incrementalAccepted: Bool? = nil
+  var incrementalResultChars: Int? = nil
+  var incrementalDecodeCount: Int? = nil
+  var incrementalSamplesCovered: Int? = nil
+  var incrementalStrategy: String? = nil
+  var incrementalMode: String? = nil
+  var incrementalTailDecodeMs: Int? = nil
 }
 
 @MainActor

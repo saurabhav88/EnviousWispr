@@ -1,25 +1,55 @@
 import Foundation
 import Testing
 
-// MARK: - EngineIdentityFreezeTests (epic #827, PR-5 Rung 1)
+// MARK: - EngineIdentityFreezeTests (epic #827, PR-5 Rung 1 + Rung 3)
 //
-// Source-level guard that the four kernel-side production sites never
-// reintroduce a `.parakeet` engine-identity literal and (where they own an
-// adapter reference) continue to read identity via `adapter.engineIdentity`.
-// The runtime sentinel in `EngineIdentityPropagationTests` covers the
+// Source-level guard that the kernel-side production sites never reintroduce
+// a hard-coded engine-identity literal and (where they own an adapter
+// reference) continue to read identity via `adapter.engineIdentity`. The
+// runtime sentinel in `EngineIdentityPropagationTests` covers the
 // natural-flow plumbing; this freeze test catches a future refactor that
-// accidentally hard-codes the first engine again at the source level — a
-// `.parakeet` literal compiles fine and would pass type-checking.
+// accidentally hard-codes an engine again at the source level — a `.parakeet`
+// or `.whisperKit` literal compiles fine and would pass type-checking.
+//
+// Rung 3 (#827) extended the scan: both engine literals are banned at every
+// reader site, and `KernelLifecycleTelemetrySink` is added to the reader-site
+// list (it became an identity reader once Rung 2A wired it through
+// `adapter.engineIdentity`).
 
 @Suite struct EngineIdentityFreezeTests {
 
   /// Matches the `.parakeet` enum-case literal (leading dot, identifier
   /// boundary trailing). Does NOT match `Parakeet` (capitalized engine name)
   /// nor `ParakeetEngineAdapter` (the concrete type name).
-  private static let bannedIdentityLiteral = #"\.parakeet\b"#
+  private static let bannedParakeetLiteral = #"\.parakeet\b"#
 
-  /// Sites that must read identity from the adapter and must not carry the
-  /// banned literal.
+  /// Matches the `.whisperKit` enum-case literal. Does NOT match
+  /// `WhisperKit` (capitalized engine name) nor `WhisperKitEngineAdapter` /
+  /// `WhisperKitBackend` type names.
+  private static let bannedWhisperKitLiteral = #"\.whisperKit\b"#
+
+  /// All banned engine-identity literals — both must be absent at every
+  /// reader site (epic §3.4, PR-5 Rung 1 + Rung 3).
+  private static let bannedIdentityLiterals: [(name: String, pattern: String)] = [
+    ("parakeet", bannedParakeetLiteral),
+    ("whisperKit", bannedWhisperKitLiteral),
+  ]
+
+  /// Sites that must read identity from the adapter and must not carry any
+  /// banned literal. PR-5 Rung 3 widened the literal scan from `.parakeet`
+  /// only to `.parakeet` AND `.whisperKit` — both engines are now banned at
+  /// every reader site (epic §3.4: kernel never branches on engine identity).
+  ///
+  /// `KernelLifecycleTelemetrySink` is intentionally NOT in this list: it
+  /// receives `backend: ASRBackendType` via init (factory-sourced from
+  /// `adapter.engineIdentity.backendType`), so it doesn't reference
+  /// `adapter.engineIdentity` directly. It also carries one legitimate
+  /// `backend == .whisperKit` routing-policy switch at
+  /// `KernelLifecycleTelemetrySink.swift:399` (only emits the backend tag
+  /// in capture-failure extras for WhisperKit). That switch is pre-Rung-3
+  /// behavior unrelated to the kernel-side identity-reader contract this
+  /// freeze test guards; ideally it migrates to a capability flag, but
+  /// that's a separate refactor (epic backlog).
   private static let identityReaderSites = [
     "Sources/EnviousWisprPipeline/KernelDictationDriverFactory.swift",
     "Sources/EnviousWisprPipeline/KernelFinalizationWiring.swift",
@@ -27,8 +57,8 @@ import Testing
   ]
 
   /// The observer file no longer holds an emitter default — it must never
-  /// reintroduce the `.parakeet` literal that previously seeded the default
-  /// emitter; callers pass an explicit emitter constructed from
+  /// reintroduce an engine-identity literal that previously seeded the
+  /// default emitter; callers pass an explicit emitter constructed from
   /// `adapter.engineIdentity.backendType`.
   private static let identityFreeSites = [
     "Sources/EnviousWisprPipeline/KernelHeartPathTelemetryObserver.swift"
@@ -46,80 +76,93 @@ import Testing
     }
   }
 
-  @Test("identity-reader sites carry no `.parakeet` literal")
+  @Test("identity-reader sites carry no banned engine-identity literal")
   func readerSitesHaveNoLiteral() throws {
     for relative in Self.identityReaderSites {
-      let violations = try Self.scanForLiteral(relative)
-      #expect(
-        violations.isEmpty,
-        """
-        \(relative) reintroduces `.parakeet` literal:
-        \(violations.joined(separator: "\n"))
-        Read identity from `adapter.engineIdentity` instead (epic §3.4, PR-5 Rung 1).
-        """)
+      for banned in Self.bannedIdentityLiterals {
+        let violations = try Self.scanForLiteral(relative, pattern: banned.pattern)
+        #expect(
+          violations.isEmpty,
+          """
+          \(relative) reintroduces `.\(banned.name)` literal:
+          \(violations.joined(separator: "\n"))
+          Read identity from `adapter.engineIdentity` instead (epic §3.4,
+          PR-5 Rung 1 + Rung 3).
+          """)
+      }
     }
   }
 
-  @Test("identity-free sites carry no `.parakeet` literal")
+  @Test("identity-free sites carry no banned engine-identity literal")
   func freeSitesHaveNoLiteral() throws {
     for relative in Self.identityFreeSites {
-      let violations = try Self.scanForLiteral(relative)
-      #expect(
-        violations.isEmpty,
-        """
-        \(relative) reintroduces `.parakeet` literal:
-        \(violations.joined(separator: "\n"))
-        This file must not declare a hard-coded engine-identity default
-        (PR-5 Rung 1 — emitter is caller-supplied).
-        """)
+      for banned in Self.bannedIdentityLiterals {
+        let violations = try Self.scanForLiteral(relative, pattern: banned.pattern)
+        #expect(
+          violations.isEmpty,
+          """
+          \(relative) reintroduces `.\(banned.name)` literal:
+          \(violations.joined(separator: "\n"))
+          This file must not declare a hard-coded engine-identity default
+          (PR-5 Rung 1 — emitter is caller-supplied).
+          """)
+      }
     }
   }
 
   // MARK: Adversarial — the scanner flags a regression
 
   @Test("a source line with `.parakeet` is flagged")
-  func adversarialRegressionFlagged() {
+  func adversarialParakeetRegressionFlagged() {
     let source = """
       let snapshot = KernelRecordingSnapshotTelemetry(
         backend: ASRBackendType.parakeet.rawValue,
-        audioRoute: route, wasStreaming: false,
-        startTime: Date(), durationMs: 0,
-        targetAppBundleID: nil)
+        audioRoute: route, wasStreaming: false)
       """
-    let regex = try? NSRegularExpression(pattern: Self.bannedIdentityLiteral)
-    var matches: [String] = []
-    for (idx, line) in source.split(separator: "\n", omittingEmptySubsequences: false).enumerated()
-    {
-      let text = String(line)
-      let ns = text as NSString
-      let range = NSRange(location: 0, length: ns.length)
-      if regex?.firstMatch(in: text, range: range) != nil {
-        matches.append("line \(idx + 1)")
-      }
-    }
-    #expect(!matches.isEmpty, "`.parakeet` literal must be flagged by the scanner")
+    #expect(
+      Self.regexFlags(source: source, pattern: Self.bannedParakeetLiteral),
+      "`.parakeet` literal must be flagged by the scanner")
   }
 
-  // MARK: Negative control — `Parakeet` engine-name references are not flagged
+  @Test("a source line with `.whisperKit` is flagged (PR-5 Rung 3 adversarial mirror)")
+  func adversarialWhisperKitRegressionFlagged() {
+    let source = """
+      let snapshot = KernelRecordingSnapshotTelemetry(
+        backend: ASRBackendType.whisperKit.rawValue,
+        audioRoute: route, wasStreaming: false)
+      """
+    #expect(
+      Self.regexFlags(source: source, pattern: Self.bannedWhisperKitLiteral),
+      "`.whisperKit` literal must be flagged by the scanner")
+  }
+
+  // MARK: Negative controls — capitalized engine-name references are not flagged
 
   @Test("`Parakeet`, `ParakeetEngineAdapter`, and `Parakeet v3` strings are not flagged")
-  func negativeControlEngineNamePasses() {
+  func negativeControlParakeetEngineNamePasses() {
     let source = """
       // 4. Parakeet adapter.
       let adapter = ParakeetEngineAdapter(asrManager: inputs.asrManager)
       // Display name "Parakeet v3" sourced from adapter.engineIdentity.displayName.
       """
-    let regex = try? NSRegularExpression(pattern: Self.bannedIdentityLiteral)
-    var matches: [String] = []
-    for line in source.split(separator: "\n", omittingEmptySubsequences: false) {
-      let text = String(line)
-      let ns = text as NSString
-      let range = NSRange(location: 0, length: ns.length)
-      if regex?.firstMatch(in: text, range: range) != nil {
-        matches.append(text)
-      }
-    }
-    #expect(matches.isEmpty, "capitalized `Parakeet` engine-name references must NOT be flagged")
+    #expect(
+      Self.regexFlags(source: source, pattern: Self.bannedParakeetLiteral) == false,
+      "capitalized `Parakeet` engine-name references must NOT be flagged")
+  }
+
+  @Test(
+    "`WhisperKit`, `WhisperKitEngineAdapter`, and `WhisperKitBackend` strings are not flagged (PR-5 Rung 3 negative control)"
+  )
+  func negativeControlWhisperKitEngineNamePasses() {
+    let source = """
+      // 5. WhisperKit adapter.
+      let adapter = WhisperKitEngineAdapter(backend: inputs.whisperKitBackend)
+      // The WhisperKit display name is sourced from adapter.engineIdentity.displayName.
+      // WhisperKitBackend lives in EnviousWisprASR; reach via the package seam.
+      """
+    #expect(
+      Self.regexFlags(source: source, pattern: Self.bannedWhisperKitLiteral) == false,
+      "capitalized `WhisperKit` engine-name references must NOT be flagged")
   }
 
   // MARK: PR-5 Rung 2A KernelFinalizationWiring takes the protocol type
@@ -140,7 +183,7 @@ import Testing
       """)
     let bannedLiteral = "ParakeetEngineAdapter"
     #expect(
-      !source.contains(bannedLiteral),
+      source.contains(bannedLiteral) == false,
       """
       \(relative) reintroduces the literal `\(bannedLiteral)`. The wiring's
       adapter parameter is `any ASREngineAdapter`; a type annotation, an
@@ -156,17 +199,6 @@ import Testing
     "production code calls the three optional adapter hooks only at the allowlisted sites"
   )
   func optionalAdapterHookCallersMatchAllowlist() throws {
-    // Allowlist (PR-5 Rung 2B #827). The kernel wires the three optional
-    // hooks at three lifecycle positions: `preWarm` awaits
-    // `warmUpFromCache` only (Codex code-diff r3 dropped the preWarm-side
-    // `cancelPendingUnload` to prevent an abandoned-preWarm timer leak);
-    // `runForwardPath` fires `cancelPendingUnload` pre-`beginSession` and
-    // `observeSpeechSegments` pre-finalize. The regex matches executable
-    // call syntax only (`adapter.<hook>(`) so protocol declarations and
-    // adapter overrides do not count — only kernel-side callers. Counts
-    // are tracked PER HOOK so a regression that removed one hook and added
-    // another would still fail (Codex code-diff r1 P3). The assertion is
-    // bidirectional: adding a new site OR removing an expected site fails.
     let hooks = ["warmUpFromCache", "cancelPendingUnload", "observeSpeechSegments"]
     let allowed: [String: [String: Int]] = [
       "Sources/EnviousWisprPipeline/RecordingSessionKernel.swift": [
@@ -205,9 +237,6 @@ import Testing
         }
       }
     }
-    // Catch the case where an allowlisted file disappeared from `Sources/`
-    // entirely (rename / move) — the kernel call sites are required, not
-    // optional.
     for (relative, perHook) in allowed where !visited.contains(relative) {
       for (hook, allowedCount) in perHook {
         offenders.append(
@@ -233,9 +262,9 @@ import Testing
     return try String(contentsOf: url, encoding: .utf8)
   }
 
-  private static func scanForLiteral(_ relative: String) throws -> [String] {
+  private static func scanForLiteral(_ relative: String, pattern: String) throws -> [String] {
     let source = try readSource(relative)
-    guard let regex = try? NSRegularExpression(pattern: bannedIdentityLiteral) else { return [] }
+    guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
     var violations: [String] = []
     for (idx, line) in source.split(separator: "\n", omittingEmptySubsequences: false).enumerated()
     {
@@ -247,6 +276,20 @@ import Testing
       }
     }
     return violations
+  }
+
+  /// Returns true iff the regex matches any line in `source`. Used by the
+  /// adversarial + negative-control tests so they share the scanner shape
+  /// rather than duplicating the regex loop.
+  private static func regexFlags(source: String, pattern: String) -> Bool {
+    guard let regex = try? NSRegularExpression(pattern: pattern) else { return false }
+    for line in source.split(separator: "\n", omittingEmptySubsequences: false) {
+      let text = String(line)
+      let ns = text as NSString
+      let range = NSRange(location: 0, length: ns.length)
+      if regex.firstMatch(in: text, range: range) != nil { return true }
+    }
+    return false
   }
 
   /// Repo root, anchored off `#filePath` — this file lives at
