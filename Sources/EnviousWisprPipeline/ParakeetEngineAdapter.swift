@@ -311,6 +311,18 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     asrManager.noteTranscriptionComplete(policy: policy)
   }
 
+  // MARK: ASREngineAdapter optional engine hooks (PR-5 Rung 2A)
+
+  /// Cancel any pending model-unload idle timer the prior session armed. The
+  /// existing `cancelIdleTimer()` call inside `beginSession()` above
+  /// (`:192`) covers today's flow where no kernel caller exists yet; this
+  /// override lifts that semantic to the protocol surface so Rung 2B can
+  /// wire the kernel to call the hook pre-`beginSession()`. Idempotent:
+  /// safe to call when no timer is armed.
+  func cancelPendingUnload() {
+    asrManager.cancelIdleTimer()
+  }
+
   // MARK: Streaming drain
 
   /// Await every dispatched `feedAudio` task before `finalizeStreaming()` — so

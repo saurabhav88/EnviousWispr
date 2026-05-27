@@ -269,6 +269,44 @@ public protocol ASREngineAdapter: AnyObject {
 
   /// Apply the model-unload policy (PR-1 §B.2.1, D16).
   func applyUnloadPolicy(_ policy: ModelUnloadPolicy)
+
+  // MARK: Finalization metadata (PR-5 Rung 2A)
+
+  /// The last successful `finalize()` result, or `nil` between sessions.
+  /// The kernel's finalization wiring reads `result.{language, duration,
+  /// processingTime}` to build `Transcript`; without this on the protocol,
+  /// the wiring would have to know the concrete adapter type.
+  ///
+  /// MUST be `nil` between sessions: cleared at `beginSession()` and
+  /// `cancel()`, assigned only by a successful `finalize()` returning
+  /// `.transcript(...)`. Read-only on the protocol; each conformer owns the
+  /// storage.
+  var lastResult: ASRResult? { get }
+
+  // MARK: Optional engine hooks (PR-5 Rung 2A, passive surface)
+  //
+  // Each has a no-op default in the protocol extension below. Adapters whose
+  // engine has a meaningful implementation override; adapters without leave
+  // the default. The kernel does NOT call any of these in Rung 2A: that
+  // wiring lands in Rung 2B. They are declared now so the contract surface
+  // is closed before Rung 3 writes the second adapter.
+
+  /// Best-effort load from on-disk model cache only: no network, no full
+  /// in-memory model resolve. Default no-op. Adapters whose engine has a
+  /// meaningful cache-only preload path override.
+  func warmUpFromCache() async throws
+
+  /// Cancel any pending model-unload timer the engine had armed. Called by
+  /// the kernel (in Rung 2B+) when the user signals intent to record soon,
+  /// before `beginSession()`. Default no-op. Idempotent.
+  func cancelPendingUnload()
+
+  /// Receive the voiced-speech segments computed by the kernel's VAD at the
+  /// stop boundary. The adapter MAY use them to derive engine-specific
+  /// decode parameters (the second engine derives `clipTimestamps`). Default
+  /// no-op. The kernel calls this (in Rung 2B+) once per session, after VAD
+  /// finalize, before `finalize(batchSamples:)`.
+  func observeSpeechSegments(_ segments: [SpeechSegment])
 }
 
 extension ASREngineAdapter {
@@ -276,4 +314,10 @@ extension ASREngineAdapter {
   /// generic warmup label. Concrete adapters override when they observe
   /// real phase strings.
   public var lastObservedPhase: String { "warmup" }
+
+  // PR-5 Rung 2A: no-op defaults for the three optional hooks. Adapters
+  // with meaningful semantics override; the others inherit these.
+  public func warmUpFromCache() async throws {}
+  public func cancelPendingUnload() {}
+  public func observeSpeechSegments(_ segments: [SpeechSegment]) {}
 }

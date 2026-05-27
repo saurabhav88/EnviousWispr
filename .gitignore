@@ -178,3 +178,6 @@ Brand Assets/
 workers/weekly-digest/.wrangler/
 routine-session-logs/
 routine-session-logs-*/
+
+# Codex scratch artifacts (local-only review prompts/outputs)
+.codex/

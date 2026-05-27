@@ -98,6 +98,13 @@ final class FakeEngine: ASREngineAdapter {
   /// this engine's `behavior`, so the active session keeps its transcript.
   private(set) var midSessionSwitchRequestCount = 0
 
+  /// Last successful finalize() result (PR-5 Rung 2A). `var` (not
+  /// `private(set)`) so the metadata-propagation sentinel test can seed it
+  /// from another file; the simulator already exposes `var behavior` the
+  /// same way. Cleared in `beginSession()` and `cancel()`; assigned in
+  /// `finalize(...)` only on `.transcript(...)`.
+  var lastResult: ASRResult?
+
   /// Record a mid-session engine-switch request (A18, PR-3 plan §3.6). A
   /// no-op against the running adapter — proves the request was inert.
   func noteMidSessionSwitchRequest() {
@@ -208,6 +215,9 @@ final class FakeEngine: ASREngineAdapter {
     // (`ParakeetEngineAdapter.swift:163`) — a fresh session should not inherit
     // a prior finalize's batchSamples snapshot in tests.
     lastFinalizeBatchSamples = nil
+    // PR-5 Rung 2A: clear last finalize result so the new session starts
+    // with no stale metadata, matching the Parakeet conformer.
+    lastResult = nil
   }
 
   func acceptAudio(_ buffer: AudioBufferHandoff) {
@@ -275,6 +285,10 @@ final class FakeEngine: ASREngineAdapter {
       outcome = .failed(.loadFailed)
     }
     isTerminal = true
+    // PR-5 Rung 2A: honor the §4 contract, assigning only on .transcript(...).
+    if case .transcript(let result) = outcome {
+      lastResult = result
+    }
     return outcome
   }
 
@@ -289,6 +303,8 @@ final class FakeEngine: ASREngineAdapter {
     // Idempotent — 2+ calls have the same effect as one (PR-1 §B.2.2).
     isCancelled = true
     isTerminal = true
+    // PR-5 Rung 2A: cancellation invalidates any prior session's result.
+    lastResult = nil
     // Release a wedged `warmUp()` / `finalize()` (best-effort, D6).
     if let continuation = loadWedgeContinuation {
       loadWedgeContinuation = nil
