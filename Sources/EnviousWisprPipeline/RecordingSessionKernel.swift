@@ -897,6 +897,17 @@ final class RecordingSessionKernel {
       break
     }
 
+    // PR-5 Rung 4.5 (#827): LID perf signpost `t_release` — fires on every
+    // accepted-stop reason (manual, VAD-auto-stop, max-duration cap) so
+    // perf-trace joining works across all session-ending paths. OLD WK
+    // emitted from `requestStop` only (`WhisperKitPipeline.swift:551-552`);
+    // the unified kernel transition is the symmetric, complete site.
+    // Gated on engine capability (LID support) — Parakeet has no LID and
+    // does not emit this signpost.
+    if adapter.capabilities.supportsLanguageDetection {
+      emitLIDReleaseSignpost(sessionID: audioCapture.currentCaptureSessionID)
+    }
+
     // Stopping. The `stopping` path owns the capture stop: marking
     // `.stopping` before the await tells a concurrent `finishTerminal`
     // (a cancel landing mid-stop) not to fire a second, racing stop — it
@@ -1938,6 +1949,19 @@ final class RecordingSessionKernel {
     // Kernel logs carry FSM states / SessionIDs / counters only — never
     // transcript text (PR-3 plan §3.10 privacy boundary).
     Task { await AppLogger.shared.log("[kernel] \(message)", level: .debug, category: "Kernel") }
+  }
+
+  /// PR-5 Rung 4.5 (#827): emit `t_release` LID perf signpost on accepted-stop.
+  /// Timestamp-only variant — `voiced_duration_s`, `lid_window_count`,
+  /// `clip_kind` are not known here (LID has not run yet). Matches the OLD
+  /// signature's all-optional-tail at `WhisperKitPipeline.swift:1438-1452`.
+  /// Format matches `WhisperKitEngineAdapter.logLIDPerfSignpost`.
+  private func emitLIDReleaseSignpost(sessionID: UInt64) {
+    let ts = String(format: "%.6f", CFAbsoluteTimeGetCurrent())
+    let message = "lid_perf_signpost name=t_release timestamp_s=\(ts) session_id=\(sessionID)"
+    Task {
+      await AppLogger.shared.log(message, level: .info, category: "RecordingSessionKernel")
+    }
   }
 
   #if DEBUG

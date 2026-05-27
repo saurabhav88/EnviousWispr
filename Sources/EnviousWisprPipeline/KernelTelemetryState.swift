@@ -77,6 +77,16 @@ struct KernelASRAdapterDiagnostics {
   var incrementalStrategy: String? = nil
   var incrementalMode: String? = nil
   var incrementalTailDecodeMs: Int? = nil
+
+  // PR-5 Rung 4.5 (#827): LID perf signpost transport. The WhisperKit adapter
+  // populates these during finalize so `KernelFinalizationWiring.deliver` can
+  // emit `t_clipboard_write` with the same `session_id` + LID-shape fields the
+  // OLD pipeline carried (`WhisperKitPipeline.swift:1079-1086`). Parakeet does
+  // not populate these; the wiring gates the emit on engine identity.
+  var lidCaptureSessionID: UInt64? = nil
+  var lidVoicedDurationSec: Double? = nil
+  var lidWindowCount: Int? = nil
+  var lidClipKind: String? = nil
 }
 
 @MainActor
