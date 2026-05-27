@@ -80,7 +80,7 @@ struct CancellationSilentUnwindTests {
         )
       )
     )
-    let pipeline = KernelDictationDriverFactory.make(
+    let pipeline = KernelDictationDriverFactory.makeForParakeet(
       inputs: .init(
         audioCapture: audioCapture,
         asrManager: asrManager,

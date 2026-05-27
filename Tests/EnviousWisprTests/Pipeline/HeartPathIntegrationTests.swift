@@ -89,7 +89,7 @@ struct HeartPathIntegrationTests {
       )
     )
 
-    let pipeline = KernelDictationDriverFactory.make(inputs: .init(
+    let pipeline = KernelDictationDriverFactory.makeForParakeet(inputs: .init(
       audioCapture: audioCapture,
       asrManager: asrManager,
       transcriptStore: TranscriptStore(),

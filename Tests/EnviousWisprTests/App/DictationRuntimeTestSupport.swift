@@ -112,7 +112,7 @@ enum DictationRuntimeFixtures {
     asrManager: any ASRManagerInterface,
     store: TranscriptStore
   ) -> KernelDictationDriver {
-    KernelDictationDriverFactory.make(
+    KernelDictationDriverFactory.makeForParakeet(
       inputs: .init(
         audioCapture: audioCapture,
         asrManager: asrManager,

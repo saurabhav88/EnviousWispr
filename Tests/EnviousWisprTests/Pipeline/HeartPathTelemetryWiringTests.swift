@@ -99,7 +99,7 @@ struct HeartPathTelemetryWiringTests {
   }
 
   private static func makePipeline() -> KernelDictationDriver {
-    KernelDictationDriverFactory.make(inputs: .init(
+    KernelDictationDriverFactory.makeForParakeet(inputs: .init(
       audioCapture: makeStubAudio(),
       asrManager: makeASR(),
       transcriptStore: TranscriptStore(),
@@ -238,7 +238,7 @@ struct HeartPathTelemetryWiringTests {
         )
       )
     )
-    let pipeline = KernelDictationDriverFactory.make(inputs: .init(
+    let pipeline = KernelDictationDriverFactory.makeForParakeet(inputs: .init(
       audioCapture: audioCapture,
       asrManager: asrManager,
       transcriptStore: TranscriptStore(),

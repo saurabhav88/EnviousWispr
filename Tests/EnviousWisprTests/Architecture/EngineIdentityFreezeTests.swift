@@ -76,6 +76,99 @@ import Testing
     }
   }
 
+  /// PR-5 Rung 4: the factory's engine-agnostic assembler reads
+  /// `adapter.engineIdentity.backendType` at THREE sites (polish step stamp,
+  /// `HeartPathTelemetryEmitter` construction, `KernelLifecycleTelemetrySink`
+  /// construction). Council coverage review (GPT, 2026-05-27) asked that the
+  /// WhisperKit factory branch verify identity propagates to every
+  /// backend-stamped consumer; the polish stamp is directly readable at
+  /// runtime, but emitter + sink stamps are inside private collaborators.
+  /// This freeze enforces the per-consumer read count at source level —
+  /// stronger than runtime inspection because it catches any future refactor
+  /// that drops a consumer's identity read or routes one through a different
+  /// source.
+  @Test(
+    "KernelDictationDriverFactory reads adapter.engineIdentity at least three times (one per consumer: polish, emitter, sink)"
+  )
+  func factoryReadsIdentityForEveryBackendStampedConsumer() throws {
+    let relative = "Sources/EnviousWisprPipeline/KernelDictationDriverFactory.swift"
+    let source = try Self.readSource(relative)
+    let needle = "adapter.engineIdentity"
+    var count = 0
+    var search = source[...]
+    while let range = search.range(of: needle) {
+      count += 1
+      search = search[range.upperBound...]
+    }
+    #expect(
+      count >= 3,
+      """
+      \(relative) reads `\(needle)` \(count) time(s) — expected ≥3.
+      The assembler stamps the polish step, the heart-path telemetry emitter,
+      and the lifecycle telemetry sink with `adapter.engineIdentity.backendType`.
+      If a future refactor drops one of those stamps or routes it through a
+      different identity source, downstream telemetry will mis-stamp the
+      backend for the second-engine branch.
+      """)
+  }
+
+  // MARK: PR-5 Rung 4 — factory surface + production-unwired invariant
+
+  @Test("KernelDictationDriverFactory exposes both engine-construction methods")
+  func factoryExposesBothEngineMethods() throws {
+    let relative = "Sources/EnviousWisprPipeline/KernelDictationDriverFactory.swift"
+    let source = try Self.readSource(relative)
+    #expect(
+      source.contains("public static func makeForParakeet("),
+      """
+      \(relative) must expose `makeForParakeet(inputs:)`. The Parakeet engine
+      branch is the live caller path post-Rung-4; removing or renaming it
+      silently would break the App's launch-time pipeline construction.
+      """)
+    #expect(
+      source.contains("public static func makeForWhisperKit("),
+      """
+      \(relative) must expose `makeForWhisperKit(inputs:)`. The second-engine
+      branch is the precondition for Rung 5's App cutover; removing it
+      would block the WhisperKit migration onto the kernel.
+      """)
+  }
+
+  @Test(
+    "makeForWhisperKit has no production caller this rung (Rung 4 production-unwired invariant)"
+  )
+  func makeForWhisperKitHasNoProductionCaller() throws {
+    // Rung 5 is where the App-layer flips to call this method; this freeze
+    // test is removed in the Rung 5 PR after the App cutover lands.
+    let sourcesRoot = Self.repoRoot().appending(path: "Sources")
+    let enumerator = FileManager.default.enumerator(
+      at: sourcesRoot, includingPropertiesForKeys: nil,
+      options: [.skipsHiddenFiles, .skipsPackageDescendants])
+    var offenders: [String] = []
+    while let url = enumerator?.nextObject() as? URL {
+      guard url.pathExtension == "swift" else { continue }
+      let relative = url.path.replacingOccurrences(
+        of: Self.repoRoot().path + "/", with: "")
+      // The factory file itself defines the method; the freeze guards
+      // against OTHER source files invoking it. Skip the definition file.
+      if relative == "Sources/EnviousWisprPipeline/KernelDictationDriverFactory.swift" {
+        continue
+      }
+      let source = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+      if source.contains("makeForWhisperKit(") {
+        offenders.append(relative)
+      }
+    }
+    #expect(
+      offenders.isEmpty,
+      """
+      Rung 4 ships `makeForWhisperKit` production-unwired. Found callers in:
+      \(offenders.joined(separator: "\n"))
+      Rung 5 is where the App-layer flips to call this method; remove this
+      freeze test in the Rung 5 PR after the App cutover lands.
+      """)
+  }
+
   @Test("identity-reader sites carry no banned engine-identity literal")
   func readerSitesHaveNoLiteral() throws {
     for relative in Self.identityReaderSites {

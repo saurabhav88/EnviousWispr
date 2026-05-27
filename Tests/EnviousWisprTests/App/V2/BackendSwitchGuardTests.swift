@@ -51,7 +51,7 @@ struct BackendSwitchGuardTests {
     let transcriptStore = TranscriptStore()
     let keychain = KeychainManager()
 
-    let pipeline = KernelDictationDriverFactory.make(inputs: .init(
+    let pipeline = KernelDictationDriverFactory.makeForParakeet(inputs: .init(
       audioCapture: audioCapture,
       asrManager: asrManager,
       transcriptStore: transcriptStore,
