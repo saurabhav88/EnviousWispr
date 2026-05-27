@@ -203,6 +203,16 @@ struct KernelFinalizationWiring {
       outcome.pasteDurationSeconds = pipelineEnd - pasteStart
       Self.updateTranscriptMetrics(outcome: outcome, context: context)
       Self.logPipelineTimingTotal(outcome: outcome)
+      // PR-5 Rung 4.5 (#827): LID perf signpost `t_clipboard_write` —
+      // gated on engine LID capability (NOT paste outcome). OLD pipeline
+      // at `WhisperKitPipeline.swift:1079-1086` emits after finalize
+      // regardless of cascade tier, including clipboard-only + auto-copy.
+      // Source session id + LID-shape from `adapter.lastASRDiagnostics`
+      // (per-session captured in adapter at `beginSession`).
+      if adapter.capabilities.supportsLanguageDetection {
+        Self.emitLIDClipboardWriteSignpost(
+          diagnostics: (adapter as? any ASREngineTelemetryProviding)?.lastASRDiagnostics)
+      }
       return deliveryOutcome
     }
 
@@ -266,6 +276,38 @@ struct KernelFinalizationWiring {
           + "paste=\(String(format: "%.3f", outcome.pasteDurationSeconds))s)",
         level: .info, category: "PipelineTiming"
       )
+    }
+  }
+
+  /// PR-5 Rung 4.5 (#827): LID perf signpost `t_clipboard_write` — fires
+  /// when finalization completes for WhisperKit-mode sessions, regardless
+  /// of paste outcome. Source session id + LID shape from
+  /// `adapter.lastASRDiagnostics` (per-session captured in the WK adapter
+  /// at `beginSession`; race-safe vs delayed emit). Matches OLD
+  /// `WhisperKitPipeline.swift:1079-1086` emit format.
+  private static func emitLIDClipboardWriteSignpost(
+    diagnostics: KernelASRAdapterDiagnostics?
+  ) {
+    let id = diagnostics?.lidCaptureSessionID ?? 0
+    let ts = String(format: "%.6f", CFAbsoluteTimeGetCurrent())
+    var fields = [
+      "lid_perf_signpost",
+      "name=t_clipboard_write",
+      "timestamp_s=\(ts)",
+      "session_id=\(id)",
+    ]
+    if let voiced = diagnostics?.lidVoicedDurationSec {
+      fields.append("voiced_duration_s=\(String(format: "%.3f", voiced))")
+    }
+    if let lidWindow = diagnostics?.lidWindowCount {
+      fields.append("lid_window_count=\(lidWindow)")
+    }
+    if let clipKind = diagnostics?.lidClipKind {
+      fields.append("clip_kind=\(clipKind)")
+    }
+    let message = fields.joined(separator: " ")
+    Task {
+      await AppLogger.shared.log(message, level: .info, category: "KernelFinalizationWiring")
     }
   }
 }

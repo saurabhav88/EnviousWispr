@@ -159,6 +159,14 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   /// returns and the stale-session guard passes.
   private(set) var lastLanguageDetection: LanguageDetectionResult?
 
+  /// Source for the audio-capture session id. Read once per `finalize`
+  /// call into a function-local snapshot (`sessionIDForLog`) — not stored
+  /// on `self`, so a concurrent `beginSession(B)` cannot retroactively
+  /// change session A's in-flight signposts. PR-5 Rung 4.5 (#827) reuses
+  /// the existing `audioCapture: any AudioCaptureInterface` plumbed
+  /// through `KernelDictationDriverFactory.WhisperKitInputs:62-69`.
+  private let audioCaptureSessionIDSource: @MainActor () -> UInt64
+
   // MARK: ASREngineAdapter — engine interruption
 
   /// Optional adapter-local interruption hook. WhisperKit has no
@@ -171,10 +179,12 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
 
   init(
     backend: any WhisperKitBackendDriving,
-    languageDetector: LanguageDetector = LanguageDetector()
+    languageDetector: LanguageDetector = LanguageDetector(),
+    audioCaptureSessionIDSource: @escaping @MainActor () -> UInt64 = { 0 }
   ) {
     self.backend = backend
     self.languageDetector = languageDetector
+    self.audioCaptureSessionIDSource = audioCaptureSessionIDSource
   }
 
   // MARK: ASREngineAdapter — identity & capability
@@ -274,6 +284,11 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     lastLanguageDetection = nil
     retainedPCM.removeAll(keepingCapacity: true)
     observedSpeechSegments.removeAll()
+    // PR-5 Rung 4.5 (#827): the audio-capture session id is read at
+    // finalize entry into a function-local snapshot, not here — kernel
+    // calls `beginSession` BEFORE `beginCapturePhase` mints the id, and
+    // a shared-property capture would race interleaved sessions. See
+    // `finalize`.
 
     // Cancel any pending model-unload timer a prior session armed. Rung 2B's
     // kernel `cancelPendingUnload` hook already fires synchronously before
@@ -387,6 +402,20 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   func finalize(batchSamples: [Float]?) async -> ASREngineOutcome {
     _ = batchSamples  // intentionally ignored — see coordinate-space note
     lastFailureError = nil
+    // PR-5 Rung 4.5 (#827): capture `currentCaptureSessionID` at finalize
+    // entry, NOT at `beginSession`. Codex code-diff review caught this:
+    // kernel calls `adapter.beginSession()` BEFORE `audioCapture.beginCapturePhase()`,
+    // but `currentCaptureSessionID` only increments inside the capture-phase
+    // call. By finalize entry, the capture phase has completed (kernel's
+    // `runForwardPath` flow guarantees this), so the source returns the
+    // active session's id.
+    //
+    // `sessionIDForLog` is a function-local immutable snapshot — every
+    // signpost emitted in this finalize call passes it explicitly. A
+    // concurrent `beginSession(B)` that resets the shared adapter property
+    // mid-finalize cannot misattribute this session's post-await signposts
+    // (Codex code-diff r2 caught the shared-mutable-property race).
+    let sessionIDForLog = audioCaptureSessionIDSource()
     if isCancelled {
       isTerminal = true
       retainedPCM.removeAll()
@@ -448,6 +477,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     // adapter logs the LID-bound signposts only).
     logLIDPerfSignpost(
       "t_state_flip",
+      sessionID: sessionIDForLog,
       voicedDuration: voicedDurationSec,
       lidWindowCount: lidWindowCount,
       clipKind: clipKind
@@ -473,6 +503,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     )
     logLIDPerfSignpost(
       "t_lid_settled",
+      sessionID: sessionIDForLog,
       voicedDuration: voicedDurationSec,
       lidWindowCount: lidWindowCount,
       clipKind: clipKind
@@ -501,6 +532,22 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
         level: .info, category: "WhisperKitEngineAdapter"
       )
     }
+
+    // PR-5 Rung 4.5 (#827): Sentry breadcrumb "Language detected", byte-identical
+    // to OLD `WhisperKitPipeline.swift:814-823`. Payload is derived metadata only
+    // (no transcript text, no raw audio) per `sentry-operations.md`
+    // RULE: telemetry-privacy-boundary. Locked-mode never reaches LID
+    // (`LanguageDetector.swift:152-171`), so this fires on auto-mode paths only.
+    SentryBreadcrumb.add(
+      stage: "asr", message: "Language detected",
+      data: [
+        "lang": lidResult.lang ?? "nil",
+        "tier": lidResult.tier.rawValue,
+        "confidence": String(format: "%.3f", lidResult.confidence),
+        "margin": String(format: "%.3f", lidResult.margin),
+        "voiced_s": String(format: "%.2f", lidResult.voicedDuration),
+        "abstained": lidResult.abstained,
+      ])
 
     // LID PostHog telemetry — adapter-owned per `supportsLanguageDetection`
     // TODO at `ASREngineAdapter.swift:60-65`.
@@ -549,6 +596,16 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     // through `lastASRDiagnostics` on every terminal outcome.
     var diagnostics = KernelASRAdapterDiagnostics()
     diagnostics.rawSampleCount = rawSamples.count
+    // PR-5 Rung 4.5 (#827): LID perf-signpost transport for kernel-side
+    // `t_release` and wiring-side `t_clipboard_write` emits. Populated here
+    // so every terminal write of `lastASRDiagnostics` carries them. Uses the
+    // finalize-local `sessionIDForLog` snapshot so a concurrent
+    // `beginSession(B)` cannot retroactively change session A's diagnostics
+    // payload (Codex code-diff r2 race).
+    diagnostics.lidCaptureSessionID = sessionIDForLog
+    diagnostics.lidVoicedDurationSec = voicedDurationSec
+    diagnostics.lidWindowCount = lidWindowCount
+    diagnostics.lidClipKind = clipKind
 
     let asrText: String
     let asrLanguage: String?
@@ -606,6 +663,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
         // Batch fallback over raw retained PCM.
         logLIDPerfSignpost(
           "t_asr_start",
+          sessionID: sessionIDForLog,
           voicedDuration: voicedDurationSec,
           lidWindowCount: lidWindowCount,
           clipKind: clipKind
@@ -614,6 +672,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
         let batchOutcome = await runBatchDecode(samples: asrSamples)
         logLIDPerfSignpost(
           "t_asr_end",
+          sessionID: sessionIDForLog,
           voicedDuration: voicedDurationSec,
           lidWindowCount: lidWindowCount,
           clipKind: clipKind
@@ -648,6 +707,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
       // `.auto` mode (or worker setup failed): batch only.
       logLIDPerfSignpost(
         "t_asr_start",
+        sessionID: sessionIDForLog,
         voicedDuration: voicedDurationSec,
         lidWindowCount: lidWindowCount,
         clipKind: clipKind
@@ -656,6 +716,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
       let batchOutcome = await runBatchDecode(samples: asrSamples)
       logLIDPerfSignpost(
         "t_asr_end",
+        sessionID: sessionIDForLog,
         voicedDuration: voicedDurationSec,
         lidWindowCount: lidWindowCount,
         clipKind: clipKind
@@ -881,20 +942,32 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     }
   }
 
-  // MARK: LID perf signposts (5 of 6 — the 6th, `t_clipboard_write`, is
-  // kernel-owned in the new model and fires after `KernelFinalizationWiring.deliver`;
-  // Rung 5 wires that emission).
+  // MARK: LID perf signposts
+  //
+  // PR-5 Rung 4.5 (#827): all six signpost names carry `session_id` for trace
+  // joinability across interleaved sessions. The kernel emits `t_release`
+  // from its unified accepted-stop transition; the wiring emits
+  // `t_clipboard_write` from `KernelFinalizationWiring.deliver` reading the
+  // session id from `lastASRDiagnostics.lidCaptureSessionID`. The four
+  // adapter-emitted names are `t_state_flip`, `t_lid_start`, `t_lid_settled`,
+  // `t_decode_start` (see call sites above).
 
   private func logLIDPerfSignpost(
     _ name: String,
+    sessionID: UInt64,
     voicedDuration: TimeInterval? = nil,
     lidWindowCount: Int? = nil,
     clipKind: String? = nil
   ) {
+    // `sessionID` passed in explicitly (not read from `self`) so a stale
+    // finalize that resumes after a fresh `beginSession` reset the adapter's
+    // `capturedCaptureSessionID` still emits with its session's id. Codex
+    // code-diff review r2 caught the prior shared-property read race.
     var fields = [
       "lid_perf_signpost",
       "name=\(name)",
       "timestamp_s=\(String(format: "%.6f", CFAbsoluteTimeGetCurrent()))",
+      "session_id=\(sessionID)",
     ]
     if let voicedDuration {
       fields.append("voiced_duration_s=\(String(format: "%.3f", voicedDuration))")

@@ -126,9 +126,14 @@ public enum KernelDictationDriverFactory {
   /// architecture freeze locks the production-unwired invariant until Rung 5
   /// removes that test.
   public static func makeForWhisperKit(inputs: WhisperKitInputs) -> KernelDictationDriver {
+    // PR-5 Rung 4.5 (#827): plumb the audio-capture session-id source to the
+    // adapter so it can snapshot at `beginSession` (race-safe for delayed LID
+    // perf signposts like `t_clipboard_write`).
+    let captureSource = inputs.audioCapture
     let adapter = WhisperKitEngineAdapter(
       backend: inputs.whisperKitBackend,
-      languageDetector: inputs.languageDetector)
+      languageDetector: inputs.languageDetector,
+      audioCaptureSessionIDSource: { captureSource.currentCaptureSessionID })
     return assembleDriver(
       adapter: adapter,
       audioCapture: inputs.audioCapture,
