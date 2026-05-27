@@ -45,6 +45,17 @@ import Foundation
 // `KernelDictationDriverFactory` still constructs only `ParakeetEngineAdapter`
 // (Rung 4 will add the factory branch); `WhisperKitPipeline.swift` still owns
 // every WhisperKit recording in production (Rung 5 cutover deletes it).
+//
+// TODO(#827 Rung 5 cutover): the Codex code-diff review of this rung flagged a
+// pre-roll coordinate-space concern — if the kernel feeds pre-roll buffers
+// through `acceptAudio` before / after the kernel's `captureResult.samples`
+// origin, the segment offsets the kernel computes from `captureResult.samples`
+// would not align with this adapter's `retainedPCM`. Rung 3 ships
+// production-unwired (zero kernel callers), so the bug cannot fire today; the
+// Rung 5 plan MUST verify the kernel's `acceptAudio` feed and
+// `observeSpeechSegments` segment-source share the same coordinate origin,
+// translate offsets if not, and cover the case with a 5-language Live UAT
+// matrix run on a real Mac.
 
 /// The kernel-facing `ASREngineAdapter` conformer for WhisperKit. Drives the
 /// underlying WhisperKit actor through a local `package` protocol seam
@@ -115,6 +126,21 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   /// filter LID audio to voiced-only ranges. Cleared on `cancel()` /
   /// `beginSession()` and after `finalize()` commits.
   private var observedSpeechSegments: [SpeechSegment] = []
+
+  /// True once `observeSpeechSegments(_:)` has been called this session.
+  /// Disambiguates `observedSpeechSegments == []` between two semantically
+  /// distinct cases:
+  ///   1. VAD ran and confirmed no voiced segments → kernel calls
+  ///      `observeSpeechSegments([])` → adapter sees empty + flag true → no-speech
+  ///      gate fires → return `.empty(hadSpeechEvidence: false)`.
+  ///   2. VAD was unavailable (`VADSignalSource.speechEvidenceAtStop()` returned
+  ///      `.unavailable`, kernel intentionally skips the no-speech gate) →
+  ///      kernel calls `observeSpeechSegments([])` with raw-fallback samples →
+  ///      adapter must fail toward visibility (run ASR anyway) just like the
+  ///      legacy pipeline's `hasSpeechEvidence(vadSegments: nil) -> true`
+  ///      branch at `WhisperKitPipeline.swift:683-688`.
+  /// Cleared on `beginSession()` and `cancel()`.
+  private var hasReceivedSpeechSegmentSignal = false
 
   /// Cap on `retainedPCM` — `maxRecordingDuration` worth of 16 kHz mono samples
   /// (300 s * 16 kHz = 4.8 M Float = ~19 MB). Mirrors Parakeet's cap so the
@@ -275,6 +301,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     lastLanguageDetection = nil
     retainedPCM.removeAll(keepingCapacity: true)
     observedSpeechSegments.removeAll()
+    hasReceivedSpeechSegmentSignal = false
 
     // Cancel any pending model-unload timer a prior session armed. Rung 2B's
     // kernel `cancelPendingUnload` hook already fires synchronously before
@@ -335,6 +362,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   /// decoder actually sees.
   func observeSpeechSegments(_ segments: [SpeechSegment]) {
     observedSpeechSegments = segments
+    hasReceivedSpeechSegmentSignal = true
   }
 
   /// Finalize: LID → transcribe with `clipTimestamps` derived from observed
@@ -355,14 +383,29 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     }
     let session = sessionID
 
-    // No-speech gate: matches `WhisperKitPipeline.swift:694-718`. In the
-    // kernel-driven model the kernel ALWAYS calls `observeSpeechSegments`
-    // before `finalize`, so an empty array IS the "kernel computed no
-    // voiced segments" signal — pass it directly (not nil, which would
-    // default to true / "no detector available, fail toward visibility").
-    let hasSpeechEvidence = WhisperKitPipelineSpeechRouting.hasSpeechEvidence(
-      vadSegments: observedSpeechSegments
-    )
+    // No-speech gate: matches `WhisperKitPipeline.swift:694-718`. Two
+    // ambiguity cases for `observedSpeechSegments == []`:
+    //   (a) VAD ran, found no voiced ranges → kernel calls
+    //       `observeSpeechSegments([])` (`hasReceivedSpeechSegmentSignal ==
+    //       true`) → confirmed no speech → return `.empty(false)`.
+    //   (b) VAD was unavailable (`VADSignalSource.speechEvidenceAtStop()`
+    //       returned `.unavailable`, kernel skips the call) →
+    //       `hasReceivedSpeechSegmentSignal == false` → fail toward
+    //       visibility, run ASR (legacy pipeline's `hasSpeechEvidence(
+    //       vadSegments: nil) -> true` branch at
+    //       `WhisperKitPipeline.swift:683-688`). Codex code-diff defect 2.
+    let hasSpeechEvidence: Bool
+    if hasReceivedSpeechSegmentSignal {
+      hasSpeechEvidence = WhisperKitPipelineSpeechRouting.hasSpeechEvidence(
+        vadSegments: observedSpeechSegments
+      )
+    } else {
+      // Kernel did not call `observeSpeechSegments` this session — treat
+      // as VAD-unavailable, fail toward visibility.
+      hasSpeechEvidence = WhisperKitPipelineSpeechRouting.hasSpeechEvidence(
+        vadSegments: nil
+      )
+    }
     let minimumSamples = AudioConstants.minimumTranscriptionSamples
     let rawSamples = retainedPCM
 
@@ -371,11 +414,10 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
         await worker.cancel()
         incrementalWorker = nil
       }
-      // Stale-cancel guard.
+      // Stale-cancel guard: a `cancel()` + new `beginSession()` during the
+      // worker.cancel() await must NOT clobber session B's fresh state.
+      // Just return on session mismatch (Codex code-diff defect 3).
       guard sessionID == session, !isCancelled else {
-        isTerminal = true
-        retainedPCM.removeAll()
-        observedSpeechSegments.removeAll()
         return isCancelled ? .cancelled : .empty(hadSpeechEvidence: false)
       }
       var diagnostics = KernelASRAdapterDiagnostics()
@@ -447,12 +489,12 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
       clipKind: clipKind
     )
 
-    // Stale-cancel guard before mutating LID-derived state.
+    // Stale-cancel guard before mutating LID-derived state. Just return on
+    // session mismatch — `beginSession(B)` already reset adapter state for
+    // session B; this stale finalize for session A must NOT clobber B's
+    // PCM/segments/terminal flag (Codex code-diff defect 3).
     guard sessionID == session, !isCancelled else {
-      isTerminal = true
-      retainedPCM.removeAll()
-      observedSpeechSegments.removeAll()
-      return .cancelled
+      return isCancelled ? .cancelled : .empty(hadSpeechEvidence: false)
     }
     lastLanguageDetection = lidResult
     if let lang = lidResult.lang, !lidResult.abstained {
@@ -633,9 +675,10 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
 
     // Stale-finalize guard: a `cancel()` + new `beginSession()` during the
     // ASR await must not let this stale finalize clobber the fresh session's
-    // state (mirrors `ParakeetEngineAdapter.swift:271-273`).
+    // state — including `lastASRDiagnostics` (mirrors
+    // `ParakeetEngineAdapter.swift:271-273`). Just return on mismatch
+    // (Codex code-diff defect 3).
     guard sessionID == session, !isCancelled else {
-      lastASRDiagnostics = diagnostics
       return isCancelled
         ? .cancelled
         : .empty(hadSpeechEvidence: true)
@@ -694,6 +737,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     lastLanguageDetection = nil
     retainedPCM.removeAll()
     observedSpeechSegments.removeAll()
+    hasReceivedSpeechSegmentSignal = false
     prepareTask?.cancel()
     prepareTask = nil
     modelUnloadTask?.cancel()

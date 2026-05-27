@@ -226,20 +226,47 @@ import Testing
 
   // MARK: Finalize — core paths
 
-  @Test("finalize with no observed segments returns .empty(hadSpeechEvidence: false)")
-  func finalizeNoSpeechReturnsEmptyFalse() async throws {
+  @Test("finalize with observed-empty segments (VAD confirmed no speech) returns .empty(false)")
+  func finalizeVADConfirmedNoSpeechReturnsEmptyFalse() async throws {
     let backend = StubWhisperKitBackend()
     let adapter = WhisperKitEngineAdapter(backend: backend)
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: false)
     feed(adapter, samples: [0.1, 0.2], session: sid)
-    // No `observeSpeechSegments` call — adapter sees empty segments.
+    // Kernel explicitly signals "VAD ran, found no voiced ranges".
+    adapter.observeSpeechSegments([])
     let outcome = await adapter.finalize(batchSamples: nil)
     guard case .empty(let hadSpeechEvidence) = outcome else {
       Issue.record("expected .empty, got \(outcome)")
       return
     }
     #expect(hadSpeechEvidence == false)
+    let txCount = await backend.transcribeCount
+    #expect(txCount == 0, "no transcribe runs when VAD confirmed no speech")
+  }
+
+  @Test(
+    "finalize WITHOUT observeSpeechSegments runs ASR (VAD-unavailable fail-toward-visibility, Codex code-diff defect 2)"
+  )
+  func finalizeWithoutSegmentSignalFailsTowardVisibility() async throws {
+    let backend = StubWhisperKitBackend()
+    await backend.setTranscribeResult(
+      ASRResult(
+        text: "recovered", language: "en", duration: 1, processingTime: 0.1,
+        backendType: .whisperKit))
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default, streaming: false)
+    feed(adapter, samples: speechSamples(count: 16_000), session: sid)
+    // Deliberately skip observeSpeechSegments — simulates VAD-unavailable
+    // (legacy `WhisperKitPipeline.swift:683-688` `hasSpeechEvidence(vadSegments:
+    // nil) -> true` branch).
+    let outcome = await adapter.finalize(batchSamples: nil)
+    guard case .transcript(let result) = outcome else {
+      Issue.record("expected .transcript (fail toward visibility), got \(outcome)")
+      return
+    }
+    #expect(result.text == "recovered")
   }
 
   @Test("finalize with segments + non-empty decode returns .transcript and sets lastResult")
@@ -605,6 +632,53 @@ import Testing
     #expect(
       adapter.lastResult == nil,
       "stale finalize must skip post-await mutations; session B's lastResult stays clean")
+  }
+
+  @Test(
+    "staleFinalize must NOT clear session B's PCM/segments (Codex code-diff defect 3)"
+  )
+  func staleFinalizeMustNotClearFreshSessionState() async throws {
+    let backend = StubWhisperKitBackend()
+    await backend.setSlowTranscribe(true)
+    await backend.setTranscribeResult(
+      ASRResult(
+        text: "stale-text", language: "en", duration: 1, processingTime: 0.1,
+        backendType: .whisperKit))
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let sidA = SessionID()
+    try await adapter.beginSession(sidA, options: .default, streaming: false)
+    feed(adapter, samples: speechSamples(count: 16_000), session: sidA)
+    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)])
+    async let outcomeA = adapter.finalize(batchSamples: nil)
+    // Wait for finalize to reach transcribe.
+    var entered = false
+    for _ in 0..<200 {
+      let count = await backend.transcribeCount
+      if count == 1 {
+        entered = true
+        break
+      }
+      await Task.yield()
+    }
+    #expect(entered, "finalize did not reach backend.transcribe within 200 yields")
+    // Session B begins, feeds fresh audio + segments.
+    let sidB = SessionID()
+    try await adapter.beginSession(sidB, options: .default, streaming: false)
+    let freshSamples: [Float] = [Float](repeating: 0.42, count: 16_000)
+    feed(adapter, samples: freshSamples, session: sidB)
+    adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 8_000)])
+    // The stale finalize resolves while session B is mid-flight.
+    _ = await outcomeA
+    // Session B's PCM and segments must remain intact — the stale guard must
+    // only return, not mutate fresh state.
+    #expect(
+      adapter.retainedPCMForTests == freshSamples, "session B's PCM was cleared by stale finalize")
+    #expect(
+      adapter.observedSpeechSegmentsForTests.count == 1,
+      "session B's observed segments were cleared by stale finalize")
+    #expect(
+      adapter.observedSpeechSegmentsForTests.first?.endSample == 8_000,
+      "session B's segment payload was mutated by stale finalize")
   }
 
   // MARK: Cleanup
