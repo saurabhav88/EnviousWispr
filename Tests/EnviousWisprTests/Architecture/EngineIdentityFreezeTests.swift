@@ -150,51 +150,79 @@ import Testing
       """)
   }
 
-  // MARK: PR-5 Rung 2A no production caller for the optional adapter hooks
+  // MARK: PR-5 Rung 2B optional adapter hook callers match allowlist
 
   @Test(
     "production code calls the three optional adapter hooks only at the allowlisted sites"
   )
-  func noOptionalHookCallersInProduction() throws {
-    // Allowlist (PR-5 Rung 2A plan §3a). Rung 2A is the passive-surface
-    // rung: the kernel does NOT call any of these hooks yet. The protocol
-    // declares + extension-defaults them, and the Parakeet conformer
-    // overrides one (`cancelPendingUnload`). Any other production caller
-    // means Rung 2B (or later) leaked into Rung 2A.
-    let allowed: [String: Int] = [
-      "Sources/EnviousWisprPipeline/ASREngineAdapter.swift": 6,  // 3 decls + 3 ext defaults
-      "Sources/EnviousWisprPipeline/ParakeetEngineAdapter.swift": 1,  // override decl
+  func optionalAdapterHookCallersMatchAllowlist() throws {
+    // Allowlist (PR-5 Rung 2B #827). The kernel wires the three optional
+    // hooks at three lifecycle positions: `preWarm` awaits
+    // `warmUpFromCache` only (Codex code-diff r3 dropped the preWarm-side
+    // `cancelPendingUnload` to prevent an abandoned-preWarm timer leak);
+    // `runForwardPath` fires `cancelPendingUnload` pre-`beginSession` and
+    // `observeSpeechSegments` pre-finalize. The regex matches executable
+    // call syntax only (`adapter.<hook>(`) so protocol declarations and
+    // adapter overrides do not count — only kernel-side callers. Counts
+    // are tracked PER HOOK so a regression that removed one hook and added
+    // another would still fail (Codex code-diff r1 P3). The assertion is
+    // bidirectional: adding a new site OR removing an expected site fails.
+    let hooks = ["warmUpFromCache", "cancelPendingUnload", "observeSpeechSegments"]
+    let allowed: [String: [String: Int]] = [
+      "Sources/EnviousWisprPipeline/RecordingSessionKernel.swift": [
+        "warmUpFromCache": 1,
+        "cancelPendingUnload": 1,
+        "observeSpeechSegments": 1,
+      ]
     ]
-    let pattern = #"\b(warmUpFromCache|cancelPendingUnload|observeSpeechSegments)\("#
-    let regex = try NSRegularExpression(pattern: pattern)
+    let regexes: [String: NSRegularExpression] = try hooks.reduce(into: [:]) {
+      acc, hook in
+      acc[hook] = try NSRegularExpression(pattern: #"\badapter\."# + hook + #"\("#)
+    }
     let sourcesRoot = Self.repoRoot().appending(path: "Sources")
     let enumerator = FileManager.default.enumerator(
       at: sourcesRoot, includingPropertiesForKeys: nil,
       options: [.skipsHiddenFiles, .skipsPackageDescendants])
     var offenders: [String] = []
+    var visited: Set<String> = []
     while let url = enumerator?.nextObject() as? URL {
       guard url.pathExtension == "swift" else { continue }
       let source = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
       let ns = source as NSString
       let range = NSRange(location: 0, length: ns.length)
-      let count = regex.numberOfMatches(in: source, range: range)
-      guard count > 0 else { continue }
       let relative = url.path.replacingOccurrences(
         of: Self.repoRoot().path + "/", with: "")
-      let allowedCount = allowed[relative] ?? 0
-      if count > allowedCount {
+      visited.insert(relative)
+      let allowedPerHook = allowed[relative] ?? [:]
+      for hook in hooks {
+        let count = regexes[hook]!.numberOfMatches(in: source, range: range)
+        let allowedCount = allowedPerHook[hook] ?? 0
+        if count != allowedCount {
+          let kind = count > allowedCount ? "unexpected addition" : "missing expected call"
+          offenders.append(
+            "  \(relative) adapter.\(hook): \(count) call site(s), allowlisted \(allowedCount) — \(kind)"
+          )
+        }
+      }
+    }
+    // Catch the case where an allowlisted file disappeared from `Sources/`
+    // entirely (rename / move) — the kernel call sites are required, not
+    // optional.
+    for (relative, perHook) in allowed where !visited.contains(relative) {
+      for (hook, allowedCount) in perHook {
         offenders.append(
-          "  \(relative): \(count) call site(s), allowlisted \(allowedCount)")
+          "  \(relative) adapter.\(hook): 0 call site(s), allowlisted \(allowedCount) — missing expected file"
+        )
       }
     }
     #expect(
       offenders.isEmpty,
       """
-      Unexpected production call site(s) for the optional adapter hooks
-      (PR-5 Rung 2A is the passive-surface rung, no kernel callers):
+      Optional adapter hook call site count drift (PR-5 Rung 2B #827 wires
+      four kernel call sites at fixed lifecycle positions, counted per hook):
       \(offenders.joined(separator: "\n"))
-      If this is Rung 2B+ wiring, update the allowlist in this freeze test in
-      the same PR.
+      Adding or removing a kernel call site requires updating the allowlist
+      in this freeze test in the same PR.
       """)
   }
 

@@ -15,6 +15,26 @@ import Foundation
 // stream. A nil stream (the `*ProgressAbsent` knobs) means the engine exposes
 // no wedge signal at all. The two are distinct on purpose.
 
+/// Ordered lifecycle events recorded by `FakeEngine` (PR-5 Rung 2B #827). The
+/// kernel call-site behavioral tests assert ordering AND counts; counts alone
+/// would silently accept a misplaced call.
+enum FakeEngineEvent: Equatable, Sendable {
+  case warmUp
+  case warmUpFromCache
+  case cancelPendingUnload
+  case beginSession
+  case acceptAudio
+  case observeSpeechSegments(count: Int)
+  case finalize
+  case cancel
+}
+
+/// Synthetic error type for the cache-preload failure-bypass test
+/// (`warmUpFromCacheThrowsDoesNotBlockWarmUpOrRecording`).
+enum FakeEngineCacheError: Error, Equatable, Sendable {
+  case simulated
+}
+
 /// The nine `FakeEngine` behaviors (PR-1 §B.2.3).
 enum FakeEngineBehavior: Sendable {
   /// Batch engine: `finalize()` returns one transcript.
@@ -98,6 +118,48 @@ final class FakeEngine: ASREngineAdapter {
   /// this engine's `behavior`, so the active session keeps its transcript.
   private(set) var midSessionSwitchRequestCount = 0
 
+  // MARK: PR-5 Rung 2B (#827) — kernel call-site observation
+  //
+  // Counters + event log for the kernel's calls to the three optional adapter
+  // hooks (`warmUpFromCache`, `cancelPendingUnload`, `observeSpeechSegments`).
+  // The event log records ordered lifecycle events so the behavioral tests
+  // assert position, not just count.
+
+  private(set) var cancelPendingUnloadCallCount = 0
+  private(set) var warmUpFromCacheCallCount = 0
+  private(set) var observeSpeechSegmentsCallCount = 0
+  /// The segments argument from the most recent `observeSpeechSegments(_:)`
+  /// call — lets VAD-source-precedence tests assert the kernel passes its own
+  /// computed `vadSegments` array verbatim.
+  private(set) var lastObservedSpeechSegments: [SpeechSegment]?
+
+  /// Ordered log of lifecycle events the kernel triggers on this adapter. Used
+  /// by the Rung 2B lifecycle-order tests; append from every adapter method.
+  private(set) var eventLog: [FakeEngineEvent] = []
+
+  /// When `true`, `warmUpFromCache()` throws `FakeEngineCacheError.simulated`
+  /// AFTER incrementing its counter and appending its event. The
+  /// failure-bypass test sets this to assert the kernel's `try?` swallow
+  /// holds.
+  var warmUpFromCacheThrows: Bool = false
+
+  /// When set, `warmUpFromCache()` parks on this continuation until the test
+  /// resumes it via `releaseWarmUpFromCacheBlocker()`. The post-await
+  /// reentrancy guard test uses this to hold the preWarm continuation while
+  /// a second session is minted.
+  private var warmUpFromCacheBlocker: CheckedContinuation<Void, Never>?
+  /// When `true`, the next `warmUpFromCache()` call parks on
+  /// `warmUpFromCacheBlocker`. Test-only.
+  var blockWarmUpFromCache: Bool = false
+
+  /// Resume any pending `warmUpFromCacheBlocker` continuation (test-only).
+  func releaseWarmUpFromCacheBlocker() {
+    if let continuation = warmUpFromCacheBlocker {
+      warmUpFromCacheBlocker = nil
+      continuation.resume()
+    }
+  }
+
   /// Last successful finalize() result (PR-5 Rung 2A). `var` (not
   /// `private(set)`) so the metadata-propagation sentinel test can seed it
   /// from another file; the simulator already exposes `var behavior` the
@@ -168,6 +230,7 @@ final class FakeEngine: ASREngineAdapter {
 
   func warmUp() async throws {
     warmUpCallCount += 1
+    eventLog.append(.warmUp)
     // Idempotent: safe to call when already ready (PR-1 §B.2.2).
     if readiness == .ready { return }
     readiness = .warming
@@ -207,6 +270,7 @@ final class FakeEngine: ASREngineAdapter {
     _ id: SessionID, options: TranscriptionOptions, streaming: Bool
   ) async throws {
     beginSessionCallCount += 1
+    eventLog.append(.beginSession)
     lastSessionID = id
     lastStreamingRequested = streaming
     isTerminal = false
@@ -227,10 +291,12 @@ final class FakeEngine: ASREngineAdapter {
       return
     }
     acceptedBufferCount += 1
+    eventLog.append(.acceptAudio)
   }
 
   func finalize(batchSamples: [Float]?) async -> ASREngineOutcome {
     finalizeCallCount += 1
+    eventLog.append(.finalize)
     // `beginSession` resets this to nil so a fresh session sees nil if its
     // finalize is never reached — only the LAST finalize's value survives.
     lastFinalizeBatchSamples = batchSamples
@@ -300,6 +366,7 @@ final class FakeEngine: ASREngineAdapter {
 
   func cancel() async {
     cancelCallCount += 1
+    eventLog.append(.cancel)
     // Idempotent — 2+ calls have the same effect as one (PR-1 §B.2.2).
     isCancelled = true
     isTerminal = true
@@ -318,6 +385,36 @@ final class FakeEngine: ASREngineAdapter {
 
   func applyUnloadPolicy(_ policy: ModelUnloadPolicy) {
     lastUnloadPolicy = policy
+  }
+
+  // MARK: PR-5 Rung 2B (#827) — optional adapter hook overrides
+  //
+  // Override the three protocol-extension defaults so the behavioral tests
+  // can assert the kernel call counts AND lifecycle ordering.
+
+  func cancelPendingUnload() {
+    cancelPendingUnloadCallCount += 1
+    eventLog.append(.cancelPendingUnload)
+  }
+
+  func warmUpFromCache() async throws {
+    warmUpFromCacheCallCount += 1
+    eventLog.append(.warmUpFromCache)
+    if blockWarmUpFromCache {
+      await withCheckedContinuation {
+        (continuation: CheckedContinuation<Void, Never>) in
+        warmUpFromCacheBlocker = continuation
+      }
+    }
+    if warmUpFromCacheThrows {
+      throw FakeEngineCacheError.simulated
+    }
+  }
+
+  func observeSpeechSegments(_ segments: [SpeechSegment]) {
+    observeSpeechSegmentsCallCount += 1
+    lastObservedSpeechSegments = segments
+    eventLog.append(.observeSpeechSegments(count: segments.count))
   }
 
   /// Simulate a mid-recording engine crash — drives the kernel's

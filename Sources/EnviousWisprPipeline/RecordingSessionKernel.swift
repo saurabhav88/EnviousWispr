@@ -584,6 +584,31 @@ final class RecordingSessionKernel {
       return
     }
     let sid = currentSessionID
+    // PR-5 Rung 2B (#827): best-effort cache-only preload. Awaited inline
+    // (the contract says cheap; second-engine override walks the on-disk
+    // model cache, Parakeet inherits the no-op default). `try?` because a
+    // throw signals cache-only-preload failure, not full-warmup failure
+    // (Rung 2A §4) — the spawned `warmUp()` below is the canonical path.
+    //
+    // No `cancelPendingUnload()` from preWarm (Codex code-diff r3 P2):
+    // cancelling the idle-unload timer here would leak a loaded model when
+    // PTT is abandoned (key-up between preWarm and start, or pre-warm
+    // failure) — no session terminal fires to re-apply the unload policy,
+    // and the model stays warm indefinitely. The cancel lands in
+    // `runForwardPath` pre-beginSession only (single site, no PTT/toggle
+    // divergence). Parakeet's existing `:192` cancelIdleTimer() inside
+    // beginSession stays as the deepest defense-in-depth.
+    try? await adapter.warmUpFromCache()
+    // PR-5 Rung 2B post-await reentrancy guard: the cache-warm await
+    // suspends the MainActor. While suspended, `start(config:)` can mint a
+    // new session and cancel the prior sid's task bag; re-check before
+    // spawning the heavy warmUp() and awaiting capture pre-warm, otherwise
+    // this stale continuation would launch work against a session the
+    // kernel has already moved past.
+    guard isCurrent(sid), state == .idle || state.isTerminal else {
+      log("preWarm aborted post-cache-warm sid=\(sid.raw) state=\(state)")
+      return
+    }
     // Adapter warm-up is spawned (can be a slow cold model load; the session's
     // own warmUp re-checks readiness and reruns cold if needed).
     spawn(sid) { [adapter, weak self] in
@@ -769,6 +794,22 @@ final class RecordingSessionKernel {
     // Stamp BEFORE beginSession so the lifecycle observer reads the correct
     // streaming flag at the `.recording` transition (Codex review #11 r2).
     isStreamingSession = shouldStream
+    // PR-5 Rung 2B (#827): single kernel-side timer-cancel point, fired
+    // immediately before adapter.beginSession. Parakeet's existing :192
+    // cancelIdleTimer() inside beginSession stays as defense-in-depth at
+    // the adapter level (idempotent per Rung 2A §4).
+    //
+    // Aborted-session caveat (Codex code-diff r4 P2): if this session
+    // ends without a transcript (cancel / no-speech / too-short / failed),
+    // `finishTerminal` skips `applyUnloadPolicy` because
+    // `transcriptReadyForDelivery` is false — the cancelled timer is not
+    // re-armed. For Parakeet today this is the EXISTING pattern (Parakeet
+    // already cancels the timer inside its own beginSession on every
+    // session, no behavior change). A future Rung 3 adapter that wants
+    // unload-timer continuity across aborted sessions MUST re-arm in its
+    // own beginSession/cancel/finalize implementation; the kernel does
+    // not guarantee re-arming.
+    adapter.cancelPendingUnload()
     do {
       try await adapter.beginSession(
         sid, options: makeTranscriptionOptions(config), streaming: shouldStream)
@@ -988,6 +1029,34 @@ final class RecordingSessionKernel {
     // fall back to the seam for direct-mode (which PR-4b wires up).
     let xpcSegments = captureResult.vadSegments
     let vadSegments = !xpcSegments.isEmpty ? xpcSegments : vad.speechSegmentsAtStop()
+    // PR-5 Rung 2B (#827): push the kernel-computed VAD speech segments to
+    // the adapter at finalize-time, BEFORE the kernel-side conditioning
+    // runs. The second engine (Rung 3) derives engine-specific decode
+    // parameters (clipTimestamps) from these; the first engine inherits
+    // the no-op default. Sync, must-not-throw, must-not-block (Rung 2A §4).
+    //
+    // Coordinate space contract (Codex code-diff r4 P2): segments are
+    // indexed into `captureResult.samples` (raw capture audio), NOT into
+    // the `conditioned.samples` the adapter receives in
+    // `finalize(batchSamples:)` immediately after. A Rung 3 adapter that
+    // applies these segments to the audio handed to `finalize` MUST
+    // either (a) translate offsets into the conditioned buffer's
+    // coordinate space, or (b) use engine-internal VAD chunking
+    // (e.g. WhisperKit `chunkingStrategy: .vad`) and treat
+    // `observeSpeechSegments` as a hint rather than a clip-timestamp
+    // source. Parakeet inherits the no-op default so this caveat does
+    // not apply to it.
+    //
+    // Post-finalizeAtStop guard (Codex code-diff r2 P2): the prior
+    // `finalizeAtStop(...)` await at :908 is a suspension point; if cancel
+    // or external interruption lands during that await, the kernel can be
+    // terminal here. The Rung 2A §4 contract says
+    // `observeSpeechSegments(_:)` fires BEFORE `finalize(batchSamples:)` —
+    // a terminal session skips finalize, so it must skip observe too,
+    // otherwise a future engine that stores observed segments for use in
+    // finalize would see them and apply them to the next session.
+    guard isCurrent(sid), !state.isTerminal else { return }
+    adapter.observeSpeechSegments(vadSegments)
     // Raw audio for the conditioner is `captureResult.samples` (parity with
     // old Parakeet pipeline `rawSamples = captureResult.samples`).
     // The OLD pipeline did NOT include pre-roll in batch decode either — pre-roll
