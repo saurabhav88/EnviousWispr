@@ -12,8 +12,8 @@ import Testing
 //
 // COMPILE-TIME architecture test. Imports `EnviousWisprPipeline` WITHOUT
 // `@testable` to prove that an App-layer consumer can:
-//   1. Construct `KernelDictationDriverFactory.Inputs` from purely public types.
-//   2. Call `KernelDictationDriverFactory.make(inputs:)` and receive the
+//   1. Construct `KernelDictationDriverFactory.ParakeetInputs` from purely public types.
+//   2. Call `KernelDictationDriverFactory.makeForParakeet(inputs:)` and receive the
 //      public `KernelDictationDriver`.
 //   3. Read every App-consumed member from the returned driver (state,
 //      overlayIntent, currentTranscript, lastPolishError, four limb-step
@@ -31,14 +31,14 @@ import Testing
     // so they are accessible without `@testable import EnviousWisprPipeline`.
     // The point of this file is to prove the PIPELINE's public surface is
     // reachable, not the test target's own internals.
-    let inputs = KernelDictationDriverFactory.Inputs(
+    let inputs = KernelDictationDriverFactory.ParakeetInputs(
       audioCapture: FakeAudioCapture(),
       asrManager: StubParakeetASRManager(),
       transcriptStore: TranscriptStore(),
       keychainManager: KeychainManager(),
       captureTelemetry: CaptureTelemetryState(),
       pasteCompletionRegistry: PasteCompletionRegistry())
-    let driver = KernelDictationDriverFactory.make(inputs: inputs)
+    let driver = KernelDictationDriverFactory.makeForParakeet(inputs: inputs)
 
     // Read every member named in PR-4b.2 §3.2's table. The point is that
     // each line below TYPECHECKS without `@testable` access. Runtime values

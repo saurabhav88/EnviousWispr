@@ -13,7 +13,7 @@ import Testing
 //
 // Coverage for the 5 new direct surface methods + 1 property added to
 // `KernelDictationDriver`. Each test constructs the driver via the public
-// `KernelDictationDriverFactory.make(inputs:)` and exercises the method,
+// `KernelDictationDriverFactory.makeForParakeet(inputs:)` and exercises the method,
 // then observes the kernel side-effect.
 //
 // `#if DEBUG`-gated: factory uses the real kernel, and a few of these tests
@@ -27,14 +27,14 @@ import Testing
     // MARK: Helpers
 
     private func makeDriver() -> KernelDictationDriver {
-      let inputs = KernelDictationDriverFactory.Inputs(
+      let inputs = KernelDictationDriverFactory.ParakeetInputs(
         audioCapture: FakeAudioCapture(),
         asrManager: StubParakeetASRManager(),
         transcriptStore: TranscriptStore(),
         keychainManager: KeychainManager(),
         captureTelemetry: CaptureTelemetryState(),
         pasteCompletionRegistry: PasteCompletionRegistry())
-      return KernelDictationDriverFactory.make(inputs: inputs)
+      return KernelDictationDriverFactory.makeForParakeet(inputs: inputs)
     }
 
     // MARK: 1. cancelRecording forwards to kernel.cancel

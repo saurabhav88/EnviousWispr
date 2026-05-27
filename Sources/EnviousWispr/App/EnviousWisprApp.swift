@@ -98,8 +98,8 @@ struct EnviousWisprApp: App {
     // builds the kernel + Parakeet engine adapter + lifecycle telemetry sink
     // + heart-path telemetry observer internally and wires kernel-state
     // observation post-construction (PR-4b.2).
-    let kernelDriver = KernelDictationDriverFactory.make(
-      inputs: .init(
+    let kernelDriver = KernelDictationDriverFactory.makeForParakeet(
+      inputs: KernelDictationDriverFactory.ParakeetInputs(
         audioCapture: audioCapture,
         asrManager: asrManager,
         transcriptStore: transcriptStore,

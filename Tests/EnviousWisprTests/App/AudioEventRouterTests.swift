@@ -93,14 +93,14 @@ struct AudioEventRouterTests {
       processingTime: 0.01,
       backendType: .parakeet
     )
-    let inputs = KernelDictationDriverFactory.Inputs(
+    let inputs = KernelDictationDriverFactory.ParakeetInputs(
       audioCapture: audio,
       asrManager: asr,
       transcriptStore: TranscriptStore(),
       keychainManager: KeychainManager(),
       captureTelemetry: CaptureTelemetryState(),
       pasteCompletionRegistry: PasteCompletionRegistry())
-    let driver = KernelDictationDriverFactory.make(inputs: inputs)
+    let driver = KernelDictationDriverFactory.makeForParakeet(inputs: inputs)
 
     // Signal-based state-change waiter. Resumes the instant the driver
     // transitions, so the test does not depend on real-time scheduling

@@ -112,7 +112,7 @@ struct LiveRecordingStateTests {
     let tempDir = FileManager.default.temporaryDirectory
       .appendingPathComponent("live-recording-state-tests-\(UUID().uuidString)")
     let store = TranscriptStore(directory: tempDir)
-    let parakeet = KernelDictationDriverFactory.make(inputs: .init(
+    let parakeet = KernelDictationDriverFactory.makeForParakeet(inputs: .init(
       audioCapture: audioCapture,
       asrManager: asrManager,
       transcriptStore: store,

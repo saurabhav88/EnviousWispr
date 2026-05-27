@@ -153,7 +153,7 @@ private struct Harness {
     let audio = try FixtureAudioCapture(fixtureURL: fixture.url)
     let store = TranscriptStore()
     let keychain = KeychainManager()
-    let pipeline = KernelDictationDriverFactory.make(inputs: .init(
+    let pipeline = KernelDictationDriverFactory.makeForParakeet(inputs: .init(
       audioCapture: audio,
       asrManager: asr,
       transcriptStore: store,

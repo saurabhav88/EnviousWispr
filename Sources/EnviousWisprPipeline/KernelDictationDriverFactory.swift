@@ -7,26 +7,28 @@ import EnviousWisprServices
 import EnviousWisprStorage
 import Foundation
 
-/// Composition root for `KernelDictationDriver` (epic #827, PR-4b.2).
+/// Composition root for `KernelDictationDriver` (epic #827, PR-4b.2; PR-5 Rung 4
+/// added the second-engine branch).
 ///
 /// The App layer needs a `DictationPipeline`-conforming object but cannot
 /// construct one directly: `RecordingSessionKernel`, `ParakeetEngineAdapter`,
-/// `KernelHeartPathTelemetryObserver`, `LimbSteps`, `KernelFinalizationOutcome`,
-/// `KernelSessionContext`, `KernelFinalizationWiring`, `HeartPathTelemetryEmitter`,
-/// `KernelLifecycleTelemetrySink`, and `CaptureVADSignalSource` are all
-/// module-internal by design (epic placement — none of those types are
-/// App-visible). This factory builds the full stack from public-typed inputs
-/// and returns the public driver.
+/// `WhisperKitEngineAdapter`, `KernelHeartPathTelemetryObserver`, `LimbSteps`,
+/// `KernelFinalizationOutcome`, `KernelSessionContext`, `KernelFinalizationWiring`,
+/// `HeartPathTelemetryEmitter`, `KernelLifecycleTelemetrySink`, and
+/// `CaptureVADSignalSource` are all module-internal by design (epic placement —
+/// none of those types are App-visible). This factory builds the full stack
+/// from public-typed inputs and returns the public driver.
 ///
-/// PR-4b.4 swaps the App's the old Parakeet pipeline construction site for a
-/// call to `KernelDictationDriverFactory.make(inputs:)`. PR-4b.2 ships the
-/// factory production-unwired — no App caller invokes it yet.
+/// PR-4b.4 swapped the App's the old Parakeet pipeline construction site for a
+/// call to `KernelDictationDriverFactory.makeForParakeet(inputs:)`. PR-5 Rung 5
+/// will flip the App's WhisperKit construction site to
+/// `makeForWhisperKit(inputs:)`; this rung (Rung 4) ships the WhisperKit
+/// branch production-unwired so the cutover is a single-line App-layer flip.
 @MainActor
 public enum KernelDictationDriverFactory {
 
-  /// All public-typed inputs. The factory constructs every internal type
-  /// (`LimbSteps`, kernel, adapter, wiring, observer, sink, etc.) from these.
-  public struct Inputs {
+  /// Public-typed inputs for the Parakeet engine branch.
+  public struct ParakeetInputs {
     public let audioCapture: any AudioCaptureInterface
     public let asrManager: any ASRManagerInterface
     public let transcriptStore: TranscriptStore
@@ -35,7 +37,7 @@ public enum KernelDictationDriverFactory {
     public let pasteCompletionRegistry: PasteCompletionRegistry
 
     /// Explicit public init: Swift's synthesized memberwise init is `internal`
-    /// and would prevent App callers from constructing `Inputs`.
+    /// and would prevent App callers from constructing this struct.
     public init(
       audioCapture: any AudioCaptureInterface,
       asrManager: any ASRManagerInterface,
@@ -46,6 +48,43 @@ public enum KernelDictationDriverFactory {
     ) {
       self.audioCapture = audioCapture
       self.asrManager = asrManager
+      self.transcriptStore = transcriptStore
+      self.keychainManager = keychainManager
+      self.captureTelemetry = captureTelemetry
+      self.pasteCompletionRegistry = pasteCompletionRegistry
+    }
+  }
+
+  /// Public-typed inputs for the WhisperKit engine branch (PR-5 Rung 4).
+  /// Carries the WhisperKit-flavored dependencies: the model-owning backend
+  /// actor and the LID actor. Production-unwired this rung — no App caller
+  /// invokes `makeForWhisperKit(inputs:)` yet; Rung 5 wires it.
+  public struct WhisperKitInputs {
+    public let audioCapture: any AudioCaptureInterface
+    public let whisperKitBackend: WhisperKitBackend
+    public let languageDetector: LanguageDetector
+    public let transcriptStore: TranscriptStore
+    public let keychainManager: KeychainManager
+    public let captureTelemetry: CaptureTelemetryState
+    public let pasteCompletionRegistry: PasteCompletionRegistry
+
+    /// Explicit public init — same reasoning as `ParakeetInputs.init`.
+    /// `languageDetector` is intentionally non-optional (no default) so the
+    /// production caller in Rung 5 must explicitly pass the `LanguageDetector`
+    /// it already constructs with `onLanguageFlip` telemetry wiring
+    /// (epic plan §3.4, council consensus 2026-05-27).
+    public init(
+      audioCapture: any AudioCaptureInterface,
+      whisperKitBackend: WhisperKitBackend,
+      languageDetector: LanguageDetector,
+      transcriptStore: TranscriptStore,
+      keychainManager: KeychainManager,
+      captureTelemetry: CaptureTelemetryState,
+      pasteCompletionRegistry: PasteCompletionRegistry
+    ) {
+      self.audioCapture = audioCapture
+      self.whisperKitBackend = whisperKitBackend
+      self.languageDetector = languageDetector
       self.transcriptStore = transcriptStore
       self.keychainManager = keychainManager
       self.captureTelemetry = captureTelemetry
@@ -67,14 +106,57 @@ public enum KernelDictationDriverFactory {
     }
   }
 
-  /// Build the driver stack and arm both observation arms before returning.
-  public static func make(inputs: Inputs) -> KernelDictationDriver {
+  /// Build the driver stack for the Parakeet engine and arm both observation
+  /// arms before returning. Live App caller in `EnviousWisprApp`.
+  public static func makeForParakeet(inputs: ParakeetInputs) -> KernelDictationDriver {
+    let adapter = ParakeetEngineAdapter(asrManager: inputs.asrManager)
+    return assembleDriver(
+      adapter: adapter,
+      audioCapture: inputs.audioCapture,
+      transcriptStore: inputs.transcriptStore,
+      keychainManager: inputs.keychainManager,
+      captureTelemetry: inputs.captureTelemetry,
+      pasteCompletionRegistry: inputs.pasteCompletionRegistry)
+  }
+
+  /// Build the driver stack for the WhisperKit engine (PR-5 Rung 4).
+  /// Production-unwired this rung; Rung 5 flips the App caller from the
+  /// legacy `WhisperKitPipeline` to this entry point. The
+  /// `EngineIdentityFreezeTests.makeForWhisperKitHasNoProductionCaller`
+  /// architecture freeze locks the production-unwired invariant until Rung 5
+  /// removes that test.
+  public static func makeForWhisperKit(inputs: WhisperKitInputs) -> KernelDictationDriver {
+    let adapter = WhisperKitEngineAdapter(
+      backend: inputs.whisperKitBackend,
+      languageDetector: inputs.languageDetector)
+    return assembleDriver(
+      adapter: adapter,
+      audioCapture: inputs.audioCapture,
+      transcriptStore: inputs.transcriptStore,
+      keychainManager: inputs.keychainManager,
+      captureTelemetry: inputs.captureTelemetry,
+      pasteCompletionRegistry: inputs.pasteCompletionRegistry)
+  }
+
+  /// Engine-agnostic assembler. The two public entry points construct their
+  /// engine-specific adapter and hand it here; every step below reads identity
+  /// through `adapter.engineIdentity.backendType` (PR-5 Rung 1) so this body
+  /// stays engine-agnostic and `EngineIdentityFreezeTests` keeps catching any
+  /// reintroduction of a hard-coded engine-identity case literal here.
+  private static func assembleDriver(
+    adapter: any ASREngineAdapter,
+    audioCapture: any AudioCaptureInterface,
+    transcriptStore: TranscriptStore,
+    keychainManager: KeychainManager,
+    captureTelemetry: CaptureTelemetryState,
+    pasteCompletionRegistry: PasteCompletionRegistry
+  ) -> KernelDictationDriver {
     // 1. LimbSteps — same instances driver + wiring hold by reference.
     let limbSteps = LimbSteps(
       wordCorrection: WordCorrectionStep(),
       fillerRemoval: FillerRemovalStep(),
       emojiFormatter: EmojiFormatterStep(),
-      llmPolish: LLMPolishStep(keychainManager: inputs.keychainManager)
+      llmPolish: LLMPolishStep(keychainManager: keychainManager)
     )
 
     // 2. Shared mutable holders.
@@ -84,15 +166,12 @@ public enum KernelDictationDriverFactory {
 
     // 3. VAD signal source.
     let vad = CaptureVADSignalSource()
-    vad.bind(audioCapture: inputs.audioCapture)
-
-    // 4. Parakeet adapter.
-    let adapter = ParakeetEngineAdapter(asrManager: inputs.asrManager)
+    vad.bind(audioCapture: audioCapture)
 
     // 4a. Polish-step backend stamp — sourced from the adapter's self-declared
     // identity so this site never hard-codes engine identity (PR-5 Rung 1).
-    // Late-assigned after step 4 because `LLMPolishStep` is class-typed and
-    // nothing between step 1 and here reads `llmPolish.backend`.
+    // Late-assigned after limbSteps construction because `LLMPolishStep` is
+    // class-typed and nothing between step 1 and here reads `llmPolish.backend`.
     limbSteps.llmPolish.backend = adapter.engineIdentity.backendType
     // PR-4b.4 of #827: a non-nil `onToken` callback is the discriminant that
     // tells `GeminiConnector` to use `streamGenerateContent?alt=sse` instead
@@ -105,7 +184,7 @@ public enum KernelDictationDriverFactory {
     // 5. Telemetry emitter (factory-internal; App never sees it).
     let emitter = HeartPathTelemetryEmitter(
       backend: adapter.engineIdentity.backendType,
-      captureTelemetry: inputs.captureTelemetry
+      captureTelemetry: captureTelemetry
     )
 
     let telemetryRelay = TelemetryRelay()
@@ -118,15 +197,15 @@ public enum KernelDictationDriverFactory {
       adapter: adapter,
       steps: limbSteps,
       textProcessingRunner: textProcessingRunner,
-      save: { transcript in try inputs.transcriptStore.save(transcript) },
+      save: { transcript in try transcriptStore.save(transcript) },
       deliverPaste: { request in await PasteCascadeExecutor().deliver(request) },
-      pasteCompletionRegistry: inputs.pasteCompletionRegistry
+      pasteCompletionRegistry: pasteCompletionRegistry
     )
 
     // 7. Kernel.
     let kernel = RecordingSessionKernel(
       adapter: adapter,
-      audioCapture: inputs.audioCapture,
+      audioCapture: audioCapture,
       vad: vad,
       currentTick: wiring.currentTick,
       sleepTicks: wiring.sleepTicks,
@@ -161,14 +240,14 @@ public enum KernelDictationDriverFactory {
 
     // 8. Lifecycle sink (r6) — emits the PR-1 §B.7.2 kernel-owned events
     //     when the observer's lifecycle-event callback fires. Reads
-    //     `context.config`, `inputs.audioCapture.currentAudioRoute`, and
-    //     `inputs.captureTelemetry`. Internal type; never appears in `Inputs`.
+    //     `context.config`, `audioCapture.currentAudioRoute`, and
+    //     `captureTelemetry`. Internal type; never appears in inputs.
     let lifecycleSink = KernelLifecycleTelemetrySink(
       backend: adapter.engineIdentity.backendType,
-      audioCapture: inputs.audioCapture,
+      audioCapture: audioCapture,
       context: context,
       outcome: outcome,
-      captureTelemetry: inputs.captureTelemetry,
+      captureTelemetry: captureTelemetry,
       telemetryState: telemetryState,
       modelLoadWedgeTelemetry: { telemetryRelay.modelLoadWedgeTelemetry() },
       // Div 6 of seam audit (TP:273-291): route `.noAudioCaptured` through
@@ -186,7 +265,7 @@ public enum KernelDictationDriverFactory {
     //    emit-side stays decoupled from Sentry / PostHog wiring.
     let observer = KernelHeartPathTelemetryObserver(
       kernel: kernel,
-      audioCapture: inputs.audioCapture,
+      audioCapture: audioCapture,
       emitter: emitter,
       emitLifecycleEvent: { [lifecycleSink] event in lifecycleSink.emit(event) }
     )

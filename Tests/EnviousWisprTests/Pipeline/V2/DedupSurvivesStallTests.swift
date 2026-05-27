@@ -33,7 +33,7 @@ struct DedupSurvivesStallTests {
     let audioCapture = NeverFinishingAudioCapture()
     let asrManager = NoOpASRManagerV2()
 
-    let pipeline = KernelDictationDriverFactory.make(
+    let pipeline = KernelDictationDriverFactory.makeForParakeet(
       inputs: .init(
         audioCapture: audioCapture,
         asrManager: asrManager,
