@@ -8,39 +8,50 @@ import EnviousWisprStorage
 import Foundation
 
 /// Composition root for `KernelDictationDriver` (epic #827, PR-4b.2; PR-5 Rung 4
-/// added the second-engine branch).
+/// added the second-engine branch; PR-5 Rung 5 narrowed the factory surface
+/// from `public` to `package` and added the shared VAD signal source seam).
 ///
 /// The App layer needs a `DictationPipeline`-conforming object but cannot
 /// construct one directly: `RecordingSessionKernel`, `ParakeetEngineAdapter`,
 /// `WhisperKitEngineAdapter`, `KernelHeartPathTelemetryObserver`, `LimbSteps`,
 /// `KernelFinalizationOutcome`, `KernelSessionContext`, `KernelFinalizationWiring`,
 /// `HeartPathTelemetryEmitter`, `KernelLifecycleTelemetrySink`, and
-/// `CaptureVADSignalSource` are all module-internal by design (epic placement —
-/// none of those types are App-visible). This factory builds the full stack
-/// from public-typed inputs and returns the public driver.
+/// `CaptureVADSignalSource` are all module-internal-or-package by design (epic
+/// placement — none of those types are App-visible as public surface). This
+/// factory builds the full stack from package-typed inputs and returns the
+/// public driver.
 ///
 /// PR-4b.4 swapped the App's the old Parakeet pipeline construction site for a
 /// call to `KernelDictationDriverFactory.makeForParakeet(inputs:)`. PR-5 Rung 5
-/// will flip the App's WhisperKit construction site to
-/// `makeForWhisperKit(inputs:)`; this rung (Rung 4) ships the WhisperKit
-/// branch production-unwired so the cutover is a single-line App-layer flip.
+/// flipped the App's WhisperKit construction site onto the WhisperKit branch
+/// and added `makeSharedVADSignalSource(audioCapture:)` so the App owns the
+/// single `CaptureVADSignalSource` shared between both drivers — preventing
+/// the second factory call from overwriting the first driver's
+/// `audioCapture.onVADAutoStop` binding.
 @MainActor
 public enum KernelDictationDriverFactory {
 
-  /// Public-typed inputs for the Parakeet engine branch.
-  public struct ParakeetInputs {
-    public let audioCapture: any AudioCaptureInterface
-    public let asrManager: any ASRManagerInterface
-    public let transcriptStore: TranscriptStore
-    public let keychainManager: KeychainManager
-    public let captureTelemetry: CaptureTelemetryState
-    public let pasteCompletionRegistry: PasteCompletionRegistry
+  /// Package-typed inputs for the Parakeet engine branch. Narrowed from
+  /// `public` to `package` in PR-5 Rung 5: the only consumers are the
+  /// `EnviousWispr` App target and `EnviousWisprTests`, both in the same
+  /// Swift package, so `package` is the right access level for these inputs
+  /// after `CaptureVADSignalSource` (a stored field below) widened to
+  /// `package` to be shareable across drivers.
+  package struct ParakeetInputs {
+    package let audioCapture: any AudioCaptureInterface
+    package let asrManager: any ASRManagerInterface
+    package let vadSignalSource: CaptureVADSignalSource
+    package let transcriptStore: TranscriptStore
+    package let keychainManager: KeychainManager
+    package let captureTelemetry: CaptureTelemetryState
+    package let pasteCompletionRegistry: PasteCompletionRegistry
 
-    /// Explicit public init: Swift's synthesized memberwise init is `internal`
+    /// Explicit package init: Swift's synthesized memberwise init is `internal`
     /// and would prevent App callers from constructing this struct.
-    public init(
+    package init(
       audioCapture: any AudioCaptureInterface,
       asrManager: any ASRManagerInterface,
+      vadSignalSource: CaptureVADSignalSource,
       transcriptStore: TranscriptStore,
       keychainManager: KeychainManager,
       captureTelemetry: CaptureTelemetryState,
@@ -48,6 +59,7 @@ public enum KernelDictationDriverFactory {
     ) {
       self.audioCapture = audioCapture
       self.asrManager = asrManager
+      self.vadSignalSource = vadSignalSource
       self.transcriptStore = transcriptStore
       self.keychainManager = keychainManager
       self.captureTelemetry = captureTelemetry
@@ -55,28 +67,29 @@ public enum KernelDictationDriverFactory {
     }
   }
 
-  /// Public-typed inputs for the WhisperKit engine branch (PR-5 Rung 4).
-  /// Carries the WhisperKit-flavored dependencies: the model-owning backend
-  /// actor and the LID actor. Production-unwired this rung — no App caller
-  /// invokes `makeForWhisperKit(inputs:)` yet; Rung 5 wires it.
-  public struct WhisperKitInputs {
-    public let audioCapture: any AudioCaptureInterface
-    public let whisperKitBackend: WhisperKitBackend
-    public let languageDetector: LanguageDetector
-    public let transcriptStore: TranscriptStore
-    public let keychainManager: KeychainManager
-    public let captureTelemetry: CaptureTelemetryState
-    public let pasteCompletionRegistry: PasteCompletionRegistry
+  /// Package-typed inputs for the WhisperKit engine branch (PR-5 Rung 4;
+  /// access narrowed in Rung 5). Carries the WhisperKit-flavored dependencies:
+  /// the model-owning backend actor and the LID actor.
+  package struct WhisperKitInputs {
+    package let audioCapture: any AudioCaptureInterface
+    package let whisperKitBackend: WhisperKitBackend
+    package let languageDetector: LanguageDetector
+    package let vadSignalSource: CaptureVADSignalSource
+    package let transcriptStore: TranscriptStore
+    package let keychainManager: KeychainManager
+    package let captureTelemetry: CaptureTelemetryState
+    package let pasteCompletionRegistry: PasteCompletionRegistry
 
-    /// Explicit public init — same reasoning as `ParakeetInputs.init`.
+    /// Explicit package init — same reasoning as `ParakeetInputs.init`.
     /// `languageDetector` is intentionally non-optional (no default) so the
     /// production caller in Rung 5 must explicitly pass the `LanguageDetector`
     /// it already constructs with `onLanguageFlip` telemetry wiring
     /// (epic plan §3.4, council consensus 2026-05-27).
-    public init(
+    package init(
       audioCapture: any AudioCaptureInterface,
       whisperKitBackend: WhisperKitBackend,
       languageDetector: LanguageDetector,
+      vadSignalSource: CaptureVADSignalSource,
       transcriptStore: TranscriptStore,
       keychainManager: KeychainManager,
       captureTelemetry: CaptureTelemetryState,
@@ -85,6 +98,7 @@ public enum KernelDictationDriverFactory {
       self.audioCapture = audioCapture
       self.whisperKitBackend = whisperKitBackend
       self.languageDetector = languageDetector
+      self.vadSignalSource = vadSignalSource
       self.transcriptStore = transcriptStore
       self.keychainManager = keychainManager
       self.captureTelemetry = captureTelemetry
@@ -106,26 +120,44 @@ public enum KernelDictationDriverFactory {
     }
   }
 
+  /// PR-5 Rung 5 (#827): construct the App-owned shared VAD signal source.
+  /// Called exactly once by `EnviousWisprApp.init` after `audioCapture` exists
+  /// and BEFORE either `makeForParakeet` / `makeForWhisperKit` runs. The
+  /// returned source is passed into both inputs structs so the two drivers
+  /// share a single binding to `audioCapture.onVADAutoStop` — preventing the
+  /// second driver's construction from silently overwriting the first
+  /// driver's VAD callback (Codex r2 new defect 1).
+  ///
+  /// `architecture/vadSignalSourceHasSingleConstructionSite` enforces that
+  /// the VAD-source type's constructor only appears here in `Sources/`.
+  package static func makeSharedVADSignalSource(
+    audioCapture: any AudioCaptureInterface
+  ) -> CaptureVADSignalSource {
+    let vad = CaptureVADSignalSource()
+    vad.bind(audioCapture: audioCapture)
+    return vad
+  }
+
   /// Build the driver stack for the Parakeet engine and arm both observation
   /// arms before returning. Live App caller in `EnviousWisprApp`.
-  public static func makeForParakeet(inputs: ParakeetInputs) -> KernelDictationDriver {
+  package static func makeForParakeet(inputs: ParakeetInputs) -> KernelDictationDriver {
     let adapter = ParakeetEngineAdapter(asrManager: inputs.asrManager)
     return assembleDriver(
       adapter: adapter,
       audioCapture: inputs.audioCapture,
+      vadSignalSource: inputs.vadSignalSource,
       transcriptStore: inputs.transcriptStore,
       keychainManager: inputs.keychainManager,
       captureTelemetry: inputs.captureTelemetry,
       pasteCompletionRegistry: inputs.pasteCompletionRegistry)
   }
 
-  /// Build the driver stack for the WhisperKit engine (PR-5 Rung 4).
-  /// Production-unwired this rung; Rung 5 flips the App caller from the
-  /// legacy `WhisperKitPipeline` to this entry point. The
-  /// `EngineIdentityFreezeTests.makeForWhisperKitHasNoProductionCaller`
-  /// architecture freeze locks the production-unwired invariant until Rung 5
-  /// removes that test.
-  public static func makeForWhisperKit(inputs: WhisperKitInputs) -> KernelDictationDriver {
+  /// Build the driver stack for the WhisperKit engine. PR-5 Rung 5 flips the
+  /// App caller from the legacy `WhisperKitPipeline` to this entry point;
+  /// the deleted `EngineIdentityFreezeTests.makeForWhisperKitHasNoProductionCaller`
+  /// invariant inverts to `makeForWhisperKitHasExactlyOneProductionCaller`
+  /// (locked in the same architecture freeze file).
+  package static func makeForWhisperKit(inputs: WhisperKitInputs) -> KernelDictationDriver {
     // PR-5 Rung 4.5 (#827): plumb the audio-capture session-id source to the
     // adapter so it can snapshot at `beginSession` (race-safe for delayed LID
     // perf signposts like `t_clipboard_write`).
@@ -137,13 +169,14 @@ public enum KernelDictationDriverFactory {
     return assembleDriver(
       adapter: adapter,
       audioCapture: inputs.audioCapture,
+      vadSignalSource: inputs.vadSignalSource,
       transcriptStore: inputs.transcriptStore,
       keychainManager: inputs.keychainManager,
       captureTelemetry: inputs.captureTelemetry,
       pasteCompletionRegistry: inputs.pasteCompletionRegistry)
   }
 
-  /// Engine-agnostic assembler. The two public entry points construct their
+  /// Engine-agnostic assembler. The two package entry points construct their
   /// engine-specific adapter and hand it here; every step below reads identity
   /// through `adapter.engineIdentity.backendType` (PR-5 Rung 1) so this body
   /// stays engine-agnostic and `EngineIdentityFreezeTests` keeps catching any
@@ -151,6 +184,7 @@ public enum KernelDictationDriverFactory {
   private static func assembleDriver(
     adapter: any ASREngineAdapter,
     audioCapture: any AudioCaptureInterface,
+    vadSignalSource: CaptureVADSignalSource,
     transcriptStore: TranscriptStore,
     keychainManager: KeychainManager,
     captureTelemetry: CaptureTelemetryState,
@@ -169,9 +203,13 @@ public enum KernelDictationDriverFactory {
     let context = KernelSessionContext()
     let telemetryState = KernelTelemetryState()
 
-    // 3. VAD signal source.
-    let vad = CaptureVADSignalSource()
-    vad.bind(audioCapture: audioCapture)
+    // 3. VAD signal source — App-owned and shared across drivers. The single
+    //    construction of the source type lives in
+    //    `makeSharedVADSignalSource(audioCapture:)`. Two-driver safety:
+    //    `audioCapture.onVADAutoStop` is bound exactly once when the App
+    //    builds the shared source, so the second factory call cannot
+    //    overwrite the first driver's binding (Codex r2 new defect 1).
+    let vad = vadSignalSource
 
     // 4a. Polish-step backend stamp — sourced from the adapter's self-declared
     // identity so this site never hard-codes engine identity (PR-5 Rung 1).
@@ -281,7 +319,8 @@ public enum KernelDictationDriverFactory {
       observer: observer,
       outcome: outcome,
       context: context,
-      steps: limbSteps
+      steps: limbSteps,
+      adapter: adapter
     )
     driver.start()  // arms driver-side state observation (PR-4a)
 

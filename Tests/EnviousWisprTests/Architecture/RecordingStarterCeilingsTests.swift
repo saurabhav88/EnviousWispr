@@ -8,7 +8,7 @@ import Testing
 ///
 /// Bible-changelog (ratchet history):
 /// - PR10 (#776): baseline = 7 collaborators (audioCapture, asrManager,
-///   pipeline, whisperKitPipeline, settings, permissions, recordingOverlay),
+///   pipeline, whisperKitKernelDriver, settings, permissions, recordingOverlay),
 ///   2 non-private methods (start, toggle — `isProcessing` is a `var` and
 ///   is NOT counted), ≤ 250 lines.
 @Suite struct RecordingStarterCeilingsTests {
@@ -24,7 +24,7 @@ import Testing
       """
       RecordingStarter collaborator ceiling exceeded: \(count) > 7. \
       Allowed (PR10 baseline): audioCapture, asrManager, pipeline, \
-      whisperKitPipeline, settings, permissions, recordingOverlay. \
+      whisperKitKernelDriver, settings, permissions, recordingOverlay. \
       Raising the ceiling requires a Bible §30 entry.
       """)
   }

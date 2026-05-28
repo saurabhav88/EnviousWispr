@@ -2,12 +2,12 @@
 import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
+import EnviousWisprLLM
 import EnviousWisprServices
 import EnviousWisprStorage
 import Foundation
 import Testing
 
-import EnviousWisprLLM
 @testable import EnviousWisprPipeline
 
 /// Pipeline-level tests for the `HeartPathTelemetryEmitter` wiring.
@@ -99,14 +99,18 @@ struct HeartPathTelemetryWiringTests {
   }
 
   private static func makePipeline() -> KernelDictationDriver {
-    KernelDictationDriverFactory.makeForParakeet(inputs: .init(
-      audioCapture: makeStubAudio(),
-      asrManager: makeASR(),
-      transcriptStore: TranscriptStore(),
-      keychainManager: KeychainManager(),
-      captureTelemetry: CaptureTelemetryState(),
-      pasteCompletionRegistry: PasteCompletionRegistry()
-    ))
+    let audio = makeStubAudio()
+    let vad = KernelDictationDriverFactory.makeSharedVADSignalSource(audioCapture: audio)
+    return KernelDictationDriverFactory.makeForParakeet(
+      inputs: .init(
+        audioCapture: audio,
+        asrManager: makeASR(),
+        vadSignalSource: vad,
+        transcriptStore: TranscriptStore(),
+        keychainManager: KeychainManager(),
+        captureTelemetry: CaptureTelemetryState(),
+        pasteCompletionRegistry: PasteCompletionRegistry()
+      ))
   }
 
   private static func stallContext(sessionID: UInt64) -> CaptureStallContext {
@@ -238,14 +242,18 @@ struct HeartPathTelemetryWiringTests {
         )
       )
     )
-    let pipeline = KernelDictationDriverFactory.makeForParakeet(inputs: .init(
-      audioCapture: audioCapture,
-      asrManager: asrManager,
-      transcriptStore: TranscriptStore(),
-      keychainManager: KeychainManager(),
-      captureTelemetry: CaptureTelemetryState(),
-      pasteCompletionRegistry: PasteCompletionRegistry()
-    ))
+    let vad = KernelDictationDriverFactory.makeSharedVADSignalSource(
+      audioCapture: audioCapture)
+    let pipeline = KernelDictationDriverFactory.makeForParakeet(
+      inputs: .init(
+        audioCapture: audioCapture,
+        asrManager: asrManager,
+        vadSignalSource: vad,
+        transcriptStore: TranscriptStore(),
+        keychainManager: KeychainManager(),
+        captureTelemetry: CaptureTelemetryState(),
+        pasteCompletionRegistry: PasteCompletionRegistry()
+      ))
 
     // Step 1: pre-dedup the emitter's stall flag while pipeline is .idle.
     // `handleCaptureStall` calls telemetry.stallFired (which dedups

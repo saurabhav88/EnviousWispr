@@ -40,25 +40,17 @@ struct DictationInvokedPipelineWiringTests {
     #expect(body.contains("context.targetApp?.localizedName"))
   }
 
-  @Test("WhisperKit emits dictation.invoked after capture enters recording")
-  func whisperKitPipelineEmitsAfterRecordingStarts() throws {
-    let source = try Self.read("Sources/EnviousWisprPipeline/WhisperKitPipeline.swift")
-    let body = try Self.slice(
-      source,
-      from: "public func startRecording(config: DictationSessionConfig) async {",
-      to: "public func requestStop() async {"
-    )
-
-    let stateIndex = try Self.require("state = .recording", in: body)
-    let telemetryIndex = try Self.require("TelemetryService.shared.dictationInvoked(", in: body)
-
-    #expect(stateIndex < telemetryIndex)
-    // #723: trigger_source and input_mode are distinct schema slots; pipeline
-    // must read them from distinct config fields.
-    #expect(body.contains("triggerSource: config.triggerSource.rawValue"))
-    #expect(body.contains("inputMode: config.inputMode.rawValue"))
-    #expect(body.contains("targetApp: targetApp?.localizedName"))
-  }
+  // PR-5 Rung 5 (#827) rewrite: WhisperKit now flows through the same kernel
+  // sink as Parakeet — `parakeetPipelineEmitsAfterRecordingStarts` above
+  // covers the shared dictation.invoked path for both engines. The legacy
+  // WhisperKit-specific assertion (which read the deleted
+  // `WhisperKitPipeline.startRecording(config:)` body) is replaced by two
+  // engine-agnostic guards: (1) the factory's WhisperKit branch has exactly
+  // one production caller, locked by
+  // `EngineIdentityFreezeTests.makeForWhisperKitHasExactlyOneProductionCaller`;
+  // (2) the constructed driver carries WhisperKit engine identity, locked by
+  // `KernelDictationDriverFactoryWhisperKitTests
+  // .makeForWhisperKitReturnsDriverWithWhisperKitIdentity`.
 
   private static func read(_ relativePath: String) throws -> String {
     let root = URL(fileURLWithPath: #filePath)

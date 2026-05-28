@@ -20,7 +20,7 @@ import Foundation
 @MainActor
 final class RecordingFinalizer {
   let kernelDriver: KernelDictationDriver
-  let whisperKitPipeline: WhisperKitPipeline
+  let whisperKitKernelDriver: KernelDictationDriver
   let asrManager: any ASRManagerInterface
   let recordingOverlay: RecordingOverlayPanel
 
@@ -44,7 +44,7 @@ final class RecordingFinalizer {
 
   init(
     kernelDriver: KernelDictationDriver,
-    whisperKitPipeline: WhisperKitPipeline,
+    whisperKitKernelDriver: KernelDictationDriver,
     asrManager: any ASRManagerInterface,
     recordingOverlay: RecordingOverlayPanel,
     heartControlRecovery: HeartControlRecovery,
@@ -52,7 +52,7 @@ final class RecordingFinalizer {
     languageSuggestionPresenter: LanguageSuggestionPresenter?
   ) {
     self.kernelDriver = kernelDriver
-    self.whisperKitPipeline = whisperKitPipeline
+    self.whisperKitKernelDriver = whisperKitKernelDriver
     self.asrManager = asrManager
     self.recordingOverlay = recordingOverlay
     self.heartControlRecovery = heartControlRecovery
@@ -64,7 +64,7 @@ final class RecordingFinalizer {
     recordingLockedAccess.set(false)
     lastUserStopRequest = ContinuousClock.now
     let active: any DictationPipeline =
-      asrManager.activeBackendType == .whisperKit ? whisperKitPipeline : kernelDriver
+      asrManager.activeBackendType == .whisperKit ? whisperKitKernelDriver : kernelDriver
     do {
       try await active.handle(event: .requestStop)
     } catch {
@@ -80,20 +80,14 @@ final class RecordingFinalizer {
     recordingLockedAccess.set(false)
     lastUserStopRequest = ContinuousClock.now
     recordingOverlay.hide()
-    let isWhisperKit = asrManager.activeBackendType == .whisperKit
-    if isWhisperKit {
-      let wkState = whisperKitPipeline.state
-      guard wkState == .recording || wkState == .loadingModel || wkState == .startingUp
-      else { return }
-      do {
-        try await whisperKitPipeline.handle(event: .cancelRecording)
-      } catch {
-        heartControlRecovery.logDispatchFailure(error, op: "cancel-whisperkit")
-      }
-    } else {
-      guard kernelDriver.state == .recording || kernelDriver.state == .loadingModel else { return }
-      await kernelDriver.cancelRecording()
-    }
+    // PR-5 Rung 5 (#827): both backends are kernel drivers now; collapse the
+    // WhisperKit-specific cancel branch (which used `handle(.cancelRecording)`
+    // and gated on the now-extinct `.startingUp` state) onto the same
+    // `cancelRecording()` shape Parakeet uses.
+    let active: KernelDictationDriver =
+      asrManager.activeBackendType == .whisperKit ? whisperKitKernelDriver : kernelDriver
+    guard active.state == .recording || active.state == .loadingModel else { return }
+    await active.cancelRecording()
   }
 
   func markLocked() {
@@ -112,7 +106,7 @@ final class RecordingFinalizer {
   /// itself; Finalizer already holds them.
   func resetActive() {
     if asrManager.activeBackendType == .whisperKit {
-      whisperKitPipeline.reset()
+      whisperKitKernelDriver.reset()
     } else {
       kernelDriver.reset()
     }

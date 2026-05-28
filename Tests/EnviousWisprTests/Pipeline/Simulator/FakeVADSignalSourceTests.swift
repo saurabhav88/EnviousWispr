@@ -15,7 +15,7 @@ struct FakeVADSignalSourceTests {
     vad.currentSessionID = session
     let collected = CollectedSignals()
     let consumer = Task { @MainActor in
-      for await signal in vad.stopSignals { collected.value.append(signal) }
+      for await signal in vad.subscribeStopSignals() { collected.value.append(signal) }
     }
     await Task.yield()
     vad.emit(.autoStopTriggered)

@@ -50,10 +50,13 @@ import Testing
     /// `prepare()` (warm-up is kernel-driven post-construction), so the
     /// backend stays `isReady == false` after factory return.
     private func makeDriver() -> KernelDictationDriver {
+      let audio = FakeAudioCapture()
+      let vad = KernelDictationDriverFactory.makeSharedVADSignalSource(audioCapture: audio)
       let inputs = KernelDictationDriverFactory.WhisperKitInputs(
-        audioCapture: FakeAudioCapture(),
+        audioCapture: audio,
         whisperKitBackend: WhisperKitBackend(),
         languageDetector: LanguageDetector(),
+        vadSignalSource: vad,
         transcriptStore: TranscriptStore(),
         keychainManager: KeychainManager(),
         captureTelemetry: CaptureTelemetryState(),
@@ -80,10 +83,13 @@ import Testing
     @Test("makeForWhisperKit does not call backend.prepare() (factory is lazy)")
     func makeForWhisperKitDoesNotLoadModel() async {
       let backend = WhisperKitBackend()
+      let audio = FakeAudioCapture()
+      let vad = KernelDictationDriverFactory.makeSharedVADSignalSource(audioCapture: audio)
       let inputs = KernelDictationDriverFactory.WhisperKitInputs(
-        audioCapture: FakeAudioCapture(),
+        audioCapture: audio,
         whisperKitBackend: backend,
         languageDetector: LanguageDetector(),
+        vadSignalSource: vad,
         transcriptStore: TranscriptStore(),
         keychainManager: KeychainManager(),
         captureTelemetry: CaptureTelemetryState(),

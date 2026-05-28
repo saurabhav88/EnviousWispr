@@ -212,6 +212,19 @@ final class KernelLifecycleTelemetrySink {
   /// kernel-side wiring would be required (§2.2 non-goals).
   func emit(_ event: KernelLifecycleEvent) {
     switch event {
+    case .pipelineStartingUp:
+      // PR-5 Rung 5 Pass 2 #1 — parity with OLD
+      // `WhisperKitPipeline.swift:438` `Pipeline starting up` breadcrumb.
+      // Backend-agnostic in the new architecture; tag the active backend
+      // in the data dict so support triage can still filter.
+      breadcrumb("pipeline", "Pipeline starting up", ["backend": backend.rawValue])
+      Task { [bv = backend.rawValue] in
+        await AppLogger.shared.log(
+          "Pipeline starting up (backend=\(bv))",
+          level: .info, category: "Pipeline"
+        )
+      }
+
     case .modelLoading:
       breadcrumb("asr", "Model loading", ["backend": backend.rawValue])
 
@@ -277,12 +290,20 @@ final class KernelLifecycleTelemetrySink {
       // Bridge matrix #3 — old TP:1145 emitted `was_recording == state == .recording`
       // at crash time. The kernel reaches `.asrInterrupted` from `.recording`
       // OR `.transcribing`; the observer threads the prior state in here.
+      // PR-5 Rung 5 Pass 2 #3 — restore the `backend` extra and the
+      // backend-named error message from OLD `WhisperKitPipeline.swift:1215-1221`
+      // ("ASR XPC service crashed (WhisperKit)") so Sentry can slice the
+      // crash bucket by backend again.
+      let bv = backend.rawValue
+      let backendLabel = backend == .whisperKit ? "WhisperKit" : "Parakeet"
       emitCaptureError(
         NSError(
           domain: "EnviousWispr", code: -3,
-          userInfo: [NSLocalizedDescriptionKey: "ASR XPC service crashed"]),
+          userInfo: [
+            NSLocalizedDescriptionKey: "ASR XPC service crashed (\(backendLabel))"
+          ]),
         .xpcServiceError, "asr",
-        ["was_recording": wasRecording],
+        ["was_recording": wasRecording, "backend": bv],
         snapshot: recordingSnapshot())
       updateRecordingState(false, nil, nil)
 
@@ -359,13 +380,20 @@ final class KernelLifecycleTelemetrySink {
     let mode =
       telemetryState.asrCompletedTelemetry?.mode
       ?? (outcome.streamingMode ? "streaming" : "batch")
-    return [
+    var payload: [String: Any] = [
       "backend": backend.rawValue,
       "duration_s": String(format: "%.3f", duration),
       "char_count": telemetryState.asrCompletedTelemetry?.charCount ?? 0,
       "mode": mode,
       "language": telemetryState.asrCompletedTelemetry?.language ?? "unknown",
     ]
+    // PR-5 Rung 5 Pass 2 r2 #B1: restore the OLD `"incremental"` breadcrumb key
+    // (`WhisperKitPipeline.swift:1049-1052`); WhisperKit-only, omitted for
+    // Parakeet where the field is nil.
+    if let incremental = telemetryState.asrCompletedTelemetry?.incrementalAccepted {
+      payload["incremental"] = incremental
+    }
+    return payload
   }
 
   private func noSpeechVADGatePayload() -> [String: Any] {
@@ -438,10 +466,20 @@ final class KernelLifecycleTelemetrySink {
         modelLoadWedgedExtra(telemetry))
       modelLoadWedged(backend.rawValue, telemetry)
     case .modelLoadFailed:
-      emitCaptureError(
-        NSError(
+      // PR-5 Rung 5 Pass 2 #2 — surface the real thrown error from
+      // `telemetryState.modelLoadError` (set by the kernel before the
+      // `.loadFailed` warmup return at `RecordingSessionKernel.swift:1324`)
+      // instead of a synthesized placeholder. Parity with OLD
+      // `WhisperKitPipeline.swift:475-477` which captured the thrown
+      // `prepare()` error directly. Falls back to a placeholder only when
+      // the error is somehow absent.
+      let modelError =
+        telemetryState.modelLoadError
+        ?? NSError(
           domain: "EnviousWispr", code: -10,
-          userInfo: [NSLocalizedDescriptionKey: "Model load failed"]),
+          userInfo: [NSLocalizedDescriptionKey: "Model load failed"])
+      emitCaptureError(
+        modelError,
         .modelLoadFailed, "asr",
         ["backend": backend.rawValue])
     case .captureStartFailed:

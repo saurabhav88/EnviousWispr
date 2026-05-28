@@ -87,6 +87,14 @@ enum KernelLifecycleEvent: Equatable, Sendable {
   /// `.failed(.asrEmpty)` instead, matching old code which never emits the
   /// "ASR completed" breadcrumb on those paths.
   case asrCompleted
+
+  /// The session entered `.preparing` — the first observable transition from
+  /// `.idle` / terminal at the head of every session. Mirrors the OLD
+  /// `WhisperKitPipeline.swift:438` "Pipeline starting up" breadcrumb (PR-5
+  /// Rung 5 Pass 2 #1). Warm-path sessions otherwise jumped straight to the
+  /// `.recordingCommitted` event with no signal that the kernel even saw the
+  /// trigger.
+  case pipelineStartingUp
 }
 
 /// Observes raw `RecordingSessionKernel` state and emits the PR-1 §B.7
@@ -256,7 +264,13 @@ final class KernelHeartPathTelemetryObserver {
       // always be nil and the breadcrumb would never fire.)
       guard priorState == .transcribing else { return nil }
       return .asrCompleted
-    case .idle, .preparing:
+    case .preparing:
+      // PR-5 Rung 5 Pass 2 #1 — startup breadcrumb. `.preparing` is the
+      // single per-session entry point from `.idle` / terminal; the
+      // observer fires on state-change only so this event lands exactly
+      // once per session start.
+      return .pipelineStartingUp
+    case .idle:
       return nil
     }
   }

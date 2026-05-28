@@ -182,24 +182,10 @@ struct PipelineStateChangePlannerTests {
     }
   }
 
-  @Test("WhisperKit .ready cancels warning (activity == .idle)")
-  func whisperKitReadyCancelsWarning() {
-    // .ready is WhisperKit-only; bible §7.6 + tests/Phase A focus specifically
-    // on its classification. PipelineStateProtocol maps it to activity .idle,
-    // so it hits the non-complete branch.
-    let plan = PipelineStateChangePlanner.plan(
-      to: WhisperKitPipelineState.ready,
-      pipelineOverlayIntent: Self.hiddenIntent,
-      isClipboardFallback: false,
-      isAccessibilityToast: false,
-      lastPolishError: nil,
-      hasCurrentTranscript: false
-    )
-    #expect(plan.effects.first == .cancelPendingWarning)
-    #expect(plan.effects.contains(.showOverlay(.hidden)))
-    #expect(!plan.effects.contains(.appendCompletedTranscript))
-    #expect(!plan.effects.contains(.reportDictationCompleted))
-  }
+  // PR-5 Rung 5 (#827) deleted: the bespoke WhisperKit `.ready` case is gone.
+  // The kernel driver's state mapping projects WhisperKit's pre-Rung-5 `.ready`
+  // onto `PipelineState.idle`; the equivalent assertion is now the .idle row
+  // in `parakeetActivityMapping`.
 
   // MARK: - Overlay intent pass-through (no label flattening)
 
@@ -228,29 +214,10 @@ struct PipelineStateChangePlannerTests {
     }
   }
 
-  @Test("WhisperKit startingUp vs loadingModel labels are preserved distinctly")
-  func whisperKitStartingUpAndLoadingModelLabelsPreserved() {
-    // Guard against collapsing these two user-visible labels into a single
-    // coarse "preparing" bucket (bible §7.2 correction).
-    let startingUp = PipelineStateChangePlanner.plan(
-      to: WhisperKitPipelineState.startingUp,
-      pipelineOverlayIntent: .processing(label: "Starting..."),
-      isClipboardFallback: false,
-      isAccessibilityToast: false,
-      lastPolishError: nil,
-      hasCurrentTranscript: false
-    )
-    let loadingModel = PipelineStateChangePlanner.plan(
-      to: WhisperKitPipelineState.loadingModel,
-      pipelineOverlayIntent: .processing(label: "Loading model..."),
-      isClipboardFallback: false,
-      isAccessibilityToast: false,
-      lastPolishError: nil,
-      hasCurrentTranscript: false
-    )
-    #expect(startingUp.effects.contains(.showOverlay(.processing(label: "Starting..."))))
-    #expect(loadingModel.effects.contains(.showOverlay(.processing(label: "Loading model..."))))
-  }
+  // PR-5 Rung 5 (#827) deleted: WhisperKit's `.startingUp` + `.loadingModel`
+  // bespoke states are gone. The kernel driver's overlay intent now emits
+  // "Preparing dictation..." for both `.preparing` and `.warmingUp` (Gate 2:
+  // founder accepted the collapsed copy, matching Parakeet's PR-4b.4 shape).
 
   // MARK: - Error path telemetry
 
@@ -272,18 +239,9 @@ struct PipelineStateChangePlannerTests {
     #expect(!plan.effects.contains(.reportDictationCompleted))
   }
 
-  @Test("WhisperKit error state emits reportPipelineFailed")
-  func whisperKitErrorStateEmitsReportPipelineFailed() {
-    let plan = PipelineStateChangePlanner.plan(
-      to: WhisperKitPipelineState.error("whisperkit_load_failed"),
-      pipelineOverlayIntent: .error(message: "whisperkit_load_failed"),
-      isClipboardFallback: false,
-      isAccessibilityToast: false,
-      lastPolishError: nil,
-      hasCurrentTranscript: false
-    )
-    #expect(plan.effects.contains(.reportPipelineFailed(errorCode: "whisperkit_load_failed")))
-  }
+  // PR-5 Rung 5 (#827) deleted: WhisperKit-specific error-state assertion is
+  // redundant now that both backends share `PipelineState.error(_)` (covered
+  // by `errorStateEmitsReportPipelineFailed` above).
 
   // MARK: - Effect ordering guarantees
 
@@ -392,16 +350,7 @@ struct PipelineStateChangePlannerTests {
     #expect(PipelineState.error("x").activity == .error("x"))
   }
 
-  @Test("WhisperKit state activity mapping covers ready + startingUp")
-  func whisperKitActivityMapping() {
-    #expect(WhisperKitPipelineState.idle.activity == .idle)
-    #expect(WhisperKitPipelineState.ready.activity == .idle)
-    #expect(WhisperKitPipelineState.startingUp.activity == .preparing)
-    #expect(WhisperKitPipelineState.loadingModel.activity == .preparing)
-    #expect(WhisperKitPipelineState.recording.activity == .recording)
-    #expect(WhisperKitPipelineState.transcribing.activity == .processing)
-    #expect(WhisperKitPipelineState.polishing.activity == .processing)
-    #expect(WhisperKitPipelineState.complete.activity == .complete)
-    #expect(WhisperKitPipelineState.error("x").activity == .error("x"))
-  }
+  // PR-5 Rung 5 (#827) deleted: WhisperKit's bespoke state-activity mapping
+  // is gone. Both backends now share `PipelineState`, covered by
+  // `parakeetActivityMapping` above.
 }

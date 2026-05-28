@@ -13,7 +13,7 @@ import Testing
 /// PR10 of #763 — behavior tests for `RecordingFinalizer`.
 ///
 /// Deep dispatch paths (Parakeet `await pipeline.cancelRecording()` /
-/// WhisperKit `try await whisperKitPipeline.handle(event: .cancelRecording)`)
+/// WhisperKit `try await whisperKitKernelDriver.handle(event: .cancelRecording)`)
 /// require real pipeline state and are exercised end-to-end via founder /
 /// automated UAT. These tests verify what is mechanically verifiable in a
 /// unit context:
@@ -31,7 +31,7 @@ import Testing
   private struct Fixture {
     let finalizer: RecordingFinalizer
     let kernelDriver: KernelDictationDriver
-    let whisperKitPipeline: WhisperKitPipeline
+    let whisperKitKernelDriver: KernelDictationDriver
     let asr: RouterTestASRManager
     let lockBox: TestRecordingLockedBox
     let overlay: RecordingOverlayPanel
@@ -43,7 +43,7 @@ import Testing
     let store = DictationRuntimeFixtures.tempStore()
     let pipeline = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
-    let whisperKitPipeline = DictationRuntimeFixtures.makeWhisperKitPipeline(
+    let whisperKitKernelDriver = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audio, store: store)
     let overlay = RecordingOverlayPanel()
     let lockBox = TestRecordingLockedBox()
@@ -58,7 +58,7 @@ import Testing
     )
     let finalizer = RecordingFinalizer(
       kernelDriver: pipeline,
-      whisperKitPipeline: whisperKitPipeline,
+      whisperKitKernelDriver: whisperKitKernelDriver,
       asrManager: asr,
       recordingOverlay: overlay,
       heartControlRecovery: hcr,
@@ -68,7 +68,7 @@ import Testing
     return Fixture(
       finalizer: finalizer,
       kernelDriver: pipeline,
-      whisperKitPipeline: whisperKitPipeline,
+      whisperKitKernelDriver: whisperKitKernelDriver,
       asr: asr,
       lockBox: lockBox,
       overlay: overlay

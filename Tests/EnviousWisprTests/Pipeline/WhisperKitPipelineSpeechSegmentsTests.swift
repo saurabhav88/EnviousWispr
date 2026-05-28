@@ -3,7 +3,7 @@ import Testing
 
 @testable import EnviousWisprPipeline
 
-@Suite("WhisperKitPipeline speech-segment routing")
+@Suite("KernelDictationDriver speech-segment routing")
 struct WhisperKitPipelineSpeechSegmentsTests {
   @Test("pipeline passes speech segments to backend options")
   func pipelinePassesSpeechSegmentsToBackend() {

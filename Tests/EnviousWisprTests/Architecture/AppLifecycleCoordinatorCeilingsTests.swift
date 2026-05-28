@@ -18,7 +18,7 @@ import Testing
 /// reference is replaced by the 10 specific homes the launch / become-active /
 /// terminate bodies actually read (`settings`, `permissions`, `keychainManager`,
 /// `customWordsCoordinator`, `aiAvailability`, `audioCapture`, `asrManager`,
-/// `pipeline`, `whisperKitPipeline`, `setup`). This is de-coupling, not
+/// `pipeline`, `whisperKitKernelDriver`, `setup`). This is de-coupling, not
 /// god-object accretion: the coordinator trades one wide god-reference for ten
 /// narrow ones, reads nothing new, and its non-private method count is
 /// unchanged at 3. Allowlist count rises 10 → 19 (3 owned `var` + 16 injected
@@ -40,7 +40,7 @@ import Testing
     "audioCapture",
     "asrManager",
     "kernelDriver",
-    "whisperKitPipeline",
+    "whisperKitKernelDriver",
     "setup",
     "dictationRuntime",
     "dictationLifecycleCoordinator",

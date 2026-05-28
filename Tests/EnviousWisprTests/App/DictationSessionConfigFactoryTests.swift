@@ -35,7 +35,7 @@ struct DictationSessionConfigFactoryTests {
       let config = DictationSessionConfigFactory.make(
         asrManager: harness.asrManager,
         kernelDriver: harness.kernelDriver,
-        whisperKitPipeline: harness.whisperKitPipeline,
+        whisperKitKernelDriver: harness.whisperKitKernelDriver,
         settings: harness.settings,
         triggerSource: source
       )
@@ -86,12 +86,12 @@ struct DictationSessionConfigFactoryTests {
   func autoPasteOnIdleWhisperKit() async throws {
     // Pins the happy path of the WhisperKit branch: when
     // `asrManager.activeBackendType == .whisperKit`, the factory must produce
-    // `autoPasteToActiveApp == true` while `whisperKitPipeline.state == .idle`.
+    // `autoPasteToActiveApp == true` while `whisperKitKernelDriver.state == .idle`.
     //
     // Note on coverage limits (Codex r2 finding): both pipelines start `.idle`
     // at construction, so this test would not catch a hypothetical regression
     // where the factory mistakenly reads `pipeline.state` instead of
-    // `whisperKitPipeline.state`. That mismatch is, however, already prevented
+    // `whisperKitKernelDriver.state`. That mismatch is, however, already prevented
     // by the type system: `WhisperKitPipelineState` includes cases (`.ready`,
     // `.startingUp`) that `PipelineState` does not, so swapping the operand of
     // the WhisperKit `switch` is a compile error. Driving a pipeline to a non-
@@ -137,7 +137,7 @@ struct DictationSessionConfigFactoryTests {
 private struct Harness {
   let asrManager: FactoryFakeASRManager
   let kernelDriver: KernelDictationDriver
-  let whisperKitPipeline: WhisperKitPipeline
+  let whisperKitKernelDriver: KernelDictationDriver
   let settings: SettingsManager
 
   static func make(backend: ASRBackendType) throws -> Harness {
@@ -152,26 +152,15 @@ private struct Harness {
     )
     let audio = try FixtureAudioCapture(fixtureURL: fixture.url)
     let store = TranscriptStore()
-    let keychain = KeychainManager()
-    let pipeline = KernelDictationDriverFactory.makeForParakeet(inputs: .init(
-      audioCapture: audio,
-      asrManager: asr,
-      transcriptStore: store,
-      keychainManager: KeychainManager(),
-      captureTelemetry: CaptureTelemetryState(),
-      pasteCompletionRegistry: PasteCompletionRegistry()
-    ))
-    let whisperKitPipeline = WhisperKitPipeline(
-      audioCapture: audio,
-      backend: WhisperKitBackend(),
-      transcriptStore: store,
-      keychainManager: keychain
-    )
+    let pipeline = DictationRuntimeFixtures.makeParakeetDriver(
+      audioCapture: audio, asrManager: asr, store: store)
+    let whisperKitKernelDriver = DictationRuntimeFixtures.makeWhisperKitPipeline(
+      audioCapture: audio, store: store)
     let settings = SettingsManager()
     return Harness(
       asrManager: asr,
       kernelDriver: pipeline,
-      whisperKitPipeline: whisperKitPipeline,
+      whisperKitKernelDriver: whisperKitKernelDriver,
       settings: settings
     )
   }
@@ -180,7 +169,7 @@ private struct Harness {
     DictationSessionConfigFactory.make(
       asrManager: asrManager,
       kernelDriver: kernelDriver,
-      whisperKitPipeline: whisperKitPipeline,
+      whisperKitKernelDriver: whisperKitKernelDriver,
       settings: settings,
       triggerSource: triggerSource
     )

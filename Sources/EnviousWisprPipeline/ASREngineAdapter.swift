@@ -320,11 +320,23 @@ public protocol ASREngineAdapter: AnyObject {
   func cancelPendingUnload()
 
   /// Receive the voiced-speech segments computed by the kernel's VAD at the
-  /// stop boundary. The adapter MAY use them to derive engine-specific
-  /// decode parameters (the second engine derives `clipTimestamps`). Default
-  /// no-op. The kernel calls this (in Rung 2B+) once per session, after VAD
-  /// finalize, before `finalize(batchSamples:)`.
-  func observeSpeechSegments(_ segments: [SpeechSegment])
+  /// stop boundary, together with the authoritative raw capture audio those
+  /// segments are indexed against. The adapter MAY use them to derive
+  /// engine-specific decode parameters (the second engine derives
+  /// `clipTimestamps`). Default no-op. The kernel calls this (in Rung 2B+)
+  /// once per session, after VAD finalize, before `finalize(batchSamples:)`.
+  ///
+  /// `rawCaptureSamples` is the kernel's `captureResult.samples` — the SAME
+  /// buffer the segment offsets index into. An adapter that decodes with
+  /// `clipTimestamps` (WhisperKit) MUST batch-decode THIS buffer (padded),
+  /// not its own `onBufferCaptured`-fed `retainedPCM` shadow copy: the shadow
+  /// copy is rebuilt from a separate, lossy async stream and diverges in
+  /// length from `captureResult.samples`, so segment offsets indexed against
+  /// the latter overrun the former and WhisperKit's clip seek returns
+  /// "Audio samples are nil" (PR-5 Rung 5 UAT #827 — restores OLD
+  /// `WhisperKitPipeline.swift:614-615` single-coordinate parity). Adapters
+  /// that do not consume segments ignore the parameter.
+  func observeSpeechSegments(_ segments: [SpeechSegment], rawCaptureSamples: [Float])
 }
 
 extension ASREngineAdapter {
@@ -337,5 +349,7 @@ extension ASREngineAdapter {
   // with meaningful semantics override; the others inherit these.
   public func warmUpFromCache() async throws {}
   public func cancelPendingUnload() {}
-  public func observeSpeechSegments(_ segments: [SpeechSegment]) {}
+  public func observeSpeechSegments(
+    _ segments: [SpeechSegment], rawCaptureSamples: [Float]
+  ) {}
 }

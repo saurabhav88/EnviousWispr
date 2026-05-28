@@ -41,8 +41,9 @@ import Testing
         llmPolish: LLMPolishStep(keychainManager: KeychainManager()))
       let outcome = KernelFinalizationOutcome()
       let context = KernelSessionContext()
+      let adapter = FakeEngine(behavior: .batchSuccess(text: "x"), clock: FakeClock())
       let kernel = RecordingSessionKernel(
-        adapter: FakeEngine(behavior: .batchSuccess(text: "x"), clock: FakeClock()),
+        adapter: adapter,
         audioCapture: FakeAudioCapture(),
         vad: FakeVADSignalSource(),
         currentTick: { 0 }, sleepTicks: { _ in },
@@ -56,7 +57,7 @@ import Testing
         emitLifecycleEvent: { _ in })
       let driver = KernelDictationDriver(
         kernel: kernel, observer: observer, outcome: outcome,
-        context: context, steps: steps)
+        context: context, steps: steps, adapter: adapter)
       driver.start()
       return Fixture(driver: driver, kernel: kernel, context: context, steps: steps)
     }

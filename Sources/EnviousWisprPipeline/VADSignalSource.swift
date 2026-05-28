@@ -60,9 +60,19 @@ public enum VADSpeechEvidence: Equatable, Sendable {
 /// in-process detector or the XPC service-side one.
 @MainActor
 public protocol VADSignalSource: AnyObject {
-  /// Stream of stop-driving signals (auto-stop, max-duration). The kernel
-  /// latches a stop on each.
-  var stopSignals: AsyncStream<VADStopSignal> { get }
+  /// Open a fresh per-subscriber stream of stop-driving signals (auto-stop,
+  /// max-duration). The kernel latches a stop on each delivered signal.
+  ///
+  /// PR-5 Rung 5 (#827) Codex code-diff r1 P1: a single shared
+  /// `AsyncStream` cannot be safely consumed by two kernel drivers
+  /// (Parakeet + WhisperKit) — `AsyncStream` delivers each yielded item to
+  /// exactly one iterator, and overlap between two `for await` loops makes
+  /// signal delivery non-deterministic. Each call returns a NEW stream
+  /// backed by its own continuation; the source broadcasts every yield to
+  /// every live subscriber so both drivers receive every signal. The
+  /// per-subscriber continuation is removed automatically on iterator
+  /// cancellation via `onTermination`.
+  func subscribeStopSignals() -> AsyncStream<VADStopSignal>
 
   /// The speech-evidence verdict at stop. Read once when the kernel enters
   /// `stopping`.

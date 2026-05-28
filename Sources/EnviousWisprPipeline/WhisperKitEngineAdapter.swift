@@ -24,38 +24,29 @@ import Foundation
 // Scope (epic §4): an adapter owns its own ASR and rescue and NOTHING else —
 // no capture, no finalization, no paste, no UI, no FSM, no kernel state. The
 // adapter holds legitimate engine-session bookkeeping (a session ID, decode
-// options, an `isTerminal`/`isCancelled` pair, the retained PCM, the observed
-// speech segments, the LID result, held async-task handles).
+// options, an `isTerminal`/`isCancelled` pair, the retained PCM (live worker
+// only), the authoritative batch-capture buffer, the observed speech segments,
+// the LID result, held async-task handles).
 //
-// Coordinate-space (epic §0.5 LESSON `observeSpeechSegments-coordinate-space`):
-// the kernel's `observeSpeechSegments` hands speech segments in
-// raw-capture-sample coordinates. The adapter stores them as-is and decodes
-// against its own `retainedPCM`, which accumulates the same raw buffers the
-// kernel saw — so segment-derived `clipTimestamps` (the #452/#560
-// hallucination-suppression mechanism) stay coordinate-aligned. The
-// `finalize(batchSamples:)` parameter is intentionally ignored: any
-// kernel-conditioned audio (silence stripped in place by the kernel's
-// `CapturedAudioConditioner`) would shift the time origin and invalidate the
-// `clipTimestamps`. The protocol comment at `ASREngineAdapter.swift:240-247`
-// carves this out: engines whose decode requires raw-coordinate audio MUST
-// document the deviation here and use their own retained source. The Parakeet
+// Coordinate-space (epic §0.5 LESSON `observeSpeechSegments-coordinate-space`;
+// hardened by PR-5 Rung 5 UAT #827): the kernel's `observeSpeechSegments` hands
+// the adapter BOTH the voiced speech segments AND the authoritative raw capture
+// audio (`captureResult.samples`) they index into. The adapter batch-decodes
+// THAT buffer (`batchCaptureSamples`, padded) with segment-derived
+// `clipTimestamps` (the #452/#560 hallucination-suppression mechanism) — a
+// single coordinate source, so segments can never overrun the decode buffer.
+// The `finalize(batchSamples:)` parameter is intentionally ignored: it carries
+// the kernel's VAD-FILTERED `conditioned.samples` (silence stripped in place),
+// a different coordinate than the raw-sample segments. The earlier shape
+// decoded the adapter's own `onBufferCaptured`-fed `retainedPCM` and shifted
+// segments by `retainedPCM.count - capturedSamplesCount`; that shadow buffer is
+// async/lossy and diverges in length from `captureResult.samples`, so the shift
+// (always 0 in practice — retainedPCM is SHORTER, not longer) left segment ends
+// overrunning the buffer and WhisperKit threw "Audio samples are nil" on
+// alternating recordings. Restored OLD `WhisperKitPipeline.swift:614-615`
+// single-capture-coordinate parity. `retainedPCM` now feeds ONLY the live
+// incremental worker (best-effort, tolerates the lossiness). The Parakeet
 // adapter MUST use `batchSamples`; this adapter MUST NOT.
-//
-// PR-5 Rung 3 ships this production-unwired: no factory site, no App caller.
-// `KernelDictationDriverFactory` still constructs only `ParakeetEngineAdapter`
-// (Rung 4 will add the factory branch); `WhisperKitPipeline.swift` still owns
-// every WhisperKit recording in production (Rung 5 cutover deletes it).
-//
-// TODO(#827 Rung 5 cutover): the Codex code-diff review of this rung flagged a
-// pre-roll coordinate-space concern — if the kernel feeds pre-roll buffers
-// through `acceptAudio` before / after the kernel's `captureResult.samples`
-// origin, the segment offsets the kernel computes from `captureResult.samples`
-// would not align with this adapter's `retainedPCM`. Rung 3 ships
-// production-unwired (zero kernel callers), so the bug cannot fire today; the
-// Rung 5 plan MUST verify the kernel's `acceptAudio` feed and
-// `observeSpeechSegments` segment-source share the same coordinate origin,
-// translate offsets if not, and cover the case with a 5-language Live UAT
-// matrix run on a real Mac.
 
 /// The kernel-facing `ASREngineAdapter` conformer for WhisperKit. Drives the
 /// underlying WhisperKit actor through a local `package` protocol seam
@@ -112,19 +103,31 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
 
   // MARK: Audio + speech segments
 
-  /// The whole session's 16 kHz mono Float32 samples, accumulated from every
-  /// `acceptAudio(_:)`. The WhisperKit adapter decodes batch-only over this
-  /// buffer (no streaming) — the kernel hands buffers piecemeal and the
-  /// adapter retains them so `finalize` has the full session audio.
-  /// Cleared on `cancel()` and at the tail of `finalize()`.
+  /// Live per-buffer accumulation from every `acceptAudio(_:)`, fed via
+  /// `onBufferCaptured` during capture. Used ONLY by the incremental worker's
+  /// live `audioSamplesProvider` (locked-language mode). It is NOT the
+  /// batch-decode buffer: this stream is async/lossy and diverges in length
+  /// from the kernel's authoritative `captureResult.samples`, so using it for
+  /// the post-stop batch decode caused the "Audio samples are nil" alternating
+  /// failure (PR-5 Rung 5 UAT #827). Batch decode uses `batchCaptureSamples`
+  /// instead. The worker stays best-effort by design and tolerates the
+  /// lossiness; the batch path does not. Cleared on `cancel()` / `finalize()`.
   private var retainedPCM: [Float] = []
 
+  /// The authoritative raw capture audio for batch decode — the kernel's
+  /// `captureResult.samples`, handed in by `observeSpeechSegments` at the stop
+  /// boundary. This is the SAME buffer `observedSpeechSegments` index into, so
+  /// `clipTimestamps` derived from the segments stay in-range. Restores OLD
+  /// `WhisperKitPipeline.swift:614-615` single-coordinate parity (#827).
+  private var batchCaptureSamples: [Float] = []
+
   /// Speech segments handed in by the kernel's `observeSpeechSegments` hook
-  /// (Rung 2B). Coordinates are raw-capture-sample positions matching
-  /// `retainedPCM`. Used to derive `clipTimestamps` for WhisperKit's VAD-driven
-  /// clip-seek (the #452/#560 hallucination-suppression mechanism) and to
-  /// filter LID audio to voiced-only ranges. Cleared on `cancel()` /
-  /// `beginSession()` and after `finalize()` commits.
+  /// (Rung 2B). Coordinates are raw-capture-sample positions indexing into
+  /// `batchCaptureSamples` (NO pre-roll shift — same coordinate). Used to
+  /// derive `clipTimestamps` for WhisperKit's VAD-driven clip-seek (the
+  /// #452/#560 hallucination-suppression mechanism) and to filter LID audio to
+  /// voiced-only ranges. Cleared on `cancel()` / `beginSession()` and after
+  /// `finalize()` commits.
   private var observedSpeechSegments: [SpeechSegment] = []
 
   /// Cap on `retainedPCM` — `maxRecordingDuration` worth of 16 kHz mono samples
@@ -284,6 +287,10 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     lastLanguageDetection = nil
     retainedPCM.removeAll(keepingCapacity: true)
     observedSpeechSegments.removeAll()
+    // Clear the authoritative batch buffer so a session that reaches finalize
+    // without `observeSpeechSegments` can never decode a prior session's audio
+    // (#827).
+    batchCaptureSamples.removeAll(keepingCapacity: true)
     // PR-5 Rung 4.5 (#827): the audio-capture session id is read at
     // finalize entry into a function-local snapshot, not here — kernel
     // calls `beginSession` BEFORE `beginCapturePhase` mints the id, and
@@ -380,25 +387,37 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     appendRetainedPCM(from: buffer.buffer)
   }
 
-  /// Store the kernel's VAD-derived speech segments. Coordinates are
-  /// raw-capture-sample positions — same coordinate space as `retainedPCM`,
-  /// so `clipTimestamps` derived from these are aligned to the audio the
-  /// decoder actually sees.
-  func observeSpeechSegments(_ segments: [SpeechSegment]) {
+  /// Store the kernel's authoritative raw capture audio (`captureResult.samples`)
+  /// and the VAD-derived speech segments that index into it. Segments and audio
+  /// share one coordinate space, so NO offset shift is applied — `finalize`
+  /// batch-decodes `batchCaptureSamples` (padded) with `clipTimestamps` derived
+  /// directly from `observedSpeechSegments`. This restores OLD
+  /// `WhisperKitPipeline.swift:614-615` parity (single capture-coordinate
+  /// source) and fixes the alternating "Audio samples are nil" failure that the
+  /// prior `retainedPCM`-shadow-buffer + pre-roll-shift approach caused, since
+  /// the shadow buffer diverged in length from `captureResult.samples`
+  /// (PR-5 Rung 5 UAT #827).
+  func observeSpeechSegments(
+    _ segments: [SpeechSegment], rawCaptureSamples: [Float]
+  ) {
     // Drop calls without a live session OR after the session went
     // terminal/cancelled (Codex r7 matrix S0/S3/S4/S6). A late observe
     // from a prior session must NOT repopulate the fresh adapter state.
     guard sessionID != nil, !isTerminal, !isCancelled else { return }
+    batchCaptureSamples = rawCaptureSamples
     observedSpeechSegments = segments
   }
 
   /// Finalize: LID → transcribe with `clipTimestamps` derived from observed
   /// segments → incremental-worker-result-or-batch-fallback. After `cancel()`,
-  /// returns `.cancelled`. **MUST NOT use `batchSamples`** — see the
+  /// returns `.cancelled`. **MUST NOT use `batchSamples`** (it is the kernel's
+  /// VAD-filtered `conditioned.samples`, a different coordinate) — see the
   /// coordinate-space note above and the protocol comment at
-  /// `ASREngineAdapter.swift:240-247`. Uses adapter-owned `retainedPCM` for
-  /// every decode in this finalize call so segment-derived `clipTimestamps`
-  /// stay coordinate-aligned.
+  /// `ASREngineAdapter.swift:240-247`. Batch-decodes `batchCaptureSamples` (the
+  /// authoritative raw `captureResult.samples` handed in by
+  /// `observeSpeechSegments`) so segment-derived `clipTimestamps` stay
+  /// coordinate-aligned (#827). `retainedPCM` feeds only the live incremental
+  /// worker, never this batch decode.
   func finalize(batchSamples: [Float]?) async -> ASREngineOutcome {
     _ = batchSamples  // intentionally ignored — see coordinate-space note
     lastFailureError = nil
@@ -418,8 +437,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     let sessionIDForLog = audioCaptureSessionIDSource()
     if isCancelled {
       isTerminal = true
-      retainedPCM.removeAll()
-      observedSpeechSegments.removeAll()
+      clearSessionBuffers()
       return .cancelled
     }
     // Entry guard: no active session OR already-terminal session must not
@@ -445,9 +463,14 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     // `WhisperKitPipeline.swift:694-718` was a pipeline-level defense; in
     // the kernel-driven model the kernel owns that gate.
     let minimumSamples = AudioConstants.minimumTranscriptionSamples
-    let rawSamples = retainedPCM
+    // Batch decode over the kernel's authoritative `captureResult.samples`
+    // (handed in via `observeSpeechSegments`), NOT the lossy `retainedPCM`
+    // shadow buffer — the segments index into THIS buffer, so `clipTimestamps`
+    // stay in range (PR-5 Rung 5 UAT #827 fix; OLD parity at
+    // `WhisperKitPipeline.swift:614-615`).
+    let rawSamples = batchCaptureSamples
 
-    // Sample shaping for LID + ASR. ASR runs over raw retained PCM (padded);
+    // Sample shaping for LID + ASR. ASR runs over raw capture audio (padded);
     // LID runs over voiced-only audio (with raw fallback if voiced is too short).
     let speechSegments = observedSpeechSegments
     let asrSamples = WhisperKitPipelineSpeechRouting.paddedASRSamples(
@@ -660,7 +683,31 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
           )
         }
       } else {
-        // Batch fallback over raw retained PCM.
+        // Batch fallback over the raw capture buffer. PR-5 Rung 5 Pass 2 #7:
+        // log the fallback reason so debug-build readers can grep app.log
+        // for the worker→batch handoff (parity with the OLD
+        // `WhisperKitPipeline.swift:898-914` fallback log).
+        Task {
+          [
+            decodes = workerResult.decodeCount,
+            samplesCovered = workerResult.samplesCovered,
+            totalSamples = rawSamples.count,
+            strategy = workerResult.strategy,
+            mode = workerResult.mode,
+            chars = (workerResult.text ?? "").count
+          ] in
+          let coveragePct =
+            totalSamples > 0
+            ? String(format: "%.1f", Double(samplesCovered) / Double(totalSamples) * 100)
+            : "0"
+          await AppLogger.shared.log(
+            "WhisperKit incremental worker rejected — falling back to batch "
+              + "(strategy=\(strategy), mode=\(mode), decodes=\(decodes), "
+              + "coverage=\(samplesCovered)/\(totalSamples) (\(coveragePct)%), chars=\(chars))",
+            level: .info, category: "WhisperKitEngineAdapter"
+          )
+        }
+        let batchFallbackStart = CFAbsoluteTimeGetCurrent()
         logLIDPerfSignpost(
           "t_asr_start",
           sessionID: sessionIDForLog,
@@ -689,17 +736,35 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
           diagnostics.batchRescueResultChars = trimmed.count
           asrText = trimmed
           asrLanguage = result.language
+          // PR-5 Rung 5 Pass 2 #7: log batch timing so worker→batch
+          // fallback duration is debuggable (OLD `WhisperKitPipeline.swift:945-950`).
+          let batchMs = Int((CFAbsoluteTimeGetCurrent() - batchFallbackStart) * 1000)
+          Task { [chars = trimmed.count] in
+            await AppLogger.shared.log(
+              "WhisperKit batch fallback complete: chars=\(chars) (\(batchMs)ms)",
+              level: .info, category: "WhisperKitEngineAdapter"
+            )
+          }
         case .cancelled:
           isTerminal = true
-          retainedPCM.removeAll()
-          observedSpeechSegments.removeAll()
+          clearSessionBuffers()
           return .cancelled
         case .failed(let error):
+          // PR-5 Rung 5 Pass 2 #4: app.log line for the decode-failure
+          // path — without it the user sees "ASR Failed" and the local
+          // debug log has zero signature to grep (the UAT-caught gap).
+          // Sentry still receives the error via `lastFailureError` →
+          // `KernelLifecycleTelemetrySink`.
+          Task { [desc = error.localizedDescription] in
+            await AppLogger.shared.log(
+              "WhisperKit batch-fallback decode failed: \(desc)",
+              level: .info, category: "WhisperKitEngineAdapter"
+            )
+          }
           lastFailureError = error
           lastASRDiagnostics = diagnostics
           isTerminal = true
-          retainedPCM.removeAll()
-          observedSpeechSegments.removeAll()
+          clearSessionBuffers()
           return .failed(.decodeFailed)
         }
       }
@@ -735,15 +800,22 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
         asrLanguage = result.language
       case .cancelled:
         isTerminal = true
-        retainedPCM.removeAll()
-        observedSpeechSegments.removeAll()
+        clearSessionBuffers()
         return .cancelled
       case .failed(let error):
+        // PR-5 Rung 5 Pass 2 #4: app.log line for the auto-mode batch
+        // decode-failure path — same parity rationale as the
+        // worker→batch fallback failure branch above.
+        Task { [desc = error.localizedDescription] in
+          await AppLogger.shared.log(
+            "WhisperKit batch decode failed: \(desc)",
+            level: .info, category: "WhisperKitEngineAdapter"
+          )
+        }
         lastFailureError = error
         lastASRDiagnostics = diagnostics
         isTerminal = true
-        retainedPCM.removeAll()
-        observedSpeechSegments.removeAll()
+        clearSessionBuffers()
         return .failed(.decodeFailed)
       }
     }
@@ -774,8 +846,7 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
     // between here and `return`, so the guard above protects every write.
     lastASRDiagnostics = diagnostics
     isTerminal = true
-    retainedPCM.removeAll()
-    observedSpeechSegments.removeAll()
+    clearSessionBuffers()
 
     if asrText.isEmpty {
       // Past the kernel's VAD gate, an empty decode is a real ASR failure;
@@ -814,15 +885,27 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
   /// progress signal. Same `nil` semantics as `loadProgress`.
   var finalizeProgress: AsyncStream<ASRFinalizeProgressTick>? { nil }
 
+  /// Reset every per-session audio buffer at a terminal/cancel boundary. One
+  /// place so a future buffer field added to the session lifecycle can't be
+  /// silently missed at a cleanup site (#827 — the bug that caused this fix
+  /// was exactly a buffer not tracked alongside its peers). `beginSession`
+  /// does its own capacity-retaining reset; this is the free-memory variant
+  /// for terminal/cancel.
+  private func clearSessionBuffers() {
+    retainedPCM.removeAll()
+    observedSpeechSegments.removeAll()
+    batchCaptureSamples.removeAll()
+  }
+
   /// Idempotent discard. Cancels held tasks (prepare, model-unload timer) and
-  /// the incremental worker; clears retained audio + segments + LID result.
+  /// the incremental worker; clears retained audio + segments + capture buffer
+  /// + LID result.
   func cancel() async {
     isCancelled = true
     isTerminal = true
     lastResult = nil
     lastLanguageDetection = nil
-    retainedPCM.removeAll()
-    observedSpeechSegments.removeAll()
+    clearSessionBuffers()
     prepareTask?.cancel()
     prepareTask = nil
     modelUnloadTask?.cancel()
@@ -988,6 +1071,48 @@ final class WhisperKitEngineAdapter: ASREngineAdapter {
 // MARK: - ASREngineTelemetryProviding conformance
 
 extension WhisperKitEngineAdapter: ASREngineTelemetryProviding {}
+
+// MARK: - PR-5 Rung 5 (#827) — optional capability conformances
+
+extension WhisperKitEngineAdapter: ASREngineLanguageIdentifying {}
+
+extension WhisperKitEngineAdapter: ASREngineCacheModelLoadable {
+  /// Silent model pre-load matching the OLD `WhisperKitPipeline.prepareBackendSilently()`
+  /// at `:349-377` byte-for-byte: checks `backend.isReady`, calls
+  /// `backend.prepareIfCached()` (cache-only, no download), logs the three OLD
+  /// messages to AppLogger under the surviving `"WhisperKitPipeline"` category,
+  /// swallows errors. Called from `KernelDictationDriver.prepareBackendSilently()`
+  /// via the `as? any ASREngineCacheModelLoadable` cast on the adapter.
+  package func prepareModelIfCached() async {
+    let isBackendReady = await backend.isReady
+    guard !isBackendReady else { return }
+    do {
+      let loaded = try await backend.prepareIfCached()
+      if loaded {
+        Task {
+          await AppLogger.shared.log(
+            "WhisperKit model pre-loaded successfully (background)",
+            level: .info, category: "WhisperKitPipeline"
+          )
+        }
+      } else {
+        Task {
+          await AppLogger.shared.log(
+            "WhisperKit model not cached, skipping silent pre-load",
+            level: .info, category: "WhisperKitPipeline"
+          )
+        }
+      }
+    } catch {
+      Task {
+        await AppLogger.shared.log(
+          "WhisperKit model pre-load failed: \(error.localizedDescription)",
+          level: .info, category: "WhisperKitPipeline"
+        )
+      }
+    }
+  }
+}
 
 // MARK: - Test-only inspectors (`@testable import` reaches `internal`)
 

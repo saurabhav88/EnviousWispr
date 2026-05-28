@@ -29,17 +29,19 @@ struct HandsFreeLockTests {
     Self.assertResetsLockForCases(parakeetSwitch, cases: [".error", ".idle", ".complete"])
   }
 
-  @Test(
-    "WhisperKit observer resets isRecordingLocked on .error / .idle / .ready / .complete")
+  @Test("WhisperKit observer resets isRecordingLocked on .error / .idle / .complete")
   func testHandsFreeLockClearedOnComplete_whisperKit() throws {
     let body = try Self.classBodyOfCoordinator()
+    // PR-5 Rung 5 (#827) — handler now switches on `PipelineState`; the
+    // bespoke WhisperKit `.ready` and `.startingUp` cases collapsed into
+    // `.idle` and `.loadingModel` respectively.
     let whisperKitSwitch = try Self.extractSwitch(
       in: body,
       switchedOn: "newState",
-      after: "private func handleWhisperKit(newState: WhisperKitPipelineState) {"
+      after: "private func handleWhisperKit(newState: PipelineState) {"
     )
     Self.assertResetsLockForCases(
-      whisperKitSwitch, cases: [".error", ".idle", ".ready", ".complete"])
+      whisperKitSwitch, cases: [".error", ".idle", ".complete"])
   }
 
   // MARK: - Source-level helpers

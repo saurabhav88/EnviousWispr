@@ -202,23 +202,9 @@ struct PipelineStateChangeHandlerTests {
     #expect(calls.failedCalls.isEmpty)
   }
 
-  @Test("WhisperKit .ready cancels warning and does not emit completion telemetry")
-  func whisperKitReadyCancelsWarning() {
-    let spy = OverlaySpy()
-    let calls = CallbackRecorder()
-    let handler = Self.makeHandler(overlay: spy, callbacks: calls)
-
-    handler.handle(
-      to: WhisperKitPipelineState.ready,
-      pipelineOverlayIntent: .hidden,
-      lastPolishError: nil,
-      currentTranscript: nil
-    )
-
-    #expect(calls.cancelWarningCount == 1)
-    #expect(calls.appendedCalls.count == 0)
-    #expect(calls.completedCalls.isEmpty)
-  }
+  // PR-5 Rung 5 (#827) deleted: the bespoke WhisperKit `.ready` case is gone;
+  // the kernel driver maps it onto `PipelineState.idle`. The equivalent
+  // behavior is covered by the `.idle`-state assertions in this suite.
 
   // MARK: - Error path
 

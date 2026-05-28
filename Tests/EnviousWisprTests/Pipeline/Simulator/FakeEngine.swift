@@ -411,9 +411,15 @@ final class FakeEngine: ASREngineAdapter {
     }
   }
 
-  func observeSpeechSegments(_ segments: [SpeechSegment]) {
+  /// Most-recent `rawCaptureSamples` argument from `observeSpeechSegments`
+  /// — exposed for kernel-seam tests asserting the adapter receives the
+  /// authoritative `captureResult.samples` (#827).
+  private(set) var lastObservedRawCaptureSamples: [Float] = []
+
+  func observeSpeechSegments(_ segments: [SpeechSegment], rawCaptureSamples: [Float]) {
     observeSpeechSegmentsCallCount += 1
     lastObservedSpeechSegments = segments
+    lastObservedRawCaptureSamples = rawCaptureSamples
     eventLog.append(.observeSpeechSegments(count: segments.count))
   }
 

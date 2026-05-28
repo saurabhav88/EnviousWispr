@@ -52,9 +52,10 @@ def _resolve_ptt_key(fallback="rcmd"):
 
 def tts(sentence="The quick brown fox jumps over the lazy dog", voice="echo", engine="openai"):
     """Generate audio from text. engine='openai' (natural) or 'say' (local fallback). Returns file path."""
-    if engine == "openai" and os.path.exists(_OPENAI_KEY_FILE):
+    env_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if engine == "openai" and (env_key or os.path.exists(_OPENAI_KEY_FILE)):
         import urllib.request, json
-        key = open(_OPENAI_KEY_FILE).read().strip()
+        key = env_key if env_key else open(_OPENAI_KEY_FILE).read().strip()
         req = urllib.request.Request(
             "https://api.openai.com/v1/audio/speech",
             data=json.dumps({"model": "tts-1-hd", "input": sentence, "voice": voice}).encode(),

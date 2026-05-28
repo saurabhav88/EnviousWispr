@@ -324,9 +324,30 @@ public actor WhisperKitBackend: ASRBackend {
       let sampleRate = Float(WhisperKit.sampleRate)
       var clipTimestamps: [Float] = []
       clipTimestamps.reserveCapacity(options.speechSegments.count * 2)
+      var didClamp = false
       for segment in options.speechSegments {
-        clipTimestamps.append(Float(segment.startSample) / sampleRate)
-        clipTimestamps.append(Float(segment.endSample) / sampleRate)
+        // Safety clamp (#827): a segment whose bounds exceed the audio length
+        // makes WhisperKit's clip seek select an out-of-range window and throw
+        // "Audio samples are nil". The primary fix (single capture-coordinate
+        // source) keeps segments in range, so this clamp must never fire in
+        // normal operation — if it does, a coordinate regression has returned
+        // and the log below is the signal. Clamp bounds into [0, sampleCount]
+        // but preserve the segment (including in-range zero-width pairs, which
+        // are a long-standing contract — WhisperKit tolerates [t, t]).
+        let start = max(0, min(segment.startSample, sampleCount))
+        let end = max(start, min(segment.endSample, sampleCount))
+        if segment.startSample != start || segment.endSample != end { didClamp = true }
+        clipTimestamps.append(Float(start) / sampleRate)
+        clipTimestamps.append(Float(end) / sampleRate)
+      }
+      if didClamp {
+        let requestedMax = options.speechSegments.map(\.endSample).max() ?? 0
+        Task {
+          await AppLogger.shared.log(
+            "WARNING clipTimestamps clamped: requested max endSample=\(requestedMax) "
+              + "audioSamples=\(sampleCount) — coordinate regression (#827)",
+            level: .info, category: "WhisperKitBackend")
+        }
       }
       opts.clipTimestamps = clipTimestamps
     }

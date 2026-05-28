@@ -25,13 +25,17 @@ import Observation
 /// it fails, switch to concrete types before PR merge.
 ///
 /// **Ceiling-raise note (3 → 4 stored).** The four sources of truth
-/// (`kernelDriver`, `whisperKitPipeline`, `audioCapture`, `asrManager`) reflect
-/// real root-state code; bundling them into a lens value-type would hide the
-/// count rather than reduce coupling. Bible §30 entry filed.
+/// (`kernelDriver`, `whisperKitKernelDriver`, `audioCapture`, `asrManager`)
+/// reflect real root-state code; bundling them into a lens value-type would
+/// hide the count rather than reduce coupling. Bible §30 entry filed.
+/// PR-5 Rung 5 (#827) replaced the legacy WhisperKit pipeline class with a
+/// second `KernelDictationDriver`; both backends now share the same
+/// `PipelineState` vocabulary natively, so the prior state-bridge file is
+/// gone.
 @Observable @MainActor
 final class LiveRecordingState {
   let kernelDriver: KernelDictationDriver
-  let whisperKitPipeline: WhisperKitPipeline
+  let whisperKitKernelDriver: KernelDictationDriver
   let audioCapture: any AudioCaptureInterface
   let asrManager: any ASRManagerInterface
 
@@ -42,23 +46,22 @@ final class LiveRecordingState {
 
   init(
     kernelDriver: KernelDictationDriver,
-    whisperKitPipeline: WhisperKitPipeline,
+    whisperKitKernelDriver: KernelDictationDriver,
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface
   ) {
     self.kernelDriver = kernelDriver
-    self.whisperKitPipeline = whisperKitPipeline
+    self.whisperKitKernelDriver = whisperKitKernelDriver
     self.audioCapture = audioCapture
     self.asrManager = asrManager
   }
 
   /// Current pipeline phase. Routes through whichever backend is active per
-  /// `asrManager.activeBackendType`; WhisperKit's distinct state enum is
-  /// bridged via `WhisperKitPipelineState.asPipelineState`. Replaces the
-  /// pre-PR7 root-state getter.
+  /// `asrManager.activeBackendType`. Both drivers expose `PipelineState`
+  /// natively post-Rung 5, so no bridge is needed.
   var pipelineState: PipelineState {
     if asrManager.activeBackendType == .whisperKit {
-      return whisperKitPipeline.state.asPipelineState
+      return whisperKitKernelDriver.state
     }
     return kernelDriver.state
   }
@@ -75,7 +78,7 @@ final class LiveRecordingState {
   /// the former root state getter.
   var currentTranscript: Transcript? {
     if asrManager.activeBackendType == .whisperKit {
-      return whisperKitPipeline.currentTranscript
+      return whisperKitKernelDriver.currentTranscript
     }
     return kernelDriver.currentTranscript
   }
@@ -89,6 +92,6 @@ extension LiveRecordingState: DictationActivityProviding {
   /// True when either pipeline is recording, transcribing, or polishing. Used
   /// by `TranscriptPolishService` to block a re-polish during live dictation.
   var isDictationActive: Bool {
-    kernelDriver.state.isActive || whisperKitPipeline.state.isActive
+    kernelDriver.state.isActive || whisperKitKernelDriver.state.isActive
   }
 }

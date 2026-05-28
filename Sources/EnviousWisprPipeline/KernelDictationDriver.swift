@@ -54,6 +54,12 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
   private let outcome: KernelFinalizationOutcome
   private let steps: LimbSteps
 
+  /// PR-5 Rung 5 (#827): the adapter the kernel drives. Held by the driver
+  /// so `prepareBackendSilently()` can route to the adapter's optional
+  /// `ASREngineCacheModelLoadable` capability. Package-scoped — the only
+  /// reader outside this file is internal-test code in the same module.
+  package let adapter: any ASREngineAdapter
+
   /// The per-session context the wiring's closures read (PR-4 §3.3 — "captured
   /// by the driver and threaded into the wiring"). PR-4a holds it; PR-4b's
   /// `handle(.toggleRecording)` is the writer — it records the frozen config
@@ -80,14 +86,26 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
     observer: KernelHeartPathTelemetryObserver,
     outcome: KernelFinalizationOutcome,
     context: KernelSessionContext,
-    steps: LimbSteps
+    steps: LimbSteps,
+    adapter: any ASREngineAdapter
   ) {
     self.kernel = kernel
     self.observer = observer
     self.outcome = outcome
     self.context = context
     self.steps = steps
+    self.adapter = adapter
     self.lastFiredState = Self.pipelineState(for: kernel.state, externalError: nil)
+  }
+
+  /// PR-5 Rung 5 (#827) — silent pre-load entry point matching OLD
+  /// `WhisperKitPipeline.prepareBackendSilently()`. Forwards to the adapter
+  /// only when the adapter caches models (WhisperKit conforms to
+  /// `ASREngineCacheModelLoadable`); no-op for Parakeet (does not conform,
+  /// the cast returns nil). Called from `SetupCoordinator.preloadAction`
+  /// at App init.
+  package func prepareBackendSilently() async {
+    await (adapter as? any ASREngineCacheModelLoadable)?.prepareModelIfCached()
   }
 
   /// Begin observing the kernel for `onStateChange` fan-out.
@@ -260,12 +278,21 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
       // Kernel won't reach `.asrInterrupted` from here, so the lifecycle
       // sink's `.asrInterrupted(wasRecording:)` handler never fires —
       // emit the captureError directly with `was_recording == false`.
+      // PR-5 Rung 5 Pass 2 #3 — restore the `backend` extra and the
+      // backend-named error message from OLD `WhisperKitPipeline.swift:1215-1221`
+      // so this direct-emit fallback path carries parity with the sink
+      // path's tagging.
+      let backendID = adapter.engineIdentity.rawValue
+      let backendLabel =
+        adapter.engineIdentity.backendType == .whisperKit ? "WhisperKit" : "Parakeet"
       SentryBreadcrumb.captureError(
         NSError(
           domain: "EnviousWispr", code: -3,
-          userInfo: [NSLocalizedDescriptionKey: "ASR XPC service crashed"]),
+          userInfo: [
+            NSLocalizedDescriptionKey: "ASR XPC service crashed (\(backendLabel))"
+          ]),
         category: .xpcServiceError, stage: "asr",
-        extra: ["was_recording": false])
+        extra: ["was_recording": false, "backend": backendID])
       setExternalError(Self.asrInterruptedMessage)
     case .idle, .completed, .failed, .cancelled, .discarded, .noSpeech,
       .audioInterrupted, .asrInterrupted:

@@ -96,6 +96,41 @@ struct ASREmptyResultDiagnosticsTests {
     assertNoContentLikeKeys(extra)
   }
 
+  @Test("absorbAdapterDiagnostics copies the incremental-worker fields (Pass 2 r2 #B2)")
+  func absorbCopiesIncrementalFields() {
+    // The cutover dropped these before Sentry; this pins that the copy carries
+    // every incremental field through to the rendered extra (parity with OLD
+    // `WhisperKitPipeline.swift:1013-1017`).
+    var diagnostics = ASREmptyResultDiagnostics(
+      backend: "whisperKit",
+      hasSpeechEvidence: true,
+      rawSampleCount: 32_000,
+      vadSegmentCount: 2,
+      vadSpeechDurationMs: 1_500,
+      peakAudioLevel: 0.3)
+    var adapter = KernelASRAdapterDiagnostics()
+    adapter.incrementalAccepted = true
+    adapter.incrementalResultChars = 11
+    adapter.incrementalDecodeCount = 3
+    adapter.incrementalSamplesCovered = 20_000
+    adapter.incrementalStrategy = "tail_streaming"
+    adapter.incrementalMode = "full"
+    adapter.incrementalTailDecodeMs = 42
+    adapter.batchRescueAttempted = true
+
+    diagnostics.absorbAdapterDiagnostics(adapter)
+    let extra = diagnostics.sentryExtra()
+
+    #expect(extra["asr.incremental_accepted"] as? Bool == true)
+    #expect(extra["asr.incremental_result_chars"] as? Int == 11)
+    #expect(extra["asr.incremental_decode_count"] as? Int == 3)
+    #expect(extra["asr.incremental_samples_covered"] as? Int == 20_000)
+    #expect(extra["asr.incremental_strategy"] as? String == "tail_streaming")
+    #expect(extra["asr.incremental_mode"] as? String == "full")
+    #expect(extra["asr.incremental_tail_decode_ms"] as? Int == 42)
+    #expect(extra["asr.batch_rescue_attempted"] as? Bool == true)
+  }
+
   @Test("batch diagnostics omit streaming fields")
   func batchDiagnosticsOmitStreamingFields() {
     let diagnostics = ASREmptyResultDiagnostics(

@@ -93,6 +93,14 @@ struct EnviousWisprApp: App {
       transcriptStore: transcriptStore
     )
 
+    // PR-5 Rung 5 (#827): the VAD signal source is App-owned and shared
+    // between both kernel drivers. `audioCapture.onVADAutoStop` is bound
+    // exactly once here; the factory's `assembleDriver` no longer binds
+    // (Codex r2 new defect 1). Without this, the second driver's
+    // construction would silently overwrite the first driver's VAD callback.
+    let vadSource = KernelDictationDriverFactory.makeSharedVADSignalSource(
+      audioCapture: audioCapture)
+
     // PR-4b.4 of #827: Parakeet recordings flow through the kernel via the
     // driver constructed by `KernelDictationDriverFactory`. The factory
     // builds the kernel + Parakeet engine adapter + lifecycle telemetry sink
@@ -102,6 +110,7 @@ struct EnviousWisprApp: App {
       inputs: KernelDictationDriverFactory.ParakeetInputs(
         audioCapture: audioCapture,
         asrManager: asrManager,
+        vadSignalSource: vadSource,
         transcriptStore: transcriptStore,
         keychainManager: keychainManager,
         captureTelemetry: captureTelemetry,
@@ -122,22 +131,36 @@ struct EnviousWisprApp: App {
         }
       }
     )
-    let whisperKitPipeline = WhisperKitPipeline(
-      audioCapture: audioCapture,
-      backend: WhisperKitBackend(),
-      transcriptStore: transcriptStore,
-      keychainManager: keychainManager,
-      languageDetector: languageDetector,
-      captureTelemetry: captureTelemetry,
-      pasteCompletionRegistry: polishService.pasteCompletionRegistry
-    )
+
+    // PR-5 Rung 5 (#827): WhisperKit recordings now flow through a second
+    // `KernelDictationDriver` built by the factory's WhisperKit branch. The
+    // App's WhisperKit-side dispatch surface stays one driver per backend
+    // until PR-6 introduces the hot-swap factory. LID-to-polish wiring is
+    // owned by `KernelFinalizationWiring.processText` via the
+    // `ASREngineLanguageIdentifying` cast on the adapter; the silent
+    // App-init cache pre-load is owned by the driver's
+    // `prepareBackendSilently()` via the `ASREngineCacheModelLoadable` cast.
+    let whisperKitKernelDriver = KernelDictationDriverFactory.makeForWhisperKit(
+      inputs: KernelDictationDriverFactory.WhisperKitInputs(
+        audioCapture: audioCapture,
+        whisperKitBackend: WhisperKitBackend(),
+        languageDetector: languageDetector,
+        vadSignalSource: vadSource,
+        transcriptStore: transcriptStore,
+        keychainManager: keychainManager,
+        captureTelemetry: captureTelemetry,
+        pasteCompletionRegistry: polishService.pasteCompletionRegistry
+      ))
 
     // Phase F (#501) — `SetupCoordinator` needs `asrManager` + the WhisperKit
-    // preload closure. `[weak whisperKitPipeline]` so it does not retain it.
+    // preload closure. `[weak whisperKitKernelDriver]` so it does not retain it.
+    // PR-5 Rung 5: `prepareBackendSilently()` forwards via the
+    // `ASREngineCacheModelLoadable` cast on the WhisperKit adapter (parity
+    // with OLD `WhisperKitPipeline.prepareBackendSilently()`).
     let setup = SetupCoordinator(
       asrManager: asrManager,
-      preloadAction: { [weak whisperKitPipeline] in
-        await whisperKitPipeline?.prepareBackendSilently()
+      preloadAction: { [weak whisperKitKernelDriver] in
+        await whisperKitKernelDriver?.prepareBackendSilently()
       }
     )
 
@@ -148,7 +171,7 @@ struct EnviousWisprApp: App {
 
     let settingsSync = PipelineSettingsSync(
       kernelDriver: kernelDriver,
-      whisperKitPipeline: whisperKitPipeline,
+      whisperKitKernelDriver: whisperKitKernelDriver,
       polishService: polishService,
       audioCapture: audioCapture,
       asrManager: asrManager,
@@ -172,11 +195,11 @@ struct EnviousWisprApp: App {
       initialWords: customWordsCoordinator.customWords,
       correctorConsumers: [
         kernelDriver.wordCorrection,
-        whisperKitPipeline.wordCorrection,
+        whisperKitKernelDriver.wordCorrection,
       ],
       polishConsumers: [
         kernelDriver.llmPolish,
-        whisperKitPipeline.llmPolish,
+        whisperKitKernelDriver.llmPolish,
         polishService.llmPolishStep,
       ],
       coordinator: customWordsCoordinator
@@ -270,7 +293,7 @@ struct EnviousWisprApp: App {
 
     let liveRecordingState = LiveRecordingState(
       kernelDriver: kernelDriver,
-      whisperKitPipeline: whisperKitPipeline,
+      whisperKitKernelDriver: whisperKitKernelDriver,
       audioCapture: audioCapture,
       asrManager: asrManager
     )
@@ -293,7 +316,7 @@ struct EnviousWisprApp: App {
     )
     let dictationLifecycleCoordinator = DictationLifecycleCoordinator(
       kernelDriver: kernelDriver,
-      whisperKitPipeline: whisperKitPipeline,
+      whisperKitKernelDriver: whisperKitKernelDriver,
       recordingOverlay: recordingOverlay,
       hotkeyService: hotkeyService,
       settingsSync: settingsSync,
@@ -312,7 +335,7 @@ struct EnviousWisprApp: App {
       audioCapture: audioCapture,
       asrManager: asrManager,
       kernelDriver: kernelDriver,
-      whisperKitPipeline: whisperKitPipeline,
+      whisperKitKernelDriver: whisperKitKernelDriver,
       captureTelemetry: captureTelemetry,
       settings: settings,
       permissions: permissions,
@@ -377,7 +400,7 @@ struct EnviousWisprApp: App {
       audioCapture: audioCapture,
       asrManager: asrManager,
       kernelDriver: kernelDriver,
-      whisperKitPipeline: whisperKitPipeline,
+      whisperKitKernelDriver: whisperKitKernelDriver,
       setup: setup,
       dictationRuntime: dictationRuntime,
       dictationLifecycleCoordinator: dictationLifecycleCoordinator,

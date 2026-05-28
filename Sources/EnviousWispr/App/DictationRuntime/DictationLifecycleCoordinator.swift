@@ -32,7 +32,7 @@ final class DictationLifecycleCoordinator {
   // flag onto `LiveRecordingState` (the closures retarget at the call site).
 
   let kernelDriver: KernelDictationDriver  // 1
-  let whisperKitPipeline: WhisperKitPipeline  // 2
+  let whisperKitKernelDriver: KernelDictationDriver  // 2
   let recordingOverlay: RecordingOverlayPanel  // 3
   let hotkeyService: HotkeyService  // 4
   let settingsSync: PipelineSettingsSync  // 5
@@ -72,9 +72,11 @@ final class DictationLifecycleCoordinator {
 
   /// Cancellable Task for the deferred polish-failed warning overlay. Cancelled
   /// on every new recording start. Shared across both backends because the
-  /// 400ms-delayed guard checks `.complete` on Parakeet OR `.complete`/`.ready`
-  /// on WhisperKit — moving this into a per-pipeline handler would split a
-  /// shared lifecycle (see `PipelineStateChangeHandler.swift:13-22`).
+  /// 400ms-delayed guard checks `.complete` on either driver — moving this
+  /// into a per-pipeline handler would split a shared lifecycle (see
+  /// `PipelineStateChangeHandler.swift:13-22`). PR-5 Rung 5 (#827) collapsed
+  /// the legacy `.complete | .ready` WhisperKit gate to just `.complete`
+  /// because both drivers now share `PipelineState` vocabulary.
   private var postCompletionWarningTask: Task<Void, Never>?
 
   /// AppDelegate sets this to update the menu-bar icon + drive update-banner
@@ -91,7 +93,7 @@ final class DictationLifecycleCoordinator {
 
   init(
     kernelDriver: KernelDictationDriver,
-    whisperKitPipeline: WhisperKitPipeline,
+    whisperKitKernelDriver: KernelDictationDriver,
     recordingOverlay: RecordingOverlayPanel,
     hotkeyService: HotkeyService,
     settingsSync: PipelineSettingsSync,
@@ -103,7 +105,7 @@ final class DictationLifecycleCoordinator {
     recordingLockedAccess: RecordingLockedAccess
   ) {
     self.kernelDriver = kernelDriver
-    self.whisperKitPipeline = whisperKitPipeline
+    self.whisperKitKernelDriver = whisperKitKernelDriver
     self.recordingOverlay = recordingOverlay
     self.hotkeyService = hotkeyService
     self.settingsSync = settingsSync
@@ -123,7 +125,7 @@ final class DictationLifecycleCoordinator {
       guard let self else { return }
       self.handleParakeet(newState: newState)
     }
-    whisperKitPipeline.onStateChange = { [weak self] newState in
+    whisperKitKernelDriver.onStateChange = { [weak self] newState in
       guard let self else { return }
       self.handleWhisperKit(newState: newState)
     }
@@ -168,16 +170,25 @@ final class DictationLifecycleCoordinator {
     dispatchChipLifecycle(newState: newState, lastPolishError: kernelDriver.lastPolishError)
   }
 
-  private func handleWhisperKit(newState: WhisperKitPipelineState) {
-    onPipelineStateChange?(newState.asPipelineState)
+  /// PR-5 Rung 5 (#827): WhisperKit recordings now flow through a second
+  /// `KernelDictationDriver`, so this handler takes `PipelineState` (same
+  /// vocabulary as the Parakeet handler). The legacy bespoke WhisperKit
+  /// states `.startingUp` and `.ready` mapped to `.loadingModel` and `.idle`
+  /// respectively in the driver's state-mapping (`KernelDictationDriver
+  /// .pipelineState(for:externalError:failureDetail:)`); the unified switch
+  /// here mirrors the Parakeet handler so the chip-lifecycle dispatch can be
+  /// shared (the previous WhisperKit-specific dispatcher only differed in
+  /// matching `.complete` plus the now-extinct `.ready`).
+  private func handleWhisperKit(newState: PipelineState) {
+    onPipelineStateChange?(newState)
     switch newState {
     case .recording:
       hotkeyService.registerCancelHotkey()
       lastRecordingResult.polishError = nil
-    case .startingUp, .loadingModel, .transcribing, .polishing:
+    case .loadingModel, .transcribing, .polishing:
       recordingLockedAccess.set(false)
       hotkeyService.unregisterCancelHotkey()
-    case .error, .idle, .ready, .complete:
+    case .error, .idle, .complete:
       recordingLockedAccess.set(false)
       hotkeyService.unregisterCancelHotkey()
       settingsSync.retryDeferredOllamaEviction(settings: settings)
@@ -189,14 +200,14 @@ final class DictationLifecycleCoordinator {
     prevWhisperKitActive = nowActive
     whisperKitStateHandler.handle(
       to: newState,
-      pipelineOverlayIntent: whisperKitPipeline.overlayIntent,
-      lastPolishError: whisperKitPipeline.lastPolishError,
-      currentTranscript: whisperKitPipeline.currentTranscript
+      pipelineOverlayIntent: whisperKitKernelDriver.overlayIntent,
+      lastPolishError: whisperKitKernelDriver.lastPolishError,
+      currentTranscript: whisperKitKernelDriver.currentTranscript
     )
-    lastRecordingResult.polishError = whisperKitPipeline.lastPolishError
-    dispatchChipLifecycleWhisperKit(
+    lastRecordingResult.polishError = whisperKitKernelDriver.lastPolishError
+    dispatchChipLifecycle(
       newState: newState,
-      lastPolishError: whisperKitPipeline.lastPolishError
+      lastPolishError: whisperKitKernelDriver.lastPolishError
     )
   }
 
@@ -222,27 +233,6 @@ final class DictationLifecycleCoordinator {
     }
   }
 
-  private func dispatchChipLifecycleWhisperKit(
-    newState: WhisperKitPipelineState, lastPolishError: String?
-  ) {
-    switch newState {
-    case .recording:
-      languageSuggestionPresenter?.clearBuffer()
-    case .complete, .ready:
-      if lastPolishError == nil {
-        languageSuggestionPresenter?.surfaceBufferedChipIfPossible(
-          currentLanguageMode: settings.languageMode)
-      } else {
-        languageSuggestionPresenter?.clearBuffer()
-      }
-    case .error:
-      languageSuggestionPresenter?.clearCurrentChip()
-      languageSuggestionPresenter?.clearBuffer()
-    default:
-      break
-    }
-  }
-
   // MARK: - PR8 deferred resolver helpers
 
   /// #285 — resolve which backend owns the shared audio capture right now.
@@ -251,7 +241,7 @@ final class DictationLifecycleCoordinator {
   /// drift.
   func activeCaptureBackend() -> LastCapturingBackend? {
     let pActive = kernelDriver.state.isActive
-    let wkActive = whisperKitPipeline.state.isActive
+    let wkActive = whisperKitKernelDriver.state.isActive
     if pActive && wkActive { return lastCapturingBackend }
     if pActive { return .parakeet }
     if wkActive { return .whisperKit }
@@ -267,11 +257,11 @@ final class DictationLifecycleCoordinator {
 
   func activeTelemetryTarget() -> (any HeartPathTelemetryTarget)? {
     switch activeCaptureBackend() {
-    case .whisperKit: return whisperKitPipeline
+    case .whisperKit: return whisperKitKernelDriver
     case .parakeet: return kernelDriver
     case nil:
       // Idle → attribute to the backend that most recently owned a session.
-      return lastCapturingBackend == .whisperKit ? whisperKitPipeline : kernelDriver
+      return lastCapturingBackend == .whisperKit ? whisperKitKernelDriver : kernelDriver
     }
   }
 
@@ -294,8 +284,7 @@ final class DictationLifecycleCoordinator {
       guard !Task.isCancelled, let self else { return }
       // Only show if we're still in the completed state (no new recording started)
       let parakeetComplete = self.kernelDriver.state == .complete
-      let whisperKitComplete =
-        self.whisperKitPipeline.state == .complete || self.whisperKitPipeline.state == .ready
+      let whisperKitComplete = self.whisperKitKernelDriver.state == .complete
       guard parakeetComplete || whisperKitComplete else { return }
       self.recordingOverlay.show(intent: .warning(message: message))
     }

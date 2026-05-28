@@ -11,8 +11,10 @@ import Foundation
 // builds because `AudioSystemEventReporter` (production telemetry) references
 // `AudioCaptureInterface` and `ASRManagerInterface` from those modules.
 // PR-C.3 of #763: `EnviousWisprPipeline` is now an unconditional import — the
-// `KernelDictationDriver` / `WhisperKitPipeline` homes are stored properties
-// (still read only by `DebugFaultEndpoint` in debug builds).
+// `KernelDictationDriver` homes are stored properties (still read only by
+// `DebugFaultEndpoint` in debug builds). PR-5 Rung 5 (#827) flipped the
+// WhisperKit home from the legacy `WhisperKitPipeline` to a second
+// `KernelDictationDriver`.
 
 /// PR-B.4 of #763: App-owned home for the process-lifecycle sequence.
 ///
@@ -47,7 +49,7 @@ final class AppLifecycleCoordinator {
   private let audioCapture: any AudioCaptureInterface
   private let asrManager: any ASRManagerInterface
   private let kernelDriver: KernelDictationDriver
-  private let whisperKitPipeline: WhisperKitPipeline
+  private let whisperKitKernelDriver: KernelDictationDriver
   private let setup: SetupCoordinator
   private let dictationRuntime: DictationRuntime
   private let dictationLifecycleCoordinator: DictationLifecycleCoordinator
@@ -65,7 +67,7 @@ final class AppLifecycleCoordinator {
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface,
     kernelDriver: KernelDictationDriver,
-    whisperKitPipeline: WhisperKitPipeline,
+    whisperKitKernelDriver: KernelDictationDriver,
     setup: SetupCoordinator,
     dictationRuntime: DictationRuntime,
     dictationLifecycleCoordinator: DictationLifecycleCoordinator,
@@ -82,7 +84,7 @@ final class AppLifecycleCoordinator {
     self.audioCapture = audioCapture
     self.asrManager = asrManager
     self.kernelDriver = kernelDriver
-    self.whisperKitPipeline = whisperKitPipeline
+    self.whisperKitKernelDriver = whisperKitKernelDriver
     self.setup = setup
     self.dictationRuntime = dictationRuntime
     self.dictationLifecycleCoordinator = dictationLifecycleCoordinator
@@ -214,7 +216,7 @@ final class AppLifecycleCoordinator {
           audioProxy: audioCapture as? AudioCaptureProxy,
           asrProxy: asrManager as? ASRManagerProxy,
           kernelDriver: kernelDriver,
-          whisperKitPipeline: whisperKitPipeline,
+          whisperKitKernelDriver: whisperKitKernelDriver,
           activeBackend: { [weak self] in
             self?.settings.selectedBackend ?? .parakeet
           }

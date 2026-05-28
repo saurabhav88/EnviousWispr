@@ -37,7 +37,7 @@ struct LiveRecordingStateTests {
     // Default backend (.parakeet) → reads pipeline.state which is .idle
     state.asrManager.setInitialBackendType(.parakeet)
     #expect(state.pipelineState == .idle)
-    // Switch to WhisperKit branch — reads whisperKitPipeline.state.asPipelineState
+    // Switch to WhisperKit branch — reads whisperKitKernelDriver.state.asPipelineState
     // (also .idle by default). Both arms return .idle, but the switch exercises
     // the routing code path; differential state validation belongs in UAT.
     state.asrManager.setInitialBackendType(.whisperKit)
@@ -112,23 +112,13 @@ struct LiveRecordingStateTests {
     let tempDir = FileManager.default.temporaryDirectory
       .appendingPathComponent("live-recording-state-tests-\(UUID().uuidString)")
     let store = TranscriptStore(directory: tempDir)
-    let parakeet = KernelDictationDriverFactory.makeForParakeet(inputs: .init(
-      audioCapture: audioCapture,
-      asrManager: asrManager,
-      transcriptStore: store,
-      keychainManager: KeychainManager(),
-      captureTelemetry: CaptureTelemetryState(),
-      pasteCompletionRegistry: PasteCompletionRegistry()
-    ))
-    let whisperKit = WhisperKitPipeline(
-      audioCapture: audioCapture,
-      backend: WhisperKitBackend(),
-      transcriptStore: store,
-      keychainManager: KeychainManager()
-    )
+    let parakeet = DictationRuntimeFixtures.makeParakeetDriver(
+      audioCapture: audioCapture, asrManager: asrManager, store: store)
+    let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
+      audioCapture: audioCapture, store: store)
     return LiveRecordingState(
       kernelDriver: parakeet,
-      whisperKitPipeline: whisperKit,
+      whisperKitKernelDriver: whisperKit,
       audioCapture: audioCapture,
       asrManager: asrManager
     )

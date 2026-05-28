@@ -10,7 +10,7 @@ import Testing
 /// them).
 ///
 /// Bible-changelog (ratchet history):
-/// - PR10 (#776): baseline = 4 collaborators (pipeline, whisperKitPipeline,
+/// - PR10 (#776): baseline = 4 collaborators (pipeline, whisperKitKernelDriver,
 ///   asrManager, recordingOverlay), 4 non-private methods (userStop,
 ///   cancel, markLocked, resetActive — `lastUserStopAccess` is a `var`
 ///   and is NOT counted), ≤ 150 lines.
@@ -26,7 +26,7 @@ import Testing
       count <= 4,
       """
       RecordingFinalizer collaborator ceiling exceeded: \(count) > 4. \
-      Allowed (PR10 baseline): pipeline, whisperKitPipeline, asrManager, \
+      Allowed (PR10 baseline): pipeline, whisperKitKernelDriver, asrManager, \
       recordingOverlay. Raising the ceiling requires a Bible §30 entry.
       """)
   }
