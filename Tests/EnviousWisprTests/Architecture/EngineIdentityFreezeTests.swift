@@ -118,54 +118,136 @@ import Testing
   func factoryExposesBothEngineMethods() throws {
     let relative = "Sources/EnviousWisprPipeline/KernelDictationDriverFactory.swift"
     let source = try Self.readSource(relative)
+    // PR-5 Rung 5 (#827) narrowed factory methods from `public` to `package`.
     #expect(
-      source.contains("public static func makeForParakeet("),
+      source.contains("package static func makeForParakeet("),
       """
-      \(relative) must expose `makeForParakeet(inputs:)`. The Parakeet engine
-      branch is the live caller path post-Rung-4; removing or renaming it
-      silently would break the App's launch-time pipeline construction.
+      \(relative) must expose `makeForParakeet(inputs:)` at `package` access.
+      The Parakeet engine branch is the live caller path; removing or renaming
+      it silently would break the App's launch-time pipeline construction.
       """)
     #expect(
-      source.contains("public static func makeForWhisperKit("),
+      source.contains("package static func makeForWhisperKit("),
       """
-      \(relative) must expose `makeForWhisperKit(inputs:)`. The second-engine
-      branch is the precondition for Rung 5's App cutover; removing it
-      would block the WhisperKit migration onto the kernel.
+      \(relative) must expose `makeForWhisperKit(inputs:)` at `package` access.
+      Rung 5 wired the App caller; removing it would break WhisperKit recording.
       """)
   }
 
-  @Test(
-    "makeForWhisperKit has no production caller this rung (Rung 4 production-unwired invariant)"
-  )
-  func makeForWhisperKitHasNoProductionCaller() throws {
-    // Rung 5 is where the App-layer flips to call this method; this freeze
-    // test is removed in the Rung 5 PR after the App cutover lands.
+  // PR-5 Rung 5 (#827) — `makeForWhisperKitHasNoProductionCaller` was deleted
+  // in this PR; its invariant inverted at cutover. The replacements below lock
+  // the post-cutover invariants (exactly one App caller; zero references to
+  // the deleted `WhisperKitPipeline` type / `WhisperKitPipelineState` enum /
+  // `whisperKitPipeline` variable name; VAD signal source single-constructed).
+
+  @Test("WhisperKit factory branch has exactly one production caller")
+  func makeForWhisperKitHasExactlyOneProductionCaller() throws {
     let sourcesRoot = Self.repoRoot().appending(path: "Sources")
     let enumerator = FileManager.default.enumerator(
       at: sourcesRoot, includingPropertiesForKeys: nil,
       options: [.skipsHiddenFiles, .skipsPackageDescendants])
-    var offenders: [String] = []
+    var callers: [String] = []
+    let regex = try NSRegularExpression(pattern: #"makeForWhisperKit\s*\("#)
     while let url = enumerator?.nextObject() as? URL {
       guard url.pathExtension == "swift" else { continue }
       let relative = url.path.replacingOccurrences(
         of: Self.repoRoot().path + "/", with: "")
-      // The factory file itself defines the method; the freeze guards
-      // against OTHER source files invoking it. Skip the definition file.
+      // The factory's own definition site is not a caller.
       if relative == "Sources/EnviousWisprPipeline/KernelDictationDriverFactory.swift" {
         continue
       }
       let source = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-      if source.contains("makeForWhisperKit(") {
-        offenders.append(relative)
+      let ns = source as NSString
+      let range = NSRange(location: 0, length: ns.length)
+      if regex.firstMatch(in: source, range: range) != nil {
+        callers.append(relative)
       }
     }
     #expect(
+      callers.count == 1,
+      """
+      Expected exactly one production caller of `makeForWhisperKit(inputs:)`;
+      found \(callers.count) in \(callers).
+      """)
+    #expect(
+      callers.first?.hasSuffix("EnviousWispr/App/EnviousWisprApp.swift") == true,
+      """
+      The sole production caller must be `EnviousWispr/App/EnviousWisprApp.swift`;
+      found \(callers).
+      """)
+  }
+
+  @Test("WhisperKitPipeline has no construction site in production")
+  func whisperKitPipelineHasNoConstructionSite() throws {
+    let offenders = try Self.scanSources(pattern: #"\bWhisperKitPipeline\s*\("#)
+    #expect(
       offenders.isEmpty,
       """
-      Rung 4 ships `makeForWhisperKit` production-unwired. Found callers in:
+      Found WhisperKitPipeline construction site(s) — the legacy class was
+      deleted in PR-5 Rung 5 (#827). Use `KernelDictationDriverFactory
+      .makeForWhisperKit(inputs:)` instead.
       \(offenders.joined(separator: "\n"))
-      Rung 5 is where the App-layer flips to call this method; remove this
-      freeze test in the Rung 5 PR after the App cutover lands.
+      """)
+  }
+
+  @Test("WhisperKitPipeline does not appear in type positions")
+  func whisperKitPipelineHasNoTypeAnnotations() throws {
+    let offenders = try Self.scanSources(
+      pattern: #":\s*WhisperKitPipeline\b|:\s*any\s+WhisperKitPipeline\b"#)
+    #expect(
+      offenders.isEmpty,
+      """
+      Found WhisperKitPipeline type annotation(s) — the legacy class was
+      deleted in PR-5 Rung 5 (#827). Stored fields and parameters now type
+      against `KernelDictationDriver`.
+      \(offenders.joined(separator: "\n"))
+      """)
+  }
+
+  @Test("whisperKitPipeline variable name is fully scrubbed from Sources/")
+  func whisperKitPipelineVariableNameIsGone() throws {
+    let offenders = try Self.scanSources(pattern: #"\bwhisperKitPipeline\b"#)
+    #expect(
+      offenders.isEmpty,
+      """
+      Found references to the `whisperKitPipeline` identifier — PR-5 Rung 5
+      (#827) renamed every App-layer field and parameter to
+      `whisperKitKernelDriver`.
+      \(offenders.joined(separator: "\n"))
+      """)
+  }
+
+  @Test("WhisperKitPipelineState enum is deleted; no refs remain")
+  func whisperKitPipelineStateHasZeroRefs() throws {
+    let offenders = try Self.scanSources(pattern: #"\bWhisperKitPipelineState\b"#)
+    #expect(
+      offenders.isEmpty,
+      """
+      Found references to the deleted `WhisperKitPipelineState` enum — PR-5
+      Rung 5 (#827) collapsed both backends onto the shared `PipelineState`.
+      \(offenders.joined(separator: "\n"))
+      """)
+  }
+
+  @Test(
+    "CaptureVADSignalSource is constructed exactly once at App init via makeSharedVADSignalSource"
+  )
+  func vadSignalSourceHasSingleConstructionSite() throws {
+    let constructs = try Self.scanSources(pattern: #"CaptureVADSignalSource\s*\("#)
+    #expect(
+      constructs.count == 1,
+      """
+      Expected exactly one CaptureVADSignalSource construction site — the
+      shared App-owned VAD source that both kernel drivers share (PR-5 Rung 5
+      / Codex r2 new defect 1). Multiple construction sites would re-bind
+      `audioCapture.onVADAutoStop` and break two-driver auto-stop dispatch.
+      \(constructs.joined(separator: "\n"))
+      """)
+    #expect(
+      constructs.first?.contains("KernelDictationDriverFactory.swift") == true,
+      """
+      The single construction site must live inside `makeSharedVADSignalSource`
+      in `KernelDictationDriverFactory.swift`; found \(constructs).
       """)
   }
 
@@ -353,6 +435,45 @@ import Testing
   private static func readSource(_ relative: String) throws -> String {
     let url = repoRoot().appending(path: relative)
     return try String(contentsOf: url, encoding: .utf8)
+  }
+
+  /// Recursive scan over every `Sources/**/*.swift` file. Returns
+  /// `relative/path.swift:LINE_NUMBER: line-content` for every line whose
+  /// regex matches. Used by the PR-5 Rung 5 freeze tests that lock the
+  /// post-cutover invariants (no `WhisperKitPipeline`, no
+  /// `WhisperKitPipelineState`, no `whisperKitPipeline`, single VAD source).
+  ///
+  /// Lines whose first non-whitespace characters are `//` or `///` are
+  /// skipped — comments referencing the legacy names are intentional
+  /// historical breadcrumbs and must not trip the freeze.
+  private static func scanSources(pattern: String) throws -> [String] {
+    let regex = try NSRegularExpression(pattern: pattern)
+    let sourcesRoot = repoRoot().appending(path: "Sources")
+    let enumerator = FileManager.default.enumerator(
+      at: sourcesRoot, includingPropertiesForKeys: nil,
+      options: [.skipsHiddenFiles, .skipsPackageDescendants])
+    var hits: [String] = []
+    while let url = enumerator?.nextObject() as? URL {
+      guard url.pathExtension == "swift" else { continue }
+      let source = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+      let relative = url.path.replacingOccurrences(
+        of: repoRoot().path + "/", with: "")
+      for (idx, line) in source.split(separator: "\n", omittingEmptySubsequences: false)
+        .enumerated()
+      {
+        let text = String(line)
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        // Skip comment-only lines so historical-breadcrumb mentions of
+        // legacy names do not trip the freeze.
+        if trimmed.hasPrefix("//") { continue }
+        let ns = text as NSString
+        let range = NSRange(location: 0, length: ns.length)
+        if regex.firstMatch(in: text, range: range) != nil {
+          hits.append("\(relative):\(idx + 1): \(trimmed)")
+        }
+      }
+    }
+    return hits
   }
 
   private static func scanForLiteral(_ relative: String, pattern: String) throws -> [String] {

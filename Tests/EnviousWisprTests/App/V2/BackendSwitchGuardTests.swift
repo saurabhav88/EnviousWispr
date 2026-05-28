@@ -16,7 +16,7 @@ import Testing
 /// Asserts that `PipelineSettingsSync` rejects backend switches while either
 /// pipeline is active. Current behavior at
 /// `Sources/EnviousWispr/App/PipelineSettingsSync.swift:86-98`: when
-/// `pipeline.state.isActive || whisperKitPipeline.state.isActive`, the
+/// `pipeline.state.isActive || whisperKitKernelDriver.state.isActive`, the
 /// `.selectedBackend` change is logged and dropped, and the active recording
 /// continues uninterrupted. This test guards that contract: a future change
 /// that drops the guard would silently abort active dictations on every
@@ -51,20 +51,10 @@ struct BackendSwitchGuardTests {
     let transcriptStore = TranscriptStore()
     let keychain = KeychainManager()
 
-    let pipeline = KernelDictationDriverFactory.makeForParakeet(inputs: .init(
-      audioCapture: audioCapture,
-      asrManager: asrManager,
-      transcriptStore: transcriptStore,
-      keychainManager: KeychainManager(),
-      captureTelemetry: CaptureTelemetryState(),
-      pasteCompletionRegistry: PasteCompletionRegistry()
-    ))
-    let whisperKitPipeline = WhisperKitPipeline(
-      audioCapture: audioCapture,
-      backend: WhisperKitBackend(),
-      transcriptStore: transcriptStore,
-      keychainManager: keychain
-    )
+    let pipeline = DictationRuntimeFixtures.makeParakeetDriver(
+      audioCapture: audioCapture, asrManager: asrManager, store: transcriptStore)
+    let whisperKitKernelDriver = DictationRuntimeFixtures.makeWhisperKitPipeline(
+      audioCapture: audioCapture, store: transcriptStore)
     let polishService = TranscriptPolishService(
       keychainManager: keychain,
       transcriptStore: transcriptStore
@@ -74,7 +64,7 @@ struct BackendSwitchGuardTests {
 
     let sync = PipelineSettingsSync(
       kernelDriver: pipeline,
-      whisperKitPipeline: whisperKitPipeline,
+      whisperKitKernelDriver: whisperKitKernelDriver,
       polishService: polishService,
       audioCapture: audioCapture,
       asrManager: asrManager,

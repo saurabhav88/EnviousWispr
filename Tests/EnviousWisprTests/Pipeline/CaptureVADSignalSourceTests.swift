@@ -17,7 +17,7 @@ import Testing
     let source = CaptureVADSignalSource()
     let sid = SessionID()
     source.setCurrentSessionID(sid)
-    var iterator = source.stopSignals.makeAsyncIterator()
+    var iterator = source.subscribeStopSignals().makeAsyncIterator()
     source.noteAutoStopTriggered()
     let signal = await iterator.next()
     #expect(signal == VADStopSignal(kind: .autoStopTriggered, sessionID: sid))
@@ -28,7 +28,7 @@ import Testing
     let source = CaptureVADSignalSource()
     let sid = SessionID()
     source.setCurrentSessionID(sid)
-    var iterator = source.stopSignals.makeAsyncIterator()
+    var iterator = source.subscribeStopSignals().makeAsyncIterator()
     source.noteMaxDurationReached()
     let signal = await iterator.next()
     #expect(signal == VADStopSignal(kind: .maxDurationReached, sessionID: sid))
@@ -41,7 +41,7 @@ import Testing
     let sid = SessionID()
     source.setCurrentSessionID(sid)
     source.bind(audioCapture: capture)
-    var iterator = source.stopSignals.makeAsyncIterator()
+    var iterator = source.subscribeStopSignals().makeAsyncIterator()
     capture.fireVADAutoStop()  // the XPC service-side detector fires
     let signal = await iterator.next()
     #expect(signal == VADStopSignal(kind: .autoStopTriggered, sessionID: sid))
@@ -52,7 +52,7 @@ import Testing
     let source = CaptureVADSignalSource()
     let first = SessionID()
     let second = SessionID()
-    var iterator = source.stopSignals.makeAsyncIterator()
+    var iterator = source.subscribeStopSignals().makeAsyncIterator()
 
     source.setCurrentSessionID(first)
     source.noteAutoStopTriggered()
@@ -63,6 +63,52 @@ import Testing
     let b = await iterator.next()
     #expect(a?.sessionID == first)
     #expect(b?.sessionID == second, "a re-stamped session is reflected in later signals")
+  }
+
+  // MARK: PR-5 Rung 5 Codex code-diff r1 P1 — per-subscriber broadcast
+  //
+  // The source is shared between two `KernelDictationDriver`s in production
+  // (Parakeet + WhisperKit) via `EnviousWisprApp.swift:148`. A single
+  // `AsyncStream` delivers each yield to exactly one iterator, so an
+  // overlap between the two kernels' `subscribeVADSignals` tasks could
+  // swallow a stop signal before the active driver saw it. Each
+  // `subscribeStopSignals()` call must vend a fresh stream, and every
+  // emit must reach every live subscriber.
+
+  @Test("subscribeStopSignals — every live subscriber receives every signal")
+  func broadcastDeliversToAllSubscribers() async {
+    let source = CaptureVADSignalSource()
+    let sid = SessionID()
+    source.setCurrentSessionID(sid)
+
+    var iterA = source.subscribeStopSignals().makeAsyncIterator()
+    var iterB = source.subscribeStopSignals().makeAsyncIterator()
+
+    source.noteAutoStopTriggered()
+    let a = await iterA.next()
+    let b = await iterB.next()
+
+    #expect(a == VADStopSignal(kind: .autoStopTriggered, sessionID: sid))
+    #expect(b == VADStopSignal(kind: .autoStopTriggered, sessionID: sid))
+  }
+
+  @Test("subscribeStopSignals — second subscriber added mid-stream sees only later signals")
+  func lateSubscriberSeesLaterSignalsOnly() async {
+    let source = CaptureVADSignalSource()
+    let sid = SessionID()
+    source.setCurrentSessionID(sid)
+
+    var iterA = source.subscribeStopSignals().makeAsyncIterator()
+    source.noteAutoStopTriggered()  // delivered to A only — B is not subscribed yet
+    let a1 = await iterA.next()
+    #expect(a1?.kind == .autoStopTriggered)
+
+    var iterB = source.subscribeStopSignals().makeAsyncIterator()
+    source.noteMaxDurationReached()  // delivered to A AND B
+    let a2 = await iterA.next()
+    let b1 = await iterB.next()
+    #expect(a2?.kind == .maxDurationReached)
+    #expect(b1?.kind == .maxDurationReached)
   }
 
   @Test("speechEvidenceAtStop returns the configured tri-state")

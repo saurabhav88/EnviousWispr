@@ -43,7 +43,7 @@ struct AudioEventRouterTests {
     let router = AudioEventRouter(
       audioCapture: audio,
       kernelDriver: parakeet,
-      whisperKitPipeline: whisperKit,
+      whisperKitKernelDriver: whisperKit,
       captureTelemetry: telemetry,
       resolveActiveCaptureBackend: { nil }
     )
@@ -70,7 +70,7 @@ struct AudioEventRouterTests {
     let router = AudioEventRouter(
       audioCapture: audio,
       kernelDriver: parakeet,
-      whisperKitPipeline: whisperKit,
+      whisperKitKernelDriver: whisperKit,
       captureTelemetry: telemetry,
       resolveActiveCaptureBackend: { nil }
     )
@@ -93,9 +93,11 @@ struct AudioEventRouterTests {
       processingTime: 0.01,
       backendType: .parakeet
     )
+    let vad = KernelDictationDriverFactory.makeSharedVADSignalSource(audioCapture: audio)
     let inputs = KernelDictationDriverFactory.ParakeetInputs(
       audioCapture: audio,
       asrManager: asr,
+      vadSignalSource: vad,
       transcriptStore: TranscriptStore(),
       keychainManager: KeychainManager(),
       captureTelemetry: CaptureTelemetryState(),
@@ -120,7 +122,7 @@ struct AudioEventRouterTests {
     let router = AudioEventRouter(
       audioCapture: audio,
       kernelDriver: driver,
-      whisperKitPipeline: whisperKit,
+      whisperKitKernelDriver: whisperKit,
       captureTelemetry: CaptureTelemetryState(),
       resolveActiveCaptureBackend: { .parakeet }
     )
@@ -166,7 +168,7 @@ struct AudioEventRouterTests {
     let router = AudioEventRouter(
       audioCapture: audio,
       kernelDriver: parakeet,
-      whisperKitPipeline: whisperKit,
+      whisperKitKernelDriver: whisperKit,
       captureTelemetry: telemetry,
       resolveActiveCaptureBackend: { nil }
     )
@@ -197,7 +199,7 @@ struct AudioEventRouterTests {
     let router = AudioEventRouter(
       audioCapture: audio,
       kernelDriver: parakeet,
-      whisperKitPipeline: whisperKit,
+      whisperKitKernelDriver: whisperKit,
       captureTelemetry: telemetry,
       resolveActiveCaptureBackend: {
         resolverCallCount += 1

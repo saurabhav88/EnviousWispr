@@ -45,7 +45,7 @@
     private let audioProxy: AudioCaptureProxy?
     private let asrProxy: ASRManagerProxy?
     private let kernelDriver: KernelDictationDriver
-    private let whisperKitPipeline: WhisperKitPipeline
+    private let whisperKitKernelDriver: KernelDictationDriver
     private let activeBackend: () -> ASRBackendType
 
     // MARK: - Listener state
@@ -64,14 +64,14 @@
       audioProxy: AudioCaptureProxy?,
       asrProxy: ASRManagerProxy?,
       kernelDriver: KernelDictationDriver,
-      whisperKitPipeline: WhisperKitPipeline,
+      whisperKitKernelDriver: KernelDictationDriver,
       activeBackend: @escaping () -> ASRBackendType,
       port: UInt16 = 8765
     ) {
       self.audioProxy = audioProxy
       self.asrProxy = asrProxy
       self.kernelDriver = kernelDriver
-      self.whisperKitPipeline = whisperKitPipeline
+      self.whisperKitKernelDriver = whisperKitKernelDriver
       self.activeBackend = activeBackend
       self.port = port
       self.token = Self.generateToken()
@@ -211,7 +211,7 @@
       case "force_cancel":
         switch activeBackend() {
         case .parakeet: await kernelDriver.forceCancelNow()
-        case .whisperKit: await whisperKitPipeline.forceCancelNow()
+        case .whisperKit: await whisperKitKernelDriver.forceCancelNow()
         }
         return "OK"
 
@@ -227,7 +227,7 @@
 
       case "query_state":
         let p = kernelDriver.state
-        let w = whisperKitPipeline.state
+        let w = whisperKitKernelDriver.state
         return "OK parakeet=\(p) whisperkit=\(w) backend=\(activeBackend())"
 
       default:

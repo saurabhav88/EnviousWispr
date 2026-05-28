@@ -108,11 +108,11 @@ import Testing
     func nonEventStatesMapToNil() {
       // `.warmingUp` / `.stopping` / `.finalizing` now have conditional event
       // mappings (covered above); under default conditions warmingUp +
-      // finalizing still return nil. Only `.idle` and `.preparing` are
-      // unconditionally nil.
-      for state: RecordingSessionState in [.idle, .preparing] {
-        #expect(event(state) == nil)
-      }
+      // finalizing still return nil. Only `.idle` is unconditionally nil.
+      // PR-5 Rung 5 Pass 2 #1: `.preparing` now emits `.pipelineStartingUp`
+      // (startup breadcrumb parity with OLD `WhisperKitPipeline.swift:438`).
+      #expect(event(.idle) == nil)
+      #expect(event(.preparing) == .pipelineStartingUp)
       #expect(event(.warmingUp) == nil)
       #expect(event(.finalizing) == nil)
     }
@@ -153,8 +153,11 @@ import Testing
       // The test's forced path visits `.transcribing → .finalizing`, so the
       // breadcrumb fires here. `.warmingUp` wasn't visited (no model-load
       // branch entered).
+      // PR-5 Rung 5 Pass 2 #1: `.preparing` now emits `.pipelineStartingUp`
+      // at the head of the sequence (startup breadcrumb parity).
       #expect(
         recorder.events == [
+          .pipelineStartingUp,
           .recordingCommitted(isStreaming: false), .transcriptionStarted,
           .asrCompleted,
           .pipelineCompleted,
@@ -173,7 +176,9 @@ import Testing
       kernel.testForceTransition(to: .cancelled)
       await drain()
 
-      #expect(recorder.events == [.cancelled])
+      // PR-5 Rung 5 Pass 2 #1: `.preparing` emits `.pipelineStartingUp`
+      // before the cancelled terminal.
+      #expect(recorder.events == [.pipelineStartingUp, .cancelled])
     }
 
     // MARK: onCaptureStalled fan-out

@@ -3,12 +3,12 @@ import AppKit
 import EnviousWisprASR
 import EnviousWisprAudio
 import EnviousWisprCore
-import EnviousWisprStorage
+import EnviousWisprLLM
 import EnviousWisprServices
+import EnviousWisprStorage
 import Foundation
 import Testing
 
-import EnviousWisprLLM
 @testable import EnviousWisprPipeline
 
 @MainActor
@@ -89,14 +89,18 @@ struct HeartPathIntegrationTests {
       )
     )
 
-    let pipeline = KernelDictationDriverFactory.makeForParakeet(inputs: .init(
-      audioCapture: audioCapture,
-      asrManager: asrManager,
-      transcriptStore: TranscriptStore(),
-      keychainManager: KeychainManager(),
-      captureTelemetry: CaptureTelemetryState(),
-      pasteCompletionRegistry: PasteCompletionRegistry()
-    ))
+    let vad = KernelDictationDriverFactory.makeSharedVADSignalSource(
+      audioCapture: audioCapture)
+    let pipeline = KernelDictationDriverFactory.makeForParakeet(
+      inputs: .init(
+        audioCapture: audioCapture,
+        asrManager: asrManager,
+        vadSignalSource: vad,
+        transcriptStore: TranscriptStore(),
+        keychainManager: KeychainManager(),
+        captureTelemetry: CaptureTelemetryState(),
+        pasteCompletionRegistry: PasteCompletionRegistry()
+      ))
     #expect(pipeline.currentSessionConfig == nil)
 
     let config = DictationSessionConfig.testDefault(

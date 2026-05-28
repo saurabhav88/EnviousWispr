@@ -18,7 +18,7 @@ import Foundation
 final class AudioEventRouter {
   let audioCapture: any AudioCaptureInterface
   let kernelDriver: KernelDictationDriver
-  let whisperKitPipeline: WhisperKitPipeline
+  let whisperKitKernelDriver: KernelDictationDriver
   let captureTelemetry: CaptureTelemetryState
 
   let resolveActiveCaptureBackend:
@@ -27,14 +27,14 @@ final class AudioEventRouter {
   init(
     audioCapture: any AudioCaptureInterface,
     kernelDriver: KernelDictationDriver,
-    whisperKitPipeline: WhisperKitPipeline,
+    whisperKitKernelDriver: KernelDictationDriver,
     captureTelemetry: CaptureTelemetryState,
     resolveActiveCaptureBackend: @escaping @MainActor () -> DictationLifecycleCoordinator
       .LastCapturingBackend?
   ) {
     self.audioCapture = audioCapture
     self.kernelDriver = kernelDriver
-    self.whisperKitPipeline = whisperKitPipeline
+    self.whisperKitKernelDriver = whisperKitKernelDriver
     self.captureTelemetry = captureTelemetry
     self.resolveActiveCaptureBackend = resolveActiveCaptureBackend
 
@@ -57,7 +57,7 @@ final class AudioEventRouter {
     audioCapture.onEngineInterrupted = { [weak self] in
       guard let self else { return }
       let pState = self.kernelDriver.state
-      let wkState = self.whisperKitPipeline.state
+      let wkState = self.whisperKitKernelDriver.state
       Task {
         await AppLogger.shared.log(
           "[AudioEventRouter] Audio onEngineInterrupted — parakeet=\(pState), whisperKit=\(wkState)",
@@ -74,7 +74,7 @@ final class AudioEventRouter {
       case .parakeet:
         self.kernelDriver.handleEngineInterruption()
       case .whisperKit:
-        self.whisperKitPipeline.handleEngineInterruption()
+        self.whisperKitKernelDriver.handleEngineInterruption()
       case nil:
         break
       }
@@ -115,8 +115,8 @@ final class AudioEventRouter {
         guard let self else { return }
         if self.kernelDriver.state == .recording {
           Task { await self.kernelDriver.stopAndTranscribe() }
-        } else if self.whisperKitPipeline.state == .recording {
-          Task { await self.whisperKitPipeline.stopAndTranscribe() }
+        } else if self.whisperKitKernelDriver.state == .recording {
+          Task { await self.whisperKitKernelDriver.stopAndTranscribe() }
         }
       }
     }

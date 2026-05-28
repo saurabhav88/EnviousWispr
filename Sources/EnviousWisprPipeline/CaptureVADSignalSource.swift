@@ -2,7 +2,7 @@ import EnviousWisprAudio
 import EnviousWisprCore
 import Foundation
 
-// MARK: - CaptureVADSignalSource (epic #827, PR-4 §3.5)
+// MARK: - CaptureVADSignalSource type — epic #827, PR-4 §3.5
 //
 // The production `VADSignalSource` conformer (PR-1 §B.6). No production
 // conformer existed before PR-4 — only the test `FakeVADSignalSource`.
@@ -24,12 +24,20 @@ import Foundation
 // PR-4a ships this production-unwired: no App-layer caller binds it yet.
 
 /// Vends the kernel's `VADSignalSource` by bridging the in-process and XPC VAD
-/// signal origins (PR-1 §B.6, D7/D8).
+/// signal origins (PR-1 §B.6, D7/D8). Widened from `internal` to `package` in
+/// PR-5 Rung 5 so the App-owned shared instance can be passed across the
+/// `package`-level `KernelDictationDriverFactory.ParakeetInputs` /
+/// `WhisperKitInputs` seams (Codex r2 new defect 1 / r3 new defect 1).
 @MainActor
-final class CaptureVADSignalSource: VADSignalSource {
+package final class CaptureVADSignalSource: VADSignalSource {
 
-  private let signalStream: AsyncStream<VADStopSignal>
-  private let signalContinuation: AsyncStream<VADStopSignal>.Continuation
+  /// Per-subscriber continuations keyed by an auto-incrementing id. Codex
+  /// code-diff r1 P1 (PR-5 Rung 5): each `subscribeStopSignals()` call
+  /// registers a fresh continuation here; `noteAutoStopTriggered` /
+  /// `noteMaxDurationReached` broadcast to every live entry. Iterator
+  /// cancellation removes its own entry via `onTermination`.
+  private var subscribers: [Int: AsyncStream<VADStopSignal>.Continuation] = [:]
+  private var nextSubscriberID: Int = 0
   private weak var audioCapture: (any AudioCaptureInterface)?
   private var monitorTask: Task<Void, Never>?
   private var silenceDetector: SilenceDetector?
@@ -56,24 +64,36 @@ final class CaptureVADSignalSource: VADSignalSource {
     evidenceProvider: @escaping @MainActor () -> VADSpeechEvidence = { .unavailable },
     segmentsProvider: @escaping @MainActor () -> [SpeechSegment] = { [] }
   ) {
-    (signalStream, signalContinuation) = AsyncStream.makeStream(of: VADStopSignal.self)
     self.evidenceProvider = evidenceProvider
     self.segmentsProvider = segmentsProvider
   }
 
-  // MARK: VADSignalSource
+  // MARK: VADSignalSource (PR-5 Rung 5: package-required because the
+  // type widened from internal to package; the protocol is public so
+  // conforming members must be at least package.)
 
-  var stopSignals: AsyncStream<VADStopSignal> { signalStream }
+  package func subscribeStopSignals() -> AsyncStream<VADStopSignal> {
+    let id = nextSubscriberID
+    nextSubscriberID += 1
+    return AsyncStream { continuation in
+      subscribers[id] = continuation
+      continuation.onTermination = { @Sendable [weak self] _ in
+        Task { @MainActor [weak self] in
+          self?.subscribers.removeValue(forKey: id)
+        }
+      }
+    }
+  }
 
-  func speechEvidenceAtStop() -> VADSpeechEvidence { evidenceProvider() }
+  package func speechEvidenceAtStop() -> VADSpeechEvidence { evidenceProvider() }
 
-  func speechSegmentsAtStop() -> [SpeechSegment] { segmentsProvider() }
+  package func speechSegmentsAtStop() -> [SpeechSegment] { segmentsProvider() }
 
   // MARK: Session wiring
 
   /// Update the session stamp — the wiring calls this at session start so
   /// every subsequent signal carries the live `SessionID` (PR-1 §B.6).
-  func setCurrentSessionID(_ id: SessionID) {
+  package func setCurrentSessionID(_ id: SessionID) {
     currentSessionID = id
   }
 
@@ -231,14 +251,18 @@ final class CaptureVADSignalSource: VADSignalSource {
 
   /// Record a silence-hangover auto-stop — from the XPC `onVADAutoStop`
   /// callback or the in-process VAD loop. Stamped with the current session.
+  /// Broadcast to every live subscriber (Codex r1 P1).
   func noteAutoStopTriggered() {
-    signalContinuation.yield(
-      VADStopSignal(kind: .autoStopTriggered, sessionID: currentSessionID))
+    broadcast(VADStopSignal(kind: .autoStopTriggered, sessionID: currentSessionID))
   }
 
   /// Record a max-duration stop. Stamped with the current session.
+  /// Broadcast to every live subscriber (Codex r1 P1).
   func noteMaxDurationReached() {
-    signalContinuation.yield(
-      VADStopSignal(kind: .maxDurationReached, sessionID: currentSessionID))
+    broadcast(VADStopSignal(kind: .maxDurationReached, sessionID: currentSessionID))
+  }
+
+  private func broadcast(_ signal: VADStopSignal) {
+    for continuation in subscribers.values { continuation.yield(signal) }
   }
 }

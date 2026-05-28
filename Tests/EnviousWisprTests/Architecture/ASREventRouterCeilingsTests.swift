@@ -13,7 +13,7 @@ import Testing
       count <= 3,
       """
       ASREventRouter collaborator-slot ceiling exceeded: \(count) > 3. \
-      Allowed: asrManager, pipeline, whisperKitPipeline.
+      Allowed: asrManager, pipeline, whisperKitKernelDriver.
       """)
   }
 

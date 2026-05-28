@@ -28,7 +28,7 @@ import Testing
     coordinator: DictationLifecycleCoordinator,
     audio: RouterTestAudioCapture,
     kernelDriver: KernelDictationDriver,
-    whisperKitPipeline: WhisperKitPipeline,
+    whisperKitKernelDriver: KernelDictationDriver,
     recordingLocked: TestRecordingLockedBox
   ) {
     let audio = RouterTestAudioCapture()
@@ -36,14 +36,14 @@ import Testing
     let store = DictationRuntimeFixtures.tempStore()
     let pipeline = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
-    let whisperKitPipeline = DictationRuntimeFixtures.makeWhisperKitPipeline(
+    let whisperKitKernelDriver = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audio, store: store)
     let settings = SettingsManager()
     let overlay = RecordingOverlayPanel()
     let hotkey = HotkeyService()
     let settingsSync = PipelineSettingsSync(
       kernelDriver: pipeline,
-      whisperKitPipeline: whisperKitPipeline,
+      whisperKitKernelDriver: whisperKitKernelDriver,
       polishService: TranscriptPolishService(
         keychainManager: KeychainManager(),
         transcriptStore: store),
@@ -57,7 +57,7 @@ import Testing
     let lockBox = TestRecordingLockedBox()
     let coordinator = DictationLifecycleCoordinator(
       kernelDriver: pipeline,
-      whisperKitPipeline: whisperKitPipeline,
+      whisperKitKernelDriver: whisperKitKernelDriver,
       recordingOverlay: overlay,
       hotkeyService: hotkey,
       settingsSync: settingsSync,
@@ -71,7 +71,7 @@ import Testing
         set: { lockBox.isLocked = $0 }
       )
     )
-    return (coordinator, audio, pipeline, whisperKitPipeline, lockBox)
+    return (coordinator, audio, pipeline, whisperKitKernelDriver, lockBox)
   }
 
   @Test func constructionDoesNotCrash() {
@@ -90,7 +90,7 @@ import Testing
     let fixtures = Self.makeCoordinator()
     // Both pipelines start in `.idle`; no `install()` so no transitions fired.
     #expect(fixtures.kernelDriver.state.isActive == false)
-    #expect(fixtures.whisperKitPipeline.state.isActive == false)
+    #expect(fixtures.whisperKitKernelDriver.state.isActive == false)
     #expect(fixtures.coordinator.activeCaptureBackend() == nil)
   }
 
@@ -115,10 +115,10 @@ import Testing
   @Test func installSetsBothPipelineCallbacks() {
     let fixtures = Self.makeCoordinator()
     #expect(fixtures.kernelDriver.onStateChange == nil)
-    #expect(fixtures.whisperKitPipeline.onStateChange == nil)
+    #expect(fixtures.whisperKitKernelDriver.onStateChange == nil)
     fixtures.coordinator.install()
     #expect(fixtures.kernelDriver.onStateChange != nil)
-    #expect(fixtures.whisperKitPipeline.onStateChange != nil)
+    #expect(fixtures.whisperKitKernelDriver.onStateChange != nil)
   }
 }
 

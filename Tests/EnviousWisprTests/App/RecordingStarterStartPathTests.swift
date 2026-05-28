@@ -32,7 +32,7 @@ import Testing
     let starter: RecordingStarter
     let finalizer: RecordingFinalizer
     let kernelDriver: KernelDictationDriver
-    let whisperKitPipeline: WhisperKitPipeline
+    let whisperKitKernelDriver: KernelDictationDriver
     let asr: RouterTestASRManager
     let permissions: PermissionsService
     let lockBox: TestRecordingLockedBox
@@ -51,7 +51,7 @@ import Testing
     let store = DictationRuntimeFixtures.tempStore()
     let pipeline = DictationRuntimeFixtures.makeParakeetDriver(
       audioCapture: audio, asrManager: asr, store: store)
-    let whisperKitPipeline = DictationRuntimeFixtures.makeWhisperKitPipeline(
+    let whisperKitKernelDriver = DictationRuntimeFixtures.makeWhisperKitPipeline(
       audioCapture: audio, store: store)
     let settings = SettingsManager()
     let overlay = RecordingOverlayPanel()
@@ -68,7 +68,7 @@ import Testing
     )
     let finalizer = RecordingFinalizer(
       kernelDriver: pipeline,
-      whisperKitPipeline: whisperKitPipeline,
+      whisperKitKernelDriver: whisperKitKernelDriver,
       asrManager: asr,
       recordingOverlay: overlay,
       heartControlRecovery: hcr,
@@ -80,7 +80,7 @@ import Testing
       audioCapture: audio,
       asrManager: asr,
       kernelDriver: pipeline,
-      whisperKitPipeline: whisperKitPipeline,
+      whisperKitKernelDriver: whisperKitKernelDriver,
       settings: settings,
       permissions: permissions,
       recordingOverlay: overlay,
@@ -94,7 +94,7 @@ import Testing
       starter: starter,
       finalizer: finalizer,
       kernelDriver: pipeline,
-      whisperKitPipeline: whisperKitPipeline,
+      whisperKitKernelDriver: whisperKitKernelDriver,
       asr: asr,
       permissions: permissions,
       lockBox: lockBox,

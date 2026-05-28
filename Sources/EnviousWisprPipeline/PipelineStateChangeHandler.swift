@@ -13,7 +13,7 @@ import Foundation
 ///
 /// Why the warning task is NOT owned by the handler: the current production
 /// `schedulePostCompletionWarning` at the former root-state file treats
-/// `whisperKitPipeline.state == .ready` as completion-equivalent for the
+/// the WhisperKit driver's state at `.complete` (pre-Rung-5 also `.ready`)
 /// delayed guard. That check crosses pipeline boundaries (the warning can be
 /// scheduled from Parakeet's closure and still fire if WhisperKit is in
 /// `.ready` when the 400 ms sleep wakes). Moving the task into a per-pipeline

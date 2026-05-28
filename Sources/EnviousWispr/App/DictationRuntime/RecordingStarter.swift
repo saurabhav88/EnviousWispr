@@ -23,7 +23,7 @@ final class RecordingStarter {
   let audioCapture: any AudioCaptureInterface
   let asrManager: any ASRManagerInterface
   let kernelDriver: KernelDictationDriver
-  let whisperKitPipeline: WhisperKitPipeline
+  let whisperKitKernelDriver: KernelDictationDriver
   let settings: SettingsManager
   let permissions: PermissionsService
   let recordingOverlay: RecordingOverlayPanel
@@ -40,7 +40,7 @@ final class RecordingStarter {
   /// recordings on top of in-flight post-processing.
   var isProcessing: Bool {
     if asrManager.activeBackendType == .whisperKit {
-      let state = whisperKitPipeline.state
+      let state = whisperKitKernelDriver.state
       return state == .transcribing || state == .polishing
     } else {
       let state = kernelDriver.state
@@ -52,7 +52,7 @@ final class RecordingStarter {
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface,
     kernelDriver: KernelDictationDriver,
-    whisperKitPipeline: WhisperKitPipeline,
+    whisperKitKernelDriver: KernelDictationDriver,
     settings: SettingsManager,
     permissions: PermissionsService,
     recordingOverlay: RecordingOverlayPanel,
@@ -65,7 +65,7 @@ final class RecordingStarter {
     self.audioCapture = audioCapture
     self.asrManager = asrManager
     self.kernelDriver = kernelDriver
-    self.whisperKitPipeline = whisperKitPipeline
+    self.whisperKitKernelDriver = whisperKitKernelDriver
     self.settings = settings
     self.permissions = permissions
     self.recordingOverlay = recordingOverlay
@@ -83,9 +83,9 @@ final class RecordingStarter {
   func start() async {
     dictationLifecycleCoordinator?.cancelPendingWarning()
     let isWhisperKit = asrManager.activeBackendType == .whisperKit
-    let active: any DictationPipeline = isWhisperKit ? whisperKitPipeline : kernelDriver
+    let active: any DictationPipeline = isWhisperKit ? whisperKitKernelDriver : kernelDriver
     if isWhisperKit {
-      guard !whisperKitPipeline.state.isActive else { return }
+      guard !whisperKitKernelDriver.state.isActive else { return }
     } else {
       guard !kernelDriver.state.isActive else { return }
     }
@@ -148,7 +148,7 @@ final class RecordingStarter {
           DictationSessionConfigFactory.make(
             asrManager: asrManager,
             kernelDriver: kernelDriver,
-            whisperKitPipeline: whisperKitPipeline,
+            whisperKitKernelDriver: whisperKitKernelDriver,
             settings: settings,
             triggerSource: .pttHotkey
           )))
@@ -162,8 +162,8 @@ final class RecordingStarter {
     let pipelineActive: Bool
     let pipelineInError: Bool
     if isWhisperKit {
-      pipelineActive = whisperKitPipeline.state.isActive
-      if case .error = whisperKitPipeline.state {
+      pipelineActive = whisperKitKernelDriver.state.isActive
+      if case .error = whisperKitKernelDriver.state {
         pipelineInError = true
       } else {
         pipelineInError = false
@@ -211,9 +211,9 @@ final class RecordingStarter {
   func toggle(source: TriggerSource) async {
     dictationLifecycleCoordinator?.cancelPendingWarning()
     let active: any DictationPipeline =
-      asrManager.activeBackendType == .whisperKit ? whisperKitPipeline : kernelDriver
+      asrManager.activeBackendType == .whisperKit ? whisperKitKernelDriver : kernelDriver
     let isWK = asrManager.activeBackendType == .whisperKit
-    if !(isWK ? whisperKitPipeline.state.isActive : kernelDriver.state.isActive) {
+    if !(isWK ? whisperKitKernelDriver.state.isActive : kernelDriver.state.isActive) {
       lastRecordingResult?.polishError = nil
     }
     permissions.refreshAccessibilityStatus()
@@ -226,7 +226,7 @@ final class RecordingStarter {
           DictationSessionConfigFactory.make(
             asrManager: asrManager,
             kernelDriver: kernelDriver,
-            whisperKitPipeline: whisperKitPipeline,
+            whisperKitKernelDriver: whisperKitKernelDriver,
             settings: settings,
             triggerSource: source
           )))

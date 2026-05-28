@@ -61,13 +61,15 @@ import Testing
   private func makeSink(
     recorder: Recorder,
     backend: ASRBackendType = .parakeet,
-    context: KernelSessionContext = KernelSessionContext()
+    context: KernelSessionContext = KernelSessionContext(),
+    telemetryState: KernelTelemetryState = KernelTelemetryState()
   ) -> KernelLifecycleTelemetrySink {
     KernelLifecycleTelemetrySink(
       backend: backend,
       audioCapture: FakeAudioCapture(),
       context: context,
       captureTelemetry: CaptureTelemetryState(),
+      telemetryState: telemetryState,
       breadcrumb: { stage, message, data in
         recorder.breadcrumbs.append(
           Recorder.BreadcrumbCall(
@@ -93,6 +95,18 @@ import Testing
   }
 
   // MARK: - Per-event byte-identical event identity
+
+  @Test(".pipelineStartingUp emits the 'Pipeline starting up' breadcrumb (Pass 2 #1)")
+  func pipelineStartingUpEmission() {
+    let recorder = Recorder()
+    let sink = makeSink(recorder: recorder)
+    sink.emit(.pipelineStartingUp)
+    #expect(
+      recorder.breadcrumbs == [
+        .init(stage: "pipeline", message: "Pipeline starting up", dataKeys: ["backend"])
+      ])
+    #expect(recorder.captureErrors.isEmpty)
+  }
 
   @Test(".modelLoading emits the TP:365 'Model loading' breadcrumb")
   func modelLoadingEmission() {
@@ -193,6 +207,41 @@ import Testing
       ])
   }
 
+  @Test(".asrCompleted carries the 'incremental' key when WhisperKit set it (Pass 2 r2 #B1)")
+  func asrCompletedCarriesIncrementalWhenSet() {
+    let recorder = Recorder()
+    let state = KernelTelemetryState()
+    state.asrCompletedTelemetry = KernelASRCompletedTelemetry(
+      durationSeconds: 0.3, charCount: 5, mode: "batch", language: "en",
+      incrementalAccepted: true)
+    let sink = makeSink(recorder: recorder, backend: .whisperKit, telemetryState: state)
+    sink.emit(.asrCompleted)
+    // Parity with OLD `WhisperKitPipeline.swift:1049-1052` — the breadcrumb
+    // distinguishes accepted incremental output from batch fallback.
+    #expect(
+      recorder.breadcrumbs == [
+        .init(
+          stage: "asr", message: "ASR completed",
+          dataKeys: ["backend", "char_count", "duration_s", "incremental", "language", "mode"])
+      ])
+  }
+
+  @Test(".asrCompleted omits 'incremental' when nil (Parakeet path, Pass 2 r2 #B1)")
+  func asrCompletedOmitsIncrementalWhenNil() {
+    let recorder = Recorder()
+    let state = KernelTelemetryState()
+    state.asrCompletedTelemetry = KernelASRCompletedTelemetry(
+      durationSeconds: 0.3, charCount: 5, mode: "batch", language: "en")
+    let sink = makeSink(recorder: recorder, telemetryState: state)
+    sink.emit(.asrCompleted)
+    #expect(
+      recorder.breadcrumbs == [
+        .init(
+          stage: "asr", message: "ASR completed",
+          dataKeys: ["backend", "char_count", "duration_s", "language", "mode"])
+      ])
+  }
+
   @Test(".pipelineCompleted emits the TP:1032 breadcrumb")
   func pipelineCompletedEmission() {
     let recorder = Recorder()
@@ -223,11 +272,15 @@ import Testing
   @Test(".asrInterrupted(wasRecording: true) emits captureError + state(false)")
   func asrInterruptedEmissionFromRecording() {
     let recorder = Recorder()
-    let sink = makeSink(recorder: recorder)
+    let sink = makeSink(recorder: recorder, backend: .whisperKit)
     sink.emit(.asrInterrupted(wasRecording: true))
     #expect(recorder.captureErrors.count == 1)
     #expect(recorder.captureErrors.first?.category == .xpcServiceError)
     #expect(recorder.captureErrors.first?.stage == "asr")
+    // PR-5 Rung 5 Pass 2 #3 — the crash message names the backend again
+    // (parity with OLD `WhisperKitPipeline.swift:1217`).
+    #expect(
+      recorder.captureErrors.first?.errorDescription == "ASR XPC service crashed (WhisperKit)")
     #expect(
       recorder.recordingStates == [
         .init(active: false, backend: nil, isStreaming: nil)
@@ -320,6 +373,23 @@ import Testing
     #expect(recorder.captureErrors.count == 1)
     #expect(recorder.captureErrors.first?.category == .modelLoadFailed)
     #expect(recorder.captureErrors.first?.stage == "asr")
+  }
+
+  @Test(".failed(.modelLoadFailed) surfaces the real thrown error (Pass 2 #2)")
+  func failedModelLoadFailedUsesRealError() {
+    let recorder = Recorder()
+    let state = KernelTelemetryState()
+    state.modelLoadError = NSError(
+      domain: "WhisperKit", code: 42,
+      userInfo: [NSLocalizedDescriptionKey: "CoreML model failed to compile"])
+    let sink = makeSink(recorder: recorder, telemetryState: state)
+    sink.emit(.failed(.modelLoadFailed))
+    #expect(recorder.captureErrors.count == 1)
+    // PR-5 Rung 5 Pass 2 #2 — the captured error is the real thrown one,
+    // NOT a synthesized "Model load failed" placeholder (parity with OLD
+    // `WhisperKitPipeline.swift:475-477`).
+    #expect(
+      recorder.captureErrors.first?.errorDescription == "CoreML model failed to compile")
   }
 
   @Test(".failed(.captureStartFailed) emits .audioCaptureFailed captureError")
@@ -432,7 +502,7 @@ import Testing
     // The earlier r8 patch tried to skip this case symmetrically with
     // `.captureStalled`, but grep verified asymmetry: the rich
     // `HeartPathTelemetryEmitter.noAudioCaptured(ctx:)` is called ONLY from
-    // Parakeet pipeline / WhisperKitPipeline — both bypassed by the
+    // Parakeet pipeline / KernelDictationDriver — both bypassed by the
     // kernel-driver cutover. The lifecycle sink IS the only no-audio
     // emitter in the new factory stack; skipping here would drop the
     // signal entirely.

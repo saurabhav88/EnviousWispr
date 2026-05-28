@@ -277,8 +277,9 @@ import Testing
   }
 
   private func makeDriver() -> Harness {
+    let adapter = FakeEngine(behavior: .batchSuccess(text: "x"), clock: FakeClock())
     let kernel = RecordingSessionKernel(
-      adapter: FakeEngine(behavior: .batchSuccess(text: "x"), clock: FakeClock()),
+      adapter: adapter,
       audioCapture: FakeAudioCapture(),
       vad: FakeVADSignalSource(),
       currentTick: { 0 },
@@ -300,7 +301,7 @@ import Testing
       llmPolish: LLMPolishStep(keychainManager: KeychainManager()))
     let driver = KernelDictationDriver(
       kernel: kernel, observer: observer, outcome: outcome,
-      context: KernelSessionContext(), steps: steps)
+      context: KernelSessionContext(), steps: steps, adapter: adapter)
     driver.start()
     return Harness(driver: driver, kernel: kernel, outcome: outcome)
   }

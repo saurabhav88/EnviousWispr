@@ -27,9 +27,12 @@ import Testing
     // MARK: Helpers
 
     private func makeDriver() -> KernelDictationDriver {
+      let audio = FakeAudioCapture()
+      let vad = KernelDictationDriverFactory.makeSharedVADSignalSource(audioCapture: audio)
       let inputs = KernelDictationDriverFactory.ParakeetInputs(
-        audioCapture: FakeAudioCapture(),
+        audioCapture: audio,
         asrManager: StubParakeetASRManager(),
+        vadSignalSource: vad,
         transcriptStore: TranscriptStore(),
         keychainManager: KeychainManager(),
         captureTelemetry: CaptureTelemetryState(),

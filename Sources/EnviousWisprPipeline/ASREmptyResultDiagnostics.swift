@@ -34,6 +34,28 @@ internal struct ASREmptyResultDiagnostics {
 
   var speechSegments: [SpeechSegment] = []
 
+  /// Copy the adapter's terminal diagnostics into this ASR-empty record so the
+  /// Sentry extra (`sentryExtra()`) carries the full streaming / batch-rescue /
+  /// incremental-worker picture. PR-5 Rung 5 Pass 2 r2 #B2 restored the
+  /// incremental fields, which were silently dropped after the cutover (parity
+  /// with OLD `WhisperKitPipeline.swift:1013-1017`).
+  mutating func absorbAdapterDiagnostics(_ adapter: KernelASRAdapterDiagnostics) {
+    streamingResultChars = adapter.streamingResultChars
+    streamingFinalizeFailed = adapter.streamingFinalizeFailed
+    streamingFinalizeErrorType = adapter.streamingFinalizeErrorType
+    streamingBuffersDispatched = adapter.streamingBuffersDispatched
+    streamingBuffersFed = adapter.streamingBuffersFed
+    batchRescueAttempted = adapter.batchRescueAttempted
+    batchRescueResultChars = adapter.batchRescueResultChars
+    incrementalAccepted = adapter.incrementalAccepted
+    incrementalResultChars = adapter.incrementalResultChars
+    incrementalDecodeCount = adapter.incrementalDecodeCount
+    incrementalSamplesCovered = adapter.incrementalSamplesCovered
+    incrementalStrategy = adapter.incrementalStrategy
+    incrementalMode = adapter.incrementalMode
+    incrementalTailDecodeMs = adapter.incrementalTailDecodeMs
+  }
+
   func sentryExtra() -> [String: Any] {
     var extra: [String: Any] = [
       "backend": backend,

@@ -12,7 +12,7 @@ import Foundation
 @MainActor
 final class PipelineSettingsSync {
   private let kernelDriver: KernelDictationDriver
-  private let whisperKitPipeline: WhisperKitPipeline
+  private let whisperKitKernelDriver: KernelDictationDriver
   private let polishService: TranscriptPolishService
   private let audioCapture: any AudioCaptureInterface
   private let asrManager: any ASRManagerInterface
@@ -30,7 +30,7 @@ final class PipelineSettingsSync {
 
   init(
     kernelDriver: KernelDictationDriver,
-    whisperKitPipeline: WhisperKitPipeline,
+    whisperKitKernelDriver: KernelDictationDriver,
     polishService: TranscriptPolishService,
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface,
@@ -38,7 +38,7 @@ final class PipelineSettingsSync {
     whisperKitSetup: WhisperKitSetupService
   ) {
     self.kernelDriver = kernelDriver
-    self.whisperKitPipeline = whisperKitPipeline
+    self.whisperKitKernelDriver = whisperKitKernelDriver
     self.polishService = polishService
     self.audioCapture = audioCapture
     self.asrManager = asrManager
@@ -55,9 +55,9 @@ final class PipelineSettingsSync {
     kernelDriver.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
     kernelDriver.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
     kernelDriver.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
-    whisperKitPipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
-    whisperKitPipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
-    whisperKitPipeline.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
+    whisperKitKernelDriver.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
+    whisperKitKernelDriver.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
+    whisperKitKernelDriver.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
 
     syncPolishServiceSettings(settings)
 
@@ -101,7 +101,7 @@ final class PipelineSettingsSync {
     case .selectedBackend:
       // Don't switch backends while a pipeline is actively recording/transcribing
       let parakeetActive = kernelDriver.state.isActive
-      let whisperKitActive = whisperKitPipeline.state.isActive
+      let whisperKitActive = whisperKitKernelDriver.state.isActive
       if parakeetActive || whisperKitActive {
         Task {
           await AppLogger.shared.log(
@@ -116,7 +116,7 @@ final class PipelineSettingsSync {
       // so a deferred cleanup from a pre-switch stall doesn't tear down
       // the pipeline that's about to become active.
       kernelDriver.clearPendingStallRecovery()
-      whisperKitPipeline.clearPendingStallRecovery()
+      whisperKitKernelDriver.clearPendingStallRecovery()
       Task { [weak self] in
         await self?.asrManager.switchBackend(to: backend)
         SentryBreadcrumb.updateASRBackend(backend == .whisperKit ? "whisperkit" : "parakeet")
@@ -169,13 +169,13 @@ final class PipelineSettingsSync {
       }
     case .emojiFormatterEnabled:
       kernelDriver.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
-      whisperKitPipeline.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
+      whisperKitKernelDriver.emojiFormatter.emojiFormatterEnabled = settings.emojiFormatterEnabled
     case .wordCorrectionEnabled:
       kernelDriver.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
-      whisperKitPipeline.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
+      whisperKitKernelDriver.wordCorrection.wordCorrectionEnabled = settings.wordCorrectionEnabled
     case .fillerRemovalEnabled:
       kernelDriver.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
-      whisperKitPipeline.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
+      whisperKitKernelDriver.fillerRemoval.fillerRemovalEnabled = settings.fillerRemovalEnabled
     case .isDebugModeEnabled:
       Task { await AppLogger.shared.setDebugMode(settings.isDebugModeEnabled) }
     case .debugLogLevel:
@@ -269,7 +269,7 @@ final class PipelineSettingsSync {
   /// given Ollama model. Used by `reconcileOllamaEviction` to avoid evicting
   /// a model the in-flight polish still needs.
   private func isOllamaModelPinnedInFlight(_ model: String) -> Bool {
-    for cfg in [kernelDriver.currentSessionConfig, whisperKitPipeline.currentSessionConfig] {
+    for cfg in [kernelDriver.currentSessionConfig, whisperKitKernelDriver.currentSessionConfig] {
       guard let cfg else { continue }
       if cfg.llmProvider == .ollama && cfg.llmModel == model {
         return true

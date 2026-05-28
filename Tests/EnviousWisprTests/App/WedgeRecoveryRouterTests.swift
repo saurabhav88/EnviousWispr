@@ -28,7 +28,7 @@ struct WedgeRecoveryRouterTests {
     let router = WedgeRecoveryRouter(
       audioCapture: audio,
       kernelDriver: parakeet,
-      whisperKitPipeline: whisperKit,
+      whisperKitKernelDriver: whisperKit,
       isCurrentSession: { _ in true },
       resolveActiveTelemetryTarget: { nil }
     )
@@ -55,7 +55,7 @@ struct WedgeRecoveryRouterTests {
     let router = WedgeRecoveryRouter(
       audioCapture: audio,
       kernelDriver: parakeet,
-      whisperKitPipeline: whisperKit,
+      whisperKitKernelDriver: whisperKit,
       isCurrentSession: { sessionID in
         sessionFilterCalls.append(sessionID)
         return false  // always stale
@@ -92,7 +92,7 @@ struct WedgeRecoveryRouterTests {
     let router = WedgeRecoveryRouter(
       audioCapture: audio,
       kernelDriver: parakeet,
-      whisperKitPipeline: whisperKit,
+      whisperKitKernelDriver: whisperKit,
       isCurrentSession: { _ in true },
       resolveActiveTelemetryTarget: {
         resolverCallCount += 1

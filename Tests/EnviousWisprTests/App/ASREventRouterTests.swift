@@ -34,7 +34,7 @@ struct ASREventRouterTests {
     let router = ASREventRouter(
       asrManager: asr,
       kernelDriver: parakeet,
-      whisperKitPipeline: whisperKit
+      whisperKitKernelDriver: whisperKit
     )
 
     #expect(asr.onServiceInterrupted != nil)
@@ -57,7 +57,7 @@ struct ASREventRouterTests {
     let router = ASREventRouter(
       asrManager: asr,
       kernelDriver: parakeet,
-      whisperKitPipeline: whisperKit
+      whisperKitKernelDriver: whisperKit
     )
 
     // Both pipelines are idle (.idle is the default state). The callback
@@ -87,7 +87,7 @@ struct ASREventRouterTests {
       let router = ASREventRouter(
         asrManager: asr,
         kernelDriver: driver,
-        whisperKitPipeline: whisperKit
+        whisperKitKernelDriver: whisperKit
       )
 
       // Walk the kernel FSM through the legal edges so it lands in
@@ -110,27 +110,42 @@ struct ASREventRouterTests {
     }
   #endif
 
-  @Test("ASR XPC crash during WhisperKit polishing leaves the safe point alone")
-  func serviceInterruptedDuringWhisperKitPolishingIsIgnored() async {
-    let audio = RouterTestAudioCapture()
-    let asr = RouterTestASRManager()
-    let store = DictationRuntimeFixtures.tempStore()
-    let driver = DictationRuntimeFixtures.makeParakeetDriver(
-      audioCapture: audio, asrManager: asr, store: store)
-    let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
-      audioCapture: audio, store: store)
-    let router = ASREventRouter(
-      asrManager: asr,
-      kernelDriver: driver,
-      whisperKitPipeline: whisperKit
-    )
+  #if DEBUG
+    @Test("ASR XPC crash during WhisperKit polishing leaves the safe point alone")
+    func serviceInterruptedDuringWhisperKitPolishingIsIgnored() async {
+      // PR-5 Rung 5 (#827): WhisperKit is now a second kernel driver, so the
+      // FSM-walk shape mirrors the Parakeet test above. The legacy approach
+      // (driving `.polishing` via `whisperKit.llmPolish.onWillProcess?()`)
+      // relied on the deleted pipeline's bespoke state-change side effect;
+      // walk the kernel FSM through `.preparing → .recording → .stopping →
+      // .transcribing → .finalizing` instead, which maps to driver state
+      // `.polishing` via `KernelDictationDriver.pipelineState(for:...)`.
+      let audio = RouterTestAudioCapture()
+      let asr = RouterTestASRManager()
+      asr.activeBackendType = .whisperKit
+      let store = DictationRuntimeFixtures.tempStore()
+      let driver = DictationRuntimeFixtures.makeParakeetDriver(
+        audioCapture: audio, asrManager: asr, store: store)
+      let whisperKit = DictationRuntimeFixtures.makeWhisperKitPipeline(
+        audioCapture: audio, store: store)
+      let router = ASREventRouter(
+        asrManager: asr,
+        kernelDriver: driver,
+        whisperKitKernelDriver: whisperKit
+      )
 
-    whisperKit.llmPolish.onWillProcess?()
-    #expect(whisperKit.state == .polishing)
-    asr.onServiceInterrupted?()
-    await Task.yield()
+      let kernel = whisperKit.kernelForTesting
+      #expect(kernel.testForceTransition(to: .preparing))
+      #expect(kernel.testForceTransition(to: .recording))
+      #expect(kernel.testForceTransition(to: .stopping))
+      #expect(kernel.testForceTransition(to: .transcribing))
+      #expect(kernel.testForceTransition(to: .finalizing))
+      #expect(whisperKit.state == .polishing)
+      asr.onServiceInterrupted?()
+      await Task.yield()
 
-    #expect(whisperKit.state == .polishing)
-    withExtendedLifetime(router) {}
-  }
+      #expect(whisperKit.state == .polishing)
+      withExtendedLifetime(router) {}
+    }
+  #endif
 }

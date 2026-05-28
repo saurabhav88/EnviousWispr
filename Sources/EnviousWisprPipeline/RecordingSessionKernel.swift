@@ -960,6 +960,20 @@ final class RecordingSessionKernel {
       return (stopped &- started) < UInt64(minimumRecordingTicks)
     }()
     if elapsedSubMinimum || bufferCountThisSession == 0 {
+      // PR-5 Rung 5 Pass 2 #5: app.log line for sub-minimum discard so
+      // debug-build readers can grep app.log for the tap-too-short
+      // signature (parity with OLD `WhisperKitPipeline.swift:578-595`,
+      // also covers Parakeet's path — kernel-level so backend-agnostic).
+      let cnt = captureResult.samples.count
+      let buffers = bufferCountThisSession
+      Task {
+        await AppLogger.shared.log(
+          "Recording discarded — too short "
+            + "(samples=\(cnt), elapsedSubMinimum=\(elapsedSubMinimum), "
+            + "buffers=\(buffers))",
+          level: .info, category: "Pipeline"
+        )
+      }
       discardReason = .tooShort
       finishTerminal(.discarded, sid: sid)
       return
@@ -1046,28 +1060,29 @@ final class RecordingSessionKernel {
     // parameters (clipTimestamps) from these; the first engine inherits
     // the no-op default. Sync, must-not-throw, must-not-block (Rung 2A §4).
     //
-    // Coordinate space contract (Codex code-diff r4 P2): segments are
-    // indexed into `captureResult.samples` (raw capture audio), NOT into
-    // the `conditioned.samples` the adapter receives in
-    // `finalize(batchSamples:)` immediately after. A Rung 3 adapter that
-    // applies these segments to the audio handed to `finalize` MUST
-    // either (a) translate offsets into the conditioned buffer's
-    // coordinate space, or (b) use engine-internal VAD chunking
-    // (e.g. WhisperKit `chunkingStrategy: .vad`) and treat
-    // `observeSpeechSegments` as a hint rather than a clip-timestamp
-    // source. Parakeet inherits the no-op default so this caveat does
-    // not apply to it.
+    // Coordinate space contract (Codex code-diff r4 P2 + PR-5 Rung 5 UAT
+    // #827): segments are indexed into `captureResult.samples` (raw capture
+    // audio), NOT into the VAD-filtered `conditioned.samples` the adapter
+    // receives in `finalize(batchSamples:)` immediately after. The kernel
+    // hands the adapter the raw `captureResult.samples` alongside the segments
+    // so a clipTimestamps adapter (WhisperKit) batch-decodes the SAME buffer
+    // the segments index into — eliminating the shadow-`retainedPCM`
+    // divergence that caused the alternating "Audio samples are nil" failure.
+    // Adapters that use engine-internal VAD chunking or do not consume
+    // segments inherit the no-op default and ignore both.
     //
     // Post-finalizeAtStop guard (Codex code-diff r2 P2): the prior
     // `finalizeAtStop(...)` await at :908 is a suspension point; if cancel
     // or external interruption lands during that await, the kernel can be
     // terminal here. The Rung 2A §4 contract says
-    // `observeSpeechSegments(_:)` fires BEFORE `finalize(batchSamples:)` —
-    // a terminal session skips finalize, so it must skip observe too,
-    // otherwise a future engine that stores observed segments for use in
-    // finalize would see them and apply them to the next session.
+    // `observeSpeechSegments(_:rawCaptureSamples:)` fires BEFORE
+    // `finalize(batchSamples:)` — a terminal session skips finalize, so it
+    // must skip observe too, otherwise a future engine that stores observed
+    // segments for use in finalize would see them and apply them to the
+    // next session.
     guard isCurrent(sid), !state.isTerminal else { return }
-    adapter.observeSpeechSegments(vadSegments)
+    adapter.observeSpeechSegments(
+      vadSegments, rawCaptureSamples: captureResult.samples)
     // Raw audio for the conditioner is `captureResult.samples` (parity with
     // old Parakeet pipeline `rawSamples = captureResult.samples`).
     // The OLD pipeline did NOT include pre-roll in batch decode either — pre-roll
@@ -1089,6 +1104,25 @@ final class RecordingSessionKernel {
         "VAD filtered to \(filteredCount) samples "
           + "(\(String(format: "%.1f", Double(filteredCount) / Double(max(rawCount, 1)) * 100))% voiced)",
         level: .verbose, category: "Pipeline"
+      )
+    }
+    // PR-5 Rung 5 Pass 2 #6: success-path VAD detail log restoring the
+    // OLD `WhisperKitPipeline.swift:643-680` shape — segment count,
+    // voiced milliseconds, voiced percentage. Lets a debug-build reader
+    // grep app.log for one richer line per recording instead of stitching
+    // the verbose-level filter ratio with the conditioner log.
+    let segCount = vadSegments.count
+    let voicedMs = vadSpeechDurationMs
+    let voicedPct =
+      rawCount > 0
+      ? String(format: "%.1f", Double(filteredCount) / Double(rawCount) * 100)
+      : "0.0"
+    Task {
+      await AppLogger.shared.log(
+        "VAD detail: segments=\(segCount), voicedMs=\(voicedMs), "
+          + "rawSamples=\(rawCount), filteredSamples=\(filteredCount), "
+          + "voicedPct=\(voicedPct)%",
+        level: .info, category: "Pipeline"
       )
     }
     telemetryState.asrEmptyDiagnostics = ASREmptyResultDiagnostics(
@@ -1126,11 +1160,23 @@ final class RecordingSessionKernel {
 
     switch outcome {
     case .transcript(let result):
+      // PR-5 Rung 5 Pass 2 #8 — `result.processingTime` is the adapter's
+      // pure decode duration (started AFTER LID at
+      // `WhisperKitEngineAdapter.swift:630`); `asrEnd - asrStart` would
+      // include LID and break parity with OLD
+      // `WhisperKitPipeline.swift:1161-1168` `asr_s` semantic. Sentry/app.log
+      // ASR-completed payload reads this field; PostHog latency telemetry
+      // is already adapter-emitted and unaffected.
       telemetryState.asrCompletedTelemetry = KernelASRCompletedTelemetry(
-        durationSeconds: asrEnd - asrStart,
+        durationSeconds: result.processingTime,
         charCount: result.text.trimmingCharacters(in: .whitespacesAndNewlines).count,
         mode: isStreamingSession ? "streaming" : "batch",
-        language: result.language
+        language: result.language,
+        // PR-5 Rung 5 Pass 2 r2 #B1: carry the incremental-vs-batch outcome into
+        // the ASR-completed Sentry breadcrumb (parity with OLD
+        // `WhisperKitPipeline.swift:1049-1052`). nil for Parakeet.
+        incrementalAccepted: (adapter as? ASREngineTelemetryProviding)?
+          .lastASRDiagnostics?.incrementalAccepted
       )
       await runFinalizing(sid, asrText: result.text)
     case .empty(let hadSpeechEvidence):
@@ -1407,7 +1453,7 @@ final class RecordingSessionKernel {
   /// `ASRManager.onServiceInterrupted` to the App router to avoid
   /// last-writer-wins callback collisions.
   ///
-  /// VAD auto-stop is NOT bound here: it flows through `vad.stopSignals`
+  /// VAD auto-stop is NOT bound here: it flows through `vad.subscribeStopSignals()`
   /// only, with `CaptureVADSignalSource` the single owner of
   /// `AudioCaptureInterface.onVADAutoStop` (PR-4 plan §3.5).
   private func bindCaptureCallbacks(_ sid: SessionID) {
@@ -1513,7 +1559,7 @@ final class RecordingSessionKernel {
   private func subscribeVADSignals(_ sid: SessionID) {
     spawn(sid) { [weak self] in
       guard let self else { return }
-      for await signal in self.vad.stopSignals {
+      for await signal in self.vad.subscribeStopSignals() {
         guard self.isCurrent(sid) else { return }
         // Stale-callback drop (PR-1 §B.1.4 invariant 7) — a signal stamped
         // with a non-current `SessionID` cannot terminate this session. The
@@ -1903,13 +1949,10 @@ final class RecordingSessionKernel {
       let adapterDiagnostics = (adapter as? ASREngineTelemetryProviding)?.lastASRDiagnostics
     else { return }
 
-    diagnostics.streamingResultChars = adapterDiagnostics.streamingResultChars
-    diagnostics.streamingFinalizeFailed = adapterDiagnostics.streamingFinalizeFailed
-    diagnostics.streamingFinalizeErrorType = adapterDiagnostics.streamingFinalizeErrorType
-    diagnostics.streamingBuffersDispatched = adapterDiagnostics.streamingBuffersDispatched
-    diagnostics.streamingBuffersFed = adapterDiagnostics.streamingBuffersFed
-    diagnostics.batchRescueAttempted = adapterDiagnostics.batchRescueAttempted
-    diagnostics.batchRescueResultChars = adapterDiagnostics.batchRescueResultChars
+    // PR-5 Rung 5 Pass 2 r2 #B2: the copy (incl. the WhisperKit incremental
+    // fields previously dropped before Sentry) lives in a pure, unit-tested
+    // method so a future field addition can't silently skip the copy again.
+    diagnostics.absorbAdapterDiagnostics(adapterDiagnostics)
     telemetryState.asrEmptyDiagnostics = diagnostics
   }
 

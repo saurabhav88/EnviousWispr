@@ -19,7 +19,7 @@ import Testing
       count <= 4,
       """
       AudioEventRouter collaborator-slot ceiling exceeded: \(count) > 4. \
-      Allowed: audioCapture, pipeline, whisperKitPipeline, captureTelemetry.
+      Allowed: audioCapture, pipeline, whisperKitKernelDriver, captureTelemetry.
       """)
   }
 

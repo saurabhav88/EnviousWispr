@@ -112,10 +112,13 @@ enum DictationRuntimeFixtures {
     asrManager: any ASRManagerInterface,
     store: TranscriptStore
   ) -> KernelDictationDriver {
-    KernelDictationDriverFactory.makeForParakeet(
+    let vad = KernelDictationDriverFactory.makeSharedVADSignalSource(
+      audioCapture: audioCapture)
+    return KernelDictationDriverFactory.makeForParakeet(
       inputs: .init(
         audioCapture: audioCapture,
         asrManager: asrManager,
+        vadSignalSource: vad,
         transcriptStore: store,
         keychainManager: KeychainManager(),
         captureTelemetry: CaptureTelemetryState(),
@@ -123,16 +126,28 @@ enum DictationRuntimeFixtures {
       ))
   }
 
+  /// PR-5 Rung 5 (#827): WhisperKit is a second kernel driver via the
+  /// factory's `makeForWhisperKit(inputs:)`. The fixture function keeps its
+  /// historical name (`makeWhisperKitPipeline`) so callers do not change;
+  /// only the return type narrows to `KernelDictationDriver`.
   static func makeWhisperKitPipeline(
     audioCapture: any AudioCaptureInterface,
     store: TranscriptStore
-  ) -> WhisperKitPipeline {
-    WhisperKitPipeline(
-      audioCapture: audioCapture,
-      backend: WhisperKitBackend(),
-      transcriptStore: store,
-      keychainManager: KeychainManager()
-    )
+  ) -> KernelDictationDriver {
+    let vad = KernelDictationDriverFactory.makeSharedVADSignalSource(
+      audioCapture: audioCapture)
+    let detector = LanguageDetector(onLanguageFlip: { _ in })
+    return KernelDictationDriverFactory.makeForWhisperKit(
+      inputs: .init(
+        audioCapture: audioCapture,
+        whisperKitBackend: WhisperKitBackend(),
+        languageDetector: detector,
+        vadSignalSource: vad,
+        transcriptStore: store,
+        keychainManager: KeychainManager(),
+        captureTelemetry: CaptureTelemetryState(),
+        pasteCompletionRegistry: PasteCompletionRegistry()
+      ))
   }
 
   static func captureStallContext(sessionID: UInt64) -> CaptureStallContext {

@@ -14,22 +14,19 @@ enum DictationSessionConfigFactory {
   static func make(
     asrManager: any ASRManagerInterface,
     kernelDriver: KernelDictationDriver,
-    whisperKitPipeline: WhisperKitPipeline,
+    whisperKitKernelDriver: KernelDictationDriver,
     settings: SettingsManager,
     triggerSource: TriggerSource
   ) -> DictationSessionConfig {
-    let isWhisperKit = asrManager.activeBackendType == .whisperKit
+    // PR-5 Rung 5 (#827): both backends share `PipelineState` vocabulary now,
+    // so the per-backend idle switch collapses; the legacy `.ready` case
+    // (WhisperKit-only) maps to `.idle` in the kernel driver's state mapping.
+    let active: KernelDictationDriver =
+      asrManager.activeBackendType == .whisperKit ? whisperKitKernelDriver : kernelDriver
     let activePipelineIdle: Bool = {
-      if isWhisperKit {
-        switch whisperKitPipeline.state {
-        case .idle, .ready, .complete, .error: return true
-        default: return false
-        }
-      } else {
-        switch kernelDriver.state {
-        case .idle, .complete, .error: return true
-        default: return false
-        }
+      switch active.state {
+      case .idle, .complete, .error: return true
+      default: return false
       }
     }()
     // #500: drop the legacy `permissions.hasAccessibilityPermission` gate so the

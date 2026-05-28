@@ -4,7 +4,7 @@ import Testing
 /// Architecture ceiling for `LiveRecordingState` (PR7 of epic #763).
 ///
 /// Locks the home as the canonical "live recording facts" surface:
-/// - 4 stored properties (`pipeline`, `whisperKitPipeline`, `audioCapture`, `asrManager`)
+/// - 4 stored properties (`pipeline`, `whisperKitKernelDriver`, `audioCapture`, `asrManager`)
 /// - 0 non-private `func` methods (three computed properties: `pipelineState`,
 ///   `audioLevel`, `currentTranscript`; computed properties are NOT counted
 ///   by `CeilingsTestSupport.countNonPrivateMethods`)
@@ -35,7 +35,7 @@ import Testing
       total == 4,
       """
       LiveRecordingState stored-property count mismatch: expected exactly 4 \
-      (pipeline + whisperKitPipeline + audioCapture + asrManager), found \(total). \
+      (pipeline + whisperKitKernelDriver + audioCapture + asrManager), found \(total). \
       Adding a stored property requires a Bible §30 entry; if this dropped, \
       ratchet down. The parser counts `let` collaborator declarations with non-\
       primitive types.

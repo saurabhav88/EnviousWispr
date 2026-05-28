@@ -121,6 +121,12 @@ struct KernelFinalizationWiring {
     // (D18 closed for Parakeet — PR-4 §3.8).
     processText = { raw, onPolishStarted in
       steps.llmPolish.onWillProcess = { onPolishStarted() }
+      // PR-5 Rung 5 (#827): wire engine LID -> polish for engines that detect.
+      // Parakeet (no LID) returns nil through the cast; polish-step stays nil
+      // and planner uses legacy prompt path. WhisperKit returns the last LID
+      // result; planner reads it via `LLMPolishStep.languageDetection`.
+      steps.llmPolish.languageDetection =
+        (adapter as? any ASREngineLanguageIdentifying)?.lastLanguageDetection
       let language: String? = {
         if case .locked(let code) = context.config?.languageMode { return code }
         return nil

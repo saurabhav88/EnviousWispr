@@ -599,16 +599,19 @@ import Testing
     try await adapter.beginSession(sid, options: .default, streaming: false)
     let retained: [Float] = (0..<16_000).map { _ in 0.1 }
     feed(adapter, samples: retained, session: sid)
+    // The 1-arg test overload sets the authoritative capture buffer to the
+    // fed retained PCM (all 0.1).
     adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)])
     // Pass a distinct, easily-identifiable batchSamples — the WhisperKit
-    // adapter MUST ignore it and decode against `retainedPCM`.
+    // adapter MUST ignore `finalize`'s batchSamples and decode the
+    // observe-provided capture buffer instead (#827).
     let distinct: [Float] = [Float](repeating: 0.99, count: 16_000)
     _ = await adapter.finalize(batchSamples: distinct)
     let lastSamples = await backend.lastTranscribeSamples
     // The adapter pads via `paddedASRSamples(rawSamples:)`; samples shorter
     // than `minimumTranscriptionSamples` get zero-padded. 16_000 == minimum,
-    // so the passed-in payload is the retained PCM (all 0.1), not the 0.99
-    // distinct buffer.
+    // so the passed-in payload is the capture buffer (all 0.1), not the 0.99
+    // distinct `batchSamples`.
     #expect(lastSamples.first == Float(0.1))
     #expect(lastSamples.contains(where: { $0 == Float(0.99) }) == false)
   }
@@ -894,6 +897,65 @@ import Testing
       "observeSpeechSegments without a live session must be a no-op")
   }
 
+  // MARK: PR-5 Rung 5 UAT #827 — batch decode uses the authoritative capture buffer
+
+  @Test(
+    "observeSpeechSegments stores segments unshifted in the capture coordinate"
+  )
+  func observeSpeechSegmentsStoresUnshifted() async throws {
+    let backend = StubWhisperKitBackend()
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default, streaming: false)
+    // Segments index into `rawCaptureSamples` (the kernel's captureResult.samples),
+    // NOT the adapter's retainedPCM shadow buffer — so they are stored verbatim,
+    // no pre-roll shift (#827 reverses the prior shift).
+    adapter.observeSpeechSegments(
+      [SpeechSegment(startSample: 100, endSample: 15_000)],
+      rawCaptureSamples: [Float](repeating: 0.1, count: 16_000)
+    )
+    let stored = adapter.observedSpeechSegmentsForTests
+    #expect(stored.first?.startSample == 100, "segments stored unshifted")
+    #expect(stored.first?.endSample == 15_000)
+  }
+
+  @Test(
+    "batch decode uses rawCaptureSamples even when it is LONGER than retainedPCM (#827 nil-samples regression)"
+  )
+  func batchDecodeUsesCaptureBufferNotShadowPCM() async throws {
+    // Reproduces the alternating "Audio samples are nil" shape: the adapter's
+    // async-fed `retainedPCM` is SHORTER than the kernel's authoritative
+    // `captureResult.samples`, and a VAD segment runs to the full capture
+    // length. The fix decodes the capture buffer (segment in range), not the
+    // shorter shadow buffer (which would overrun → nil).
+    let backend = StubWhisperKitBackend()
+    await backend.setTranscribeResult(
+      ASRResult(
+        text: "decoded", language: "en", duration: 1, processingTime: 0.1,
+        backendType: .whisperKit))
+    let adapter = WhisperKitEngineAdapter(backend: backend)
+    let sid = SessionID()
+    try await adapter.beginSession(sid, options: .default, streaming: false)
+    // Shadow buffer (retainedPCM): 16_000 samples of 0.1, fed async.
+    feed(adapter, samples: [Float](repeating: 0.1, count: 16_000), session: sid)
+    // Authoritative capture buffer: LONGER (24_000) and a distinct value, with
+    // a segment running to its full length.
+    let capture = [Float](repeating: 0.5, count: 24_000)
+    adapter.observeSpeechSegments(
+      [SpeechSegment(startSample: 0, endSample: 24_000)], rawCaptureSamples: capture)
+    let outcome = await adapter.finalize(batchSamples: nil)
+    guard case .transcript = outcome else {
+      Issue.record("expected .transcript (no nil-samples failure), got \(outcome)")
+      return
+    }
+    let lastSamples = await backend.lastTranscribeSamples
+    #expect(
+      lastSamples.count == 24_000,
+      "decode must use the 24_000-sample capture buffer, not the 16_000 shadow PCM")
+    #expect(
+      lastSamples.first == Float(0.5), "decoded the capture buffer (0.5), not retainedPCM (0.1)")
+  }
+
   @Test(
     "applyUnloadPolicy refuses to arm during an active session (Codex r7 S1)"
   )
@@ -978,4 +1040,16 @@ import Testing
 extension WhisperKitEngineAdapter {
   var retainedPCMForTests: [Float] { retainedPCMForUnitTests }
   var observedSpeechSegmentsForTests: [SpeechSegment] { observedSpeechSegmentsForUnitTests }
+
+  /// Test-only convenience that calls the production
+  /// `observeSpeechSegments(_:rawCaptureSamples:)` with `rawCaptureSamples` set
+  /// to the adapter's current retained PCM — so lifecycle/storage tests that
+  /// fed audio via `acceptAudio` decode that same audio without supplying a
+  /// separate capture buffer. Tests that exercise the #827 fix (segments
+  /// indexing a capture buffer longer than retained PCM) use the two-arg
+  /// signature directly. Production callers (the kernel) always pass
+  /// `captureResult.samples`.
+  func observeSpeechSegments(_ segments: [SpeechSegment]) {
+    observeSpeechSegments(segments, rawCaptureSamples: retainedPCMForUnitTests)
+  }
 }

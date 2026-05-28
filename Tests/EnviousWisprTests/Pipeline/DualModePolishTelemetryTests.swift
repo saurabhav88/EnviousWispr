@@ -27,7 +27,7 @@ import Testing
 ///       LLMPolishStep.swift:248/312 is verified by Codex production inspection.
 ///   4c. The pipeline-side degradation `metadata == nil ? nil :
 ///       pipelineFellBackToRaw` is correct in isolation. Call sites at
-///       Parakeet pipeline.swift:932 + WhisperKitPipeline.swift:1050 are
+///       Parakeet pipeline.swift:932 + KernelDictationDriver.swift:1050 are
 ///       verified by Codex production inspection.
 ///   5. AFMPolishError is a Sendable typed wrapper preserving underlying, and
 ///      SentryBreadcrumb captures post-router AFM failures with router fields
@@ -266,7 +266,7 @@ struct DualModePolishTelemetryTests {
   /// When no AFM polish ran (cloud provider, or polish skipped), the field
   /// must be NIL — not `false` — so PostHog filtering on `fell_back_to_raw IS
   /// NOT NULL` correctly excludes non-AFM events. Production sites:
-  /// the old Parakeet pipeline and `WhisperKitPipeline.swift:1050`.
+  /// the old Parakeet pipeline and `KernelDictationDriver.swift:1050`.
   @Test("ExecutionMetrics.polishFellBackToRaw is nil when polishMetadata is absent")
   func executionMetricsFellBackIsNilWithoutMetadata() {
     let metadata: PolishMetadata? = nil

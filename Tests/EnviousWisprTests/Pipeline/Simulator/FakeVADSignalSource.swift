@@ -12,8 +12,12 @@ import Foundation
 
 @MainActor
 final class FakeVADSignalSource: VADSignalSource {
-  let stopSignals: AsyncStream<VADStopSignal>
-  private let stopContinuation: AsyncStream<VADStopSignal>.Continuation
+  /// Per-subscriber continuations (Codex r1 P1). Mirrors the production
+  /// `CaptureVADSignalSource` shape so simulator coverage matches: every
+  /// `emit` broadcasts to all live subscribers; iterator cancellation
+  /// auto-removes its entry via `onTermination`.
+  private var subscribers: [Int: AsyncStream<VADStopSignal>.Continuation] = [:]
+  private var nextSubscriberID: Int = 0
 
   /// The verdict `speechEvidenceAtStop()` returns. Defaults to `.voiced`;
   /// scenarios set `.confirmedNoSpeech` or `.unavailable`.
@@ -38,15 +42,27 @@ final class FakeVADSignalSource: VADSignalSource {
   /// Number of times `speechEvidenceAtStop()` was read.
   private(set) var evidenceReadCount = 0
 
-  init() {
-    (stopSignals, stopContinuation) = AsyncStream.makeStream(of: VADStopSignal.self)
+  init() {}
+
+  func subscribeStopSignals() -> AsyncStream<VADStopSignal> {
+    let id = nextSubscriberID
+    nextSubscriberID += 1
+    return AsyncStream { continuation in
+      subscribers[id] = continuation
+      continuation.onTermination = { @Sendable [weak self] _ in
+        Task { @MainActor [weak self] in
+          self?.subscribers.removeValue(forKey: id)
+        }
+      }
+    }
   }
 
   /// Emit one stop-driving signal, stamped with `currentSessionID` (driven by a
-  /// scenario's `VADDirective`).
+  /// scenario's `VADDirective`). Broadcast to every live subscriber.
   func emit(_ kind: VADStopKind) {
     emittedKinds.append(kind)
-    stopContinuation.yield(VADStopSignal(kind: kind, sessionID: currentSessionID))
+    let signal = VADStopSignal(kind: kind, sessionID: currentSessionID)
+    for continuation in subscribers.values { continuation.yield(signal) }
   }
 
   /// Emit a stop-driving signal stamped with a PRIOR session's `SessionID` —
@@ -55,7 +71,8 @@ final class FakeVADSignalSource: VADSignalSource {
   /// finished session; the kernel must drop it (FSM invariant 7).
   func emitStale(_ kind: VADStopKind) {
     emittedKinds.append(kind)
-    stopContinuation.yield(VADStopSignal(kind: kind, sessionID: SessionID()))
+    let signal = VADStopSignal(kind: kind, sessionID: SessionID())
+    for continuation in subscribers.values { continuation.yield(signal) }
   }
 
   func speechEvidenceAtStop() -> VADSpeechEvidence {
@@ -65,8 +82,9 @@ final class FakeVADSignalSource: VADSignalSource {
 
   func speechSegmentsAtStop() -> [SpeechSegment] { segments }
 
-  /// Close the signal stream at scenario teardown.
+  /// Close every subscriber's stream at scenario teardown.
   func finish() {
-    stopContinuation.finish()
+    for continuation in subscribers.values { continuation.finish() }
+    subscribers.removeAll()
   }
 }

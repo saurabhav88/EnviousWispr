@@ -14,7 +14,7 @@ import Testing
       count <= 3,
       """
       WedgeRecoveryRouter collaborator-slot ceiling exceeded: \(count) > 3. \
-      Allowed: audioCapture, pipeline, whisperKitPipeline.
+      Allowed: audioCapture, pipeline, whisperKitKernelDriver.
       """)
   }
 

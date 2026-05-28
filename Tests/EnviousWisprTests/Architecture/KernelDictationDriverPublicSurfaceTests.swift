@@ -31,9 +31,12 @@ import Testing
     // so they are accessible without `@testable import EnviousWisprPipeline`.
     // The point of this file is to prove the PIPELINE's public surface is
     // reachable, not the test target's own internals.
+    let audio = FakeAudioCapture()
+    let vad = KernelDictationDriverFactory.makeSharedVADSignalSource(audioCapture: audio)
     let inputs = KernelDictationDriverFactory.ParakeetInputs(
-      audioCapture: FakeAudioCapture(),
+      audioCapture: audio,
       asrManager: StubParakeetASRManager(),
+      vadSignalSource: vad,
       transcriptStore: TranscriptStore(),
       keychainManager: KeychainManager(),
       captureTelemetry: CaptureTelemetryState(),

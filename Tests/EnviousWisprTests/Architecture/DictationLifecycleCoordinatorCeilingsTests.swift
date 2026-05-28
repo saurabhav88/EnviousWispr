@@ -49,7 +49,7 @@ import Testing
       count <= 11,
       """
       DictationLifecycleCoordinator collaborator ceiling exceeded: \(count) > 11. \
-      Allowed (PR9 baseline): pipeline, whisperKitPipeline, recordingOverlay, \
+      Allowed (PR9 baseline): pipeline, whisperKitKernelDriver, recordingOverlay, \
       hotkeyService, settingsSync, audioCapture, transcriptCoordinator, settings, \
       lastRecordingResult, languageSuggestionPresenter, recordingLockedAccess. \
       PR10 ratchets down when RecordingFinalizer absorbs the lock-state writes.

@@ -44,7 +44,7 @@ final class DictationRuntime {
     audioCapture: any AudioCaptureInterface,
     asrManager: any ASRManagerInterface,
     kernelDriver: KernelDictationDriver,
-    whisperKitPipeline: WhisperKitPipeline,
+    whisperKitKernelDriver: KernelDictationDriver,
     captureTelemetry: CaptureTelemetryState,
     settings: SettingsManager,
     permissions: PermissionsService,
@@ -63,19 +63,19 @@ final class DictationRuntime {
     self.audioEventRouter = AudioEventRouter(
       audioCapture: audioCapture,
       kernelDriver: kernelDriver,
-      whisperKitPipeline: whisperKitPipeline,
+      whisperKitKernelDriver: whisperKitKernelDriver,
       captureTelemetry: captureTelemetry,
       resolveActiveCaptureBackend: resolveActiveCaptureBackend
     )
     self.asrEventRouter = ASREventRouter(
       asrManager: asrManager,
       kernelDriver: kernelDriver,
-      whisperKitPipeline: whisperKitPipeline
+      whisperKitKernelDriver: whisperKitKernelDriver
     )
     self.wedgeRecoveryRouter = WedgeRecoveryRouter(
       audioCapture: audioCapture,
       kernelDriver: kernelDriver,
-      whisperKitPipeline: whisperKitPipeline,
+      whisperKitKernelDriver: whisperKitKernelDriver,
       isCurrentSession: isCurrentSession,
       resolveActiveTelemetryTarget: resolveActiveTelemetryTarget
     )
@@ -94,7 +94,7 @@ final class DictationRuntime {
     )
     let finalizer = RecordingFinalizer(
       kernelDriver: kernelDriver,
-      whisperKitPipeline: whisperKitPipeline,
+      whisperKitKernelDriver: whisperKitKernelDriver,
       asrManager: asrManager,
       recordingOverlay: recordingOverlay,
       heartControlRecovery: heartControlRecovery,
@@ -106,7 +106,7 @@ final class DictationRuntime {
       audioCapture: audioCapture,
       asrManager: asrManager,
       kernelDriver: kernelDriver,
-      whisperKitPipeline: whisperKitPipeline,
+      whisperKitKernelDriver: whisperKitKernelDriver,
       settings: settings,
       permissions: permissions,
       recordingOverlay: recordingOverlay,

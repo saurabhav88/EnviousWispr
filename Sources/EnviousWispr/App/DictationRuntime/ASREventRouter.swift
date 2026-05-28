@@ -10,21 +10,21 @@ import Foundation
 final class ASREventRouter {
   let asrManager: any ASRManagerInterface
   let kernelDriver: KernelDictationDriver
-  let whisperKitPipeline: WhisperKitPipeline
+  let whisperKitKernelDriver: KernelDictationDriver
 
   init(
     asrManager: any ASRManagerInterface,
     kernelDriver: KernelDictationDriver,
-    whisperKitPipeline: WhisperKitPipeline
+    whisperKitKernelDriver: KernelDictationDriver
   ) {
     self.asrManager = asrManager
     self.kernelDriver = kernelDriver
-    self.whisperKitPipeline = whisperKitPipeline
+    self.whisperKitKernelDriver = whisperKitKernelDriver
 
     asrManager.onServiceInterrupted = { [weak self] in
       guard let self else { return }
       let pState = self.kernelDriver.state
-      let wkState = self.whisperKitPipeline.state
+      let wkState = self.whisperKitKernelDriver.state
       Task {
         await AppLogger.shared.log(
           "[ASREventRouter] ASR onServiceInterrupted — parakeet=\(pState), whisperKit=\(wkState)",
@@ -34,7 +34,7 @@ final class ASREventRouter {
       if pState == .loadingModel || pState == .recording || pState == .transcribing {
         self.kernelDriver.handleASRServiceInterruption()
       } else if wkState == .recording || wkState == .transcribing {
-        self.whisperKitPipeline.handleASRServiceInterruption()
+        self.whisperKitKernelDriver.handleASRServiceInterruption()
       }
     }
   }

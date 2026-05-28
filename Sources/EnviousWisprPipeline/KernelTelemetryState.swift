@@ -53,6 +53,11 @@ struct KernelASRCompletedTelemetry {
   let charCount: Int
   let mode: String
   let language: String?
+  // PR-5 Rung 5 Pass 2 r2 #B1: WhisperKit-only — whether incremental-worker
+  // output was accepted vs batch fallback. Restores the `"incremental"` key the
+  // OLD `WhisperKitPipeline.swift:1049-1052` ASR-completed breadcrumb carried.
+  // nil for Parakeet (no incremental concept) → sink omits the key.
+  var incrementalAccepted: Bool? = nil
 }
 
 struct KernelASRAdapterDiagnostics {

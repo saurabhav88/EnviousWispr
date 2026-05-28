@@ -9,9 +9,9 @@ import Testing
 // MARK: - LIDPerfSignpostSessionIDTests (epic #827, PR-5 Rung 4.5)
 //
 // Coverage for the LID perf signpost `session_id` plumbing restored in this
-// rung. The OLD `WhisperKitPipeline` emitted `session_id` on every signpost
+// rung. The OLD `KernelDictationDriver` emitted `session_id` on every signpost
 // line via `audioCapture.currentCaptureSessionID`
-// (`WhisperKitPipeline.swift:1438-1452`). The new adapter dropped the
+// (`KernelDictationDriver.swift:1438-1452`). The new adapter dropped the
 // parameter — this rung restores it, and CAPTURES the value once per session
 // at `beginSession` rather than resolving via a late closure (Codex grounded
 // review r1 finding: direct sources increment generation on every

@@ -80,10 +80,13 @@ struct CancellationSilentUnwindTests {
         )
       )
     )
+    let vad = KernelDictationDriverFactory.makeSharedVADSignalSource(
+      audioCapture: audioCapture)
     let pipeline = KernelDictationDriverFactory.makeForParakeet(
       inputs: .init(
         audioCapture: audioCapture,
         asrManager: asrManager,
+        vadSignalSource: vad,
         transcriptStore: TranscriptStore(),
         keychainManager: KeychainManager(),
         captureTelemetry: CaptureTelemetryState(),

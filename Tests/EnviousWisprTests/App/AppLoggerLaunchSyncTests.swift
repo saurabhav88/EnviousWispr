@@ -60,20 +60,10 @@ struct AppLoggerLaunchSyncTests {
     )
     let transcriptStore = TranscriptStore()
     let keychain = KeychainManager()
-    let pipeline = KernelDictationDriverFactory.makeForParakeet(inputs: .init(
-      audioCapture: audioCapture,
-      asrManager: asrManager,
-      transcriptStore: transcriptStore,
-      keychainManager: KeychainManager(),
-      captureTelemetry: CaptureTelemetryState(),
-      pasteCompletionRegistry: PasteCompletionRegistry()
-    ))
-    let whisperKitPipeline = WhisperKitPipeline(
-      audioCapture: audioCapture,
-      backend: WhisperKitBackend(),
-      transcriptStore: transcriptStore,
-      keychainManager: keychain
-    )
+    let pipeline = DictationRuntimeFixtures.makeParakeetDriver(
+      audioCapture: audioCapture, asrManager: asrManager, store: transcriptStore)
+    let whisperKitKernelDriver = DictationRuntimeFixtures.makeWhisperKitPipeline(
+      audioCapture: audioCapture, store: transcriptStore)
     let polishService = TranscriptPolishService(
       keychainManager: keychain,
       transcriptStore: transcriptStore
@@ -83,7 +73,7 @@ struct AppLoggerLaunchSyncTests {
 
     let sync = PipelineSettingsSync(
       kernelDriver: pipeline,
-      whisperKitPipeline: whisperKitPipeline,
+      whisperKitKernelDriver: whisperKitKernelDriver,
       polishService: polishService,
       audioCapture: audioCapture,
       asrManager: asrManager,
