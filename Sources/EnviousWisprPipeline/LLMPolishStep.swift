@@ -42,6 +42,22 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// Injectable prompt planner. DefaultPromptPlanner in production, mockable in tests.
   public var promptPlanner: any PromptPlanning = DefaultPromptPlanner()
 
+  /// Injectable polisher factory (#827 PR-8). Default reproduces the per-provider
+  /// connector switch; returns nil for `.none` so the call site owns the
+  /// breadcrumb plus throw. Tests inject a controllable polisher to exercise the
+  /// post-await settings snapshot. Mirrors `promptPlanner` above; `internal`
+  /// because only the same-module factory and `@testable` tests reach it.
+  typealias PolisherFactory = @MainActor (LLMProvider, KeychainManager) -> (any TranscriptPolisher)?
+  var makePolisher: PolisherFactory = { provider, keychain in
+    switch provider {
+    case .openAI: OpenAIConnector(keychainManager: keychain)
+    case .gemini: GeminiConnector(keychainManager: keychain)
+    case .ollama: OllamaConnector()
+    case .appleIntelligence: AppleIntelligenceConnector()
+    case .none: nil
+    }
+  }
+
   /// Called before LLM processing starts (pipeline uses this to set .polishing state).
   public var onWillProcess: (() -> Void)?
 
@@ -109,11 +125,19 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
 
   public func process(_ context: TextProcessingContext) async throws -> TextProcessingContext {
     onWillProcess?()
+    // #827 PR-8: snapshot the mutable provider/model at entry. process()
+    // suspends at the polish await; a concurrent PipelineSettingsSync mutation
+    // on the shared re-polish step would otherwise tear the post-await reads
+    // (provider/model attribution in ctx, the family label, and the two
+    // telemetry helpers). Mirrors WordCorrectionStep's entry snapshot. Every
+    // read below uses these locals, never `self`, so reentrancy cannot tear it.
+    let provider = llmProvider
+    let model = llmModel
     SentryBreadcrumb.add(
       stage: "polish", message: "LLM polish started",
       data: [
-        "provider": llmProvider.rawValue,
-        "model": llmModel,
+        "provider": provider.rawValue,
+        "model": model,
       ])
 
     // Short-circuit: ultra-short transcripts get passed through verbatim.
@@ -153,25 +177,19 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
 
     Task {
       await AppLogger.shared.log(
-        "LLM polish requested: provider=\(llmProvider.rawValue), model=\(llmModel)",
+        "LLM polish requested: provider=\(provider.rawValue), model=\(model)",
         level: .verbose, category: "LLM"
       )
     }
 
-    let polisher: any TranscriptPolisher =
-      switch llmProvider {
-      case .openAI: OpenAIConnector(keychainManager: keychainManager)
-      case .gemini: GeminiConnector(keychainManager: keychainManager)
-      case .ollama: OllamaConnector()
-      case .appleIntelligence: AppleIntelligenceConnector()
-      case .none:
-        SentryBreadcrumb.captureError(
-          LLMError.providerUnavailable, category: .providerInitFailed, stage: "polish")
-        throw LLMError.providerUnavailable
-      }
+    guard let polisher = makePolisher(provider, keychainManager) else {
+      SentryBreadcrumb.captureError(
+        LLMError.providerUnavailable, category: .providerInitFailed, stage: "polish")
+      throw LLMError.providerUnavailable
+    }
 
     let keychainId: String? =
-      switch llmProvider {
+      switch provider {
       case .openAI: KeychainManager.openAIKeyID
       case .gemini: KeychainManager.geminiKeyID
       default: nil
@@ -179,7 +197,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
 
     let (thinkingBudget, reasoningEffort) = resolveThinkingConfig()
     let maxTokens: Int = {
-      if llmProvider == .ollama {
+      if provider == .ollama {
         // Estimate tokens (~3 chars per token for English), add headroom.
         // For 921-char input: 921/3 + 100 = 407 tokens (~2x actual output of ~195).
         // The pipeline-level timeout (15s) caps runaway generation.
@@ -192,7 +210,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
         // a rambly generation can't outrun the 15s pipeline timeout.
         // `done_reason=stop` ends generation early for short transcripts.
         let floor =
-          OllamaSetupService.isThinkingCapableModel(llmModel)
+          OllamaSetupService.isThinkingCapableModel(model)
           ? LLMConstants.ollamaThinkingMaxTokens
           : LLMConstants.ollamaMaxTokens
         return max(context.text.count / 3 + 100, floor)
@@ -211,7 +229,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     let detectedLanguage = languageDetection?.lang ?? context.language
 
     let config = LLMProviderConfig(
-      model: llmModel,
+      model: model,
       apiKeyKeychainId: keychainId,
       maxTokens: maxTokens,
       temperature: 0,
@@ -221,7 +239,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     )
 
     // Apple Intelligence: own prompt path (unchanged, out of scope for planner).
-    if llmProvider == .appleIntelligence {
+    if provider == .appleIntelligence {
       let enriched = appleIntelligenceInstructions(polishInstructions)
       var resolvedInstructions = enriched
       var userText = context.text
@@ -255,14 +273,16 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
         throw afmErr.underlying
       }
       let llmEnd = CFAbsoluteTimeGetCurrent()
-      logPolishCompletion(result: result, duration: llmEnd - llmStart)
+      logPolishCompletion(
+        result: result, duration: llmEnd - llmStart, provider: provider, model: model)
       let validatedText = validatePolishOutput(
-        polished: result.polishedText, original: context.text, mode: .message
+        polished: result.polishedText, original: context.text, mode: .message,
+        provider: provider, model: model
       )
       var ctx = context
       ctx.polishedText = validatedText
-      ctx.llmProvider = llmProvider.rawValue
-      ctx.llmModel = llmModel
+      ctx.llmProvider = provider.rawValue
+      ctx.llmModel = model
       ctx.polishMetadata = result.polishMetadata
       ctx.pipelineFellBackToRaw =
         (result.polishMetadata?.filterFellBackToRaw ?? false) || (validatedText == context.text)
@@ -278,8 +298,8 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
 
     let input = PromptBuildInput(
       transcript: context.text,
-      provider: llmProvider,
-      modelID: llmModel,
+      provider: provider,
+      modelID: model,
       appName: context.targetAppName,
       language: context.language,
       polishVocabulary: polishVocabulary,
@@ -298,9 +318,10 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     )
     let llmEnd = CFAbsoluteTimeGetCurrent()
 
-    let family = DefaultPromptPlanner.family(for: llmProvider, modelID: llmModel)
+    let family = DefaultPromptPlanner.family(for: provider, modelID: model)
     logPolishCompletion(
       result: result, duration: llmEnd - llmStart,
+      provider: provider, model: model,
       extraData: [
         "polish_mode": plan.mode.rawValue,
         "prompt_family": family.rawValue,
@@ -309,13 +330,14 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     let validatedText = validatePolishOutput(
       polished: result.polishedText,
       original: context.text,
-      mode: plan.mode
+      mode: plan.mode,
+      provider: provider, model: model
     )
 
     var ctx = context
     ctx.polishedText = validatedText
-    ctx.llmProvider = llmProvider.rawValue
-    ctx.llmModel = llmModel
+    ctx.llmProvider = provider.rawValue
+    ctx.llmModel = model
     ctx.polishMetadata = result.polishMetadata
     ctx.pipelineFellBackToRaw =
       (result.polishMetadata?.filterFellBackToRaw ?? false) || (validatedText == context.text)
@@ -327,7 +349,10 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
   /// Validate LLM polish output with mode-aware thresholds.
   /// Falls back to original text when the output looks like a hallucination,
   /// content drop, or question-to-answer conversion.
-  func validatePolishOutput(polished: String, original: String, mode: PolishMode) -> String {
+  func validatePolishOutput(
+    polished: String, original: String, mode: PolishMode,
+    provider: LLMProvider, model: String
+  ) -> String {
     guard !original.isEmpty else { return polished }
 
     // Mode-aware thresholds (from plan Appendix C)
@@ -354,7 +379,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
         await AppLogger.shared.log(
           "LLM polish validator: expansion \(polished.count)/\(original.count) chars "
             + "exceeds \(expansionThreshold) (mode=\(mode.rawValue)) — falling back "
-            + "(provider=\(llmProvider.rawValue), model=\(llmModel))",
+            + "(provider=\(provider.rawValue), model=\(model))",
           level: .info, category: "LLM"
         )
       }
@@ -371,7 +396,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       Task {
         await AppLogger.shared.log(
           "LLM polish validator: content drop \(polishedWords.count)/\(originalWords.count) words "
-            + "(mode=\(mode.rawValue)) — falling back (provider=\(llmProvider.rawValue), model=\(llmModel))",
+            + "(mode=\(mode.rawValue)) — falling back (provider=\(provider.rawValue), model=\(model))",
           level: .info, category: "LLM"
         )
       }
@@ -383,7 +408,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
       Task {
         await AppLogger.shared.log(
           "LLM polish validator: question-to-answer conversion detected — "
-            + "falling back (provider=\(llmProvider.rawValue), model=\(llmModel))",
+            + "falling back (provider=\(provider.rawValue), model=\(model))",
           level: .info, category: "LLM"
         )
       }
@@ -495,11 +520,12 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
 
   private func logPolishCompletion(
     result: LLMResult, duration: Double,
+    provider: LLMProvider, model: String,
     extraData: [String: String] = [:]
   ) {
     var data: [String: String] = [
-      "provider": llmProvider.rawValue,
-      "model": llmModel,
+      "provider": provider.rawValue,
+      "model": model,
       "duration_s": String(format: "%.3f", duration),
       "char_count": String(result.polishedText.count),
     ]
@@ -509,7 +535,7 @@ public final class LLMPolishStep: TextProcessingStep, PolishVocabularyConsumer {
     Task {
       await AppLogger.shared.log(
         "LLM polish complete: \(result.polishedText.count) chars in \(String(format: "%.3f", duration))s "
-          + "(provider=\(llmProvider.rawValue), model=\(llmModel))",
+          + "(provider=\(provider.rawValue), model=\(model))",
         level: .info, category: "PipelineTiming"
       )
     }
