@@ -63,8 +63,9 @@ import Testing
     try await adapter.warmUp()
     #expect(adapter.readiness == .ready)
     adapter.applyUnloadPolicy(.immediately)
-    // Yield so the scheduled `Task` runs `backend.unload()` and posts back.
-    for _ in 0..<50 { await Task.yield() }
+    // Await the armed unload task to completion (deterministic, bounded) —
+    // a fixed `Task.yield()` budget is not enough under release-config CI.
+    await adapter.modelUnloadTaskForUnitTests?.value
     #expect(adapter.readiness == .notReady)
     let unloadCount = await backend.unloadCount
     #expect(unloadCount == 1)
@@ -773,7 +774,9 @@ import Testing
     let adapter = WhisperKitEngineAdapter(backend: backend)
     try await adapter.warmUp()
     adapter.applyUnloadPolicy(.immediately)
-    for _ in 0..<50 { await Task.yield() }
+    // Await the armed unload task deterministically (release-config CI does
+    // not complete it within a fixed `Task.yield()` budget — #874 red main).
+    await adapter.modelUnloadTaskForUnitTests?.value
     let count = await backend.unloadCount
     #expect(count == 1)
   }

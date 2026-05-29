@@ -1123,6 +1123,13 @@ extension WhisperKitEngineAdapter {
   internal var retainedPCMForUnitTests: [Float] { retainedPCM }
   /// Test-only read of the kernel-supplied speech segments.
   internal var observedSpeechSegmentsForUnitTests: [SpeechSegment] { observedSpeechSegments }
+  /// Test-only handle to the armed model-unload task. Tests `await
+  /// adapter.modelUnloadTaskForUnitTests?.value` to wait for an armed
+  /// `.immediately` unload deterministically instead of yield-polling — the
+  /// task always completes (it returns whether or not it fires `unload()`),
+  /// so the await is bounded. Avoids the release-config flake where the
+  /// scheduled unload had not run within a fixed `Task.yield()` budget.
+  internal var modelUnloadTaskForUnitTests: Task<Void, Never>? { modelUnloadTask }
 }
 
 // MARK: - WhisperKitBackendDriving — local seam for testability (OQ-4 option a)
