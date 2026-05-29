@@ -83,7 +83,7 @@ final class RecordingStarter {
   func start() async {
     dictationLifecycleCoordinator?.cancelPendingWarning()
     let isWhisperKit = asrManager.activeBackendType == .whisperKit
-    let active: any DictationPipeline = isWhisperKit ? whisperKitKernelDriver : kernelDriver
+    let active: KernelDictationDriver = isWhisperKit ? whisperKitKernelDriver : kernelDriver
     // PR-7 (#827): snapshot engine readiness BEFORE prewarm so the cold-start
     // log cohorts warm/cold/mid-flight; snapshot-at-entry avoids retro-labeling.
     let readinessAtEntry = (isWhisperKit ? whisperKitKernelDriver : kernelDriver).engineReadiness
@@ -157,8 +157,9 @@ final class RecordingStarter {
           )))
     } catch {
       heartControlRecovery.recover(
-        error: error, pipeline: active, op: "toggle-from-prewarm",
-        message: ModelLoadWatchdog.userMessage)
+        error: error, op: "toggle-from-prewarm",
+        message: ModelLoadWatchdog.userMessage,
+        setExternalError: active.setExternalError)
       return
     }
     let totalMs = Self.elapsedMs(since: pttStart)
@@ -213,7 +214,7 @@ final class RecordingStarter {
   /// snapshot picks up the right paste capability.
   func toggle(source: TriggerSource) async {
     dictationLifecycleCoordinator?.cancelPendingWarning()
-    let active: any DictationPipeline =
+    let active: KernelDictationDriver =
       asrManager.activeBackendType == .whisperKit ? whisperKitKernelDriver : kernelDriver
     let isWK = asrManager.activeBackendType == .whisperKit
     if !(isWK ? whisperKitKernelDriver.state.isActive : kernelDriver.state.isActive) {
@@ -235,8 +236,9 @@ final class RecordingStarter {
           )))
     } catch {
       heartControlRecovery.recover(
-        error: error, pipeline: active, op: "toggle",
-        message: ModelLoadWatchdog.userMessage)
+        error: error, op: "toggle",
+        message: ModelLoadWatchdog.userMessage,
+        setExternalError: active.setExternalError)
     }
   }
 

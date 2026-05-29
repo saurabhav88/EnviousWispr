@@ -63,7 +63,7 @@ final class RecordingFinalizer {
   func userStop() async {
     recordingLockedAccess.set(false)
     lastUserStopRequest = ContinuousClock.now
-    let active: any DictationPipeline =
+    let active: KernelDictationDriver =
       asrManager.activeBackendType == .whisperKit ? whisperKitKernelDriver : kernelDriver
     do {
       try await active.handle(event: .requestStop)
