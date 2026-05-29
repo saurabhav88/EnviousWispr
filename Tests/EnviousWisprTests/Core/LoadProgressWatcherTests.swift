@@ -8,10 +8,14 @@ import Testing
 /// Issue #782: timing-coupled tests migrated to a `ManualClock` seam so the
 /// suite no longer depends on real `Task.sleep` for the SUT's measured cadence.
 /// Each test that drives an asserted threshold passes a manual clock to the
-/// watcher and advances it deterministically with `tick(seconds:)`. Tests whose
-/// sleeps are non-load-bearing (pre-first-signal, identical-mtime, stop()
-/// release, raceWithSignalWatcher orchestration) keep real `Task.sleep` because
-/// the sleep duration does not feed any asserted measurement.
+/// watcher and advances it deterministically with `tick(seconds:)` — including
+/// pre-first-signal, which crosses the fire floor in logical time and asserts
+/// `hasFired == false` (#881 TO-1). Tests whose sleeps are non-load-bearing
+/// (identical-mtime, stop() release, raceWithSignalWatcher orchestration) keep
+/// real `Task.sleep` because the sleep duration does not feed any asserted
+/// measurement. The one real `Task.sleep` that survives in pre-first-signal is
+/// the 100ms continuation-park before `stop()`, which is scheduling, not a
+/// measured cadence.
 ///
 /// The watcher is `@MainActor`-isolated; tests must run on `@MainActor`.
 /// Synthetic signal streams are injected directly (no real ProgressFile).
@@ -43,15 +47,26 @@ struct LoadProgressWatcherTests {
 
   @Test("Pre-first-signal silence does NOT fire (uncovered case per plan §2.2)")
   func preFirstSignalDoesNotFire() async {
-    let watcher = LoadProgressWatcher()
+    // Deterministic clock so the 20 nil ticks cross the 800ms fire floor in
+    // logical time (~2.0s) without burning ~1000ms of real wall-clock per run.
+    // The point of the test is that even past the floor, a watcher that never
+    // observed a real signal must NOT fire (the pre-first-signal guard returns
+    // before any silence/floor evaluation). The old real-clock sleep made this
+    // slow AND under-asserted — it never checked `hasFired`, so a regression
+    // firing past the floor would have stayed green (#881 TO-1).
+    let clock = ManualClock()
+    let watcher = LoadProgressWatcher(currentTime: { clock.now })
     watcher.start()
     for _ in 0..<20 {
       watcher.observeTick(observedMtime: nil, observedPhase: "")
-      await sleep(ms: 50)
+      clock.tick(seconds: 0.1)  // 20 * 0.1s = 2.0s, well past the 0.8s floor
     }
     let snap = watcher.snapshot
     #expect(snap.signalCountTotal == 0)
     #expect(snap.firstSignalLatencyMs == nil)
+    #expect(
+      watcher.hasFired == false,
+      "pre-first-signal silence must never fire, even after the 800ms floor elapses")
     // No signal ever observed → wedged() must remain pending forever, but
     // stop() must release any awaiter cleanly.
     let waiter = Task { @MainActor in

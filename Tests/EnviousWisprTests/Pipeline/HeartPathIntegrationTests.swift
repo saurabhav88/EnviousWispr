@@ -101,6 +101,7 @@ struct HeartPathIntegrationTests {
         captureTelemetry: CaptureTelemetryState(),
         pasteCompletionRegistry: PasteCompletionRegistry()
       ))
+    let stateWaiter = PipelineStateWaiter(pipeline)
     #expect(pipeline.currentSessionConfig == nil)
 
     let config = DictationSessionConfig.testDefault(
@@ -122,10 +123,8 @@ struct HeartPathIntegrationTests {
     #expect(captured?.llmProvider == LLMProvider.openAI)
     #expect(captured?.llmModel == "gpt-test")
 
-    let reachedRecording = await pollUntil(timeout: .seconds(1)) {
-      pipeline.state == .recording
-    }
-    #expect(reachedRecording)
+    await stateWaiter.wait(for: .recording)
+    #expect(pipeline.state == .recording)
 
     await pipeline.cancelRecording()
 
@@ -733,22 +732,6 @@ private enum MockFailure: LocalizedError, Equatable {
       return "Streaming should not be used in this integration test"
     }
   }
-}
-
-@MainActor
-private func pollUntil(
-  timeout: Duration,
-  interval: Duration = .milliseconds(10),
-  condition: @escaping @MainActor () -> Bool
-) async -> Bool {
-  let deadline = ContinuousClock.now + timeout
-  while ContinuousClock.now < deadline {
-    if condition() {
-      return true
-    }
-    try? await Task.sleep(for: interval)
-  }
-  return condition()
 }
 
 /*
