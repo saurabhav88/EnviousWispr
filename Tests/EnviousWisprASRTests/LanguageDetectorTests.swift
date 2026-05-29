@@ -372,37 +372,22 @@ struct LanguageDetectorTests {
   @Test("Passive chip fires on LID flip-flop within 5 minutes")
   func passiveChipFlipFlop() async {
     let clock = TestClock()
-    actor Collector {
-      var triggers: [PassiveChipTrigger] = []
-      func add(_ t: PassiveChipTrigger) { triggers.append(t) }
-      func all() -> [PassiveChipTrigger] { triggers }
-    }
-    let collector = Collector()
+    let recorder = ChipTriggerRecorder()
     let det = LanguageDetector(clock: clock, defaults: makeEphemeralDefaults()) { trigger in
-      Task { await collector.add(trigger) }
+      recorder.record(trigger)
     }
     // First accept: en.
     _ = await det.evaluateForTesting(windowProbs: ["en": 0.90, "de": 0.40], voicedDuration: 4.0)
     // Second accept, different lang within the window. Use strong bar to
     // beat anti-flap in case 'en' was elevated.
     _ = await det.evaluateForTesting(windowProbs: ["fr": 0.90, "en": 0.40], voicedDuration: 4.0)
-    // Yield to let the Task-delivered trigger land.
-    await Task.yield()
-    try? await Task.sleep(nanoseconds: 50_000_000)
-    let triggers = await collector.all()
-    #expect(triggers.contains { $0.reason == .lidFlipFlop })
+    // The chip callback fires synchronously on the detector actor during
+    // evaluateForTesting, so the recorder already holds any trigger by the time
+    // the await returns, with no Task hop and no sleep.
+    #expect(recorder.all.contains { $0.reason == .lidFlipFlop })
   }
 
   // MARK: - Issue #252: consistentHighConfidence chip emit
-
-  /// Helper to fan out a chip-trigger collector across the actor boundary.
-  private actor ChipCollector {
-    var triggers: [PassiveChipTrigger] = []
-    func add(_ t: PassiveChipTrigger) { triggers.append(t) }
-    func consistent() -> [PassiveChipTrigger] {
-      triggers.filter { $0.reason == .consistentHighConfidence }
-    }
-  }
 
   /// Drive a high-confidence-non-English accept (probability >= 0.85, margin >=
   /// 0.25) into evaluateForTesting. Returns the result.
@@ -417,48 +402,42 @@ struct LanguageDetectorTests {
 
   @Test("Consistent chip fires after 3 same-lang high-conf accepts of non-English")
   func consistentChipFiresAtThreeStrikes() async {
-    let collector = ChipCollector()
+    let recorder = ChipTriggerRecorder()
     let det = LanguageDetector(
       clock: TestClock(), defaults: makeEphemeralDefaults()
     ) { trigger in
-      Task { await collector.add(trigger) }
+      recorder.record(trigger)
     }
     _ = await acceptOnce(det, lang: "es")
     _ = await acceptOnce(det, lang: "es")
-    var fired = await collector.consistent()
-    #expect(fired.isEmpty, "Should not fire before 3 accepts")
+    #expect(recorder.consistent.isEmpty, "Should not fire before 3 accepts")
     _ = await acceptOnce(det, lang: "es")
-    await Task.yield()
-    try? await Task.sleep(nanoseconds: 50_000_000)
-    fired = await collector.consistent()
+    let fired = recorder.consistent
     #expect(fired.count == 1, "Should fire once at exactly N=3")
     #expect(fired.first?.lang == "es")
   }
 
   @Test("English accepts never fire the consistent chip")
   func consistentChipNeverForEnglish() async {
-    let collector = ChipCollector()
+    let recorder = ChipTriggerRecorder()
     let det = LanguageDetector(
       clock: TestClock(), defaults: makeEphemeralDefaults()
     ) { trigger in
-      Task { await collector.add(trigger) }
+      recorder.record(trigger)
     }
     for _ in 0..<5 {
       _ = await acceptOnce(det, lang: "en")
     }
-    await Task.yield()
-    try? await Task.sleep(nanoseconds: 50_000_000)
-    let fired = await collector.consistent()
-    #expect(fired.isEmpty, "English must never trip the chip counter")
+    #expect(recorder.consistent.isEmpty, "English must never trip the chip counter")
   }
 
   @Test("Non-English accept resets OTHER non-English counters")
   func consistentChipResetsOtherLangs() async {
-    let collector = ChipCollector()
+    let recorder = ChipTriggerRecorder()
     let det = LanguageDetector(
       clock: TestClock(), defaults: makeEphemeralDefaults()
     ) { trigger in
-      Task { await collector.add(trigger) }
+      recorder.record(trigger)
     }
     // ES, FR, ES, ES: should NOT fire because FR resets ES counter.
     // After this sequence: counts = ["es": 2] (started fresh after FR, only 2 ES).
@@ -469,80 +448,66 @@ struct LanguageDetectorTests {
     _ = await acceptOnce(det, lang: "fr")  // resets es counter to 0 (replaced)
     _ = await acceptOnce(det, lang: "es")  // counter=es:1
     _ = await acceptOnce(det, lang: "es")  // counter=es:2
-    await Task.yield()
-    try? await Task.sleep(nanoseconds: 50_000_000)
-    let fired = await collector.consistent()
-    #expect(fired.isEmpty, "FR reset ES counter; only 2 ES strikes after — no fire")
+    #expect(recorder.consistent.isEmpty, "FR reset ES counter; only 2 ES strikes after — no fire")
   }
 
   @Test("English between non-English accepts does NOT reset the counter")
   func consistentChipEnglishIsNoOp() async {
-    let collector = ChipCollector()
+    let recorder = ChipTriggerRecorder()
     let det = LanguageDetector(
       clock: TestClock(), defaults: makeEphemeralDefaults()
     ) { trigger in
-      Task { await collector.add(trigger) }
+      recorder.record(trigger)
     }
     _ = await acceptOnce(det, lang: "es")
     _ = await acceptOnce(det, lang: "en")  // English no-op
     _ = await acceptOnce(det, lang: "es")
     _ = await acceptOnce(det, lang: "en")
     _ = await acceptOnce(det, lang: "es")
-    await Task.yield()
-    try? await Task.sleep(nanoseconds: 50_000_000)
-    let fired = await collector.consistent()
+    let fired = recorder.consistent
     #expect(fired.count == 1, "ES streak survives English interleave (F4)")
     #expect(fired.first?.lang == "es")
   }
 
   @Test("Counter resets to 0 after emit (does not re-fire on next accept)")
   func consistentChipResetsAfterEmit() async {
-    let collector = ChipCollector()
+    let recorder = ChipTriggerRecorder()
     let det = LanguageDetector(
       clock: TestClock(), defaults: makeEphemeralDefaults()
     ) { trigger in
-      Task { await collector.add(trigger) }
+      recorder.record(trigger)
     }
     for _ in 0..<3 {
       _ = await acceptOnce(det, lang: "es")
     }
-    await Task.yield()
-    try? await Task.sleep(nanoseconds: 50_000_000)
-    var fired = await collector.consistent()
-    #expect(fired.count == 1)
+    #expect(recorder.consistent.count == 1)
     // One more accept — should NOT fire again (counter reset to 0 after emit).
     _ = await acceptOnce(det, lang: "es")
-    await Task.yield()
-    try? await Task.sleep(nanoseconds: 50_000_000)
-    fired = await collector.consistent()
-    #expect(fired.count == 1, "Counter must reset; no immediate re-emit")
+    #expect(recorder.consistent.count == 1, "Counter must reset; no immediate re-emit")
   }
 
   @Test("Confidence below 0.85 does not increment counter")
   func consistentChipConfidenceFloorEnforced() async {
-    let collector = ChipCollector()
+    let recorder = ChipTriggerRecorder()
     let det = LanguageDetector(
       clock: TestClock(), defaults: makeEphemeralDefaults()
     ) { trigger in
-      Task { await collector.add(trigger) }
+      recorder.record(trigger)
     }
     // 0.84 confidence — mediumAuto-level. Should NOT increment chip counter.
     for _ in 0..<5 {
       _ = await acceptOnce(det, lang: "es", confidence: 0.84)
     }
-    await Task.yield()
-    try? await Task.sleep(nanoseconds: 50_000_000)
-    let fired = await collector.consistent()
-    #expect(fired.isEmpty, "Confidence < 0.85 must not advance chip counter")
+    #expect(recorder.consistent.isEmpty, "Confidence < 0.85 must not advance chip counter")
   }
 
   @Test("Variant-coded English (en-US) does not fire chip")
   func consistentChipEnglishVariantNoOp() async {
-    let collector = ChipCollector()
+    let recorder = ChipTriggerRecorder()
     let det = LanguageDetector(
       clock: TestClock(), defaults: makeEphemeralDefaults()
     ) { trigger in
-      Task { await collector.add(trigger) }
+      recorder.record(trigger)
     }
     // evaluateForTesting normalizes via the detector's own path which lowercases
     // but does NOT strip variant. The new evaluateConsistentChipForAccept uses
@@ -552,9 +517,36 @@ struct LanguageDetectorTests {
     for _ in 0..<5 {
       _ = await acceptOnce(det, lang: "en-us")
     }
-    await Task.yield()
-    try? await Task.sleep(nanoseconds: 50_000_000)
-    let fired = await collector.consistent()
-    #expect(fired.isEmpty, "en-us must normalize to en and be a no-op")
+    #expect(recorder.consistent.isEmpty, "en-us must normalize to en and be a no-op")
+  }
+}
+
+/// Test-side recorder for passive-chip triggers. The detector's chip callback
+/// fires synchronously on its actor during evaluateForTesting, so tests read
+/// these snapshots immediately after the awaited evaluate call, with no Task hop
+/// and no sleep (the prior actor + `Task { await collector.add }` + fixed-50ms
+/// sleep pattern raced a queued append on contended CI; #881). Mirrors
+/// FlipEventRecorder in R2CharacterizationTests.swift. `@unchecked Sendable` with
+/// an internal lock to cross the callback boundary under Swift 6 strict concurrency.
+private final class ChipTriggerRecorder: @unchecked Sendable {
+  private let lock = NSLock()
+  private var triggers: [PassiveChipTrigger] = []
+
+  func record(_ trigger: PassiveChipTrigger) {
+    lock.lock()
+    defer { lock.unlock() }
+    triggers.append(trigger)
+  }
+
+  var all: [PassiveChipTrigger] {
+    lock.lock()
+    defer { lock.unlock() }
+    return triggers
+  }
+
+  var consistent: [PassiveChipTrigger] {
+    lock.lock()
+    defer { lock.unlock() }
+    return triggers.filter { $0.reason == .consistentHighConfidence }
   }
 }
