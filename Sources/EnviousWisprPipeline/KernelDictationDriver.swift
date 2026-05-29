@@ -145,6 +145,15 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
   /// The polish error from the last session, or `nil`.
   public var lastPolishError: String? { outcome.polishError }
 
+  /// PR-7 (#827): the active engine adapter's normalized readiness, exposed
+  /// read-only so the App layer can stamp the cold-start cohort
+  /// (`engineReadinessAtPTT`) onto the `PTT-to-recording` log line at trigger
+  /// entry. `adapter` is package-scoped; this is the only App-visible window
+  /// onto its readiness. Sourcing the cohort here (not `asrManager.isModelLoaded`)
+  /// is correct for both engines: WhisperKit's live driver uses a separate
+  /// in-process backend, so the shared ASR manager's flag does not reflect it.
+  public var engineReadiness: ASREngineReadiness { adapter.readiness }
+
   // MARK: PR-4b.2 — direct methods + property (mirror old Parakeet pipeline App surface)
 
   /// Async cancel request. Wraps `kernel.cancel()` for App callers
