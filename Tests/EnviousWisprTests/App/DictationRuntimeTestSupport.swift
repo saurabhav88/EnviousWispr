@@ -130,12 +130,24 @@ enum DictationRuntimeFixtures {
   /// factory's `makeForWhisperKit(inputs:)`. The fixture function keeps its
   /// historical name (`makeWhisperKitPipeline`) so callers do not change;
   /// only the return type narrows to `KernelDictationDriver`.
+  ///
+  /// `sharedVAD` (#882): production builds ONE `CaptureVADSignalSource` and
+  /// passes the same instance to both drivers (`EnviousWisprApp.swift:101-102`),
+  /// so `audioCapture.onVADAutoStop` is bound exactly once. A test that builds
+  /// both a Parakeet and a WhisperKit driver MUST share the source the same
+  /// way, or this helper's own `makeSharedVADSignalSource` call re-binds (steals)
+  /// the callback and orphans the first driver's VAD-stop path. Pass the
+  /// Parakeet driver's source here to mirror production; default `nil` keeps the
+  /// historical fresh-source behavior for single-driver callers.
   static func makeWhisperKitPipeline(
     audioCapture: any AudioCaptureInterface,
-    store: TranscriptStore
+    store: TranscriptStore,
+    sharedVAD: CaptureVADSignalSource? = nil
   ) -> KernelDictationDriver {
-    let vad = KernelDictationDriverFactory.makeSharedVADSignalSource(
-      audioCapture: audioCapture)
+    let vad =
+      sharedVAD
+      ?? KernelDictationDriverFactory.makeSharedVADSignalSource(
+        audioCapture: audioCapture)
     let detector = LanguageDetector(onLanguageFlip: { _ in })
     return KernelDictationDriverFactory.makeForWhisperKit(
       inputs: .init(
