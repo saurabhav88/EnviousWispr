@@ -49,8 +49,10 @@ internal final class TextProcessingRunner {
       // @Sendable contract. Safety: op is @MainActor and its return value
       // (TextProcessingContext) is Sendable, so when op runs inside the
       // task group's child task and returns to the parent, the result
-      // crosses isolation safely. Same bridge pattern as the existing
-      // `unsafeStep` use below.
+      // crosses isolation safely. This is the SOLE nonisolated(unsafe) in the
+      // runner: it quarantines the @MainActor-to-@Sendable impedance inside this
+      // executor seam (swift-patterns timing-seam-shapes) rather than widening
+      // Core's withThrowingTimeout. (#827 PR-8)
       nonisolated(unsafe) let unsafeOp = op
       return try await withThrowingTimeout(seconds: seconds) {
         try await unsafeOp()
@@ -82,16 +84,13 @@ internal final class TextProcessingRunner {
     for step in steps where step.isEnabled {
       let stepName = step.name
       let input = context
-      // nonisolated(unsafe) is safe: the task group inherits @MainActor isolation,
-      // so step.process() still runs on MainActor — no real isolation crossing.
-      nonisolated(unsafe) let unsafeStep = step
       let stepStart = CFAbsoluteTimeGetCurrent()
       let budgetSeconds =
-        Double(unsafeStep.maxDuration.components.seconds)
-        + Double(unsafeStep.maxDuration.components.attoseconds) / 1e18
+        Double(step.maxDuration.components.seconds)
+        + Double(step.maxDuration.components.attoseconds) / 1e18
       do {
         context = try await timeoutExecutor(budgetSeconds) {
-          try await unsafeStep.process(input)
+          try await step.process(input)
         }
         let stepMs = (CFAbsoluteTimeGetCurrent() - stepStart) * 1000
         let inputText = input.polishedText ?? input.text
