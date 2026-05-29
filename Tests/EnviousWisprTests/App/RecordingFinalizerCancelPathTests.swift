@@ -129,12 +129,30 @@ import Testing
   }
 
   @Test func resetActiveCallsCorrectBackend() {
-    let fx = Self.makeFixture()
-    // Both pipelines start in .idle. After `.reset()` they stay .idle —
-    // we verify the call does not crash on either branch.
-    fx.asr.activeBackendType = .parakeet
-    fx.finalizer.resetActive()
-    fx.asr.activeBackendType = .whisperKit
-    fx.finalizer.resetActive()
+    // #881 TO-3: seed BOTH drivers with a distinct external error so each
+    // driver's state getter reports `.error(...)`. resetActive() must clear
+    // ONLY the active backend's driver (reset() nils lastExternalError) and
+    // leave the other backend's error intact — proving the branch routes to
+    // exactly the active backend. The prior test asserted nothing ("does not
+    // crash"), so it stayed green under always-reset-parakeet, inverted-branch,
+    // and reset-neither regressions alike.
+    do {  // Parakeet active.
+      let fx = Self.makeFixture()
+      fx.kernelDriver.setExternalError("parakeet-err")
+      fx.whisperKitKernelDriver.setExternalError("whisperkit-err")
+      fx.asr.activeBackendType = .parakeet
+      fx.finalizer.resetActive()
+      #expect(fx.kernelDriver.state == .idle)
+      #expect(fx.whisperKitKernelDriver.state == .error("whisperkit-err"))
+    }
+    do {  // WhisperKit active.
+      let fx = Self.makeFixture()
+      fx.kernelDriver.setExternalError("parakeet-err")
+      fx.whisperKitKernelDriver.setExternalError("whisperkit-err")
+      fx.asr.activeBackendType = .whisperKit
+      fx.finalizer.resetActive()
+      #expect(fx.whisperKitKernelDriver.state == .idle)
+      #expect(fx.kernelDriver.state == .error("parakeet-err"))
+    }
   }
 }

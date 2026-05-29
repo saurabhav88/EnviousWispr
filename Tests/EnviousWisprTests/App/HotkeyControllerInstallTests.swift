@@ -148,12 +148,17 @@ import Testing
 
   @Test func startIfEnabledHonorsSettingsHotkeyFlag() {
     let fx = Self.makeFixture()
-    // The full start path registers Carbon hotkeys; in a unit test we only
-    // verify the gate doesn't crash and is callable in both directions.
+    // #881 TO-3: assert the gate is actually honored via the observable
+    // `isEnabled` flag (set synchronously by HotkeyService.start()), not just
+    // that the call doesn't crash. The prior test had zero #expect, so it
+    // stayed green under gate-inverted, gate-removed, and gate-never-starts
+    // regressions.
     fx.settings.hotkeyEnabled = false
-    fx.controller.startIfEnabled()  // no-op
+    fx.controller.startIfEnabled()  // gate closed → start() must NOT run
+    #expect(fx.hotkeyService.isEnabled == false)
     fx.settings.hotkeyEnabled = true
-    fx.controller.startIfEnabled()  // calls hotkeyService.start()
+    fx.controller.startIfEnabled()  // gate open → start() runs
+    #expect(fx.hotkeyService.isEnabled == true)
     fx.hotkeyService.stop()
   }
 

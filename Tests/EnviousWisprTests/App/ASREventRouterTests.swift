@@ -60,10 +60,14 @@ struct ASREventRouterTests {
       whisperKitKernelDriver: whisperKit
     )
 
-    // Both pipelines are idle (.idle is the default state). The callback
-    // should no-op without dispatching to either pipeline. The test passes
-    // as long as no precondition fires.
+    // Both pipelines are idle (.idle is the default state). The idle branch
+    // only logs — it must not dispatch into either driver. #881 TO-3: pin that
+    // by asserting both drivers stay .idle after the callback (the prior test
+    // had zero #expect, so a future idle-branch side effect that flipped a
+    // driver off .idle would have gone uncaught here).
     asr.onServiceInterrupted?()
+    #expect(parakeet.state == .idle)
+    #expect(whisperKit.state == .idle)
     withExtendedLifetime(router) {}
   }
 
