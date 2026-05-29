@@ -81,13 +81,22 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
   @ObservationIgnored
   private var lastFiredState: PipelineState
 
+  /// Heart-path error sink for the driver's own direct `.asrInterrupted`
+  /// captureError emit. Defaulted to the production global so the only behavior
+  /// change is testability — the factory threads the same injected sink it
+  /// gives the emitter and lifecycle sink, so a test observes every driver-
+  /// owned captureError path through one sink (Codex review #875).
+  private let captureErrorSink: KernelDictationDriverFactory.HeartPathCaptureErrorSink
+
   init(
     kernel: RecordingSessionKernel,
     observer: KernelHeartPathTelemetryObserver,
     outcome: KernelFinalizationOutcome,
     context: KernelSessionContext,
     steps: LimbSteps,
-    adapter: any ASREngineAdapter
+    adapter: any ASREngineAdapter,
+    captureErrorSink: @escaping KernelDictationDriverFactory.HeartPathCaptureErrorSink =
+      KernelDictationDriverFactory.defaultCaptureErrorSink
   ) {
     self.kernel = kernel
     self.observer = observer
@@ -95,6 +104,7 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
     self.context = context
     self.steps = steps
     self.adapter = adapter
+    self.captureErrorSink = captureErrorSink
     self.lastFiredState = Self.pipelineState(for: kernel.state, externalError: nil)
   }
 
@@ -285,14 +295,14 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
       let backendID = adapter.engineIdentity.rawValue
       let backendLabel =
         adapter.engineIdentity.backendType == .whisperKit ? "WhisperKit" : "Parakeet"
-      SentryBreadcrumb.captureError(
+      captureErrorSink(
         NSError(
           domain: "EnviousWispr", code: -3,
           userInfo: [
             NSLocalizedDescriptionKey: "ASR XPC service crashed (\(backendLabel))"
           ]),
-        category: .xpcServiceError, stage: "asr",
-        extra: ["was_recording": false, "backend": backendID])
+        .xpcServiceError, "asr",
+        ["was_recording": false, "backend": backendID], nil)
       setExternalError(Self.asrInterruptedMessage)
     case .idle, .completed, .failed, .cancelled, .discarded, .noSpeech,
       .audioInterrupted, .asrInterrupted:

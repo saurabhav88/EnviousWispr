@@ -63,8 +63,9 @@ import Testing
     try await adapter.warmUp()
     #expect(adapter.readiness == .ready)
     adapter.applyUnloadPolicy(.immediately)
-    // Yield so the scheduled `Task` runs `backend.unload()` and posts back.
-    for _ in 0..<50 { await Task.yield() }
+    // Await the armed unload task to completion (deterministic, bounded) —
+    // a fixed `Task.yield()` budget is not enough under release-config CI.
+    await adapter.modelUnloadTaskForUnitTests?.value
     #expect(adapter.readiness == .notReady)
     let unloadCount = await backend.unloadCount
     #expect(unloadCount == 1)
@@ -113,8 +114,10 @@ import Testing
     await backend.setPrepareIfCachedResult(true)
     let adapter = WhisperKitEngineAdapter(backend: backend)
     try await adapter.warmUpFromCache()
-    // Give any putative background task a chance to run.
-    for _ in 0..<50 { await Task.yield() }
+    // warmUpFromCache awaits its own work and (by design, Codex r5) spawns no
+    // background load task, so the counts are final the instant it returns —
+    // assert synchronously instead of yield-polling for a task that never
+    // exists (#875).
     let pifCount = await backend.prepareIfCachedCount
     let prepareCount = await backend.prepareCount
     #expect(pifCount == 0, "warmUpFromCache must NOT call prepareIfCached")
@@ -250,8 +253,9 @@ import Testing
     // be cancelled and dropped so auto mode does NOT enter the worker path.
     await backend.setIncrementalSessionFactory(nil)
     try await adapter.beginSession(SessionID(), options: .default, streaming: false)
-    // Yield so the detached worker.cancel() task runs.
-    for _ in 0..<10 { await Task.yield() }
+    // Signal-wait for the detached worker.cancel() task, rather than racing a
+    // fixed yield budget (#875).
+    await stubSession.waitForCancelCount(1)
     let cancels = await stubSession.cancelCount
     #expect(cancels == 1, "orphan worker must be cancelled on beginSession")
   }
@@ -684,21 +688,11 @@ import Testing
     feed(adapter, samples: speechSamples(count: 16_000), session: sidA)
     adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)])
     async let outcomeA = adapter.finalize(batchSamples: nil)
-    // Signal-based wait: poll the backend's transcribeCount until finalize
-    // has actually entered the slow transcribe path. Pure-yield racing is
-    // fragile — `async let` schedules finalize but doesn't guarantee it
-    // reaches the suspend point before the test's next await
-    // (~/.claude/rules/no-arbitrary-timeouts.md `prefer-signal-based-detection`).
-    var entered = false
-    for _ in 0..<200 {
-      let count = await backend.transcribeCount
-      if count == 1 {
-        entered = true
-        break
-      }
-      await Task.yield()
-    }
-    #expect(entered, "finalize did not reach backend.transcribe within 200 yields")
+    // Signal-wait until finalize actually entered the slow transcribe path,
+    // rather than racing a fixed yield budget — `async let` schedules finalize
+    // but doesn't guarantee it reached the suspend point (#875;
+    // no-arbitrary-timeouts.md `prefer-signal-based-detection`).
+    await backend.waitForTranscribeCount(1)
     // Session B begins while A's finalize is still suspended in transcribe.
     try await adapter.beginSession(SessionID(), options: .default, streaming: false)
     _ = await outcomeA
@@ -723,17 +717,8 @@ import Testing
     feed(adapter, samples: speechSamples(count: 16_000), session: sidA)
     adapter.observeSpeechSegments([SpeechSegment(startSample: 0, endSample: 16_000)])
     async let outcomeA = adapter.finalize(batchSamples: nil)
-    // Wait for finalize to reach transcribe.
-    var entered = false
-    for _ in 0..<200 {
-      let count = await backend.transcribeCount
-      if count == 1 {
-        entered = true
-        break
-      }
-      await Task.yield()
-    }
-    #expect(entered, "finalize did not reach backend.transcribe within 200 yields")
+    // Signal-wait until finalize entered transcribe (#875).
+    await backend.waitForTranscribeCount(1)
     // Session B begins, feeds fresh audio + segments.
     let sidB = SessionID()
     try await adapter.beginSession(sidB, options: .default, streaming: false)
@@ -762,7 +747,10 @@ import Testing
     let adapter = WhisperKitEngineAdapter(backend: backend)
     try await adapter.warmUp()
     adapter.applyUnloadPolicy(.never)
-    for _ in 0..<50 { await Task.yield() }
+    // `.never` arms no task — the inspector is nil synchronously after the
+    // call, so no unload can fire. Assert directly instead of yield-polling
+    // for an absence (#875).
+    #expect(adapter.modelUnloadTaskForUnitTests == nil, ".never schedules no unload task")
     let count = await backend.unloadCount
     #expect(count == 0)
   }
@@ -773,7 +761,9 @@ import Testing
     let adapter = WhisperKitEngineAdapter(backend: backend)
     try await adapter.warmUp()
     adapter.applyUnloadPolicy(.immediately)
-    for _ in 0..<50 { await Task.yield() }
+    // Await the armed unload task deterministically (release-config CI does
+    // not complete it within a fixed `Task.yield()` budget — #874 red main).
+    await adapter.modelUnloadTaskForUnitTests?.value
     let count = await backend.unloadCount
     #expect(count == 1)
   }
@@ -784,8 +774,15 @@ import Testing
     let adapter = WhisperKitEngineAdapter(backend: backend)
     try await adapter.warmUp()
     adapter.applyUnloadPolicy(.twoMinutes)
+    // Capture the armed task, cancel it, then await the captured handle: its
+    // sleep throws on cancellation and the task returns without unloading, so
+    // the await is bounded (no fixed yield). Assert the inspector cleared and
+    // no unload fired (#875).
+    let armed = adapter.modelUnloadTaskForUnitTests
     adapter.cancelPendingUnload()
-    for _ in 0..<50 { await Task.yield() }
+    await armed?.value
+    #expect(
+      adapter.modelUnloadTaskForUnitTests == nil, "cancelPendingUnload clears the armed task")
     let count = await backend.unloadCount
     #expect(count == 0, "armed timer was cancelled before its deadline; no unload fired")
   }
@@ -965,8 +962,12 @@ import Testing
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: false)
     adapter.applyUnloadPolicy(.immediately)
-    // Yield so any putative unload task would have run.
-    for _ in 0..<50 { await Task.yield() }
+    // applyUnloadPolicy refuses to arm during an active session — the
+    // inspector is nil synchronously after the call, so no unload task exists
+    // to fire. Assert directly instead of yield-polling for an absence (#875).
+    #expect(
+      adapter.modelUnloadTaskForUnitTests == nil,
+      "no unload task may be armed during an active session")
     let count = await backend.unloadCount
     #expect(count == 0, "unload must NOT fire while a session is active")
   }
@@ -989,10 +990,16 @@ import Testing
     _ = await adapter.finalize(batchSamples: nil)
     // Now apply policy in the terminal A state — armed unload task starts.
     adapter.applyUnloadPolicy(.immediately)
-    // Begin session B before the unload task hops back.
+    // Capture A's armed task with a synchronous read (no MainActor yield), so
+    // beginSession(B)'s synchronous prefix still cancels + clears it before it
+    // can run. Begin B, then await the captured handle: cancellation + the
+    // session-keying re-check make it return without unloading — bounded (#875).
+    let armedUnderA = adapter.modelUnloadTaskForUnitTests
     try await adapter.beginSession(SessionID(), options: .default, streaming: false)
-    // Yield so any putative unload task would have run.
-    for _ in 0..<50 { await Task.yield() }
+    await armedUnderA?.value
+    #expect(
+      adapter.modelUnloadTaskForUnitTests == nil,
+      "beginSession(B) cancels and clears A's armed unload task")
     let count = await backend.unloadCount
     #expect(count == 0, "unload from A's armed task must NOT fire under B")
   }

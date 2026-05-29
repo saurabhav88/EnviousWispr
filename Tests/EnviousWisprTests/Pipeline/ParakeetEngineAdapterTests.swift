@@ -231,11 +231,14 @@ import Testing
     let sid = SessionID()
     try await adapter.beginSession(sid, options: .default, streaming: true)
     feed(adapter, samples: [0.1], session: sid)  // dispatches a feed task
+    // Capture the in-flight feed task BEFORE cancel (cancel clears the array).
     // cancel()'s synchronous prefix sets isTerminal/streamingActive before it
     // suspends, so the queued feed task runs after and sees the terminated
-    // session.
+    // session. Await the captured handle deterministically — it guards on the
+    // session check and returns without feeding (bounded; no fixed yield).
+    let pendingFeeds = adapter.feedTasksForUnitTests
     await adapter.cancel()
-    for _ in 0..<50 { await Task.yield() }
+    for task in pendingFeeds { await task.value }
     #expect(manager.feedAudioCount == 0, "the queued feed saw the terminated session and skipped")
   }
 
@@ -250,7 +253,9 @@ import Testing
     feed(adapter, samples: [0.1], session: sidA)
     // finalize() for session A suspends inside the slow finalizeStreaming.
     async let outcomeA = adapter.finalize(batchSamples: nil)
-    for _ in 0..<10 { await Task.yield() }
+    // Signal-wait until finalize actually entered finalizeStreaming, rather
+    // than racing a fixed yield budget (#875).
+    await manager.waitForFinalizeStreamingCount(1)
     // Session B begins while A's finalize is still suspended.
     try await adapter.beginSession(SessionID(), options: .default, streaming: true)
     _ = await outcomeA
@@ -400,6 +405,12 @@ final class StubParakeetASRManager: ASRManagerInterface {
   var lastUnloadPolicy: ModelUnloadPolicy?
   var lastTranscribeSamples: [Float] = []
 
+  // Signal-based waiter for `finalizeStreamingCount` — `finalize` suspends
+  // inside the slow finalizeStreaming, so the test awaits
+  // `waitForFinalizeStreamingCount(1)` to know it entered, instead of
+  // yield-polling (#875).
+  private var finalizeStreamingWaiters = CountWaiters("finalizeStreamingCount")
+
   func loadModel() async throws {
     loadModelCount += 1
     isModelLoaded = true
@@ -433,11 +444,31 @@ final class StubParakeetASRManager: ASRManagerInterface {
 
   func finalizeStreaming() async throws -> ASRResult {
     finalizeStreamingCount += 1
+    finalizeStreamingWaiters.notify(reached: finalizeStreamingCount)
     if slowFinalizeStreaming {
       for _ in 0..<200 { await Task.yield() }
     }
     if finalizeStreamingThrows { throw FakeASRError.decode }
     return finalizeStreamingResult
+  }
+
+  /// Await until `finalizeStreamingCount >= target`. Resolves immediately if
+  /// already reached; always resolves within `timeout`.
+  func waitForFinalizeStreamingCount(_ target: Int, timeout: Duration = .seconds(5)) async {
+    if finalizeStreamingCount >= target { return }
+    let id = UUID()
+    let timeoutTask = Task { [weak self] in
+      try? await Task.sleep(for: timeout)
+      self?.resumeFinalizeStreamingWaiter(id)
+    }
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+      finalizeStreamingWaiters.install(id: id, target: target, continuation)
+    }
+    timeoutTask.cancel()
+  }
+
+  private func resumeFinalizeStreamingWaiter(_ id: UUID) {
+    finalizeStreamingWaiters.resume(id: id)
   }
 
   func cancelStreaming() async {

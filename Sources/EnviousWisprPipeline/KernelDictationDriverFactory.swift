@@ -31,6 +31,40 @@ import Foundation
 @MainActor
 public enum KernelDictationDriverFactory {
 
+  /// Heart-path infrastructure-error sink. Defaults to the global
+  /// `SentryBreadcrumb.captureError` so production behavior is byte-identical;
+  /// tests inject a per-instance spy/no-op closure so a pipeline-under-test
+  /// never touches the process-global `SentryBreadcrumb.captureErrorDelegate`.
+  /// That global is the cross-test pollution vector behind the release-config
+  /// one-per-run flake (#875): a `@MainActor` test suspended at an `await`
+  /// yields the main actor to a sibling test whose pipeline fires
+  /// `captureError` into whatever delegate is currently installed. Injecting
+  /// the sink removes pipelines-under-test from that path entirely.
+  /// Carries the optional `RecordingSnapshot` so this one sink can stand in for
+  /// EVERY heart-path `captureError` route under the driver — the emitter
+  /// (always `snapshot: nil`), `KernelLifecycleTelemetrySink`'s plain and
+  /// snapshot-carrying variants, and the driver's direct `.asrInterrupted`
+  /// emit. A single injected sink therefore observes all of them, so the
+  /// cancellation "zero Sentry errors" test catches a regression through any
+  /// path — not only the emitter (Codex review #875).
+  package typealias HeartPathCaptureErrorSink = @MainActor (
+    _ error: any Error,
+    _ category: SentryBreadcrumb.ErrorCategory,
+    _ stage: String,
+    _ extra: [String: Any]?,
+    _ snapshot: SentryBreadcrumb.RecordingSnapshot?
+  ) -> Void
+
+  /// The production default — forwards to the global `SentryBreadcrumb`,
+  /// including the snapshot (nil collapses to the no-snapshot call, so every
+  /// consumer stays byte-identical to its prior in-line default). Named once
+  /// here so both inputs structs share one source of truth.
+  package static let defaultCaptureErrorSink: HeartPathCaptureErrorSink = {
+    error, category, stage, extra, snapshot in
+    SentryBreadcrumb.captureError(
+      error, category: category, stage: stage, extra: extra, snapshot: snapshot)
+  }
+
   /// Package-typed inputs for the Parakeet engine branch. Narrowed from
   /// `public` to `package` in PR-5 Rung 5: the only consumers are the
   /// `EnviousWispr` App target and `EnviousWisprTests`, both in the same
@@ -45,9 +79,16 @@ public enum KernelDictationDriverFactory {
     package let keychainManager: KeychainManager
     package let captureTelemetry: CaptureTelemetryState
     package let pasteCompletionRegistry: PasteCompletionRegistry
+    /// Heart-path error sink (defaulted to the production global). See
+    /// `HeartPathCaptureErrorSink`.
+    package let captureErrorSink: HeartPathCaptureErrorSink
 
     /// Explicit package init: Swift's synthesized memberwise init is `internal`
-    /// and would prevent App callers from constructing this struct.
+    /// and would prevent App callers from constructing this struct. `@MainActor`
+    /// because `captureErrorSink`'s default is a main-actor-isolated value;
+    /// every caller (App init, `@MainActor` test suites) is already on the
+    /// main actor.
+    @MainActor
     package init(
       audioCapture: any AudioCaptureInterface,
       asrManager: any ASRManagerInterface,
@@ -55,7 +96,8 @@ public enum KernelDictationDriverFactory {
       transcriptStore: TranscriptStore,
       keychainManager: KeychainManager,
       captureTelemetry: CaptureTelemetryState,
-      pasteCompletionRegistry: PasteCompletionRegistry
+      pasteCompletionRegistry: PasteCompletionRegistry,
+      captureErrorSink: @escaping HeartPathCaptureErrorSink = defaultCaptureErrorSink
     ) {
       self.audioCapture = audioCapture
       self.asrManager = asrManager
@@ -64,6 +106,7 @@ public enum KernelDictationDriverFactory {
       self.keychainManager = keychainManager
       self.captureTelemetry = captureTelemetry
       self.pasteCompletionRegistry = pasteCompletionRegistry
+      self.captureErrorSink = captureErrorSink
     }
   }
 
@@ -79,12 +122,18 @@ public enum KernelDictationDriverFactory {
     package let keychainManager: KeychainManager
     package let captureTelemetry: CaptureTelemetryState
     package let pasteCompletionRegistry: PasteCompletionRegistry
+    /// Heart-path error sink (defaulted to the production global). See
+    /// `HeartPathCaptureErrorSink`.
+    package let captureErrorSink: HeartPathCaptureErrorSink
 
     /// Explicit package init — same reasoning as `ParakeetInputs.init`.
     /// `languageDetector` is intentionally non-optional (no default) so the
     /// production caller in Rung 5 must explicitly pass the `LanguageDetector`
     /// it already constructs with `onLanguageFlip` telemetry wiring
-    /// (epic plan §3.4, council consensus 2026-05-27).
+    /// (epic plan §3.4, council consensus 2026-05-27). `@MainActor` for the
+    /// same reason as `ParakeetInputs.init` — the `captureErrorSink` default
+    /// is main-actor-isolated.
+    @MainActor
     package init(
       audioCapture: any AudioCaptureInterface,
       whisperKitBackend: WhisperKitBackend,
@@ -93,7 +142,8 @@ public enum KernelDictationDriverFactory {
       transcriptStore: TranscriptStore,
       keychainManager: KeychainManager,
       captureTelemetry: CaptureTelemetryState,
-      pasteCompletionRegistry: PasteCompletionRegistry
+      pasteCompletionRegistry: PasteCompletionRegistry,
+      captureErrorSink: @escaping HeartPathCaptureErrorSink = defaultCaptureErrorSink
     ) {
       self.audioCapture = audioCapture
       self.whisperKitBackend = whisperKitBackend
@@ -103,6 +153,7 @@ public enum KernelDictationDriverFactory {
       self.keychainManager = keychainManager
       self.captureTelemetry = captureTelemetry
       self.pasteCompletionRegistry = pasteCompletionRegistry
+      self.captureErrorSink = captureErrorSink
     }
   }
 
@@ -149,7 +200,8 @@ public enum KernelDictationDriverFactory {
       transcriptStore: inputs.transcriptStore,
       keychainManager: inputs.keychainManager,
       captureTelemetry: inputs.captureTelemetry,
-      pasteCompletionRegistry: inputs.pasteCompletionRegistry)
+      pasteCompletionRegistry: inputs.pasteCompletionRegistry,
+      captureErrorSink: inputs.captureErrorSink)
   }
 
   /// Build the driver stack for the WhisperKit engine. PR-5 Rung 5 flips the
@@ -173,7 +225,8 @@ public enum KernelDictationDriverFactory {
       transcriptStore: inputs.transcriptStore,
       keychainManager: inputs.keychainManager,
       captureTelemetry: inputs.captureTelemetry,
-      pasteCompletionRegistry: inputs.pasteCompletionRegistry)
+      pasteCompletionRegistry: inputs.pasteCompletionRegistry,
+      captureErrorSink: inputs.captureErrorSink)
   }
 
   /// Engine-agnostic assembler. The two package entry points construct their
@@ -188,7 +241,8 @@ public enum KernelDictationDriverFactory {
     transcriptStore: TranscriptStore,
     keychainManager: KeychainManager,
     captureTelemetry: CaptureTelemetryState,
-    pasteCompletionRegistry: PasteCompletionRegistry
+    pasteCompletionRegistry: PasteCompletionRegistry,
+    captureErrorSink: @escaping HeartPathCaptureErrorSink
   ) -> KernelDictationDriver {
     // 1. LimbSteps — same instances driver + wiring hold by reference.
     let limbSteps = LimbSteps(
@@ -224,10 +278,19 @@ public enum KernelDictationDriverFactory {
     // a separate follow-up; this callback intentionally discards tokens.
     limbSteps.llmPolish.onToken = { _ in }
 
-    // 5. Telemetry emitter (factory-internal; App never sees it).
+    // 5. Telemetry emitter (factory-internal; App never sees it). The
+    //    capture-error sink is threaded from inputs (defaulted to the global
+    //    `SentryBreadcrumb.captureError`), so production is byte-identical and
+    //    tests inject a per-instance sink to stay off the process-global
+    //    delegate (#875 cross-test pollution fix).
     let emitter = HeartPathTelemetryEmitter(
       backend: adapter.engineIdentity.backendType,
-      captureTelemetry: captureTelemetry
+      captureTelemetry: captureTelemetry,
+      // The emitter never carries a snapshot — adapt the unified sink down to
+      // its snapshot-less shape.
+      captureError: { error, category, stage, extra in
+        captureErrorSink(error, category, stage, extra, nil)
+      }
     )
 
     let telemetryRelay = TelemetryRelay()
@@ -293,6 +356,16 @@ public enum KernelDictationDriverFactory {
       captureTelemetry: captureTelemetry,
       telemetryState: telemetryState,
       modelLoadWedgeTelemetry: { telemetryRelay.modelLoadWedgeTelemetry() },
+      // Route both lifecycle captureError variants through the same injected
+      // sink so a test observing one sink sees every error this sink can emit
+      // (Codex review #875). Production stays byte-identical: the default sink
+      // forwards (error, …, snapshot) to `SentryBreadcrumb.captureError`.
+      captureError: { error, category, stage, extra in
+        captureErrorSink(error, category, stage, extra, nil)
+      },
+      captureErrorWithSnapshot: { error, category, stage, extra, snapshot in
+        captureErrorSink(error, category, stage, extra, snapshot)
+      },
       // Div 6 of seam audit (TP:273-291): route `.noAudioCaptured` through
       // the emitter so the rich payload (sourceType, isActivelyCapturing,
       // device IDs) AND the stall/XPC-failure dedup contract reach Sentry —
@@ -313,14 +386,18 @@ public enum KernelDictationDriverFactory {
       emitLifecycleEvent: { [lifecycleSink] event in lifecycleSink.emit(event) }
     )
 
-    // 10. Driver.
+    // 10. Driver. Pass the unified sink so the driver's direct
+    //     `.asrInterrupted` captureError emit (XPC crash fallback) also routes
+    //     through the injected sink — full parity with the old global delegate
+    //     spy for tests (Codex review #875).
     let driver = KernelDictationDriver(
       kernel: kernel,
       observer: observer,
       outcome: outcome,
       context: context,
       steps: limbSteps,
-      adapter: adapter
+      adapter: adapter,
+      captureErrorSink: captureErrorSink
     )
     driver.start()  // arms driver-side state observation (PR-4a)
 

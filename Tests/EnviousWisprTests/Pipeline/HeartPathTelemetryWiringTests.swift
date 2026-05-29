@@ -71,21 +71,18 @@ struct HeartPathTelemetryWiringTests {
     }
   }
 
-  /// Install a spy on `SentryBreadcrumb.captureErrorDelegate` for the
-  /// duration of the test, then restore the prior delegate. The
-  /// delegate hook (`SentryBreadcrumb.swift:145`) fires synchronously
-  /// before the SDK dispatch, so spy.calls is observable immediately
-  /// after the pipeline method returns.
-  private static func withCaptureSpy(
-    _ body: (CaptureSpy) -> Void
-  ) {
-    let spy = CaptureSpy()
-    let prior = SentryBreadcrumb.captureErrorDelegate
-    SentryBreadcrumb.captureErrorDelegate = { _, category, stage, extra in
+  /// Build a spy-backed capture sink to inject into a pipeline. Replaces the
+  /// former `SentryBreadcrumb.captureErrorDelegate` global install — that
+  /// process-global is shared across all `@MainActor` tests and is the #875
+  /// cross-test pollution vector. The injected sink fires synchronously on the
+  /// main actor, so `spy.calls` is observable immediately after the pipeline
+  /// method returns.
+  private static func spySink(
+    _ spy: CaptureSpy
+  ) -> KernelDictationDriverFactory.HeartPathCaptureErrorSink {
+    { _, category, stage, extra, _ in
       spy.record(.init(category: category, stage: stage, extra: extra ?? [:]))
     }
-    defer { SentryBreadcrumb.captureErrorDelegate = prior }
-    body(spy)
   }
 
   // MARK: - Test doubles
@@ -98,7 +95,11 @@ struct HeartPathTelemetryWiringTests {
     NoOpASRManager()
   }
 
-  private static func makePipeline() -> KernelDictationDriver {
+  private static func makePipeline(
+    captureErrorSink: @escaping KernelDictationDriverFactory.HeartPathCaptureErrorSink = {
+      _, _, _, _, _ in
+    }
+  ) -> KernelDictationDriver {
     let audio = makeStubAudio()
     let vad = KernelDictationDriverFactory.makeSharedVADSignalSource(audioCapture: audio)
     return KernelDictationDriverFactory.makeForParakeet(
@@ -109,7 +110,8 @@ struct HeartPathTelemetryWiringTests {
         transcriptStore: TranscriptStore(),
         keychainManager: KeychainManager(),
         captureTelemetry: CaptureTelemetryState(),
-        pasteCompletionRegistry: PasteCompletionRegistry()
+        pasteCompletionRegistry: PasteCompletionRegistry(),
+        captureErrorSink: captureErrorSink
       ))
   }
 
@@ -150,18 +152,17 @@ struct HeartPathTelemetryWiringTests {
   /// witness: Parakeet omits the `"backend"` key.
   @Test("KernelDictationDriver interruption extras omit backend key (Parakeet wiring)")
   func parakeetPipelineWiringOmitsBackendExtra() {
-    let pipeline = Self.makePipeline()
+    let spy = CaptureSpy()
+    let pipeline = Self.makePipeline(captureErrorSink: Self.spySink(spy))
 
-    Self.withCaptureSpy { spy in
-      pipeline.handleCaptureSessionInterruption(Self.interruptionContext(sessionID: 1))
+    pipeline.handleCaptureSessionInterruption(Self.interruptionContext(sessionID: 1))
 
-      #expect(spy.calls.count == 1)
-      let call = spy.calls[0]
-      #expect(call.category == .audioCaptureFailed)
-      #expect(call.stage == "audio")
-      #expect(call.extra["backend"] == nil)
-      #expect(call.extra["capture_session_id"] as? Int == 1)
-    }
+    #expect(spy.calls.count == 1)
+    let call = spy.calls[0]
+    #expect(call.category == .audioCaptureFailed)
+    #expect(call.stage == "audio")
+    #expect(call.extra["backend"] == nil)
+    #expect(call.extra["capture_session_id"] as? Int == 1)
   }
 
   /// Codex gap #3 (Sentry-emit half) — pipeline-level emit dedup. Two
@@ -171,33 +172,31 @@ struct HeartPathTelemetryWiringTests {
   /// terminal-state flip — that lives in the next test.
   @Test("KernelDictationDriver.handleCaptureStall dedups Sentry emits per session")
   func parakeetPipelineStallDedupsSentryPerSession() {
-    let pipeline = Self.makePipeline()
+    let spy = CaptureSpy()
+    let pipeline = Self.makePipeline(captureErrorSink: Self.spySink(spy))
 
-    Self.withCaptureSpy { spy in
-      pipeline.handleCaptureStall(Self.stallContext(sessionID: 7))
-      pipeline.handleCaptureStall(Self.stallContext(sessionID: 7))
+    pipeline.handleCaptureStall(Self.stallContext(sessionID: 7))
+    pipeline.handleCaptureStall(Self.stallContext(sessionID: 7))
 
-      #expect(spy.calls.count == 1)
-      #expect(spy.calls[0].category == .audioCaptureStalled)
-      #expect(spy.calls[0].extra["capture_session_id"] as? Int == 7)
-    }
+    #expect(spy.calls.count == 1)
+    #expect(spy.calls[0].category == .audioCaptureStalled)
+    #expect(spy.calls[0].extra["capture_session_id"] as? Int == 7)
   }
 
   /// Sanity companion to the dedup test: a different `sessionID` re-arms
   /// the dedup, proving it is not a global one-shot.
   @Test("KernelDictationDriver.handleCaptureStall re-arms Sentry emits on session change")
   func parakeetPipelineStallReArmsOnSession() {
-    let pipeline = Self.makePipeline()
+    let spy = CaptureSpy()
+    let pipeline = Self.makePipeline(captureErrorSink: Self.spySink(spy))
 
-    Self.withCaptureSpy { spy in
-      pipeline.handleCaptureStall(Self.stallContext(sessionID: 1))
-      pipeline.handleCaptureStall(Self.stallContext(sessionID: 1))  // suppressed
-      pipeline.handleCaptureStall(Self.stallContext(sessionID: 2))  // fresh session
+    pipeline.handleCaptureStall(Self.stallContext(sessionID: 1))
+    pipeline.handleCaptureStall(Self.stallContext(sessionID: 1))  // suppressed
+    pipeline.handleCaptureStall(Self.stallContext(sessionID: 2))  // fresh session
 
-      #expect(spy.calls.count == 2)
-      let sessions = spy.calls.compactMap { $0.extra["capture_session_id"] as? Int }
-      #expect(sessions == [1, 2])
-    }
+    #expect(spy.calls.count == 2)
+    let sessions = spy.calls.compactMap { $0.extra["capture_session_id"] as? Int }
+    #expect(sessions == [1, 2])
   }
 
   /// Codex gap #3 — `guard fired else { return }` in
@@ -252,8 +251,12 @@ struct HeartPathTelemetryWiringTests {
         transcriptStore: TranscriptStore(),
         keychainManager: KeychainManager(),
         captureTelemetry: CaptureTelemetryState(),
-        pasteCompletionRegistry: PasteCompletionRegistry()
+        pasteCompletionRegistry: PasteCompletionRegistry(),
+        // Asserts on STATE, not Sentry — no-op sink keeps the stall captureError
+        // off the process-global delegate (#875).
+        captureErrorSink: { _, _, _, _, _ in }
       ))
+    let stateWaiter = PipelineStateWaiter(pipeline)
 
     // Step 1: pre-dedup the emitter's stall flag while pipeline is .idle.
     // `handleCaptureStall` calls telemetry.stallFired (which dedups
@@ -272,10 +275,8 @@ struct HeartPathTelemetryWiringTests {
     )
     try await pipeline.handle(event: .toggleRecording(config))
 
-    let reachedRecording = await pollUntil(timeout: .seconds(1)) {
-      pipeline.state == .recording
-    }
-    #expect(reachedRecording)
+    await stateWaiter.wait(for: .recording)
+    #expect(pipeline.state == .recording)
 
     // Step 3: same-session stall, now from .recording. Emitter returns
     // false (deduped). With `guard fired else { return }`: state stays
@@ -288,22 +289,6 @@ struct HeartPathTelemetryWiringTests {
 
     await pipeline.cancelRecording()
   }
-}
-
-@MainActor
-private func pollUntil(
-  timeout: Duration,
-  interval: Duration = .milliseconds(10),
-  condition: @escaping @MainActor () -> Bool
-) async -> Bool {
-  let deadline = ContinuousClock.now + timeout
-  while ContinuousClock.now < deadline {
-    if condition() {
-      return true
-    }
-    try? await Task.sleep(for: interval)
-  }
-  return condition()
 }
 
 // MARK: - Stubs (test-local)

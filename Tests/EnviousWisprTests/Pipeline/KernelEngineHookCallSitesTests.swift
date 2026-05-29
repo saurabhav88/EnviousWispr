@@ -331,16 +331,12 @@ struct KernelEngineHookCallSitesTests {
     let preWarmTask = Task { @MainActor in
       try? await fx.kernel.preWarm()
     }
-    // Yield until the engine has entered warmUpFromCache.
-    var entered = false
-    for _ in 0..<200 {
-      if fx.engine.warmUpFromCacheCallCount > 0 {
-        entered = true
-        break
-      }
-      await Task.yield()
-    }
-    #expect(entered, "FakeEngine.warmUpFromCache must have been entered")
+    // Signal-wait until the engine has entered warmUpFromCache (it then parks
+    // on the blocker), rather than racing a fixed yield budget (#875).
+    await fx.engine.waitForWarmUpFromCacheCount(1)
+    #expect(
+      fx.engine.warmUpFromCacheCallCount >= 1,
+      "FakeEngine.warmUpFromCache must have been entered")
     // While preWarm is parked, mint a new session via start() — this bumps
     // the kernel's currentSessionID off staleSID and transitions state out
     // of .idle. The post-await guard MUST see this and short-circuit.
