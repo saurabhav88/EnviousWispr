@@ -84,6 +84,9 @@ final class RecordingStarter {
     dictationLifecycleCoordinator?.cancelPendingWarning()
     let isWhisperKit = asrManager.activeBackendType == .whisperKit
     let active: any DictationPipeline = isWhisperKit ? whisperKitKernelDriver : kernelDriver
+    // PR-7 (#827): snapshot engine readiness BEFORE prewarm so the cold-start
+    // log cohorts warm/cold/mid-flight; snapshot-at-entry avoids retro-labeling.
+    let readinessAtEntry = (isWhisperKit ? whisperKitKernelDriver : kernelDriver).engineReadiness
     if isWhisperKit {
       guard !whisperKitKernelDriver.state.isActive else { return }
     } else {
@@ -198,7 +201,7 @@ final class RecordingStarter {
     }
     Task {
       await AppLogger.shared.log(
-        "COLD-START [RecordingStarter] PTT-to-recording: total=\(totalMs)ms preWarm=\(preWarmMs)ms startRecording=\(totalMs - preWarmMs)ms backend=\(isWhisperKit ? "whisperkit" : "parakeet")",
+        "COLD-START [RecordingStarter] PTT-to-recording: total=\(totalMs)ms preWarm=\(preWarmMs)ms startRecording=\(totalMs - preWarmMs)ms backend=\(isWhisperKit ? "whisperkit" : "parakeet") engineReadinessAtPTT=\(readinessAtEntry.coldStartCohortToken)",
         level: .info, category: "Pipeline"
       )
     }
