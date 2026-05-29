@@ -245,17 +245,21 @@ import Testing
       // post-PR-4b.4 Live UAT scenario (the full cycle has to unwind).
       let fx = makeFixture()
       await forceState(fx.kernel, to: .preparing)
+      // #881 TO-4: seed an external error so the driver's public state reports
+      // .error(...) via the mapper short-circuit, then prove reset() clears it.
+      // The old test ended in `_ = fx.driver.state  // no crash on read`, which
+      // stayed green even if reset() stopped nil-ing lastExternalError (the
+      // getter is pure and cannot crash). This pins the real reset() contract.
+      fx.driver.setExternalError("boom")
+      #expect(fx.driver.state == .error("boom"))
       fx.driver.reset()
       await drain()
-      // The driver public state should NOT remain in .loadingModel — the
-      // reset must cancel and proceed. kernel.cancel from .preparing sets
-      // cancelRequested without immediately transitioning; in this
-      // forced-state fixture there's no forward path to consume the flag,
-      // so the kernel stays at .preparing — that's expected behavior.
-      // The matrix freeze locks "reset() does NOT crash from an active
-      // state" via the kernel.reset() preconditions (which would assert
-      // if the kernel weren't terminal).
-      _ = fx.driver.state  // no crash on read
+      // reset() nils lastExternalError synchronously, so the external-error
+      // short-circuit no longer applies. kernel.cancel from .preparing leaves
+      // the kernel ~.preparing in this forced-state fixture (no forward path to
+      // consume the cancel flag), so the public state falls back to the mapped
+      // kernel state — crucially NOT .error("boom").
+      #expect(fx.driver.state != .error("boom"))
     }
   }
 
