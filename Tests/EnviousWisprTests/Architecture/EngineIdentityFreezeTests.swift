@@ -430,6 +430,98 @@ import Testing
       """)
   }
 
+  // MARK: PR-6 (#827): concrete adapter construction confined to KernelAdapterFactory
+
+  /// The whole-word concrete adapter type names PR-6 confines.
+  private static let concreteAdapterTypeNames = [
+    "ParakeetEngineAdapter", "WhisperKitEngineAdapter",
+  ]
+
+  /// The one allowlisted construction home (epic #827, PR-6).
+  private static let adapterConstructionOwner =
+    "Sources/EnviousWisprPipeline/KernelAdapterFactory.swift"
+
+  private static let driverAssemblyFactory =
+    "Sources/EnviousWisprPipeline/KernelDictationDriverFactory.swift"
+
+  /// Test A. Every concrete adapter CONSTRUCTION CALL (`TypeName(`) in
+  /// `Sources/` lives only in `KernelAdapterFactory.swift`. The construction-call
+  /// pattern (`\bTypeName\s*\(`) is deliberately narrower than a whole-word type
+  /// scan: it does NOT match the adapters' own `class`/`extension` declarations
+  /// (followed by `:` or `{`, never `(`) nor the 10 `category: "WhisperKitEngineAdapter"`
+  /// `AppLogger` string literals, which is exactly why a whole-word repo-wide ban
+  /// would false-fail (Codex r4). `scanSources` skips comment-only lines, so the
+  /// `// MARK: - …Adapter (` headers are not counted either.
+  @Test("concrete adapter construction calls live only in KernelAdapterFactory (PR-6 #827)")
+  func adapterConstructionConfinedToKernelAdapterFactory() throws {
+    for name in Self.concreteAdapterTypeNames {
+      let hits = try Self.scanSources(pattern: #"\b"# + name + #"\s*\("#)
+      let offenders = hits.filter {
+        !$0.hasPrefix(Self.adapterConstructionOwner + ":")
+      }
+      #expect(
+        offenders.isEmpty,
+        """
+        Concrete adapter construction `\(name)(` found in `Sources/` code outside
+        \(Self.adapterConstructionOwner):
+        \(offenders.joined(separator: "\n"))
+        PR-6 (#827) confines all concrete `ASREngineAdapter` construction to
+        `KernelAdapterFactory`. Add a `make…Adapter` function there and call it.
+        """)
+    }
+  }
+
+  /// Test B. The driver-assembly factory names NO concrete adapter type in code
+  /// (whole-word: catches construction, `: Type` annotations, `.init`-style refs).
+  /// Scoped to this one file, where the post-PR-6 invariant is "zero concrete-type
+  /// mentions in code"; `scanSources` skips comments so the file's doc-comment
+  /// mentions (`:14-22`) stay legal under the code-only policy.
+  @Test("KernelDictationDriverFactory names no concrete adapter type in code (PR-6 #827)")
+  func driverFactoryNamesNoConcreteAdapterTypeInCode() throws {
+    for name in Self.concreteAdapterTypeNames {
+      let hits = try Self.scanSources(pattern: #"\b"# + name + #"\b"#)
+        .filter { $0.hasPrefix(Self.driverAssemblyFactory + ":") }
+      #expect(
+        hits.isEmpty,
+        """
+        \(Self.driverAssemblyFactory) names concrete adapter type `\(name)` in code:
+        \(hits.joined(separator: "\n"))
+        Post-PR-6 (#827) the driver-assembly factory must name no concrete adapter
+        type in code (comments are allowed). Route construction through
+        `KernelAdapterFactory`.
+        """)
+    }
+  }
+
+  // MARK: PR-6 adversarial + negative controls
+
+  @Test("the construction-call scanner flags an adapter constructed outside the factory (PR-6)")
+  func adversarialAdapterConstructionFlagged() {
+    let source = "    let adapter = WhisperKitEngineAdapter(backend: backend)"
+    #expect(
+      Self.regexFlags(source: source, pattern: #"\bWhisperKitEngineAdapter\s*\("#),
+      "an adapter construction call must be flagged by the construction-call scanner")
+  }
+
+  @Test(
+    "the construction-call scanner does NOT flag log strings, extensions, or class decls (PR-6)")
+  func negativeControlNonConstructionReferencesNotFlagged() {
+    let pattern = #"\bWhisperKitEngineAdapter\s*\("#
+    let logString =
+      #"      await AppLogger.shared.log(m, level: .info, category: "WhisperKitEngineAdapter")"#
+    let extensionDecl = "extension WhisperKitEngineAdapter: ASREngineTelemetryProviding {}"
+    let classDecl = "final class WhisperKitEngineAdapter: ASREngineAdapter {"
+    #expect(
+      Self.regexFlags(source: logString, pattern: pattern) == false,
+      "a `category: \"WhisperKitEngineAdapter\"` log string must NOT be flagged")
+    #expect(
+      Self.regexFlags(source: extensionDecl, pattern: pattern) == false,
+      "an `extension WhisperKitEngineAdapter` declaration must NOT be flagged")
+    #expect(
+      Self.regexFlags(source: classDecl, pattern: pattern) == false,
+      "a `final class WhisperKitEngineAdapter` declaration must NOT be flagged")
+  }
+
   // MARK: Helpers
 
   private static func readSource(_ relative: String) throws -> String {

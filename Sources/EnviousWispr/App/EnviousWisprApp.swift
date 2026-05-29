@@ -134,8 +134,10 @@ struct EnviousWisprApp: App {
 
     // PR-5 Rung 5 (#827): WhisperKit recordings now flow through a second
     // `KernelDictationDriver` built by the factory's WhisperKit branch. The
-    // App's WhisperKit-side dispatch surface stays one driver per backend
-    // until PR-6 introduces the hot-swap factory. LID-to-polish wiring is
+    // App still builds one driver per backend; PR-6 (#827) introduced the
+    // `KernelAdapterFactory` construction owner that the driver factory calls
+    // into, not a single-dispatch-surface consolidation (still two drivers).
+    // LID-to-polish wiring is
     // owned by `KernelFinalizationWiring.processText` via the
     // `ASREngineLanguageIdentifying` cast on the adapter; the silent
     // App-init cache pre-load is owned by the driver's

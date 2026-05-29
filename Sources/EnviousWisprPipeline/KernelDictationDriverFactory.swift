@@ -192,7 +192,11 @@ public enum KernelDictationDriverFactory {
   /// Build the driver stack for the Parakeet engine and arm both observation
   /// arms before returning. Live App caller in `EnviousWisprApp`.
   package static func makeForParakeet(inputs: ParakeetInputs) -> KernelDictationDriver {
-    let adapter = ParakeetEngineAdapter(asrManager: inputs.asrManager)
+    // PR-6 (#827): concrete adapter construction is owned by
+    // `KernelAdapterFactory` (the single construction site). This file no
+    // longer names a concrete adapter type in code (EngineIdentityFreezeTests
+    // Test B); it assembles around the opaque `any ASREngineAdapter` returned.
+    let adapter = KernelAdapterFactory.makeParakeetAdapter(asrManager: inputs.asrManager)
     return assembleDriver(
       adapter: adapter,
       audioCapture: inputs.audioCapture,
@@ -213,8 +217,10 @@ public enum KernelDictationDriverFactory {
     // PR-5 Rung 4.5 (#827): plumb the audio-capture session-id source to the
     // adapter so it can snapshot at `beginSession` (race-safe for delayed LID
     // perf signposts like `t_clipboard_write`).
+    // PR-6 (#827): concrete adapter construction is owned by
+    // `KernelAdapterFactory`; this file names no concrete adapter type in code.
     let captureSource = inputs.audioCapture
-    let adapter = WhisperKitEngineAdapter(
+    let adapter = KernelAdapterFactory.makeWhisperKitAdapter(
       backend: inputs.whisperKitBackend,
       languageDetector: inputs.languageDetector,
       audioCaptureSessionIDSource: { captureSource.currentCaptureSessionID })
