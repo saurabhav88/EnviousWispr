@@ -287,6 +287,12 @@ struct OutputLanguageValidatorTests {
     @Test("preflight gate allows nil detectedLanguage (Parakeet path)")
     func preflightAllowsNil() async throws {
       guard #available(macOS 26.0, *) else { return }
+      // #881 TO-2: honest skip on hosts without the on-device model. Without
+      // this guard the `frameworkUnavailable` throw fires first and the broad
+      // `catch {}` below swallows it — a silent false-green that never actually
+      // exercised the nil short-circuit. Mirrors the two sibling preflight
+      // tests (preflightRejectsUnsupported, preflightNormalizesBCP47).
+      guard SystemLanguageModel.default.availability == .available else { return }
       try await withSupportedLanguages(["en"]) {
         let connector = AppleIntelligenceConnector()
         let config = makeConfig(detectedLanguage: nil)
