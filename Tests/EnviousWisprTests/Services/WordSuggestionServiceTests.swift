@@ -73,10 +73,12 @@ struct WordSuggestionServiceTests {
     // "X" canonical with phonetic alternates
     let raw = ["ecks", "eks"]
     let kept = WordSuggestionService.filterDegeneratedAliases(raw, canonical: "X")
-    // ecks and eks are far enough from X to survive (score check)
-    // The exact survival depends on WordCorrector.score; this test is a sanity check that
-    // single-char canonical does not crash or misbehave catastrophically.
-    #expect(kept.count >= 0)  // Smoke; allow either to be filtered or kept
+    // #881 TO-5: both phonetic aliases score far below the 0.95 near-duplicate
+    // gate and neither equals "x", so both must survive in input order. The old
+    // `kept.count >= 0` was always true — it could not catch a score-gate
+    // inversion or threshold drift that silently dropped valid aliases (the
+    // exact Kubernetes-class degeneration the suite exists to prevent).
+    #expect(kept == ["ecks", "eks"])
   }
 }
 

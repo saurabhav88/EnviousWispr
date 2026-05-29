@@ -317,12 +317,14 @@ struct WordCorrectorTests {
       CustomWord(canonical: "Kubernetes"),
       CustomWord(canonical: "Kubernotes"),
     ]
-    let (result, _) = corrector.correct("kuberntes works", against: words)
-    // Either corrected to Kubernetes (if margin sufficient) or left unchanged (if ambiguous)
-    // The key test: it should not crash and should produce a deterministic result
-    #expect(
-      result.contains("kuberntes") || result.contains("Kubernetes") || result.contains("Kubernotes")
-    )
+    let (result, replacements) = corrector.correct("kuberntes works", against: words)
+    // #881 TO-5: assert the documented decline-on-tie directly on the return
+    // tuple (like the sibling `== "use apt to install"` / `replacements.count
+    // == 0` asserts), not the old three-way `.contains(...)` disjunction that
+    // passed for ANY of declined / corrected-to-Kubernetes / corrected-to-
+    // Kubernotes — i.e. for every possible outcome.
+    #expect(result == "kuberntes works")
+    #expect(replacements.count == 0)
   }
 
   // MARK: - Case preservation in corrections
