@@ -73,10 +73,14 @@ struct FreezeSuiteNormalizationTests {
 
   @Test("em / en dashes between words survive as separators")
   func dashHandling() {
-    // Dashes are not in the stripped set; they remain, and a surrounding-space
-    // form collapses cleanly. The freeze clips avoid dash-ambiguous dictation;
-    // this pins that a dash does not crash or mangle normalization.
-    #expect(norm("a — b").contains("a"))
-    #expect(norm("a — b").contains("b"))
+    // Dashes are not in the stripped set; they survive verbatim, and the single
+    // spaces around them collapse to exactly one space each. #881 TO-4: pin the
+    // exact form (like the 18 sibling `norm(...) == ...` asserts) instead of the
+    // old `.contains("a")` / `.contains("b")`, which stayed green if the dash
+    // were dropped ("a b"), remapped ("a-b"), or whitespace-mangled ("a  —  b").
+    // Also exercise the EN dash (U+2013) the test name promises — the old body
+    // never touched it.
+    #expect(norm("a — b") == "a — b")  // em dash U+2014
+    #expect(norm("a \u{2013} b") == "a \u{2013} b")  // en dash U+2013
   }
 }
