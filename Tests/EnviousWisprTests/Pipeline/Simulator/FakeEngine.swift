@@ -127,6 +127,11 @@ final class FakeEngine: ASREngineAdapter {
 
   private(set) var cancelPendingUnloadCallCount = 0
   private(set) var warmUpFromCacheCallCount = 0
+  // Signal-based waiter for `warmUpFromCacheCallCount` — `preWarm` parks inside
+  // `warmUpFromCache` (blocked on `warmUpFromCacheBlocker`), so the test can't
+  // await the parked `preWarm` task. It awaits `waitForWarmUpFromCacheCount(1)`
+  // instead of yield-polling the counter (#875).
+  private var warmUpFromCacheWaiters = CountWaiters("warmUpFromCacheCallCount")
   private(set) var observeSpeechSegmentsCallCount = 0
   /// The segments argument from the most recent `observeSpeechSegments(_:)`
   /// call — lets VAD-source-precedence tests assert the kernel passes its own
@@ -399,6 +404,7 @@ final class FakeEngine: ASREngineAdapter {
 
   func warmUpFromCache() async throws {
     warmUpFromCacheCallCount += 1
+    warmUpFromCacheWaiters.notify(reached: warmUpFromCacheCallCount)
     eventLog.append(.warmUpFromCache)
     if blockWarmUpFromCache {
       await withCheckedContinuation {
@@ -408,6 +414,24 @@ final class FakeEngine: ASREngineAdapter {
     }
     if warmUpFromCacheThrows {
       throw FakeEngineCacheError.simulated
+    }
+  }
+
+  /// Await until `warmUpFromCacheCallCount >= target`. Resolves immediately if
+  /// already reached, else parks until `warmUpFromCache` is entered.
+  ///
+  /// PURE signal wait — NO wall-clock timeout net, because this file lives
+  /// under `Simulator/` where `SimulatorWallClockBanTests` forbids any
+  /// wall-clock sleep API (determinism rests on `FakeClock`). The signal is
+  /// deterministic (`preWarm` always calls `warmUpFromCache`); were it ever to
+  /// not arrive, the test hangs and surfaces as a loud CI job timeout — a
+  /// visible failure, not the silent false-pass the timeout net guards against
+  /// elsewhere.
+  func waitForWarmUpFromCacheCount(_ target: Int) async {
+    if warmUpFromCacheCallCount >= target { return }
+    let id = UUID()
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+      warmUpFromCacheWaiters.install(id: id, target: target, continuation)
     }
   }
 

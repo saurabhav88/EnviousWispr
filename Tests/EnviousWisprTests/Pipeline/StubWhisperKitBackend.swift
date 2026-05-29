@@ -55,6 +55,12 @@ actor StubWhisperKitBackend: WhisperKitBackendDriving {
   var makeIncrementalSessionCount = 0
   var unloadCount = 0
 
+  // Signal-based waiter for `transcribeCount`. Tests await
+  // `waitForTranscribeCount(1)` to know `finalize` reached the (suspended)
+  // transcribe path, instead of yield-polling — actor isolation makes the
+  // check + install atomic; the timeout net guarantees resolution (#875).
+  private var transcribeWaiters = CountWaiters("transcribeCount")
+
   // MARK: Setters (callable from MainActor tests)
 
   func setIsReady(_ v: Bool) { isReady = v }
@@ -90,6 +96,7 @@ actor StubWhisperKitBackend: WhisperKitBackendDriving {
     -> ASRResult
   {
     transcribeCount += 1
+    transcribeWaiters.notify(reached: transcribeCount)
     lastTranscribeSamples = audioSamples
     lastTranscribeOptions = options
     if slowTranscribe {
@@ -98,6 +105,23 @@ actor StubWhisperKitBackend: WhisperKitBackendDriving {
     if let err = transcribeThrows { throw err }
     return transcribeResult
   }
+
+  /// Await until `transcribeCount >= target`. Resolves immediately if already
+  /// reached; always resolves within `timeout`.
+  func waitForTranscribeCount(_ target: Int, timeout: Duration = .seconds(5)) async {
+    if transcribeCount >= target { return }
+    let id = UUID()
+    let timeoutTask = Task { [weak self] in
+      try? await Task.sleep(for: timeout)
+      await self?.resumeTranscribeWaiter(id)
+    }
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+      transcribeWaiters.install(id: id, target: target, continuation)
+    }
+    timeoutTask.cancel()
+  }
+
+  private func resumeTranscribeWaiter(_ id: UUID) { transcribeWaiters.resume(id: id) }
 
   func observeLID(samples: [Float], maxWindows: Int) async -> LIDObservationBatch {
     observeLIDCount += 1
@@ -132,6 +156,11 @@ actor StubIncrementalSession: WhisperKitIncrementalSession {
   /// worker decode suspended while a new session begins.
   var slowFinalize = false
 
+  // Signal-based waiter for `cancelCount` — the orphan-worker cancel runs in a
+  // detached task off `beginSession`, so tests await `waitForCancelCount(1)`
+  // instead of yield-polling (#875).
+  private var cancelWaiters = CountWaiters("cancelCount")
+
   init(result: IncrementalResult) {
     self.finalizeResult = result
   }
@@ -158,7 +187,25 @@ actor StubIncrementalSession: WhisperKitIncrementalSession {
 
   func cancel() async {
     cancelCount += 1
+    cancelWaiters.notify(reached: cancelCount)
   }
+
+  /// Await until `cancelCount >= target`. Resolves immediately if already
+  /// reached; always resolves within `timeout`.
+  func waitForCancelCount(_ target: Int, timeout: Duration = .seconds(5)) async {
+    if cancelCount >= target { return }
+    let id = UUID()
+    let timeoutTask = Task { [weak self] in
+      try? await Task.sleep(for: timeout)
+      await self?.resumeCancelWaiter(id)
+    }
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+      cancelWaiters.install(id: id, target: target, continuation)
+    }
+    timeoutTask.cancel()
+  }
+
+  private func resumeCancelWaiter(_ id: UUID) { cancelWaiters.resume(id: id) }
 }
 
 // MARK: - IncrementalResult convenience constructors

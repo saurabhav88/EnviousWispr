@@ -494,6 +494,14 @@ final class ParakeetEngineAdapter: ASREngineAdapter {
     let take = min(count, remaining)
     retainedPCM.append(contentsOf: UnsafeBufferPointer(start: channel, count: take))
   }
+
+  /// Test-only handle to the in-flight per-buffer feed tasks. A test captures
+  /// this snapshot BEFORE `cancel()`/`beginSession()` (which clear the array)
+  /// and `await`s the captured handles afterward to assert deterministically
+  /// that a queued feed saw the terminated session and skipped — instead of
+  /// yield-polling `feedAudioCount`. Each task always returns (it guards on the
+  /// session check and returns), so the await is bounded.
+  internal var feedTasksForUnitTests: [Task<Void, Never>] { feedTasks }
 }
 
 extension ParakeetEngineAdapter: ASREngineTelemetryProviding {}

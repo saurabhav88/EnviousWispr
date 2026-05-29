@@ -43,8 +43,14 @@ struct DedupSurvivesStallTests {
         transcriptStore: TranscriptStore(),
         keychainManager: KeychainManager(),
         captureTelemetry: CaptureTelemetryState(),
-        pasteCompletionRegistry: PasteCompletionRegistry()
+        pasteCompletionRegistry: PasteCompletionRegistry(),
+        // No-op sink: this test asserts on STATE flips, not on Sentry. Inject a
+        // no-op so the pipeline's stall captureError never reaches the
+        // process-global delegate, where it could pollute a concurrent test's
+        // installed spy (#875).
+        captureErrorSink: { _, _, _, _, _ in }
       ))
+    let stateWaiter = PipelineStateWaiter(pipeline)
 
     let config = DictationSessionConfig.testDefault(
       autoPasteToActiveApp: false,
@@ -56,10 +62,8 @@ struct DedupSurvivesStallTests {
 
     // ─── Session 1 ─────────────────────────────────────────────────────────
     try await pipeline.handle(event: .toggleRecording(config))
-    let reachedRecording1 = await pollUntil(timeout: .seconds(1)) {
-      pipeline.state == .recording
-    }
-    #expect(reachedRecording1, "session 1 must reach .recording")
+    await stateWaiter.wait(for: .recording)
+    #expect(pipeline.state == .recording, "session 1 must reach .recording")
 
     // First stall in session 1 — emitter fires (no prior dedup); the kernel's
     // recording-exit continuation resumes the forward-path coroutine, which
@@ -67,38 +71,34 @@ struct DedupSurvivesStallTests {
     // `.error("No audio detected -- try again.")`). The transition is async
     // because the forward path runs in a separate Task — poll until it lands.
     pipeline.handleCaptureStall(Self.stallContext(sessionID: 1))
-    let reachedError1 = await pollUntil(timeout: .seconds(1)) {
-      pipeline.state == .error("No audio detected — try again.")
-    }
-    #expect(reachedError1, "first stall in session 1 must flip state to .error")
+    await stateWaiter.wait(for: .error("No audio detected — try again."))
+    #expect(
+      pipeline.state == .error("No audio detected — try again."),
+      "first stall in session 1 must flip state to .error")
 
     // Reset to idle so we can start session 2. `cancelRecording()` is a
     // no-op once the pipeline is in `.error` (its guard checks for
     // `.recording` / `.loadingModel`); `reset()` is the path that takes the
     // pipeline back to `.idle` from any state.
     pipeline.reset()
-    let reachedIdle = await pollUntil(timeout: .seconds(1)) {
-      pipeline.state == .idle
-    }
-    #expect(reachedIdle, "reset() must return to .idle")
+    await stateWaiter.wait(for: .idle)
+    #expect(pipeline.state == .idle, "reset() must return to .idle")
 
     // ─── Session 2 ─────────────────────────────────────────────────────────
     try await pipeline.handle(event: .toggleRecording(config))
-    let reachedRecording2 = await pollUntil(timeout: .seconds(1)) {
-      pipeline.state == .recording
-    }
-    #expect(reachedRecording2, "session 2 must reach .recording — dedup must not block restart")
+    await stateWaiter.wait(for: .recording)
+    #expect(
+      pipeline.state == .recording,
+      "session 2 must reach .recording — dedup must not block restart")
 
     // Stall in session 2 (fresh sessionID). Emitter must NOT consider this
     // deduped from session 1's prior fire — the pipeline guard must advance
     // to .error. If dedup state had leaked across recordings, state would
     // remain .recording and this test would fail.
     pipeline.handleCaptureStall(Self.stallContext(sessionID: 2))
-    let reachedError2 = await pollUntil(timeout: .seconds(1)) {
-      pipeline.state == .error("No audio detected — try again.")
-    }
+    await stateWaiter.wait(for: .error("No audio detected — try again."))
     #expect(
-      reachedError2,
+      pipeline.state == .error("No audio detected — try again."),
       "stall in fresh session 2 must fire — dedup state must not survive restart")
 
     await pipeline.cancelRecording()
@@ -120,20 +120,6 @@ struct DedupSurvivesStallTests {
       inputDeviceUIDSystemDefault: nil
     )
   }
-}
-
-@MainActor
-private func pollUntil(
-  timeout: Duration,
-  interval: Duration = .milliseconds(10),
-  condition: @escaping @MainActor () -> Bool
-) async -> Bool {
-  let deadline = ContinuousClock.now + timeout
-  while ContinuousClock.now < deadline {
-    if condition() { return true }
-    try? await Task.sleep(for: interval)
-  }
-  return condition()
 }
 
 // MARK: - Test stubs

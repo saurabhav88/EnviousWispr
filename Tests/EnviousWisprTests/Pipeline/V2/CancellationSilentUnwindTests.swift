@@ -18,9 +18,14 @@ import Testing
 /// action, not a failure mode, and any error-class breadcrumb during unwind
 /// would alert-spam the live triage Routine.
 ///
-/// Surface: pipeline cancellation path. Uses the same
-/// `SentryBreadcrumb.captureErrorDelegate` spy pattern as
-/// `HeartPathTelemetryWiringTests`.
+/// Surface: pipeline cancellation path. Injects a per-instance capture sink
+/// into the pipeline (via `KernelDictationDriverFactory` inputs) instead of
+/// installing the process-global `SentryBreadcrumb.captureErrorDelegate`. The
+/// global is shared across all `@MainActor` tests: while this test is suspended
+/// at an `await`, a sibling test's pipeline could fire `captureError` into the
+/// global delegate this test had installed, recording a stray breadcrumb and
+/// flaking the `spy.calls.isEmpty` assertion (#875, release-config one-per-run).
+/// A per-instance sink keeps this pipeline off that global entirely.
 @MainActor
 @Suite("V2 Lane C — cancellation unwinds without Sentry error spam")
 struct CancellationSilentUnwindTests {
@@ -52,16 +57,6 @@ struct CancellationSilentUnwindTests {
     }
   }
 
-  private static func withCaptureSpy(_ body: (CaptureSpy) async throws -> Void) async rethrows {
-    let spy = CaptureSpy()
-    let prior = SentryBreadcrumb.captureErrorDelegate
-    SentryBreadcrumb.captureErrorDelegate = { _, category, stage, _ in
-      spy.record(.init(category: category, stage: stage))
-    }
-    defer { SentryBreadcrumb.captureErrorDelegate = prior }
-    try await body(spy)
-  }
-
   @Test("cancelRecording from .recording emits zero Sentry error breadcrumbs")
   func testCancellationSilentUnwind() async throws {
     let fixture = try SyntheticAudioFixture.make(
@@ -80,6 +75,7 @@ struct CancellationSilentUnwindTests {
         )
       )
     )
+    let spy = CaptureSpy()
     let vad = KernelDictationDriverFactory.makeSharedVADSignalSource(
       audioCapture: audioCapture)
     let pipeline = KernelDictationDriverFactory.makeForParakeet(
@@ -90,8 +86,12 @@ struct CancellationSilentUnwindTests {
         transcriptStore: TranscriptStore(),
         keychainManager: KeychainManager(),
         captureTelemetry: CaptureTelemetryState(),
-        pasteCompletionRegistry: PasteCompletionRegistry()
+        pasteCompletionRegistry: PasteCompletionRegistry(),
+        captureErrorSink: { _, category, stage, _, _ in
+          spy.record(.init(category: category, stage: stage))
+        }
       ))
+    let stateWaiter = PipelineStateWaiter(pipeline)
 
     let config = DictationSessionConfig.testDefault(
       autoPasteToActiveApp: false,
@@ -101,47 +101,31 @@ struct CancellationSilentUnwindTests {
       llmModel: "gpt-test"
     )
 
-    try await Self.withCaptureSpy { spy in
-      try await pipeline.handle(event: .toggleRecording(config))
+    try await pipeline.handle(event: .toggleRecording(config))
 
-      let reachedRecording = await pollUntil(timeout: .seconds(1)) {
-        pipeline.state == .recording
-      }
-      #expect(reachedRecording, "must reach .recording before cancellation")
+    await stateWaiter.wait(for: .recording)
+    #expect(pipeline.state == .recording, "must reach .recording before cancellation")
 
-      // Scope the assertion to the cancel phase. PR-4b.4 (#827): the kernel
-      // has its own no-buffer stall watchdog that may emit an
-      // `audioCaptureStalled` breadcrumb during the recording window when
-      // `FixtureAudioCapture`'s synthetic stream produces no live buffers.
-      // That pre-cancel emission is a fixture-driven artifact, not the
-      // unwind behavior under test. The product invariant ("cancellation is
-      // a legitimate user action, not a failure") concerns whether the
-      // cancel path itself routes through error telemetry — clear the spy
-      // so only post-cancel emissions count toward the assertion.
-      spy.clear()
+    // Scope the assertion to the cancel phase. PR-4b.4 (#827): the kernel
+    // has its own no-buffer stall watchdog that may emit an
+    // `audioCaptureStalled` breadcrumb during the recording window when
+    // `FixtureAudioCapture`'s synthetic stream produces no live buffers.
+    // That pre-cancel emission is a fixture-driven artifact, not the
+    // unwind behavior under test. The product invariant ("cancellation is
+    // a legitimate user action, not a failure") concerns whether the
+    // cancel path itself routes through error telemetry — clear the spy
+    // so only post-cancel emissions count toward the assertion.
+    spy.clear()
 
-      await pipeline.cancelRecording()
+    await pipeline.cancelRecording()
 
-      #expect(pipeline.state == .idle, "cancelRecording must return to .idle")
-      #expect(asrManager.transcribeCallCount == 0, "ASR must not be called on cancelled session")
+    #expect(pipeline.state == .idle, "cancelRecording must return to .idle")
+    #expect(asrManager.transcribeCallCount == 0, "ASR must not be called on cancelled session")
 
-      #expect(
-        spy.calls.isEmpty,
-        "cancel path must emit zero Sentry error breadcrumbs (got: \(spy.calls.map(\.stage)))")
-    }
+    // The injected sink fires synchronously on the main actor, so spy.calls is
+    // final the instant cancelRecording returns — no drain wait needed.
+    #expect(
+      spy.calls.isEmpty,
+      "cancel path must emit zero Sentry error breadcrumbs (got: \(spy.calls.map(\.stage)))")
   }
-}
-
-@MainActor
-private func pollUntil(
-  timeout: Duration,
-  interval: Duration = .milliseconds(10),
-  condition: @escaping @MainActor () -> Bool
-) async -> Bool {
-  let deadline = ContinuousClock.now + timeout
-  while ContinuousClock.now < deadline {
-    if condition() { return true }
-    try? await Task.sleep(for: interval)
-  }
-  return condition()
 }
