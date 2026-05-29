@@ -65,13 +65,26 @@ jobs:
             ${{ runner.os }}-spm-${{ steps.spm-cache-key.outputs.toolchain_id }}-
             ${{ runner.os }}-spm-
 
+      # COMPILE_FLAGS comes from scripts/swift-test.sh (single source) so this build
+      # graph matches the test step's graph and the test step reuses these objects
+      # instead of recompiling every first-party module (#885). Captured into a string
+      # first (a failing emitter aborts the step under set -e), then split into an
+      # array so the flags pass as separate argv without unquoted word-splitting.
       - name: Build (debug)
         if: steps.changes.outputs.needs_build == 'true'
-        run: swift build
+        run: |
+          set -euo pipefail
+          FLAGS_STR="$(scripts/swift-test.sh --print-compile-flags)"
+          read -ra COMPILE_FLAGS <<< "$FLAGS_STR"
+          swift build "${COMPILE_FLAGS[@]}"
 
       - name: Build (release)
         if: steps.changes.outputs.needs_build == 'true'
-        run: swift build -c release --arch arm64
+        run: |
+          set -euo pipefail
+          FLAGS_STR="$(scripts/swift-test.sh --print-compile-flags)"
+          read -ra COMPILE_FLAGS <<< "$FLAGS_STR"
+          swift build -c release --arch arm64 "${COMPILE_FLAGS[@]}"
 
       - name: Run logic tests
         if: steps.changes.outputs.needs_build == 'true'
