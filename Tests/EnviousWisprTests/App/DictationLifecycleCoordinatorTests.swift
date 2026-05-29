@@ -120,6 +120,38 @@ import Testing
     #expect(fixtures.kernelDriver.onStateChange != nil)
     #expect(fixtures.whisperKitKernelDriver.onStateChange != nil)
   }
+
+  /// V2 Lane C invariant C4 (#291), relocated from `HandsFreeLockTests` as a
+  /// behavioral test (#881 TO-2): the hands-free lock must clear on every
+  /// terminal pipeline state so the next recording starts in normal PTT mode.
+  /// The prior test only scanned the coordinator's source text for the
+  /// `recordingLockedAccess.set(false)` literal — it stayed green if the call
+  /// were guarded out, moved behind an early return, or no-op'd. This drives
+  /// the real `install()`-wired `onStateChange` and asserts the lock actually
+  /// flips false at runtime.
+  @Test func parakeetTerminalStatesClearRecordingLock() {
+    let fx = Self.makeCoordinator()
+    fx.coordinator.install()
+    for terminal in [PipelineState.idle, .complete, .error("boom")] {
+      fx.recordingLocked.isLocked = true
+      fx.kernelDriver.onStateChange?(terminal)
+      #expect(
+        fx.recordingLocked.isLocked == false,
+        "Parakeet terminal state \(terminal) must clear the hands-free lock")
+    }
+  }
+
+  @Test func whisperKitTerminalStatesClearRecordingLock() {
+    let fx = Self.makeCoordinator()
+    fx.coordinator.install()
+    for terminal in [PipelineState.idle, .complete, .error("boom")] {
+      fx.recordingLocked.isLocked = true
+      fx.whisperKitKernelDriver.onStateChange?(terminal)
+      #expect(
+        fx.recordingLocked.isLocked == false,
+        "WhisperKit terminal state \(terminal) must clear the hands-free lock")
+    }
+  }
 }
 
 /// PR9 of #763 — mutable lock-state stand-in used by the
