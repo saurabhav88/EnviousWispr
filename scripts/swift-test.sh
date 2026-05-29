@@ -32,13 +32,27 @@ if [ ! -d "$FRAMEWORKS_DIR/Testing.framework" ]; then
 fi
 
 # Shared flag set — single source of truth for CLT Testing.framework wiring.
+# COMPILE_FLAGS is the compile-graph-affecting subset. The CI workflow `swift build`
+# steps consume it verbatim via `--print-compile-flags` so their build graph matches
+# this script's `swift test` graph; without the match, the test step recompiles every
+# first-party module the build step already built (#885). Keep this the one source —
+# do not duplicate the flag in the print branch below or in the workflows.
+COMPILE_FLAGS=(-Xswiftc "-F${FRAMEWORKS_DIR}")
 CLT_FLAGS=(
-    -Xswiftc "-F${FRAMEWORKS_DIR}"
+    "${COMPILE_FLAGS[@]}"
     -Xlinker "-F${FRAMEWORKS_DIR}"
     -Xlinker -rpath -Xlinker "${FRAMEWORKS_DIR}"
     -Xlinker -rpath -Xlinker "${USR_LIB_DIR}"
     -Xlinker -rpath -Xlinker "${INTEROP_LIB_DIR}"
 )
+
+# Emit only the compile-graph-affecting flags for the CI `swift build` steps. Runs
+# after the Testing.framework check above, so a missing framework exits non-zero and
+# the caller's `FLAGS="$(...)"` assignment aborts under `set -e`.
+if [[ "${1:-}" == "--print-compile-flags" ]]; then
+    printf '%s ' "${COMPILE_FLAGS[@]}"; printf '\n'
+    exit 0
+fi
 
 NO_RUN=0
 REMAINING_ARGS=()
