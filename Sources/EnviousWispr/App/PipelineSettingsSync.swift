@@ -112,11 +112,6 @@ final class PipelineSettingsSync {
         break
       }
       let backend = settings.selectedBackend
-      // Issue #289: invalidate any stall-recovery token on either pipeline
-      // so a deferred cleanup from a pre-switch stall doesn't tear down
-      // the pipeline that's about to become active.
-      kernelDriver.clearPendingStallRecovery()
-      whisperKitKernelDriver.clearPendingStallRecovery()
       Task { [weak self] in
         await self?.asrManager.switchBackend(to: backend)
         SentryBreadcrumb.updateASRBackend(backend == .whisperKit ? "whisperkit" : "parakeet")

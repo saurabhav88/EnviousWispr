@@ -1,5 +1,3 @@
-import EnviousWisprCore
-import EnviousWisprPipeline
 import EnviousWisprServices
 import Foundation
 
@@ -10,7 +8,7 @@ import Foundation
 /// - `logDispatchFailure` — log only. Use when the caller has already reset overlay + lock
 ///   before the dispatch (Stop, WhisperKit Cancel paths).
 /// - `recover` — full recovery: log, hide overlay, clear lock, surface user-facing message
-///   via the pipeline. Use when the caller has NOT pre-reset state (Toggle paths).
+///   via the driver's `setExternalError` closure. Use when the caller has NOT pre-reset state (Toggle paths).
 ///
 /// `CancellationError` is treated as a coordinated unwind in both shapes: skipped from the
 /// log (mirrors prior inline behavior at the former root-state file pre-warm catch), but `recover`
@@ -29,7 +27,8 @@ struct HeartControlRecovery {
   }
 
   func recover(
-    error: any Error, pipeline: any DictationPipeline, op: String, message: String
+    error: any Error, op: String, message: String,
+    setExternalError: @MainActor (String) -> Void
   ) {
     let isCancellation = error is CancellationError
     if !isCancellation {
@@ -40,7 +39,7 @@ struct HeartControlRecovery {
     hideOverlay()
     setLocked(false)
     if !isCancellation {
-      pipeline.setExternalError(message)
+      setExternalError(message)
     }
   }
 }

@@ -5,18 +5,19 @@ import Foundation
 
 // MARK: - KernelDictationDriver (epic #827, PR-4 §3.1)
 //
-// Adapts `RecordingSessionKernel` to the `DictationPipeline` surface the App
-// layer consumes. The App calls the active engine through `DictationPipeline`
+// Adapts `RecordingSessionKernel` to the recording-driver surface the App
+// layer consumes. The App calls the active engine through this concrete driver
 // and reads `state` / `overlayIntent` / `currentTranscript` / `lastPolishError`
 // / the four limb-step accessors / `onStateChange` / DEBUG `forceCancelNow()`
-// off the concrete pipeline type. The kernel exposes none of that — it has
-// synchronous triggers and its own `RecordingSessionState` vocabulary.
+// off it. The kernel exposes none of that — it has synchronous triggers and
+// its own `RecordingSessionState` vocabulary.
 //
 // The driver translates: `PipelineEvent` -> kernel triggers, `RecordingSessionState`
-// -> `PipelineState` / `OverlayIntent`. It is a permanent translation layer
-// until PR-9 deletes `DictationPipeline`; it carries real behavior (event
+// -> `PipelineState` / `OverlayIntent`. It carries real behavior (event
 // translation, state mapping, the limb-step home, the external-error surface)
-// and is NOT a forwarding shim — the old Parakeet pipeline path is gone.
+// and is NOT a forwarding shim — the old Parakeet pipeline path is gone. PR-9
+// of #827 deleted the `DictationPipeline` protocol; this is the single concrete
+// driver and the App holds it directly (`KernelOwnershipFreezeTests`).
 //
 // PR-4a ships this production-unwired: no App-layer caller constructs it.
 // PR-4b re-points the 13 App files at this type.
@@ -44,10 +45,10 @@ struct LimbSteps {
   let llmPolish: LLMPolishStep
 }
 
-/// Wraps `RecordingSessionKernel` as a `DictationPipeline` for the App layer.
+/// Wraps `RecordingSessionKernel` as the App layer's recording driver.
 @MainActor
 @Observable
-public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryTarget {
+public final class KernelDictationDriver: HeartPathTelemetryTarget {
 
   private let kernel: RecordingSessionKernel
   private let observer: KernelHeartPathTelemetryObserver
@@ -330,7 +331,7 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
     context.config
   }
 
-  // MARK: DictationPipeline
+  // MARK: Caller-facing event + overlay surface
 
   public var overlayIntent: OverlayIntent {
     if let lastExternalError {
@@ -472,10 +473,6 @@ public final class KernelDictationDriver: DictationPipeline, HeartPathTelemetryT
     lastExternalError = message
     fireStateChangeIfNeeded()
   }
-
-  /// Intentional no-op (PR-4 §3.7). The kernel's `SessionID` structurally
-  /// replaces the stall-recovery token (D11) — there is nothing to clear.
-  public func clearPendingStallRecovery() {}
 
   // MARK: HeartPathTelemetryTarget — forwards to the observer (PR-4 §3.9)
 

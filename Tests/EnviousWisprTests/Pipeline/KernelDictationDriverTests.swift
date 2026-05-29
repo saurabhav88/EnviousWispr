@@ -133,14 +133,6 @@ import Testing
     #expect(h.driver.state != .error("device unplugged"))
   }
 
-  @Test("clearPendingStallRecovery is an inert no-op")
-  func clearPendingStallRecoveryIsNoOp() {
-    let h = makeDriver()
-    let before = h.driver.state
-    h.driver.clearPendingStallRecovery()
-    #expect(h.driver.state == before)
-  }
-
   // MARK: currentTranscript / lastPolishError side-channel
 
   @Test("currentTranscript and lastPolishError read the finalization side-channel")

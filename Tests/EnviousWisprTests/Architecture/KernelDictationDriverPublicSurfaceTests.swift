@@ -58,7 +58,6 @@ import Testing
     _ = driver.currentSessionConfig
     driver.onStateChange = { _ in }
     driver.setExternalError("probe")
-    driver.clearPendingStallRecovery()
     driver.handleEngineInterruption()
     driver.handleASRServiceInterruption()
     driver.reset()

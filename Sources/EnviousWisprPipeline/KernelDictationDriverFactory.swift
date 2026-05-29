@@ -11,8 +11,8 @@ import Foundation
 /// added the second-engine branch; PR-5 Rung 5 narrowed the factory surface
 /// from `public` to `package` and added the shared VAD signal source seam).
 ///
-/// The App layer needs a `DictationPipeline`-conforming object but cannot
-/// construct one directly: `RecordingSessionKernel`, `ParakeetEngineAdapter`,
+/// The App layer needs a `KernelDictationDriver` but cannot construct one
+/// directly: `RecordingSessionKernel`, `ParakeetEngineAdapter`,
 /// `WhisperKitEngineAdapter`, `KernelHeartPathTelemetryObserver`, `LimbSteps`,
 /// `KernelFinalizationOutcome`, `KernelSessionContext`, `KernelFinalizationWiring`,
 /// `HeartPathTelemetryEmitter`, `KernelLifecycleTelemetrySink`, and
