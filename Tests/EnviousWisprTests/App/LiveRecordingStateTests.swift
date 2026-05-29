@@ -34,14 +34,18 @@ struct LiveRecordingStateTests {
   @Test("pipelineState routes through asrManager.activeBackendType")
   func pipelineStateRoutesByBackend() {
     let state = makeState()
-    // Default backend (.parakeet) → reads pipeline.state which is .idle
+    // #881 TO-3: drive the WhisperKit driver to a DISTINCT observable state so
+    // the two routing arms return values neither branch can produce by accident.
+    // The prior test left both drivers .idle, so it stayed green even if the
+    // router ignored activeBackendType, inverted the condition, or read the
+    // wrong driver in the WhisperKit arm.
+    state.whisperKitKernelDriver.setExternalError("wk-marker")
+    // Parakeet arm → reads the (error-free) parakeet driver → .idle.
     state.asrManager.setInitialBackendType(.parakeet)
     #expect(state.pipelineState == .idle)
-    // Switch to WhisperKit branch — reads whisperKitKernelDriver.state.asPipelineState
-    // (also .idle by default). Both arms return .idle, but the switch exercises
-    // the routing code path; differential state validation belongs in UAT.
+    // WhisperKit arm → reads the WhisperKit driver → .error("wk-marker").
     state.asrManager.setInitialBackendType(.whisperKit)
-    #expect(state.pipelineState == .idle)
+    #expect(state.pipelineState == .error("wk-marker"))
   }
 
   @Test("audioLevel reads through the audioCapture existential")
