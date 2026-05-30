@@ -68,7 +68,17 @@ struct FreezeSuiteNormalizationTests {
   func nfcNormalization() {
     let composed = "café"  // single é
     let decomposed = "cafe\u{0301}"  // e + combining acute
-    #expect(norm(composed) == norm(decomposed))
+    // Compare unicode SCALARS, not String ==. Swift String equality is
+    // canonical-equivalence-aware, so `decomposed == composed` (and
+    // `norm(composed) == norm(decomposed)`) are already true WITHOUT any
+    // normalization — a String-level assert here passes even if `normalize`
+    // were a no-op. Scalar comparison exposes whether NFC actually composed it.
+    #expect(
+      Array(norm(decomposed).unicodeScalars) == Array(composed.unicodeScalars),
+      "decomposed e-acute must normalize to the NFC composed scalar (#860)")
+    #expect(
+      norm(decomposed).unicodeScalars.count == 4,
+      "NFC-composed café is 4 scalars (c,a,f,é); a no-op normalize would leave 5")
   }
 
   @Test("em / en dashes between words survive as separators")

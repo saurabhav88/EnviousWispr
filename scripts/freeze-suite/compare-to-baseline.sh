@@ -186,7 +186,7 @@ _GOLDEN_VECTORS = [
     ("Hello World", "hello world"),
     ("  hello   world  ", "hello world"),
     ("hello\tworld", "hello world"),
-    ("hello world", "hello world"),  # NBSP
+    ("hello\u00a0world", "hello world"),  # NBSP (U+00A0) collapses to a regular space
     ("hello​world", "hello world"),  # ZWSP
     ("hello world.", "hello world"),
     ("u.s. army", "u.s. army"),
@@ -200,7 +200,7 @@ _GOLDEN_VECTORS = [
     ("a/b", "ab"),
     ("one, two; three", "one two three"),
     ("sub-second latency", "sub-second latency"),
-    ("café", normalize("café")),  # NFC composed == decomposed
+    ("cafe\u0301", "caf\u00e9"),  # decomposed (e + U+0301) normalizes to NFC composed e-acute (U+00E9)
     ("a — b", "a — b"),  # em-dash survives
     ("“It’s done.”", "it's done"),
 ]

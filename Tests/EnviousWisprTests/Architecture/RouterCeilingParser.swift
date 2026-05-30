@@ -23,6 +23,19 @@ enum RouterCeilingParser {
 
   static func classBody(named typeName: String, at path: String) throws -> String {
     let source = try String(contentsOf: URL(fileURLWithPath: path), encoding: .utf8)
+    // Search the declaration AND balance the body braces over a CODE VIEW
+    // (string-literal contents + `//` comments blanked to spaces, length
+    // preserved), so a `final class X {` or a stray `{`/`}` inside a comment or
+    // string literal cannot mis-anchor the declaration or unbalance the scan
+    // (#826). `codeView` preserves Character count 1:1, so an offset into the
+    // code view is the same offset into the real source; the body is sliced
+    // from the REAL source because the per-line property/method classifiers
+    // (`isStoredPropertyDeclaration`, `isClosureTyped`, ...) parse the real
+    // declaration text (type names, attributes, default values) — only the
+    // fold's continuation check masks comments/strings internally via `codeView`.
+    let code = codeView(source)
+    let sourceChars = Array(source)
+    let codeChars = Array(code)  // same Character count as sourceChars
     let declarations = [
       "final class \(typeName) {",
       "final class \(typeName):",
@@ -30,34 +43,37 @@ enum RouterCeilingParser {
       "class \(typeName):",
     ]
     guard
-      let openRange = declarations.compactMap({ source.range(of: $0) }).min(by: {
-        $0.lowerBound < $1.lowerBound
-      })
+      let declOffset =
+        declarations
+        .compactMap({ code.range(of: $0) })
+        .map({ code.distance(from: code.startIndex, to: $0.lowerBound) })
+        .min()
     else {
       Issue.record("\(typeName) declaration not found at \(path)")
       throw POSIXError(.ENOENT)
     }
-    // Anchor on the class's OWN `{`: scan forward from the start of the
-    // declaration (`final class TypeName` / `class TypeName`). Between that
-    // start and the class brace the source holds only the type name and an
-    // optional `: Conformance, ...` list — never a `{` — so the first `{`
-    // found is unambiguously the class brace, for every declaration shape.
-    guard let openBrace = source[openRange.lowerBound...].firstIndex(of: "{") else {
+    // The class's OWN `{`: the first brace at or after the declaration start, in
+    // the code view (so a brace inside a comment/string between the declaration
+    // and the class body is never mistaken for it). Between the declaration
+    // start and the class brace the code holds only the type name and an
+    // optional `: Conformance, ...` list — never a real `{`.
+    guard let openBrace = (declOffset..<codeChars.count).first(where: { codeChars[$0] == "{" })
+    else {
       Issue.record("\(typeName) declaration has no opening brace")
       throw POSIXError(.EILSEQ)
     }
     var depth = 0
     var idx = openBrace
-    while idx < source.endIndex {
-      let c = source[idx]
+    while idx < codeChars.count {
+      let c = codeChars[idx]
       if c == "{" { depth += 1 }
       if c == "}" {
         depth -= 1
         if depth == 0 {
-          return String(source[source.index(after: openBrace)..<idx])
+          return String(sourceChars[(openBrace + 1)..<idx])
         }
       }
-      idx = source.index(after: idx)
+      idx += 1
     }
     Issue.record("\(typeName) class body has unbalanced braces")
     throw POSIXError(.EILSEQ)
@@ -82,8 +98,7 @@ enum RouterCeilingParser {
     var depth = 0
     var count = 0
     for line in foldContinuationLines(body) {
-      let opens = line.filter { $0 == "{" }.count
-      let closes = line.filter { $0 == "}" }.count
+      let (opens, closes) = braceCounts(line)
       let depthForThisLine = depth - max(0, closes - opens)
       if depthForThisLine == 0, isNonPrivateMethodDeclaration(line) {
         count += 1
@@ -110,14 +125,23 @@ enum RouterCeilingParser {
 
   // MARK: - Private
 
+  /// Net `{` / `}` counts for a line, measured on its CODE VIEW so a brace
+  /// inside a string literal or `//` comment does not shift brace depth. Every
+  /// depth-tracking loop below uses this, not raw `filter`, so a `}` in a
+  /// string/comment can neither drop a real declaration below depth 0 nor close
+  /// a scope early (#826).
+  private static func braceCounts(_ line: String) -> (opens: Int, closes: Int) {
+    let code = codeView(line)
+    return (code.filter { $0 == "{" }.count, code.filter { $0 == "}" }.count)
+  }
+
   private static func countTopLevelStoredProperties(
     in body: String, where predicate: (String) -> Bool
   ) -> Int {
     var depth = 0
     var count = 0
     for line in foldContinuationLines(body) {
-      let opens = line.filter { $0 == "{" }.count
-      let closes = line.filter { $0 == "}" }.count
+      let (opens, closes) = braceCounts(line)
       let depthForThisLine = depth - max(0, closes - opens)
       if depthForThisLine == 0 {
         if isStoredPropertyDeclaration(line), predicate(line) {
@@ -143,8 +167,7 @@ enum RouterCeilingParser {
     var i = 0
     while i < physical.count {
       var buffer = physical[i]
-      let opens = buffer.filter { $0 == "{" }.count
-      let closes = buffer.filter { $0 == "}" }.count
+      let (opens, closes) = braceCounts(buffer)
       let depthForThisLine = depth - max(0, closes - opens)
       if depthForThisLine == 0 {
         while isUnterminatedDeclaration(buffer), i + 1 < physical.count {
@@ -153,7 +176,9 @@ enum RouterCeilingParser {
         }
       }
       result.append(buffer)
-      depth += buffer.filter { $0 == "{" }.count - buffer.filter { $0 == "}" }.count
+      // Recount after folding: `buffer` may now span several physical lines.
+      let (bufOpens, bufCloses) = braceCounts(buffer)
+      depth += bufOpens - bufCloses
       i += 1
     }
     return result
@@ -188,40 +213,58 @@ enum RouterCeilingParser {
   }
 
   /// Returns `buffer` with string-literal contents and `//` line comments
-  /// removed, so bracket-balance and trailing-operator checks see only code.
-  /// A `//` or a bracket inside a `"..."` literal must not be read as syntax
-  /// (a `let x = "https://"` is a complete declaration, not a continuation).
-  /// Handles single-line `"..."` with `\` escapes; multi-line (`"""`) and raw
-  /// (`#"..."#`) string literals are out of scope — no ceiling-tested class
-  /// declaration uses them.
+  /// blanked to spaces (Character count preserved 1:1), so bracket-balance,
+  /// trailing-operator checks, AND `classBody`'s declaration search + brace
+  /// scan see only real code while every offset still aligns with `buffer`. A
+  /// `//` or a bracket inside a `"..."` literal must not be read as syntax (a
+  /// `let x = "https://"` is a complete declaration, not a continuation; a `}`
+  /// inside a string must not close a class body). Handles single-line `"..."`
+  /// with `\` escapes; multi-line (`"""`) and raw (`#"..."#`) string literals
+  /// are out of scope — no ceiling-tested class declaration uses them.
   private static func codeView(_ buffer: String) -> String {
     let chars = Array(buffer)
     var result: [Character] = []
+    result.reserveCapacity(chars.count)
     var inString = false
     var i = 0
     while i < chars.count {
       let c = chars[i]
       if inString {
         if c == "\\" {
-          i += 2  // skip the escaped character
+          // Blank the escape pair (`\"`, `\\`, ...): two input chars, two spaces
+          // out, so the escaped char cannot end the string and length is kept.
+          result.append(" ")
+          if i + 1 < chars.count { result.append(" ") }
+          i += 2
           continue
         }
         if c == "\"" {
           inString = false
-        } else if c == "\n" {
+          result.append(" ")  // blank the closing quote (kept as a space, 1:1)
+          i += 1
+          continue
+        }
+        if c == "\n" {
           inString = false  // a single-line literal cannot cross a newline
           result.append(c)
+          i += 1
+          continue
         }
+        result.append(" ")  // blank string content
         i += 1
         continue
       }
       if c == "\"" {
         inString = true
+        result.append(" ")  // blank the opening quote
         i += 1
         continue
       }
       if c == "/", i + 1 < chars.count, chars[i + 1] == "/" {
-        while i < chars.count, chars[i] != "\n" { i += 1 }  // drop to EOL
+        while i < chars.count, chars[i] != "\n" {
+          result.append(" ")  // blank the comment to end of line
+          i += 1
+        }
         continue
       }
       result.append(c)
