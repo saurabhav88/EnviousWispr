@@ -70,7 +70,7 @@ import Testing
 
   @Test func lineCount() throws {
     let source = try String(
-      contentsOf: URL(fileURLWithPath: Self.sourcePath), encoding: .utf8)
+      contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
     let count = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
       count <= 200,
@@ -85,7 +85,7 @@ import Testing
 
   @Test func allowedImports() throws {
     let source = try String(
-      contentsOf: URL(fileURLWithPath: Self.sourcePath), encoding: .utf8)
+      contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
     let actual = RouterCeilingParser.imports(in: source)
     let allowed: Set<String> = [
       "Foundation", "EnviousWisprAudio", "EnviousWisprASR",

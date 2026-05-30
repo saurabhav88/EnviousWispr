@@ -53,7 +53,7 @@ import Testing
 
   @Test func lineCount() throws {
     let source = try String(
-      contentsOf: URL(fileURLWithPath: Self.sourcePath), encoding: .utf8)
+      contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
     let count = source.split(separator: "\n", omittingEmptySubsequences: false).count
     #expect(
       count <= 120,
@@ -65,7 +65,7 @@ import Testing
 
   @Test func allowedImports() throws {
     let source = try String(
-      contentsOf: URL(fileURLWithPath: Self.sourcePath), encoding: .utf8)
+      contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
     let actual = RouterCeilingParser.imports(in: source)
     let allowed: Set<String> = ["AppKit", "EnviousWisprServices", "Foundation"]
     let extras = actual.subtracting(allowed)
@@ -82,7 +82,7 @@ import Testing
   /// in-class non-private method ceiling. `AppDelegate` must have no extension.
   @Test func appDelegateHasNoExtensions() throws {
     let source = try String(
-      contentsOf: URL(fileURLWithPath: Self.sourcePath), encoding: .utf8)
+      contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
     let pattern = #"^[[:space:]]*extension[[:space:]]+AppDelegate\b[^\n]*"#
     let regex = try NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines])
     let ns = source as NSString
@@ -103,7 +103,7 @@ import Testing
   /// firing `assertionFailure` in a unit test is not viable.
   @Test func assertAttachedGuardsLifecycleEntryPoints() throws {
     let source = try String(
-      contentsOf: URL(fileURLWithPath: Self.sourcePath), encoding: .utf8)
+      contentsOf: RepoRoot.sourceURL(Self.sourcePath), encoding: .utf8)
     #expect(
       source.contains("assertAttached(sparkleUpdateController,"),
       "applicationWillFinishLaunching must guard its weak ref with assertAttached.")

@@ -14,7 +14,7 @@ import Testing
 @Suite struct CrossModulePublicGuardTests {
 
   @Test func noConfessionalCrossModulePublicExists() throws {
-    let sourcesRoot = URL(fileURLWithPath: "Sources")
+    let sourcesRoot = RepoRoot.sourceURL("Sources")
     var offenders: [String] = []
 
     // Exclude executable targets (app shell + XPC services). These are not

@@ -43,7 +43,7 @@ import Testing
 
   @Test func requiredLiteralsPresent() throws {
     let union = try Self.routerSourcePaths
-      .map { try String(contentsOf: URL(fileURLWithPath: $0), encoding: .utf8) }
+      .map { try String(contentsOf: RepoRoot.sourceURL($0), encoding: .utf8) }
       .joined(separator: "\n")
     var missing: [String] = []
     for literal in Self.requiredLiterals {
